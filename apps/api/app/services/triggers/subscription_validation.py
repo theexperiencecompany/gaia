@@ -11,6 +11,7 @@ does not happen: a subscription that "nearly" matches executes todos on the wron
 event, which is worse than refusing to store it.
 """
 
+from collections.abc import Mapping
 from difflib import get_close_matches
 
 from pydantic import BaseModel, Field
@@ -23,7 +24,9 @@ from app.models.trigger_subscription_models import (
     MatchableTrigger,
     SubscriptionCondition,
 )
+from app.services.triggers.condition_matching import parse_bool
 from app.services.triggers.matchable_fields import get_matchable_trigger
+from app.services.triggers.scope_catalog import scope_fields_for
 
 # Below this ratio a "close" name is a different field, and picking it would
 # silently rewrite what the user asked to watch.
@@ -86,12 +89,12 @@ class ValidationOutcome(BaseModel):
 
 
 def _normalize(name: str) -> str:
-    """``threadId``, ``thread-id`` and ``Thread Id`` all collapse to ``threadid``."""
+    """threadId, thread-id and Thread Id all collapse to threadid."""
     return "".join(ch for ch in name.lower() if ch.isalnum())
 
 
 def _resolve_field(entry: MatchableTrigger, name: str) -> tuple[MatchableField | None, str | None]:
-    """The catalog field ``name`` refers to, plus a reason when it had to be repaired."""
+    """Return the catalog field name refers to, plus a reason when it had to be repaired."""
     exact = entry.field(name)
     if exact is not None:
         return exact, None
@@ -109,24 +112,35 @@ def _resolve_field(entry: MatchableTrigger, name: str) -> tuple[MatchableField |
     return None, None
 
 
-def _coerce_value(
-    value: str | int | float, field: MatchableField
-) -> tuple[str | int | float | None, str | None]:
-    """Fit ``value`` to the field's type, or return None when it cannot be."""
-    if field.type is MatchableFieldType.INTEGER:
-        if isinstance(value, int):
-            return value, None
-        try:
-            return int(str(value)), f"'{value}' coerced to an integer for '{field.name}'"
-        except ValueError:
-            return None, None
-    if field.type is MatchableFieldType.NUMBER:
-        if isinstance(value, int | float):
-            return float(value), None
-        try:
-            return float(str(value)), f"'{value}' coerced to a number for '{field.name}'"
-        except ValueError:
-            return None, None
+ConditionValue = bool | str | int | float
+Coerced = tuple[ConditionValue | None, str | None]
+
+
+def _coerce_bool(value: ConditionValue, field: MatchableField) -> Coerced:
+    parsed = parse_bool(value)
+    if parsed is None or isinstance(value, bool):
+        return parsed, None
+    return parsed, f"'{value}' read as {str(parsed).lower()} for '{field.name}'"
+
+
+def _coerce_number(value: ConditionValue, field: MatchableField) -> Coerced:
+    integer = field.type is MatchableFieldType.INTEGER
+    if isinstance(value, int) if integer else isinstance(value, int | float):
+        return (value if integer else float(value)), None
+    try:
+        parsed: int | float = int(str(value)) if integer else float(str(value))
+    except ValueError:
+        return None, None
+    kind = "an integer" if integer else "a number"
+    return parsed, f"'{value}' coerced to {kind} for '{field.name}'"
+
+
+def _coerce_value(value: ConditionValue, field: MatchableField) -> Coerced:
+    """Fit value to the field's type, or return None when it cannot be."""
+    if field.type is MatchableFieldType.BOOLEAN:
+        return _coerce_bool(value, field)
+    if field.type in _NUMERIC_TYPES:
+        return _coerce_number(value, field)
     # STRING and STRING_LIST both compare against text.
     if isinstance(value, str):
         return value, None
@@ -168,7 +182,7 @@ def _validate_one(
         if correction is None:
             return None, [_bad_operator_error(field, operator)], None
         operator, operator_reason = correction
-        reasons.append(f"'{condition.operator}' became '{operator}' — {operator_reason}")
+        reasons.append(f"'{condition.operator}' became '{operator}': {operator_reason}")
 
     value, value_reason = _coerce_value(condition.value, field)
     if value is None:
@@ -184,10 +198,47 @@ def _validate_one(
     return repaired, [], "; ".join(reasons) if reasons else None
 
 
+def _unknown_scope_error(trigger_name: str, key: str, valid: set[str]) -> str:
+    return (
+        f"'{key}' is not a scope field on '{trigger_name}'. "
+        f"Scope fields: {', '.join(sorted(valid))}."
+    )
+
+
+def validate_scope(trigger_name: str, scope: Mapping[str, object] | None) -> list[str]:
+    """Check a subscription's registration scope against what the trigger accepts.
+
+    Catches three failures that otherwise surface late at registration: an unknown
+    key (Pydantic drops it, leaving the real field empty), scope on a trigger that
+    has none, and a missing required field. Presence only; type/range is the model's.
+    """
+    fields = scope_fields_for(trigger_name)
+    provided = scope or {}
+    if not fields:
+        if provided:
+            return [
+                f"'{trigger_name}' takes no scope configuration; "
+                f"remove {', '.join(sorted(provided))}."
+            ]
+        return []
+
+    valid = {field.name for field in fields}
+    errors = [
+        _unknown_scope_error(trigger_name, key, valid) for key in provided if key not in valid
+    ]
+    for field in fields:
+        if field.required and not provided.get(field.name):
+            errors.append(
+                f"'{trigger_name}' requires a '{field.name}' scope ({field.description}); "
+                "none was provided."
+            )
+    return errors
+
+
 def validate_conditions(
     trigger_name: str, conditions: list[SubscriptionCondition]
 ) -> ValidationOutcome:
-    """Check ``conditions`` against ``trigger_name``'s catalog, repairing what is safe.
+    """Check conditions against trigger_name's catalog, repairing what is safe.
 
     A subscription with no conditions is valid — it fires on every event for that
     trigger, which is the right default for a narrowly-scoped per-resource trigger.

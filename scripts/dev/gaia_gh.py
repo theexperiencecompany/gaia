@@ -85,7 +85,7 @@ def parse_repo() -> tuple[str, str]:
 
 
 def resolve_pr(repo_slug: str, branch: str, timeout_s: int) -> tuple[int, str, str] | None:
-    """branch -> (number, url, head_sha); None if no open PR (state, not an error)."""
+    """Branch -> (number, url, head_sha); None if no open PR (state, not an error)."""
     rc, out, err = gh(
         ["pr", "view", branch, "--repo", repo_slug, "--json", "number,url,headRefOid"], timeout_s
     )

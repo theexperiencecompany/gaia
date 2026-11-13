@@ -1,25 +1,18 @@
-"""
-Structured application errors with rich context for wide event logging.
+"""Structured application errors with rich context for wide event logging.
 
-Usage:
-    from app.utils.errors import AppError, create_error
+An AppError carries two audiences. The message, why, fix and code fields and
+the public mapping are the contract the client reads; meta is diagnostic
+context for the wide event and never reaches the wire. A provider body, a user
+id or str(e) is therefore safe in meta, and putting one in public is a
+deliberate decision.
 
-    # Raise with full context
-    raise create_error(
-        message="Payment failed",
-        why="Card declined by issuer",
-        fix="Try another card or contact your bank",
-        status_code=402,
-        provider="stripe",
-        charge_id="ch_abc123",
-    )
-
-    # The AppError exception handler in app_factory.py sets the structured
-    # error onto the wide event so it appears in the final log.
+The AppError exception handler in app/core/exception_handlers.py sets the
+structured error onto the wide event so it appears in the final log.
 """
 
 from dataclasses import dataclass, field
-from typing import Any
+
+from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 
 
 @dataclass
@@ -30,7 +23,9 @@ class AppError(Exception):
     why: str = ""
     fix: str = ""
     status_code: int = 500
-    meta: dict[str, Any] = field(default_factory=dict)
+    code: str = ""
+    public: dict[str, object] = field(default_factory=dict)
+    meta: dict[str, object] = field(default_factory=dict)
 
     def __str__(self) -> str:
         # The dataclass-generated __init__ never populates Exception.args, so
@@ -38,12 +33,16 @@ class AppError(Exception):
         # f-string logging and any str(exc) callers see a meaningful error.
         return self.message
 
-    def to_dict(self) -> dict[str, Any]:
-        d: dict[str, Any] = {"message": self.message}
+    def to_dict(self) -> dict[str, object]:
+        """Render the wide-event payload: everything the error knows, public or not."""
+        d: dict[str, object] = {"message": self.message}
         if self.why:
             d["why"] = self.why
         if self.fix:
             d["fix"] = self.fix
+        if self.code:
+            d["code"] = self.code
+        d.update(self.public)
         d.update(self.meta)
         return d
 
@@ -53,16 +52,56 @@ def create_error(
     why: str = "",
     fix: str = "",
     status_code: int = 500,
+    code: str = "",
+    public: dict[str, object] | None = None,
     **meta: object,
 ) -> AppError:
-    """Create a structured AppError with optional context metadata."""
+    """Create a structured AppError; keyword extras become wide-event-only meta."""
     return AppError(
         message=message,
         why=why,
         fix=fix,
         status_code=status_code,
+        code=code,
+        public=dict(public) if public else {},
         meta=meta,
     )
+
+
+class IntegrationNotConnectedError(AppError):
+    """No connection of an integration can act on this call; only the user can fix it.
+
+    grant_died is True when the call's own grant died just now (a provider 401 after
+    the refresh failed, a connected account the provider no longer holds), so the
+    stored account must be expired; False when nothing usable was connected.
+    integration_name is None when the raiser knows only the id (an MCP tool).
+    """
+
+    def __init__(
+        self,
+        *,
+        integration_id: str,
+        integration_name: str | None,
+        why: str,
+        toolkit: str | None = None,
+        grant_died: bool = False,
+        meta: dict[str, object] | None = None,
+    ) -> None:
+        name = integration_name or integration_id
+        # 403, not 401: a 401 trips the web client's session-expiry interceptor.
+        super().__init__(
+            message=f"{name} is not connected. Reconnect it to continue.",
+            why=why,
+            fix=f"Reconnect {name}",
+            status_code=403,
+            code=INTEGRATION_NOT_CONNECTED,
+            # The web keys its reconnect toast on toolkit and starts the connect from integration_id.
+            public={"integration_id": integration_id, **({"toolkit": toolkit} if toolkit else {})},
+            meta=meta or {},
+        )
+        self.integration_id = integration_id
+        self.integration_name = integration_name
+        self.grant_died = grant_died
 
 
 @dataclass
@@ -75,4 +114,10 @@ class RepositoryMisconfiguredError(AppError):
     """A repository subclass is missing required ClassVars (raised at import)."""
 
 
-__all__ = ["AppError", "EmptyUpdateError", "RepositoryMisconfiguredError", "create_error"]
+__all__ = [
+    "AppError",
+    "EmptyUpdateError",
+    "IntegrationNotConnectedError",
+    "RepositoryMisconfiguredError",
+    "create_error",
+]

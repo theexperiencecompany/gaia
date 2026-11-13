@@ -29,17 +29,9 @@ export function calculateBackgroundPosition(
   return { lp, tp };
 }
 
-// Fold a freshly-arrived card into the copy being edited.
-//
-// The card renders the EDITED copy, not `initialData`, so every field of the
-// incoming card has to come through: a refetch rewrites name, bio, account
-// number and member_since — connecting Gmail replaces the placeholder bio with
-// a generated one — and a version of this that patched only the overlay fields
-// froze everything else at whatever it was on first mount.
-//
-// The overlay is the one exception. A refetch must not yank it out from under
-// someone mid-pick, so the incoming overlay wins only where it actually differs
-// from the card we last saw; otherwise the local choice stands.
+// Folds a freshly-arrived card into the edited copy: every field (name,
+// bio, account, member_since) must come through on refetch, except the
+// overlay — it wins only where it differs from the last-seen incoming card, preserving a mid-pick choice.
 export function mergeIncomingCard(
   edited: HoloCardDisplayData,
   incoming: HoloCardDisplayData,

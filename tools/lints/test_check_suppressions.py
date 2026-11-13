@@ -25,9 +25,7 @@ COMMON = _HERE / "_common.py"
 
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
-    """A throwaway git repo with the script installed at the same relative
-    path it lives at in this repo, so ``REPO_ROOT`` (two parents up from
-    ``__file__``) resolves to ``tmp_path``."""
+    """Build a git repo with the script at its real relative path, so ``REPO_ROOT`` is ``tmp_path``."""
     lints_dir = tmp_path / "tools" / "lints"
     lints_dir.mkdir(parents=True)
     shutil.copy(SCRIPT, lints_dir / "check_suppressions.py")
@@ -209,7 +207,25 @@ def test_biome_ignore_after_a_template_closes_is_counted(repo: Path) -> None:
 def test_backtick_inside_a_comment_does_not_mask_later_directives(repo: Path) -> None:
     f = repo / "app.ts"
     f.write_text(
-        "// note ` isn't special in a comment\nconst c = 3; // biome-ignore lint/x: why this needs silencing here\n"
+        "// note ` isn't special in a comment\n"
+        "const c = 3; // biome-ignore lint/suspicious/noExplicitAny: why this needs silencing here\n"
     )
     _git(repo, "add", "-A")
     assert run(repo).returncode == 0
+
+
+@pytest.mark.parametrize(
+    "directive",
+    [
+        "// biome-ignore lint: Allow any for flexible state storage",
+        "// biome-ignore lint/suspicious: every suspicious rule, for no stated reason",
+        "// biome-ignore-all lint: the whole file, for no stated reason",
+    ],
+)
+def test_biome_ignore_naming_no_single_rule_fails(repo: Path, directive: str) -> None:
+    f = repo / "app.ts"
+    f.write_text(f"{directive}\nconst x: any = load();\n")
+    _git(repo, "add", "-A")
+    result = run(repo)
+    assert result.returncode == 1
+    assert "names no single rule" in result.stdout + result.stderr

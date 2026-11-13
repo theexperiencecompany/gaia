@@ -4,15 +4,15 @@ Why
 - Avoid importing/connecting providers at startup; defer until first use.
 
 Flow
-- Register providers via `providers.register(...)` or `@lazy_provider(...)`.
-- Provide `required_keys` (usually env-backed fields from `settings`).
-- On first `get()/aget()`, initialize the provider; warn or error if keys are missing.
+- Register providers via providers.register(...) or @lazy_provider(...).
+- Provide required_keys (usually env-backed fields from settings).
+- On first get()/aget(), initialize the provider; warn or error if keys are missing.
 - Supports async, sync, and global side-effect configuration (e.g., Cloudinary).
 
 Add a new provider
-1) Ensure env fields exist in `app.config.settings` (and optionally groups in `config/settings_validator.py`).
-2) Create a factory function and decorate with `@lazy_provider(name=..., required_keys=[...])`.
-3) Resolve the provider via `providers.get(...)` or `await providers.aget(...)`.
+1) Ensure env fields exist in app.config.settings (and optionally groups in config/settings_validator.py).
+2) Create a factory function and decorate with @lazy_provider(name=..., required_keys=[...]).
+3) Resolve the provider via providers.get(...) or await providers.aget(...).
 """
 
 import asyncio
@@ -24,26 +24,44 @@ from typing import (
     Any,
     Generic,
     Protocol,
+    TypedDict,
     TypeVar,
     Union,
+    Unpack,
     cast,
     overload,
 )
 
 from app.constants.log_tags import LogTag
-from app.utils.exceptions import ConfigurationError
+from app.utils.exceptions import ConfigurationError, ProviderNotConfiguredError
 from shared.py.wide_events import log
 
 T = TypeVar("T")
 
 
 class MissingKeyStrategy(Enum):
-    """Strategy for handling missing keys"""
+    """Strategy for handling missing keys."""
 
     ERROR = "error"  # Raise exception on get() call
     WARN = "warn"  # Log warning on registration and return None on get()
     WARN_ONCE = "warn_once"  # Log warning once on registration and return None on get()
     SILENT = "silent"  # Return None silently on get()
+
+
+class ProviderOptions(TypedDict, total=False):
+    """How a provider is checked and initialized; every key is optional.
+
+    required_keys are already-resolved settings values (API keys, URLs, ints)
+    the loader only checks for None/emptiness.
+    """
+
+    required_keys: list[object] | None
+    strategy: MissingKeyStrategy
+    warning_message: str | None
+    validate_values_func: Callable[[list[object]], bool] | None
+    is_global_context: bool
+    auto_initialize: bool
+    dependencies: list[str] | None
 
 
 class LazyLoader(Generic[T]):
@@ -56,39 +74,19 @@ class LazyLoader(Generic[T]):
     def __init__(
         self,
         loader_func: Union[Callable[[], T], Callable[[], Awaitable[T]]],
-        required_keys: list[object] | None = None,
-        strategy: MissingKeyStrategy = MissingKeyStrategy.ERROR,
-        warning_message: str | None = None,
         provider_name: str | None = None,
-        validate_values_func: Callable[[list[object]], bool] | None = None,
-        is_global_context: bool = False,
-        auto_initialize: bool = False,
-        dependencies: list[str] | None = None,
+        **options: Unpack[ProviderOptions],
     ) -> None:
-        """
-        Initialize lazy loader.
-
-        Args:
-            loader_func: Function that creates the provider instance or configures global context (can be sync or async)
-            required_keys: List of direct values that are required (can be None individually).
-                Typed ``object``: these are already-resolved settings values (API keys,
-                URLs, ints) and the loader only ever checks them for None/emptiness.
-            strategy: How to handle missing values
-            warning_message: Custom warning message
-            provider_name: Name for logging/error messages
-            validate_values_func: Custom validation function for the values
-            is_global_context: If True, provider configures global context instead of returning instance
-            auto_initialize: If True, automatically initialize at registration time when values are available
-        """
+        """Initialize the lazy loader; strategy defaults to ERROR."""
         self.loader_func = loader_func
-        self.required_keys = required_keys or []
-        self.strategy = strategy
-        self.warning_message = warning_message
+        self.required_keys = options.get("required_keys") or []
+        self.strategy = options.get("strategy", MissingKeyStrategy.ERROR)
+        self.warning_message = options.get("warning_message")
         self.provider_name = provider_name or loader_func.__name__
-        self.validate_values_func = validate_values_func
-        self.is_global_context = is_global_context
-        self.auto_initialize = auto_initialize
-        self.dependencies = dependencies or []
+        self.validate_values_func = options.get("validate_values_func")
+        self.is_global_context = options.get("is_global_context", False)
+        self.auto_initialize = options.get("auto_initialize", False)
+        self.dependencies = options.get("dependencies") or []
 
         # Check if the loader function is async
         self.is_async = inspect.iscoroutinefunction(loader_func)
@@ -98,6 +96,7 @@ class LazyLoader(Generic[T]):
         self._lock = Lock()
         self._async_lock = asyncio.Lock() if self.is_async else None
         self._warned_indices: set[int] = set()  # Track warned value indices for WARN_ONCE
+        self._warned_not_configured = False  # pragma: no mutate — only read as `not ...`
 
         # Check availability at registration time and log warnings
         self._check_availability_and_warn()
@@ -114,10 +113,9 @@ class LazyLoader(Generic[T]):
                     )
                 else:
                     self._initialize_sync()
-                    # Only claim success if it actually initialized. A non-ERROR
-                    # provider whose loader RAISED is swallowed to None by
-                    # _initialize_sync (which already logged the failure) — logging
-                    # "Auto-initialized" here too would report a broken provider as up.
+                    # Only claim success if it actually initialized — a non-ERROR
+                    # provider whose loader raised is swallowed to None by
+                    # _initialize_sync, which already logged the failure.
                     if self.is_initialized():
                         log.info(
                             f"{LogTag.STARTUP} Auto-initialized provider at registration time",
@@ -239,28 +237,17 @@ class LazyLoader(Generic[T]):
                 return self._handle_validation_failure_on_get()
 
         try:
-            if self.is_global_context:
-                # For global context providers, call the function for side effects
-                self.loader_func()
-                self._is_configured = True
-                log.info(
-                    f"{LogTag.STARTUP} Successfully configured global provider",
-                    provider_name=self.provider_name,
-                )
-                return True
-            # For instance-based providers, store and return the instance
             result = self.loader_func()
-            if inspect.iscoroutine(result):
+            # A global provider is called for its side effects; its result is unused.
+            if not self.is_global_context and inspect.iscoroutine(result):
                 raise RuntimeError(
                     f"Sync initialization called on async loader function for '{self.provider_name}'"
                 )
-            self._instance = cast(T, result)
-            log.info(
-                f"{LogTag.STARTUP} Successfully initialized provider",
-                provider_name=self.provider_name,
-            )
-            return self._instance
+            return self._store_loaded(result)
 
+        except ProviderNotConfiguredError as e:
+            self._handle_not_configured(e)
+            return None
         except Exception as e:
             error_msg = f"Failed to initialize provider '{self.provider_name}': {e!s}"
             log.error(
@@ -275,7 +262,7 @@ class LazyLoader(Generic[T]):
             return None
 
     async def _initialize_async(self) -> Union[T, bool] | None:
-        """Initialize the provider instance or configure global context asynchronously."""
+        """Initialize an async provider instance or configure its global context."""
         # Check if required values are valid
         missing_indices = self._check_required_keys()
         if missing_indices:
@@ -287,50 +274,16 @@ class LazyLoader(Generic[T]):
                 return self._handle_validation_failure_on_get()
 
         try:
-            if self.is_global_context:
-                # For global context providers, call the function for side effects
-                if self.is_async:
-                    result = self.loader_func()
-                    if inspect.iscoroutine(result):
-                        await result
-                    else:
-                        raise RuntimeError(
-                            f"Expected coroutine from async loader function for '{self.provider_name}'"
-                        )
-                else:
-                    result = self.loader_func()
-                    if inspect.iscoroutine(result):
-                        raise RuntimeError(
-                            f"Unexpected coroutine from sync loader function for '{self.provider_name}'"
-                        )
-                self._is_configured = True
-                log.info(
-                    f"{LogTag.STARTUP} Successfully configured global provider",
-                    provider_name=self.provider_name,
+            result = self.loader_func()
+            if not inspect.iscoroutine(result):
+                raise RuntimeError(
+                    f"Expected coroutine from async loader function for '{self.provider_name}'"
                 )
-                return True
-            # For instance-based providers, store and return the instance
-            if self.is_async:
-                result = self.loader_func()
-                if inspect.iscoroutine(result):
-                    self._instance = await result
-                else:
-                    raise RuntimeError(
-                        f"Expected coroutine from async loader function for '{self.provider_name}'"
-                    )
-            else:
-                result = self.loader_func()
-                if inspect.iscoroutine(result):
-                    raise RuntimeError(
-                        f"Unexpected coroutine from sync loader function for '{self.provider_name}'"
-                    )
-                self._instance = cast(T, result)
-            log.info(
-                f"{LogTag.STARTUP} Successfully initialized provider",
-                provider_name=self.provider_name,
-            )
-            return self._instance
+            return self._store_loaded(await result)
 
+        except ProviderNotConfiguredError as e:
+            self._handle_not_configured(e)
+            return None
         except Exception as e:
             error_msg = f"Failed to initialize provider '{self.provider_name}': {e!s}"
             log.error(
@@ -343,6 +296,22 @@ class LazyLoader(Generic[T]):
             if self.strategy == MissingKeyStrategy.ERROR:
                 raise ConfigurationError(error_msg) from e
             return None
+
+    def _store_loaded(self, result: object) -> Union[T, bool]:
+        """Record a successful load: a global provider is configured, any other keeps its instance."""
+        if self.is_global_context:
+            self._is_configured = True
+            log.info(
+                f"{LogTag.STARTUP} Successfully configured global provider",
+                provider_name=self.provider_name,
+            )
+            return True
+        self._instance = cast(T, result)
+        log.info(
+            f"{LogTag.STARTUP} Successfully initialized provider",
+            provider_name=self.provider_name,
+        )
+        return self._instance
 
     def _check_required_keys(self) -> set[int]:
         """Check which required values are missing/invalid."""
@@ -367,6 +336,20 @@ class LazyLoader(Generic[T]):
 
         # For non-error strategies, just return None (warning already logged at registration)
         return None
+
+    def _handle_not_configured(self, error: ProviderNotConfiguredError) -> None:
+        """Warn once for an optional provider with no credentials; raise for a required one."""
+        if self.strategy == MissingKeyStrategy.ERROR:
+            raise ConfigurationError(
+                f"Provider '{self.provider_name}' is not configured: {error.message}"
+            ) from error
+        if self.strategy != MissingKeyStrategy.SILENT and not self._warned_not_configured:
+            self._warned_not_configured = True
+            log.warning(
+                f"{LogTag.STARTUP} Provider not configured",
+                provider_name=self.provider_name,
+                reason=self.warning_message or error.message,
+            )
 
     def _handle_validation_failure_on_get(self) -> Union[T, bool] | None:
         """Handle custom validation failure when get() is called."""
@@ -401,9 +384,9 @@ class LazyLoader(Generic[T]):
         return self._instance is not None
 
     async def areset(self) -> None:
-        """Awaitable reset that takes the async lock, so it cannot race ``aget()``.
+        """Awaitable reset that takes the async lock, so it cannot race aget().
 
-        The async initializer holds ``_async_lock`` while ``loader_func`` runs;
+        The async initializer holds _async_lock while loader_func runs;
         clearing the fields without that lock lets an in-flight initialization
         repopulate the instance after the reset, silently undoing it. Await this
         whenever a loop is already running.
@@ -417,11 +400,9 @@ class LazyLoader(Generic[T]):
     def reset(self) -> None:
         """Reset the loader (useful for testing)."""
         if self.is_async:
-            # get_running_loop() succeeds only INSIDE a running loop. There,
-            # a plain synchronous clear races any in-flight aget(): the
-            # initializer holds _async_lock and would write _instance right
-            # back after this reset — the reset would silently not happen.
-            # Fail loud and require the awaited API instead.
+            # get_running_loop() succeeds only inside a running loop, where a
+            # sync clear races any in-flight aget() and could be silently
+            # overwritten. Fail loud and require the awaited API instead.
             try:
                 asyncio.get_running_loop()
             except RuntimeError:
@@ -467,32 +448,17 @@ class ProviderRegistry:
         self,
         name: str,
         loader_func: Union[Callable[[], T], Callable[[], Awaitable[T]]],
-        required_keys: list[object] | None = None,
-        strategy: MissingKeyStrategy = MissingKeyStrategy.WARN,
-        warning_message: str | None = None,
-        validate_values_func: Callable[[list[object]], bool] | None = None,
-        is_global_context: bool = False,
-        auto_initialize: bool = False,
-        dependencies: list[str] | None = None,
+        **options: Unpack[ProviderOptions],
     ) -> LazyLoader[T]:
-        """Register a new provider."""
+        """Register a new provider; strategy defaults to WARN."""
+        options.setdefault("strategy", MissingKeyStrategy.WARN)
         with self._lock:
             if name in self._providers:
                 log.warning(f"{LogTag.STARTUP} Provider is being re-registered", name=name)
 
-            provider = LazyLoader(
-                loader_func=loader_func,
-                required_keys=required_keys,
-                strategy=strategy,
-                warning_message=warning_message,
-                provider_name=name,
-                validate_values_func=validate_values_func,
-                is_global_context=is_global_context,
-                auto_initialize=auto_initialize,
-                dependencies=dependencies,
-            )
+            provider = LazyLoader(loader_func=loader_func, provider_name=name, **options)
 
-            if auto_initialize:
+            if provider.auto_initialize:
                 self._auto_init_providers.add(name)
 
             self._providers[name] = provider
@@ -506,15 +472,8 @@ class ProviderRegistry:
     ) -> None:
         """Initialize all providers marked for auto-initialization.
 
-        This is intended to be called during startup (blocking) or during a
-        background warmup phase (non-blocking).
-
-        Behavior:
-        - Providers that are not available (missing required keys / validation
-          fails) are skipped.
-        - In strict mode, any failure (or unavailable ERROR-strategy provider)
-          raises after all tasks complete.
-        - In non-strict mode, errors are logged and startup can continue.
+        Unavailable providers are skipped; in strict mode, any failure (or
+        unavailable ERROR-strategy provider) raises after all tasks complete.
         """
 
         semaphore = asyncio.Semaphore(max(1, concurrency))
@@ -578,16 +537,10 @@ class ProviderRegistry:
         concurrency: int = 5,
         strict: bool = False,
     ) -> None:
-        """Warm up (initialize) all registered providers.
+        """Warm up (initialize) all registered providers, for background warmup in production.
 
-        This is designed for background warmup in production.
-
-        Key guarantees / gotchas:
-        - It uses `aget()` which is safe for both sync and async providers.
-        - If a request handler calls `providers.aget(name)` while warmup is
-          initializing the same provider, the request will wait on the same
-          per-provider lock (no double initialization).
-        - Providers that are not available are skipped (missing required keys).
+        Uses aget(), so a concurrent request for the same provider waits on its
+        lock instead of double-initializing. Unavailable providers are skipped.
         """
 
         semaphore = asyncio.Semaphore(max(1, concurrency))
@@ -655,9 +608,9 @@ class ProviderRegistry:
     def get(self, name: str) -> Any | None:  # noqa: ANN401 -- framework contract
         """Get a provider instance by name synchronously - only works for sync providers.
 
-        Returns ``Any`` because the registry is keyed by name, not by type: the
+        Returns Any because the registry is keyed by name, not by type: the
         concrete provider type is only knowable at the call site. Callers narrow
-        with ``cast(TheProvider, ...)`` rather than ``isinstance`` (Type Safety
+        with cast(TheProvider, ...) rather than isinstance (Type Safety
         item 12) — the registered value is correct by construction.
         """
         if name not in self._providers:
@@ -677,7 +630,7 @@ class ProviderRegistry:
     async def aget(self, name: str) -> Any | None:  # noqa: ANN401 -- framework contract
         """Get a provider instance by name asynchronously - works for both sync and async providers.
 
-        Returns ``Any`` for the same reason as :meth:`get`; narrow with ``cast``.
+        Returns Any for the same reason as get(); narrow with cast.
         """
         if name not in self._providers:
             raise KeyError(f"Provider '{name}' not found in registry")
@@ -711,17 +664,16 @@ class ProviderRegistry:
     def reset(self, name: str) -> None:
         """Reset a provider so the next aget()/get() re-initializes it from scratch.
 
-        For testing only: a process-lifetime resource (e.g. an asyncpg engine)
-        that gets disposed but not reset here would otherwise be handed back,
-        already-closed, to a later test running under a different event loop.
-        Inside a running event loop use :meth:`areset` instead — a sync reset
-        of an async provider there could be overwritten by an in-flight init.
+        Testing only: a disposed process-lifetime resource (e.g. an asyncpg
+        engine) would otherwise be handed back already-closed to a later test.
+        Inside a running event loop use areset() instead, to avoid an
+        in-flight init overwriting it.
         """
         if name in self._providers:
             self._providers[name].reset()
 
     async def areset(self, name: str) -> None:
-        """Awaited variant of :meth:`reset` — safe inside a running event loop."""
+        """Awaited variant of reset() — safe inside a running event loop."""
         if name in self._providers:
             await self._providers[name].areset()
 
@@ -731,16 +683,16 @@ providers = ProviderRegistry()
 
 
 class _ProviderDecorator(Protocol):
-    """What ``lazy_provider(...)`` hands back — a decorator that keeps ``T``.
+    """What lazy_provider(...) hands back — a decorator that keeps T.
 
-    A ``Protocol`` with an overloaded ``__call__`` rather than a plain
-    ``Callable[...]`` return: a two-step decorator factory has nothing to solve
-    ``T`` against at the *outer* call, so a plain annotation collapses every
-    decorated provider to ``LazyLoader[Any]`` (Type Safety item 9). Deferring
-    inference to ``__call__`` recovers the provider's real type. The overloads
+    A Protocol with an overloaded __call__ rather than a plain
+    Callable[...] return: a two-step decorator factory has nothing to solve
+    T against at the *outer* call, so a plain annotation collapses every
+    decorated provider to LazyLoader[Any] (Type Safety item 9). Deferring
+    inference to __call__ recovers the provider's real type. The overloads
     (async first — a coroutine function also matches the sync form, with
-    ``T`` bound to the coroutine) are what makes ``async def`` factories infer;
-    a single union parameter leaves mypy solving ``T`` to ``Never``.
+    T bound to the coroutine) are what makes async def factories infer;
+    a single union parameter leaves mypy solving T to Never.
     """
 
     @overload
@@ -751,86 +703,18 @@ class _ProviderDecorator(Protocol):
 
 
 # Decorator for easy provider registration
-def lazy_provider(
-    name: str,
-    required_keys: list[object] | None = None,
-    strategy: MissingKeyStrategy = MissingKeyStrategy.WARN,
-    warning_message: str | None = None,
-    validate_values_func: Callable[[list[object]], bool] | None = None,
-    is_global_context: bool = False,
-    auto_initialize: bool = False,
-    dependencies: list[str] | None = None,
-) -> _ProviderDecorator:
-    """
-    Decorator to register a function as a lazy provider.
-    Supports both sync and async functions.
+def lazy_provider(name: str, **options: Unpack[ProviderOptions]) -> _ProviderDecorator:
+    """Decorate a function to register it as a lazy provider (sync or async).
 
-    Returns a callable that, when called, registers the provider.
-    This allows you to control when registration happens (e.g., in FastAPI lifespan).
-
-    Examples:
-        # Sync instance-based provider
-        @lazy_provider("gemini", required_keys=[settings.GOOGLE_API_KEY])
-        def create_gemini_client():
-            return GeminiClient(api_key=settings.GOOGLE_API_KEY)
-
-        # Async instance-based provider
-        @lazy_provider("async_db", required_keys=[settings.DATABASE_URL])
-        async def create_async_db():
-            db = AsyncDatabase(settings.DATABASE_URL)
-            await db.connect()
-            return db
-
-        # Global context provider (configures global state) with auto-initialization
-        @lazy_provider(
-            "cloudinary",
-            required_keys=[settings.CLOUDINARY_CLOUD_NAME, settings.CLOUDINARY_API_KEY],
-            is_global_context=True,
-            auto_initialize=True
-        )
-        def configure_cloudinary():
-            import cloudinary
-            cloudinary.config(
-                cloud_name=settings.CLOUDINARY_CLOUD_NAME,
-                api_key=settings.CLOUDINARY_API_KEY,
-                api_secret=settings.CLOUDINARY_API_SECRET
-            )
-
-        # Async global context provider
-        @lazy_provider(
-            "async_cache",
-            required_keys=[settings.REDIS_URL],
-            is_global_context=True,
-        )
-        async def configure_async_cache():
-            import aioredis
-            global redis_client
-            redis_client = await aioredis.from_url(settings.REDIS_URL)
-
-        # Usage:
-        # Sync providers:
-        client = providers.get("gemini")
-
-        # Async providers:
-        db = await providers.aget("async_db")
-        cache_configured = await providers.aget("async_cache")
+    Returns a callable that performs the registration when called, so callers
+    control when that happens (e.g. during FastAPI lifespan).
     """
 
     def decorator(
         func: Union[Callable[[], T], Callable[[], Awaitable[T]]],
     ) -> Callable[[], LazyLoader[T]]:
         def register_provider() -> LazyLoader[T]:
-            return providers.register(
-                name=name,
-                loader_func=func,
-                required_keys=required_keys,
-                strategy=strategy,
-                warning_message=warning_message,
-                validate_values_func=validate_values_func,
-                is_global_context=is_global_context,
-                auto_initialize=auto_initialize,
-                dependencies=dependencies,
-            )
+            return providers.register(name=name, loader_func=func, **options)
 
         return register_provider
 

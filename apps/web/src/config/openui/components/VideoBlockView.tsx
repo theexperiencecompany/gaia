@@ -23,11 +23,9 @@ export function VideoBlockView(props: z.infer<typeof videoBlockSchema>) {
   const isEmbed = isYouTube || isVimeo;
 
   return isEmbed ? (
-    // Third-party player embed of an LLM-supplied URL — sandbox it so it can
-    // only do what playback requires (its own scripts and origin storage for
-    // player state, popups for outbound links); no forms, no top navigation.
-    // The embed stays cross-origin, so `allow-same-origin` grants the player
-    // its own origin's storage — not access to this app.
+    // Third-party embed of an LLM-supplied URL — sandboxed to only what
+    // playback needs (own scripts/storage, popups); no forms, no top nav.
+    // Cross-origin, so `allow-same-origin` grants only the player's own storage.
     <iframe
       src={embedSrc}
       className="w-full max-w-2xl rounded-2xl aspect-video"

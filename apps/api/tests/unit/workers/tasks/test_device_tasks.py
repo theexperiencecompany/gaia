@@ -1,5 +1,7 @@
-"""Unit tests for warm_device_servers — the warm-connect that makes a device's
-MCP tools discoverable after registration."""
+"""Unit tests for warm_device_servers.
+
+The warm-connect that makes a device's MCP tools discoverable after registration.
+"""
 
 import asyncio
 from types import SimpleNamespace

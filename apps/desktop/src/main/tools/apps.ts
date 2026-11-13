@@ -35,12 +35,9 @@ export async function openApp(appName: string): Promise<void> {
   if (process.platform !== "darwin") {
     throw new Error("Opening apps is only supported on macOS for now");
   }
-  // No app allowlist by design: which app to launch is a model decision,
-  // gated upstream to the authenticated user's DESKTOP-source stream — the
-  // model + that gating is the trust boundary, not this layer. Safety here is
-  // execFile (no shell) with an absolute path to the SIP-protected system
-  // binary: the app name is a literal argv entry, never via $PATH or a shell,
-  // so it cannot inject commands regardless of its contents.
+  // No app allowlist by design: launching is a model decision gated upstream to
+  // the authenticated user's DESKTOP-source stream (the trust boundary, not this
+  // layer). Safety here is execFile (no shell) with an absolute path — the app name is a literal argv entry, never $PATH/shell-injectable.
   await execFileAsync("/usr/bin/open", ["-a", trimmed], {
     timeout: OPEN_APP_TIMEOUT_MS,
   });

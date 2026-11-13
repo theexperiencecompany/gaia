@@ -40,6 +40,8 @@ function StatusIcon({ status }: { status: WorkflowExecution["status"] }) {
       <AppIcon icon={Loading03Icon} size={11} color={WORKFLOW_COLORS.primary} />
     );
   }
+  // A skipped run did nothing wrong: its chip and summary say why, as on web.
+  if (status === "skipped") return null;
   return (
     <AppIcon
       icon={AlertCircleIcon}
@@ -66,7 +68,7 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
   const router = useRouter();
   const { spacing, fontSize, moderateScale } = useResponsive();
   const isClickable = !!execution.conversation_id;
-  const durationText = formatDuration(execution.duration_seconds);
+  const durationText = formatDuration(execution.duration_seconds ?? undefined);
   const relativeDate = formatRelativeDate(execution.started_at);
   const descriptor = EXECUTION_STATUS[execution.status];
 

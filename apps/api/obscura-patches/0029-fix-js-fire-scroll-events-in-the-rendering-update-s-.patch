@@ -1,0 +1,269 @@
+From 81f426a8573df30a619fb4d1ecca293c089ac9bb Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 01:22:25 +0530
+Subject: [PATCH] fix(js): fire scroll events in the rendering update's scroll
+ steps
+
+A scroll fired its event from a setTimeout(0) of its own: per element, plus a
+second one at the document and window for a viewport scroll, plus a third from
+the CDP wheel path, and the MCP scroll tool dispatched two more by hand. HTML
+queues the scroll target once in the document's pending scroll event targets
+and fires the events in the next update of the rendering, before animation
+frame callbacks.
+
+The engine already runs one rendering opportunity for animation frames,
+ResizeObserver and IntersectionObserver. Scroll targets now queue there
+(deduplicated, in order) and fire first; scrolling the viewport's root element
+fires at the document, whose event bubbles to the window. The CDP wheel path
+and the MCP scroll tool no longer dispatch scroll events of their own. Tests
+read their counters from an animation frame callback, which is where a page
+can first see the event, as in Chrome.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-cdp/src/domains/input.rs       |  8 +--
+ .../tests/scroll_event_on_assignment.rs       | 18 ++++---
+ crates/obscura-js/js/bootstrap.js             | 52 ++++++++++---------
+ crates/obscura-js/src/runtime.rs              | 10 ++--
+ crates/obscura-mcp/src/lib.rs                 |  7 +--
+ 5 files changed, 46 insertions(+), 49 deletions(-)
+
+diff --git a/crates/obscura-cdp/src/domains/input.rs b/crates/obscura-cdp/src/domains/input.rs
+index 29fa02e..58dfa2d 100644
+--- a/crates/obscura-cdp/src/domains/input.rs
++++ b/crates/obscura-cdp/src/domains/input.rs
+@@ -303,13 +303,7 @@ pub async fn handle(
+                                 el = el.parentElement;\
+                             }}\
+                             if (!scrollTarget) scrollTarget = root;\
+-                            if (scrollTarget === root && root && typeof root.scrollBy === 'function') {{\
+-                                var beforeX = root.scrollLeft, beforeY = root.scrollTop;\
+-                                root.scrollBy(dx, dy);\
+-                                if (root.scrollLeft !== beforeX || root.scrollTop !== beforeY) setTimeout(function() {{\
+-                                    try {{ document.dispatchEvent(new Event('scroll', {{bubbles:true}})); }} catch (_e) {{}}\
+-                                }}, 0);\
+-                            }} else if (scrollTarget && typeof scrollTarget.scrollBy === 'function') scrollTarget.scrollBy(dx, dy);\
++                            if (scrollTarget && typeof scrollTarget.scrollBy === 'function') scrollTarget.scrollBy(dx, dy);\
+                         }})()",
+                         x = x,
+                         y = y,
+diff --git a/crates/obscura-cdp/tests/scroll_event_on_assignment.rs b/crates/obscura-cdp/tests/scroll_event_on_assignment.rs
+index 382bae6..e4028fd 100644
+--- a/crates/obscura-cdp/tests/scroll_event_on_assignment.rs
++++ b/crates/obscura-cdp/tests/scroll_event_on_assignment.rs
+@@ -58,8 +58,8 @@ async fn cdp(ctx: &mut CdpContext, id: u64, method: &str, params: Value, session
+     resp.result.unwrap_or_else(|| json!({}))
+ }
+ 
+-/// `awaitPromise` matters here: the scroll event is dispatched from a
+-/// `setTimeout(..., 0)`, so the probe has to yield before reading the counter.
++/// `awaitPromise` matters here: the scroll event fires in the next rendering
++/// update, so the probe has to yield to it before reading the counter.
+ async fn eval(ctx: &mut CdpContext, id: u64, expr: &str, session_id: &str) -> Value {
+     cdp(
+         ctx,
+@@ -89,9 +89,11 @@ async fn probe(ctx: &mut CdpContext, sid: &str, body: &str) -> Value {
+             let fired = 0;
+             el.addEventListener('scroll', () => {{ fired++; }});
+             {body}
+-            return new Promise(r => setTimeout(() => r(JSON.stringify({{
++            // Scroll events fire in the next rendering update, ahead of its
++            // animation frame callbacks.
++            return new Promise(r => requestAnimationFrame(() => r(JSON.stringify({{
+                 fired, top: el.scrollTop, left: el.scrollLeft,
+-            }})), 0));
++            }}))));
+         }})()"#
+     );
+     let v = eval(ctx, 2, &expr, sid).await;
+@@ -152,12 +154,12 @@ async fn scroll_driven_lazy_loader_advances() {
+                 for (let i = 0; i < 5; i++) el.appendChild(document.createElement('p'));
+             });
+             el.scrollTop = 500;
+-            return new Promise(r => setTimeout(() => {
++            return new Promise(r => requestAnimationFrame(() => {
+                 el.scrollTop = 1000;
+-                setTimeout(() => r(JSON.stringify({
++                requestAnimationFrame(() => r(JSON.stringify({
+                     batches, rows: el.querySelectorAll('p').length,
+-                })), 0);
+-            }, 0));
++                })));
++            }));
+         })()"#,
+         &sid,
+     )
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 4fc267f..a88179e 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -1049,9 +1049,27 @@ let _rafRunningFrame = false;
+ let _renderOpportunityScheduled = false;
+ let _renderOpportunityRunning = false;
+ 
++// HTML "pending scroll event targets": a scroll queues its target once, and
++// the next rendering update's scroll steps fire the events, ahead of the
++// animation frame callbacks. A document's scroll event bubbles to the window.
++let _pendingScrollEventTargets = [];
++function _queueScrollEvent(target) {
++  if (!target || _pendingScrollEventTargets.includes(target)) return;
++  _pendingScrollEventTargets.push(target);
++  _scheduleRenderingOpportunity();
++}
+ function _renderOpportunityHasWork() {
+-  return _rafFrameScheduled || _resizeRenderCheckpointPending
+-    || _intersectionRenderCheckpointPending;
++  return _pendingScrollEventTargets.length > 0 || _rafFrameScheduled
++    || _resizeRenderCheckpointPending || _intersectionRenderCheckpointPending;
++}
++
++function _runScrollSteps() {
++  const targets = _pendingScrollEventTargets;
++  _pendingScrollEventTargets = [];
++  for (const target of targets) {
++    try { target.dispatchEvent(new Event('scroll', { bubbles: target.nodeType === 9 })); }
++    catch (e) { console.error("Scroll event error:", e); }
++  }
+ }
+ 
+ // Gecko and the HTML rendering algorithm use one refresh opportunity for
+@@ -1060,7 +1078,8 @@ function _renderOpportunityHasWork() {
+ // lets registration order change which geometry a callback sees. Run the
+ // phases once, in browser order, from one task instead:
+ //
+-//   animation frame callbacks -> layout/ResizeObserver -> intersections
++//   scroll events -> animation frame callbacks -> layout/ResizeObserver
++//   -> intersections
+ //
+ // A phase which queues more work while this task is running belongs to the
+ // next opportunity unless a later phase in this opportunity can consume it.
+@@ -1075,6 +1094,7 @@ function _runRenderingOpportunity() {
+   _renderOpportunityScheduled = false;
+   _renderOpportunityRunning = true;
+   try {
++    if (_pendingScrollEventTargets.length > 0) _runScrollSteps();
+     if (_rafFrameScheduled) _runAnimationFrameBatch();
+     if (_resizeRenderCheckpointPending) _runResizeRenderCheckpoint();
+     if (_intersectionRenderCheckpointPending) _runIntersectionRenderCheckpoint();
+@@ -5530,14 +5550,10 @@ class Element extends Node {
+       top: (this.scrollTop || 0) + (+dt || 0),
+     });
+   }
++  // Scrolling the viewport's root element scrolls the document, whose scroll
++  // event bubbles to the window; any other scroller gets its own.
+   _fireScroll() {
+-    if (this._scrollEventPending) return;
+-    this._scrollEventPending = true;
+-    const self = this;
+-    setTimeout(() => {
+-      self._scrollEventPending = false;
+-      try { self.dispatchEvent(new Event('scroll', { bubbles: false })); } catch (e) {}
+-    }, 0);
++    _queueScrollEvent(this._isViewportRoot() ? this.ownerDocument : this);
+   }
+   animate(keyframes, options) {
+     const animation = new Animation(new KeyframeEffect(this, keyframes, options), document.timeline);
+@@ -14592,8 +14608,6 @@ function _scrollRoot() {
+ function _windowScroll(x, y, relative) {
+   const root = _scrollRoot();
+   if (!root) return;
+-  const beforeLeft = root.scrollLeft || 0;
+-  const beforeTop = root.scrollTop || 0;
+   let left, top;
+   if (x !== null && typeof x === 'object') { left = x.left; top = x.top; }
+   else { left = x; top = y; }
+@@ -14603,18 +14617,8 @@ function _windowScroll(x, y, relative) {
+   if (top !== undefined) {
+     root.scrollTop = (relative ? (root.scrollTop || 0) : 0) + (+top || 0);
+   }
+-  if ((root.scrollLeft || 0) === beforeLeft && (root.scrollTop || 0) === beforeTop) {
+-    return;
+-  }
+-  // Async, matching the element path #431 added. A viewport scroll fires at
+-  // the document and bubbles to the window, as in Chrome.
+-  setTimeout(() => {
+-    try {
+-      const doc = globalThis.document;
+-      if (doc) doc.dispatchEvent(new Event('scroll', { bubbles: true }));
+-      else globalThis.dispatchEvent(new Event('scroll', { bubbles: false }));
+-    } catch (e) {}
+-  }, 0);
++  // The root's scrollLeft/scrollTop setters queue the document's scroll
++  // event for the next rendering update.
+ }
+ globalThis.scrollTo = function(x, y) { _windowScroll(x, y, false); };
+ globalThis.scrollBy = function(x, y) { _windowScroll(x, y, true); };
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index 0d99896..7ca7d27 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -9727,7 +9727,7 @@ mod tests {
+                     window.addEventListener('scroll', () => win++);
+                     document.addEventListener('scroll', () => doc++);
+                     window.scrollBy(0, 400);
+-                    setTimeout(() => resolve([win, doc, window.scrollY]), 5);
++                    requestAnimationFrame(() => resolve([win, doc, window.scrollY]));
+                 })
+                 "#,
+                 true,
+@@ -12221,7 +12221,7 @@ mod tests {
+                     window.addEventListener("scroll", () => win++);
+                     document.addEventListener("scroll", () => doc++);
+                     window.scrollTo(0, 100);
+-                    setTimeout(() => resolve([win, doc, window.scrollY]), 5);
++                    requestAnimationFrame(() => resolve([win, doc, window.scrollY]));
+                 })
+                 "#,
+                 true,
+@@ -12242,7 +12242,7 @@ mod tests {
+                     document.addEventListener("scroll", () => doc++);
+                     const before = window.scrollY;
+                     window.scrollTo(0, 99999);
+-                    setTimeout(() => resolve([win, doc, before, window.scrollY]), 5);
++                    requestAnimationFrame(() => resolve([win, doc, before, window.scrollY]));
+                 })
+                 "#,
+                 true,
+@@ -13421,7 +13421,7 @@ mod tests {
+                     window.addEventListener("scroll", () => win++);
+                     document.addEventListener("scroll", () => doc++);
+                     document.getElementById("target").scrollIntoView({ block: "nearest" });
+-                    setTimeout(() => resolve([win, doc, scrollY]), 5);
++                    requestAnimationFrame(() => resolve([win, doc, scrollY]));
+                 })
+                 "#,
+                 true,
+@@ -13441,7 +13441,7 @@ mod tests {
+                     window.addEventListener("scroll", () => win++);
+                     document.addEventListener("scroll", () => doc++);
+                     document.getElementById("target").scrollIntoView({ block: "center" });
+-                    setTimeout(() => resolve([win, doc, scrollY]), 5);
++                    requestAnimationFrame(() => resolve([win, doc, scrollY]));
+                 })
+                 "#,
+                 true,
+diff --git a/crates/obscura-mcp/src/lib.rs b/crates/obscura-mcp/src/lib.rs
+index bd5e79c..a37697c 100644
+--- a/crates/obscura-mcp/src/lib.rs
++++ b/crates/obscura-mcp/src/lib.rs
+@@ -1666,9 +1666,8 @@ fn tool_scroll(args: &Value, state: &mut BrowserState) -> Result<String, String>
+         return Ok(format!("Scrolled element into view. {}", res.as_str().unwrap_or("")));
+     }
+ 
+-    // Page-level scroll. Also dispatch a 'scroll' event so infinite-
+-    // scroll handlers fire (we don't have a real layout engine, so the
+-    // window.scrollY value won't change but the event is what matters).
++    // Page-level scroll. The engine fires the document's scroll event in the
++    // next rendering update, which infinite-scroll handlers wait for.
+     let amt = amount.unwrap_or(720.0);
+     let js = format!(r#"(function(){{
+         var dir = {dir};
+@@ -1681,8 +1680,6 @@ fn tool_scroll(args: &Value, state: &mut BrowserState) -> Result<String, String>
+             case 'left': window.scrollBy(-amt, 0); break;
+             case 'right': window.scrollBy(amt, 0); break;
+         }}
+-        try {{ window.dispatchEvent(new Event('scroll', {{bubbles:true}})); }} catch(e) {{}}
+-        try {{ document.dispatchEvent(new Event('scroll', {{bubbles:true}})); }} catch(e) {{}}
+         return JSON.stringify({{x: window.scrollX, y: window.scrollY, max_y: document.body.scrollHeight, viewport_h: window.innerHeight}});
+     }})()"#,
+         dir = serde_json::to_string(direction).unwrap(),

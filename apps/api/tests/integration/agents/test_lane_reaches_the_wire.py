@@ -1,21 +1,17 @@
-"""What the provider actually receives.
+"""What the provider actually receives: the real HTTP request body, not the configurable dict.
 
-Every other lane test asserts on the configurable — a dict GAIA controls. This one
-asserts on the HTTP request body the real ``ChatOpenRouter`` builds from it, which
-is the only place a provider-routing pin either exists or does not.
+Every other lane test asserts on the configurable, a dict GAIA controls. This one asserts on the
+body the real ChatOpenRouter builds from it, the only place a provider-routing pin either exists
+or does not. The gap it closes: a pinned lane must route to the provider it names AND an unpinned
+one must carry no routing at all, since the default and paid lanes rely on OpenRouter's own sticky
+routing being left alone and a stray pin would override it. Nothing proved either survived the
+trip from ModelLane through LangChain's ConfigurableField layer onto the wire, which is also where
+the provider-failover bug lived -- two individually-correct pieces composing wrong, invisible to
+any test one layer above the request.
 
-The gap this closes: a pinned lane must route to the provider it names and an
-unpinned one must carry no routing at all — the default and paid lanes rely on
-OpenRouter's own sticky routing being left alone, which a stray pin would
-override. Nothing proved either survived the trip from ``ModelLane`` through
-LangChain's ConfigurableField layer onto the wire. It is also where the
-provider-failover bug lived — two individually-correct pieces composing wrong —
-so a test one layer above the request could not have caught it.
-
-No network: a loopback sink stands in for OpenRouter and records the body. The
-sink's canned response deliberately does not satisfy the SDK's response schema —
-the request is captured before the response is parsed, and the request is the
-subject.
+No network: a loopback sink stands in for OpenRouter and records the body. Its canned response
+deliberately does not satisfy the SDK's response schema; the request is captured before the
+response is parsed, and the request is the subject.
 """
 
 from contextlib import suppress
@@ -30,8 +26,12 @@ import pytest
 
 from app.agents.llm.client import _openrouter_wire_configurables, without_sdk_retry
 from app.agents.llm.lane import ModelLane
-from app.agents.llm.types import LLMProviderName
-from app.constants.llm import DEFAULT_MAX_TOKENS, DEFAULT_MODEL_NAME, PAID_MODEL_NAME
+from app.constants.llm import (
+    DEFAULT_MAX_TOKENS,
+    DEFAULT_MODEL_NAME,
+    PAID_MODEL_NAME,
+    LLMProviderName,
+)
 
 #: A provider-routing pin, in the shape a DEV_MODEL_OPTIONS entry carries one. The
 #: paid lane no longer pins — session_id sticky routing replaced it — but a dev
@@ -106,8 +106,7 @@ class TestLaneReachesTheWire:
         assert body["provider"] == _A_ROUTING_PIN["provider"]
 
     async def test_a_free_lane_sends_no_provider_pin_at_all(self, sink_url: str) -> None:
-        """Absent, not empty: OpenRouter is then free to route it anywhere, which is
-        the documented free-tier behaviour."""
+        """Absent, not empty: OpenRouter is then free to route it anywhere (free-tier behaviour)."""
         body = await _request_body_for(_lane(pin=None, model=DEFAULT_MODEL_NAME), sink_url)
 
         assert body["model"] == DEFAULT_MODEL_NAME
@@ -121,8 +120,7 @@ class TestLaneReachesTheWire:
     async def test_a_fallback_lane_carries_neither_the_pin_nor_the_reasoning(
         self, sink_url: str
     ) -> None:
-        """Both are OpenRouter-wire concepts. Carrying either onto the provider we
-        just failed away from is how a fallback turns one failure into two."""
+        """Carrying either onto the provider just failed away from turns one failure into two."""
         paid = _lane(pin=_A_ROUTING_PIN, model=PAID_MODEL_NAME)
         crossed = ModelLane(
             provider=LLMProviderName.OPENROUTER,  # kept on the wire lane so it is observable

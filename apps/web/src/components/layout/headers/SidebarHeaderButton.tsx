@@ -12,10 +12,9 @@ interface SidebarHeaderButtonProps
   "aria-label": string;
 }
 
-// Consistent button component for sidebar header buttons.
-// Lives in its own module rather than in HeaderManager: HeaderManager imports
-// every concrete header, and those headers use this button, so exporting it
-// from there formed an import cycle.
+// Lives in its own module, not HeaderManager: HeaderManager imports every
+// concrete header, and those headers use this button — exporting it from
+// HeaderManager would form an import cycle.
 export const SidebarHeaderButton = ({
   children,
   onClick,

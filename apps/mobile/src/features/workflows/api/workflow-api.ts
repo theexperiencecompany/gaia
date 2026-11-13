@@ -10,7 +10,6 @@ import type {
   WorkflowExecutionsListResponse,
   WorkflowListResponse,
   WorkflowResponse,
-  WorkflowStatusResponse,
 } from "../types/workflow-types";
 
 interface ListWorkflowsParams
@@ -132,10 +131,6 @@ export const workflowApi = {
 
   unpublishWorkflow: async (id: string): Promise<{ message: string }> => {
     return apiService.post<{ message: string }>(`/workflows/${id}/unpublish`);
-  },
-
-  getWorkflowStatus: async (id: string): Promise<WorkflowStatusResponse> => {
-    return apiService.get<WorkflowStatusResponse>(`/workflows/${id}/status`);
   },
 
   getTriggerSchemas: async (): Promise<TriggerSchema[]> => {

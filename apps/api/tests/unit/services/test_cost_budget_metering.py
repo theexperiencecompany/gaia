@@ -6,16 +6,18 @@ pipeline that silently stopped issuing INCRBYFLOAT would pass the latter.
 
 The invariant these tests exist to protect: work GAIA does on the user's behalf
 (memory extraction, onboarding questions, workflow generation — every
-``ainvoke_structured`` caller) must NEVER move the day/month cost windows the
-budget wall reads. It is still priced and booked durably, under ``aux_cost``, so
-per-user COGS stays measurable. See ``app.services.llm_metering``.
+ainvoke_structured caller) must NEVER move the day/month cost windows the
+budget wall reads. It is still priced and booked durably, under aux_cost, so
+per-user COGS stays measurable. See app.services.llm_metering.
 """
 
 from collections.abc import AsyncIterator, Iterator
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
 import pytest
+import time_machine
 
 from app.config.rate_limits import RateLimitPeriod
 from app.db.redis import redis_cache
@@ -26,6 +28,7 @@ from app.services.cost_budget import (
     get_request_tokens,
     record_model_call_usage,
 )
+from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
 
 USER = "u-metering"
@@ -42,9 +45,15 @@ async def fake_redis() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
 
 
 @pytest.fixture(autouse=True)
+def no_billing_day() -> Iterator[None]:
+    """Give the user no billing day, so the month window is the calendar month."""
+    with patch.object(payment_service, "get_cached_billing_day", AsyncMock(return_value=None)):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def rollup() -> Iterator[AsyncMock]:
-    """The durable Mongo rollup, stubbed — its own writes are covered elsewhere;
-    here we only care WHICH bucket a call is booked into."""
+    """Stub the durable Mongo rollup — its own writes are covered elsewhere; here we only care WHICH bucket a call is booked into."""
     with patch.object(cost_budget, "record_cost", AsyncMock()) as mock:
         yield mock
 
@@ -64,6 +73,20 @@ class TestChargedSpend:
         assert await get_cost(USER, RateLimitPeriod.MONTH) == pytest.approx(0.01)
         assert await get_request_tokens(REQUEST) == 500
 
+    async def test_books_each_window_under_its_own_users_period_key(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        """A key missing the user or the period would pool spend across users or windows."""
+        with time_machine.travel(datetime(2099, 1, 20, 9, tzinfo=UTC), tick=False):
+            await record_model_call_usage(
+                USER, UsageDailyIncrement(cost=0.01), None, charge_to_budget=True
+            )
+
+        assert sorted(await fake_redis.keys("cost_budget:*")) == [
+            f"cost_budget:{USER}:day:20990120",
+            f"cost_budget:{USER}:month:209901",
+        ]
+
     async def test_is_booked_as_charged_in_the_durable_rollup(self, rollup: AsyncMock) -> None:
         await record_model_call_usage(
             USER,
@@ -75,6 +98,25 @@ class TestChargedSpend:
         rollup.assert_awaited_once_with(
             USER, UsageDailyIncrement(cost=0.01, input_tokens=300, output_tokens=200), charged=True
         )
+
+    async def test_a_failed_billing_day_lookup_never_fails_the_finished_call(
+        self, rollup: AsyncMock
+    ) -> None:
+        """The month key needs the billing day; its lookup failing is a write failure, so it fails open."""
+        log.reset()
+        lookup = AsyncMock(side_effect=ConnectionError("mongo down"))
+        with patch.object(payment_service, "get_cached_billing_day", lookup):
+            await record_model_call_usage(
+                USER, UsageDailyIncrement(cost=0.01), REQUEST, charge_to_budget=True
+            )
+
+        rollup.assert_awaited_once()
+        assert [w["operation"] for w in log.get()["warnings"]] == ["redis_usage_pipeline"]
+
+    async def test_a_missing_redis_reads_no_spend(self) -> None:
+        """Enforcement fails open without Redis: every window reads empty, never a phantom spend."""
+        with patch.object(redis_cache, "redis", None):
+            assert await get_cost(USER, RateLimitPeriod.MONTH) == 0.0
 
     async def test_accumulates_across_calls(self) -> None:
         await record_model_call_usage(
@@ -96,7 +138,7 @@ class TestChargedSpend:
 
 @pytest.mark.unit
 class TestAuxiliarySpend:
-    """``ainvoke_structured``'s route: background work, measured but never charged."""
+    """ainvoke_structured's route: background work, measured but never charged."""
 
     async def test_never_moves_the_budget_windows_the_wall_reads(self) -> None:
         # The real auxiliary shape: no root_request_id (this work outlives the
@@ -175,9 +217,7 @@ class TestAuxiliarySpend:
 
 @pytest.mark.unit
 class TestRequestCounterBoundaries:
-    """The ceiling counts every billable token, and ONLY billable tokens —
-    pinned at the exact boundaries (1 token, 0 billable) where an off-by-one
-    or a flipped comparison would otherwise be invisible."""
+    """The ceiling counts every billable token and ONLY billable tokens, pinned at the exact boundaries (1 token, 0 billable) an off-by-one would miss."""
 
     async def test_a_single_billable_token_is_still_counted(self) -> None:
         await record_model_call_usage(
@@ -213,7 +253,7 @@ class TestDegradation:
     async def test_redis_being_down_does_not_fail_the_model_call(self, rollup: AsyncMock) -> None:
         with (
             patch.object(redis_cache, "redis", None),
-            patch.object(cost_budget.log, "warning") as warned,
+            patch.object(log, "warning") as warned,
         ):
             await record_model_call_usage(
                 USER,
@@ -237,11 +277,11 @@ class TestDegradation:
 class TestTokenOnlyCalls:
     """A priced-at-zero call still burned real tokens.
 
-    ``record_llm_call`` books ``cost_usd=0`` when the pricing lookup misses, so
+    record_llm_call books cost_usd=0 when the pricing lookup misses, so
     gating the durable rollup on spend alone would lose the token breakdown for
     exactly the calls that need re-pricing later. Each of the four counters has
     to be able to trigger the rollup on its own — the existing tests always send
-    input and output together, so a single ``or`` flipped to ``and`` in that
+    input and output together, so a single or flipped to and in that
     chain changes nothing they can see.
     """
 
@@ -274,9 +314,7 @@ class TestTokenOnlyCalls:
         rollup.assert_not_awaited()
 
     async def test_unattributed_token_data_is_not_rolled_up(self, rollup: AsyncMock) -> None:
-        """The rollup is per-user; with no user there is nothing to book it
-        against, and writing it anyway would file another user's spend under a
-        null key."""
+        """The rollup is per-user; writing it anyway with no user would file another user's spend under a null key."""
         await record_model_call_usage(
             None,
             UsageDailyIncrement(cost=0.0, input_tokens=10, output_tokens=5),
@@ -287,10 +325,7 @@ class TestTokenOnlyCalls:
         rollup.assert_not_awaited()
 
     async def test_unattributed_tokens_still_count_against_the_request_ceiling(self) -> None:
-        """Losing the rollup must not lose the runaway-loop guard with it. That
-        ceiling is keyed on the request tree, not the user, so a call nobody can
-        be billed for still has to move it — otherwise an unattributed loop runs
-        forever."""
+        """The ceiling is keyed on the request tree, not the user, so an unattributed call must still move it or an unattributed loop runs forever."""
         await record_model_call_usage(
             None,
             UsageDailyIncrement(cost=0.0, input_tokens=10, output_tokens=5),
@@ -302,13 +337,7 @@ class TestTokenOnlyCalls:
 
     @pytest.mark.regression
     async def test_cached_input_does_not_count_against_the_request_ceiling(self) -> None:
-        """The ceiling bounds runaway loops, not cache economics.
-
-        A cached prompt prefix rides every model call in a turn nearly free —
-        an ordinary retrieve→bind→act turn re-sends ~30k cached tokens per call
-        and blew the 300k free ceiling (82% of it cache reads) before the agent
-        could deliver its result. Only uncached input counts as work here.
-        """
+        """The ceiling bounds runaway loops, not cache economics: a real turn re-sent ~30k cached tokens/call and blew the 300k ceiling (82% cache reads) before finishing."""
         await record_model_call_usage(
             USER,
             UsageDailyIncrement(cost=0.01, input_tokens=1000, output_tokens=100, cached_tokens=900),
@@ -327,8 +356,7 @@ class TestTokenOnlyCalls:
         assert await get_request_tokens(REQUEST) == 300
 
     async def test_cached_tokens_exceeding_input_clamp_at_zero_uncached(self) -> None:
-        """Malformed provider usage (cache_read > input) must not make the
-        counter go backwards — output still counts, uncached floors at 0."""
+        """Malformed usage (cache_read > input) must not go negative; uncached floors at 0."""
         await record_model_call_usage(
             USER,
             UsageDailyIncrement(cost=0.01, input_tokens=100, output_tokens=50, cached_tokens=500),
@@ -341,8 +369,7 @@ class TestTokenOnlyCalls:
     async def test_a_fully_cache_served_call_with_no_output_moves_nothing(
         self, rollup: AsyncMock
     ) -> None:
-        """Nothing fresh entered the tree, so the ceiling sees nothing — but the
-        call was still real work and must keep its durable booking."""
+        """A fully cache-served call is invisible to the ceiling but must still keep its durable booking."""
         await record_model_call_usage(
             USER,
             UsageDailyIncrement(cost=0.01, input_tokens=1000, cached_tokens=1000),
@@ -355,9 +382,7 @@ class TestTokenOnlyCalls:
         assert rollup.await_args.args[1].cached_tokens == 1000
 
     async def test_an_ordinary_multi_call_turn_stays_well_under_the_ceiling(self) -> None:
-        """The production shape that used to trip the wall: ~10 model calls per
-        turn, each re-sending a ~30k prompt of which ~25k is cached prefix.
-        Raw tokens cross 300k; the work is ~58k."""
+        """The production shape that used to trip the wall: ~10 calls resending a ~30k prompt, ~25k cached — raw crosses 300k, work is ~58k."""
         for _ in range(10):
             await record_model_call_usage(
                 USER,
@@ -372,9 +397,7 @@ class TestTokenOnlyCalls:
         assert await get_request_tokens(REQUEST) == 58_000
 
     async def test_a_failed_rollup_is_named_in_the_warning(self, rollup: AsyncMock) -> None:
-        """Fail-open is only safe if the failure is findable: the operation label
-        is what tells you the durable Mongo write dropped rather than the Redis
-        pipeline."""
+        """Fail-open is only safe if the operation label tells you the durable Mongo write dropped, not the Redis pipeline."""
         log.reset()
         rollup.side_effect = RuntimeError("mongo down")
 

@@ -404,7 +404,6 @@ export const useEventSidebar = ({
           is_all_day: isAllDay,
           start,
           end,
-          fixedTime: !isAllDay,
           calendar_id: calendarId,
           timezone: originalTimezone, // Preserve original timezone
         };
@@ -487,7 +486,6 @@ export const useEventSidebar = ({
           ? startDate.split("T")[0]
           : dateTimeLocalToISO(startDate),
         end: isAllDay ? endDate.split("T")[0] : dateTimeLocalToISO(endDate),
-        fixedTime: !isAllDay,
         calendar_id: selectedCalendarId || "primary",
         timezone: getBrowserTimezone(),
         ...(recurrence && { recurrence }),

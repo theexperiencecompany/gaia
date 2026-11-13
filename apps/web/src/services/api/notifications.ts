@@ -1,204 +1,92 @@
 import type { NotificationPlatform } from "@/features/notification/constants";
-import { apiauth } from "@/lib/api/client";
+import { api } from "@/lib/api/typed";
 import {
   type BulkActionRequest,
   BulkActions,
-  type NotificationResponse,
-  type PaginatedNotificationsResponse,
   type UseNotificationsOptions,
 } from "@/types/features/notificationTypes";
 
-/** Shape-only description of an unexpected payload — never its contents. */
-function describePayload(payload: unknown): string {
-  if (typeof payload === "string") {
-    // Classify by the first non-whitespace character rather than quoting the
-    // body. This still separates the cases that matter — an edge/proxy HTML
-    // page from truncated JSON from an empty body — without putting any of the
-    // response's bytes into the error, which could carry a token or user text.
-    const firstChar = payload.trimStart()[0];
-    const kind =
-      firstChar === "<"
-        ? " that looks like markup"
-        : firstChar === "{" || firstChar === "["
-          ? " that looks like truncated JSON"
-          : "";
-    return `a ${payload.length}-char string${kind}`;
-  }
-  if (payload === null || payload === undefined) return String(payload);
-  if (Array.isArray(payload)) return `an array of ${payload.length}`;
-  if (typeof payload === "object") {
-    return `an object with keys [${Object.keys(payload).join(", ")}]`;
-  }
-  return `a ${typeof payload}`;
-}
-
+/**
+ * The notifications endpoints.
+ *
+ * Every response shape comes from the schema, so a body that is not the API's
+ * (a proxy error page, truncated JSON) fails loudly at parse time instead of
+ * surfacing as a TypeError deep in a hook.
+ */
 export class NotificationsAPI {
-  private static BASE_URL = "/notifications";
-
-  /**
-   * Fetch notifications with optional filters
-   */
-  static async getNotifications(
-    options: UseNotificationsOptions = {},
-  ): Promise<PaginatedNotificationsResponse> {
-    const params = new URLSearchParams();
-
-    if (options.status) params.append("status", options.status);
-    if (options.limit) params.append("limit", options.limit.toString());
-    if (options.offset) params.append("offset", options.offset.toString());
-    if (options.channel_type)
-      params.append("channel_type", options.channel_type);
-
-    const response = await apiauth.get<PaginatedNotificationsResponse>(
-      `${NotificationsAPI.BASE_URL}?${params.toString()}`,
-    );
-
-    // The endpoint always returns a `notifications` array (required field on the
-    // API's response model). Anything else means the body did not come from the
-    // API — a proxy/edge error page or truncated JSON that axios silently leaves
-    // as a string. Fail loudly, and describe what actually arrived, so the next
-    // occurrence identifies itself instead of surfacing as a TypeError deep in a
-    // hook. Only the status and the payload's shape are reported, never its
-    // contents, so this stays free of notification text.
-    if (!Array.isArray(response.data?.notifications)) {
-      throw new Error(
-        `Malformed notifications response: expected \`notifications\` to be an array. ` +
-          `HTTP ${response.status}, content-type ${response.headers["content-type"] ?? "none"}, ` +
-          `received ${describePayload(response.data)}`,
-      );
-    }
-
-    return response.data;
+  static getNotifications(options: UseNotificationsOptions = {}) {
+    return api.get("/api/v1/notifications", {
+      query: {
+        status: options.status,
+        limit: options.limit,
+        offset: options.offset,
+        channel_type: options.channel_type,
+      },
+    });
   }
 
-  /**
-   * Get a single notification by ID
-   */
-  static async getNotification(
-    notificationId: string,
-  ): Promise<NotificationResponse> {
-    const response = await apiauth.get<NotificationResponse>(
-      `${NotificationsAPI.BASE_URL}/${notificationId}`,
-    );
-    return response.data;
+  static getNotification(notificationId: string) {
+    return api.get("/api/v1/notifications/{notification_id}", {
+      path: { notification_id: notificationId },
+    });
   }
 
-  /**
-   * Execute a notification action
-   */
-  static async executeAction(
-    notificationId: string,
-    actionId: string,
-  ): Promise<NotificationResponse> {
-    const response = await apiauth.post<NotificationResponse>(
-      `${NotificationsAPI.BASE_URL}/${notificationId}/actions/${actionId}/execute`,
+  static executeAction(notificationId: string, actionId: string) {
+    return api.post(
+      "/api/v1/notifications/{notification_id}/actions/{action_id}/execute",
+      { path: { notification_id: notificationId, action_id: actionId } },
     );
-    return response.data;
   }
 
-  /**
-   * Mark a single notification as read
-   */
-  static async markAsRead(
-    notificationId: string,
-  ): Promise<NotificationResponse> {
-    const response = await apiauth.post<NotificationResponse>(
-      `${NotificationsAPI.BASE_URL}/${notificationId}/read`,
-    );
-    return response.data;
+  static markAsRead(notificationId: string) {
+    return api.post("/api/v1/notifications/{notification_id}/read", {
+      path: { notification_id: notificationId },
+    });
   }
 
-  /**
-   * Archive a notification (uses bulk actions endpoint)
-   */
-  static async archiveNotification(
-    notificationId: string,
-  ): Promise<NotificationResponse> {
-    const bulkRequest: BulkActionRequest = {
-      notification_ids: [notificationId],
-      action: BulkActions.ARCHIVE,
-    };
-
-    const response = await apiauth.post<NotificationResponse>(
-      `${NotificationsAPI.BASE_URL}/bulk-actions`,
-      bulkRequest,
-    );
-    return response.data;
+  /** Archive one notification (uses the bulk-actions endpoint). */
+  static archiveNotification(notificationId: string) {
+    return NotificationsAPI.bulkAction([notificationId], BulkActions.ARCHIVE);
   }
 
-  /**
-   * Bulk mark notifications as read
-   */
-  static async bulkMarkAsRead(
+  static bulkMarkAsRead(notificationIds: string[]) {
+    return NotificationsAPI.bulkAction(notificationIds, BulkActions.MARK_READ);
+  }
+
+  static bulkArchive(notificationIds: string[]) {
+    return NotificationsAPI.bulkAction(notificationIds, BulkActions.ARCHIVE);
+  }
+
+  private static bulkAction(
     notificationIds: string[],
-  ): Promise<NotificationResponse> {
-    const bulkRequest: BulkActionRequest = {
-      notification_ids: notificationIds,
-      action: BulkActions.MARK_READ,
-    };
-
-    const response = await apiauth.post<NotificationResponse>(
-      `${NotificationsAPI.BASE_URL}/bulk-actions`,
-      bulkRequest,
-    );
-    return response.data;
-  }
-
-  /**
-   * Bulk archive notifications
-   */
-  static async bulkArchive(
-    notificationIds: string[],
-  ): Promise<NotificationResponse> {
-    const bulkRequest: BulkActionRequest = {
-      notification_ids: notificationIds,
-      action: BulkActions.ARCHIVE,
-    };
-
-    const response = await apiauth.post<NotificationResponse>(
-      `${NotificationsAPI.BASE_URL}/bulk-actions`,
-      bulkRequest,
-    );
-    return response.data;
+    action: BulkActionRequest["action"],
+  ) {
+    return api.post("/api/v1/notifications/bulk-actions", {
+      body: { notification_ids: notificationIds, action },
+    });
   }
 
   /**
    * Mark every delivered notification as read, server-side — not just the
    * caller's currently-loaded page.
    */
-  static async markAllAsRead(
-    channelType?: string,
-  ): Promise<NotificationResponse> {
-    const params = channelType
-      ? `?channel_type=${encodeURIComponent(channelType)}`
-      : "";
-    const response = await apiauth.post<NotificationResponse>(
-      `${NotificationsAPI.BASE_URL}/mark-all-read${params}`,
-    );
-    return response.data;
+  static markAllAsRead(channelType?: string) {
+    return api.post("/api/v1/notifications/mark-all-read", {
+      query: { channel_type: channelType },
+    });
   }
 
-  /**
-   * Get notification channel preferences (telegram, discord, whatsapp, slack)
-   */
-  static async getChannelPreferences(): Promise<
-    Record<NotificationPlatform, boolean>
-  > {
-    const response = await apiauth.get<Record<NotificationPlatform, boolean>>(
-      `${NotificationsAPI.BASE_URL}/preferences/channels`,
-    );
-    return response.data;
+  /** Channel preferences (telegram, discord, whatsapp, slack). */
+  static getChannelPreferences() {
+    return api.get("/api/v1/notifications/preferences/channels");
   }
 
-  /**
-   * Update a notification channel preference
-   */
   static async updateChannelPreference(
     platform: NotificationPlatform,
     enabled: boolean,
   ): Promise<void> {
-    await apiauth.put(`${NotificationsAPI.BASE_URL}/preferences/channels`, {
-      [platform]: enabled,
+    await api.put("/api/v1/notifications/preferences/channels", {
+      body: { [platform]: enabled },
     });
   }
 }

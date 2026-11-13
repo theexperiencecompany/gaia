@@ -1,0 +1,209 @@
+From 428054f83f122912529749873f6e91807ac06f9f Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 08:15:50 +0530
+Subject: [PATCH] fix(input): Tab moves focus, and a cancelled keydown has no
+ default action
+
+Tab did nothing: focus stayed where it was, so an agent tabbing between
+form fields kept typing into the first one. A trusted Tab keydown nobody
+cancels now runs HTML sequential focus navigation (positive tabindex
+first, then tree order with shadow trees at their hosts, one stop per
+radio group, wrapping at the ends; Shift+Tab goes back), and tabbing into
+a text field selects its contents as Chrome does.
+
+A keydown the page cancelled still inserted its text, submitted the form
+on Enter and deleted on Backspace; none of those default actions run now.
+Key events also carry the modifier keys the client sent.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-cdp/src/domains/input.rs       | 30 +++++++--
+ crates/obscura-cdp/tests/input_mouse_focus.rs | 37 +++++++++++
+ crates/obscura-js/js/bootstrap.js             | 66 +++++++++++++++++++
+ 3 files changed, 128 insertions(+), 5 deletions(-)
+
+diff --git a/crates/obscura-cdp/src/domains/input.rs b/crates/obscura-cdp/src/domains/input.rs
+index afdb776..9e56bbf 100644
+--- a/crates/obscura-cdp/src/domains/input.rs
++++ b/crates/obscura-cdp/src/domains/input.rs
+@@ -192,6 +192,15 @@ pub async fn handle(
+             let key = params.get("key").and_then(|v| v.as_str()).unwrap_or("");
+             let code = params.get("code").and_then(|v| v.as_str()).unwrap_or("");
+             let text = params.get("text").and_then(|v| v.as_str()).unwrap_or("");
++            let modifiers = params.get("modifiers").and_then(|v| v.as_i64()).unwrap_or(0);
++            // CDP modifier bits: Alt 1, Ctrl 2, Meta 4, Shift 8.
++            let modifier_flags = format!(
++                "altKey:{},ctrlKey:{},metaKey:{},shiftKey:{}",
++                modifiers & 1 != 0,
++                modifiers & 2 != 0,
++                modifiers & 4 != 0,
++                modifiers & 8 != 0
++            );
+ 
+             if let Some(page) = ctx.get_session_page_mut(session_id) {
+                 match event_type {
+@@ -201,8 +210,8 @@ pub async fn handle(
+                                 var target = globalThis.__obscura_focusedElement() || document.body;\
+                                 var key = {key};\
+                                 if (key !== 'Shift' && key !== 'Control' && key !== 'Alt' && key !== 'Meta') globalThis.__obscura_noteUserActivation();\
+-                                var evt = globalThis.__obscura_markTrusted(new KeyboardEvent('keydown', {{bubbles:true,cancelable:true,composed:true,key:{key},code:{code}}}));\
+-                                target.dispatchEvent(evt);\
++                                var evt = globalThis.__obscura_markTrusted(new KeyboardEvent('keydown', {{bubbles:true,cancelable:true,composed:true,key:{key},code:{code},{modifier_flags}}}));\
++                                return !target.dispatchEvent(evt);\
+                             }})()",
+                             // Escape backslash BEFORE single-quote (as the text
+                             // path below does) so a key like "\" — Chrome's
+@@ -211,9 +220,20 @@ pub async fn handle(
+                             key = js_str(key),
+                             code = js_str(code),
+                         );
+-                        page.evaluate(&js);
++                        // A cancelled keydown has no default action: no text,
++                        // no Enter submission, no deletion, no focus move.
++                        if page.evaluate(&js) == json!(true) {
++                            return Ok(json!({}));
++                        }
++
++                        if key == "Tab" {
++                            page.evaluate(&format!(
++                                "globalThis.__obscura_sequentialFocus({})",
++                                modifiers & 8 != 0
++                            ));
++                        }
+ 
+-                        if !text.is_empty() && text != "\r" && text != "\n" {
++                        if !text.is_empty() && text != "\r" && text != "\n" && text != "\t" {
+                             page.evaluate(&insert_text_js(text));
+                         }
+ 
+@@ -251,7 +271,7 @@ pub async fn handle(
+                         let js = format!(
+                             "(function() {{\
+                                 var target = globalThis.__obscura_focusedElement() || document.body;\
+-                                var evt = globalThis.__obscura_markTrusted(new KeyboardEvent('keyup', {{bubbles:true,cancelable:true,composed:true,key:{key},code:{code}}}));\
++                                var evt = globalThis.__obscura_markTrusted(new KeyboardEvent('keyup', {{bubbles:true,cancelable:true,composed:true,key:{key},code:{code},{modifier_flags}}}));\
+                                 target.dispatchEvent(evt);\
+                             }})()",
+                             key = js_str(key),
+diff --git a/crates/obscura-cdp/tests/input_mouse_focus.rs b/crates/obscura-cdp/tests/input_mouse_focus.rs
+index c912534..ac70221 100644
+--- a/crates/obscura-cdp/tests/input_mouse_focus.rs
++++ b/crates/obscura-cdp/tests/input_mouse_focus.rs
+@@ -185,3 +185,40 @@ async fn a_press_inside_a_closed_shadow_tree_focuses_the_inner_field_behind_its_
+     let typed = evaluate(&mut ctx, 80, "deepField.value", &sid).await;
+     assert_eq!(typed["result"]["value"], "deep", "typing lands in the focused inner field");
+ }
++
++async fn key(ctx: &mut CdpContext, id: u64, sid: &str, key: &str, text: &str, modifiers: i64) {
++    for kind in ["keyDown", "keyUp"] {
++        cdp(
++            ctx,
++            id,
++            "Input.dispatchKeyEvent",
++            json!({"type": kind, "key": key, "code": key, "text": if kind == "keyDown" { text } else { "" }, "modifiers": modifiers}),
++            sid,
++        )
++        .await;
++    }
++}
++
++#[tokio::test(flavor = "current_thread")]
++async fn tab_moves_focus_in_document_order_and_a_cancelled_keydown_does_nothing() {
++    let (mut ctx, sid) = setup().await;
++    click_element(&mut ctx, 10, &sid, "#name").await;
++    key(&mut ctx, 20, &sid, "Tab", "", 0).await;
++    assert_eq!(active(&mut ctx, 21, &sid).await, "notes");
++    key(&mut ctx, 22, &sid, "Tab", "", 0).await;
++    assert_eq!(active(&mut ctx, 23, &sid).await, "editor");
++    key(&mut ctx, 24, &sid, "Tab", "", 8).await;
++    assert_eq!(active(&mut ctx, 25, &sid).await, "notes", "Shift+Tab goes back");
++
++    evaluate(
++        &mut ctx,
++        30,
++        "document.getElementById('notes').addEventListener('keydown', e => e.preventDefault())",
++        &sid,
++    )
++    .await;
++    key(&mut ctx, 31, &sid, "x", "x", 0).await;
++    key(&mut ctx, 32, &sid, "Tab", "", 0).await;
++    let state = evaluate(&mut ctx, 33, "[document.activeElement.id, document.getElementById('notes').value]", &sid).await;
++    assert_eq!(state["result"]["value"], json!(["notes", ""]), "a cancelled keydown neither types nor moves focus");
++}
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 4a32a94..3d2907b 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -3583,6 +3583,72 @@ globalThis.__obscura_clickTarget = function(down, up) {
+ // focus the nearest flat-tree inclusive ancestor of the pressed node that is
+ // a focusable area (an editing host for content inside contenteditable), or
+ // that host's focus delegate; with none, focus returns to the viewport.
++// HTML sequential focus navigation (Tab / Shift+Tab): the tabbable areas
++// are focusable areas whose tabindex is not negative; positive tabindex values
++// come first in ascending order, then the rest in tree order, a shadow tree's
++// at its host's place. A radio group is one stop: its checked radio, or its
++// first (last, going back) when none is checked. Past either end focus wraps.
++function _tabIndexOf(el) {
++  const attr = el.getAttribute('tabindex');
++  if (attr !== null && /^[ \t\n\f\r]*[+-]?[0-9]/.test(attr)) return parseInt(attr, 10);
++  return 0;
++}
++function _tabbableAreas(root, out) {
++  for (let el = root.firstElementChild; el; el = el.nextElementSibling) {
++    if (_isFocusableArea(el) && _tabIndexOf(el) >= 0) out.push(el);
++    const shadow = _shadowRootForHost(el, true);
++    if (shadow) _tabbableAreas(shadow, out);
++    _tabbableAreas(el, out);
++  }
++  return out;
++}
++function _sequentialNavigationOrder(backward) {
++  const all = _tabbableAreas(globalThis.document, []);
++  const positive = all.filter(el => _tabIndexOf(el) > 0)
++    .map((el, index) => [el, index])
++    .sort((a, b) => _tabIndexOf(a[0]) - _tabIndexOf(b[0]) || a[1] - b[1])
++    .map(([el]) => el);
++  const ordered = positive.concat(all.filter(el => _tabIndexOf(el) === 0));
++  const groups = new Map();
++  for (const el of ordered) {
++    if (el.localName !== 'input' || (el.getAttribute('type') || '').toLowerCase() !== 'radio') continue;
++    const name = el.getAttribute('name');
++    if (!name) continue;
++    const key = name + '\0' + (el.form ? el.form._nid : '');
++    if (!groups.has(key)) groups.set(key, []);
++    groups.get(key).push(el);
++  }
++  const stop = new Set();
++  for (const members of groups.values()) {
++    stop.add(members.find(radio => radio.checked)
++      || (backward ? members[members.length - 1] : members[0]));
++  }
++  return ordered.filter(el => {
++    if (el.localName !== 'input' || (el.getAttribute('type') || '').toLowerCase() !== 'radio') return true;
++    return !el.getAttribute('name') || stop.has(el);
++  });
++}
++globalThis.__obscura_sequentialFocus = function(backward) {
++  const order = _sequentialNavigationOrder(backward);
++  if (order.length === 0) return;
++  const current = _currentFocus();
++  let index = current ? order.indexOf(current) : -1;
++  if (index < 0 && current) {
++    // Focus sits on something not in the order (tabindex=-1): continue from
++    // its position in the document.
++    const before = order.filter(el =>
++      current.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING);
++    index = backward ? before.length : before.length - 1;
++  }
++  const next = backward
++    ? order[(index <= 0 ? order.length : index) - 1]
++    : order[(index + 1) % order.length];
++  next.focus();
++  // Tabbing into a text field selects its contents, as Chrome does.
++  if (next.localName === 'input' && typeof next.select === 'function') {
++    try { next.select(); } catch (_e) {}
++  }
++};
+ globalThis.__obscura_focusOnPress = function(target) {
+   for (let n = target; n; n = _flatTreeParent(n)) {
+     if (n.nodeType !== 1) continue;

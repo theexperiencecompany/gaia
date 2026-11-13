@@ -1,10 +1,10 @@
 "use client";
 
 import { Alert01Icon, CheckmarkBadge01Icon, Timer02Icon } from "@icons";
-import { formatPlanName } from "@shared/utils";
+import { formatPlanName, rateLimitResetInfo } from "@shared/utils";
 import type { ReactNode } from "react";
 import { toast } from "@/lib/toast";
-import { usePricingModalStore } from "@/stores/pricingModalStore";
+import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 interface ToastConfig {
   duration: number;
@@ -24,21 +24,14 @@ interface RateLimitToastProps {
   planRequired?: string;
 }
 
-function buildResetMessage(resetTime: string): string {
-  const resetDate = new Date(resetTime);
-  const now = new Date();
-  const timeDiff = Math.ceil(
-    (resetDate.getTime() - now.getTime()) / (1000 * 60),
-  ); // minutes
+const MINUTES_PER_DAY = 24 * 60;
 
-  if (timeDiff > 60) {
-    const hours = Math.ceil(timeDiff / 60);
-    return `Rate limit exceeded. Resets in ${hours} hour${hours > 1 ? "s" : ""}.`;
-  }
-  if (timeDiff > 0) {
-    return `Rate limit exceeded. Resets in ${timeDiff} minute${timeDiff > 1 ? "s" : ""}.`;
-  }
-  return "Rate limit exceeded. Resets very soon.";
+function minutesUntil(resetTime: string): number {
+  return Math.ceil((new Date(resetTime).getTime() - Date.now()) / (1000 * 60));
+}
+
+function resetsIn(resetTime: string): string {
+  return `${rateLimitResetInfo(resetTime)?.label}.`;
 }
 
 function buildRateLimitMessage({
@@ -56,7 +49,7 @@ function buildRateLimitMessage({
     return `${feature || "This feature"} is only available in the ${planName} plan. Upgrade to continue using it.`;
   }
   if (resetTime) {
-    return buildResetMessage(resetTime);
+    return `Rate limit exceeded. ${resetsIn(resetTime)}`;
   }
   return "You've exceeded the rate limit. Please upgrade for higher limits.";
 }
@@ -79,7 +72,8 @@ export const showRateLimitToast = ({
 
   const planName = planRequired ? formatPlanName(planRequired) : undefined;
 
-  // Auto-generate message if not provided
+  // A multi-day pause names its reset day in the server's own message; a same-day
+  // one gets the countdown here, which only the client can phrase.
   if (!message) {
     message = buildRateLimitMessage({
       isUpgradeRequired,
@@ -87,6 +81,12 @@ export const showRateLimitToast = ({
       planName,
       resetTime,
     });
+  } else if (
+    resetTime &&
+    !isUpgradeRequired &&
+    minutesUntil(resetTime) <= MINUTES_PER_DAY
+  ) {
+    message = `${message} ${resetsIn(resetTime)}`;
   }
 
   const toastConfig: ToastConfig = {
@@ -103,7 +103,11 @@ export const showRateLimitToast = ({
   if (showUpgradeButton) {
     toastConfig.action = {
       label: isUpgradeRequired ? `Upgrade to ${planName}` : "Upgrade Now",
-      onClick: () => usePricingModalStore.getState().openModal(),
+      onClick: () =>
+        useUpgradeModalStore.getState().openModal(undefined, {
+          dismissible: true,
+          source: "rate_limit_toast",
+        }),
     };
   }
 

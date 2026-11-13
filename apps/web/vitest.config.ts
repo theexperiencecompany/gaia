@@ -7,24 +7,31 @@ export default defineConfig({
     jsxImportSource: "react",
   },
   test: {
+    // Per project: parallel nx test tasks sharing the root cache race to clear it (ENOTEMPTY).
+    fsModuleCachePath: "node_modules/.vitest-cache",
     // Every co-located test under src/, not just src/__tests__ — narrow globs
     // silently drop any test placed next to its module (it never runs and
     // nothing tells you).
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     globals: true,
     environment: "node",
+    // One box, eight neighbouring lanes: tests at tens of ms idle cross 5s
+    // under load. 20s still fails a real hang.
+    testTimeout: 20_000,
+    setupFiles: ["./vitest.setup.ts"],
     reporters: ["verbose"],
-    // Component modules transitively import the api client, which validates
-    // this at module load. The contract tests make no real requests.
+    // NEXT_PUBLIC_API_BASE_URL: the api client validates it at module load.
+    // NODE_ENV is pinned because nx's run-commands executor injects production,
+    // which flips app code that skips animation/pacing under test.
     env: {
       NEXT_PUBLIC_API_BASE_URL: "http://localhost:8000",
+      NODE_ENV: "test",
     },
     server: {
       deps: {
-        // Allow vite to resolve internal bare specifiers inside ESM packages
-        // that omit file extensions (e.g. @openuidev/react-lang/dist/index.js
-        // imports from "./library" without ".js")
-        inline: ["@openuidev/react-lang"],
+        // ESM packages importing extensionless specifiers ("./library",
+        // next-intl's "next/navigation") resolve only when vite inlines them
+        inline: ["@openuidev/react-lang", "next-intl"],
       },
     },
   },
@@ -37,6 +44,7 @@ export default defineConfig({
         __dirname,
         "node_modules/@theexperiencecompany/gaia-icons/dist/solid-rounded",
       ),
+      "@shared-assets": path.resolve(__dirname, "../../libs/shared/assets"),
       "@shared": path.resolve(__dirname, "../../libs/shared/ts/src"),
     },
     // Support extensionless imports inside ESM packages

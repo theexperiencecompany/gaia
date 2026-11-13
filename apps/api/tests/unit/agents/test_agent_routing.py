@@ -9,26 +9,28 @@ that have or don't have tool_calls on the last AIMessage.
 
 from unittest.mock import AsyncMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
+from pydantic import ValidationError
 import pytest
 
+from app.agents.prompts.todo_prompts import TODO_REARM_BRIEF
 from app.constants.agents import PLAYBOOK_CHECK_TAG, PLAYBOOK_DECISION_NUDGE_MESSAGE
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import COMPLETION_NUDGE_MESSAGE, MAX_COMPLETION_NUDGES
-from app.override.langgraph_bigtool.create_agent import (
+from app.override.langgraph_bigtool.agent_config import (
     AgentConfig,
     HookConfig,
     ToolRetrievalConfig,
-    create_agent,
 )
+from app.override.langgraph_bigtool.create_agent import create_agent
 from tests.helpers import BindableToolsFakeModel
 
 
 def _build_minimal_registry():
     @tool
     def dummy_tool(query: str) -> str:
-        """A dummy tool for testing."""
+        """Echo the query back for routing tests."""
         return f"result: {query}"
 
     return {"dummy_tool": dummy_tool}
@@ -40,13 +42,7 @@ def _make_mock_llm(response: AIMessage) -> BindableToolsFakeModel:
 
 
 def _extract_should_continue(builder):
-    """
-    Extract the should_continue function from the compiled graph builder.
-    StateGraph stores conditional edges in _graph._edges or similar structures.
-    We test indirectly by verifying the compiled graph's branching logic.
-    """
-    # Access the compiled branches from the StateGraph
-    # In LangGraph, conditional edges are stored in the builder's branches dict
+    """Return the should_continue branch spec from the compiled graph's branches dict."""
     branches = builder.branches
     return branches.get("agent")
 
@@ -56,7 +52,7 @@ def _get_agent_branch_ends(builder) -> dict:
     Extract the 'ends' dict from the agent node's BranchSpec in a StateGraph builder.
 
     builder.branches["agent"] is a dict keyed by branch condition name.
-    Each value is a BranchSpec NamedTuple with field `ends: dict[Hashable, str] | None`.
+    Each value is a BranchSpec NamedTuple with field ends: dict[Hashable, str] | None.
     We merge all ends dicts from all branches on 'agent' into one mapping.
     """
     agent_branches = builder.branches.get("agent", {})
@@ -249,10 +245,6 @@ class TestShouldContinueBehavior:
 
     @pytest.mark.asyncio
     async def test_empty_tool_calls_list_produces_no_tool_messages(self):
-        """LLM returns AIMessage(tool_calls=[]) → treated as plain text → no ToolMessages.
-
-        Fails if should_continue treats empty tool_calls as if there were tool calls.
-        """
         graph = self._compile_graph(
             BindableToolsFakeModel(responses=[AIMessage(content="No tools needed.", tool_calls=[])])
         )
@@ -266,11 +258,6 @@ class TestShouldContinueBehavior:
 
     @pytest.mark.asyncio
     async def test_tool_calls_route_to_tools_node(self):
-        """LLM returns an AIMessage with tool_calls → routing goes to tools node → ToolMessage produced.
-
-        Fails if should_continue stops routing AIMessages with non-empty tool_calls to 'tools'.
-        """
-
         @tool
         def echo_tool(query: str) -> str:
             """Echo tool for routing test."""
@@ -318,10 +305,6 @@ class TestShouldContinueBehavior:
 
     @pytest.mark.asyncio
     async def test_no_tool_calls_route_to_end(self):
-        """LLM returns plain text (no tool_calls) → routing goes to END → only AIMessage in output.
-
-        Fails if should_continue incorrectly routes plain-text AIMessages to the tools node.
-        """
         plain_response = AIMessage(content="Here is the answer, no tools needed.")
         llm = BindableToolsFakeModel(responses=[plain_response])
         graph = self._compile_graph(llm)
@@ -348,10 +331,10 @@ class TestShouldContinueBehavior:
 class TestCompletionNudgeWiring:
     """The executor's harness-owned completion, from the graph's side.
 
-    ``tests/unit/agents/middleware/test_completion.py`` proves the predicates and
-    ``tests/integration/agents/test_harness_completion.py`` proves the end-to-end
-    journey. Neither pins the wiring in ``create_agent`` that connects them: that a
-    ``nudge_continue`` node exists, that its edge loops back to the agent, and that
+    tests/unit/agents/middleware/test_completion.py proves the predicates and
+    tests/integration/agents/test_harness_completion.py proves the end-to-end
+    journey. Neither pins the wiring in create_agent that connects them: that a
+    nudge_continue node exists, that its edge loops back to the agent, and that
     the nudge is only reachable for an executor with work left. A rename or a
     dropped edge here leaves the guard inert while every other tier stays green.
     """
@@ -373,18 +356,18 @@ class TestCompletionNudgeWiring:
 
     @staticmethod
     def _nudges(result) -> list[str]:
-        """The nudge turns the harness injected into this run."""
+        """Collect the completion-nudge messages the harness injected into this run."""
         return [
             m.content
             for m in result["messages"]
-            if isinstance(m, HumanMessage) and m.content == COMPLETION_NUDGE_MESSAGE
+            if isinstance(m, HumanMessage)
+            and isinstance(m.content, str)
+            and m.content == COMPLETION_NUDGE_MESSAGE
         ]
 
     @pytest.mark.asyncio
     async def test_an_executor_stopping_with_no_work_done_is_nudged_back_to_the_agent(self):
-        """A plain-text stop after zero tool calls is the "one lookup then assert a
-        conclusion" ending the guard exists to refuse. The nudge has to reach the
-        model, which only happens if the node is registered AND its edge loops back."""
+        """The guard refuses a plain-text stop after zero tool calls only if the node's edge loops back."""
         graph = self._compile_executor(
             BindableToolsFakeModel(
                 responses=[AIMessage(content="All done."), AIMessage(content="Actually done.")]
@@ -401,8 +384,7 @@ class TestCompletionNudgeWiring:
 
     @pytest.mark.asyncio
     async def test_the_nudge_is_bounded_so_a_tool_free_answer_cannot_loop(self):
-        """MAX_COMPLETION_NUDGES is the only thing between a genuinely tool-free
-        answer and an infinite agent/nudge cycle."""
+        """MAX_COMPLETION_NUDGES bounds an infinite agent/nudge cycle for a genuinely tool-free answer."""
         graph = self._compile_executor(
             BindableToolsFakeModel(responses=[AIMessage(content=f"Reply {i}.") for i in range(6)])
         )
@@ -416,8 +398,7 @@ class TestCompletionNudgeWiring:
 
     @pytest.mark.asyncio
     async def test_an_agent_that_did_not_opt_in_is_never_nudged(self):
-        """Comms passes require_finish_to_end=False and must end on plain text as
-        before — the guard is executor-only, not a global tax on every graph."""
+        """require_finish_to_end=False (comms) must end on plain text; the guard is executor-only."""
         graph = self._compile_executor(
             BindableToolsFakeModel(responses=[AIMessage(content="Here you go.")]),
             require_finish_to_end=False,
@@ -432,18 +413,26 @@ class TestCompletionNudgeWiring:
         assert result["messages"][-1].content == "Here you go."
 
     @staticmethod
-    def _finish() -> AIMessage:
+    def _finish(outcome: str | None = "blocked") -> AIMessage:
+        args: dict[str, str] = {"result": "ok"}
+        if outcome is not None:
+            args["outcome"] = outcome
         return AIMessage(
             content="",
-            tool_calls=[{"name": FINISH_TASK_NAME, "args": {"result": "ok"}, "id": "f1"}],
+            tool_calls=[{"name": FINISH_TASK_NAME, "args": args, "id": "f1"}],
         )
+
+    @staticmethod
+    def _worked_thread() -> list[AnyMessage]:
+        return [
+            HumanMessage(content="triage my inbox"),
+            AIMessage(content="", tool_calls=[{"name": "dummy_tool", "args": {}, "id": "c1"}]),
+            ToolMessage(content="ok", tool_call_id="c1", name="dummy_tool"),
+        ]
 
     @pytest.mark.asyncio
     async def test_finishing_a_briefed_run_without_deciding_is_nudged_once(self):
-        """Seen live: a briefed workflow run ended through finish_task with no
-        playbook decision and the gate, which only watched plain-text stops, let
-        it end. The finish node must route to the same nudge, once, and then let
-        a second finish_task end the run."""
+        """Seen live: a briefed run finished via finish_task with no playbook decision, since the gate only watched plain-text stops."""
         graph = self._compile_executor(
             BindableToolsFakeModel(responses=[self._finish(), self._finish()])
         )
@@ -469,8 +458,7 @@ class TestCompletionNudgeWiring:
 
     @pytest.mark.asyncio
     async def test_finishing_an_unbriefed_run_ends_at_once(self):
-        """No brief, no debt: finish_task ends the run on the first call, as it
-        always did. Every completed executor run would otherwise pay a nudge."""
+        """No brief, no debt: finish_task still ends on the first call, or every completed run pays a nudge."""
         graph = self._compile_executor(BindableToolsFakeModel(responses=[self._finish()]))
 
         result = await graph.ainvoke(
@@ -485,33 +473,109 @@ class TestCompletionNudgeWiring:
 
     @pytest.mark.asyncio
     async def test_a_finished_run_is_not_taxed_with_a_nudge(self):
-        """Work demonstrably done — an open todo is absent and the tool-call floor is
-        met — must end on the first plain-text reply, or every completed executor run
-        pays an extra model call."""
+        """Done work declared done must end on the first finish, not pay an extra call."""
+        graph = self._compile_executor(BindableToolsFakeModel(responses=[self._finish("done")]))
+
+        result = await graph.ainvoke(
+            {"messages": self._worked_thread(), "todos": []},
+            config={"configurable": {"thread_id": "nudge-4"}},
+        )
+
+        assert self._nudges(result) == []
+        assert result["messages"][-1].name == FINISH_TASK_NAME
+
+    @pytest.mark.asyncio
+    async def test_a_plain_text_stop_after_work_is_not_taxed(self):
+        """A plain-text stop declares nothing, so only the work check applies to it."""
         graph = self._compile_executor(
             BindableToolsFakeModel(responses=[AIMessage(content="Finished.")])
         )
 
         result = await graph.ainvoke(
-            {
-                "messages": [
-                    HumanMessage(content="triage my inbox"),
-                    AIMessage(content=""),
-                    ToolMessage(content="ok", tool_call_id="c1"),
-                    AIMessage(content=""),
-                    ToolMessage(content="ok", tool_call_id="c2"),
+            {"messages": self._worked_thread(), "todos": []},
+            config={"configurable": {"thread_id": "nudge-5"}},
+        )
+
+        assert self._nudges(result) == []
+        assert result["messages"][-1].content == "Finished."
+
+    @pytest.mark.asyncio
+    async def test_a_plain_text_stop_that_strands_a_tracked_todo_is_nudged_once(self):
+        """A scheduled run spends the check that woke it; stopping without closing or re-checking is the forever-open todo."""
+        thread = [
+            HumanMessage(content=f"Execute the scheduled task: ship it\n\n{TODO_REARM_BRIEF}"),
+            AIMessage(content="", tool_calls=[{"name": "read", "args": {}, "id": "c1"}]),
+            ToolMessage(content="canvas", tool_call_id="c1", name="read"),
+        ]
+        graph = self._compile_executor(
+            BindableToolsFakeModel(
+                responses=[AIMessage(content="Still waiting."), AIMessage(content="Still waiting.")]
+            )
+        )
+
+        result = await graph.ainvoke(
+            {"messages": thread, "todos": []},
+            config={"configurable": {"thread_id": "nudge-asleep"}},
+        )
+
+        assert self._nudges(result) == [COMPLETION_NUDGE_MESSAGE]
+
+    @pytest.mark.asyncio
+    async def test_a_scheduled_run_that_sets_its_next_check_is_not_nudged(self):
+        thread = [
+            HumanMessage(content=f"Execute the scheduled task: ship it\n\n{TODO_REARM_BRIEF}"),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "update_tracked_todo",
+                        "args": {"todo_id": "t", "waiting_on": "time", "scheduled_at": "3d"},
+                        "id": "c1",
+                    }
                 ],
-                "todos": [],
-            },
-            config={"configurable": {"thread_id": "nudge-4"}},
+            ),
+            ToolMessage(content="Updated", tool_call_id="c1", name="update_tracked_todo"),
+        ]
+        graph = self._compile_executor(
+            BindableToolsFakeModel(responses=[AIMessage(content="Checked again in 3 days.")])
+        )
+
+        result = await graph.ainvoke(
+            {"messages": thread, "todos": []},
+            config={"configurable": {"thread_id": "no-nudge-armed"}},
         )
 
         assert self._nudges(result) == []
 
+    @pytest.mark.asyncio
+    async def test_done_declared_with_no_work_is_nudged_once(self):
+        """The run grading itself is the failure: done with nothing run is sent back once."""
+        graph = self._compile_executor(
+            BindableToolsFakeModel(responses=[self._finish("done"), self._finish("done")])
+        )
+
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="triage my inbox")]},
+            config={"configurable": {"thread_id": "nudge-6"}},
+        )
+
+        assert self._nudges(result) == [COMPLETION_NUDGE_MESSAGE]
+
+    @pytest.mark.asyncio
+    async def test_a_finish_without_an_outcome_is_nudged_once(self):
+        graph = self._compile_executor(
+            BindableToolsFakeModel(responses=[self._finish(None), self._finish("blocked")])
+        )
+
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="triage my inbox")]},
+            config={"configurable": {"thread_id": "nudge-7"}},
+        )
+
+        assert self._nudges(result) == [COMPLETION_NUDGE_MESSAGE]
+
     def test_the_sync_graph_path_nudges_too(self):
-        """``invoke`` runs the sync twins of the nudge node and the routing closure.
-        A graph wired only for the async path leaves every synchronous caller — the
-        dev direct-invocation endpoints, scripts — with the guard switched off."""
+        """Sync invoke uses the nudge node's sync twin; an async-only wiring leaves dev/script callers unguarded."""
         graph = self._compile_executor(
             BindableToolsFakeModel(
                 responses=[AIMessage(content="All done."), AIMessage(content="Actually done.")]
@@ -527,8 +591,7 @@ class TestCompletionNudgeWiring:
 
     @pytest.mark.asyncio
     async def test_the_guard_is_off_unless_an_agent_opts_in(self):
-        """``require_finish_to_end`` defaults to off. Flipping the default would put
-        every comms turn through the executor's completion check."""
+        """require_finish_to_end defaults to off, or every comms turn would hit the completion check."""
         from langgraph.checkpoint.memory import MemorySaver
 
         builder = create_agent(
@@ -551,9 +614,7 @@ class TestCompletionNudgeWiring:
 
     @pytest.mark.asyncio
     async def test_the_agent_call_is_not_metered_twice(self):
-        """LLMAccountingMiddleware already charges the graph's own model call.
-        Metering it here as auxiliary spend too books every agent turn a second
-        time, which lands in usage_daily as real money the user never spent."""
+        """LLMAccountingMiddleware already charges this call; metering it again double-books usage_daily."""
         with patch(
             "app.override.langgraph_bigtool.create_agent.ainvoke_llm",
             new=AsyncMock(return_value=AIMessage(content="done")),
@@ -570,8 +631,7 @@ class TestCompletionNudgeWiring:
         assert mock_invoke.call_args.kwargs["options"].meter_auxiliary is False
 
     def test_the_nudge_node_is_a_declared_routing_destination(self):
-        """should_continue can only return "nudge_continue" if the branch declares it;
-        an undeclared destination is a runtime error the moment the guard fires."""
+        """An undeclared "nudge_continue" destination is a runtime error the moment the guard fires."""
         builder = create_agent(
             llm=_make_mock_llm(AIMessage(content="done")),
             tool_registry=_build_minimal_registry(),
@@ -587,16 +647,16 @@ class TestCompletionNudgeWiring:
 
 
 class TestRetrievedToolDiscoveryRendering:
-    """``select_tools`` turns a retrieve_tools call into the ToolMessage the model
-    reads next. This PR added ``response_text``: a block the retriever pre-renders
-    so the discovery listing reaches the model verbatim instead of being rebuilt
-    from ids. Nothing exercised that path, so every mutation of the accumulation
-    and the hand-off to ``format_selected_tools`` survived.
+    """select_tools turns a retrieve_tools call into the ToolMessage the model reads next.
+
+    response_text is a block the retriever pre-renders so the listing reaches the
+    model verbatim instead of being rebuilt from ids; untested before, so mutations
+    there and in format_selected_tools survived.
     """
 
     @staticmethod
     def _retrieving_model() -> BindableToolsFakeModel:
-        """A model that asks for tool discovery once, then answers."""
+        """Build a model that asks for tool discovery once, then answers."""
         return BindableToolsFakeModel(
             responses=[
                 AIMessage(
@@ -637,19 +697,20 @@ class TestRetrievedToolDiscoveryRendering:
 
     @staticmethod
     def _discovery_message(result) -> str:
-        """The ToolMessage answering the retrieve_tools call."""
+        """Return the ToolMessage answering the retrieve_tools call."""
         replies = [
             m
             for m in result["messages"]
             if isinstance(m, ToolMessage) and m.tool_call_id == "call_retrieve_1"
         ]
         assert len(replies) == 1
-        return replies[0].content
+        content = replies[0].content
+        assert isinstance(content, str)
+        return content
 
     @pytest.mark.asyncio
     async def test_a_prerendered_discovery_block_reaches_the_model_verbatim(self):
-        """The retriever renders the listing (icons, grouping, per-tool blurbs); if
-        the pre-rendered text is dropped the model gets a bare id list instead."""
+        """The retriever pre-renders the listing (icons, grouping, blurbs); dropping it leaves a bare id list."""
 
         async def _retrieve(query: str) -> dict:
             """Retrieve tools matching the query."""
@@ -670,8 +731,7 @@ class TestRetrievedToolDiscoveryRendering:
 
     @pytest.mark.asyncio
     async def test_an_empty_prerendered_block_falls_back_to_the_built_listing(self):
-        """An empty string is not a rendering — it must not replace the listing with
-        nothing, which would leave the model with no discovery result at all."""
+        """An empty string is not a rendering; it must not replace the listing with nothing."""
 
         async def _retrieve(query: str) -> dict:
             """Retrieve tools matching the query."""
@@ -691,9 +751,7 @@ class TestRetrievedToolDiscoveryRendering:
         assert "dummy_tool" in self._discovery_message(result)
 
     def test_the_sync_graph_path_renders_the_prerendered_block_too(self):
-        """``select_tools`` is the sync twin of ``aselect_tools`` and is what
-        ``graph.invoke`` runs. The two assemble the same ToolMessage, so a fix
-        applied to one and not the other splits the discovery listing by caller."""
+        """select_tools (sync twin of aselect_tools) must assemble the same ToolMessage, or callers split."""
         from langgraph.checkpoint.memory import MemorySaver
         from langgraph.store.memory import InMemoryStore
 
@@ -748,11 +806,8 @@ class TestRetrievedToolDiscoveryRendering:
         assert "dummy_tool" in self._discovery_message(result)
 
     @pytest.mark.asyncio
-    async def test_a_non_string_prerendered_block_is_refused(self):
-        """The retriever is pluggable, so ``response_text`` can come back any shape.
-        Anything that is not a string must fall back to the built listing rather
-        than be handed to ToolMessage, which would put a dict where the model
-        expects prose."""
+    async def test_a_non_string_prerendered_block_fails_loud(self):
+        """A retriever whose response_text is not a string is a broken retriever, not a shape to paper over."""
 
         async def _retrieve(query: str) -> dict:
             """Retrieve tools matching the query."""
@@ -764,14 +819,13 @@ class TestRetrievedToolDiscoveryRendering:
 
         graph = self._compile(_retrieve)
 
-        result = await graph.ainvoke(
-            {"messages": [HumanMessage(content="find me email tools")]},
-            config={"configurable": {"thread_id": "retr-4", "user_id": "user-1"}},
-        )
+        with pytest.raises(ValidationError, match="response_text"):
+            await graph.ainvoke(
+                {"messages": [HumanMessage(content="find me email tools")]},
+                config={"configurable": {"thread_id": "retr-4", "user_id": "user-1"}},
+            )
 
-        assert "dummy_tool" in self._discovery_message(result)
-
-    def test_the_sync_path_also_refuses_a_non_string_block(self):
+    def test_the_sync_path_also_fails_loud_on_a_non_string_block(self):
         from langgraph.checkpoint.memory import MemorySaver
         from langgraph.store.memory import InMemoryStore
 
@@ -791,12 +845,11 @@ class TestRetrievedToolDiscoveryRendering:
         )
         graph = builder.compile(checkpointer=MemorySaver(), store=InMemoryStore())
 
-        result = graph.invoke(
-            {"messages": [HumanMessage(content="find me email tools")]},
-            config={"configurable": {"thread_id": "retr-sync-3", "user_id": "user-1"}},
-        )
-
-        assert "dummy_tool" in self._discovery_message(result)
+        with pytest.raises(ValidationError, match="response_text"):
+            graph.invoke(
+                {"messages": [HumanMessage(content="find me email tools")]},
+                config={"configurable": {"thread_id": "retr-sync-3", "user_id": "user-1"}},
+            )
 
     @pytest.mark.asyncio
     async def test_a_retriever_returning_a_plain_list_still_renders(self):

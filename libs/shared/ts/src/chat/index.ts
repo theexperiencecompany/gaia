@@ -10,12 +10,15 @@ export type {
   BatchDecisionOutcome,
   HilMode,
   HilPreferences,
+  HilPreferencesUpdate,
 } from "./approvals";
 export {
   APPROVAL_REQUEST_TOOL_NAME,
   approvalOutcomeLabel,
   DEFAULT_HIL_MODE,
+  formatApprovalAge,
   isSettled,
+  RECONFIRM_AGE_SECONDS,
   toolAsks,
   toolOverrideValue,
   upsertApprovalToolData,
@@ -52,7 +55,6 @@ export type {
   CalendarEventDateTime,
   CalendarFetchData,
   CalendarListFetchData,
-  CalendarOptions,
   CodeChartData,
   CodeData,
   CodeOutput,
@@ -116,6 +118,8 @@ export type {
   WorkflowDraftData,
 } from "./types";
 export {
+  BROWSER_TASK_TOOL_NAME,
+  BROWSER_TOOL_CATEGORY,
   getToolData,
   isKnownTool,
   REASONING_TOOL_NAME,

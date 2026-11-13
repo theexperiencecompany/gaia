@@ -7,21 +7,21 @@ import { homepageFAQs } from "@/lib/faq";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
-  generateOrganizationSchema,
   generatePageMetadata,
+  generateProductSchema,
   generateWebPageSchema,
-  generateWebSiteSchema,
   siteConfig,
 } from "@/lib/seo";
 
-// ISR: give the homepage a stable incremental-cache entry so OpenNext's cache
-// interception serves it without booting the full Next server (the worker
-// cold-start path). Also refreshes the time-of-day seed hourly instead of
-// freezing it at build time.
+// ISR: gives the homepage a stable incremental-cache entry so OpenNext's
+// cache interception serves it without a full Next server cold-start, and
+// refreshes the time-of-day seed hourly instead of freezing it at build time.
 export const revalidate = 3600;
 
 export const metadata: Metadata = generatePageMetadata({
   title: siteConfig.name,
+  description:
+    "GAIA is the proactive personal AI assistant that triages your email, plans your calendar, and runs your workflows, right inside WhatsApp and Telegram.",
   path: "/",
   keywords: [
     "personal AI assistant",
@@ -39,8 +39,6 @@ export const metadata: Metadata = generatePageMetadata({
 
 export default function LandingPage() {
   const latestRelease = getLatestRelease();
-  const organizationSchema = generateOrganizationSchema();
-  const websiteSchema = generateWebSiteSchema();
   const webPageSchema = generateWebPageSchema(
     siteConfig.name,
     siteConfig.description,
@@ -61,11 +59,10 @@ export default function LandingPage() {
           it just wastes bandwidth on the LCP path. */}
       <JsonLd
         data={[
-          organizationSchema,
-          websiteSchema,
           webPageSchema,
           breadcrumbSchema,
           faqSchema,
+          generateProductSchema(),
         ]}
       />
       <LandingPageClient latestRelease={latestRelease} />

@@ -2,14 +2,7 @@
 
 import { AppBridge, AppFrame, type McpUiHostContext } from "@mcp-ui/client";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MCPAppData } from "@/config/registries/toolRegistry";
 import {
   callMCPAppTool,
@@ -18,7 +11,7 @@ import {
   listMCPResourceTemplates,
   readMCPResource,
 } from "@/features/chat/api/mcpProxyApi";
-import { useSendMessage } from "@/hooks/useSendMessage";
+import { sendMessage } from "@/features/chat/stream/sendMessage";
 import { getBrowserTimezone } from "@/lib/timezone";
 
 type DisplayMode = "inline" | "fullscreen";
@@ -50,11 +43,8 @@ export function MCPAppRenderer({ data }: Props) {
   const bridgeRef = useRef<AppBridge | null>(null);
 
   const dataRef = useRef(data);
-  const sendMessage = useSendMessage();
-  const sendMessageRef = useRef(sendMessage);
   useEffect(() => {
     dataRef.current = data;
-    sendMessageRef.current = sendMessage;
   });
 
   const sandboxUrl = useMemo(
@@ -132,7 +122,7 @@ export function MCPAppRenderer({ data }: Props) {
         )
         .join(" ")
         .trim();
-      if (text) await sendMessageRef.current(text);
+      if (text) await sendMessage(text);
       return {};
     };
 
@@ -272,13 +262,17 @@ export function MCPAppRenderer({ data }: Props) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Escape to exit fullscreen
-  const handleFullscreenEscape = useEffectEvent((e: KeyboardEvent) => {
-    if (e.key === "Escape" && displayMode === "fullscreen") {
-      setDisplayMode("inline");
-    }
+  const displayModeRef = useRef(displayMode);
+  useEffect(() => {
+    displayModeRef.current = displayMode;
   });
 
   useEffect(() => {
+    const handleFullscreenEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && displayModeRef.current === "fullscreen") {
+        setDisplayMode("inline");
+      }
+    };
     window.addEventListener("keydown", handleFullscreenEscape);
     return () => window.removeEventListener("keydown", handleFullscreenEscape);
   }, []);

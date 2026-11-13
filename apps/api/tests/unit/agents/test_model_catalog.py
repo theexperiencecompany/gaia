@@ -1,6 +1,6 @@
 """Behavior tests for app.agents.llm.model_catalog (OpenRouter vision catalog).
 
-Locks: image-support parsing from ``input_modalities``, the TTL/retry cache
+Locks: image-support parsing from input_modalities, the TTL/retry cache
 semantics (fresh snapshot reused, failed refresh remembered for the backoff
 window, stale snapshot outliving a failure, fail-safe to non-vision with no
 snapshot), and rejection of a catalog that yields no models.
@@ -31,7 +31,7 @@ PAYLOAD_VISION = {
 
 
 def _httpx_client(payload: dict | None = None, error: Exception | None = None) -> MagicMock:
-    """A mocked httpx.AsyncClient whose GET returns ``payload`` or raises ``error``."""
+    """Build a mocked httpx.AsyncClient whose GET returns payload or raises error."""
     mock_client_cls = MagicMock()
     client_instance = mock_client_cls.return_value.__aenter__.return_value
     if error is not None:

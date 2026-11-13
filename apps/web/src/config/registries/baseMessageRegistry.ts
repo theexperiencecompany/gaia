@@ -4,13 +4,23 @@
  * Extends the tools message schema to produce the full message shape.
  */
 
-import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
+import type { TodoRunWake } from "@shared/api/generated";
+import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import type { ImageData, MemoryData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
-import type { FileData } from "@/types/shared/fileTypes";
+import type { AttachedFileData } from "@/types/shared/fileTypes";
 
 import { TOOLS_MESSAGE_SCHEMA } from "./toolRegistry";
+
+/**
+ * One emoji reaction attached to a message for render. Built client-side by
+ * foldReactionAcks from a comms REACT ack; `ackId` dedups re-syncs.
+ */
+export interface MessageReaction {
+  emoji: string;
+  ackId: string;
+}
 
 /**
  * BASE_MESSAGE_SCHEMA
@@ -24,7 +34,7 @@ export const BASE_MESSAGE_SCHEMA = {
   date: undefined as string | undefined,
   pinned: undefined as boolean | undefined,
   fileIds: undefined as string[] | undefined,
-  fileData: undefined as FileData[] | undefined,
+  fileData: undefined as AttachedFileData[] | undefined,
   selectedTool: undefined as string | null | undefined,
   toolCategory: undefined as string | null | undefined,
   selectedWorkflow: undefined as WorkflowData | null | undefined,
@@ -32,6 +42,8 @@ export const BASE_MESSAGE_SCHEMA = {
     | SelectedCalendarEventData
     | null
     | undefined,
+  // What woke a tracked todo's run: the user's side of that run in the todo's chat.
+  todo_run_wake: undefined as TodoRunWake | null | undefined,
   isConvoSystemGenerated: undefined as boolean | undefined,
   follow_up_actions: undefined as string[] | undefined,
   // Set by the backend when a turn died with no response text — drives the
@@ -45,6 +57,16 @@ export const BASE_MESSAGE_SCHEMA = {
     | { id: string; content: string; role: "user" | "assistant" }
     | null
     | undefined,
+  // Backend message kind ("text" | "emoji_ack"). An emoji_ack is a comms
+  // REACT answer rendered as a reaction badge on its target, never a bubble.
+  kind: undefined as string | undefined,
+  // GAIA id of the message an emoji_ack reacts to (server's reacts_to_message_id).
+  reacts_to_message_id: undefined as string | null | undefined,
+  // The user stopped this turn with Stop: a quiet "Stopped" line renders under it.
+  stopped: undefined as boolean | null | undefined,
+  // Reactions folded onto this message for render (built client-side by
+  // foldReactionAcks, never sent by the server).
+  reactions: undefined as MessageReaction[] | undefined,
   // Tool fields (spread from tool registry)
   ...TOOLS_MESSAGE_SCHEMA,
 };

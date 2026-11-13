@@ -9,6 +9,7 @@ import { useNotifications } from "@/features/notification/hooks/useNotifications
 import { useHeader } from "@/hooks/layout/useHeader";
 import {
   type ModalConfig,
+  type ModalProps,
   NotificationStatus,
 } from "@/types/features/notificationTypes";
 
@@ -16,6 +17,8 @@ const INAPP_CHANNEL = "inapp";
 
 export default function NotificationsPage() {
   const [modalConfig, setModalConfig] = useState<ModalConfig | null>(null);
+  // `props` is untyped on the wire; the component name is what makes it an EmailPreview payload.
+  const modalProps = modalConfig?.props as ModalProps | undefined;
   const [selectedTab, setSelectedTab] = useState<string>("unread");
   const { setHeader } = useHeader();
 
@@ -118,17 +121,17 @@ export default function NotificationsPage() {
         )}
       </div>
 
-      {modalConfig?.component === "EmailPreviewModal" && modalConfig.props && (
+      {modalConfig?.component === "EmailPreviewModal" && modalProps && (
         <EmailPreviewModal
           isOpen={true}
           onClose={handleModalClose}
-          subject={modalConfig.props.subject || ""}
-          body={modalConfig.props.body || ""}
-          recipients={modalConfig.props.recipients || []}
-          mode={modalConfig.props.mode === "view" ? "view" : "edit"}
+          subject={modalProps.subject || ""}
+          body={modalProps.body || ""}
+          recipients={modalProps.recipients || []}
+          mode={modalProps.mode === "view" ? "view" : "edit"}
           onEmailSent={handleEmailSent}
-          notificationId={modalConfig.props.notificationId}
-          actionId={modalConfig.props.actionId}
+          notificationId={modalProps.notificationId}
+          actionId={modalProps.actionId}
         />
       )}
     </div>

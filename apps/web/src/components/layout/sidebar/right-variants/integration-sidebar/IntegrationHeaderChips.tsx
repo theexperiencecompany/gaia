@@ -3,9 +3,8 @@
 import { Avatar } from "@heroui/avatar";
 import { Chip } from "@heroui/chip";
 import { UserCircle02Icon } from "@icons";
-
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import type { Integration } from "@/features/integrations/types";
-import { useUserStore } from "@/stores/userStore";
 
 interface IntegrationHeaderChipsProps {
   integration: Integration;
@@ -21,8 +20,8 @@ export function IntegrationHeaderChips({
   isOwnIntegration,
   isForkedIntegration,
 }: IntegrationHeaderChipsProps) {
-  const currentUserName = useUserStore((state) => state.name);
-  const currentUserPicture = useUserStore((state) => state.profilePicture);
+  const { name: currentUserName, profilePicture: currentUserPicture } =
+    useCurrentUser();
 
   return (
     <div className="flex items-center gap-2 flex-row mb-2">

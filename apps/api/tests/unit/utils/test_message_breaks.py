@@ -4,6 +4,7 @@ import re
 
 import pytest
 
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.utils.message_breaks import (
     _OPEN,
     _SENTINEL_WORD_SEQUENCES,
@@ -11,9 +12,12 @@ from app.utils.message_breaks import (
     PARTIAL_MESSAGE_BREAK_RE,
     _partial_sequence,
     _word_prefixes,
+    normalize_message_breaks,
     split_message_bubbles,
     strip_partial_message_break,
 )
+
+BR = NEW_MESSAGE_BREAKER
 
 
 #: Every non-empty prefix of a spelling's underscore-joined form, e.g. for
@@ -62,8 +66,7 @@ class TestStripPartialMessageBreak:
         assert strip_partial_message_break("a<NEW_MESSAGE_BREAK>") == "a<NEW_MESSAGE_BREAK>"
 
     def test_keeps_a_lone_trailing_bracket(self) -> None:
-        """A bare ``<`` carries no sentinel evidence — eating it would corrupt
-        ordinary text (a code snippet ending in ``<``)."""
+        """A bare < carries no sentinel evidence; eating it would corrupt ordinary text like code ending in <."""
         assert strip_partial_message_break("if a <") == "if a <"
 
     def test_keeps_unrelated_trailing_tag(self) -> None:
@@ -91,10 +94,7 @@ class TestSplitMessageBubbles:
 
 
 class TestPrefixBuilders:
-    """``_word_prefixes`` and ``_partial_sequence`` run only at import time, to
-    build the module-level compiled constants — no test exercises them through
-    any public function, so a mutation of either can only be observed by
-    calling them directly and asserting on what they return."""
+    """_word_prefixes/_partial_sequence build module-level constants at import time, so only direct calls catch a mutation."""
 
     def test_word_prefixes_matches_every_non_empty_prefix(self) -> None:
         pattern = re.compile(_word_prefixes("NEW"))
@@ -136,10 +136,7 @@ class TestPrefixBuilders:
     def test_partial_sequence_emits_only_single_character_literals(
         self, words: tuple[str, ...]
     ) -> None:
-        """The builder assembles one character at a time (see its docstring); a
-        run of two or more literal letters means a placeholder or a stray
-        ``None``/``str(None)`` leaked into the generated pattern instead of a
-        real per-character prefix."""
+        """Two or more consecutive literal letters would mean a stray None/str(None) leaked into the pattern."""
         pattern_source = _partial_sequence(words)
         assert re.findall(r"(?<!\\)[A-Za-z]{2,}", pattern_source) == []
 
@@ -147,8 +144,7 @@ class TestPrefixBuilders:
         assert re.findall(r"(?<!\\)[A-Za-z]{2,}", _word_prefixes("MESSAGE")) == []
 
     def test_partial_message_break_re_rebuilds_to_the_same_meaning(self) -> None:
-        """Rebuild the alternation from the live helpers and re-run the strip
-        table through it, pinning the end-to-end meaning at test time too."""
+        """Rebuilds the alternation from the live helpers to pin the end-to-end meaning at test time too."""
         rebuilt = re.compile(
             _OPEN
             + "(?:"
@@ -167,3 +163,24 @@ class TestPrefixBuilders:
         ]
         for text in cases:
             assert rebuilt.sub("", text) == PARTIAL_MESSAGE_BREAK_RE.sub("", text), text
+
+
+class TestNormalizeMessageBreaks:
+    def test_break_only_text_normalizes_to_nothing(self) -> None:
+        assert normalize_message_breaks(BR * 3998 + "<NEW_MESSAGE_BREAK") == ""
+
+    def test_leading_trailing_and_repeated_breaks_collapse(self) -> None:
+        assert normalize_message_breaks(f"{BR * 3}hi{BR * 14}there{BR}") == f"hi{BR}there"
+
+    def test_near_miss_spellings_become_the_canonical_break(self) -> None:
+        assert normalize_message_breaks("hi[NEW_MESSAGE_BREAK]there") == f"hi{BR}there"
+
+    def test_text_without_breaks_is_trimmed_only(self) -> None:
+        assert normalize_message_breaks("  you have two meetings.\n") == "you have two meetings."
+
+    def test_directive_bubble_survives(self) -> None:
+        assert normalize_message_breaks(f"<EMOJI>👀</EMOJI>{BR}") == "<EMOJI>👀</EMOJI>"
+
+    def test_is_idempotent(self) -> None:
+        once = normalize_message_breaks(f"{BR}a{BR * 2}b{BR}")
+        assert normalize_message_breaks(once) == once

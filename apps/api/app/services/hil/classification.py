@@ -1,24 +1,24 @@
 """Classify whether a tool is destructive for the HIL approval gate.
 
 Resolution order (first match wins):
-
 1. Exempt orchestration/plumbing tools → safe.
-2. A server-declared MCP ``destructiveHint`` → destructive. Escalation-only: an
-   untrusted MCP server may flag danger but never clear it, so ``readOnlyHint``
-   and ``destructiveHint=False`` are ignored; a true hint gates even over a
-   reviewed-safe registry flag.
-3. The tool registry's flag — authoritative for internal tools and curated
-   integration slugs.
+2. A server-declared MCP destructiveHint → destructive. Escalation-only: an
+   untrusted MCP server may flag danger but never clear it, so readOnlyHint and
+   destructiveHint=False are ignored; a true hint gates even a reviewed-safe flag.
+3. The tool registry's flag, for internal tools and curated slugs. Never read for
+   an MCP tool: a same-named registry tool must not lend it its verdict.
 4. A cached Mongo classification for a previously-seen custom tool.
-5. A one-shot LLM classification, persisted to Mongo + the live registry.
+5. A one-shot LLM classification, persisted to Mongo (+ the live registry for
+   registry tools). Cached verdicts are keyed by hil_tool_key, so two MCP
+   servers exposing the same name never share one.
 
-Any failure — registry unavailable, LLM error, or a tool absent from every
-source — resolves to destructive (fail closed).
+Any failure resolves to destructive (fail closed).
 """
 
 import hashlib
 
 from langchain_core.tools import BaseTool
+from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import SILENT_LLM_CONFIG, StructuredCallOptions, ainvoke_structured
@@ -28,6 +28,7 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.hil import hil_tool_risk_repository
 from app.models.hil_models import HILToolRiskRecord
 from app.services.hil.prompts import TOOL_CLASSIFY_PROMPT
+from app.services.hil.tool_key import MCPToolIdentity, mcp_tool_key
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from shared.py.wide_events import log
 
@@ -42,12 +43,14 @@ async def is_tool_destructive(
     description: str = "",
     *,
     destructive_hint: bool | None = None,
+    mcp_tool: MCPToolIdentity | None = None,
 ) -> bool:
-    """Return whether ``tool_name`` must be gated by HIL. Fails closed.
+    """Return whether tool_name must be gated by HIL. Fails closed.
 
-    ``destructive_hint`` is the caller-read MCP ``destructiveHint`` (see
-    :func:`mcp_destructive_hint`); it escalates an otherwise-unclassified tool
-    to destructive without an LLM call.
+    destructive_hint is the caller-read MCP destructiveHint (see
+    :func:mcp_destructive_hint); it escalates an otherwise-unclassified tool
+    to destructive without an LLM call. mcp_tool scopes the cached verdict to
+    that MCP server.
     """
     if tool_name in HIL_EXEMPT_TOOLS:
         return False
@@ -56,11 +59,15 @@ async def is_tool_destructive(
     if destructive_hint is True:
         return True
     try:
+        if mcp_tool is not None:
+            return await _classify_unknown_tool(
+                None, tool_name, mcp_tool_key(mcp_tool), description
+            )
         registry = await get_tool_registry()
         flag = registry.is_tool_destructive(tool_name)
         if flag is not None:
             return flag
-        return await _classify_unknown_tool(registry, tool_name, description)
+        return await _classify_unknown_tool(registry, tool_name, tool_name, description)
     except Exception as e:
         # Fail closed: every failure mode (registry/LLM/Mongo down, unknown tool)
         # must gate rather than let a possibly-destructive call run unattended.
@@ -74,48 +81,59 @@ async def is_tool_destructive(
 
 
 def mcp_destructive_hint(tool: BaseTool | None) -> bool | None:
-    """Return ``True`` only when an MCP tool declares itself destructive.
+    """Return True only when an MCP tool declares itself destructive.
 
-    Honors the ``destructiveHint`` annotation ``SanitizingLangChainAdapter``
+    Honors the destructiveHint annotation SanitizingLangChainAdapter
     stashes on tool metadata. Escalation-only (see module docstring): a falsey
-    or missing hint yields ``None`` (defer), never ``False``.
+    or missing hint yields None (defer), never False.
     """
     metadata = getattr(tool, "metadata", None)
     if not isinstance(metadata, dict):
         return None
     annotations = metadata.get(MCP_ANNOTATIONS_METADATA_KEY)
-    if isinstance(annotations, dict) and annotations.get("destructiveHint") is True:
+    if not isinstance(annotations, dict):
+        return None
+    if ToolAnnotations.model_validate(annotations).destructiveHint is True:
         return True
     return None
 
 
-async def _classify_unknown_tool(registry: ToolRegistry, tool_name: str, description: str) -> bool:
-    """Resolve an unclassified custom tool from the Mongo cache, else the LLM."""
+async def _classify_unknown_tool(
+    registry: ToolRegistry | None, tool_name: str, key: str, description: str
+) -> bool:
+    """Resolve an unclassified custom tool from the Mongo cache, else the LLM.
+
+    registry is None for MCP tools, which live outside it; the Mongo cache under
+    key is then their only store.
+    """
     description_hash = _description_hash(description)
-    cached = await _cached_classification(tool_name, description_hash)
+    cached = await _cached_classification(key, description_hash)
     if cached is not None:
-        registry.mark_tool_destructive(tool_name, cached)
+        if registry is not None:
+            registry.mark_tool_destructive(tool_name, cached)
         return cached
 
     result = await _classify_with_llm(tool_name, description)
-    await _persist_classification(tool_name, description_hash, result)
-    registry.mark_tool_destructive(tool_name, result.is_destructive)
+    await _persist_classification(key, description_hash, result)
+    if registry is not None:
+        registry.mark_tool_destructive(tool_name, result.is_destructive)
     return result.is_destructive
 
 
-async def _cached_classification(tool_name: str, description_hash: str) -> bool | None:
-    """A prior classification for this exact tool+description, or ``None``."""
-    record = await hil_tool_risk_repository.find_classification(tool_name, description_hash)
+async def _cached_classification(key: str, description_hash: str) -> bool | None:
+    """Return a prior classification for this exact tool+description, or None."""
+    record = await hil_tool_risk_repository.find_classification(key, description_hash)
     return record.is_destructive if record else None
 
 
 async def _classify_with_llm(tool_name: str, description: str) -> _ClassifyResult:
-    """Classify a TOOL, not a request — so this call deliberately carries no
-    user attribution. The verdict is cached per tool+description (DB + registry)
-    and shared by every user, so billing its COGS to whichever user happened to
-    trigger the first classification would be arbitrary. The unattributed-spend
-    warning from ``ainvoke_structured`` is expected here, and rare: this runs
-    once per tool, not per call."""
+    """Classify a TOOL, not a request — deliberately carries no user attribution.
+
+    The verdict is cached per tool+description and shared by every user, so billing
+    its COGS to whichever user triggered the first classification would be
+    arbitrary. The unattributed-spend warning from ainvoke_structured is expected
+    here, and rare: this runs once per tool, not per call.
+    """
     return await ainvoke_structured(
         _ClassifyResult,
         TOOL_CLASSIFY_PROMPT.format(name=tool_name, description=description or "(none provided)"),
@@ -125,13 +143,13 @@ async def _classify_with_llm(tool_name: str, description: str) -> _ClassifyResul
     )
 
 
-async def _persist_classification(
-    tool_name: str, description_hash: str, result: _ClassifyResult
-) -> None:
-    """Cache the classification in Mongo so restarts/refreshes don't re-run the
-    LLM (the description_hash key means only a changed description re-classifies)."""
+async def _persist_classification(key: str, description_hash: str, result: _ClassifyResult) -> None:
+    """Cache the classification in Mongo so restarts/refreshes don't re-run the LLM.
+
+    The description_hash key means only a changed description re-classifies.
+    """
     record = HILToolRiskRecord(
-        tool_name=tool_name,
+        tool_name=key,
         description_hash=description_hash,
         is_destructive=result.is_destructive,
         rationale=result.rationale,

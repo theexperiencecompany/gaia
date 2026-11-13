@@ -1,7 +1,7 @@
 """A misconfigured machine must not read as a clean bill of health.
 
-Two defects, one incident. `E2B_DOMAIN` is injected empty by Infisical, so
-`DevelopmentSettings` rejects it the moment a suite's loader touches app
+Two defects, one incident. E2B_DOMAIN is injected empty by Infisical, so
+DevelopmentSettings rejects it the moment a suite's loader touches app
 settings. That surfaced as:
 
     [verify] quality: could not load cases: ValueError: quality-openui-...:
@@ -38,8 +38,7 @@ def test_a_settings_failure_is_named_as_a_configuration_error() -> None:
 
 
 def test_it_survives_being_wrapped_in_another_exception() -> None:
-    """The real one arrived wrapped, prefixed with a case id, from quality's
-    openui policy loader — so the whole cause chain has to be inspected."""
+    """The real one arrived wrapped and prefixed with a case id, so the whole cause chain has to be inspected."""
     try:
         raise ValueError("quality-openui-no-fence-greeting: boom") from _validation_error()
     except ValueError as wrapped:

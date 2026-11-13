@@ -1,15 +1,15 @@
 """Integration tests for RabbitMQPublisher.
 
-Patches `aio_pika.connect_robust` at the AMQP boundary so no real broker
+Patches aio_pika.connect_robust at the AMQP boundary so no real broker
 connection is ever made.  All other code paths — idempotency guards, delivery
 mode, auto-connect, auto-declare, retry logic — run through the real
 RabbitMQPublisher implementation.
 
 Design invariants (tests are written to enforce these):
-- Removing the `if self.connection is None` guard  → test_connect_is_idempotent FAILS
-- Removing `durable=True`                          → test_declare_queue_creates_queue FAILS
-- Removing the `if queue_name not in …` guard      → test_declare_queue_is_idempotent FAILS
-- Removing `delivery_mode=PERSISTENT`              → test_publish_message_is_persistent FAILS
+- Removing the if self.connection is None guard  → test_connect_is_idempotent FAILS
+- Removing durable=True                          → test_declare_queue_creates_queue FAILS
+- Removing the if queue_name not in … guard      → test_declare_queue_is_idempotent FAILS
+- Removing delivery_mode=PERSISTENT              → test_publish_message_is_persistent FAILS
 """
 
 from unittest.mock import AsyncMock, call, patch
@@ -101,11 +101,7 @@ class TestConnect:
         publisher: RabbitMQPublisher,
         mock_connection: AsyncMock,
     ):
-        """Calling connect() twice must only call connect_robust once.
-
-        This test MUST fail if the `if self.connection is None` guard is
-        removed from RabbitMQPublisher.connect().
-        """
+        """Must fail if the self.connection is None guard is removed from connect()."""
         with patch(
             "aio_pika.connect_robust",
             new=AsyncMock(return_value=mock_connection),
@@ -129,12 +125,7 @@ class TestDeclareQueue:
         mock_connection: AsyncMock,
         mock_channel: AsyncMock,
     ):
-        """declare_queue() must call channel.declare_queue with the correct
-        name and durable=True.
-
-        This test MUST fail if `durable=True` is removed from the production
-        declare_queue() call.
-        """
+        """Must fail if durable=True is removed from the production declare_queue() call."""
         with _patch_connect_robust(mock_connection):
             await publisher.connect()
             await publisher.declare_queue("test_queue")
@@ -147,12 +138,7 @@ class TestDeclareQueue:
         mock_connection: AsyncMock,
         mock_channel: AsyncMock,
     ):
-        """Declaring the same queue twice must call channel.declare_queue
-        exactly once.
-
-        This test MUST fail if the `if queue_name not in self.declared_queues`
-        guard is removed from the production implementation.
-        """
+        """Must fail if the queue_name not in self.declared_queues guard is removed."""
         with _patch_connect_robust(mock_connection):
             await publisher.connect()
             await publisher.declare_queue("test_queue")
@@ -201,9 +187,7 @@ class TestPublish:
         mock_connection: AsyncMock,
         mock_channel: AsyncMock,
     ):
-        """publish() must route the message to the correct queue via
-        default_exchange.publish with routing_key matching the queue name.
-        """
+        """publish() must route the message via default_exchange.publish with routing_key matching the queue name."""
         with _patch_connect_robust(mock_connection):
             await publisher.connect()
             await publisher.publish("test_queue", b"hello")
@@ -218,11 +202,7 @@ class TestPublish:
         mock_connection: AsyncMock,
         mock_channel: AsyncMock,
     ):
-        """The Message passed to publish() must use PERSISTENT delivery mode.
-
-        This test MUST fail if `delivery_mode=aio_pika.DeliveryMode.PERSISTENT`
-        is removed from the production publish() implementation.
-        """
+        """Must fail if delivery_mode=aio_pika.DeliveryMode.PERSISTENT is removed from publish()."""
         with _patch_connect_robust(mock_connection):
             await publisher.connect()
             await publisher.publish("test_queue", b"durable payload")
@@ -237,9 +217,7 @@ class TestPublish:
         publisher: RabbitMQPublisher,
         mock_connection: AsyncMock,
     ):
-        """publish() on a fresh publisher must trigger auto-connect without
-        requiring an explicit connect() call first.
-        """
+        """publish() on a fresh publisher must trigger auto-connect without an explicit connect() call first."""
         with patch(
             "aio_pika.connect_robust",
             new=AsyncMock(return_value=mock_connection),
@@ -255,9 +233,7 @@ class TestPublish:
         mock_connection: AsyncMock,
         mock_channel: AsyncMock,
     ):
-        """publish() to a queue that has never been declared must trigger an
-        automatic declare_queue() call before publishing.
-        """
+        """publish() to an undeclared queue must trigger an automatic declare_queue() call before publishing."""
         with _patch_connect_robust(mock_connection):
             await publisher.connect()
             assert "auto_declared" not in publisher.declared_queues
@@ -289,13 +265,7 @@ class TestPublish:
         mock_connection: AsyncMock,
         mock_channel: AsyncMock,
     ):
-        """If the first publish attempt raises, the implementation must retry
-        once after reconnection and ultimately succeed.
-
-        The production code catches any exception on the first attempt, calls
-        ensure_connected(), then publishes again.  This test verifies that the
-        second attempt is made and the message is eventually delivered.
-        """
+        """If the first publish attempt raises, publish() must call ensure_connected() and retry once before succeeding."""
         # First publish call raises; second succeeds (default AsyncMock)
         first_call = True
 
@@ -358,11 +328,7 @@ class TestClose:
         self,
         publisher: RabbitMQPublisher,
     ):
-        """close() on a publisher that was never connected must not raise.
-
-        Both .connection and .channel are None at this point, so the guard
-        clauses in close() must prevent any attribute access errors.
-        """
+        """close() must not raise when .connection and .channel are both still None."""
         await publisher.close()  # must not raise
 
 

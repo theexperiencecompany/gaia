@@ -101,15 +101,8 @@ export interface ResponsiveValues {
 }
 
 /**
- * Hook that provides responsive values and scaling functions
- * based on current screen dimensions.
- *
- * @example
- * const { scale, moderateScale, fontSize, sidebarWidth } = useResponsive();
- *
- * <View style={{ padding: scale(16), width: sidebarWidth }}>
- *   <Text style={{ fontSize: fontSize.lg }}>Hello</Text>
- * </View>
+ * Hook providing responsive values and scaling functions based on current
+ * screen dimensions.
  */
 export function useResponsive(): ResponsiveValues {
   const { width, height } = useWindowDimensions();

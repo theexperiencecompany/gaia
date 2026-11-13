@@ -18,23 +18,26 @@ import {
 import { WhatsNewCard } from "@/features/whats-new/components/WhatsNewCard";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { useElectron } from "@/hooks/useElectron";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
+import { cn } from "@/lib/utils";
 
 interface SidebarLayoutProps {
   children: ReactNode;
 }
 
+interface CustomSidebarTriggerProps {
+  className?: string;
+}
+
 // Custom SidebarTrigger with dynamic icons
-export const CustomSidebarTrigger = () => {
+export const CustomSidebarTrigger = ({
+  className,
+}: CustomSidebarTriggerProps) => {
   const { open, toggleSidebar } = useSidebar();
   const { isMac } = usePlatform();
 
   const handleToggle = () => {
-    trackEvent(
-      open
-        ? ANALYTICS_EVENTS.UI_SIDEBAR_COLLAPSED
-        : ANALYTICS_EVENTS.UI_SIDEBAR_EXPANDED,
-    );
+    track(open ? "ui:sidebar_collapsed" : "ui:sidebar_expanded", {});
     toggleSidebar();
   };
 
@@ -42,6 +45,7 @@ export const CustomSidebarTrigger = () => {
     <SidebarHeaderButton
       onClick={handleToggle}
       aria-label="Toggle Sidebar"
+      className={className}
       tooltip={
         <span className="flex items-center gap-2 text-xs">
           {open ? "Collapse Sidebar" : "Open Sidebar"}
@@ -73,8 +77,13 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
     >
       {/* In the desktop app the window chrome owns the top-left corner:
           no logo, and on macOS extra top padding clears the traffic
-          lights (hiddenInset title bar, lights at y=16). */}
-      <SidebarHeader className={isElectron && isMac ? "pt-10 pb-0" : "pb-0"}>
+          lights (hiddenInset title bar, lights at y=16). The empty strip
+          is part of the title bar too — the sidebar slides under the
+          content header, so without this the top-left corner is a drag
+          dead zone whenever the sidebar is expanded. */}
+      <SidebarHeader
+        className={cn("pb-0", isElectron && isMac && "pt-10 electron-drag")}
+      >
         {!isElectron && (
           <div className="flex items-center justify-between">
             <LogoWithContextMenu className="group ml-2 flex items-center gap-2 px-1" />

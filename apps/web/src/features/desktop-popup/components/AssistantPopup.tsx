@@ -3,9 +3,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 import * as m from "motion/react-m";
 import { useEffect, useState } from "react";
-import { useUser } from "@/features/auth/hooks/useUser";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
+import { useClearPaywallWhenPaid } from "@/features/pricing/hooks/useClearPaywallWhenPaid";
 import { useElectron } from "@/hooks/useElectron";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { useChatStore, useChatStoreSync } from "@/stores/chatStore";
 import { POPUP_EASE, POPUP_TRANSITION_SECONDS } from "../constants";
 import { usePopupEscapeDismiss } from "../hooks/usePopupEscapeDismiss";
@@ -27,12 +28,16 @@ export default function AssistantPopup() {
   // entrance animation on an already-mounted panel.
   const [activationCount, setActivationCount] = useState(0);
   const queryClient = useQueryClient();
-  const user = useUser();
+  const user = useCurrentUser();
   const isAuthenticated = Boolean(user?.email);
 
   useChatStoreSync();
   usePopupChatPublisher();
   usePopupEscapeDismiss();
+  // This window is where the 402 landed and the paid-only wall lives, so it's
+  // where the wall must come down — the feed window only mirrors what this one
+  // publishes, and checkout finishes in the user's browser.
+  useClearPaywallWhenPaid();
 
   // Outside Electron (browser dev), show the panel immediately.
   useEffect(() => {
@@ -43,7 +48,7 @@ export default function AssistantPopup() {
 
   useEffect(() => {
     const offActivate = onPopupActivate((data) => {
-      trackEvent(ANALYTICS_EVENTS.DESKTOP_POPUP_OPENED, {
+      track("desktop_popup:opened", {
         triggered_by_wake_word: data?.trigger === "wake-word",
       });
       setActivationCount((count) => count + 1);
@@ -54,7 +59,7 @@ export default function AssistantPopup() {
       queryClient.invalidateQueries({ queryKey: ["current-user"] });
     });
     const offDeactivate = onPopupDeactivate(() => {
-      trackEvent(ANALYTICS_EVENTS.DESKTOP_POPUP_DISMISSED);
+      track("desktop_popup:dismissed", {});
       // Window-level fade handles the visual exit; stop the voice session
       // and clear the conversation — each summon starts a fresh chat,
       // while messages within one summon accumulate.

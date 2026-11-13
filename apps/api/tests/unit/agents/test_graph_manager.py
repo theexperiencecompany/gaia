@@ -16,7 +16,7 @@ class TestGraphManager:
     """Behavioural tests for GraphManager.get_graph using the real ProviderRegistry.
 
     All tests use UUID-suffixed names to avoid cross-test pollution in the
-    shared registry singleton. No mocking of `providers` — if GraphManager
+    shared registry singleton. No mocking of providers — if GraphManager
     passes the wrong key to the registry, the real registry will either raise
     KeyError (surfaced as GraphUnavailableError) or return the wrong object,
     and the assertion will fail.
@@ -57,8 +57,7 @@ class TestGraphManager:
 
     @pytest.mark.asyncio
     async def test_get_graph_raises_when_provider_returns_none(self):
-        """A provider that yields None must surface as GraphUnavailableError,
-        never as a silent None return."""
+        """A provider that yields None must surface as GraphUnavailableError, never as a silent None return."""
         unique_name = f"test_sg_null_{uuid.uuid4().hex}"
 
         _register_graph(unique_name, None)

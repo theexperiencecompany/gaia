@@ -5,7 +5,7 @@ someone will actually look at, so they have to be on disk before the process
 exits non-zero. An exit that beats the report to the punch turns "the suite got
 worse" into "the harness crashed", and the evidence is gone.
 
-This drives ``_publish_run`` itself rather than a re-implementation of it, so
+This drives _publish_run itself rather than a re-implementation of it, so
 the ordering is pinned where it actually happens.
 """
 

@@ -39,7 +39,17 @@ from app.models.memory_models import (
     UpdateMemoryRequest,
 )
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.schemas.errors import error_responses
+from app.services.analytics_service import capture
+from app.utils.log_identifiers import user_text_shape
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.memory import (
+    MemoryCleared,
+    MemoryCreated,
+    MemoryDocumentUpdated,
+    MemoryItemDeleted,
+    MemoryUpdated,
+)
 from shared.py.wide_events import MemoryContext, UserContext, log
 
 USER_DELETED_REASON = "user_deleted"
@@ -49,7 +59,7 @@ router = APIRouter()
 
 def _require_user_id(user: AuthenticatedUser) -> str:
     """Extract the authenticated user's ID or fail the request."""
-    user_id: str | None = user.get("user_id")
+    user_id: str | None = user.user_id
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
     return user_id
@@ -95,7 +105,10 @@ async def search_memories(
     memories anywhere, not just on the currently loaded page.
     """
     user_id = _require_user_id(user)
-    log.set(user=UserContext(id=user_id), memory=MemoryContext(operation="recall", query=q))
+    log.set(
+        user=UserContext(id=user_id),
+        memory=MemoryContext(operation="recall", query=user_text_shape(q)),
+    )
 
     result = await memory_engine.recall(user_id, q, limit=limit, include_graph_expansion=False)
 
@@ -168,9 +181,9 @@ async def get_memory_graph(
 
 @router.get(
     "/episodes",
-    responses={
-        400: {"description": "Invalid date range (start after end, or range exceeds limit)"}
-    },
+    responses=error_responses(
+        {400: "Invalid date range (start after end, or range exceeds limit)"}
+    ),
 )
 async def get_memory_episodes(
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
@@ -240,6 +253,7 @@ async def update_memory_document(
     result = await memory_engine.update_document(user_id, doc_type, request.content)
 
     log.set(memory=MemoryContext(operation="update_document", version=result.version))
+    capture(UserId(user_id), MemoryDocumentUpdated())
     return result
 
 
@@ -284,6 +298,7 @@ async def create_memory(
 
     entry = retained.entry
     log.set(memory=MemoryContext(operation="create", memory_id=entry.id, success=True))
+    capture(UserId(user_id), MemoryCreated())
     return CreateMemoryResponse(
         success=True,
         memory_id=entry.id,
@@ -319,7 +334,7 @@ async def get_memory_history(
 
 @router.patch(
     "/{memory_id}",
-    responses={404: {"description": "Memory not found or already superseded"}},
+    responses=error_responses({404: "Memory not found or already superseded"}),
 )
 @tiered_rate_limit("memory")
 async def update_memory(
@@ -339,12 +354,13 @@ async def update_memory(
     entry = await memory_engine.update_memory(user_id, memory_id, request.content)
 
     log.set(memory=MemoryContext(operation="update", new_memory_id=entry.id, version=entry.version))
+    capture(UserId(user_id), MemoryUpdated())
     return entry
 
 
 @router.delete(
     "/{memory_id}",
-    responses={404: {"description": "Memory not found"}},
+    responses=error_responses({404: "Memory not found"}),
 )
 @tiered_rate_limit("memory")
 async def delete_memory(
@@ -364,7 +380,7 @@ async def delete_memory(
     if not success:
         log.warning("memory_not_found", operation="delete", memory_id=memory_id)
         raise HTTPException(status_code=404, detail="Memory not found")
-    capture_context_event(AnalyticsEvents.MEMORY_ITEM_DELETED, {"memory_id": memory_id})
+    capture(UserId(user_id), MemoryItemDeleted(memory_id=memory_id))
     return DeleteMemoryResponse(success=True, message="Memory deleted successfully")
 
 
@@ -379,7 +395,7 @@ async def clear_all_memories(
 
     deleted = await memory_engine.delete_all(user_id)
 
-    capture_context_event(AnalyticsEvents.MEMORY_CLEARED, {"deleted_count": deleted})
+    capture(UserId(user_id), MemoryCleared(deleted_count=deleted))
     log.set(
         memory=MemoryContext(
             operation="delete_all",

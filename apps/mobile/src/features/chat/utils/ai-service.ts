@@ -10,13 +10,6 @@ export const getAIResponse = async (
   // Simulate API delay
   await new Promise((resolve) => setTimeout(resolve, 1000));
 
-  // In production, send chatId to backend:
-  // const response = await fetch('/api/chat', {
-  //   method: 'POST',
-  //   body: JSON.stringify({ message: userMessage, chatId }),
-  // });
-  // return response.json();
-
   // Simple mock responses
   const responses = [
     "I'm here to help! How can I assist you today?",

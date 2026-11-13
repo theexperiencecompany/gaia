@@ -1,18 +1,20 @@
 """Unit tests for app.utils.concurrency.
 
-``run_on_captured_loop`` is the sync->async bridge the calendar Composio tools
-use. The bug it fixes: the old bridge ran coroutines on a fresh ``asyncio.run``
+run_on_captured_loop is the sync->async bridge the calendar Composio tools
+use. The bug it fixes: the old bridge ran coroutines on a fresh asyncio.run
 loop, so a coroutine that awaited a loop-bound client (Motor) raised
-``RuntimeError: ... attached to a different loop``. The regression is pinned with
-a loop-bound ``asyncio.Future`` standing in for that client — a fresh loop cannot
+RuntimeError: ... attached to a different loop. The regression is pinned with
+a loop-bound asyncio.Future standing in for that client — a fresh loop cannot
 await it, the captured loop can.
 """
 
 import asyncio
+from contextvars import ContextVar
 
 import pytest
 
 from app.utils.concurrency import (
+    ContextThreadPoolExecutor,
     capture_running_loop,
     reset_captured_loop,
     run_on_captured_loop,
@@ -51,10 +53,9 @@ class TestRunOnCapturedLoop:
         assert result == "ok"
 
     async def test_awaits_a_loop_bound_future_without_cross_loop_error(self) -> None:
-        # A Future bound to THIS loop. The old bridge (asyncio.run in a worker
-        # thread) drives a fresh loop and raises "attached to a different loop"
-        # here — the exact calendar failure. Dispatching onto the captured loop
-        # resolves the future on the loop that owns it.
+        # The old bridge (asyncio.run in a worker thread) raised "attached to a
+        # different loop" here — the exact calendar failure. Dispatching onto
+        # the captured loop resolves the future on the loop that owns it.
         capture_running_loop()
         loop = asyncio.get_running_loop()
         fut: asyncio.Future[str] = loop.create_future()
@@ -92,3 +93,22 @@ class TestRunOnCapturedLoop:
             "run_on_captured_loop called from the server loop itself; await the "
             "coroutine directly instead of blocking the loop it runs on."
         )
+
+
+_scope: ContextVar[str | None] = ContextVar("test_scope", default=None)
+
+
+class TestContextThreadPoolExecutor:
+    def test_every_task_sees_the_submitting_threads_context(self) -> None:
+        token = _scope.set("ca_work")
+        try:
+            with ContextThreadPoolExecutor(max_workers=2) as pool:
+                seen = list(pool.map(lambda _: _scope.get(), range(4)))
+        finally:
+            _scope.reset(token)
+
+        assert seen == ["ca_work"] * 4
+
+    def test_keyword_arguments_reach_the_task(self) -> None:
+        with ContextThreadPoolExecutor(max_workers=1) as pool:
+            assert pool.submit(int, "ff", base=16).result() == 255

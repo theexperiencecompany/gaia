@@ -1,0 +1,137 @@
+From 03d43a3b8fca385516a1503254148339043724e1 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 02:48:29 +0530
+Subject: [PATCH] fix(cdp): replies and events reach the socket before the next
+ page turn
+
+The connection's socket writer and its CDP processor are tasks on one
+LocalSet. Once a page is live the processor runs its autonomous page turns
+(timers, script, layout) back to back, and a turn does not suspend while it
+runs, so the writer only got a slot when a turn happened to wait on I/O.
+Replies and events already forwarded sat in the channel behind seconds of page
+work: on a Wikipedia article the navigation's final events reached the client
+12 s after the processor had sent them, and so did command replies and
+screencast frames.
+
+Before page work the processor now queues a flush marker behind everything it
+has sent and waits until the writer reaches it (or the connection closes).
+The writer notifies instead of sending the marker. Measured on the same
+article: frameStoppedLoading at 2.9 s instead of 12-14 s.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-cdp/src/server.rs | 39 +++++++++++++++++++++++++++++---
+ 1 file changed, 36 insertions(+), 3 deletions(-)
+
+diff --git a/crates/obscura-cdp/src/server.rs b/crates/obscura-cdp/src/server.rs
+index a67cc64..fdc9450 100644
+--- a/crates/obscura-cdp/src/server.rs
++++ b/crates/obscura-cdp/src/server.rs
+@@ -61,9 +61,17 @@ enum ServerMessage {
+     Cdp(CdpMessage),
+     NewConnection {
+         reply_tx: mpsc::UnboundedSender<String>,
++        /// Notified when the socket writer reaches a FLUSH_MARKER, i.e. has
++        /// written everything queued before it. None when nothing writes the
++        /// replies to a socket (tests that read the channel themselves).
++        flushed: Option<Arc<Notify>>,
+     },
+ }
+ 
++/// A reply-channel entry the socket writer does not send: it notifies the
++/// connection's `flushed` instead, once everything queued before it is written.
++const FLUSH_MARKER: &str = "\u{0}flush";
++
+ pub async fn start(port: u16) -> anyhow::Result<()> {
+     start_with_options(port, None, false).await
+ }
+@@ -911,6 +919,7 @@ async fn cdp_processor(
+     let mut screencast_tick = tokio::time::interval(tokio::time::Duration::from_millis(33));
+     screencast_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+     let mut connection_reply_tx: Option<mpsc::UnboundedSender<String>> = None;
++    let mut connection_flushed: Option<Arc<Notify>> = None;
+     // A real browser renderer continues servicing timers, networking, posted
+     // tasks, and animation callbacks while its DevTools client is silent. Keep
+     // one wake-driven deno_core turn armed after work may have been scheduled;
+@@ -921,6 +930,22 @@ async fn cdp_processor(
+     let mut runtime_pump_error_streak = 0_u8;
+ 
+     loop {
++        // The socket writer is another task on this LocalSet, and a page turn
++        // (a script or layout pass) does not suspend while it runs. Before
++        // starting page work, let the writer put everything already replied
++        // or emitted on the wire, so no response waits behind a page turn.
++        if runtime_pump_armed || has_active_screencast(&ctx) {
++            if let (Some(reply_tx), Some(flushed)) =
++                (connection_reply_tx.as_ref(), connection_flushed.as_ref())
++            {
++                if reply_tx.send(FLUSH_MARKER.to_string()).is_ok() {
++                    tokio::select! {
++                        _ = flushed.notified() => {}
++                        _ = reply_tx.closed() => {}
++                    }
++                }
++            }
++        }
+         // Drain any deferred messages from the previous interception window
+         // before pulling new ones off the wire. Each is processed with no
+         // nav-task spawn_local in flight, so this connection's only entered
+@@ -1037,8 +1062,9 @@ async fn cdp_processor(
+         };
+ 
+         match msg {
+-            ServerMessage::NewConnection { reply_tx } => {
++            ServerMessage::NewConnection { reply_tx, flushed } => {
+                 connection_reply_tx = Some(reply_tx.clone());
++                connection_flushed = flushed;
+                 let _ = reply_tx.send(
+                     json!({"__init": true})
+                         .to_string(),
+@@ -1549,7 +1575,7 @@ async fn process_with_interception(
+             Some(msg) = rx.recv() => {
+                 tracing::info!("INTERCEPTION select: received CDP message during navigation");
+                 match msg {
+-                    ServerMessage::NewConnection { reply_tx: new_tx } => {
++                    ServerMessage::NewConnection { reply_tx: new_tx, .. } => {
+                         // Safe: no V8 enter, just bookkeeping.
+                         let pid = ctx.create_page();
+                         let sid = format!("{}-session", pid);
+@@ -1805,8 +1831,10 @@ async fn handle_connection_ws(
+ 
+     let (reply_tx, mut reply_rx) = mpsc::unbounded_channel::<String>();
+ 
++    let flushed = Arc::new(Notify::new());
+     let _ = msg_tx.send(ServerMessage::NewConnection {
+         reply_tx: reply_tx.clone(),
++        flushed: Some(flushed.clone()),
+     });
+     if let Some(init_msg) = reply_rx.recv().await {
+         tracing::debug!("Connection init: {}", &init_msg[..init_msg.len().min(100)]);
+@@ -1814,6 +1842,10 @@ async fn handle_connection_ws(
+ 
+     let send_task = tokio::task::spawn_local(async move {
+         while let Some(msg) = reply_rx.recv().await {
++            if msg == FLUSH_MARKER {
++                flushed.notify_one();
++                continue;
++            }
+             if msg.contains("\"__init\"") {
+                 continue;
+             }
+@@ -1944,7 +1976,7 @@ mod tests {
+                     shutdown,
+                 ));
+                 server_tx
+-                    .send(super::ServerMessage::NewConnection { reply_tx: reply_tx.clone() })
++                    .send(super::ServerMessage::NewConnection { reply_tx: reply_tx.clone(), flushed: None })
+                     .unwrap();
+                 reply_rx.recv().await.expect("processor init");
+                 let send = |value: serde_json::Value| {
+@@ -2031,6 +2063,7 @@ mod tests {
+                 server_tx
+                     .send(super::ServerMessage::NewConnection {
+                         reply_tx: reply_tx.clone(),
++                        flushed: None,
+                     })
+                     .unwrap();
+                 let init = reply_rx.recv().await.expect("processor init");

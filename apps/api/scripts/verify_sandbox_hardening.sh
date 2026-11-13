@@ -111,7 +111,7 @@ echo "[7/7] Unprivileged user can still do its job"
 ok_python=0
 ok_pip=0
 python3 -c "print('hi')" >/dev/null 2>&1 && ok_python=1
-pip install --user --dry-run pyyaml >/dev/null 2>&1 && ok_pip=1
+pip install --user --dry-run --only-binary :all: pyyaml >/dev/null 2>&1 && ok_pip=1
 if [[ "$ok_python" = 1 ]] && [[ "$ok_pip" = 1 ]]; then
     pass "python + pip --user work without root"
 else

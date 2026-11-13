@@ -1,24 +1,14 @@
 """Validate presence of env-backed settings, grouped by feature.
 
-WARNING: This file is parsed by the GAIA CLI (packages/cli/src/lib/env-parser.ts) using regex.
-Any changes to the structure of SettingsGroup or how groups are registered MUST be reflected in the CLI parser.
-If you change the syntax, please update the CLI parser accordingly.
-
-Why
-- Make missing config obvious with actionable logs.
-
-Flow
-- Define fields in `app.config.settings` (Pydantic classes).
-- Register related keys here as `SettingsGroup`s.
-- `validate_settings()` scans the instantiated settings object and logs what’s missing.
-
-Add env vars
-1) Add fields to `CommonSettings`/`ProductionSettings`/`DevelopmentSettings`.
-2) Add a `SettingsGroup` in `_register_predefined_groups()` with matching key names.
+Which groups a deployment requires comes from the capability table
+(app/config/capability_requirements.py); scripts/dump_config_schema.py imports
+both to build the CLI's config schema.
 """
 
 from dataclasses import dataclass
 
+from app.config.capability_requirements import required_keys, unused_keys
+from app.config.deployment import DeploymentKind, DeploymentProfile, baseline_profile
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
@@ -27,26 +17,33 @@ from shared.py.wide_events import log
 class SettingsGroup:
     """One group of related config keys, and what breaks without them.
 
-    ``all_required`` False means any one key in the group suffices;
-    ``alternative_group`` names a mutually exclusive group that can stand in.
+    all_required False means any one key in the group suffices;
+    alternative_group names a mutually exclusive group that can stand in;
+    selfhost_setup False keeps a group out of the CLI's self-host setup prompts.
     """
 
     name: str
     keys: list[str]
     description: str
     affected_features: str
-    required_in_prod: bool = True
     all_required: bool = True
     docs_url: str | None = None
     alternative_group: str | None = None
+    selfhost_setup: bool = True
+
+    def required_in(self, profile: DeploymentProfile) -> bool:
+        """Whether the profile's capabilities need any of this group's keys."""
+        return not required_keys(profile).isdisjoint(self.keys)
 
 
 class SettingsValidator:
+    """Validates required settings are present for each enabled feature group."""
+
     def __init__(self) -> None:
         self.groups: list[SettingsGroup] = []
         self.missing_groups: list[tuple[SettingsGroup, list[str]]] = []
         self.show_warnings: bool = True
-        self.is_production: bool = True
+        self.profile: DeploymentProfile = baseline_profile(DeploymentKind.PRODUCTION)
         self._register_predefined_groups()
 
     def _register_predefined_groups(self) -> None:
@@ -111,6 +108,7 @@ class SettingsValidator:
                 affected_features="User authentication, login, and session management",
                 all_required=True,
                 docs_url="https://workos.com/docs/reference/api-keys",
+                selfhost_setup=False,
             )
         )
 
@@ -124,9 +122,27 @@ class SettingsValidator:
                     "CLOUDINARY_API_SECRET",
                 ],
                 description="Cloudinary media storage service",
-                affected_features="File uploads, image storage, and support ticket attachments",
+                affected_features=(
+                    "File uploads, image storage, and support ticket attachments when "
+                    "BLOB_STORE is cloudinary (hosted, or a self-host that chose it)"
+                ),
                 all_required=True,
                 docs_url="https://cloudinary.com/documentation/cloudinary_credentials",
+                selfhost_setup=False,
+            )
+        )
+
+        self.register_group(
+            SettingsGroup(
+                name="S3 Blob Storage",
+                keys=["S3_ENDPOINT_URL", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"],
+                description="S3-compatible bucket (AWS S3, Cloudflare R2, Railway, Backblaze B2, MinIO)",
+                affected_features=(
+                    "File uploads, image storage, and support ticket attachments when "
+                    "BLOB_STORE is s3"
+                ),
+                docs_url="https://docs.heygaia.io/self-hosting/ai-models-and-tools#file-storage",
+                selfhost_setup=False,
             )
         )
 
@@ -136,6 +152,7 @@ class SettingsValidator:
                 keys=["SHARE_GRANT_SECRET"],
                 description="HMAC signing secret for single-purpose file-share grants",
                 affected_features="File attachments fetched by Composio during tool execution",
+                selfhost_setup=False,
             )
         )
 
@@ -202,6 +219,7 @@ class SettingsValidator:
                 description="Llama Index for document processing and retrieval",
                 affected_features="Advanced document indexing, RAG capabilities, and structured data retrieval",
                 docs_url="https://docs.llamaindex.ai/",
+                selfhost_setup=False,
             )
         )
 
@@ -225,6 +243,7 @@ class SettingsValidator:
                 description="OpenWeather API for weather data",
                 affected_features="Weather forecasts and current conditions",
                 docs_url="https://openweathermap.org/api",
+                selfhost_setup=False,
             )
         )
 
@@ -248,6 +267,18 @@ class SettingsValidator:
                 description="E2B secure code execution environment",
                 affected_features="Code execution and sandboxed environments",
                 docs_url="https://e2b.dev/docs",
+                selfhost_setup=False,
+            )
+        )
+
+        # Browser Automation
+        self.register_group(
+            SettingsGroup(
+                name="Browser Host",
+                keys=["BROWSER_HOST_URL", "BROWSER_HOST_KEY", "BROWSER_FALLBACK_HOST_URL"],
+                description="gaia-browser-host: the BROWSER_ENGINE host + the Chromium host",
+                affected_features="Autonomous browser automation (the browser_task tool)",
+                selfhost_setup=False,
             )
         )
 
@@ -260,6 +291,7 @@ class SettingsValidator:
                 affected_features="Payment processing and subscription management",
                 all_required=True,
                 docs_url="https://docs.dodopayments.com/",
+                selfhost_setup=False,
             )
         )
 
@@ -270,6 +302,7 @@ class SettingsValidator:
                 keys=["BLOG_BEARER_TOKEN"],
                 description="Blog content management",
                 affected_features="Blog creation and management",
+                selfhost_setup=False,
             )
         )
 
@@ -281,6 +314,7 @@ class SettingsValidator:
                 description="Sentry error tracking and monitoring",
                 affected_features="Error reporting and application monitoring",
                 docs_url="https://docs.sentry.io/platforms/python/",
+                selfhost_setup=False,
             )
         )
         self.register_group(
@@ -289,8 +323,8 @@ class SettingsValidator:
                 keys=["POSTHOG_PROJECT_TOKEN", "POSTHOG_HOST"],
                 description="Posthog analytics and event tracking",
                 affected_features="User behavior analytics and event tracking",
-                required_in_prod=False,
                 docs_url="https://posthog.com/docs/api",
+                selfhost_setup=False,
             )
         )
 
@@ -303,42 +337,26 @@ class SettingsValidator:
         """
         self.groups.append(group)
 
-    def configure(self, show_warnings: bool, is_production: bool) -> None:
-        """
-        Configure the validator.
-
-        Args:
-            show_warnings: Whether to show warnings for missing keys
-            is_production: Whether the application is running in production mode
-        """
+    def configure(self, show_warnings: bool, profile: DeploymentProfile) -> None:
+        """Set whether to warn and which deployment the groups are judged against."""
         self.show_warnings = show_warnings
-        self.is_production = is_production
+        self.profile = profile
         self.missing_groups = []
 
     def validate_settings(
-        # Deliberately `object`, not `CommonSettings`: the body below only ever
-        # does hasattr()/getattr() with dynamic string keys, so it works on any
-        # object and never needs the concrete settings type. Importing
-        # CommonSettings here would also require a TYPE_CHECKING-guarded import
-        # to avoid a circular dependency with app.config.settings -- see
-        # apps/api/CLAUDE.md's Type Safety section, item 9, for why that's
-        # avoided rather than reached for. Do not "fix" this back to
-        # CommonSettings; it is not an imprecision.
+        # Deliberately `object`, not `CommonSettings`: the body only does
+        # hasattr()/getattr() with dynamic keys; importing CommonSettings would
+        # need a TYPE_CHECKING-guarded import to dodge a circular dependency (apps/api/CLAUDE.md item 9).
         self,
         settings_obj: object,
     ) -> list[tuple[SettingsGroup, list[str]]]:
-        """
-        Validate settings against registered groups.
-
-        Args:
-            settings_obj: The settings object to validate
-
-        Returns:
-            List of tuples with missing groups and their missing keys
-        """
+        """Validate settings against registered groups."""
         self.missing_groups = []
+        unused = unused_keys(self.profile)
 
         for group in self.groups:
+            if unused.issuperset(group.keys):
+                continue
             missing_keys = []
 
             for key in group.keys:
@@ -361,14 +379,13 @@ class SettingsValidator:
         if not self.show_warnings or not self.missing_groups:
             return
 
-        # Log detailed warnings
+        hosted = self.profile.kind is DeploymentKind.PRODUCTION
         for group, missing_keys in self.missing_groups:
-            # Skip if not required in production and we're in production
-            if self.is_production and not group.required_in_prod:
+            required = group.required_in(self.profile)
+            # GAIA Cloud logs only what it needs; an optional group there is noise.
+            if hosted and not required:
                 continue
-
-            # Determine the message prefix based on criticality
-            prefix = "CRITICAL" if self.is_production and group.required_in_prod else "WARNING"
+            prefix = "CRITICAL" if hosted and required else "WARNING"
 
             # Create the warning message
             warning_msg = (

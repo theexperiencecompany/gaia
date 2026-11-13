@@ -1,6 +1,6 @@
 """Composio fetcher compatibility: our share responses satisfy their fetcher.
 
-Uses Composio's real ``_fetch_file_from_url`` (no mocks on their side) against
+Uses Composio's real _fetch_file_from_url (no mocks on their side) against
 a local socket server emitting exactly what the share route serves: a direct
 200 with Content-Type and bytes. Also pins the constraint that killed the
 redirect design — their fetcher raises on 301/302/303/307/308, so the token

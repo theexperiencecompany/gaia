@@ -1,0 +1,722 @@
+From 2022665fb76fc625689783adb29f83130960d5ca Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 07:24:44 +0530
+Subject: [PATCH] refactor(net): the subresource cache and request sharing live
+ in their own loader
+
+The plain client's response cache and in-flight request coalescing move,
+unchanged, into resource_loader.rs, behind a load() that takes the uncached
+fetch and the observer replay as closures, so the stealth client can use
+the same loader.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-net/src/client.rs          | 317 +++-------------------
+ crates/obscura-net/src/lib.rs             |   1 +
+ crates/obscura-net/src/resource_loader.rs | 301 ++++++++++++++++++++
+ 3 files changed, 333 insertions(+), 286 deletions(-)
+ create mode 100644 crates/obscura-net/src/resource_loader.rs
+
+diff --git a/crates/obscura-net/src/client.rs b/crates/obscura-net/src/client.rs
+index 284f3c3..1734b6c 100644
+--- a/crates/obscura-net/src/client.rs
++++ b/crates/obscura-net/src/client.rs
+@@ -1,7 +1,7 @@
+-use std::collections::{HashMap, VecDeque};
++use std::collections::HashMap;
+ use std::sync::{Arc, OnceLock};
+ use std::sync::atomic::{AtomicU32, Ordering};
+-use std::time::{Duration, Instant};
++use std::time::Duration;
+ 
+ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+ 
+@@ -9,11 +9,12 @@ use reqwest::dns::{Addrs, Name, Resolve, Resolving};
+ use reqwest::header::{HeaderMap, HeaderName, HeaderValue, USER_AGENT};
+ use reqwest::redirect::Policy;
+ use reqwest::{Client, Method};
+-use tokio::sync::{RwLock, watch};
++use tokio::sync::RwLock;
+ use url::Url;
+ 
+ use crate::cookies::CookieJar;
+ use crate::interceptor::{InterceptAction, RequestInterceptor};
++use crate::resource_loader::{ResourceCacheKey, ResourceLoader};
+ 
+ fn configured_root_paths() -> Vec<std::path::PathBuf> {
+     let mut paths = Vec::new();
+@@ -969,149 +970,13 @@ pub struct ObscuraHttpClient {
+     pub timeout: Duration,
+     pub in_flight: Arc<std::sync::atomic::AtomicU32>,
+     pub block_trackers: bool,
+-    resource_loader: std::sync::Mutex<ResourceLoaderState>,
++    resource_loader: ResourceLoader,
+     /// When true, `validate_url` lets localhost / RFC1918 / link-local addresses
+     /// through in addition to the `OBSCURA_ALLOW_PRIVATE_NETWORK` env var.
+     /// Set via `--allow-private-network` on the CLI (issue #33).
+     pub allow_private_network: bool,
+ }
+ 
+-const RESOURCE_CACHE_MAX_ENTRIES: usize = 256;
+-const RESOURCE_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
+-
+-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+-struct ResourceCacheKey {
+-    url: String,
+-    resource_type: ResourceType,
+-    mode: RequestMode,
+-    credentials: RequestCredentials,
+-    initiator: Option<String>,
+-    referrer: Option<String>,
+-    user_agent: String,
+-    extra_headers: Vec<(String, String)>,
+-    max_response_bytes: usize,
+-}
+-
+-#[derive(Clone)]
+-struct ResourceCacheEntry {
+-    response: Response,
+-    expires_at: Instant,
+-}
+-
+-#[derive(Default)]
+-struct ResourceCache {
+-    entries: HashMap<ResourceCacheKey, ResourceCacheEntry>,
+-    insertion_order: VecDeque<ResourceCacheKey>,
+-    body_bytes: usize,
+-}
+-
+-#[derive(Default)]
+-struct ResourceLoaderState {
+-    cache: ResourceCache,
+-    shared_fetches: HashMap<ResourceCacheKey, SharedFetchSender>,
+-}
+-
+-#[derive(Clone)]
+-enum SharedFetchOutcome {
+-    Cacheable(Response),
+-    RetryUncoalesced,
+-}
+-
+-type SharedFetchSender = watch::Sender<Option<SharedFetchOutcome>>;
+-
+-struct SharedFetchLeader<'a> {
+-    loader: &'a std::sync::Mutex<ResourceLoaderState>,
+-    key: ResourceCacheKey,
+-    sender: SharedFetchSender,
+-    finished: bool,
+-}
+-
+-impl SharedFetchLeader<'_> {
+-    fn finish(mut self, outcome: SharedFetchOutcome) {
+-        self.loader.lock().unwrap().shared_fetches.remove(&self.key);
+-        let _ = self.sender.send(Some(outcome));
+-        self.finished = true;
+-    }
+-}
+-
+-impl Drop for SharedFetchLeader<'_> {
+-    fn drop(&mut self) {
+-        if self.finished {
+-            return;
+-        }
+-        self.loader.lock().unwrap().shared_fetches.remove(&self.key);
+-        let _ = self.sender.send(Some(SharedFetchOutcome::RetryUncoalesced));
+-    }
+-}
+-
+-impl ResourceCache {
+-    fn get(&mut self, key: &ResourceCacheKey) -> Option<Response> {
+-        let entry = self.entries.get(key)?;
+-        if entry.expires_at <= Instant::now() {
+-            let expired = self.entries.remove(key)?;
+-            self.body_bytes = self.body_bytes.saturating_sub(expired.response.body.len());
+-            return None;
+-        }
+-        Some(entry.response.clone())
+-    }
+-
+-    fn insert(&mut self, key: ResourceCacheKey, response: Response, lifetime: Duration) {
+-        let response_bytes = response.body.len();
+-        if response_bytes > RESOURCE_CACHE_MAX_BYTES {
+-            return;
+-        }
+-        if let Some(previous) = self.entries.remove(&key) {
+-            self.body_bytes = self.body_bytes.saturating_sub(previous.response.body.len());
+-            self.insertion_order.retain(|queued| queued != &key);
+-        }
+-        while self.entries.len() >= RESOURCE_CACHE_MAX_ENTRIES
+-            || self.body_bytes.saturating_add(response_bytes) > RESOURCE_CACHE_MAX_BYTES
+-        {
+-            let Some(oldest) = self.insertion_order.pop_front() else {
+-                break;
+-            };
+-            if let Some(entry) = self.entries.remove(&oldest) {
+-                self.body_bytes = self.body_bytes.saturating_sub(entry.response.body.len());
+-            }
+-        }
+-        self.body_bytes = self.body_bytes.saturating_add(response_bytes);
+-        self.insertion_order.push_back(key.clone());
+-        self.entries.insert(
+-            key,
+-            ResourceCacheEntry {
+-                response,
+-                expires_at: Instant::now() + lifetime,
+-            },
+-        );
+-    }
+-}
+-
+-fn response_cache_lifetime(response: &Response) -> Option<Duration> {
+-    if !(200..300).contains(&response.status)
+-        || !response.redirected_from.is_empty()
+-        || response.header("set-cookie").is_some()
+-        || response
+-            .header("vary")
+-            .is_some_and(|vary| vary.split(',').any(|name| name.trim() == "*"))
+-    {
+-        return None;
+-    }
+-    let cache_control = response.header("cache-control")?;
+-    let mut max_age = None;
+-    for directive in cache_control.split(',').map(str::trim) {
+-        let lower = directive.to_ascii_lowercase();
+-        if lower == "no-store" || lower == "no-cache" {
+-            return None;
+-        }
+-        if let Some(value) = lower.strip_prefix("max-age=") {
+-            max_age = value.trim_matches('"').parse::<u64>().ok();
+-        }
+-    }
+-    max_age
+-        .filter(|seconds| *seconds > 0)
+-        .map(Duration::from_secs)
+-}
+-
+ /// Derive the sec-ch-ua and sec-ch-ua-platform client-hint header values from a
+ /// User-Agent string, using Chromium's per-major-version GREASE algorithm so
+ /// the non-stealth HTTP path agrees with navigator.userAgentData instead of
+@@ -1183,7 +1048,7 @@ impl ObscuraHttpClient {
+             in_flight: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+             timeout: Duration::from_secs(30),
+             block_trackers: false,
+-            resource_loader: std::sync::Mutex::new(ResourceLoaderState::default()),
++            resource_loader: ResourceLoader::default(),
+             allow_private_network,
+         }
+     }
+@@ -1325,45 +1190,16 @@ impl ObscuraHttpClient {
+         body: &Option<Vec<u8>>,
+         request: &ResourceRequest,
+     ) -> Option<ResourceCacheKey> {
+-        if *method != Method::GET
+-            || body.is_some()
+-            || request.resource_type == ResourceType::Document
+-            || !matches!(url.scheme(), "http" | "https")
+-            || self.interceptor.read().await.is_some()
+-        {
+-            return None;
+-        }
+-        let mut extra_headers = self
+-            .extra_headers
+-            .read()
+-            .await
+-            .iter()
+-            .map(|(name, value)| (name.to_ascii_lowercase(), value.clone()))
+-            .collect::<Vec<_>>();
+-        extra_headers.sort();
+-        if extra_headers.iter().any(|(name, value)| {
+-            name == "authorization"
+-                || name == "cookie"
+-                || (name == "cache-control"
+-                    && (value.to_ascii_lowercase().contains("no-cache")
+-                        || value.to_ascii_lowercase().contains("no-store")))
+-        }) {
+-            return None;
+-        }
+-        if request.sends_credentials_to(url) && !self.cookie_jar.get_cookie_header(url).is_empty() {
++        if *method != Method::GET || body.is_some() || self.interceptor.read().await.is_some() {
+             return None;
+         }
+-        Some(ResourceCacheKey {
+-            url: url.to_string(),
+-            resource_type: request.resource_type,
+-            mode: request.mode,
+-            credentials: request.credentials,
+-            initiator: request.initiator.as_ref().map(ToString::to_string),
+-            referrer: request.referrer.as_ref().map(ToString::to_string),
+-            user_agent: self.user_agent.read().await.clone(),
+-            extra_headers,
+-            max_response_bytes: request.max_response_bytes,
+-        })
++        ResourceCacheKey::for_request(
++            url,
++            request,
++            &*self.extra_headers.read().await,
++            &self.cookie_jar,
++            self.user_agent.read().await.clone(),
++        )
+     }
+ 
+     async fn fetch_with_profile(
+@@ -1382,109 +1218,25 @@ impl ObscuraHttpClient {
+                 .fetch_with_profile_uncached(initial_method, url, initial_body, callbacks, request)
+                 .await;
+         };
+-
+-        enum Acquisition {
+-            Cached(Response),
+-            Follower(watch::Receiver<Option<SharedFetchOutcome>>),
+-            Leader(SharedFetchSender),
+-        }
+-
+-        // Cache lookup and leader election are one critical section.  Without
+-        // that atomicity a request can miss the cache, pause, and install a
+-        // second leader after the first request has already populated it.
+-        let acquisition = {
+-            let mut loader = self.resource_loader.lock().unwrap();
+-            if let Some(response) = loader.cache.get(&cache_key) {
+-                Acquisition::Cached(response)
+-            } else if let Some(sender) = loader.shared_fetches.get(&cache_key) {
+-                Acquisition::Follower(sender.subscribe())
+-            } else {
+-                let (sender, _receiver) = watch::channel(None);
+-                loader
+-                    .shared_fetches
+-                    .insert(cache_key.clone(), sender.clone());
+-                Acquisition::Leader(sender)
+-            }
+-        };
+-
+-        match acquisition {
+-            Acquisition::Cached(response) => {
+-                self.fire_logical_resource_callbacks(callbacks, url, &request, &response)
+-                    .await;
+-                Ok(response)
+-            }
+-            Acquisition::Follower(mut receiver) => loop {
+-                let outcome = { receiver.borrow().clone() };
+-                if let Some(outcome) = outcome {
+-                    break match outcome {
+-                        SharedFetchOutcome::Cacheable(response) => {
+-                            self.fire_logical_resource_callbacks(
+-                                callbacks, url, &request, &response,
+-                            )
+-                            .await;
+-                            Ok(response)
+-                        }
+-                        SharedFetchOutcome::RetryUncoalesced => {
+-                            self.fetch_with_profile_uncached(
+-                                initial_method,
+-                                url,
+-                                initial_body,
+-                                callbacks,
+-                                request,
+-                            )
+-                            .await
+-                        }
+-                    };
+-                }
+-                if receiver.changed().await.is_err() {
+-                    break self
+-                        .fetch_with_profile_uncached(
+-                            initial_method,
+-                            url,
+-                            initial_body,
+-                            callbacks,
+-                            request,
+-                        )
+-                        .await;
+-                }
+-            },
+-            Acquisition::Leader(sender) => {
+-                // If this future is cancelled or panics while awaiting I/O,
+-                // the guard removes the stale leader and wakes followers so
+-                // they can retry instead of waiting forever.
+-                let leader = SharedFetchLeader {
+-                    loader: &self.resource_loader,
+-                    key: cache_key.clone(),
+-                    sender,
+-                    finished: false,
+-                };
+-                let result = self
+-                    .fetch_with_profile_uncached(
+-                        initial_method,
++        self.resource_loader
++            .load(
++                cache_key,
++                || {
++                    self.fetch_with_profile_uncached(
++                        initial_method.clone(),
+                         url,
+-                        initial_body,
++                        initial_body.clone(),
+                         callbacks,
+-                        request,
++                        request.clone(),
+                     )
+-                    .await;
+-                let shared_outcome = match &result {
+-                    Ok(response) => match response_cache_lifetime(response) {
+-                        Some(lifetime) => {
+-                            self.resource_loader.lock().unwrap().cache.insert(
+-                                cache_key,
+-                                response.clone(),
+-                                lifetime,
+-                            );
+-                            SharedFetchOutcome::Cacheable(response.clone())
+-                        }
+-                        None => SharedFetchOutcome::RetryUncoalesced,
+-                    },
+-                    Err(_) => SharedFetchOutcome::RetryUncoalesced,
+-                };
+-                leader.finish(shared_outcome);
+-                result
+-            }
+-        }
++                },
++                |response| async {
++                    self.fire_logical_resource_callbacks(callbacks, url, &request, &response)
++                        .await;
++                    response
++                },
++            )
++            .await
+     }
+ 
+     /// A cache hit or shared transport still represents an independent page
+@@ -2506,14 +2258,7 @@ mod ssrf_tests {
+         });
+         tokio::time::timeout(Duration::from_secs(2), async {
+             loop {
+-                let follower_is_waiting = client
+-                    .resource_loader
+-                    .lock()
+-                    .unwrap()
+-                    .shared_fetches
+-                    .values()
+-                    .next()
+-                    .is_some_and(|sender| sender.receiver_count() > 0);
++                let follower_is_waiting = client.resource_loader.has_waiting_follower();
+                 if follower_is_waiting {
+                     break;
+                 }
+diff --git a/crates/obscura-net/src/lib.rs b/crates/obscura-net/src/lib.rs
+index 49e754d..f0870e0 100644
+--- a/crates/obscura-net/src/lib.rs
++++ b/crates/obscura-net/src/lib.rs
+@@ -4,6 +4,7 @@ pub mod data_url;
+ pub mod encoding;
+ pub mod interceptor;
+ pub mod robots;
++mod resource_loader;
+ pub mod blocklist;
+ #[cfg(feature = "stealth")]
+ pub mod wreq_client;
+diff --git a/crates/obscura-net/src/resource_loader.rs b/crates/obscura-net/src/resource_loader.rs
+new file mode 100644
+index 0000000..8a3a94c
+--- /dev/null
++++ b/crates/obscura-net/src/resource_loader.rs
+@@ -0,0 +1,301 @@
++//! The subresource cache and in-flight request sharing both HTTP clients use:
++//! a response the server marks cacheable (max-age) is reused while fresh, and
++//! concurrent requests for the same resource share one transaction.
++
++use std::collections::{HashMap, VecDeque};
++use std::future::Future;
++use std::time::{Duration, Instant};
++
++use tokio::sync::watch;
++use url::Url;
++
++use crate::client::{
++    ObscuraNetError, RequestCredentials, RequestMode, ResourceRequest, ResourceType, Response,
++};
++use crate::cookies::CookieJar;
++
++const RESOURCE_CACHE_MAX_ENTRIES: usize = 256;
++const RESOURCE_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
++
++#[derive(Clone, Debug, Hash, PartialEq, Eq)]
++pub(crate) struct ResourceCacheKey {
++    url: String,
++    resource_type: ResourceType,
++    mode: RequestMode,
++    credentials: RequestCredentials,
++    initiator: Option<String>,
++    referrer: Option<String>,
++    user_agent: String,
++    extra_headers: Vec<(String, String)>,
++    max_response_bytes: usize,
++}
++
++#[derive(Clone)]
++struct ResourceCacheEntry {
++    response: Response,
++    expires_at: Instant,
++}
++
++#[derive(Default)]
++struct ResourceCache {
++    entries: HashMap<ResourceCacheKey, ResourceCacheEntry>,
++    insertion_order: VecDeque<ResourceCacheKey>,
++    body_bytes: usize,
++}
++
++#[derive(Default)]
++struct ResourceLoaderState {
++    cache: ResourceCache,
++    shared_fetches: HashMap<ResourceCacheKey, SharedFetchSender>,
++}
++
++#[derive(Clone)]
++enum SharedFetchOutcome {
++    Cacheable(Response),
++    RetryUncoalesced,
++}
++
++type SharedFetchSender = watch::Sender<Option<SharedFetchOutcome>>;
++
++struct SharedFetchLeader<'a> {
++    loader: &'a std::sync::Mutex<ResourceLoaderState>,
++    key: ResourceCacheKey,
++    sender: SharedFetchSender,
++    finished: bool,
++}
++
++impl SharedFetchLeader<'_> {
++    fn finish(mut self, outcome: SharedFetchOutcome) {
++        self.loader.lock().unwrap().shared_fetches.remove(&self.key);
++        let _ = self.sender.send(Some(outcome));
++        self.finished = true;
++    }
++}
++
++impl Drop for SharedFetchLeader<'_> {
++    fn drop(&mut self) {
++        if self.finished {
++            return;
++        }
++        self.loader.lock().unwrap().shared_fetches.remove(&self.key);
++        let _ = self.sender.send(Some(SharedFetchOutcome::RetryUncoalesced));
++    }
++}
++
++impl ResourceCache {
++    fn get(&mut self, key: &ResourceCacheKey) -> Option<Response> {
++        let entry = self.entries.get(key)?;
++        if entry.expires_at <= Instant::now() {
++            let expired = self.entries.remove(key)?;
++            self.body_bytes = self.body_bytes.saturating_sub(expired.response.body.len());
++            return None;
++        }
++        Some(entry.response.clone())
++    }
++
++    fn insert(&mut self, key: ResourceCacheKey, response: Response, lifetime: Duration) {
++        let response_bytes = response.body.len();
++        if response_bytes > RESOURCE_CACHE_MAX_BYTES {
++            return;
++        }
++        if let Some(previous) = self.entries.remove(&key) {
++            self.body_bytes = self.body_bytes.saturating_sub(previous.response.body.len());
++            self.insertion_order.retain(|queued| queued != &key);
++        }
++        while self.entries.len() >= RESOURCE_CACHE_MAX_ENTRIES
++            || self.body_bytes.saturating_add(response_bytes) > RESOURCE_CACHE_MAX_BYTES
++        {
++            let Some(oldest) = self.insertion_order.pop_front() else {
++                break;
++            };
++            if let Some(entry) = self.entries.remove(&oldest) {
++                self.body_bytes = self.body_bytes.saturating_sub(entry.response.body.len());
++            }
++        }
++        self.body_bytes = self.body_bytes.saturating_add(response_bytes);
++        self.insertion_order.push_back(key.clone());
++        self.entries.insert(
++            key,
++            ResourceCacheEntry {
++                response,
++                expires_at: Instant::now() + lifetime,
++            },
++        );
++    }
++}
++
++fn response_cache_lifetime(response: &Response) -> Option<Duration> {
++    if !(200..300).contains(&response.status)
++        || !response.redirected_from.is_empty()
++        || response.header("set-cookie").is_some()
++        || response
++            .header("vary")
++            .is_some_and(|vary| vary.split(',').any(|name| name.trim() == "*"))
++    {
++        return None;
++    }
++    let cache_control = response.header("cache-control")?;
++    let mut max_age = None;
++    for directive in cache_control.split(',').map(str::trim) {
++        let lower = directive.to_ascii_lowercase();
++        if lower == "no-store" || lower == "no-cache" {
++            return None;
++        }
++        if let Some(value) = lower.strip_prefix("max-age=") {
++            max_age = value.trim_matches('"').parse::<u64>().ok();
++        }
++    }
++    max_age
++        .filter(|seconds| *seconds > 0)
++        .map(Duration::from_secs)
++}
++
++
++impl ResourceCacheKey {
++    /// The cache identity of a GET for `request`, or None when the request
++    /// must not share a response: a document, a non-http(s) URL, credentials
++    /// in play (a cookie or an Authorization header), or a client header
++    /// that forbids caching.
++    pub(crate) fn for_request(
++        url: &Url,
++        request: &ResourceRequest,
++        extra_headers: &HashMap<String, String>,
++        cookie_jar: &CookieJar,
++        user_agent: String,
++    ) -> Option<Self> {
++        if request.resource_type == ResourceType::Document
++            || !matches!(url.scheme(), "http" | "https")
++        {
++            return None;
++        }
++        let mut extra_headers = extra_headers
++            .iter()
++            .map(|(name, value)| (name.to_ascii_lowercase(), value.clone()))
++            .collect::<Vec<_>>();
++        extra_headers.sort();
++        if extra_headers.iter().any(|(name, value)| {
++            name == "authorization"
++                || name == "cookie"
++                || (name == "cache-control"
++                    && (value.to_ascii_lowercase().contains("no-cache")
++                        || value.to_ascii_lowercase().contains("no-store")))
++        }) {
++            return None;
++        }
++        if request.sends_credentials_to(url) && !cookie_jar.get_cookie_header(url).is_empty() {
++            return None;
++        }
++        Some(ResourceCacheKey {
++            url: url.to_string(),
++            resource_type: request.resource_type,
++            mode: request.mode,
++            credentials: request.credentials,
++            initiator: request.initiator.as_ref().map(ToString::to_string),
++            referrer: request.referrer.as_ref().map(ToString::to_string),
++            user_agent,
++            extra_headers,
++            max_response_bytes: request.max_response_bytes,
++        })
++    }
++}
++
++#[derive(Default)]
++pub(crate) struct ResourceLoader {
++    state: std::sync::Mutex<ResourceLoaderState>,
++}
++
++impl ResourceLoader {
++    /// Answer the request `key` names from the cache, from a transaction
++    /// already in flight for it, or by running `fetch` and sharing the result.
++    /// `replay` reports a response this request did not fetch itself, so
++    /// passive observers still see one request per logical resource.
++    pub(crate) async fn load<F, FetchFut, R, ReplayFut>(
++        &self,
++        key: ResourceCacheKey,
++        fetch: F,
++        replay: R,
++    ) -> Result<Response, ObscuraNetError>
++    where
++        F: Fn() -> FetchFut,
++        FetchFut: Future<Output = Result<Response, ObscuraNetError>>,
++        R: Fn(Response) -> ReplayFut,
++        ReplayFut: Future<Output = Response>,
++    {
++        enum Acquisition {
++            Cached(Response),
++            Follower(watch::Receiver<Option<SharedFetchOutcome>>),
++            Leader(SharedFetchSender),
++        }
++
++        // Cache lookup and leader election are one critical section.  Without
++        // that atomicity a request can miss the cache, pause, and install a
++        // second leader after the first request has already populated it.
++        let acquisition = {
++            let mut loader = self.state.lock().unwrap();
++            if let Some(response) = loader.cache.get(&key) {
++                Acquisition::Cached(response)
++            } else if let Some(sender) = loader.shared_fetches.get(&key) {
++                Acquisition::Follower(sender.subscribe())
++            } else {
++                let (sender, _receiver) = watch::channel(None);
++                loader.shared_fetches.insert(key.clone(), sender.clone());
++                Acquisition::Leader(sender)
++            }
++        };
++
++        match acquisition {
++            Acquisition::Cached(response) => Ok(replay(response).await),
++            Acquisition::Follower(mut receiver) => loop {
++                let outcome = { receiver.borrow().clone() };
++                if let Some(outcome) = outcome {
++                    break match outcome {
++                        SharedFetchOutcome::Cacheable(response) => Ok(replay(response).await),
++                        SharedFetchOutcome::RetryUncoalesced => fetch().await,
++                    };
++                }
++                if receiver.changed().await.is_err() {
++                    break fetch().await;
++                }
++            },
++            Acquisition::Leader(sender) => {
++                // If this future is cancelled or panics while awaiting I/O,
++                // the guard removes the stale leader and wakes followers so
++                // they can retry instead of waiting forever.
++                let leader = SharedFetchLeader {
++                    loader: &self.state,
++                    key: key.clone(),
++                    sender,
++                    finished: false,
++                };
++                let result = fetch().await;
++                let shared_outcome = match &result {
++                    Ok(response) => match response_cache_lifetime(response) {
++                        Some(lifetime) => {
++                            self.state
++                                .lock()
++                                .unwrap()
++                                .cache
++                                .insert(key, response.clone(), lifetime);
++                            SharedFetchOutcome::Cacheable(response.clone())
++                        }
++                        None => SharedFetchOutcome::RetryUncoalesced,
++                    },
++                    Err(_) => SharedFetchOutcome::RetryUncoalesced,
++                };
++                leader.finish(shared_outcome);
++                result
++            }
++        }
++    }
++
++    /// Whether a request is waiting on a transaction another one started.
++    #[cfg(test)]
++    pub(crate) fn has_waiting_follower(&self) -> bool {
++        self.state
++            .lock()
++            .unwrap()
++            .shared_fetches
++            .values()
++            .any(|sender| sender.receiver_count() > 0)
++    }
++}

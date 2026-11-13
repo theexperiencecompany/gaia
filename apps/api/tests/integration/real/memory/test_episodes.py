@@ -1,9 +1,9 @@
 """Episodic journal tests — appends, day rollover, range reads, recall.
 
 Past days are seeded through the production store function
-(``pg_store.append_episode_entries``) instead of freezing the clock: a row
+(pg_store.append_episode_entries) instead of freezing the clock: a row
 for an earlier date with no summary is exactly the state a real rollover
-sees, so ``retain`` can be exercised unmodified with ``datetime.now``.
+sees, so retain can be exercised unmodified with datetime.now.
 """
 
 import asyncio

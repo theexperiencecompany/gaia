@@ -11,19 +11,30 @@
  * - `auto` — an intent judge runs actions that match what the user asked for,
  *   and pauses for approval on anything that deviates or is unclear.
  */
+import type {
+  BatchDecisionItem,
+  HILPreferencesResponse,
+  UpdateHILPreferencesRequest,
+} from "../api/generated";
+
+export type {
+  BatchApprovalDecisionResponse,
+  BatchDecisionItem,
+  BatchDecisionOutcome,
+} from "../api/generated";
+
 export type HilMode = "always_allow" | "always_ask" | "auto";
 
 /**
- * Per-user HIL preferences. `tool_overrides` defines which tools need approval
- * (tool name -> needs-approval), overriding the default destructive
- * classification; a tool absent from the map uses that default. The same gated
- * set applies in both `always_ask` and `auto` — the mode only decides whether
- * the user is asked or the intent judge decides.
+ * Per-user HIL preferences. `tool_overrides` maps a HIL tool key to
+ * needs-approval, overriding the destructive default. A key is a registry
+ * tool's bare name or an MCP tool's `mcp:<integration_id>:<name>`; clients read
+ * it from the server (`approval_key`) and send it back unchanged.
  */
-export interface HilPreferences {
-  mode: HilMode;
-  tool_overrides: Record<string, boolean>;
-}
+export type HilPreferences = HILPreferencesResponse;
+
+/** Body of PUT /approvals/preferences; omitted fields are left unchanged. */
+export type HilPreferencesUpdate = UpdateHILPreferencesRequest;
 
 export type ApprovalStatus =
   | "pending"
@@ -31,7 +42,11 @@ export type ApprovalStatus =
   | "denied"
   | "timeout"
   | "abandoned"
-  | "auto_approved";
+  | "auto_approved"
+  | "revoked"
+  | "executed"
+  | "failed"
+  | "unknown";
 
 export type ApprovalDecision = "approve" | "deny";
 export type ApprovalScope = "once" | "always_tool";
@@ -41,30 +56,13 @@ export interface ApprovalDecisionPayload {
   decision: ApprovalDecision;
   feedback?: string;
   scope?: ApprovalScope;
-}
-
-/** One approval's decision within POST /approvals/batch-decision. */
-export interface BatchDecisionItem {
-  approval_id: string;
-  decision: ApprovalDecision;
-  feedback?: string;
+  /** Row version the client rendered; stale v refreshes instead of overwriting. */
+  v?: number;
 }
 
 /** Body of POST /approvals/batch-decision — decide several approvals at once. */
 export interface BatchApprovalDecisionPayload {
   decisions: BatchDecisionItem[];
-}
-
-/** Per-approval outcome of a batch decision. */
-export interface BatchDecisionOutcome {
-  approval_id: string;
-  resolved: boolean;
-  reason: string | null;
-}
-
-/** Response of POST /approvals/batch-decision. */
-export interface BatchApprovalDecisionResponse {
-  outcomes: BatchDecisionOutcome[];
 }
 
 /** One approval card, as streamed to the client. */
@@ -80,4 +78,12 @@ export interface ApprovalRequestData {
   /** Why auto mode ran this without asking. Only set on `auto_approved`. */
   auto_reason?: string | null;
   timeout_seconds: number;
+  /** Ledger-backed approvals: the agent's one-line why. Absent on old-path cards. */
+  rationale?: string | null;
+  /** Seconds since registration; clients render "asked 2d ago". */
+  age_seconds?: number | null;
+  /** Row version the client saw; echoed back on decide for stale-v refresh. */
+  ledger_version?: number | null;
+  /** The call asks in every mode; "always allow" must not be offered on it. */
+  always_asks?: boolean;
 }

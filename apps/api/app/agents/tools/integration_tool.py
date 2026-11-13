@@ -8,28 +8,30 @@ from typing import Annotated, cast
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
+from pydantic import BaseModel, ConfigDict
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.agents.tools.invocation import invoke_tool
+from app.config.oauth_config import all_integrations
 from app.constants.integrations import (
+    CONNECT_INTEGRATION_TOOL,
     MAX_AVAILABLE_FOR_LLM,
     MAX_CONNECTED_FOR_LLM,
     MAX_SUGGESTED_FOR_LLM,
+    ConnectMode,
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators import with_doc
-from app.helpers.integration_helpers import (
-    build_search_patterns,
-    generate_integration_slug,
-    normalize_server_url,
-)
-from app.models.agent_models import agent_configurable
+from app.helpers.integration_helpers import build_search_patterns, normalize_server_url
+from app.helpers.mcp_helpers import dialable_mcp_server_url
+from app.helpers.slug_helpers import generate_integration_slug
+from app.models.agent_models import agent_configurable, current_stream_writer
 from app.models.device import Device
 from app.models.device_models import DeviceInfo, DeviceServerInfo, ListDevicesResult
 from app.models.integration_models import (
     AuthType,
+    ConnectStep,
     CreateCustomIntegrationRequest,
     Integration,
     IntegrationInfo,
@@ -37,14 +39,21 @@ from app.models.integration_models import (
     SuggestedIntegration,
 )
 from app.models.mcp_config import McpProbeResult
+from app.models.oauth_models import OAuthIntegration
 from app.services.device.bridge import online_device_ids
 from app.services.device.device_service import (
     list_device_servers,
     list_devices as list_devices_service,
 )
+from app.services.integrations.connect_steps import connect_step
 from app.services.integrations.custom_crud import (
+    CustomConnectionResult,
     create_and_connect_custom_integration,
     create_custom_integration,
+)
+from app.services.integrations.integration_accounts import (
+    describe_account,
+    get_account_record,
 )
 from app.services.mcp.device_exec import DeviceExecError, run_device_command
 from app.services.mcp.mcp_client import MCPClient, get_mcp_client
@@ -64,22 +73,44 @@ from app.templates.docstrings.integration_tool_docs import (
 )
 from app.utils.device_onboarding import request_device_approval, request_device_onboarding
 from app.utils.integration_checker import request_integration_connection
-from app.utils.url_safety import assert_safe_url_shape
+from app.utils.log_identifiers import user_text_shape
 from shared.py.wide_events import log
 
 
-async def _partition_platform_integrations(
-    user_id: str,
-) -> tuple[list[IntegrationInfo], list[IntegrationInfo]]:
-    """Available platform (OAuth) integrations split into connected vs available."""
-    platform_ids = [i.id for i in OAUTH_INTEGRATIONS if i.available]
+class _ConfiguredUser(BaseModel):
+    """The run's ``user_id``, read off its ``AgentConfigurable``."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    user_id: str | None = None
+
+
+def _configured_user_id(config: RunnableConfig) -> str | None:
+    return _ConfiguredUser.model_validate(agent_configurable(config)).user_id
+
+
+class _IntegrationLists:
+    """The connected/available split, plus every id already listed for the user."""
+
+    def __init__(self) -> None:
+        self.connected: list[IntegrationInfo] = []
+        self.available: list[IntegrationInfo] = []
+        self.listed_ids: set[str] = set()
+
+    def add(self, info: IntegrationInfo, integration_id: str, is_connected: bool) -> None:
+        self.listed_ids.add(integration_id)
+        (self.connected if is_connected else self.available).append(info)
+
+
+async def _add_platform_integrations(lists: _IntegrationLists, user_id: str) -> None:
+    """Platform integrations with their connection status."""
+    platform_ids = [i.id for i in all_integrations() if i.available]
     status_map = await check_multiple_integrations_status(platform_ids, user_id)
 
-    connected: list[IntegrationInfo] = []
-    available: list[IntegrationInfo] = []
-    for integration in OAUTH_INTEGRATIONS:
+    for integration in all_integrations():
         if not integration.available:
             continue
+
         is_connected = status_map.get(integration.id, False)
         info: IntegrationInfo = {
             "id": integration.id,
@@ -88,41 +119,55 @@ async def _partition_platform_integrations(
             "category": integration.category,
             "connected": is_connected,
         }
-        (connected if is_connected else available).append(info)
-    return connected, available
+        lists.add(info, integration.id, is_connected)
 
 
-async def _partition_custom_integrations(
-    user_id: str, user_integration_ids: set[str]
-) -> tuple[list[IntegrationInfo], list[IntegrationInfo]]:
-    """The user's own custom integrations split into connected vs available."""
-    connected: list[IntegrationInfo] = []
-    available: list[IntegrationInfo] = []
-    if not user_integration_ids:
-        return connected, available
+async def _add_custom_integrations(lists: _IntegrationLists, user_id: str) -> set[str]:
+    """The user's custom integrations; returns the ids the user has added."""
+    user_integrations = await user_integration_repository.list_for_user(user_id)
+    user_integration_ids = {ui.integration_id for ui in user_integrations}
 
-    custom_docs = await integration_repository.find_custom_by_ids(list(user_integration_ids))
-    for doc in custom_docs:
-        is_connected = await user_integration_repository.is_connected(user_id, doc.integration_id)
-        info: IntegrationInfo = {
-            "id": doc.integration_id,
-            "name": doc.name,
-            "description": doc.description,
-            "category": doc.category,
-            "connected": is_connected,
-        }
-        (connected if is_connected else available).append(info)
-    return connected, available
+    if user_integration_ids:
+        custom_docs = await integration_repository.find_custom_by_ids(list(user_integration_ids))
+        for doc in custom_docs:
+            integration_id = doc.integration_id
+            is_connected = await user_integration_repository.is_connected(user_id, integration_id)
+
+            custom_info: IntegrationInfo = {
+                "id": integration_id,
+                "name": doc.name,
+                "description": doc.description,
+                "category": doc.category,
+                "connected": is_connected,
+            }
+            lists.add(custom_info, integration_id, is_connected)
+
+    return user_integration_ids
 
 
-async def _search_suggested_integrations(
-    query: str, exclude_ids: set[str]
-) -> list[SuggestedIntegration]:
-    """Best-effort marketplace search — a failure logs and yields nothing rather
-    than failing the whole listing."""
+def _stream_frame(suggested: SuggestedIntegration) -> dict[str, object]:
+    """A suggested integration as the frontend's camelCase stream frame."""
+    return {
+        "id": suggested["id"],
+        "name": suggested["name"],
+        "description": suggested["description"],
+        "category": suggested["category"],
+        "iconUrl": suggested["icon_url"],
+        "authType": suggested["auth_type"],
+        "relevanceScore": suggested["relevance_score"],
+        "slug": suggested["slug"],
+    }
+
+
+async def _search_suggested(query: str, exclude_ids: set[str]) -> list[SuggestedIntegration]:
+    """Public integrations matching query, excluding ids the user already has."""
+    suggested_list: list[SuggestedIntegration] = []
     try:
+        log.info(f"{LogTag.TOOL} Searching public integrations", query=user_text_shape(query))
+
         # Flexible word-based search (regex construction lives in the repo)
         words = build_search_patterns(query)
+
         docs = await integration_repository.search_public(
             words=words,
             query=query,
@@ -130,25 +175,42 @@ async def _search_suggested_integrations(
             limit=MAX_SUGGESTED_FOR_LLM,
         )
 
-        return [
-            {
-                "id": doc.integration_id,
-                "name": doc.name,
-                "description": doc.description,
-                "category": doc.category,
-                "icon_url": doc.icon_url,
-                "auth_type": doc.mcp_config.auth_type if doc.mcp_config else None,
-                "relevance_score": 1.0,  # All matches are equal with regex
-                "slug": generate_integration_slug(name=doc.name, category=doc.category),
-            }
-            for doc in docs
-        ]
+        for doc in docs:
+            iid = doc.integration_id
+            log.info(
+                f"{LogTag.TOOL} Found public integration",
+                integration_id=iid,
+                integration_name=doc.name,
+            )
+
+            suggested_list.append(
+                {
+                    "id": iid,
+                    "name": doc.name,
+                    "description": doc.description,
+                    "category": doc.category,
+                    "icon_url": doc.icon_url,
+                    "auth_type": doc.mcp_config.auth_type if doc.mcp_config else None,
+                    "relevance_score": 1.0,  # All matches are equal with regex
+                    "slug": generate_integration_slug(
+                        name=doc.name,
+                        category=doc.category,
+                    ),
+                }
+            )
+
+        log.info(
+            f"{LogTag.TOOL} Found public integrations",
+            integration_count=len(suggested_list),
+        )
+
     except Exception as e:
         log.warning(
             f"{LogTag.TOOL} Failed to search public integrations",
             error_type=type(e).__name__,
         )
-        return []
+
+    return suggested_list
 
 
 @tool
@@ -170,59 +232,38 @@ async def list_integrations(
     """
     try:
         log.set(tool={"name": "list_integrations", "action": "list"})
-        configurable = agent_configurable(config)
-        user_id = configurable.get("user_id") if configurable else None
+        user_id = _configured_user_id(config)
         if not user_id:
             return "Error: User ID not found in configuration."
 
-        writer = get_stream_writer()
+        writer = current_stream_writer()
 
-        connected_list, available_list = await _partition_platform_integrations(user_id)
+        lists = _IntegrationLists()
+        await _add_platform_integrations(lists, user_id)
+        user_integration_ids = await _add_custom_integrations(lists, user_id)
 
-        user_integrations = await user_integration_repository.list_for_user(user_id)
-        user_integration_ids = {ui.integration_id for ui in user_integrations}
-        custom_connected, custom_available = await _partition_custom_integrations(
-            user_id, user_integration_ids
-        )
-        connected_list += custom_connected
-        available_list += custom_available
-
+        # Search for suggested public integrations if query provided
         suggested_list: list[SuggestedIntegration] = []
         if search_public_query and search_public_query.strip():
-            existing_ids = {i["id"] for i in connected_list + available_list}
-            existing_ids.update(user_integration_ids)
-            suggested_list = await _search_suggested_integrations(
-                search_public_query.strip(), existing_ids
+            # Exclude IDs the user already has
+            suggested_list = await _search_suggested(
+                search_public_query.strip(), lists.listed_ids | user_integration_ids
             )
 
         # Stream suggested integrations to frontend (camelCase)
-        suggested_for_stream = [
-            {
-                "id": s["id"],
-                "name": s["name"],
-                "description": s["description"],
-                "category": s["category"],
-                "iconUrl": s["icon_url"],
-                "authType": s["auth_type"],
-                "relevanceScore": s["relevance_score"],
-                "slug": s["slug"],
-            }
-            for s in suggested_list[:MAX_SUGGESTED_FOR_LLM]
-        ]
-
         writer(
             {
                 "integration_list_data": {
                     "hasSuggestions": len(suggested_list) > 0,
-                    "suggested": suggested_for_stream,
+                    "suggested": [_stream_frame(s) for s in suggested_list[:MAX_SUGGESTED_FOR_LLM]],
                 }
             }
         )
 
         # Return structured data for LLM (with limits)
         return {
-            "connected": connected_list[:MAX_CONNECTED_FOR_LLM],
-            "available": available_list[:MAX_AVAILABLE_FOR_LLM],
+            "connected": lists.connected[:MAX_CONNECTED_FOR_LLM],
+            "available": lists.available[:MAX_AVAILABLE_FOR_LLM],
             "suggested": suggested_list[:MAX_SUGGESTED_FOR_LLM],
         }
 
@@ -249,11 +290,11 @@ async def suggest_integrations(
     This tool will search the marketplace and display suggested integrations
     that the user can add with one click.
     """
-    # list_integrations itself declares this exact return type; .ainvoke() is the
-    # BaseTool framework boundary and always types its result `Any`.
+    # list_integrations itself declares this exact return type; the tool boundary
+    # always types its result `Any`.
     return cast(
         "ListIntegrationsResult | str",
-        await list_integrations.ainvoke({"search_public_query": query}, config=config),
+        await invoke_tool(list_integrations, {"search_public_query": query}, config),
     )
 
 
@@ -265,11 +306,20 @@ async def connect_integration(
         "List of exact integration IDs to connect (e.g., ['gmail', 'notion', 'twitter']).",
     ],
     config: RunnableConfig,
+    mode: Annotated[
+        ConnectMode,
+        "'connect' (default), 'add_account' for another account on an integration they "
+        "already have, or 'reconnect' when they ask to reconnect or refresh access.",
+    ] = ConnectMode.CONNECT,
+    account: Annotated[
+        str | None,
+        "With mode='reconnect': the expired account to sign back in, by its listed name. "
+        "Omit it when only one account lost its connection.",
+    ] = None,
 ) -> str:
     try:
-        log.set(tool={"name": "connect_integration", "action": "connect"})
-        configurable = agent_configurable(config)
-        user_id = configurable.get("user_id") if configurable else None
+        log.set(tool={"name": CONNECT_INTEGRATION_TOOL, "action": "connect", "mode": mode})
+        user_id = _configured_user_id(config)
         if not user_id:
             return "Error: User ID not found in configuration."
 
@@ -282,19 +332,19 @@ async def connect_integration(
             dict.fromkeys(iid.lower().strip() for iid in integration_ids if iid.strip())
         )
 
-        writer = get_stream_writer()
+        writer = current_stream_writer()
 
         results = []
-        connections_to_initiate = []
+        connections_to_initiate: list[tuple[OAuthIntegration, ConnectStep]] = []
 
         for integration_id in integration_ids:
             integration = next(
-                (integ for integ in OAUTH_INTEGRATIONS if integ.id.lower() == integration_id),
+                (integ for integ in all_integrations() if integ.id.lower() == integration_id),
                 None,
             )
 
             if not integration:
-                available = [i.id for i in OAUTH_INTEGRATIONS if i.available]
+                available = [i.id for i in all_integrations() if i.available]
                 results.append(
                     f"❌ '{integration_id}' not found. "
                     f"Available IDs: {', '.join(available[:5])}{'...' if len(available) > 5 else ''}"
@@ -305,17 +355,22 @@ async def connect_integration(
                 results.append(f"⏳ {integration.name} is not available yet. Coming soon!")
                 continue
 
-            is_connected = await check_single_integration_status(integration.id, user_id)
-            if is_connected:
-                results.append(f"✅ {integration.name} is already connected!")
-                continue
+            step = await connect_step(integration, user_id, mode, account)
+            if isinstance(step, ConnectStep):
+                connections_to_initiate.append((integration, step))
+            else:
+                results.append(step)
 
-            connections_to_initiate.append(integration)
-
-        for integration in connections_to_initiate:
+        for integration, step in connections_to_initiate:
             writer({"progress": f"Initiating {integration.name} connection..."})
             results.append(
-                await request_integration_connection(integration.id, integration.name, str(user_id))
+                await request_integration_connection(
+                    integration.id,
+                    integration.name,
+                    str(user_id),
+                    mode=step.mode,
+                    account=step.account,
+                )
             )
 
         return "\n".join(results) if results else "No integrations to connect."
@@ -340,8 +395,7 @@ async def check_integrations_status(
 ) -> str:
     try:
         log.set(tool={"name": "check_integrations_status", "action": "check"})
-        configurable = agent_configurable(config)
-        user_id = configurable.get("user_id") if configurable else None
+        user_id = _configured_user_id(config)
         if not user_id:
             return "Error: User ID not found in configuration."
 
@@ -351,7 +405,7 @@ async def check_integrations_status(
             search_name = integration_name.lower().strip()
             integration = None
 
-            for integ in OAUTH_INTEGRATIONS:
+            for integ in all_integrations():
                 if (
                     integ.id.lower() == search_name
                     or integ.name.lower() == search_name
@@ -364,10 +418,20 @@ async def check_integrations_status(
                 results.append(f"❓ {integration_name}: Not found")
                 continue
 
-            # Use unified status checker
             is_connected = await check_single_integration_status(integration.id, user_id)
             status = "✅ Connected" if is_connected else "⚪ Not Connected"
-            results.append(f"{integration.name}: {status}")
+            record = (
+                await get_account_record(user_id, integration.id)
+                if integration.composio_config
+                else None
+            )
+            accounts = (
+                "; accounts: "
+                + ", ".join(describe_account(a, record.primary_account_id) for a in record.accounts)
+                if record and record.accounts
+                else ""
+            )
+            results.append(f"{integration.name}: {status}{accounts}")
 
         return "\n".join(results)
 
@@ -376,23 +440,15 @@ async def check_integrations_status(
         return f"Error checking status: {e!s}"
 
 
-def _reject_custom_mcp_add(server_url: str, name: str) -> str | None:
-    """A user-facing rejection if this server can't be added as custom, else None.
+def _reject_custom_mcp_add(name: str) -> str | None:
+    """A user-facing rejection if a built-in catalog connector already has this name, else None.
 
-    Rejects an unsafe/malformed URL, or a name that collides with a built-in
-    catalog connector (which must be connected, not re-added as custom)."""
-    # Cheap, non-resolving SSRF/shape guard (the request model carries no
-    # validators); the DNS-resolving guard fires again inside probe/connect.
-    try:
-        assert_safe_url_shape(server_url)
-    except ValueError as e:
-        return f"❌ That server URL can't be used: {e}"
-
+    A built-in connector must be connected, not re-added as custom."""
     search_name = name.lower().strip()
     catalog = next(
         (
             integ
-            for integ in OAUTH_INTEGRATIONS
+            for integ in all_integrations()
             if integ.id.lower() == search_name
             or integ.name.lower() == search_name
             or (integ.short_name and integ.short_name.lower() == search_name)
@@ -442,6 +498,7 @@ async def _create_and_report_custom_server(
     resolved_type = cast(
         AuthType | None, probed_type if probed_type in ("none", "oauth", "bearer") else None
     )
+    connection: CustomConnectionResult
     integration, connection = await create_and_connect_custom_integration(
         user_id,
         CreateCustomIntegrationRequest(
@@ -477,13 +534,17 @@ async def add_custom_mcp_server(
 ) -> str:
     try:
         log.set(tool={"name": "add_custom_mcp_server", "action": "create"})
-        configurable = agent_configurable(config)
-        user_id = configurable.get("user_id") if configurable else None
+        user_id = _configured_user_id(config)
         if not user_id:
             return "Error: User ID not found in configuration."
-        user_id = str(user_id)
 
-        rejection = _reject_custom_mcp_add(server_url, name)
+        # Cheap, non-resolving shape guard that also points a loopback URL at the
+        # host alias; the DNS-resolving guard fires again inside probe/connect.
+        try:
+            server_url = dialable_mcp_server_url(server_url.strip())
+        except ValueError as e:
+            return f"❌ That server URL can't be used: {e}"
+        rejection = _reject_custom_mcp_add(name)
         if rejection:
             return rejection
 
@@ -497,8 +558,8 @@ async def add_custom_mcp_server(
 
         # Probe and persist the exact user-provided URL: normalization is for
         # dedup only, and some servers distinguish /mcp from /mcp/.
-        original_url = server_url.strip()
-        probe = await mcp_client.probe_connection(original_url)
+        original_url = server_url
+        probe: McpProbeResult = await mcp_client.probe_connection(original_url)
         if probe.get("error"):
             return f"❌ Couldn't reach that MCP server: {probe['error']}"
 
@@ -515,12 +576,11 @@ async def add_custom_mcp_server(
 async def list_devices(config: RunnableConfig) -> ListDevicesResult | str:
     try:
         log.set(tool={"name": "list_devices", "action": "list"})
-        configurable = agent_configurable(config)
-        user_id = configurable.get("user_id") if configurable else None
+        user_id = _configured_user_id(config)
         if not user_id:
             return "Error: User ID not found in configuration."
 
-        devices = await list_devices_service(str(user_id))
+        devices = await list_devices_service(user_id)
         device_ids = [d.id for d in devices]
         online = await online_device_ids(device_ids)
         servers_by_device = await list_device_servers(device_ids)
@@ -584,7 +644,7 @@ def _full_disk_access_hint(device: Device) -> str:
         fix = (
             "This device is the GAIA desktop app. Tell the user to grant it Full Disk "
             "Access in System Settings > Privacy & Security > Full Disk Access (enable "
-            "GAIA), then reopen the app — the grant carries into the commands it runs."
+            "GAIA), then reopen the app. The grant carries into the commands it runs."
         )
     else:
         fix = (
@@ -603,14 +663,13 @@ def _full_disk_access_hint(device: Device) -> str:
 @with_doc(RUN_ON_DEVICE)
 async def run_on_device(device_id: str, command: str, config: RunnableConfig) -> str:
     log.set(tool={"name": "run_on_device", "action": "exec"})
-    configurable = agent_configurable(config)
-    user_id = configurable.get("user_id") if configurable else None
+    user_id = _configured_user_id(config)
     if not user_id:
         return "Error: User ID not found in configuration."
 
     # Authz: the device must belong to this user. Never trust a device_id the
     # model produced — a wrong or spoofed id must not reach another user's machine.
-    devices = await list_devices_service(str(user_id))
+    devices = await list_devices_service(user_id)
     device = next((d for d in devices if d.id == device_id), None)
     if device is None:
         return (
@@ -635,12 +694,9 @@ async def run_on_device(device_id: str, command: str, config: RunnableConfig) ->
         parts.append("(no output)")
     if result.truncated:
         parts.append("(output truncated: command produced more than the cap)")
-    # macOS privacy (TCC) denies protected folders (Downloads/Desktop/Documents)
-    # to a process without Full Disk Access, and there is no way to grant it from
-    # here. The fix differs by device: the desktop app IS the grantee (reopen it),
-    # while the CLI daemon inherits its terminal's grant (restart it). Guarded on
-    # a present stderr first: `(stderr or "")` hides a None-vs-"" distinction no
-    # test can observe, which makes the fallback literal an unkillable mutant.
+    # macOS TCC denies protected folders (Downloads/Desktop/Documents) without Full
+    # Disk Access: reopen the desktop app (grantee) or restart the CLI daemon
+    # (inherits its grant). Checks `result.stderr` first, not `(stderr or "")`, to kill a None-vs-"" mutant.
     if result.stderr and "operation not permitted" in result.stderr.lower():
         parts.append(_full_disk_access_hint(device))
     return "\n".join(parts)

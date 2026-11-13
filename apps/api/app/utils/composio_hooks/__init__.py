@@ -1,5 +1,5 @@
 """
-Enhanced Composio Hook System
+Enhanced Composio Hook System.
 
 A clean, powerful hook system for Composio tools with:
 - Single master before/after executors for ALL tools

@@ -1,88 +1,59 @@
 /**
- * `chat` stage. Renders the welcome conversation stream followed by the holo
- * card reveal. The composer is always a "Continue to GAIA" CTA — the onboarding
- * first message intentionally closes its own loop, so there is no free-chat
- * input here. Active once the backend has produced `first_message_conversation_id`.
+ * `chat` stage — the handoff. The click that confirmed the platform step
+ * submitted onboarding; once the server confirms, the onboarding guard routes
+ * the user into `/c`. A failed submit, or a resumed session that never sent
+ * one, waits on the composer's button: nothing here submits on its own.
  */
 
 "use client";
 
+import { Spinner } from "@heroui/spinner";
+import type { MutationStatus } from "@tanstack/react-query";
 import * as m from "motion/react-m";
-import type { Dispatch } from "react";
-import { useEffect } from "react";
-import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
-import { BOT_BUBBLE_DEFAULTS } from "../../constants/bubbleDefaults";
 import {
-  MOTION_COMPOSER_CTA,
-  MOTION_FADE_UP_LARGE,
-} from "../../constants/motion";
-import {
-  type UseOnboardingChatReturn,
-  useOnboardingChat,
-} from "../../hooks/useOnboardingChat";
-import type { Action, OnboardingState } from "../../state/types";
+  FINISH_CTA_LABEL,
+  FINISH_FAILED_MESSAGE,
+  FINISH_RETRY_LABEL,
+  FINISHING_MESSAGE,
+} from "../../constants/messages";
+import { MOTION_FADE_UP } from "../../constants/motion";
+import type { OnboardingSubmission } from "../../hooks/useOnboardingSubmission";
+import { ComposerCTA } from "../ComposerCTA";
+import { OnboardingBotBubble } from "../OnboardingBotBubble";
 import { OnboardingCTAButton } from "../OnboardingCTAButton";
-import { HoloCardReveal } from "../reveal/HoloCardReveal";
 
-interface ChatProps {
-  state: OnboardingState;
-  dispatch: Dispatch<Action>;
-  chat: UseOnboardingChatReturn;
+function isWaitingOnServer(status: MutationStatus): boolean {
+  return status === "pending" || status === "success";
 }
 
-export interface OnboardingChatStages {
-  welcome: UseOnboardingChatReturn;
-  todoDemo: UseOnboardingChatReturn;
-}
-
-export function useChatStage(
-  state: OnboardingState,
-  dispatch: Dispatch<Action>,
-): OnboardingChatStages {
-  const welcomeConvoId = state.server?.first_message_conversation_id ?? null;
-  const todoDemoConvoId = state.todoExecutionConvoId;
-  const pendingTodoMessage = state.todoExecutionMessage;
-
-  const welcome = useOnboardingChat(welcomeConvoId, null);
-  const todoDemo = useOnboardingChat(todoDemoConvoId, pendingTodoMessage);
-
-  useEffect(() => {
-    if (!pendingTodoMessage || !todoDemoConvoId) return;
-    dispatch({ type: "clearTodoExecutionMessage" });
-  }, [pendingTodoMessage, todoDemoConvoId, dispatch]);
-
-  return { welcome, todoDemo };
-}
-
-export function Chat({ state }: Omit<ChatProps, "dispatch" | "chat">) {
-  const showHolo = state.server?.has_personalization && state.server;
-  if (!showHolo || !state.server) return null;
-
-  const firstMessage = state.server.first_message;
-
+export function Chat({ status }: { status: MutationStatus }) {
   return (
-    <m.div className="mt-4 space-y-4" {...MOTION_FADE_UP_LARGE}>
-      {firstMessage && (
-        <ChatBubbleBot
-          {...BOT_BUBBLE_DEFAULTS}
-          text={firstMessage}
-          message_id="onboarding-first-message"
-          loading={false}
+    <m.div className="mt-4 flex flex-col gap-3" {...MOTION_FADE_UP}>
+      <OnboardingBotBubble
+        text={status === "error" ? FINISH_FAILED_MESSAGE : FINISHING_MESSAGE}
+      />
+      {isWaitingOnServer(status) && (
+        <Spinner
+          size="sm"
+          className="sm:ml-10.75"
+          aria-label="Finishing setup"
         />
       )}
-      <div className="my-4">
-        <HoloCardReveal personalizationData={state.server} />
-      </div>
     </m.div>
   );
 }
 
-export function ChatComposer({ state }: Omit<ChatProps, "dispatch" | "chat">) {
-  const welcomeConvoId = state.server?.first_message_conversation_id;
-  const href = welcomeConvoId ? `/c/${welcomeConvoId}` : "/c";
+export function ChatComposer({
+  submission,
+}: {
+  submission: OnboardingSubmission;
+}) {
+  if (isWaitingOnServer(submission.status)) return null;
   return (
-    <m.div className="flex justify-center pb-2" {...MOTION_COMPOSER_CTA}>
-      <OnboardingCTAButton href={href}>Continue to GAIA</OnboardingCTAButton>
-    </m.div>
+    <ComposerCTA>
+      <OnboardingCTAButton onClick={submission.submit}>
+        {submission.status === "error" ? FINISH_RETRY_LABEL : FINISH_CTA_LABEL}
+      </OnboardingCTAButton>
+    </ComposerCTA>
   );
 }

@@ -12,8 +12,14 @@ from httpx import AsyncClient
 
 from app.models.chat_models import ImageData
 from app.models.image_models import ImageToTextResponse
+from tests.conftest import FAKE_USER
 
 API = "/api/v1"
+
+# client's dependency override (get_current_user -> FAKE_USER) is FastAPI
+# DI, not the request context the entitlement gate reads; the test app
+# strips WorkOSAuthMiddleware, so gate tests set the context directly.
+_GET_AUTHENTICATED_USER = "app.core.request_context.get_authenticated_user"
 
 
 def _image_data(**overrides) -> ImageData:
@@ -32,7 +38,7 @@ def _image_data(**overrides) -> ImageData:
 
 
 class TestImageGenerate:
-    """POST /api/v1/image/generate"""
+    """POST /api/v1/image/generate."""
 
     @patch("app.api.v1.endpoints.image.api_generate_image", new_callable=AsyncMock)
     async def test_generate_success(self, mock_generate: AsyncMock, client: AsyncClient):
@@ -43,7 +49,7 @@ class TestImageGenerate:
         assert body["url"] == "https://res.cloudinary.com/test/image.jpg"
         assert body["prompt"] == "a cat"
         assert body["improved_prompt"] == "a cat, studio lighting"
-        mock_generate.assert_awaited_once_with("a cat")
+        mock_generate.assert_awaited_once_with("a cat", FAKE_USER.user_id)
 
     async def test_missing_message_is_rejected(self, client: AsyncClient):
         resp = await client.post(f"{API}/image/generate", json={})
@@ -66,7 +72,7 @@ class TestImageGenerate:
 
 
 class TestImageToText:
-    """POST /api/v1/image/text"""
+    """POST /api/v1/image/text."""
 
     @patch("app.api.v1.endpoints.image.image_to_text_endpoint", new_callable=AsyncMock)
     async def test_image_to_text_success(self, mock_convert: AsyncMock, client: AsyncClient):
@@ -80,6 +86,7 @@ class TestImageToText:
         assert resp.json() == {"response": "A cat on a sofa"}
         assert mock_convert.await_args.args[0] == "what is this"
         assert mock_convert.await_args.args[1].filename == "photo.png"
+        assert mock_convert.await_args.args[2]  # the caller's user id, for billing
 
     async def test_missing_file_is_rejected(self, client: AsyncClient):
         resp = await client.post(f"{API}/image/text", data={"message": "what is this"})
@@ -117,11 +124,12 @@ class TestImageToText:
 
 
 class TestImageStream:
-    """POST /api/v1/image/generate/stream"""
+    """POST /api/v1/image/generate/stream."""
 
     async def test_stream_emits_status_image_and_done_frames(self, client: AsyncClient):
-        async def fake_stream(query_text: str):
+        async def fake_stream(query_text: str, user_id: str):
             assert query_text == "a cat"
+            assert user_id == FAKE_USER.user_id
             yield 'data: {"status": "generating_image"}\n\n'
             yield 'data: {"image_data": {"url": "https://cdn/x", "prompt": "a cat", "improved_prompt": null}}\n\n'
             yield "data: [DONE]\n\n"

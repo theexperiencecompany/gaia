@@ -2,12 +2,14 @@
 
 import asyncio
 from collections.abc import Callable
+import inspect
 import threading
 from unittest.mock import patch
 import uuid
 
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.core.lazy_loader import (
     LazyLoader,
     MissingKeyStrategy,
@@ -15,7 +17,8 @@ from app.core.lazy_loader import (
     lazy_provider,
     providers,
 )
-from app.utils.exceptions import ConfigurationError
+from app.utils.exceptions import ConfigurationError, ProviderNotConfiguredError
+from tests.helpers import captured_wide_event
 
 
 def _uid(prefix: str = "test") -> str:
@@ -24,15 +27,11 @@ def _uid(prefix: str = "test") -> str:
 
 
 class _AcquireSignalingLock:
-    """A `threading.Lock` stand-in that fires an event the instant `acquire()`
-    is called, before it blocks on the real lock.
+    """A threading.Lock stand-in that fires an event the instant acquire() is called, before blocking on the real lock.
 
-    Used to deterministically prove a second thread has passed its outer
-    quick-check and reached `with self._lock:` — without this, a plain
-    `threading.Event` set right before the call to `get()`/`aget()` leaves a
-    window where the thread hasn't actually reached the lock statement yet,
-    so a caller could race past the outer check via ordinary scheduling
-    luck rather than the deliberately red/green-checked inner branch.
+    Proves a second thread has actually reached the lock statement — a bare
+    threading.Event set before get()/aget() would leave a window where the
+    thread hasn't reached it yet.
     """
 
     def __init__(self, about_to_acquire: threading.Event) -> None:
@@ -57,20 +56,11 @@ class _AcquireSignalingLock:
 def _run_two_threaded_lock_race(
     second_call: Callable[[LazyLoader], bool | None],
 ) -> tuple[bool | None, bool | None, int]:
-    """Run the double-checked-locking race deterministically and report both
-    callers' results plus how many times the loader actually ran.
+    """Run the double-checked-locking race deterministically and report both callers' results and the loader call count.
 
-    Thread A holds `loader._lock` blocked inside the loader function; thread
-    B is proven (via `_AcquireSignalingLock`) to have reached `with
-    self._lock:` before A's `_is_configured` flip is released — so `B`'s
-    result and the loader call count prove whether B took the inner
-    double-check fast path or wastefully re-ran the loader.
-
-    `second_call` is B's actual call (`loader.get()` or
-    `asyncio.run(loader.aget())`), so the same race harness proves the fast
-    path for both the sync `get()` double-check and the
-    `aget()`-on-a-sync-loader double-check without duplicating the
-    coordination.
+    Thread A holds loader._lock inside the loader function; thread B is
+    proven via _AcquireSignalingLock to reach the lock before A's flip
+    releases. second_call parameterizes B's actual call (get() or aget()).
     """
     call_count = 0
     entered_loader = threading.Event()
@@ -296,8 +286,7 @@ class TestLazyLoaderSyncGet:
             loader.get()
 
     def test_get_global_context_second_call_takes_outer_fast_path(self):
-        """A second get() on an already-configured global-context loader hits
-        the outer quick-check (no lock) and must not re-run the loader."""
+        """A second get() on an already-configured global-context loader hits the outer quick-check (no lock) and must not re-run the loader."""
         call_count = 0
 
         def counting_loader():
@@ -314,11 +303,7 @@ class TestLazyLoaderSyncGet:
         assert call_count == 1
 
     def test_get_double_check_lock_returns_true_without_reinit(self):
-        """A caller that loses the race and blocks on the lock sees
-        `_is_configured` already flipped to True by the time it acquires the
-        lock, and must take the inner double-check fast path instead of
-        calling the loader again. See `_run_two_threaded_lock_race` for how
-        the race is made deterministic."""
+        """A caller that loses the race sees _is_configured already True by the time it acquires the lock, and must take the inner fast path instead of re-running the loader."""
         first, second, call_count = _run_two_threaded_lock_race(lambda loader: loader.get())
 
         assert first is True
@@ -411,8 +396,7 @@ class TestLazyLoaderAsyncGet:
         assert result is True
 
     async def test_aget_global_context_second_call_takes_outer_fast_path(self):
-        """A second aget() on an already-configured global-context loader
-        hits the outer quick-check and must not re-run the async loader."""
+        """A second aget() on an already-configured global-context loader hits the outer quick-check and must not re-run the async loader."""
         call_count = 0
 
         async def counting_loader():
@@ -429,15 +413,7 @@ class TestLazyLoaderAsyncGet:
         assert call_count == 1
 
     async def test_aget_async_double_check_lock_returns_true_without_reinit(self):
-        """Task B, which loses the race for the async lock while task A is
-        still initializing, must see `_is_configured` already True on the
-        inner double-check and return without re-running the loader.
-
-        Coordinated purely with `asyncio.Event` and `asyncio.sleep(0)` yields
-        — deterministic cooperative scheduling, not a wall-clock race: only
-        one coroutine ever runs at a time, and control only passes at an
-        explicit `await`.
-        """
+        """Task B, losing the race for the async lock while task A initializes, must see _is_configured already True and skip re-running the loader; coordinated deterministically via asyncio.Event and sleep(0) yields."""
         call_count = 0
         release_loader = asyncio.Event()
 
@@ -473,14 +449,7 @@ class TestLazyLoaderAsyncGet:
         assert call_count == 1  # task B never re-ran the loader
 
     async def test_aget_sync_loader_double_check_lock_returns_true_without_reinit(self):
-        """A sync loader accessed only via `aget()`: a second caller that
-        blocks on `self._lock` (the branch at line ~213-222, taken when
-        `is_async` is False) must see `_is_configured` already True on the
-        inner double-check and skip re-initialization. Same
-        `_AcquireSignalingLock`-coordinated race as the sync `get()`
-        double-check test (both share `self._lock`) — see
-        `_run_two_threaded_lock_race`; only B's call differs here
-        (`asyncio.run(loader.aget())` instead of `loader.get()`)."""
+        """A sync loader accessed only via aget(): a second caller blocking on self._lock must see _is_configured already True and skip re-initialization, sharing the race harness with the sync get() double-check test."""
         first, second, call_count = _run_two_threaded_lock_race(
             lambda loader: asyncio.run(loader.aget())
         )
@@ -513,8 +482,7 @@ class TestLazyLoaderReset:
         assert ll._instance is None
 
     def test_reset_async_loader_inside_a_running_loop_fails_loud(self):
-        """Inside a running loop a sync clear races any in-flight aget() —
-        fail loud instead of resetting something the initializer overwrites."""
+        """Inside a running loop a sync clear races any in-flight aget() — fail loud instead of resetting something the initializer overwrites."""
 
         async def loader():
             return 1
@@ -538,8 +506,7 @@ class TestLazyLoaderReset:
         asyncio.run(scenario())
 
     async def test_areset_cannot_be_overwritten_by_an_in_flight_initialization(self):
-        """The awaited reset takes the async lock, so an initialization that is
-        still inside loader_func cannot repopulate the instance after it."""
+        """The awaited reset takes the async lock, so an initialization still inside loader_func cannot repopulate the instance after it."""
         gate = asyncio.Event()
         release = asyncio.Event()
 
@@ -566,8 +533,7 @@ class TestLazyLoaderReset:
         assert not ll.is_initialized()
 
     def test_reset_async_loader_without_a_loop_takes_the_async_lock(self):
-        """No running loop: the reset goes through areset(), which demands the
-        provider's async lock."""
+        """No running loop: the reset goes through areset(), which demands the provider's async lock."""
 
         async def loader():
             return 1
@@ -1084,3 +1050,150 @@ class TestMissingKeyStrategy:
         assert MissingKeyStrategy.WARN.value == "warn"
         assert MissingKeyStrategy.WARN_ONCE.value == "warn_once"
         assert MissingKeyStrategy.SILENT.value == "silent"
+
+
+class TestAnUnconfiguredProviderIsNotAFault:
+    """A loader whose credentials do not resolve is an optional feature switched off."""
+
+    @staticmethod
+    def _unconfigured() -> None:
+        raise ProviderNotConfiguredError("no key")
+
+    def test_it_warns_once_and_never_logs_an_error(self):
+        loader = LazyLoader(
+            self._unconfigured, strategy=MissingKeyStrategy.WARN, provider_name=_uid("off")
+        )
+
+        with patch("app.core.lazy_loader.log") as mock_log:
+            assert loader.get() is None
+            assert loader.get() is None
+
+        mock_log.error.assert_not_called()
+        assert mock_log.warning.call_count == 1
+
+    async def test_aget_on_an_async_loader_is_quiet_too(self):
+        async def unconfigured() -> None:
+            raise ProviderNotConfiguredError("no key")
+
+        loader = LazyLoader(unconfigured, strategy=MissingKeyStrategy.WARN)
+
+        with patch("app.core.lazy_loader.log") as mock_log:
+            assert await loader.aget() is None
+
+        mock_log.error.assert_not_called()
+
+    def test_an_error_strategy_provider_still_refuses(self):
+        loader = LazyLoader(self._unconfigured, strategy=MissingKeyStrategy.ERROR)
+
+        with pytest.raises(ConfigurationError, match="not configured"):
+            loader.get()
+
+    def test_a_real_loader_failure_still_logs_an_error(self):
+        def broken() -> None:
+            raise RuntimeError("SDK exploded")
+
+        loader = LazyLoader(broken, strategy=MissingKeyStrategy.WARN)
+
+        with patch("app.core.lazy_loader.log") as mock_log:
+            assert loader.get() is None
+
+        mock_log.error.assert_called_once()
+
+
+def _unconfigured() -> None:
+    raise ProviderNotConfiguredError("no key")
+
+
+class TestDefaults:
+    """What a loader and a registered provider do when no option is passed."""
+
+    def test_a_bare_loader_is_a_lazy_error_strategy_instance_provider(self):
+        loader = LazyLoader(lambda: 1)
+
+        assert loader.strategy is MissingKeyStrategy.ERROR
+        assert loader.is_global_context is False
+        assert loader.auto_initialize is False
+
+    def test_a_bare_loader_refuses_when_unconfigured(self):
+        with pytest.raises(ConfigurationError, match="is not configured: no key"):
+            LazyLoader(_unconfigured, provider_name=_uid()).get()
+
+    async def test_a_registered_provider_warns_at_registration_and_answers_none(self):
+        registry = ProviderRegistry()
+        name = _uid("reg")
+
+        async with captured_wide_event() as event:
+            provider = registry.register(name, _unconfigured, required_keys=[None])
+
+        assert provider.strategy is MissingKeyStrategy.WARN
+        assert provider.provider_name == name
+        assert [w["reason"] for w in event["warnings"]] == [
+            f"Registration warning: Provider '{name}' missing required values at index 0: [None]"
+        ]
+
+
+class TestNotConfiguredWarning:
+    """The one warning an optional provider with no credentials leaves on the wide event."""
+
+    async def test_it_names_the_provider_and_the_loader_reason(self):
+        name = _uid("off")
+        loader = LazyLoader(_unconfigured, provider_name=name, strategy=MissingKeyStrategy.WARN)
+
+        async with captured_wide_event() as event:
+            assert loader.get() is None
+
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.STARTUP} Provider not configured",
+                "provider_name": name,
+                "reason": "no key",
+                "error_type": "ProviderNotConfiguredError",
+                "error": "no key",
+            }
+        ]
+
+    async def test_a_configured_warning_message_replaces_the_loader_reason(self):
+        loader = LazyLoader(
+            _unconfigured,
+            strategy=MissingKeyStrategy.WARN,
+            warning_message="Set FOO_API_KEY to enable foo",
+        )
+
+        async with captured_wide_event() as event:
+            assert loader.get() is None
+
+        assert [w["reason"] for w in event["warnings"]] == ["Set FOO_API_KEY to enable foo"]
+
+
+class TestLoaderShapeMismatch:
+    """A loader that returns the wrong kind of value for its sync/async lane fails loud."""
+
+    def test_a_sync_loader_returning_a_coroutine_is_refused(self):
+        async def build() -> int:
+            return 1
+
+        pending: list[object] = []
+
+        def loader() -> object:
+            coro = build()
+            pending.append(coro)
+            return coro
+
+        name = _uid("sync")
+        with pytest.raises(
+            ConfigurationError,
+            match=f"Sync initialization called on async loader function for '{name}'",
+        ):
+            LazyLoader(loader, provider_name=name).get()
+        for coro in pending:
+            coro.close()
+
+    async def test_an_async_loader_returning_a_plain_value_is_refused(self):
+        name = _uid("async")
+        loader = inspect.markcoroutinefunction(lambda: 1)
+
+        with pytest.raises(
+            ConfigurationError,
+            match=f"Expected coroutine from async loader function for '{name}'",
+        ):
+            await LazyLoader(loader, provider_name=name).aget()

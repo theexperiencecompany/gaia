@@ -94,19 +94,10 @@ export default function KeyboardShortcutsProvider({
     createActionRef.current = triggerCreateAction;
   }, [triggerCreateAction]);
 
-  // ===========================================
-  // SHORTCUTS MODAL: ? key
-  // ===========================================
   useHotkeys("?", () => openShortcutsModal(), HOTKEY_OPTIONS);
 
-  // ===========================================
-  // CREATE: C key (context-aware)
-  // ===========================================
   useHotkeys("c", () => createActionRef.current?.(), HOTKEY_OPTIONS);
 
-  // ===========================================
-  // NAVIGATION SHORTCUTS: G > X sequences
-  // ===========================================
   useHotkeys("g>d", () => routerRef.current.push("/dashboard"), HOTKEY_OPTIONS);
   useHotkeys("g>c", () => routerRef.current.push("/calendar"), HOTKEY_OPTIONS);
   useHotkeys("g>t", () => routerRef.current.push("/todos"), HOTKEY_OPTIONS);

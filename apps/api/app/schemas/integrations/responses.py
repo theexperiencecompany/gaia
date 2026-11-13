@@ -1,15 +1,14 @@
 """Integration response models with camelCase aliases."""
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
-from app.models.integration_instructions_models import InstructionsEditor
 from app.models.integration_models import UserIntegrationStatus
 from app.models.oauth_models import IntegrationContent
-from app.schemas.common import SuccessResponse
+from app.schemas.common import ResponseModel, SuccessResponse
 
 
 # Base model that auto-converts snake_case to camelCase for JSON serialization
@@ -46,6 +45,9 @@ class IntegrationConfigItem(CamelModel):
     requires_auth: bool = False
     source: Literal["platform"] = "platform"
     slug: str  # For platform integrations, this is the same as id
+    # "instance": a Composio toolkit the instance admin enabled; no hand-written tools or triggers.
+    origin: Literal["code", "instance"] = "code"
+    icon_url: str | None = None
 
 
 class IntegrationsConfigResponse(BaseModel):
@@ -59,15 +61,6 @@ class IntegrationSuccessResponse(SuccessResponse, CamelModel):
 class AddUserIntegrationResponse(SuccessResponse, CamelModel):
     integration_id: str
     connection_status: UserIntegrationStatus
-
-
-class IntegrationInstructionsResponse(CamelModel):
-    """A user's custom instructions for one integration."""
-
-    integration_id: str
-    content: str
-    updated_by: InstructionsEditor
-    updated_at: datetime | None = None
 
 
 class CustomIntegrationConnectionResult(CamelModel):
@@ -90,6 +83,12 @@ class IntegrationTool(BaseModel):
     # Only meaningful for curated Composio toolkits; MCP tools always report False
     # (their gating is resolved at runtime by the classifier, not pre-known here).
     destructive: bool = False
+
+
+class IntegrationToolApproval(IntegrationTool):
+    approval_key: str = Field(
+        description="Key the user's per-tool approval override is stored under; send it back unchanged."
+    )
 
 
 class IntegrationResponse(CamelModel, CloneCountMixin):
@@ -115,7 +114,7 @@ class IntegrationResponse(CamelModel, CloneCountMixin):
     clone_count: int = 0
     slug: str | None = None  # Computed at runtime via generate_integration_slug
     # Creator info (populated via aggregation from users collection)
-    creator: Optional["CommunityIntegrationCreator"] = None
+    creator: "CommunityIntegrationCreator | None" = None
 
 
 class MarketplaceResponse(BaseModel):
@@ -144,35 +143,44 @@ class MyIntegrationItem(CamelModel, CloneCountMixin):
     is_featured: bool = False
     display_priority: int = 0
     available: bool = True
+    # A Composio integration with no auth config on this instance; Connect cannot work.
+    instance_setup_required: bool = False
     icon_url: str | None = None
     slug: str | None = None
+    origin: Literal["code", "instance"] = "code"
     tool_count: int = 0
     # Custom-integration fields (None/0 for platform entries).
     is_public: bool | None = None
     created_by: str | None = None
     published_at: datetime | None = None
     clone_count: int = 0
-    creator: Optional["CommunityIntegrationCreator"] = None
+    creator: "CommunityIntegrationCreator | None" = None
 
 
-class MyIntegrationsResponse(BaseModel):
+class MyIntegrationsResponse(ResponseModel):
     """The full integration catalog personalized for one user (platform + their
     own custom integrations), each carrying connection status. Replaces the
     client-side merge of /config + /status + /users/me/integrations."""
 
-    integrations: list[MyIntegrationItem] = []
+    integrations: list[MyIntegrationItem] = Field(default_factory=list)
     total: int = 0
 
 
-class IntegrationToolsResponse(CamelModel):
+class IntegrationStatusesResponse(ResponseModel):
+    """Current connection status map, fetched independently of the catalog."""
+
+    statuses: dict[str, bool] = Field(description="Connection state keyed by integration id")
+
+
+class IntegrationToolsResponse(CamelModel, ResponseModel):
     """Full tool list for a single integration (catalog data, on demand)."""
 
     integration_id: str
-    tools: list[IntegrationTool] = []
+    tools: list[IntegrationToolApproval] = []
     count: int = 0
 
 
-class ConnectIntegrationResponse(CamelModel):
+class ConnectIntegrationResponse(ResponseModel, CamelModel):
     status: Literal["connected", "redirect", "error"]
     integration_id: str
     name: str
@@ -198,7 +206,7 @@ class CommunityIntegrationCreator(CamelModel):
     picture: str | None = None
 
 
-class CommunityIntegrationItem(CamelModel, CloneCountMixin):
+class CommunityIntegrationItem(ResponseModel, CamelModel, CloneCountMixin):
     """Integration item for community marketplace listing."""
 
     integration_id: str
@@ -214,10 +222,10 @@ class CommunityIntegrationItem(CamelModel, CloneCountMixin):
     creator: CommunityIntegrationCreator | None = None
 
 
-class CommunityListResponse(BaseModel):
+class CommunityListResponse(ResponseModel):
     """Response for community marketplace listing."""
 
-    integrations: list[CommunityIntegrationItem] = []
+    integrations: list[CommunityIntegrationItem] = Field(default_factory=list)
     total: int = 0
     has_more: bool = False
 
@@ -246,7 +254,6 @@ class PublicIntegrationDetailResponse(CamelModel, CloneCountMixin):
     # MCP config for public display (nested object for frontend compatibility)
     mcp_config: MCPConfigDetail | None = None
 
-    # Tools list
     tools: list[IntegrationTool] = []
 
     # Stats
@@ -262,7 +269,7 @@ class PublicIntegrationDetailResponse(CamelModel, CloneCountMixin):
     content: IntegrationContent | None = None
 
 
-class AddIntegrationResponse(CamelModel):
+class AddIntegrationResponse(ResponseModel, CamelModel):
     """Response for adding a public integration to user's workspace."""
 
     integration_id: str

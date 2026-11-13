@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""
-Script to refactor repeated "Get Started with GAIA" sections into a reusable snippet.
-This extracts the section to snippets/get-started.mdx and replaces all occurrences
-with <Snippet file="get-started.mdx" />
+"""Refactor repeated "Get Started with GAIA" sections into a reusable snippet.
+
+Extracts the section to snippets/get-started.mdx and replaces all occurrences
+with <Snippet file="get-started.mdx" />.
 """
 
 from pathlib import Path
@@ -87,7 +87,7 @@ def replace_in_file(file_path: Path):
 
 
 def main():
-    """Main function to orchestrate the refactoring."""
+    """Orchestrate the refactoring."""
     # Get the docs directory
     script_dir = Path(__file__).parent
     docs_dir = script_dir.parent

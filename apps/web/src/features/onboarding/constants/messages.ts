@@ -1,34 +1,41 @@
-// ── Processing / transition messages ──────────────────────────────────────────
+import type { BotPlatform } from "@/config/botPlatforms";
 
-export const PROCESSING_MSG_GMAIL =
-  "Give me a moment. I'm going through your inbox and setting things up.";
+// ── Stage copy ────────────────────────────────────────────────────────────────
 
-export const PROCESSING_MSG_NO_GMAIL =
-  "Give me a moment. I'm setting things up for you.";
+export function paymentIntroLines(firstName: string | undefined): string[] {
+  return [
+    firstName
+      ? `So ${firstName}, quick thing before we go on. I'm not an app you're buying, I'm someone you're hiring.`
+      : "Quick thing before we go on. I'm not an app you're buying, I'm someone you're hiring.",
+    "A person doing all this costs a salary. I cost about a dollar a day.",
+    "So, monthly or yearly?",
+  ];
+}
 
-export const PROCESSING_MSG_FOCUS = "Got it. Setting things up around that.";
+export const ANSWERS_SAVE_FAILED_MESSAGE =
+  "Hmm, I couldn't save your answers. Check your connection and try again.";
+export const ANSWERS_SAVING_LABEL = "Saving your answers";
 
-export const FOCUS_QUESTION =
-  "Got it. What's the one thing you most need to get done this week?";
+export const FINISHING_MESSAGE = "One sec, starting our first chat…";
+export const FINISH_FAILED_MESSAGE =
+  "Hmm, I couldn't finish setting up our chat. Mind trying again?";
+export const FINISH_CTA_LABEL = "Start chatting";
+export const FINISH_RETRY_LABEL = "Try again";
 
-export const STEP_SCANNING_INBOX = "Scanning your inbox";
-export const STEP_TRIAGING = "Triaging by importance";
-export const STEP_CREATING_TODOS = "Creating action items";
-export const STEP_LEARNING_STYLE = "Learning your style";
-export const STEP_CREATING_WORKFLOWS = "Setting up automations";
-export const STEP_BUILDING_PROFILE = "Building your profile";
+/** The first words after the receipt. Static: no LLM call anywhere in onboarding. */
+export const PLATFORM_INTRO_LINES = [
+  "Last thing! Which app do you basically live in?",
+  "That's where I'll be. Send me anything from anywhere, one text and it's handled. And if something needs you, I'll text you first.",
+];
 
-export const REVEAL_WRITING_STYLE_INTRO =
-  "Here's what I learned about how you write:";
-
-export const REVEAL_TODOS_INTRO_GMAIL =
-  "You can add todos and I will run them automatically. This keeps your todo list moving so it never piles up.<NEW_MESSAGE_BREAK>I drafted a few from your inbox that I think are worth doing. Try one:";
-
-export const REVEAL_TODOS_INTRO_NO_GMAIL =
-  "You can add todos and I will run them automatically. This keeps your todo list moving so it never piles up.<NEW_MESSAGE_BREAK>Based on what you want to get done, I drafted a few worth doing. Try one:";
-
-export const WORKFLOWS_INTRO_PRIMARY =
-  "Workflows are recurring jobs I run across your tools like Gmail, Calendar, Notion, and Slack, on a schedule or triggered by an event like a new email.";
-
-export const WORKFLOWS_INTRO_SECONDARY =
-  "They handle the everyday grunt work for you. I've put together a few tailored to how you work, build more anytime in the Workflows page.";
+/** What to do in the app the deep link opened, so the link lands. */
+export const AWAITING_LINK_LINES: Record<BotPlatform, string> = {
+  telegram: "Tap Start in Telegram and I'll pick it up here.",
+  whatsapp:
+    "Send the message that just opened in WhatsApp and I'll pick it up here.",
+  imessage: "Send that text from your iPhone and I'll pick it up here.",
+  slack: "Finish connecting in Slack and I'll pick it up here.",
+  discord: "Finish connecting in Discord and I'll pick it up here.",
+};
+export const AWAITING_LINK_SKIP_LABEL = "Skip for now";
+export const AWAITING_LINK_OTHER_APP_LABEL = "Use another app";

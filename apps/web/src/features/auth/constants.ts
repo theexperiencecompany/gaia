@@ -1,11 +1,24 @@
+import {
+  LOCAL_SESSION_COOKIE,
+  WOS_SESSION_COOKIE,
+} from "@shared/utils/sessionCookies";
+
 export const SESSION_RESUMED_KEY = "gaia_session_resumed_tracked";
+
+/** Session cookies the API sets on sign-in: WorkOS, then local (self-host) auth. */
+export const SESSION_COOKIES = [
+  WOS_SESSION_COOKIE,
+  LOCAL_SESSION_COOKIE,
+] as const;
 
 const AUTH_PAGES = ["/login", "/signup"];
 export const PUBLIC_PAGES = [...AUTH_PAGES, "/terms", "/privacy", "/contact"];
 
-// Phases where the user must stay in onboarding; the routing layer must not redirect into the main app.
-export const ONBOARDING_PROCESSING_PHASES: ReadonlySet<string> = new Set([
-  "personalization_pending",
-  "personalization_complete",
-  "getting_started",
-]);
+/**
+ * Signed-in routes that render before the plan allows the app: the wizard and
+ * its paywall, the OAuth landing, the self-host setup. They call no paid API.
+ */
+export const UNPAID_APP_ROUTES = ["/onboarding", "/redirect", "/setup"];
+
+/** The shortest password a local (self-host) account accepts; the API enforces the same. */
+export const MIN_PASSWORD_LENGTH = 8;

@@ -1,6 +1,6 @@
 """Session helper for the memory Postgres store.
 
-Wraps ``get_db_session`` with ``expire_on_commit=False`` so ORM rows
+Wraps get_db_session with expire_on_commit=False so ORM rows
 returned from write functions stay readable after the session closes
 (the SQLAlchemy-recommended setting for asyncio sessions).
 """
@@ -26,8 +26,8 @@ async def memory_session() -> AsyncGenerator[AsyncSession, None]:
 def rowcount(result: Result[Any]) -> int:
     """Rows affected by a DML statement.
 
-    ``session.execute`` is typed as ``Result`` but returns ``CursorResult``
-    for INSERT/UPDATE/DELETE; the cast recovers ``rowcount`` for mypy.
+    session.execute is typed as Result but returns CursorResult
+    for INSERT/UPDATE/DELETE; the cast recovers rowcount for mypy.
     """
     return cast(CursorResult[Any], result).rowcount
 
@@ -38,9 +38,9 @@ LIKE_ESCAPE_CHAR = "\\"
 def escape_like(value: str) -> str:
     """Escape LIKE/ILIKE metacharacters so a value matches literally.
 
-    Without this, a user-supplied folder like ``work%`` would match every
-    category starting with ``work`` — breaking folder isolation. Always pair
-    with ``escape=LIKE_ESCAPE_CHAR`` on the ``like()``/``ilike()`` call.
+    Without this, a user-supplied folder like work% would match every
+    category starting with work — breaking folder isolation. Always pair
+    with escape=LIKE_ESCAPE_CHAR on the like()/ilike() call.
     """
     return (
         value.replace(LIKE_ESCAPE_CHAR, LIKE_ESCAPE_CHAR * 2)

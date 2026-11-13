@@ -1,15 +1,24 @@
 """Comprehensive unit tests for tools_service (app/services/tools/tools_service.py)."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.constants.mcp import MCP_RENAMED_TOOL_NOTE
+from app.models.hil_models import HILPreferences
+from app.models.integration_models import McpToolsRollupEntry, StoredIntegrationTool
 from app.models.tools_models import ToolsCategoryResponse, ToolsListResponse
+from app.services.hil.policy import is_gated
+from app.services.hil.tool_key import MCPToolIdentity, hil_tool_key
+from app.services.mcp.tool_naming import stamp_tool_metadata
 from app.services.tools.tools_service import (
     _build_tools_response,
     get_available_tools,
     get_integration_name,
+    get_integration_tool_list,
     get_tool_categories,
     get_tools_by_category,
 )
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -43,19 +52,21 @@ def _mock_category(
 # ---------------------------------------------------------------------------
 
 
+def _rollup(raw: dict) -> dict[str, McpToolsRollupEntry]:
+    return {key: McpToolsRollupEntry.model_validate(value) for key, value in raw.items()}
+
+
 class TestGetIntegrationName:
     def test_returns_name_for_known_integration(self):
-        # _INTEGRATION_NAME_MAP is built from OAUTH_INTEGRATIONS at module load
-        # We verify the function works by patching the map
         with patch(
-            "app.services.tools.tools_service._INTEGRATION_NAME_MAP",
-            {"gmail": "Gmail"},
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
+            [SimpleNamespace(id="gmail", name="Gmail")],
         ):
             assert get_integration_name("gmail") == "Gmail"
             assert get_integration_name("Gmail") == "Gmail"
 
     def test_returns_none_for_unknown(self):
-        with patch("app.services.tools.tools_service._INTEGRATION_NAME_MAP", {}):
+        with patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []):
             assert get_integration_name("unknown") is None
 
 
@@ -89,25 +100,16 @@ class TestGetAvailableTools:
             assert result == fake_response
 
 
-# ---------------------------------------------------------------------------
-# Workspace scoping via get_user_integration_records
-# (replaces the old _fetch_user_mcp_integrations tests)
-# ---------------------------------------------------------------------------
-
-
 class TestWorkspaceScoping:
-    """_build_tools_response scopes all MCP tool visibility to the user's
-    workspace using get_user_integration_records. These tests verify that
-    scoping contract at the _build_tools_response boundary."""
+    """_build_tools_response scopes all MCP tool visibility via get_user_integration_records (replaces _fetch_user_mcp_integrations)."""
 
     async def test_no_user_means_no_mcp_tools(self):
-        """Anonymous call: get_user_integration_records is never called;
-        `added` stays empty so all MCP tools are filtered out."""
+        """Anonymous call: get_user_integration_records is never called; all MCP tools are filtered out."""
         global_mcp = {"my_mcp": {"name": "X", "icon_url": None, "tools": [{"name": "t"}]}}
         mock_registry = AsyncMock()
         mock_registry.get_all_category_objects = MagicMock(return_value={})
         mock_mcp_store = MagicMock()
-        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value=global_mcp)
+        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value=_rollup(global_mcp))
 
         with (
             patch(
@@ -135,7 +137,7 @@ class TestWorkspaceScoping:
         mock_registry = AsyncMock()
         mock_registry.get_all_category_objects = MagicMock(return_value={})
         mock_mcp_store = MagicMock()
-        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value=global_mcp)
+        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value=_rollup(global_mcp))
 
         with (
             patch(
@@ -166,7 +168,7 @@ class TestWorkspaceScoping:
         mock_registry = AsyncMock()
         mock_registry.get_all_category_objects = MagicMock(return_value={})
         mock_mcp_store = MagicMock()
-        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value=global_mcp)
+        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value=_rollup(global_mcp))
 
         with (
             patch(
@@ -195,8 +197,7 @@ class TestWorkspaceScoping:
 
 
 class TestBuildToolsResponse:
-    """Tests for the unified _build_tools_response which handles both registry tools
-    and MCP tools, scoped to the user's workspace via get_user_integration_records."""
+    """Tests the unified _build_tools_response, which handles both registry and MCP tools scoped to the user's workspace."""
 
     def _patch_deps(
         self,
@@ -212,7 +213,7 @@ class TestBuildToolsResponse:
         if mcp_raises:
             mock_mcp_store.get_all_mcp_tools = AsyncMock(side_effect=Exception("mcp fail"))
         else:
-            mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value=global_mcp)
+            mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value=_rollup(global_mcp))
 
         from contextlib import ExitStack
 
@@ -352,7 +353,7 @@ class TestBuildToolsResponse:
             "cust_1": {
                 "name": "Cust",
                 "icon_url": None,
-                "tools": [{"name": None}, {"name": "valid_tool"}],
+                "tools": [{"name": ""}, {"name": "valid_tool"}],
             }
         }
         user_records = [{"integration_id": "cust_1", "status": "connected"}]
@@ -382,7 +383,7 @@ class TestBuildToolsResponse:
         assert "unique_tool" in names
 
     async def test_added_but_not_connected_is_locked(self):
-        """Tools for integrations in `added` but not `connected` are marked locked=True."""
+        """Tools for integrations in added but not connected are marked locked=True."""
         global_mcp = {
             "my_mcp": {
                 "name": "My MCP",
@@ -398,6 +399,69 @@ class TestBuildToolsResponse:
 
         assert result.total_count == 1
         assert result.tools[0].locked is True
+
+    async def test_a_record_with_no_integration_id_does_not_hide_the_ones_after_it(self):
+        global_mcp = {"my_mcp": {"name": "My MCP", "tools": [{"name": "a_tool"}]}}
+        user_records = [{"integration_id": None}, {"integration_id": "my_mcp", "status": "added"}]
+
+        with self._patch_deps({}, global_mcp, user_records=user_records):
+            result = await _build_tools_response("user_123")
+
+        assert [t.name for t in result.tools] == ["a_tool"]
+
+    async def test_a_registry_integration_is_scoped_and_locked_by_the_workspace(self):
+        registry = {
+            "GMAIL": _mock_category(tools=[_mock_tool("GMAIL_SEND")], require_integration=True),
+            "SLACK": _mock_category(tools=[_mock_tool("SLACK_POST")], require_integration=True),
+            "NOTION": _mock_category(tools=[_mock_tool("NOTION_ADD")], require_integration=True),
+        }
+        user_records = [
+            {"integration_id": "gmail", "status": "connected"},
+            {"integration_id": "slack", "status": "added"},
+        ]
+
+        with self._patch_deps(registry, {}, user_records=user_records):
+            result = await _build_tools_response("user_123")
+
+        assert {t.name: t.locked for t in result.tools} == {
+            "GMAIL_SEND": False,
+            "SLACK_POST": True,
+        }
+
+    async def test_the_wide_event_counts_tools_locked_tools_and_categories(self):
+        global_mcp = {
+            "one": {"name": "One", "tools": [{"name": "t1"}, {"name": "t2"}]},
+            "two": {"name": "Two", "tools": [{"name": "t3"}]},
+        }
+        user_records = [
+            {"integration_id": "one", "status": "connected"},
+            {"integration_id": "two", "status": "added"},
+        ]
+
+        with (
+            self._patch_deps({}, global_mcp, user_records=user_records),
+            patch("app.services.tools.tools_service.log") as mock_log,
+        ):
+            await _build_tools_response("user_123")
+
+        mock_log.set.assert_called_once_with(
+            tools={"total_count": 3, "locked_count": 1, "category_count": 2}
+        )
+
+    async def test_a_nameless_mcp_tool_is_logged_against_the_asking_user(self):
+        global_mcp = {"cust_1": {"name": "Cust", "tools": [{"name": ""}]}}
+        user_records = [{"integration_id": "cust_1", "status": "connected"}]
+
+        with (
+            self._patch_deps({}, global_mcp, user_records=user_records),
+            patch("app.services.tools.tools_service.log") as mock_log,
+        ):
+            await _build_tools_response("user_123")
+
+        assert mock_log.warning.call_args.kwargs == {
+            "integration_id": "cust_1",
+            "user_id": "user_123",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -467,22 +531,14 @@ class TestGetToolCategories:
         assert result == {"c1": 2, "c2": 1}
 
 
-# ---------------------------------------------------------------------------
-# Locked state and workspace filtering
-# (replaces the old get_user_mcp_tools and merge_tools_responses tests)
-# ---------------------------------------------------------------------------
-
-
 class TestLockedAndFilteredTools:
-    """Verifies workspace-scoping and locked/unlocked state in _build_tools_response.
-    This replaces the old get_user_mcp_tools / merge_tools_responses test classes;
-    that merging is now handled inside _build_tools_response."""
+    """Verifies workspace-scoping and locked/unlocked state in _build_tools_response (replaces get_user_mcp_tools / merge_tools_responses)."""
 
     async def _build(self, user_records: list, global_mcp: dict) -> ToolsListResponse:
         mock_registry = AsyncMock()
         mock_registry.get_all_category_objects = MagicMock(return_value={})
         mock_mcp_store = MagicMock()
-        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value=global_mcp)
+        mock_mcp_store.get_all_mcp_tools = AsyncMock(return_value=_rollup(global_mcp))
 
         with (
             patch(
@@ -502,6 +558,34 @@ class TestLockedAndFilteredTools:
         ):
             return await _build_tools_response("user_123")
 
+    async def test_the_workspace_is_read_for_the_asking_user(self):
+        global_mcp = {"m1": {"name": "M1", "icon_url": None, "tools": [{"name": "t1"}]}}
+        records = {"user_123": [{"integration_id": "m1", "status": "connected"}]}
+        mock_registry = AsyncMock()
+        mock_registry.get_all_category_objects = MagicMock(return_value={})
+
+        async def _records_of(user_id):
+            return records.get(user_id, [])
+
+        with (
+            patch(
+                "app.services.tools.tools_service.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=mock_registry,
+            ),
+            patch(
+                "app.services.tools.tools_service.get_all_mcp_tools",
+                new=AsyncMock(return_value=_rollup(global_mcp)),
+            ),
+            patch(
+                "app.services.tools.tools_service.get_user_integration_records",
+                new=AsyncMock(side_effect=_records_of),
+            ),
+        ):
+            result = await _build_tools_response("user_123")
+
+        assert [tool.name for tool in result.tools] == ["t1"]
+
     async def test_connected_integration_tools_not_locked(self):
         global_mcp = {"m1": {"name": "M1", "icon_url": None, "tools": [{"name": "t1"}]}}
         result = await self._build([{"integration_id": "m1", "status": "connected"}], global_mcp)
@@ -518,6 +602,11 @@ class TestLockedAndFilteredTools:
         global_mcp = {"m1": {"name": "M1", "icon_url": None, "tools": [{"name": "t1"}]}}
         result = await self._build([], global_mcp)
         assert result.total_count == 0
+
+    async def test_the_stored_integration_name_is_the_display_name(self):
+        global_mcp = {"m1": {"name": "MCP One", "icon_url": None, "tools": [{"name": "tool_a"}]}}
+        result = await self._build([{"integration_id": "m1", "status": "connected"}], global_mcp)
+        assert result.tools[0].display_name == "MCP One"
 
     async def test_icon_url_forwarded_from_mcp_store(self):
         global_mcp = {
@@ -556,9 +645,161 @@ class TestLockedAndFilteredTools:
             "m1": {
                 "name": "M1",
                 "icon_url": None,
-                "tools": [{"name": None}, {"name": "valid"}],
+                "tools": [{"name": ""}, {"name": "valid"}],
             }
         }
         result = await self._build([{"integration_id": "m1", "status": "connected"}], global_mcp)
         assert result.total_count == 1
         assert result.tools[0].name == "valid"
+
+
+# ---------------------------------------------------------------------------
+# get_integration_tool_list — the approval key each per-tool switch writes
+# ---------------------------------------------------------------------------
+
+
+class TestIntegrationToolApprovalKey:
+    """The settings switch sends this key back unchanged, so it must be the key the gate reads."""
+
+    async def test_a_registry_tool_keys_by_its_bare_name(self):
+        category = _mock_category(tools=[_mock_tool("GMAIL_SEND_EMAIL")])
+        category.tools[0].destructive = True
+        category.tools[0].tool.description = "Send an email"
+        registry = MagicMock()
+        registry.get_all_category_objects.return_value = {"gmail": category}
+        with patch(
+            "app.services.tools.tools_service.get_tool_registry",
+            new=AsyncMock(return_value=registry),
+        ):
+            (tool,) = await get_integration_tool_list("gmail")
+
+        assert tool.approval_key == "GMAIL_SEND_EMAIL"
+
+    async def test_a_registry_tool_from_a_no_auth_mcp_keys_by_its_server(self):
+        """Seen on this branch: deepwiki's toggle wrote ask_question while the gate read mcp:deepwiki:ask_question."""
+        category = _mock_category(tools=[_mock_tool("ask_question")])
+        category.tools[0].destructive = False
+        category.tools[0].tool.description = "Ask about a repo"
+        category.tools[0].tool.name = "ask_question"
+        category.tools[0].tool.metadata = {}
+        stamp_tool_metadata(
+            [category.tools[0].tool], "deepwiki", "https://mcp.deepwiki.com", "DeepWiki"
+        )
+        registry = MagicMock()
+        registry.get_all_category_objects.return_value = {"deepwiki": category}
+        with patch(
+            "app.services.tools.tools_service.get_tool_registry",
+            new=AsyncMock(return_value=registry),
+        ):
+            (tool,) = await get_integration_tool_list("deepwiki")
+
+        assert tool.approval_key == "mcp:deepwiki:ask_question"
+
+    async def test_an_mcp_tool_keys_by_its_server_and_its_name_there(self):
+        registry = MagicMock()
+        registry.get_all_category_objects.return_value = {}
+        stored = [StoredIntegrationTool(name="delete_item", description="Delete one item")]
+        with (
+            patch(
+                "app.services.tools.tools_service.get_tool_registry",
+                new=AsyncMock(return_value=registry),
+            ),
+            patch(
+                "app.services.tools.tools_service.get_integration_tools",
+                new=AsyncMock(return_value=stored),
+            ),
+        ):
+            (tool,) = await get_integration_tool_list("posthog")
+
+        assert tool.approval_key == hil_tool_key(
+            "delete_item", MCPToolIdentity(integration_id="posthog", server_name="delete_item")
+        )
+        assert tool.approval_key == "mcp:posthog:delete_item"
+
+
+class TestStoredListHoldingMastersRenames:
+    """Seen on this branch: a list master stored held posthog_execute, so its toggle wrote a key the gate never reads."""
+
+    async def test_an_entry_master_renamed_is_not_offered_a_key(self):
+        registry = MagicMock()
+        registry.get_all_category_objects.return_value = {}
+        stored = [
+            StoredIntegrationTool(
+                name="posthog_execute",
+                description=MCP_RENAMED_TOOL_NOTE.format(
+                    original="execute", renamed="posthog_execute"
+                )
+                + "Run a query.",
+            ),
+            StoredIntegrationTool(name="query", description="Query events."),
+        ]
+        with (
+            patch(
+                "app.services.tools.tools_service.get_tool_registry",
+                new=AsyncMock(return_value=registry),
+            ),
+            patch(
+                "app.services.tools.tools_service.get_integration_tools",
+                new=AsyncMock(return_value=stored),
+            ),
+        ):
+            async with captured_wide_event() as event:
+                listed = await get_integration_tool_list("posthog")
+
+        assert [tool.approval_key for tool in listed] == ["mcp:posthog:query"]
+        (warning,) = event["warnings"]
+        assert warning["integration_id"] == "posthog"
+        assert warning["tools"] == ["posthog_execute"]
+
+
+class TestSettingsKeyIsTheKeyTheGateReads:
+    """Both sides build the key with hil_tool_key, so a switch the user flips must change the gate's answer."""
+
+    async def test_a_no_auth_mcp_tool_switched_off_in_settings_is_not_gated(self):
+        tool = MagicMock()
+        tool.name = "ask_question"
+        tool.description = "Ask about a repo"
+        tool.metadata = {}
+        stamp_tool_metadata([tool], "deepwiki", "https://mcp.deepwiki.com", "DeepWiki")
+        category = _mock_category(
+            tools=[SimpleNamespace(name="ask_question", tool=tool, destructive=True)]
+        )
+        registry = MagicMock()
+        registry.get_all_category_objects.return_value = {"deepwiki": category}
+        with patch(
+            "app.services.tools.tools_service.get_tool_registry",
+            new=AsyncMock(return_value=registry),
+        ):
+            (listed,) = await get_integration_tool_list("deepwiki")
+
+        prefs = HILPreferences(mode="always_ask", tool_overrides={listed.approval_key: False})
+        with patch("app.services.hil.policy.is_tool_destructive", new=AsyncMock(return_value=True)):
+            assert await is_gated(prefs, "ask_question", tool) is False
+
+    async def test_a_user_mcp_tool_switched_off_in_settings_is_not_gated_under_a_collision_name(
+        self,
+    ):
+        live = MagicMock()
+        live.name = "delete_item"
+        live.description = "Delete one item"
+        live.metadata = {}
+        stamp_tool_metadata([live], "posthog", "https://mcp.posthog.com", "PostHog")
+        live.name = "posthog_delete_item"
+        registry = MagicMock()
+        registry.get_all_category_objects.return_value = {}
+        stored = [StoredIntegrationTool(name="delete_item", description="Delete one item")]
+        with (
+            patch(
+                "app.services.tools.tools_service.get_tool_registry",
+                new=AsyncMock(return_value=registry),
+            ),
+            patch(
+                "app.services.tools.tools_service.get_integration_tools",
+                new=AsyncMock(return_value=stored),
+            ),
+        ):
+            (listed,) = await get_integration_tool_list("posthog")
+
+        prefs = HILPreferences(mode="always_ask", tool_overrides={listed.approval_key: False})
+        with patch("app.services.hil.policy.is_tool_destructive", new=AsyncMock(return_value=True)):
+            assert await is_gated(prefs, live.name, live) is False

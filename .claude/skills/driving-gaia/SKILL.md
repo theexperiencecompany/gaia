@@ -175,30 +175,22 @@ mongosh 'mongodb://localhost:27017/GAIA' --quiet --eval \
 
 ---
 
-## 5. Drive one agent layer in isolation (executor / subagents)
+## 5. Drive the executor in isolation
 
-The full chain is comms → executor → `handoff` → subagent. §4's `/chat-stream` always enters at comms; these dev-only routes (same mount gate as the rest of `/dev`, §2) enter lower, so you can test one layer without scripting the hops above it. Responses are plain JSON — the agent's final message — not SSE.
+The full chain is comms → executor. §4's `/chat-stream` always enters at comms; this dev-only route (same mount gate as the rest of `/dev`, §2) enters at the executor, so you can test it without scripting the comms hop above it. Integrations, including MCP servers, are activated inside the executor with `activate_integration`; there is no per-integration subagent to enter. Responses are plain JSON — the agent's final message — not SSE.
 
 ```bash
-# what can I invoke? (ids are what POST /dev/subagents/{id} accepts)
-curl -sfS "http://localhost:${API_PORT:-8000}/api/v1/dev/subagents"
-
 # run the EXECUTOR directly (skips comms entirely)
 curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/dev/executor" \
   -H 'content-type: application/json' \
   -d '{"email":"dev@gaia.local","task":"[[tool:create_todo {\"title\":\"direct\"}]] [[say:Done.]]"}'
-
-# run ONE subagent directly (skips comms AND the executor)
-curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/dev/subagents/gmail" \
-  -H 'content-type: application/json' \
-  -d '{"email":"dev@gaia.local","task":"list unread emails"}'
 ```
 
-- Runs reuse the exact production preparation (`prepare_executor_execution` / `prepare_subagent_execution` — the same code the `handoff` tool calls), so a direct run cannot drift from what a real hand-off does.
+- Runs reuse the exact production preparation (`prepare_executor_execution`), so a direct run cannot drift from what comms hands the executor.
 - Response `{user_id, conversation_id, thread_id, agent, message}` — `message` is the final text to assert on; verify side effects in Mongo (§4).
-- Multi-turn: pass the returned `conversation_id` back on the next call — the derived agent thread is reused, so the layer keeps its history.
+- Multi-turn: pass the returned `conversation_id` back on the next call — the derived agent thread is reused, so the executor keeps its history.
 - Sim directives (§3) work unchanged in `task`; under `--sim` the executor's `retrieve_tools` hop is handled automatically, same as via chat.
-- Failures are loud: unknown email → 404 naming the mint fix; unknown subagent id → 400 pointing at `GET /dev/subagents`.
+- Failures are loud: unknown email → 404 naming the mint fix.
 
 ---
 
@@ -243,7 +235,7 @@ Flags (see `apps/bots/harness/src/cli.ts`):
 Details:
 - `--emulate <platform>` pulls that platform's real `PLATFORM_LIMITS` / `STREAMING_DEFAULTS` / markdown converter from `libs/shared/ts/src/bots/` — the only residual is a conformance-locked `supportsEdit` map (`apps/bots/harness/src/emulation.ts`).
 - Requires the same `apps/bots/.env` a real bot uses (`GAIA_API_URL`, `GAIA_BOT_API_KEY`, `GAIA_FRONTEND_URL`, `BOT_LOG_HASH_SECRET`) and a running API (real LLM, or the `--sim` stub via §3). Set `RABBITMQ_URL` to record proactive `outbound-delivery` events through the real outbound consumer (a loud warning prints when it is unset).
-- Transcript is JSONL events (`inbound`, `send`, `edit`, `typing`, `ephemeral`, `rich`, `split`, `outbound-delivery`) with final rendered payloads — assert on that, not on logs. Types: `apps/bots/harness/src/transcript.types.ts`.
+- Transcript is JSONL events (`inbound`, `send`, `edit`, `typing`, `ephemeral`, `rich`, `split`, `outbound-delivery`, `reaction`) with final rendered payloads — assert on that, not on logs. Types: `apps/bots/harness/src/transcript.types.ts`.
 - A golden conformance suite (`apps/bots/__tests__/harness/conformance.test.ts`, wired into `mise test:bots`) drives the harness and the real adapter with only the SDK faked and fails CI if their output diverges. WhatsApp webhook replay lives in `apps/bots/__tests__/whatsapp/webhook-replay.e2e.test.ts`. See `apps/bots/CLAUDE.md`.
 
 ---
@@ -271,12 +263,11 @@ Every way to test or simulate GAIA, in one table — this skill covers the live-
 |---|---|---|
 | Chat via comms (SSE, full chain) | `curl POST /api/v1/chat-stream` (§4) | this skill |
 | Executor directly | `curl POST /api/v1/dev/executor` (§5) | this skill |
-| One subagent directly | `curl POST /api/v1/dev/subagents/{id}` (§5) | this skill |
 | Browser (scripted) | `mise e2e:web` / `E2E_SIM=1 mise e2e:web` (§6) | this skill, `apps/web/e2e/` |
 | Bots (emulated platforms) | `pnpm nx run bot-harness:sim -- send\|run` (§7) | this skill, `apps/bots/CLAUDE.md` |
 | Deterministic LLM | `mise dev --sim` → directives (§3) | this skill, `tools/llm-stub/` |
 | Python unit (mocked infra) | `mise test:python:unit` | `apps/api/CLAUDE.md` |
-| Python full suite vs live services | `mise test:python` (Dagger local) / CI `test-python` | `apps/api/CLAUDE.md`, `.github/CLAUDE.md` |
+| Python full suite vs live services | `mise test:python:real` (local) / CI `test-python` | `apps/api/CLAUDE.md`, `.github/CLAUDE.md` |
 | Python e2e tier (incl. device-bridge black box) | `nx run api:test:e2e` | `apps/api/tests/CLAUDE.md` |
 | TypeScript tests | `mise test` / `mise test:bots` / `mise test:cli` | `apps/bots/CLAUDE.md` |
 | LLM stub's own tests | `uv run --no-project --with pytest pytest tools/llm-stub -q` (§3) | this skill |

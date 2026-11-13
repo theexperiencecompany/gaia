@@ -1,9 +1,9 @@
 """The memory write path: extract -> embed -> reconcile -> apply -> journal.
 
-``retain`` is the single ingestion pipeline, designed to run fire-and-forget
+retain is the single ingestion pipeline, designed to run fire-and-forget
 after a turn ends — it never raises into callers for LLM failures
 (extraction degrades to an empty batch upstream). Every ingestion schedules
-the hash-gated ``/workspace/memory`` projection sync and a debounced
+the hash-gated /workspace/memory projection sync and a debounced
 core-document consolidation for the docs its changes touch.
 """
 
@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, date as date_type, datetime, timedelta
 from difflib import SequenceMatcher
 import time
+from typing import TypedDict, Unpack, cast
 import uuid
 
 from app.constants.memory import (
@@ -43,10 +44,12 @@ from app.memory.embeddings import embed_batch, embed_query
 from app.memory.extraction import categorize_fact, extract_memories, summarize_episode_entries
 from app.memory.management import forget_memory
 from app.memory.mappers import row_to_entry
+from app.memory.pg_store import EpisodeEntry
+from app.memory.pg_store.episodes import entry_text
 from app.memory.reconciliation import ReconciledFact, reconcile
 from app.memory.schemas import ExtractedFact, ExtractedMemoryBatch
 from app.memory.user_time import resolve_user_timezone
-from app.models.memory_db_models import MemoryRecord
+from app.models.memory_db_models import MemoryEpisode, MemoryRecord
 from app.models.memory_models import MemoryEntry
 from app.models.payment_models import PlanType
 from app.services.memory_fs import schedule_memory_vfs_sync
@@ -57,12 +60,37 @@ _DEFAULT_USER_NAME = "the user"
 _FALLBACK_CATEGORY_PATH = "general"
 
 
+class TranscriptTurn(TypedDict):
+    """One conversation turn as retain receives it: a speaker and a body.
+
+    The shape every producer of messages builds and the one the extractor
+    renders. Named here because retain keeps the looser list-of-dicts
+    signature, so the indexer states the concrete shape where it reads it
+    instead of guessing at keys.
+    """
+
+    role: str
+    content: str
+
+
+def _journal_entries(episode: MemoryEpisode | None) -> list[EpisodeEntry]:
+    """Return a day's stored journal entries in the shape pg_store declares.
+
+    MemoryEpisode.entries is a JSONB column arriving as untyped mappings; the
+    entry shape belongs to app.memory.pg_store.episodes, named once here so
+    every reader below shares one declaration instead of re-guessing keys.
+    """
+    if episode is None:
+        return []
+    return cast(list[EpisodeEntry], episode.entries)
+
+
 class MemoryLimitReachedError(Exception):
     """An explicit memory add was blocked by the free plan's live-fact cap.
 
-    Raised only by ``retain_single`` (add_memory tool / POST endpoint) so the
+    Raised only by retain_single (add_memory tool / POST endpoint) so the
     caller can surface an upgrade prompt. Passive ingestion never raises — it
-    silently drops NEW facts at the cap (see ``retain``).
+    silently drops NEW facts at the cap (see retain).
     """
 
     def __init__(self, limit: int) -> None:
@@ -74,25 +102,12 @@ class MemoryLimitReachedError(Exception):
 
 
 async def _free_cap_remaining(user_id: str, growth: int) -> int | None:
-    """How many more live facts a FREE user may add, or ``None`` when uncapped.
+    """How many more live facts a FREE user may add, or None when uncapped (paid, or lookup failed open).
 
-    ``None`` means no cap applies — a paid plan, or an infra error during the
-    plan lookup (fail open: memory must not stop working because the plan
-    lookup hiccuped). For a free user it is ``max(0, limit - live count)``, so
-    a batch that would cross the cap can be trimmed to land exactly at it.
-
-    ``growth`` is how many facts this call would add (the NEW count for a
-    batch, 1 for a single add). The live count comes from the Redis counter
-    (``cap_counter``) on the hot path, avoiding a Postgres ``COUNT`` when a free
-    user sits far below the cap. The cache is trusted only when the remaining
-    budget clears ``growth`` plus a safety margin; when the batch might cross
-    the cap, the counter is missing, or Redis is down, it falls back to the
-    authoritative ``COUNT`` (and re-seeds the counter), so the hard cap is exact.
-
-    Uses the cached plan lookup (Redis-backed) — retain() runs from many
-    callers (chat turns, subagents, email ingestion, API endpoints), so
-    resolving here keeps one canonical check instead of threading plan_type
-    through every path.
+    growth is how many facts this call would add. Trusts the Redis live-count
+    cache only when the remaining budget clearly exceeds growth; otherwise
+    falls back to the authoritative Postgres COUNT (re-seeding the cache) so
+    the hard cap stays exact.
     """
     try:
         plan = await payment_service.get_cached_plan_type(user_id)
@@ -122,9 +137,9 @@ async def _free_cap_remaining(user_id: str, growth: int) -> int | None:
 def _enforce_free_cap(
     reconciled: list[ReconciledFact], remaining: int
 ) -> tuple[list[ReconciledFact], int]:
-    """Trim growth facts to ``remaining`` free slots, preserving order.
+    """Trim growth facts to remaining free slots, preserving order.
 
-    Admits at most ``remaining`` NEW facts (the only outcome that grows the
+    Admits at most remaining NEW facts (the only outcome that grows the
     live set) in reconciliation order and drops the surplus; UPDATES, EXTENDS
     and DUPLICATEs pass through untouched since each supersedes or collapses
     into an existing row. Returns the kept facts and how many were dropped.
@@ -165,7 +180,7 @@ class RetainedMemory:
 
 @dataclass
 class _ApplyResult:
-    """Rows written by ``_apply_reconciled`` plus graph counts."""
+    """Rows written by _apply_reconciled plus graph counts."""
 
     inserted: list[tuple[MemoryRecord, ExtractedFact]]
     duplicates: int
@@ -176,12 +191,9 @@ class _ApplyResult:
     edges_added: int = 0
 
 
-# A shelf life that expires maps to a flat window; durable and journal do not
-# appear here because neither ever produces an expiring row.
-# Reconcile outcomes that retire their target. Both write a new version onto
-# the chain and flip the old row out of the live set; only the relation label
-# differs, so history still says whether the world changed (UPDATES) or the
-# same claim was merely restated more completely (EXTENDS).
+# Reconcile outcomes that retire their target: both write a new version onto
+# the chain and flip the old row out of the live set, differing only in the
+# relation label (UPDATES: the world changed; EXTENDS: restated more fully).
 _SUPERSESSION_RELATION: dict[ReconcileOutcome, MemoryRelationType] = {
     ReconcileOutcome.UPDATES: MemoryRelationType.UPDATES,
     ReconcileOutcome.EXTENDS: MemoryRelationType.EXTENDS,
@@ -208,7 +220,7 @@ def _forget_after(shelf_life: MemoryShelfLife, since: datetime | None) -> dateti
 
 
 def _agenda_fact(item: str) -> ExtractedFact:
-    """An agenda item as a memory row: a task-shelf-life fact in the agenda folder."""
+    """Build an agenda item as a memory row: a task-shelf-life fact in the agenda folder."""
     return ExtractedFact(
         content=item,
         kind=MemoryKind.FACT,
@@ -221,15 +233,9 @@ def _agenda_fact(item: str) -> ExtractedFact:
 def _route_by_shelf_life(batch: ExtractedMemoryBatch) -> tuple[ExtractedMemoryBatch, list[str]]:
     """Send every assertion to the store its shelf life says owns it.
 
-    ``task`` and ``journal`` never become plain facts: a commitment becomes an
-    agenda row and anything that merely happened — including everything GAIA
-    itself recommended, drafted or advised — becomes a journal line. Agenda
-    items go through the normal fact pipeline (so they are embedded, deduped
-    and correctable) rather than the old Redis side-channel, which no tool
-    could reach.
-
-    Returns the rewritten batch plus the agenda items this conversation
-    CLOSED; those retire an existing row instead of writing a new one.
+    task becomes an agenda row (through the normal fact pipeline, not the old
+    unreachable Redis side-channel); journal becomes a journal line. Also
+    returns the agenda items this conversation CLOSED, to retire instead of insert.
     """
     facts: list[ExtractedFact] = []
     episode_entries = list(batch.episode_entries)
@@ -273,28 +279,87 @@ async def _close_resolved_agenda_items(user_id: str, items: list[str]) -> int:
     return closed
 
 
+class RetainOptions(TypedDict, total=False):
+    """Optional retain() inputs; now defaults to the current UTC time."""
+
+    source_id: str | None
+    extraction_hints: str | None
+    user_name: str | None
+    now: datetime | None
+
+
+@dataclass(frozen=True)
+class _IngestContext:
+    """What extraction is shown about the user's memory before it runs."""
+
+    folder_tree: list[tuple[str, int]]
+    recent_facts: list[str]
+    local_now: datetime
+    journaled_today: list[str]
+
+
+async def _load_ingest_context(user_id: str, now: datetime) -> _IngestContext:
+    """Read the folder tree, recent facts and today's journal on the user's wall clock."""
+    folder_tree = await pg_store.get_folder_tree(user_id)
+    recent_facts = await pg_store.get_recent_facts(user_id, limit=RECENT_FACTS_LIMIT)
+    local_now = (await resolve_user_timezone(user_id)).localize(now)
+    today_episode = await pg_store.get_episode(user_id, local_now.date())
+    return _IngestContext(
+        folder_tree=folder_tree,
+        recent_facts=recent_facts,
+        local_now=local_now,
+        journaled_today=[entry_text(entry) for entry in _journal_entries(today_episode)],
+    )
+
+
+async def _admit_under_free_cap(
+    user_id: str, reconciled: list[ReconciledFact]
+) -> list[ReconciledFact]:
+    """Admit only as many NEW facts as the free plan has room for; paid plans pass through."""
+    growth = sum(1 for item in reconciled if item.outcome is ReconcileOutcome.NEW)
+    remaining = await _free_cap_remaining(user_id, growth)
+    if remaining is None:
+        return reconciled
+    kept, dropped = _enforce_free_cap(reconciled, remaining)
+    if dropped:
+        log.info(
+            "memory_cap_reached",
+            event_name="memory_cap_reached",
+            user_id=user_id,
+            dropped=dropped,
+            limit=FREE_MEMORY_FACT_LIMIT,
+        )
+    return kept
+
+
+async def _refresh_agenda(user_id: str, resolved_agenda: list[str], applied: _ApplyResult) -> None:
+    """Close the agenda items the batch resolved; re-render the agenda when anything on it changed."""
+    closed = await _close_resolved_agenda_items(user_id, resolved_agenda)
+    agenda_touched = closed > 0 or any(
+        fact.shelf_life is MemoryShelfLife.TASK for _, fact in applied.inserted
+    )
+    if agenda_touched:
+        await render_agenda_document(user_id)
+
+
 async def retain(
     user_id: str,
     messages: list[dict[str, str]],
     *,
     source_type: MemorySourceType,
-    source_id: str | None = None,
-    extraction_hints: str | None = None,
-    user_name: str | None = None,
-    now: datetime | None = None,
+    **options: Unpack[RetainOptions],
 ) -> RetainResult:
     """Ingest a conversation transcript into long-term memory.
 
-    ``now`` overrides the ingestion timestamp used for relative-date
-    resolution, ``mentioned_at`` (recency), and the journal day — letting
-    callers replay historical sessions (backfills, benchmarks) at their real
-    time. Defaults to the current UTC time. Journal DAYS (and the entry clock
-    times shown to the user) bucket that instant on the user's wall clock,
-    so a 2am local chat files under the user's today, not UTC's.
+    now (default: current UTC) overrides the ingestion timestamp for
+    relative-date resolution and the journal day, letting callers replay
+    historical sessions. Journal days bucket on the user's wall clock, so a
+    2am local chat files under the user's today, not UTC's.
     """
     timings: dict[str, int] = {}
     started = time.perf_counter()
-    now = now or datetime.now(UTC)
+    now = options.get("now") or datetime.now(UTC)
+    source_id = options.get("source_id")
 
     # Set operation context up front so a mid-ingest failure still attributes
     # the wide event to a retain (the completion set below replaces this).
@@ -303,34 +368,26 @@ async def retain(
         memory=MemoryContext(operation="retain", source_type=source_type.value),
     )
 
-    folder_tree = await pg_store.get_folder_tree(user_id)
-    recent_facts = await pg_store.get_recent_facts(user_id, limit=RECENT_FACTS_LIMIT)
-    local_now = (await resolve_user_timezone(user_id)).localize(now)
-    today_episode = await pg_store.get_episode(user_id, local_now.date())
-    journaled_today = (
-        [entry.get("text", "") for entry in today_episode.entries] if today_episode else []
-    )
+    context = await _load_ingest_context(user_id, now)
+    local_now = context.local_now
     timings["context_ms"] = _elapsed_ms(started)
 
     stage = time.perf_counter()
     batch = await extract_memories(
         messages,
         user_id=user_id,
-        user_name=user_name or _DEFAULT_USER_NAME,
-        folder_tree=_format_folder_tree(folder_tree),
-        recent_facts=recent_facts,
-        journaled_today=journaled_today,
-        extraction_hints=extraction_hints,
+        user_name=options.get("user_name") or _DEFAULT_USER_NAME,
+        folder_tree=_format_folder_tree(context.folder_tree),
+        recent_facts=context.recent_facts,
+        journaled_today=context.journaled_today,
+        extraction_hints=options.get("extraction_hints"),
         current_date=local_now,
     )
     timings["extract_ms"] = _elapsed_ms(stage)
 
     if source_type is MemorySourceType.EMAIL:
-        # A mailbox (especially a founder's or support address) is not the
-        # user's diary or to-do list — "respond to customer X", "resolve
-        # ticket Y" are an inbound queue, not the user's agenda or journal.
-        # Email ingestion contributes durable facts about the user only; the
-        # extraction prompt is responsible for not storing inbound senders.
+        # A mailbox is an inbound queue, not the user's agenda or journal;
+        # email ingestion contributes durable facts about the user only.
         batch.episode_entries = []
         batch.agenda_updates = []
 
@@ -357,41 +414,23 @@ async def retain(
     reconciled = await reconcile(user_id, batch.facts, embeddings)
     timings["reconcile_ms"] = _elapsed_ms(stage)
 
-    # Free-plan cap: passive ingestion admits only as many NEW facts as fit
-    # under the cap and silently drops the rest, so a
-    # batch that crosses the cap lands exactly at it rather than overshooting
-    # (48 live + 10 new must not become 58). Concurrent same-user batches can
-    # transiently exceed the cap by a few facts (the check is not a reservation
-    # by design — enforcement stays fail-open), after which growth stops, so
-    # the cap is exact per batch and convergent, not globally atomic. UPDATES
-    # and EXTENDS supersede (net count unchanged) so what GAIA knows stays
-    # current, and
-    # reads are never gated — the cap blocks growth, it does not lobotomize.
-    # Facts keep reconciliation order (input order), so earlier facts in the
-    # transcript win the remaining slots deterministically.
-    growth = sum(1 for item in reconciled if item.outcome is ReconcileOutcome.NEW)
-    remaining = await _free_cap_remaining(user_id, growth)
-    if remaining is not None:
-        reconciled, dropped = _enforce_free_cap(reconciled, remaining)
-        if dropped:
-            log.info(
-                "memory_cap_reached",
-                event_name="memory_cap_reached",
-                user_id=user_id,
-                dropped=dropped,
-                limit=FREE_MEMORY_FACT_LIMIT,
-            )
+    # Free-plan cap: a batch that crosses the cap lands exactly at it, not over.
+    # Fail-open by design, so concurrent batches can transiently overshoot by a few.
+    reconciled = await _admit_under_free_cap(user_id, reconciled)
 
     stage = time.perf_counter()
     applied = await _apply_reconciled(
         user_id, reconciled, source_type=source_type, source_id=source_id, mentioned_at=now
     )
-    result.new = applied.new
-    result.updated = applied.updated
-    result.extended = applied.extended
-    result.duplicates = applied.duplicates
-    result.entities_linked = applied.entities_linked
-    result.edges_added = applied.edges_added
+    result = RetainResult(
+        facts_extracted=result.facts_extracted,
+        new=applied.new,
+        updated=applied.updated,
+        extended=applied.extended,
+        duplicates=applied.duplicates,
+        entities_linked=applied.entities_linked,
+        edges_added=applied.edges_added,
+    )
     timings["apply_ms"] = _elapsed_ms(stage)
 
     stage = time.perf_counter()
@@ -402,16 +441,18 @@ async def retain(
     timings["episodes_ms"] = _elapsed_ms(stage)
 
     stage = time.perf_counter()
-    await _store_conversation_chunks(user_id, messages, source_id=source_id, local_now=local_now)
+    await _store_conversation_chunks(
+        # ``retain``'s signature stays ``list[dict[str, str]]`` because the same
+        # list goes to the extractor; the turns are exactly ``TranscriptTurn``.
+        user_id,
+        cast(list[TranscriptTurn], messages),
+        source_id=source_id,
+        local_now=local_now,
+    )
     timings["chunks_ms"] = _elapsed_ms(stage)
 
     stage = time.perf_counter()
-    closed = await _close_resolved_agenda_items(user_id, resolved_agenda)
-    agenda_touched = closed > 0 or any(
-        fact.shelf_life is MemoryShelfLife.TASK for _, fact in applied.inserted
-    )
-    if agenda_touched:
-        await render_agenda_document(user_id)
+    await _refresh_agenda(user_id, resolved_agenda, applied)
     timings["agenda_ms"] = _elapsed_ms(stage)
 
     await invalidate_user_memory_caches(user_id)
@@ -446,19 +487,11 @@ async def retain_single(
     category_path: str | None = None,
     source_type: MemorySourceType,
 ) -> RetainedMemory:
-    """Store one explicit fact (add_memory tool / POST endpoint).
+    """Store one explicit fact (add_memory tool / POST endpoint), skipping transcript extraction.
 
-    Skips transcript extraction. When no folder is given, one small
-    categorize LLM call assigns folder/kind/importance/entities — the
-    full extraction prompt is tuned to filter conversational noise and
-    could drop an explicitly requested fact, so it is not reused here.
-
-    Raises ``MemoryLimitReachedError`` when a free user at the live-fact cap
-    tries to add a fact that would GROW the set — explicit adds fail LOUD so
-    the tool/endpoint can upsell, unlike passive ingestion which drops
-    silently. A DUPLICATE, UPDATES or EXTENDS resolves to zero growth and
-    stays allowed at the cap, so the outcome is known only after
-    reconciliation.
+    Raises MemoryLimitReachedError when a free user at the cap adds a fact
+    that would GROW the set — explicit adds fail LOUD (unlike passive
+    ingestion, which drops silently) so the caller can upsell.
     """
     now = datetime.now(UTC)
     fact = await _build_single_fact(user_id, content, category_path, now)
@@ -509,7 +542,9 @@ async def summarize_episode(user_id: str, date: date_type) -> None:
     if episode is None or episode.summary or not episode.entries:
         return
 
-    lines = [f"{entry.get('time', '')} {entry.get('text', '')}" for entry in episode.entries]
+    # Typed local: the comprehension reads the declared entry shape, not raw keys.
+    entries: list[EpisodeEntry] = _journal_entries(episode)
+    lines = [f"{entry.get('time', '')} {entry_text(entry)}" for entry in entries]
     summary = await summarize_episode_entries(lines, user_id=user_id)
     if summary is None:
         return
@@ -581,12 +616,9 @@ async def _apply_reconciled(
 ) -> _ApplyResult:
     """Write reconciled facts to Postgres + Chroma and wire up the graph.
 
-    EXTENDS supersedes its parent exactly like UPDATES. It used to coexist with
-    it — "the new fact is distinct" — and the result in production was 329 live
-    rows (36% of the store) that were EXTENDS children of a still-live parent,
-    every pair injected into recall as two competing versions of one attribute.
-    A more complete restatement of the same subject-attribute is a revision, so
-    the parent moves into history and only the complete form stays live.
+    EXTENDS supersedes its parent exactly like UPDATES: a more complete
+    restatement of the same subject-attribute is a revision, not a distinct
+    fact, so only the complete form stays live.
     """
     inserted: list[tuple[MemoryRecord, ExtractedFact]] = []
     new = updated = extended = duplicates = 0
@@ -695,7 +727,7 @@ async def _apply_graph(
 
 async def _store_conversation_chunks(
     user_id: str,
-    messages: list[dict[str, str]],
+    messages: list[TranscriptTurn],
     *,
     source_id: str | None,
     local_now: datetime,
@@ -705,7 +737,7 @@ async def _store_conversation_chunks(
     Extracted facts compress a conversation, which loses verbatim
     micro-details ("the exact move GAIA suggested", "the 27th item in that
     list"). Chunking the transcript keeps those details searchable via
-    ``recall_transcripts`` without polluting the fact store.
+    recall_transcripts without polluting the fact store.
     """
     chunks: list[str] = []
     current: list[str] = []
@@ -723,10 +755,8 @@ async def _store_conversation_chunks(
             continue
         line = f"{message.get('role', 'user')}: {content}"
         if len(line) > TRANSCRIPT_CHUNK_MAX_CHARS:
-            # A single long turn — typically a list or detailed answer GAIA
-            # generated ("here are 100 prompt parameters: ..."). Split it into
-            # overlapping windows so every item stays searchable; truncating it
-            # would silently drop the tail (and the exact detail asked for later).
+            # A single long turn: split into overlapping windows so every item
+            # stays searchable; truncating would silently drop the tail.
             _flush()
             step = TRANSCRIPT_CHUNK_MAX_CHARS - TRANSCRIPT_CHUNK_OVERLAP_CHARS
             for start in range(0, len(line), step):
@@ -776,26 +806,16 @@ async def _append_episode_entries(
     source_type: MemorySourceType,
     local_now: datetime,
 ) -> tuple[int, int]:
-    """Append today's novel journal lines; returns ``(appended, deduped)``.
+    """Append today's novel journal lines; returns (appended, deduped).
 
-    ``local_now`` is the ingestion instant on the user's wall clock — it
-    decides both the journal DAY the lines file under and the clock time
-    stamped on each entry. The journal had no dedupe tier — facts get
-    embedding reconciliation, entries were appended blindly — and the
-    extractor's "do NOT repeat" instruction cannot stop a paraphrase, so one
-    production day carried the same discussion five times reworded. Today's
-    entries are re-read HERE, not reused from retain's earlier snapshot,
-    because back-to-back retains race: the fresh read sees what a concurrent
-    retain wrote seconds ago.
+    local_now decides both the journal day and the entry's stamped clock
+    time. Today's entries are re-read HERE rather than reused from retain's
+    earlier snapshot, since back-to-back retains race.
     """
     if not entries:
         return 0, 0
     episode = await pg_store.get_episode(user_id, local_now.date())
-    seen = (
-        [_normalize_entry(str(entry.get("text", ""))) for entry in episode.entries]
-        if episode
-        else []
-    )
+    seen = [_normalize_entry(entry_text(entry)) for entry in _journal_entries(episode)]
     kept: list[str] = []
     for text in entries:
         normalized = _normalize_entry(text)
@@ -864,7 +884,7 @@ def _build_record(
 ) -> MemoryRecord:
     """Map an extracted fact onto an unsaved ORM row (no lineage fields).
 
-    ``mentioned_at`` is set explicitly only when the caller replays a
+    mentioned_at is set explicitly only when the caller replays a
     historical session; otherwise the column default (now) applies.
     """
     values: dict[str, object] = {

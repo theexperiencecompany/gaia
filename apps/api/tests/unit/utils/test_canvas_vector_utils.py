@@ -5,15 +5,17 @@ tests pin the metadata shape, the id scheme, the completion filter, and the
 fail-loud error path (returns False, never raises).
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.documents import Document
 import pytest
 
 from app.utils.canvas_vector_utils import (
     COLLECTION_NAME,
     delete_canvas_embedding,
-    mark_canvas_completed,
     search_canvas_context,
+    set_canvas_completed,
     store_canvas_embedding,
     update_canvas_embedding,
 )
@@ -50,11 +52,11 @@ async def test_store_canvas_embedding_indexes_content() -> None:
     # A fresh timestamp is stamped on every write; assert it is present so a
     # dropped `updated_at` key is caught (the value is now()).
     assert meta["updated_at"]
+    assert datetime.fromisoformat(meta["updated_at"]).tzinfo == UTC
 
 
 async def test_store_canvas_embedding_omits_optional_metadata_when_absent() -> None:
-    """No labels / revision means the keys are absent, not blank — the
-    `if labels:` / `if revision is not None:` guards both matter."""
+    """Absent labels/revision means the keys are omitted, not blank — both guards matter."""
     collection = AsyncMock()
     with patch(
         "app.utils.canvas_vector_utils.ChromaClient.get_langchain_client",
@@ -208,9 +210,7 @@ async def test_update_writes_when_revision_newer_and_stores_it() -> None:
 
 
 async def test_update_canvas_embedding_stores_new_content_when_metadata_lookup_fails() -> None:
-    """A Chroma metadata-read failure (collection missing / offline) must not
-    skip the rebuild: with no stored revision there is nothing to compare
-    against, so the write proceeds and carries the new revision."""
+    """A Chroma metadata-read failure must not skip the rebuild — it proceeds and carries the new revision."""
     raw_client = MagicMock()
     raw_client.get_collection = AsyncMock(side_effect=RuntimeError("collection missing"))
     with (
@@ -242,8 +242,7 @@ async def test_update_canvas_embedding_stores_new_content_when_metadata_lookup_f
 
 
 async def test_update_canvas_embedding_forwards_title_and_labels() -> None:
-    """Every forwarded argument is pinned: title and labels reach the store
-    unchanged (dropping either was previously invisible)."""
+    """Title and labels reach the store unchanged — dropping either was previously invisible."""
     raw_client = MagicMock()
     raw_client.get_collection = AsyncMock(side_effect=RuntimeError("collection missing"))
     with (
@@ -285,10 +284,13 @@ async def test_delete_canvas_embedding() -> None:
     collection.adelete.assert_awaited_once_with(ids=["canvas_todo-1"])
 
 
-async def test_mark_canvas_completed() -> None:
+async def test_set_canvas_completed_stamps_the_completion() -> None:
     collection = MagicMock()
     collection.get = AsyncMock(
-        return_value={"ids": ["canvas_todo-1"], "metadatas": [{"completed": False}]}
+        return_value={
+            "ids": ["canvas_todo-1"],
+            "metadatas": [{"completed": False, "custom": "kept"}],
+        }
     )
     collection.update = AsyncMock()
     raw_client = MagicMock()
@@ -298,13 +300,116 @@ async def test_mark_canvas_completed() -> None:
         new_callable=AsyncMock,
         return_value=raw_client,
     ) as get_client:
-        marked = await mark_canvas_completed("todo-1")
+        marked = await set_canvas_completed("todo-1", completed=True)
 
     assert marked is True
     get_client.assert_awaited_once()
     args, kwargs = collection.update.await_args
     assert kwargs["ids"] == ["canvas_todo-1"]
     assert kwargs["metadatas"][0]["completed"] is True
+    # Written back exactly as stored plus the two stamps — no invented defaults.
+    written = kwargs["metadatas"][0]
+    assert set(written) == {"completed", "custom", "completed_at"}
+    assert written["custom"] == "kept"
+    assert datetime.fromisoformat(written["completed_at"]).tzinfo == UTC
+
+
+async def test_set_canvas_completed_false_opens_it_and_keeps_the_last_completion() -> None:
+    collection = MagicMock()
+    stamped = "2026-11-01T09:00:00+00:00"
+    collection.get = AsyncMock(
+        return_value={
+            "ids": ["canvas_todo-1"],
+            "metadatas": [{"completed": True, "completed_at": stamped, "custom": "kept"}],
+        }
+    )
+    collection.update = AsyncMock()
+    raw_client = MagicMock()
+    raw_client.get_collection = AsyncMock(return_value=collection)
+    with patch(
+        "app.utils.canvas_vector_utils.ChromaClient.get_client",
+        new_callable=AsyncMock,
+        return_value=raw_client,
+    ):
+        opened = await set_canvas_completed("todo-1", completed=False)
+
+    assert opened is True
+    written = collection.update.await_args.kwargs["metadatas"][0]
+    assert written == {"completed": False, "completed_at": stamped, "custom": "kept"}
+
+
+@pytest.mark.parametrize("completed", [True, False])
+async def test_set_canvas_completed_that_cannot_reach_chroma_logs_which_flag_it_lost(
+    completed: bool,
+) -> None:
+    with (
+        patch(
+            "app.utils.canvas_vector_utils.ChromaClient.get_client",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("chroma down"),
+        ),
+        patch("app.utils.canvas_vector_utils.log") as log,
+    ):
+        marked = await set_canvas_completed("todo-1", completed=completed)
+
+    assert marked is False
+    log.warning.assert_called_once_with(
+        "canvas.set_completed_failed", todo_id="todo-1", completed=completed, error="chroma down"
+    )
+
+
+async def test_set_canvas_completed_with_empty_stored_row_is_false() -> None:
+    collection = MagicMock()
+    collection.get = AsyncMock(return_value={"ids": ["canvas_todo-1"], "metadatas": [None]})
+    collection.update = AsyncMock()
+    raw_client = MagicMock()
+    raw_client.get_collection = AsyncMock(return_value=collection)
+    with patch(
+        "app.utils.canvas_vector_utils.ChromaClient.get_client",
+        new_callable=AsyncMock,
+        return_value=raw_client,
+    ):
+        marked = await set_canvas_completed("todo-1", completed=True)
+
+    assert marked is False
+    collection.update.assert_not_awaited()
+
+
+async def test_update_canvas_embedding_restores_completed_status() -> None:
+    raw_client = MagicMock()
+    raw_client.get_collection = AsyncMock(
+        return_value=MagicMock(
+            get=AsyncMock(
+                return_value={"ids": ["canvas_todo-1"], "metadatas": [{"completed": True}]}
+            )
+        )
+    )
+    with (
+        patch(
+            "app.utils.canvas_vector_utils.ChromaClient.get_client",
+            new_callable=AsyncMock,
+            return_value=raw_client,
+        ),
+        patch(
+            "app.utils.canvas_vector_utils.delete_canvas_embedding",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "app.utils.canvas_vector_utils.store_canvas_embedding",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "app.utils.canvas_vector_utils.set_canvas_completed",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mark_completed,
+    ):
+        ok = await update_canvas_embedding("todo-1", "new text", "user-1")
+
+    assert ok is True
+    mark_completed.assert_awaited_once_with("todo-1", completed=True)
 
 
 async def test_search_canvas_context_excludes_completed_when_requested() -> None:
@@ -326,3 +431,22 @@ async def test_search_canvas_context_excludes_completed_when_requested() -> None
     args, kwargs = collection.asimilarity_search_with_score.await_args
     assert kwargs["k"] == 3
     assert kwargs["filter"] == {"$and": [{"user_id": "user-1"}, {"completed": False}]}
+
+
+async def test_search_canvas_context_includes_completed_filters_by_user_only() -> None:
+    collection = AsyncMock()
+    doc = Document(page_content="snippet", metadata={"todo_id": "todo-1", "title": "T"})
+    collection.asimilarity_search_with_score.return_value = [(doc, 0.5)]
+    with patch(
+        "app.utils.canvas_vector_utils.ChromaClient.get_langchain_client",
+        new_callable=AsyncMock,
+        return_value=collection,
+    ):
+        matches = await search_canvas_context("query", "user-1")
+
+    assert matches == [
+        {"todo_id": "todo-1", "title": "T", "score": 0.5, "snippet": "snippet", "completed": False}
+    ]
+    assert collection.asimilarity_search_with_score.await_args.kwargs["filter"] == {
+        "user_id": "user-1"
+    }

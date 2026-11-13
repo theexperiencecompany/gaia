@@ -59,10 +59,9 @@ async function feedClipFrames(
 }
 
 describe("WakeWordPipeline (hey_mycroft_v0.1)", () => {
-  // Warmup math: mel buffer fills (76 frames) after 10 audio frames of 8
-  // mel-frames each, so the first embedding fires on frame 10. The classifier
-  // needs 16 embeddings → first score is produced on frame 25. We assert this
-  // exact contract because any change in warmup latency is user-visible.
+  // Warmup math: mel buffer fills (76 frames) after 10 audio frames of 8 mel-frames each, so
+  // the first embedding fires on frame 10; the classifier needs 16 embeddings, so the first
+  // score lands on frame 25. Asserted exactly since warmup latency is user-visible.
   it("emits exactly 0 scores in first 24 frames, 1 score on frame 25", async () => {
     const runtime = new NodeRuntime();
     const pipeline = new WakeWordPipeline(runtime);

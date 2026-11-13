@@ -1,16 +1,11 @@
-"""The vision fallback's own model must be able to see, and the fallback's
-behavior must degrade gracefully.
+"""describe_image, the vision fallback: its own model must see, and it must degrade gracefully.
 
-``describe_image`` is what a blind lane falls back to, and it fails SILENTLY —
-a failed call returns ``None`` and every caller degrades to "couldn't look". So
-pointing it at a text-only model does not raise anywhere; images simply stop
-being understood. These tests pin the invariant that makes the fallback work at
-all, separately from ``test_vision_tool_media``, which pins the other half (a
-lane that CAN see never pays for a description).
-
-Plus the call contract: the image is attached as an inline block, the text is
-flattened, and provider failure or an empty completion degrades to ``None``
-instead of failing the whole tool.
+describe_image fails SILENTLY — a failed call returns None, so a text-only
+VISION_MODEL_* would stop understanding images without ever raising. Separate
+from test_vision_tool_media, which pins the other half (a lane that CAN see
+never pays for a description). Also covers the call contract: image attached
+as an inline block, text flattened, provider failure or empty completion
+degrades to None instead of failing the whole tool.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -18,13 +13,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AIMessage
 import pytest
 
+from app.agents.llm import client as client_module
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.vision.capability import model_can_view_images
 from app.agents.llm.vision.describe import describe_image
 from app.constants.llm import (
+    DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
     VISION_MODEL_NAME,
-    VISION_MODEL_PROVIDER,
+    ModelUse,
 )
+from app.constants.providers import HOSTED_ONE_SHOT_PROVIDERS, CredentialProviderName
+from app.services.providers.provider_credentials_service import resolved_configs
 from app.utils.multimodal import image_content_block
 
 _MOD = "app.agents.llm.vision.describe"
@@ -37,13 +37,15 @@ PROMPT = "Describe what is in this screenshot."
 @pytest.mark.unit
 class TestTheDescriberCanSee:
     async def test_the_vision_lane_is_one_that_takes_pixels(self) -> None:
-        """The whole point of the fallback. If VISION_MODEL_* is ever pointed at a
-        text-only model this fails here instead of silently blanking every image."""
+        """If VISION_MODEL_* is ever pointed at a text-only model, this fails here instead of silently."""
         config = {
             "configurable": {
                 "lane": {
-                    "provider": VISION_MODEL_PROVIDER,
+                    "provider": HOSTED_ONE_SHOT_PROVIDERS[ModelUse.VISION],
                     "model": VISION_MODEL_NAME,
+                    "reasoning": None,
+                    "provider_pin": None,
+                    "max_input_tokens": DEFAULT_MAX_TOKENS,
                 },
                 "model": VISION_MODEL_NAME,
             }
@@ -52,18 +54,16 @@ class TestTheDescriberCanSee:
         assert await model_can_view_images(config) is True
 
     async def test_it_does_not_describe_with_the_default_chat_model(self) -> None:
-        """The default is chosen for cheap text and may be text-only; the describer
-        must not inherit it. Callers reach the fallback precisely BECAUSE the active
-        lane cannot see, so describing with that lane would return nothing."""
+        """The default chat model is chosen for cheap text and may be text-only; the describer must not inherit it."""
         with (
-            patch(f"{_MOD}.get_vision_llm") as vision_llm,
+            patch(f"{_MOD}.resolve_model") as vision_llm,
             patch(
                 f"{_MOD}.ainvoke_llm", AsyncMock(return_value=MagicMock(text="a red login screen"))
             ),
         ):
             await describe_image("BASE64", "image/png", prompt="what is this?")
 
-        vision_llm.assert_called_once()
+        vision_llm.assert_called_once_with(ModelUse.VISION)
 
     async def test_the_configured_vision_model_is_not_merely_the_default(self) -> None:
         # Not a style preference: if these collapse to one name, a future default
@@ -78,7 +78,7 @@ class TestTheDescriberCanSee:
 
 @pytest.mark.unit
 class TestDescribeImage:
-    @patch(f"{_MOD}.get_vision_llm")
+    @patch(f"{_MOD}.resolve_model")
     @patch(f"{_MOD}.ainvoke_llm", new_callable=AsyncMock)
     async def test_happy_path_returns_trimmed_text(
         self, mock_ainvoke: AsyncMock, mock_llm: AsyncMock
@@ -97,14 +97,14 @@ class TestDescribeImage:
 
     async def test_provider_failure_returns_none(self) -> None:
         with (
-            patch(f"{_MOD}.get_vision_llm"),
+            patch(f"{_MOD}.resolve_model"),
             patch(f"{_MOD}.ainvoke_llm", AsyncMock(side_effect=RuntimeError("provider down"))),
         ):
             assert await describe_image(IMAGE_B64, MIME, PROMPT) is None
 
     async def test_empty_completion_returns_none(self) -> None:
         with (
-            patch(f"{_MOD}.get_vision_llm"),
+            patch(f"{_MOD}.resolve_model"),
             patch(f"{_MOD}.ainvoke_llm", AsyncMock(return_value=AIMessage(content="   "))),
         ):
             assert await describe_image(IMAGE_B64, MIME, PROMPT) is None
@@ -114,14 +114,43 @@ class TestDescribeImage:
 class TestDegradation:
     async def test_a_provider_failure_returns_none_rather_than_raising(self) -> None:
         with (
-            patch(f"{_MOD}.get_vision_llm"),
+            patch(f"{_MOD}.resolve_model"),
             patch(f"{_MOD}.ainvoke_llm", AsyncMock(side_effect=RuntimeError("provider down"))),
         ):
             assert await describe_image("BASE64", "image/png", prompt="p") is None
 
+    async def test_no_vision_provider_raises_instead_of_returning_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Nothing configured can see: that is a setup problem to surface, not a transient miss."""
+        monkeypatch.setattr(client_module.settings, "GAIA_SIM_MODE", False)
+        monkeypatch.setattr(client_module.settings, "ENV", "selfhost")
+        monkeypatch.setattr(client_module.settings, "DEV_DEFAULT_MODEL", None)
+        for provider in CredentialProviderName:
+            monkeypatch.setitem(resolved_configs, provider, None)
+
+        with pytest.raises(LLMNotConfiguredError, match="vision"):
+            await describe_image("BASE64", "image/png", prompt="p")
+
     async def test_an_empty_description_is_reported_as_no_description(self) -> None:
         with (
-            patch(f"{_MOD}.get_vision_llm"),
+            patch(f"{_MOD}.resolve_model"),
             patch(f"{_MOD}.ainvoke_llm", AsyncMock(return_value=MagicMock(text="   "))),
         ):
             assert await describe_image("BASE64", "image/png", prompt="p") is None
+
+
+@pytest.mark.unit
+class TestTheCallIsBilledToTheUserAndNeverStreams:
+    """Regression: tool-media descriptions ran with config=None, so their spend was booked to nobody."""
+
+    async def test_the_users_id_and_the_silent_flag_reach_the_call(self) -> None:
+        with (
+            patch(f"{_MOD}.resolve_model"),
+            patch(f"{_MOD}.ainvoke_llm", AsyncMock(return_value=AIMessage(content="ok"))) as call,
+        ):
+            await describe_image(IMAGE_B64, MIME, PROMPT, user_id="user-1")
+
+        config = call.await_args.kwargs["config"]
+        assert config["configurable"]["user_id"] == "user-1"
+        assert config["metadata"]["silent"] is True

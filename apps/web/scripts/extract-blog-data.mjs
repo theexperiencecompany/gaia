@@ -1,17 +1,7 @@
 #!/usr/bin/env node
 /**
- * extract-blog-data.mjs — build-time codegen for blog posts.
- *
- * The blog used to read markdown straight off the filesystem at runtime
- * (`fs.readdirSync(process.cwd()/content/blog)`). That works on Node/Vercel but
- * FAILS on Cloudflare Workers (no fs at request time), so the blog sitemap shard
- * came back empty and `/blog/[slug]` pages broke on cf.
- *
- * This emits the same `public/data/{feature}/…` shape every other static feature
- * (comparisons, alternatives, …) uses, so `src/lib/blog.ts` can load posts via
- * `@/lib/feature-data` (fs at build, the Cloudflare ASSETS binding at runtime).
- *
- * Output: public/data/blog/_slugs.json + public/data/blog/{slug}.json
+ * extract-blog-data.mjs: build-time codegen for blog posts. The blog used to read markdown off the filesystem at runtime, which works on Node/Vercel but fails on Cloudflare Workers (no fs at request time) — the blog sitemap shard came back empty and /blog/[slug] pages broke on cf.
+ * Emits public/data/blog/_slugs.json + {slug}.json, the same public/data/{feature}/... shape other static features use, so src/lib/blog.ts loads posts via @/lib/feature-data (fs at build, the Cloudflare ASSETS binding at runtime).
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -50,17 +40,22 @@ for (const file of files) {
   const post = {
     slug,
     title: data.title,
+    ...(data.metaTitle ? { metaTitle: data.metaTitle } : {}),
     date: data.date,
+    // Optional: when a post is revised, set `updated:` in frontmatter so
+    // Article dateModified (and the visible "Updated" label) reflect reality.
+    // Absent => never revised => dateModified falls back to date.
+    ...(data.updated ? { updated: data.updated } : {}),
     authors: data.authors,
     category: data.category,
     image: data.image,
     content,
     featured: data.featured ?? false,
   };
-  writeFileSync(join(OUT_DIR, `${slug}.json`), JSON.stringify(post));
+  writeFileSync(join(OUT_DIR, `${slug}.json`), `${JSON.stringify(post, null, 2)}\n`);
   slugs.push(slug);
 }
 
 slugs.sort((a, b) => a.localeCompare(b));
-writeFileSync(join(OUT_DIR, "_slugs.json"), JSON.stringify(slugs));
+writeFileSync(join(OUT_DIR, "_slugs.json"), `${JSON.stringify(slugs, null, 2)}\n`);
 console.log(`[extract-blog] wrote ${slugs.length} posts -> public/data/blog/`);

@@ -1,7 +1,7 @@
 """Default and constraint coverage for the custom-integration request model.
 
-These fields are declared optional (``default=``) so callers such as the
-``add_custom_mcp_server`` tool can omit them; the defaults are load-bearing (a
+These fields are declared optional (default=) so callers such as the
+add_custom_mcp_server tool can omit them; the defaults are load-bearing (a
 missing bearer_token must stay None, a new server must default to private), so
 they are pinned here.
 """

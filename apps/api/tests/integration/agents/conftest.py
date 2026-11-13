@@ -1,5 +1,8 @@
 """Agent-specific integration test fixtures."""
 
+import asyncio
+import importlib
+import os
 from typing import Any
 from unittest.mock import patch
 from uuid import uuid4
@@ -25,23 +28,10 @@ from tests.integration.conftest import SimpleState
 def no_model_fallback():
     """Build the graph with NO default-model fallback available.
 
-    ``create_agent`` resolves the fallback once, at build time, from
-    ``get_default_llm()``. A test asserting that a provider error *propagates*
-    must therefore pin off whatever key that factory needs, or an ambient key
-    (Infisical, a developer's shell, CI secrets) silently makes the fallback
-    available and swallows the error the test exists to catch.
-
-    Both provider keys are pinned rather than the one the default happens to use
-    today: the default model has already moved providers once, and naming a
-    single key here is what let this fixture keep passing while quietly no
-    longer disabling anything.
-
-    Sim mode is pinned off and the model caches cleared for the same reason —
-    each is a way ``get_default_llm()`` still hands back a model with every
-    provider key unset: sim mode short-circuits to the stub before the key check,
-    and a cached instance built by an earlier test outlives the patch. Either one
-    silently restores the fallback this fixture exists to remove, and the test
-    then passes while asserting nothing.
+    Pins off both provider keys (not just the one the default currently uses,
+    since that has moved before), sim mode, and clears the model caches —
+    each is a way resolve_model() could otherwise silently hand back a
+    working fallback and make the test pass while asserting nothing.
     """
     _build_default_llm.cache_clear()
     _sim_llm.cache_clear()
@@ -60,15 +50,10 @@ def no_model_fallback():
 def single_llm_attempt(monkeypatch: pytest.MonkeyPatch):
     """Make the graph's LLM call fail fast: one attempt, no retry backoff.
 
-    ``with_llm_retry`` wraps every model call with tenacity exponential jitter
-    (``LLM_RETRY_MAX_ATTEMPTS`` attempts), so a fake model that raises a
-    retryable error (``TimeoutError``, ``ConnectionError``) instantly still
-    costs ~4s of sleeps per wrapped call. Tests asserting that such an error
-    *propagates* do not care how many times it was retried first. The wrapper
-    is looked up by name in ``app.agents.llm.client`` at call time, so patching
-    it there covers ``ainvoke_with_fallback`` and the fallback path alike. Not a
-    ``functools.partial``: ``ainvoke_with_fallback`` passes ``max_attempts=``
-    explicitly, which would override a partial's bound keyword.
+    with_llm_retry's tenacity backoff otherwise costs ~4s of sleeps per
+    wrapped call even for a fake model. Patched by name (not functools.partial)
+    since ainvoke_with_fallback passes max_attempts= explicitly, which would
+    override a partial's bound keyword.
     """
 
     def _single_attempt(runnable: Runnable, *, max_attempts: int = 1) -> Runnable:
@@ -80,7 +65,7 @@ def single_llm_attempt(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.fixture
 def simple_tool():
-    """A trivial tool for testing tool execution in graphs."""
+    """Build a trivial tool for testing tool execution in graphs."""
 
     @tool
     def greet(name: str) -> str:
@@ -175,16 +160,35 @@ def real_agent_config() -> dict:
 
 @pytest.fixture
 def fake_llm() -> FakeMessagesListChatModel:
-    """A FakeMessagesListChatModel pre-loaded with a single plain-text response.
-
-    Use this fixture when a test needs a properly configured LLM stand-in that
-    can be bound to tools and invoked via the standard LangChain interface
-    without hitting any external API.
-
-    Example::
-
-        def test_something(fake_llm):
-            result = fake_llm.invoke([HumanMessage(content="hello")])
-            assert result.content == "Fake response"
-    """
+    """Build a FakeMessagesListChatModel pre-loaded with a single plain-text response."""
     return create_fake_llm(["Fake response"])
+
+
+#: Loop the cached Mongo client was built on.
+_mongo_client_loop: asyncio.AbstractEventLoop | None = None
+
+
+@pytest.fixture(autouse=True)
+async def _mongo_client_follows_the_test_loop() -> None:
+    """Rebuild the process-wide Mongo and Redis clients when the loop changes.
+
+    Only this tier: tests that boot a stack in-process keep theirs for the module.
+    """
+    # Hermetic runs are fenced, not loop-bound: the Mongo accessor is a MagicMock and
+    # Redis is an in-process fake, so there is nothing stale to replace and nothing to
+    # pull out from under the fence.
+    if os.environ.get("USE_REAL_SERVICES", "0") != "1":
+        return
+    global _mongo_client_loop
+    loop = asyncio.get_running_loop()
+    if _mongo_client_loop is loop:
+        return
+    mongo_collections = importlib.import_module("app.db.mongodb.collections")
+    mongo_module = importlib.import_module("app.db.mongodb.mongodb")
+    # init_mongodb is lru_cached: without clearing it the "new" instance is the old client.
+    mongo_module.init_mongodb.cache_clear()
+    mongo_collections._mongodb_instance = None
+    mongo_collections._collections_cache.clear()
+    redis_module = importlib.import_module("app.db.redis")
+    redis_module.redis_cache.redis = None
+    _mongo_client_loop = loop

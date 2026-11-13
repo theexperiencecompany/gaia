@@ -4,13 +4,19 @@ MCP and Integration Constants.
 Centralized constants for MCP services.
 """
 
+# The one backend callback every MCP provider OAuth flow redirects back to.
+# Defined here so the redirect URI, its OAuth client metadata, and the
+# entitlement allowlist all name the same path.
+MCP_OAUTH_CALLBACK_PATH = "/api/v1/mcp/oauth/callback"
+
 # Host of Composio's hosted MCP gateway. These servers authenticate the calling
 # platform via an `x-api-key` header (GAIA's COMPOSIO_KEY) rather than per-user
 # OAuth/bearer, so requests without that header are rejected with a bare 401.
 COMPOSIO_MCP_HOST = "backend.composio.dev"
 
-YELP_MCP_SERVER_URL = "https://backend.composio.dev/v3/mcp/8e1efded-6b08-4346-a657-92d0b94399e5/mcp?user_id=pg-test-15a6d21a-2a4b-4be5-98c9-d92f55b3ccc3"
-INSTACART_MCP_SERVER_URL = "https://backend.composio.dev/v3/mcp/6bb2556a-57ef-4daa-81ad-bd1e3f9e443d/mcp?user_id=pg-test-15a6d21a-2a4b-4be5-98c9-d92f55b3ccc3"
+# GAIA-owned Composio MCP server; the previous id was another account's
+# playground server that answered 401 with our key.
+YELP_MCP_SERVER_URL = "https://backend.composio.dev/v3/mcp/b4d96e89-0956-47f5-87f8-7b9be7a7e32b/mcp"
 
 # Max distinct scopes to drop across re-authorization retries when an auth
 # server rejects scopes with `invalid_scope`. Bounds the retry loop for servers
@@ -37,3 +43,33 @@ MCP_MEDIA_DROPPED_NOTICE = (
 # A content item that is neither text nor an inlinable image (audio, a binary
 # resource). Its pydantic repr must never be what the model sees.
 MCP_UNSUPPORTED_CONTENT_NOTICE = "[{kind} omitted: this result type cannot be shown as text.]"
+
+# An MCP tool named like one of GAIA's own tools (Dodo's "execute") is renamed
+# <source>_<name>; bounded by the providers' function-name limit (OpenAI: 64).
+MCP_TOOL_NAME_MAX_CHARS = 64
+MCP_TOOL_NAME_SEPARATOR = "_"
+# The <source> part when the integration's name has no ASCII letters or digits.
+MCP_UNNAMED_SOURCE_PREFIX = "mcp"
+# Leads a renamed tool's description: the server's docs, results and other tools
+# still use its own name, and the model must map that name to the renamed one.
+MCP_RENAMED_TOOL_NOTE = (
+    "Note: this tool is called {original} on its own server, so its docs, results and "
+    "other tools may refer to it as {original}. Here it is named {renamed}; always call "
+    "it as {renamed}.\n\n"
+)
+
+
+# activate_integration preloads every schema of an MCP exposing at most this many
+# tools; above it only the configured startup tools, the rest via retrieve_tools.
+MCP_PRELOAD_ALL_MAX = 10
+# resolve_tool_owner connects at most this many of the user's connected MCPs that have
+# no stored tool list (master's disconnect wiped them) when a tool name is unknown.
+MCP_UNLISTED_CONNECT_MAX = 3
+# Skills a user saved for a custom MCP are keyed by this agent name plus its id.
+CUSTOM_MCP_AGENT_NAME_PREFIX = "custom_mcp_"
+
+# Keys MCPClient stamps on every converted tool's metadata: the integration it came
+# from and its name on its own server, before any GAIA-side collision rename. The
+# HIL tool key (app/services/hil/tool_key.py) is built from both.
+MCP_INTEGRATION_ID_METADATA_KEY = "integration_id"
+MCP_SERVER_NAME_METADATA_KEY = "mcp_server_name"

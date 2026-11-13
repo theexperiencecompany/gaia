@@ -3,8 +3,8 @@ Agent Skills System - Installable skills following the Agent Skills open standar
 
 Skills are folders of instructions (SKILL.md), scripts, and resources stored
 on the user's persistent JuiceFS workspace. The agent discovers available
-skills at runtime and activates them using the coding tools (`read`, `bash`),
-since `/workspace/skills/<name>/` is bind-mounted into the sandbox.
+skills at runtime and activates them using the coding tools (read, bash),
+since /workspace/skills/<name>/ is bind-mounted into the sandbox.
 
 Modules:
     models      - Pydantic models (SkillMetadata, InstalledSkill, SkillSource)

@@ -1,6 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execa } from "execa";
+// Vendored schema generated from apps/api's settings groups and capability
+// table by `mise cli:schema`. Committed so the CLI never needs a host Python
+// installation; CI's api-schema lane fails when it drifts.
+import vendoredSchema from "./api-config-schema.generated.json";
 import type {
   EnvCategory,
   EnvVar,
@@ -15,16 +18,9 @@ export type {
   WebEnvVar,
 } from "./env-parser.types";
 
-// Infrastructure connection strings set by setup mode.
-//
-// selfhost: API runs inside Docker; database URLs use container hostnames
-//   (e.g. "mongo", "redis") which resolve within Docker's internal network.
-//   CHROMADB_PORT=8000 is the container-internal port. The host maps it to
-//   8080 via docker-compose (8080:8000). healthcheck.ts always probes 8080
-//   on the host — that is correct and does NOT use this env var.
-//
-// developer: Everything runs on localhost. CHROMADB_PORT=8080 is the
-//   host-mapped port exposed by docker-compose for local use.
+// Infrastructure connection strings by setup mode. selfhost: Docker-internal hostnames;
+// CHROMADB_PORT=8000 is container-internal (host maps it to 8080 — healthcheck.ts always
+// probes 8080, not this var). developer: localhost; CHROMADB_PORT=8080 is that mapped port.
 const INFRASTRUCTURE_DEFAULTS: Record<SetupMode, Record<string, string>> = {
   selfhost: {
     MONGO_DB: "mongodb://mongo:27017/gaia",
@@ -32,7 +28,8 @@ const INFRASTRUCTURE_DEFAULTS: Record<SetupMode, Record<string, string>> = {
     POSTGRES_URL: "postgresql://postgres:postgres@postgres:5432/langgraph", // pragma: allowlist secret
     CHROMADB_HOST: "chromadb", // Docker container hostname (internal network)
     CHROMADB_PORT: "8000", // Container-internal port; host maps 8080→8000
-    RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/", // pragma: allowlist secret
+    // Docker-internal broker on the compose network; RabbitMQ there serves no TLS listener
+    RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/", // NOSONAR typescript:S5332 (pragma: allowlist secret)
   },
   developer: {
     MONGO_DB: "mongodb://localhost:27017/gaia",
@@ -46,19 +43,17 @@ const INFRASTRUCTURE_DEFAULTS: Record<SetupMode, Record<string, string>> = {
 
 // Deployment / routing URLs — not infrastructure, users may want to customize.
 // GAIA_BACKEND_URL is voice-agent-only (how the voice container reaches the API).
-// SETUP_MODE is a marker for robust mode detection (replaces fragile string matching).
 const DEPLOYMENT_DEFAULTS: Record<SetupMode, Record<string, string>> = {
+  // Self-host is one origin: the proxy serves the app and /api/v1 together.
   selfhost: {
-    HOST: "http://localhost:8000",
+    HOST: "http://localhost:3000",
     FRONTEND_URL: "http://localhost:3000",
-    GAIA_BACKEND_URL: "http://gaia-backend:80",
-    SETUP_MODE: "selfhost",
+    GAIA_BACKEND_URL: "http://gaia-backend:8000",
   },
   developer: {
     HOST: "http://localhost:8000",
     FRONTEND_URL: "http://localhost:3000",
     GAIA_BACKEND_URL: "http://host.docker.internal:8000",
-    SETUP_MODE: "developer",
   },
 };
 
@@ -71,42 +66,17 @@ export function getDefaultValue(
   );
 }
 
-export async function parseSettings(repoPath: string): Promise<EnvCategory[]> {
-  const scriptPath = path.join(
-    repoPath,
-    "apps/api/scripts/dump_config_schema.py",
-  );
-  const validatorPath = path.join(
-    repoPath,
-    "apps/api/app/config/settings_validator.py",
-  );
-  const settingsPath = path.join(repoPath, "apps/api/app/config/settings.py");
-
-  if (!fs.existsSync(scriptPath)) {
-    throw new Error("dump_config_schema.py not found in apps/api/scripts");
-  }
-
-  try {
-    try {
-      const { stdout } = await execa(
-        "python3",
-        [scriptPath, validatorPath, settingsPath],
-        { cwd: repoPath },
-      );
-      return JSON.parse(stdout);
-    } catch {
-      const { stdout } = await execa(
-        "python",
-        [scriptPath, validatorPath, settingsPath],
-        { cwd: repoPath },
-      );
-      return JSON.parse(stdout);
-    }
-  } catch (e) {
-    throw new Error(
-      `Failed to parse settings schema: ${(e as Error).message}. Ensure python is installed.`,
-    );
-  }
+/**
+ * Load the vendored API config schema (`mise run cli:schema` regenerates it;
+ * there is deliberately no runtime fallback).
+ *
+ * Returns a deep copy so callers can mutate categories without corrupting
+ * the module-level import.
+ */
+export function loadVendoredSchema(): EnvCategory[] {
+  // The JSON infers `docsUrl: string | null`; the contract treats absent and
+  // null alike as "none", so cast through unknown.
+  return structuredClone(vendoredSchema) as unknown as EnvCategory[];
 }
 
 export function parseWebEnv(repoPath: string): WebEnvVar[] {
@@ -152,10 +122,9 @@ export function getWebInfrastructureDefaults(
 ): Record<string, string> {
   const apiPort = portOverrides?.[8000] ?? 8000;
 
-  // Single env var for the web app. WS URLs are derived from this at runtime
-  // by swapping http:// -> ws:// (see useWebSocketConnection.ts).
-  // Always uses localhost because this is a browser-side (client) URL —
-  // even in selfhost mode the browser connects via Docker-mapped host ports.
+  // Single env var for the web app; WS URLs are derived from it at runtime by swapping
+  // http:// -> ws:// (see useWebSocketConnection.ts). Always localhost since this is a
+  // browser-side URL — even in selfhost mode the browser uses Docker-mapped host ports.
   return {
     NEXT_PUBLIC_API_BASE_URL: `http://localhost:${apiPort}/api/v1/`,
   };
@@ -225,10 +194,6 @@ export function applyModeDefaults(
 
 export function getInfrastructureVariables(): string[] {
   return Object.keys(INFRASTRUCTURE_DEFAULTS.selfhost);
-}
-
-export function getDeploymentVariables(): string[] {
-  return Object.keys(DEPLOYMENT_DEFAULTS.selfhost);
 }
 
 export function getDeploymentDefaults(mode: SetupMode): Record<string, string> {

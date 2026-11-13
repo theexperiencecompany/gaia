@@ -9,7 +9,7 @@ import {
 } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Terms of Service",
+  title: "Terms of Service: The Rules for Using GAIA",
   description:
     "Review GAIA's Terms of Service to understand your rights, responsibilities, and the terms governing your use of our AI assistant platform and services.",
   path: "/terms",
@@ -240,7 +240,7 @@ function TermsPayments() {
             </li>
             <li>
               <strong>Refund Requests:</strong> Refund requests should be
-              submitted to support@heygaia.so within thirty (30) days of the
+              submitted to support@heygaia.io within thirty (30) days of the
               original charge and will be reviewed on a case-by-case basis.
             </li>
           </ul>
@@ -259,7 +259,7 @@ function TermsPayments() {
             </li>
             <li>
               <strong>Support Cancellation:</strong> Alternatively, contact our
-              support team at support@heygaia.so with your cancellation request;
+              support team at support@heygaia.io with your cancellation request;
             </li>
             <li>
               <strong>Cancellation Timing:</strong> Cancellations are effective
@@ -350,8 +350,8 @@ function TermsServiceAndContent() {
         to the extent necessary to operate, provide, and improve the Service,
         including passing it to the third-party providers described in our
         Privacy Policy. Company does not use content from your connected
-        third-party integrations — including emails, calendar events, contacts,
-        and other data retrieved from accounts you connect — to improve the
+        third-party integrations (including emails, calendar events, contacts,
+        and other data retrieved from accounts you connect) to improve the
         Service, as described in the Privacy Policy. This license terminates
         when you delete the User Content or your account, except for reasonable
         backup copies retained for the period described in the Privacy Policy.
@@ -446,9 +446,9 @@ function TermsThirdPartyAndTermination() {
         governed by our Privacy Policy, which is incorporated herein by
         reference. Company hereby represents that it does not and will not sell,
         rent, or lease any personal data to third parties, and does not use
-        content from your connected third-party integrations — including emails,
+        content from your connected third-party integrations (including emails,
         calendar events, contacts, and other data retrieved from accounts you
-        connect — to improve its services. Company may use content you submit
+        connect) to improve its services. Company may use content you submit
         directly to the Service to improve its services, as described in the
         Privacy Policy. Company processes personal data solely for the purposes
         of providing the Service and as otherwise described in the Privacy
@@ -586,7 +586,7 @@ function TermsDisputeResolution() {
         <p className="mb-4">
           Before initiating arbitration, you and Company agree to try to resolve
           the dispute informally. Send a written notice describing the dispute
-          and the relief sought to support@heygaia.so. If the dispute is not
+          and the relief sought to support@heygaia.io. If the dispute is not
           resolved within sixty (60) days, either party may begin arbitration.
         </p>
 
@@ -627,7 +627,7 @@ function TermsDisputeResolution() {
         </h3>
         <p className="mb-4">
           You may opt out of the arbitration agreement in Section 18.3 and the
-          class action waiver in Section 18.6 by emailing support@heygaia.so
+          class action waiver in Section 18.6 by emailing support@heygaia.io
           with the subject line "Arbitration Opt-Out" within thirty (30) days of
           first accepting this Agreement, stating your name and the email
           address on your account. Opting out will not affect any other part of
@@ -691,8 +691,8 @@ function TermsClosing() {
         The Experience Company, Inc.
         <br />
         Email:{" "}
-        <a className="text-blue-500 underline" href="mailto:support@heygaia.so">
-          support@heygaia.so
+        <a className="text-blue-500 underline" href="mailto:support@heygaia.io">
+          support@heygaia.io
         </a>
       </p>
     </>

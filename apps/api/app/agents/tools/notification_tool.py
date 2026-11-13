@@ -2,11 +2,14 @@ from typing import Annotated, Any, Literal, NotRequired, TypeAlias, TypedDict
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
 
+from app.constants.chat import ConversationSource, SourceCategory
 from app.constants.log_tags import LogTag
-from app.constants.notifications import ALL_AUTO_INJECTED_CHANNELS, CHANNEL_TYPE_INAPP
+from app.constants.notifications import CHANNEL_TYPE_INAPP, NOTIFICATION_CHANNEL_TYPES
+from app.db.repositories.todos import todo_repository
 from app.decorators import with_doc, with_rate_limiting
+from app.models.agent_config import AgentConfigurableView, read_agent_configurable
+from app.models.agent_models import current_stream_writer, get_user_id
 from app.models.notification.notification_models import (
     BulkActions,
     ChannelConfig,
@@ -18,6 +21,13 @@ from app.models.notification.notification_models import (
     NotificationType,
     NotificationView,
 )
+from app.services.analytics_service import capture
+from app.services.delivery.chat_channel import (
+    InApp,
+    ProactiveTarget,
+    proactive_destination,
+    resolve_proactive_target,
+)
 from app.services.notification_service import notification_service
 from app.templates.docstrings.notification_tool_docs import (
     GET_NOTIFICATION_COUNT,
@@ -27,24 +37,19 @@ from app.templates.docstrings.notification_tool_docs import (
     SEARCH_NOTIFICATIONS,
     SEND_NOTIFICATION,
 )
-from app.utils.chat_utils import get_user_id_from_config
 from app.utils.notification.channel_preferences import fetch_channel_preferences
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.notifications import NotificationAgentSent
 from shared.py.wide_events import log
 
-# A NotificationView serialized with ``model_dump(mode="json")`` — the stream/tool
-# payload must stay JSON-shaped (see ToolData.data), so views are dumped, not
-# passed on as models. json mode matters: the default python mode leaves enum
-# *members* in the dict, which LangChain then stringifies into the ToolMessage as
+# NotificationView.model_dump(mode="json") — json mode matters: python mode
+# leaves enum members in the dict, which LangChain then stringifies as
 # ``<NotificationStatus.DELIVERED: 'delivered'>`` instead of ``'delivered'``.
 SerializedNotification: TypeAlias = dict[str, Any]
 
 
-# ---------------------------------------------------------------------------
-# Tool return shapes. Plain TypedDicts, not models: LangChain stringifies the
-# returned object into the ToolMessage the LLM reads, so the runtime value must
-# stay the exact dict it is today. ``error`` is ``NotRequired`` because the
-# success paths omit it entirely.
-# ---------------------------------------------------------------------------
+# Tool return shapes are plain TypedDicts, not models: LangChain stringifies
+# the returned object into the ToolMessage the LLM reads.
 
 
 class NotificationListResult(TypedDict):
@@ -81,6 +86,19 @@ class SentNotificationResult(TypedDict):
     delivered_channels: list[str]
 
 
+#: Where a run's own reply lands: a chat app's conversation, or the GAIA app.
+ReplyChannel: TypeAlias = ConversationSource | Literal["inapp"]
+
+
+class NotificationFoldedIntoReply(TypedDict):
+    """``send_notification`` landing where the run's own result is delivered: nothing is sent."""
+
+    success: Literal[True]
+    delivered_channels: list[str]
+    delivered_via_conversation: ReplyChannel
+    note: str
+
+
 class SendNotificationFailure(TypedDict):
     """``send_notification`` when validation or delivery setup failed."""
 
@@ -112,11 +130,10 @@ async def get_notifications(
     offset: Annotated[int, "Number of notifications to skip for pagination"] = 0,
 ) -> NotificationListResult:
     """Get user notifications with filtering options."""
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "get_notifications", "action": "get"})
-        user_id = get_user_id_from_config(config)
-        if not user_id:
-            return {"error": "User authentication required", "notifications": []}
 
         # Get notifications with all filters
         notifications = await notification_service.get_user_notifications(
@@ -135,7 +152,7 @@ async def get_notifications(
         serialized = [n.model_dump(mode="json") for n in notifications]
 
         # Stream to frontend with notification list UI
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer({"notification_data": {"notifications": serialized}})
 
         return {"notifications": serialized}
@@ -155,11 +172,10 @@ async def search_notifications(
     limit: Annotated[int, "Maximum number of results to return"] = 20,
 ) -> NotificationListResult:
     """Search notifications by content."""
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "search_notifications", "action": "search"})
-        user_id = get_user_id_from_config(config)
-        if not user_id:
-            return {"error": "User authentication required", "notifications": []}
 
         if not query.strip():
             return {"error": "Search query cannot be empty", "notifications": []}
@@ -183,7 +199,7 @@ async def search_notifications(
         serialized = [n.model_dump(mode="json") for n in matching_notifications[:limit]]
 
         # Stream to frontend with notification list UI
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer({"notification_data": {"notifications": serialized}})
 
         return {"notifications": serialized}
@@ -201,11 +217,10 @@ async def get_notification_count(
     status: Annotated[NotificationStatus | None, "Filter by notification status"] = None,
 ) -> NotificationCountResult:
     """Get count of notifications."""
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "get_notification_count", "action": "count"})
-        user_id = get_user_id_from_config(config)
-        if not user_id:
-            return {"error": "User authentication required", "count": 0}
 
         total_count = await notification_service.get_user_notifications_count(
             user_id=user_id, status=status
@@ -226,11 +241,10 @@ async def mark_notifications_read(
     notification_ids: Annotated[list[str], "List of notification IDs to mark as read"],
 ) -> MarkReadResult:
     """Mark one or more notifications as read."""
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "mark_notifications_read", "action": "mark_read"})
-        user_id = get_user_id_from_config(config)
-        if not user_id:
-            return {"error": "User authentication required", "success": False}
 
         if not notification_ids:
             return {"error": "No notification IDs provided", "success": False}
@@ -255,6 +269,34 @@ async def mark_notifications_read(
         return {"error": str(e), "success": False}
 
 
+def reply_channel_of_run(configurable: AgentConfigurableView) -> ReplyChannel | None:
+    """The notification channel this run's own result is delivered into, or None when it reaches no chat."""
+    # Workflow and tracked-todo runs carry no conversation_source, so source + conversation suffice.
+    source = ConversationSource.coerce(configurable.conversation_source)
+    if source is None or not configurable.conversation_id:
+        return None
+    match SourceCategory.from_source(source):
+        case SourceCategory.UI:
+            return CHANNEL_TYPE_INAPP
+        case SourceCategory.BOT:
+            return source
+    return None
+
+
+async def result_is_delivered_automatically(
+    configurable: AgentConfigurableView, user_id: str
+) -> bool:
+    """True for a background workflow or tracked-todo run whose own result is sent to the user."""
+    if configurable.execution_mode != "background":
+        return False
+    if configurable.workflow_id:
+        return configurable.workflow_notify_on_completion
+    if configurable.active_todo_id:
+        todo = await todo_repository.get(configurable.active_todo_id, user_id=user_id)
+        return todo is not None and todo.notify_on_run
+    return False
+
+
 @tool
 @with_rate_limiting("notification_operations")
 @with_doc(SEND_NOTIFICATION)
@@ -267,23 +309,22 @@ async def send_notification(
         "'Build failed'). Always write a meaningful title, never a generic app name.",
     ],
     channels: Annotated[
-        list[str],
+        list[str] | None,
         "Channel names to target ('whatsapp', 'telegram', 'discord', 'slack', 'inapp'). "
-        "REQUIRED: pass exactly the channel(s) the user named. If the user did not name a "
-        "channel, ASK them which channel(s) they want before calling this tool. Never guess "
+        "Pass exactly the channel(s) the user named. Omit it when they named none: the "
+        "notification then goes where the user is reachable now. Never ask which channel, "
         "and never broadcast to channels the user did not ask for.",
-    ],
+    ] = None,
     notification_type: Annotated[
         NotificationType | None,
         "Notification type: 'info', 'success', 'warning', or 'error'",
     ] = NotificationType.INFO,
-) -> SentNotificationResult | SendNotificationFailure:
+) -> SentNotificationResult | NotificationFoldedIntoReply | SendNotificationFailure:
     """Send a notification to the user on their connected channels."""
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "send_notification", "action": "send"})
-        user_id = get_user_id_from_config(config)
-        if not user_id:
-            return {"error": "User authentication required", "success": False}
 
         if not message.strip():
             return {"error": "Notification message cannot be empty", "success": False}
@@ -295,31 +336,60 @@ async def send_notification(
         resolved_message = message.strip()
         resolved_type = notification_type or NotificationType.INFO
 
-        # Channels must be explicit: an empty list would auto-inject every
-        # user-enabled channel in the orchestrator, which over-notifies. Force
-        # the agent to name channels (and to ask the user when they didn't).
+        # Never an empty list: the orchestrator would auto-inject every user-enabled
+        # channel and over-notify. Unnamed means where the user is reachable now, so
+        # the fold below still keeps it out of the chat they are already reading.
+        configurable = read_agent_configurable(config)
+        reply_channel = reply_channel_of_run(configurable)
+        target: ProactiveTarget | None = None
         if not channels:
-            return {
-                "error": (
-                    "channels is required: specify which channel(s) to notify "
-                    f"({', '.join(ALL_AUTO_INJECTED_CHANNELS)}). If the user did not name a "
-                    "channel, ask them which one(s) they want before sending."
-                ),
-                "success": False,
-            }
+            target = await resolve_proactive_target(user_id)
+            channels = [CHANNEL_TYPE_INAPP] if isinstance(target, InApp) else [target.source.value]
+            # A workflow or tracked-todo run's result goes to this same place on its own.
+            if reply_channel is None and await result_is_delivered_automatically(
+                configurable, user_id
+            ):
+                reply_channel = CHANNEL_TYPE_INAPP if isinstance(target, InApp) else target.source
 
         # Unknown channel names would otherwise be accepted and silently skipped
         # at delivery, so reject them here where the LLM can read the error and
         # self-correct.
-        unknown_channels = [ch for ch in channels if ch not in ALL_AUTO_INJECTED_CHANNELS]
+        unknown_channels = [ch for ch in channels if ch not in NOTIFICATION_CHANNEL_TYPES]
         if unknown_channels:
             return {
                 "error": (
                     f"Unknown channel(s): {', '.join(unknown_channels)}. "
-                    f"Valid channels: {', '.join(ALL_AUTO_INJECTED_CHANNELS)}."
+                    f"Valid channels: {', '.join(NOTIFICATION_CHANNEL_TYPES)}."
                 ),
                 "success": False,
             }
+        # The run's result already lands in the chat the user is in; a notification
+        # there would be the same update a second time, in notification chrome.
+        # A reply into the web, mobile or desktop app is the in-app copy of the update.
+        if reply_channel is not None and reply_channel in channels:
+            channels = [ch for ch in channels if ch != reply_channel]
+            log.set_ns("tool", folded_into_reply=reply_channel)
+            if not channels:
+                capture(
+                    UserId(user_id),
+                    NotificationAgentSent(
+                        outcome="folded_into_reply", **proactive_destination(target)
+                    ),
+                )
+                place = (
+                    f"on {reply_channel.display_name}"
+                    if isinstance(reply_channel, ConversationSource)
+                    else "in the GAIA app"
+                )
+                return {
+                    "success": True,
+                    "delivered_channels": [],
+                    "delivered_via_conversation": reply_channel,
+                    "note": (
+                        f"Your result is delivered {place} automatically. Put the update "
+                        "in your result instead of notifying."
+                    ),
+                }
         channel_configs = [ChannelConfig(channel_type=ch) for ch in channels]
 
         request = NotificationRequest(
@@ -333,6 +403,10 @@ async def send_notification(
         record = await notification_service.create_notification(request)
         if not record:
             return {"error": "Failed to create notification", "success": False}
+        capture(
+            UserId(user_id),
+            NotificationAgentSent(outcome="sent", **proactive_destination(target)),
+        )
 
         delivered_channels = [
             ch.channel_type
@@ -360,7 +434,7 @@ async def send_notification(
         }
 
         # Stream to frontend so the chat renders a "notification sent" card
-        writer = get_stream_writer()
+        writer = current_stream_writer()
         writer({"send_notification_data": result})
 
         return result
@@ -377,11 +451,10 @@ async def get_notification_preferences(
     config: RunnableConfig,
 ) -> NotificationPreferencesResult:
     """Get the user's notification channel preferences."""
+    user_id = get_user_id(config)
+
     try:
         log.set(tool={"name": "get_notification_preferences", "action": "get"})
-        user_id = get_user_id_from_config(config)
-        if not user_id:
-            return {"error": "User authentication required", "preferences": {}}
 
         preferences = await fetch_channel_preferences(user_id)
 

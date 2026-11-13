@@ -1,6 +1,6 @@
 """An mcp_use connector that speaks MCP over the device tunnel.
 
-The cloud runs a real ``mcp.ClientSession``; its read/write streams are pumped
+The cloud runs a real mcp.ClientSession; its read/write streams are pumped
 through the device bridge (Redis pub/sub → the owning pod → the daemon → the
 local MCP server) and back. To the rest of GAIA's MCP stack this connector is
 indistinguishable from an HTTP one, so tool conversion, subagents and namespacing
@@ -139,7 +139,7 @@ class DeviceConnector(BaseConnector):
     async def _drain_inbox(
         self, read_send: MemoryObjectSendStream[SessionMessage | Exception]
     ) -> None:
-        """This session's inbox (fed by the shared up-listener) → the read stream."""
+        """Drain this session's inbox (fed by the shared up-listener) into the read stream."""
         # The up-listener populates the inbox before any session stream starts;
         # assert is a dev guard, not a runtime check.
         assert self._inbox is not None  # nosec B101
@@ -178,7 +178,7 @@ class DeviceConnector(BaseConnector):
                 await read_send.send(DeviceConnectionError("device tunnel closed"))
 
     async def _pump_downstream(self, write_recv: MemoryObjectReceiveStream[SessionMessage]) -> None:
-        """The ClientSession's write stream → Redis down-channel to the device."""
+        """Pump the ClientSession's write stream into the Redis down-channel to the device."""
         try:
             async for session_message in write_recv:
                 payload = session_message.message.model_dump_json(by_alias=True, exclude_none=True)
@@ -226,13 +226,11 @@ class DeviceConnector(BaseConnector):
         await self._teardown_streams()
 
     async def _fail_open(self) -> None:
-        """Clean up after a failed open. Cancels the reader task first.
+        """Clean up after a failed open by cancelling the reader task first.
 
-        The reader (``_drain_inbox``) is parked on ``inbox.get()``; unregistering
-        the inbox and closing the streams does not wake it (the queue has no
-        close), so without an explicit cancel it would leak, blocked forever.
-        ``disconnect()`` is never reached on this path — ``_build_device_client``
-        raises before the session is registered with any client.
+        The reader (_drain_inbox) is parked on inbox.get(), which nothing else
+        wakes, so without an explicit cancel it would leak, blocked forever.
+        disconnect() is never reached on this path.
         """
         if self._reader_task is not None:
             self._reader_task.cancel()

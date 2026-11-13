@@ -57,14 +57,14 @@ const formatTime = (startTime: string, endTime: string) => {
   // Smart formatting - show AM/PM only when needed
   if (start.getHours() < 12 && end.getHours() >= 12)
     // Crossing from AM to PM
-    return `${startStr} – ${endStr}`;
+    return `${startStr} to ${endStr}`;
   else if (start.getHours() >= 12 && end.getHours() >= 12)
     // Both PM
-    return `${startStr.replace(" PM", "")} – ${endStr}`;
+    return `${startStr.replace(" PM", "")} to ${endStr}`;
   else if (start.getHours() < 12 && end.getHours() < 12)
-    return `${startStr.replace(" AM", "")} – ${endStr}`;
+    return `${startStr.replace(" AM", "")} to ${endStr}`;
 
-  return `${startStr} – ${endStr}`;
+  return `${startStr} to ${endStr}`;
 };
 
 // Check if an event has passed
@@ -132,7 +132,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
         key: "brief-today",
         label: "Brief me on today",
         description:
-          "Get context on each meeting — attendees, history, prep needed",
+          "Get context on each meeting: attendees, history, prep needed",
         icon: <Brain02Icon className="size-4 text-zinc-400" />,
         onPress: () =>
           appendToInput(

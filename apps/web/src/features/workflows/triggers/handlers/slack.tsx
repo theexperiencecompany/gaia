@@ -5,7 +5,7 @@
  */
 
 import type { RegisteredHandler } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 import type { SlackConfig, SlackTriggerData } from "./SlackSettings";
 import { SlackSettings } from "./SlackSettings";
 
@@ -16,7 +16,7 @@ import { SlackSettings } from "./SlackSettings";
 export const slackTriggerHandler: RegisteredHandler = {
   triggerSlugs: ["slack_new_message", "slack_channel_created"],
 
-  createDefaultConfig: (slug: string): TriggerConfig => {
+  createDefaultConfig: (slug: string): TriggerConfigDraft => {
     const baseTriggerData: SlackTriggerData = {
       trigger_name: slug,
     };

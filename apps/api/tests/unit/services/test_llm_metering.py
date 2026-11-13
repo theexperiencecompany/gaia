@@ -1,8 +1,7 @@
-"""Unit tests for app/services/llm_metering.py — the one pricing + recording
-seam both metering routes share.
+"""Unit tests for app/services/llm_metering.py, the pricing + recording seam both metering routes share.
 
-Covers ``extract_message_usage`` (the AIMessage -> token counts read, including
-every provider-shape fallback) and ``record_llm_call`` itself (the funnel every
+Covers extract_message_usage (the AIMessage -> token counts read, including
+every provider-shape fallback) and record_llm_call itself (the funnel every
 metering route prices through).
 """
 
@@ -162,18 +161,14 @@ def test_missing_input_token_details_does_not_raise() -> None:
 
 
 def test_the_model_is_read_from_what_the_provider_reported() -> None:
-    """The response is the only account of what actually RAN. A provider that
-    fell back serves a different model than the lane asked for, and the spend
-    belongs to the one that answered."""
+    """The spend belongs to the model that actually answered, not the one the lane asked for."""
     message = AIMessage(content="hi", response_metadata={"model_name": "served/model"})
 
     assert extract_message_model(message) == "served/model"
 
 
 def test_a_response_with_no_model_is_unknown_rather_than_guessed() -> None:
-    """``unknown`` prices at DEFAULT_PRICING instead of a real rate, so the
-    metering seams log it loudly; silently substituting a plausible default
-    would hide the miss."""
+    """Unknown prices at DEFAULT_PRICING instead of a real rate, so the miss is loud, not hidden."""
     assert extract_message_model(AIMessage(content="hi")) == UNKNOWN_MODEL_NAME
     assert extract_message_model(AIMessage(content="hi", response_metadata={})) == (
         UNKNOWN_MODEL_NAME
@@ -192,10 +187,8 @@ _UNCHARGED = LLMCallContext(agent_name="test_agent", background=True, charge_to_
 
 
 # --- record_llm_call ---------------------------------------------------------- #
-#
-# Reached only through the callers above and LLMAccountingMiddleware, all of
-# which fill in every counter — so the funnel's own signature has never been
-# exercised, and a wrong default silently mis-books real money.
+# Only exercised through callers that fill in every counter; a wrong default here
+# would silently mis-book real money.
 
 
 @patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)
@@ -251,30 +244,22 @@ async def test_an_unreported_reasoning_count_is_booked_as_none_of_it(
 
 
 def test_the_generation_id_is_read_from_the_response() -> None:
-    """The id is the only handle on WHICH UPSTREAM served the call: ChatOpenRouter
-    keeps the aggregator's own name (``model_provider="openrouter"``) and drops the
-    upstream's ``provider`` field, and this id resolves to the serving upstream
-    through the generation-metadata endpoint without spending a model call."""
+    """The id resolves the serving upstream via the generation-metadata endpoint, no model call spent."""
     message = AIMessage(content="hi", response_metadata={"id": "gen-abc123"})
 
     assert extract_generation_id(message) == "gen-abc123"
 
 
 def test_a_response_with_no_generation_id_is_none_rather_than_empty() -> None:
-    """``None`` drops the key from the wide event; an empty string would land in
-    the logs as a real-looking id that resolves to nothing."""
+    """None drops the key from the wide event; an empty string would look like a real id."""
     assert extract_generation_id(AIMessage(content="hi")) is None
     assert extract_generation_id(AIMessage(content="hi", response_metadata={})) is None
     assert extract_generation_id(AIMessage(content="hi", response_metadata={"id": ""})) is None
 
 
 # --- the price the provider reported ------------------------------------------ #
-#
-# MODEL_PRICING holds ONE rate per model, but OpenRouter routes each call to
-# whichever upstream is free and the pool for a single model id spans
-# 0.030-0.440 USD per million input tokens. Pricing from the table mis-states
-# every call; measured across 1,486 calls it under-stated real spend by 44%.
-# So when the provider says what it charged, that figure has to win.
+# OpenRouter's per-model pool spans $0.030-$0.440/M input tokens; table pricing
+# under-stated real spend by 44% across 1,486 calls, so the provider's own figure wins.
 
 
 def test_the_reported_price_is_read_from_the_response() -> None:
@@ -300,10 +285,8 @@ def test_an_unparseable_price_falls_back_rather_than_raising() -> None:
 
 @pytest.mark.parametrize("raw", ["inf", "-inf", "nan", float("inf"), float("nan")])
 def test_a_non_finite_price_falls_back_to_the_table(raw: str | float) -> None:
-    # These parse cleanly through float() and `inf >= 0.0` is true, so the
-    # ordinary sign check waves them through. A non-finite dollar figure is not
-    # something a provider charged — it poisons every sum it reaches — so the
-    # caller is sent back to the pricing table.
+    # `inf >= 0.0` is true, so the ordinary sign check waves these through; a
+    # non-finite dollar figure poisons every sum it reaches, so it falls back to the table.
     assert extract_message_cost(AIMessage(content="hi", response_metadata={"cost": raw})) is None
 
 
@@ -342,10 +325,8 @@ async def test_the_provider_price_wins_over_the_table(price: MagicMock, usage: A
 async def test_a_non_finite_provider_price_is_repriced_from_the_table(
     price: MagicMock, usage: AsyncMock, bad_cost: float
 ) -> None:
-    # `inf >= 0.0` is true, so a bare sign check lets a malformed provider cost
-    # bypass table pricing and write a non-finite dollar figure into the budget
-    # windows and usage_daily — where it contaminates every total that user-day
-    # touches and cannot be summed back out. The table is the fallback.
+    # `inf >= 0.0` is true, so a malformed provider cost would otherwise write a
+    # non-finite figure into budget windows and usage_daily, contaminating every total.
     cost = await record_llm_call(
         user_id="u1",
         usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=0, reasoning_tokens=0),
@@ -411,10 +392,7 @@ async def test_a_lane_that_reports_no_price_still_uses_the_table(
 async def test_the_provider_priced_path_records_against_the_same_call_as_the_table_one(
     price: MagicMock, usage: AsyncMock
 ) -> None:
-    """Only the dollar figure differs between the two paths. Who the spend is
-    booked to, which request tree it belongs to, and whether it counts against
-    the allowance are the same facts either way — dropping any of them books
-    real money to nobody, or bills background work to a user's budget."""
+    """Only the dollar figure differs between the provider-priced and table-priced paths."""
     await record_llm_call(
         user_id="u1",
         usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=0, reasoning_tokens=0),

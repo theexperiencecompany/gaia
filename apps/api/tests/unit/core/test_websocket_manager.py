@@ -328,12 +328,12 @@ class TestMultiInstanceFanout:
     """The two bugs that only a real pub/sub round trip can catch.
 
     These drive the actual listener against a real (in-process) Redis rather
-    than calling ``_dispatch`` directly — the double-send only exists in the
+    than calling _dispatch directly — the double-send only exists in the
     interaction between publishing and this pod's own subscription.
 
     Unmarked despite being true regressions: the CI regression lane replays a
     marked test against base, and this module now imports
-    ``websocket_broadcast_listener``, which does not exist there — the replay
+    websocket_broadcast_listener, which does not exist there — the replay
     would error at collection rather than prove anything (tests/CLAUDE.md).
     """
 
@@ -344,7 +344,7 @@ class TestMultiInstanceFanout:
         websocket_manager.connections.clear()
 
     async def _await_delivery(self, sock: AsyncMock, expected: int) -> None:
-        """Wait until ``expected`` frames have landed, then a beat longer for extras."""
+        """Wait until expected frames have landed, then a beat longer for extras."""
         for _ in range(40):
             if sock.send_json.await_count >= expected:
                 break
@@ -366,11 +366,7 @@ class TestMultiInstanceFanout:
         assert ws.send_json.await_count == 1
 
     async def test_delivers_a_broadcast_this_replica_did_not_originate(self, fake_redis) -> None:
-        """A worker (or another replica) publishes; this replica must still deliver.
-
-        The old RabbitMQ queue was competing-consumers, so exactly one replica
-        got each broadcast and every other replica's sockets were stranded.
-        """
+        """The old RabbitMQ queue was competing-consumers, so only one replica got each broadcast and other replicas' sockets were stranded."""
         ws = AsyncMock()
         websocket_manager.add_connection("u2", ws)
         listener.start_websocket_broadcast_listener()
@@ -387,11 +383,7 @@ class TestMultiInstanceFanout:
         ws.send_json.assert_awaited_once_with({"type": "from_worker"})
 
     async def test_every_subscribed_replica_receives_the_same_broadcast(self, fake_redis) -> None:
-        """Fan-out, not hand-off: two subscribers both get one publish.
-
-        Stands in for two pods; the real two-process proof is the live
-        two-replica run, not this.
-        """
+        """Fan-out, not hand-off: two subscribers both get one publish; the real two-process proof is the live two-replica run."""
         subs = [fake_redis.pubsub() for _ in range(2)]
         for ps in subs:
             await ps.subscribe(WEBSOCKET_BROADCAST_CHANNEL)
@@ -418,13 +410,7 @@ class TestMultiInstanceFanout:
 
 
 async def test_workers_publish_without_needing_to_be_the_main_app(fake_redis) -> None:
-    """An ARQ worker holds no sockets; it must still be able to broadcast.
-
-    Broadcasting used to branch on the process type and take a different
-    transport in a worker. There is one path now — publish to the Redis channel —
-    so a worker publishes exactly like a request handler does, no process-type
-    check involved.
-    """
+    """An ARQ worker holds no sockets but must still broadcast — one path now, publish to the Redis channel, with no process-type check."""
     pubsub = fake_redis.pubsub()
     await pubsub.subscribe(WEBSOCKET_BROADCAST_CHANNEL)
 

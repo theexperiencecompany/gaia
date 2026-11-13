@@ -12,11 +12,9 @@ import { Text } from "@/components/ui/text";
 import { CollapsibleCard } from "@/features/chat/tool-data/primitives";
 import { inAppNotificationsApi } from "@/features/notifications/api/inapp-notifications-api";
 
-// ---------------------------------------------------------------------------
-// Types — mirror NotificationRecord from
-// apps/web/src/types/features/notificationTypes.ts. Fields are optional so we
-// can render the loose tool output streamed from the agent.
-// ---------------------------------------------------------------------------
+// Types mirror NotificationRecord from
+// apps/web/src/types/features/notificationTypes.ts; fields are optional to
+// render loose tool output streamed from the agent.
 
 export interface NotificationActionItem {
   id: string;

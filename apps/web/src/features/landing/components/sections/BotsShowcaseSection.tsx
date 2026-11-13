@@ -11,8 +11,9 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SiteLink } from "@/components/seo/SiteLink";
 import { RaisedButton } from "@/components/ui/raised-button";
-import { Link } from "@/i18n/navigation";
+import { BOT_LINKS } from "@/features/bots/constants";
 
 import {
   ChatDemo,
@@ -62,7 +63,7 @@ const PLATFORMS: Platform[] = [
     icon: "/images/icons/macos/whatsapp.webp",
     primaryAction: {
       label: "Message on WhatsApp",
-      href: "https://wa.me/12762088737",
+      href: BOT_LINKS.whatsapp,
       external: true,
     },
     phone: { screenBackground: "#F6F6F6" },
@@ -99,7 +100,7 @@ const PLATFORMS: Platform[] = [
     icon: "/images/icons/macos/telegram.webp",
     primaryAction: {
       label: "Message on Telegram",
-      href: "https://t.me/heygaia_bot",
+      href: BOT_LINKS.telegram,
       external: true,
     },
     phone: { screenBackground: "#F6F6F6" },
@@ -137,7 +138,7 @@ const PLATFORMS: Platform[] = [
     icon: "/images/icons/macos/slack.webp",
     primaryAction: {
       label: "Install in Slack",
-      href: "/slack-bot",
+      href: BOT_LINKS.slack,
     },
     phone: {},
     demo: {
@@ -173,7 +174,7 @@ const PLATFORMS: Platform[] = [
     icon: "/images/icons/macos/discord.webp",
     primaryAction: {
       label: "Add to Your Server",
-      href: "https://heygaia.io/discord-bot",
+      href: BOT_LINKS.discord,
       external: true,
     },
     phone: { screenBackground: "#1E1F22", statusBarTone: "light" },
@@ -372,10 +373,9 @@ function FloatingCTA({
   onPrev: () => void;
   onNext: () => void;
 }) {
-  // Reserve the static-flow slot so the layout never jumps when the button
-  // pops out of the flow into a fixed position. The CTA is rendered twice:
-  //   - In flow, invisible while floating (reserves space)
-  //   - Fixed at the bottom while floating, fades in via opacity only
+  // Reserve the static-flow slot so layout never jumps when the button pops
+  // into a fixed position. Rendered twice: in-flow (invisible while floating,
+  // to reserve space) and fixed at the bottom while floating (fades in via opacity).
   return (
     <div className="relative flex w-full justify-center pt-2">
       <div
@@ -639,7 +639,7 @@ function PrimaryCTA({
     return (
       <RaisedButton
         color="#00bbff"
-        className="text-black! h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
+        className="h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
         onClick={() =>
           window.open(action.href, "_blank", "noopener,noreferrer")
         }
@@ -650,13 +650,13 @@ function PrimaryCTA({
   }
 
   return (
-    <Link href={action.href}>
+    <SiteLink href={action.href}>
       <RaisedButton
         color="#00bbff"
-        className="text-black! h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
+        className="h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
       >
         {buttonContent}
       </RaisedButton>
-    </Link>
+    </SiteLink>
   );
 }

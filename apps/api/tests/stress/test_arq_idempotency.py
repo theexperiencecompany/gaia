@@ -1,13 +1,13 @@
 """Stress: ARQ task idempotency under replay.
 
-Real code under test: ``backfill_user_memories`` in
-``app/workers/tasks/memory_backfill_tasks.py``. ARQ delivers at-least-once:
+Real code under test: backfill_user_memories in
+app/workers/tasks/memory_backfill_tasks.py. ARQ delivers at-least-once:
 a worker that dies mid-job, or a scheduled retry, re-runs the task function.
 The task must therefore be idempotent — its second run must not re-extract
 memories, re-notify the user, or re-write the marker.
 
-The observable side effects are the ``memory_backfilled`` marker on the user
-document, the ``memory_engine.retain`` calls, and the "Your memory is ready"
+The observable side effects are the memory_backfilled marker on the user
+document, the memory_engine.retain calls, and the "Your memory is ready"
 notification. The repositories and engine are fakes (stateful where the
 invariant needs state); the task logic is the real module code.
 """
@@ -31,7 +31,7 @@ MODULE = "app.workers.tasks.memory_backfill_tasks"
 
 
 class _FakeUserRepository:
-    """User repo whose ``memory_backfilled`` marker flips on mark_memory_backfilled.
+    """User repo whose memory_backfilled marker flips on mark_memory_backfilled.
 
     The marker is the idempotency guard under test: it must survive a mock
     boundary, so the fake carries real state across task invocations.
@@ -124,8 +124,7 @@ class TestBackfillUserMemoriesIdempotency:
         assert b.user_repo.mark_calls == 1
 
     async def test_user_already_marked_is_skipped_with_zero_side_effects(self):
-        """The marker guard itself: without it, the second run would re-extract
-        and re-notify — this test goes red the moment the guard is removed."""
+        """Without the marker guard, this second run would re-extract and re-notify."""
         user = UserDocument(name="Arya", memory_backfilled=datetime(2026, 1, 1, tzinfo=UTC))
 
         with _backend(user, [_conversation("c1", "hi")]) as b:
@@ -137,9 +136,7 @@ class TestBackfillUserMemoriesIdempotency:
         assert b.user_repo.mark_calls == 0
 
     async def test_zero_fact_backfill_still_marks_but_does_not_notify(self):
-        """The marker is set even for a no-op so the cron stops re-selecting the
-        user, while the notification is suppressed — the idempotency loop closes
-        without spamming the user."""
+        """The marker is set even for a no-op so the cron stops re-selecting the user."""
         user = UserDocument(name="Arya", memory_backfilled=None)
 
         with _backend(user, [_conversation("c1", "hi")], facts=0) as b:

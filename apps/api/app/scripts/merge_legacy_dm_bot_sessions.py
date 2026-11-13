@@ -58,9 +58,9 @@ from shared.py.wide_events import log
 
 
 def canonical_key_for(session: BotSessionDocument) -> str:
-    """The key this session's DM belongs under today.
+    """Return the key this session's DM belongs under today.
 
-    Derived through ``BotService.build_session_key`` rather than a format restated
+    Derived through BotService.build_session_key rather than a format restated
     here, so the migration can never disagree with the code that will do the next
     lookup.
     """

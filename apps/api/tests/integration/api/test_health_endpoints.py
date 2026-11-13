@@ -1,12 +1,21 @@
-"""Integration tests for health check endpoints.
+"""Integration tests for health check endpoints."""
 
-Tests the health/ping/root endpoints return correct status and payload
-structure through the full FastAPI request lifecycle.
-"""
-
+from collections.abc import Iterator
 from unittest.mock import patch
 
 import pytest
+
+from app.utils.general_utils import ProjectInfo
+from shared.py.logging import env_context
+
+
+@pytest.fixture
+def deployed_commit(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
+    sha = "0123456789abcdef0123456789abcdef01234567"
+    monkeypatch.setenv("GIT_COMMIT_SHA", sha)
+    env_context.cache_clear()
+    yield sha
+    env_context.cache_clear()
 
 
 @pytest.mark.integration
@@ -68,18 +77,10 @@ class TestHealthEndpoints:
         assert isinstance(data["status"], str)
 
     async def test_health_when_project_info_unavailable_still_returns_200(self, test_client):
-        """GET /health should still return 200 when pyproject.toml cannot be read.
-
-        The get_project_info utility falls back to default values on failure,
-        so the endpoint must remain available even if file I/O fails.
-        """
+        """GET /health should still return 200 when pyproject.toml cannot be read."""
         with patch(
             "app.api.v1.endpoints.health.get_project_info",
-            return_value={
-                "name": "GAIA API",
-                "version": "dev",
-                "description": "Backend for GAIA",
-            },
+            return_value=ProjectInfo(),
         ):
             response = await test_client.get("/health")
 
@@ -90,15 +91,7 @@ class TestHealthEndpoints:
         assert data["version"] == "dev"
 
     async def test_health_when_get_project_info_raises_returns_500(self, test_client):
-        """GET /health returns 500 when get_project_info raises unexpectedly.
-
-        get_project_info() normally catches all exceptions internally and
-        returns defaults, but if it propagates an exception the endpoint has
-        no try/except and FastAPI must return 500 rather than 200.
-
-        This guards against a hypothetical regression where the internal
-        fallback is removed and the exception escapes.
-        """
+        """GET /health returns 500 when get_project_info raises unexpectedly."""
         with patch(
             "app.api.v1.endpoints.health.get_project_info",
             side_effect=RuntimeError("Unexpected I/O error reading pyproject.toml"),
@@ -113,3 +106,10 @@ class TestHealthEndpoints:
         ping_response = await test_client.get("/ping")
 
         assert health_response.json()["status"] == ping_response.json()["status"]
+
+    async def test_health_reports_the_image_commit(self, test_client, deployed_commit: str):
+        """The deploy workflow compares this against the image it just rolled out."""
+        response = await test_client.get("/health")
+
+        assert response.status_code == 200
+        assert response.json()["commit"] == deployed_commit[:8]

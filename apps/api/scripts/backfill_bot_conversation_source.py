@@ -1,15 +1,15 @@
 """
-One-time, idempotent migration: backfill the `source` field on bot conversations.
+One-time, idempotent migration: backfill the source field on bot conversations.
 
-Older bot conversations were created without a `source`, so they leak into the web
-conversation list (the list query excludes bot sources via `$nin`, but a missing
+Older bot conversations were created without a source, so they leak into the web
+conversation list (the list query excludes bot sources via $nin, but a missing
 field is treated as "include"). This script derives the originating platform from
-each `bot_sessions` mapping and stamps it onto the matching conversation document.
+each bot_sessions mapping and stamps it onto the matching conversation document.
 
 The platform is taken from the session_key, which has the format
-`platform:platform_user_id:channel` (e.g. `whatsapp:123:dm`).
+platform:platform_user_id:channel (e.g. whatsapp:123:dm).
 
-Only conversations whose `source` is missing/null are touched, so the script is
+Only conversations whose source is missing/null are touched, so the script is
 safe to run multiple times.
 
 Run from repo root:
@@ -46,7 +46,7 @@ def _derive_platform(session: dict) -> str | None:
 
 
 async def backfill() -> None:
-    """Stamp `source` onto bot conversations that are missing it."""
+    """Stamp source onto bot conversations that are missing it."""
     total = await bot_sessions_collection.count_documents({})
     if total == 0:
         print("No bot sessions found. Nothing to backfill.")

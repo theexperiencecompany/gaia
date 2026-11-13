@@ -15,7 +15,9 @@ interface TodoListProps {
   onTodoClick?: (todo: Todo) => void;
   onRefresh?: () => void;
   onPrefetchWorkflow?: (todoId: string) => void;
-  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
+  /** The element the list scrolls in; null until the parent has mounted it. */
+  scrollElement: HTMLDivElement | null;
+  timezone?: string;
 }
 
 export default function TodoList({
@@ -25,7 +27,8 @@ export default function TodoList({
   onTodoUpdate,
   onTodoClick,
   onPrefetchWorkflow,
-  scrollContainerRef,
+  scrollElement,
+  timezone,
 }: TodoListProps) {
   const sortedTodos = useMemo(() => {
     return [...todos].sort((a, b) => Number(a.completed) - Number(b.completed));
@@ -33,7 +36,7 @@ export default function TodoList({
 
   const virtualizer = useVirtualizer({
     count: sortedTodos.length,
-    getScrollElement: () => scrollContainerRef?.current ?? null,
+    getScrollElement: () => scrollElement,
     estimateSize: () => 72,
     overscan: 5,
     paddingStart: 16,
@@ -81,6 +84,7 @@ export default function TodoList({
                 onUpdate={onTodoUpdate}
                 onClick={onTodoClick}
                 onPrefetchWorkflow={onPrefetchWorkflow}
+                timezone={timezone}
               />
             </div>
           );

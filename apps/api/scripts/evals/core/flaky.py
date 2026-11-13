@@ -52,7 +52,7 @@ class CaseHistory:
 
         Both outcomes have to be witnessed by a stamped run. A flip where either
         side came from an unstamped run demonstrates nothing about a code change
-        — see ``undetermined``.
+        — see undetermined.
         """
         stamped = set[str]().union(*self.by_version.values()) if self.by_version else set[str]()
         return not self.flaky and len(self.by_version) >= 2 and {"passed", "failed"} <= stamped

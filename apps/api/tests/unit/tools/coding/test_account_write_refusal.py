@@ -1,4 +1,4 @@
-"""The write/edit refusal for ``account/**`` paths.
+"""The write/edit refusal for account/** paths.
 
 The account files are read-only projections: an attempted edit must be answered
 with the mutation tool that performs the change, and must never reach the
@@ -51,7 +51,7 @@ async def test_edit_to_an_account_file_refuses_with_the_right_tool() -> None:
             config=CONFIG,
         )
 
-    assert "update_custom_instructions" in result
+    assert "update_user_instructions" in result
     sandbox.assert_not_called()
 
 

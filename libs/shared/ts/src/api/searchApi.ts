@@ -1,10 +1,10 @@
 import type {
   SearchConversationResult,
   SearchMessageResult,
-  SearchMode,
   SearchNoteResult,
   SearchParams,
   SearchResponse,
+  SearchScope,
 } from "../types/search";
 import { buildQueryString } from "./queryBuilder";
 
@@ -34,4 +34,4 @@ export function buildSearchQuery(params: SearchParams): string {
   return `${SearchApiEndpoints.search}${buildQueryString(filters)}`;
 }
 
-export type { SearchMode };
+export type { SearchScope };

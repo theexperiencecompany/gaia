@@ -1,7 +1,7 @@
 """Behavior tests for app.agents.middleware.hil_approval.
 
 The middleware is the chain adapter over the HIL gate: a gate verdict
-(ToolMessage) is returned without running the handler; a ``None`` verdict
+(ToolMessage) is returned without running the handler; a None verdict
 (cleared to run) falls through to the handler. Locks both paths and that the
 request is handed through unchanged.
 """

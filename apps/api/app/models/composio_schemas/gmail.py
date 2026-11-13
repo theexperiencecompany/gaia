@@ -4,11 +4,17 @@ Gmail trigger payload and tool output models.
 Reference: node_modules/@composio/core/generated/gmail.ts
 """
 
-from typing import Any, Literal, NotRequired, TypedDict
+import re
+from typing import Annotated, Any, Literal, NotRequired, Self, TypedDict, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints
 
-from app.constants.email import DEFAULT_SUMMARY_FIELDS, MessageFieldLiteral
+from app.constants.desk_buckets import DeskBucket
+from app.constants.email import (
+    DEFAULT_SUMMARY_FIELDS,
+    MESSAGE_FIELD_SYNONYMS,
+    MessageFieldLiteral,
+)
 
 # =============================================================================
 # Trigger Payloads
@@ -16,9 +22,9 @@ from app.constants.email import DEFAULT_SUMMARY_FIELDS, MessageFieldLiteral
 
 
 class GmailNewMessagePayload(BaseModel):
-    """Payload for GMAIL_NEW_GMAIL_MESSAGE trigger.
+    """Payload for GMAIL_NEW_GMAIL_MESSAGE trigger at the pinned toolkit 20261105_00.
 
-    Field set verified against Composio triggers_types API (2026-08).
+    Field set verified against Composio triggers_types API (2026-11).
     """
 
     attachment_list: list[Any] | None = Field(
@@ -39,6 +45,49 @@ class GmailNewMessagePayload(BaseModel):
     to: str | None = Field(None, description="Recipient email address")
 
 
+class GmailNewMessageEvent(GmailNewMessagePayload):
+    """A new-message payload plus the signals GAIA derives from it at dispatch (gmail_signals.py).
+
+    A signal the payload cannot back (no headers, no thread id) is absent, never false.
+    """
+
+    continues_thread: bool | None = Field(
+        None, description="The message joins a thread that already had messages"
+    )
+    gmail_category: str | None = Field(None, description="Gmail's inbox tab label, CATEGORY_*")
+    has_list_unsubscribe: bool | None = Field(None, description="Carries a List-Unsubscribe header")
+    bulk_or_auto_submitted: bool | None = Field(
+        None, description="Precedence bulk/list/junk, or Auto-Submitted other than no"
+    )
+    sender_looks_automated: bool | None = Field(
+        None, description="The sender address reads as a no-reply or notification sender"
+    )
+
+
+class GmailEmailSentPayload(BaseModel):
+    """Payload for GMAIL_EMAIL_SENT_TRIGGER at the pinned toolkit 20261105_00.
+
+    Field set verified against Composio triggers_types API (2026-11).
+    """
+
+    attachment_list: list[Any] | None = Field(
+        None, description="List of attachments in the message"
+    )
+    bcc: str | None = Field(None, description="Bcc recipients")
+    cc: str | None = Field(None, description="Cc recipients")
+    message_id: str | None = Field(None, description="Gmail message ID")
+    message_text: str | None = Field(None, description="Text content of the message")
+    message_timestamp: str | None = Field(None, description="When it was sent, ISO 8601")
+    payload: dict[str, Any] | None = Field(None, description="Raw Gmail payload")
+    recipients: str | None = Field(
+        None, description="Comma-separated list of all recipients (To, Cc, Bcc)"
+    )
+    sender: str | None = Field(None, description="Sender email address")
+    subject: str | None = Field(None, description="Email subject")
+    thread_id: str | None = Field(None, description="Gmail thread ID")
+    to: str | None = Field(None, description="To recipients")
+
+
 # =============================================================================
 # Custom Tool Inputs
 # =============================================================================
@@ -46,24 +95,56 @@ class GmailNewMessagePayload(BaseModel):
 
 # Convenience timeframes the agent can pass instead of computing Gmail's
 # after:/before: operators. Resolved server-side using the user's home timezone.
-TimeframeLiteral = Literal[
+NamedTimeframeLiteral = Literal[
     "today",
     "yesterday",
     "tomorrow",
     "this_week",
     "last_week",
     "next_week",
-    "1d",
-    "3d",
-    "5d",
-    "7d",
-    "1w",
-    "2w",
-    "1m",
-    "3m",
-    "6m",
-    "1y",
 ]
+
+#: "Last N days/weeks/months/years": 14d, 30d, 2w, 3m, 1y. Any count, because models
+#: naturally ask for 14d or 30d and a closed list of counts refused them.
+RELATIVE_TIMEFRAME_PATTERN = r"^[1-9][0-9]*[dwmy]$"
+RelativeTimeframe = Annotated[str, StringConstraints(pattern=RELATIVE_TIMEFRAME_PATTERN)]
+
+_TIMEFRAME_FORMS = (
+    f"{', '.join(get_args(NamedTimeframeLiteral))}, or the last N days/weeks/months/years "
+    "written <N>d / <N>w / <N>m / <N>y (2d, 7d, 14d, 30d, 2w, 3m, 1y)"
+)
+
+
+def _known_timeframe(value: object) -> object:
+    """Refuse an unsupported timeframe with the forms that work, or a query to use instead."""
+    if value is None or value in get_args(NamedTimeframeLiteral):
+        return value
+    if isinstance(value, str) and re.fullmatch(RELATIVE_TIMEFRAME_PATTERN, value):
+        return value
+    raise ValueError(
+        f"timeframe {value!r} is not supported. Use one of: {_TIMEFRAME_FORMS}; "
+        "for anything else (hours, a calendar month) put after:/before: in `query` instead."
+    )
+
+
+Timeframe = Annotated[NamedTimeframeLiteral | RelativeTimeframe, BeforeValidator(_known_timeframe)]
+
+
+def _canonical_fields(value: object) -> object:
+    """Read omitted fields as the default set and Gmail API spellings as the field they name.
+
+    Tool wrappers pass an omitted arg as explicit None; an empty list is kept, it
+    means "all fields". A non-list and unknown names pass through for the list
+    and Literal checks to refuse.
+    """
+    if value is None:
+        return list(DEFAULT_SUMMARY_FIELDS)
+    if not isinstance(value, list) or not all(isinstance(name, str) for name in value):
+        return value
+    return list(dict.fromkeys(MESSAGE_FIELD_SYNONYMS.get(name, name) for name in value))
+
+
+ProjectedFields = Annotated[list[MessageFieldLiteral], BeforeValidator(_canonical_fields)]
 
 BodyProcessingLiteral = Literal["normalize", "raw", "none"]
 
@@ -71,19 +152,21 @@ BodyProcessingLiteral = Literal["normalize", "raw", "none"]
 class FetchMessagesInput(BaseModel):
     """Input for the GMAIL_FETCH_MESSAGES custom tool."""
 
-    timeframe: TimeframeLiteral | None = Field(
+    timeframe: Timeframe | None = Field(
         default=None,
         description=(
             "Convenience range, resolved to Gmail's after:/before: operators "
-            "in the user's home timezone. Ignored if `query` already "
-            "contains after:/before:."
+            "in the user's home timezone: today, yesterday, tomorrow, this_week, "
+            "last_week, next_week, or the last N days/weeks/months/years as "
+            "<N>d / <N>w / <N>m / <N>y (e.g. 2d, 14d, 30d, 2w, 3m, 1y). Ignored "
+            "if `query` already contains after:/before:."
         ),
     )
     query: str | None = Field(
         default=None,
         description="Raw Gmail search query (ANDed with the timeframe clause).",
     )
-    fields: list[MessageFieldLiteral] = Field(
+    fields: ProjectedFields = Field(
         default_factory=lambda: list(DEFAULT_SUMMARY_FIELDS),
         description=(
             "Which fields per message. Defaults to metadata + snippet. "
@@ -91,24 +174,12 @@ class FetchMessagesInput(BaseModel):
         ),
     )
 
-    @field_validator("fields", mode="before")
-    @classmethod
-    def _coerce_none_fields(
-        cls, value: list[MessageFieldLiteral] | None
-    ) -> list[MessageFieldLiteral]:
-        # Tool wrappers pass omitted args as explicit None; treat that the same
-        # as omission and fall back to the curated default field set. An empty
-        # list is preserved (it carries the "all fields" meaning downstream).
-        if value is None:
-            return list(DEFAULT_SUMMARY_FIELDS)
-        return value
-
     body_processing: BodyProcessingLiteral = Field(
         default="normalize",
         description=(
             "'normalize' (default): strip signatures, disclaimers, "
             "unsubscribe footers, and utm tracking chains. Lossless on "
-            "meaningful content (quoted replies are KEPT — they give context "
+            "meaningful content (quoted replies are KEPT, they give context "
             "into the older conversation). 'raw': untouched Gmail body. "
             "'none': omit body regardless of fields[]."
         ),
@@ -136,22 +207,13 @@ class FetchThreadInput(BaseModel):
             "with its full message list in conversation order."
         ),
     )
-    fields: list[MessageFieldLiteral] = Field(
+    fields: ProjectedFields = Field(
         default_factory=lambda: list(DEFAULT_SUMMARY_FIELDS),
         description=(
             "Which fields per message. Defaults to metadata + snippet. "
             "Add 'body' for the processed body. Empty list = all fields."
         ),
     )
-
-    @field_validator("fields", mode="before")
-    @classmethod
-    def _coerce_none_fields(
-        cls, value: list[MessageFieldLiteral] | None
-    ) -> list[MessageFieldLiteral]:
-        if value is None:
-            return list(DEFAULT_SUMMARY_FIELDS)
-        return value
 
     body_processing: BodyProcessingLiteral = Field(
         default="normalize",
@@ -168,14 +230,9 @@ class FetchThreadInput(BaseModel):
     )
 
 
-# =============================================================================
-# Gmail REST wire shapes
-# =============================================================================
-# Everything below models what the Gmail REST API itself returns through the
-# Composio proxy (users.messages / users.threads / users.labels / getProfile).
-# Every field is optional or defaulted because Gmail's response varies by
-# ``format`` (``metadata`` omits the MIME tree entirely) and ``extra="allow"``
-# keeps the fields we don't read rather than silently dropping them.
+# Gmail REST wire shapes: what the Gmail REST API returns via the Composio
+# proxy. Fields are optional/defaulted since response shape varies by `format`
+# (`metadata` omits the MIME tree); extra="allow" keeps unread fields.
 
 
 class GmailHeader(BaseModel):
@@ -184,7 +241,8 @@ class GmailHeader(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     name: str = ""
-    value: str = ""
+    # Null on some Composio-relayed messages (see transform_gmail_message's regression test).
+    value: str | None = None
 
 
 class GmailPartBody(BaseModel):
@@ -195,6 +253,18 @@ class GmailPartBody(BaseModel):
     attachment_id: str | None = Field(default=None, alias="attachmentId")
     size: int | None = None
     data: str | None = None
+
+
+class GmailResourceId(BaseModel):
+    """A Gmail resource (message, draft) in a tool result, read only for its ``id``.
+
+    Optional because Composio documents only the result envelope, not the Gmail
+    resource inside it.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str | None = None
 
 
 class GmailMessagePart(BaseModel):
@@ -211,7 +281,7 @@ class GmailMessagePart(BaseModel):
     filename: str | None = None
     headers: list[GmailHeader] = Field(default_factory=list)
     body: GmailPartBody | None = None
-    parts: list["GmailMessagePart"] = Field(default_factory=list)
+    parts: list[Self] = Field(default_factory=list)
 
 
 class GmailAttachmentMetadata(TypedDict):
@@ -223,28 +293,43 @@ class GmailAttachmentMetadata(TypedDict):
     attachmentId: str | None
 
 
-class GmailParsedAttachment(TypedDict, total=False):
-    """An attachment as reported by ``GmailMessageParser.attachments``.
-
-    ``total=False`` because the two extraction paths report different key sets:
-    the raw-payload fallback carries ``attachmentId`` (the id used to fetch the
-    bytes later), while the parsed-MIME path already holds the decoded
-    ``content``.
-    """
-
-    filename: str | None
-    mimeType: str | None
-    size: int | None
-    attachmentId: str | None
-    messageId: str
-    content: bytes | None
-
-
 class GmailMessageContent(TypedDict):
     """A message body in both renderings, as extracted from its MIME parts."""
 
     text: str
     html: str
+
+
+class GmailMessageView(BaseModel):
+    """One message as the detailed template and GMAIL_FETCH_MESSAGES shape it.
+
+    A model rather than a TypedDict because its wire key ``from`` is a Python
+    keyword; the agent sees it dumped by alias. body and content are left out
+    of the dump when the body was never fetched.
+    """
+
+    id: str
+    thread_id: str = Field(serialization_alias="threadId")
+    sender: str = Field(serialization_alias="from")
+    # One key per sender whatever its display name, so counts group by sender.
+    from_address: str
+    to: str
+    subject: str
+    snippet: str
+    time: str
+    is_read: bool = Field(serialization_alias="isRead")
+    has_attachment: bool = Field(serialization_alias="hasAttachment")
+    attachments: list[GmailAttachmentMetadata]
+    labels: list[str]
+    cc: str
+    body: str | None = Field(default=None, exclude_if=lambda body: body is None)
+    content: GmailMessageContent | None = Field(
+        default=None, exclude_if=lambda content: content is None
+    )
+    # Read by the desk bucket's signals (List-Unsubscribe, Precedence); never on the wire.
+    headers: list[GmailHeader] = Field(default_factory=list, exclude=True)
+    # Set only on an Inbox desk run's own fetch, and kept whatever fields the fetch asked for.
+    bucket: DeskBucket | None = Field(default=None, exclude_if=lambda bucket: bucket is None)
 
 
 class GmailMessageRef(BaseModel):
@@ -288,36 +373,9 @@ class GmailProfile(BaseModel):
     threads_total: int | None = Field(default=None, alias="threadsTotal")
 
 
-# =============================================================================
-# Custom Tool Result Shapes
-# =============================================================================
-# In-process contracts between the Gmail custom tools and their helpers. They
-# are TypedDicts rather than models because nothing validates them at runtime —
-# the tools build them and hand them straight to the agent as JSON.
-
-
-class GmailReadRange(TypedDict):
-    """A ``read(offset, limit)`` call over an offloaded JSONL file."""
-
-    offset: int
-    limit: int
-
-
-class GmailReadChunk(TypedDict):
-    """One contiguous line range of an offloaded JSONL file, for one subagent."""
-
-    part: int
-    start_line: int
-    line_count: int
-    read: GmailReadRange
-
-
-class GmailReadPlan(TypedDict):
-    """How an offloaded JSONL file should be split across parallel subagent reads."""
-
-    total_lines: int
-    recommended_subagents: int
-    chunks: list[GmailReadChunk]
+# Custom Tool Result Shapes: in-process contracts between Gmail custom tools
+# and their helpers. TypedDicts, not models, because nothing validates them at
+# runtime — tools build them and hand them straight to the agent as JSON.
 
 
 class GmailBatchModifyResult(TypedDict):
@@ -344,3 +402,114 @@ class GmailLabelCounts(TypedDict):
     label_name: str
     unreadCount: int
     totalCount: int
+
+
+class GmailStarResult(GmailBatchModifyResult):
+    """GMAIL_STAR_EMAIL: the batchModify outcome, naming which way it went."""
+
+    action: Literal["starred", "unstarred"]
+
+
+class GmailUnreadQueryCounts(TypedDict):
+    """GMAIL_GET_UNREAD_COUNT in query mode: estimates for a search, total and unread."""
+
+    query: str
+    label_ids: list[str]
+    totalCount: int
+    unreadCount: int
+    is_estimate: bool
+    label_id: NotRequired[str]
+
+
+class GmailUnreadLabelCounts(TypedDict):
+    """GMAIL_GET_UNREAD_COUNT in label mode; one label also gets its counts lifted to the top."""
+
+    counts: dict[str, GmailLabelCounts]
+    label_ids: list[str]
+    label_id: NotRequired[str]
+    label_name: NotRequired[str]
+    unreadCount: NotRequired[int]
+    totalCount: NotRequired[int]
+
+
+class GmailContact(TypedDict):
+    """One address found in a message's From/To/Cc/Reply-To headers."""
+
+    name: str
+    email: str
+
+
+class GmailContactList(TypedDict):
+    """GMAIL_GET_CONTACT_LIST: the deduplicated contacts, or the error that stopped the scan."""
+
+    success: bool
+    contacts: list[GmailContact]
+    count: int
+    error: NotRequired[str]
+
+
+class GmailContextUser(TypedDict):
+    """The mailbox owner, as users.getProfile reports them."""
+
+    email: str | None
+    messages_total: int | None
+    threads_total: int | None
+
+
+class GmailContextInbox(TypedDict):
+    """The INBOX label's counts."""
+
+    unread_count: int
+    message_count: int
+
+
+class GmailContextSnapshot(TypedDict):
+    """GMAIL_CUSTOM_GATHER_CONTEXT: who the mailbox is, its inbox counts, and its newest ids."""
+
+    user: GmailContextUser
+    inbox: GmailContextInbox
+    recent_message_ids: list[str]
+
+
+class GmailFetchInlineResult(TypedDict):
+    """A fetch returned whole: projected messages, or every field once compaction will file them."""
+
+    fetched_count: int
+    truncated: bool
+    messages: list[dict[str, object]]
+
+
+class GmailFetchPartialResult(TypedDict):
+    """A fetch that failed partway: the messages read before the error, and the error."""
+
+    fetched_count: int
+    truncated: bool
+    partial: bool
+    error: str
+    note: str
+    messages: list[dict[str, object]]
+
+
+class GmailThreadResult(TypedDict):
+    """One thread of a GMAIL_FETCH_THREAD result, its messages projected."""
+
+    id: str
+    message_count: int
+    messages: list[dict[str, object]]
+
+
+class GmailFetchThreadResult(TypedDict):
+    """GMAIL_FETCH_THREAD returned whole, each thread's messages grouped under it."""
+
+    fetched_threads: int
+    total_messages: int
+    truncated: bool
+    threads: list[GmailThreadResult]
+    #: Asked-for threads Gmail answered 404 for (deleted, or moved since they were listed).
+    missing_thread_ids: list[str]
+
+
+class GmailFetchThreadInlineResult(GmailFetchInlineResult):
+    """GMAIL_FETCH_THREAD past the offload size: every message flat, and the threads Gmail no longer has."""
+
+    missing_thread_ids: list[str]

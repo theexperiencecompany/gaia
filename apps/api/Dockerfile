@@ -1,47 +1,69 @@
 # syntax=docker/dockerfile:1
 
-# ---- Browsers: every browser crawl4ai needs, keyed ONLY on tool versions ----
-# `crawl4ai-setup` is a thin wrapper (crawl4ai/install.py:post_install). Its
-# browser half is exactly two commands:
+# ---- Browsers: Playwright's Chromium, keyed ONLY on its version ----
+# crawl4ai's dedicated crawls (no UndetectedAdapter anywhere in app/, so crawl4ai
+# never takes its patchright path) and the browser host's default Chromium
+# (resolve_chromium_path) launch Playwright's, so only Playwright's revision is
+# downloaded, and patchright is excluded from the lock (root pyproject.toml
+# exclude-dependencies). Fortress, the host's opt-in engine, is installed below.
 #
-#     python -m playwright  install --with-deps --force chromium
-#     python -m patchright  install --with-deps --force chromium
+# --only-shell: both launchers run headless and take Playwright's headless shell,
+# so the full ~620 MB Chromium build was never started.
 #
-# `--force` is why the old browsers stage never saved a byte: playwright
-# re-downloads unconditionally, present revision or not (run1.log #19 —
-# chromium-1223 + ffmpeg-1011 + chromium_headless_shell-1223 + patchright's
-# chromium-1200 + chromium_headless_shell-1200, ~285 MiB, 226s, on top of an
-# already-populated /opt/browsers). `--with-deps` is the other 67s: an apt
-# install of the X11/mesa/font stack into the *builder* rootfs, which the
-# runtime never copies — it installs its own set via `playwright
-# install-deps chromium` further down.
+# No --force (re-downloads unconditionally) and no --with-deps (an apt install
+# into this throwaway rootfs; the runtime installs its own deps further down).
+# This stage is invalidated only by the ARG below, never by uv.lock or code.
 #
-# So we run the two installs here ourselves, without --force and without
-# --with-deps. Two download sets are genuinely required: playwright 1.60.0
-# validates chromium build v1223 and patchright 1.57.2 validates build v1200;
-# each refuses the other's revision. But they are downloaded once and this
-# stage is invalidated ONLY by the two ARGs below — never by uv.lock, libs/
-# or app code.
-#
-# PLAYWRIGHT_VERSION / PATCHRIGHT_VERSION must equal the uv.lock entries: a
-# drift means the runtime's crawl4ai looks for a revision that is not in
-# /opt/browsers and Chromium fails to launch. scripts/ci/audit.sh playwright-pin
-# enforces both in CI, and unlike before the pin is load-bearing — nothing
-# downloads browsers at runtime to paper over a mismatch.
-FROM python:3.12-slim AS browsers
+# PLAYWRIGHT_VERSION must equal the uv.lock entry: a drift means the runtime
+# looks for a revision that is not in /opt/browsers and Chromium fails to
+# launch. scripts/ci/audit.sh playwright-pin enforces it in CI.
+# Runtime versions are declared once: .python-version for Python, mise.toml
+# for Rust. Docker cannot read a file in a FROM line, so these ARGs mirror
+# them and tools/lints/check_tool_pins.py fails when one disagrees.
+ARG PYTHON_VERSION=3.12.15
+ARG RUST_VERSION=1.99.1
+
+FROM python:${PYTHON_VERSION}-slim AS browsers
 ARG PLAYWRIGHT_VERSION=1.60.0
-ARG PATCHRIGHT_VERSION=1.57.2
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
+# Optional package index override. Defaults to upstream PyPI so a plain
+# `docker build` is unchanged; CI passes a nearer mirror as a build arg on
+# runners whose route to PyPI's CDN is slow. Hashes in uv.lock are verified
+# either way, so a mirror cannot substitute a different artifact.
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --only-binary :all: "playwright==${PLAYWRIGHT_VERSION}" "patchright==${PATCHRIGHT_VERSION}" \
-    && python -m playwright install chromium \
-    && python -m patchright install chromium
+    pip install --only-binary :all: "playwright==${PLAYWRIGHT_VERSION}" \
+    && python -m playwright install --only-shell chromium
+
+# ---- Models: the memory engine's ONNX weights, baked so first boot never downloads them ----
+# A cold container used to fetch ~1.5 GB from Hugging Face before the API could
+# serve (self-host first boot: 1.5-4 min, or never on a slow link). Only the
+# files fastembed loads are taken, at a pinned commit, laid out as
+# /opt/models/<repo id>; app/memory/embeddings.py loads them through
+# MEMORY_BAKED_MODELS_DIR. Keyed only on these ARGs and scripts/bake_models.py,
+# so the layer is shared across every build. The repo ids must equal EMBEDDING_MODEL_NAME and
+# RERANKER_MODEL_NAME in app/constants/memory.py (scripts/ci/audit.sh model-pin).
+FROM python:${PYTHON_VERSION}-slim AS models
+ARG HF_HUB_VERSION=1.5.0
+# Same index override as the browsers stage.
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ENV PIP_INDEX_URL=${PIP_INDEX_URL}
+ARG EMBEDDING_MODEL=mixedbread-ai/mxbai-embed-large-v1
+ARG EMBEDDING_MODEL_REVISION=b33106f585b9ce46904ad7443a3b52b7a63e231c
+ARG RERANKER_MODEL=jinaai/jina-reranker-v1-turbo-en
+ARG RERANKER_MODEL_REVISION=b8c14f4e723d9e0aab4732a7b7b93741eeeb77c2
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=bind,source=apps/api/scripts/bake_models.py,target=/bake_models.py \
+    pip install --only-binary :all: "huggingface_hub==${HF_HUB_VERSION}" \
+    && python /bake_models.py /opt/models \
+       "${EMBEDDING_MODEL}@${EMBEDDING_MODEL_REVISION}" "${RERANKER_MODEL}@${RERANKER_MODEL_REVISION}"
 
 # ---- Builder: install the Python dependency closure (no browsers here) ----
-FROM python:3.12-slim AS builder
+FROM python:${PYTHON_VERSION}-slim AS builder
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /uvx /bin/
 
 # Install build-time only system deps (not shipped to production)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -56,6 +78,11 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_SYSTEM_PYTHON=1 \
     UV_PROJECT_ENVIRONMENT=/usr/local
 
+# Same override for uv's own fetches (see the browsers stage). Declared here so
+# the layer is invalidated only when the value actually changes.
+ARG UV_DEFAULT_INDEX=https://pypi.org/simple
+ENV UV_DEFAULT_INDEX=${UV_DEFAULT_INDEX}
+
 # Copy workspace structure for uv to resolve dependencies
 COPY pyproject.toml uv.lock ./
 COPY apps/api/pyproject.toml ./apps/api/
@@ -67,9 +94,15 @@ COPY libs/pyproject.toml ./libs/
 
 # UV_PROJECT_ENVIRONMENT=/usr/local tells uv sync to use the system Python dir
 # instead of creating a .venv — entry points (crawl4ai-setup etc.) land in /usr/local/bin
+# No --no-build: cloudinary, pysher and standardwebhooks ship only sdists; --frozen builds only hash-pinned
+# ones. Sonar docker:S8541 does not honour NOSONAR, so it is resolved as Accepted in the SonarCloud UI.
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=libs,target=/app/libs,rw \
-    uv sync --frozen --package gaia --group backend
+    uv sync --frozen --no-dev --package gaia --group backend
+
+# Vendored test suites (pandas, scipy, numpy, pyarrow, ...) are never imported at
+# runtime; dropping them before the runtime COPY saves ~120 MB.
+RUN find /usr/local/lib/python3.12/site-packages -type d -name tests -prune -exec rm -rf {} +
 
 # NOTE: crawl4ai-setup deliberately does NOT run here. Its browser downloads
 # live in the `browsers` stage (keyed on tool versions, not uv.lock) and its
@@ -79,8 +112,56 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # `--mount=type=cache,target=/root/.cache/crawl4ai` guarding it pointed at a
 # path crawl4ai never writes.
 
+# ---- Obscura build: compile the browser engine from source ----
+# Built from source, never a release tarball: our fixes ride on the pinned commit
+# as a patch series (below), which no release artifact can carry. The pin is a
+# commit past v0.2.2 with the dynamic-import / frame-realm SIGSEGV fix (upstream
+# #850 + #841, PR #864). deno_core's v8 crate pulls a PREBUILT V8, so this compiles
+# Rust only (~few min), not V8. render+stealth = the build we launch with
+# --stealth (native rendering + TLS impersonation). libunwind-dev is required by
+# the stealth feature's BoringSSL (btls-sys); GitHub's runners preinstall it so
+# Obscura's own CI never lists it.
+FROM rust:${RUST_VERSION}-slim-bookworm AS obscura-builder
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    clang cmake libclang-dev libssl-dev llvm-dev pkg-config \
+    git ca-certificates perl make libunwind-dev build-essential
+ARG OBSCURA_COMMIT=8f9c630b17d655920e13907afd8b498bbb9a2291
+# Our fixes ride on the pinned upstream commit as a patch series, so taking an
+# update is a pin bump: git am fails the build loudly when a patch no longer
+# applies, and one upstream has merged is deleted from the series.
+COPY apps/api/obscura-patches /obscura-patches
+WORKDIR /obscura
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    git clone https://github.com/h4ckf0r0day/obscura . \
+    && git checkout ${OBSCURA_COMMIT} \
+    && git -c user.name=gaia -c user.email=build@heygaia.io am /obscura-patches/*.patch \
+    && cargo build --locked --release -p obscura-cli --bins --features render,stealth
+
+# The engine's own tests, patches included, on the features the image ships.
+# Not on the runtime image's path: .github/workflows/obscura-compat.yml builds
+# this target whenever the series changes. nextest runs each test in its own
+# process, as upstream's CI does: some tests set process-wide env. The gzip
+# fixture binds loopback, so only it runs with private networks allowed.
+FROM obscura-builder AS obscura-test
+ARG NEXTEST_VERSION=0.9.146
+ARG OBSCURA_TEST_FEATURES=obscura-cli/render,obscura-cli/stealth,obscura/render,obscura/stealth
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    cargo install --locked cargo-nextest --version ${NEXTEST_VERSION} \
+    && cargo nextest run --locked --release --workspace --no-fail-fast \
+       --features ${OBSCURA_TEST_FEATURES} -E 'not test(stealth_client_decodes_gzip_response)' \
+    && OBSCURA_ALLOW_PRIVATE_NETWORK=1 cargo nextest run --locked --release --workspace \
+       --features ${OBSCURA_TEST_FEATURES} -E 'test(stealth_client_decodes_gzip_response)'
+
+# Just the two binaries, for `--target obscura-bin --output type=local`: the
+# nightly compat probe (.github/workflows/obscura-compat.yml) runs this exact build.
+FROM scratch AS obscura-bin
+COPY --from=obscura-builder /obscura/target/release/obscura /obscura
+COPY --from=obscura-builder /obscura/target/release/obscura-worker /obscura-worker
+
 # ---- Runtime: minimal production image ----
-FROM python:3.12-slim AS runtime
+FROM python:${PYTHON_VERSION}-slim AS runtime
 WORKDIR /app
 
 # Install only runtime system libraries (no build-essential / *-dev)
@@ -93,6 +174,33 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     postgresql-client \
     curl
 
+# Early in the stage so code and dependency changes never re-key this ~1.5 GB layer.
+COPY --from=models /opt/models /opt/models
+
+# Fortress — the browser host's opt-in Chromium (BROWSER_HOST_FORTRESS, off by
+# default): a Chromium fork that sets the fingerprint in C++, driven over CDP like
+# Chrome. Pinned to a release and its SHA-256 per arch (the release's SHA256SUMS);
+# scripts/ci/browser.sh reads these ARGs, so CI's browser stack runs this exact
+# build. The host launches /opt/fortress/tilion (FORTRESS_IMAGE_BIN), its launcher,
+# which sets up the fonts; its runtime libraries are Chromium's, installed by
+# playwright install-deps below. TILION_LICENSE_KEY (browser_host_settings) selects
+# the licensed v3 engine; unset, the public v1 engine.
+ARG TARGETARCH
+ARG FORTRESS_VERSION=156.0.8078.47
+ARG FORTRESS_SHA256_AMD64=fa56589c44765627447be075afa9675b06b09befdb8b62347391b9a83e4812b2
+ARG FORTRESS_SHA256_ARM64=2fead923de56b92fad78940bde373c07d38a925f229b710353e601b07d13af87
+RUN case "${TARGETARCH:-amd64}" in \
+      amd64) platform=linux-x64 sha256="${FORTRESS_SHA256_AMD64}" ;; \
+      arm64) platform=linux-arm64 sha256="${FORTRESS_SHA256_ARM64}" ;; \
+      *) echo "unsupported arch ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl --proto "=https" --tlsv1.2 -fsSL -o /tmp/fortress.tar.gz \
+       "https://github.com/tiliondev/fortress/releases/download/v${FORTRESS_VERSION}/fortress-v${FORTRESS_VERSION%%.*}-${platform}.tar.gz" \
+    && echo "${sha256}  /tmp/fortress.tar.gz" | sha256sum -c - \
+    && mkdir -p /opt/fortress \
+    && tar -xzf /tmp/fortress.tar.gz -C /opt/fortress --strip-components=1 \
+    && rm -f /tmp/fortress.tar.gz
+
 # JuiceFS client — needed by the host-side sidecar mount that the API writes
 # skills + migration data through. Sandboxes have their own copy baked into
 # the E2B template.
@@ -101,20 +209,39 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # meta client) under Rosetta/QEMU emulation on arm64 hosts (Apple Silicon
 # dev, Graviton prod).
 ARG JUICEFS_VERSION=1.3.0
-ARG TARGETARCH
-RUN curl -fsSL "https://github.com/juicedata/juicefs/releases/download/v${JUICEFS_VERSION}/juicefs-${JUICEFS_VERSION}-linux-${TARGETARCH:-amd64}.tar.gz" \
+RUN curl --proto "=https" --tlsv1.2 -fsSL "https://github.com/juicedata/juicefs/releases/download/v${JUICEFS_VERSION}/juicefs-${JUICEFS_VERSION}-linux-${TARGETARCH:-amd64}.tar.gz" \
     | tar -xz -C /tmp \
     && install -m 0755 /tmp/juicefs /usr/local/bin/juicefs \
     && rm -rf /tmp/juicefs /tmp/LICENSE /tmp/README.md
 
+# Docker CLI (client only) — the self-host local coding sandbox
+# (app/services/sandbox/local_sandbox.py) drives per-user sibling containers
+# with `docker exec`/`docker cp` through the host socket the self-host compose
+# mounts. Docker names arches x86_64/aarch64, not BuildKit's amd64/arm64.
+ARG DOCKER_CLI_VERSION=29.9.0
+RUN case "${TARGETARCH:-amd64}" in amd64) arch=x86_64 ;; arm64) arch=aarch64 ;; *) echo "unsupported arch ${TARGETARCH}" >&2; exit 1 ;; esac \
+    && curl --proto "=https" --tlsv1.2 -fsSL "https://download.docker.com/linux/static/stable/${arch}/docker-${DOCKER_CLI_VERSION}.tgz" \
+    | tar -xz -C /tmp docker/docker \
+    && install -m 0755 /tmp/docker/docker /usr/local/bin/docker \
+    && rm -rf /tmp/docker
+
+# Obscura — the browser-host engine (default; BROWSER_ENGINE=obscura). A single
+# self-contained Rust CDP server + its render worker, built from source in the
+# obscura-builder stage above (the fixed commit; v0.2.2's release tarball crashes
+# the whole process on dynamic-import pages — see that stage's comment). Native
+# render build needs no runtime libs beyond glibc (Obscura ships on distroless).
+COPY --from=obscura-builder /obscura/target/release/obscura /opt/obscura/obscura
+COPY --from=obscura-builder /obscura/target/release/obscura-worker /opt/obscura/obscura-worker
+RUN chmod 0755 /opt/obscura/obscura /opt/obscura/obscura-worker
+
 # Copy uv binary (pinned version)
-COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /uvx /bin/
 
 # Copy Python packages and entry points from builder
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy crawl4ai browser data (playwright chromium + patchright chromium)
+# Copy Playwright's Chromium (see the browsers stage)
 COPY --from=browsers /opt/browsers /opt/browsers
 
 # Install the Chromium system-dependency set for the bundled Playwright browser.
@@ -140,6 +267,8 @@ ENV ENV=production \
     UV_PROJECT_ENVIRONMENT=/usr/local \
     PYTHONPATH=/app/apps/api \
     PLAYWRIGHT_BROWSERS_PATH=/opt/browsers \
+    OBSCURA_BIN=/opt/obscura/obscura \
+    MEMORY_BAKED_MODELS_DIR=/opt/models \
     GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 
 # Copy workspace pyproject files (needed for uv run --group)
@@ -152,7 +281,7 @@ COPY apps/api/pyproject.toml ./apps/api/
 # `shared` / `shared.py.*`. This drops libs/shared/ts (1.2 MB of TypeScript)
 # and libs/wake-word (880 KB), neither of which is a Python package.
 COPY libs/pyproject.toml ./libs/
-COPY libs/shared/__init__.py libs/shared/py.typed ./libs/shared/
+COPY libs/shared/__init__.py libs/shared/py.typed libs/shared/bot-identity.json ./libs/shared/
 COPY libs/shared/py ./libs/shared/py
 COPY libs/shared/assets ./libs/shared/assets
 
@@ -168,8 +297,8 @@ RUN adduser --disabled-password --gecos '' appuser \
     && chown appuser:appuser /app/apps/api/logs \
     && chown -R appuser:appuser /app/libs \
     && chown appuser:appuser /app/uv.lock /app/pyproject.toml \
-    && mkdir -p /etc/gaia /var/cache/juicefs /mnt/jfs \
-    && chown -R appuser:appuser /etc/gaia /var/cache/juicefs /mnt/jfs \
+    && mkdir -p /etc/gaia /var/cache/juicefs /mnt/jfs /var/lib/gaia/files \
+    && chown -R appuser:appuser /etc/gaia /var/cache/juicefs /mnt/jfs /var/lib/gaia \
     # Persistent fastembed model cache (MEMORY_MODEL_CACHE_DIR). Pre-created and
     # owned by appuser so a mounted named volume inherits writable ownership.
     && mkdir -p /models \
@@ -195,6 +324,9 @@ WORKDIR /app/apps/api
 
 USER appuser
 EXPOSE 8000
+# A browser-host container (python -m app.browser_host) serves the internal
+# network; its port is never published. Natively the host binds loopback.
+ENV BROWSER_HOST_BIND_ADDRESS=0.0.0.0
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--proxy-headers", "--forwarded-allow-ips", "*"]

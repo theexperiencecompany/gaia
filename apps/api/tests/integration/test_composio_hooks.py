@@ -8,19 +8,20 @@ Run with:
     uv run pytest tests/integration/test_composio_hooks.py -v
 """
 
-from typing import Any
-from unittest.mock import MagicMock, patch
+from typing import Any, cast
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 import pytest
 
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
+from app.models.integrations.reddit_hooks import RedditCommentThing, RedditPostThing
 from app.services.composio.custom_tools.context_tool import (
     PROVIDER_TOOLS,
     tool_namespace,
 )
 from app.services.composio.custom_tools.registry import CustomToolsRegistry
 from app.utils.composio_hooks.gmail_hooks import (
-    gmail_attachment_after_hook,
     gmail_compose_before_hook,
     gmail_create_draft_after_hook,
     gmail_drafts_after_hook,
@@ -81,21 +82,6 @@ def _make_tool_schema(
     return tool
 
 
-def _make_execution_response(
-    data: Any = None,
-    successful: bool = True,
-    error: str | None = None,
-) -> ToolExecutionResponse:
-    """Build a ToolExecutionResponse dict."""
-    resp: dict[str, Any] = {
-        "data": data if data is not None else {},
-        "successful": successful,
-    }
-    if error:
-        resp["data"]["error"] = error
-    return resp
-
-
 # ---------------------------------------------------------------------------
 # 1. Hook Registry — core registration and execution
 # ---------------------------------------------------------------------------
@@ -130,8 +116,12 @@ class TestHookRegistry:
             return {"processed": True, "original": response}
 
         registry.register_after_hook(hook)
-        result = registry.execute_after_hooks("MY_TOOL", "my_toolkit", {"raw": "data"})
+        # The registry is shape-agnostic, so a bare dict stands in for the envelope.
+        result = registry.execute_after_hooks(
+            "MY_TOOL", "my_toolkit", cast(ToolExecutionResponse, {"raw": "data"})
+        )
 
+        assert isinstance(result, dict)
         assert result["processed"] is True
         assert result["original"] == {"raw": "data"}
         assert call_log == ["after:MY_TOOL"]
@@ -190,7 +180,10 @@ class TestHookRegistry:
         registry.register_after_hook(hook_a)
         registry.register_after_hook(hook_b)
 
-        result = registry.execute_after_hooks("TOOL", "tk", {"initial": True})
+        # The registry is shape-agnostic, so a bare dict stands in for the envelope.
+        result = registry.execute_after_hooks(
+            "TOOL", "tk", cast(ToolExecutionResponse, {"initial": True})
+        )
         assert result == {"initial": True, "hook_a": True, "hook_b": True}
 
     def test_before_hook_error_does_not_stop_chain(self) -> None:
@@ -226,7 +219,10 @@ class TestHookRegistry:
         registry.register_after_hook(bad_hook)
         registry.register_after_hook(good_hook)
 
-        result = registry.execute_after_hooks("TOOL", "tk", {"raw": True})
+        # The registry is shape-agnostic, so a bare dict stands in for the envelope.
+        result = registry.execute_after_hooks(
+            "TOOL", "tk", cast(ToolExecutionResponse, {"raw": True})
+        )
         assert result == {"processed": True}
 
     def test_schema_modifier_error_does_not_stop_chain(self) -> None:
@@ -304,11 +300,17 @@ class TestConditionalHookDecorators:
         registry.register_after_hook(conditional_hook)
 
         # Should fire
-        result1 = registry.execute_after_hooks("GMAIL_SEND_EMAIL", "gmail", {"raw": True})
+        # The registry is shape-agnostic, so a bare dict stands in for the envelope.
+        result1 = registry.execute_after_hooks(
+            "GMAIL_SEND_EMAIL", "gmail", cast(ToolExecutionResponse, {"raw": True})
+        )
         assert result1 == {"gmail_processed": True}
 
         # Should NOT fire
-        result2 = registry.execute_after_hooks("SLACK_SEND_MSG", "slack", {"raw": True})
+        # The registry is shape-agnostic, so a bare dict stands in for the envelope.
+        result2 = registry.execute_after_hooks(
+            "SLACK_SEND_MSG", "slack", cast(ToolExecutionResponse, {"raw": True})
+        )
         assert result2 == {"raw": True}
 
     def test_wildcard_hook_runs_for_all_tools(self) -> None:
@@ -368,7 +370,10 @@ class TestMasterHooks:
                 return response
 
             hook_registry._after_hooks.append(test_hook)
-            master_after_execute_hook("SLACK_SEND_MSG", "slack", {"ok": True})
+            # The registry is shape-agnostic, so a bare dict stands in for the envelope.
+            master_after_execute_hook(
+                "SLACK_SEND_MSG", "slack", cast(ToolExecutionResponse, {"ok": True})
+            )
 
             assert "slack:SLACK_SEND_MSG" in call_log
         finally:
@@ -414,7 +419,7 @@ class TestGmailBeforeHooks:
             }
         )
 
-        with patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer") as mock_writer:
+        with patch("app.utils.composio_hooks.gmail_hooks.current_stream_writer") as mock_writer:
             mock_writer.return_value = MagicMock()
             result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "gmail", params)
 
@@ -447,7 +452,7 @@ class TestGmailBeforeHooks:
         )
 
         with patch(
-            "app.utils.composio_hooks.gmail_hooks.get_stream_writer",
+            "app.utils.composio_hooks.gmail_hooks.current_stream_writer",
             return_value=writer_mock,
         ):
             gmail_compose_before_hook("GMAIL_CREATE_EMAIL_DRAFT", "gmail", params)
@@ -455,7 +460,9 @@ class TestGmailBeforeHooks:
             # Send button uses, and that only exists once the tool has run.
             writer_mock.assert_not_called()
             gmail_create_draft_after_hook(
-                "GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": {"id": "draft-77"}}
+                "GMAIL_CREATE_EMAIL_DRAFT",
+                "gmail",
+                {"data": {"id": "draft-77"}, "successful": True, "error": None},
             )
 
         writer_mock.assert_called_once()
@@ -482,6 +489,7 @@ class TestGmailAfterHooks:
         raw_response: ToolExecutionResponse = {
             "data": {"id": "msg1", "payload": {"headers": []}},
             "successful": True,
+            "error": None,
         }
 
         expected_output = {"id": "msg1", "subject": "Test", "body": "Hello"}
@@ -496,28 +504,6 @@ class TestGmailAfterHooks:
 
         mock_template.assert_called_once_with(raw_response["data"])
         assert result == expected_output
-
-    def test_attachment_after_hook_strips_content(self) -> None:
-        """The attachment hook extracts metadata only, not base64 content."""
-
-        raw_response: ToolExecutionResponse = {
-            "data": {
-                "attachmentId": "att1",
-                "filename": "test.pdf",
-                "mimeType": "application/pdf",
-                "size": 12345,
-                "data": "HUGE_BASE64_STRING_THAT_SHOULD_BE_STRIPPED",
-            },
-            "successful": True,
-        }
-
-        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "gmail", raw_response)
-
-        assert result["attachmentId"] == "att1"
-        assert result["filename"] == "test.pdf"
-        assert result["size"] == 12345
-        assert "HUGE_BASE64" not in str(result)
-        assert "message" in result  # informational note
 
 
 # ---------------------------------------------------------------------------
@@ -565,10 +551,30 @@ class TestUserIdExtractionHook:
             }
         )
 
-        result = master_before_execute_hook("GMAIL_FETCH_EMAILS", "gmail", params)
+        record = UserIntegrationDocument(
+            user_id="user_abc123",
+            integration_id="gmail",
+            status="connected",
+            accounts=[
+                IntegrationAccount(
+                    id="ca_work", connected_account_id="ca_work", label="work@acme.com"
+                ),
+                IntegrationAccount(
+                    id="ca_home", connected_account_id="ca_home", label="me@gmail.com"
+                ),
+            ],
+            primary_account_id="ca_home",
+        )
+        with patch(
+            "app.services.integrations.integration_accounts.user_integration_repository.get_for_user",
+            AsyncMock(return_value=record),
+        ):
+            result = master_before_execute_hook("GMAIL_FETCH_EMAILS", "gmail", params)
 
         assert result["user_id"] == "user_abc123"
         assert result["entity_id"] == "user_abc123"
+        # Composio never picks among several accounts: the call names the primary.
+        assert result["connected_account_id"] == "ca_home"
         # __runnable_config__ should be popped from arguments
         assert "__runnable_config__" not in result["arguments"]
 
@@ -642,6 +648,7 @@ class TestSlackSchemaModifiers:
         result = slack_search_schema_modifier("SLACK_SEARCH_MESSAGES", "slack", schema)
 
         props = result.input_parameters["properties"]
+        assert isinstance(props, dict)
         assert props["sort"]["default"] == "timestamp"
         assert props["sort_dir"]["default"] == "desc"
         assert props["count"]["default"] == 20
@@ -658,10 +665,6 @@ class TestEndToEndHookChain:
     """Test a complete before -> execute -> after pipeline."""
 
     def test_full_chain_transforms_input_and_output(self) -> None:
-        """
-        Simulate: user_id extraction (before) -> Composio execute (mocked) ->
-        response processing (after) -> verify transformed result.
-        """
         registry = ComposioHookRegistry()
 
         # Before hook: extract user_id and add a tracking field
@@ -695,8 +698,12 @@ class TestEndToEndHookChain:
         }
 
         # AFTER phase
-        final_result = registry.execute_after_hooks("GMAIL_FETCH_EMAILS", "gmail", raw_api_response)
+        # The registry is shape-agnostic, so a bare dict stands in for the envelope.
+        final_result = registry.execute_after_hooks(
+            "GMAIL_FETCH_EMAILS", "gmail", cast(ToolExecutionResponse, raw_api_response)
+        )
 
+        assert isinstance(final_result, dict)
         assert final_result["summary"] == "Got 3 items"
         assert final_result["tool_used"] == "GMAIL_FETCH_EMAILS"
 
@@ -828,14 +835,16 @@ class TestTwitterHooks:
                 "meta": {"result_count": 1},
             },
             "successful": True,
+            "error": None,
         }
 
         with patch(
-            "app.utils.composio_hooks.twitter_hooks.get_stream_writer",
+            "app.utils.composio_hooks.twitter_hooks.current_stream_writer",
             return_value=MagicMock(),
         ):
             result = twitter_search_after_hook("TWITTER_RECENT_SEARCH", "twitter", raw_response)
 
+        assert isinstance(result, dict)
         assert "tweets" in result
         assert result["tweets"][0]["id"] == "tweet1"
         assert result["tweets"][0]["author_username"] == "testuser"
@@ -876,16 +885,18 @@ class TestRedditHooks:
                 },
             },
             "successful": True,
+            "error": None,
         }
 
         with patch(
-            "app.utils.composio_hooks.reddit_hooks.get_stream_writer",
+            "app.utils.composio_hooks.reddit_hooks.current_stream_writer",
             return_value=MagicMock(),
         ):
             result = reddit_search_after_hook(
                 "REDDIT_SEARCH_ACROSS_SUBREDDITS", "reddit", raw_response
             )
 
+        assert isinstance(result, dict)
         assert "posts" in result
         assert result["posts"][0]["id"] == "post1"
         assert result["posts"][0]["title"] == "Test Post"
@@ -909,7 +920,7 @@ class TestRedditHooks:
             },
         }
 
-        result = process_reddit_post(raw_post)
+        result = process_reddit_post(RedditPostThing.model_validate(raw_post).data)
 
         assert result["id"] == "abc123"
         assert result["title"] == "My Post"
@@ -932,7 +943,7 @@ class TestRedditHooks:
             },
         }
 
-        result = process_reddit_comment(raw_comment)
+        result = process_reddit_comment(RedditCommentThing.model_validate(raw_comment).data)
 
         assert result["id"] == "comment1"
         assert result["body"] == "Great post!"
@@ -969,6 +980,7 @@ class TestHookFailurePropagation:
         malformed_response: ToolExecutionResponse = {
             "data": {"error": "API returned garbage"},
             "successful": False,
+            "error": None,
         }
 
         result = gmail_message_detail_after_hook(
@@ -985,6 +997,7 @@ class TestHookFailurePropagation:
         response: ToolExecutionResponse = {
             "data": {"error": "not found"},
             "successful": False,
+            "error": None,
         }
 
         result = gmail_drafts_after_hook("GMAIL_LIST_DRAFTS", "gmail", response)

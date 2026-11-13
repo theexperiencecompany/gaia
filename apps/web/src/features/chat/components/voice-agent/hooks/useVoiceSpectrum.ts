@@ -6,15 +6,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export const SPECTRUM_BINS = 24;
 
 /**
- * Source of the spectrum on a given frame:
- * - "mic": live microphone input via Web Audio AnalyserNode
- * - "agent-track": Web Audio AnalyserNode over a remote MediaStreamTrack
- *   (e.g. the LiveKit agent's TTS audio track) passed in via `remoteTrack`
- * - "loading": procedural low-pass-filtered random walk — used during the
- *   voice-mode connecting phase so the gradient visibly vibrates while the
- *   room negotiates. Caller invokes `decayLoading()` when transitioning out
- *   to fade the amplitude to zero before switching sources.
- * - "idle": flat baseline — wave settles to zero
+ * Spectrum source per frame: "mic" (live AnalyserNode), "agent-track"
+ * (AnalyserNode over a remote MediaStreamTrack, e.g. agent TTS, via `remoteTrack`),
+ * "loading" (procedural random walk while connecting — call `decayLoading()` to
+ * fade out before switching), "idle" (flat baseline).
  */
 export type SpectrumSource = "mic" | "agent-track" | "loading" | "idle";
 
@@ -137,10 +132,9 @@ export function useVoiceSpectrum({
   remoteTrack = null,
   muted = false,
 }: UseVoiceSpectrumOptions) {
-  // Persistent per-instance buffers — allocated once on mount (lazy state
-  // initializer: no per-render Float32Array churn) and mutated in place each
-  // frame by the rAF loop below; render never writes them. Consumers read
-  // `spectrum` so they don't trigger re-renders on every audio frame.
+  // Persistent per-instance buffers, allocated once via a lazy state initializer
+  // (no per-render Float32Array churn) and mutated in place by the rAF loop below;
+  // consumers read `spectrum` directly so audio frames don't trigger re-renders.
   const [spectrum] = useState(() => new Float32Array(SPECTRUM_BINS));
   const [targetSpectrum] = useState(() => new Float32Array(SPECTRUM_BINS));
   const [scratch] = useState(() => new Float32Array(SPECTRUM_BINS));
@@ -420,10 +414,9 @@ export function useVoiceSpectrum({
     // exhaustive-deps without ever re-running the loop setup.
   }, [targetSpectrum, spectrum, loadingState, scratch]);
 
-  // Pause the raf on mute (after a settle window so the wave glides flat
-  // first) or while the tab is hidden; resume on unmute / visibility return.
-  // Agent-track frames are exempt from the mute pause — the agent's audible
-  // speech should keep animating even while the user's mic is off.
+  // Pauses the raf on mute (after a settle window so the wave glides flat first)
+  // or when the tab is hidden; resumes on unmute/visibility. Agent-track frames
+  // are exempt from the mute pause so the agent's speech keeps animating.
   useEffect(() => {
     const resume = () => {
       if (rafRef.current !== null || !tickRef.current) return;

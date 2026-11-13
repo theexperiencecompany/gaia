@@ -4,9 +4,9 @@ import dynamic from "next/dynamic";
 import type React from "react";
 import { useState } from "react";
 
-import CodeBlock from "@/features/chat/components/code-block/CodeBlock";
+import { ChatCodeBlock } from "@/features/chat/components/code-block/ChatCodeBlock";
+import { copyWithFeedback } from "@/lib/clipboard";
 import type { CodeData } from "@/types/features/toolDataTypes";
-
 import CodeExecutionOutput from "./CodeExecutionOutput";
 
 // recharts (~100 KB gz) is only needed when a code-execution result actually
@@ -21,26 +21,12 @@ interface CodeExecutionSectionProps {
   code_data: CodeData;
 }
 
-// Language display configuration
-// const LANGUAGE_DISPLAY = {
-//   python: { name: "Python", color: "text-blue-400" },
-//   javascript: { name: "JavaScript", color: "text-yellow-400" },
-//   typescript: { name: "TypeScript", color: "text-blue-500" },
-//   ruby: { name: "Ruby", color: "text-red-400" },
-//   php: { name: "PHP", color: "text-purple-400" },
-// } as const;
-
-// const getLanguageDisplay = (language: string) => {
-//   const lang = language.toLowerCase() as keyof typeof LANGUAGE_DISPLAY;
-//   return LANGUAGE_DISPLAY[lang] || { name: language, color: "text-gray-400" };
-// };
-
 const createCopyHandler = (
   text: string,
   setCopied: (value: boolean) => void,
 ) => {
-  return () => {
-    navigator.clipboard.writeText(text);
+  return async () => {
+    if (!(await copyWithFeedback(text))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -80,9 +66,9 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
           }}
         >
           <div className="w-full max-w-[30vw] overflow-hidden rounded-[15px] rounded-b-[20px]">
-            <CodeBlock className={`language-${code_data.language}`}>
+            <ChatCodeBlock className={`language-${code_data.language}`}>
               {code_data.code}
-            </CodeBlock>
+            </ChatCodeBlock>
           </div>
         </AccordionItem>
 

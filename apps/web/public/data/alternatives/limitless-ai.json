@@ -1,1 +1,123 @@
-{"slug":"limitless-ai","name":"Limitless AI","domain":"limitless.ai","category":"ai-assistant","tagline":"Passive meeting capture is powerful — but memory without action is still a to-do list","painPoints":["Limitless captures meetings and conversations passively but doesn't take action on them — follow-ups, tasks, and calendar updates still require manual work","The Pendant wearable captures everything in your physical environment, but digital productivity — email, tasks, calendar — remains outside its scope","No email integration: Limitless doesn't read your inbox, create tasks from emails, or connect meeting context to email threads","Primarily a capture and recall tool; it surfaces what was said but doesn't organize, prioritize, or automate next steps","Cloud-dependent with no self-hosted option — sensitive meeting recordings are stored on Limitless's infrastructure"],"metaTitle":"Limitless AI Alternative — GAIA — AI Assistant That Remembers and Acts","metaDescription":"Want an AI that doesn't just capture your meetings but also manages your inbox, creates tasks, and updates your calendar? GAIA is an open-source Limitless AI alternative with proactive action across all your tools.","keywords":["limitless ai alternative","limitless ai alternative free","limitless ai alternative reddit","limitless ai open source alternative","rewind ai alternative","rewind ai alternative free","rewind ai alternative windows","limitless ai alternative 2026"],"whyPeopleLook":"Limitless AI (formerly Rewind) excels at passive capture — its Pendant wearable and screen recording create a searchable memory of your day. But users quickly discover that remembering what was discussed is different from acting on it. Limitless won't draft your follow-up email, add the action item to your task manager, or reschedule the conflicting meeting it just recorded. Users searching alternatives want an AI that not only captures but coordinates.","gaiaFitScore":3,"gaiaReplaces":["Manual follow-up drafting after meetings Limitless records","Copying meeting action items into a separate task manager","Switching to Gmail or Calendar after a Limitless meeting recap","Separate tools for email triage, task management, and calendar coordination"],"gaiaAdvantages":["GAIA captures meeting context and immediately creates tasks, drafts follow-ups, and updates calendar","Email integration connects meeting outcomes to email threads without manual copy-paste","Proactive surfacing — GAIA acts on information without waiting to be queried","Open source and self-hostable; Limitless is a closed cloud service","Works across web, desktop, mobile, Discord, Slack, and Telegram — not limited to a wearable device"],"migrationSteps":["Export meeting summaries and transcripts from Limitless as text files","Import key action items and context into GAIA's memory system","Connect Gmail and Google Calendar so GAIA can correlate meeting context with email threads and upcoming events","Configure GAIA to automatically create tasks and draft follow-up emails after calendar meetings"],"faqs":[{"question":"Does GAIA record meetings like Limitless AI?","answer":"GAIA integrates with calendar and email to capture meeting context and action items, but it does not provide always-on audio recording or a physical wearable like Limitless's Pendant. GAIA's strength is acting on meeting outcomes rather than passive audio capture."},{"question":"Is there an open-source alternative to Limitless AI?","answer":"GAIA is fully open source and self-hostable via Docker — a significant privacy advantage over Limitless, which stores recordings on its own cloud infrastructure. Self-hosted GAIA keeps all your meeting context on your own servers."},{"question":"What is Rewind AI called now?","answer":"Rewind AI rebranded to Limitless AI in 2024 and launched the Pendant wearable. The core product remains passive capture and recall of meetings and screen activity."},{"question":"Can GAIA replace both Limitless and my task manager?","answer":"GAIA combines the action-oriented side of what Limitless captures with full task management, email management, and calendar coordination. For users who need passive audio capture of in-person conversations, Limitless remains complementary; for digital-first workflows, GAIA covers the full loop."}]}
+{
+  "slug": "limitless-ai",
+  "name": "Limitless AI",
+  "domain": "limitless.ai",
+  "category": "ai-assistant",
+  "tagline": "Limitless is winding down after Meta's acquisition: replace the recorder with a note-taker, and the follow-up work with GAIA",
+  "painPoints": [
+    "Limitless captures meetings and conversations passively but doesn't take action on them — follow-ups, tasks, and calendar updates still require manual work",
+    "The Pendant wearable captures everything in your physical environment, but digital productivity — email, tasks, calendar — remains outside its scope",
+    "No email integration: Limitless doesn't read your inbox, create tasks from emails, or connect meeting context to email threads",
+    "Primarily a capture and recall tool; it surfaces what was said but doesn't organize, prioritize, or automate next steps",
+    "Cloud-dependent with no self-hosted option — sensitive meeting recordings are stored on Limitless's infrastructure"
+  ],
+  "metaTitle": "Limitless AI Alternative: Memory That Acts on Your Meetings",
+  "metaDescription": "Limitless captures conversations but leaves follow-ups to you. GAIA turns meeting context into tasks, draft replies, and calendar updates. See the switch steps.",
+  "keywords": [
+    "limitless ai alternative",
+    "limitless ai alternative reddit",
+    "limitless ai source-available alternative",
+    "rewind ai alternative",
+    "rewind ai alternative windows",
+    "limitless ai alternative {{CURRENT_YEAR}}"
+  ],
+  "whyPeopleLook": "Limitless AI (formerly Rewind) made the Limitless Pendant, a clip-on wearable that recorded and transcribed conversations, plus apps that turned them into searchable summaries. Meta acquired Limitless, stopped selling the Pendant, ended the service in several regions (including the EU and UK) and moved remaining customers to a free plan while it winds down. That is why people are looking for a replacement now. The right Limitless alternative depends on which half you used: the recording, or what you did with it afterwards.\n\nIf you want the recording: other AI wearables such as Plaud NotePin and Omi capture in-person conversations, and meeting note-takers such as Otter.ai, Fireflies.ai, Granola and Fathom transcribe Zoom, Google Meet and Teams calls with no hardware. If you used Rewind for screen history, look at Screenpipe or Microsoft Recall on Copilot+ PCs. GAIA does none of this: it does not record audio, transcribe meetings or capture your screen.\n\nIf you want the follow-through: a transcript is only useful once someone acts on it, and that is the part Limitless left to you. GAIA is an AI assistant that works from your email, calendar and tasks. Paste a meeting summary from any note-taker, or let GAIA pick up the recap email in your Gmail, and it pulls out the action items, creates todos with due dates, drafts the follow-up email and finds a time for the next meeting. It remembers facts and decisions across conversations, and it runs workflows in the background, such as a morning briefing that lists the follow-ups still open from yesterday's meetings.\n\nMany people pair the two: a note-taker records, GAIA acts. Choose a dedicated recorder if capture is the job. Choose GAIA when the job is turning what was said into sent emails, scheduled meetings and finished tasks.",
+  "gaiaFitScore": 3,
+  "gaiaReplaces": [
+    "Manual follow-up drafting after meetings Limitless records",
+    "Copying meeting action items into a separate task manager",
+    "Switching to Gmail or Calendar after a Limitless meeting recap",
+    "Separate tools for email triage, task management, and calendar coordination"
+  ],
+  "gaiaAdvantages": [
+    "GAIA turns meeting notes and recap emails into tasks, follow-up drafts and calendar updates",
+    "Email integration connects meeting outcomes to email threads without manual copy-paste",
+    "Proactive surfacing: GAIA acts on information without waiting to be queried",
+    "Source-available and self-hostable; Limitless is a closed cloud service",
+    "Works across web, desktop, mobile, Discord, Slack, and Telegram: not limited to a wearable device"
+  ],
+  "migrationSteps": [
+    "Export your meeting summaries and transcripts from Limitless while the service is still running",
+    "Paste the decisions and open action items into a GAIA chat and ask it to remember them and create todos",
+    "Connect Gmail and Google Calendar so GAIA can correlate meeting context with email threads and upcoming events",
+    "Create a workflow that runs when your note-taker's recap email arrives: GAIA creates the tasks and drafts the follow-up email",
+    "If you still need recording, pick a note-taker or wearable that emails its recap to the inbox GAIA reads"
+  ],
+  "faqs": [
+    {
+      "question": "Does GAIA record meetings like Limitless AI?",
+      "answer": "No. GAIA does not record audio, transcribe meetings or offer a wearable like the Limitless Pendant. It reads your calendar and email and acts on meeting notes you give it: paste a transcript or summary, or let it pick up your note-taker's recap email, and it creates the tasks, drafts the follow-ups and schedules the next meeting."
+    },
+    {
+      "question": "Is there a source-available alternative to Limitless AI?",
+      "answer": "GAIA is source-available (PolyForm Noncommercial) and self-hostable via Docker, a privacy advantage over Limitless, which stores recordings on its own cloud infrastructure. Self-hosted GAIA keeps your meeting notes, tasks and memory on your own servers."
+    },
+    {
+      "question": "What is Rewind AI called now?",
+      "answer": "Rewind AI renamed itself Limitless AI when it launched the Pendant wearable and moved from screen recording to conversation capture. Meta later acquired Limitless, stopped hardware sales, and is winding the service down."
+    },
+    {
+      "question": "Can GAIA replace both Limitless and my task manager?",
+      "answer": "GAIA covers the action side of what Limitless captured, with full task management, email management and calendar coordination. For passive audio capture of in-person conversations, pair GAIA with a note-taker or wearable; for digital-first work, GAIA covers the loop from email to calendar to tasks."
+    },
+    {
+      "question": "What are the best Limitless Pendant alternatives?",
+      "answer": "For hardware that records in-person conversations, look at other AI wearables such as Plaud NotePin or Omi, and check each one's privacy terms and local recording-consent rules before you wear it. If you only need calls, a meeting note-taker (Otter.ai, Fireflies.ai, Granola, Fathom) needs no hardware at all. GAIA is not a recorder: it is the assistant that acts on the notes those tools produce."
+    },
+    {
+      "question": "What is the best Rewind AI alternative for screen history?",
+      "answer": "Rewind recorded your screen so you could search anything you had seen. The closest replacements are Screenpipe, which records screen and audio on your own computer, and Microsoft Recall, built into Copilot+ PCs on Windows. GAIA does not record your screen; it handles the other half of the job: tasks, email and calendar."
+    },
+    {
+      "question": "Is Limitless AI still available?",
+      "answer": "Only while it winds down. After the Meta acquisition, Limitless stopped selling the Pendant, ended paid subscriptions, moved existing customers to a free plan and shut the service down in several regions, including the EU and UK. Existing Pendant owners were promised support for a limited period, so export your transcripts and summaries while you can."
+    }
+  ],
+  "comparisonRows": [
+    {
+      "feature": "Core approach",
+      "gaia": "Acts on meeting outcomes: turns notes and recap emails into tasks, follow-ups and calendar updates. Does not record or transcribe",
+      "competitor": "Passive memory capture platform: records, transcribes, and summarizes spoken conversations via a wearable pendant and desktop app"
+    },
+    {
+      "feature": "Memory capture",
+      "gaia": "Long-term memory of the facts and decisions you share, plus context from your email and calendar, queryable and actionable across your workload",
+      "competitor": "Captures in-person and virtual conversations through the pendant or a desktop recording agent; stores searchable transcripts and AI-generated summaries queryable via a chat interface"
+    },
+    {
+      "feature": "Email management",
+      "gaia": "Active email management: reads, triages, drafts, and acts on inbox messages instead of surfacing context on query",
+      "competitor": "No active email management; can surface email context when querying conversation history, but does not read, triage, draft, or act on inbox messages"
+    },
+    {
+      "feature": "Task management",
+      "gaia": "Dedicated task system with deadlines and tracking fed by meetings, beyond suggested action items",
+      "competitor": "Can identify action items mentioned in recorded meetings and suggest them post-summary; no dedicated task system, project hierarchy, or deadline tracking"
+    },
+    {
+      "feature": "Workflow automation",
+      "gaia": "Cross-tool workflow engine: meeting outcomes trigger email, calendar, and task actions automatically",
+      "competitor": "No workflow automation engine; core function is capture and recall, not execution or cross-tool orchestration"
+    },
+    {
+      "feature": "Hardware requirement",
+      "gaia": "No wearable or recording agent needed: works with the devices you own on web, desktop, mobile, and chat",
+      "competitor": "Pendant sales stopped after Meta’s acquisition; existing owners were promised at least a year of continued support"
+    },
+    {
+      "feature": "Integrations",
+      "gaia": "Deep integrations across email, tasks, chat, and code tools, beyond video conferencing capture",
+      "competitor": "Integrates with Zoom, Google Meet, and other video conferencing tools for virtual meeting capture; limited broader tool ecosystem"
+    },
+    {
+      "feature": "Privacy",
+      "gaia": "Source-available and self-hostable with full data control, not a closed cloud under new ownership",
+      "competitor": "Closed-source proprietary platform; consent-first design with per-conversation recording controls; continuing users fall under Meta’s privacy terms, and service ended in the EU, UK, Brazil, and other regions"
+    },
+    {
+      "feature": "Pricing",
+      "gaia": "Hosted: paid plan at ${{PRO_MONTHLY_PRICE}}/month; self-hosting free for non-commercial use (plus your own model API costs)",
+      "competitor": "Subscriptions ended with the Meta acquisition; existing customers were moved to a free Unlimited plan for the wind-down period"
+    }
+  ]
+}

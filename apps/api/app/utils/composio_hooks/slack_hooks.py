@@ -6,7 +6,14 @@ These hooks implement schema modifiers for customizing tool descriptions and def
 
 from composio.types import Tool
 
+from app.models.integrations.composio_hooks import JsonSchemaNode
+
 from .registry import register_schema_modifier
+
+# The Slack search params this modifier defaults, by Composio's names for them.
+_SORT_PARAM = "sort"
+_SORT_DIR_PARAM = "sort_dir"
+_COUNT_PARAM = "count"
 
 # ====================== SCHEMA MODIFIERS ======================
 # These modifiers customize tool schemas before they are seen by agents
@@ -22,28 +29,25 @@ def slack_search_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
     - count: default to 20 (reasonable number of results)
     - Add guidance about using recent results first
     """
-    # `input_parameters` is typed as a Dict by Composio's SDK, but callers in practice
-    # (including this codebase's own test doubles) don't always hand us a real,
-    # validated `Tool`, so this stays defensive against a non-dict value.
-    input_params: object = schema.input_parameters
-    if not isinstance(input_params, dict):
+    input_params = JsonSchemaNode.parse(schema.input_parameters)
+    if input_params is None:
         return schema
 
-    props = input_params.get("properties", {})
-    if not isinstance(props, dict):
-        return schema
+    props = input_params.properties or {}
 
     # Set sort default to timestamp (chronological order)
-    if "sort" in props and isinstance(props["sort"], dict):
-        props["sort"]["default"] = "timestamp"
+    if (sort := props.get(_SORT_PARAM)) is not None:
+        sort.default = "timestamp"
 
     # Set sort_dir default to desc (newest first)
-    if "sort_dir" in props and isinstance(props["sort_dir"], dict):
-        props["sort_dir"]["default"] = "desc"
+    if (sort_dir := props.get(_SORT_DIR_PARAM)) is not None:
+        sort_dir.default = "desc"
 
     # Set count default to 20 for reasonable results
-    if "count" in props and isinstance(props["count"], dict):
-        props["count"]["default"] = 20
+    if (count := props.get(_COUNT_PARAM)) is not None:
+        count.default = 20
+
+    schema.input_parameters = input_params.as_schema()
 
     # Add search guidance to description
     search_guidance = (

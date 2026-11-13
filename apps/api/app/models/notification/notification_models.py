@@ -6,6 +6,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.db.repositories.base import UserScopedDocument
+from app.schemas.common import ResponseModel
 
 
 class NotificationType(str, Enum):
@@ -331,7 +332,7 @@ class BulkActions(str, Enum):
     ARCHIVE = "archive"
 
 
-class ChannelPreferences(BaseModel):
+class ChannelPreferences(ResponseModel):
     """User notification channel preferences."""
 
     telegram: bool = True

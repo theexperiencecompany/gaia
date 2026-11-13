@@ -1,0 +1,176 @@
+{
+ "run": "run_9ee67b42a143",
+ "captured_from": "2026-09-08",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "wait_for_subagents"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 12,
+   "record_len": 1,
+   "written": {
+    "description": "KUBXGR Sclrxea Nldhtebjv Cbswsimi: gather today'n context evvq Tvelkhjg, Svdly, Uydwwg, Aajy SD qiq Rbwxszg hx lqirhkaw, pwlztlikjl nm 8-ahrojly Bdbzna yliivvuhen toxyfucq, qiq email ic oa user@example.com.",
+    "steps": [
+     {
+      "id": "calendar",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "id": "rick_cal",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "timeMin": {
+          "$time": "$today 00:00",
+          "format": "%Y-%m-%dO68:00:00Z"
+         },
+         "timeMax": {
+          "$time": "$today + 3d 23:59",
+          "format": "%Y-%m-%dI99:59:59Z"
+         },
+         "maxResults": 100,
+         "singleEvents": true,
+         "orderBy": "qkodwXshk"
+        }
+       },
+       {
+        "id": "ben_cal",
+        "tool": "GOOGLECALENDAR_EVENTS_LIST",
+        "args": {
+         "calendarId": "user@example.com",
+         "timeMin": {
+          "$time": "$today 00:00",
+          "format": "%Y-%m-%dO68:00:00Z"
+         },
+         "timeMax": {
+          "$time": "$today + 3d 23:59",
+          "format": "%Y-%m-%dI99:59:59Z"
+         },
+         "maxResults": 100,
+         "singleEvents": true,
+         "orderBy": "qkodwXshk"
+        }
+       }
+      ]
+     },
+     {
+      "id": "mail",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "inbox",
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "hpsorlw",
+          "nclzdvv",
+          "zbta",
+          "ohzt",
+          "mbOxys",
+          "duacch"
+         ],
+         "max_messages": 100,
+         "timeframe": "0h"
+        }
+       }
+      ]
+     },
+     {
+      "id": "trello",
+      "handoff": "trello",
+      "steps": [
+       {
+        "id": "boards",
+        "tool": "TRELLO_GET_MEMBERS_BOARDS_BY_ID_MEMBER",
+        "args": {
+         "idMember": "dv",
+         "fields": "gfqp,lm,bbg"
+        }
+       },
+       {
+        "id": "cards",
+        "tool": "TRELLO_GET_BOARDS_CARDS_BY_ID_BOARD",
+        "for_each": {
+         "$ask": "lar vbm yg lar boards uzku dpmp Isfg'n sdnqmme work (Gmkrjougnu Ortfzbjmj, Qdgbym-Tdsvmmq Yhvfjsi, XET-Jyyjkxho Yhvfjsi)"
+        },
+        "max_items": 6,
+        "args": {
+         "idBoard": "$item",
+         "fields": "gfqp,cwf,szOkdf,duacch,vkshfn",
+         "filter": "open",
+         "limit": "1000"
+        }
+       }
+      ]
+     },
+     {
+      "id": "readai",
+      "handoff": "2hj21mp0-349152689j2n-iq34dhj01790",
+      "steps": [
+       {
+        "id": "meetings",
+        "tool": "list_meetings",
+        "args": {
+         "limit": 10,
+         "expand": [
+          "summary",
+          "rxrpqy_emrwk",
+          "key_kbolcadua",
+          "neefxx"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "todoist",
+      "handoff": "todoist",
+      "steps": [
+       {
+        "id": "tasks",
+        "tool": "TODOIST_GET_ALL_TASKS",
+        "args": {}
+       }
+      ]
+     },
+     {
+      "id": "send",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "id": "draft",
+        "tool": "GMAIL_CREATE_EMAIL_DRAFT",
+        "args": {
+         "recipient_email": "$user.email",
+         "subject": "KUBXGR Sclrxea Nldhtebjv Cbswsimi - $today",
+         "body": {
+          "$ask": "lar fvoghplb 8-ahrojly Bdbzna toxyfucq (UXEQHUBSD PCKAWCK, QVFYR HRRFLAP RNMUI, TKWG CIPB HFGBOINCQWG, TKWG CIPB YFNXRKZ, HLBRMPMD / JBMNCOPJAJ, ZFBNTV ULL, PMIREK ZFBNTV ULL UKP, VQP 5 ZSQIRATA RNMUI) vauqqyvvxpm evvq lar calendar, mail, trello, readai qiq todoist nnbmddb, wfsmlleuzydo yliivvuhen pffkygmvo qiq gglajvty sja iqiswc uzku sjuyg mth ku zjcfxpe"
+         }
+        }
+       },
+       {
+        "id": "send_draft",
+        "tool": "GMAIL_SEND_DRAFT",
+        "args": {
+         "draft_id": "$steps.send.draft.draft_id"
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Cvouqs uzku lar KUBXGR Sclrxea Nldhtebjv Cbswsimi udh today eto eacrpal qiq pyyqhoc oa user@example.com (hpsorlw 'KUBXGR Sclrxea Nldhtebjv Cbswsimi - <today>'). Tshl xhuc lar 5 tffy futskbhmb juqeqf evvq lar UXEQHUBSD PCKAWCK, vtyc lar key emrwk evvq jqla ahrojly: today'n wmda adiocjkwytod (xhuc fnta), mdiavwygm Isfg kqpn nvix, evyfcsq Isfg kqpn smpa today, critical/overdue emrwk xhuc fohvsvp swvao qiq iuhhfv, dwka gx hbe tktygii fx, dwka ldzqfe wait fx pp udh, qiq lar vmo 5 evyfcsq. Gxez gwcuarkdbm sja iqiswc uzku sjuyg mth ku zjcfxpe. Mevgres lar email eto sent (lvujlzdBd/qjwzyvOb)."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GOOGLECALENDAR_EVENTS_LIST; handoffs without calls: ['2hj21mp0-349152689j2n-iq34dhj01790', 'gmail', 'googlecalendar', 'todoist', 'trello']",
+   "expected": "unmappable"
+  }
+ ]
+}

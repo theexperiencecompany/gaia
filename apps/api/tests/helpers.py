@@ -1,32 +1,96 @@
 """Shared test utilities for GAIA API tests."""
 
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+import asyncio
+import base64
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
+from contextlib import ExitStack, asynccontextmanager, contextmanager
+from datetime import UTC, datetime, timedelta
+import hashlib
+import hmac
+import importlib.util
+import json
 import math
 import os
+from pathlib import Path
 import re
 import socket
+import sys
+import time
+from types import ModuleType, SimpleNamespace
 from typing import Any, ClassVar
+from unittest.mock import AsyncMock, MagicMock, patch
+import zoneinfo
 
+from arq.connections import ArqRedis
+from arq.jobs import JobDef
+from bson import ObjectId
+from bson.errors import InvalidId
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from langchain.agents.middleware.types import ToolCallRequest
+from langchain.tools import ToolRuntime
+from langchain_core.language_models import ModelProfile
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolCall
 from pydantic import Field
 import pytest
+import respx
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from starlette.types import ASGIApp
+import time_machine
+import uvicorn
+from workos.session import SessionModule
 
 from app.config.rate_limits import RateLimitConfig
+from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
+from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
+from app.constants.hil import HIL_JEV_URL
+from app.constants.trigger_gates import GateKind
+from app.models.email_verdict_models import EmailVerdictDocument
+from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
+from app.models.user_models import AuthenticatedUser, UserDocument
+from app.services.providers.provider_credentials_service import ProviderConfig
+from app.services.runtime.secrets_store import fernet_key_from
+from app.utils.timezone import Timezone
 from shared.py.wide_events import log, log_context
+
+#: A well-formed user id with no users row behind it.
+UNKNOWN_USER_ID = "6a387b78347776fca38bbd99"
+
+
+async def users_get(user_id: str) -> UserDocument | None:
+    """Stand in for user_repository.get: bson refuses a non-ObjectId, UNKNOWN_USER_ID has no row."""
+    if not ObjectId.is_valid(user_id):
+        raise InvalidId(f"{user_id!r} is not a valid ObjectId")
+    if user_id == UNKNOWN_USER_ID:
+        return None
+    return UserDocument.model_validate({"id": user_id, "onboarding": {"completed": True}})
+
+
+def session_set_cookie(name: str, value: str, max_age: int, *, secure: bool) -> str:
+    """Spell the whole Set-Cookie header every session cookie (WorkOS or local) must carry."""
+    header = f"{name}={value}; HttpOnly; Max-Age={max_age}; Path=/; SameSite=lax"
+    return f"{header}; Secure" if secure else header
 
 
 def effective_limit(config: RateLimitConfig, period: str) -> float:
-    """Comparable allowance for a period under RateLimitConfig's 0-semantics.
+    """Compute a comparable allowance for a period under RateLimitConfig's 0-semantics.
 
-    ``0`` is overloaded: a tier with BOTH periods 0 has no access at all
-    (returns ``0.0``); otherwise a period of 0 means that period is uncapped
-    (returns ``math.inf``). Lets free and pro allowances be ordered directly
+    0 is overloaded: a tier with BOTH periods 0 has no access at all
+    (returns 0.0); otherwise a period of 0 means that period is uncapped
+    (returns math.inf). Lets free and pro allowances be ordered directly
     despite 0 meaning either "no access" or "unlimited" by context.
     """
     if config.day <= 0 and config.month <= 0:
@@ -46,26 +110,34 @@ def pick_free_port() -> int:
         return s.getsockname()[1]
 
 
-# Test suites that use this helper ``flushdb()`` their Redis client on teardown,
-# so the resolved DB must NEVER be the application's live database. A URL with no
-# DB path (the repo default ``redis://localhost:6379``) and one that pins ``/0``
-# both resolve to DB 0 — the app's live DB — so an unguarded offset (``0 + gw0``)
-# would wipe it. Runs therefore land in a dedicated high-DB block whenever the URL
-# pins no DB or DB 0, and the resolved DB is never 0 for any worker. An explicitly
-# configured non-zero DB is a deliberate caller choice and is preserved (offset
-# per worker).
-#
-# GAIA_REDIS_DB_BASE moves that block so several CI lanes can share ONE Redis
-# (scripts/ci/test-services.sh runs it with --databases 448 and hands lane
-# r the base ``8 + r*32``). Unset = 8, the historical single-lane block.
+# The mutation lane runs a copy of apps/api outside the repo and says where the repo is.
+LLM_STUB_DIR = (
+    Path(os.environ.get("GAIA_REPO_ROOT") or Path(__file__).resolve().parents[3])
+    / "tools"
+    / "llm-stub"
+)
+
+
+def load_llm_stub_module(name: str) -> ModuleType:
+    """Load one of tools/llm-stub's stdlib-only modules under its own name, as its siblings import it."""
+    spec = importlib.util.spec_from_file_location(name, LLM_STUB_DIR / f"{name}.py")
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"tools/llm-stub/{name}.py is missing")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+# Resolved DB is never 0 (the app's live DB, flushed by this helper's teardown).
+# GAIA_REDIS_DB_BASE (default 8) moves the high-DB block; CI lanes get 8 + r*32
+# (scripts/ci/test-services.sh runs Redis with --databases 448).
 try:
     _TEST_REDIS_DB_BLOCK_START = int(os.environ.get("GAIA_REDIS_DB_BASE", "8"))
 except ValueError:
     _TEST_REDIS_DB_BLOCK_START = 8
-# Each lane owns a 32-DB stripe. Within it the throwaway block starts at the
-# base's offset into the stripe, so a lane gets the same 24 flushable DBs the
-# single-lane layout always had (8-31 for base 8, 40-63 for base 40, ...) and
-# DB 0 of the server stays untouched.
+# Each lane owns a 32-DB stripe, giving 24 flushable DBs (8-31 for base 8,
+# 40-63 for base 40, ...) with DB 0 of the server untouched.
 _TEST_REDIS_STRIPE = 32
 _TEST_REDIS_STRIPE_BASE = _TEST_REDIS_DB_BLOCK_START - (
     _TEST_REDIS_DB_BLOCK_START % _TEST_REDIS_STRIPE
@@ -76,15 +148,10 @@ _TEST_REDIS_DB_BLOCK_SIZE = _TEST_REDIS_STRIPE - (_TEST_REDIS_DB_BLOCK_START % _
 def worker_redis_url(base_url: str) -> str:
     """Return a Redis URL with a per-xdist-worker DB number that is safe to flush.
 
-    Each xdist worker gets its own logical DB so ``flushdb()`` teardown cannot wipe
-    another worker's in-flight keys, and the resolved DB is never 0 — so teardown
-    can never touch the application's live database. When the URL pins no DB (or
-    pins DB 0), the run is relocated into a dedicated high-DB block of 24 DBs
-    starting at ``GAIA_REDIS_DB_BASE`` (default 8, i.e. the historical 8–31).
-
-    Setting ``GAIA_REDIS_DB_BASE`` to ``8 + lane*32`` gives each concurrent CI
-    lane a disjoint 32-DB stripe on one shared Redis, so lanes cannot flush each
-    other's keys either — see scripts/ci/test-services.sh.
+    The resolved DB is never 0 (the app's live DB); an unpinned or DB-0 URL is
+    relocated into a high-DB block of 24 DBs starting at GAIA_REDIS_DB_BASE
+    (default 8). Setting that to 8 + lane*32 gives each CI lane its own
+    32-DB stripe on one shared Redis (see scripts/ci/test-services.sh).
     """
     worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
     try:
@@ -93,12 +160,8 @@ def worker_redis_url(base_url: str) -> str:
         worker_num = 0
     match = re.search(r"/(\d+)$", base_url)
     configured_db = int(match.group(1)) if match else 0
-    # The per-lane block is 24 DBs wide (test-services.sh runs Redis with
-    # --databases 32 per job and 448 for the shared set): room for 24 workers with
-    # NO wrapping. The original 8-15 block wrapped at eight workers, which on a
-    # 16-worker run put gw0 and gw8 on the same DB — and teardown is flushdb(),
-    # so each wiped the other's in-flight keys. Wrapping only happens past 24
-    # workers, and is then a deliberate, documented degradation, not a silent one.
+    # The per-lane block is 24 DBs wide, room for 24 workers with no wrapping;
+    # wrapping only happens past 24 workers, a deliberate documented degradation.
     if configured_db:
         # Deliberate non-zero DB: offset per worker within this lane's stripe,
         # but never land on the stripe's DB 0.
@@ -111,18 +174,167 @@ def worker_redis_url(base_url: str) -> str:
     return base_url.rstrip("/") + f"/{db}"
 
 
+@contextmanager
+def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator[SimpleNamespace]:
+    """Serve JEV at its Decisions URL and pin what decide_gate reads beside it: key, flag, PostHog, clock.
+
+    Every gate kind is enforced, so a verdict is what the gate decided; a shadow test narrows it.
+    Without now, the caller moves the clock.
+    """
+    gate = "app.services.triggers.trigger_gate"
+    with (
+        ExitStack() as clock,
+        respx.mock(assert_all_called=False) as router,
+        patch(
+            "app.services.hil.jev_client.resolve",
+            AsyncMock(return_value=ProviderConfig(api_key="or-key")),  # pragma: allowlist secret
+        ),
+        patch(f"{gate}.is_trigger_gates_enforced", AsyncMock(return_value=True)) as enforced,
+        patch("app.models.trigger_gate_models.ENFORCED_GATE_KINDS", frozenset(GateKind)),
+        patch(f"{gate}.capture", MagicMock()) as capture,
+        patch(f"{gate}.get_profile_timezone", AsyncMock(return_value=tz)) as profile_tz,
+        patch(
+            f"{gate}.get_quiet_hours", AsyncMock(return_value=DEFAULT_QUIET_HOURS)
+        ) as quiet_hours,
+        patch(f"{gate}.user_wrote_in_thread", AsyncMock(return_value=True)) as wrote,
+        patch(f"{gate}.workflow_repository.remember_gate_skip", AsyncMock()) as workflow_skips,
+        patch(
+            f"{gate}.todo_repository.remember_subscription_gate_skip", AsyncMock()
+        ) as watch_skips,
+        # What memory knows about the user, which the email verdict reads; none unless set.
+        patch(
+            "app.services.mail.email_verdict.memory_engine.get_core_context",
+            AsyncMock(return_value=""),
+        ) as core,
+        patch(
+            "app.services.mail.email_verdict.email_verdict_repository", FakeEmailVerdicts()
+        ) as verdicts,
+    ):
+        if now is not None:
+            clock.enter_context(time_machine.travel(now, tick=False))
+        yield SimpleNamespace(
+            jev=router.post(HIL_JEV_URL),
+            enforced=enforced,
+            capture=capture,
+            tz=profile_tz,
+            quiet_hours=quiet_hours,
+            wrote=wrote,
+            workflow_skips=workflow_skips,
+            watch_skips=watch_skips,
+            core=core,
+            verdicts=verdicts,
+        )
+
+
+class FakeEmailVerdicts:
+    """email_verdict_repository in memory, keyed as its unique index is: (user_id, message_id)."""
+
+    def __init__(self) -> None:
+        self.kept: dict[tuple[str, str], EmailVerdictDocument] = {}
+
+    async def get(self, message_id: str, *, user_id: str) -> EmailVerdictDocument | None:
+        return self.kept.get((user_id, message_id))
+
+    async def keep(self, verdict: EmailVerdictDocument) -> None:
+        self.kept[verdict.user_id, verdict.message_id] = verdict
+
+
+# JEV answers, as P(true) per judgment, that the decision table reads as each bucket.
+_BUCKET_ANSWERS: Mapping[str, Mapping[str, float]] = {
+    "reply": {
+        "is_person": 0.95,
+        "asks_user": 0.9,
+        "reports_issue": 0.1,
+        "official": 0.05,
+        "relevant": 0.8,
+        "bulk": 0.05,
+    },
+    "act": {
+        "is_person": 0.05,
+        "asks_user": 0.6,
+        "reports_issue": 0.95,
+        "official": 0.05,
+        "relevant": 0.6,
+        "bulk": 0.1,
+    },
+    "fyi": {
+        "is_person": 0.05,
+        "asks_user": 0.05,
+        "reports_issue": 0.05,
+        "official": 0.05,
+        "relevant": 0.9,
+        "bulk": 0.05,
+    },
+    "junk": {
+        "is_person": 0.05,
+        "asks_user": 0.05,
+        "reports_issue": 0.05,
+        "official": 0.05,
+        "relevant": 0.05,
+        "bulk": 0.05,
+    },
+    "unsure": {
+        "is_person": 0.05,
+        "asks_user": 0.5,
+        "reports_issue": 0.05,
+        "official": 0.05,
+        "relevant": 0.5,
+        "bulk": 0.5,
+    },
+}
+
+
+def email_verdict_answers(
+    bucket: str,
+    overrides: Mapping[str, float] | None = None,
+    *,
+    can_wait: float = 1.0,
+    leaning: str = "meeting",
+) -> dict[str, object]:
+    """Return a Decisions body the email verdict reads as bucket, and its urgent answer; overrides win."""
+    answers: dict[str, object] = {
+        judgment: {"type": "noul", "noul": p}
+        for judgment, p in {**_BUCKET_ANSWERS[bucket], **(overrides or {})}.items()
+    }
+    answers["urgent"] = {
+        "type": "choice",
+        "choice": "can_wait" if can_wait >= 0.5 else leaning,
+        "probabilities": {"can_wait": can_wait, leaning: 1 - can_wait},
+    }
+    return {"answers": answers}
+
+
+@contextmanager
+def local_timezone(tz_name: str) -> Iterator[None]:
+    """Run the body with the process local timezone set, restoring it afterwards.
+
+    datetime.now reads the local zone and datetime.now(UTC) does not, so a test
+    that has to tell the two apart has to run where they differ. Asia/Kolkata
+    is UTC+5:30, so anything near midnight separates them.
+    """
+    zoneinfo.ZoneInfo(tz_name)  # fail loudly on a zone this box does not have
+    original = os.environ.get("TZ")
+    try:
+        os.environ["TZ"] = tz_name
+        if hasattr(time, "tzset"):
+            time.tzset()
+        yield
+    finally:
+        if original is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = original
+        if hasattr(time, "tzset"):
+            time.tzset()
+
+
 def worker_mongo_db_name(base_name: str | None = None) -> str:
     """Return a per-xdist-worker MongoDB database name.
 
-    The same reason ``worker_redis_url`` exists: the service fixtures wipe collections
-    with ``delete_many({})`` on setup and teardown, so on a shared database one worker
-    clears another worker's in-flight documents and its conversation vanishes mid-test.
-    Giving each worker its own database makes that impossible rather than unlikely.
-
-    The base defaults to ``GAIA_MONGO_DB_BASE`` (itself defaulting to ``gaia_test``)
-    so several CI lanes can share ONE mongod: lane r is handed
-    ``GAIA_MONGO_DB_BASE=gaia_test_r<r>`` and its workers land on
-    ``gaia_test_r<r>_gw<n>``, a namespace teardown in another lane cannot reach.
+    Same reason as worker_redis_url: fixtures wipe collections with
+    delete_many({}) on setup/teardown, so a shared database lets one worker
+    clear another's in-flight documents. Base defaults to GAIA_MONGO_DB_BASE
+    (default gaia_test) so CI lanes can share one mongod without colliding.
     """
     base = base_name if base_name is not None else os.environ.get("GAIA_MONGO_DB_BASE", "gaia_test")
     worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
@@ -143,14 +355,49 @@ class BindableToolsFakeModel(FakeMessagesListChatModel):
     graph-building tests on the same contract.
     """
 
-    # The bind_tools() override below stays on purpose: langchain-core's
-    # inherited implementation returns a NEW RunnableBinding instead of self,
-    # and dozens of tests (plus create_agent's re-binding flow) rely on the
-    # fake remaining the same object with its scripted responses intact.
-    profile: dict[str, int] = Field(default={"max_input_tokens": 100_000})
+    # bind_tools() override stays on purpose: the inherited implementation
+    # returns a NEW RunnableBinding, but callers rely on the fake staying the same object.
+    profile: ModelProfile | None = Field(default=ModelProfile(max_input_tokens=100_000))
 
     def bind_tools(self, tools: Any, **kwargs: Any) -> "BindableToolsFakeModel":
         return self
+
+
+#: One (namespace, mode, payload) triple of a graph's astream(subgraphs=True).
+GraphStreamEvent = tuple[tuple[str, ...], str, Any]
+
+
+class ScriptedGraph:
+    """A graph whose astream replays exactly the events handed to it.
+
+    Drives the real graph drivers (execute_graph_streaming / _silent) over shapes a
+    real model wire never produces: an id-less message, a tool call announced
+    before its text, arguments that never parse, a retraction mid-node.
+    """
+
+    def __init__(self, events: Sequence[tuple[Any, ...]]) -> None:
+        self._events = events
+
+    def astream(self, *_args: Any, **_kwargs: Any) -> AsyncGenerator[tuple[Any, ...], None]:
+        events = self._events
+
+        async def stream() -> AsyncGenerator[tuple[Any, ...], None]:
+            for event in events:
+                yield event
+
+        return stream()
+
+
+def message_chunk_event(
+    *, message_id: str | None, content: str = "", **kwargs: Any
+) -> GraphStreamEvent:
+    """Build a messages-mode event carrying one assistant chunk."""
+    return ((), "messages", (AIMessageChunk(id=message_id, content=content, **kwargs), {}))
+
+
+def agent_update_event(message: AIMessage) -> GraphStreamEvent:
+    """Build an updates-mode event closing the agent node with message as its reply."""
+    return ((), "updates", {"agent": {"messages": [message]}})
 
 
 def create_fake_llm(responses: list[str]) -> BindableToolsFakeModel:
@@ -170,29 +417,21 @@ def create_fake_llm_with_tool_calls(
 
 
 class PassthroughFakeLLM:
-    """Base for hand-rolled fake LLMs that ``create_agent`` drives directly.
+    """Base for hand-rolled fake LLMs that create_agent drives directly.
 
-    ``create_agent`` reshapes the model before every call — ``with_config``,
-    ``bind_tools``, ``bind`` (the OpenRouter sticky-routing key), and
-    ``with_retry`` via ``with_llm_retry`` — and each returns a new runnable in
-    production. A fake only needs them to hand itself back, so they live here
-    once: subclasses write ``ainvoke`` and nothing else.
-
-    Duck-typed rather than a ``BaseChatModel`` subclass on purpose — these
-    fakes answer from the messages they are shown, which is what makes them
-    replay-safe, and ``FakeMessagesListChatModel`` answers from a fixed list
-    instead. The shared base is what stops the next reshaping call production
-    adds from breaking every one of them separately.
-
-    Carries the two model attributes production middleware reads without
-    invoking: ``_llm_type`` (token-counter selection) and ``profile``
-    (fractional-token triggers) — same invariant every real chat LLM meets.
+    create_agent reshapes the model before every call (with_config,
+    bind_tools, bind, with_retry); each returns a new runnable in production,
+    so these hand themselves back once here — subclasses write only ainvoke.
+    Duck-typed rather than a BaseChatModel subclass so these answer from the
+    messages they are shown, unlike FakeMessagesListChatModel's fixed list.
+    Carries _llm_type and profile, the two attributes production middleware
+    reads without invoking.
     """
 
     _llm_type = "passthrough-fake"
     profile: ClassVar[dict[str, Any]] = {"max_input_tokens": 100_000}
 
-    def with_config(self, **_kwargs: Any) -> "PassthroughFakeLLM":
+    def with_config(self, _config: Any = None, **_kwargs: Any) -> "PassthroughFakeLLM":
         return self
 
     def bind_tools(self, _tools: Any, **_kwargs: Any) -> "PassthroughFakeLLM":
@@ -229,7 +468,7 @@ class MockAuthMiddleware(BaseHTTPMiddleware):
     under test — only the login step no automated test can perform for real.
     """
 
-    def __init__(self, app, user: dict):
+    def __init__(self, app, user: AuthenticatedUser):
         super().__init__(app)
         self._user = user
 
@@ -249,21 +488,20 @@ class NoAuthMiddleware(BaseHTTPMiddleware):
 
 
 class HeaderDrivenAuthMiddleware(BaseHTTPMiddleware):
-    """Test-only stand-in for WorkOSAuthMiddleware that trusts an
-    ``X-Test-User-Id`` header instead of a real WorkOS session.
+    """Test-only stand-in for WorkOSAuthMiddleware that trusts an X-Test-User-Id header.
 
     Unlike MockAuthMiddleware (one fixed user baked in at app-construction
     time), this lets a single live server be hit as several different
-    signed-in users — simulating separate browsers/accounts — by varying a
-    request header, which a plain httpx client pointed at a real bound port
-    can do per-call.
+    signed-in users by varying a request header per call.
     """
 
     async def dispatch(self, request: Request, call_next):
         user_id = request.headers.get("x-test-user-id")
         if user_id:
             request.state.authenticated = True
-            request.state.user = {"user_id": user_id, "email": f"{user_id}@test.local"}
+            request.state.user = AuthenticatedUser(
+                user_id=user_id, auth_provider="workos", email=f"{user_id}@test.local"
+            )
         else:
             request.state.authenticated = False
             request.state.user = None
@@ -271,9 +509,9 @@ class HeaderDrivenAuthMiddleware(BaseHTTPMiddleware):
 
 
 def real_services_available() -> bool:
-    """True when the run is allowed to dial real service containers.
+    """Return True when the run is allowed to dial real service containers.
 
-    CI (the Dagger service container) sets USE_REAL_SERVICES=1 explicitly; a
+    CI (the test-python service containers) sets USE_REAL_SERVICES=1 explicitly; a
     bare local run must stay offline.
     """
     return os.environ.get("USE_REAL_SERVICES", "0") == "1"
@@ -297,15 +535,11 @@ def skip_items_without_real_services(
 
 
 class AssertNumDbCalls:
-    """Assert exactly N SQL statements executed inside the block (Django's
-    assertNumQueries pattern).
+    """Assert exactly N SQL statements executed inside the block (Django's assertNumQueries pattern).
 
-    Listens for SQLAlchemy ``before_cursor_execute`` on the given engine
-    (sync or async — the event fires on both) and asserts the count,
-    dumping every captured statement on mismatch so the accidental query is
-    visible, not just counted. ``warmup`` excludes the first statements that
-    only establish the pool, so a warm-up connection is never mistaken for
-    a query.
+    Listens for SQLAlchemy before_cursor_execute on the given engine (sync or
+    async) and dumps every captured statement on mismatch. warmup excludes
+    the first statements that only establish the pool.
     """
 
     def __init__(self, expected: int, engine: Any, *, warmup: int = 0) -> None:
@@ -331,7 +565,7 @@ class AssertNumDbCalls:
         event.listen(self.engine, "before_cursor_execute", self._record)
         return self
 
-    def __exit__(self, *_exc: Any) -> bool:
+    def __exit__(self, *_exc: Any) -> None:
         from sqlalchemy import event
 
         event.remove(self.engine, "before_cursor_execute", self._record)
@@ -340,21 +574,22 @@ class AssertNumDbCalls:
             f"expected {self.expected} DB query(ies), got {actual}:\n"
             + "\n".join(f"  {statement}" for statement in self.statements)
         )
-        return False
 
 
 def assert_num_db_calls(expected: int, engine: Any, *, warmup: int = 0) -> AssertNumDbCalls:
-    """Context manager: fail if the block runs anything but ``expected`` SQL
-    statements against ``engine``. Attach to a real engine at the repository
-    layer — N+1 and accidental-query regressions die here."""
+    """Context manager: fail if the block runs anything but expected SQL statements against engine.
+
+    Attach to a real engine at the repository layer — N+1 and
+    accidental-query regressions die here.
+    """
     return AssertNumDbCalls(expected, engine, warmup=warmup)
 
 
 class WideEventRecorder:
     """Captures every wide event a boundary flushes through the loguru sink.
 
-    ``log.get()`` only ever sees the INNERMOST open boundary, so it cannot read
-    fields a nested ``wide_task`` owns — and a fire-and-forget task that opens
+    log.get() only ever sees the INNERMOST open boundary, so it cannot read
+    fields a nested wide_task owns — and a fire-and-forget task that opens
     its own boundary (memory ingestion, ARQ jobs) is exactly that case. This
     stands in for the sink instead, so the assertion reads the event the code
     actually emitted:
@@ -383,8 +618,10 @@ class WideEventRecorder:
         return lambda *a, **k: None
 
     def event(self, task: str) -> dict[str, Any]:
-        """The single event emitted by the ``wide_task``/``log_context`` named
-        ``task``. Raises if that boundary emitted nothing or emitted twice."""
+        """Return the single event emitted by the wide_task/log_context named task.
+
+        Raises if that boundary emitted nothing or emitted twice.
+        """
         matches = [event for event in self.events if event.get("task") == task]
         if len(matches) != 1:
             raise AssertionError(
@@ -398,36 +635,19 @@ class WideEventRecorder:
 async def captured_wide_event(operation: str = "test") -> AsyncIterator[dict[str, Any]]:
     """Run a block inside a real wide-event boundary, exposing its live fields.
 
-    ``log.warning``/``log.error`` append to the event's ``warnings``/``errors``
-    ONLY inside a boundary — outside one every write is discarded — so this is
-    what a test needs to prove a swallowed failure is actually observable
-    rather than silent. That claim is the entire justification for swallowing,
-    and without a boundary it cannot be asserted at all.
-
-        async with captured_wide_event() as event:
-            await build_core_memory_block(ctx)
-        (warning,) = event["warnings"]
-        assert warning["error_type"] == "RuntimeError"
+    log.warning/log.error append to the event's warnings/errors only inside
+    a boundary — outside one every write is discarded — so this is what a
+    test needs to prove a swallowed failure is actually observable.
     """
     async with log_context(operation):
         yield log.get()
-
-
-# Postgres runs CREATE TABLE IF NOT EXISTS as create-then-check, so two xdist
-# workers calling langgraph's checkpointer/store setup() at the same instant
-# race on pg_type ("duplicate key value violates unique constraint
-# pg_type_typname_nsp_index ... checkpoint_migrations", run 33182536377).
-# A session-level advisory lock on its own autocommit connection serializes
-# the DDL across workers; the id is arbitrary and distinct from the memory
-# suite's schema lock (743_001_993).
-LANGGRAPH_SETUP_LOCK_ID = 743_001_994
 
 
 @asynccontextmanager
 async def pg_advisory_lock(
     conninfo: str, lock_id: int = LANGGRAPH_SETUP_LOCK_ID
 ) -> AsyncIterator[None]:
-    """Hold Postgres advisory lock ``lock_id`` for the block, across processes."""
+    """Hold Postgres advisory lock lock_id for the block, across processes."""
     import psycopg
 
     async with await psycopg.AsyncConnection.connect(conninfo, autocommit=True) as conn:
@@ -436,3 +656,279 @@ async def pg_advisory_lock(
             yield
         finally:
             await conn.execute("SELECT pg_advisory_unlock(%s)", (lock_id,))
+
+
+#: The CDP URL of the fake Browser-Use sessions the patch tests drive.
+OBSCURA_TEST_CDP_URL = "ws://obscura.test:9300/devtools/browser/run-1"
+
+
+#: How long a test's in-process ASGI server gets to start listening.
+_ASGI_STARTUP_TIMEOUT_SECONDS = 5
+
+
+@asynccontextmanager
+async def serve_asgi(app: ASGIApp) -> AsyncIterator[str]:
+    """Serve an ASGI app on a port the OS picks; yield its base URL.
+
+    Binding port 0 leaves no window for another process to take a pre-picked
+    port, and a server that never starts fails the test instead of yielding.
+    """
+    server = uvicorn.Server(
+        uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning", lifespan="on")
+    )
+    task = asyncio.create_task(server.serve())
+    try:
+        async with asyncio.timeout(_ASGI_STARTUP_TIMEOUT_SECONDS):
+            while not server.started:
+                if task.done():
+                    task.result()
+                    raise RuntimeError("test ASGI server exited before it started")
+                await asyncio.sleep(0)
+    except BaseException:
+        # A server stuck in startup never sees should_exit; cancel it rather than wait forever.
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        raise
+    try:
+        port = server.servers[0].sockets[0].getsockname()[1]
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        server.should_exit = True
+        await task
+
+
+async def drain_at_most_once_sends() -> None:
+    """Wait for the gated sends capture spawned, so their outcome is observable."""
+    await asyncio.gather(
+        *(task for task in asyncio.all_tasks() if task.get_name() == AT_MOST_ONCE_TASK_NAME)
+    )
+
+
+CREDENTIAL_STORE_SECRET = "unit-test-instance-secret"
+
+
+class InMemoryCredentialStore:
+    """The credential store's Mongo rows, held encrypted in memory exactly as the service reads them."""
+
+    def __init__(self) -> None:
+        self.configs: dict[str, ProviderConfig] = {}
+
+    def save(
+        self,
+        provider: str,
+        *,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        account_id: str | None = None,
+        api_secret: str | None = None,
+    ) -> None:
+        self.configs[provider] = ProviderConfig(
+            api_key=api_key,
+            base_url=base_url,
+            model=None,
+            preset=None,
+            account_id=account_id,
+            api_secret=api_secret,
+        )
+
+    async def find_by_provider(self, provider: str) -> SimpleNamespace | None:
+        config = self.configs.get(provider)
+        if config is None:
+            return None
+        ciphertext = Fernet(fernet_key_from(CREDENTIAL_STORE_SECRET)).encrypt(
+            json.dumps(config.model_dump()).encode()
+        )
+        return SimpleNamespace(provider=provider, data_encrypted=ciphertext.decode())
+
+    async def upsert_encrypted(self, provider: str, data_encrypted: str) -> None:
+        plaintext = Fernet(fernet_key_from(CREDENTIAL_STORE_SECRET)).decrypt(data_encrypted)
+        self.configs[provider] = ProviderConfig.model_validate_json(plaintext)
+
+    async def delete(self, provider: str) -> bool:
+        return self.configs.pop(provider, None) is not None
+
+
+async def live_through(
+    queue: ArqRedis,
+    arrivals: Sequence[datetime],
+    arrive: Callable[[datetime], Awaitable[object]],
+    fire: Callable[[JobDef], Awaitable[object]],
+) -> None:
+    """Play arrivals and the queue on one clock: each arrival at its moment, each job when due.
+
+    An arrival due with a job goes first. Raises when the queue never empties.
+    """
+    pending = sorted(arrivals)
+    with time_machine.travel(pending[0], tick=False) as clock:
+        for _ in range(4 * len(pending) + 8):
+            jobs = sorted(await queue.queued_jobs(), key=lambda job: job.score)
+            due = datetime.fromtimestamp(jobs[0].score / 1000, UTC) if jobs else None
+            if pending and (due is None or pending[0] <= due):
+                clock.move_to(pending[0])
+                await arrive(pending.pop(0))
+            elif due is not None:
+                clock.move_to(due)
+                await fire(jobs[0])
+            else:
+                return
+    raise AssertionError(f"the queue never emptied: {await queue.queued_jobs()}")
+
+
+def tool_call_request(
+    tool_call: ToolCall,
+    *,
+    configurable: dict[str, object] | None = None,
+    state: dict[str, object] | None = None,
+) -> ToolCallRequest:
+    """Build the request middleware sees for one tool call, run under configurable."""
+    return ToolCallRequest(
+        tool_call=tool_call,
+        tool=None,
+        state=state,
+        runtime=ToolRuntime(
+            state=state or {},
+            context=None,
+            config={"configurable": configurable or {}},
+            stream_writer=None,
+            tool_call_id=tool_call["id"],
+            store=None,
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# JWT forging: stdlib HMAC, so a token test never trusts the library it tests
+# ---------------------------------------------------------------------------
+
+_HMAC_HASHES = {"HS256": hashlib.sha256, "HS384": hashlib.sha384, "HS512": hashlib.sha512}
+
+# Tokens minted by python-jose 3.5.0, the JWT library before PyJWT, exp 2100-01-01:
+# a token issued before that swap stays live after the deploy and must still verify.
+JOSE_AGENT_DEVICE_SECRET = "jose-fixture-agent-secret-" + "x" * 16  # pragma: allowlist secret
+JOSE_MINTED_AGENT_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1LWpvc2UiLCJyb2xlIjoiYWdlbnQiLCJleHAiOjQxMDI0NDQ4MDAsImlhdCI6MTc5MzcwMDAwMH0.Mv_SlZ6pQl8tr-LTEZjIKq9PUHg_8qLpdwjLhiSUhCs"  # gitleaks:allow — signed with a test secret
+JOSE_MINTED_DEVICE_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1LWpvc2UiLCJkZXZpY2VfaWQiOiJkZXYtam9zZSIsImF1ZCI6ImRldmljZS1icmlkZ2UiLCJyb2xlIjoiZGV2aWNlIiwiaWF0IjoxNzkzNzAwMDAwLCJleHAiOjQxMDI0NDQ4MDB9.k1GPpR5z1WmoSx8sk357ksLYY-7fyPIPSuahtijDRfE"  # gitleaks:allow — signed with a test secret
+#: Signed with the local-auth tests' TEST_SECRET; sub u-jose, ver 3.
+JOSE_MINTED_SESSION_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1LWpvc2UiLCJleHAiOjQxMDI0NDQ4MDAsImlhdCI6MTc5MzcwMDAwMCwidmVyIjozfQ.EOIx7VzYc3TIr8In4C5e-2gac43qUvlVigEFlkve5DQ"  # gitleaks:allow — signed with a test secret
+#: Signed with "a" * 64, the bot tests' BOT_SESSION_TOKEN_SECRET; platform telegram, tg-jose.
+JOSE_MINTED_BOT_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1LWpvc2UiLCJwbGF0Zm9ybSI6InRlbGVncmFtIiwicGxhdGZvcm1fdXNlcl9pZCI6InRnLWpvc2UiLCJyb2xlIjoiYm90IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE3OTM3MDAwMDB9.9xTk_jz9LJ7g3opCxKLlhdSIPuQuVIpSkLcJIa0K8QA"  # gitleaks:allow — signed with a test secret
+#: Signed with "x" * 40, the takeover tests' secret; session sess-jose.
+JOSE_MINTED_TAKEOVER_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1LWpvc2UiLCJzZXNzaW9uX2lkIjoic2Vzcy1qb3NlIiwicm9sZSI6ImJyb3dzZXJfdGFrZW92ZXIiLCJleHAiOjQxMDI0NDQ4MDAsImlhdCI6MTc5MzcwMDAwMH0.p3fvSTs2zoH-aCJ5lNoAF5VcGjxrFSkQjSXC_jdUfWM"  # gitleaks:allow — signed with a test secret
+
+
+def _b64url(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+def _b64url_json(value: Mapping[str, object]) -> str:
+    return _b64url(json.dumps(value, separators=(",", ":")).encode())
+
+
+def bot_jwt_claims(user_id: str, platform: str, platform_user_id: str) -> dict[str, object]:
+    """Build the claims of a valid bot session JWT that expires in 15 minutes."""
+    return {
+        "sub": user_id,
+        "platform": platform,
+        "platform_user_id": platform_user_id,
+        "role": "bot",
+        "exp": int((datetime.now(UTC) + timedelta(minutes=15)).timestamp()),
+    }
+
+
+def read_jwt(token: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return a compact JWT's header and claims, unverified, without any JWT library."""
+    header, claims, _ = token.split(".")
+    return _b64url_json_decode(header), _b64url_json_decode(claims)
+
+
+def _b64url_json_decode(segment: str) -> dict[str, Any]:
+    decoded: dict[str, Any] = json.loads(
+        base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4))
+    )
+    return decoded
+
+
+def forge_jwt(
+    claims: Mapping[str, object],
+    secret: str,
+    *,
+    alg: str = "HS256",
+    header_alg: str | None = None,
+    kid: str | None = None,
+) -> str:
+    """Sign claims as a compact HMAC JWT without any JWT library; header_alg forges the declared alg."""
+    header = {"alg": header_alg or alg, "typ": "JWT", **({"kid": kid} if kid else {})}
+    signing_input = f"{_b64url_json(header)}.{_b64url_json(claims)}"
+    signature = hmac.new(secret.encode(), signing_input.encode(), _HMAC_HASHES[alg]).digest()
+    return f"{signing_input}.{_b64url(signature)}"
+
+
+def forge_rs256_jwt(claims: Mapping[str, object], key: rsa.RSAPrivateKey, *, kid: str) -> str:
+    """Sign claims as a compact RS256 JWT with cryptography alone, the shape WorkOS access tokens take."""
+    header = {"alg": "RS256", "typ": "JWT", "kid": kid}
+    signing_input = f"{_b64url_json(header)}.{_b64url_json(claims)}"
+    signature = key.sign(signing_input.encode(), padding.PKCS1v15(), hashes.SHA256())
+    return f"{signing_input}.{_b64url(signature)}"
+
+
+def rsa_public_jwk(key: rsa.RSAPrivateKey, *, kid: str) -> dict[str, str]:
+    """Publish an RSA key's public half as the JWK a JWKS endpoint serves."""
+    numbers = key.public_key().public_numbers()
+
+    def b64_int(value: int) -> str:
+        return _b64url(value.to_bytes((value.bit_length() + 7) // 8, "big"))
+
+    return {
+        "kty": "RSA",
+        "kid": kid,
+        "use": "sig",
+        "alg": "RS256",
+        "n": b64_int(numbers.n),
+        "e": b64_int(numbers.e),
+    }
+
+
+WORKOS_TEST_CLIENT_ID = "client_workos_session_test"
+WORKOS_TEST_KID = "sso_oidc_key_pair_test"
+
+
+def workos_access_token_claims(**overrides: object) -> dict[str, object]:
+    """Build the claims of a WorkOS access token that expires in five minutes."""
+    now = int(time.time())
+    claims: dict[str, object] = {
+        "sub": "user_01WORKOS",
+        "sid": "session_01WORKOS",
+        "iat": now,
+        "exp": now + 300,
+    }
+    return {**claims, **overrides}
+
+
+def seal_workos_session(access_token: str, cookie_password: str, *, email: str) -> str:
+    """Seal an access token into the wos-session cookie value, as WorkOS AuthKit does."""
+    user = {
+        "object": "user",
+        "id": "user_01WORKOS",
+        "email": email,
+        "email_verified": True,
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-01T00:00:00Z",
+    }
+    return SessionModule.seal_data(
+        {"access_token": access_token, "refresh_token": "refresh_test", "user": user},
+        cookie_password,
+    )
+
+
+def hostile_jwts(claims: Mapping[str, object], secret: str) -> dict[str, str]:
+    """Every way a token for claims can be wrong while still looking like one, by name."""
+    genuine = forge_jwt(claims, secret)
+    header, _, signature = genuine.split(".")
+    return {
+        "expired": forge_jwt({**claims, "exp": int(time.time()) - 60}, secret),
+        "wrong_key": forge_jwt(claims, "a-completely-different-secret-" + "z" * 16),
+        "alg_none": f"{_b64url_json({'alg': 'none', 'typ': 'JWT'})}.{_b64url_json(claims)}.",
+        "other_hmac_alg": forge_jwt(claims, secret, alg="HS512"),
+        "asymmetric_alg_header": forge_jwt(claims, secret, header_alg="RS256"),
+        "tampered_payload": f"{header}.{_b64url_json({**claims, 'sub': 'intruder'})}.{signature}",
+        "garbage": "not-a-jwt",
+    }

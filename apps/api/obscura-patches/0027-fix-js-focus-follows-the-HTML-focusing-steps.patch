@@ -1,0 +1,243 @@
+From fa34505da75f733371295597290ac94be062a606 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 01:18:12 +0530
+Subject: [PATCH] fix(js): focus follows the HTML focusing steps
+
+focus() gave focus to any element and fired nothing; blur() only cleared it;
+activeElement exposed nodes inside shadow trees.
+
+Only a focusable area (a link, a form control, an iframe, an element with a
+tabindex, an editing host, the first summary of a details) that is rendered,
+enabled and not inert takes focus, or a shadow host's focus delegate. Moving
+focus fires blur and focusout on the element losing it, then focus and focusin
+on the new one, with relatedTarget, in Chrome's order; a removed element loses
+focus. document.activeElement and ShadowRoot.activeElement retarget.
+focus() scrolls a target that is not fully in view to the centre unless
+preventScroll is set.
+
+__obscura_focusOnPress is the mouse-focus rule CDP input runs for a press
+nobody cancelled: the nearest flat-tree inclusive ancestor that is a focusable
+area (the editing host inside contenteditable) or a focus delegate takes
+focus, and with none focus returns to the viewport.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/js/bootstrap.js | 184 +++++++++++++++++++++++++++++-
+ 1 file changed, 180 insertions(+), 4 deletions(-)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 3690a6f..7e61a71 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -3151,6 +3151,154 @@ globalThis.__obscura_labeledControl = function(label) { return _labeledControl(l
+ globalThis.__obscura_interactiveHost = function(el) {
+   return el && el.closest ? el.closest(_INTERACTIVE) : null;
+ };
++
++// ---- Focus (HTML "focusable area", "focusing steps", "unfocusing steps") ----
++// The element holding focus, wherever it is: inside a shadow tree it stays
++// the inner element, and document/shadow-root activeElement retarget it.
++function _currentFocus() {
++  const focused = globalThis.__obscura_focused || null;
++  // Focus fixup: a removed element no longer holds focus.
++  if (focused && !focused.isConnected) {
++    globalThis.__obscura_focused = null;
++    return null;
++  }
++  return focused;
++}
++globalThis.__obscura_focusedElement = _currentFocus;
++// The flat-tree parent: a slotted node's slot, a shadow root's host.
++function _flatTreeParent(node) {
++  if (node.nodeType === 1 || node.nodeType === 3) {
++    const slot = +_dom("assigned_slot", node._nid);
++    if (slot >= 0) return _wrap(slot);
++  }
++  const parent = node.parentNode;
++  return parent instanceof ShadowRoot ? parent.host : parent;
++}
++// An editing host: contenteditable true or plaintext-only on an element whose
++// parent is not itself editable.
++function _isEditingHost(el) {
++  const state = el.getAttribute('contenteditable');
++  if (state === null) return false;
++  const v = state.toLowerCase();
++  if (v !== '' && v !== 'true' && v !== 'plaintext-only') return false;
++  const parent = el.parentElement;
++  return !(parent && parent.isContentEditable);
++}
++// Elements HTML makes focusable areas, before rendering and disabled state.
++function _hasFocusableSemantics(el) {
++  const tabindex = el.getAttribute('tabindex');
++  if (tabindex !== null && /^[ \t\n\f\r]*[+-]?[0-9]/.test(tabindex)) return true;
++  const name = el.localName;
++  if (el.namespaceURI === 'http://www.w3.org/1999/xhtml') {
++    switch (name) {
++      case 'a':
++      case 'area':
++        return el.hasAttribute('href');
++      case 'input':
++        return (el.getAttribute('type') || '').toLowerCase() !== 'hidden';
++      case 'button':
++      case 'select':
++      case 'textarea':
++      case 'iframe':
++        return true;
++      case 'audio':
++      case 'video':
++        return el.hasAttribute('controls');
++      case 'summary': {
++        const details = el.parentElement;
++        if (!details || details.localName !== 'details') return false;
++        for (let c = details.firstElementChild; c; c = c.nextElementSibling) {
++          if (c.localName === 'summary') return c === el;
++        }
++        return false;
++      }
++    }
++  } else if (el.namespaceURI === 'http://www.w3.org/2000/svg' && name === 'a') {
++    return el.hasAttribute('href') || el.hasAttribute('xlink:href');
++  }
++  return _isEditingHost(el);
++}
++// Being rendered: the element has a layout box, and visibility lets it show.
++function _isBeingRendered(el) {
++  if (typeof Deno.core.ops.op_element_visibility !== 'function') return true;
++  const facts = Deno.core.ops.op_element_visibility(el._nid | 0, _realmFrameId);
++  if (facts < 0) return true;
++  return (facts & 1) !== 0 && (facts & 2) === 0;
++}
++function _isInert(el) {
++  for (let n = el; n; n = _flatTreeParent(n)) {
++    if (n.nodeType === 1 && n.hasAttribute('inert')) return true;
++  }
++  return false;
++}
++function _isFocusableArea(el) {
++  return !!el && el.nodeType === 1 && el.isConnected
++    && _hasFocusableSemantics(el)
++    && !_isActuallyDisabled(el)
++    && !_isInert(el)
++    && _isBeingRendered(el);
++}
++// HTML "focus delegate" of a shadow host whose shadow root delegates focus:
++// the first focusable area in its shadow tree, in tree order.
++function _focusDelegate(host) {
++  const root = _shadowRootForHost(host, true);
++  if (!root || !root.delegatesFocus) return null;
++  const all = root.querySelectorAll('*');
++  for (let i = 0; i < all.length; i++) {
++    if (_isFocusableArea(all[i])) return all[i];
++    const nested = _focusDelegate(all[i]);
++    if (nested) return nested;
++  }
++  return null;
++}
++function _fireFocusEvent(target, type, relatedTarget) {
++  const bubbles = type === 'focusin' || type === 'focusout';
++  target.dispatchEvent(globalThis.__obscura_markTrusted(new FocusEvent(type, {
++    bubbles, cancelable: false, composed: true, view: globalThis, relatedTarget,
++  })));
++}
++// Move focus to `next` (an element, or null for the viewport): blur and
++// focusout on the element losing it while nothing is focused, then focus and
++// focusin on the new one, as Chrome orders them. A blur handler that moves
++// focus itself wins.
++function _focusingSteps(next) {
++  const previous = _currentFocus();
++  if (previous === next) return;
++  if (previous) {
++    globalThis.__obscura_focused = null;
++    _fireFocusEvent(previous, 'blur', next);
++    _fireFocusEvent(previous, 'focusout', next);
++    if (_currentFocus() !== null) return;
++  }
++  if (!next || !next.isConnected) return;
++  globalThis.__obscura_focused = next;
++  _fireFocusEvent(next, 'focus', previous);
++  _fireFocusEvent(next, 'focusin', previous);
++}
++// The default action of a mousedown nobody cancelled (Chrome's mouse focus):
++// focus the nearest flat-tree inclusive ancestor of the pressed node that is
++// a focusable area (an editing host for content inside contenteditable), or
++// that host's focus delegate; with none, focus returns to the viewport.
++globalThis.__obscura_focusOnPress = function(target) {
++  for (let n = target; n; n = _flatTreeParent(n)) {
++    if (n.nodeType !== 1) continue;
++    if (_isFocusableArea(n)) {
++      _focusingSteps(n);
++      return;
++    }
++    const delegate = _focusDelegate(n);
++    if (delegate) {
++      const current = _currentFocus();
++      if (current && _retarget(current, n.ownerDocument) === _retarget(n, n.ownerDocument)
++          && current !== n) {
++        return;
++      }
++      _focusingSteps(delegate);
++      return;
++    }
++  }
++  _focusingSteps(null);
++};
+ // The submit button a click on el activates: el itself, or the button el sits
+ // inside. HTML runs a click's activation behaviour on the nearest activatable
+ // ancestor, so a click on the icon inside an icon-only submit button (hit
+@@ -4130,8 +4278,27 @@ class Element extends Node {
+       }
+     }
+   }
+-  focus() { globalThis.__obscura_focused = this; globalThis.__obscura_click_target = this; }
+-  blur() { if (globalThis.__obscura_focused === this) globalThis.__obscura_focused = null; }
++  // HTML focus(): only a focusable area (or a shadow host's focus
++  // delegate) takes focus, firing blur/focusout and focus/focusin; unless
++  // preventScroll is set the new focus is scrolled into view when it is not.
++  focus(options) {
++    const target = _isFocusableArea(this) ? this : _focusDelegate(this);
++    if (!target) return;
++    _focusingSteps(target);
++    if (options && options.preventScroll) return;
++    const rect = target.getBoundingClientRect();
++    const vw = globalThis.innerWidth || 1280;
++    const vh = globalThis.innerHeight || 720;
++    if (rect.top < 0 || rect.left < 0 || rect.bottom > vh || rect.right > vw) {
++      target.scrollIntoView({ block: 'center', inline: 'center' });
++    }
++  }
++  // Unfocus when this element, or a shadow host around the focused element,
++  // holds focus.
++  blur() {
++    const current = _currentFocus();
++    if (current && _retarget(current, this) === this) _focusingSteps(null);
++  }
+ 
+   // --- Popover API (HTML "popover") ---------------------------------------
+   // Read the popover content attribute case-insensitively. The HTML parser
+@@ -6082,7 +6249,12 @@ class Document extends Node {
+     };
+   }
+   getSelection() { return this.defaultView ? _selectionFor(this) : null; }
+-  get activeElement() { return globalThis.__obscura_focused || this.body; }
++  get activeElement() {
++    const current = _currentFocus();
++    const retargeted = current ? _retarget(current, this) : null;
++    if (retargeted && retargeted.getRootNode() === this) return retargeted;
++    return this.body || this.documentElement || null;
++  }
+   // The element that scrolls the viewport, and where the page offset lives
+   // (issue #468). Standards mode, so documentElement — quirks mode would be
+   // body, but we never parse in quirks mode.
+@@ -9658,7 +9830,11 @@ globalThis.ShadowRoot = class ShadowRoot extends DocumentFragment {
+   getRootNode(options) {
+     return options?.composed ? this._host.getRootNode(options) : this;
+   }
+-  get activeElement() { return null; }
++  get activeElement() {
++    const current = _currentFocus();
++    const retargeted = current ? _retarget(current, this) : null;
++    return retargeted && retargeted.getRootNode() === this ? retargeted : null;
++  }
+   get styleSheets() {
+     if (!this._styleSheetList) this._styleSheetList = new StyleSheetList(this);
+     return this._styleSheetList;

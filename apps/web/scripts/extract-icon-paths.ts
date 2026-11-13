@@ -9,6 +9,7 @@
 
 // Solid-rounded: tool category icons (filled style)
 // Stroke-rounded: UI icons (outline style — matches @hugeicons default)
+// biome-ignore lint/plugin/no-direct-gaia-icons-import: offline generator reads the icon package's path data directly
 import {
   Add01Icon,
   AiChipIcon,
@@ -208,7 +209,7 @@ function extractSvgPaths(
   const html = ReactDOMServer.renderToStaticMarkup(
     React.createElement(IconComponent, {
       size: 24,
-      color: style === "stroke" ? "currentColor" : "currentColor",
+      color: "currentColor",
       strokeWidth: style === "stroke" ? 1.5 : undefined,
     }),
   );

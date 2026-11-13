@@ -7,6 +7,7 @@ import pytest
 from app.constants.log_tags import LogTag
 from app.models.integration_models import UserIntegrationDocument
 from app.services.integrations.integration_status import get_all_integrations_status
+from app.utils.exceptions import ProviderNotConfiguredError
 from shared.py.wide_events import OAuthContext
 
 pytestmark = pytest.mark.unit
@@ -58,6 +59,13 @@ def mock_user_integration_repo():
         yield mock_repo
 
 
+@pytest.fixture
+def mock_integration_repo():
+    with patch("app.services.integrations.user_integrations.integration_repository") as mock_repo:
+        mock_repo.find_by_ids = AsyncMock(return_value=[])
+        yield mock_repo
+
+
 class TestGetAllIntegrationsStatus:
     """Tests for get_all_integrations_status.
 
@@ -78,7 +86,7 @@ class TestGetAllIntegrationsStatus:
         unavailable.managed_by = "composio"
 
         with patch(
-            "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [unavailable],
         ):
             result = await get_all_integrations_status("user123")
@@ -104,7 +112,7 @@ class TestGetAllIntegrationsStatus:
         integration.composio_config = MagicMock()
 
         with patch(
-            "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [integration],
         ):
             result = await get_all_integrations_status("user123")
@@ -130,12 +138,183 @@ class TestGetAllIntegrationsStatus:
         integration.composio_config = MagicMock()
 
         with patch(
-            "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [integration],
         ):
             result = await get_all_integrations_status("user123")
 
         assert result["notion"] is False
+
+    @pytest.mark.regression
+    async def test_connected_auth_mcp_without_recoverable_credentials_is_reconciled(
+        self,
+        mock_user_integration_repo,
+        mock_composio_service,
+        mock_token_repository,
+    ) -> None:
+        mock_user_integration_repo.list_for_user = AsyncMock(
+            return_value=[_ui_doc("posthog", "connected")]
+        )
+        token_store = MagicMock()
+        token_store.are_connected = AsyncMock(return_value={"posthog": False})
+        integration = MagicMock()
+        integration.id = "posthog"
+        integration.available = True
+        integration.managed_by = "mcp"
+        integration.provider = "posthog"
+        integration.mcp_config = MagicMock(requires_auth=True)
+
+        with (
+            patch(
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
+                [integration],
+            ),
+            patch(
+                "app.services.integrations.integration_status.MCPTokenStore",
+                return_value=token_store,
+            ) as token_store_class,
+        ):
+            result = await get_all_integrations_status("user123")
+
+        assert result["posthog"] is False
+        token_store_class.assert_called_once_with("user123")
+        token_store.are_connected.assert_awaited_once_with(["posthog"])
+        mock_user_integration_repo.list_for_user.assert_awaited_once_with("user123", limit=100)
+
+    async def test_connected_auth_mcp_with_valid_credentials_remains_connected(
+        self,
+        mock_user_integration_repo,
+        mock_composio_service,
+        mock_token_repository,
+    ) -> None:
+        mock_user_integration_repo.list_for_user = AsyncMock(
+            return_value=[_ui_doc("posthog", "connected")]
+        )
+        token_store = MagicMock()
+        token_store.are_connected = AsyncMock(return_value={"posthog": True})
+        integration = MagicMock()
+        integration.id = "posthog"
+        integration.available = True
+        integration.managed_by = "mcp"
+        integration.provider = "posthog"
+        integration.mcp_config = MagicMock(requires_auth=True)
+
+        with (
+            patch(
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
+                [integration],
+            ),
+            patch(
+                "app.services.integrations.integration_status.MCPTokenStore",
+                return_value=token_store,
+            ) as token_store_class,
+        ):
+            result = await get_all_integrations_status("user123")
+
+        assert result["posthog"] is True
+        token_store_class.assert_called_once_with("user123")
+
+    async def test_status_read_is_side_effect_free_when_stale(
+        self,
+        mock_user_integration_repo,
+        mock_composio_service,
+        mock_token_repository,
+    ) -> None:
+        """GET paths overlay stale credentials without writing Mongo."""
+        mock_user_integration_repo.list_for_user = AsyncMock(
+            return_value=[_ui_doc("posthog", "connected")]
+        )
+        token_store = MagicMock()
+        token_store.are_connected = AsyncMock(return_value={"posthog": False})
+        integration = MagicMock()
+        integration.id = "posthog"
+        integration.available = True
+        integration.managed_by = "mcp"
+        integration.provider = "posthog"
+        integration.mcp_config = MagicMock(requires_auth=True)
+
+        with (
+            patch(
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
+                [integration],
+            ),
+            patch(
+                "app.services.integrations.integration_status.MCPTokenStore",
+                return_value=token_store,
+            ),
+        ):
+            result = await get_all_integrations_status("user123")
+
+        assert result["posthog"] is False
+        mock_user_integration_repo.set_status.assert_not_called()
+
+    async def test_custom_auth_mcp_with_dead_credential_reads_disconnected(
+        self,
+        mock_user_integration_repo,
+        mock_composio_service,
+        mock_token_repository,
+        mock_integration_repo,
+    ) -> None:
+        mock_user_integration_repo.list_for_user = AsyncMock(
+            return_value=[_ui_doc("custom-uuid", "connected")]
+        )
+        token_store = MagicMock()
+        token_store.are_connected = AsyncMock(return_value={"custom-uuid": False})
+        custom_doc = MagicMock()
+        custom_doc.integration_id = "custom-uuid"
+        custom_doc.managed_by = "mcp"
+        custom_doc.requires_auth = True
+
+        with (
+            patch(
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
+                [],
+            ),
+            patch(
+                "app.services.integrations.integration_status.MCPTokenStore",
+                return_value=token_store,
+            ) as token_store_class,
+        ):
+            mock_integration_repo.find_by_ids = AsyncMock(return_value=[custom_doc])
+            result = await get_all_integrations_status("user123")
+
+        assert result["custom-uuid"] is False
+        token_store_class.assert_called_once_with("user123")
+        token_store.are_connected.assert_awaited_once_with(["custom-uuid"])
+        mock_integration_repo.find_by_ids.assert_awaited_once_with(["custom-uuid"])
+
+    async def test_custom_auth_mcp_with_usable_credential_stays_connected(
+        self,
+        mock_user_integration_repo,
+        mock_composio_service,
+        mock_token_repository,
+        mock_integration_repo,
+    ) -> None:
+        mock_user_integration_repo.list_for_user = AsyncMock(
+            return_value=[_ui_doc("custom-uuid", "connected")]
+        )
+        token_store = MagicMock()
+        token_store.are_connected = AsyncMock(return_value={"custom-uuid": True})
+        custom_doc = MagicMock()
+        custom_doc.integration_id = "custom-uuid"
+        custom_doc.managed_by = "mcp"
+        custom_doc.requires_auth = True
+
+        with (
+            patch(
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
+                [],
+            ),
+            patch(
+                "app.services.integrations.integration_status.MCPTokenStore",
+                return_value=token_store,
+            ),
+        ):
+            mock_integration_repo.find_by_ids = AsyncMock(return_value=[custom_doc])
+            result = await get_all_integrations_status("user123")
+
+        assert result["custom-uuid"] is True
+        mock_integration_repo.find_by_ids.assert_awaited_once_with(["custom-uuid"])
 
     async def test_mcp_integration_not_in_mongo_returns_false(
         self,
@@ -151,7 +330,7 @@ class TestGetAllIntegrationsStatus:
         integration.provider = "deepwiki"
 
         with patch(
-            "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [integration],
         ):
             result = await get_all_integrations_status("user123")
@@ -174,7 +353,7 @@ class TestGetAllIntegrationsStatus:
         integration.provider = "twitter"
 
         with patch(
-            "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [integration],
         ):
             result = await get_all_integrations_status("user123")
@@ -192,8 +371,7 @@ class TestGetAllIntegrationsStatus:
         mock_composio_service,
         mock_token_repository,
     ):
-        """A provider missing from the batch answer reads as not connected, never
-        as unknown: every requested integration gets a boolean."""
+        """A provider missing from the batch answer reads as not connected, never as unknown."""
         mock_composio_service.check_connection_status = AsyncMock(return_value={})
 
         integration = MagicMock()
@@ -203,7 +381,7 @@ class TestGetAllIntegrationsStatus:
         integration.provider = "twitter"
 
         with patch(
-            "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [integration],
         ):
             result = await get_all_integrations_status("user123")
@@ -229,7 +407,7 @@ class TestGetAllIntegrationsStatus:
 
         with (
             patch(
-                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [integration],
             ),
             patch("app.services.integrations.integration_status.log") as log,
@@ -244,6 +422,34 @@ class TestGetAllIntegrationsStatus:
             user_id="user123",
         )
         log.set.assert_called_once_with(oauth=OAuthContext(operation="status"), result_count=1)
+
+    async def test_an_instance_without_composio_reads_not_connected_without_an_error(
+        self,
+        mock_user_integration_repo,
+        mock_token_repository,
+    ):
+        """A self-host with no Composio key is a normal state, not a failed check."""
+        integration = MagicMock()
+        integration.id = "twitter"
+        integration.available = True
+        integration.managed_by = "composio"
+        integration.provider = "twitter"
+
+        with (
+            patch(
+                "app.services.integrations.integration_status.get_composio_service",
+                side_effect=ProviderNotConfiguredError("Composio is not configured"),
+            ),
+            patch(
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
+                [integration],
+            ),
+            patch("app.services.integrations.integration_status.log") as log,
+        ):
+            result = await get_all_integrations_status("user123")
+
+        assert result == {"twitter": False}
+        log.error.assert_not_called()
 
     async def test_self_managed_integration_with_valid_token(
         self,
@@ -266,7 +472,7 @@ class TestGetAllIntegrationsStatus:
 
         with (
             patch(
-                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [integration],
             ),
             patch(
@@ -303,7 +509,7 @@ class TestGetAllIntegrationsStatus:
 
         with (
             patch(
-                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [integration],
             ),
             patch(
@@ -336,7 +542,7 @@ class TestGetAllIntegrationsStatus:
 
         with (
             patch(
-                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [integration],
             ),
             patch(
@@ -368,7 +574,7 @@ class TestGetAllIntegrationsStatus:
 
         with (
             patch(
-                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [integration],
             ),
             patch(
@@ -385,6 +591,7 @@ class TestGetAllIntegrationsStatus:
         mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
+        mock_integration_repo,
     ):
         """Custom integrations in MongoDB not in OAUTH_INTEGRATIONS are still included."""
         mock_user_integration_repo.list_for_user = AsyncMock(
@@ -392,12 +599,13 @@ class TestGetAllIntegrationsStatus:
         )
 
         with patch(
-            "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [],
         ):
             result = await get_all_integrations_status("user123")
 
         assert result["custom_tool"] is True
+        mock_integration_repo.find_by_ids.assert_awaited_once_with(["custom_tool"])
 
     async def test_mixed_integrations(
         self,
@@ -437,7 +645,7 @@ class TestGetAllIntegrationsStatus:
         mcp_int.managed_by = "mcp"
 
         with patch(
-            "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
             [notion, slack, disabled, mcp_int],
         ):
             result = await get_all_integrations_status("user123")

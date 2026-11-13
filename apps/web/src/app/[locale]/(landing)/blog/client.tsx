@@ -1,11 +1,11 @@
 "use client";
 
-import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import Image from "next/image";
 import { useEffect } from "react";
 import type { Article, BreadcrumbList, WithContext } from "schema-dts";
 
 import JsonLd from "@/components/seo/JsonLd";
+import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { GrainOverlay } from "@/components/ui/GrainOverlay";
 import { BlogCard } from "@/features/blog/components/BlogCard";
 import BlogMetadata from "@/features/blog/components/BlogMetadata";
@@ -14,11 +14,11 @@ import TableOfContents from "@/features/blog/components/TableOfContents";
 import { parseHeadings } from "@/features/blog/utils/parseHeadings";
 import SearchedImageDialog from "@/features/chat/components/bubbles/bot/SearchedImageDialog";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import type { BlogPost, BlogPostMeta } from "@/lib/blog";
+import { track } from "@/lib/analytics";
+import type { BlogContentPost, BlogPostMeta } from "@/lib/blog";
 
 interface BlogPostClientProps {
-  blog: BlogPost;
+  blog: BlogContentPost;
   suggestedPosts: BlogPostMeta[];
   structuredData: WithContext<Article>;
   breadcrumbSchema: WithContext<BreadcrumbList>;
@@ -32,9 +32,8 @@ export default function BlogPostClient({
 }: BlogPostClientProps) {
   useEffect(() => {
     if (!blog) return;
-    trackEvent(ANALYTICS_EVENTS.BLOG_ARTICLE_VIEWED, {
+    track("blog:article_viewed", {
       slug: blog.slug,
-      title: blog.title,
     });
   }, [blog]);
 
@@ -55,12 +54,10 @@ export default function BlogPostClient({
       <div className="min-h-screen w-full pt-28">
         {/* Centered header */}
         <div className="mx-auto mb-10 flex max-w-3xl flex-col items-center space-y-10 px-5">
-          <div className="flex w-full justify-center text-foreground-400">
-            <Breadcrumbs>
-              <BreadcrumbItem href="/blog">Blog</BreadcrumbItem>
-              <BreadcrumbItem>{blog.category}</BreadcrumbItem>
-            </Breadcrumbs>
-          </div>
+          <PageBreadcrumbs
+            className="flex w-full justify-center"
+            items={[{ label: "Blog", href: "/blog" }, { label: blog.category }]}
+          />
 
           {blog.image && (
             <div className="relative w-full">
@@ -79,7 +76,11 @@ export default function BlogPostClient({
             {blog.title}
           </h1>
 
-          <BlogMetadata authors={blog.authors} date={blog.date} />
+          <BlogMetadata
+            authors={blog.authors}
+            date={blog.date}
+            updated={blog.updated}
+          />
         </div>
 
         {/* Content + TOC: flex layout so sticky works in normal flow */}
@@ -89,6 +90,7 @@ export default function BlogPostClient({
             <BlogMetadata
               authors={blog.authors}
               date={blog.date}
+              updated={blog.updated}
               className="my-10 border-t border-zinc-800 pt-10"
             />
           </article>
@@ -106,7 +108,12 @@ export default function BlogPostClient({
             <h2 className="mb-8 text-2xl font-medium">Suggested Posts</h2>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
               {suggestedPosts.map((post) => (
-                <BlogCard key={post.slug} blog={post} variant="small" />
+                <BlogCard
+                  key={post.slug}
+                  blog={post}
+                  variant="small"
+                  titleAs="h3"
+                />
               ))}
             </div>
           </div>

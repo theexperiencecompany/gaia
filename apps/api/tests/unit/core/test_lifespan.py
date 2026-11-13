@@ -1,15 +1,16 @@
 """Unit tests for the application lifespan PostHog config guard.
 
-The guard must never block boot: token-less environments (local dev without
-Infisical, the schemathesis live server) legitimately run without analytics —
-the SILENT loader no-ops captures. Missing config is a loud log line, not a
-fatal error. The client-init path (tokens present) must fetch the provider and
+The guard must never block boot: token-less environments (a self-hosted
+instance, local dev without Infisical, the schemathesis live server) legitimately
+run without analytics — the SILENT loader no-ops captures. Missing config is an
+error only where GAIA Cloud's product analytics are expected, never a boot failure. The client-init path (tokens present) must fetch the provider and
 close it when the lifespan ends.
 """
 
 import pytest
 from pytest_mock import MockerFixture
 
+from app.config.deployment import DeploymentKind, baseline_profile
 from app.core.lifespan import lifespan
 
 
@@ -25,9 +26,14 @@ def _boot_patches(mocker: MockerFixture) -> None:
     mocker.patch("app.core.lifespan._CONTEXT_EXECUTOR.shutdown")
 
 
-def _set_posthog(mocker: MockerFixture, token: str | None, host: str | None) -> None:
+def _set_posthog(
+    mocker: MockerFixture,
+    token: str | None,
+    host: str | None,
+    kind: DeploymentKind = DeploymentKind.PRODUCTION,
+) -> None:
     settings = mocker.patch("app.core.lifespan.settings")
-    settings.ENV = "development"
+    settings.deployment = baseline_profile(kind)
     settings.POSTHOG_PROJECT_TOKEN = token
     settings.POSTHOG_HOST = host
 
@@ -41,14 +47,13 @@ def _set_posthog(mocker: MockerFixture, token: str | None, host: str | None) -> 
         (None, None, "POSTHOG_PROJECT_TOKEN"),
     ],
 )
-async def test_missing_posthog_config_logs_loudly_but_boots(
+async def test_missing_posthog_config_in_production_logs_an_error_but_boots(
     mocker: MockerFixture,
     token: str | None,
     host: str | None,
     expected_missing: str,
 ) -> None:
-    """Any missing piece of the PostHog config is a loud startup log line,
-    never a boot failure — no matter the ENV."""
+    """Any missing piece of GAIA Cloud's PostHog config is an error log line, never a boot failure."""
     _set_posthog(mocker, token, host)
     _boot_patches(mocker)
     log_error = mocker.patch("app.core.lifespan.log.error")
@@ -64,15 +69,30 @@ async def test_missing_posthog_config_logs_loudly_but_boots(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("kind", [DeploymentKind.SELFHOST, DeploymentKind.DEVELOPMENT])
+async def test_missing_posthog_config_off_gaia_cloud_is_info_not_error(
+    mocker: MockerFixture, kind: DeploymentKind
+) -> None:
+    """Analytics off is the normal state of a self-hosted or dev instance, so every boot must not log an error."""
+    _set_posthog(mocker, None, None, kind)
+    _boot_patches(mocker)
+    log_error = mocker.patch("app.core.lifespan.log.error")
+    log_info = mocker.patch("app.core.lifespan.log.info")
+
+    async with lifespan(None):
+        pass
+
+    log_error.assert_not_called()
+    posthog_lines = [c for c in log_info.call_args_list if "PostHog not configured" in c.args[0]]
+    assert len(posthog_lines) == 1
+    assert posthog_lines[0].kwargs["missing_var"] == "POSTHOG_PROJECT_TOKEN"
+
+
+@pytest.mark.asyncio
 async def test_full_posthog_config_initialises_client_and_shuts_it_down(
     mocker: MockerFixture,
 ) -> None:
-    """With both keys present the client is fetched by provider name and closed
-    when the lifespan ends.
-
-    ``shutdown()``, not ``flush()``: flush only drains the queue, leaving the
-    consumer threads, the flag poller, and exception capture alive.
-    """
+    """With both keys present the client is fetched by provider name and closed via shutdown(), not flush(), which would leave consumer threads alive."""
     _set_posthog(mocker, "phc_test", "https://ph.example.com")
     _boot_patches(mocker)
     log_error = mocker.patch("app.core.lifespan.log.error")
@@ -92,8 +112,7 @@ async def test_full_posthog_config_initialises_client_and_shuts_it_down(
 async def test_client_is_shut_down_even_when_the_app_body_raises(
     mocker: MockerFixture,
 ) -> None:
-    """A crash inside the running app must still close the client — otherwise a
-    failing pod drops every event still sitting in the queue."""
+    """A crash inside the running app must still close the client — otherwise a failing pod drops every event still sitting in the queue."""
     _set_posthog(mocker, "phc_test", "https://ph.example.com")
     _boot_patches(mocker)
     mocker.patch("app.core.lifespan.log.error")
@@ -111,8 +130,7 @@ async def test_client_is_shut_down_even_when_the_app_body_raises(
 async def test_full_config_with_unregistered_provider_skips_shutdown(
     mocker: MockerFixture,
 ) -> None:
-    """A missing provider registration (client None) must not attempt to shut
-    down None."""
+    """A missing provider registration (client None) must not attempt to shut down None."""
     _set_posthog(mocker, "phc_test", "https://ph.example.com")
     _boot_patches(mocker)
     providers_get = mocker.patch("app.core.lifespan.providers.get", return_value=None)
@@ -125,8 +143,7 @@ async def test_full_config_with_unregistered_provider_skips_shutdown(
 
 @pytest.mark.asyncio
 async def test_partial_config_never_initialises_client(mocker: MockerFixture) -> None:
-    """One missing key means no client — the init guard is an AND, not an OR
-    (a single key must not half-arm analytics)."""
+    """One missing key means no client — the init guard is an AND, not an OR (a single key must not half-arm analytics)."""
     _set_posthog(mocker, "phc_test", None)
     _boot_patches(mocker)
     providers_get = mocker.patch("app.core.lifespan.providers.get")

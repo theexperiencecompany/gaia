@@ -120,9 +120,9 @@ async def _send_expo_push(
 
 
 def _dead_tokens_from_receipts(batch: list[dict[str, Any]], response: httpx.Response) -> list[str]:
-    """Return the tokens Expo reported as ``DeviceNotRegistered`` for this batch.
+    """Return the tokens Expo reported as DeviceNotRegistered for this batch.
 
-    Expo replies with ``{"data": [ticket, ...]}`` aligned to the messages sent; a
+    Expo replies with {"data": [ticket, ...]} aligned to the messages sent; a
     ticket flags a permanently dead token (app uninstalled / token expired).
     """
     try:
@@ -138,5 +138,5 @@ def _dead_tokens_from_receipts(batch: list[dict[str, Any]], response: httpx.Resp
 
 
 async def _deactivate_device_tokens(tokens: list[str]) -> None:
-    """Mark dead tokens inactive so ``_active_device_tokens`` stops retrying them."""
+    """Mark dead tokens inactive so _active_device_tokens stops retrying them."""
     await get_device_token_service().deactivate_tokens(tokens)

@@ -70,11 +70,8 @@ describe("Telegram mention detection", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Telegram HTML conversion
-// Telegram sends with parse_mode: "HTML", so the converter emits HTML tags.
-// These verify the formatter applied to every bot response before sending.
-// ---------------------------------------------------------------------------
+// Telegram sends with parse_mode: "HTML", so the converter emits HTML tags —
+// these verify the formatter applied to every bot response before sending.
 
 describe("convertToTelegramHtml - emphasis conversion", () => {
   it("converts **bold** to <b>bold</b>", () => {
@@ -155,10 +152,8 @@ describe("convertToTelegramHtml - HTML escaping", () => {
   });
 
   it("preserves underscores in a URL with an auth token (the shipped bug)", () => {
-    // This is the exact regression we shipped: a masked link whose URL contains
-    // underscores (an auth token) must round-trip the URL intact — legacy
-    // Markdown italicized the `_x_` runs inside the token and silently dropped
-    // the underscores, breaking the sign-in link.
+    // Shipped regression: legacy Markdown italicized `_x_` runs inside a masked
+    // link's auth-token URL and dropped the underscores, breaking the sign-in link.
     const url = "https://heygaia.io/auth?token=AjJD_TFC2_1Fgn";
     const result = convertToTelegramHtml(`[Sign in](${url})`);
     expect(result).toBe(`<a href="${url}">Sign in</a>`);
@@ -197,14 +192,8 @@ describe("convertToTelegramHtml - code blocks", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Telegram edit error recognition
 // The adapter ignores "message is not modified" edits and falls back to plain
-// text on any other failure. We verify the exact substring the adapter checks.
-//
-// Production check (adapter.ts editHtml):
-//   e.message.includes("message is not modified")
-// ---------------------------------------------------------------------------
+// text on any other failure; verifies the exact substring adapter.ts's editHtml checks.
 
 describe("Telegram edit error recognition", () => {
   const NOT_MODIFIED_ERROR = "message is not modified";

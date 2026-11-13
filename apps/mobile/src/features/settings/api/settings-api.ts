@@ -1,6 +1,21 @@
-import type { HilPreferences } from "@gaia/shared/chat";
-import type { FeatureUsage, UsageSummary } from "@gaia/shared/types";
-import { apiService } from "@/lib/api";
+import type {
+  InstructionsResponse,
+  OnboardingPreferences,
+  UpdateInstructionsRequest,
+  UsageHistoryEntry,
+} from "@gaia/shared/api/generated";
+
+export type {
+  InstructionsResponse,
+  OnboardingPreferences,
+  UsageHistoryEntry,
+} from "@gaia/shared/api/generated";
+
+import type { HilPreferences, HilPreferencesUpdate } from "@gaia/shared/chat";
+import { INSTRUCTIONS_CONFLICT_CODE } from "@gaia/shared/constants/instructions";
+import type { UsageSummary } from "@gaia/shared/types";
+import type { SaveInstructionsResult } from "@/features/settings/types";
+import { ApiError, apiService } from "@/lib/api";
 
 export type {
   BudgetWindow,
@@ -8,18 +23,6 @@ export type {
   UsagePeriod,
   UsageSummary,
 } from "@gaia/shared/types";
-
-export interface UsageHistoryEntry {
-  date: string;
-  plan_type: string;
-  features: Record<string, Pick<FeatureUsage, "title" | "periods">>;
-}
-
-export interface OnboardingPreferences {
-  profession?: string;
-  response_style?: string;
-  custom_instructions?: string | null;
-}
 
 export interface UpdatePreferencesResponse {
   success: boolean;
@@ -53,6 +56,12 @@ export interface UserStats {
   integration_count: number;
 }
 
+const HTTP_CONFLICT = 409;
+
+function instructionsPath(scope: string): string {
+  return `/instructions/${encodeURIComponent(scope)}`;
+}
+
 export const settingsApi = {
   getProfile(): Promise<UserProfile> {
     return apiService.get<UserProfile>("/user/me");
@@ -75,6 +84,37 @@ export const settingsApi = {
     const form = new FormData();
     form.append("timezone", timezone);
     return apiService.patch<UpdatePreferencesResponse>("/user/timezone", form);
+  },
+
+  getInstructions(scope: string): Promise<InstructionsResponse> {
+    return apiService.get<InstructionsResponse>(instructionsPath(scope));
+  },
+
+  /** Save one scope's instructions; a stale base_revision resolves to a conflict carrying the current revision. */
+  async updateInstructions(
+    scope: string,
+    request: UpdateInstructionsRequest,
+  ): Promise<SaveInstructionsResult> {
+    try {
+      const instructions = await apiService.put<InstructionsResponse>(
+        instructionsPath(scope),
+        request,
+      );
+      return { status: "saved", instructions };
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.status === HTTP_CONFLICT &&
+        error.code === INSTRUCTIONS_CONFLICT_CODE &&
+        typeof error.envelope?.current_revision === "number"
+      ) {
+        return {
+          status: "conflict",
+          currentRevision: error.envelope.current_revision,
+        };
+      }
+      throw error;
+    }
   },
 
   getUsageSummary(): Promise<UsageSummary> {
@@ -101,19 +141,18 @@ export const settingsApi = {
     return apiService.get<HilPreferences>("/approvals/preferences");
   },
 
-  updateHilPreferences(
-    payload: Partial<HilPreferences>,
-  ): Promise<HilPreferences> {
+  updateHilPreferences(payload: HilPreferencesUpdate): Promise<HilPreferences> {
     return apiService.put<HilPreferences>("/approvals/preferences", payload);
   },
 
   // ask: true = always ask, false = never ask, null = clear override (use default).
+  // approvalKey is the server-issued HIL key (tool_overrides key / approval_key).
   setToolOverride(
-    toolName: string,
+    approvalKey: string,
     ask: boolean | null,
   ): Promise<HilPreferences> {
     return apiService.put<HilPreferences>(
-      `/approvals/tools/${encodeURIComponent(toolName)}`,
+      `/approvals/tools/${encodeURIComponent(approvalKey)}`,
       { ask },
     );
   },

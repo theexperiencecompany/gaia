@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { useUser } from "@/features/auth/hooks/useUser";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 
 /**
@@ -10,7 +10,7 @@ import { wsManager } from "@/lib/websocket/WebSocketManager";
  * Should be called once at the app level (ProvidersLayout)
  */
 export function useWebSocketConnection() {
-  const user = useUser();
+  const user = useCurrentUser();
 
   // Keep user email in a ref so the visibility handler always sees the latest
   // value without needing to re-subscribe the event listener
@@ -31,11 +31,15 @@ export function useWebSocketConnection() {
         return;
       }
 
-      const wsUrl =
-        apiBaseUrl.replace("http://", "ws://").replace("https://", "wss://") +
-        "ws/connect";
+      // The base may be same-origin ("/api/v1/" on self-host), so resolve it
+      // against the page before switching the scheme to ws/wss.
+      const wsUrl = new URL(
+        "ws/connect",
+        new URL(apiBaseUrl, window.location.href),
+      );
+      wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
 
-      wsManager.configure({ url: wsUrl });
+      wsManager.configure({ url: wsUrl.href });
       wsManager.connect();
 
       return () => {

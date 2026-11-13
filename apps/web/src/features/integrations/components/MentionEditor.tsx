@@ -4,7 +4,11 @@ import type { ChipProps } from "@heroui/chip";
 import type { Extensions } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { buildMentionExtensions } from "@/features/integrations/components/mentionExtensions";
+import {
+  buildMentionExtensions,
+  type MentionExtensionRefs,
+  MentionRefsContext,
+} from "@/features/integrations/components/mentionExtensions";
 import {
   docToValue,
   valueToContent,
@@ -74,16 +78,14 @@ export const MentionEditor = ({
     radiusRef.current = mentionRadius;
   });
 
+  const [refs] = useState<MentionExtensionRefs>(() => ({
+    icon: iconRef,
+    removable: removableRef,
+    radius: radiusRef,
+    toolNames: toolNamesRef,
+  }));
   const [extensions] = useState<Extensions>(() =>
-    buildMentionExtensions(
-      {
-        icon: iconRef,
-        removable: removableRef,
-        radius: radiusRef,
-        toolNames: toolNamesRef,
-      },
-      maxLength,
-    ),
+    buildMentionExtensions(refs, maxLength),
   );
 
   const editor = useEditor({
@@ -103,25 +105,20 @@ export const MentionEditor = ({
 
   useEffect(() => {
     // setEditable emits an 'update' by default even though toggling editability
-    // never changes the document. With immediatelyRender:false the instance
-    // appears after mount holding content captured from the first render; that
-    // emission would forward the stale doc through onChange and clobber a value
-    // the caller set in the meantime (e.g. the workflow modal restoring the
-    // saved prompt). A programmatic toggle is not a user edit: never emit.
+    // never changes the document; with immediatelyRender:false that would push
+    // stale pre-mount content through onChange, so pass false here to suppress it.
     editor?.setEditable(!readOnly, false);
   }, [editor, readOnly]);
 
-  // External value changes (modal open / reset) replace the document — but only
-  // on a genuine divergence, never while it already matches. That keeps an
-  // in-progress edit from being clobbered and rules out any setContent⇄onChange
-  // feedback loop.
+  // External value changes (modal open/reset) replace the document, but only
+  // on genuine divergence — never while it already matches — to avoid clobbering
+  // an in-progress edit or a setContent⇄onChange feedback loop.
   useEffect(() => {
     if (!editor) return;
     if (docToValue(editor.state.doc) === value) return;
-    editor.commands.setContent(
-      valueToContent(value, toolNamesRef.current),
-      false,
-    );
+    editor.commands.setContent(valueToContent(value, toolNamesRef.current), {
+      emitUpdate: false,
+    });
   }, [editor, value]);
 
   // When the tool list loads after mount, re-parse so existing `@name` text
@@ -131,7 +128,9 @@ export const MentionEditor = ({
     if (!editor || prevToolNamesRef.current === toolNames) return;
     prevToolNamesRef.current = toolNames;
     if (!editor.isFocused) {
-      editor.commands.setContent(valueToContent(value, toolNames), false);
+      editor.commands.setContent(valueToContent(value, toolNames), {
+        emitUpdate: false,
+      });
     }
   }, [editor, toolNames, value]);
 
@@ -145,7 +144,9 @@ export const MentionEditor = ({
           {placeholder}
         </div>
       )}
-      <EditorContent editor={editor} />
+      <MentionRefsContext.Provider value={refs}>
+        <EditorContent editor={editor} />
+      </MentionRefsContext.Provider>
     </div>
   );
 };

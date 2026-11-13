@@ -25,6 +25,8 @@ export interface MenuItemConfig {
   externalUrl?: string; // For external links
   requiresAuth?: boolean;
   hideWhenSubscribed?: boolean; // For upgrade CTA
+  /** Self-host instances have no billing — the CTA makes no sense there. */
+  hideWhenBillingDisabled?: boolean;
 }
 
 export type MenuSection = "actions" | "pages" | "user";
@@ -86,10 +88,11 @@ const ACTION_ITEMS: MenuItemConfig[] = [
   },
   {
     id: "upgrade_to_pro",
-    label: "Upgrade to Pro",
+    label: "Subscribe to GAIA Pro",
     icon: <CircleArrowUp02Icon width={18} height={18} color="#00bbff" />,
     path: "/pricing",
     hideWhenSubscribed: true,
+    hideWhenBillingDisabled: true,
   },
 ];
 

@@ -1,19 +1,11 @@
 """Built-in subagents that are not OAuth integrations.
 
-These provide subagent capabilities without requiring user OAuth. They are
-intentionally NOT in `OAUTH_INTEGRATIONS` so they don't leak into the
-marketplace, public integrations API, ChromaDB integration indexing, the
-Composio toolkit map, OAuth status checks, trigger search, or workflow
-generation.
-
-Lookups go through `agents/core/subagents/registry.py`, which combines
-these with OAuth-derived subagents into a single canonical view.
-
-If this list grows past ~3 entries, consider whether `Subagent` should
-acquire its own category/icon system instead of borrowing OAuth's.
-
-The `provider` field assumes no future OAuth integration claims the same
-provider string. Pick a unique value for each builtin.
+Intentionally NOT in OAUTH_INTEGRATIONS so they don't leak into the
+marketplace, public integrations API, ChromaDB indexing, Composio toolkit
+map, OAuth status checks, trigger search, or workflow generation. Lookups
+go through agents/core/subagents/registry.py, which combines these with
+OAuth-derived subagents into one canonical view. The provider field assumes
+no future OAuth integration claims the same string — pick a unique value.
 """
 
 from typing import Final
@@ -35,7 +27,6 @@ BUILTIN_SUBAGENTS: Final[tuple[Subagent, ...]] = (
             has_subagent=True,
             agent_name="docgen_agent",
             tool_space="docgen",
-            handoff_tool_name="call_docgen",
             domain="creating downloadable documents (PDF, Word/docx, PowerPoint/pptx, Excel/xlsx, and CSV) from a request and its source data",
             capabilities=(
                 "writing document source in the sandbox and compiling it with "
@@ -66,7 +57,6 @@ BUILTIN_SUBAGENTS: Final[tuple[Subagent, ...]] = (
             has_subagent=True,
             agent_name="gaia_knowledge_guide_agent",
             tool_space="gaia_knowledge_guide",
-            handoff_tool_name="call_gaia_knowledge_guide",
             domain="any question about GAIA itself: the product, company, agent system, integrations, pricing, architecture, philosophy, or anything else",
             capabilities=(
                 "exploring GAIA's own documentation to answer any question "

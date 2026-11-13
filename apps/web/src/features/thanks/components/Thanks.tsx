@@ -5,7 +5,10 @@ import { useEffect } from "react";
 
 import { type ToolCategory, toolCategories, tools } from "@/data/tools";
 import ToolCard from "@/features/thanks/components/ToolCard";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
+import { getImageDimensions } from "@/lib/imageDimensions";
+
+const BACKGROUND_LOGO = getImageDimensions("/images/logos/logo.webp");
 
 interface ToolMetadata {
   title: string | null;
@@ -22,7 +25,7 @@ interface ThanksProps {
 
 export default function Thanks({ toolsMetadata }: ThanksProps) {
   useEffect(() => {
-    trackEvent(ANALYTICS_EVENTS.THANKS_PAGE_VIEWED);
+    track("thanks:page_viewed", {});
   }, []);
 
   const toolsByCategory = toolCategories.reduce(
@@ -38,10 +41,11 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
       <div className="fixed top-0 left-0 z-0 flex h-screen w-full items-center justify-center opacity-5">
         <Image
           src="/images/logos/logo.webp"
-          alt="GAIA Logo"
-          className="scale-110 object-contain grayscale"
+          alt=""
+          width={BACKGROUND_LOGO.width}
+          height={BACKGROUND_LOGO.height}
+          className="absolute inset-0 h-full w-full scale-110 object-contain grayscale"
           sizes="100vw"
-          fill
         />
       </div>
 

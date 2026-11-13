@@ -1,9 +1,9 @@
 """Shape and render the summaries produced for user-uploaded files.
 
-`generate_file_summary` returns one of three shapes depending on the file type
+generate_file_summary returns one of three shapes depending on the file type
 (plain string for images/text, per-page models for documents). These helpers
-normalize that into the `(description, page_wise_summary)` pair stored in Mongo
-and render the human-readable `<file>.summary.md` sidecar.
+normalize that into the (description, page_wise_summary) pair stored in Mongo
+and render the human-readable <file>.summary.md sidecar.
 """
 
 from fastapi import HTTPException
@@ -16,16 +16,11 @@ GeneratedSummary = str | list[DocumentSummaryModel] | DocumentSummaryModel
 
 
 def process_summary(summary: object) -> tuple[str, PageWiseSummary]:
-    """Normalize a generated summary into `(description, page_wise_summary)`.
+    """Normalize a generated summary into (description, page_wise_summary).
 
-    - str            → (text, None)
-    - list[pages]    → (joined page summaries, [page dicts])
-    - single page    → (page summary, page dict)
-
-    Typed ``object`` rather than ``GeneratedSummary`` (the type ``generate_file_summary``
-    currently promises) so the trailing "unrecognized shape" branch stays a real,
-    reachable safety net if that union ever grows a case this function isn't
-    updated for, instead of silently becoming dead code.
+    Typed object rather than GeneratedSummary so the trailing "unrecognized
+    shape" branch stays a reachable safety net if that union ever grows a case
+    this function isn't updated for, instead of silently becoming dead code.
     """
     if isinstance(summary, str):
         return summary, None

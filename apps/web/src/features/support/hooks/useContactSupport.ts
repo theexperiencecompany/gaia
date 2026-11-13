@@ -1,9 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { apiErrorMessage } from "@/lib/api/errorMessage";
 import { toast } from "@/lib/toast";
 
-import { type SupportRequest, supportApi } from "../api/supportApi";
+import {
+  type PublicSupportRequestCreate,
+  type SupportRequestCreate,
+  supportApi,
+} from "../api/supportApi";
 import {
   ALLOWED_FILE_TYPES,
   FORM_VALIDATION,
@@ -17,10 +22,27 @@ export interface ContactFormData {
   attachments: File[];
 }
 
+/** Who to reply to when the sender has no session email, plus their Turnstile proof. */
+export type VisitorContact = Pick<
+  PublicSupportRequestCreate,
+  "email" | "name" | "turnstile_token"
+>;
+
 export interface ContactSupportInitialValues {
   type?: string;
   title?: string;
   description?: string;
+}
+
+function samePreset(
+  a: ContactSupportInitialValues | undefined,
+  b: ContactSupportInitialValues | undefined,
+): boolean {
+  return (
+    a?.type === b?.type &&
+    a?.title === b?.title &&
+    a?.description === b?.description
+  );
 }
 
 export function useContactSupport(initialValues?: ContactSupportInitialValues) {
@@ -31,11 +53,10 @@ export function useContactSupport(initialValues?: ContactSupportInitialValues) {
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // A new preset (fresh initialValues object) wipes edits + attachments —
-  // master reset the whole form on preset change; ESC/backdrop closes fire
-  // onOpenChange only, so the reset lives here, not in an effect.
+  // A changed preset wipes edits; the reset lives here, not in an effect.
+  // By value: callers pass a fresh object per render (identity looped, #301).
   const [lastInitialValues, setLastInitialValues] = useState(initialValues);
-  if (initialValues !== lastInitialValues) {
+  if (!samePreset(initialValues, lastInitialValues)) {
     setLastInitialValues(initialValues);
     setTextEdits({});
     setAttachments([]);
@@ -119,7 +140,8 @@ export function useContactSupport(initialValues?: ContactSupportInitialValues) {
     return true;
   };
 
-  const submitRequest = async (): Promise<boolean> => {
+  /** Submit through the session route, or the public Turnstile-gated one when a visitor contact is given. */
+  const submitRequest = async (visitor?: VisitorContact): Promise<boolean> => {
     if (!validateForm()) {
       return false;
     }
@@ -127,14 +149,20 @@ export function useContactSupport(initialValues?: ContactSupportInitialValues) {
     setIsSubmitting(true);
 
     try {
-      const requestData: SupportRequest = {
-        type: formData.type as "support" | "feature",
+      const requestData: SupportRequestCreate = {
+        type: formData.type as SupportRequestCreate["type"],
         title: formData.title.trim(),
         description: formData.description.trim(),
-        attachments: formData.attachments,
       };
 
-      const response = await supportApi.submitRequest(requestData);
+      const response = visitor
+        ? await supportApi.submitPublicRequest({
+            ...requestData,
+            email: visitor.email,
+            name: visitor.name || null,
+            turnstile_token: visitor.turnstile_token,
+          })
+        : await supportApi.submitRequest(requestData, formData.attachments);
 
       if (response.success) {
         const successMessage = response.ticket_id
@@ -149,7 +177,10 @@ export function useContactSupport(initialValues?: ContactSupportInitialValues) {
       }
     } catch (error) {
       console.error("Error submitting support request:", error);
-      toast.error(TOAST_MESSAGES.GENERIC_ERROR);
+      // The public route is silent, so its own message (a failed bot check, a rate limit) is shown here.
+      toast.error(
+        (visitor && apiErrorMessage(error)) || TOAST_MESSAGES.GENERIC_ERROR,
+      );
       return false;
     } finally {
       setIsSubmitting(false);

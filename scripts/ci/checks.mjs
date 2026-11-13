@@ -3,6 +3,10 @@
  * checks.mjs — the static hygiene gates over the TypeScript/JS surface.
  *
  * Subcommands:
+ *   biome               Biome over CHANGED_FILES (or the repo), failing on any
+ *                       error and on a dead biome-ignore (`suppressions/unused`,
+ *                       a warning biome itself never fails on). CI and
+ *                       `mise ci:local` both run this.
  *   file-sizes [--enforce-all] [--quiet]
  *                       File size gate. Default mode reports every file over
  *                       its target limit but only FAILS on the 1200-line hard
@@ -20,17 +24,89 @@
  *   evlog-map-bots [--json] [--min-score N] [--min-entries N] [--files-from F]
  *                       Observability score for the bots' wide-event entry
  *                       points. Implementation in lib/evlog-map-bots.mjs.
+ *   api-schema [--write]
+ *                       Regenerate apps/api/openapi.json and the TypeScript
+ *                       types in libs/shared/ts/src/api/generated, then fail
+ *                       if either differs from what is committed. --write
+ *                       regenerates without checking (what `mise api:types`
+ *                       runs).
+ *   analytics-catalog [--write]
+ *                       Regenerate analytics-catalog.json and the TypeScript
+ *                       event types in libs/shared/ts/src/analytics/generated
+ *                       from the Pydantic catalog, then fail if either differs
+ *                       from what is committed. --write is `mise analytics:types`.
+ *   cli-config-schema [--write]
+ *                       Regenerate the CLI's vendored config schema
+ *                       (packages/cli/src/lib/api-config-schema.generated.json)
+ *                       from the API's settings groups and capability table,
+ *                       then fail if it differs from what is committed.
+ *                       --write is `mise cli:schema`.
+ *   deploy-templates [--write]
+ *                       Regenerate deploy/coolify/gaia.yaml, render.yaml and
+ *                       deploy/proxy.Dockerfile from the self-host compose
+ *                       file, its Caddyfile and the CLI's machine secrets
+ *                       (lib/deploy_templates.py), then fail if any differs
+ *                       from what is committed. --write is `mise deploy:templates`.
+ *   doc-comments        Fail on a JSDoc block that narrates (>6 lines) or
+ *                       restates its declaration/@param, a run of more than
+ *                       3 // lines, or a banner inside a body. The TS half of
+ *                       tools/lints/docstring_slop.py + comment_slop.py;
+ *                       implementation in lib/doc-comments.mjs.
+ *   api-schema-types    Four rules over every .ts/.tsx outside the generated
+ *                       dir, each failing on the hand-written twin of a
+ *                       Pydantic model: a declaration NAMED after a component
+ *                       schema; any declaration at all inside an API-type
+ *                       directory (API_TYPE_DIRS) that is not a re-export or
+ *                       an alias of a generated name; a declaration whose
+ *                       FIELDS are a component schema's fields under another
+ *                       name; and an untyped `apiService` call in web feature
+ *                       code. The last two ratchet against the baselines in
+ *                       scripts/ci/baselines.
+ *   api-client-imports  Fail when a file outside apps/mobile/src/lib imports
+ *                       the raw mobile API client, ratcheted against a
+ *                       baseline. The web half of that boundary is Biome's
+ *                       style/noRestrictedImports, scoped by an override.
  *
  * Env contract: CHANGED_FILES (see lib/explicit-file-list.mjs) scopes the
  * file-walking gates to a lane's changed files; empty means full scan.
- * `duplication` reads GITHUB_BASE_REF for its diff base (default master).
+ * `duplication` reads GAIA_PR_BASE, then GITHUB_BASE_REF, for its diff base
+ * (default master).
  */
-import { execFileSync, execSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { execFileSync, execSync, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { runBotHandles } from "./lib/bot-handles.mjs";
+import { checkDocComments } from "./lib/doc-comments.mjs";
 import { explicitFileList } from "./lib/explicit-file-list.mjs";
+import {
+  OPENAPI_JSON,
+  cmdAnalyticsCatalog,
+  cmdApiSchema,
+  cmdCliConfigSchema,
+  cmdDeployTemplates,
+} from "./lib/generated-artifacts.mjs";
 import { runEvlogMapBots } from "./lib/evlog-map-bots.mjs";
+import {
+  BASELINES,
+  DTS_IGNORE_PATTERN,
+  GENERATED_DIR,
+  MOBILE_API_LIB,
+  MOBILE_IMPORTS_BASELINE,
+  MOBILE_SRC,
+  handWrittenDeclsIn,
+  isApiTypeDir,
+  isTestFile,
+  isWebFeatureFile,
+  rawClientImportLines,
+  readBaseline,
+  reportBaseline,
+  schemaComponents,
+  schemaFieldSets,
+  schemaTwinsIn,
+  shapeTwinsIn,
+  untypedCallLines,
+} from "./lib/api-contract.mjs";
 
 // ---------------------------------------------------------------------------
 // file-sizes
@@ -84,6 +160,8 @@ const IGNORE_PATTERNS = [
   /docs\//,
   /\.agents\//,
   /\.claude\//,
+  // Generated by `entire enable` and overwritten on reinstall (knip ignores it too).
+  /(^|\/)\.opencode\//,
 ];
 
 const shouldIgnore = (p) => IGNORE_PATTERNS.some((rx) => rx.test(p));
@@ -126,6 +204,23 @@ function sizeFiles(args) {
 }
 
 const countLines = (p) => readFileSync(p, "utf8").split("\n").length;
+
+function cmdBiome(argv) {
+  const files = explicitFileList(argv);
+  const result = spawnSync(
+    "pnpm",
+    ["exec", "biome", "check", "--no-errors-on-unmatched", ...(files.length ? files : ["."])],
+    { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
+  );
+  if (result.error) throw result.error;
+  const output = `${result.stdout}${result.stderr}`;
+  process.stdout.write(output);
+  if (output.includes("suppressions/unused")) {
+    console.error("biome: a dead biome-ignore no longer masks anything — delete it");
+    process.exit(1);
+  }
+  process.exit(result.status ?? 1);
+}
 
 function cmdFileSizes(argv) {
   const args = new Set(argv);
@@ -485,31 +580,51 @@ function cmdTypesLocation(argv) {
 }
 
 // ---------------------------------------------------------------------------
-// duplication
-//
-// Copy-paste gate that matches what SonarCloud actually measures.
-//
-// jscpd's own threshold is a percentage over the WHOLE repo, so it is ~0.8% and
-// never trips for a single PR — a green run there tells you nothing about the
-// SonarCloud duplication gate. SonarCloud instead gates on duplicated lines
-// among the lines a PR CHANGES (the diff vs the base branch).
-//
-// This reproduces that denominator: it runs jscpd, then maps every detected
-// clone's line ranges onto the lines this branch adds vs the base, and fails
-// when that ratio exceeds the limit.
-//
-// It is an estimate (jscpd's tokenizer differs from SonarCloud's), but it is the
-// only local/CI signal correlated with the gate. SonarCloud stays authoritative.
-//
-// Base branch is taken from GITHUB_BASE_REF (set automatically on GitHub Actions
-// pull requests); locally it defaults to master — the repo's only base branch.
+// doc-comments
+// ---------------------------------------------------------------------------
+
+function cmdDocComments(argv) {
+  // existsSync: `git ls-files` still lists a file deleted but not yet staged.
+  const findings = sizeFiles(argv)
+    .filter((file) => existsSync(file))
+    .flatMap((file) => checkDocComments(file));
+
+  if (findings.length > 0) {
+    console.error(`\n❌ doc-comments gate FAILED — ${findings.length} finding(s):\n`);
+    for (const f of findings) {
+      console.error(`  ${f.path}:${f.line}  ${f.code}: ${f.message}`);
+      console.error(`::error file=${f.path},line=${f.line}::doc-comments: ${f.code}: ${f.message}`);
+    }
+    console.error(
+      "\nWhy: a comment that narrates, decorates or restates the code costs every" +
+        " reader time and tells them nothing the code does not.",
+    );
+    console.error(
+      "\nFix: keep the summary and the one non-obvious constraint; the why belongs" +
+        " in the PR. There is no allowlist and no ignore comment for this gate.",
+    );
+    console.error('\nRule: .claude/rules/general.md § "Self-Documenting Code".');
+    process.exit(1);
+  }
+
+  console.log("✅ No doc-comment findings.");
+}
+
+// ---------------------------------------------------------------------------
+// duplication — clone lines among lines this branch ADDS (SonarCloud's gate, not jscpd's ~0.8% repo-wide)
 // ---------------------------------------------------------------------------
 
 const DUPLICATION_THRESHOLD = 3;
 
 function cmdDuplication() {
-  const BASE = process.env.GITHUB_BASE_REF
-    ? `origin/${process.env.GITHUB_BASE_REF}`
+  // GAIA_PR_BASE first: a stacked PR's payload names the trunk, not its parent,
+  // and a merge_group's base is a commit, not a branch — `changes.sh base-rev`
+  // owns turning either into a revision.
+  const baseRef = process.env.GAIA_PR_BASE || process.env.GITHUB_BASE_REF;
+  const BASE = baseRef
+    ? execFileSync("bash", ["scripts/ci/changes.sh", "base-rev"], {
+        encoding: "utf8",
+      }).trim()
     : "origin/master";
 
   const sh = (cmd) =>
@@ -637,6 +752,184 @@ function cmdDuplication() {
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// api-schema-types
+// ---------------------------------------------------------------------------
+
+// The size gates ignore every `.d.ts`; this gate must not. The generated file
+// is already exempt by GENERATED_DIR, so every other `.d.ts` is hand-written
+// and a twin declared in one drifts exactly like a twin declared in a `.ts`.
+const apiTypesShouldIgnore = (p) =>
+  IGNORE_PATTERNS.some(
+    (rx) => rx.source !== DTS_IGNORE_PATTERN.source && rx.test(p),
+  );
+
+const DECLARED_BASELINE = "api-declared-types.txt";
+const SHAPE_BASELINE = "api-shape-twins.txt";
+
+function cmdApiSchemaTypes(argv) {
+  const schemas = schemaComponents(OPENAPI_JSON);
+  const names = new Set(Object.keys(schemas));
+  const fieldSets = schemaFieldSets(schemas);
+  const declaredBaseline = readBaseline(DECLARED_BASELINE);
+  const shapeBaseline = readBaseline(SHAPE_BASELINE);
+  // existsSync: `git ls-files` still lists a file deleted but not yet staged.
+  const scanned = typesFiles(argv).filter(
+    (file) =>
+      !file.startsWith(GENERATED_DIR) &&
+      !apiTypesShouldIgnore(file) &&
+      existsSync(file),
+  );
+
+  const violations = [];
+  const untyped = [];
+  const declared = [];
+  const shaped = [];
+  const declaredSeen = new Set();
+  const shapeSeen = new Set();
+  for (const file of scanned) {
+    const src = readFileSync(file, "utf8");
+    const found = schemaTwinsIn(src, names);
+    if (found.length > 0) violations.push({ file, names: found });
+    if (isApiTypeDir(file) && !isTestFile(file)) {
+      for (const name of handWrittenDeclsIn(src, names)) {
+        const entry = `${file}:${name}`;
+        declaredSeen.add(entry);
+        if (!declaredBaseline.has(entry)) declared.push(entry);
+      }
+    }
+    if (!isTestFile(file)) {
+      for (const twin of shapeTwinsIn(src, fieldSets)) {
+        const entry = `${file}:${twin.name}=${twin.schema}`;
+        shapeSeen.add(entry);
+        if (!shapeBaseline.has(entry)) shaped.push({ entry, ...twin });
+      }
+    }
+    if (isWebFeatureFile(file)) {
+      const lines = untypedCallLines(file);
+      if (lines.length > 0) untyped.push({ file, lines });
+    }
+  }
+
+  if (declared.length > 0) {
+    console.log(
+      `\n❌ api-schema-types: ${declared.length} hand-declared type(s) in an API-type directory:\n`,
+    );
+    for (const entry of declared) console.log(`  ${entry}`);
+    console.log(
+      "\nWhy: these directories name the API contract and nothing else, so every type there" +
+        ' must be `export type { X } from "@gaia/shared/api/generated"` or `export type Y = X`' +
+        " naming a generated type. A declaration with fields of its own is a copy that drifts.",
+    );
+  }
+  if (shaped.length > 0) {
+    console.log(
+      `\n❌ api-schema-types: ${shaped.length} type(s) have the fields of an API model under another name:\n`,
+    );
+    for (const twin of shaped) {
+      console.log(
+        `  ${twin.entry} — ${twin.shared}/${twin.of} fields match ${twin.schema}`,
+      );
+    }
+    console.log(
+      "\nWhy: renaming a Pydantic model's shape does not make it a different type — it makes it" +
+        " a twin the generator cannot update. Import the generated type, or say why the shapes" +
+        ` genuinely differ by adding the line to ${BASELINES}${SHAPE_BASELINE}.`,
+    );
+  }
+  if (violations.length > 0) {
+    console.log(
+      `\n❌ api-schema-types: ${violations.length} file(s) hand-write a type that mirrors an API model:\n`,
+    );
+    for (const v of violations) {
+      for (const name of v.names) {
+        console.log(
+          `  ${v.file}: ${name} — import type { ${name} } from "@gaia/shared/api/generated"`,
+        );
+      }
+    }
+    console.log(
+      "\nWhy: a hand-written twin of a Pydantic model drifts the moment the model changes;" +
+        " the generated type is regenerated by `mise api:types` and cannot.",
+    );
+  }
+  if (untyped.length > 0) {
+    console.log(
+      `\n❌ api-schema-types: ${untyped.length} file(s) call the untyped apiService outside apps/web/src/lib/api:\n`,
+    );
+    for (const u of untyped) {
+      console.log(
+        `  ${u.file}:${u.lines.join(",")} — use \`api\` from "@/lib/api/typed" (the path-typed client)`,
+      );
+    }
+    console.log(
+      "\nWhy: apiService takes any URL and any type argument, so a typo in the path or a" +
+        " guessed response shape compiles; the typed client checks both against openapi.json.",
+    );
+  }
+  reportBaseline(DECLARED_BASELINE, declaredBaseline, declaredSeen);
+  reportBaseline(SHAPE_BASELINE, shapeBaseline, shapeSeen);
+  if (
+    violations.length > 0 ||
+    untyped.length > 0 ||
+    declared.length > 0 ||
+    shaped.length > 0
+  ) {
+    process.exit(1);
+  }
+  console.log(
+    "✅ No hand-written twins of API schema types; every web API call is path-typed.",
+  );
+}
+
+// ---------------------------------------------------------------------------
+// api-client-imports
+// ---------------------------------------------------------------------------
+
+// The mobile app's raw request engine, held by a baseline ratchet because its 124
+// live call sites would force a Biome rule off. The web half of the same boundary
+// is a Biome rule (style/noRestrictedImports) scoped outside apps/web/src/lib/api.
+
+
+function cmdApiClientImports(argv) {
+  const baseline = readBaseline(MOBILE_IMPORTS_BASELINE);
+  const scanned = typesFiles(argv).filter(
+    (file) =>
+      file.startsWith(MOBILE_SRC) &&
+      !file.startsWith(MOBILE_API_LIB) &&
+      !isTestFile(file) &&
+      existsSync(file),
+  );
+
+  const violations = [];
+  const seen = new Set();
+  for (const file of scanned) {
+    const lines = rawClientImportLines(file, readFileSync(file, "utf8"));
+    if (lines.length === 0) continue;
+    seen.add(file);
+    if (!baseline.has(file)) violations.push({ file, lines });
+  }
+
+  if (violations.length > 0) {
+    console.log(
+      `\n❌ api-client-imports: ${violations.length} file(s) import the raw mobile API client outside apps/mobile/src/lib:\n`,
+    );
+    for (const v of violations) {
+      console.log(`  ${v.file}:${v.lines.join(",")}`);
+    }
+    console.log(
+      "\nWhy: apiService takes any URL and any type argument, so a typo in the path or a guessed" +
+        " response shape compiles. Route the call through a typed client in apps/mobile/src/lib.",
+    );
+  }
+  reportBaseline(MOBILE_IMPORTS_BASELINE, baseline, seen);
+  if (violations.length > 0) process.exit(1);
+  console.log(
+    `✅ No new raw mobile API client imports (${seen.size} baselined call site file(s) left).`,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // dispatch
 // ---------------------------------------------------------------------------
@@ -652,14 +945,78 @@ function usage() {
       "  duplication                            copy-paste density on changed lines",
       "  evlog-map-bots [--json] [--min-score N] [--min-entries N] [--files-from F]",
       "                                         observability score for bot entry points",
+      "  api-schema [--write]                   regenerate openapi.json + TS types, fail on drift",
+      "  api-schema-types                       no hand-written twin of an API schema type, no untyped apiService call in web features",
+      "  analytics-catalog [--write]            regenerate the analytics catalog JSON + TS event types, fail on drift",
+      "  cli-config-schema [--write]            regenerate the CLI's vendored config schema, fail on drift",
+      "  deploy-templates [--write]             regenerate the Coolify/Render templates from the compose file, fail on drift",
+      "  doc-comments                           no narrating / restating JSDoc, comment runs, or in-body banners",
+      "  api-client-imports                     no raw mobile API client import outside apps/mobile/src/lib",
+      "  bot-handles                            every WhatsApp / Telegram / Discord link matches libs/shared/bot-identity.json",
     ].join("\n"),
   );
 }
 
 function main() {
+// next and @opennextjs/cloudflare are one unit: OpenNext's shims hard-code
+// which Next manifests they load, so a Next minor can satisfy the peer range
+// and still 500 at runtime (16.4 + 1.20.2, 2026-10-23).
+const FRAMEWORK_PAIR_FLOORS = {
+  "16.4": "1.20.12",
+};
+
+function parseVersion(v) {
+  return v.split(".").map((part) => Number.parseInt(part, 10) || 0);
+}
+
+function compareVersions(a, b) {
+  const [x, y] = [parseVersion(a), parseVersion(b)];
+  for (let i = 0; i < 3; i++) {
+    if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0) ? -1 : 1;
+  }
+  return 0;
+}
+
+function cmdFrameworkPair() {
+  const manifest = JSON.parse(readFileSync("apps/web/package.json", "utf8"));
+  const nextSpec = manifest.dependencies?.next;
+  const opennextSpec =
+    manifest.dependencies?.["@opennextjs/cloudflare"] ??
+    manifest.devDependencies?.["@opennextjs/cloudflare"];
+  if (!nextSpec || !opennextSpec) {
+    console.error("❌ apps/web must declare both next and @opennextjs/cloudflare");
+    process.exit(1);
+  }
+
+  // `exports` in both packages blocks the `/package.json` subpath, so read the
+  // installed manifest through node_modules directly.
+  const installed = (name) =>
+    JSON.parse(readFileSync(resolve("apps/web/node_modules", name, "package.json"), "utf8"));
+  const next = installed("next").version;
+  const opennext = installed("@opennextjs/cloudflare").version;
+
+  const [major, minor] = next.split(".");
+  const floor = FRAMEWORK_PAIR_FLOORS[`${major}.${minor}`];
+  if (floor && compareVersions(opennext, floor) < 0) {
+    console.error(
+      `❌ next ${next} needs @opennextjs/cloudflare >= ${floor} (installed ${opennext}). ` +
+        "Its manifest loader does not know this Next's manifest set, so routes will 500 at runtime.",
+    );
+    process.exit(1);
+  }
+
+  console.log(
+    `✅ framework pair: next ${next} + @opennextjs/cloudflare ${opennext}` +
+      (floor ? ` (floor ${floor})` : ""),
+  );
+}
+
   const sub = process.argv[2];
   const rest = process.argv.slice(3);
   switch (sub) {
+    case "biome":
+      cmdBiome(rest);
+      break;
     case "file-sizes":
       cmdFileSizes(rest);
       break;
@@ -674,6 +1031,33 @@ function main() {
       break;
     case "evlog-map-bots":
       runEvlogMapBots(rest);
+      break;
+    case "api-schema":
+      cmdApiSchema(rest);
+      break;
+    case "api-schema-types":
+      cmdApiSchemaTypes(rest);
+      break;
+    case "analytics-catalog":
+      cmdAnalyticsCatalog(rest);
+      break;
+    case "cli-config-schema":
+      cmdCliConfigSchema(rest);
+      break;
+    case "deploy-templates":
+      cmdDeployTemplates(rest);
+      break;
+    case "doc-comments":
+      cmdDocComments(rest);
+      break;
+    case "api-client-imports":
+      cmdApiClientImports(rest);
+      break;
+    case "bot-handles":
+      runBotHandles();
+      break;
+    case "framework-pair":
+      cmdFrameworkPair();
       break;
     default:
       console.error(`checks.mjs: unknown subcommand '${sub ?? ""}'`);

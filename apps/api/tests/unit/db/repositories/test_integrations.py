@@ -1,8 +1,8 @@
-"""Hermetic unit tests for ``IntegrationsRepository.find_custom_by_server_url``.
+"""Hermetic unit tests for IntegrationsRepository.find_custom_by_server_url.
 
-Dedup matches on the stored normalized key, so ``https://host/mcp/`` finds a
-row stored as ``https://host/mcp`` no matter which creation path wrote it.
-The driver is mocked at ``app.db.repositories.base.get_async_collection``;
+Dedup matches on the stored normalized key, so https://host/mcp/ finds a
+row stored as https://host/mcp no matter which creation path wrote it.
+The driver is mocked at app.db.repositories.base.get_async_collection;
 the real-Mongo proof (including the partial unique index) belongs in the
 contracts tier.
 """
@@ -62,6 +62,18 @@ async def test_lookup_normalizes_case_variants():
 
     (filter_,), _ = collection.find_one.await_args
     assert filter_["mcp_config.server_url_normalized"] == "https://host/mcp"
+
+
+async def test_community_browse_unknown_sort_falls_back_to_popular_order():
+    collection = MagicMock()
+    collection.aggregate.return_value.to_list = AsyncMock(return_value=[])
+    repo = IntegrationsRepository()
+
+    with patch("app.db.repositories.base.get_async_collection", return_value=collection):
+        await repo.community_browse("trending", "all", offset=0, limit=10)
+
+    (pipeline,), _ = collection.aggregate.call_args
+    assert pipeline[1] == {"$sort": {"clone_count": -1, "published_at": -1}}
 
 
 async def test_unusable_url_matches_nothing_without_querying():

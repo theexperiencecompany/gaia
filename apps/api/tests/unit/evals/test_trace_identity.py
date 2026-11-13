@@ -3,8 +3,8 @@
 Both properties failed in production and neither was caught, because both were
 checked by reading the writer rather than the result:
 
-* every case trace carried its run under the key ``run``, so an audit looking
-  for ``run_id`` concluded nothing was attributable and that the corrupt runs
+* every case trace carried its run under the key run, so an audit looking
+  for run_id concluded nothing was attributable and that the corrupt runs
   could not be excluded from a total;
 * seeding deduplicated by querying Opik for what already existed, which loses to
   the SDK's write buffering and left 61 duplicate traces.
@@ -51,17 +51,12 @@ def _trace(**overrides: object) -> CaseTrace:
 
 @pytest.mark.parametrize("key", REQUIRED_METADATA)
 def test_metadata_carries_every_key_the_check_requires(key: str) -> None:
-    """The writer and the verifier must not be able to drift apart.
-
-    Parametrising over ``REQUIRED_METADATA`` means adding a key to the check
-    without emitting it fails here, rather than silently failing every future
-    ingest.
-    """
+    """Parametrising over REQUIRED_METADATA means adding a key to the check without emitting it fails here, not on every future ingest."""
     assert _trace().metadata.get(key), f"trace metadata is missing {key!r}"
 
 
 def test_run_id_is_not_published_under_the_old_name() -> None:
-    """`run` was the name that made the data look absent. It must not come back."""
+    """Run was the name that made the data look absent. It must not come back."""
     metadata = _trace().metadata
     assert metadata["run_id"] == "capability-20260808-093921-98a7ac"
     assert "run" not in metadata
@@ -87,9 +82,7 @@ def test_a_trace_and_its_span_do_not_share_an_id() -> None:
 
 
 def test_different_cases_runs_and_projects_get_different_ids() -> None:
-    """The mutation check: if the id ignored any part of the identity, a re-seed
-    would collapse distinct executions onto one trace instead of duplicating
-    them — silent data loss, which is worse than the duplicates it replaced."""
+    """If the id ignored any part of the identity, a re-seed would collapse distinct executions onto one trace — silent data loss."""
     base = trace_id_for("gaia-capability", _trace())
     other_case = trace_id_for("gaia-capability", _trace(case_id="cap-todo-delete"))
     other_project = trace_id_for("gaia-quality", _trace())
@@ -123,17 +116,9 @@ def test_a_later_run_of_the_same_case_is_a_distinct_trace() -> None:
 
 
 def test_ids_are_stable_across_processes() -> None:
-    """Derived from a content hash, not from anything process-local.
-
-    Comparing two calls inside one process would pass even if the id were
-    memoised from a random seed drawn at import. Seeding runs in a fresh process
-    every time, so the id has to survive one — this computes it in a subprocess
-    and compares. If it did not hold, every re-seed would duplicate everything.
-    """
-    # The child builds the trace from the same literals rather than importing
-    # this module: importing it would pull pytest, ingest_check and litellm into
-    # a process whose only job is one hash, and the SDK-free ``trace_id_for``
-    # is exactly what seeding relies on.
+    """Derived from a content hash, not from anything process-local — computed in a subprocess since seeding runs in a fresh one."""
+    # Built from the same literals rather than importing this module, which
+    # would pull pytest, ingest_check and litellm into a one-hash process.
     source = (
         "import json;"
         "from scripts.evals.core.opiksink import trace_id_for;"
@@ -155,7 +140,7 @@ def test_ids_are_stable_across_processes() -> None:
 
 
 def test_uuid7_derivation_matches_the_sdk() -> None:
-    """``_uuid4_to_uuid7`` is a copy of the SDK's; a drift would re-key every trace."""
+    """_uuid4_to_uuid7 is a copy of the SDK's; a drift would re-key every trace."""
     from datetime import UTC, datetime
     import uuid
 

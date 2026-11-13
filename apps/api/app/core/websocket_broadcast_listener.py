@@ -1,6 +1,6 @@
 """One shared per-pod subscription that delivers user WebSocket broadcasts.
 
-Every replica subscribes to ``WEBSOCKET_BROADCAST_CHANNEL`` and writes each
+Every replica subscribes to WEBSOCKET_BROADCAST_CHANNEL and writes each
 message to the sockets it happens to hold; replicas that hold none ignore it.
 This is what makes a broadcast raised anywhere — another replica's request
 handler, an ARQ worker, a scheduler — reach a user regardless of which replica

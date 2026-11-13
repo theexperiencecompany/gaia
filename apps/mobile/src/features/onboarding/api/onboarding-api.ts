@@ -1,8 +1,17 @@
+import type {
+  OnboardingPhaseUpdateRequest,
+  OnboardingPhaseUpdateResponse,
+  OnboardingStatusResponse,
+} from "@gaia/shared/api/generated";
 import { apiService } from "@/lib/api";
-import type { OnboardingStatus } from "../types";
 
 export const getOnboardingStatus = () =>
-  apiService.get<OnboardingStatus>("/onboarding/status");
+  apiService.get<OnboardingStatusResponse>("/onboarding/status");
 
-export const updateOnboardingPhase = (phase: string, completed: boolean) =>
-  apiService.post("/onboarding/phase", { phase, completed });
+/** Reports a wizard step the app reached; the server stamps and counts it once per onboarding run. */
+export const reportOnboardingStep = (
+  phase: OnboardingPhaseUpdateRequest["phase"],
+) =>
+  apiService.post<OnboardingPhaseUpdateResponse>("/onboarding/phase", {
+    phase,
+  });

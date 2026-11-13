@@ -1,26 +1,13 @@
 /**
- * The early-bird offer, in one place.
+ * The early-bird offer's terms, in one place.
  *
- * The founder's letter sells it, so the code, the percentage, the terms and the
- * deadline live here rather than inside that feature. If any of it changes, it
- * changes once.
- *
- * The percentage and the deadline must match the Dodo coupon; the coupon is
+ * The founder's letter sells it. The code itself is a server setting
+ * (FOUNDER_LETTER_DISCOUNT_CODE, read from GET /payments/discount-codes); the
+ * percentage and the deadline here must match that Dodo coupon. The coupon is
  * the authority, and a mismatch means a reader gets a dead code at checkout.
  */
 
-/** Must exist as a coupon in Dodo Payments, in the environment being served. */
-export const OFFER_CODE = "THANKYOU40";
-
 export const OFFER_PERCENT = 40;
-
-/**
- * The one number worth putting in the sentence. A year already costs ten months
- * of the monthly rate (the standing annual discount); 40% off that leaves six
- * months, so the reader saves six. Recompute if either the annual discount or
- * OFFER_PERCENT moves.
- */
-export const OFFER_YEARLY_NOTE = "On yearly that's six months free.";
 
 /**
  * The mechanics, kept out of the sentence and set under the button where terms

@@ -248,7 +248,7 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
                                     {formatEventTime(
                                       new Date(eventPos.event.start.dateTime),
                                     )}{" "}
-                                    –{" "}
+                                    to{" "}
                                     {formatEventTime(
                                       new Date(eventPos.event.end.dateTime),
                                     )}

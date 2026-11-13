@@ -26,11 +26,18 @@ export function toIntegration(item: MyIntegrationItem): Integration {
     isFeatured: item.isFeatured,
     displayPriority: item.displayPriority,
     available: item.available,
+    instanceSetupRequired: item.instanceSetupRequired,
+    origin: item.origin,
     toolCount: item.toolCount,
     iconUrl: item.iconUrl ?? undefined,
     isPublic: item.isPublic ?? undefined,
     createdBy: item.createdBy ?? undefined,
-    creator: item.creator ?? undefined,
+    creator: item.creator
+      ? {
+          name: item.creator.name ?? null,
+          picture: item.creator.picture ?? null,
+        }
+      : undefined,
     slug: item.slug ?? "",
   };
 }

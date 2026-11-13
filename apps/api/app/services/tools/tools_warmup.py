@@ -1,13 +1,14 @@
 """Tools registry warmup.
 
-Indexes the provider-tool catalog at startup so the first `/tools` and
-`retrieve_tools` calls don't pay the Composio-catalog cold start. Per-user
-`/tools` responses cache on demand under `tools:user:{user_id}:*`, so there is
+Indexes the provider-tool catalog at startup so the first /tools and
+retrieve_tools calls don't pay the Composio-catalog cold start. Per-user
+/tools responses cache on demand under tools:user:{user_id}:*, so there is
 no global response to pre-warm.
 """
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.log_tags import LogTag
+from app.utils.exceptions import ProviderNotConfiguredError
 from shared.py.wide_events import log
 
 
@@ -17,7 +18,7 @@ async def warmup_tools_cache() -> None:
     Does NOT materialize the ~1.6k catalog tools into StructuredTools — that eager
     wrapping was the dominant source of resident memory. Executable tools are built
     lazily per provider when a subagent is first created. Non-fatal: on failure the
-    catalog is indexed on first use instead.
+    catalog is indexed on first use instead; without a Composio key there is none.
     """
     log.set(component="tools_warmup", operation="warmup_tools_cache")
     log.info(f"{LogTag.TOOL} Warming up tools cache...")
@@ -27,6 +28,8 @@ async def warmup_tools_cache() -> None:
         log.info(
             f"{LogTag.TOOL} Provider catalog metadata indexed (tools materialized lazily on use)"
         )
+    except ProviderNotConfiguredError:
+        log.info(f"{LogTag.TOOL} Composio is not configured; provider catalog not indexed")
     except Exception as e:
         log.warning(
             f"{LogTag.TOOL} Tools catalog warmup failed (non-fatal)",

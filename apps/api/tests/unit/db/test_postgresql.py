@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.db import SCHEMA_BOOTSTRAP_LOCK_ID
 from app.constants.log_tags import LogTag
 from app.db.postgresql import (
     Base,
@@ -28,8 +29,8 @@ from app.db.postgresql import (
 def _get_original_init_fn():
     """Extract the original async function wrapped by @lazy_provider.
 
-    The decorator replaces the function with ``register_provider`` — a closure
-    whose ``__wrapped__`` attribute is not set.  The original coroutine function
+    The decorator replaces the function with register_provider — a closure
+    whose __wrapped__ attribute is not set.  The original coroutine function
     is captured in the closure and can be retrieved from the providers registry
     after calling the registration helper once.
     """
@@ -285,6 +286,25 @@ class TestInitPostgresqlEngine:
             )
             assert result is mock_engine
 
+    async def test_the_engine_keeps_bound_values_out_of_its_errors(self) -> None:
+        """A DBAPIError's text otherwise carries its parameters: a user's search query, verbatim."""
+        mock_engine = MagicMock()
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
+        mock_ctx.__aexit__ = AsyncMock(return_value=None)
+        mock_engine.begin.return_value = mock_ctx
+
+        with (
+            patch("app.db.postgresql.settings") as mock_settings,
+            patch("app.db.postgresql.create_async_engine", return_value=mock_engine) as create,
+            patch("app.db.postgresql.log"),
+        ):
+            mock_settings.POSTGRES_URL = "postgresql://localhost/test"
+
+            await _get_original_init_fn()()
+
+        assert create.call_args.kwargs["hide_parameters"] is True
+
     async def test_creates_tables_on_init(self) -> None:
         """Startup runs the three schema steps, in order."""
         mock_engine = MagicMock()
@@ -303,15 +323,37 @@ class TestInitPostgresqlEngine:
 
             await _get_original_init_fn()()
 
-            # Named, not counted: _ensure_added_columns adds columns introduced
-            # after a table already existed (memories.shelf_life), and a startup
-            # that silently stopped running it would leave every such column
-            # missing on an existing database.
+            # Named, not counted: _ensure_added_columns backfills columns added
+            # after a table existed (memories.shelf_life) on existing databases.
             assert [call.args[0] for call in mock_conn.run_sync.await_args_list] == [
                 Base.metadata.create_all,
                 _ensure_added_columns,
                 _ensure_timestamptz_columns,
             ]
+
+    async def test_schema_bootstrap_takes_the_advisory_lock_before_create_all(self) -> None:
+        """Concurrent starters must not race CREATE TYPE; the lock is the transaction's first statement."""
+        mock_engine = MagicMock()
+        mock_conn = AsyncMock()
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_ctx.__aexit__ = AsyncMock(return_value=None)
+        mock_engine.begin.return_value = mock_ctx
+
+        with (
+            patch("app.db.postgresql.settings") as mock_settings,
+            patch("app.db.postgresql.create_async_engine", return_value=mock_engine),
+            patch("app.db.postgresql.log"),
+        ):
+            mock_settings.POSTGRES_URL = "postgresql://localhost/test"
+
+            await _get_original_init_fn()()
+
+        first = mock_conn.mock_calls[0]
+        assert first[0] == "execute"
+        statement, params = first.args
+        assert str(statement) == "SELECT pg_advisory_xact_lock(:lock_id)"
+        assert params == {"lock_id": SCHEMA_BOOTSTRAP_LOCK_ID}
 
     async def test_engine_pool_configuration(self) -> None:
         """Engine should be created with expected pool settings."""

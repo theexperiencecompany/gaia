@@ -17,10 +17,10 @@ from app.models.agent_models import agent_configurable
 
 
 class MediaDelivery(Enum):
-    """The transform ``MediaAdapter`` applies to a *tool result's* images for the
-    active lane — one strategy per lane, picked from what that lane's model can
-    see. Images the user themselves attached are never touched; this only governs
-    media a tool produced.
+    """The transform MediaAdapter applies to a *tool result's* images for the active lane.
+
+    One strategy per lane, picked from what that lane's model can see. Images
+    the user themselves attached are never touched.
     """
 
     # Leave them in the tool result — the model reads them there.
@@ -30,7 +30,7 @@ class MediaDelivery(Enum):
 
 
 def active_lane(config: RunnableConfig) -> tuple[str, str]:
-    """The (provider, model) this run will actually call."""
+    """Return the (provider, model) this run will actually call."""
     lane = ModelLane.from_configurable(agent_configurable(config).get(LANE_FIELD_ID))
     if lane is None:
         return DEFAULT_LLM_PROVIDER, DEFAULT_MODEL_NAME
@@ -38,20 +38,12 @@ def active_lane(config: RunnableConfig) -> tuple[str, str]:
 
 
 async def resolve_media_delivery(config: RunnableConfig) -> MediaDelivery:
-    """The delivery strategy for the active lane's tool-result images.
+    """Return the delivery strategy for the active lane's tool-result images.
 
-    Direct Gemini is multimodal all the way down into tool results. OpenRouter
-    models are looked up in the live catalog. Unknown providers and catalog
-    misses fall back to the text description — never to a provider request that
-    will be rejected.
-
-    OpenRouter accepts media inside a tool message (its spec types tool content
-    as the same union the user role gets), but whether the *upstream* model
-    honours it is per-model and not exposed anywhere in the models API — two
-    models can be byte-identical in `architecture` and still differ. Older
-    OpenAI-family models 400 on it. That capability is therefore established by
-    running ``tests/model_onboarding`` before a model is seeded, not by a lookup
-    at request time.
+    Direct Gemini is multimodal into tool results; OpenRouter models are
+    looked up in the live catalog. Unknown/miss falls back to text, never a
+    request that will be rejected — media support is per-model and unlisted
+    by the models API, so it's established via tests/model_onboarding.
     """
     provider, model = active_lane(config)
     if provider == GEMINI_PROVIDER:

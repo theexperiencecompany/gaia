@@ -1,0 +1,136 @@
+"""A mutation shard must run where its mapped tests can actually connect.
+
+The contract tier is in the mutation test set, and its fixtures skip without
+USE_REAL_SERVICES=1 and live Mongo/Redis — or, worse, error on connect if the
+variable is set and the services are not there, and an erroring test kills
+every mutant it touches.
+
+The composite that starts those services cannot run on the lint pool, and that
+is arithmetic rather than policy: those runner instances are numbered 13-20 and
+`test-services.sh prepare` serves lanes 0-12 (MAX_LANE — Redis is provisioned
+for 13 stripes), so it rejects the lane and the job dies in setup. All six
+mutation shards died that way on run 34584038269, the first run after the
+composite was added to the whole job.
+
+So every shard runs on the services-capable pool (select-runner's `services`
+output), `mutation.py plan` marks each shard `services` or `unit`, and every
+services-only step is conditioned on that marker. The shards used to be split
+across both pools by the marker, until three stacked PRs put nine 30-minute
+unit shards on the nine lint instances while seven services-pool instances sat
+idle, and every short lint lane queued behind them. These tests pin each part,
+because any one of them alone either puts a shard back on a runner that cannot
+serve it or starts services a shard has no use for.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from doc_shape import mapping, sequence
+import pytest
+import yaml
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+CI_YML = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+
+SERVICES_POOL = "env.SHARD_POOL == 'services'"
+UNIT_POOL = "env.SHARD_POOL != 'services'"
+SELECTION = "select-runner"
+# The pool the service-backed slices already use; the only one whose instances
+# test-services.sh will serve.
+SERVICES_LABEL = "gaia-home"
+
+
+@pytest.fixture(scope="module")
+def workflow() -> dict[str, Any]:
+    return mapping(yaml.safe_load(CI_YML.read_text()))
+
+
+@pytest.fixture(scope="module")
+def shard(workflow: dict[str, Any]) -> dict[str, Any]:
+    return mapping(workflow["jobs"]["test-mutation"])
+
+
+@pytest.fixture(scope="module")
+def shard_steps(shard: dict[str, Any]) -> list[dict[str, Any]]:
+    return sequence(shard["steps"])
+
+
+def _step(steps: list[dict[str, Any]], key: str, value: str) -> dict[str, Any]:
+    for step in steps:
+        if value in str(step.get(key, "")):
+            return step
+    raise AssertionError(f"no step whose {key} contains {value!r}")
+
+
+def test_the_selection_probes_the_pool_that_can_serve_services(workflow: dict[str, Any]) -> None:
+    job = workflow["jobs"][SELECTION]
+    pick = _step(job["steps"], "uses", "./.github/actions/select-runner")
+
+    assert pick["with"]["runner-label"] == f"${{{{ inputs.runner_label || '{SERVICES_LABEL}' }}}}"
+    assert "services" in job["outputs"]
+
+
+def test_the_selection_runs_the_selector_under_test(workflow: dict[str, Any]) -> None:
+    # The commit under test, so a PR that changes the selector's outputs runs
+    # that selector; a master pin broke every job routed through new outputs.
+    checkout = _step(workflow["jobs"][SELECTION]["steps"], "uses", "actions/checkout@")
+
+    assert "ref" not in checkout["with"]
+    assert checkout["with"]["persist-credentials"] is False
+
+
+def test_every_shard_runs_on_the_services_pool(shard: dict[str, Any]) -> None:
+    assert shard["runs-on"] == f"${{{{ fromJSON(needs.{SELECTION}.outputs.services) }}}}", (
+        "a unit shard on the light pool holds an instance for 30 minutes; the "
+        "short lanes that pool exists for queue behind it"
+    )
+
+
+def test_the_selection_is_declared_as_a_need(shard: dict[str, Any]) -> None:
+    # `runs-on` is resolved before the job starts; an output from a job not in
+    # `needs` evaluates to empty and the shard lands on a nameless runner.
+    assert SELECTION in shard["needs"]
+
+
+def test_only_a_services_shard_starts_the_services(shard_steps: list[dict[str, Any]]) -> None:
+    composite = _step(shard_steps, "uses", "./.github/actions/setup-python-test-env")
+
+    assert composite.get("if") == SERVICES_POOL, (
+        "unconditional, every unit shard would bring up Mongo and Redis it "
+        "never connects to and hold a test-services lane for the whole run"
+    )
+
+
+def test_a_unit_shard_still_gets_a_python_environment(
+    shard_steps: list[dict[str, Any]],
+) -> None:
+    # It skips the services composite, so it installs the way the lint lanes
+    # do — and it must still install SOMETHING: mutmut and pytest come from
+    # the project venv.
+    setup_uv = _step(shard_steps, "uses", "./.github/actions/setup-uv")
+    sync = _step(shard_steps, "run", "uv sync")
+
+    assert setup_uv.get("if") == UNIT_POOL
+    assert sync.get("if") == UNIT_POOL
+
+
+def test_only_a_services_shard_hands_the_namespace_back(
+    shard_steps: list[dict[str, Any]],
+) -> None:
+    # Both halves matter: a services shard that keeps its lane leaks it until
+    # the janitor runs, and a unit shard that releases one it never claimed
+    # fails in teardown — which is how a lane goes red having passed.
+    for fragment in ("test-services.sh down", "embedding-sidecar.sh stop"):
+        step = _step(shard_steps, "run", fragment)
+        assert step.get("if") == f"always() && {SERVICES_POOL}", (
+            f"{fragment} runs on {step.get('if')!r}; it belongs to the services pool only"
+        )
+
+
+def test_the_gate_fails_when_the_selection_does(workflow: dict[str, Any]) -> None:
+    # Without this, a failed selection skips every shard, and `consolidate`
+    # reads a skipped lane as a legitimate skip — a green gate with the
+    # repository modules unmutated.
+    assert SELECTION in workflow["jobs"]["quality-gate"]["needs"]

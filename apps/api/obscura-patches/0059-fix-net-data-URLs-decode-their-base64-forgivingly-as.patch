@@ -1,0 +1,77 @@
+From b7b29f231b01c9258a5de634b52afad32a79fe7a Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 07:47:19 +0530
+Subject: [PATCH] fix(net): data: URLs decode their base64 forgivingly, as
+ browsers do
+
+The native data: URL decoder (documents, classic and module scripts)
+required canonical padding, so a payload without its trailing '=' or with
+leftover bits after the last byte decoded to nothing: the page or script
+was empty. WHATWG forgiving-base64 accepts both; a payload of one leftover
+character, padding mid-stream or a non-base64 character still fails.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-net/src/data_url.rs | 38 ++++++++++++++++++++++++++++--
+ 1 file changed, 36 insertions(+), 2 deletions(-)
+
+diff --git a/crates/obscura-net/src/data_url.rs b/crates/obscura-net/src/data_url.rs
+index ba13961..a1460ea 100644
+--- a/crates/obscura-net/src/data_url.rs
++++ b/crates/obscura-net/src/data_url.rs
+@@ -2,7 +2,19 @@
+ //! (navigation, classic scripts, module scripts) decodes it locally instead of
+ //! fetching it.
+ 
+-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
++use base64::alphabet::STANDARD;
++use base64::engine::general_purpose::{GeneralPurpose, GeneralPurposeConfig};
++use base64::engine::DecodePaddingMode;
++use base64::Engine as _;
++
++/// WHATWG forgiving-base64 decode, which data: URLs use: padding is optional
++/// and leftover bits after the last full byte are ignored.
++const FORGIVING_BASE64: GeneralPurpose = GeneralPurpose::new(
++    &STANDARD,
++    GeneralPurposeConfig::new()
++        .with_decode_padding_mode(DecodePaddingMode::Indifferent)
++        .with_decode_allow_trailing_bits(true),
++);
+ 
+ /// The body of a `data:` URL, or `None` when `uri` is not one or its base64
+ /// payload is malformed. A fragment is not part of the body.
+@@ -17,7 +29,7 @@ pub fn decode_data_uri(uri: &str) -> Option<Vec<u8>> {
+             .into_iter()
+             .filter(|c| !c.is_ascii_whitespace())
+             .collect();
+-        BASE64.decode(cleaned).ok()
++        FORGIVING_BASE64.decode(cleaned).ok()
+     } else {
+         Some(percent_decode(payload))
+     }
+@@ -51,3 +63,25 @@ fn hex_val(b: u8) -> Option<u8> {
+         _ => None,
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::decode_data_uri;
++
++    #[test]
++    fn base64_payloads_decode_forgivingly() {
++        for (uri, body) in [
++            ("data:text/plain;base64,YWJj", Some(&b"abc"[..])),
++            ("data:text/plain;base64,YWI", Some(&b"ab"[..])),
++            ("data:text/plain;base64,YWI=", Some(&b"ab"[..])),
++            ("data:text/plain;base64,YQ", Some(&b"a"[..])),
++            ("data:text/plain;base64,YR", Some(&b"a"[..])),
++            ("data:text/plain;base64,Y W J j", Some(&b"abc"[..])),
++            ("data:text/plain;base64,Y", None),
++            ("data:text/plain;base64,YQ==YQ==", None),
++            ("data:text/plain;base64,Y$Jj", None),
++        ] {
++            assert_eq!(decode_data_uri(uri).as_deref(), body, "{uri}");
++        }
++    }
++}

@@ -1,12 +1,8 @@
 /**
- * Pure navigation policy for the main window, split out from the electron-bound
- * {@link guardNavigation} so it can be unit-tested without the electron runtime.
- *
- * - `"allow"` — same-origin as one of the app's known-good origins; let it navigate.
- * - `"open-external"` — a different http(s) origin; block in-window, open in the
- *   OS browser instead.
- * - `"block"` — malformed, or a non-http(s) scheme (mailto:, javascript:, custom
- *   protocols); block outright and do not hand it to the OS.
+ * Pure navigation policy for the main window, split out from {@link guardNavigation}
+ * for unit-testing without electron. "allow" = same origin as a known-good origin;
+ * "open-external" = a different http(s) origin (open in the OS browser instead);
+ * "block" = malformed or a non-http(s) scheme (mailto:, javascript:, custom).
  */
 export type NavigationDecision = "allow" | "open-external" | "block";
 

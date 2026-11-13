@@ -18,17 +18,14 @@ class WebSocketBroadcastError(RuntimeError):
 class WebSocketManager:
     """The user WebSockets *this* process holds, plus the publisher that reaches the rest.
 
-    Sending is never a direct write. ``broadcast_to_user`` only publishes to
-    ``WEBSOCKET_BROADCAST_CHANNEL``; every replica's
-    ``websocket_broadcast_listener`` picks the message up and calls
-    ``deliver_local`` on its own sockets. That holds for the publishing replica
-    too — it delivers through its own subscription like any other.
+    Sending is never a direct write: broadcast_to_user only publishes to
+    WEBSOCKET_BROADCAST_CHANNEL, and every replica's websocket_broadcast_listener
+    calls deliver_local on its own sockets — including the publishing replica,
+    which delivers through its own subscription like any other.
 
-    Both halves of that are load-bearing. Publishing (rather than writing
-    locally) is what lets a broadcast raised on replica A or in an ARQ worker
-    reach a user whose socket lives on replica B. *Only* publishing is what
-    keeps the publishing replica from delivering the same message twice, once
-    directly and once off its own subscription.
+    Publishing (not writing locally) is what lets a broadcast raised on
+    replica A or in an ARQ worker reach a user on replica B, and is what
+    keeps the publishing replica from delivering the same message twice.
     """
 
     _instance: ClassVar["WebSocketManager | None"] = None
@@ -48,7 +45,7 @@ class WebSocketManager:
             self.initialized: bool = True
 
     def add_connection(self, user_id: str, websocket: WebSocket) -> None:
-        """Add a WebSocket connection for a user"""
+        """Add a WebSocket connection for a user."""
         if user_id not in self.connections:
             self.connections[user_id] = set()
         self.connections[user_id].add(websocket)
@@ -56,7 +53,7 @@ class WebSocketManager:
         log.info(f"{LogTag.STARTUP} Added WebSocket connection for user", user_id=user_id)
 
     def remove_connection(self, user_id: str, websocket: WebSocket) -> None:
-        """Remove a WebSocket connection for a user"""
+        """Remove a WebSocket connection for a user."""
         if user_id in self.connections:
             self.connections[user_id].discard(websocket)
             if not self.connections[user_id]:
@@ -113,5 +110,5 @@ websocket_manager = WebSocketManager()
 
 
 def get_websocket_manager() -> WebSocketManager:
-    """Get the singleton instance of WebSocketManager"""
+    """Get the singleton instance of WebSocketManager."""
     return websocket_manager

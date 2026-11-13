@@ -170,7 +170,7 @@
     tool_calls:
       - {tool: create_project, args: {name: "Wedding"}}
       - {tool: create_todo}
-      - {tool: add_subtask, min_calls: 3}
+      - {tool: add_checklist_item, min_calls: 3}
       - {tool: create_reminder_tool, args: {scheduled_at: "16:00"}}
     end_state:
       projects: [{count: 1}, {name: "wedding"}]

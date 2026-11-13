@@ -4,17 +4,19 @@ import type React from "react";
 
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
-import { useSendMessage } from "@/hooks/useSendMessage";
+import { sendMessage } from "@/features/chat/stream/sendMessage";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import {
   useComposerFiles,
   useComposerIsUploading,
   useComposerModeSelection,
+  useComposerStore,
   useComposerTextActions,
   useComposerUI,
   useInputText,
+  useReplyToMessage,
 } from "@/stores/composerStore";
-import { useReplyToMessage } from "@/stores/replyToMessageStore";
-import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
+import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 interface UseComposerSubmitParams {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -46,9 +48,9 @@ export function useComposerSubmit({
   const { selectedCalendarEvent, clearSelectedCalendarEvent } =
     useCalendarEventSelection();
   const { replyToMessage, clearReplyToMessage } = useReplyToMessage();
-  const { autoSend } = useWorkflowSelectionStore();
-
-  const sendMessage = useSendMessage();
+  const autoSend = useComposerStore((state) => state.workflowAutoSend);
+  const { isPaid, isUnknown: isSubscriptionStatusUnknown } = useIsPaid();
+  const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
 
   const handleFormSubmit = (e?: React.FormEvent<HTMLFormElement>) => {
     if (e) e.preventDefault();
@@ -70,7 +72,15 @@ export function useComposerSubmit({
     ) {
       return;
     }
-    // Note: Loading state is now set in useSendMessage AFTER user message is persisted
+
+    // GAIA is paid-only: block send with the paywall unless subscription
+    // status is unknown (cold cache / rehydrating), in which case let it
+    // proceed — the backend's 402 on chat-stream is the backstop.
+    if (!isSubscriptionStatusUnknown && !isPaid) {
+      openUpgradeModal(undefined, { source: "composer_submit" });
+      return;
+    }
+    // Note: Loading state is now set in sendMessage AFTER user message is persisted
     // This ensures the loading indicator appears AFTER the user message in the UI
 
     sendMessage(inputText, {
@@ -80,8 +90,9 @@ export function useComposerSubmit({
       selectedWorkflow,
       selectedCalendarEvent,
       replyToMessage,
+    }).catch((error) => {
+      console.error("Chat send failed", error);
     });
-
     clearInputText();
     clearAllFiles();
     clearToolSelection();

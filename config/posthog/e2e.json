@@ -1,0 +1,5 @@
+{
+  "$comment": "The dedicated gaia-test PostHog organization's project, which `mise analytics:e2e` sends to and queries. Never the prod project: config/posthog/project.json names that one.",
+  "host": "https://us.posthog.com",
+  "project_id": 652217
+}

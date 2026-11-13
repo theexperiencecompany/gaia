@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useUser } from "@/features/auth/hooks/useUser";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 
 import {
   clearPendingCheckout,
@@ -17,7 +17,7 @@ import { useDodoPayments } from "./useDodoPayments";
  * to Dodo; on failure the auth gates fall through to normal onboarding.
  */
 export const useCheckoutResume = () => {
-  const user = useUser();
+  const user = useCurrentUser();
   const { createSubscriptionAndRedirect } = useDodoPayments();
   const hasFired = useRef(false);
 
@@ -26,7 +26,9 @@ export const useCheckoutResume = () => {
     const planId = readPendingCheckout();
     if (!planId) return;
     hasFired.current = true;
-    void createSubscriptionAndRedirect(planId).finally(() => {
+    void createSubscriptionAndRedirect(planId, {
+      source: "checkout_resume",
+    }).finally(() => {
       clearPendingCheckout();
     });
   }, [user.userId, createSubscriptionAndRedirect]);

@@ -1,0 +1,185 @@
+From 351c9e5077c13b696160f82e74069c3c707b6cdc Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 04:43:14 +0530
+Subject: [PATCH] test: isolate the tests that change process-wide state, and
+ keep a data URL's fragment out of its HTML
+
+Three groups failed on every run, upstream included, so the suites could not
+gate a build:
+- child_frame_scripts.rs: the frame-cap test set OBSCURA_MAX_LIVE_FRAMES=0
+  for the whole test process, and every frame test that ran after it loaded
+  no frames. It now lives in its own test binary.
+- configured_font_directory_loads_nested_fonts_and_skips_symlinks: font
+  directories configure a process-wide database that only the first engine
+  builds, which another test had usually built already. The check now runs
+  in a fresh copy of the test binary.
+- css_animation_drives_autonomous_screencast_frames_until_completion: its
+  data: URL wrote `#cover`, and `#` starts the URL's fragment, so the
+  document ended before the animated element's rule. It is written %23.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-cdp/src/domains/page.rs      |  2 +-
+ crates/obscura-render/src/inline.rs         | 17 +++++
+ crates/obscura/tests/child_frame_cap.rs     | 73 +++++++++++++++++++++
+ crates/obscura/tests/child_frame_scripts.rs | 26 --------
+ 4 files changed, 91 insertions(+), 27 deletions(-)
+ create mode 100644 crates/obscura/tests/child_frame_cap.rs
+
+diff --git a/crates/obscura-cdp/src/domains/page.rs b/crates/obscura-cdp/src/domains/page.rs
+index ec72103..9f8f497 100644
+--- a/crates/obscura-cdp/src/domains/page.rs
++++ b/crates/obscura-cdp/src/domains/page.rs
+@@ -2560,7 +2560,7 @@ mod tests {
+         handle(
+             "navigate",
+             &json!({
+-                "url": "data:text/html,<html style='margin:0'><head><style>@keyframes hide{from{opacity:1}to{opacity:0}}#cover{width:80px;height:60px;background:red;animation:hide 100ms linear forwards}</style></head><body style='margin:0;background:lime'><div id=cover></div></body></html>",
++                "url": "data:text/html,<html style='margin:0'><head><style>@keyframes hide{from{opacity:1}to{opacity:0}}%23cover{width:80px;height:60px;background:red;animation:hide 100ms linear forwards}</style></head><body style='margin:0;background:lime'><div id=cover></div></body></html>",
+                 "waitUntil": "load",
+             }),
+             &mut ctx,
+diff --git a/crates/obscura-render/src/inline.rs b/crates/obscura-render/src/inline.rs
+index 38aae81..00c8f72 100644
+--- a/crates/obscura-render/src/inline.rs
++++ b/crates/obscura-render/src/inline.rs
+@@ -4021,6 +4021,23 @@ mod tests {
+ 
+     #[test]
+     fn configured_font_directory_loads_nested_fonts_and_skips_symlinks() {
++        // Font directories configure a process-wide database that only the
++        // first engine builds, so another test in this process may already
++        // have built it. Run the check in a fresh copy of this test binary.
++        const CHILD: &str = "OBSCURA_FONT_DIRECTORY_TEST_CHILD";
++        if std::env::var_os(CHILD).is_none() {
++            let status = std::process::Command::new(std::env::current_exe().unwrap())
++                .args([
++                    "--exact",
++                    "inline::tests::configured_font_directory_loads_nested_fonts_and_skips_symlinks",
++                    "--test-threads=1",
++                ])
++                .env(CHILD, "1")
++                .status()
++                .unwrap();
++            assert!(status.success(), "the isolated font-directory check failed");
++            return;
++        }
+         let root = std::env::temp_dir().join(format!(
+             "obscura-font-directory-test-{}",
+             std::process::id()
+diff --git a/crates/obscura/tests/child_frame_cap.rs b/crates/obscura/tests/child_frame_cap.rs
+new file mode 100644
+index 0000000..828e538
+--- /dev/null
++++ b/crates/obscura/tests/child_frame_cap.rs
+@@ -0,0 +1,73 @@
++//! The live-frame cap (OBSCURA_MAX_LIVE_FRAMES) is read from the process
++//! environment, so this test runs in its own test binary: setting it to 0
++//! inside child_frame_scripts.rs starved every frame test that ran after it.
++
++use std::io::{Read, Write};
++
++use obscura::Browser;
++
++const STATIC_PARENT_HTML: &str = r#"<!doctype html><html><head><title>parent</title></head><body>
++<iframe src="/child.html"></iframe>
++</body></html>"#;
++
++const CHILD_HTML: &str = r#"<!doctype html><html><head><title>BEFORE</title></head><body>
++<p>child</p>
++<script>
++  window.__ran = "YES";
++  document.title = "RAN-IN-CHILD";
++</script>
++</body></html>"#;
++
++fn spawn_server(parent_html: &'static str) -> String {
++    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
++    let addr = listener.local_addr().unwrap();
++    std::thread::spawn(move || {
++        for incoming in listener.incoming() {
++            let mut stream = match incoming {
++                Ok(stream) => stream,
++                Err(_) => continue,
++            };
++            let mut buf = [0u8; 2048];
++            let read = stream.read(&mut buf).unwrap_or(0);
++            let body = if buf[..read].starts_with(b"GET /child.html ") {
++                CHILD_HTML
++            } else {
++                parent_html
++            };
++            let headers = format!(
++                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
++                body.len()
++            );
++            let _ = stream.write_all(headers.as_bytes());
++            let _ = stream.write_all(body.as_bytes());
++            let _ = stream.shutdown(std::net::Shutdown::Both);
++        }
++    });
++    format!("http://{addr}")
++}
++
++#[tokio::test]
++async fn a_rejected_child_frame_does_not_leave_js_references() {
++    std::env::set_var("OBSCURA_ALLOW_PRIVATE_NETWORK", "1");
++    std::env::set_var("OBSCURA_MAX_LIVE_FRAMES", "0");
++    let base = spawn_server(STATIC_PARENT_HTML);
++
++    let browser = Browser::new().unwrap();
++    let mut page = browser.new_page().await.unwrap();
++    page.goto(&base).await.unwrap();
++    page.settle(2000).await;
++
++    assert!(page.frame_urls().is_empty(), "the frame cap was not applied");
++    for registry in [
++        "__obscura_frameObjects",
++        "__obscura_frameWindows",
++        "__obscura_frameElements",
++    ] {
++        assert_eq!(
++            page.evaluate(&format!("Object.keys(globalThis.{registry}).length"))
++                .as_f64(),
++            Some(0.0),
++            "rejected frame stayed in {registry}",
++        );
++    }
++}
+diff --git a/crates/obscura/tests/child_frame_scripts.rs b/crates/obscura/tests/child_frame_scripts.rs
+index a2922b3..9b72126 100644
+--- a/crates/obscura/tests/child_frame_scripts.rs
++++ b/crates/obscura/tests/child_frame_scripts.rs
+@@ -318,32 +318,6 @@ async fn a_static_child_frame_runs_its_own_script() {
+     );
+ }
+ 
+-#[tokio::test]
+-async fn a_rejected_child_frame_does_not_leave_js_references() {
+-    std::env::set_var("OBSCURA_ALLOW_PRIVATE_NETWORK", "1");
+-    std::env::set_var("OBSCURA_MAX_LIVE_FRAMES", "0");
+-    let base = spawn_server(STATIC_PARENT_HTML);
+-
+-    let browser = Browser::new().unwrap();
+-    let mut page = browser.new_page().await.unwrap();
+-    page.goto(&base).await.unwrap();
+-    page.settle(2000).await;
+-
+-    assert!(page.frame_urls().is_empty(), "the frame cap was not applied");
+-    for registry in [
+-        "__obscura_frameObjects",
+-        "__obscura_frameWindows",
+-        "__obscura_frameElements",
+-    ] {
+-        assert_eq!(
+-            page.evaluate(&format!("Object.keys(globalThis.{registry}).length"))
+-                .as_f64(),
+-            Some(0.0),
+-            "rejected frame stayed in {registry}",
+-        );
+-    }
+-}
+-
+ #[tokio::test]
+ async fn navigating_blank_releases_child_realms() {
+     std::env::set_var("OBSCURA_ALLOW_PRIVATE_NETWORK", "1");

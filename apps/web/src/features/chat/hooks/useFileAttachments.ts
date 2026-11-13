@@ -6,14 +6,16 @@ import {
   ALLOWED_FILE_TYPES,
   MAX_FILE_SIZE_BYTES,
   MAX_FILES,
+  SUPPORTED_FILE_TYPES_LABEL,
 } from "@/features/chat/constants/files";
+import { currentConversationId } from "@/features/chat/utils/currentConversationId";
 import { toast } from "@/lib/toast";
 import { useComposerStore } from "@/stores/composerStore";
 import { useStreamStore } from "@/stores/streamStore";
 
 const validateFile = (file: File): string | null => {
   if (!ALLOWED_FILE_TYPES.includes(file.type)) {
-    return `${file.name}: file type not supported`;
+    return `${file.name}: this file type isn't supported. ${SUPPORTED_FILE_TYPES_LABEL}.`;
   }
   if (file.size > MAX_FILE_SIZE_BYTES) {
     return `${file.name}: exceeds the ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB size limit`;
@@ -44,12 +46,22 @@ export const useFileAttachments = () => {
         addUploadedFileData,
       } = useComposerStore.getState();
 
-      if (uploadedFiles.length + files.length > MAX_FILES) {
-        toast.error(`You can attach a maximum of ${MAX_FILES} files`);
+      // A pick over the limit keeps the files that fit instead of dropping the whole batch.
+      const openSlots = Math.max(0, MAX_FILES - uploadedFiles.length);
+      const fitting = files.slice(0, openSlots);
+      if (fitting.length === 0) {
+        toast.error(
+          `Up to ${MAX_FILES} files per message. Remove one to attach another.`,
+        );
         return;
       }
+      if (fitting.length < files.length) {
+        toast.error(
+          `Up to ${MAX_FILES} files per message. Attached ${fitting.length}, skipped ${files.length - fitting.length}.`,
+        );
+      }
 
-      const validFiles = files.filter((file) => {
+      const validFiles = fitting.filter((file) => {
         const error = validateFile(file);
         if (error) toast.error(error);
         return !error;
@@ -85,7 +97,10 @@ export const useFileAttachments = () => {
         await Promise.allSettled(
           pending.map(async ({ file, tempId }) => {
             try {
-              const response = await chatApi.uploadFile(file);
+              const response = await chatApi.uploadFile(
+                file,
+                currentConversationId(),
+              );
               const description = response.description || `File: ${file.name}`;
               const message = response.message || "File uploaded successfully";
               const uploaded: UploadedFilePreview = {
@@ -113,7 +128,7 @@ export const useFileAttachments = () => {
               }
               return uploaded;
             } catch (error) {
-              // apiService already surfaced the backend detail (413/415…)
+              // The API client already surfaced the backend detail (413/415…)
               // as a toast — just drop the failed chip.
               removeUploadedFile(tempId);
               throw error;

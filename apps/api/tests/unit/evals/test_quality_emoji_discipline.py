@@ -1,7 +1,7 @@
 """The assistant must not emoji before the user does.
 
-The comms prompt states it verbatim: "Emojis EXTREMELY RARE, and NEVER use one
-before the user has used one first." It was judge-only coverage until a live
+The comms prompt states it verbatim: "No emojis in your text unless the user has
+used one in this conversation." It was judge-only coverage until a live
 quality run produced this transcript, which passed every structural gate it had
 because none of them could see the violation:
 

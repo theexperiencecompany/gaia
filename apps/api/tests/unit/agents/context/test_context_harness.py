@@ -20,8 +20,7 @@ from tests._harness.context_sources import (
 
 
 def _resolve(dotted: str) -> Callable[..., Any]:
-    """Resolve a patch target, which may name a class attribute rather than a
-    module-level one (``pkg.mod.Class.method``)."""
+    """Resolve a patch target, which may name a class attribute rather than a module-level one (pkg.mod.Class.method)."""
     parts = dotted.split(".")
     for split in range(len(parts) - 1, 0, -1):
         try:
@@ -38,11 +37,7 @@ def _resolve(dotted: str) -> Callable[..., Any]:
 class TestHarnessIsHermetic:
     @pytest.mark.parametrize("target", _FENCED_CLIENTS)
     async def test_reaching_a_real_client_raises(self, target: str) -> None:
-        """The fence is what makes 'no IO escaped' a fact rather than a hope.
-
-        Without this, a fence that silently stopped patching (a moved module, a
-        renamed function) would look exactly like a hermetic run.
-        """
+        """A fence that silently stopped patching (a moved module, a renamed function) would look exactly like a hermetic run."""
         with fake_context_sources(ContextSources()):
             with pytest.raises(EscapedIO):
                 await _resolve(target)()

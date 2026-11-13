@@ -3,7 +3,7 @@
 Locks: conversation-scoped semantic search (file_id filter intersection with
 the conversation's own files, k=5), the no-client / no-files / out-of-scope
 short-circuits, and the content construction from the different
-``page_wise_summary`` shapes (str / list / dict / None).
+page_wise_summary shapes (str / list / dict / None).
 """
 
 from datetime import UTC, datetime
@@ -20,12 +20,12 @@ MODULE = "app.agents.tools.file_tools"
 
 
 def _config() -> dict[str, Any]:
-    """The configurable as the executor actually sees it.
+    """Build the configurable as the executor actually sees it.
 
     The tool is bound to the executor, which runs on the derived
-    ``executor_<conversation_id>`` thread — so ``thread_id`` names a conversation
+    executor_<conversation_id> thread — so thread_id names a conversation
     that owns no files, and the two ids are deliberately different here. A
-    lookup that reads ``thread_id`` must not find "conv-1".
+    lookup that reads thread_id must not find "conv-1".
     """
     return {
         "configurable": {
@@ -124,11 +124,7 @@ class TestGetSimilarDocuments:
         collection.asimilarity_search_with_score.assert_not_called()
 
     async def test_file_id_outside_the_conversation_raises_with_the_valid_ids(self) -> None:
-        """An unknown id must fail loud, not read as "the file says nothing".
-
-        The agent is never shown a file's id, so a guessed filename lands here
-        every time; the error has to name the ids it could have used instead.
-        """
+        """An unknown file id must fail loud, naming the ids it could have used, since the agent is never shown a file's real id."""
         collection, get_client = _patch_collection([])
         with (
             patch(f"{MODULE}.ChromaClient.get_langchain_client", get_client),
@@ -194,6 +190,103 @@ class TestConstructContent:
         assert _construct_content(docs, similar) == ""
 
 
+class TestConstructContentAccumulation:
+    def test_two_documents_do_not_overwrite_each_other(self) -> None:
+        docs = [_file("f1", description="first"), _file("f2", description="second")]
+        similar = [
+            (Document(page_content="x", metadata={"file_id": "f1"}), 0.9),
+            (Document(page_content="x", metadata={"file_id": "f2"}), 0.8),
+        ]
+
+        content = _construct_content(docs, similar)
+
+        assert content.index("Document ID: f1") < content.index("Document ID: f2")
+        assert "first" in content and "second" in content
+
+    def test_a_page_without_content_renders_empty(self) -> None:
+        docs = [_file("f1", summary=[{"data": {"page_number": 1}}])]
+        similar = [(Document(page_content="x", metadata={"file_id": "f1", "page_number": 1}), 0.9)]
+
+        content = _construct_content(docs, similar)
+
+        assert "Document ID: f1" in content
+        assert "XX" not in content
+
+    def test_a_dict_summary_without_content_uses_the_fallback(self) -> None:
+        docs = [_file("f1", summary={"data": {"page_number": 1}})]
+        similar = [(Document(page_content="x", metadata={"file_id": "f1"}), 0.9)]
+
+        content = _construct_content(docs, similar)
+
+        assert "Description not available!" in content
+        assert "XX" not in content
+
+    def test_two_string_summary_documents_do_not_overwrite_each_other(self) -> None:
+        docs = [_file("f1", summary="one"), _file("f2", summary="two")]
+        similar = [
+            (Document(page_content="x", metadata={"file_id": "f1"}), 0.9),
+            (Document(page_content="x", metadata={"file_id": "f2"}), 0.8),
+        ]
+
+        content = _construct_content(docs, similar)
+
+        assert content.index("Document ID: f1") < content.index("Document ID: f2")
+        assert "one" in content and "two" in content
+        assert "XX" not in content
+
+    def test_two_page_documents_do_not_overwrite_each_other(self) -> None:
+        page = [{"data": {"page_number": 1, "content": "body"}}]
+        docs = [_file("f1", summary=page), _file("f2", summary=page)]
+        similar = [
+            (Document(page_content="x", metadata={"file_id": "f1", "page_number": 1}), 0.9),
+            (Document(page_content="x", metadata={"file_id": "f2", "page_number": 1}), 0.8),
+        ]
+
+        content = _construct_content(docs, similar)
+
+        assert content.index("Document ID: f1") < content.index("Document ID: f2")
+        assert "XX" not in content
+
+
+class TestConstructContentWithoutPageNumber:
+    def test_a_bad_chunk_does_not_stop_later_documents(self) -> None:
+        page = [{"data": {"page_number": 1, "content": "body"}}]
+        docs = [_file("f1", summary=page), _file("f2", summary=page)]
+        similar = [
+            (Document(page_content="x", metadata={"file_id": "f1"}), 0.9),
+            (Document(page_content="x", metadata={"file_id": "f2", "page_number": 1}), 0.8),
+        ]
+
+        content = _construct_content(docs, similar)
+
+        assert "Document ID: f2" in content
+
+    def test_a_chunk_without_a_page_number_is_skipped_and_reported(self) -> None:
+        docs = [_file("f1", summary=[{"data": {"page_number": 1, "content": "body"}}])]
+        similar = [(Document(page_content="x", metadata={"file_id": "f1"}), 0.9)]
+
+        with patch(f"{MODULE}.log") as mock_log:
+            content = _construct_content(docs, similar)
+
+        assert content == ""
+        mock_log.warning.assert_called_once_with(
+            "[TOOL] page summary without a page number",
+            document_id="f1",
+        )
+
+
+class TestConstructContentMissingDocument:
+    async def test_an_orphaned_hit_is_reported(self) -> None:
+        similar = [(Document(page_content="x", metadata={"file_id": "missing"}), 0.9)]
+        with patch(f"{MODULE}.log") as mock_log:
+            result = _construct_content([], similar)
+
+        assert result == ""
+        message = mock_log.error.call_args.args[0]
+        assert isinstance(message, str) and message.endswith("Document not found")
+        assert mock_log.error.call_args.kwargs == {"document_id": "missing"}
+
+
 class TestSearchUploadedFiles:
     async def test_happy_path_returns_constructed_content(self) -> None:
         docs = [_file("f1", summary="whole-file summary")]
@@ -216,6 +309,35 @@ class TestSearchUploadedFiles:
         )
         find.assert_awaited_once_with(["f1"], "user-1")
 
+    async def test_the_tool_records_its_wide_event_context(self) -> None:
+        with (
+            patch(f"{MODULE}._get_similar_documents", AsyncMock(return_value=[])),
+            patch(f"{MODULE}.file_repository.find_by_ids_for_user", AsyncMock(return_value=[])),
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            await search_uploaded_files.coroutine(query="q", config=_config())
+
+        mock_log.set.assert_called_once_with(
+            tool={"name": "search_uploaded_files", "action": "query"}
+        )
+
+    async def test_duplicate_hits_are_resolved_once(self) -> None:
+        docs = [_file("f1", summary="whole-file summary")]
+        similar = [
+            (Document(page_content="x", metadata={"file_id": "f1"}), 0.9),
+            (Document(page_content="x", metadata={"file_id": "f1"}), 0.8),
+        ]
+        with (
+            patch(f"{MODULE}._get_similar_documents", AsyncMock(return_value=similar)),
+            patch(
+                f"{MODULE}.file_repository.find_by_ids_for_user",
+                AsyncMock(return_value=docs),
+            ) as find,
+        ):
+            await search_uploaded_files.coroutine(query="q", config=_config())
+
+        find.assert_awaited_once_with(["f1"], "user-1")
+
     async def test_file_id_is_forwarded_into_the_search(self) -> None:
         with (
             patch(f"{MODULE}._get_similar_documents", AsyncMock(return_value=[])) as get_similar,
@@ -227,6 +349,22 @@ class TestSearchUploadedFiles:
             query="q", conversation_id="conv-1", file_id="f9", user_id="user-1"
         )
 
+    def test_file_id_is_optional_in_the_tool_schema(self) -> None:
+        schema = search_uploaded_files.args_schema.model_json_schema()
+
+        assert "file_id" not in schema.get("required", [])
+
+    async def test_omitting_file_id_searches_all_conversation_files(self) -> None:
+        with (
+            patch(f"{MODULE}._get_similar_documents", AsyncMock(return_value=[])) as get_similar,
+            patch(f"{MODULE}.file_repository.find_by_ids_for_user", AsyncMock(return_value=[])),
+        ):
+            await search_uploaded_files.coroutine(query="q", config=_config())
+
+        get_similar.assert_awaited_once_with(
+            query="q", conversation_id="conv-1", file_id=None, user_id="user-1"
+        )
+
     async def test_missing_configurable_raises(self) -> None:
         with (
             patch(f"{MODULE}._get_similar_documents", AsyncMock()),
@@ -236,6 +374,17 @@ class TestSearchUploadedFiles:
                 await search_uploaded_files.coroutine(
                     query="q", file_id=None, config={"not_configurable": True}
                 )
+
+    @pytest.mark.parametrize(
+        "configurable",
+        [
+            {"conversation_id": "conv-1"},
+            {"user_id": "user-1"},
+        ],
+    )
+    async def test_a_partial_configurable_raises(self, configurable) -> None:
+        with pytest.raises(ValueError, match="Configurable is not set"):
+            await search_uploaded_files.coroutine(query="q", config={"configurable": configurable})
 
     async def test_downstream_failure_propagates(self) -> None:
         with (

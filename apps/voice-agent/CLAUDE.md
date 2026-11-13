@@ -62,7 +62,7 @@ The entry points are not a hardcoded list: `tools/evlog_map/voice.py` parses `Wo
 
 After every `.py` edit, a PostToolUse hook runs `uv run --project apps/api --group dev ruff format` then `... ruff check --fix` on the file. Formatting, import order/grouping, `Optional[X]` → `X | None`, `Union[X, Y]` → `X | Y`, lowercase generics, unused imports, mutable default args, bare `except`, and `print` are corrected automatically — do not hand-fix them.
 
-What the hook does NOT fix, you handle manually: lint warnings ruff can't auto-resolve (`nx lint voice-agent`, read the rule, fix the cause) and type correctness (there is no `nx type-check` target for voice-agent; keep full annotations and run `uvx mypy src` if you need a type pass). Fix the cause, never silence it.
+What the hook does NOT fix, you handle manually: lint warnings ruff can't auto-resolve (`nx lint voice-agent`, read the rule, fix the cause) and type errors (`nx type-check voice-agent`, which runs mypy in voice-agent's own environment so livekit's real types are checked). Fix the cause, never silence it.
 
 ## Structure & Service Conventions
 
@@ -81,6 +81,7 @@ What the hook does NOT fix, you handle manually: lint warnings ruff can't auto-r
 ## Gotchas
 
 - The worker depends on `gaia-shared` (`libs/shared/py`) — run `nx run voice-agent:sync` (which first syncs `shared-python`) if shared code changes
+- `DEEPGRAM_API_KEY` and `ELEVENLABS_API_KEY` are optional: the worker warns at boot when either is unset (`src/config.py`). Self-host ships no voice (`deployment.voice` is off; the API reports `VOICE_SELF_HOST_GAP`)
 - `DEEPGRAM_API_KEY` is consumed directly by the `livekit-plugins-deepgram` plugin via environment variable — it does not need to be passed explicitly in code
 - Noise cancellation uses LiveKit's BVC (`noise_cancellation.BVC()`) — requires the `livekit-plugins-noise-cancellation` package
 - Turn detection uses `MultilingualModel` from `livekit.plugins.turn_detector.multilingual` — model files must be downloaded before first run (`download-files` command)

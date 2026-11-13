@@ -11,24 +11,22 @@ Covers:
   - app/services/triggers/handlers/linear.py (LinearTriggerHandler)
 """
 
+from collections.abc import Iterator
+from datetime import UTC, datetime
 import sys
 from types import ModuleType
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from redis.exceptions import RedisError
 
-# ---------------------------------------------------------------------------
-# Break the circular import chain BEFORE importing any app.services.triggers
-# modules.
-#
-# Chain: triggers/__init__ -> handlers/* -> triggers/base
-#        -> workflow.queue_service -> workflow/__init__ -> workflow/service
-#        -> workflow/trigger_service -> triggers (still loading!) => CIRCULAR
-#
-# By pre-seeding sys.modules with a mock for workflow.trigger_service we
-# prevent workflow/service.py from reaching back into app.services.triggers.
-# ---------------------------------------------------------------------------
+from app.constants.log_tags import LogTag
+from app.db.redis import redis_cache
+from app.models.trigger_config import TriggerOptionsQuery
+
+# Break the circular import (triggers -> handlers -> workflow.service -> workflow.trigger_service
+# -> triggers) by pre-seeding sys.modules with a workflow.trigger_service mock before importing.
 _trigger_service_stub = ModuleType("app.services.workflow.trigger_service")
 _trigger_service_stub.TriggerService = MagicMock()  # type: ignore[attr-defined]  # stub module gains the service attribute for patching
 
@@ -44,6 +42,7 @@ from app.models.trigger_configs import (
     GitHubIssueAddedConfig,
     GitHubPrEventConfig,
     GitHubStarAddedConfig,
+    GmailEmailSentConfig,
     GmailNewMessageConfig,
     GmailPollInboxConfig,
     LinearCommentAddedConfig,
@@ -58,6 +57,7 @@ from app.models.workflow_models import (
     Workflow,
     WorkflowStep,
 )
+from app.services.triggers import base as trigger_base
 from app.services.triggers.base import TriggerHandler
 from app.services.triggers.handlers.calendar import (
     CalendarTriggerHandler,
@@ -89,6 +89,7 @@ from app.services.triggers.registry import (
     get_handler_by_name,
 )
 from app.utils.exceptions import TriggerRegistrationError
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Restore real module after breaking circular import for initial loading
@@ -163,6 +164,20 @@ def _make_trigger_config(
 # ===========================================================================
 
 
+PRIMARY_ACCOUNT_ID = "ca_primary"
+
+
+@pytest.fixture
+def primary_account() -> Iterator[AsyncMock]:
+    """Workflow triggers register on the primary account; its lookup is Mongo, not the subject here."""
+    resolve = AsyncMock(return_value=PRIMARY_ACCOUNT_ID)
+    with (
+        patch("app.services.triggers.base.primary_account_for_trigger", resolve),
+        patch("app.services.triggers.handlers.slack.primary_account_for_trigger", resolve),
+    ):
+        yield resolve
+
+
 class _ConcreteTriggerHandler(TriggerHandler):
     """Concrete implementation of TriggerHandler for testing the base class."""
 
@@ -183,13 +198,17 @@ class _ConcreteTriggerHandler(TriggerHandler):
     ) -> list[str]:
         return ["trigger_id_1"]
 
+    def __init__(self, workflows: list[Workflow] | None = None) -> None:
+        self.matched = workflows or []
+
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: dict[str, Any]
     ) -> list[Workflow]:
-        return []
+        return self.matched
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("primary_account")
 class TestTriggerHandlerBase:
     """Tests for the abstract TriggerHandler base class."""
 
@@ -266,6 +285,9 @@ class TestTriggerHandlerBase:
         )
         assert len(result) == 2
         assert all(tid == "tid_new" for tid in result)
+        for call in mock_composio.composio.triggers.create.call_args_list:
+            assert call.kwargs["connected_account_id"] == PRIMARY_ACCOUNT_ID
+            assert "user_id" not in call.kwargs
 
     @patch("app.services.triggers.base.get_composio_service")
     async def test_register_triggers_parallel_returns_none_trigger_id(self, mock_get_composio):
@@ -378,8 +400,7 @@ class TestTriggerHandlerBase:
     @patch("app.services.triggers.base.WorkflowQueueService")
     async def test_process_event_queues_workflows(self, mock_queue_svc):
         workflow = _make_workflow()
-        handler = _ConcreteTriggerHandler()
-        handler.find_workflows = AsyncMock(return_value=[workflow])
+        handler = _ConcreteTriggerHandler([workflow])
         mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
 
         result = await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, {})
@@ -394,11 +415,10 @@ class TestTriggerHandlerBase:
     ) -> None:
         """The queued context carries the raw payload and the integration trigger stamp."""
         workflow = _make_workflow()
-        handler = _ConcreteTriggerHandler()
-        handler.find_workflows = AsyncMock(return_value=[workflow])
+        handler = _ConcreteTriggerHandler([workflow])
         mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
         mock_signal_context.return_value = ""
-        payload = {"start_time": "2026-01-01T10:00:00+00:00", "id": "evt_1"}
+        payload: dict[str, object] = {"start_time": "2026-01-01T10:00:00+00:00", "id": "evt_1"}
 
         await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, payload)
 
@@ -409,6 +429,7 @@ class TestTriggerHandlerBase:
                 "trigger_data": payload,
                 "trigger_type": TriggerType.INTEGRATION.value,
             },
+            defer_until=None,
         )
 
     @patch("app.services.triggers.base.get_signal_matching_context")
@@ -418,8 +439,7 @@ class TestTriggerHandlerBase:
     ) -> None:
         """Signal context is attached to every workflow but fetched once per user."""
         workflows = [_make_workflow(workflow_id="wf_1"), _make_workflow(workflow_id="wf_2")]
-        handler = _ConcreteTriggerHandler()
-        handler.find_workflows = AsyncMock(return_value=workflows)
+        handler = _ConcreteTriggerHandler(workflows)
         mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
         mock_signal_context.return_value = "todo: buy milk"
 
@@ -449,8 +469,7 @@ class TestTriggerHandlerBase:
     ) -> None:
         """A failing signal-context fetch still queues the workflow, minus the todos key."""
         workflow = _make_workflow()
-        handler = _ConcreteTriggerHandler()
-        handler.find_workflows = AsyncMock(return_value=[workflow])
+        handler = _ConcreteTriggerHandler([workflow])
         mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
         mock_signal_context.side_effect = Exception("mongo down")
 
@@ -466,8 +485,7 @@ class TestTriggerHandlerBase:
     async def test_process_event_skips_workflow_with_no_id(self, mock_queue_svc):
         workflow = _make_workflow()
         workflow.id = None
-        handler = _ConcreteTriggerHandler()
-        handler.find_workflows = AsyncMock(return_value=[workflow])
+        handler = _ConcreteTriggerHandler([workflow])
 
         result = await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, {})
         assert "Queued 0 workflows" in result["message"]
@@ -476,8 +494,7 @@ class TestTriggerHandlerBase:
     @patch("app.services.triggers.base.WorkflowQueueService")
     async def test_process_event_handles_queue_failure(self, mock_queue_svc):
         workflow = _make_workflow()
-        handler = _ConcreteTriggerHandler()
-        handler.find_workflows = AsyncMock(return_value=[workflow])
+        handler = _ConcreteTriggerHandler([workflow])
         mock_queue_svc.queue_workflow_execution = AsyncMock(side_effect=Exception("Queue failed"))
 
         result = await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, {})
@@ -497,12 +514,103 @@ class TestTriggerHandlerBase:
     async def test_get_config_options_returns_empty_by_default(self):
         handler = _ConcreteTriggerHandler()
         result = await handler.get_config_options(
-            trigger_name="test_trigger",
-            field_name="some_field",
-            user_id=USER_ID,
-            integration_id="test",
+            TriggerOptionsQuery(
+                trigger_name="test_trigger",
+                field_name="some_field",
+                user_id=USER_ID,
+                integration_id="test",
+            )
         )
         assert result == []
+
+
+@pytest.mark.asyncio
+@patch("app.services.triggers.base.enqueue_worker_job", new=AsyncMock())
+@patch("app.services.triggers.base.RedisPoolManager.get_pool", new=AsyncMock())
+@patch("app.services.triggers.base.log")
+class TestEventTimingInstrumentation:
+    """The event-start and webhook-lag fields a calendar-style payload adds to the wide event."""
+
+    @staticmethod
+    def _dispatched_at(mock_log: MagicMock) -> datetime:
+        return datetime.fromisoformat(mock_log.set.call_args_list[0].kwargs["now_utc"])
+
+    async def test_a_snake_case_start_with_a_countdown_records_the_webhook_lag(
+        self, mock_log: MagicMock
+    ) -> None:
+        payload: dict[str, object] = {
+            "start_time": "2026-01-01T10:00:00",
+            "countdown_window_minutes": 15,
+        }
+
+        await _ConcreteTriggerHandler().process_event("TEST_EVENT", TRIGGER_ID, USER_ID, payload)
+
+        now = self._dispatched_at(mock_log)
+        start = datetime(2026, 1, 1, 10, tzinfo=UTC)
+        mock_log.set.assert_any_call(
+            event_start_time_utc="2026-01-01T10:00:00+00:00",
+            event_start_time_raw="2026-01-01T10:00:00",
+            seconds_until_event=int((start - now).total_seconds()),
+        )
+        mock_log.set.assert_any_call(
+            countdown_window_minutes=15,
+            webhook_lag_seconds=int(now.timestamp() - (start.timestamp() - 15 * 60)),
+        )
+
+    async def test_a_camel_case_start_is_read_and_converted_to_utc(
+        self, mock_log: MagicMock
+    ) -> None:
+        payload: dict[str, object] = {"startTime": "2026-03-01T09:30:00+05:30"}
+
+        await _ConcreteTriggerHandler().process_event("TEST_EVENT", TRIGGER_ID, USER_ID, payload)
+
+        now = self._dispatched_at(mock_log)
+        start = datetime(2026, 3, 1, 4, tzinfo=UTC)
+        mock_log.set.assert_any_call(
+            event_start_time_utc="2026-03-01T04:00:00+00:00",
+            event_start_time_raw="2026-03-01T09:30:00+05:30",
+            seconds_until_event=int((start - now).total_seconds()),
+        )
+        assert not any("webhook_lag_seconds" in c.kwargs for c in mock_log.set.call_args_list)
+
+
+@pytest.mark.asyncio
+class TestPrimaryAccountForTrigger:
+    """Workflow triggers register on the primary account of the integration owning the slug."""
+
+    async def test_a_slug_no_integration_owns_is_refused_by_name(self) -> None:
+        with pytest.raises(TriggerRegistrationError) as exc_info:
+            await trigger_base.primary_account_for_trigger(USER_ID, "NOBODY_OWNS_THIS")
+
+        assert str(exc_info.value) == "No integration owns trigger NOBODY_OWNS_THIS"
+        assert exc_info.value.trigger_name == "NOBODY_OWNS_THIS"
+
+    @patch("app.services.triggers.base.get_composio_service")
+    @patch(
+        "app.services.triggers.base.primary_connected_account_id",
+        new_callable=AsyncMock,
+        return_value="ca_github",
+    )
+    async def test_parallel_registration_creates_each_trigger_on_the_owners_primary(
+        self, mock_primary: AsyncMock, mock_get_composio: MagicMock
+    ) -> None:
+        create = mock_get_composio.return_value.composio.triggers.create
+        create.return_value = MagicMock(trigger_id="tid_commit")
+
+        result = await _ConcreteTriggerHandler()._register_triggers_parallel(
+            user_id=USER_ID,
+            trigger_name="github_commit_event",
+            configs=[{"owner": "acme", "repo": "api"}],
+            composio_slug="GITHUB_COMMIT_EVENT",
+        )
+
+        assert result == ["tid_commit"]
+        mock_primary.assert_awaited_once_with(USER_ID, "GITHUB")
+        create.assert_called_once_with(
+            connected_account_id="ca_github",
+            slug="GITHUB_COMMIT_EVENT",
+            trigger_config={"owner": "acme", "repo": "api"},
+        )
 
 
 # ===========================================================================
@@ -591,11 +699,18 @@ class TestGmailTriggerHandler:
 
     def test_trigger_names(self):
         handler = GmailTriggerHandler()
-        assert handler.trigger_names == ["gmail_new_message"]
+        assert handler.trigger_names == ["gmail_new_message", "gmail_email_sent"]
 
     def test_event_types(self):
         handler = GmailTriggerHandler()
-        assert handler.event_types == {"GMAIL_NEW_GMAIL_MESSAGE"}
+        assert handler.event_types == {"GMAIL_NEW_GMAIL_MESSAGE", "GMAIL_EMAIL_SENT_TRIGGER"}
+
+    def test_each_event_fires_only_its_own_trigger(self):
+        # Both triggers are account-level, so nothing but the event type keeps a
+        # sent-mail watch from waking on inbound mail.
+        handler = GmailTriggerHandler()
+        assert handler.trigger_names_for_event("GMAIL_NEW_GMAIL_MESSAGE") == ["gmail_new_message"]
+        assert handler.trigger_names_for_event("GMAIL_EMAIL_SENT_TRIGGER") == ["gmail_email_sent"]
 
     async def test_register_success_no_trigger_data(self):
         handler = GmailTriggerHandler()
@@ -617,10 +732,20 @@ class TestGmailTriggerHandler:
         with pytest.raises(TypeError, match="Expected GmailNewMessageConfig"):
             await handler.register(USER_ID, WORKFLOW_ID, "gmail_new_message", config)
 
-    # find_workflows delegates to the workflow_repository finders (contract-tested):
-    # strategy 1 (account-level) -> find_active_integration_workflows, strategy 2
-    # (poll, by trigger id) -> find_active_by_composio_trigger. Here we verify the
-    # handler's routing and the neither-id guard.
+    async def test_register_accepts_the_sent_trigger_config(self):
+        handler = GmailTriggerHandler()
+        config = _make_trigger_config("gmail_email_sent", trigger_data=GmailEmailSentConfig())
+        result = await handler.register(USER_ID, WORKFLOW_ID, "gmail_email_sent", config)
+        assert result == []
+
+    async def test_register_rejects_the_inbox_config_for_the_sent_trigger(self):
+        handler = GmailTriggerHandler()
+        config = _make_trigger_config("gmail_email_sent", trigger_data=GmailNewMessageConfig())
+        with pytest.raises(TypeError, match="Expected GmailEmailSentConfig"):
+            await handler.register(USER_ID, WORKFLOW_ID, "gmail_email_sent", config)
+
+    # find_workflows strategy 1 (account-level) -> find_active_integration_workflows, strategy 2
+    # (poll, by trigger id) -> find_active_by_composio_trigger. Verifies routing and the neither-id guard.
     @patch("app.services.triggers.handlers.gmail.workflow_repository")
     async def test_find_workflows_no_user_id(self, mock_repo):
         mock_repo.find_active_integration_workflows = AsyncMock(return_value=[])
@@ -649,7 +774,73 @@ class TestGmailTriggerHandler:
         assert len(result) == 1
         assert result[0].user_id == USER_ID
         mock_repo.find_active_integration_workflows.assert_awaited_once_with(
-            USER_ID, GmailTriggerHandler.SUPPORTED_TRIGGERS
+            USER_ID, ["gmail_new_message"]
+        )
+
+    @patch("app.services.triggers.handlers.gmail.workflow_repository")
+    async def test_find_workflows_for_a_sent_email_matches_sent_workflows_by_user(self, mock_repo):
+        wf = _make_workflow(trigger_name="gmail_email_sent")
+        mock_repo.find_active_integration_workflows = AsyncMock(return_value=[wf])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
+
+        handler = GmailTriggerHandler()
+        result = await handler.find_workflows(
+            "GMAIL_EMAIL_SENT_TRIGGER", TRIGGER_ID, {"user_id": USER_ID, "thread_id": "t-1"}
+        )
+
+        assert [w.trigger_config.trigger_name for w in result] == ["gmail_email_sent"]
+        mock_repo.find_active_integration_workflows.assert_awaited_once_with(
+            USER_ID, ["gmail_email_sent"]
+        )
+
+    @patch("app.services.triggers.handlers.gmail.log")
+    @patch("app.services.triggers.handlers.gmail.workflow_repository")
+    async def test_a_well_formed_sent_payload_reports_no_schema_drift(self, mock_repo, mock_log):
+        mock_repo.find_active_integration_workflows = AsyncMock(return_value=[])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
+
+        await GmailTriggerHandler().find_workflows(
+            "GMAIL_EMAIL_SENT_TRIGGER", TRIGGER_ID, {"user_id": USER_ID, "thread_id": "t-1"}
+        )
+
+        mock_log.debug.assert_not_called()
+
+    @patch("app.services.triggers.handlers.gmail.log")
+    @patch("app.services.triggers.handlers.gmail.workflow_repository")
+    async def test_a_malformed_sent_payload_reports_schema_drift_and_still_matches(
+        self, mock_repo, mock_log
+    ):
+        mock_repo.find_active_integration_workflows = AsyncMock(return_value=[])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
+
+        await GmailTriggerHandler().find_workflows(
+            "GMAIL_EMAIL_SENT_TRIGGER", TRIGGER_ID, {"user_id": USER_ID, "thread_id": 42}
+        )
+
+        (drift,) = mock_log.debug.call_args_list
+        assert drift.kwargs["error_type"] == "ValidationError"
+        mock_repo.find_active_integration_workflows.assert_awaited_once_with(
+            USER_ID, ["gmail_email_sent"]
+        )
+
+    @patch("app.services.triggers.handlers.gmail.workflow_repository")
+    async def test_a_sent_email_hands_only_the_sent_trigger_to_todo_dispatch(self, mock_repo):
+        # Account-level todo watches are told apart by trigger name alone.
+        mock_repo.find_active_integration_workflows = AsyncMock(return_value=[])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
+        enqueue = AsyncMock()
+        with (
+            patch("app.services.triggers.base.RedisPoolManager.get_pool", AsyncMock()),
+            patch("app.services.triggers.base.enqueue_worker_job", enqueue),
+        ):
+            await GmailTriggerHandler().process_event(
+                "GMAIL_EMAIL_SENT_TRIGGER", TRIGGER_ID, USER_ID, {"user_id": USER_ID}
+            )
+
+        enqueue.assert_awaited_once()
+        assert enqueue.await_args.args[1:3] == (
+            "dispatch_todo_subscriptions",
+            ["gmail_email_sent"],
         )
 
     @patch("app.services.triggers.handlers.gmail.workflow_repository")
@@ -692,6 +883,7 @@ class TestGmailTriggerHandler:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("primary_account")
 class TestGmailPollTriggerHandler:
     """Tests for GmailPollTriggerHandler."""
 
@@ -776,6 +968,7 @@ class TestGmailPollTriggerHandler:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("primary_account")
 class TestSlackTriggerHandler:
     """Tests for SlackTriggerHandler."""
 
@@ -962,23 +1155,6 @@ class TestSlackTriggerHandler:
         assert len(result) == 1
 
     @patch("app.services.triggers.handlers.slack.workflow_repository")
-    async def test_find_workflows_channel_filter_skips(self, mock_repo):
-        """A non-empty channel_ids list drives the handler's string-based filtering,
-        which calls .split on the list, raises, and the workflow is skipped."""
-        wf = _make_workflow(
-            trigger_name="slack_new_message",
-            composio_trigger_ids=[TRIGGER_ID],
-            trigger_data=SlackNewMessageConfig(channel_ids=["C001", "C002"]),
-        )
-        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
-
-        handler = SlackTriggerHandler()
-        result = await handler.find_workflows(
-            "SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {"channel": "C001", "text": "hello"}
-        )
-        assert len(result) == 0
-
-    @patch("app.services.triggers.handlers.slack.workflow_repository")
     async def test_find_workflows_no_channel_filter_passes_all(self, mock_repo):
         """A workflow with an empty channel_ids list matches any channel."""
         wf = _make_workflow(
@@ -1031,13 +1207,16 @@ class TestSlackTriggerHandler:
 
         handler = SlackTriggerHandler()
         result = await handler.get_config_options(
-            trigger_name="slack_new_message",
-            field_name="channel_ids",
-            user_id=USER_ID,
-            integration_id="slack",
+            TriggerOptionsQuery(
+                trigger_name="slack_new_message",
+                field_name="channel_ids",
+                user_id=USER_ID,
+                integration_id="slack",
+            )
         )
         assert len(result) >= 1
         assert result[0].value == "C001"
+        mock_composio.get_tool.assert_called_once_with("SLACK_LIST_ALL_CHANNELS", user_id=USER_ID)
 
     @patch("app.services.triggers.handlers.slack.get_composio_service")
     async def test_get_config_options_tool_not_found(self, mock_get_composio):
@@ -1047,10 +1226,12 @@ class TestSlackTriggerHandler:
 
         handler = SlackTriggerHandler()
         result = await handler.get_config_options(
-            trigger_name="slack_new_message",
-            field_name="channel_ids",
-            user_id=USER_ID,
-            integration_id="slack",
+            TriggerOptionsQuery(
+                trigger_name="slack_new_message",
+                field_name="channel_ids",
+                user_id=USER_ID,
+                integration_id="slack",
+            )
         )
         assert result == []
 
@@ -1070,22 +1251,51 @@ class TestSlackTriggerHandler:
 
         handler = SlackTriggerHandler()
         result = await handler.get_config_options(
-            trigger_name="slack_new_message",
-            field_name="channel_ids",
-            user_id=USER_ID,
-            integration_id="slack",
+            TriggerOptionsQuery(
+                trigger_name="slack_new_message",
+                field_name="channel_ids",
+                user_id=USER_ID,
+                integration_id="slack",
+            )
         )
         assert result == []
 
-    async def test_get_config_options_unknown_field(self):
+    @pytest.mark.parametrize(
+        ("trigger_name", "field_name"),
+        [("slack_new_message", "unknown_field"), ("slack_channel_created", "channel_ids")],
+    )
+    @patch("app.services.triggers.handlers.slack.get_composio_service")
+    async def test_get_config_options_unknown_field(
+        self, mock_get_composio, trigger_name: str, field_name: str
+    ):
+        # Channels are only listed for slack_new_message's channel_ids — even
+        # when Slack would happily return some.
+        mock_tool = MagicMock()
+        mock_tool.invoke = MagicMock(
+            return_value={
+                "successful": True,
+                "data": {
+                    "channels": [{"id": "C001", "name": "general", "is_channel": True}],
+                    "response_metadata": {},
+                },
+                "error": None,
+            }
+        )
+        mock_composio = MagicMock()
+        mock_composio.get_tool = MagicMock(return_value=mock_tool)
+        mock_get_composio.return_value = mock_composio
+
         handler = SlackTriggerHandler()
         result = await handler.get_config_options(
-            trigger_name="slack_new_message",
-            field_name="unknown_field",
-            user_id=USER_ID,
-            integration_id="slack",
+            TriggerOptionsQuery(
+                trigger_name=trigger_name,
+                field_name=field_name,
+                user_id=USER_ID,
+                integration_id="slack",
+            )
         )
         assert result == []
+        mock_tool.invoke.assert_not_called()
 
     @patch("app.services.triggers.handlers.slack.get_composio_service")
     async def test_get_config_options_exception_returns_empty(self, mock_get_composio):
@@ -1093,10 +1303,12 @@ class TestSlackTriggerHandler:
 
         handler = SlackTriggerHandler()
         result = await handler.get_config_options(
-            trigger_name="slack_new_message",
-            field_name="channel_ids",
-            user_id=USER_ID,
-            integration_id="slack",
+            TriggerOptionsQuery(
+                trigger_name="slack_new_message",
+                field_name="channel_ids",
+                user_id=USER_ID,
+                integration_id="slack",
+            )
         )
         assert result == []
 
@@ -1105,12 +1317,129 @@ class TestSlackTriggerHandler:
         assert isinstance(slack_trigger_handler, SlackTriggerHandler)
 
 
+@pytest.mark.asyncio
+class TestSlackRegistersOnThePrimaryAccount:
+    """Slack triggers are created on the user's primary Slack account, not Composio's pick."""
+
+    @patch("app.services.triggers.handlers.slack.log")
+    @patch("app.services.triggers.handlers.slack.get_composio_service")
+    @patch(
+        "app.services.triggers.base.primary_connected_account_id",
+        new_callable=AsyncMock,
+        return_value="ca_slack",
+    )
+    async def test_channel_created_registers_on_the_slack_primary(
+        self, mock_primary: AsyncMock, mock_get_composio: MagicMock, mock_log: MagicMock
+    ) -> None:
+        create = mock_get_composio.return_value.composio.triggers.create
+        create.return_value = MagicMock(trigger_id="tid_channel")
+        config = _make_trigger_config(
+            "slack_channel_created", trigger_data=SlackChannelCreatedConfig()
+        )
+
+        result = await SlackTriggerHandler().register(
+            USER_ID, WORKFLOW_ID, "slack_channel_created", config
+        )
+
+        assert result == ["tid_channel"]
+        mock_primary.assert_awaited_once_with(USER_ID, "SLACK")
+        create.assert_called_once_with(
+            connected_account_id="ca_slack", slug="SLACK_CHANNEL_CREATED", trigger_config={}
+        )
+        mock_log.info.assert_called_once_with(
+            f"{LogTag.TRIGGER} Registered for user",
+            composio_slug="SLACK_CHANNEL_CREATED",
+            user_id=USER_ID,
+            trigger_id="tid_channel",
+        )
+
+
 # ===========================================================================
 # GitHubTriggerHandler tests
 # ===========================================================================
 
 
 @pytest.mark.asyncio
+class TestSlackChannelFilter:
+    """Which channel-filtered new-message workflows a Slack message fires."""
+
+    @pytest.mark.regression
+    @patch("app.services.triggers.handlers.slack.workflow_repository")
+    async def test_a_message_in_a_selected_channel_fires_the_workflow(self, mock_repo):
+        """channel_ids is a list; treating it as a comma string raised, and every channel-filtered workflow was skipped."""
+        wf = _make_workflow(
+            trigger_name="slack_new_message",
+            composio_trigger_ids=[TRIGGER_ID],
+            trigger_data=SlackNewMessageConfig(channel_ids=["C001", "C002"]),
+        )
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
+
+        handler = SlackTriggerHandler()
+        result = await handler.find_workflows(
+            "SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {"channel": "C002", "text": "hello"}
+        )
+        assert result == [wf]
+
+    @patch("app.services.triggers.handlers.slack.workflow_repository")
+    async def test_a_message_outside_the_selected_channels_is_skipped(self, mock_repo):
+        wf = _make_workflow(
+            trigger_name="slack_new_message",
+            composio_trigger_ids=[TRIGGER_ID],
+            trigger_data=SlackNewMessageConfig(channel_ids=["C001", "C002"]),
+        )
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
+
+        handler = SlackTriggerHandler()
+        result = await handler.find_workflows(
+            "SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {"channel": "C999", "text": "hello"}
+        )
+        assert result == []
+
+    @pytest.mark.parametrize(
+        "data",
+        [{"text": "hello"}, {"channel": 42, "text": "hello"}],
+        ids=["no-channel", "malformed-channel"],
+    )
+    @patch("app.services.triggers.handlers.slack.workflow_repository")
+    async def test_a_message_naming_no_channel_skips_channel_filtered_workflows(
+        self, mock_repo: MagicMock, data: dict[str, object]
+    ) -> None:
+        wf = _make_workflow(
+            trigger_name="slack_new_message",
+            composio_trigger_ids=[TRIGGER_ID],
+            trigger_data=SlackNewMessageConfig(channel_ids=["C001"]),
+        )
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
+
+        result = await SlackTriggerHandler().find_workflows(
+            "SLACK_RECEIVE_MESSAGE", TRIGGER_ID, data
+        )
+
+        assert result == []
+
+    @patch("app.services.triggers.handlers.slack.workflow_repository")
+    async def test_a_skipped_workflow_does_not_stop_the_ones_after_it(
+        self, mock_repo: MagicMock
+    ) -> None:
+        elsewhere, here = (
+            _make_workflow(
+                workflow_id=f"wf_{channel}",
+                trigger_name="slack_new_message",
+                composio_trigger_ids=[TRIGGER_ID],
+                trigger_data=SlackNewMessageConfig(channel_ids=[channel]),
+            )
+            for channel in ("C001", "C002")
+        )
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[elsewhere, here])
+
+        result = await SlackTriggerHandler().find_workflows(
+            "SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {"channel": "C002", "text": "hello"}
+        )
+
+        assert result == [here]
+
+
+@pytest.mark.usefixtures("primary_account")
 class TestGitHubTriggerHandler:
     """Tests for GitHubTriggerHandler."""
 
@@ -1356,10 +1685,12 @@ class TestGitHubTriggerHandler:
 
         handler = GitHubTriggerHandler()
         result = await handler.get_config_options(
-            trigger_name="github_commit_event",
-            field_name="repos",
-            user_id=USER_ID,
-            integration_id="github",
+            TriggerOptionsQuery(
+                trigger_name="github_commit_event",
+                field_name="repos",
+                user_id=USER_ID,
+                integration_id="github",
+            )
         )
         assert len(result) == 2
         assert result[0].value == "owner/repo1"
@@ -1372,10 +1703,12 @@ class TestGitHubTriggerHandler:
 
         handler = GitHubTriggerHandler()
         result = await handler.get_config_options(
-            trigger_name="github_commit_event",
-            field_name="repos",
-            user_id=USER_ID,
-            integration_id="github",
+            TriggerOptionsQuery(
+                trigger_name="github_commit_event",
+                field_name="repos",
+                user_id=USER_ID,
+                integration_id="github",
+            )
         )
         assert result == []
 
@@ -1395,10 +1728,12 @@ class TestGitHubTriggerHandler:
 
         handler = GitHubTriggerHandler()
         result = await handler.get_config_options(
-            trigger_name="github_commit_event",
-            field_name="repos",
-            user_id=USER_ID,
-            integration_id="github",
+            TriggerOptionsQuery(
+                trigger_name="github_commit_event",
+                field_name="repos",
+                user_id=USER_ID,
+                integration_id="github",
+            )
         )
         assert result == []
 
@@ -1421,14 +1756,38 @@ class TestGitHubTriggerHandler:
 
         handler = GitHubTriggerHandler()
         result = await handler.get_config_options(
-            trigger_name="github_commit_event",
-            field_name="repos",
-            user_id=USER_ID,
-            integration_id="github",
-            search="special",
+            TriggerOptionsQuery(
+                trigger_name="github_commit_event",
+                field_name="repos",
+                user_id=USER_ID,
+                integration_id="github",
+                search="special",
+            )
         )
         assert len(result) == 1
         assert result[0].value == "owner/special-repo"
+
+    @patch("app.services.triggers.handlers.github.get_composio_service")
+    async def test_get_config_options_requests_the_given_page(self, mock_get_composio):
+        mock_tool = MagicMock()
+        mock_tool.invoke = MagicMock(return_value={"successful": True, "data": [], "error": None})
+        mock_composio = MagicMock()
+        mock_composio.get_tool = MagicMock(return_value=mock_tool)
+        mock_get_composio.return_value = mock_composio
+
+        handler = GitHubTriggerHandler()
+        await handler.get_config_options(
+            TriggerOptionsQuery(
+                trigger_name="github_commit_event",
+                field_name="repos",
+                user_id=USER_ID,
+                integration_id="github",
+                page=3,
+            )
+        )
+        params = mock_tool.invoke.call_args.args[0]
+        assert params["page"] == 3
+        assert params["per_page"] == 100
 
     def test_singleton_instance_exists(self):
         assert github_trigger_handler is not None
@@ -1441,6 +1800,7 @@ class TestGitHubTriggerHandler:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("primary_account")
 class TestCalendarTriggerHandler:
     """Tests for CalendarTriggerHandler."""
 
@@ -1645,8 +2005,7 @@ class TestCalendarTriggerHandler:
 
     @patch("app.services.calendar_service.list_calendars")
     async def test_fetch_user_calendars_empty_items_registers_nothing(self, mock_list_calendars):
-        """An explicit empty ``items`` means the user has no calendars, which is
-        not the same as Google telling us nothing -- no primary fallback."""
+        """An explicit empty items list means no calendars, not "Google told us nothing" -- no primary fallback."""
         from app.models.calendar_models import CalendarListResponse
 
         mock_list_calendars.return_value = CalendarListResponse.model_validate({"items": []})
@@ -1665,9 +2024,7 @@ class TestCalendarTriggerHandler:
 
     @patch("app.services.calendar_service.proxy_request")
     async def test_fetch_user_calendars_rejects_a_payload_with_an_id_less_entry(self, mock_proxy):
-        """``id`` is required on a calendarList entry, so a payload missing one
-        fails validation loudly and falls back to primary instead of silently
-        registering triggers for a partial calendar set."""
+        """A calendarList entry missing id fails validation loudly and falls back to primary."""
         handler = CalendarTriggerHandler()
 
         # Positive control: the same real proxy → validate → project path returns
@@ -1684,12 +2041,198 @@ class TestCalendarTriggerHandler:
         assert isinstance(calendar_trigger_handler, CalendarTriggerHandler)
 
 
+STARTING_SOON_EVENT = "GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER"
+
+
+def _starting_soon_payload(event_id: str, calendar_id: str) -> dict[str, Any]:
+    """Build a starting-soon payload as Composio delivers it, one per calendar."""
+    return {
+        "event_id": event_id,
+        "calendar_id": calendar_id,
+        "summary": "BA Upskill Program - Weekly Status Sync",
+        "start_time": "2026-11-02T11:00:00Z",
+        "start_timestamp": 1793617200.0,
+        "minutes_until_start": 8.5,
+        "countdown_window_minutes": 10,
+        "hangout_link": "https://meet.google.com/byy-owud-fbt",
+        "organizer_email": "organizer@example.com",
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("fake_redis")
+class TestCalendarStartingSoonFanOut:
+    """One meeting on several subscribed calendars reaches each workflow once.
+
+    Regression: a user with 7 calendars got the same reminder 3 times per meeting
+    (721 reminder and 722 briefing runs in 30 days) — one webhook per calendar trigger.
+    """
+
+    @staticmethod
+    async def _fire(
+        workflows: list[Workflow], payloads: list[dict[str, Any]]
+    ) -> tuple[AsyncMock, list[str], dict[str, Any]]:
+        """Dispatch each payload from its own calendar trigger; return the queue, results and wide event."""
+        queue = AsyncMock(return_value=True)
+        with (
+            patch(
+                "app.services.triggers.handlers.calendar.workflow_repository.find_active_by_composio_trigger",
+                AsyncMock(return_value=workflows),
+            ),
+            patch(
+                "app.services.triggers.base.WorkflowQueueService.queue_workflow_execution", queue
+            ),
+            patch(
+                "app.services.triggers.base.get_signal_matching_context",
+                AsyncMock(return_value=""),
+            ),
+            patch.object(
+                calendar_trigger_handler, "_queue_todo_dispatch", AsyncMock(return_value=False)
+            ),
+        ):
+            async with captured_wide_event() as event:
+                results = [
+                    (
+                        await calendar_trigger_handler.process_event(
+                            STARTING_SOON_EVENT, f"ti_calendar_{index}", USER_ID, payload
+                        )
+                    )["message"]
+                    for index, payload in enumerate(payloads)
+                ]
+        return queue, results, event
+
+    async def test_the_same_event_on_three_calendars_runs_the_workflow_once(self) -> None:
+        reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
+        payloads = [
+            _starting_soon_payload("evt_weekly_sync", calendar)
+            for calendar in ("primary", "team@group.calendar.google.com", "ba@example.com")
+        ]
+
+        queue, results, _ = await self._fire([reminder], payloads)
+
+        queue.assert_awaited_once()
+        assert queue.await_args.kwargs["context"]["trigger_data"]["event_id"] == "evt_weekly_sync"
+        assert results == ["Queued 1 workflows", "Queued 0 workflows", "Queued 0 workflows"]
+
+    async def test_distinct_events_and_distinct_workflows_each_still_run(self) -> None:
+        reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
+        briefing = _make_workflow(trigger_name="calendar_event_starting_soon")
+        briefing.id = "wf_briefing"
+
+        queue, _, _ = await self._fire(
+            [reminder, briefing],
+            [
+                _starting_soon_payload("evt_standup", "primary"),
+                _starting_soon_payload("evt_standup", "team@group.calendar.google.com"),
+                _starting_soon_payload("evt_one_on_one", "primary"),
+            ],
+        )
+
+        fired = sorted(
+            (call.args[0], call.kwargs["context"]["trigger_data"]["event_id"])
+            for call in queue.await_args_list
+        )
+        assert fired == [
+            ("wf_briefing", "evt_one_on_one"),
+            ("wf_briefing", "evt_standup"),
+            (WORKFLOW_ID, "evt_one_on_one"),
+            (WORKFLOW_ID, "evt_standup"),
+        ]
+
+    async def test_a_rescheduled_event_fires_again_for_its_new_start(self) -> None:
+        reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
+        moved = _starting_soon_payload("evt_weekly_sync", "primary")
+        moved["start_time"] = "2026-11-02T15:00:00Z"
+
+        queue, _, _ = await self._fire(
+            [reminder], [_starting_soon_payload("evt_weekly_sync", "primary"), moved]
+        )
+
+        assert queue.await_count == 2
+
+    async def test_a_payload_without_an_event_id_is_never_collapsed(self) -> None:
+        reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
+        anonymous = _starting_soon_payload("", "primary")
+
+        queue, _, _ = await self._fire([reminder], [anonymous, anonymous])
+
+        assert queue.await_count == 2
+
+    async def test_event_created_events_are_not_collapsed(self) -> None:
+        workflow = _make_workflow(trigger_name="calendar_event_created")
+        queue = AsyncMock(return_value=True)
+        with (
+            patch(
+                "app.services.triggers.handlers.calendar.workflow_repository.find_active_by_composio_trigger",
+                AsyncMock(return_value=[workflow]),
+            ),
+            patch(
+                "app.services.triggers.base.WorkflowQueueService.queue_workflow_execution", queue
+            ),
+            patch(
+                "app.services.triggers.base.get_signal_matching_context",
+                AsyncMock(return_value=""),
+            ),
+            patch.object(
+                calendar_trigger_handler, "_queue_todo_dispatch", AsyncMock(return_value=False)
+            ),
+        ):
+            for trigger_id in ("ti_a", "ti_b"):
+                await calendar_trigger_handler.process_event(
+                    "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
+                    trigger_id,
+                    USER_ID,
+                    _starting_soon_payload("evt_new", "primary"),
+                )
+
+        assert queue.await_count == 2
+
+    async def test_redis_down_fires_every_event_rather_than_dropping_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(redis_cache, "redis", None)
+        reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
+        payload = _starting_soon_payload("evt_weekly_sync", "primary")
+
+        queue, _, event = await self._fire([reminder], [payload, payload])
+
+        assert queue.await_count == 2
+        dedupe_warnings = [w["msg"] for w in event["warnings"] if "dedupe" in w["msg"]]
+        assert (
+            dedupe_warnings
+            == [f"{LogTag.TRIGGER} Redis unavailable — occurrence dedupe skipped"] * 2
+        )
+
+    async def test_a_failing_redis_write_fires_rather_than_dropping(
+        self, fake_redis: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(fake_redis, "set", AsyncMock(side_effect=RedisError("down")))
+        reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
+        payload = _starting_soon_payload("evt_weekly_sync", "primary")
+
+        queue, _, event = await self._fire([reminder], [payload, payload])
+
+        assert queue.await_count == 2
+        warning = next(w for w in event["warnings"] if "dedupe" in w["msg"])
+        assert warning["msg"] == f"{LogTag.TRIGGER} Redis write failed — occurrence dedupe skipped"
+        assert (warning["error"], warning["error_type"]) == ("down", "RedisError")
+
+    async def test_the_claim_expires_after_a_day(self, fake_redis: Any) -> None:
+        reminder = _make_workflow(trigger_name="calendar_event_starting_soon")
+
+        await self._fire([reminder], [_starting_soon_payload("evt_weekly_sync", "primary")])
+
+        key = f"trigger_occurrence:{WORKFLOW_ID}:evt_weekly_sync:2026-11-02T11:00:00Z"
+        assert 23 * 60 * 60 < await fake_redis.ttl(key) <= 24 * 60 * 60
+
+
 # ===========================================================================
 # LinearTriggerHandler tests
 # ===========================================================================
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("primary_account")
 class TestLinearTriggerHandler:
     """Tests for LinearTriggerHandler."""
 
@@ -1898,14 +2441,19 @@ class TestLinearTriggerHandler:
 
         handler = LinearTriggerHandler()
         result = await handler.get_config_options(
-            trigger_name="linear_issue_created",
-            field_name="team_id",
-            user_id=USER_ID,
-            integration_id="linear",
+            TriggerOptionsQuery(
+                trigger_name="linear_issue_created",
+                field_name="team_id",
+                user_id=USER_ID,
+                integration_id="linear",
+            )
         )
         assert len(result) == 2
         assert result[0].value == "team_1"
         assert result[0].label == "Engineering"
+        mock_composio.get_tool.assert_called_once_with(
+            "LINEAR_GET_ALL_LINEAR_TEAMS", user_id=USER_ID
+        )
 
     @patch("app.services.triggers.handlers.linear.get_composio_service")
     async def test_get_config_options_team_id_with_search(self, mock_get_composio):
@@ -1928,11 +2476,13 @@ class TestLinearTriggerHandler:
 
         handler = LinearTriggerHandler()
         result = await handler.get_config_options(
-            trigger_name="linear_issue_created",
-            field_name="team_id",
-            user_id=USER_ID,
-            integration_id="linear",
-            search="design",
+            TriggerOptionsQuery(
+                trigger_name="linear_issue_created",
+                field_name="team_id",
+                user_id=USER_ID,
+                integration_id="linear",
+                search="design",
+            )
         )
         assert len(result) == 1
         assert result[0].label == "Design"
@@ -1945,10 +2495,12 @@ class TestLinearTriggerHandler:
 
         handler = LinearTriggerHandler()
         result = await handler.get_config_options(
-            trigger_name="linear_issue_created",
-            field_name="team_id",
-            user_id=USER_ID,
-            integration_id="linear",
+            TriggerOptionsQuery(
+                trigger_name="linear_issue_created",
+                field_name="team_id",
+                user_id=USER_ID,
+                integration_id="linear",
+            )
         )
         assert result == []
 
@@ -1968,10 +2520,12 @@ class TestLinearTriggerHandler:
 
         handler = LinearTriggerHandler()
         result = await handler.get_config_options(
-            trigger_name="linear_issue_created",
-            field_name="team_id",
-            user_id=USER_ID,
-            integration_id="linear",
+            TriggerOptionsQuery(
+                trigger_name="linear_issue_created",
+                field_name="team_id",
+                user_id=USER_ID,
+                integration_id="linear",
+            )
         )
         assert result == []
 
@@ -1982,10 +2536,12 @@ class TestLinearTriggerHandler:
 
         handler = LinearTriggerHandler()
         result = await handler.get_config_options(
-            trigger_name="linear_issue_created",
-            field_name="unknown_field",
-            user_id=USER_ID,
-            integration_id="linear",
+            TriggerOptionsQuery(
+                trigger_name="linear_issue_created",
+                field_name="unknown_field",
+                user_id=USER_ID,
+                integration_id="linear",
+            )
         )
         assert result == []
 

@@ -2,6 +2,7 @@
  * Infisical secrets management for GAIA bots.
  *
  * Resolution:
+ * - If ENV is selfhost → skip always (a self-hosted instance configures locally)
  * - If all Infisical env vars are set → fetch remote secrets
  * - If partially set → warn about incomplete config
  * - If none set in dev → skip (using local .env only)
@@ -26,20 +27,24 @@ const INFISICAL_VARS = [
   "INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET",
 ] as const;
 
+/** The ENV of a self-hosted instance; mirrors SELFHOST_ENV in libs/shared/py/secrets.py. */
+const SELFHOST_ENV = "selfhost";
+
 export async function injectInfisicalSecrets(): Promise<void> {
-  // ENV doubles as the Infisical environment slug (development/staging/
-  // production). Unlike the Python loader — which defaults an absent ENV to
-  // production — a bare bot checkout resolves to development, because
-  // apps/bots/.env.example has never required ENV and defaulting to production
-  // would break every existing local setup on the next pull.
-  //
-  // Deployment never relies on that fallback: apps/bots/Dockerfile bakes
-  // ENV=production into the image and docker-compose.prod.yml sets it again per
-  // service, so a container can only ever resolve production. NODE_ENV is kept
-  // as a third layer for images built outside this Dockerfile.
+  // ENV doubles as the Infisical environment slug. Unlike the Python loader (which defaults an
+  // absent ENV to production), a bare bot checkout defaults to development: apps/bots/.env.example
+  // never required ENV, and defaulting to production would break every existing local setup.
+
+  // Deployment never relies on that fallback: apps/bots/Dockerfile bakes ENV=production into the
+  // image and docker-compose.prod.yml sets it again per service. NODE_ENV is a third layer for
+  // images built outside this Dockerfile.
   const env =
     process.env.ENV ??
     (process.env.NODE_ENV === "production" ? "production" : "development");
+  if (env === SELFHOST_ENV) {
+    wideLog.setNs("infisical", { skipped: "selfhost" });
+    return;
+  }
   const isProduction = env === "production";
 
   const present = INFISICAL_VARS.filter((k) => !!process.env[k]);

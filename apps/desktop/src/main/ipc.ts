@@ -14,11 +14,19 @@ import type {
   DesktopToolRequest,
   ProtectedFolder,
 } from "@gaia/shared/desktop-tools";
-import { app, ipcMain, shell } from "electron";
+import {
+  app,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+  ipcMain,
+  shell,
+} from "electron";
 import { IPC } from "../ipc-channels";
 import { listAppIcons, setAppIcon } from "./app-icon";
 import { registerBridgeIpcHandlers } from "./bridge/ipc";
 import { updatePopupShortcut } from "./popup-shortcut";
+import { getServerUrl } from "./server";
+import { connectSelfHostServer, switchToGaiaCloud } from "./server-switch";
 import { getDesktopSettings } from "./settings";
 import { dispatchDesktopTool } from "./tools";
 import {
@@ -34,21 +42,14 @@ import {
 } from "./windows/assistant-popup";
 import { getMainWindow } from "./windows/main";
 
+function isBundledAppSender(event: IpcMainEvent | IpcMainInvokeEvent): boolean {
+  return event.senderFrame?.origin === new URL(getServerUrl()).origin;
+}
+
 /**
- * Register all main-process IPC handlers.
- *
- * Handlers registered here:
- * - `get-platform`        — returns `process.platform`
- * - `get-version`         — returns the app version string
- * - `window-ready`        — renderer signals it has finished hydrating
- * - `open-external`       — opens a URL in the default system browser
- * - `wake-word-detected`  — listener heard "Hey GAIA"; show the popup
- * - `popup-dismiss`       — popup renderer requested dismissal
- * - `desktop-tool:execute` — run a backend-requested action (screenshot, ...)
- * - `desktop-tool:permissions` — report mic/screen permission status
- * - `desktop-tool:open-permission-settings` — deep-link a privacy pane
- *
- * @param onWindowReady - Callback invoked when the renderer sends `window-ready`.
+ * Register all main-process IPC handlers: platform/version info, the renderer's
+ * `window-ready` signal, opening external URLs, wake-word popup show/dismiss,
+ * and the desktop-tool bridge (execute, permissions, permission-settings deep link).
  */
 export function registerIpcHandlers(onWindowReady: () => void): void {
   ipcMain.handle(IPC.getPlatform, () => process.platform);
@@ -68,7 +69,8 @@ export function registerIpcHandlers(onWindowReady: () => void): void {
     if (typeof url !== "string") return;
     console.log("[Main] Opening external URL:", url);
     if (url.startsWith("https://") || url.startsWith("http://")) {
-      void shell.openExternal(url);
+      // Hands the link to the OS browser, not a server-side fetch; the http(s) gate is the control.
+      void shell.openExternal(url); // NOSONAR tssecurity:S5144
     }
   });
 
@@ -134,6 +136,20 @@ export function registerIpcHandlers(onWindowReady: () => void): void {
   ipcMain.handle(IPC.desktopSettingsSetIcon, (_event, id: string) =>
     setAppIcon(String(id)),
   );
+
+  // Only the bundled web app may change servers, so a page served by a
+  // self-hosted server can never repoint the app somewhere else.
+  ipcMain.handle(IPC.desktopServerConnect, (event, address: unknown) => {
+    if (!isBundledAppSender(event)) {
+      throw new Error("Servers can only be changed from the desktop app");
+    }
+    return connectSelfHostServer(String(address));
+  });
+
+  ipcMain.on(IPC.desktopServerUseCloud, (event) => {
+    if (!isBundledAppSender(event)) return;
+    switchToGaiaCloud();
+  });
 
   // Device bridge: pair/status/start/stop + server management, and the
   // main→renderer status push. Configures the host state dir up front so the

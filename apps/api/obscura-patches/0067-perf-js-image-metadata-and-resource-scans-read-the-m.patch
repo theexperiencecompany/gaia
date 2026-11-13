@@ -1,0 +1,70 @@
+From 355597600bcdacace2d5e2cf82587f21c3823763 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 10:00:49 +0530
+Subject: [PATCH] perf(js): image metadata and resource scans read the memoized
+ base URL
+
+Image metadata reads (an image's currentSrc, complete, naturalWidth), the
+render-resource scan and the screenshot base check each ran the selector
+engine over the whole document to find <base href>. They now use the
+memoized base URL the geometry ops already use.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/src/ops.rs     | 4 ++--
+ crates/obscura-js/src/runtime.rs | 6 +++---
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index f876b5b..853c296 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -6811,7 +6811,7 @@ fn profiled_cached_image_metadata(
+     node_id: NodeId,
+ ) -> Option<(String, f32, bool, Option<(f32, f32)>)> {
+     let dom = gs.dom.as_ref()?;
+-    let base_url = document_base_url(gs);
++    let base_url = document_base_url_memoized(gs);
+     gs.render_resources.cached_image_element_metadata(
+         dom,
+         node_id,
+@@ -6859,7 +6859,7 @@ fn op_image_metadata(state: &OpState, nid: u32, _cached_only: bool, frame_id: u3
+ /// path nor layout/paint can open a synchronous request for them.
+ #[cfg(feature = "render")]
+ fn load_image_metadata_without_page_transport(gs: &mut ObscuraState, node_id: NodeId) -> String {
+-    let base_url = document_base_url(&gs);
++    let base_url = document_base_url_memoized(gs);
+     let viewport = gs.viewport;
+     let previous_dimensions = gs.dom.as_ref().and_then(|dom| {
+         gs.render_resources
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index 57aa36f..59684b7 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -25,7 +25,7 @@ use crate::ops::{
+ };
+ #[cfg(feature = "render")]
+ use crate::ops::{
+-    begin_animation_task, clamp_scroll_offset, document_base_url, ensure_resolved_scroll,
++    begin_animation_task, clamp_scroll_offset, ensure_resolved_scroll,
+ };
+ 
+ #[cfg(feature = "render")]
+@@ -1628,7 +1628,7 @@ impl ObscuraJsRuntime {
+         surface_color: [u8; 4],
+     ) -> Option<Vec<u8>> {
+         let mut state = self.state.borrow_mut();
+-        let effective_base = document_base_url(&state);
++        let effective_base = crate::ops::document_base_url_memoized(&state);
+         if viewport != state.viewport || base_url != effective_base.as_deref() {
+             return None;
+         }
+@@ -4291,7 +4291,7 @@ pub(crate) fn pending_render_image_urls_in(
+     shared: &crate::ops::SharedState,
+ ) -> Vec<(String, crate::ops::ImageRequestProfile)> {
+     let state = shared.borrow();
+-    let base_url = document_base_url(&state);
++    let base_url = crate::ops::document_base_url_memoized(&state);
+     let Some(dom) = state.dom.as_ref() else {
+         return Vec::new();
+     };

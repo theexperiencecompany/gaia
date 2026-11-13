@@ -24,7 +24,8 @@ interface AttachmentSheetProps {
 }
 
 function makeLocalId(): string {
-  return `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  // client-local list key for a pending attachment, never sent or trusted as an identifier
+  return `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; // NOSONAR typescript:S2245
 }
 
 export const AttachmentSheet = forwardRef<

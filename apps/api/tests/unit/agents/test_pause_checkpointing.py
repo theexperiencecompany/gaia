@@ -1,28 +1,18 @@
 """What a pause does to the tool calls that already finished beside it.
 
-A turn can ask for several tools at once. ``create_agent`` gives each call its own
-``Send``, so they are separate tasks in one superstep, and when one of them pauses for
-HIL approval the others have usually already run. Whether their results survive that
-pause is not a detail: if they do not, LangGraph re-runs those tasks on resume and the
-user's email is sent twice, invisibly — only the replayed ToolMessage reaches the stream.
+If a paused task's sibling results do not survive the pause, LangGraph re-runs
+them on resume and, e.g., the user's email is sent twice invisibly. LangGraph
+itself persists writes of tasks COMPLETED in an interrupting step and skips
+them on resume; two things we do can throw that away:
 
-LangGraph handles this correctly on its own. It persists the writes of every task that
-COMPLETED in an interrupting step, and skips those tasks on resume. Two things we do can
-throw that away, and both are exercised here:
+* durability="exit" makes the run-exit save the ONLY checkpoint write, so
+  abandoning the stream early skips it (subagent_runner used to break).
+* LangGraph emits one __interrupt__ event PER paused task, so a driver keeping
+  only the last one loses every other approval's id, and an id that never
+  reaches _record_pause gets no resume_item and is permanently un-decidable.
 
-* ``durability="exit"`` makes the run-exit save the ONLY checkpoint write there is, so
-  abandoning the stream early skips it (``subagent_runner`` used to ``break``).
-* LangGraph emits one ``__interrupt__`` event PER paused task, so a driver that keeps
-  only the last one it sees loses every other approval's id — and an approval whose id
-  never reaches ``_record_pause`` gets no ``resume_item``, which makes it permanently
-  un-decidable.
-
-Where the ``interrupt()`` is raised makes no difference — a tool's own gate and a gate
-bubbled up from a subagent two frames down (``handoff``) behave identically. That was
-once written down as a gap; the last class here is what proves it is not.
-
-These run against a real compiled graph with a real checkpointer and real interrupts:
-nothing here is mocked, because the thing under test IS the framework contract.
+A tool's own gate and a gate bubbled up from a subagent (handoff) behave
+identically here. Runs against a real compiled graph — nothing here is mocked.
 """
 
 from __future__ import annotations
@@ -36,6 +26,7 @@ from langgraph.types import Command, Send, interrupt
 import pytest
 
 from app.agents.core.subagents.subagent_runner import interrupt_values, merge_approvals
+from app.models.hil_models import HilInterruptPayload
 
 
 class ToolRun(TypedDict):
@@ -44,14 +35,20 @@ class ToolRun(TypedDict):
     ran: Annotated[list[str], operator.add]
 
 
+class _ToolCall(TypedDict):
+    """The Send payload: the one tool a tools-node task runs."""
+
+    tool: str
+
+
 class ToolCallSimulator:
     """A stand-in for a turn's tool calls, with a real graph behind it.
 
     Give it the calls a turn makes and which of them need approval; it builds the same
-    shape ``create_agent`` builds — one ``Send`` per call into a single ``tools`` node —
+    shape create_agent builds — one Send per call into a single tools node —
     and records every tool body that actually executes.
 
-    ``ran`` is the whole point: it counts EXECUTIONS, so "did the resume repeat work the
+    ran is the whole point: it counts EXECUTIONS, so "did the resume repeat work the
     user already paid for" is a list comparison rather than an inference from frames.
     """
 
@@ -74,7 +71,7 @@ class ToolCallSimulator:
         self.drain = drain
         self.ran: list[str] = []
         #: Every approval payload seen, in arrival order. One event per paused task.
-        self.interrupts: list[dict[str, Any]] = []
+        self.interrupts: list[HilInterruptPayload] = []
         self._saver = InMemorySaver()
         self._app = self._build()
         self._thread = {"configurable": {"thread_id": "sim"}}
@@ -86,11 +83,11 @@ class ToolCallSimulator:
             interrupt({"type": "hil_approval", "approval_id": f"appr-{name}"})
 
         def bubble_up_from_a_subagent(name: str) -> None:
-            """Two frames deep — ``handoff`` -> ``resume_for_gate`` -> ``interrupt``."""
+            """Two frames deep — handoff -> resume_for_gate -> interrupt."""
             pause_for(name)
 
-        def tools(payload: dict[str, Any]) -> ToolRun:
-            name = payload["tool"]
+        def tools(state: _ToolCall) -> ToolRun:
+            name = state["tool"]
             if name in self.gated:
                 if self.nested:
                     bubble_up_from_a_subagent(name)
@@ -109,7 +106,7 @@ class ToolCallSimulator:
         return graph.compile(checkpointer=self._saver)
 
     async def _drive(self, payload: Any) -> None:
-        """Consume the run the way ``execute_subagent_stream`` consumes it."""
+        """Consume the run the way execute_subagent_stream consumes it."""
         async for mode, chunk in self._app.astream(
             payload,
             config=self._thread,
@@ -149,14 +146,7 @@ class TestACompletedSiblingSurvivesThePause:
         )
 
     async def test_abandoning_the_stream_at_the_pause_loses_it(self) -> None:
-        """Why the runner drains instead of breaking.
-
-        This is the defect itself, pinned as a fact about the framework rather than
-        about our code: under ``durability="exit"`` the run-exit save is the only
-        checkpoint write, so leaving the generator early skips it and the completed
-        sibling has no record of having run. If this ever starts passing, LangGraph has
-        changed its persistence contract and the drain in ``subagent_runner`` can go.
-        """
+        """If this passes, LangGraph changed its persistence contract and the drain can go."""
         sim = ToolCallSimulator(
             calls=["get_weather", "send_email"], gated={"send_email"}, drain=False
         )
@@ -201,11 +191,11 @@ class TestACompletedSiblingSurvivesThePause:
 
 
 class TestEveryPausedCallIsReported:
-    """One ``__interrupt__`` event per paused task — so the driver must accumulate.
+    """One __interrupt__ event per paused task — so the driver must accumulate.
 
     The caller stamps re-dispatch context onto every id the pause reports
-    (``executor_runner._record_pause``). An approval left out of that list gets no
-    ``resume_item``, and deciding it later raises ApprovalNotResumableError — the user
+    (executor_runner._record_pause). An approval left out of that list gets no
+    resume_item, and deciding it later raises ApprovalNotResumableError — the user
     presses Approve and the action can never happen.
     """
 
@@ -237,7 +227,7 @@ class TestEveryPausedCallIsReported:
 
 
 class TestMergingWhatThePauseReports:
-    """``merge_approvals`` is what carries every id to the caller."""
+    """merge_approvals is what carries every id to the caller."""
 
     def test_several_approvals_carry_every_id(self) -> None:
         merged = merge_approvals(
@@ -265,7 +255,11 @@ class TestMergingWhatThePauseReports:
         assert merged["tool_name"] == "send_email"
 
     def test_a_lone_approval_is_passed_through_unchanged(self) -> None:
-        payload = {"type": "hil_approval", "approval_id": "a", "tool_name": "send_email"}
+        payload: HilInterruptPayload = {
+            "type": "hil_approval",
+            "approval_id": "a",
+            "tool_name": "send_email",
+        }
 
         assert merge_approvals([payload]) == payload
 
@@ -283,12 +277,12 @@ class TestMergingWhatThePauseReports:
 
 
 class TestItDoesNotMatterWhereThePauseComesFrom:
-    """``handoff`` / ``spawn_subagent`` / ``wait_for_subagents`` (HIL_PAUSING_TOOLS).
+    """handoff / spawn_subagent (HIL_PAUSING_TOOLS).
 
     These are never gated themselves — they pause from INSIDE, bubbling up the gate of
     a subagent they are driving. That distinction mattered under an earlier design and
     was written down as a gap this could not close. It is not one: LangGraph sees a task
-    that interrupted, and where in the call stack the ``interrupt()`` was raised makes no
+    that interrupted, and where in the call stack the interrupt() was raised makes no
     difference to whether its siblings' completed writes are kept.
     """
 

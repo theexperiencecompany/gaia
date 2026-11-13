@@ -71,8 +71,7 @@ def test_call_without_a_generation_id_keeps_its_logged_cost_and_loses_coverage()
 
 
 def test_dropped_generation_is_unverifiable_not_an_error() -> None:
-    """OpenRouter 404s ids it has aged out — cached as ``None``, same treatment
-    as an id it was never asked about."""
+    """OpenRouter 404s ids it has aged out — cached as None gets the same treatment as never-asked."""
     cached_404 = aggregate_true_cost([_call("gone", 0.40)], {"gone": None})
     never_asked = aggregate_true_cost([_call("gone", 0.40)], {})
 
@@ -81,8 +80,7 @@ def test_dropped_generation_is_unverifiable_not_an_error() -> None:
 
 
 def test_coverage_is_weighted_by_dollars_not_by_call_count() -> None:
-    """Nine cheap unverifiable calls must not bury one verified call that is
-    where the money actually went."""
+    """Nine cheap unverifiable calls must not bury one verified call that is where the money went."""
     calls = [_call("big", 9.0), *[_call(None, 0.1) for _ in range(10)]]
 
     rows = aggregate_true_cost(calls, {"big": _record(12.0)})
@@ -150,12 +148,9 @@ def test_parse_event_reads_a_wide_event_line() -> None:
 
 
 def test_a_sticky_flip_replay_is_background_even_without_the_background_flag() -> None:
-    # The events already in Loki predate the fix on this branch: the old code
-    # booked the discarded replay as the user's foreground spend, so they carry
-    # sticky_flip_discarded=true and no background flag. Keying off `background`
-    # alone would replay exactly the mistake this branch removes into
-    # cost_actual, splitting the 30-day history by the old rule and everything
-    # after the deploy by the new one.
+    # Pre-fix events carry sticky_flip_discarded=true but no background flag —
+    # the old code booked them as foreground spend. Keying off `background`
+    # alone would repeat that mistake for 30 days of history.
     line = (
         '{"llm_event": "llm_call", "time": "2026-08-01T12:30:00Z", "user_id": "u1", '
         '"sticky_flip_discarded": true, "cost_usd": 0.125, "generation_id": "gen-abc"}'
@@ -212,8 +207,7 @@ def test_parse_event_treats_a_missing_generation_id_as_unverifiable() -> None:
 
 @pytest.mark.parametrize("poison", ["NaN", "Infinity", "-Infinity", "-0.5"])
 def test_a_cost_that_is_not_a_real_number_drops_the_line(poison: str) -> None:
-    """json.loads accepts NaN and Infinity. One such line summed into a day would
-    make every figure that day feeds NaN — including what --apply writes."""
+    """NaN/Infinity summed into a day would NaN every figure that day feeds, including what --apply writes."""
     line = (
         '{"llm_event": "llm_call", "user_id": "u1", "time": "2026-08-25T10:00:00Z", '
         f'"cost_usd": {poison}, "generation_id": "g1"}}'
@@ -222,8 +216,7 @@ def test_a_cost_that_is_not_a_real_number_drops_the_line(poison: str) -> None:
 
 
 def test_a_missing_cost_is_zero_not_a_dropped_line() -> None:
-    """No cost_usd at all is an unpriced call, not a corrupt one: it still counts
-    toward coverage and tokens."""
+    """No cost_usd at all is an unpriced call, not a corrupt one: it still counts toward coverage and tokens."""
     line = '{"llm_event": "llm_call", "user_id": "u1", "time": "2026-08-25T10:00:00Z"}'
     call = backfill._parse_event(line)
     assert call is not None

@@ -1,23 +1,21 @@
 #!/usr/bin/env node
 /**
- * Cross-platform Next.js standalone preparation for electron-builder.
- *
- * THE single prepare script for every platform (mac/win/linux) — there is no
- * shell variant, by design: two scripts doing the same job in two languages
- * drift apart silently (Windows once shipped without the prune + wake-word
- * canary). One code path = no platform divergence.
- *
- * Steps:
- *   1. Locate the standalone app root (handles both the primary checkout
- *      layout and the deeper-nested layout produced by git worktree builds).
- *   2. Copy it — with the real (dereferenced) traced node_modules — into
- *      apps/desktop/.next-server-prepared, overlaying static + public assets.
- *   3. Prune the dead weight the desktop runtime never loads, and assert the
- *      wake-word runtime survived (the canary).
+ * Cross-platform Next.js standalone preparation for electron-builder — the one
+ * prepare script for every platform (a shell variant once drifted and shipped
+ * Windows without the prune + wake-word canary). Locates the standalone app root
+ * (handles git worktree's nested layout), copies it, prunes dead weight, and asserts the canary.
  */
 
-import { existsSync, lstatSync, readdirSync } from "node:fs";
+import { spawn } from "node:child_process";
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readlinkSync,
+  realpathSync,
+} from "node:fs";
 import { cp, mkdir, readdir, rm } from "node:fs/promises";
+import { createServer } from "node:net";
 import { dirname, extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -32,7 +30,15 @@ const preparedNextDir = resolve(preparedWebDir, ".next");
 const preparedStaticDir = resolve(preparedNextDir, "static");
 const preparedPublicDir = resolve(preparedWebDir, "public");
 
-const copyOpts = { recursive: true, dereference: true, force: true };
+// The standalone pnpm tree resolves modules through relative symlinks, so both
+// flags are required: dereference:true flattens it, and dereference:false alone
+// still rewrites relative links to absolute build-dir paths that dangle.
+const copyOpts = {
+  recursive: true,
+  dereference: false,
+  verbatimSymlinks: true,
+  force: true,
+};
 
 // (landing) routes the desktop/in-app UI still reaches in-window — never
 // prune these. Everything else under the (landing) route group is marketing/
@@ -121,13 +127,9 @@ async function deleteByExtension(dir, ext) {
   }
 }
 
-// The onnxruntime-web artifacts the wake-word engine actually fetches at
-// runtime. `libs/wake-word/src/web/runtime.ts` imports `onnxruntime-web/wasm`
-// and runs the plain "wasm" execution provider, which loads the CPU wasm binary
-// plus its Emscripten glue. The JSEP/WebGPU, asyncify, and JSPI flavors are
-// never loaded — and the JSEP binary alone (25 MiB) exceeds Cloudflare Workers'
-// per-asset cap, so it is deliberately kept out of the synced runtime. Keep this
-// in lockstep with RUNTIME_FILES in apps/web/scripts/sync-wake-word-runtime.mjs.
+// onnxruntime-web files the wake-word engine actually loads: the CPU "wasm"
+// provider only (JSEP alone is 25 MiB, over Cloudflare Workers' per-asset cap).
+// Keep in lockstep with RUNTIME_FILES in apps/web/scripts/sync-wake-word-runtime.mjs.
 const ORT_RUNTIME_FILES = new Set([
   "ort-wasm-simd-threaded.wasm",
   "ort-wasm-simd-threaded.mjs",
@@ -202,6 +204,137 @@ async function prune() {
   await pruneMarketingPages(resolve(preparedNextDir, "server/app"));
 }
 
+/**
+ * Assert every symlink in the prepared tree resolves to a path INSIDE it. A
+ * symlink that escapes to the build directory — absolute, or a relative chain
+ * that climbs out — resolves fine on the build machine (so the boot canary
+ * below would falsely pass) but dangles on the user's machine, producing the
+ * exact MODULE_NOT_FOUND blank-window failure. Runs before the canary so the
+ * canary's success is trustworthy.
+ */
+function assertSelfContained(root) {
+  const rootReal = realpathSync(root);
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = resolve(dir, entry.name);
+      if (entry.isSymbolicLink()) {
+        let target;
+        try {
+          target = realpathSync(full);
+        } catch {
+          throw new Error(
+            `Dangling symlink in prepared server: ${full} -> ${readlinkSync(full)}`,
+          );
+        }
+        if (target !== rootReal && !target.startsWith(rootReal + sep)) {
+          throw new Error(
+            `Symlink escapes the prepared server bundle: ${full} -> ${target}. ` +
+              "It would dangle on the user's machine (blank window / MODULE_NOT_FOUND).",
+          );
+        }
+      } else if (entry.isDirectory()) {
+        walk(full);
+      }
+    }
+  };
+  walk(root);
+  console.log("Self-containment check: all symlinks resolve inside the bundle.");
+}
+
+/** Bind an OS-assigned free port, then release it for the canary to reuse. */
+function getFreePort() {
+  return new Promise((resolvePort, reject) => {
+    const probe = createServer();
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const { port } = probe.address();
+      probe.close(() => resolvePort(port));
+    });
+  });
+}
+
+/**
+ * Boot the prepared standalone server and fail the build unless it reaches "Ready".
+ *
+ * A green `next build` does not prove it: the file tracer has dropped a runtime
+ * dependency of `next` before. Readiness detection mirrors src/main/server.ts.
+ */
+async function assertServerBoots() {
+  const serverPath = resolve(preparedDir, SERVER_ENTRY);
+  const port = await getFreePort();
+  console.log(`Boot canary: starting standalone server on port ${port}...`);
+
+  const child = spawn(process.execPath, [serverPath], {
+    cwd: preparedDir,
+    env: { ...process.env, PORT: String(port), HOSTNAME: "127.0.0.1", NODE_ENV: "production" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  const BOOT_TIMEOUT_MS = 60_000;
+  const stderr = [];
+
+  const outcome = await new Promise((settleOutcome) => {
+    let settled = false;
+    const settle = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      settleOutcome(result);
+    };
+
+    let stdoutBuffer = "";
+    child.stdout.on("data", (buf) => {
+      const text = buf.toString();
+      process.stdout.write(`[canary] ${text}`);
+      // A chunk boundary can split the readiness token across two data
+      // events — keep a bounded rolling buffer so the match sees the join.
+      stdoutBuffer = (stdoutBuffer + text).slice(-1024);
+      if (/Ready|started server/i.test(stdoutBuffer)) settle({ ok: true });
+    });
+    child.stderr.on("data", (buf) => {
+      stderr.push(buf.toString());
+      process.stderr.write(`[canary] ${buf}`);
+    });
+    child.on("exit", (code) =>
+      settle({ ok: false, reason: `server exited with code ${code} before becoming ready` }),
+    );
+    child.on("error", (err) =>
+      settle({ ok: false, reason: `failed to spawn server: ${err.message}` }),
+    );
+
+    const timer = setTimeout(
+      () => settle({ ok: false, reason: `server did not report ready within ${BOOT_TIMEOUT_MS}ms` }),
+      BOOT_TIMEOUT_MS,
+    );
+  });
+
+  if (child.exitCode === null) {
+    child.kill("SIGTERM");
+    // Force-kill if SIGTERM is ignored. unref()'d so it never keeps the build
+    // process alive past the child; cleared once the child actually exits.
+    const killTimer = setTimeout(() => {
+      if (child.pid) {
+        try {
+          process.kill(child.pid, "SIGKILL");
+        } catch {
+          // Already exited.
+        }
+      }
+    }, 3000);
+    killTimer.unref();
+    child.once("exit", () => clearTimeout(killTimer));
+  }
+
+  if (!outcome.ok) {
+    throw new Error(
+      `Boot canary failed: ${outcome.reason}. The prepared Next.js standalone server ` +
+        `cannot start, so the packaged desktop app would show a blank window.` +
+        (stderr.length ? `\n--- server stderr ---\n${stderr.join("")}` : ""),
+    );
+  }
+  console.log("Boot canary: standalone server booted successfully.");
+}
+
 async function main() {
   console.log("Preparing Next.js standalone for electron-builder...");
 
@@ -236,6 +369,9 @@ async function main() {
   await copyIfExists(publicDir, preparedPublicDir, "public");
 
   await prune();
+
+  assertSelfContained(preparedDir);
+  await assertServerBoots();
 
   console.log(`Done! Prepared Next.js server at: ${preparedDir}`);
 }

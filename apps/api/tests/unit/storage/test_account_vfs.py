@@ -1,11 +1,11 @@
 """Account-center VFS materializer: projection, hash-gating, self-healing.
 
-Mongo is the truth; the JSON files under ``account/`` are views. What's under
+Mongo is the truth; the JSON files under account/ are views. What's under
 test here is the on-disk contract — bodies land where the registry says, are
-read-only, aren't rewritten when unchanged, and a tampered file (bash `rm`/
-`echo`) heals back to the projected content on the next pass.
+read-only, aren't rewritten when unchanged, and a tampered file (bash rm/
+echo) heals back to the projected content on the next pass.
 
-``tmp_path`` is the real mount root — paths, mode bits and rewrites are
+tmp_path is the real mount root — paths, mode bits and rewrites are
 genuine; nothing is mocked.
 """
 
@@ -26,7 +26,7 @@ from app.services.storage.account_vfs import (
 
 
 def projection(rel_path: str, payload: dict[str, object]) -> AccountFileProjection:
-    """A projection exactly as ``build_account_projections`` emits it."""
+    """Build a projection exactly as build_account_projections emits it."""
     body = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     return {"id": rel_path, "path": rel_path, "body": body}
 
@@ -129,13 +129,7 @@ def test_stale_projection_leaving_the_manifest_is_pruned(tmp_path: Path) -> None
 def test_a_kept_file_does_not_stop_the_prune_from_reaching_later_stale_ones(
     tmp_path: Path,
 ) -> None:
-    """The prune SKIPS files it keeps; it must not STOP at them.
-
-    Every existing prune test has one file in the tree, so a loop that gave up
-    on its first keeper would still pass them all. With a kept file sorting
-    before a stale one, abandoning the walk leaves the stale view on disk
-    forever — the exact bug this pass exists to prevent.
-    """
+    """The prune must SKIP a kept file, not STOP there — an early keeper left a stale view on disk forever in the bug this guards against."""
     kept_rel = f"{ACCOUNT_DIR}/aaa-kept.json"
     preserved_rel = f"{ACCOUNT_DIR}/bbb-preserved.json"
     stale_rel = f"{ACCOUNT_DIR}/zzz-stale.json"

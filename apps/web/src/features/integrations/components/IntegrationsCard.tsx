@@ -8,11 +8,17 @@ import {
   integrationConnectionState,
 } from "@shared/utils";
 import type React from "react";
+import { InstanceSetupNotice } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useRouter } from "@/i18n/navigation";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
 import type { Integration } from "../types";
+
+const ITEM_SIZE_CLASSES = {
+  small: "gap-2 rounded-xl p-2",
+  default: "gap-3 rounded-2xl p-4",
+} as const;
 
 interface IntegrationsCardProps {
   onClose?: () => void;
@@ -24,7 +30,7 @@ const IntegrationItem: React.FC<{
   integration: Integration;
   onConnect: (id: string) => void;
   onClick: (id: string) => void;
-  size?: "default" | "small";
+  size: keyof typeof ITEM_SIZE_CLASSES;
 }> = ({ integration, onConnect, onClick, size }) => {
   const state = integrationConnectionState(integration.status);
   const isConnected = state === "connected";
@@ -42,16 +48,13 @@ const IntegrationItem: React.FC<{
     onConnect(integration.id);
   };
 
-  const paddingClass = size === "small" ? "p-2" : "p-4";
-  const gapClass = size === "small" ? "gap-2" : "gap-3";
-
   return (
     <div
-      className={`flex min-h-12 flex-col justify-center ${gapClass} overflow-hidden ${size === "small" ? "rounded-xl" : "rounded-2xl"} bg-zinc-800/40 ${paddingClass} transition hover:bg-zinc-700`}
+      className={`flex min-h-12 items-center overflow-hidden ${ITEM_SIZE_CLASSES[size]} bg-zinc-800/40 transition hover:bg-zinc-700`}
     >
       <button
         type="button"
-        className="flex min-w-0 cursor-pointer items-center gap-3 text-left"
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
         onClick={handleClick}
       >
         <div className="shrink-0">
@@ -77,34 +80,28 @@ const IntegrationItem: React.FC<{
         )}
       </button>
 
-      <div className="shrink-0 flex items-center gap-2">
-        {/* Status Dots - always show */}
-        {isConnected && (
-          <span className="h-2 w-2 rounded-full bg-success mr-2" />
-        )}
-
-        {state === "pending" && (
-          <span className="h-2 w-2 rounded-full bg-warning mr-2" />
-        )}
-
-        {state === "expired" && (
-          <span className="h-2 w-2 rounded-full bg-danger mr-2" />
-        )}
-
-        {/* Action button — pending reads as Retry, expired as Reconnect, never Connect */}
-        {(isAvailable || needsAttention) && !isConnected && (
-          <Button
-            size="sm"
-            variant="flat"
-            color={needsAttention ? "warning" : "primary"}
-            className="text-xs"
-            startContent={
-              needsAttention ? <RedoIcon width={16} height={16} /> : undefined
-            }
-            onPress={handleConnectClick}
-          >
-            {CONNECT_ACTION_LABEL[state]}
-          </Button>
+      {/* Inline status: a colored dot when connected, otherwise the action
+          button (pending reads as Retry, expired as Reconnect, never Connect). */}
+      <div className="flex shrink-0 items-center">
+        {isConnected ? (
+          <span className="h-2 w-2 rounded-full bg-success" />
+        ) : integration.instanceSetupRequired ? (
+          <InstanceSetupNotice />
+        ) : (
+          (isAvailable || needsAttention) && (
+            <Button
+              size="sm"
+              variant="flat"
+              color={needsAttention ? "warning" : "primary"}
+              className="text-xs"
+              startContent={
+                needsAttention ? <RedoIcon width={16} height={16} /> : undefined
+              }
+              onPress={handleConnectClick}
+            >
+              {CONNECT_ACTION_LABEL[state]}
+            </Button>
+          )
         )}
       </div>
     </div>
@@ -183,7 +180,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
             </div>
           }
         >
-          <div onClick={(e) => e.stopPropagation()}>
+          <div>
             <div className="grid grid-cols-2 gap-2 pl-1">
               {myIntegrations
                 .toSorted((a, b) => {

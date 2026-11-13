@@ -1,16 +1,17 @@
 """LangGraph checkpointing backed by Postgres, lazily provided.
 
 Flow
-- Requires `POSTGRES_URL` from `app.config.settings`.
-- `@lazy_provider` registers a provider for the checkpointer.
-- First `providers.aget(...)` creates an async pool and checkpointer, then reuses it.
-- Use helpers `get_checkpointer_manager()`.
+- Requires POSTGRES_URL from app.config.settings.
+- @lazy_provider registers a provider for the checkpointer.
+- First providers.aget(...) creates an async pool and checkpointer, then reuses it.
+- Use helpers get_checkpointer_manager().
 
 Add/change config
-- Set `POSTGRES_URL` in settings; in dev it can be Optional.
-- To alter pool size, adjust `CheckpointerManager` init params.
+- Set POSTGRES_URL in settings; in dev it can be Optional.
+- To alter pool size, adjust CheckpointerManager init params.
 """
 
+import asyncio
 from typing import cast
 
 from langgraph.checkpoint.postgres.aio import (
@@ -22,13 +23,16 @@ from psycopg.rows import DictRow, TupleRow
 from psycopg_pool import AsyncConnectionPool
 
 from app.config.settings import settings
+from app.constants.db import (
+    LANGGRAPH_SETUP_LOCK_ATTEMPTS,
+    LANGGRAPH_SETUP_LOCK_ID,
+    LANGGRAPH_SETUP_LOCK_POLL_SECONDS,
+)
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 
 
 class CheckpointerManager:
-    """
-    A manager class to handle checkpointer initialization and lifecycle.
-    """
+    """A manager class to handle checkpointer initialization and lifecycle."""
 
     def __init__(self, conninfo: str, max_pool_size: int = 20) -> None:
         self.conninfo = conninfo
@@ -38,16 +42,10 @@ class CheckpointerManager:
         self.checkpointer: AsyncPostgresSaver | None = None
 
     async def setup(self) -> "CheckpointerManager":
-        """
-        Initialize the connection pool and checkpointer.
-        """
-        # Swarm VXLAN overlay silently drops idle TCP connections (conntrack
-        # timeout ~15 min). Without keepalives + pool recycling the pool hands
-        # out dead sockets and chat_stream fails with "server closed the
-        # connection unexpectedly". Defence in depth:
-        #   1. libpq TCP keepalives keep the NAT entry alive.
-        #   2. max_idle / max_lifetime recycle in the pool.
-        #   3. check=... pings each connection before handing it out.
+        """Initialize the connection pool and checkpointer."""
+        # Swarm VXLAN drops idle TCP after ~15 min (conntrack timeout); without
+        # keepalives + pool recycling the pool hands out dead sockets. Defence
+        # in depth: libpq keepalives, max_idle/max_lifetime recycling, check=....
         connection_kwargs = {
             "autocommit": True,
             "prepare_threshold": 0,
@@ -70,35 +68,49 @@ class CheckpointerManager:
         )
         await self.pool.open(wait=True, timeout=30)
 
-        # AsyncPostgresSaver's signature demands a dict_row pool, but it sets
-        # row_factory=dict_row on every cursor it opens, so the pool's own factory
-        # is irrelevant to it. Keep the pool on the default tuple rows — callers
-        # that borrow it (conversation cleanup, checkpoint retention) index by
-        # position.
+        # AsyncPostgresSaver sets row_factory=dict_row on every cursor itself,
+        # so the pool's own factory is irrelevant — kept on default tuple rows
+        # since other callers (cleanup, retention) index by position.
         self.checkpointer = AsyncPostgresSaver(
             conn=cast(AsyncConnectionPool[AsyncConnection[DictRow]], self.pool)
         )
-        await self.checkpointer.setup()
-
-        async with AsyncPostgresStore.from_conn_string(self.conninfo) as store:
-            await store.setup()
+        # Session-level lock on an autocommit connection, held across both setups so
+        # concurrent starters (API replicas, xdist workers) run the DDL one at a time.
+        async with self.pool.connection() as conn:
+            await _take_setup_lock(conn)
+            try:
+                await self.checkpointer.setup()
+                async with AsyncPostgresStore.from_conn_string(self.conninfo) as store:
+                    await store.setup()
+            finally:
+                await conn.execute("SELECT pg_advisory_unlock(%s)", (LANGGRAPH_SETUP_LOCK_ID,))
 
         return self
 
     async def close(self) -> None:
-        """
-        Close the connection pool and cleanup resources.
-        """
+        """Close the connection pool and cleanup resources."""
         if self.pool:
             await self.pool.close()
 
     def get_checkpointer(self) -> AsyncPostgresSaver:
-        """
-        Get the initialized checkpointer.
-        """
+        """Get the initialized checkpointer."""
         if not self.checkpointer:
             raise RuntimeError("Checkpointer has not been initialized. Call setup() first.")
         return self.checkpointer
+
+
+async def _take_setup_lock(conn: AsyncConnection[TupleRow]) -> None:
+    """Take the setup lock without waiting inside a statement, which the holder's concurrent index build would wait on."""
+    for _ in range(LANGGRAPH_SETUP_LOCK_ATTEMPTS):
+        cursor = await conn.execute("SELECT pg_try_advisory_lock(%s)", (LANGGRAPH_SETUP_LOCK_ID,))
+        row = await cursor.fetchone()
+        if row is not None and row[0]:
+            return
+        await asyncio.sleep(LANGGRAPH_SETUP_LOCK_POLL_SECONDS)
+    raise RuntimeError(
+        f"LangGraph setup lock {LANGGRAPH_SETUP_LOCK_ID} still held by another starter "
+        f"after {LANGGRAPH_SETUP_LOCK_ATTEMPTS} attempts"
+    )
 
 
 @lazy_provider(

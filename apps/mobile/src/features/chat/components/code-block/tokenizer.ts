@@ -662,9 +662,8 @@ export function tokenizeLine(line: string, language: string): Token[] {
 
   while (i < line.length) {
     // Order matters: comments before operators, property access before
-    // punctuation, and JSX tags before operators so `<Component>` is not eaten
-    // as a `<` operator (a spaced comparison like `a < b` still falls through
-    // to scanOperator since scanJsxTag requires a letter right after `<`).
+    // punctuation, JSX tags before operators so `<Component>` isn't eaten as `<`
+    // (a spaced `a < b` still falls through since scanJsxTag needs a letter after `<`).
     const result =
       scanLineComment(line, i) ??
       scanBlockComment(line, i) ??

@@ -1,27 +1,37 @@
 """Dev-only identity + seeding service.
 
 Bootstraps users and sample data for agent-driven end-to-end testing. Every
-write reuses the real production path (``store_user_info``, ``create_todo``,
-``create_conversation_service``, ``PlatformLinkService.link_account``) so seeded
+write reuses the real production path (store_user_info, create_todo,
+create_conversation_service, PlatformLinkService.link_account) so seeded
 shapes can never drift from what the app actually produces. Mounted only in
-development behind the auth bypass — see ``create_app``.
+development behind the auth bypass — see create_app.
 """
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import cast
 
 from fastapi import UploadFile
 
 from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.log_tags import LogTag
+from app.constants.payments import (
+    DEV_PRO_PRODUCT_ID,
+    DEV_PRO_TERM_DAYS,
+    DEV_SUBSCRIPTION_PREFIX,
+)
+from app.constants.platform_links import Platform
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.projects import project_repository
+from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationModel, ConversationSource
 from app.models.files_models import FileDocument
+from app.models.payment_models import SubscriptionDocument, SubscriptionStatus
 from app.models.todo_models import TodoModel
 from app.models.user_models import (
+    AuthenticatedUser,
     BioStatus,
     OnboardingPhase,
     OnboardingPreferences,
@@ -35,8 +45,14 @@ from app.schemas.dev_schemas import (
 from app.services.conversation_service import create_conversation_service
 from app.services.files import FileService
 from app.services.oauth.oauth_service import store_user_info
-from app.services.platform_link_service import Platform, PlatformLinkService
-from app.services.todos.todo_service import create_todo
+from app.services.payments.plan_cache import invalidate_plan_cache
+from app.services.platform_link_service import (
+    AccountHasDifferentPlatformError,
+    PlatformAccountTakenError,
+    PlatformLinkService,
+    link_conflict_error,
+)
+from app.services.todos.todo_service import TodoService
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.utils.errors import create_error
 from shared.py.wide_events import log
@@ -57,11 +73,11 @@ async def require_dev_user(email: str) -> UserDocument:
 
 async def mint_dev_user(email: str, name: str | None = None) -> UserDocument:
     """Idempotently find-or-create a dev user via the real signup path."""
-    resolved_name = name or email.split("@", 1)[0]
     user_id, is_new = await store_user_info(
-        name=resolved_name,
+        name=name,
         email=email,
         picture_url=None,
+        auth_method=None,
         # Same stored shape as real signup, but a minted dev user must never
         # send a welcome email, join the marketing audience, or hit PostHog.
         external_side_effects=False,
@@ -85,16 +101,10 @@ async def attach_dev_file(
 ) -> FileDocument:
     """Ingest a file for a dev user's conversation through the real upload path.
 
-    Calls the same ``FileService.upload`` the production ``POST /api/v1/upload``
-    handler calls, so extraction (anydoc/pdf_inspector/vision), summarization,
-    Mongo metadata and the ChromaDB index are the shipped ones, not a copy. The
-    only production step skipped is the conversation-ownership check, which
-    guards against one user polluting another's session tree — meaningless here,
-    where the caller names the user and the router 404s outside development.
-
-    Pass the ``conversation_id`` that the subsequent ``POST /api/v1/dev/executor``
-    run uses: ``prepare_executor_execution`` reconstructs the conversation's
-    uploads from that id alone.
+    Calls the same FileService.upload the production upload handler calls, skipping
+    only the conversation-ownership check (meaningless here; the router 404s outside
+    development). conversation_id must match the one the subsequent dev/executor run
+    uses, since prepare_executor_execution reconstructs uploads from that id alone.
     """
     user = await require_dev_user(email)
     # CacheInvalidator erases the wrapped function's return type; FileService.upload
@@ -125,6 +135,8 @@ async def seed_dev_data(
     todos: int,
     conversations: int,
     platform_links: list[str],
+    *,
+    pro: bool = False,
 ) -> SeedDevDataResponse:
     """Create deterministic sample data for an existing dev user via real services."""
     for platform in platform_links:
@@ -139,20 +151,13 @@ async def seed_dev_data(
     user = await require_dev_user(email)
     user_id = user.id
 
-    # A seeded account must be ready to use: mark onboarding complete the same
-    # way complete_onboarding() does (same atomic $exists gate, terminal phase,
-    # NO_GMAIL bio placeholder), minus its background personalization jobs —
-    # seeding must not depend on Redis workers. Never clobbers real onboarding.
+    # Same complete_onboarding() gate/phase/bio placeholder, minus background
+    # personalization jobs (seeding must not depend on Redis workers).
     await user_repository.complete_onboarding(
         user_id,
         phase=OnboardingPhase.COMPLETED,
         bio_status=BioStatus.NO_GMAIL,
-        pipeline_mode="full",
-        preferences=OnboardingPreferences(
-            profession="Developer",
-            response_style="casual",
-            custom_instructions=None,
-        ),
+        preferences=OnboardingPreferences(profession="Developer", response_style="casual"),
     )
 
     # The seeded platform_user_id is part of the seed CONTRACT (harness clients
@@ -160,8 +165,43 @@ async def seed_dev_data(
     # by consumers.
     platform_user_ids = {platform: f"dev-{platform}-{user_id}" for platform in platform_links}
 
+    # Every link is checked before any is written, so another user's account is a 409
+    # with nothing written; a different account of this user's own is replaced, since
+    # the seed decides who the harness's synthetic id reaches.
+    try:
+        replaced = [
+            platform
+            for platform, platform_user_id in platform_user_ids.items()
+            if await _holds_other_account(user_id, platform, platform_user_id)
+        ]
+        await asyncio.gather(
+            *(PlatformLinkService.unlink_account(user_id, platform) for platform in replaced)
+        )
+        await asyncio.gather(
+            *(
+                PlatformLinkService.link_account(
+                    user_id=user_id,
+                    platform=platform,
+                    platform_user_id=platform_user_id,
+                    profile={
+                        "username": f"dev_{platform}",
+                        "display_name": user.name or email,
+                    },
+                )
+                for platform, platform_user_id in platform_user_ids.items()
+            )
+        )
+    except (PlatformAccountTakenError, AccountHasDifferentPlatformError) as e:
+        raise link_conflict_error(e) from e
+
+    if pro:
+        await _grant_dev_pro(user_id)
+
     await asyncio.gather(
-        *(create_todo(TodoModel(title=f"Sample todo {i + 1}"), user_id) for i in range(todos)),
+        *(
+            TodoService.create_todo(TodoModel(title=f"Sample todo {i + 1}"), user_id)
+            for i in range(todos)
+        ),
         *(
             create_conversation_service(
                 ConversationModel(
@@ -169,21 +209,9 @@ async def seed_dev_data(
                     description=f"Sample conversation {i + 1}",
                     source=ConversationSource.WEB,
                 ),
-                {"user_id": user_id},
+                AuthenticatedUser(user_id=user_id),
             )
             for i in range(conversations)
-        ),
-        *(
-            PlatformLinkService.link_account(
-                user_id=user_id,
-                platform=platform,
-                platform_user_id=platform_user_id,
-                profile={
-                    "username": f"dev_{platform}",
-                    "display_name": user.name or email,
-                },
-            )
-            for platform, platform_user_id in platform_user_ids.items()
         ),
     )
 
@@ -202,7 +230,36 @@ async def seed_dev_data(
         conversations_created=conversations,
         platforms_linked=platform_links,
         platform_user_ids=platform_user_ids,
+        pro=pro,
     )
+
+
+async def _grant_dev_pro(user_id: str) -> None:
+    """Give the user an active dev subscription unless one is already active."""
+    if await subscription_repository.get_active_for_user(user_id):
+        return
+    now = datetime.now(UTC)
+    await subscription_repository.create(
+        SubscriptionDocument(
+            dodo_subscription_id=f"{DEV_SUBSCRIPTION_PREFIX}{user_id}",
+            user_id=user_id,
+            product_id=DEV_PRO_PRODUCT_ID,
+            status=SubscriptionStatus.ACTIVE.value,
+            next_billing_date=(now + timedelta(days=DEV_PRO_TERM_DAYS)).isoformat(),
+            previous_billing_date=now.isoformat(),
+            created_at=now,
+        )
+    )
+    await invalidate_plan_cache(user_id)
+
+
+async def _holds_other_account(user_id: str, platform: str, platform_user_id: str) -> bool:
+    """Return whether the user has a different account linked on platform; raise if another user holds this one."""
+    try:
+        await PlatformLinkService.ensure_linkable(user_id, platform, platform_user_id)
+    except AccountHasDifferentPlatformError:
+        return True
+    return False
 
 
 async def delete_dev_user(email: str) -> DeleteDevUserResponse:

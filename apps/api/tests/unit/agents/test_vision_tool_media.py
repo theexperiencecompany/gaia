@@ -1,6 +1,6 @@
 """Unit tests for app.agents.llm.vision.tool_media and the middleware wrapper.
 
-`describe_tool_media` runs on every tool call in the agent loop, so its no-op
+describe_tool_media runs on every tool call in the agent loop, so its no-op
 guards are load-bearing: a missed guard means a vision API call (and its latency
 and cost) on every plain-text tool result. Its caching is equally load-bearing —
 without it the same image is re-described on every turn, forever.
@@ -12,12 +12,19 @@ from unittest.mock import AsyncMock, patch
 from langchain_core.messages import ToolMessage
 import pytest
 
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.vision.tool_media import describe_tool_media
 from app.agents.middleware.media import MediaDescriptionMiddleware
-from app.constants.media import MEDIA_DESCRIBE_FAILED, MEDIA_DESCRIPTIONS_KEY
+from app.constants.log_tags import LogTag
+from app.constants.media import (
+    MEDIA_DESCRIBE_FAILED,
+    MEDIA_DESCRIPTIONS_KEY,
+    MEDIA_VISION_NOT_CONFIGURED,
+)
 from app.utils.multimodal import has_media_blocks
+from tests.helpers import captured_wide_event
 
-CONFIG = {"configurable": {"provider": "openrouter", "model": "some-model"}}
+CONFIG = {"configurable": {"provider": "openrouter", "model": "some-model", "user_id": "user-1"}}
 
 _MOD = "app.agents.llm.vision.tool_media"
 
@@ -44,8 +51,7 @@ def _patch_lane(
 @pytest.mark.asyncio
 class TestNoOpGuards:
     async def test_a_plain_text_result_is_not_described(self):
-        """Runs on EVERY tool call. Describing here would bill a vision call for
-        every bash/grep/search result in the system."""
+        """Runs on EVERY tool call; describing here would bill a vision call for every non-image result."""
         lane, vision = _patch_lane(can_see=False)
         with lane, vision as mock_vision:
             assert await describe_tool_media(_tool_msg(), CONFIG) is None
@@ -75,8 +81,7 @@ class TestNoOpGuards:
             mock_vision.assert_not_called()
 
     async def test_the_lane_is_not_even_looked_up_for_a_result_without_media(self):
-        """The media check must come first — the lane lookup can hit the network
-        (the OpenRouter catalog), and 99% of tool results carry no media."""
+        """The media check must come first — the lane lookup can hit the network (OpenRouter catalog)."""
         with patch(f"{_MOD}.model_can_view_images", AsyncMock()) as mock_lane:
             await describe_tool_media(_tool_msg(), CONFIG)
             mock_lane.assert_not_called()
@@ -93,8 +98,7 @@ class TestDescribing:
         assert out.additional_kwargs[MEDIA_DESCRIPTIONS_KEY] == ["A red login screen."]
 
     async def test_the_image_block_survives_so_the_thread_stays_portable(self):
-        """If the user upgrades to a vision model mid-thread, the pixels must
-        still be there. Replacing the block with prose would destroy them."""
+        """If the user upgrades to a vision model mid-thread, the pixels must still be there."""
         lane, vision = _patch_lane(can_see=False)
         with lane, vision:
             out = await describe_tool_media(_tool_msg(_img()), CONFIG)
@@ -104,10 +108,14 @@ class TestDescribing:
     async def test_every_image_gets_its_own_description_in_block_order(self):
         lane = patch(f"{_MOD}.model_can_view_images", AsyncMock(return_value=False))
         vision = patch(f"{_MOD}.describe_image", AsyncMock(side_effect=["first", "second"]))
-        with lane, vision:
+        with lane, vision as mock_vision:
             out = await describe_tool_media(_tool_msg(_img("A"), _img("B")), CONFIG)
 
         assert out.additional_kwargs[MEDIA_DESCRIPTIONS_KEY] == ["first", "second"]
+        assert [(c.args, c.kwargs["label"]) for c in mock_vision.call_args_list] == [
+            (("BASE64-A", "image/png"), "tool_media_vision"),
+            (("BASE64-B", "image/png"), "tool_media_vision"),
+        ]
 
     async def test_the_original_message_is_not_mutated_in_place(self):
         msg = _tool_msg(_img())
@@ -120,8 +128,7 @@ class TestDescribing:
         assert out is not msg
 
     async def test_existing_additional_kwargs_are_preserved(self):
-        """Compaction and other middleware write here too — clobbering their keys
-        would silently lose the workspace_path of a spilled output."""
+        """Compaction and other middleware write here too — clobbering their keys would lose data."""
         msg = _tool_msg(_img(), additional_kwargs={"compacted": True})
 
         lane, vision = _patch_lane(can_see=False)
@@ -132,8 +139,7 @@ class TestDescribing:
         assert MEDIA_DESCRIPTIONS_KEY in out.additional_kwargs
 
     async def test_the_prompt_carries_the_tool_name_and_the_result_text(self):
-        """Without the surrounding text the vision model has no idea what it is
-        looking at or why — the old read-tool prompt named the file path."""
+        """Without the surrounding text the vision model has no idea what it is looking at or why."""
         lane = patch(f"{_MOD}.model_can_view_images", AsyncMock(return_value=False))
         vision = patch(f"{_MOD}.describe_image", AsyncMock(return_value="ok"))
         with lane, vision as mock_vision:
@@ -144,12 +150,19 @@ class TestDescribing:
         assert "read" in prompt
         assert "/workspace/shot.png" in prompt
 
+    async def test_the_description_is_billed_to_the_runs_user(self):
+        """Regression: no user_id reached the vision call, so its spend was booked to nobody."""
+        lane, vision = _patch_lane(can_see=False)
+        with lane, vision as mock_vision:
+            await describe_tool_media(_tool_msg(_img()), CONFIG)
+
+        assert mock_vision.call_args.kwargs["user_id"] == "user-1"
+
 
 @pytest.mark.asyncio
 class TestFailurePaths:
     async def test_a_failed_vision_call_degrades_instead_of_failing_the_tool(self):
-        """describe_image returns None when the provider errors. The tool result
-        must still come back — the text half is usually the point."""
+        """describe_image returns None on a provider error; the tool result must still come back."""
         lane, vision = _patch_lane(can_see=False, description=None)
         with lane, vision:
             out = await describe_tool_media(_tool_msg(_img()), CONFIG)
@@ -163,6 +176,26 @@ class TestFailurePaths:
             out = await describe_tool_media(_tool_msg(_img("A"), _img("B")), CONFIG)
 
         assert out.additional_kwargs[MEDIA_DESCRIPTIONS_KEY] == ["good", MEDIA_DESCRIBE_FAILED]
+
+    async def test_no_vision_provider_says_so_instead_of_a_generic_failure(self):
+        lane = patch(f"{_MOD}.model_can_view_images", AsyncMock(return_value=False))
+        vision = patch(
+            f"{_MOD}.describe_image",
+            AsyncMock(
+                side_effect=LLMNotConfiguredError("No configured AI provider can serve vision")
+            ),
+        )
+        with lane, vision:
+            async with captured_wide_event() as event:
+                out = await describe_tool_media(_tool_msg(_img("A"), _img("B")), CONFIG)
+
+        assert out.additional_kwargs[MEDIA_DESCRIPTIONS_KEY] == [MEDIA_VISION_NOT_CONFIGURED] * 2
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.TOOL} No vision provider for tool media",
+                "error": "No configured AI provider can serve vision",
+            }
+        ]
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,7 @@
 """
 Provides request_logger used by LoggingMiddleware to emit the final wide event.
 
-All application code should use `from shared.py.wide_events import log` instead.
+All application code should use from shared.py.wide_events import log instead.
 """
 
 from shared.py.logging import configure_file_logging, get_contextual_logger

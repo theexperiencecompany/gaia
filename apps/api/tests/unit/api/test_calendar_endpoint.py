@@ -3,9 +3,9 @@
 Tests the calendar endpoints with mocked service layer and integration
 dependency to verify routing, status codes, response bodies, and validation.
 
-All calendar endpoints use ``require_integration("calendar")`` which calls
-``check_integration_status`` under the hood.  We patch that function to
-return ``True`` so the authenticated ``client`` fixture from conftest.py
+All calendar endpoints use require_integration("calendar") which calls
+check_integration_status under the hood.  We patch that function to
+return True so the authenticated client fixture from conftest.py
 can reach the endpoint logic.
 """
 
@@ -25,20 +25,25 @@ from app.models.calendar_models import (
     GoogleCalendarEventResource,
     GoogleCalendarListEntry,
 )
-from app.services.analytics_service import AnalyticsEvents
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.calendars import (
+    CalendarEventCreated,
+    CalendarEventDeleted,
+    CalendarEventUpdated,
+)
 from tests.conftest import FAKE_USER
 
 API = "/api/v1"
-USER_ID = FAKE_USER["user_id"]
-ANALYTICS_PATCH = "app.api.v1.endpoints.calendar.capture_context_event"
+USER_ID = FAKE_USER.user_id
+ANALYTICS_PATCH = "app.api.v1.endpoints.calendar.capture"
 
 
 @pytest.fixture(autouse=True)
 def _noop_analytics():
-    """Neutralize capture_context_event for every test in this module.
+    """Neutralize capture for every test in this module.
 
     The test app runs a no-op lifespan, so the PostHog provider is never
-    registered; a bare capture_context_event call would raise KeyError on the
+    registered; a bare capture call would raise KeyError on the
     missing provider. Tests that assert on captures patch the call site again
     and assert on their own mock.
     """
@@ -61,7 +66,7 @@ UPDATE_PATCH = "app.api.v1.endpoints.calendar.update_calendar_event"
 
 
 class TestGetCalendarList:
-    """GET /api/v1/calendar/list"""
+    """GET /api/v1/calendar/list."""
 
     async def test_returns_200(self, client: AsyncClient) -> None:
         with (
@@ -97,7 +102,7 @@ class TestGetCalendarList:
 
 
 class TestQueryEvents:
-    """POST /api/v1/calendar/events/query"""
+    """POST /api/v1/calendar/events/query."""
 
     async def test_query_events_returns_200(self, client: AsyncClient) -> None:
         with (
@@ -168,7 +173,7 @@ class TestQueryEvents:
 
 
 class TestGetEvents:
-    """GET /api/v1/calendar/events"""
+    """GET /api/v1/calendar/events."""
 
     async def test_get_events_returns_200(self, client: AsyncClient) -> None:
         with (
@@ -242,7 +247,7 @@ class TestGetEvents:
 
 
 class TestGetEventsByCalendar:
-    """GET /api/v1/calendar/{calendar_id}/events"""
+    """GET /api/v1/calendar/{calendar_id}/events."""
 
     async def test_returns_200(self, client: AsyncClient) -> None:
         with (
@@ -292,7 +297,7 @@ class TestGetEventsByCalendar:
 
 
 class TestCreateEvent:
-    """POST /api/v1/calendar/event"""
+    """POST /api/v1/calendar/event."""
 
     async def test_create_event_returns_200(self, client: AsyncClient) -> None:
         with (
@@ -349,7 +354,7 @@ class TestCreateEvent:
 
 
 class TestDeleteEvent:
-    """DELETE /api/v1/calendar/event"""
+    """DELETE /api/v1/calendar/event."""
 
     async def test_delete_event_returns_200(self, client: AsyncClient) -> None:
         with (
@@ -398,7 +403,7 @@ class TestDeleteEvent:
 
 
 class TestUpdateEvent:
-    """PUT /api/v1/calendar/event"""
+    """PUT /api/v1/calendar/event."""
 
     async def test_update_event_returns_200(self, client: AsyncClient) -> None:
         with (
@@ -443,7 +448,7 @@ class TestUpdateEvent:
 
 
 class TestGetCalendarPreferences:
-    """GET /api/v1/calendar/preferences"""
+    """GET /api/v1/calendar/preferences."""
 
     async def test_get_preferences_returns_200(self, client: AsyncClient) -> None:
         with (
@@ -478,7 +483,7 @@ class TestGetCalendarPreferences:
 
 
 class TestUpdateCalendarPreferences:
-    """PUT /api/v1/calendar/preferences"""
+    """PUT /api/v1/calendar/preferences."""
 
     async def test_update_preferences_returns_200(self, client: AsyncClient) -> None:
         with (
@@ -520,7 +525,7 @@ class TestUpdateCalendarPreferences:
 
 
 class TestBatchCreateEvents:
-    """POST /api/v1/calendar/events/batch"""
+    """POST /api/v1/calendar/events/batch."""
 
     async def test_batch_create_returns_200(self, client: AsyncClient) -> None:
         with (
@@ -582,10 +587,9 @@ class TestBatchCreateEvents:
         assert len(data["failed"]) == 1
 
     async def test_batch_create_per_event_failure_does_not_500(self, client: AsyncClient) -> None:
-        # Per-event failures are recorded in results["failed"] and the endpoint
-        # still returns 200. The outer 500 path is only reachable when the
-        # per-event loop setup fails — no longer testable now that token
-        # fetching has moved into the proxy client.
+        # Per-event failures land in results["failed"] with a 200; the outer
+        # 500 path (per-event loop setup failing) is no longer reachable now
+        # that token fetching moved into the proxy client.
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
@@ -630,7 +634,7 @@ class TestBatchCreateEvents:
 
 
 class TestBatchUpdateEvents:
-    """PUT /api/v1/calendar/events/batch"""
+    """PUT /api/v1/calendar/events/batch."""
 
     async def test_batch_update_returns_200(self, client: AsyncClient) -> None:
         with (
@@ -651,8 +655,8 @@ class TestBatchUpdateEvents:
         data = resp.json()
         assert len(data["successful"]) == 1
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.CALENDAR_EVENT_UPDATED,
-            {"batch_size": 1, "success_count": 1, "failure_count": 0},
+            UserId(USER_ID),
+            CalendarEventUpdated(batch_size=1, success_count=1, failure_count=0),
         )
         assert all(
             len(call.args) == 2 and all(arg is not None for arg in call.args)
@@ -700,7 +704,7 @@ class TestBatchUpdateEvents:
 
 
 class TestBatchDeleteEvents:
-    """DELETE /api/v1/calendar/events/batch"""
+    """DELETE /api/v1/calendar/events/batch."""
 
     async def test_batch_delete_returns_200(self, client: AsyncClient) -> None:
         with (
@@ -719,8 +723,8 @@ class TestBatchDeleteEvents:
         assert len(data["successful"]) == 1
         assert data["successful"][0]["event_id"] == "ev-001"
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.CALENDAR_EVENT_DELETED,
-            {"batch_size": 1, "success_count": 1, "failure_count": 0},
+            UserId(USER_ID),
+            CalendarEventDeleted(batch_size=1, success_count=1, failure_count=0),
         )
         assert all(
             len(call.args) == 2 and all(arg is not None for arg in call.args)
@@ -811,13 +815,13 @@ class TestCalendarAnalytics:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.CALENDAR_EVENT_CREATED,
-            {
-                "is_all_day": False,
-                "has_description": False,
-                "has_recurrence": False,
-                "recurrence_frequency": None,
-            },
+            UserId(USER_ID),
+            CalendarEventCreated(
+                is_all_day=False,
+                has_description=False,
+                has_recurrence=False,
+                recurrence_frequency=None,
+            ),
         )
         assert len(mock_svc.create_calendar_event.await_args.args) == 2
         assert all(arg is not None for arg in mock_svc.create_calendar_event.await_args.args)
@@ -850,13 +854,13 @@ class TestCalendarAnalytics:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.CALENDAR_EVENT_CREATED,
-            {
-                "is_all_day": True,
-                "has_description": True,
-                "has_recurrence": True,
-                "recurrence_frequency": "WEEKLY",
-            },
+            UserId(USER_ID),
+            CalendarEventCreated(
+                is_all_day=True,
+                has_description=True,
+                has_recurrence=True,
+                recurrence_frequency="WEEKLY",
+            ),
         )
 
     async def test_create_event_logs_calendar_id(self, client: AsyncClient) -> None:
@@ -895,7 +899,7 @@ class TestCalendarAnalytics:
             )
 
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.CALENDAR_EVENT_UPDATED)
+        mock_capture.assert_called_once_with(UserId(USER_ID), CalendarEventUpdated())
         assert len(mock_update.await_args.args) == 2
         assert all(arg is not None for arg in mock_update.await_args.args)
         mock_log.set.assert_any_call(user={"id": USER_ID}, calendar={"operation": "update_event"})
@@ -913,7 +917,7 @@ class TestCalendarAnalytics:
             )
 
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.CALENDAR_EVENT_DELETED)
+        mock_capture.assert_called_once_with(UserId(USER_ID), CalendarEventDeleted())
         assert len(mock_delete.await_args.args) == 2
         assert all(arg is not None for arg in mock_delete.await_args.args)
         mock_log.set.assert_any_call(user={"id": USER_ID}, calendar={"operation": "delete_event"})
@@ -934,8 +938,8 @@ class TestCalendarAnalytics:
 
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.CALENDAR_EVENT_CREATED,
-            {"batch_size": 2, "success_count": 2, "failure_count": 0},
+            UserId(USER_ID),
+            CalendarEventCreated(batch_size=2, success_count=2, failure_count=0),
         )
         assert mock_svc.create_calendar_event.await_count == 2
         assert all(

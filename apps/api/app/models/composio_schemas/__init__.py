@@ -18,7 +18,7 @@ from .github_tools import (
     GitHubListRepositoriesInput,
     GitHubRepository,
 )
-from .gmail import GmailNewMessagePayload
+from .gmail import GmailEmailSentPayload, GmailNewMessageEvent, GmailNewMessagePayload
 from .google_calendar import (
     GoogleCalendarEventCreatedPayload,
     GoogleCalendarEventStartingSoonPayload,
@@ -77,7 +77,9 @@ __all__ = [
     "GitHubListRepositoriesInput",
     "GitHubRepository",
     # Gmail
+    "GmailNewMessageEvent",
     "GmailNewMessagePayload",
+    "GmailEmailSentPayload",
     # Google Calendar
     "GoogleCalendarEventCreatedPayload",
     "GoogleCalendarEventStartingSoonPayload",

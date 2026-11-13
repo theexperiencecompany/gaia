@@ -69,6 +69,10 @@ _TRACKED_GLOBS = ("*.py", "*.ts", "*.tsx", "*.js", "*.jsx", "*.mjs", "*.cjs", "*
 _NOQA_RE = re.compile(r"#\s*noqa\b")
 _TYPE_IGNORE_RE = re.compile(r"#\s*type:\s*ignore\b")
 _BIOME_IGNORE_ANY_RE = re.compile(r"/{1,2}\s*\**\s*biome-ignore\b")
+#: The category a biome-ignore names, up to its value "(...)" or the reason's colon.
+_BIOME_CATEGORY_RE = re.compile(r"biome-ignore(?:-[a-z]+)?\s+([^\s:(]+)")
+#: lint/<group>/<rule>: the only lint category that names one rule.
+_LINT_CATEGORY_SEGMENTS = 3
 
 #: Stripped off the front of a comment to leave the reason prose behind.
 _DIRECTIVE_PREFIXES = (
@@ -98,8 +102,7 @@ class Hit:
 
 
 def _tracked_files(scoped: list[Path]) -> list[Path]:
-    """Every git-tracked source file the scan cares about (skips untracked/ignored),
-    optionally narrowed to the given paths."""
+    """Return every git-tracked source file in scope, optionally narrowed to ``paths``."""
     git = shutil.which("git")
     if git is None:
         raise RuntimeError("git not found on PATH — the scanner needs `git ls-files`")
@@ -127,7 +130,7 @@ def _read_text(path: Path) -> str | None:
 
 
 def _reason_of(comment: str) -> str | None:
-    """The reason prose in a Python directive comment, or None if absent.
+    """Return the reason prose in a Python directive comment, or None if absent.
 
     Finds the directive anywhere in the comment (another tool's directive, e.g.
     ``# NOSONAR …``, may precede it on the same line), strips the directive
@@ -165,9 +168,7 @@ def _has_reason(comment: str) -> bool:
 
 
 def _scan_python_comments(path: Path) -> list[Hit]:
-    """Directives that appear in real ``#`` comments only — never ones that
-    merely appear inside a string or docstring literal.
-    """
+    """Return directives found in real ``#`` comments, never inside string literals."""
     text = _read_text(path)
     if text is None:
         return []
@@ -193,16 +194,10 @@ def _scan_python_comments(path: Path) -> list[Hit]:
 
 
 def _split_comment(line: str, in_template: bool) -> tuple[str, bool]:
-    """The ``//`` comment portion of a TS/JS line (or ``""``), plus the
-    template-literal state carried into the next line.
+    """Return a TS/JS line's ``//`` comment (or ``""``) and the template state carried on.
 
-    Left-to-right walk over a line whose same-line quote spans are already
-    blanked: in code, ``//`` starts a comment (the rest of the line, including
-    any backticks in it, is inert) and an unescaped backtick enters a template;
-    in a template, an unescaped backtick exits it. Escapes are counted, so
-    ``\\\\``` (escaped backslash, real backtick) toggles and ``\\``` does not.
-    Remaining accepted imprecision: a backtick inside ``${...}`` (see module
-    docstring).
+    Quote spans are pre-blanked; an unescaped backtick toggles template state
+    (escapes counted). A backtick inside ``${...}`` is the accepted imprecision.
     """
     i = 0
     n = len(line)
@@ -233,9 +228,7 @@ _QUOTED_SPAN_RE = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'')
 
 
 def _scan_ts_comments(path: Path) -> list[Hit]:
-    """``// biome-ignore`` in real ``//`` comments only — never inside a string
-    literal, including multi-line template literals (see ``_split_comment``).
-    """
+    """Return ``// biome-ignore`` directives in real comments, never inside (template) strings."""
     text = _read_text(path)
     if text is None:
         return []
@@ -256,7 +249,7 @@ def _scan_ts_comments(path: Path) -> list[Hit]:
 
 
 def _biome_reason(comment: str) -> str | None:
-    """The reason after ``// biome-ignore <rule>:`` — biome's own convention."""
+    """Return the reason after ``// biome-ignore <rule>:`` — biome's own convention."""
     m = re.search(r"biome-ignore(?:-[a-z]+)?\s+\S+:?\s*(.*)$", comment)
     if not m:
         return None
@@ -266,6 +259,21 @@ def _biome_reason(comment: str) -> str | None:
 def _has_ts_reason(hit: Hit) -> bool:
     reason = _biome_reason(hit.text)
     return reason is not None and len(reason) >= _MIN_REASON_LEN
+
+
+def _is_blanket_biome_ignore(hit: Hit) -> bool:
+    """Spot ``lint`` or ``lint/<group>``, which silence every rule in reach, not the one that fired."""
+    m = _BIOME_CATEGORY_RE.search(hit.text)
+    if not m:
+        return False
+    segments = m.group(1).split("/")
+    return segments[0] == "lint" and len(segments) < _LINT_CATEGORY_SEGMENTS
+
+
+def _ts_problem(hit: Hit) -> str | None:
+    if _is_blanket_biome_ignore(hit):
+        return "names no single rule"
+    return None if _has_ts_reason(hit) else "without a reason"
 
 
 def scan_tree(scoped: list[Path]) -> dict[str, list[Hit]]:
@@ -294,19 +302,22 @@ def main(argv: list[str]) -> int:
     violations: list[Violation] = []
     for rel, hits in sorted(grouped.items()):
         for hit in hits:
-            ok = _has_reason(hit.text) if hit.kind != "biome-ignore" else _has_ts_reason(hit)
-            if ok:
+            if hit.kind == "biome-ignore":
+                problem = _ts_problem(hit)
+            else:
+                problem = None if _has_reason(hit.text) else "without a reason"
+            if problem is None:
                 continue
-            print(f"::error file={rel},line={hit.line}::{hit.kind} without a reason")
+            print(f"::error file={rel},line={hit.line}::{hit.kind} {problem}")
             violations.append(
                 Violation(
                     path=Path(rel),
                     line=hit.line,
-                    detail=f"[{hit.kind}] {hit.text}",
+                    detail=f"[{hit.kind}] {problem}: {hit.text}",
                     fix=(
-                        "append the WHY on this same line after the rule code "
-                        "(e.g. '# langgraph ships no stubs upstream') — or delete "
-                        "the suppression if it no longer masks anything"
+                        "name the one rule (lint/<group>/<rule>) and append the WHY on "
+                        "this same line after it (e.g. '# langgraph ships no stubs "
+                        "upstream') — or delete the suppression if it no longer masks anything"
                     ),
                 )
             )
@@ -314,8 +325,8 @@ def main(argv: list[str]) -> int:
     if violations:
         report_rule(RULE, WHY, DOC, violations)
         print(
-            f"\n{len(violations)} suppression(s) without a reason. "
-            "Every inline suppression must say WHY on its own line.",
+            f"\n{len(violations)} suppression(s) without a reason or a single rule. "
+            "Every inline suppression must name its rule and say WHY on its own line.",
             file=sys.stderr,
         )
         return 1

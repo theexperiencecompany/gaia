@@ -31,7 +31,7 @@ tests:
             exp_annotations:
               description: >-
                 A crash-looping container is being replaced by Swarm faster than it can serve traffic, so the service flaps rather than staying cleanly down. The count is distinct container incarnations, not restarts, so a healthy service reads 1 and a service mid-deploy reads 2. Check that service's logs for the startup exception — a failing dependency, a bad migration or a missing secret at boot are the usual causes.
-              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-container-restarts
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-container-restarts
               __dashboardUid__: gaia-containers
               __panelId__: '1'
 

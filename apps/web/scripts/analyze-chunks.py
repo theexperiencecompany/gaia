@@ -18,7 +18,8 @@ ssr_dir = chunks_dir / "ssr"
 
 
 def analyze_chunk(filepath: str) -> str:
-    text = Path(filepath).read_text(errors="ignore")
+    # local bundle-analysis tool reading the chunk the developer names; no trust boundary crossed
+    text = Path(filepath).read_text(errors="ignore")  # NOSONAR pythonsecurity:S8707
     size_kb = len(text) / 1024
 
     # Turbopack embeds paths like:
@@ -56,19 +57,28 @@ def analyze_chunk(filepath: str) -> str:
     return size_kb, dict(pkg_sizes)
 
 
+def _largest_chunks(limit: int = 10) -> list[str]:
+    """Paths of the largest emitted JS chunks, biggest first."""
+    chunks = [
+        f
+        for d in (chunks_dir, ssr_dir)
+        if d.exists()
+        for f in d.glob("*.js")
+        if not f.name.endswith(".map")
+    ]
+    chunks.sort(key=lambda f: f.stat().st_size, reverse=True)
+    return [str(f) for f in chunks[:limit]]
+
+
+def _print_rows(rows: list[tuple[str, int]]) -> None:
+    print(f"  {'Module/Package':<50} {'KiB':>8}")
+    print(f"  {'-' * 60}")
+    for pkg, size in rows:
+        print(f"  {pkg:<50} {size / 1024:>8.1f}")
+
+
 def main() -> None:
-    if len(sys.argv) > 1:
-        files = [sys.argv[1]]
-    else:
-        # Find top 10 largest chunks
-        all_chunks = []
-        for d in [chunks_dir, ssr_dir]:
-            if d.exists():
-                for f in d.glob("*.js"):
-                    if not f.name.endswith(".map"):
-                        all_chunks.append((f, f.stat().st_size))
-        all_chunks.sort(key=lambda x: x[1], reverse=True)
-        files = [str(f) for f, _ in all_chunks[:10]]
+    files = [sys.argv[1]] if len(sys.argv) > 1 else _largest_chunks()
 
     grand_totals = defaultdict(int)
 
@@ -87,20 +97,16 @@ def main() -> None:
             print("  (no recognizable module paths found)")
             continue
 
-        print(f"  {'Module/Package':<50} {'KiB':>8}")
-        print(f"  {'-' * 60}")
-        for pkg, size in sorted(pkg_sizes.items(), key=lambda x: x[1], reverse=True)[:15]:
-            print(f"  {pkg:<50} {size / 1024:>8.1f}")
+        top = sorted(pkg_sizes.items(), key=lambda x: x[1], reverse=True)[:15]
+        _print_rows(top)
+        for pkg, size in top:
             grand_totals[pkg] += size
 
     if len(files) > 1:
         print(f"\n{'=' * 70}")
         print("GRAND TOTALS ACROSS ALL ANALYZED CHUNKS")
         print(f"{'=' * 70}")
-        print(f"  {'Module/Package':<50} {'KiB':>8}")
-        print(f"  {'-' * 60}")
-        for pkg, size in sorted(grand_totals.items(), key=lambda x: x[1], reverse=True)[:30]:
-            print(f"  {pkg:<50} {size / 1024:>8.1f}")
+        _print_rows(sorted(grand_totals.items(), key=lambda x: x[1], reverse=True)[:30])
 
 
 if __name__ == "__main__":

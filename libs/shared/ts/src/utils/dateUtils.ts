@@ -150,18 +150,12 @@ export type DueChipTone =
   | "later";
 
 /**
- * Classify a todo's due-date chip into a semantic tone bucket.
+ * Classify a todo's due-date chip into a tone bucket: completed → "completed" regardless of
+ * date; else by calendar day vs. `now` — past → "overdue", same day → "today", next day →
+ * "tomorrow", within 3 days → "soon", further out → "later".
  *
- * Rules (in order):
- * - completed → always "completed" regardless of date.
- * - past calendar day → "overdue".
- * - same calendar day as `now` → "today".
- * - next calendar day → "tomorrow".
- * - within the next 3 calendar days (incl. tomorrow) → "soon".
- * - everything else (further in the future) → "later".
- *
- * The comparison uses calendar-day boundaries in the device-local timezone,
- * so a due date with any time on the same day still resolves to "today".
+ * Uses calendar-day boundaries in the device-local timezone, so any time on the same day
+ * still resolves to "today".
  */
 export function getDueChipTone(
   date: string | Date | null | undefined,

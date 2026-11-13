@@ -1,21 +1,27 @@
 """The current user's personalized integration catalog.
 
-`get_my_integrations` is the single server-side merge of the platform catalog,
+get_my_integrations is the single server-side merge of the platform catalog,
 the user's custom integrations, and their connection status — the work the web
 client used to do across three calls (/config + /status + /users/me/integrations).
-It returns lightweight items (status + `tool_count`, no per-tool schemas); full
-tools are fetched on demand via `get_integration_tools`.
+It returns lightweight items (status + tool_count, no per-tool schemas); full
+tools are fetched on demand via get_integration_tools.
 """
 
 import asyncio
+from typing import TypedDict, cast
 
-from app.constants.cache import ONE_DAY_TTL
+from app.constants.cache import MY_INTEGRATIONS_SNAPSHOT_KEY, ONE_DAY_TTL
 from app.decorators.caching import Cacheable
+from app.models.integration_models import UserIntegrationsListResponse
 from app.schemas.integrations.responses import (
     CommunityIntegrationCreator,
     IntegrationToolsResponse,
     MyIntegrationItem,
     MyIntegrationsResponse,
+)
+from app.services.composio.auth_config_resolver import (
+    composio_integrations,
+    resolve_auth_configs,
 )
 from app.services.integrations.integration_connection_service import build_integrations_config
 from app.services.integrations.integration_resolver import IntegrationResolver
@@ -29,19 +35,98 @@ from app.utils.errors import create_error
 from shared.py.wide_events import log
 
 
-@Cacheable(key_pattern="tools:user:{user_id}:my", ttl=ONE_DAY_TTL, model=MyIntegrationsResponse)
-async def get_my_integrations(user_id: str) -> MyIntegrationsResponse:
-    """All integrations visible to the user — every platform integration plus
-    their own custom ones — each tagged with connection status and `tool_count`.
-    Cached under `tools:user:{user_id}:*`, so the integration mutators bust it."""
-    log.set(component="my_integrations", operation="get_my_integrations", user={"id": user_id})
+class _CustomDocVisibility(TypedDict, total=False):
+    """Visibility flags on a dumped custom-integration doc (always present)."""
 
-    config = build_integrations_config()
-    status_map, added, category_counts = await asyncio.gather(
-        get_all_integrations_status(user_id),
+    is_public: bool | None
+    created_by: str | None
+
+
+async def get_my_integrations(user_id: str) -> MyIntegrationsResponse:
+    """Catalog snapshot overlaid with the live status map, both directions.
+
+    The snapshot cache key is exactly (user_id); the live map is never part of
+    a cache key. Upgrades (snapshot stale, provider now connected) and
+    downgrades (auth-MCP credential unusable) both apply here, mirroring the
+    frontend reconcile, so direct /me consumers see the same state as the UI.
+    """
+    log.set(component="my_integrations", operation="get_my_integrations", user={"id": user_id})
+    snapshot = await get_my_integrations_snapshot(user_id)
+    status_map = await get_all_integrations_status(user_id)
+    return _apply_live_status_overlay(snapshot, status_map)
+
+
+async def get_my_integrations_snapshot(user_id: str) -> MyIntegrationsResponse:
+    """Return the cached catalog from Mongo without external status checks."""
+    snapshot = cast(
+        MyIntegrationsResponse,
+        await _get_cached_my_integrations_snapshot(user_id),
+    )
+    return await _flag_instance_setup(snapshot)
+
+
+async def _flag_instance_setup(snapshot: MyIntegrationsResponse) -> MyIntegrationsResponse:
+    """Mark Composio integrations this instance has no auth config for.
+
+    Applied outside the per-user cache: an admin's save must show at once.
+    """
+    resolved = await resolve_auth_configs()
+    missing = {i.id for i in composio_integrations() if i.id not in resolved}
+    if not missing:
+        return snapshot
+    items = [
+        item.model_copy(update={"instance_setup_required": True})
+        if item.source == "platform" and item.id in missing
+        else item
+        for item in snapshot.integrations
+    ]
+    return snapshot.model_copy(update={"integrations": items})
+
+
+def _apply_live_status_overlay(
+    snapshot: MyIntegrationsResponse, status_map: dict[str, bool]
+) -> MyIntegrationsResponse:
+    """Overlay live statuses onto a cached snapshot without extra I/O."""
+    changed = False
+    items: list[MyIntegrationItem] = []
+    for item in snapshot.integrations:
+        live = status_map.get(item.id)
+        if live is True and item.status != "connected":
+            items.append(item.model_copy(update={"status": "connected", "expired_at": None}))
+            changed = True
+        elif (
+            live is False
+            and item.status == "connected"
+            and item.managed_by == "mcp"
+            and item.requires_auth
+        ):
+            items.append(item.model_copy(update={"status": "created"}))
+            changed = True
+        else:
+            items.append(item)
+    if not changed:
+        return snapshot
+    return snapshot.model_copy(update={"integrations": items})
+
+
+@Cacheable(
+    key_pattern=MY_INTEGRATIONS_SNAPSHOT_KEY,
+    ttl=ONE_DAY_TTL,
+    model=MyIntegrationsResponse,
+)
+async def _get_cached_my_integrations_snapshot(user_id: str) -> MyIntegrationsResponse:
+    added, category_counts = await asyncio.gather(
         get_user_integrations(user_id),
         get_tool_categories(),
     )
+    return _build_my_integrations_response(added, category_counts)
+
+
+def _build_my_integrations_response(
+    added: UserIntegrationsListResponse,
+    category_counts: dict[str, int],
+) -> MyIntegrationsResponse:
+    config = build_integrations_config()
 
     # Registry tool counts are keyed by (often upper-case) category; the user's
     # own tool lists give exact counts for custom/MCP integrations.
@@ -53,11 +138,9 @@ async def get_my_integrations(user_id: str) -> MyIntegrationsResponse:
 
     for cfg in config.integrations:
         ui = added_by_id.get(cfg.id.lower())
-        status = (
-            ui.status
-            if ui is not None
-            else ("connected" if status_map.get(cfg.id) else "not_connected")
-        )
+        # Mongo-only snapshot: not added means not connected here; liveness
+        # arrives via the overlay in get_my_integrations, never here.
+        status = ui.status if ui is not None else "not_connected"
         tool_count = (
             (len(ui.integration.tools) or counts.get(cfg.id.lower(), 0))
             if ui is not None
@@ -79,6 +162,8 @@ async def get_my_integrations(user_id: str) -> MyIntegrationsResponse:
                 display_priority=cfg.display_priority,
                 available=cfg.available,
                 slug=cfg.slug,
+                origin=cfg.origin,
+                icon_url=cfg.icon_url,
                 tool_count=tool_count,
             )
         )
@@ -131,7 +216,7 @@ async def get_integration_tools(integration_id: str, user_id: str) -> Integratio
         return IntegrationToolsResponse(integration_id=integration_id, tools=[], count=0)
 
     if resolved.source == "custom":
-        doc = resolved.custom_doc or {}
+        doc: _CustomDocVisibility = cast(_CustomDocVisibility, resolved.custom_doc or {})
         visible = (
             bool(doc.get("is_public"))
             or doc.get("created_by") == user_id

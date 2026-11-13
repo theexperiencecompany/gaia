@@ -11,11 +11,15 @@ from langchain_core.messages import AIMessage
 from PIL import Image
 import pytest
 
-from app.constants.files import SUMMARY_LLM_MAX_CONCURRENCY
+from app.agents.llm.exceptions import LLMNotConfiguredError
+from app.agents.prompts.image_prompts import DOCUMENT_IMAGE_SUMMARY_PROMPT
+from app.constants.files import IMAGE_SUMMARY_NO_VISION_PROVIDER, SUMMARY_LLM_MAX_CONCURRENCY
 from app.constants.llm import HELPER_MAX_OUTPUT_TOKENS
+from app.constants.log_tags import LogTag
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
 from app.utils import file_utils, local_document_parser
 from app.utils.file_utils import DocumentProcessor, generate_file_summary
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -25,8 +29,8 @@ from app.utils.file_utils import DocumentProcessor, generate_file_summary
 def _mock_llm(invoke_return: Any = "Mock summary", batch_return: Any = None) -> AsyncMock:
     """Return an AsyncMock LLM with configurable ainvoke/abatch responses.
 
-    ``ainvoke_llm`` returns the model's ``AIMessage`` and callers read ``.text``,
-    so a plain-string ``invoke_return`` is wrapped in an ``AIMessage`` to match
+    ainvoke_llm returns the model's AIMessage and callers read .text,
+    so a plain-string invoke_return is wrapped in an AIMessage to match
     that contract.
     """
     llm = AsyncMock()
@@ -55,7 +59,7 @@ def _encode_image(fmt: str, size: tuple[int, int] = (16, 16)) -> bytes:
 
 
 def _mock_vision(description: str | None):
-    """Patch the one vision call ``process_image`` makes."""
+    """Patch the one vision call process_image makes."""
     return patch("app.utils.file_utils.describe_image", AsyncMock(return_value=description))
 
 
@@ -65,14 +69,12 @@ def _strip_ws(text: str) -> str:
 
 
 def _slow_block(seconds: float = 0.2) -> None:
-    """Block in a thread (async tests call this via ``asyncio.to_thread``), so a
-    patched parser can exceed ``asyncio.wait_for`` and trigger a timeout."""
+    """Block synchronously so a patched parser can exceed asyncio.wait_for's timeout."""
     time.sleep(seconds)
 
 
 # ---------------------------------------------------------------------------
-# DocumentProcessor.__init__ is patched in all tests to avoid real
-# LlamaParse / LLM initialization.
+# DocumentProcessor.__init__ is patched in all tests to avoid real LlamaParse/LLM init.
 # ---------------------------------------------------------------------------
 
 
@@ -80,20 +82,19 @@ def _slow_block(seconds: float = 0.2) -> None:
 def processor() -> DocumentProcessor:
     """Return a DocumentProcessor with mocked parser and llm."""
     with (
-        patch("app.utils.file_utils.get_helper_llm", return_value=_mock_llm()),
+        patch("app.utils.file_utils.resolve_model", return_value=_mock_llm()),
     ):
         proc = DocumentProcessor(user_id="u-test")
     return proc
 
 
 class TestDocumentProcessorInit:
-    """Every other test in this file reassigns ``processor.llm``, so what
-    ``__init__`` actually wired up is only proven here."""
+    """Only these tests prove what __init__ wires up — every other test reassigns processor.llm."""
 
     async def test_summarization_runs_on_the_helper_llm_the_constructor_built(self) -> None:
         helper = _mock_llm(batch_return=[AIMessage(content="Summary 1")])
         with (
-            patch("app.utils.file_utils.get_helper_llm", return_value=helper) as get_llm,
+            patch("app.utils.file_utils.resolve_model", return_value=helper) as get_llm,
         ):
             proc = DocumentProcessor(user_id="u-test")
 
@@ -105,10 +106,7 @@ class TestDocumentProcessorInit:
         assert [r.summary for r in result] == ["Summary 1"]
 
     def test_the_processor_llm_carries_the_helper_output_cap(self) -> None:
-        """The real factory, not a stand-in: the point of ``get_helper_llm`` over
-        ``get_default_llm`` is the 8k output cap, and a mocked factory would
-        assert the mock rather than the cap. Only the key is pinned — the
-        hermetic conftest blanks it, and building the client dials nothing."""
+        """Uses the real resolve_model factory (8k output cap) with only the API key patched."""
         with (
             patch("app.agents.llm.client.settings.OPENROUTER_API_KEY", new="sk-unit-test"),
         ):
@@ -121,7 +119,7 @@ class TestDocumentProcessorInit:
 
     def test_user_id_is_held_for_cost_attribution(self) -> None:
         with (
-            patch("app.utils.file_utils.get_helper_llm", return_value=_mock_llm()),
+            patch("app.utils.file_utils.resolve_model", return_value=_mock_llm()),
         ):
             proc = DocumentProcessor(user_id="u-billed")
 
@@ -236,12 +234,39 @@ class TestProcessImage:
             result = await processor.process_image(_encode_image("PNG"))
         assert result == "A scenic mountain view"
 
+    async def test_no_vision_provider_degrades_to_an_explicit_summary(
+        self, processor: DocumentProcessor
+    ) -> None:
+        """An upload on an Ollama-only instance must still land, saying why it was not described."""
+        no_vision = AsyncMock(side_effect=LLMNotConfiguredError("no vision provider"))
+        with patch("app.utils.file_utils.describe_image", no_vision):
+            async with captured_wide_event() as event:
+                result = await processor.process_image(_encode_image("PNG"))
+
+        assert result == IMAGE_SUMMARY_NO_VISION_PROVIDER
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.TOOL} No vision provider for an uploaded image",
+                "error": "no vision provider",
+            }
+        ]
+
+    async def test_the_vision_call_is_metered_to_the_uploader_with_the_document_prompt(
+        self, processor: DocumentProcessor
+    ) -> None:
+        with _mock_vision("desc") as vision:
+            await processor.process_image(_encode_image("PNG"))
+
+        assert vision.call_args.kwargs == {
+            "prompt": DOCUMENT_IMAGE_SUMMARY_PROMPT,
+            "label": "file_image_summary",
+            "user_id": "u-test",
+        }
+
     async def test_the_mime_is_sniffed_from_the_bytes_not_assumed(
         self, processor: DocumentProcessor
     ) -> None:
-        """Every `image/*` upload used to be labelled `image/jpeg`, whatever it
-        actually was. A block whose mime_type contradicts its payload is rejected
-        outright by the provider, so a PNG upload silently lost its summary."""
+        """Every image/* upload used to be mislabelled image/jpeg, which the provider rejects outright on mismatch."""
         with _mock_vision("desc") as vision:
             await processor.process_image(_encode_image("PNG"))
 
@@ -333,6 +358,31 @@ class TestProcessDoc:
         assert len(result) == 1
         assert result[0].data.content == "OCR'd content"
 
+    async def test_a_scanned_pdf_with_no_ocr_key_says_why_it_was_not_read(
+        self, processor: DocumentProcessor, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(file_utils, "resolved_config", lambda provider: None)
+        with patch(
+            "app.utils.file_utils.local_document_parser.classify_pdf",
+            return_value=local_document_parser.PdfClassification(needs_ocr=True),
+        ):
+            async with captured_wide_event() as event:
+                result = await processor.process_file(b"%PDF-scan", "application/pdf", "scan.pdf")
+
+        assert result == (
+            "scan.pdf is a scanned PDF and was not read: reading scanned pages needs OCR, "
+            "which isn't set up on this GAIA instance. An admin can add a LlamaParse key "
+            "in Settings → Providers & Tools."
+        )
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.TOOL} Scanned PDF skipped: no OCR provider",
+                "filename": "scan.pdf",
+                "error_type": "ProviderNotConfiguredError",
+                "error": "LlamaParse OCR has no API key",
+            }
+        ]
+
     async def test_aparse_returns_list_unwraps_first(self, processor: DocumentProcessor) -> None:
         """When aparse returns a list, the first element is used (OCR fallback path)."""
         md_doc = _make_md_document("Content")
@@ -401,8 +451,7 @@ class TestProcessDoc:
 
 
 class TestProcessOfficeDocument:
-    """These tests mock only the anydoc boundary; the real _chunk_markdown runs,
-    so chunking logic (including the heading-split path) gets real coverage."""
+    """Mocks only the anydoc boundary — the real _chunk_markdown runs, including the heading-split path."""
 
     async def test_success_returns_list_of_summaries(self, processor: DocumentProcessor) -> None:
         """Markdown short enough to fit the size bound stays a single chunk."""
@@ -465,7 +514,7 @@ class TestProcessOfficeDocument:
         processor.llm.abatch.assert_not_called()
 
     async def test_extraction_receives_bytes_and_suffix(self, processor: DocumentProcessor) -> None:
-        """anydoc gets the raw bytes plus the format-carrying suffix; no temp file."""
+        """Anydoc gets the raw bytes plus the format-carrying suffix; no temp file."""
         processor.llm = _mock_llm(batch_return=[AIMessage(content="Sum")])
 
         with patch(
@@ -503,8 +552,7 @@ class TestProcessOfficeDocument:
 
 
 class TestSummarizeChunks:
-    """Direct coverage of blank-filtering, truncation, and abatch wiring beyond
-    what process_doc / process_office_document exercise incidentally."""
+    """Directly covers blank-filtering, truncation, and abatch wiring, not just incidental process_doc paths."""
 
     async def test_blank_chunks_are_filtered_with_page_numbers_preserved(
         self, processor: DocumentProcessor
@@ -570,9 +618,7 @@ class TestSummarizeChunks:
 
 
 class TestChunkMarkdown:
-    """MarkdownTextSplitter owns the actual cut-point logic; these assert the
-    invariants _chunk_markdown promises (size bound, content preservation),
-    not the library's internal choices."""
+    """Asserts _chunk_markdown's promised invariants (size bound, content preservation), not the splitter's internals."""
 
     def test_short_markdown_stays_a_single_chunk(self) -> None:
         """Multiple headings don't force a split when the whole doc fits the bound."""
@@ -632,8 +678,7 @@ class TestProcessText:
     async def test_llm_failure_falls_through_to_fallback_summary(
         self, processor: DocumentProcessor
     ) -> None:
-        """_generate_text_summary catches LLM errors and returns a fallback string,
-        so process_text succeeds but the summary is the fallback message."""
+        """An LLM error is caught, so process_text succeeds with the fallback summary message."""
         processor.llm = _mock_llm()
         processor.llm.ainvoke.side_effect = RuntimeError("LLM error")
 
@@ -670,10 +715,10 @@ class TestProcessText:
         assert "x" * 4001 not in user_content
 
     async def test_summary_uses_the_helper_llm_wired_at_construction(self) -> None:
-        """A freshly built processor summarizes with get_helper_llm's model."""
+        """A freshly built processor summarizes with resolve_model's model."""
         helper = _mock_llm(invoke_return="Helper summary")
         with (
-            patch("app.utils.file_utils.get_helper_llm", return_value=helper),
+            patch("app.utils.file_utils.resolve_model", return_value=helper),
         ):
             proc = DocumentProcessor(user_id="u-test")
 
@@ -696,7 +741,7 @@ class TestGenerateTextSummary:
         assert result == "A concise summary"
 
     async def test_list_content_blocks_flattened(self, processor: DocumentProcessor) -> None:
-        """Gemini returns content as a list of blocks; ``.text`` flattens it to a string."""
+        """Gemini returns content as a list of blocks; .text flattens it to a string."""
         processor.llm = _mock_llm(
             invoke_return=AIMessage(
                 content=[

@@ -1,12 +1,7 @@
-"""Integration tests for the dev-only identity + seeding layer.
-
-Covers three surfaces:
-- the ``/api/v1/dev`` router (mounted only when the bypass is configured),
-- ``dev_service`` seeding/mint logic against mocked real services,
-- the ``X-Dev-User`` per-request impersonation in the real WorkOSAuthMiddleware.
-"""
+"""Integration tests for the dev-only identity + seeding layer."""
 
 from contextlib import asynccontextmanager, contextmanager
+from datetime import timedelta
 import io
 from types import SimpleNamespace
 from typing import ClassVar
@@ -21,8 +16,13 @@ import httpx
 import pytest
 
 from app.constants.auth import DEV_USER_MISSING_HINT
-from app.models.user_models import UserDocument
+from app.constants.payments import DEV_PRO_PRODUCT_ID, DEV_PRO_TERM_DAYS
+from app.db.repositories.subscriptions import subscription_repository
+from app.db.repositories.users import user_repository
+from app.models.payment_models import SubscriptionStatus
+from app.models.user_models import AuthenticatedUser, UserDocument
 from app.schemas.dev_schemas import DevAgentRunResponse, SeedDevDataResponse
+from app.services.platform_link_service import PlatformLinkService
 
 DEV_EMAIL = "dev@gaia.local"
 
@@ -105,10 +105,10 @@ _XLSX_PARTS = {
 
 
 def _minimal_xlsx() -> bytes:
-    """A genuine OOXML spreadsheet, built inline (this repo ships no xlsx writer).
+    """Build a genuine OOXML spreadsheet inline (this repo ships no xlsx writer).
 
-    Real bytes matter: the point of the attachment tests is that anydoc actually
-    parses them, so a fake payload would defeat the test.
+    Real bytes matter: the point of the attachment tests is that anydoc
+    actually parses them, so a fake payload would defeat the test.
     """
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -142,9 +142,8 @@ def _ingestion_edges_stubbed(capture_metadata=None):
             return_value=user,
         ),
         patch(
-            "app.services.files.service.upload_to_cloudinary",
-            new_callable=AsyncMock,
-            return_value="https://cdn.test/file",
+            "app.services.files.service.blob_store",
+            return_value=MagicMock(put=AsyncMock(return_value="https://cdn.test/file")),
         ),
         patch(
             "app.services.files.service.insert_metadata",
@@ -158,7 +157,7 @@ def _ingestion_edges_stubbed(capture_metadata=None):
             return_value=None,
         ),
         patch("app.services.files.service.write_summary_sidecar", new_callable=AsyncMock),
-        patch("app.utils.file_utils.get_helper_llm", MagicMock()),
+        patch("app.utils.file_utils.resolve_model", MagicMock()),
         patch("app.utils.file_utils.with_llm_retry", MagicMock(return_value=llm)),
     ):
         yield
@@ -172,11 +171,7 @@ def _ingestion_edges_stubbed(capture_metadata=None):
 @pytest.mark.integration
 class TestDevRouterMounting:
     async def test_dev_routes_absent_without_bypass(self, monkeypatch):
-        """With no DEV_AUTH_BYPASS_EMAIL, the router is never mounted → 404.
-
-        Explicitly clears the bypass rather than relying on the developer's
-        ambient .env, which legitimately sets it in local dev.
-        """
+        """With no DEV_AUTH_BYPASS_EMAIL, the router is never mounted → 404."""
         from app.config.settings import settings as app_settings
 
         monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", None)
@@ -209,18 +204,12 @@ class TestDevRouterMounting:
         assert response.json()["email"] == DEV_EMAIL
         mock_mint.assert_awaited_once_with(DEV_EMAIL, None)
 
-    # The direct agent-invocation routes run the executor / a subagent with the
-    # full tool registry as any impersonated user — the highest-blast-radius
-    # surface on the router. Nothing but the mount condition keeps them off a
-    # prod deployment, so pin every one of them to 404-when-unmounted. A future
-    # refactor that registers any of these on a router assembled outside the
-    # ENV+bypass gate (e.g. a stray include_router at import time) fails here
-    # instead of silently exposing account-takeover-grade endpoints.
+    # These direct agent-invocation routes run as any impersonated user with the
+    # full tool registry — the highest-blast-radius surface on the router — so
+    # every one must 404-when-unmounted; nothing else keeps them off prod.
     HIGH_BLAST_RADIUS_ROUTES: ClassVar[list[tuple[str, str, dict[str, str] | None]]] = [
         ("POST", "/api/v1/dev/executor", {"email": DEV_EMAIL, "task": "noop"}),
-        ("POST", "/api/v1/dev/subagents/some_agent", {"email": DEV_EMAIL, "task": "noop"}),
         ("POST", "/api/v1/dev/attachments", None),
-        ("GET", "/api/v1/dev/subagents", None),
         ("DELETE", "/api/v1/dev/users/dev@gaia.local", None),
     ]
 
@@ -242,9 +231,7 @@ class TestDevRouterMounting:
         assert response.status_code == 404
 
     async def test_privileged_routes_mounted_with_bypass(self, monkeypatch):
-        """With the bypass set, the executor + subagent routes are registered and
-        reach their service layer (200) — proving the 404s above are the mount
-        gate, not a typo'd path that would 404 in every environment."""
+        """With the bypass set, the executor route must be registered and reach 200."""
         from app.config.settings import settings as app_settings
 
         monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", DEV_EMAIL)
@@ -263,26 +250,15 @@ class TestDevRouterMounting:
                 new_callable=AsyncMock,
                 return_value=agent_result,
             ) as mock_exec,
-            patch(
-                "app.api.v1.endpoints.dev.run_subagent_direct",
-                new_callable=AsyncMock,
-                return_value=agent_result.model_copy(update={"agent": "some_agent"}),
-            ) as mock_sub,
         ):
             client = await _client(app)
             async with client:
                 exec_response = await client.post(
                     "/api/v1/dev/executor", json={"email": DEV_EMAIL, "task": "noop"}
                 )
-                sub_response = await client.post(
-                    "/api/v1/dev/subagents/some_agent",
-                    json={"email": DEV_EMAIL, "task": "noop"},
-                )
 
         assert exec_response.status_code == 200
-        assert sub_response.status_code == 200
-        mock_exec.assert_awaited_once_with(DEV_EMAIL, "noop", None)
-        mock_sub.assert_awaited_once_with(DEV_EMAIL, "some_agent", "noop", None)
+        mock_exec.assert_awaited_once_with(DEV_EMAIL, "noop", None, None)
 
     async def test_seed_endpoint_forwards_payload(self, monkeypatch):
         from app.config.settings import settings as app_settings
@@ -300,6 +276,7 @@ class TestDevRouterMounting:
                 conversations_created=2,
                 platforms_linked=["telegram"],
                 platform_user_ids={"telegram": "dev-telegram-u1"},
+                pro=True,
             ),
         ) as mock_seed:
             client = await _client(app)
@@ -311,6 +288,7 @@ class TestDevRouterMounting:
                         "todos": 3,
                         "conversations": 2,
                         "platform_links": ["telegram"],
+                        "pro": True,
                     },
                 )
 
@@ -318,7 +296,8 @@ class TestDevRouterMounting:
         body = response.json()
         assert body["todos_created"] == 3
         assert body["conversations_created"] == 2
-        mock_seed.assert_awaited_once_with(DEV_EMAIL, 3, 2, ["telegram"])
+        assert body["pro"] is True
+        mock_seed.assert_awaited_once_with(DEV_EMAIL, 3, 2, ["telegram"], pro=True)
 
 
 # ---------------------------------------------------------------------------
@@ -333,9 +312,7 @@ class TestDevServiceLogic:
         from app.services import dev_service
 
         oid = ObjectId()
-        user = dev_service.UserDocument.model_validate(
-            {"id": str(oid), "email": DEV_EMAIL, "name": "dev"}
-        )
+        user = UserDocument.model_validate({"id": str(oid), "email": DEV_EMAIL, "name": "dev"})
 
         with (
             patch.object(
@@ -344,9 +321,7 @@ class TestDevServiceLogic:
                 new_callable=AsyncMock,
                 side_effect=[(oid, True), (oid, False)],
             ),
-            patch.object(
-                dev_service.user_repository, "get", new_callable=AsyncMock, return_value=user
-            ),
+            patch.object(user_repository, "get", new_callable=AsyncMock, return_value=user),
         ):
             first = await dev_service.mint_dev_user(DEV_EMAIL)
             second = await dev_service.mint_dev_user(DEV_EMAIL)
@@ -354,34 +329,99 @@ class TestDevServiceLogic:
         assert first.id == second.id == str(oid)
         assert first.email == DEV_EMAIL
 
+    async def test_mint_passes_an_explicit_name_through_untouched(self):
+        """A caller-supplied name reaches the signup path verbatim."""
+        from app.services import dev_service
+
+        created: list[UserDocument] = []
+
+        async def capture_create(document: UserDocument) -> UserDocument:
+            stored = document.model_copy(update={"id": str(ObjectId())})
+            created.append(stored)
+            return stored
+
+        async def load_created(user_id: str) -> UserDocument:
+            return created[-1]
+
+        with (
+            patch.object(
+                user_repository,
+                "get_by_email",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch.object(user_repository, "create", side_effect=capture_create),
+            patch.object(user_repository, "get", side_effect=load_created),
+        ):
+            user = await dev_service.mint_dev_user(DEV_EMAIL, name="Ada Lovelace")
+
+        assert created[0].name == "Ada Lovelace"
+        assert user.name == "Ada Lovelace"
+
+    async def test_mint_without_a_name_uses_the_signup_path_derivation(self):
+        """An unnamed mint gets the capitalised name real signup derives, not the raw email local part."""
+        from app.services import dev_service
+
+        created: list[UserDocument] = []
+
+        async def capture_create(document: UserDocument) -> UserDocument:
+            stored = document.model_copy(update={"id": str(ObjectId())})
+            created.append(stored)
+            return stored
+
+        async def load_created(user_id: str) -> UserDocument:
+            return created[-1]
+
+        with (
+            patch.object(
+                user_repository,
+                "get_by_email",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch.object(user_repository, "create", side_effect=capture_create),
+            patch.object(user_repository, "get", side_effect=load_created),
+        ):
+            user = await dev_service.mint_dev_user("ada.lovelace@gaia.local")
+
+        assert created[0].name == "Ada Lovelace"
+        assert user.name == "Ada Lovelace"
+
     async def test_seed_creates_expected_counts(self):
         """Seed calls the real create paths exactly N times each."""
         from app.services import dev_service
 
         oid = ObjectId()
-        user = dev_service.UserDocument.model_validate({"id": str(oid), "email": DEV_EMAIL})
+        user = UserDocument.model_validate({"id": str(oid), "email": DEV_EMAIL})
         mock_complete = AsyncMock()
         with (
             patch.object(
-                dev_service.user_repository,
+                user_repository,
                 "get_by_email",
                 new_callable=AsyncMock,
                 return_value=user,
             ),
-            patch.object(dev_service.user_repository, "complete_onboarding", mock_complete),
-            patch.object(dev_service, "create_todo", new_callable=AsyncMock) as mock_todo,
+            patch.object(user_repository, "complete_onboarding", mock_complete),
+            patch.object(
+                dev_service.TodoService, "create_todo", new_callable=AsyncMock
+            ) as mock_todo,
             patch.object(
                 dev_service, "create_conversation_service", new_callable=AsyncMock
             ) as mock_convo,
-            patch.object(
-                dev_service.PlatformLinkService, "link_account", new_callable=AsyncMock
-            ) as mock_link,
+            patch.object(PlatformLinkService, "ensure_linkable", new_callable=AsyncMock),
+            patch.object(PlatformLinkService, "link_account", new_callable=AsyncMock) as mock_link,
         ):
             result = await dev_service.seed_dev_data(
                 DEV_EMAIL, todos=3, conversations=2, platform_links=["telegram", "slack"]
             )
 
         assert mock_todo.await_count == 3
+        assert [c.args[0].title for c in mock_todo.await_args_list] == [
+            "Sample todo 1",
+            "Sample todo 2",
+            "Sample todo 3",
+        ]
+        assert {c.args[1] for c in mock_todo.await_args_list} == {result.user_id}
         assert mock_convo.await_count == 2
         assert mock_link.await_count == 2
         assert result.todos_created == 3
@@ -392,21 +432,164 @@ class TestDevServiceLogic:
         # Seeding marks onboarding complete via the gated repository method.
         assert mock_complete.await_args.args[0] == str(oid)
         assert mock_complete.await_args.kwargs["phase"] == dev_service.OnboardingPhase.COMPLETED
+        # The seeded preferences are the contract: a profession and a response style,
+        # with the Q2 need fields explicitly unset (seeding answers no questions for
+        # the user) so a seeded account cannot masquerade as one that picked needs.
+        assert mock_complete.await_args.kwargs["preferences"] == dev_service.OnboardingPreferences(
+            profession="Developer",
+            needs=None,
+            other_need=None,
+            response_style="casual",
+        )
+
+    @pytest.mark.parametrize(("already_active", "expect_created"), [(False, True), (True, False)])
+    async def test_seed_pro_grants_one_active_subscription(
+        self, already_active: bool, expect_created: bool
+    ):
+        from app.services import dev_service
+
+        oid = ObjectId()
+        user = UserDocument.model_validate({"id": str(oid), "email": DEV_EMAIL})
+        existing = MagicMock() if already_active else None
+        with (
+            patch.object(
+                user_repository,
+                "get_by_email",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+            patch.object(user_repository, "complete_onboarding", AsyncMock()),
+            patch.object(
+                subscription_repository,
+                "get_active_for_user",
+                new_callable=AsyncMock,
+                return_value=existing,
+            ) as mock_active,
+            patch.object(subscription_repository, "create", new_callable=AsyncMock) as mock_create,
+            patch.object(
+                dev_service, "invalidate_plan_cache", new_callable=AsyncMock
+            ) as mock_invalidate,
+        ):
+            result = await dev_service.seed_dev_data(
+                DEV_EMAIL, todos=0, conversations=0, platform_links=[], pro=True
+            )
+
+        assert result.pro is True
+        assert mock_create.await_count == int(expect_created)
+        assert mock_invalidate.await_count == int(expect_created)
+        mock_active.assert_awaited_once_with(str(oid))
+        if expect_created:
+            created = mock_create.await_args.args[0]
+            assert created.user_id == str(oid)
+            assert created.status == SubscriptionStatus.ACTIVE.value
+            assert created.dodo_subscription_id == f"dev_{oid}"
+            assert created.product_id == DEV_PRO_PRODUCT_ID
+            assert created.created_at is not None
+            assert created.created_at.utcoffset() == timedelta(0)
+            assert created.previous_billing_date == created.created_at.isoformat()
+            assert (
+                created.next_billing_date
+                == (created.created_at + timedelta(days=DEV_PRO_TERM_DAYS)).isoformat()
+            )
+            mock_invalidate.assert_awaited_once_with(str(oid))
+
+    async def _seed_telegram(
+        self,
+        user_id: str,
+        linked: dict[tuple[str, str], dict[str, object]],
+        unlinks: list[str] | None = None,
+    ):
+        """Seed telegram against a link store that holds one account per (user, platform), as the real one does."""
+        from app.services import dev_service
+        from app.services.platform_link_service import AccountHasDifferentPlatformError
+
+        async def ensure_linkable(user_id, platform, platform_user_id):
+            held = linked.get((user_id, platform))
+            if held is not None and held["platform_user_id"] != platform_user_id:
+                raise AccountHasDifferentPlatformError("already linked")
+
+        async def link_account(*, user_id, platform, platform_user_id, profile):
+            await ensure_linkable(user_id, platform, platform_user_id)
+            linked[(user_id, platform)] = {"platform_user_id": platform_user_id, "profile": profile}
+
+        async def unlink_account(user_id, platform):
+            if unlinks is not None:
+                unlinks.append(platform)
+            linked.pop((user_id, platform), None)
+
+        user = UserDocument.model_validate({"id": user_id, "email": DEV_EMAIL, "name": "Dev"})
+        with (
+            patch.object(
+                user_repository,
+                "get_by_email",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+            patch.object(user_repository, "complete_onboarding", new_callable=AsyncMock),
+            patch.object(PlatformLinkService, "ensure_linkable", side_effect=ensure_linkable),
+            patch.object(PlatformLinkService, "link_account", side_effect=link_account),
+            patch.object(PlatformLinkService, "unlink_account", side_effect=unlink_account),
+        ):
+            return await dev_service.seed_dev_data(
+                DEV_EMAIL, todos=0, conversations=0, platform_links=["telegram"]
+            )
+
+    async def test_seed_links_the_seeded_identity_the_harness_injects_as(self):
+        user_id = str(ObjectId())
+        linked: dict[tuple[str, str], dict[str, object]] = {}
+
+        result = await self._seed_telegram(user_id, linked)
+
+        assert linked == {
+            (user_id, "telegram"): {
+                "platform_user_id": result.platform_user_ids["telegram"],
+                "profile": {"username": "dev_telegram", "display_name": "Dev"},
+            }
+        }
+
+    async def test_seed_replaces_a_different_account_already_linked_on_that_platform(self):
+        """A real Telegram account and the harness's synthetic one cannot share the slot; the seed wins."""
+        user_id = str(ObjectId())
+        linked: dict[tuple[str, str], dict[str, object]] = {
+            (user_id, "telegram"): {"platform_user_id": "tg-real", "profile": {"username": "me"}}
+        }
+
+        result = await self._seed_telegram(user_id, linked)
+
+        assert linked == {
+            (user_id, "telegram"): {
+                "platform_user_id": result.platform_user_ids["telegram"],
+                "profile": {"username": "dev_telegram", "display_name": "Dev"},
+            }
+        }
+
+    async def test_reseeding_keeps_the_seeded_link_without_unlinking_it(self):
+        """Only a different account is replaced: the harness's own id, already linked, stays put."""
+        user_id = str(ObjectId())
+        seeded = {"platform_user_id": f"dev-telegram-{user_id}", "profile": {"username": "x"}}
+        linked: dict[tuple[str, str], dict[str, object]] = {(user_id, "telegram"): seeded}
+        unlinks: list[str] = []
+
+        await self._seed_telegram(user_id, linked, unlinks)
+
+        assert unlinks == []
 
     async def test_seed_rejects_unknown_platform_before_writing(self):
         """An invalid platform aborts with 400 and writes nothing."""
         from app.services import dev_service
         from app.utils.errors import AppError
 
-        user = dev_service.UserDocument.model_validate({"id": str(ObjectId()), "email": DEV_EMAIL})
+        user = UserDocument.model_validate({"id": str(ObjectId()), "email": DEV_EMAIL})
         with (
             patch.object(
-                dev_service.user_repository,
+                user_repository,
                 "get_by_email",
                 new_callable=AsyncMock,
                 return_value=user,
             ),
-            patch.object(dev_service, "create_todo", new_callable=AsyncMock) as mock_todo,
+            patch.object(
+                dev_service.TodoService, "create_todo", new_callable=AsyncMock
+            ) as mock_todo,
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
@@ -416,12 +599,86 @@ class TestDevServiceLogic:
         assert exc.value.status_code == 400
         mock_todo.assert_not_awaited()
 
+    async def test_seed_link_conflict_is_a_409_and_writes_nothing_else(self):
+        """A platform account another user holds got an unhandled 500 and half-seeded data."""
+        from app.constants.platform_links import LINK_CONFLICT_PLATFORM_TAKEN
+        from app.services import dev_service
+        from app.services.platform_link_service import PlatformAccountTakenError
+        from app.utils.errors import AppError
+
+        user = UserDocument.model_validate({"id": str(ObjectId()), "email": DEV_EMAIL})
+        with (
+            patch.object(
+                user_repository,
+                "get_by_email",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+            patch.object(user_repository, "complete_onboarding", AsyncMock()),
+            patch.object(
+                dev_service.TodoService, "create_todo", new_callable=AsyncMock
+            ) as mock_todo,
+            patch.object(
+                dev_service, "create_conversation_service", new_callable=AsyncMock
+            ) as mock_convo,
+            patch.object(
+                PlatformLinkService,
+                "ensure_linkable",
+                AsyncMock(side_effect=PlatformAccountTakenError("held by another user")),
+            ),
+        ):
+            with pytest.raises(AppError) as exc:
+                await dev_service.seed_dev_data(
+                    DEV_EMAIL, todos=2, conversations=1, platform_links=["telegram"]
+                )
+
+        assert exc.value.status_code == 409
+        assert exc.value.code == LINK_CONFLICT_PLATFORM_TAKEN
+        mock_todo.assert_not_awaited()
+        mock_convo.assert_not_awaited()
+
+    async def test_seed_writes_no_link_when_any_platform_conflicts(self):
+        """Linking in parallel let telegram commit while slack raised: a 409 with a half-linked user."""
+        from app.constants.platform_links import LINK_CONFLICT_PLATFORM_TAKEN
+        from app.services import dev_service, platform_link_service
+        from app.utils.errors import AppError
+
+        oid = str(ObjectId())
+        user = UserDocument.model_validate({"id": oid, "email": DEV_EMAIL})
+        other_user = UserDocument.model_validate(
+            {"id": str(ObjectId()), "email": "other@gaia.local"}
+        )
+
+        async def holder(platform: str, _platform_user_id: str):
+            return other_user if platform == "slack" else None
+
+        repo = platform_link_service.user_repository
+        with (
+            patch.object(
+                user_repository,
+                "get_by_email",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+            patch.object(user_repository, "complete_onboarding", AsyncMock()),
+            patch.object(repo, "get_by_platform_id", AsyncMock(side_effect=holder)),
+            patch.object(repo, "get", AsyncMock(return_value=user)),
+            patch.object(repo, "link_platform", AsyncMock()) as mock_write,
+        ):
+            with pytest.raises(AppError) as exc:
+                await dev_service.seed_dev_data(
+                    DEV_EMAIL, todos=0, conversations=0, platform_links=["telegram", "slack"]
+                )
+
+        assert exc.value.code == LINK_CONFLICT_PLATFORM_TAKEN
+        mock_write.assert_not_awaited()
+
     async def test_seed_missing_user_404_with_hint(self):
         from app.services import dev_service
         from app.utils.errors import AppError
 
         with patch.object(
-            dev_service.user_repository, "get_by_email", new_callable=AsyncMock, return_value=None
+            user_repository, "get_by_email", new_callable=AsyncMock, return_value=None
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
@@ -438,7 +695,7 @@ class TestDevServiceLogic:
 
 
 def _build_bypass_probe_app() -> FastAPI:
-    """A minimal app running the real bypass middleware plus a probe route."""
+    """Build a minimal app running the real bypass middleware plus a probe route."""
     from app.api.v1.middleware.auth import WorkOSAuthMiddleware
 
     app = FastAPI()
@@ -446,11 +703,9 @@ def _build_bypass_probe_app() -> FastAPI:
     @app.get("/probe")
     async def probe(request: Request) -> JSONResponse:
         user = getattr(request.state, "user", None)
-        if not user:
+        if not isinstance(user, AuthenticatedUser):
             return JSONResponse(status_code=401, content={"detail": "no user"})
-        return JSONResponse(
-            content={"email": user.get("email"), "dev_bypass": user.get("dev_bypass")}
-        )
+        return JSONResponse(content={"email": user.email, "dev_bypass": user.dev_bypass})
 
     app.add_middleware(WorkOSAuthMiddleware, workos_client=MagicMock())
     return app
@@ -500,7 +755,7 @@ class TestDevUserImpersonation:
     async def test_unknown_header_email_401_with_hint(self, probe_client):
         response = await probe_client.get("/probe", headers={"X-Dev-User": "ghost@nope.local"})
         assert response.status_code == 401
-        assert DEV_USER_MISSING_HINT in response.text
+        assert DEV_USER_MISSING_HINT in response.json()["message"]
 
 
 # ---------------------------------------------------------------------------

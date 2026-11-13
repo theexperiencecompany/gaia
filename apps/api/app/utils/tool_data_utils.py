@@ -1,34 +1,39 @@
-"""
-Utility functions for converting legacy tool data to unified format.
-"""
+"""Utility functions for converting legacy tool data to unified format."""
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any
+
+from pydantic import BaseModel, ConfigDict
 
 from app.models.chat_models import ToolDataEntry, tool_fields
 
 
-def convert_legacy_tool_data(message: dict[str, Any]) -> dict[str, Any]:
+class _StoredMessageToolData(BaseModel):
+    """A stored message's unified tool_data, read verbatim.
+
+    object on purpose: this runs in a mode="before" validator, ahead of
+    MessageModel validating the entries themselves.
     """
-    Convert legacy individual tool fields to unified tool_data array format.
 
-    This function handles backward compatibility by detecting legacy tool fields
-    and converting them into the new ToolDataEntry array structure.
+    model_config = ConfigDict(extra="ignore")
 
-    Args:
-        message: Raw message dict from database that may contain legacy tool fields
+    tool_data: object = None
 
-    Returns:
-        Dict with legacy fields converted to unified tool_data format
+
+def convert_legacy_tool_data(message: Mapping[str, object]) -> dict[str, object]:
+    """Convert legacy individual tool fields to the unified tool_data array format.
+
+    Backward compatibility for a message dict from the database that may
+    still carry legacy tool fields.
     """
     # Create a copy to avoid modifying original
-    converted_message = message.copy()
-    tool_data_entries = []
+    converted_message = dict(message)
+    tool_data_entries: list[object] = []
     timestamp = datetime.now(UTC).isoformat()
 
     # Check if message already has unified tool_data - preserve it
-    existing_tool_data = converted_message.get("tool_data", [])
-    if existing_tool_data:
+    existing_tool_data = _StoredMessageToolData.model_validate(message).tool_data
+    if isinstance(existing_tool_data, list) and existing_tool_data:
         tool_data_entries.extend(existing_tool_data)
         # Remove from message to avoid double processing
         del converted_message["tool_data"]

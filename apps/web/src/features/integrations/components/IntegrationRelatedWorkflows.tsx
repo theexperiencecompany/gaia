@@ -22,8 +22,8 @@ interface IntegrationRelatedWorkflowsProps {
    * - "section": full marketplace section styling (rounded-3xl card, large heading).
    */
   readonly variant?: "sidebar" | "section";
-  /** Optional name of the integration to personalise the section copy. */
-  readonly integrationName?: string;
+  /** Server-fetched workflows; when present no client fetch runs. */
+  readonly initialWorkflows?: CommunityWorkflow[];
 }
 
 const VIEW_MORE_HREF = "/use-cases";
@@ -49,19 +49,19 @@ export function IntegrationRelatedWorkflows({
   integrationId,
   limit = 4,
   variant = "sidebar",
-  integrationName,
+  initialWorkflows,
 }: Readonly<IntegrationRelatedWorkflowsProps>) {
   const { data, isLoading } = useQuery({
     queryKey: ["integration-workflows", integrationId, limit],
     queryFn: () => integrationsApi.getRelatedWorkflows(integrationId, limit),
     staleTime: 5 * 60 * 1000,
+    enabled: !initialWorkflows,
   });
 
   // While loading, the sidebar shows a skeleton matching the workflow cards so
-  // the panel doesn't flash in. The "section" variant stays null until resolved
-  // (it's a full marketplace block, not a panel). Once resolved with zero
-  // workflows we still collapse to null — no empty section.
-  if (isLoading) {
+  // it doesn't flash in; the "section" variant (a full marketplace block, not a
+  // panel) stays null until resolved, and collapses to null again if empty.
+  if (!initialWorkflows && isLoading) {
     if (variant !== "sidebar") return null;
     return (
       <div className="flex flex-col gap-2 mt-6">
@@ -80,7 +80,7 @@ export function IntegrationRelatedWorkflows({
     );
   }
 
-  const workflows = (data?.workflows ?? []) as CommunityWorkflow[];
+  const workflows = (initialWorkflows ?? data?.workflows ?? []).slice(0, limit);
   if (workflows.length === 0) return null;
 
   if (variant === "section") {
@@ -91,9 +91,8 @@ export function IntegrationRelatedWorkflows({
             Workflows that use this integration
           </h2>
           <p className="text-zinc-400 text-sm leading-relaxed">
-            {integrationName
-              ? `Featured and community workflows that automate ${integrationName} with GAIA. Clone any of them in one click.`
-              : "Featured and community workflows powered by this integration. Clone any of them in one click."}
+            Featured and community workflows that automate this integration with
+            GAIA. Clone any of them in one click.
           </p>
         </div>
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -104,6 +103,7 @@ export function IntegrationRelatedWorkflows({
               variant="community"
               showCreator={true}
               showExecutions={true}
+              href={`/use-cases/${workflow.slug}`}
             />
           ))}
           <ViewMoreCard fullWidth />

@@ -2,11 +2,11 @@
 
 Covers the shape-scoped contract:
 - the schema modifier finds the tool's native upload param by Composio's
-  ``file_uploadable`` marker (whatever it is named), swaps it for friendly
-  ``attachments``, and records the swap,
+  file_uploadable marker (whatever it is named), swaps it for friendly
+  attachments, and records the swap,
 - the before-hook acts only on the tools that swap produced — a tool we never
-  touched keeps its own ``attachments`` argument, whatever it means to it,
-- for a tool we did swap, anything unexpected in ``attachments`` aborts rather
+  touched keeps its own attachments argument, whatever it means to it,
+- for a tool we did swap, anything unexpected in attachments aborts rather
   than reaching the tool.
 """
 
@@ -14,7 +14,7 @@ from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 import pytest
 
 from app.constants.email import EMAIL_ATTACHMENTS_PARAM_DESCRIPTION
@@ -35,7 +35,7 @@ HOOKS = "app.utils.composio_hooks.file_upload_hooks"
 
 @pytest.fixture(autouse=True)
 def _clean_swap_registry():
-    """The swap registry is module-level state; no test may inherit another's."""
+    """Reset the swap registry so no test inherits another's state."""
     file_upload_hooks._swapped_upload_params.clear()
     yield
     file_upload_hooks._swapped_upload_params.clear()
@@ -164,8 +164,12 @@ class TestFindNativeUploadParam:
             is None
         )
 
-    def test_non_dict_property_does_not_match(self):
-        assert find_native_upload_param(_schema({"attachment": "not-a-schema"})) is None
+    def test_non_schema_property_is_rejected_at_the_boundary(self):
+        # A property value that is not a JSON-schema object is not a tool schema
+        # at all: it fails to parse (the registry logs and leaves the schema
+        # untouched) rather than being silently walked around.
+        with pytest.raises(ValidationError):
+            find_native_upload_param(_schema({"attachment": "not-a-schema"}))
 
     def test_unmarked_variants_do_not_match(self):
         # Every branch walked, nothing marked: the walk must not claim the param.
@@ -557,3 +561,22 @@ class TestGenericBeforeHook:
         params = {"arguments": {"attachments": "legacy-string"}, "user_id": "u1"}
         with pytest.raises(HookAbortError, match="must be a list"):
             file_upload_before_hook("OUTLOOK_SEND_EMAIL", "outlook", params)
+
+
+class TestSchemaModifierRequiredAndKeyOrder:
+    def test_required_list_without_the_native_param_is_left_intact(self):
+        schema = _schema({"attachment": _native_attachment_schema()}, required=["subject"])
+        out = file_upload_schema_modifier("OUTLOOK_SEND_EMAIL", "outlook", schema)
+        assert out.input_parameters["required"] == ["subject"]
+
+    def test_rewritten_schema_keeps_the_provider_key_order(self):
+        # The schema reaches the model as JSON text, so key order is part of it.
+        schema = SimpleNamespace(
+            input_parameters={
+                "required": ["subject"],
+                "properties": {"attachment": _native_attachment_schema()},
+                "type": "object",
+            }
+        )
+        out = file_upload_schema_modifier("OUTLOOK_SEND_EMAIL", "outlook", schema)
+        assert list(out.input_parameters) == ["required", "properties", "type"]

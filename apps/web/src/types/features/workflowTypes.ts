@@ -10,10 +10,23 @@
  * DO NOT create duplicate type definitions elsewhere!
  */
 
-import type { ExecutionConfig, WorkflowMetadata } from "@shared/types";
+import type {
+  PublicWorkflowCard,
+  PublicWorkflowStep,
+  SelectedWorkflowDataOutput,
+  WorkflowWithIntegrations,
+} from "@shared/api/generated";
+
+export type {
+  CreateWorkflowRequest,
+  IntegrationRef,
+  PublicWorkflowStep,
+  WorkflowExecutionRequest,
+} from "@shared/api/generated";
+
 import type {
   TriggerConfig,
-  TriggerSchema,
+  TriggerConfigDraft,
 } from "@/features/workflows/triggers/types";
 import type { ContentCreator } from "@/types/shared/contentTypes";
 
@@ -22,36 +35,10 @@ import type { ContentCreator } from "@/types/shared/contentTypes";
 // ============================================================================
 
 /**
- * Legacy workflow step data (for message components and chat history)
- */
-export interface WorkflowStepData {
-  id: string;
-  title: string;
-  description: string;
-  category: string;
-}
-
-/**
- * Complete workflow step type for API operations and execution
- */
-export interface WorkflowStepType {
-  id: string;
-  title: string;
-  category: string;
-  description: string;
-}
-
-/**
  * Simplified workflow step for community/public display
  * Used in CommunityWorkflow and UseCase types
  * Note: Backend actually returns full WorkflowStepType, but we type it as optional for flexibility
  */
-export interface PublicWorkflowStep {
-  id?: string;
-  title: string;
-  category: string;
-  description: string;
-}
 
 // ============================================================================
 // WORKFLOW CONFIGURATION TYPES
@@ -59,7 +46,7 @@ export interface PublicWorkflowStep {
 
 // Re-export trigger types for convenience
 // Re-export shared types that are identical between web and mobile
-export type { ExecutionConfig, TriggerConfig, TriggerSchema, WorkflowMetadata };
+export type { TriggerConfig, TriggerConfigDraft };
 
 // ============================================================================
 // COMMUNITY & EXPLORE WORKFLOW TYPES
@@ -69,36 +56,7 @@ export type { ExecutionConfig, TriggerConfig, TriggerSchema, WorkflowMetadata };
  * Community workflow - publicly shared workflow
  * Also used for Explore workflows (featured workflows on landing/workflows pages)
  */
-export interface CommunityWorkflow {
-  id: string;
-  slug: string; // human-readable URL slug, always present for public workflows
-  title: string;
-  description: string;
-  prompt?: string;
-  /** User-chosen icon slug (gaia-icons component name) */
-  icon?: string | null;
-  /** Hex color for the user-chosen icon */
-  icon_color?: string | null;
-  /** Set on built-in workflows GAIA provisions when an integration is connected */
-  system_workflow_key?: string | null;
-  /** Integration whose connection provisions this workflow */
-  source_integration?: string | null;
-  /** The card's real trigger — reproduced when the user adds it */
-  trigger_config?: TriggerConfig;
-  steps: PublicWorkflowStep[];
-  created_at: string;
-  creator: ContentCreator;
-  categories?: string[]; // For filtering (Students, Founders, Engineering, etc.)
-  total_executions?: number; // Run count for display
-}
-
-/**
- * Response type for community/explore workflows API
- */
-export interface CommunityWorkflowsResponse {
-  workflows: CommunityWorkflow[];
-  total: number;
-}
+export type CommunityWorkflow = PublicWorkflowCard;
 
 // ============================================================================
 // USE CASE TYPES (Landing Page Content & Templates)
@@ -137,117 +95,11 @@ export interface UseCase {
 /**
  * Legacy workflow data (for message components)
  */
-export interface WorkflowData {
-  id: string;
-  title: string;
-  description: string;
-  prompt?: string;
-  steps: WorkflowStepData[];
-}
+export type WorkflowData = SelectedWorkflowDataOutput;
 
 /** Lightweight integration reference returned in workflow responses. */
-export interface IntegrationRef {
-  id: string;
-  name: string;
-}
 
 // Complete workflow entity
-export interface Workflow {
-  id: string;
-  title: string;
-  description: string;
-  prompt: string;
-  /** User-chosen icon slug (gaia-icons component name); shown when the workflow has no integration icons */
-  icon?: string | null;
-  /** Hex color for the user-chosen icon */
-  icon_color?: string | null;
-  steps: WorkflowStepType[];
-  trigger_config: TriggerConfig;
-  execution_config?: ExecutionConfig;
-  metadata?: WorkflowMetadata;
-  activated: boolean;
-  /** Whether GAIA sends the automatic completion notification after each run */
-  notify_on_completion: boolean;
-  user_id: string;
-  created_at: string;
-  updated_at: string;
-  last_executed_at?: string;
-  current_step_index: number;
-  execution_logs: string[];
-  error_message?: string;
-
-  // Execution statistics
-  total_executions: number;
-  successful_executions: number;
-
-  // Slug for SEO-friendly URLs
-  slug?: string;
-
-  // Community features
-  is_public?: boolean;
-  created_by?: string;
-  creator?: ContentCreator; // Optional creator info from community workflows
-
-  // System workflow fields
-  is_system_workflow?: boolean;
-  source_integration?: string;
-  system_workflow_key?: string;
-
-  /**
-   * Integration ids this workflow uses — picked by the user or identified from
-   * intent. Scopes the tool palette when generating steps. Never stores
-   * connection state; see required/missing below.
-   */
-  integration_ids?: string[];
-
-  /** Integrations required by the workflow's steps (computed at read time) */
-  required_integrations?: IntegrationRef[];
-  /** Required integrations the user has not connected yet (computed at read time) */
-  missing_integrations?: IntegrationRef[];
-}
+export type Workflow = WorkflowWithIntegrations;
 
 // API request types
-export interface CreateWorkflowRequest {
-  title: string;
-  description?: string;
-  prompt: string;
-  /** User-chosen icon slug (gaia-icons component name) */
-  icon?: string | null;
-  /** Hex color for the user-chosen icon */
-  icon_color?: string | null;
-  /** Built-in workflow key — makes create idempotent against the provisioner */
-  system_workflow_key?: string | null;
-  trigger_config: TriggerConfig;
-  steps?: WorkflowStepData[]; // Optional: pre-existing steps from explore/community workflows
-  execution_config?: ExecutionConfig;
-  metadata?: Partial<WorkflowMetadata>;
-  generate_immediately?: boolean;
-  /** Whether GAIA sends the automatic completion notification after each run */
-  notify_on_completion?: boolean;
-  /** Integration ids this workflow uses; scopes the tool palette when generating steps */
-  integration_ids?: string[];
-}
-
-export interface WorkflowExecutionRequest {
-  execution_method?: "chat" | "background" | "hybrid";
-  context?: Record<string, unknown>;
-}
-
-// API response types
-export interface WorkflowListResponse {
-  workflows: Workflow[];
-  total_count: number;
-  page: number;
-  page_size: number;
-}
-
-export interface WorkflowResponse {
-  workflow: Workflow;
-  message: string;
-}
-
-export interface WorkflowExecutionResponse {
-  execution_id: string;
-  message: string;
-  estimated_completion_time?: string;
-}

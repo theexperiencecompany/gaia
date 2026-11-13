@@ -1,8 +1,8 @@
 """Tests for the Composio CustomTool monkey patch.
 
-Composio 1.0.0 dispatches custom tools via ``CustomTool.invoke_trusted`` and
-deliberately keeps ``user_id`` out of ``auth_credentials``. The patch re-injects
-``user_id`` at ``CustomTool.__get_auth_credentials`` (the private method both
+Composio 1.0.0 dispatches custom tools via CustomTool.invoke_trusted and
+deliberately keeps user_id out of auth_credentials. The patch re-injects
+user_id at CustomTool.__get_auth_credentials (the private method both
 dispatch paths funnel through), so GAIA's custom tools can keep reading it.
 """
 
@@ -42,8 +42,10 @@ class TestPatchTarget:
 
     def test_dispatch_funnels_through_patched_method(self) -> None:
         # invoke_trusted is the real dispatch path; __call__ defers to it.
+        # Unwrap: input-coercion wrappers stack here, and the assertion is
+        # about the dispatch body, not whichever wrapper is outermost.
         assert _PRIVATE_AUTH_METHOD.rsplit("__", maxsplit=1)[-1] in inspect.getsource(
-            CustomTool.invoke_trusted
+            inspect.unwrap(CustomTool.invoke_trusted)
         )
 
 

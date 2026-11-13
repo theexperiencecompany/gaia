@@ -113,7 +113,7 @@ export default function DemoSettingsDropdown({
               }
               classNames={{ title: "text-primary font-medium" }}
             >
-              Upgrade to Pro
+              Subscribe to GAIA Pro
             </DropdownItem>
           </DropdownSection>
 

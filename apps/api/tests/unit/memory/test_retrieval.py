@@ -4,13 +4,16 @@ Every external boundary (Chroma, Postgres, the embedding/rerank models, Redis)
 is mocked; the fusion, filtering, scoring and assembly logic under test is real.
 """
 
+import asyncio
 from datetime import UTC, date as date_type, datetime, timedelta
 from fnmatch import fnmatch
+import json
 import math
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
 from freezegun import freeze_time as _freeze_time
+import httpx
 import pytest
 
 from app.constants.memory import (
@@ -55,55 +58,42 @@ from app.memory.retrieval import (
     recall_transcripts,
 )
 from app.models.memory_db_models import MemoryRecord
+from app.utils.log_identifiers import user_text_shape
+from shared.py.wide_events import wide_task
+from tests.helpers import WideEventRecorder, captured_wide_event
 
 USER = "507f1f77bcf86cd799439011"
 
 
 def freeze_time(*args, **kwargs):
-    """freeze_time that skips transformers — its module-restore walk trips on
-    the library's lazy attributes (same workaround as the worker lifecycle
-    tests)."""
+    """Freeze time while skipping transformers, whose lazy attributes trip the module-restore walk."""
     kwargs.setdefault("ignore", ["transformers"])
     return _freeze_time(*args, **kwargs)
 
 
-def make_row(
-    content: str = "a fact",
-    *,
-    memory_id: uuid.UUID | None = None,
-    user_id: str = USER,
-    kind: str = MemoryKind.FACT.value,
-    category_path: str = "work",
-    importance: float = 0.5,
-    is_latest: bool = True,
-    is_forgotten: bool = False,
-    forget_after: datetime | None = None,
-    mentioned_at: datetime | None = None,
-    created_at: datetime | None = None,
-    parent_id: uuid.UUID | None = None,
-    relation_type: str | None = None,
-) -> MemoryRecord:
-    """A detached MemoryRecord — no session, no DB."""
+def make_row(content: str = "a fact", **overrides: object) -> MemoryRecord:
+    """Build a detached MemoryRecord — no session, no DB; override any field via kwargs."""
     now = datetime.now(UTC)
-    return MemoryRecord(
-        id=memory_id or uuid.uuid4(),
-        user_id=user_id,
-        kind=kind,
-        content=content,
-        category_path=category_path,
-        importance=importance,
-        version=1,
-        is_latest=is_latest,
-        is_forgotten=is_forgotten,
-        forget_after=forget_after,
-        parent_id=parent_id,
-        relation_type=relation_type,
-        mentioned_at=mentioned_at or now,
-        created_at=created_at or now,
-        updated_at=now,
-        source_type="conversation",
-        metadata_json={},
-    )
+    fields: dict[str, object] = {
+        "id": uuid.uuid4(),
+        "user_id": USER,
+        "kind": MemoryKind.FACT.value,
+        "content": content,
+        "category_path": "work",
+        "importance": 0.5,
+        "version": 1,
+        "is_latest": True,
+        "is_forgotten": False,
+        "forget_after": None,
+        "parent_id": None,
+        "relation_type": None,
+        "mentioned_at": now,
+        "created_at": now,
+        "updated_at": now,
+        "source_type": "conversation",
+        "metadata_json": {},
+    }
+    return MemoryRecord(**{**fields, **overrides})
 
 
 # ---------------------------------------------------------------------------
@@ -329,11 +319,9 @@ def _cand(
 
 
 class TestDropBelowRelevance:
-    # Survival reads the cross-encoder's calibrated ``relevance`` — never the
-    # blended ``base`` (its cosine leg floors every candidate high) and never
-    # the boosted ``score``. Confident candidates are exempt: the absolute
-    # cosine/logit/keyword signals are the escape hatch for query shapes the
-    # cross-encoder misjudges.
+    # Survival reads calibrated ``relevance``, never blended ``base`` or boosted
+    # ``score``. Confident candidates are exempt as the escape hatch for shapes
+    # the cross-encoder misjudges.
 
     def test_empty_input_returns_empty(self) -> None:
         assert _drop_below_relevance([]) == []
@@ -363,11 +351,7 @@ class TestDropBelowRelevance:
 
     @pytest.mark.regression
     def test_a_high_blended_base_cannot_save_below_floor_relevance(self) -> None:
-        """The incidental-sibling shape, with the real measured proportions:
-        the off-topic sibling kept 72% of the top's blended base (the
-        proportional cosine leg floors everyone high) while its calibrated
-        cross-encoder relevance ratio was 9%. Survival on base kept it; on
-        relevance it dies."""
+        """Measured: the sibling kept 72% blended base but only 9% relevance — survives on base, dies on relevance."""
         scored = [
             _cand(0.473, "birthday", relevance=0.122, confident=True),
             _cand(0.341, "sibling", relevance=0.011, confident=False),
@@ -379,9 +363,7 @@ class TestDropBelowRelevance:
         assert [item.row.content for item in _drop_below_relevance(scored)] == ["top"]
 
     def test_a_confident_candidate_is_never_dropped(self) -> None:
-        """The escape hatch: a keyword/cosine-anchored result the
-        cross-encoder hates still reaches the prompt (the blend exists for
-        ordering precisely because the cross-encoder misjudges some shapes)."""
+        """The escape hatch: a keyword/cosine-anchored result the cross-encoder hates still reaches the prompt."""
         scored = [_cand(1.0, "top"), _cand(0.01, "anchored", confident=True)]
         assert [item.row.content for item in _drop_below_relevance(scored)] == [
             "top",
@@ -422,9 +404,7 @@ class TestCapWeakResults:
         assert len(_cap_weak_results(scored)) == MAX_WEAK_RESULTS
 
     def test_a_confident_result_after_the_weak_cap_is_still_kept(self) -> None:
-        """Hitting the weak cap must SKIP further weak results, never stop the
-        scan: a confident result ranked below the capped weak tail still
-        belongs in the prompt."""
+        """Hitting the weak cap must skip further weak results, not stop the scan — a confident result behind it still belongs."""
         scored = [
             _cand(1.0 - i / 100, f"w{i}", confident=False) for i in range(MAX_WEAK_RESULTS + 1)
         ] + [_cand(0.5, "anchored-last", confident=True)]
@@ -628,6 +608,40 @@ class TestRerankAndBoost:
             scored = await _rerank_and_boost("q", [weak, strong], ann_similarity={}, fts_ids=set())
         assert [item.row.content for item in scored] == ["strong", "weak"]
 
+    async def test_rerank_timeout_falls_back_to_retrieval_order(self) -> None:
+        # A slow/overloaded sidecar must not fail the user's turn: recall
+        # degrades to dense-retrieval order (by cosine) instead of raising.
+        low, high = make_row("low"), make_row("high")
+        with patch.object(
+            retrieval, "rerank", new=AsyncMock(side_effect=httpx.ReadTimeout("slow"))
+        ):
+            scored = await _rerank_and_boost(
+                "q",
+                [low, high],
+                ann_similarity={str(low.id): 0.3, str(high.id): 0.9},
+                fts_ids=set(),
+            )
+        assert [item.row.content for item in scored] == ["high", "low"]
+        assert len(scored) == 2
+        # In the fallback branch relevance IS the retrieval score, and a weak
+        # cosine with no FTS anchor is not confident (no rerank signal to lean on).
+        low_scored = next(item for item in scored if item.row.content == "low")
+        assert low_scored.relevance == low_scored.base
+        assert low_scored.confident is False
+
+    async def test_rerank_operation_timeout_falls_back_to_retrieval_order(self) -> None:
+        # The whole-operation deadline raises TimeoutError (not an httpx error);
+        # the fallback must catch it too, not just HTTP failures.
+        low, high = make_row("low"), make_row("high")
+        with patch.object(retrieval, "rerank", new=AsyncMock(side_effect=TimeoutError)):
+            scored = await _rerank_and_boost(
+                "q",
+                [low, high],
+                ann_similarity={str(low.id): 0.3, str(high.id): 0.9},
+                fts_ids=set(),
+            )
+        assert [item.row.content for item in scored] == ["high", "low"]
+
     async def test_importance_boost_is_applied_to_the_final_score(self) -> None:
         now = datetime.now(UTC)
         dull = make_row("dull", importance=0.1, mentioned_at=now)
@@ -706,19 +720,17 @@ class TestRerankAndBoost:
             scored = await _rerank_and_boost("q", [first, second], ann_similarity={}, fts_ids=set())
         assert scored[0].row.content == "first"
         assert scored[0].score > scored[1].score
-        # The fallback is the exact rank position 1 - index/total, on the same
-        # 0-1 scale as the cosine ratio it stands in for — a shifted scale
-        # (e.g. 2 - index/total) would hand FTS-only rows more retrieval
-        # relevance than a perfect cosine match.
+        # The fallback is 1 - index/total, on the same 0-1 scale as the cosine
+        # ratio — a shifted scale (e.g. 2 - index/total) would rank FTS-only
+        # rows above a perfect cosine match.
         sig = 1.0 / (1.0 + math.exp(-1.0))
         assert scored[0].base == 0.6 * sig + 0.4 * (1.0 - 0 / 2)
         assert scored[1].base == 0.6 * sig + 0.4 * (1.0 - 1 / 2)
 
     async def test_base_blends_sigmoid_and_cosine_ratio_at_60_40(self) -> None:
-        # The pre-boost relevance contract, numerically:
-        #   base = 0.6 * sigmoid(logit) + 0.4 * (cosine / best cosine)
-        # Exact equality on purpose — the blend weights and the
-        # divide-by-the-pool's-best normalization are the recall contract.
+        # base = 0.6 * sigmoid(logit) + 0.4 * (cosine / best cosine) — exact
+        # equality on purpose: the blend weights and best-cosine normalization
+        # are the recall contract.
         best, other = make_row("best"), make_row("other")
         with patch.object(retrieval, "rerank", new=AsyncMock(return_value=[1.25, -0.75])):
             scored = await _rerank_and_boost(
@@ -751,7 +763,7 @@ class TestRerankAndBoost:
         rerank = AsyncMock(return_value=[0.0, 0.0])
         with patch.object(retrieval, "rerank", new=rerank):
             await _rerank_and_boost("my query", rows, ann_similarity={}, fts_ids=set())
-        rerank.assert_awaited_once_with("my query", ["alpha", "beta"])
+        rerank.assert_awaited_once_with("my query", ["alpha", "beta"], interactive=True)
 
 
 # ---------------------------------------------------------------------------
@@ -863,13 +875,15 @@ class TestGraphSiblings:
 class TestBuildEntries:
     async def test_maps_rows_to_entries_with_rounded_scores(self) -> None:
         row = make_row("mapped")
-        with patch.object(
-            retrieval.pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
-        ):
+        fetch_entities = AsyncMock(return_value={})
+        with patch.object(retrieval.pg_store, "get_entities_for_memories", new=fetch_entities):
             entries = await _build_entries([(row, 0.123456789)])
         assert entries[0].content == "mapped"
         assert entries[0].id == str(row.id)
         assert entries[0].relevance_score == 0.1235
+        # Entities must be fetched for exactly these rows: an unscoped fetch
+        # returns nothing and every entry silently loses its entity refs.
+        assert fetch_entities.await_args.args == ([row.id],)
 
     async def test_updated_entry_carries_the_superseded_content(self) -> None:
         parent = make_row("lives in Bengaluru")
@@ -881,7 +895,7 @@ class TestBuildEntries:
         with (
             patch.object(
                 retrieval.pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
-            ),
+            ) as fetch_entities,
             patch.object(
                 retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
             ) as fetch_parents,
@@ -892,6 +906,10 @@ class TestBuildEntries:
         # unscoped (None) it returns nothing and every parent silently reads
         # as deleted, dropping previous_content across the board.
         assert fetch_parents.await_args.args[0] == child.user_id
+        # Both lookups must target exactly these rows: an unscoped fetch
+        # silently drops every parent and every entity ref.
+        assert fetch_parents.await_args.args == (child.user_id, [str(parent.id)])
+        assert fetch_entities.await_args.args == ([child.id],)
         assert entries[0].previous_content == "lives in Bengaluru"
 
     async def test_no_parent_lookup_when_nothing_superseded_anything(self) -> None:
@@ -981,6 +999,31 @@ class TestBuildEntries:
         ):
             assert await _build_entries([]) == []
 
+    async def test_entity_and_parent_fetches_overlap(self) -> None:
+        """The entity and parent lookups must start concurrently, not in sequence."""
+        parent = make_row("parent content")
+        child = make_row(
+            "child content",
+            parent_id=parent.id,
+            relation_type=MemoryRelationType.UPDATES.value,
+        )
+        parents_started = asyncio.Event()
+
+        async def slow_entities(_ids: object) -> dict:
+            await asyncio.wait_for(parents_started.wait(), timeout=5)
+            return {}
+
+        async def fast_parents(_user_id: object, _ids: object) -> list:
+            parents_started.set()
+            return [parent]
+
+        with (
+            patch.object(retrieval.pg_store, "get_entities_for_memories", new=slow_entities),
+            patch.object(retrieval.pg_store, "get_memories_by_ids", new=fast_parents),
+        ):
+            entries = await _build_entries([(child, 0.9)])
+        assert entries[0].previous_content == "parent content"
+
 
 # ---------------------------------------------------------------------------
 # recall (end to end, mocked stores)
@@ -988,13 +1031,15 @@ class TestBuildEntries:
 
 
 class _RecallHarness:
-    """Drives the real ``recall`` pipeline with every I/O boundary faked."""
+    """Drives the real recall pipeline with every I/O boundary faked."""
 
     def __init__(self) -> None:
         self.rerank_inputs: list[list[str]] = []
         self.rerank_scores: dict[str, float] = {}
 
-    async def fake_rerank(self, _query: str, documents: list[str]) -> list[float]:
+    async def fake_rerank(
+        self, _query: str, documents: list[str], *, interactive: bool = False
+    ) -> list[float]:
         self.rerank_inputs.append(list(documents))
         return [self.rerank_scores.get(document, 0.0) for document in documents]
 
@@ -1028,13 +1073,83 @@ class _RecallHarness:
         )
 
 
-async def _run_recall(harness: _RecallHarness, patches, **kwargs):
+async def _run_recall(harness: _RecallHarness, patches, *, query: str = "the query", **kwargs):
     from contextlib import ExitStack
 
     with ExitStack() as stack:
         for patcher in patches:
             stack.enter_context(patcher)
-        return await recall.__wrapped__(USER, "the query", **kwargs)
+        return await recall.__wrapped__(USER, query, **kwargs)
+
+
+class TestRecallCaching:
+    """recall is cached per query, but only when the full pipeline produced the result."""
+
+    @staticmethod
+    async def _recall_twice(harness: _RecallHarness, patches) -> list:
+        from contextlib import ExitStack
+
+        results = []
+        with ExitStack() as stack:
+            for patcher in patches:
+                stack.enter_context(patcher)
+            for _ in range(2):
+                results.append(await recall(USER, "the query", include_graph_expansion=False))
+        return results
+
+    async def test_full_result_is_cached_and_served_to_the_next_call(self, fake_redis) -> None:
+        row = make_row("the answer")
+        harness = _RecallHarness()
+        harness.rerank_scores = {"the answer": 5.0}
+        patches = harness.patches(ann=[(str(row.id), 0.9)], fts=[], rows=[row])
+        first, second = await self._recall_twice(harness, patches)
+
+        assert first.degraded is False
+        assert [m.content for m in second.memories] == ["the answer"]
+        assert len(harness.rerank_inputs) == 1  # second call was a cache hit
+
+    @pytest.mark.regression
+    async def test_timed_out_embed_is_not_cached_and_the_next_call_recomputes(
+        self, fake_redis
+    ) -> None:
+        row = make_row("the answer")
+        harness = _RecallHarness()
+        harness.rerank_scores = {"the answer": 5.0}
+        patches = harness.patches(ann=[(str(row.id), 0.9)], fts=[], rows=[row])
+        embed = AsyncMock(side_effect=[httpx.ReadTimeout("slow"), [0.1] * 8])
+        patches = (patch.object(retrieval, "embed_query", new=embed), *patches[1:])
+        async with captured_wide_event() as event:
+            first, second = await self._recall_twice(harness, patches)
+
+        assert first.degraded is True
+        assert first.memories == []
+        assert second.degraded is False
+        assert [m.content for m in second.memories] == ["the answer"]
+        assert embed.await_count == 2
+        assert {
+            "msg": "memory_recall_degraded",
+            "reasons": ["embed_query_skipped"],
+            "result_count": 0,
+        } in event["warnings"]
+
+    async def test_skipped_rerank_is_not_cached(self, fake_redis) -> None:
+        row = make_row("the answer")
+        harness = _RecallHarness()
+        patches = harness.patches(ann=[(str(row.id), 0.9)], fts=[], rows=[row])
+        rerank = AsyncMock(side_effect=TimeoutError)
+        patches = (*patches[:-1], patch.object(retrieval, "rerank", new=rerank))
+        async with captured_wide_event() as event:
+            first, second = await self._recall_twice(harness, patches)
+
+        assert first.degraded is True
+        assert second.degraded is True
+        assert rerank.await_count == 2
+        assert await fake_redis.keys("user:*:memories:*") == []
+        assert {
+            "msg": "memory_recall_degraded",
+            "reasons": ["rerank_skipped"],
+            "result_count": 1,
+        } in event["warnings"]
 
 
 class TestRecall:
@@ -1053,6 +1168,21 @@ class TestRecall:
         )
         assert [memory.content for memory in result.memories] == ["the answer"]
         assert result.total_count == 1
+
+    @pytest.mark.parametrize(("logit", "confident"), [(5.0, True), (-9.0, False)])
+    async def test_it_reports_whether_anything_matched_confidently(
+        self, logit: float, confident: bool
+    ) -> None:
+        row = make_row("a fact")
+        harness = _RecallHarness()
+        harness.rerank_scores = {"a fact": logit}
+        result = await _run_recall(
+            harness,
+            harness.patches(ann=[(str(row.id), 0.1)], fts=[], rows=[row]),
+            include_graph_expansion=False,
+        )
+        assert result.memories
+        assert result.has_confident_match is confident
 
     async def test_empty_index_returns_an_empty_result(self) -> None:
         harness = _RecallHarness()
@@ -1093,13 +1223,7 @@ class TestRecall:
         assert [memory.content for memory in result.memories] == ["base"]
 
     async def test_graph_sibling_survives_a_full_base_candidate_pool(self) -> None:
-        """A sibling must reach the reranker even when the base pool is full.
-
-        Graph expansion appends siblings to the END of the candidate list, so
-        slicing the combined pool to RERANK_CANDIDATES silently discarded every
-        sibling for any query that already retrieved a full page of base
-        candidates — exactly the corpus size where expansion matters most.
-        """
+        """A sibling appended to the end of the pool must not be discarded when slicing to RERANK_CANDIDATES."""
         base = [make_row(f"base fact {i}") for i in range(RERANK_CANDIDATES + 5)]
         sibling = make_row("the sibling that answers the query")
         harness = _RecallHarness()
@@ -1124,6 +1248,37 @@ class TestRecall:
         )
         assert result.memories[0].content == sibling.content
 
+    def test_rerank_pool_cap_is_sixteen(self) -> None:
+        """Pin the rerank pool cap: sidecar load dominates ranking cost."""
+        assert RERANK_CANDIDATES == 16
+
+    async def test_recall_reports_per_stage_timings(self) -> None:
+        """Every pipeline stage must report its own timing bucket."""
+        best = make_row("the answer")
+        harness = _RecallHarness()
+        harness.rerank_scores = {"the answer": 5.0}
+        async with captured_wide_event() as event:
+            await _run_recall(
+                harness,
+                harness.patches(
+                    ann=[(str(best.id), 0.9)],
+                    fts=[],
+                    rows=[best],
+                ),
+                include_graph_expansion=False,
+            )
+        assert set(event["memory"]["timings"]) == {
+            "embed_ms",
+            "ann_ms",
+            "fts_ms",
+            "fusion_ms",
+            "hydrate_ms",
+            "siblings_ms",
+            "rerank_ms",
+            "build_ms",
+            "total_ms",
+        }
+
     async def test_base_pool_is_still_capped_at_the_rerank_budget(self) -> None:
         base = [make_row(f"base fact {i}") for i in range(RERANK_CANDIDATES + 5)]
         harness = _RecallHarness()
@@ -1134,6 +1289,20 @@ class TestRecall:
         )
         assert len(harness.rerank_inputs[0]) == RERANK_CANDIDATES
         assert result.memories
+
+    async def test_pool_never_smaller_than_the_requested_limit(self) -> None:
+        """A search asking for more than the cap must not be truncated by it."""
+        base = [make_row(f"base fact {i}") for i in range(RERANK_CANDIDATES + 5)]
+        harness = _RecallHarness()
+        harness.rerank_scores = {row.content: 5.0 for row in base}
+        result = await _run_recall(
+            harness,
+            harness.patches(ann=[(str(row.id), 0.4) for row in base], fts=[], rows=base),
+            limit=RERANK_CANDIDATES + 4,
+            include_graph_expansion=False,
+        )
+        assert len(harness.rerank_inputs[0]) == RERANK_CANDIDATES + 4
+        assert len(result.memories) == RERANK_CANDIDATES + 4
 
     async def test_superseded_row_never_reaches_the_reranker(self) -> None:
         stale = make_row("old value", is_latest=False)
@@ -1161,19 +1330,50 @@ class TestRecall:
         )
         assert [memory.content for memory in result.memories] == [row.content]
 
+    @pytest.mark.regression
+    async def test_recall_degrades_to_fts_only_when_the_embed_sidecar_fails(self) -> None:
+        """A failed interactive embedding degrades recall to the FTS order instead of sinking it."""
+        row = make_row("PROJ-4821 tracks the refactor")
+        harness = _RecallHarness()
+        harness.rerank_scores = {row.content: 5.0}
+        patches = harness.patches(ann=[], fts=[(row, 0.8)], rows=[])
+        # Swap the success-returning embed patch for one that fails fast.
+        patches = (
+            patch.object(
+                retrieval, "embed_query", new=AsyncMock(side_effect=httpx.ReadTimeout("slow"))
+            ),
+            *patches[1:],
+        )
+        result = await _run_recall(harness, patches, include_graph_expansion=False)
+        assert [memory.content for memory in result.memories] == [row.content]
+
+
+class TestRecallLogsNoUserText:
+    async def test_the_chat_turn_event_records_the_query_shape_and_never_its_words(self) -> None:
+        """Recall runs inside the chat turn's boundary, so its query is the user's own message."""
+        query = "my therapist said the divorce papers arrive friday"
+        row = make_row("a fact")
+        harness = _RecallHarness()
+        recorder = WideEventRecorder()
+        with patch("shared.py.wide_events._loguru", recorder):
+            async with wide_task("chat_stream"):
+                await _run_recall(
+                    harness,
+                    harness.patches(ann=[(str(row.id), 0.9)], fts=[], rows=[row]),
+                    query=query,
+                    include_graph_expansion=False,
+                )
+
+        assert "divorce" not in json.dumps(recorder.events, default=str)
+        assert recorder.event("chat_stream")["memory"]["query"] == user_text_shape(query)
+
 
 class TestRecallQualityRegressions:
     """Audited recall-quality defects — each test failed before its fix."""
 
     @pytest.mark.regression
     async def test_thin_raw_gap_keeps_the_runner_up(self) -> None:
-        """A hair-thin raw gap between two candidates must not delete the second.
-
-        Min-max normalization forced the weaker of two candidates to exactly
-        0.0 regardless of the absolute gap (cosine 0.72 vs 0.71 became 1.0 vs
-        0.0), so the relevance dropoff was guaranteed to cut the runner-up.
-        Absolute-preserving scaling keeps a thin gap thin: both facts survive.
-        """
+        """Min-max normalization used to force a thin gap (cosine 0.72 vs 0.71) to 1.0 vs 0.0, cutting the runner-up."""
         dog = make_row("my dog is Rex")
         allergy = make_row("Rex is allergic to chicken")
         harness = _RecallHarness()
@@ -1193,13 +1393,7 @@ class TestRecallQualityRegressions:
 
     @pytest.mark.regression
     async def test_boosts_decide_ordering_but_never_survival(self) -> None:
-        """A boosted marginal top hit must not push the real answer under the floor.
-
-        The dropoff floor was computed from the post-boost top score, so a
-        recent high-importance memory (boost up to 1.38x) taking the top slot
-        raised the floor above an un-boosted (0.8x) relevant answer. Survival
-        must be decided on pre-boost relevance; boosts only reorder.
-        """
+        """The dropoff floor used to be computed post-boost, so a 1.38x-boosted top hit could bury an 0.8x un-boosted answer."""
         now = datetime.now(UTC)
         old_relevant = make_row(
             "user is allergic to peanuts",
@@ -1483,11 +1677,7 @@ class TestRecallTranscripts:
 @pytest.mark.unit
 class TestEpisodeSearchWindowFollowsTheUsersTimezone:
     async def test_the_lookback_window_starts_from_the_users_local_today(self) -> None:
-        """Journal days are keyed by the user's LOCAL date (see user_time.py);
-        a lookback computed from the UTC date starts one day early for a UTC+
-        user's evening, silently excluding the newest local day from 'since'.
-        The window must anchor on the same local day the write path files under.
-        """
+        """Journal days are keyed by the user's LOCAL date; a UTC-based lookback would exclude the newest local day for a UTC+ user."""
         local = date_type(2026, 8, 27)
         search = AsyncMock(return_value=[])
         with (
@@ -1500,3 +1690,145 @@ class TestEpisodeSearchWindowFollowsTheUsersTimezone:
         assert search.await_args.kwargs["since"] == local - timedelta(
             days=retrieval.EPISODE_SEARCH_DAYS
         )
+
+
+class TestInteractiveRecallEmbeds:
+    """Recall embeds and reranks on the user's turn use the fail-fast budget; a slow sidecar warns instead of stalling."""
+
+    async def test_ann_search_embeds_interactively_with_the_query_vector(self) -> None:
+        seen: dict[str, object] = {}
+
+        async def fake_embed(query: str, *, interactive: bool = False) -> list[float]:
+            seen["embed"] = (query, interactive)
+            return [0.42]
+
+        async def fake_query(user_id: str, embedding: list[float], *args: object, **kwargs: object):
+            seen["vector"] = embedding
+            return [("m1", 0.9)]
+
+        with (
+            patch.object(retrieval, "embed_query", new=fake_embed),
+            patch.object(retrieval.chroma_store, "query_similar", new=fake_query),
+        ):
+            hits = await retrieval._ann_search(USER, "the query", {})
+
+        assert seen["embed"] == ("the query", True)
+        assert seen["vector"] == [0.42]
+        assert hits == [("m1", 0.9)]
+
+    async def test_recall_transcripts_embeds_interactively_with_the_query_vector(self) -> None:
+        seen: dict[str, object] = {}
+
+        async def fake_embed(query: str, *, interactive: bool = False) -> list[float]:
+            seen["embed"] = (query, interactive)
+            return [0.7]
+
+        async def fake_chunks(user_id: str, embedding: list[float], limit: int):
+            seen["vector"] = embedding
+            return []
+
+        with (
+            patch.object(retrieval, "embed_query", new=fake_embed),
+            patch.object(retrieval.chroma_store, "query_conversation_chunks", new=fake_chunks),
+        ):
+            await retrieval.recall_transcripts(USER, "the query", 5)
+
+        assert seen["embed"] == ("the query", True)
+        assert seen["vector"] == [0.7]
+
+    async def test_episode_summary_search_embeds_interactively_with_the_query_vector(self) -> None:
+        seen: dict[str, object] = {}
+
+        async def fake_embed(query: str, *, interactive: bool = False) -> list[float]:
+            seen["embed"] = (query, interactive)
+            return [0.55]
+
+        async def fake_episodes(user_id: str, embedding: list[float], limit: int):
+            seen["vector"] = embedding
+            return []
+
+        with (
+            patch.object(retrieval, "embed_query", new=fake_embed),
+            patch.object(retrieval.chroma_store, "query_episodes", new=fake_episodes),
+        ):
+            await retrieval._episode_summary_search(USER, "the query", 5)
+
+        assert seen["embed"] == ("the query", True)
+        assert seen["vector"] == [0.55]
+
+    async def test_rerank_scores_warns_with_context_when_the_sidecar_fails(self) -> None:
+        with patch.object(
+            retrieval, "rerank", new=AsyncMock(side_effect=httpx.ReadTimeout("boom"))
+        ):
+            async with captured_wide_event() as event:
+                result = await retrieval._rerank_scores("q", ["a", "b"])
+
+        assert result is None
+        assert event["warnings"] == [
+            {
+                "msg": "memory_rerank_skipped",
+                "error": "boom",
+                "error_type": "ReadTimeout",
+                "document_count": 2,
+            }
+        ]
+
+    @pytest.mark.regression
+    async def test_ann_search_falls_back_to_no_hits_when_the_embed_sidecar_fails(self) -> None:
+        # A slow/overloaded embedding sidecar must degrade recall to the FTS leg,
+        # not fail the user's turn: _ann_search reports the skip (None) and never touches
+        # Chroma. Before the fix the raw HTTP error propagated out of recall.
+        query_similar = AsyncMock()
+        with (
+            patch.object(
+                retrieval, "embed_query", new=AsyncMock(side_effect=httpx.ReadTimeout("slow"))
+            ),
+            patch.object(retrieval.chroma_store, "query_similar", new=query_similar),
+        ):
+            hits = await retrieval._ann_search(USER, "the query", {})
+        assert hits is None
+        query_similar.assert_not_awaited()
+
+    async def test_recall_transcripts_returns_empty_when_the_embed_sidecar_fails(self) -> None:
+        query_chunks = AsyncMock()
+        with (
+            patch.object(
+                retrieval, "embed_query", new=AsyncMock(side_effect=httpx.ReadTimeout("slow"))
+            ),
+            patch.object(retrieval.chroma_store, "query_conversation_chunks", new=query_chunks),
+        ):
+            assert await retrieval.recall_transcripts(USER, "q", 5) == []
+        query_chunks.assert_not_awaited()
+
+    async def test_episode_summary_search_returns_empty_when_the_embed_sidecar_fails(self) -> None:
+        query_episodes = AsyncMock()
+        with (
+            patch.object(
+                retrieval, "embed_query", new=AsyncMock(side_effect=httpx.ReadTimeout("slow"))
+            ),
+            patch.object(retrieval.chroma_store, "query_episodes", new=query_episodes),
+        ):
+            assert await retrieval._episode_summary_search(USER, "q", 5) == []
+        query_episodes.assert_not_awaited()
+
+    async def test_embed_query_interactive_warns_with_context_when_the_sidecar_fails(self) -> None:
+        with patch.object(
+            retrieval, "embed_query", new=AsyncMock(side_effect=httpx.ReadTimeout("boom"))
+        ):
+            async with captured_wide_event() as event:
+                result = await retrieval._embed_query_interactive("q")
+
+        assert result is None
+        assert event["warnings"] == [
+            {
+                "msg": "memory_embed_query_skipped",
+                "error": "boom",
+                "error_type": "ReadTimeout",
+            }
+        ]
+
+    async def test_embed_query_operation_timeout_is_also_handled(self) -> None:
+        # The interactive budget can raise a bare TimeoutError, not only httpx
+        # errors; the fallback must catch it too (mirrors the rerank leg).
+        with patch.object(retrieval, "embed_query", new=AsyncMock(side_effect=TimeoutError)):
+            assert await retrieval._embed_query_interactive("q") is None

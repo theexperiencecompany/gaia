@@ -183,10 +183,7 @@ class TestChromaClientGetLangchainClient:
 
 
 class TestChromaClientGetLangchainClientLoaderBody:
-    """`test_new_collection_registered` mocks `providers.register` entirely,
-    so the `_loader` closure it captures is registered but never actually
-    called — these tests capture that closure and await it directly to
-    exercise its body (collection creation / skip)."""
+    """test_new_collection_registered mocks providers.register, so these tests capture the _loader closure and await it directly."""
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.Chroma")
@@ -279,11 +276,8 @@ class TestChromaClientGetLangchainClientLoaderBody:
     async def test_loader_refuses_a_missing_collection_when_it_may_not_create(
         self, mock_providers: MagicMock, mock_settings: MagicMock, mock_chroma: MagicMock
     ) -> None:
-        # The read-only half of the branch: `create_if_not_exists=False` still
-        # has to LOOK, and a caller that gets a Chroma handle for a collection
-        # that does not exist reads an empty index and calls it "no results".
-        # The name has to be in the message — that is the whole diagnosis when
-        # a suffixed lane collection is missing.
+        # create_if_not_exists=False still has to look; the collection name
+        # must be in the error message, the whole diagnosis when it's missing.
         loader_func = await self._loader_for(
             mock_providers, mock_settings, "absent_collection", create_if_not_exists=False
         )
@@ -336,7 +330,7 @@ class TestChromaClientGetLangchainClientLoaderBody:
         *,
         create_if_not_exists: bool,
     ) -> Any:
-        """The registered `_loader` closure, captured with the flag it was built for."""
+        """Return the registered _loader closure, captured with the flag it was built for."""
         mock_providers.is_initialized.return_value = False
         mock_settings.CHROMADB_HOST = "localhost"
         mock_settings.CHROMADB_PORT = 8000

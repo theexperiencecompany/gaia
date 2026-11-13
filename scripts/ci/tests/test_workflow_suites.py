@@ -1,4 +1,4 @@
-"""main.yml must still run every Python suite that exists.
+"""ci.yml must still run every Python suite that exists.
 
 Two suites were dropped silently when the `test-python-coverage` job was
 removed: `libs/shared/py/tests` and the schemathesis contract fuzz. Nothing
@@ -11,36 +11,137 @@ only stop running here by someone editing THIS file, which a reviewer sees.
 
 from __future__ import annotations
 
+import configparser
+import json
+import os
 from pathlib import Path
+import re
+import subprocess
 from typing import Any
 
+from doc_shape import mapping, sequence
 import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-MAIN_YML = REPO_ROOT / ".github" / "workflows" / "main.yml"
+CI_YML = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+SLICES_FILE = REPO_ROOT / "scripts" / "ci" / "lib" / "test-slices.json"
+PYTEST_SH = REPO_ROOT / "scripts" / "ci" / "pytest.sh"
 
 
 @pytest.fixture(scope="module")
 def workflow() -> dict[str, Any]:
-    return yaml.safe_load(MAIN_YML.read_text())
+    return mapping(yaml.safe_load(CI_YML.read_text()))
 
 
 @pytest.fixture(scope="module")
 def test_python(workflow: dict[str, Any]) -> dict[str, Any]:
-    return workflow["jobs"]["test-python"]
+    return mapping(workflow["jobs"]["test-python"])
 
 
 @pytest.fixture(scope="module")
-def slices(test_python: dict[str, Any]) -> list[dict[str, Any]]:
-    return test_python["strategy"]["matrix"]["slice"]
+def slices() -> list[dict[str, Any]]:
+    return sequence(mapping(json.loads(SLICES_FILE.read_text()))["slices"])
 
 
-def test_the_gaia_shared_suite_still_runs(test_python: dict[str, Any]) -> None:
+def _step_running(job: dict[str, Any], command: str) -> dict[str, Any]:
+    (step,) = [s for s in job["steps"] if command in str(s.get("run", ""))]
+    return mapping(step)
+
+
+def test_the_matrix_is_the_shared_slice_file(workflow: dict[str, Any]) -> None:
+    # One definition: an inline matrix is a second copy, and it drifts silently.
+    for job, key in (("test-python", "python_slices"), ("test-python-engines", "engine_slices")):
+        matrix = workflow["jobs"][job]["strategy"]["matrix"]["slice"]
+        assert matrix == f"${{{{ fromJSON(needs.detect.outputs.{key}) }}}}"
+        detect = workflow["jobs"]["detect"]
+        assert detect["outputs"][key] == f"${{{{ steps.slices.outputs.{key} }}}}"
+    assert detect["outputs"]["slice_defs"] == "${{ steps.slices.outputs.slice_defs }}"
+    step = next(s for s in detect["steps"] if s.get("id") == "slices")
+    assert step["run"].startswith("bash scripts/ci/pytest.sh slices")
+
+
+def _published_slices(tier: str | None) -> dict[str, Any]:
+    env = {k: v for k, v in os.environ.items() if k != "CI_TIER"}
+    if tier is not None:
+        env["CI_TIER"] = tier
+    lines = subprocess.run(
+        ["bash", str(PYTEST_SH), "slices"], check=True, capture_output=True, text=True, env=env
+    ).stdout.splitlines()
+    return {key: json.loads(payload) for key, _, payload in (line.partition("=") for line in lines)}
+
+
+@pytest.mark.parametrize("tier", [None, "full"])
+def test_pytest_sh_publishes_exactly_the_slice_file_split_by_engine_need(
+    slices: list[dict[str, Any]], tier: str | None
+) -> None:
+    assert _published_slices(tier) == {
+        "python_slices": [s["name"] for s in slices if s["engines"] == "false"],
+        "engine_slices": [s["name"] for s in slices if s["engines"] == "true"],
+        "slice_defs": {s["name"]: s for s in slices},
+    }
+
+
+def test_the_slice_jobs_are_named_without_an_expression(workflow: dict[str, Any]) -> None:
+    # A job skipped before its matrix expands renders `${{ matrix.* }}` in its
+    # name literally; a static name gets the slice name appended instead.
+    for job in ("test-python", "test-python-engines"):
+        assert workflow["jobs"][job]["name"] == "test-python"
+
+
+def test_the_fast_tier_runs_only_the_fast_slices_and_no_engine_slice(
+    slices: list[dict[str, Any]],
+) -> None:
+    # A PR push runs the fast tier; the services, bridge and browser slices are
+    # the merge queue's. Filtering here, not in the workflow, because a matrix
+    # cannot be filtered in an expression.
+    published = _published_slices("fast")
+
+    assert published["python_slices"] == ["unit-a", "unit-b"]
+    assert published["slice_defs"] == {s["name"]: s for s in slices if s["tier"] == "fast"}
+    assert published["engine_slices"] == []
+
+
+def test_every_slice_names_its_tier(slices: list[dict[str, Any]]) -> None:
+    # A slice with no tier would be silently dropped from (or added to) a PR push.
+    for entry in slices:
+        assert entry.get("tier") in {"fast", "full"}, entry["name"]
+    assert all(s["services"] == "false" for s in slices if s["tier"] == "fast"), (
+        "a fast-tier slice needs services, which a PR push no longer reserves"
+    )
+
+
+def test_an_unknown_tier_is_refused() -> None:
+    env = {**os.environ, "CI_TIER": "fsat"}
+    proc = subprocess.run(
+        ["bash", str(PYTEST_SH), "slices"], capture_output=True, text=True, env=env, check=False
+    )
+    assert proc.returncode != 0
+    assert "fsat" in proc.stderr
+
+
+def test_the_engine_slices_wait_on_the_engine_build_and_no_other_slice_does(
+    workflow: dict[str, Any],
+) -> None:
+    # A cold Obscura build is tens of minutes: inside a slice's cap it timed the
+    # browser slice out before it tested anything, and as a need of every slice
+    # it would hold the unit slices behind it.
+    jobs = workflow["jobs"]
+    assert "obscura-bin" in jobs["test-python-engines"]["needs"]
+    assert "obscura-bin" not in jobs["test-python"]["needs"]
+    assert jobs["test-python-engines"]["steps"] is jobs["test-python"]["steps"]
+    assert jobs["obscura-bin"]["timeout-minutes"] >= 60
+
+
+def test_the_gaia_shared_suite_still_runs(
+    test_python: dict[str, Any], slices: list[dict[str, Any]]
+) -> None:
     # gaia-shared is imported by the API; its tests had their own step in the
     # retired coverage job and went with it.
-    steps = [s for s in _steps(test_python) if "libs/shared/py/tests" in str(s.get("run", ""))]
-    assert steps, "nothing runs libs/shared/py/tests — the gaia-shared suite is not running"
+    step = _step_running(test_python, "pytest.sh shared-suite")
+    assert step["if"] == "contains(env.SLICE_AFTER, 'shared-suite')"
+    assert any("shared-suite" in s["after"] for s in slices), "no slice runs the shared suite"
+    assert "../../libs/shared/py/tests" in PYTEST_SH.read_text()
 
 
 def test_gaia_shared_runs_in_its_own_pytest_invocation(test_python: dict[str, Any]) -> None:
@@ -48,7 +149,7 @@ def test_gaia_shared_runs_in_its_own_pytest_invocation(test_python: dict[str, An
     # rootdir to the repo root, apps/api/pytest.ini stops being the inifile,
     # and asyncio_mode/marker registration vanish — which killed the whole
     # slice (2145 failed, 891 errors) the one time it was tried.
-    for entry in test_python["strategy"]["matrix"]["slice"]:
+    for entry in json.loads(SLICES_FILE.read_text())["slices"]:
         assert "libs/shared" not in entry["paths"], (
             f"slice {entry['name']} lists libs/shared in its paths; it needs its own run"
         )
@@ -74,29 +175,28 @@ def test_every_slice_path_exists(slices: list[dict[str, Any]]) -> None:
 
 
 def _steps(job: dict[str, Any]) -> list[dict[str, Any]]:
-    return job["steps"]
+    return sequence(job["steps"])
 
 
 def test_the_schemathesis_contract_fuzz_still_runs(test_python: dict[str, Any]) -> None:
     # It cannot ride inside a slice: the slice runs deselect `-m schemathesis`,
-    # and it needs a real server, serially. So it is its own step, and this is
-    # what notices if that step disappears again.
-    fuzz = [s for s in _steps(test_python) if "-m schemathesis" in str(s.get("run", ""))]
-    assert fuzz, "no step runs the schemathesis contract fuzz"
-    (step,) = fuzz
-    assert step.get("env", {}).get("USE_REAL_SERVICES") == "1", (
-        "the fuzz must run against real services, or it fuzzes mocks"
-    )
-    assert "test_schemathesis.py" in step["run"]
+    # and it needs a real server, serially. So it is its own run, and this is
+    # what notices if it disappears again.
+    step = _step_running(test_python, "pytest.sh contract-fuzz")
+    assert step["if"] == "contains(env.SLICE_AFTER, 'contract-fuzz')"
+    script = PYTEST_SH.read_text()
+    fuzz = script[script.index("cmd_contract_fuzz() {") :]
+    fuzz = fuzz[: fuzz.index("\n}\n")]
+    assert "USE_REAL_SERVICES=1" in fuzz, "the fuzz must run against real services"
+    assert "test_schemathesis.py" in fuzz
+    assert "-m schemathesis" in fuzz
 
 
-def test_the_schemathesis_step_runs_in_a_slice_that_has_services(
-    test_python: dict[str, Any], slices: list[dict[str, Any]]
+def test_the_schemathesis_run_rides_a_slice_that_has_services(
+    slices: list[dict[str, Any]],
 ) -> None:
-    (step,) = [s for s in _steps(test_python) if "-m schemathesis" in str(s.get("run", ""))]
-    condition = str(step.get("if", ""))
-    named = [s for s in slices if f"'{s['name']}'" in condition]
-    assert named, f"the fuzz step's `if` names no slice: {condition!r}"
+    named = [s for s in slices if "contract-fuzz" in s["after"]]
+    assert named, "no slice runs the contract fuzz"
     assert all(s["services"] == "true" for s in named), (
         "the fuzz boots a real server — it must run in a slice with services up"
     )
@@ -106,10 +206,18 @@ def test_the_slices_still_deselect_schemathesis(test_python: dict[str, Any]) -> 
     # The control for the test above: if the slices ever stopped deselecting
     # it, the separate step would be redundant rather than load-bearing, and
     # this file would be asserting something that no longer matters.
+    # pytest.ini's addopts is the one place it is deselected; a slice that set
+    # its own -m or addopts would silently drop it.
     slice_step = [s for s in _steps(test_python) if "pytest.sh slice" in str(s.get("run", ""))]
     assert slice_step, "no step runs the slice"
+    ini = configparser.ConfigParser()
+    ini.read(REPO_ROOT / "apps" / "api" / "pytest.ini")
+    assert "not schemathesis" in ini["pytest"]["addopts"]
     script = (REPO_ROOT / "scripts" / "ci" / "pytest.sh").read_text()
-    assert "not schemathesis" in script
+    cmd_slice = script[
+        script.index("cmd_slice() {") : script.index("\n}\n", script.index("cmd_slice() {"))
+    ]
+    assert not re.search(r"addopts|\s-m\s", cmd_slice)
 
 
 def test_the_quality_gate_requires_the_job_that_runs_them(workflow: dict[str, Any]) -> None:
@@ -117,3 +225,47 @@ def test_the_quality_gate_requires_the_job_that_runs_them(workflow: dict[str, An
     # branch-protection target fails when test-python does.
     gate = workflow["jobs"]["quality-gate"]
     assert "test-python" in gate["needs"]
+
+
+# Test trees that never run in a CI slice, and why. Anything else outside every
+# slice is a directory someone added that CI silently never runs.
+OUTSIDE_THE_SLICES = {
+    "tests/composio/": "live Composio accounts; `nx run api:test:composio`",
+    "tests/model_onboarding/": "live model providers; deselected by -m in every slice",
+}
+
+
+def _under(path: str, root: str) -> bool:
+    return path == root or path.startswith(root.rstrip("/") + "/")
+
+
+def _slice_owns(path: str, slice_def: dict[str, Any]) -> bool:
+    ignored = [arg.removeprefix("--ignore=") for arg in str(slice_def.get("ignore", "")).split()]
+    return any(_under(path, p) for p in str(slice_def["paths"]).split()) and not any(
+        _under(path, i) for i in ignored
+    )
+
+
+def test_every_api_test_file_runs_in_a_slice() -> None:
+    slices = json.loads((REPO_ROOT / "scripts" / "ci" / "lib" / "test-slices.json").read_text())[
+        "slices"
+    ]
+    listed = subprocess.run(
+        ["git", "ls-files", "apps/api/tests"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    tests = [
+        p.removeprefix("apps/api/")
+        for p in listed
+        if Path(p).name.startswith("test_") and p.endswith(".py")
+    ]
+    orphans = [
+        t
+        for t in tests
+        if not t.startswith(tuple(OUTSIDE_THE_SLICES))
+        and not any(_slice_owns(t, s) for s in slices)
+    ]
+    assert orphans == [], "no test-slices.json slice runs these; add their directory to one"

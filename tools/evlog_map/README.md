@@ -51,7 +51,7 @@ same PR that deliberately deletes entry points.
 | `api` | `@router.<verb>` / `@app.<verb>` decorated functions, plus imperative `router.add_api_route(path, handler, methods=[...])` registration (FastAPI serves both identically, so both must be discoverable) |
 | `websocket` | `@router.websocket` handlers |
 | `worker` | ARQ tasks **registered in `app/worker.py`** (helpers in `workers/tasks/` are not entry points) |
-| `voice` | LiveKit callbacks wired in `apps/voice-agent/src/agent.py`'s `WorkerOptions` (`entrypoint_fnc`/`prewarm_fnc`), plus the per-turn coroutine the `LLM` subclass's `chat()` delegates to in `llm.py` (`voice.collect_voice_registry` parses both wirings) |
+| `voice` | LiveKit callbacks wired in `apps/voice-agent/src/agent.py`'s `WorkerOptions` (`entrypoint_fnc`/`prewarm_fnc`), plus `_run` on the `LLMStream` subclass the `LLM` subclass's `chat()` returns in `llm.py` (`voice.collect_voice_registry` parses both wirings) |
 
 Infra routes (`/health`, `/metrics`, `/favicon.ico`) are exempt — nothing to
 instrument, excluded from the score.
@@ -246,7 +246,7 @@ the rule on purpose, because a test that cannot fail is not a test.
 
 ## CI
 
-The `observability` lane in `.github/workflows/code-quality.yml`:
+The `observability-*` checks of `.github/workflows/ci.yml`'s lint-mixed job:
 
 0. runs this scanner's own test suite first (`pytest tools/evlog_map
    tools/logcheck`) — a rule that inverts silently keeps printing a score, so

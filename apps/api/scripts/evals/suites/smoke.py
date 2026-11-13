@@ -1,7 +1,7 @@
 """Smoke suite: 3 toy cases with a fake transport.
 
 Verifies the loop end-to-end without touching the app: rotation on provider
-error (case smoke-3 fails on `nous`), journaling, resume, scoring, and the
+error (case smoke-3 fails on nous), journaling, resume, scoring, and the
 HTML report. The transport simulates token usage so cost tables populate.
 """
 

@@ -1,11 +1,13 @@
 """Stress: race-for-claim on the tracked-todo execution lock.
 
-Real code under test: ``execute_tracked_todo`` in
-``app/workers/tasks/tracked_todo_tasks.py`` — every execution claims the todo
-with ``SET gaia_todo_exec:{todo_id} 1 NX EX 1800`` and releases it in a
-``finally``. Redis is an in-process fake whose ``set`` has no ``await`` between
+Real code under test: execute_tracked_todo in
+app/workers/tasks/tracked_todo_tasks.py — every execution claims the todo
+with SET gaia_todo_exec:{todo_id} 1 NX EX 1800 and releases it in a
+finally. Redis is an in-process fake whose set has no await between
 check and write, mirroring Redis's single-threaded command atomicity, so the
-race resolves deterministically: exactly one of N concurrent claims wins.
+race resolves deterministically: exactly one of N concurrent claims wins. The
+trigger-drain check every run ends with reads redis_cache, backed per test by
+fakeredis: the process-wide client is bound to whichever test loop used it first.
 
 The double-claims invariant: at most one runner inside the critical section at
 a time, losers never release a lock they did not acquire, and the lock is held
@@ -30,9 +32,9 @@ CLAIMANTS = 40
 class _FakePool:
     """In-process ArqRedis stand-in: atomic SET-NX/EXISTS/DELETE on a dict.
 
-    ``set`` performs check-and-write with no awaits between them — the same
-    atomicity the real single-threaded Redis gives the ``nx=True`` claim, so
-    of N concurrent callers exactly one observes ``True``.
+    set performs check-and-write with no awaits between them — the same
+    atomicity the real single-threaded Redis gives the nx=True claim, so
+    of N concurrent callers exactly one observes True.
     """
 
     def __init__(self) -> None:
@@ -56,13 +58,13 @@ class _FakePool:
 
 
 async def _yielding_execution(*_args: Any, **_kwargs: Any) -> str:
-    """The winner's critical section: yields to the loop so concurrent
-    claimants get scheduled while the lock is still held."""
+    """Yield to the loop mid-critical-section so concurrent claimants get scheduled while the lock is held."""
     await asyncio.sleep(0)
     await asyncio.sleep(0)
     return "success:todo-1"
 
 
+@pytest.mark.usefixtures("fake_redis")
 class TestTrackedTodoClaimRace:
     async def test_exactly_one_claim_wins_under_concurrent_race(self):
         pool = _FakePool()
@@ -85,9 +87,7 @@ class TestTrackedTodoClaimRace:
         assert pool.delete_calls == [LOCK_KEY]
 
     async def test_lock_holds_for_the_whole_critical_section_then_releases(self):
-        """Adversarial: the winner holds the lock across loop turns; every claim
-        arriving mid-section skips, and a claim after completion executes —
-        proving the lock covers the section and is genuinely released."""
+        """A claim after completion succeeds too, proving the lock is genuinely released, not just held."""
         pool = _FakePool()
         entered = asyncio.Event()
         release = asyncio.Event()

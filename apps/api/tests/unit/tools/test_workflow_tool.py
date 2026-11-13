@@ -1,13 +1,27 @@
 """Unit tests for app.agents.tools.workflow_tool."""
 
-from typing import Any, cast
+from typing import Any, Literal, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.constants.integrations import (
+    MAX_INTEGRATION_SEARCH_RESULTS,
+    MAX_MY_INTEGRATIONS_RESULTS,
+)
 from app.constants.log_tags import LogTag
+from app.models.trigger_config import TriggerSearchResult
+from app.models.workflow_models import TriggerType
+from app.schemas.integrations.responses import (
+    CommunityIntegrationItem,
+    MyIntegrationItem,
+    MyIntegrationsResponse,
+)
 
 # Pre-import to break circular dependency chain:
 # workflow_tool -> workflow_utils -> workflow.subagent_output -> workflow.__init__ -> service -> workflow_utils
 import app.services.workflow.service  # noqa: F401  # side-effect import breaks the documented circular-dependency chain
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.workflows import WorkflowCreated
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -38,7 +52,6 @@ def _make_config(
 
 
 def _make_config_no_user() -> dict[str, Any]:
-    """Config with no user_id."""
     return {"configurable": {}, "metadata": {}}
 
 
@@ -110,7 +123,7 @@ class TestCreateWorkflow:
         parsed = _make_parsed_result(mode="finalized", draft=draft)
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
         ):
@@ -133,7 +146,7 @@ class TestCreateWorkflow:
         parsed = _make_parsed_result(mode="clarifying", message="What time should it run?")
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
         ):
@@ -156,7 +169,7 @@ class TestCreateWorkflow:
         parsed = _make_parsed_result(mode="parse_error", parse_error="Invalid JSON")
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
         ):
@@ -175,7 +188,7 @@ class TestCreateWorkflow:
         """Empty user_request returns missing_request error."""
         from app.agents.tools.workflow_tool import create_workflow
 
-        with patch(f"{MODULE}.get_stream_writer") as mock_writer_factory:
+        with patch(f"{MODULE}.current_stream_writer") as mock_writer_factory:
             mock_writer_factory.return_value = _writer_mock()
 
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
@@ -191,7 +204,7 @@ class TestCreateWorkflow:
         from app.agents.tools.workflow_tool import create_workflow
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
         ):
             mock_writer_factory.return_value = _writer_mock()
@@ -210,11 +223,13 @@ class TestCreateWorkflow:
         from app.agents.tools.workflow_tool import create_workflow
 
         draft = _make_draft(direct_create=True)
+        draft.backend_trigger_type = TriggerType.SCHEDULE
         parsed = _make_parsed_result(mode="finalized", draft=draft)
         direct_result = {"success": True, "data": {"id": "wf-new"}}
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.capture") as capture,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
             patch(f"{MODULE}.can_create_directly", return_value=True),
@@ -233,6 +248,9 @@ class TestCreateWorkflow:
             )
 
         assert result == direct_result
+        capture.assert_called_once_with(
+            UserId(FAKE_USER_ID), WorkflowCreated(origin="chat_agent", trigger_type="schedule")
+        )
 
     async def test_direct_creation_fallback_to_draft(self) -> None:
         """When direct creation fails, falls back to streaming draft."""
@@ -242,7 +260,8 @@ class TestCreateWorkflow:
         parsed = _make_parsed_result(mode="finalized", draft=draft)
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.capture") as capture,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
             patch(f"{MODULE}.can_create_directly", return_value=True),
@@ -264,6 +283,7 @@ class TestCreateWorkflow:
         assert result["success"] is True
         assert result["data"]["status"] == "draft_sent"
         draft.to_stream_payload.assert_called_once()
+        capture.assert_not_called()  # the confirmed draft is counted by POST /workflows
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +301,7 @@ class TestGetWorkflow:
         workflow = _make_workflow_mock()
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             writer = _writer_mock()
@@ -300,7 +320,7 @@ class TestGetWorkflow:
         from app.agents.tools.workflow_tool import get_workflow
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             mock_writer_factory.return_value = _writer_mock()
@@ -319,7 +339,7 @@ class TestGetWorkflow:
         from app.agents.tools.workflow_tool import get_workflow
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             mock_writer_factory.return_value = _writer_mock()
@@ -351,7 +371,7 @@ class TestExecuteWorkflow:
         exec_result.message = "Workflow started"
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             writer = _writer_mock()
@@ -371,7 +391,7 @@ class TestExecuteWorkflow:
         from app.agents.tools.workflow_tool import execute_workflow
 
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.WorkflowService") as mock_service,
         ):
             mock_writer_factory.return_value = _writer_mock()
@@ -391,6 +411,18 @@ class TestExecuteWorkflow:
 # ---------------------------------------------------------------------------
 
 
+def _trigger_result(slug: str, *, is_connected: bool) -> TriggerSearchResult:
+    return TriggerSearchResult(
+        trigger_slug=slug,
+        trigger_name=slug,
+        description=None,
+        integration_id="googlecalendar",
+        integration_name="Google Calendar",
+        is_connected=is_connected,
+        config_fields={},
+    )
+
+
 class TestSearchTriggers:
     """Tests for the search_triggers shared tool."""
 
@@ -398,13 +430,13 @@ class TestSearchTriggers:
         """Returns triggers with connected/not-connected counts."""
         from app.agents.tools.workflow_shared_tools import search_triggers
 
+        triggers = [
+            _trigger_result("calendar_event", is_connected=True),
+            _trigger_result("calendar_reminder", is_connected=True),
+            _trigger_result("slack_message", is_connected=False),
+        ]
         with patch(f"{SHARED_MODULE}.TriggerSearchService") as mock_trigger_svc:
-            mock_trigger_svc.search = AsyncMock(
-                return_value=[
-                    {"name": "calendar_event", "is_connected": True},
-                    {"name": "slack_message", "is_connected": False},
-                ]
-            )
+            mock_trigger_svc.search = AsyncMock(return_value=triggers)
 
             result = await search_triggers.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
@@ -412,7 +444,8 @@ class TestSearchTriggers:
             )
 
         assert result["success"] is True
-        assert result["data"]["connected_count"] == 1
+        assert result["data"]["triggers"] == [t.model_dump(mode="json") for t in triggers]
+        assert result["data"]["connected_count"] == 2
         assert result["data"]["not_connected_count"] == 1
 
     async def test_search_failure(self) -> None:
@@ -446,7 +479,7 @@ class TestListWorkflows:
         workflow = _make_workflow_mock()
 
         with (
-            patch(f"{SHARED_MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{SHARED_MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{SHARED_MODULE}.WorkflowService") as mock_service,
         ):
             writer = _writer_mock()
@@ -464,7 +497,7 @@ class TestListWorkflows:
         from app.agents.tools.workflow_shared_tools import list_workflows
 
         with (
-            patch(f"{SHARED_MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{SHARED_MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{SHARED_MODULE}.WorkflowService") as mock_service,
         ):
             mock_writer_factory.return_value = _writer_mock()
@@ -485,7 +518,7 @@ class TestCreateWorkflowPins:
         parsed = _make_parsed_result(mode="clarifying", message="what time of day?")
         with (
             patch(f"{MODULE}.log") as mock_log,
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
         ):
@@ -516,7 +549,7 @@ class TestCreateWorkflowPins:
 
         parsed = _make_parsed_result(mode="clarifying", message="which services?")
         with (
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
         ):
@@ -545,7 +578,7 @@ class TestCreateWorkflowPins:
         parsed = _make_parsed_result(mode="finalized", draft=_make_draft())
         with (
             patch(f"{MODULE}.log") as mock_log,
-            patch(f"{MODULE}.get_stream_writer") as mock_writer_factory,
+            patch(f"{MODULE}.current_stream_writer") as mock_writer_factory,
             patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
         ):
@@ -558,3 +591,170 @@ class TestCreateWorkflowPins:
         mode_logs = [c for c in mock_log.info.call_args_list if "parsed mode" in str(c.args[0])]
         assert len(mode_logs) == 1
         assert mode_logs[0].kwargs["mode"] == "finalized"
+
+
+# ---------------------------------------------------------------------------
+# Tests: get_my_integrations / search_integrations (shared discovery tools)
+# ---------------------------------------------------------------------------
+
+
+def _my_integration(
+    integration_id: str,
+    *,
+    connected: bool = False,
+    source: Literal["platform", "custom"] = "platform",
+) -> MyIntegrationItem:
+    """One of the user's integrations, as the shared matcher returns it."""
+    return MyIntegrationItem(
+        id=integration_id,
+        name=integration_id.title(),
+        description=f"{integration_id} description",
+        category="productivity",
+        source=source,
+        managed_by="composio",
+        status="connected" if connected else "not_connected",
+        available=True,
+    )
+
+
+def _public_integration(integration_id: str) -> CommunityIntegrationItem:
+    """One marketplace integration, as the shared matcher returns it."""
+    return CommunityIntegrationItem(
+        integration_id=integration_id,
+        slug=integration_id,
+        name=integration_id.title(),
+        description=f"{integration_id} description",
+        category="crm",
+    )
+
+
+class TestGetMyIntegrations:
+    """Tests for the get_my_integrations shared tool."""
+
+    async def test_matches_are_looked_up_for_this_user_and_query(self) -> None:
+        from app.agents.tools.workflow_shared_tools import get_my_integrations
+
+        matcher = AsyncMock(
+            return_value=[_my_integration("gmail", connected=True), _my_integration("notion")]
+        )
+        with patch(f"{SHARED_MODULE}.match_my_integrations", matcher):
+            result = await cast(Any, get_my_integrations).coroutine(
+                config=_make_config(), query="email"
+            )
+
+        matcher.assert_awaited_once_with(FAKE_USER_ID, "email")
+        assert result["success"] is True
+        assert result["data"]["integrations"] == [
+            {
+                "id": "gmail",
+                "name": "Gmail",
+                "category": "productivity",
+                "description": "gmail description",
+                "connected": True,
+                "source": "platform",
+            },
+            {
+                "id": "notion",
+                "name": "Notion",
+                "category": "productivity",
+                "description": "notion description",
+                "connected": False,
+                "source": "platform",
+            },
+        ]
+        assert result["data"]["connected_count"] == 1
+        assert result["data"]["truncated"] is False
+        assert result["data"]["query"] == "email"
+
+    async def test_results_are_capped_and_flagged_truncated(self) -> None:
+        from app.agents.tools.workflow_shared_tools import get_my_integrations
+
+        matched = [_my_integration(f"app-{n}") for n in range(MAX_MY_INTEGRATIONS_RESULTS + 1)]
+        with patch(f"{SHARED_MODULE}.match_my_integrations", AsyncMock(return_value=matched)):
+            result = await cast(Any, get_my_integrations).coroutine(config=_make_config())
+
+        assert len(result["data"]["integrations"]) == MAX_MY_INTEGRATIONS_RESULTS
+        assert result["data"]["truncated"] is True
+        assert result["data"]["query"] is None
+
+    async def test_lookup_failure_returns_fetch_failed_and_is_observable(self) -> None:
+        from app.agents.tools.workflow_shared_tools import get_my_integrations
+
+        matcher = AsyncMock(side_effect=RuntimeError("composio down"))
+        with patch(f"{SHARED_MODULE}.match_my_integrations", matcher):
+            async with captured_wide_event() as event:
+                result = await cast(Any, get_my_integrations).coroutine(config=_make_config())
+
+        assert result["success"] is False
+        assert result["error"] == "fetch_failed"
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.TOOL} Error listing the user's integrations",
+                "error_type": "RuntimeError",
+            }
+        ]
+
+
+class TestSearchIntegrations:
+    """Tests for the search_integrations shared tool."""
+
+    async def test_owned_integrations_are_excluded_from_the_marketplace_search(self) -> None:
+        from app.agents.tools.workflow_shared_tools import search_integrations
+
+        owned = AsyncMock(
+            return_value=MyIntegrationsResponse(
+                integrations=[_my_integration("Notion"), _my_integration("gmail")]
+            )
+        )
+        matcher = AsyncMock(return_value=[_public_integration("hubspot")])
+        with (
+            patch(f"{SHARED_MODULE}.fetch_my_integrations", owned),
+            patch(f"{SHARED_MODULE}.match_public_integrations", matcher),
+        ):
+            result = await cast(Any, search_integrations).coroutine(
+                config=_make_config(), query="crm"
+            )
+
+        owned.assert_awaited_once_with(FAKE_USER_ID)
+        matcher.assert_awaited_once_with(
+            "crm",
+            exclude_ids={"Notion", "gmail"},
+            limit=MAX_INTEGRATION_SEARCH_RESULTS,
+        )
+        assert result["success"] is True
+        assert result["data"] == {
+            "integrations": [
+                {
+                    "id": "hubspot",
+                    "name": "Hubspot",
+                    "category": "crm",
+                    "description": "hubspot description",
+                    "connected": False,
+                    "source": "public",
+                }
+            ],
+            "query": "crm",
+        }
+
+    async def test_search_failure_returns_search_failed_and_is_observable(self) -> None:
+        from app.agents.tools.workflow_shared_tools import search_integrations
+
+        owned = AsyncMock(return_value=MyIntegrationsResponse(integrations=[]))
+        matcher = AsyncMock(side_effect=RuntimeError("marketplace down"))
+        with (
+            patch(f"{SHARED_MODULE}.fetch_my_integrations", owned),
+            patch(f"{SHARED_MODULE}.match_public_integrations", matcher),
+        ):
+            async with captured_wide_event() as event:
+                result = await cast(Any, search_integrations).coroutine(
+                    config=_make_config(), query="crm"
+                )
+
+        assert result["success"] is False
+        assert result["error"] == "search_failed"
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.TOOL} Error searching public integrations",
+                "error_type": "RuntimeError",
+            }
+        ]

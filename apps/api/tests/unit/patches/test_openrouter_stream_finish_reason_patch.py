@@ -1,16 +1,16 @@
 """Tests for the streaming finish_reason patch.
 
-The OpenRouter SDK types ``ChatStreamChoice.finish_reason`` as required, but
+The OpenRouter SDK types ChatStreamChoice.finish_reason as required, but
 OpenAI-compatible gateways omit it on intermediate reasoning deltas — one such
 chunk killed whole streams with a pydantic Unmarshaller error. The patch gives
-the field a ``None`` default; a present value must parse exactly as before.
+the field a None default; a present value must parse exactly as before.
 
-These call ``apply()`` themselves against a field reset to REQUIRED, rather
-than asserting the state ``app.patches.__init__`` already installed at import.
+These call apply() themselves against a field reset to REQUIRED, rather
+than asserting the state app.patches.__init__ already installed at import.
 The patch mutates a global third-party class, so once anything has applied it
 the effect is process-wide and permanent: a test that only validates a chunk
 passes whether or not this module's code runs at all, and would keep passing if
-``apply()`` were emptied out. Resetting the field first is what makes these
+apply() were emptied out. Resetting the field first is what makes these
 tests able to fail.
 """
 
@@ -80,11 +80,7 @@ class TestFinishReasonPatch:
     def test_a_renamed_field_raises_instead_of_silently_patching_nothing(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The SDK dropping or renaming the field must be loud.
-
-        Silently doing nothing would restore the original crash on the next
-        gateway that omits the field, with nothing pointing back here.
-        """
+        """Silently doing nothing would restore the original crash on the next gateway that omits the field."""
         monkeypatch.setattr(ChatStreamChoice, "model_fields", {}, raising=False)
 
         # The whole message, not a substring: it names the class whose field

@@ -1,11 +1,11 @@
-"""The Composio SDK call `connect_account` actually makes.
+"""The Composio SDK call connect_account actually makes.
 
-Every other test of this path mocks `self.composio`, so they pass whatever the
+Every other test of this path mocks self.composio, so they pass whatever the
 SDK's real signature is — including after it changes under us. These bind GAIA's
 call against the installed SDK instead, which is the only thing here that fails
 when Composio moves the contract.
 
-`link()` replaced `initiate()`: the legacy `POST /api/v3/connected_accounts`
+link() replaced initiate(): the legacy POST /api/v3/connected_accounts
 behind initiate() is retired for Composio-managed OAuth (cutover 2026-07-03),
 after which the SDK raises ComposioLegacyConnectedAccountsEndpointRetiredError.
 
@@ -16,6 +16,7 @@ not ours, so they are pinned here against the installed SDK too.
 
 import inspect
 
+from composio.core.models.auth_configs import AuthConfigs as AuthConfigsResource
 from composio.core.models.connected_accounts import (
     _TERMINAL_CONNECTION_STATES,
     ConnectedAccounts,
@@ -26,6 +27,14 @@ from composio.core.models.webhook_events import (
     WebhookEventType,
     is_connection_expired_event,
 )
+from composio_client.types import AuthConfigListParams
+from composio_client.types.auth_config_list_response import (
+    AuthConfigListResponse,
+    Item as AuthConfigItem,
+    ItemToolkit,
+)
+
+from app.constants.integrations import COMPOSIO_AUTH_CONFIG_PAGE_SIZE
 
 
 class TestConnectAccountSdkContract:
@@ -62,10 +71,7 @@ class TestConnectAccountSdkContract:
 
 
 class TestDeadConnectionStatusContract:
-    """`constants.integrations.DEAD_CONNECTION_STATUSES` expires an integration on
-    EXPIRED/REVOKED/FAILED. If Composio renames one of those, the webhook stops
-    matching and silently never expires anything — the failure mode is silence,
-    so only a binding against the real enum catches it."""
+    """If Composio renames EXPIRED/REVOKED/FAILED, the webhook silently stops expiring anything — only a binding against the real enum catches it."""
 
     def test_the_statuses_the_webhook_gates_on_still_exist(self) -> None:
         assert ConnectionStatusEnum.EXPIRED.value == "EXPIRED"
@@ -84,9 +90,7 @@ class TestDeadConnectionStatusContract:
 
 
 class TestConnectionExpiredEventContract:
-    """The endpoint routes on `is_connection_expired_event(body)` before building
-    any model, so a renamed event name would fall through to the trigger path
-    instead of erroring."""
+    """A renamed event name would fall through to the trigger path instead of erroring, since routing happens before any model is built."""
 
     def test_the_type_guard_accepts_the_expiry_delivery_and_rejects_a_trigger(self) -> None:
         expired = {
@@ -107,3 +111,23 @@ class TestConnectionExpiredEventContract:
 
     def test_the_event_name_literal_is_unchanged(self) -> None:
         assert WebhookEventType.CONNECTION_EXPIRED.value == "composio.connected_account.expired"
+
+
+class TestAuthConfigListingSdkContract:
+    """Auto-detection reads a project's auth configs; bind the call and fields against the SDK."""
+
+    def test_list_accepts_the_page_size_and_cursor_the_listing_passes(self) -> None:
+        bound = inspect.signature(AuthConfigsResource.list).bind(
+            None, limit=COMPOSIO_AUTH_CONFIG_PAGE_SIZE, cursor="page-2"
+        )
+
+        assert bound.arguments["query"] == {
+            "limit": COMPOSIO_AUTH_CONFIG_PAGE_SIZE,
+            "cursor": "page-2",
+        }
+        assert set(AuthConfigListParams.__annotations__) >= {"limit", "cursor"}
+
+    def test_an_item_carries_the_fields_detection_reads(self) -> None:
+        assert {"id", "name", "status", "toolkit"} <= set(AuthConfigItem.model_fields)
+        assert {"items", "next_cursor"} <= set(AuthConfigListResponse.model_fields)
+        assert "slug" in ItemToolkit.model_fields

@@ -56,11 +56,8 @@ class GmailPollTriggerHandler(TriggerHandler):
     ) -> list[str]:
         """Register a polling Gmail trigger with the configured interval.
 
-        Returns a list containing the Composio trigger ID so workflows can be
-        matched by trigger_id in find_workflows().
-
-        Raises:
-            TriggerRegistrationError: If trigger registration fails
+        Returns the Composio trigger id so workflows can be matched by
+        trigger_id in find_workflows().
         """
         trigger_data = trigger_config.trigger_data
 

@@ -1,23 +1,15 @@
 """E2E test: manage_system_prompts_node deduplicates system prompts in multi-turn graphs.
 
-WHAT THIS TESTS (REAL GAIA CODE):
-- ``manage_system_prompts_node`` from ``app.agents.core.nodes.manage_system_prompts``
-  is wired as a real pre-model hook via ``create_agent`` from
-  ``app.override.langgraph_bigtool.create_agent``.
-- In a multi-turn graph, only the LATEST non-memory SystemMessage is kept;
-  older non-memory system prompts are removed.
-- Memory-marked SystemMessages (``additional_kwargs={"memory_message": True}``)
-  are preserved across turns regardless of position.
-- ``filter_messages_node`` (also a real GAIA node) runs before
-  ``manage_system_prompts_node`` in the hook chain.
+Covers real GAIA code: manage_system_prompts_node wired as a real pre-model
+hook via create_agent; in a multi-turn graph only the latest non-memory
+SystemMessage is kept, older ones removed, while memory-marked SystemMessages
+(additional_kwargs={"memory_message": True}) survive regardless of position;
+filter_messages_node runs before it in the hook chain.
 
-Mock surfaces:
-- LLM: FakeMessagesListChatModel
-- Store: InMemoryStore (no ChromaDB)
-- Checkpointer: MemorySaver (no PostgreSQL)
+Mocked: the LLM (FakeMessagesListChatModel), store (InMemoryStore, no
+ChromaDB) and checkpointer (MemorySaver, no PostgreSQL).
 
-DELETE ``app/agents/core/nodes/manage_system_prompts.py`` → these tests FAIL.
-DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
+Deleting manage_system_prompts.py or create_agent.py fails these tests.
 """
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -56,12 +48,7 @@ class TestMultiToolScenario:
     async def test_graph_calls_two_tools_in_sequence(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """Build a real GAIA graph and verify sequential tool calls work end-to-end.
-
-        The graph uses manage_system_prompts_node and filter_messages_node as
-        real pre-model hooks. Two tools are called in sequence: get_weather then
-        create_note. We verify both ToolMessages appear in the final state.
-        """
+        """Uses the real manage_system_prompts_node and filter_messages_node pre-model hooks while calling get_weather then create_note in sequence."""
         fake_llm = BindableToolsFakeModel(
             responses=[
                 AIMessage(
@@ -168,21 +155,7 @@ class TestMultiToolScenario:
     async def test_filter_and_manage_hooks_both_run_as_pre_model_hooks(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """Both real GAIA pre-model hooks run without crashing and the model responds.
-
-        Pre-model hooks (filter_messages_node, manage_system_prompts_node) are
-        ephemeral: they modify state only for the model call via execute_hooks(),
-        not the LangGraph-checkpointed state. The add_messages reducer appends
-        new messages; it does not replace existing ones with hook output.
-
-        What we CAN verify:
-        - The graph does not raise despite receiving a dangling tool call and
-          multiple system prompts (hooks handled the messy state gracefully).
-        - The model produced a response (an AIMessage with the expected content
-          appears in the final checkpointed messages).
-        - No NEW tool calls were introduced by the graph run (the model
-          responded with plain text, not another tool invocation).
-        """
+        """Confirms both real pre-model hooks run without crashing on a dangling tool call and multiple system prompts, and the model's final response has no new tool calls."""
         fake_llm = BindableToolsFakeModel(responses=[AIMessage(content="All cleaned up.")])
 
         graph = build_gaia_test_graph(

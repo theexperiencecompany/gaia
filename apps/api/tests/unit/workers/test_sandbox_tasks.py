@@ -1,6 +1,6 @@
 """Unit tests for app.workers.tasks.sandbox_tasks.
 
-``sweep_idle_sandboxes`` marks sandboxes idle past the eviction window as dead
+sweep_idle_sandboxes marks sandboxes idle past the eviction window as dead
 so the next request gets a fresh one. Per-user failures are logged and must
 never abort the rest of the sweep.
 """

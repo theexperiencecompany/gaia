@@ -1,7 +1,7 @@
 """Unit tests for app.workers.tasks.usage_badge_tasks.
 
 The daily cron that recomputes every user's activity tier and emails first-time
-promotions. The task body is a thin wrapper: it runs ``sync_activity_tiers``
+promotions. The task body is a thin wrapper: it runs sync_activity_tiers
 with emails on, drops the stats on the worker wide event, and returns the
 summary string — the only operator-visible signal that the sweep ran. All
 semantics (thresholds, monotonic promotion, idempotency) live in the service

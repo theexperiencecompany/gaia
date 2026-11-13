@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import ValidationError
 import pytest
+import time_machine
 
 from app.models.reminder_models import (
     AgentType,
@@ -95,7 +96,9 @@ class TestReminderModel:
         assert m.agent == AgentType.STATIC
         assert m.occurrence_count == 0
         assert m.status == ScheduledTaskStatus.SCHEDULED
-        assert m.stop_after is not None  # default is 6 months from now
+        # the six-month default is resolved on CreateReminderRequest at creation, not
+        # invented on every read of a stored document that lacks one
+        assert m.stop_after is None
 
     def test_payload_as_static_reminder(self):
         m = ReminderModel(**self._base_data())
@@ -171,7 +174,7 @@ class TestCreateReminderRequest:
         assert m.repeat == "0 9 * * *"
 
     def test_invalid_cron_repeat(self):
-        with pytest.raises(ValidationError, match="Invalid cron expression"):
+        with pytest.raises(ValidationError, match="Use 5 fields: minute hour day month weekday."):
             CreateReminderRequest(
                 agent="static",
                 payload=StaticReminderPayload(title="T", body="B"),
@@ -258,12 +261,12 @@ class TestCreateReminderToolRequest:
         assert m.scheduled_at == "2030-06-15 09:00:00"
 
     def test_invalid_cron_repeat(self):
-        with pytest.raises(ValidationError, match="Invalid cron expression"):
+        with pytest.raises(ValidationError, match="Use 5 fields: minute hour day month weekday."):
             CreateReminderToolRequest(**self._base_data(repeat="bad-cron"))
 
     def test_valid_cron_repeat(self):
-        m = CreateReminderToolRequest(**self._base_data(repeat="*/5 * * * *"))
-        assert m.repeat == "*/5 * * * *"
+        m = CreateReminderToolRequest(**self._base_data(repeat="0 */2 * * *"))
+        assert m.repeat == "0 */2 * * *"
 
     @pytest.mark.parametrize("val", [0, -1])
     def test_max_occurrences_invalid(self, val):
@@ -306,11 +309,13 @@ class TestCreateReminderToolRequestConversion:
         return data
 
     def test_basic_conversion_no_schedule(self):
-        m = CreateReminderToolRequest(**self._base_data())
-        result = m.to_create_reminder_request()
+        """The agent's path passes stop_after=None explicitly; it still gets the six-month cutoff."""
+        now = datetime.now(UTC)
+        with time_machine.travel(now, tick=False):
+            result = CreateReminderToolRequest(**self._base_data()).to_create_reminder_request()
         assert isinstance(result, CreateReminderRequest)
         assert result.scheduled_at is None
-        assert result.stop_after is None
+        assert result.stop_after == now + timedelta(days=180)
 
     def test_source_conversation_id_is_threaded_through(self):
         # The originating chat captured at the tool boundary must survive the
@@ -434,7 +439,7 @@ class TestUpdateReminderRequest:
         assert m.status == ReminderStatus.PAUSED
 
     def test_invalid_cron_repeat(self):
-        with pytest.raises(ValidationError, match="Invalid cron expression"):
+        with pytest.raises(ValidationError, match="Use 5 fields: minute hour day month weekday."):
             UpdateReminderRequest(repeat="bad-cron")
 
     @pytest.mark.parametrize("val", [0, -1])

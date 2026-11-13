@@ -6,7 +6,7 @@ every terminal case of every run into its suite's project, and is:
 * **idempotent** — a case already present *for that run* is skipped, so the same
   case legitimately re-run in a later run still lands as its own trace;
 * **self-healing** — duplicate traces left by earlier partial seeds are pruned
-  down to one per ``CaseTrace.key``;
+  down to one per CaseTrace.key;
 * **resilient** — a record that fails to write is counted and reported, never
   allowed to abort the rest of the backfill.
 """
@@ -28,26 +28,16 @@ from .types import CaseTrace, PriceBook
 # is replaying — and a crashed case is exactly what you go to Opik to look at.
 SEEDABLE_STATUSES = {"passed", "failed", "errored"}
 
-#: Suites whose pre-fix journals cannot be trusted for tokens, per the token
-#: accounting audit. Three differenced a *shared* run meter while 3-14 cases ran
-#: concurrently, so each case was credited with its neighbours' spend; two never
-#: measured at all and inferred tokens from string length; one journalled zero.
-#:
-#: This is a fallback for journals written before ``tokens.source`` existed. A
-#: record that carries the field is believed over this list, so the list retires
-#: itself as suites are re-run rather than becoming a permanent second source of
-#: truth. ``safety``, ``comms`` and ``quality`` are absent deliberately: they read
-#: provider-reported usage per case, which is the mechanism we trust.
+#: Suites whose pre-fix journals (no tokens.source) cannot be trusted: three
+#: differenced a meter shared by 3-14 concurrent cases, two inferred tokens
+#: from string length, one journalled zero; safety/comms/quality are trusted and absent here.
 UNMETERED_LEGACY_SUITES = frozenset(
     {"capability", "memory", "longmemeval", "regression", "gaia_bench", "hil", "smoke"}
 )
 
-#: Suites whose pre-fix journals ARE trustworthy for tokens: they read the usage
-#: the provider reported, per case, off the API's response frames. Instrumenting
-#: the live API settled it — usage arrives once per turn and is per-turn, not
-#: cumulative, so summing across turns is correct. Their large numbers are real
-#: spend rather than a counting bug, and dropping them would throw away the only
-#: sound cost data we have.
+#: Suites whose pre-fix journals ARE trustworthy for tokens: provider-reported
+#: usage per turn (not cumulative, so summing across turns is correct). Their
+#: large numbers are real spend, not a counting bug — do not drop them.
 METERED_LEGACY_SUITES = frozenset({"quality", "comms", "safety"})
 
 #: What "this record was never actually measured" looks like. Mirrors the bound
@@ -112,13 +102,10 @@ def seed(
 ) -> None:
     """Replay run journals into Opik. Safe to run repeatedly.
 
-    Every write is an upsert keyed on the case's identity, so a re-seed refreshes
-    what is already there rather than duplicating or skipping it. ``reset``
-    additionally deletes a project's existing case traces first, which is only
-    needed to evict traces whose source journal is gone.
-
-    ``only_runs`` limits the backfill to named run ids — the pilot path, where
-    one small suite is ingested and checked before the rest follows.
+    Every write is an upsert keyed on the case's identity, so a re-seed
+    refreshes rather than duplicates. reset also deletes a project's existing
+    case traces first, to evict ones whose source journal is gone; only_runs
+    limits the backfill to named run ids for a pilot before the rest follows.
     """
     prices = price_book(cfg)
     grouped = _group_runs_by_project(runs_dir, only_runs)
@@ -169,12 +156,10 @@ def _seed_project(
 ) -> None:
     """Write every seedable record of every run. Always writes, never queries.
 
-    Idempotency comes from the trace id being derived from the case's identity
-    (:func:`opiksink.trace_id_for`), so re-writing a case updates its row instead
-    of adding one. The previous design asked Opik what already existed and
-    skipped those — which duplicated any trace whose first write had not yet
-    become queryable, and could never refresh a trace whose contents had changed.
-    Writing unconditionally is both simpler and more correct.
+    Idempotency comes from a trace id derived from the case's identity, so
+    re-writing updates its row instead of adding one. The previous
+    existence-check design duplicated a trace not yet queryable and could
+    never refresh a changed one.
     """
     _apply_description(project)
     if reset:
@@ -217,12 +202,9 @@ _RESCORE_CACHE: dict[Path, dict[str, dict[str, Any]]] = {}
 def _with_adopted_rescore(record: dict[str, Any], runs_dir: Path, run_id: str) -> dict[str, Any]:
     """Adopt a rescore sibling's verdict for this case, if one exists.
 
-    Re-scoring never rewrites the append-only journal; it records corrected
-    verdicts in ``rescore.json`` beside it. Without adoption those corrections
-    stayed on disk while Opik and every dashboard kept showing verdicts the
-    gate fixes had already overturned. Adoption is visible: the trace metadata
-    gains ``rescored: true`` so a reader can tell a re-graded verdict from an
-    original one.
+    Re-scoring records corrected verdicts in rescore.json rather than
+    rewriting the append-only journal; without adoption, Opik kept showing
+    overturned verdicts. Adoption sets rescored: true on the trace metadata.
     """
     sibling = runs_dir / run_id / "rescore.json"
     if sibling not in _RESCORE_CACHE:
@@ -245,22 +227,18 @@ def _with_adopted_rescore(record: dict[str, Any], runs_dir: Path, run_id: str) -
 def _with_resolved_token_source(record: dict[str, Any], suite: str) -> dict[str, Any]:
     """Label a pre-fix record's token provenance so cost can be withheld from it.
 
-    A journal written before ``tokens.source`` existed says nothing about how its
-    numbers were obtained, and for seven suites they were obtained wrongly. The
-    accuracy in those runs is sound, so they are still worth ingesting — the
-    tokens and the cost derived from them are not, and are dropped rather than
-    published at a plausible-looking wrong value.
+    A journal predating tokens.source says nothing about how its numbers were
+    obtained, and for seven suites they were obtained wrongly. Accuracy in
+    those runs is sound and worth ingesting; their tokens/cost are dropped
+    rather than published at a plausible-looking wrong value.
     """
     tokens = record.get("tokens") or {}
     if tokens.get("source"):
         return record
     if suite in METERED_LEGACY_SUITES:
-        # The suite list says the MECHANISM is trustworthy; it cannot say that
-        # every record actually got a reading. Quality's runs split cleanly on
-        # the day the usage-frame wiring landed — every run before it recorded
-        # ~20 tokens for cases that worked for 6-21 seconds, every run after it
-        # measured properly. A record with no measurement is `none` whatever its
-        # suite, so the two rules compose instead of one overriding the other.
+        # The suite list says the MECHANISM is trustworthy, not that every
+        # record got a reading: quality's pre-wiring runs recorded ~20 tokens
+        # for cases that worked 6-21 seconds, so unmeasured records are `none` regardless of suite.
         measured = int(tokens.get("input", 0)) + int(tokens.get("output", 0))
         worked = float(record.get("duration_s") or 0) >= UNMEASURED_BELOW_SECONDS
         resolved = "none" if worked and measured < UNMEASURED_BELOW_TOKENS else "metered"
@@ -280,15 +258,10 @@ class LegacyTracesPresentError(RuntimeError):
 def _refuse_to_double(project: str, traces: list[CaseTrace]) -> None:
     """Abort rather than silently double a project's totals.
 
-    Upsert-by-derived-id only updates traces that were themselves written with a
-    derived id. A trace written by an older build carries a random one, so
-    seeding on top of it INSERTS a second copy — every count, cost and token
-    total doubles, and nothing in the output says so.
-
-    This is the loud half of the fix. Idempotency is no longer defeatable by a
-    metadata rename (the id comes from the journal, never from Opik), but it is
-    still defeatable by legacy rows, and that has to fail rather than pass
-    quietly. `ingest` tears the project down first, so it never trips.
+    Upsert-by-derived-id only updates traces written with a derived id; an
+    older-build trace carries a random one, so seeding on top of it INSERTS a
+    second copy that silently doubles every count. Legacy rows still defeat
+    idempotency, so this fails loud instead; ingest tears the project down first.
     """
     expected = {opiksink.trace_id_for(project, trace) for trace in traces}
     legacy = opiksink.legacy_case_traces(project, expected)
@@ -304,9 +277,11 @@ MAX_DESCRIPTION = 255
 
 
 def _apply_description(project: str) -> None:
-    """Set the project blurb. Never fatal — the traces are the point, and a
-    rejected description must not cost us a whole project's data (a 255-char
-    limit once aborted three projects mid-seed)."""
+    """Set the project blurb, never fatal.
+
+    A rejected description must not cost a whole project's data — a
+    255-char limit once aborted three projects mid-seed.
+    """
     description = PROJECT_DESCRIPTIONS.get(project)
     if description is None:
         print(f"[seed] {project}: no description registered in PROJECT_DESCRIPTIONS")

@@ -1,107 +1,103 @@
-"""Application settings: load from env, validate, and expose typed access.
+"""Application settings: one class, validated against the deployment's capabilities.
 
-Flow
-- `.env` loaded first, then external secrets via `inject_infisical_secrets()`.
-- Pick settings class by `ENV` (production/development).
-- Pydantic builds the object; `settings_validator` logs missing groups.
-- `get_settings()` memoizes the instance for fast imports.
-
-Add env vars
-1) Add fields to `CommonSettings`/`ProductionSettings`/`DevelopmentSettings`.
-2) Use Optional[...] in dev if it’s not required there.
-3) If you want warnings, register a group in `config/settings_validator.py`.
-4) Read values via `from app.config.settings import settings`.
+.env loads first, then Infisical secrets; Settings reads ENV and the rest, and
+refuses to boot a real deployment missing a key its profile needs. Add a field
+as optional here, and if a capability needs it, add it to
+app/config/capability_requirements.py.
 """
 
 from functools import lru_cache
-import os
 import time
-from typing import Any, Literal, Self
+from typing import Literal, Self, TypedDict, cast
 
 from dotenv import load_dotenv
-from pydantic import computed_field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, ValidationInfo, computed_field, field_validator, model_validator
+from pydantic_settings import SettingsConfigDict
 
+from app.config.browser_host_settings import BrowserHostSettings
+from app.config.capability_requirements import required_keys
+from app.config.deployment import (
+    BlobStoreKind,
+    DeploymentKind,
+    DeploymentProfile,
+    deployment_profile,
+)
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
+from app.constants.bot import (
+    GAIA_CLOUD_DISCORD_CLIENT_ID,
+    GAIA_CLOUD_SLACK_CLIENT_ID,
+    GAIA_CLOUD_TELEGRAM_BOT_USERNAME,
+    GAIA_CLOUD_WHATSAPP_NUMBER,
+)
+from app.constants.browser import BrowserAgentEffort
+from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
+from app.constants.files import S3AddressingStyle
+from app.constants.llm import DevLLMApi
 from app.constants.log_tags import LogTag
 from app.constants.search import (
     CRAWL4AI_DEFAULT_MAX_BROWSERS,
     CRAWL4AI_MIN_MAX_BROWSERS,
 )
-from shared.py.voice import DEVELOPMENT_VOICE_AGENT_NAME, PRODUCTION_VOICE_AGENT_NAME
+from shared.py.voice import default_voice_agent_name
 from shared.py.wide_events import log
 
 load_dotenv()
 
 
-class BaseAppSettings(BaseSettings):
-    """Base configuration settings for the application."""
+class _DeploymentSelection(TypedDict, total=False):
+    """The fields validators read off pydantic's plain field-name-to-value mapping."""
 
-    ENV: Literal["production", "development"] = "production"
+    ENV: str
+    AUTH_MODE: str
+
+
+class Settings(BrowserHostSettings):
+    """The one settings class: optional integrations, required by the capability table.
+
+    What a deployment must set follows its profile (app/config/capability_requirements.py);
+    a real deployment refuses to boot without it, development only warns.
+    """
 
     SHOW_MISSING_KEY_WARNINGS: bool = True
 
-    model_config = SettingsConfigDict(
-        extra="allow",
-        env_file_encoding="utf-8",
-        validate_default=False,  # Skip validation of default values
-    )
+    # Authentication & OAuth: workos (default, hosted/dev) or local (self-host
+    # email+password sessions; the default under ENV=selfhost).
+    AUTH_MODE: Literal["workos", "local"] = "workos"
 
-    # For handling both normal env var loading and dict constructor
-    @classmethod
-    def from_env(cls, **kwargs: Any) -> Self:  # noqa: ANN401 -- framework contract
-        """Create settings from environment variables."""
-        try:
-            return cls(**kwargs)
-        except Exception as e:
-            log.warning(
-                f"{LogTag.STARTUP} Error creating settings",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            # Create a minimal instance with empty strings for required fields,
-            # but skip fields that already have env vars set or have defaults.
-            fields = cls.model_fields
-            defaults: dict[str, Any] = {}
-            for field_name, field_info in fields.items():
-                if field_name in kwargs:
-                    continue
-                if os.getenv(field_name) is not None:
-                    continue
-                if field_info.default is not None:
-                    continue
-                if "str" in str(field_info.annotation):
-                    defaults[field_name] = ""
-            return cls(**defaults, **kwargs)
-
-
-class CommonSettings(BaseAppSettings):
-    """Common settings required for all environments."""
-
-    # ----------------------------------------------
-    # Dev-only overrides — declared on the COMMON base so production code can
-    # safely read them (app/agents/llm/client.py evaluates GAIA_SIM_MODE in
-    # decorator args at import time; an AttributeError there crashes prod boot).
-    # get_settings() refuses to start in production when either is enabled.
-    # ----------------------------------------------
-    # Sim mode: every LLM factory resolves to the local scripted stub
-    # (tools/llm-stub) for deterministic, credential-free runs. `mise dev --sim`.
-    GAIA_SIM_MODE: bool = False
+    # Dev-only overrides; production code reads them (app/agents/llm/client.py
+    # evaluates GAIA_SIM_MODE at import time), and a real deployment refuses to boot with one set.
+    GAIA_SIM_MODE: bool = False  # every LLM factory resolves to the local scripted stub
     # Where the scripted stub lives when sim mode is on; consumed only by
     # _sim_llm (defaults to SIM_STUB_BASE_URL when unset).
     OPENROUTER_BASE_URL: str | None = None
-    # Comma-separated OpenRouter provider slugs (tag form, e.g. "coreweave/fp8")
-    # to PREFER for the default-model lane — fallbacks stay enabled, so an
-    # outage degrades to the normal rotation. Empty (the default) leaves
-    # routing untouched. Set from the per-provider cache-hit table, not by
-    # guesswork; see _provider_order_kwargs in agents/llm/client.py.
-    OPENROUTER_PROVIDER_ORDER: str | None = None
-    # Dev-only: lift every per-user rate limit (chat messages, uploads, ...).
-    # Eval harnesses drive thousands of legitimate requests per day against a
-    # free-plan dev user; without this they 429 at the free tier's 200/day.
-    # get_settings() refuses production boot when set (same guard as sim mode).
+    # Every request authenticates as this Mongo user with no WorkOS session.
+    DEV_AUTH_BYPASS_EMAIL: str | None = None
+    # Dev-only: lift every per-user rate limit. Eval harnesses drive thousands
+    # of requests/day against a free-plan dev user, which 429s at 200/day
+    # otherwise. get_settings() refuses production boot when set.
     DEV_UNLIMITED_RATE_LIMITS: bool = False
+    # Self-host opt-in for the local Docker-exec coding sandbox. Set only by the
+    # docker-compose.sandbox.yml override (`gaia up --code-sandbox`), which is
+    # also what mounts the Docker socket it needs.
+    LOCAL_CODE_SANDBOX: bool = False
+    # Where files live; unset is the deployment's default (see deployment_profile).
+    BLOB_STORE: BlobStoreKind | None = None
+    # Where blobs live under BLOB_STORE=local; the self-host compose mounts the
+    # gaia-selfhost_files volume here.
+    LOCAL_FILE_STORAGE_PATH: str = "/var/lib/gaia/files"
+    # The bucket under BLOB_STORE=s3; on Railway, reference the bucket's
+    # ENDPOINT, BUCKET, ACCESS_KEY_ID, SECRET_ACCESS_KEY and REGION variables.
+    S3_ENDPOINT_URL: str | None = None
+    S3_BUCKET: str | None = None
+    S3_ACCESS_KEY_ID: str | None = None
+    S3_SECRET_ACCESS_KEY: str | None = None
+    # Unset signs requests for us-east-1, which MinIO and most S3-compatible services accept.
+    S3_REGION: str | None = None
+    S3_ADDRESSING_STYLE: S3AddressingStyle = S3AddressingStyle.VIRTUAL
+    # The bots' HMAC key for hashed platform ids in logs; the same value here
+    # makes the API's user_hash join the bots'. Unset falls back like the bots.
+    BOT_LOG_HASH_SECRET: str | None = None
 
     # ----------------------------------------------
     # Database Connections
@@ -109,12 +105,35 @@ class CommonSettings(BaseAppSettings):
     MONGO_DB: str
     REDIS_URL: str
 
-    # ----------------------------------------------
-    # Authentication & OAuth
-    # ----------------------------------------------
-    WORKOS_API_KEY: str
-    WORKOS_CLIENT_ID: str
-    WORKOS_COOKIE_PASSWORD: str
+    # WorkOS credentials only required in workos mode (see the AUTH_MODE
+    # validator on the base).
+    WORKOS_API_KEY: str | None = None
+    WORKOS_CLIENT_ID: str | None = None
+    WORKOS_COOKIE_PASSWORD: str | None = None
+
+    @field_validator("WORKOS_API_KEY", "WORKOS_CLIENT_ID", "WORKOS_COOKIE_PASSWORD")
+    @classmethod
+    def _require_workos_credentials_when_selected(
+        cls, v: str | None, info: ValidationInfo
+    ) -> str | None:
+        selection: _DeploymentSelection = cast(_DeploymentSelection, info.data)
+        if selection.get("AUTH_MODE") == "workos" and not v:
+            raise ValueError(f"{info.field_name} is required when AUTH_MODE=workos")
+        return v
+
+    # Instance-wide secret. Env wins; otherwise generated once and persisted in
+    # Mongo by the secrets store (survives container recreation). Signs local
+    # sessions and derives Fernet keys for stored provider credentials.
+    INSTANCE_SECRET: str | None = None
+
+    # Ollama endpoint as seen from THIS process; unset means no Ollama lane.
+    # Inside Docker the host is http://host.docker.internal:11434.
+    OLLAMA_BASE_URL: str | None = None
+
+    # Hostname that reaches the machine GAIA runs on from inside its container
+    # (host.docker.internal under the self-host compose). When set, a custom MCP
+    # server added as localhost/127.0.0.1 is dialed through it instead.
+    LOOPBACK_HOST_ALIAS: str | None = None
 
     # ----------------------------------------------
     # Environment & Deployment
@@ -124,17 +143,64 @@ class CommonSettings(BaseAppSettings):
     DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True
+    # Code mode — bash-injected `gaia.execute` client letting sandbox scripts
+    # call GAIA tools back server-side. On by default; off mints no token
+    # (bash itself still runs; scripts just get no GAIA_EXECUTE_* env).
+    ENABLE_CODE_MODE: bool = True
+    # Inline each integration tool's return shape in the retrieve_tools doc so a
+    # script can be written without a get_tool_schema call. App-wide, not per user.
+    # Off by default: discovery docs carry args only and never read the observed-shape store.
+    ENABLE_INLINE_TOOL_RETURNS: bool = False
+    # Executor-free HIL ledger — gated calls register PENDING and return
+    # instead of parking the run on an interrupt. On by default; off keeps the
+    # interrupt-and-resume barrier.
+    ENABLE_HIL_LEDGER: bool = True
+    # JEV choice judge for auto mode — a structured decision call classifies first
+    # (49/50 on the calibration set, zero dangerous accepts), LLM intent judge as
+    # the transport-failure fallback. On by default; a JEV outage never opens the gate.
+    ENABLE_HIL_JEV_JUDGE: bool = True
+    # JEV reply classifier for bot users' chat answers to pending approvals —
+    # one structured decision call per reply (hil-reply calibration: 0 dangerous
+    # approves vs the LLM's 2), LLM classifier as the transport-failure fallback.
+    ENABLE_HIL_JEV_REPLY: bool = True
+    # Trigger gates skip a run JEV is sure its event does not need. The kill switch:
+    # off still evaluates and records every gate, but every run goes ahead.
+    ENABLE_TRIGGER_GATES: bool = True
+    # Private agent lab — Claude Code / OpenCode CLIs inside the
+    # per-user E2B sandbox, controllable from chat. Off by default; PostHog
+    # targeting enables it for specific users.
+    ENABLE_AGENT_LAB: bool = False
 
     @field_validator("HOST", "FRONTEND_URL", mode="after")
     @classmethod
     def _strip_trailing_slash(cls, v: str) -> str:
         return v.rstrip("/") if isinstance(v, str) else v
 
-    # ----------------------------------------------
-    # Outbound Email
-    # ----------------------------------------------
-    # Key into the provider registry in app/services/email/providers.
+    @property
+    def deployment(self) -> DeploymentProfile:
+        """Return the instance's capabilities; every deployment difference reads from here."""
+        return deployment_profile(
+            DeploymentKind(self.ENV),
+            self.AUTH_MODE,
+            unlimited_usage=self.DEV_UNLIMITED_RATE_LIMITS,
+            local_code_sandbox=self.LOCAL_CODE_SANDBOX,
+            blob_store=self.BLOB_STORE,
+        )
+
+    @property
+    def telegram_bot_username(self) -> str | None:
+        """The Telegram bot for this instance, from env or the shared identity file."""
+        return self.TELEGRAM_BOT_USERNAME
+
+    # Outbound Email. EMAIL_PROVIDER keys the registry in
+    # app/services/email/providers.
     EMAIL_PROVIDER: str = "resend"
+
+    # Optional coupon surfaced alongside the checkout link in every 402
+    # "subscription required" response. Unset means no code is advertised.
+    PAYWALL_DISCOUNT_CODE: str | None = None
+    # Coupon the founder's letter offers. Unset means the letter carries no offer.
+    FOUNDER_LETTER_DISCOUNT_CODE: str | None = None
 
     # ----------------------------------------------
     # Observability
@@ -158,29 +224,14 @@ class CommonSettings(BaseAppSettings):
     ENABLE_PROFILING: bool = False  # Must be explicitly enabled via .env
     PROFILING_SAMPLE_RATE: float = 1.0  # 100% of requests by default
 
-    # ----------------------------------------------
-    # ARQ worker
-    # ----------------------------------------------
-    # Concurrent jobs PER WORKER. The 10 is sized for a single worker (mean task
-    # 10.9s at 0.72 tasks/s needs ~8 concurrent by Little's Law); being a
-    # per-process cap, M workers give a fleet ceiling of 10 x M — which is not
-    # more throughput, just more simultaneous load on shared limits. Scaling the
-    # worker out therefore means scaling this DOWN (~ceil(8/M)), which is why it
-    # is configurable rather than a literal.
-    #
-    # Postgres is the wall: each worker opens SQLAlchemy's pool (pool_size=5 +
-    # max_overflow=10) PLUS the LangGraph checkpointer pool (max_size=20) = 35
-    # connections, against a default max_connections of 100. Raise
-    # max_connections before adding the third worker, or connections get refused.
+    # Concurrent jobs PER WORKER; sized via Little's Law (mean task 10.9s at
+    # 0.72 tasks/s needs ~8). Fleet ceiling is 10 x M workers — scale this DOWN
+    # (~ceil(8/M)) per worker added, since pools sum to 35 conns vs max 100.
     ARQ_MAX_JOBS: int = 10
 
-    # ----------------------------------------------
-    # Crawl4AI (headless-browser scraping)
-    # ----------------------------------------------
-    # Process-wide cap on concurrent Chromium instances (see constants/search.py
-    # for context). Falls back to the default on non-integer input; clamped to
-    # at least ``CRAWL4AI_MIN_MAX_BROWSERS`` so a misconfigured 0/negative value
-    # can't deadlock all crawler access.
+    # Process-wide cap on concurrent Chromium instances (see constants/search.py).
+    # Falls back to the default on non-integer input; clamped to at least
+    # CRAWL4AI_MIN_MAX_BROWSERS so a 0/negative value can't deadlock all crawler access.
     CRAWL4AI_MAX_BROWSERS: int = CRAWL4AI_DEFAULT_MAX_BROWSERS
 
     @field_validator("CRAWL4AI_MAX_BROWSERS", mode="before")
@@ -194,44 +245,111 @@ class CommonSettings(BaseAppSettings):
             return CRAWL4AI_DEFAULT_MAX_BROWSERS
         return max(CRAWL4AI_MIN_MAX_BROWSERS, parsed)
 
-    # ----------------------------------------------
-    # Dev-only LLM overrides (honored only when ENV=development)
-    # ----------------------------------------------
-    # Custom OpenRouter/OpenAI-compatible endpoint for cheap bulk dev/test usage
-    # (e.g. Nous Research's discounted DeepSeek lane). All three must be set; the
-    # "custom" provider is registered exclusively in development (see
-    # register_llm_providers), so these have no effect in production.
+    # --- Browser-Use (autonomous browser automation) ---
+    # Always on in every environment; an unreachable host fails loudly at task time.
+
+    # Cloudflare R2, the fast edge store for browser step screenshots; Cloudinary
+    # stays the durable store for arbitrary user files. Optional: any unset field
+    # falls back to inline data URLs. Use a custom domain in prod, r2.dev is rate-limited.
+    CLOUDFLARE_ACCOUNT_ID: str | None = None
+    R2_ACCESS_KEY_ID: str | None = None
+    R2_SECRET_ACCESS_KEY: str | None = None
+    R2_PUBLIC_BASE_URL: str | None = None
+    # Jev "System One" decision policy (TypeSafe AI): each step's decision is a
+    # single Jev evaluation over the page's indexed element table, not a
+    # generative chat completion. Screenshots are never sent to Jev.
+    BROWSER_USE_JEV_MODEL: str = "~typesafe/jev-latest"
+    # Which gateway serves Jev decisions: "openrouter" (default) or "vercel"
+    # (Vercel AI Gateway). Hot-swappable at boot: both speak the same
+    # {model, state, questions} decisions shape.
+    BROWSER_JEV_PROVIDER: Literal["openrouter", "vercel"] = "openrouter"
+    # Vercel AI Gateway key + model, read only when BROWSER_JEV_PROVIDER=vercel.
+    BROWSER_JEV_VERCEL_API_KEY: str | None = None
+    BROWSER_JEV_VERCEL_MODEL: str = "typesafe-ai/jev"
+    # Text helper for the loop, called only when a decision needs a typed value.
+    # deepseek-v4-flash answers a URL/value prompt in ~1.5-5s with minimal
+    # reasoning (measured 2026-09-22); forcing reasoning off made it return null.
+    BROWSER_USE_JEV_TEXT_MODEL: str = "deepseek/deepseek-v4-flash-0731"
+    # The browser agent's model, the same for every user whatever their chat lane: it
+    # steers and signs off while Jev does the stepping. Served by OpenRouter.
+    BROWSER_AGENT_MODEL: str = "deepseek/deepseek-v4-flash-0731"
+    BROWSER_AGENT_REASONING_EFFORT: BrowserAgentEffort = "low"
+    # Browser-Use's flash mode: the agent writes only its memory and actions, no evaluation of
+    # its last step and no next goal or plan. Browser-Use turns it on only for its own trained
+    # model; on ours the agent stopped noticing it was looping (38 steps on GitHub's code page).
+    BROWSER_AGENT_FLASH_MODE: bool = False
+
+    # Hard limits — everything is bounded so no browser task can run away. The
+    # agent's step count is only Browser-Use's required backstop: a run ends on
+    # the agent's finish or its time and cost budgets.
+    BROWSER_USE_MAX_STEPS: int = 100
+    BROWSER_USE_MAX_ACTIONS_PER_STEP: int = 5
+    BROWSER_USE_TASK_TIMEOUT_SECONDS: int = 600
+    # How long a paused run waits for the user's handoff step (a login, a CAPTCHA).
+    # The one source: the job deadline, its TTLs and the relay's wait all derive
+    # from it (job_lifetime.py); resolving sooner resumes at once.
+    BROWSER_USE_HANDOFF_TIMEOUT_SECONDS: int = 600
+    # Active work budget for a single step. A handoff waits after its step ends,
+    # outside this budget, so a step is never killed while the user completes one.
+    BROWSER_USE_STEP_TIMEOUT_SECONDS: int = 180
+    # Stream per-step screenshots into the chat card / bot messages.
+    BROWSER_USE_STREAM_SCREENSHOTS: bool = True
+
+    # There is no automatic CAPTCHA solver: when set, the agent gets an action to
+    # hand a CAPTCHA to the user, who solves it in live-view before it continues.
+    BROWSER_USE_SOLVE_CAPTCHA: bool = True
+
+    # --- Browser host (gaia-browser-host, our own low-RAM Chromium host) ---
+
+    # One long-lived Chromium, one isolated context per session, proxied over
+    # CDP with an authenticated screencast live view. Reached internally by
+    # service name; override locally to http://localhost:8930.
+
+    # The Chromium host when BROWSER_HOST_URL runs Obscura: every default user's run
+    # opens here and Obscura runs fall back here. It runs BROWSER_ENGINE=chromium with
+    # its OWN address as BROWSER_HOST_URL, since a host builds its CDP/live URLs from it.
+    BROWSER_FALLBACK_HOST_URL: str | None = None
+
+    # Fernet key (32 url-safe base64 bytes) encrypting each user's saved browser
+    # login (storage_state) at rest in Mongo. Infisical-provided in production;
+    # persistence fails loud if a save/load is attempted while it's unset.
+    BROWSER_STATE_ENCRYPTION_KEY: str | None = None
+    # HMAC secret (>=32 chars) for the short-lived live-view takeover JWT handed
+    # to a user's own bot channel so they can take over a handoff without a web login.
+    BROWSER_TAKEOVER_TOKEN_SECRET: str | None = None
+    # When false, a session's login is never persisted or restored (per-deployment
+    # opt-out of "log in once, reuse next time").
+    BROWSER_PERSIST_LOGINS: bool = True
+
+    # Custom OpenRouter/OpenAI-compatible endpoint for cheap bulk dev/test usage.
+    # All three must be set; the "custom" provider is registered exclusively in
+    # development (see register_llm_providers), so these have no effect in production.
     DEV_LLM_BASE_URL: str | None = None
     DEV_LLM_API_KEY: str | None = None
     DEV_LLM_MODEL: str | None = None
+    # Which API the endpoint is called through. OpenAI's reasoning models need
+    # "responses": their chat completions reject function tools with reasoning on.
+    DEV_LLM_API: DevLLMApi = DevLLMApi.CHAT_COMPLETIONS
     # Default model for every dev request that doesn't pick one in the chat-header
     # selector — any DEV_MODEL_OPTIONS key from app/constants/llm.py ("custom" =
     # the endpoint above). An explicit selector choice still wins.
     DEV_DEFAULT_MODEL: str | None = None
+    # Integration id -> auth config id, as JSON, for a Composio project other than
+    # production's, whose auth config ids the integration catalog hardcodes.
+    COMPOSIO_AUTH_CONFIG_OVERRIDES: dict[str, str] = Field(default_factory=dict)
 
-    # ----------------------------------------------
-    # Workflows
-    # ----------------------------------------------
-    # Delete a workflow conversation's LangGraph checkpoint threads before every
-    # run, so run N stops replaying runs 1..N-1 out of Postgres (one production
-    # workflow held 1.39 MB of message state across three threads). The previous
-    # run reaches the next one as a recorded trace instead. Kill switch: set to
-    # false to fall back to the replaying behaviour without a deploy.
+    # Deletes a workflow conversation's LangGraph checkpoint threads before every
+    # run, so run N stops replaying runs 1..N-1 (one production workflow held
+    # 1.39 MB across three threads). Kill switch: set false to disable without a deploy.
     WORKFLOW_THREAD_RESET_ENABLED: bool = True
 
-    # ----------------------------------------------
-    # GitHub Integration (for Skill Discovery)
-    # ----------------------------------------------
-    # Optional: Get a token at https://github.com/settings/tokens
-    # - No scopes needed (just public repo read)
-    # - Gives 5,000 API requests/hour vs 60/hour without token
-    # - Used for discovering and installing skills from GitHub
+    # Optional GitHub token (no scopes needed): 5,000 API requests/hour vs
+    # 60/hour without, for discovering and installing skills from GitHub.
     GITHUB_TOKEN: str | None = None
 
-    # check_fields=False: E2B_DOMAIN is declared per-environment in the subclasses.
     # Rejected rather than stripped because the e2b SDK reads os.environ verbatim —
     # "" there silently falls back to the US cluster, padding yields a broken URL.
-    @field_validator("E2B_DOMAIN", mode="after", check_fields=False)
+    @field_validator("E2B_DOMAIN", mode="after")
     @classmethod
     def _reject_unusable_e2b_domain(cls, v: str | None) -> str | None:
         if v is not None and (not v or v != v.strip()):
@@ -282,244 +400,49 @@ class CommonSettings(BaseAppSettings):
     @computed_field  # type: ignore[prop-decorator]  # pydantic’s computed_field over @property trips mypy’s prop-decorator check
     @property
     def SLACK_OAUTH_REDIRECT_URI(self) -> str:
-        """Slack OAuth callback URL."""
+        """Slack OAuth callback URL; development goes through the redirectmeto proxy to localhost."""
+        if self.deployment.dev_tools:
+            return (
+                "https://redirectmeto.com/http://localhost:8000/api/v1/platform-auth/slack/callback"
+            )
         return f"{self.HOST}/api/v1/platform-auth/slack/callback"
 
-    model_config = SettingsConfigDict(
-        env_file_encoding="utf-8",
-        extra="allow",
-        validate_default=False,
-        arbitrary_types_allowed=True,
-    )
+    # Code mode (sandbox scripts calling GAIA tools via /sandbox/execute).
+    # Both unset = code mode ships dark: bash injects no execute token. The callback
+    # URL must be reachable FROM the E2B sandbox (public API base in prod).
+    SANDBOX_EXECUTE_TOKEN_SECRET: str | None = None
+    SANDBOX_EXECUTE_CALLBACK_URL: str | None = None
+    # Sandbox run events (hooks POSTing to /api/v1/lab/events); must be reachable
+    # from the E2B sandbox, so the public API base in prod. Unset = bash
+    # run_todo_id refuses to launch, since the run could never report back.
+    SANDBOX_LAB_EVENTS_CALLBACK_URL: str | None = None
+    # The same receiver as a self-host local sandbox container reaches it: the
+    # proxy's published port on the host gateway. Set by docker-compose.sandbox.yml.
+    LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL: str | None = None
+    # Template for users with the AGENT_LAB flag: the default one's 1GB OOM-kills
+    # coding-agent CLIs. Built with build_e2b_template.py --memory-mb 8192.
+    E2B_AGENT_LAB_TEMPLATE_ID: str | None = None
+    # Lab sandbox lifetime, at most the E2B team's cap: a create asking more is
+    # rejected (dev/staging team: 1h). Production's Pro team allows 12h (43200).
+    E2B_AGENT_LAB_LIFETIME_SECONDS: int = 3600
 
-
-class ProductionSettings(CommonSettings):
-    """Strict settings required for production environment."""
-
-    # ----------------------------------------------
-    # Database & Message Queue Connections
-    # ----------------------------------------------
-    CHROMADB_HOST: str
-    CHROMADB_PORT: int
-    POSTGRES_URL: str
-    RABBITMQ_URL: str
-
-    # ----------------------------------------------
-    # Authentication & OAuth
-    # ----------------------------------------------
-    GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
-    GOOGLE_CLIENT_ID: str
-    GOOGLE_CLIENT_SECRET: str
-
-    # ----------------------------------------------
-    # External API Integration Keys
-    # ----------------------------------------------
-    TAVILY_API_KEY: str
-    LLAMA_INDEX_KEY: str
-
-    # AI & Machine Learning
-    OPENAI_API_KEY: str
-    GOOGLE_API_KEY: str
-    OPENROUTER_API_KEY: str
-
-    # Weather Services
-    OPENWEATHER_API_KEY: str
-
-    # Email & Communication
-    RESEND_API_KEY: str
-    RESEND_AUDIENCE_ID: str
-    EMAIL_UNSUBSCRIBE_SECRET: str
-    # Signs single-purpose file-share grants (fetched by Composio during tool
-    # execution). Dedicated secret so share tokens are domain-separated from
-    # unsubscribe links.
-    SHARE_GRANT_SECRET: str
-
-    # Media Storage
-    CLOUDINARY_CLOUD_NAME: str
-    CLOUDINARY_API_KEY: str
-    CLOUDINARY_API_SECRET: str
-
-    # External Service Integration
-    COMPOSIO_KEY: str
-    FIRECRAWL_API_KEY: str
-
-    # Search providers (multi-provider failover; all optional — the chain skips
-    # any provider whose key/URL is unset). Exa is the primary free workhorse
-    # (20k/mo free); SearXNG is the self-hosted unlimited floor that can never
-    # bill us; Tavily/Brave are budget-capped boosters.
-    EXA_API_KEY: str | None = None
-    BRAVE_API_KEY: str | None = None
-    SEARXNG_BASE_URL: str | None = None
-
-    # Voice Agent Configuration
-    LIVEKIT_URL: str
-    LIVEKIT_API_KEY: str
-    LIVEKIT_API_SECRET: str
-    AGENT_SECRET: str
-    DEEPGRAM_API_KEY: str
-    ELEVENLABS_API_KEY: str
-    ELEVENLABS_TTS_MODEL: str
-    GAIA_BACKEND_URL: str
-    ELEVENLABS_VOICE_ID: str
-    # URL the SHARED voice agent should use to reach THIS backend, embedded
-    # per-room in the LiveKit participant metadata. Unset (default) keeps the
-    # agent on its boot-time GAIA_BACKEND_URL — set it in multi-backend
-    # deployments like staging previews (one agent, many preview APIs).
-    VOICE_AGENT_BACKEND_URL: str | None = None
-    # LiveKit agent every voice room is explicitly dispatched to; the worker
-    # registers under the same name (shared.py.voice).
-    VOICE_AGENT_NAME: str = PRODUCTION_VOICE_AGENT_NAME
-
-    # ----------------------------------------------
-    # Webhook Secrets & Security
-    # ----------------------------------------------
-    COMPOSIO_WEBHOOK_SECRET: str
-    DODO_WEBHOOK_PAYMENTS_SECRET: str
-
-    # ----------------------------------------------
-    # Content Management
-    # ----------------------------------------------
-    BLOG_BEARER_TOKEN: str  # Bearer token for blog management operations
-
-    # ----------------------------------------------
-    # Code Execution Environment
-    # ----------------------------------------------
-    E2B_API_KEY: str
-    E2B_TEMPLATE_ID: str  # gaia-coder template ID (run scripts/build_e2b_template.py)
-    E2B_DOMAIN: str
-    # Idle window before a sandbox is paused. A paused sandbox must resume +
-    # re-mount JuiceFS on the next turn, and the cold JuiceFS mount is the single
-    # most expensive step in an acquire (the metadata engine is remote). At 60s,
-    # any think-gap between turns paused the sandbox and made the *next* `bash`
-    # pay a full remount. 300s keeps the sandbox warm across normal conversation
-    # gaps so back-to-back turns reuse a live mount. Trade-off: more concurrently
-    # live sandboxes vs the E2B quota — the scalable fix is the warm pool
-    # (E2B_WARM_POOL_TARGET_RATIO), still a follow-up.
-    E2B_SANDBOX_IDLE_PAUSE_SECONDS: int = 300
-    E2B_DEFAULT_BASH_TIMEOUT: int = 120
-    E2B_SANDBOX_EVICT_DAYS: int = 14
-    E2B_WARM_POOL_TARGET_RATIO: float = 2.0  # Phase 2
-    # Artifact detection mechanism — decided empirically by
-    # scripts/probe_artifact_detection.py (Phase 0). "watch_dir" uses E2B
-    # envd's native recursive watch; "accesslog" tails JuiceFS .accesslog.
-    ARTIFACT_DETECTION_MODE: Literal["watch_dir", "accesslog"] = "watch_dir"
-    ARTIFACT_WATCHER_INODE_CACHE_SIZE: int = 4096  # accesslog mode only
-
-    # ----------------------------------------------
-    # Persistent Workspace Storage (R2 + JuiceFS)
-    # ----------------------------------------------
-    R2_ACCOUNT_ID: str
-    R2_BUCKET: str  # e.g. "gaia-workspaces"
-    R2_ACCESS_KEY: str
-    R2_SECRET_KEY: str
-    # Templated metadata URL: contains {shard} substituted at mount time.
-    # Redis (prod): "rediss://:pass@jfs-meta.heygaia.io:6380/{shard}" — {shard} is
-    # the DB number. Postgres: "postgres://juicefs:pass@host:5432/gaia_juicefs_{shard}".
-    # The password is split out into META_PASSWORD before reaching the sandbox
-    # (see _split_meta_url in services/sandbox/lifecycle.py).
-    JUICEFS_META_URL_TEMPLATE: str
-    JUICEFS_NUM_SHARDS: int = 1  # Phase 1: 1, Phase 2: 16
-    # JuiceFS RSA-4096 private key in PEM form. Whole multi-line PEM stored as a
-    # single env var / Infisical secret; the entrypoint writes it to disk on
-    # boot so `juicefs format / mount` can pick it up. Optional — leave empty
-    # to skip client-side encryption (R2 at-rest encryption still applies).
-    JFS_ENCRYPTION_KEY: str | None = None
-    JUICEFS_HOST_MOUNT_PATH: str = "/mnt/jfs"  # API container's sidecar mount
-    # JuiceFS bootstrap supervisor (tune per env without a code change):
-    JUICEFS_MOUNT_READY_TIMEOUT: int = 90  # secs to wait for mount readiness
-    JUICEFS_BOOTSTRAP_MAX_ATTEMPTS: int = 20  # retries on transient meta errors
-    JUICEFS_BOOTSTRAP_RETRY_BACKOFF: int = 3  # base secs, exponential, cap 15
-    SESSION_RETENTION_DAYS: int = 30  # prune sessions after this inactivity
-    SESSION_PRUNE_BATCH_LIMIT: int = 1000  # safety cap per prune task run
-
-    # ----------------------------------------------
-    # Payment Processing
-    # ----------------------------------------------
-    DODO_PAYMENTS_API_KEY: str
-    DODO_PAYMENTS_BASE_URL: str | None = None
-
-    # ----------------------------------------------
-    # Monitoring & Analytics
-    # ----------------------------------------------
-    SENTRY_DSN: str
-
-    # ----------------------------------------------
-    # MCP OAuth Credentials
-    # ----------------------------------------------
-    MCP_ENCRYPTION_KEY: str
-    VERCEL_MCP_CLIENT_ID: str
-    NOTION_MCP_CLIENT_ID: str
-    NOTION_MCP_CLIENT_SECRET: str
-    FIGMA_MCP_CLIENT_ID: str
-    FIGMA_MCP_CLIENT_SECRET: str
-
-    # ----------------------------------------------
-    # Eval / Skills Test Config (used by tests/skills via tests/conftest.py)
-    # ----------------------------------------------
-    EVAL_USER_ID: str | None = None
-    EVAL_USER_EMAIL: str | None = None
-    EVAL_USER_NAME: str | None = None
-
-    # ----------------------------------------------
-    # Debug Config
-    # ----------------------------------------------
-    DEBUG_EMAIL_PROCESSING: bool = False
-
-    # ----------------------------------------------
-    # Bot Configuration
-    # ----------------------------------------------
-    GAIA_BOT_API_KEY: str | None = None
-    DISCORD_BOT_TOKEN: str | None = None
-    DISCORD_CLIENT_ID: str | None = None
-    SLACK_BOT_TOKEN: str | None = None
-    SLACK_SIGNING_SECRET: str | None = None
-    SLACK_APP_TOKEN: str | None = None
-    TELEGRAM_BOT_TOKEN: str | None = None
-    KAPSO_API_KEY: str | None = None
-    KAPSO_PHONE_NUMBER_ID: str | None = None
-    WHATSAPP_PHONE_NUMBER: str | None = (
-        None  # E.164 without +, e.g. "15551234567" — used for wa.me links
-    )
-    SPECTRUM_PROJECT_ID: str | None = None
-    SPECTRUM_PROJECT_SECRET: str | None = None
-
-    # ----------------------------------------------
-    # Bot OAuth Configuration (Optional)
-    # ----------------------------------------------
-    DISCORD_OAUTH_CLIENT_ID: str | None = None
-    DISCORD_OAUTH_CLIENT_SECRET: str | None = None
-    SLACK_OAUTH_CLIENT_ID: str | None = None
-    SLACK_OAUTH_CLIENT_SECRET: str | None = None
-    TELEGRAM_BOT_USERNAME: str | None = "heygaia_bot"
-
-    # ----------------------------------------------
-    # Bot Session Token Configuration
-    # ----------------------------------------------
-    BOT_SESSION_TOKEN_SECRET: str  # Required: min 32 chars - DO NOT reuse GAIA_BOT_API_KEY
-    BOT_SESSION_TOKEN_EXPIRY_MINUTES: int = 15
-
-    @field_validator("DODO_PAYMENTS_BASE_URL", mode="after")
+    # Rejected at startup rather than at mint time: the token's user_id is a
+    # claim nothing else binds, so a guessable secret means running any user's
+    # tools. A deploy that sets a short one must not boot.
+    @field_validator("SANDBOX_EXECUTE_TOKEN_SECRET", mode="after")
     @classmethod
-    def _dodo_base_url_must_be_https(cls, v: str | None) -> str | None:
-        """Production must not send the Dodo API key over plain HTTP.
-
-        The override exists for pointing the Dodo client at a local stub or
-        sandbox mirror — a dev/test concern. Production traffic must use TLS,
-        so reject an explicit http:// override rather than silently leaking
-        the bearer token in cleartext. Unset (None) stays allowed.
-        """
-        if v is not None and v and not v.startswith("https://"):
-            raise ValueError("DODO_PAYMENTS_BASE_URL must use https:// in production")
+    def _reject_weak_sandbox_execute_secret(cls, v: str | None) -> str | None:
+        # A blank value is how a templated deploy (compose, Infisical, k8s) spells
+        # "unset" — code mode then ships dark. Only a SHORT but present secret is
+        # worth refusing to boot for; failing on "" took the whole API down once.
+        if not v:
+            return None
+        if len(v) < SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS:
+            raise ValueError(
+                "SANDBOX_EXECUTE_TOKEN_SECRET must be at least "
+                f"{SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS} characters"
+            )
         return v
-
-    model_config = SettingsConfigDict(
-        env_file_encoding="utf-8",
-        extra="allow",
-    )
-
-
-class DevelopmentSettings(CommonSettings):
-    """Looser settings for development environment with defaults."""
 
     # ----------------------------------------------
     # Database & Message Queue Connections
@@ -532,16 +455,13 @@ class DevelopmentSettings(CommonSettings):
     # ----------------------------------------------
     # Authentication & OAuth
     # ----------------------------------------------
+    GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
     GOOGLE_CLIENT_ID: str | None = None
     GOOGLE_CLIENT_SECRET: str | None = None
-    ENABLE_PUBSUB_JWT_VERIFICATION: bool = False
-    GOOGLE_USERINFO_URL: str = "https://www.googleapis.com/oauth2/v2/userinfo"
-    GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
 
     # ----------------------------------------------
     # External API Integration Keys
     # ----------------------------------------------
-    # Search & Data Services
     TAVILY_API_KEY: str | None = None
     LLAMA_INDEX_KEY: str | None = None
 
@@ -557,6 +477,9 @@ class DevelopmentSettings(CommonSettings):
     RESEND_API_KEY: str | None = None
     RESEND_AUDIENCE_ID: str | None = None
     EMAIL_UNSUBSCRIBE_SECRET: str | None = None
+    # Signs single-purpose file-share grants (fetched by Composio during tool
+    # execution). Dedicated secret so share tokens are domain-separated from
+    # unsubscribe links.
     SHARE_GRANT_SECRET: str | None = None
 
     # Media Storage
@@ -568,16 +491,11 @@ class DevelopmentSettings(CommonSettings):
     COMPOSIO_KEY: str | None = None
     FIRECRAWL_API_KEY: str | None = None
 
-    # Search providers (multi-provider failover; all optional)
+    # Multi-provider failover, all optional. Exa is the primary free workhorse
+    # (20k/mo free); SearXNG is the self-hosted unlimited floor; Brave is a budget-capped booster.
     EXA_API_KEY: str | None = None
     BRAVE_API_KEY: str | None = None
     SEARXNG_BASE_URL: str | None = None
-
-    # ----------------------------------------------
-    # Webhook Secrets & Security
-    # ----------------------------------------------
-    COMPOSIO_WEBHOOK_SECRET: str | None = None
-    DODO_WEBHOOK_PAYMENTS_SECRET: str | None = None
 
     # Voice Agent Configuration
     LIVEKIT_URL: str | None = None
@@ -587,10 +505,25 @@ class DevelopmentSettings(CommonSettings):
     DEEPGRAM_API_KEY: str | None = None
     ELEVENLABS_API_KEY: str | None = None
     ELEVENLABS_TTS_MODEL: str | None = None
-    GAIA_BACKEND_URL: str | None = "http://host.docker.internal:8000"
+    GAIA_BACKEND_URL: str | None = None
     ELEVENLABS_VOICE_ID: str | None = None
+    # URL the SHARED voice agent uses to reach THIS backend. Unset keeps the
+    # agent on its boot-time GAIA_BACKEND_URL — set in multi-backend deployments
+    # (one agent, many preview APIs).
     VOICE_AGENT_BACKEND_URL: str | None = None
-    VOICE_AGENT_NAME: str = DEVELOPMENT_VOICE_AGENT_NAME
+    # LiveKit agent every voice room is explicitly dispatched to; the worker
+    # registers under the same name (shared.py.voice).
+    VOICE_AGENT_NAME: str = Field(
+        default_factory=lambda data: default_voice_agent_name(data["ENV"])
+    )
+
+    # ----------------------------------------------
+    # Webhook Secrets & Security
+    # ----------------------------------------------
+    COMPOSIO_WEBHOOK_SECRET: str | None = None
+    DODO_WEBHOOK_PAYMENTS_SECRET: str | None = None
+    # Cloudflare Turnstile secret; the public contact form is refused without it.
+    TURNSTILE_SECRET_KEY: str | None = None
 
     # ----------------------------------------------
     # Content Management
@@ -601,39 +534,44 @@ class DevelopmentSettings(CommonSettings):
     # Code Execution Environment
     # ----------------------------------------------
     E2B_API_KEY: str | None = None
-    E2B_TEMPLATE_ID: str | None = None
+    E2B_TEMPLATE_ID: str | None = None  # gaia-coder template ID (run scripts/build_e2b_template.py)
     E2B_DOMAIN: str | None = None
-    # Idle window before a sandbox is paused. A paused sandbox must resume +
-    # re-mount JuiceFS on the next turn, and the cold JuiceFS mount is the single
-    # most expensive step in an acquire (the metadata engine is remote). At 60s,
-    # any think-gap between turns paused the sandbox and made the *next* `bash`
-    # pay a full remount. 300s keeps the sandbox warm across normal conversation
-    # gaps so back-to-back turns reuse a live mount. Trade-off: more concurrently
-    # live sandboxes vs the E2B quota — the scalable fix is the warm pool
-    # (E2B_WARM_POOL_TARGET_RATIO), still a follow-up.
+    # A paused sandbox pays a full JuiceFS remount on resume. 60s paused too
+    # eagerly between turns; trade-off vs live-sandbox count is the E2B quota
+    # (scalable fix: the warm pool, E2B_WARM_POOL_TARGET_RATIO).
     E2B_SANDBOX_IDLE_PAUSE_SECONDS: int = 300
     E2B_DEFAULT_BASH_TIMEOUT: int = 120
     E2B_SANDBOX_EVICT_DAYS: int = 14
-    E2B_WARM_POOL_TARGET_RATIO: float = 2.0
+    E2B_WARM_POOL_TARGET_RATIO: float = 2.0  # Phase 2
+    # Artifact detection mechanism — decided empirically by
+    # scripts/probe_artifact_detection.py (Phase 0). "watch_dir" uses E2B
+    # envd's native recursive watch; "accesslog" tails JuiceFS .accesslog.
     ARTIFACT_DETECTION_MODE: Literal["watch_dir", "accesslog"] = "watch_dir"
-    ARTIFACT_WATCHER_INODE_CACHE_SIZE: int = 4096
+    ARTIFACT_WATCHER_INODE_CACHE_SIZE: int = 4096  # accesslog mode only
 
     # ----------------------------------------------
     # Persistent Workspace Storage (R2 + JuiceFS)
     # ----------------------------------------------
     R2_ACCOUNT_ID: str | None = None
-    R2_BUCKET: str | None = None
+    R2_BUCKET: str | None = None  # e.g. "gaia-workspaces"
     R2_ACCESS_KEY: str | None = None
     R2_SECRET_KEY: str | None = None
+    # Templated metadata URL, {shard} substituted at mount time, e.g.
+    # "rediss://:pass@jfs-meta.heygaia.io:6380/{shard}". Password is split out
+    # into META_PASSWORD before reaching the sandbox (_split_meta_url in services/sandbox/lifecycle.py).
     JUICEFS_META_URL_TEMPLATE: str | None = None
-    JUICEFS_NUM_SHARDS: int = 1
+    JUICEFS_NUM_SHARDS: int = 1  # Phase 1: 1, Phase 2: 16
+    # JuiceFS RSA-4096 private key (PEM), written to disk by the entrypoint on
+    # boot. Optional — leave empty to skip client-side encryption (R2 at-rest
+    # encryption still applies).
     JFS_ENCRYPTION_KEY: str | None = None
-    JUICEFS_HOST_MOUNT_PATH: str = "/mnt/jfs"
-    JUICEFS_MOUNT_READY_TIMEOUT: int = 90
-    JUICEFS_BOOTSTRAP_MAX_ATTEMPTS: int = 20
-    JUICEFS_BOOTSTRAP_RETRY_BACKOFF: int = 3
-    SESSION_RETENTION_DAYS: int = 30
-    SESSION_PRUNE_BATCH_LIMIT: int = 1000
+    JUICEFS_HOST_MOUNT_PATH: str = "/mnt/jfs"  # API container's sidecar mount
+    # JuiceFS bootstrap supervisor (tune per env without a code change):
+    JUICEFS_MOUNT_READY_TIMEOUT: int = 90  # secs to wait for mount readiness
+    JUICEFS_BOOTSTRAP_MAX_ATTEMPTS: int = 20  # retries on transient meta errors
+    JUICEFS_BOOTSTRAP_RETRY_BACKOFF: int = 3  # base secs, exponential, cap 15
+    SESSION_RETENTION_DAYS: int = 30  # prune sessions after this inactivity
+    SESSION_PRUNE_BATCH_LIMIT: int = 1000  # safety cap per prune task run
 
     # ----------------------------------------------
     # Payment Processing
@@ -664,26 +602,9 @@ class DevelopmentSettings(CommonSettings):
     EVAL_USER_NAME: str | None = None
 
     # ----------------------------------------------
-    # Environment Configuration
-    # ----------------------------------------------
-    ENV: Literal["production", "development"] = "development"
-
-    # ----------------------------------------------
     # Debug Config
     # ----------------------------------------------
     DEBUG_EMAIL_PROCESSING: bool = False
-
-    # Development-only auth bypass: every request is authenticated as this
-    # user (must exist in Mongo) with no WorkOS session, so agents and tools
-    # can drive the app end to end. get_settings() refuses to start in
-    # production when this is set.
-    DEV_AUTH_BYPASS_EMAIL: str | None = None
-
-    # GAIA_SIM_MODE and OPENROUTER_BASE_URL are declared on CommonSettings (the
-    # production import path reads them) — see the note there.
-
-    # Default to show warnings in development environment
-    SHOW_MISSING_KEY_WARNINGS: bool = True
 
     # ----------------------------------------------
     # Bot Configuration
@@ -694,6 +615,8 @@ class DevelopmentSettings(CommonSettings):
     SLACK_BOT_TOKEN: str | None = None
     SLACK_SIGNING_SECRET: str | None = None
     SLACK_APP_TOKEN: str | None = None
+    # The workspace a self-hosted instance's Slack bot is installed in (set by `gaia bots add slack`).
+    SLACK_WORKSPACE_URL: str | None = None
     TELEGRAM_BOT_TOKEN: str | None = None
     KAPSO_API_KEY: str | None = None
     KAPSO_PHONE_NUMBER_ID: str | None = None
@@ -704,29 +627,99 @@ class DevelopmentSettings(CommonSettings):
     SPECTRUM_PROJECT_SECRET: str | None = None
 
     # ----------------------------------------------
+    # Delivery Failure Alerts (internal Slack app, optional)
+    # ----------------------------------------------
+    SLACK_DELIVERY_ALERTS_BOT_TOKEN: str | None = None
+    SLACK_DELIVERY_ALERTS_CHANNEL_ID: str | None = None
+
+    # ----------------------------------------------
     # Bot OAuth Configuration (Optional)
     # ----------------------------------------------
     DISCORD_OAUTH_CLIENT_ID: str | None = None
     DISCORD_OAUTH_CLIENT_SECRET: str | None = None
     SLACK_OAUTH_CLIENT_ID: str | None = None
     SLACK_OAUTH_CLIENT_SECRET: str | None = None
-    TELEGRAM_BOT_USERNAME: str | None = "heygaia_bot"
+    TELEGRAM_BOT_USERNAME: str | None = None
 
     # ----------------------------------------------
     # Bot Session Token Configuration
     # ----------------------------------------------
-    BOT_SESSION_TOKEN_SECRET: str | None = None  # Falls back to GAIA_BOT_API_KEY
+    BOT_SESSION_TOKEN_SECRET: str | None = None  # min 32 chars - DO NOT reuse GAIA_BOT_API_KEY
     BOT_SESSION_TOKEN_EXPIRY_MINUTES: int = 15
 
-    @computed_field  # type: ignore[prop-decorator]  # pydantic’s computed_field over @property trips mypy’s prop-decorator check
-    @property
-    def SLACK_OAUTH_REDIRECT_URI(self) -> str:
-        """Slack OAuth callback URL using redirectmeto proxy for local development."""
-        return "https://redirectmeto.com/http://localhost:8000/api/v1/platform-auth/slack/callback"
+    @model_validator(mode="after")
+    def _default_hosted_bot_identity(self) -> Self:
+        """Fill the hosted handles from the shared identity file when env leaves them unset."""
+        if not self.deployment.hosted_bots:
+            return self
+        self.WHATSAPP_PHONE_NUMBER = self.WHATSAPP_PHONE_NUMBER or GAIA_CLOUD_WHATSAPP_NUMBER
+        self.DISCORD_OAUTH_CLIENT_ID = self.DISCORD_OAUTH_CLIENT_ID or GAIA_CLOUD_DISCORD_CLIENT_ID
+        self.SLACK_OAUTH_CLIENT_ID = self.SLACK_OAUTH_CLIENT_ID or GAIA_CLOUD_SLACK_CLIENT_ID
+        self.TELEGRAM_BOT_USERNAME = self.TELEGRAM_BOT_USERNAME or GAIA_CLOUD_TELEGRAM_BOT_USERNAME
+        return self
+
+    @model_validator(mode="before")
+    @classmethod
+    def _selfhost_signs_in_locally_by_default(cls, data: object) -> object:
+        """Default AUTH_MODE to local under ENV=selfhost; WorkOS would leave no way to sign in."""
+        if not isinstance(data, dict):
+            return data
+        selection: _DeploymentSelection = cast(_DeploymentSelection, data)
+        if selection.get("AUTH_MODE") or selection.get("ENV") != DeploymentKind.SELFHOST:
+            return data
+        log.info(f"{LogTag.STARTUP} AUTH_MODE unset under ENV=selfhost - defaulting to local")
+        return {**data, "AUTH_MODE": "local"}
+
+    @model_validator(mode="after")
+    def _refuse_what_the_deployment_must_not_run(self) -> Self:
+        """Refuse a real deployment that sets a development override, or a self-host missing a required key.
+
+        Raises RuntimeError rather than ValueError so pydantic does not fold a
+        boot refusal into a field ValidationError. Building the profile refuses
+        an invalid ENV/AUTH_MODE/BLOB_STORE combination first.
+        """
+        profile = self.deployment
+        if not profile.dev_tools:
+            for name, is_set in self._development_overrides().items():
+                if is_set:
+                    raise RuntimeError(
+                        f"{name} is set but ENV is not 'development' — "
+                        "development overrides must never run in a real deployment."
+                    )
+        if profile.kind is DeploymentKind.PRODUCTION:
+            if self.COMPOSIO_AUTH_CONFIG_OVERRIDES:
+                raise RuntimeError(
+                    "COMPOSIO_AUTH_CONFIG_OVERRIDES is set but ENV=production — "
+                    "it points integrations at a non-production Composio project."
+                )
+            if self.DODO_PAYMENTS_BASE_URL and not self.DODO_PAYMENTS_BASE_URL.startswith(
+                "https://"
+            ):
+                # A ValueError: a malformed value, reported as a field error.
+                raise ValueError("DODO_PAYMENTS_BASE_URL must use https:// in production")
+        if profile.requires_complete_config:
+            missing = sorted(key for key in required_keys(profile) if getattr(self, key) is None)
+            if missing:
+                raise RuntimeError(
+                    f"{', '.join(missing)} must be set for ENV={profile.kind} "
+                    f"with AUTH_MODE={self.AUTH_MODE} — see app/config/capability_requirements.py."
+                )
+        return self
+
+    def _development_overrides(self) -> dict[str, bool]:
+        """Each development-only override and whether it is switched on."""
+        return {
+            "DEV_AUTH_BYPASS_EMAIL": bool(self.DEV_AUTH_BYPASS_EMAIL),
+            "DEV_UNLIMITED_RATE_LIMITS": self.DEV_UNLIMITED_RATE_LIMITS,
+            "OPENROUTER_BASE_URL": bool(self.OPENROUTER_BASE_URL),
+            "GAIA_SIM_MODE": self.GAIA_SIM_MODE,
+        }
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
         extra="allow",
+        validate_default=False,
+        arbitrary_types_allowed=True,
     )
 
 
@@ -736,115 +729,38 @@ _infisical_secrets_loaded = False
 def _ensure_infisical_loaded() -> None:
     """Ensure Infisical secrets are loaded exactly once."""
     global _infisical_secrets_loaded
-    if not _infisical_secrets_loaded:
-        infisical_start = time.time()
-        inject_infisical_secrets()
-        log.info(
-            f"{LogTag.STARTUP} Infisical secrets loaded",
-            duration_seconds=round(time.time() - infisical_start, 3),
-        )
-        _infisical_secrets_loaded = True
+    if _infisical_secrets_loaded:
+        return
+    infisical_start = time.time()
+    inject_infisical_secrets()
+    log.info(
+        f"{LogTag.STARTUP} Infisical secrets loaded",
+        duration_seconds=round(time.time() - infisical_start, 3),
+    )
+    _infisical_secrets_loaded = True
 
 
 @lru_cache(maxsize=1)
-def get_settings() -> Any:  # noqa: ANN401 -- framework contract
-    """
-    Get cached settings instance based on environment.
-
-    This function uses LRU cache to ensure settings are instantiated only once,
-    avoiding expensive Pydantic validation on every import.
-
-    The return stays `Any`. Measured, don't re-litigate: annotating it
-    `-> CommonSettings` produced **129 new mypy errors** — the concrete keys live
-    on ProductionSettings/DevelopmentSettings or arrive via `extra="allow"`, so
-    every `settings.TAVILY_API_KEY` / `R2_*` / `JUICEFS_*` read across the
-    storage, search-provider and sandbox layers becomes `has no attribute`.
-    Narrowing means hoisting those declarations onto the common base, which is a
-    settings-model redesign, not a typing fix (Type Safety item 14). The same run
-    showed `from_env(**kwargs: object)` adds 4 more: `cls(**kwargs)` feeds
-    per-field types (`ENV: Literal[...]`, `SHOW_MISSING_KEY_WARNINGS: bool`).
-    """
+def get_settings() -> Settings:
+    """Return the cached settings instance, built once from the environment."""
     log.info(f"{LogTag.STARTUP} Starting settings initialization...")
-
     _ensure_infisical_loaded()
-
-    env = os.getenv("ENV", "production")
-
     try:
-        # Initialize settings based on environment
-        settings_obj: ProductionSettings | DevelopmentSettings
-        if env == "development":
-            settings_obj = DevelopmentSettings.from_env()
-        else:
-            # Hard block, not a warning: the dev auth bypass authenticates
-            # every request as a fixed user, so production must refuse to
-            # boot rather than run with it. Checked via os.getenv because
-            # from_env() downgrades pydantic validation errors to warnings.
-            if os.getenv("DEV_AUTH_BYPASS_EMAIL"):
-                raise RuntimeError(
-                    "DEV_AUTH_BYPASS_EMAIL is set but ENV=production — "
-                    "the dev auth bypass must never be enabled in production."
-                )
-            if os.getenv("DEV_UNLIMITED_RATE_LIMITS", "").strip().lower() not in (
-                "",
-                "0",
-                "false",
-                "no",
-                "off",
-            ):
-                raise RuntimeError(
-                    "DEV_UNLIMITED_RATE_LIMITS is set but ENV=production — "
-                    "lifting rate limits in production is never allowed."
-                )
-            # Same policy as the auth bypass: the OpenRouter base-URL override
-            # redirects the model to a local scripted stub, so production must
-            # refuse to boot rather than run against it.
-            if os.getenv("OPENROUTER_BASE_URL"):
-                raise RuntimeError(
-                    "OPENROUTER_BASE_URL is set but ENV=production — "
-                    "the OpenRouter base-URL override is a development-only stub hook."
-                )
-            # Boolean-semantic var: an explicit "false"/"0"/"no"/"off" is a
-            # legitimate way to DISABLE sim mode and must not trip the guard
-            # (unlike the string-valued overrides above, where set == enabled).
-            if os.getenv("GAIA_SIM_MODE", "").strip().lower() not in (
-                "",
-                "0",
-                "false",
-                "no",
-                "off",
-            ):
-                raise RuntimeError(
-                    "GAIA_SIM_MODE is set but ENV=production — "
-                    "sim mode routes every model call to a local scripted stub."
-                )
-            settings_obj = ProductionSettings.from_env()
-            log.info(f"{LogTag.STARTUP} Production settings initialized")
-
-        # Validate settings after full initialization
-        settings_validator.configure(
-            settings_obj.SHOW_MISSING_KEY_WARNINGS,
-            is_production=settings_obj.ENV == "production",
-        )
-
-        settings_validator.validate_settings(settings_obj)
-        if settings_obj.SHOW_MISSING_KEY_WARNINGS:
-            settings_validator.log_validation_results()
-
-        return settings_obj
-
+        settings_obj = Settings()  # type: ignore[call-arg]  # pydantic-settings fills MONGO_DB/REDIS_URL from env; mypy sees only the init signature
     except Exception as e:
         log.error(
             f"{LogTag.STARTUP} Error initializing settings",
             error=str(e),
             error_type=type(e).__name__,
         )
-        # In case of error, we still need to return a settings object
-        # Use development settings with defaults as fallback
-        if env == "development":
-            return DevelopmentSettings.from_env(SHOW_MISSING_KEY_WARNINGS=True)
-        log.critical(f"{LogTag.STARTUP} Critical error initializing production settings!")
         raise
+    log.info(f"{LogTag.STARTUP} Settings initialized", deployment_kind=str(settings_obj.ENV))
+
+    settings_validator.configure(settings_obj.SHOW_MISSING_KEY_WARNINGS, settings_obj.deployment)
+    settings_validator.validate_settings(settings_obj)
+    if settings_obj.SHOW_MISSING_KEY_WARNINGS:
+        settings_validator.log_validation_results()
+    return settings_obj
 
 
 settings = get_settings()

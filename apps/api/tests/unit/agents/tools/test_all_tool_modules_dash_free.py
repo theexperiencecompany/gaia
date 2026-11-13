@@ -1,35 +1,16 @@
 """Every model-visible tool string must stay dash-free.
 
-Mirrors ``tests/unit/agents/prompts/test_all_prompt_modules_dash_free.py`` for
-``app.agents.tools`` and the Composio custom-tools package: these modules do
-not export their model-visible text as plain module-level string constants
-(they build it as ``@tool`` descriptions, ``Annotated`` parameter
-descriptions, and f-strings assembled inside a tool's body and returned to
-the model), so a different discovery strategy is needed per surface:
+Mirrors test_all_prompt_modules_dash_free.py for app.agents.tools and the
+Composio custom-tools package, using three discovery strategies since these
+modules don't export model-visible text as plain module-level constants:
 
-1. **Bound tool objects** — every module-level ``BaseTool`` created by the
-   ``@tool`` decorator has a ``.description`` (the function's docstring) and
-   an ``args_schema`` whose fields each carry the ``Annotated[...,
-   "description"]`` text. Both are read verbatim by the model.
-2. **Module-level string constants** — the same convention as the prompts
-   guard: any public module-level ``str`` (docstring templates, error
-   fragments) that a tool assembles into its return value.
-3. **Return-value source scan** — the two categories above miss text that
-   only exists inside an f-string or a plain string literal *inside* a
-   function body (e.g. ``return f"Already known — matched..."``). Walking
-   bound values can't see that; it was never assigned to a name. Instead this
-   scans the AST of every tool module and flags any string literal that
-   appears textually inside a function decorated with ``@tool`` (the
-   decorator that makes the docstring/return value model-visible) or a
-   function whose name matches a "returns to the model" naming heuristic.
-   This is intentionally coarse: it does not trace whether a given literal
-   inside a ``@tool`` function is actually returned versus, say, a comment
-   equivalent (a log message string, an internal-only branch) — logging
-   calls are excluded (see ``_LOG_CALL_NAMES``) but everything else inside a
-   ``@tool`` function body is treated as model-visible, because that is
-   exactly the shape of the bug this guard exists to catch (memory_tools.py
-   lines 358 and 712: a plain string literal deep inside a ``@tool``
-   function's body, invisible to any constant-walking approach).
+1. Bound tool objects — a @tool-decorated BaseTool's .description and its
+   args_schema's Annotated[..., "description"] fields.
+2. Module-level string constants assembled into a tool's return value.
+3. An AST scan of string literals appearing textually inside a @tool function
+   body (an f-string return value isn't bound to any name, so 1 and 2 miss
+   it), excluding logging calls (_LOG_CALL_NAMES). Regression coverage for
+   memory_tools.py:358/712, a literal invisible to constant-walking.
 """
 
 import ast
@@ -87,7 +68,7 @@ MODULE_NAMES = _discover_module_names()
 
 
 def _bound_tools(module: ModuleType) -> dict[str, BaseTool]:
-    """Every module-level ``BaseTool`` instance (the result of ``@tool``)."""
+    """Every module-level BaseTool instance (the result of @tool)."""
     return {name: value for name, value in vars(module).items() if isinstance(value, BaseTool)}
 
 
@@ -108,7 +89,7 @@ def _tool_offenders(bound_tool: BaseTool) -> list[tuple[str, str]]:
 
 
 def _string_constants(module: ModuleType) -> dict[str, str]:
-    """Every public module-level ``str`` constant."""
+    """Every public module-level str constant."""
     return {
         name: value
         for name, value in vars(module).items()
@@ -139,8 +120,7 @@ def _is_log_call(node: ast.Call) -> bool:
 
 
 def _string_literals_under_log_calls(tree: ast.Module) -> set[int]:
-    """Line numbers of string constants that are direct arguments to a log
-    call, so they're excluded from the @tool-body scan below."""
+    """Line numbers of string constants passed directly to a log call, excluded from the @tool-body scan below."""
     excluded_lines: set[int] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and _is_log_call(node):
@@ -151,9 +131,7 @@ def _string_literals_under_log_calls(tree: ast.Module) -> set[int]:
 
 
 def _tool_body_source_offenders(module_path: Path) -> list[tuple[str, str]]:
-    """Flag em/en-dashes in string literals that appear (textually, via AST
-    line ranges) inside a function decorated with @tool, excluding literals
-    that are direct arguments to a log call."""
+    """Flag em/en-dashes in string literals inside a @tool-decorated function, excluding log-call arguments."""
     source = module_path.read_text()
     tree = ast.parse(source, filename=str(module_path))
     tool_function_names = _tool_decorated_function_names(tree)
@@ -219,10 +197,7 @@ def test_tool_function_bodies_have_no_dashes(module_name: str) -> None:
 
 
 def test_discovery_actually_found_the_known_modules() -> None:
-    """Guards the discovery mechanism itself: if pkgutil ever silently found
-    zero submodules (e.g. a namespace-package path resolution regression),
-    every parametrized case above would vacuously pass without checking
-    anything."""
+    """If pkgutil ever silently found zero submodules, every parametrized case above would vacuously pass."""
     assert len(MODULE_NAMES) >= 40, (
         f"only discovered {len(MODULE_NAMES)} modules, expected at least 40 "
         "across app.agents.tools (recursive) and "
@@ -231,11 +206,7 @@ def test_discovery_actually_found_the_known_modules() -> None:
 
 
 def test_tool_body_scan_actually_catches_a_known_shape() -> None:
-    """Pins the heuristic against the exact bug shape this guard exists for:
-    a plain string literal deep inside a @tool function's body (not a bound
-    description, not a module constant) that reaches the model. Regression
-    coverage for memory_tools.py:358/712, which a constant-walking test can't
-    see because the text was never assigned to a module-level name."""
+    """Regression coverage for memory_tools.py:358/712, a literal never assigned to a name that constant-walking misses."""
     source = '''
 from langchain_core.tools import tool
 

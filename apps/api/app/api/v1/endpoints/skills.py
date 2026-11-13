@@ -26,6 +26,7 @@ from app.agents.skills.models import (
     DiscoveredSkillInfo,
     DiscoverSkillsResponse,
     Skill,
+    SkillAuthor,
     SkillInlineCreateRequest,
     SkillListResponse,
     SkillTargetsResponse,
@@ -46,15 +47,22 @@ from app.constants.log_tags import LogTag
 from app.constants.skills import EXECUTOR_SUBAGENT_ID, EXECUTOR_TARGET_LABEL
 from app.decorators import tiered_rate_limit
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.integrations.user_integrations import get_connected_integration_ids
+from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.integrations import (
+    SkillDisabled,
+    SkillEnabled,
+    SkillUninstalled,
+)
 from shared.py.wide_events import log
 
-router = APIRouter(prefix="/skills", tags=["skills"])
+router = APIRouter(prefix="/skills")
 
 
 def _get_user_id(user: AuthenticatedUser = Depends(get_current_user)) -> str:
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(
             status_code=http_status.HTTP_401_UNAUTHORIZED,
@@ -65,7 +73,7 @@ def _get_user_id(user: AuthenticatedUser = Depends(get_current_user)) -> str:
 
 async def _validate_target(user_id: str, target: str) -> None:
     """Reject a target that isn't the executor or one of the user's connected
-    integration subagents. Keeps the UI from scoping a skill to something the
+    integrations. Keeps the UI from scoping a skill to something the
     agent can never run."""
     targets = await get_skill_targets(user_id)
     allowed = {t.value for t in targets}
@@ -84,7 +92,7 @@ async def list_skill_targets_endpoint(
     user_id: Annotated[str, Depends(_get_user_id)],
 ) -> SkillTargetsResponse:
     """List the targets a skill can run in: the executor plus the user's
-    connected integration subagents."""
+    connected integrations."""
     log.set(operation="list_skill_targets")
     targets = await get_skill_targets(user_id)
     log.set(result_count=len(targets), outcome="success")
@@ -102,7 +110,7 @@ async def list_builtin_skills_endpoint(
     connected_ids = await get_connected_integration_ids(user_id)
 
     def _is_available(subagent_id: str) -> bool:
-        # The executor and non-integration builtin subagents (docgen, knowledge
+        # The executor and non-integration builtins (docgen, knowledge
         # guide) are always available; integration-backed ones need a connection.
         if subagent_id == EXECUTOR_SUBAGENT_ID:
             return True
@@ -241,19 +249,12 @@ async def install_skill_with_auto_discover(
             skill_path=install_path,
             target_override=target,
             allowed_targets=allowed_targets,
+            author=SkillAuthor.USER,
         )
         log.set(skill_id=installed.id if hasattr(installed, "id") else None)
         log.set(outcome="success")
-        capture_context_event(
-            AnalyticsEvents.SKILL_INSTALLED,
-            {
-                "skill_id": installed.id if hasattr(installed, "id") else None,
-                "target": installed.target,
-                "source": "github",
-            },
-        )
         return installed
-    except HTTPException:
+    except (HTTPException, AppError):
         raise
     except ValueError as e:
         raise HTTPException(
@@ -288,25 +289,11 @@ async def create_inline_skill_endpoint(
     log.set(user={"id": user_id}, skill={"name": request.name, "target": request.target})
     try:
         await _validate_target(user_id, request.target)
-        installed = await install_from_inline(
-            user_id=user_id,
-            name=request.name,
-            description=request.description,
-            instructions=request.instructions,
-            target=request.target,
-        )
+        installed = await install_from_inline(user_id, request, author=SkillAuthor.USER)
         log.set(skill_id=installed.id if hasattr(installed, "id") else None)
         log.set(outcome="success")
-        capture_context_event(
-            AnalyticsEvents.SKILL_INSTALLED,
-            {
-                "skill_id": installed.id if hasattr(installed, "id") else None,
-                "target": installed.target,
-                "source": "inline",
-            },
-        )
         return installed
-    except HTTPException:
+    except (HTTPException, AppError):
         raise
     except ValueError as e:
         raise HTTPException(
@@ -349,6 +336,7 @@ async def update_skill_endpoint(
             description=request.description,
             instructions=request.instructions,
             target=request.target,
+            author=SkillAuthor.USER,
         )
         if not updated:
             raise HTTPException(
@@ -453,6 +441,8 @@ async def enable_skill_endpoint(
     try:
         success = await enable_skill(user_id, skill_id)
         log.set(outcome="success")
+        if success:
+            capture(UserId(user_id), SkillEnabled())
         return SkillToggleResponse(success=success, skill_id=skill_id, enabled=True)
     except Exception as e:
         log.error(
@@ -478,6 +468,8 @@ async def disable_skill_endpoint(
     try:
         success = await disable_skill(user_id, skill_id)
         log.set(outcome="success")
+        if success:
+            capture(UserId(user_id), SkillDisabled())
         return SkillToggleResponse(success=success, skill_id=skill_id, enabled=False)
     except Exception as e:
         log.error(
@@ -508,10 +500,7 @@ async def uninstall_skill_endpoint(
                 detail=f"Skill {skill_id} not found",
             )
         log.set(outcome="success")
-        capture_context_event(
-            AnalyticsEvents.SKILL_UNINSTALLED,
-            {"skill_id": skill_id, "target": uninstalled.target},
-        )
+        capture(UserId(user_id), SkillUninstalled(skill_id=skill_id, target=uninstalled.target))
     except HTTPException:
         raise
     except Exception as e:

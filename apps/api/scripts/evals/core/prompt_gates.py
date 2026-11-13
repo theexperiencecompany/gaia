@@ -1,21 +1,14 @@
 """Deterministic gates whose rules AND inputs come from the shipped prompt.
 
-A rule the prompt states as an absolute — a banned character, a list of banned
-phrases, a set of internal tokens — is decidable by reading the reply. Handing
-one of those to an LLM judge buys nothing and costs two things: a judge call, and
-a verdict that is not reproducible run to run. ``_emoji_discipline_check`` in
-``suites/quality.py`` is the pattern; this module is the same idea with the
-**inputs** derived from the prompt too.
+A rule the prompt states as an absolute is decidable by reading the reply, so
+handing it to an LLM judge buys nothing and costs a non-reproducible verdict.
+This module derives inputs from the prompt too: it reads the six banned
+phrases out of the live banned_bot_phrases clause rather than carrying a
+copy, so a seventh phrase added to COMMS_AGENT_PROMPT extends the gate with
+no eval change. If the rule's shape changes so the list can no longer be read
+out of it, extraction raises instead of silently gating on nothing.
 
-That second half is what makes these gates non-drifting. The banned-phrase gate
-does not carry a copy of the six phrases: it reads them out of the live
-``banned_bot_phrases`` clause, so adding a seventh banned phrase to
-``COMMS_AGENT_PROMPT`` extends the gate with no eval change at all. If the rule's
-shape changes so the list can no longer be read out of it, extraction raises
-rather than quietly gating on nothing — a gate that silently stops checking is
-worse than no gate, because the green tick still says it ran.
-
-Each gate has the ``(CaseRun) -> (score, reason)`` shape a suite's ``score()``
+Each gate has the (CaseRun) -> (score, reason) shape a suite's score()
 already consumes, so wiring one in is a single line.
 """
 
@@ -28,13 +21,9 @@ import re
 from scripts.evals.core.prompt_contracts import ClauseResolutionError, resolve
 from scripts.evals.core.types import CaseRun
 
-#: Terms the ONE ENTITY rule quotes that are also ordinary English. Gating on
-#: them would fire on innocent replies — "the right tool for the job", "a travel
-#: agent" — and a gate that cries wolf gets muted, which costs more than it
-#: catches. Everything else the rule quotes IS gated, so a new internal term
-#: added to the prompt is covered automatically; only these two are exempt, and
-#: only because the word is unavoidable in normal speech. The judge criterion
-#: composed from the same clause still covers them.
+#: Exempt because "agent"/"tool" are ordinary English (e.g. "a travel agent")
+#: and would false-positive on innocent replies; the judge criterion from the
+#: same clause still covers them. Every other quoted term is gated automatically.
 _AMBIGUOUS_IN_ENGLISH = frozenset({"agent", "tool"})
 
 _QUOTED = re.compile(r'"([^"]+)"')
@@ -46,18 +35,17 @@ _TAG = re.compile(r"`?(<[a-z_]+>)`?")
 
 
 def _collapse(text: str) -> str:
-    """Whitespace-normalised lowercase, so a rule that wraps mid-phrase in the
-    prompt still matches a reply that does not wrap there."""
+    """Normalize whitespace and case so a wrapped prompt phrase still matches an unwrapped reply."""
     return " ".join(text.split()).lower()
 
 
 def _assistant_text(run: CaseRun) -> str:
-    """Everything the assistant said, joined. Falls back to ``run.text`` for
-    transports that record no per-message transcript.
+    """Join everything the assistant said, falling back to run.text when there is no per-message transcript.
 
-    A join of empty messages is ``"\\n"`` — truthy but empty — so the fallback
-    must test for real content, not truthiness: grading nothing must never pass
-    a gate vacuously."""
+    A join of empty messages is "\\n" — truthy but empty — so the fallback
+    tests for real content, not truthiness: grading nothing must never pass a
+    gate vacuously.
+    """
     said = "\n".join(
         str(message.get("content") or "")
         for message in run.messages
@@ -79,7 +67,7 @@ def _require(found: list[str], ref: str, shape: str) -> list[str]:
 
 @lru_cache(maxsize=1)
 def banned_phrases() -> tuple[str, ...]:
-    """The literal chatbot phrases the prompt bans, read out of the prompt."""
+    """Return the literal chatbot phrases the prompt bans, read out of the prompt."""
     ref = "comms.banned_bot_phrases"
     found = _require(_QUOTED.findall(resolve(ref)), ref, "double-quoted phrases")
     return tuple(_collapse(phrase) for phrase in found)
@@ -87,8 +75,7 @@ def banned_phrases() -> tuple[str, ...]:
 
 @lru_cache(maxsize=1)
 def banned_dashes() -> tuple[str, ...]:
-    """The dash characters the prompt bans, read out of the rule that names them
-    in parentheses (``em dashes (—) or en dashes (–)``)."""
+    """Return the prompt's banned dash characters (em dash —, en dash –)."""
     ref = "comms.no_dashes"
     found = _require(
         _PARENTHESISED_CHAR.findall(resolve(ref)), ref, "parenthesised single characters"
@@ -104,8 +91,7 @@ def banned_dashes() -> tuple[str, ...]:
 
 @lru_cache(maxsize=1)
 def internal_terms() -> tuple[str, ...]:
-    """Internal-machinery words the ONE ENTITY rule forbids, minus the ones that
-    are ordinary English (see :data:`_AMBIGUOUS_IN_ENGLISH`)."""
+    """Return the ONE ENTITY rule's forbidden internal-machinery words, minus ordinary-English exceptions."""
     ref = "comms.one_entity"
     found = _require(_QUOTED.findall(resolve(ref)), ref, "double-quoted internal terms")
     gated = [term for term in found if term.lower() not in _AMBIGUOUS_IN_ENGLISH]
@@ -119,7 +105,7 @@ def internal_terms() -> tuple[str, ...]:
 
 @lru_cache(maxsize=1)
 def channel_tags() -> tuple[str, ...]:
-    """The internal channel tags the prompt says must never reach a reply."""
+    """Return the internal channel tags the prompt says must never reach a reply."""
     ref = "comms.never_reproduce_internal_tags"
     found = _require(_TAG.findall(resolve(ref)), ref, "angle-bracketed <tag> names")
     return tuple(found)
@@ -128,7 +114,7 @@ def channel_tags() -> tuple[str, ...]:
 def dash_discipline(run: CaseRun) -> tuple[float, str]:
     """No em dash or en dash anywhere in the assistant's output.
 
-    ``COMMS_AGENT_PROMPT`` states it as an absolute with no exceptions ("Not in
+    COMMS_AGENT_PROMPT states it as an absolute with no exceptions ("Not in
     chat replies, not in anything you write"), which makes it the single most
     mechanically checkable rule in the prompt — and it had no gate at all.
     """
@@ -149,10 +135,10 @@ def banned_bot_phrases(run: CaseRun) -> tuple[float, str]:
 
 
 def internal_machinery(run: CaseRun) -> tuple[float, str]:
-    """The ONE ENTITY rule: internal machinery is never named to the user.
+    """Fail if internal machinery is named to the user, per the ONE ENTITY rule.
 
-    Matched with non-letter boundaries so ``call_executor`` counts as naming the
-    executor, while ``executors`` in ordinary prose does not slip past.
+    Matched with non-letter boundaries so call_executor counts as naming the
+    executor, while executors in ordinary prose does not slip past.
     """
     said = _assistant_text(run)
     hits = [
@@ -166,9 +152,9 @@ def internal_machinery(run: CaseRun) -> tuple[float, str]:
 
 
 def internal_tags(run: CaseRun) -> tuple[float, str]:
-    """The internal channel tags never appear in a user-facing reply.
+    """Fail if any internal channel tag appears in a user-facing reply.
 
-    Matched open OR closed: a model that echoes only ``</executor_result>`` at
+    Matched open OR closed: a model that echoes only </executor_result> at
     the end of an otherwise clean reply has still leaked the plumbing.
     """
     said = _assistant_text(run)

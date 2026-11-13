@@ -1,33 +1,8 @@
 #!/usr/bin/env node
 /**
- * Remove desktop-only assets from the Cloudflare build output.
- *
- * Why: `public/` is shared by every build target, but some assets are only
- * ever served to the Electron desktop shell — which loads them from its OWN
- * embedded Next.js standalone server on localhost (see apps/desktop
- * server.ts / windows/load-url.ts), never from the Cloudflare URL. Shipping
- * them to the edge is dead weight: no Cloudflare-served browser fetches them.
- *
- * The wake-word ONNX runtime is the whole of this set:
- *  - the `/wake-listener` route lives in the (desktop) route group, loaded
- *    exclusively by Electron;
- *  - the dev-only `/dev/wake-word` page is stripped from production builds.
- * That makes `public/wake-word/` (~17 MiB: a 12 MiB WASM binary + ONNX
- * models) unreachable on the web.
- *
- * OpenNext copies `public/` into TWO places, and the wake-word tree must be
- * removed from both:
- *  - `.open-next/assets/` — the Workers Static Assets layer (25 MiB
- *    per-file limit; the 25 MiB JSEP wasm tripped this).
- *  - `.open-next/server-functions/<fn>/apps/web/public/` — bundled INTO the
- *    Worker script (10 MiB total-script limit; the 12.7 MiB CPU wasm tripped
- *    this). This is the copy the Node server would read at runtime, which on
- *    Cloudflare never happens for these files.
- *
- * The standalone build Electron bundles is produced separately and keeps
- * `public/wake-word/` intact.
- *
- * Run AFTER `opennextjs-cloudflare build`, alongside promote-static.
+ * Remove desktop-only wake-word ONNX assets (~17MiB: WASM + ONNX models, used only by Electron's own embedded server via apps/desktop server.ts / windows/load-url.ts) from the Cloudflare build output — dead weight since no Cloudflare-served browser needs them.
+ * OpenNext copies public/ into two places that must both be pruned: .open-next/assets/ (25MiB per-file limit, tripped by the JSEP wasm) and .open-next/server-functions/<fn>/apps/web/public/ (10MiB total-script limit, tripped by the 12.7MiB CPU wasm).
+ * Run after `opennextjs-cloudflare build`, alongside promote-static; the Electron standalone build keeps public/wake-word/ intact.
  */
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { dirname, join, relative } from "node:path";

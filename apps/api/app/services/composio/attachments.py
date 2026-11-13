@@ -1,21 +1,18 @@
 """Resolve high-level file references into Composio file uploads.
 
-Composio's file-accepting tools (Gmail compose today — GMAIL_CREATE_EMAIL_DRAFT /
-GMAIL_SEND_EMAIL — any future toolkit with the same ``attachment`` of
-``{name, mimetype, s3key}``) take a file already uploaded to Composio's store,
-not raw bytes. This module turns a reference the agent or a user gives us into
-that shape:
+Composio's file-accepting tools (Gmail compose today, any future toolkit
+with the same {name, mimetype, s3key} attachment) take a file already
+uploaded to Composio's store, not raw bytes. This module turns a reference
+into that shape:
 
-- ``workspace_path`` — a file in the current session workspace (an upload, or a file an
-  agent downloaded there). Read from the host JuiceFS mount and uploaded to Composio.
-- ``url`` — any *publicly* fetchable URL, e.g. the download link
-  GOOGLEDRIVE_DOWNLOAD_FILE returns for a Google Drive file. Composio fetches and
-  stores it, from inside this process, so the URL passes our SSRF guard first.
-- raw ``bytes`` — via ``upload_bytes_sync`` for the REST multipart path, where the
-  file arrives as bytes rather than a reference.
+- workspace_path — a file in the session workspace, read from the host
+  JuiceFS mount and uploaded to Composio.
+- url — any publicly fetchable URL (e.g. a Google Drive download link);
+  Composio fetches it from this process, so it passes our SSRF guard first.
+- raw bytes — via upload_bytes_sync for the REST multipart path.
 
-Resolution is all-or-nothing: if any reference fails, we raise so the caller can fail
-the whole action loudly instead of proceeding with a file the user asked for missing.
+Resolution is all-or-nothing: if any reference fails, we raise so the caller
+fails the whole action loudly instead of proceeding with a file missing.
 """
 
 from pathlib import Path
@@ -39,7 +36,7 @@ def upload_file_reference(
 ) -> FileUploadable:
     """Upload one file reference to Composio's store for any toolkit's use.
 
-    General capability, not email-specific: ``tool``/``toolkit`` name the invoking
+    General capability, not email-specific: tool/toolkit name the invoking
     Composio tool so uploads are attributed correctly (Gmail today, Outlook/Slack
     or any file-accepting tool tomorrow).
     """
@@ -69,13 +66,9 @@ def upload_file_reference(
     # ``url`` is guaranteed present here by AttachmentReference's validator; the
     # ``or ""`` only satisfies the type checker and is therefore unreachable.
     url = ref.url or ""  # pragma: no mutate
-    # The URL is model-supplied and Composio fetches it from *this* process with
-    # no scheme or address policy of its own, so the SSRF guard has to run here:
-    # without it, "attach http://169.254.169.254/..." exfiltrates instance
-    # metadata as a mail attachment. Composio's fetcher refuses redirects, so one
-    # pre-flight check covers the whole fetch (a DNS rebind between this resolve
-    # and Composio's remains theoretically possible; the redirect refusal is what
-    # keeps that window to a single re-resolution).
+    # Model-supplied URL fetched by Composio with no policy of its own: without
+    # this SSRF guard, "attach http://169.254.169.254/..." exfiltrates instance
+    # metadata. Composio refuses redirects, so one pre-flight check covers the fetch.
     assert_public_http_url_sync(url)
     return FileUploadable.from_url(client=client, url=url, tool=tool, toolkit=toolkit)
 
@@ -89,19 +82,16 @@ def resolve_attachments_sync(
 ) -> list[ComposioAttachment]:
     """Upload each referenced file to Composio and return the attachment objects.
 
-    Raises ``AppError`` if any reference cannot be resolved (all-or-nothing).
+    Raises AppError if any reference cannot be resolved (all-or-nothing).
     """
     resolved: list[ComposioAttachment] = []
     for index, ref in enumerate(references):
         try:
             uploaded = upload_file_reference(ref, user_id=user_id, tool=tool, toolkit=toolkit)
         except Exception as exc:
-            # The label never falls back to ``url``: a Drive download link is
-            # presigned, and this message becomes the tool error the model reads
-            # and the conversation stores. The raw URL belongs on the wide event,
-            # which is not user-visible. ``exc`` is safe to quote — both the SSRF
-            # guard and Composio's fetcher sanitize the URL out of their own
-            # messages, and the reason is what makes the failure actionable.
+            # label never falls back to url: a Drive link is presigned and this
+            # message reaches the model/conversation, while the raw URL stays on
+            # the wide event. exc is safe to quote — both sanitize the URL already.
             label = ref.name or ref.workspace_path or f"file {index + 1}"
             log.error(
                 EMAIL_ATTACHMENT_FAIL_LOG,
@@ -137,11 +127,9 @@ def upload_bytes_sync(
     """Upload raw bytes (e.g. a multipart upload) to Composio and return the attachment.
 
     Used by the REST send path, where the file arrives as bytes rather than a
-    workspace path or URL. ``_upload_bytes_to_s3`` is Composio's own bytes uploader
-    (the byte-level counterpart of the public ``FileUploadable.from_path``); it is
-    private and has no public equivalent that preserves the caller's mimetype, so
-    it is imported here rather than at module scope — a Composio release that moves
-    it then breaks this one upload path loudly instead of the whole API's boot.
+    workspace path or URL. Composio's private _upload_bytes_to_s3 is imported
+    here rather than at module scope, so a Composio release that moves it
+    breaks only this path, not the whole API's boot.
     """
     # Lazy imports: see upload_file_reference for the cycle the first one avoids.
     from composio.core.models._files import (  # noqa: PLC0415 -- lazy: scopes a private-API break to this path

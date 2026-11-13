@@ -1,13 +1,14 @@
+import type { TriggerConfig } from "../api/generated";
+
+export type { TriggerConfig } from "../api/generated";
+
 /**
- * Framework-agnostic trigger helpers shared between web and mobile.
+ * Framework-agnostic trigger helpers shared between web and mobile. Web's full handler
+ * registry pulls in HeroUI/React; these pure helpers suffice for a consumer that just needs
+ * to render triggers grouped by integration, look up logos, and format labels.
  *
- * Web's full handler registry pulls in HeroUI/React; for mobile (and any
- * other consumer that just needs to render a list of triggers grouped by
- * integration, look up logos, and format labels) these pure helpers are
- * sufficient.
- *
- * The schema shape mirrors `apps/web/src/features/workflows/triggers/types/base.ts`
- * exactly — backend is the single source of truth.
+ * The schema shape mirrors `apps/web/src/features/workflows/triggers/types/base.ts` exactly —
+ * backend is the single source of truth.
  */
 
 // ---------------------------------------------------------------------------
@@ -98,16 +99,10 @@ export function groupTriggerSchemasByIntegration(
 // ---------------------------------------------------------------------------
 
 /**
- * Backend trigger schemas use snake_case integration ids
- * (`google_calendar`, `google_sheets`, `google_docs`, `microsoft_teams`,
- * `google_maps`).
- * The shared logo registry uses short keys (`googlecalendar`,
- * `googlesheets`, `googledocs`).
- *
- * This is the authoritative mapping used wherever an `integration_id`
- * needs to be resolved to a logo key. Add new entries here when the
- * backend introduces a new schema id whose canonical key differs from
- * the integration_id.
+ * Backend trigger schemas use snake_case integration ids (`google_calendar`, `google_sheets`,
+ * `google_docs`, `microsoft_teams`, `google_maps`); the shared logo registry uses short keys
+ * (`googlecalendar`, `googlesheets`, `googledocs`). This is the authoritative mapping from one
+ * to the other — add an entry here when a new backend schema id's canonical key differs from it.
  */
 const TRIGGER_INTEGRATION_TO_LOGO_KEY: Record<string, string> = {
   google_calendar: "googlecalendar",
@@ -177,9 +172,10 @@ export function getSchemaFieldEntries(
   }));
 }
 
-export function buildDefaultTriggerConfig(slug: string): {
-  type: string;
-  enabled: boolean;
-} {
-  return { type: slug, enabled: true };
+/** The config a freshly picked trigger starts from: built-ins are their own type, everything else is an integration trigger named by its slug. */
+export function buildDefaultTriggerConfig(slug: string): TriggerConfig {
+  if (slug === "manual" || slug === "schedule") {
+    return { type: slug, enabled: true };
+  }
+  return { type: "integration", enabled: true, trigger_name: slug };
 }

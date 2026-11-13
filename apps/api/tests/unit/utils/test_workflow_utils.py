@@ -10,6 +10,8 @@ from langchain_core.runnables.config import RunnableConfig
 import pytest
 
 from app.constants.log_tags import LogTag
+from app.constants.trigger_gates import GateAuthor
+from app.models.trigger_gate_models import AuthoredGate, GateEdit
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.workflow.subagent_output import FinalizedOutput
 from app.utils.workflow_utils import (
@@ -17,8 +19,8 @@ from app.utils.workflow_utils import (
     _edited_trigger,
     _regenerated_after_prompt_edit,
     apply_workflow_edit,
+    build_edit_workflow_task,
     create_workflow_directly,
-    get_user_id,
     get_workflow_id,
 )
 
@@ -78,21 +80,8 @@ class TestGetWorkflowId:
 
 
 @pytest.mark.unit
-class TestGetUserId:
-    def test_returns_the_configurable_user_id(self) -> None:
-        config: RunnableConfig = {"configurable": {"user_id": "u1"}}
-        assert get_user_id(config) == "u1"
-
-    def test_a_config_without_a_user_raises(self) -> None:
-        with pytest.raises(WorkflowConfigError, match="authentication"):
-            get_user_id({"configurable": {}})
-
-
-@pytest.mark.unit
 class TestEditedTrigger:
-    """The assistant re-emits the FULL workflow on every edit, so this decides
-    what actually changed. Each of the three clauses is exercised alone: an
-    ``and`` in place of any ``or`` here silently drops a real trigger edit."""
+    """The assistant re-emits the FULL workflow on every edit, so this decides what actually changed."""
 
     def test_a_re_emitted_identical_trigger_is_not_reapplied(self) -> None:
         current = TriggerConfig(
@@ -161,8 +150,7 @@ class TestEditedTrigger:
 
 @pytest.mark.unit
 class TestRegeneratedAfterPromptEdit:
-    """The update already committed, so regeneration is best-effort — but the
-    call it makes and the warning it leaves behind are both load-bearing."""
+    """The update already committed, so regeneration is best-effort — the call and warning are load-bearing."""
 
     def _pieces(self) -> tuple[Workflow, Workflow]:
         current = TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
@@ -246,8 +234,7 @@ class TestApplyWorkflowEdit:
         assert request.trigger_config.timezone == "UTC"
 
     async def test_a_prompt_edit_regenerates_as_the_editing_user(self) -> None:
-        """The regeneration must run under the user who edited the prompt; a
-        dropped user_id would regenerate steps as nobody and fail auth checks."""
+        """A dropped user_id would regenerate steps as nobody and fail auth checks."""
         current = TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
         workflow = _workflow(current)
         draft = _draft(prompt="Summarize my inbox and my calendar")
@@ -265,6 +252,29 @@ class TestApplyWorkflowEdit:
 
         mock_regen.assert_awaited_once_with(
             workflow.id, USER_ID, regeneration_reason="prompt edited via assistant"
+        )
+
+    async def test_an_applied_edit_says_the_integration_trigger_was_left_alone(self) -> None:
+        """The title change lands but the trigger change silently does not; without this sentence the user believes both were applied."""
+        current = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_email")
+        workflow = _workflow(current)
+        draft = _draft(
+            title="Evening digest",
+            trigger_type="integration",
+            trigger_slug="gmail_new_labeled_email",
+        )
+        writer = MagicMock()
+
+        with patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock) as mock_update:
+            mock_update.return_value = _workflow(current, title="Evening digest")
+            result = await apply_workflow_edit(
+                draft=draft, workflow=workflow, user_id=USER_ID, writer=writer
+            )
+
+        assert result["message"] == (
+            "Workflow 'Evening digest' updated."
+            " The integration trigger itself was left unchanged. Its config is set "
+            "in the workflow editor in the app."
         )
 
     async def test_an_integration_trigger_change_alone_is_sent_to_the_editor(self) -> None:
@@ -291,12 +301,131 @@ class TestApplyWorkflowEdit:
         }
 
 
+_GMAIL = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_message")
+_CUSTOMER = "The email is from a customer"
+
+
+def _gated(gate: AuthoredGate | None = None) -> Workflow:
+    workflow = _workflow(_GMAIL)
+    workflow.gate = gate or AuthoredGate(condition=_CUSTOMER, author=GateAuthor.GAIA)
+    return workflow
+
+
+def _gmail_draft(**overrides: object) -> FinalizedOutput:
+    return _draft(trigger_type="integration", trigger_slug="gmail_new_message", **overrides)
+
+
+@pytest.mark.unit
+class TestEditKeepsTheGate:
+    @pytest.mark.parametrize("runs_only_when", [_CUSTOMER, None], ids=["re-emitted", "omitted"])
+    async def test_an_edit_that_changes_only_the_prompt_keeps_the_gate(
+        self, runs_only_when: str | None
+    ) -> None:
+        workflow = _gated()
+        draft = _gmail_draft(prompt="Draft a reply in Gmail", runs_only_when=runs_only_when)
+
+        with (
+            patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock) as mock_update,
+            patch(f"{SERVICE}.regenerate_workflow_steps", new_callable=AsyncMock),
+        ):
+            mock_update.return_value = workflow
+            await apply_workflow_edit(
+                draft=draft, workflow=workflow, user_id=USER_ID, writer=MagicMock()
+            )
+
+        request = mock_update.await_args.args[1]
+        assert set(request.model_dump(exclude_unset=True)) == {"prompt"}
+
+    async def test_an_edit_that_names_a_new_condition_replaces_it_and_keeps_it_off(
+        self,
+    ) -> None:
+        workflow = _gated(AuthoredGate(condition=_CUSTOMER, author=GateAuthor.USER, enabled=False))
+        draft = _gmail_draft(runs_only_when="The email is from my boss")
+
+        with patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock) as mock_update:
+            mock_update.return_value = workflow
+            await apply_workflow_edit(
+                draft=draft, workflow=workflow, user_id=USER_ID, writer=MagicMock()
+            )
+
+        request = mock_update.await_args.args[1]
+        assert request.gate == GateEdit(condition="The email is from my boss", enabled=False)
+
+    async def test_a_condition_drafted_for_a_trigger_the_editor_must_set_is_not_sent(
+        self,
+    ) -> None:
+        """The schedule stays until the editor sets the new trigger, and a gate on a schedule is refused."""
+        workflow = _workflow(TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *"))
+        draft = _gmail_draft(title="Boss mail", runs_only_when="The email is from my boss")
+
+        with patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock) as mock_update:
+            mock_update.return_value = workflow
+            await apply_workflow_edit(
+                draft=draft, workflow=workflow, user_id=USER_ID, writer=MagicMock()
+            )
+
+        request = mock_update.await_args.args[1]
+        assert set(request.model_dump(exclude_unset=True)) == {"title"}
+
+    async def test_a_condition_drafted_for_an_ungated_workflow_is_added_turned_on(
+        self,
+    ) -> None:
+        workflow = _workflow(_GMAIL)
+        draft = _gmail_draft(runs_only_when="The email is from my boss")
+
+        with patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock) as mock_update:
+            mock_update.return_value = workflow
+            await apply_workflow_edit(
+                draft=draft, workflow=workflow, user_id=USER_ID, writer=MagicMock()
+            )
+
+        request = mock_update.await_args.args[1]
+        assert request.gate == GateEdit(condition="The email is from my boss", enabled=True)
+
+    async def test_a_condition_drafted_for_a_new_integration_trigger_is_not_sent(
+        self,
+    ) -> None:
+        """The editor sets the new trigger; its condition must not land on the old one's events."""
+        workflow = _gated()
+        draft = _draft(
+            trigger_type="integration",
+            trigger_slug="slack_new_message",
+            runs_only_when="The message mentions me",
+        )
+
+        with patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock) as mock_update:
+            mock_update.return_value = workflow
+            await apply_workflow_edit(
+                draft=draft, workflow=workflow, user_id=USER_ID, writer=MagicMock()
+            )
+
+        mock_update.assert_not_awaited()
+
+    def test_the_assistant_is_shown_the_condition_it_must_keep(self) -> None:
+        task = build_edit_workflow_task(_gated(), "reply more formally")
+
+        assert f"- Runs only when: {_CUSTOMER}\n" in task
+
+    def test_the_assistant_is_told_an_ungated_trigger_runs_on_every_event(self) -> None:
+        task = build_edit_workflow_task(_workflow(_GMAIL), "reply more formally")
+
+        assert (
+            "- Trigger: integration (trigger: gmail_new_message)\n"
+            "- Runs only when: null (every event runs)\n"
+            "- Prompt:\n"
+        ) in task
+
+    def test_a_workflow_with_no_event_shows_the_assistant_no_condition(self) -> None:
+        schedule = TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
+        lines = build_edit_workflow_task(_workflow(schedule), "run it at ten").splitlines()
+
+        assert lines[lines.index("- Prompt:") - 1].startswith("- Trigger: schedule ")
+
+
 @pytest.mark.unit
 class TestCreateWorkflowDirectly:
     async def test_the_card_description_is_not_the_execution_prompt(self) -> None:
-        """description is card copy, prompt is the executor's goal. Writing the
-        prompt into both put the whole numbered instruction blob, schedule
-        preamble and all, on every chat-created workflow card."""
+        """Writing the prompt into both put the whole numbered instruction blob on every card."""
         draft = _draft(
             description="Priority-ordered digest of my unread Gmail",
             prompt=(
@@ -332,9 +461,7 @@ class TestCreateWorkflowDirectly:
         assert request.prompt == "Summarize my inbox"
 
     async def test_a_draft_with_no_prompt_falls_back_to_the_description(self) -> None:
-        """The description is the closest thing to instructions the assistant
-        produced, so it beats the title. Only a draft missing both lands on the
-        title."""
+        """The description beats the title; only a draft missing both lands on the title."""
         draft = _draft(description="Summarize my unread Gmail", prompt="")
         writer = MagicMock()
 

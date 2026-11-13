@@ -23,9 +23,13 @@ import {
   GITHUB_RELEASES_BASE,
   usePlatformDetection,
 } from "@/hooks/ui/usePlatformDetection";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
+import { getImageDimensions } from "@/lib/imageDimensions";
 
 const DESKTOP_OSES: DesktopOS[] = ["mac", "windows", "linux"];
+
+const APPLE_ICON = getImageDimensions("/images/icons/apple.svg");
+const GOOGLE_PLAY_ICON = getImageDimensions("/images/icons/google_play.svg");
 
 const OS_META: Record<DesktopOS, { name: string; icon: string }> = {
   mac: { name: "macOS", icon: "/images/icons/apple.svg" },
@@ -46,6 +50,11 @@ interface DownloadSectionLayoutProps {
   description: string;
   actions: ReactNode;
   extraContent?: ReactNode;
+  /** False for a section that starts below the fold on every viewport. */
+  imagePriority?: boolean;
+  imageWidth?: number;
+  imageHeight?: number;
+  imageSizes?: string | null;
 }
 
 const CONTENT_ALIGNMENT_CLASSES: Record<"left" | "right" | "center", string> = {
@@ -66,6 +75,10 @@ function DownloadSectionLayout({
   description,
   actions,
   extraContent,
+  imagePriority = true,
+  imageWidth = 1920,
+  imageHeight = 1080,
+  imageSizes = "(max-width: 768px) 100vw, 512px",
 }: DownloadSectionLayoutProps) {
   return (
     <section className="relative z-10 w-full max-w-5xl px-4 sm:px-6 py-16">
@@ -79,6 +92,10 @@ function DownloadSectionLayout({
             pngSrc={pngSrc}
             alt={imageAlt}
             className={imageClassName}
+            priority={imagePriority}
+            sizes={imageSizes}
+            width={imageWidth}
+            height={imageHeight}
           />
         </div>
 
@@ -86,7 +103,7 @@ function DownloadSectionLayout({
         <div
           className={`flex flex-col items-center gap-6 text-center ${CONTENT_ALIGNMENT_CLASSES[contentAlignment]}`}
         >
-          {chip && chip}
+          {chip}
           <div className="flex flex-col gap-2">
             <h2 className="text-5xl font-medium text-white font-serif">
               {title}
@@ -103,10 +120,9 @@ function DownloadSectionLayout({
   );
 }
 
-// One download control for a desktop OS. Renders an arch chooser (x64 / ARM)
-// when more than one binary is published, a single button when only one is, a
-// loading state while the release resolves, and a releases-page fallback if the
-// lookup failed entirely — so a click always does something sensible.
+// One download control for a desktop OS: an arch chooser (x64/ARM) when more
+// than one binary is published, a single button when only one is, a loading
+// state while resolving, and a releases-page fallback if the lookup fails.
 function DesktopDownloadButton({
   os,
   isPrimary = false,
@@ -123,16 +139,20 @@ function DesktopDownloadButton({
   const buttonVariant = isPrimary ? undefined : ("flat" as const);
   // Mac's apple.svg is dark; invert it on the light "flat" (secondary) buttons.
   const invertIcon = os === "mac" && !isPrimary;
+  const iconSize = getImageDimensions(meta.icon);
 
   const icon = (
     <div className="relative h-4 w-4">
       <Image
         src={meta.icon}
-        alt={meta.name}
-        fill
+        alt=""
+        width={iconSize.width}
+        height={iconSize.height}
         sizes="16px"
         className={
-          invertIcon ? "object-contain filter invert" : "object-contain"
+          invertIcon
+            ? "absolute inset-0 h-full w-full object-contain filter invert"
+            : "absolute inset-0 h-full w-full object-contain"
         }
       />
     </div>
@@ -158,7 +178,7 @@ function DesktopDownloadButton({
         variant={buttonVariant}
         startContent={icon}
         onPress={() => {
-          trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+          track("navigation:cta_clicked", {
             destination: "github_releases",
             os,
           });
@@ -194,7 +214,7 @@ function DesktopDownloadButton({
       variant={buttonVariant}
       startContent={icon}
       onPress={() => {
-        trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+        track("navigation:cta_clicked", {
           destination: "download",
           os,
         });
@@ -249,6 +269,7 @@ function DesktopSection() {
       imageAlt="GAIA Desktop App"
       imagePosition="left"
       contentAlignment="right"
+      imagePriority={false}
       title="Download for Desktop"
       chip={
         <Chip variant="flat" color="success">
@@ -296,11 +317,15 @@ function MobileSection() {
   return (
     <DownloadSectionLayout
       webpSrc="/images/screenshots/phone_dock.webp"
-      pngSrc="/images/screenshots/phone_dock.png"
+      pngSrc="/images/screenshots/phone_dock.webp"
       imageAlt="GAIA Mobile App"
       imagePosition="right"
       imageClassName="object-cover object-center"
       contentAlignment="left"
+      imagePriority={false}
+      imageWidth={512}
+      imageHeight={288}
+      imageSizes={null}
       chip={
         <Chip variant="flat" color="warning">
           Waitlist
@@ -316,9 +341,7 @@ function MobileSection() {
             target="_blank"
             rel="noopener noreferrer"
             onPress={() => {
-              trackEvent(ANALYTICS_EVENTS.CTA_GET_STARTED_CLICKED, {
-                button_text: "mobile_waitlist",
-              });
+              track("cta:get_started_clicked", {});
             }}
           >
             Sign up for waitlist <ChevronRight width={17} height={17} />
@@ -331,10 +354,11 @@ function MobileSection() {
                 <div className="relative h-4 w-4">
                   <Image
                     src="/images/icons/apple.svg"
-                    alt="iOS"
-                    fill
+                    alt=""
+                    width={APPLE_ICON.width}
+                    height={APPLE_ICON.height}
                     sizes="16px"
-                    className="object-contain"
+                    className="absolute inset-0 h-full w-full object-contain"
                   />
                 </div>
               }
@@ -348,10 +372,11 @@ function MobileSection() {
                 <div className="relative h-4 w-4">
                   <Image
                     src="/images/icons/google_play.svg"
-                    alt="Android"
-                    fill
+                    alt=""
+                    width={GOOGLE_PLAY_ICON.width}
+                    height={GOOGLE_PLAY_ICON.height}
                     sizes="16px"
-                    className="object-contain"
+                    className="absolute inset-0 h-full w-full object-contain"
                   />
                 </div>
               }
@@ -386,6 +411,7 @@ function WebSection() {
       imageAlt="GAIA Web App"
       imagePosition="left"
       imageClassName="object-cover object-top"
+      imagePriority={false}
       contentAlignment="right"
       title="Get Started on the Web"
       description="No download required. Access GAIA directly from your browser."
@@ -415,7 +441,16 @@ export default function DownloadPage() {
           Download GAIA
         </h1>
         <p className="max-w-xl text-center text-lg text-zinc-400">
-          Available on all your devices. Choose your platform below.
+          GAIA is available as a native desktop app in beta for macOS, Windows,
+          and Linux, with mobile apps for iOS and Android in development. Choose
+          the installer for your platform below: macOS has separate Apple
+          Silicon and Intel builds, while Windows and Linux each use a single
+          download. The page detects your platform and puts the matching
+          download first, so you can start there if you are unsure which build
+          to pick. The desktop app is the native option; the web app runs in
+          your browser without an install. Use All releases for previous
+          versions, and the release notes to see what changed in each update.
+          The beta ships frequently, so check those notes after an update.
         </p>
       </section>
 

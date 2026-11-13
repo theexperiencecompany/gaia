@@ -1,12 +1,12 @@
-"""``search_uploaded_files`` must scope by the conversation, not the graph thread.
+"""search_uploaded_files must scope by the conversation, not the graph thread.
 
-The tool is registered for the executor only (``registry.py`` "documents"
-category), and ``prepare_executor_execution`` runs the executor on a derived
-thread ``executor_<conversation_id>``. Reading the conversation scope out of
-``thread_id`` therefore looked up a conversation that owns no files, so the tool
+The tool is registered for the executor only (registry.py "documents"
+category), and prepare_executor_execution runs the executor on a derived
+thread executor_<conversation_id>. Reading the conversation scope out of
+thread_id therefore looked up a conversation that owns no files, so the tool
 returned an empty string for every upload — the executor's only route to an
-uploaded file's extracted content. ``build_agent_config`` documents the trap:
-the true conversation id is not recoverable from ``thread_id``.
+uploaded file's extracted content. build_agent_config documents the trap:
+the true conversation id is not recoverable from thread_id.
 """
 
 from unittest.mock import AsyncMock, patch
@@ -21,7 +21,7 @@ USER_ID = "user-1"
 
 
 def _executor_config() -> dict[str, object]:
-    """A configurable shaped exactly as prepare_executor_execution builds it."""
+    """Build a configurable shaped exactly as prepare_executor_execution builds it."""
     return {
         "configurable": {
             "thread_id": EXECUTOR_THREAD_ID,
@@ -54,11 +54,7 @@ class TestSearchUploadedFilesScope:
         find_ids.assert_awaited_once_with(CONVERSATION_ID, USER_ID)
 
     async def test_returns_the_uploaded_file_content_for_an_executor_thread(self):
-        """End to end through the tool: an executor thread still finds the upload.
-
-        Fails whenever the scope id regresses to ``thread_id`` — the lookup then
-        matches no file and the tool hands the agent an empty string.
-        """
+        """An executor thread still finds the upload; fails if the scope id regresses to thread_id."""
         chroma_document = type("Doc", (), {"metadata": {"file_id": "file-1", "page_number": 1}})()
         chroma = AsyncMock()
         chroma.asimilarity_search_with_score = AsyncMock(return_value=[(chroma_document, 0.1)])
@@ -99,12 +95,7 @@ class TestSearchUploadedFilesScope:
         assert "Time-Parking 2" in content
 
     async def test_an_unknown_file_id_fails_loud_instead_of_returning_nothing(self):
-        """An id the conversation does not own must not read as "no matches".
-
-        Proven against the live stack: passing the filename — the only file
-        identifier the agent is ever shown — returned "" silently, which the
-        model cannot distinguish from an empty document.
-        """
+        """An id the conversation does not own must not read as "no matches" (live stack regression: silent "")."""
         with (
             patch(
                 "app.agents.tools.file_tools.ChromaClient.get_langchain_client",

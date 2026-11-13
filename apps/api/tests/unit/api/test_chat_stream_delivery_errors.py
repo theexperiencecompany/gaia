@@ -1,8 +1,8 @@
 """The SSE delivery generator must never close silently on a failure.
 
-``_stream_from_redis`` is the last hop between the background turn and the
+_stream_from_redis is the last hop between the background turn and the
 browser. It used to catch a forwarding failure, log it, and simply return — the
-client saw a well-formed stream end with no ``[DONE]`` and no error frame, which
+client saw a well-formed stream end with no [DONE] and no error frame, which
 the web client could not distinguish from a finished turn. The user got a
 half-written answer that looked complete, or an empty bubble and no explanation.
 
@@ -22,6 +22,7 @@ import fakeredis.aioredis
 import pytest
 
 from app.api.v1.endpoints.chat import _stream_from_redis
+from app.core.stream_manager import StreamManager
 from app.db.redis import redis_cache
 
 STREAM_ID = "stream-delivery-failure"
@@ -44,7 +45,7 @@ def _request(disconnected: bool = False) -> Any:
 
 
 def _error_payloads(frames: list[str]) -> list[str]:
-    """The ``error`` field of every frame that carries one."""
+    """Extract the error field of every frame that carries one."""
     errors: list[str] = []
     for frame in frames:
         body = frame.removeprefix("data: ").strip()
@@ -67,10 +68,7 @@ class TestStreamDeliveryErrors:
             yield 'data: {"response":"partial"}\n\n'
             raise RuntimeError("redis connection reset")
 
-        monkeypatch.setattr(
-            "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
-            exploding_subscribe,
-        )
+        monkeypatch.setattr(StreamManager, "subscribe_stream", staticmethod(exploding_subscribe))
 
         frames = [chunk async for chunk in _stream_from_redis(STREAM_ID, _request())]
 
@@ -86,7 +84,7 @@ class TestStreamDeliveryErrors:
             yield 'data: {"response":"partial"}\n\n'
             yield 'data: {"response":"more"}\n\n'
 
-        monkeypatch.setattr("app.api.v1.endpoints.chat.stream_manager.subscribe_stream", subscribe)
+        monkeypatch.setattr(StreamManager, "subscribe_stream", staticmethod(subscribe))
 
         frames = [
             chunk async for chunk in _stream_from_redis(STREAM_ID, _request(disconnected=True))
@@ -103,10 +101,7 @@ class TestStreamDeliveryErrors:
             yield 'data: {"response":"partial"}\n\n'
             raise asyncio.CancelledError
 
-        monkeypatch.setattr(
-            "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
-            cancelling_subscribe,
-        )
+        monkeypatch.setattr(StreamManager, "subscribe_stream", staticmethod(cancelling_subscribe))
 
         frames: list[str] = []
 

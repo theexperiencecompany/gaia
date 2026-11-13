@@ -1,0 +1,201 @@
+From 35634909356b54a4e891bb2a2e11ee37712c3b1b Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 10:00:35 +0530
+Subject: [PATCH] perf(dom,render): selector matching and box-tree walks read
+ nodes in place
+
+DomTree::get_node returns a clone of the node, attributes and text
+included. Selector matching used it for every parent, sibling and child
+step (each descendant combinator walks the ancestor chain), the slot
+lookups used it for every node a style traversal visits, and
+rendered_children used it for every node of every layout. These now read
+the node in place through with_node.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-dom/src/selector.rs | 62 +++++++++++++++---------------
+ crates/obscura-dom/src/tree.rs     | 24 ++++++------
+ crates/obscura-render/src/dom.rs   | 13 ++++---
+ 3 files changed, 51 insertions(+), 48 deletions(-)
+
+diff --git a/crates/obscura-dom/src/selector.rs b/crates/obscura-dom/src/selector.rs
+index ddf65d8..c29aa4d 100644
+--- a/crates/obscura-dom/src/selector.rs
++++ b/crates/obscura-dom/src/selector.rs
+@@ -322,14 +322,10 @@ impl<'a> Element for DomElement<'a> {
+     }
+ 
+     fn parent_element(&self) -> Option<Self> {
+-        let node = self.tree.get_node(self.node_id)?;
+-        let parent_id = node.parent?;
+-        let parent = self.tree.get_node(parent_id)?;
+-        if parent.is_element() {
+-            Some(DomElement::new(self.tree, parent_id))
+-        } else {
+-            None
+-        }
++        let parent_id = self.tree.with_node(self.node_id, |node| node.parent)??;
++        self.tree
++            .with_node(parent_id, |parent| parent.is_element())?
++            .then(|| DomElement::new(self.tree, parent_id))
+     }
+ 
+     fn parent_node_is_shadow_root(&self) -> bool {
+@@ -354,40 +350,40 @@ impl<'a> Element for DomElement<'a> {
+     }
+ 
+     fn prev_sibling_element(&self) -> Option<Self> {
+-        let node = self.tree.get_node(self.node_id)?;
+-        let mut current = node.prev_sibling;
++        let mut current = self.tree.with_node(self.node_id, |node| node.prev_sibling)?;
+         while let Some(sibling_id) = current {
+-            let sibling = self.tree.get_node(sibling_id)?;
+-            if sibling.is_element() {
++            let (is_element, previous) =
++                self.tree.with_node(sibling_id, |sibling| (sibling.is_element(), sibling.prev_sibling))?;
++            if is_element {
+                 return Some(DomElement::new(self.tree, sibling_id));
+             }
+-            current = sibling.prev_sibling;
++            current = previous;
+         }
+         None
+     }
+ 
+     fn next_sibling_element(&self) -> Option<Self> {
+-        let node = self.tree.get_node(self.node_id)?;
+-        let mut current = node.next_sibling;
++        let mut current = self.tree.with_node(self.node_id, |node| node.next_sibling)?;
+         while let Some(sibling_id) = current {
+-            let sibling = self.tree.get_node(sibling_id)?;
+-            if sibling.is_element() {
++            let (is_element, next) =
++                self.tree.with_node(sibling_id, |sibling| (sibling.is_element(), sibling.next_sibling))?;
++            if is_element {
+                 return Some(DomElement::new(self.tree, sibling_id));
+             }
+-            current = sibling.next_sibling;
++            current = next;
+         }
+         None
+     }
+ 
+     fn first_element_child(&self) -> Option<Self> {
+-        let node = self.tree.get_node(self.node_id)?;
+-        let mut current = node.first_child;
++        let mut current = self.tree.with_node(self.node_id, |node| node.first_child)?;
+         while let Some(child_id) = current {
+-            let child = self.tree.get_node(child_id)?;
+-            if child.is_element() {
++            let (is_element, next) =
++                self.tree.with_node(child_id, |child| (child.is_element(), child.next_sibling))?;
++            if is_element {
+                 return Some(DomElement::new(self.tree, child_id));
+             }
+-            current = child.next_sibling;
++            current = next;
+         }
+         None
+     }
+@@ -600,16 +596,20 @@ impl<'a> Element for DomElement<'a> {
+             .with_node(self.node_id, |node| {
+                 let mut child = node.first_child;
+                 while let Some(child_id) = child {
+-                    if let Some(child_node) = self.tree.get_node(child_id) {
+-                        match &child_node.data {
+-                            NodeData::Element { .. } => return false,
+-                            NodeData::Text { contents } if !contents.is_empty() => return false,
+-                            _ => {}
+-                        }
+-                        child = child_node.next_sibling;
+-                    } else {
++                    let Some((has_content, next)) = self.tree.with_node(child_id, |child_node| {
++                        let has_content = match &child_node.data {
++                            NodeData::Element { .. } => true,
++                            NodeData::Text { contents } => !contents.is_empty(),
++                            _ => false,
++                        };
++                        (has_content, child_node.next_sibling)
++                    }) else {
+                         break;
++                    };
++                    if has_content {
++                        return false;
+                     }
++                    child = next;
+                 }
+                 true
+             })
+diff --git a/crates/obscura-dom/src/tree.rs b/crates/obscura-dom/src/tree.rs
+index ac78dd2..d9fed62 100644
+--- a/crates/obscura-dom/src/tree.rs
++++ b/crates/obscura-dom/src/tree.rs
+@@ -1210,12 +1210,13 @@ impl DomTree {
+     /// only for HTML slots; same-local-name elements in other namespaces do
+     /// not participate in the flattened tree.
+     pub fn is_html_slot_element(&self, node: NodeId) -> bool {
+-        self.get_node(node).is_some_and(|node| {
++        self.with_node(node, |node| {
+             node.as_element().is_some_and(|name| {
+                 name.ns.as_ref() == "http://www.w3.org/1999/xhtml"
+                     && name.local.as_ref() == "slot"
+             })
+         })
++        .unwrap_or(false)
+     }
+ 
+     /// Return the first slot to which `node` is assigned.
+@@ -1225,16 +1226,17 @@ impl DomTree {
+     /// the empty/default name. The first same-name slot in shadow-tree order
+     /// wins, matching the HTML slot assignment algorithm.
+     pub fn assigned_slot(&self, node: NodeId) -> Option<NodeId> {
+-        let node_ref = self.get_node(node)?;
+-        let parent = node_ref.parent?;
+-        let name = if node_ref.is_element() {
+-            node_ref.get_attribute("slot").unwrap_or("").to_owned()
+-        } else if node_ref.text_content_of_text_node().is_some() {
+-            String::new()
+-        } else {
+-            return None;
+-        };
+-        drop(node_ref);
++        let (parent, name) = self.with_node(node, |node_ref| {
++            let parent = node_ref.parent?;
++            let name = if node_ref.is_element() {
++                node_ref.get_attribute("slot").unwrap_or("").to_owned()
++            } else if node_ref.text_content_of_text_node().is_some() {
++                String::new()
++            } else {
++                return None;
++            };
++            Some((parent, name))
++        })??;
+ 
+         let root = self.shadow_root(parent)?;
+         self.descendants(root).into_iter().find(|candidate| {
+diff --git a/crates/obscura-render/src/dom.rs b/crates/obscura-render/src/dom.rs
+index 9dfbc80..f8df4ab 100644
+--- a/crates/obscura-render/src/dom.rs
++++ b/crates/obscura-render/src/dom.rs
+@@ -10384,14 +10384,15 @@ pub(crate) fn rendered_children(tree: &DomTree, id: NodeId) -> Vec<NodeId> {
+         return assigned_or_fallback;
+     }
+ 
+-    let Some(node) = tree.get_node(id) else {
++    let Some(is_closed_html_details) = tree.with_node(id, |node| {
++        node.as_element().is_some_and(|name| {
++            name.ns.as_ref() == "http://www.w3.org/1999/xhtml"
++                && name.local.as_ref() == "details"
++                && node.get_attribute("open").is_none()
++        })
++    }) else {
+         return Vec::new();
+     };
+-    let is_closed_html_details = node.as_element().is_some_and(|name| {
+-        name.ns.as_ref() == "http://www.w3.org/1999/xhtml"
+-            && name.local.as_ref() == "details"
+-            && node.get_attribute("open").is_none()
+-    });
+     if !is_closed_html_details {
+         return tree.children(id);
+     }

@@ -1,13 +1,13 @@
 """Service tests: device MCP server removal keeps Postgres + Mongo in sync.
 
-A device server lives in three places — the Postgres ``bridge_device_mcp_servers``
-row (authoritative), the Mongo ``integrations`` doc, and the ``user_integrations``
+A device server lives in three places — the Postgres bridge_device_mcp_servers
+row (authoritative), the Mongo integrations doc, and the user_integrations
 link. The bug these cover: removal used to touch only Mongo, leaving the Postgres
 row behind (so the server kept showing in the Devices tab, and
-``_ensure_server_integration`` resurrected the Mongo doc from the surviving row).
+_ensure_server_integration resurrected the Mongo doc from the surviving row).
 
 These call the real device_service functions against real Postgres/Mongo/Redis
-(no ``gaia bridge`` subprocess), seeding via the production ``register_device_server``
+(no gaia bridge subprocess), seeding via the production register_device_server
 so the writer under a delete is the real one, not a fixture's assumptions.
 """
 

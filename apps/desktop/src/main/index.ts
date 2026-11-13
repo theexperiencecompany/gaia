@@ -37,6 +37,7 @@ import { registerIpcHandlers } from "./ipc";
 import { registerPopupShortcut } from "./popup-shortcut";
 import { registerLinuxDevProtocol, registerProtocol } from "./protocol";
 import { startNextServer, stopNextServer } from "./server";
+import { loadServerForm } from "./server-switch";
 import { fixSessionCookies } from "./session";
 import { getDesktopSettings } from "./settings";
 import {
@@ -59,6 +60,16 @@ import {
 // ---------------------------------------------------------------------------
 // Pre-ready setup (must run before app.ready)
 // ---------------------------------------------------------------------------
+
+// A console.* write to a pipe whose reader has gone away (terminal closed, parent
+// exited) emits EPIPE/EIO, which without a listener crashes the app with a dialog.
+// Only those two codes are benign; anything else still surfaces.
+const ignoreBrokenPipe = (err: NodeJS.ErrnoException): void => {
+  if (err.code === "EPIPE" || err.code === "EIO") return;
+  throw err;
+};
+process.stdout.on("error", ignoreBrokenPipe);
+process.stderr.on("error", ignoreBrokenPipe);
 
 /** GPU acceleration and performance flags. */
 app.commandLine.appendSwitch("enable-gpu-rasterization");
@@ -109,6 +120,20 @@ function createBackgroundSurfaces(): void {
   }
 }
 
+/** Delay after the main window appears before spinning up the hidden background
+ * surfaces. Each is a full renderer loading its own route; starting them the
+ * instant the user first sees the window steals CPU and embedded-server time
+ * from the visible window's first interaction (chat load). A short defer keeps
+ * that first moment snappy — the popup/wake-word are not needed immediately. */
+const BACKGROUND_SURFACES_DELAY_MS = 2_000;
+
+/** Schedule {@link createBackgroundSurfaces} shortly after the main window is on
+ * screen, deferred so it does not contend with first interaction. Idempotent via
+ * the guard in createBackgroundSurfaces. */
+function scheduleBackgroundSurfaces(): void {
+  setTimeout(createBackgroundSurfaces, BACKGROUND_SURFACES_DELAY_MS);
+}
+
 /**
  * Boot the visible surfaces — splash, embedded Next.js server, main window,
  * popup shortcut, and the splash→main fallback. Idempotent: the normal launch
@@ -153,7 +178,7 @@ function bootMainSurface(): void {
       const pendingUrl = showMainWindow();
       if (pendingUrl) handleDeepLink(pendingUrl, getMainWindow());
     }
-    createBackgroundSurfaces();
+    scheduleBackgroundSurfaces();
   }, FALLBACK_SHOW_TIMEOUT_MS);
 }
 
@@ -174,6 +199,15 @@ function openMainSurface(): void {
     return;
   }
   bootMainSurface();
+}
+
+/** Bring up the main window on the bundled server form, from the tray's
+ * "Change Server…". */
+function openServerForm(): void {
+  openMainSurface();
+  const win = getMainWindow();
+  if (!win || win.isDestroyed()) return;
+  loadServerForm(win, "choose", () => serverStarted).catch(console.error);
 }
 
 /** If this Mac is paired and auto-start is on, bring the tunnel up on launch so
@@ -245,10 +279,19 @@ if (!gotTheLock) {
     registerIpcHandlers(() => {
       const pendingUrl = showMainWindow();
       if (pendingUrl) handleDeepLink(pendingUrl, getMainWindow());
-      createBackgroundSurfaces();
+      scheduleBackgroundSurfaces();
     });
 
     fixSessionCookies();
+
+    // Boot before the bridge/tray setup below: that does synchronous disk reads and
+    // a macOS login-item call, and nothing in it is needed to paint the window.
+    // A --hidden login launch stays tray-only: no splash, window, server or Dock icon.
+    if (launchedHidden()) {
+      if (process.platform === "darwin") app.dock?.hide();
+    } else {
+      bootMainSurface();
+    }
 
     // Watch the session cookie so signing out tears down the bridge device (R5),
     // and reconcile the stored binding against the current session on launch.
@@ -257,17 +300,12 @@ if (!gotTheLock) {
     // Always-on bridge surfaces: the tray, the login item mirrored from the
     // stored preference, and (when paired + enabled) an auto-started tunnel —
     // all independent of whether a window is shown.
-    createBridgeTray(openMainSurface);
+    createBridgeTray({
+      onOpen: openMainSurface,
+      onChangeServer: openServerForm,
+    });
     applyLaunchAtLogin(getDesktopSettings().launchAtLogin);
     void maybeAutoStartBridge();
-
-    // A `--hidden` login launch stays tray-only: no splash, no window, no Next
-    // server, and (macOS) no Dock icon until the user opens GAIA.
-    if (launchedHidden()) {
-      if (process.platform === "darwin") app.dock?.hide();
-    } else {
-      bootMainSurface();
-    }
 
     // macOS Dock click / relaunch: open (or re-create) the main window. The
     // hidden background surfaces mean "no windows left" never happens, so this

@@ -1,28 +1,28 @@
-"""SubagentMiddleware - Provides spawn_subagent tool for lightweight parallel task execution.
+"""SubagentMiddleware - Provides the spawn_subagent tool, the executor's delegation tool.
 
 A spawned subagent is a real compiled graph (see
-``app/agents/core/subagents/spawn_agent.py``), run imperatively on a disposable
-thread of its own. That is what gives it the full middleware stack — including
-the HIL gate, so a gated tool inside a spawn pauses for the user's approval and
-bubbles that pause up to the parent, exactly as ``handoff`` does.
+app/agents/core/subagents/spawn_agent.py) on a disposable thread of its own,
+which gives it the full middleware stack — including the HIL gate. It runs on the
+shared delegation runner (core/subagents/delegation.py): in the background by
+default, blocking on request.
 """
 
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
-import time
-from typing import Annotated, Any, Protocol
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
+from typing import Annotated, Any, Protocol, cast
+from weakref import WeakKeyDictionary
 
 from langchain.agents.middleware.types import (
     AgentMiddleware,
     AgentState,
     OmitFromInput,
+    ToolCallRequest,
 )
 from langchain.tools import InjectedToolCallId
 from langchain_core.language_models import LanguageModelLike
-from langchain_core.messages import SystemMessage, ToolMessage
+from langchain_core.messages import AnyMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
-from langgraph.config import get_stream_writer
 from langgraph.errors import GraphBubbleUp
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import InjectedState
@@ -30,44 +30,53 @@ from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
 from app.agents.context.tiers import AgentTier
+from app.agents.core.subagents.delegation import Delegation, SubagentDisplay, delegate
+from app.agents.core.subagents.integration_activation import preload_integrations
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
-    SubagentOutcome,
     ThreadSeed,
     build_initial_messages,
-    execute_subagent_stream,
-    recover_from_checkpoint,
-    resume_for_gate,
     subagent_row_id,
 )
+from app.agents.middleware.compaction import as_tool_message_command
 from app.agents.prompts.spawn_subagent_prompts import (
+    LARGE_RESULT_SPAWN_HINT,
     SPAWN_SUBAGENT_DESCRIPTION,
     SPAWN_SUBAGENT_SYSTEM_PROMPT,
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
+from app.agents.workspace.offload import read_offload
+from app.constants.agents import LARGE_TOOL_RESULT_CHARS
 from app.constants.general import SPAWN_AGENT_NAME, SPAWN_THREAD_PREFIX
 from app.constants.hil import HIL_RESUME_CONFIG_KEY
 from app.constants.llm import SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import AgentIdentity, AgentThread, build_agent_config
-from app.models.agent_models import AnyAgentMiddleware, agent_configurable
-from app.utils.agent_utils import (
-    StreamWriterCallable,
-    SubagentStartDetails,
-    format_subagent_end_event,
-    format_subagent_start_event,
+from app.models.agent_models import (
+    AgentConfigurable,
+    AnyAgentMiddleware,
+    SubagentKind,
+    agent_configurable,
 )
 from shared.py.wide_events import log
+
+
+def _tool_result(content: str, tool_call_id: str, status: str = "success") -> Command[str]:
+    return Command(
+        update={
+            "messages": [ToolMessage(content=content, tool_call_id=tool_call_id, status=status)]
+        }
+    )
 
 
 class SpawnGraphProvider(Protocol):
     """Compiles the graph a spawn runs on.
 
-    A Protocol rather than ``Callable[..., ...]`` because this is an injection
+    A Protocol rather than Callable[..., ...] because this is an injection
     seam: every call site passes these six by keyword, and an erased signature
-    turns a renamed or dropped argument into a runtime ``TypeError`` instead of a
-    type error. Satisfied by ``core.subagents.spawn_agent.get_spawn_graph``,
-    which is injected rather than imported (see :meth:`set_spawn_graph_provider`).
+    turns a renamed or dropped argument into a runtime TypeError instead of a
+    type error. Satisfied by core.subagents.spawn_agent.get_spawn_graph,
+    which is injected rather than imported (see :meth:set_spawn_graph_provider).
     """
 
     async def __call__(
@@ -83,7 +92,7 @@ class SpawnGraphProvider(Protocol):
 
 @dataclass(frozen=True)
 class SubagentMiddlewareConfig:
-    """Construction settings for :class:`SubagentMiddleware`.
+    """Construction settings for :class:SubagentMiddleware.
 
     One object rather than ten constructor arguments: these are all build-time
     wiring for the same middleware, and every field keeps the default the
@@ -100,6 +109,26 @@ class SubagentMiddlewareConfig:
     store: BaseStore | None = None
     tool_runtime_config: ToolRuntimeConfig | None = None
     spawn_middleware_factory: Callable[[str], Sequence[AnyAgentMiddleware]] | None = None
+    #: Carry the parent's bound tools into each spawn. On under integration
+    #: activation, where the parent binds an integration in its own turn and
+    #: delegates the work here; off otherwise, keeping the lean spawn start.
+    inherit_parent_tools: bool = False
+
+
+def _with_spawn_hint(message: ToolMessage) -> ToolMessage | None:
+    """Append LARGE_RESULT_SPAWN_HINT to a large message; None when it is not large.
+
+    Large means saved to a workspace file (the output was too big to keep) or
+    at least LARGE_TOOL_RESULT_CHARS of text kept in context.
+    """
+    if read_offload(message) is None and len(message.text) < LARGE_TOOL_RESULT_CHARS:
+        return None
+    hint = f"\n\n{LARGE_RESULT_SPAWN_HINT}"
+    content = message.content
+    hinted = (
+        content + hint if isinstance(content, str) else [*content, {"type": "text", "text": hint}]
+    )
+    return message.model_copy(update={"content": hinted})
 
 
 class SubagentState(AgentState[Any]):
@@ -128,6 +157,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         self._system_prompt = settings.system_prompt
         self._excluded_tools = settings.excluded_tool_names or set()
         self._excluded_tools.add("spawn_subagent")
+        self._inherit_parent_tools = settings.inherit_parent_tools
         self._tool_space = settings.tool_space
         self._store: BaseStore | None = settings.store
         self._tool_runtime_config = settings.tool_runtime_config or ToolRuntimeConfig(
@@ -148,189 +178,132 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             selected_tool_ids: Annotated[list[str], InjectedState("selected_tool_ids")],
             config: RunnableConfig,
             context: str = "",
-        ) -> Command[Any]:
+            background: bool = True,
+            integration_ids: list[str] | None = None,
+        ) -> Command[str]:
             """Spawn a subagent to handle a subtask with focused execution."""
             if middleware._llm is None:
-                return Command(
-                    update={
-                        "messages": [
-                            ToolMessage(
-                                content="Error: Subagent LLM not configured",
-                                tool_call_id=tool_call_id,
-                                status="error",
-                            )
-                        ]
-                    }
-                )
+                return _tool_result("Error: Subagent LLM not configured", tool_call_id, "error")
 
+            configurable: AgentConfigurable = agent_configurable(config)
             try:
-                result = await middleware._run_spawn(
+                delegation = await middleware.build_delegation(
                     task=task,
                     context=context,
-                    config=config,
+                    parent_configurable=configurable,
                     tool_call_id=tool_call_id,
                     inherited_tool_names=selected_tool_ids,
+                    integration_ids=integration_ids or [],
                 )
-                return Command(
-                    update={
-                        "messages": [
-                            ToolMessage(
-                                content=result,
-                                tool_call_id=tool_call_id,
-                            )
-                        ]
-                    }
+                result = await delegate(
+                    delegation,
+                    background=background,
+                    # Only a resume replay can find this spawn's thread already run.
+                    probe_parked=bool(configurable.get(HIL_RESUME_CONFIG_KEY)),
                 )
+                return _tool_result(result, tool_call_id)
             except GraphBubbleUp:
-                # The HIL gate's interrupt bubbling up from the spawned graph.
-                # Control flow, not a failure — converting it to a tool error
-                # would drop the user's approval request on the floor.
+                # The HIL gate's interrupt bubbling up from a blocking spawn. Control
+                # flow, not a failure — converting it to a tool error would drop the
+                # user's approval request on the floor.
                 raise
             except Exception as e:
                 log.error(f"{LogTag.AGENT} Subagent execution failed", error_type=type(e).__name__)
-                return Command(
-                    update={
-                        "messages": [
-                            ToolMessage(
-                                content=f"Subagent error: {e!s}",
-                                tool_call_id=tool_call_id,
-                                status="error",
-                            )
-                        ]
-                    }
-                )
+                return _tool_result(f"Subagent error: {e!s}", tool_call_id, "error")
 
         return spawn_subagent
 
-    async def _run_spawn(
+    async def build_delegation(
         self,
+        *,
         task: str,
         context: str,
-        config: RunnableConfig,
+        parent_configurable: AgentConfigurable,
         tool_call_id: str,
         inherited_tool_names: list[str] | None,
-    ) -> str:
-        """Run one spawned subagent to completion, pausing the parent for approvals."""
-        configurable = agent_configurable(config)
-        # A fresh spawn has a brand-new tool_call_id, so nothing can already exist on
-        # its thread — only a resume replay can, which is why the checkpoint probe is
-        # gated on it and effectively every spawn skips that Postgres read.
-        replaying = bool(configurable.get(HIL_RESUME_CONFIG_KEY))
+        integration_ids: Sequence[str] = (),
+    ) -> Delegation:
+        """Build the delegation one spawn_subagent call runs; a parked spawn is rebuilt the same way.
 
-        ctx = await self._build_context(task, context, config, tool_call_id, inherited_tool_names)
-
-        # Stable across replays so an approval pause reuses the same UI row instead of
-        # orphaning the paused one and opening a duplicate on resume.
-        sa_id = subagent_row_id(tool_call_id)
-        # Surface the task as the subagent's name so the UI shows what's running,
-        # not three identical "Subagent" rows.
-        spawn_name = (task[:40].rstrip() + "…") if len(task) > 40 else (task or "Subagent")
-        writer = get_stream_writer()
-        writer(
-            {
-                "subagent_start": format_subagent_start_event(
-                    subagent_name=spawn_name,
-                    agent_type="spawned",
-                    subagent_id=sa_id,
-                    details=SubagentStartDetails(
-                        tool_category="spawn_subagent",
-                        parent_subagent_id=configurable.get("subagent_id"),
-                    ),
-                )
-            }
-        )
-        start_time = time.monotonic()
-
-        paused = False
-        try:
-            outcome = await self._drive(ctx, writer, sa_id, probe_parked=replaying)
-        except GraphBubbleUp:
-            paused = True
-            raise
-        finally:
-            # A pause is not an ending — the row stays live until the user decides
-            # and the resumed run closes it. Every other exit terminates it, so a
-            # failed spawn never leaves the UI spinning.
-            if not paused:
-                writer(
-                    {
-                        "subagent_end": format_subagent_end_event(
-                            subagent_id=sa_id,
-                            duration_ms=int((time.monotonic() - start_time) * 1000),
-                        )
-                    }
-                )
-
-        # The thread deliberately outlives the run: a later sibling in this same AI
-        # message can still pause, which replays the tool node from the top, and the
-        # checkpoint is what tells the replay this spawn already finished instead of
-        # redoing its whole task. The nightly sweep reclaims it once it is stale.
-        return outcome.text
-
-    async def _drive(
-        self,
-        ctx: SubagentExecutionContext,
-        writer: StreamWriterCallable,
-        sa_id: str,
-        probe_parked: bool,
-    ) -> SubagentOutcome:
-        """Run the graph, bubbling every HIL pause up to the parent.
-
-        The spawn is invoked imperatively, so its GraphInterrupt never reaches the
-        parent's runtime — each pause is re-raised here with ``interrupt()``. A LOOP,
-        not an if: one task can gate several destructive calls in sequence, and each
-        must suspend the parent again. ``resume_for_gate`` raises on the first pass and
-        returns that gate's own decision on the replay (matching the recovered park, not
-        an earlier gate's already-applied decision).
+        integration_ids are activated here, once: the tools they bind join the
+        inherited ones in the recipe, so a parked spawn rebuilds with them and
+        without activating again (its thread already holds the activations).
         """
-        recovered = await recover_from_checkpoint(ctx) if probe_parked else None
-        outcome = recovered or await execute_subagent_stream(
-            ctx=ctx, stream_writer=writer, subagent_id=sa_id
+        preloaded = await preload_integrations(integration_ids, parent_configurable)
+        inherited = list(inherited_tool_names or [])
+        inherited += [name for name in preloaded.bind if name not in inherited]
+        ctx = await self._build_context(
+            task, context, parent_configurable, tool_call_id, inherited, preloaded.messages
         )
-        while outcome.paused:
-            decision = resume_for_gate(outcome.interrupt)
-            outcome = await execute_subagent_stream(
-                ctx=ctx,
-                stream_writer=writer,
-                subagent_id=sa_id,
-                resume=Command(resume=decision),
-            )
-        return outcome
+        # The task names the row, so the UI shows what is running rather than
+        # three identical "Subagent" rows.
+        name = (task[:40].rstrip() + "…") if len(task) > 40 else (task or "Subagent")
+        return Delegation(
+            ctx=ctx,
+            kind=SubagentKind.SPAWN,
+            # Stable across replays, so an approval pause reuses its UI row.
+            subagent_id=subagent_row_id(tool_call_id),
+            tool_call_id=tool_call_id,
+            task=task,
+            context=context,
+            inherited_tool_names=tuple(inherited),
+            parent_configurable=parent_configurable,
+            display=SubagentDisplay(
+                name=name,
+                agent_type="spawned",
+                tool_category="spawn_subagent",
+                parent_subagent_id=parent_configurable.get("subagent_id"),
+            ),
+        )
 
     async def _build_context(
         self,
         task: str,
         context: str,
-        config: RunnableConfig,
+        configurable: AgentConfigurable,
         tool_call_id: str,
         inherited_tool_names: list[str] | None,
+        preloaded_messages: Sequence[AnyMessage] = (),
     ) -> SubagentExecutionContext:
+        inherited = (
+            [name for name in (inherited_tool_names or []) if name not in self._excluded_tools]
+            if self._inherit_parent_tools
+            else []
+        )
         if self._llm is None:
             raise ValueError("LLM not configured for subagent execution")
         if self._spawn_middleware_factory is None or self._spawn_graph_provider is None:
             raise ValueError("Spawn graph not configured for subagent execution")
 
-        configurable = agent_configurable(config)
         user_id = configurable.get("user_id")
         conversation_id = str(configurable.get("conversation_id") or "")
 
         middleware_factory = self._spawn_middleware_factory
         tool_space = self._tool_space
+        # Seed initial_tool_names, not just state: the spawn graph is cached with
+        # its bindable set frozen at compile time, so this changes the cache key
+        # (see spawn_agent._cache_key) for a fresh graph holding the tools.
+        runtime = self._tool_runtime_config
+        if inherited:
+            runtime = replace(
+                runtime,
+                initial_tool_names=[
+                    *runtime.initial_tool_names,
+                    *(n for n in inherited if n not in runtime.initial_tool_names),
+                ],
+            )
         graph = await self._spawn_graph_provider(
             llm=self._llm,
             registry=self._tool_registry or {t.name: t for t in self._available_tools},
             excluded_tool_names=self._excluded_tools,
             tool_space=tool_space,
-            runtime=self._tool_runtime_config,
+            runtime=runtime,
             middleware_factory=lambda: middleware_factory(tool_space),
         )
 
-        # One thread per spawn call, never reused. ``tool_call_id`` is unique per call
-        # AND stable across node replays (it lives in the checkpointed AI message),
-        # which is what lets a resumed spawn find its own run — parked or finished —
-        # instead of starting a second one. The ``spawn_`` prefix is what
-        # workers/tasks/checkpoint_retention_tasks.py selects on to reclaim these once
-        # stale; the conversation uuid keeps them collectable with the conversation.
+        # One thread per spawn call, never reused: ``tool_call_id`` is unique
+        # and stable across replays. ``spawn_`` prefix lets
+        # checkpoint_retention_tasks.py reclaim these once stale.
         thread_id = f"{SPAWN_THREAD_PREFIX}{conversation_id}_{tool_call_id}"
 
         spawn_config = await build_agent_config(
@@ -372,25 +345,45 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             configurable=new_configurable,
             integration_id="spawn",
             initial_state={
-                "messages": messages,
+                # The integrations it was spawned with read as its own first activations.
+                "messages": [*messages, *preloaded_messages],
                 "todos": [],
-                # Inherit whatever the parent has bound this turn. acall_model
-                # unions initial_tool_ids with state["selected_tool_ids"], so
-                # seeding the channel here is what carries the inheritance over.
-                "selected_tool_ids": [
-                    name
-                    for name in (inherited_tool_names or [])
-                    if name not in self._excluded_tools
-                ],
+                # Empty unless inheriting: spawn binds its minimal set, retrieves
+                # the rest on demand; activated parent tools are seeded here and
+                # in initial_tool_names above, which makes them bindable.
+                "selected_tool_ids": inherited,
             },
             user_id=user_id,
             stream_id=configurable.get("stream_id"),
         )
 
+    async def awrap_tool_call(
+        self,
+        request: ToolCallRequest,
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[str]]],
+    ) -> ToolMessage | Command[str]:
+        """Point a large tool result at spawns, so further reading of that size leaves this context.
+
+        Only the agent that can spawn carries this middleware: a spawned
+        subagent never sees the hint.
+        """
+        result = await handler(request)
+        if isinstance(result, ToolMessage):
+            return _with_spawn_hint(result) or result
+        matched = as_tool_message_command(result)
+        if matched is None:
+            return result
+        command, message = matched
+        hinted = _with_spawn_hint(message)
+        if hinted is None:
+            return result
+        update = cast(dict[str, object], command.update)
+        return replace(command, update={**update, "messages": [hinted]})
+
     def set_spawn_graph_provider(self, provider: SpawnGraphProvider) -> None:
         """Wire the builder that compiles the graph a spawn runs on.
 
-        Injected rather than imported: the graph builder pulls in ``create_agent``,
+        Injected rather than imported: the graph builder pulls in create_agent,
         which imports this package, so importing it from here would close a cycle.
         """
         self._spawn_graph_provider = provider
@@ -420,3 +413,19 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             self._tool_space = tool_space
         if tool_runtime_config is not None:
             self._tool_runtime_config = tool_runtime_config
+
+
+#: The spawner each compiled executor graph was built with. A parked background
+#: spawn is resumed by whichever process receives the user's decision, possibly
+#: after a restart, so it is rebuilt from its executor graph's own spawner.
+_SPAWNERS: WeakKeyDictionary[CompiledStateGraph, SubagentMiddleware] = WeakKeyDictionary()
+
+
+def bind_spawner(graph: CompiledStateGraph, spawner: SubagentMiddleware) -> None:
+    """Record the spawner a compiled executor graph carries."""
+    _SPAWNERS[graph] = spawner
+
+
+def spawner_of(graph: CompiledStateGraph) -> SubagentMiddleware:
+    """Return the spawner a compiled executor graph was built with."""
+    return _SPAWNERS[graph]

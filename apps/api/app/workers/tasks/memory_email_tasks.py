@@ -8,16 +8,7 @@ from shared.py.wide_events import log
 
 
 async def process_gmail_emails_to_memory(ctx: dict[str, Any], user_id: str) -> str:  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
-    """
-    ARQ background task to process Gmail emails into memories.
-
-    Args:
-        ctx: ARQ context (unused but required)
-        user_id: User ID to process emails for
-
-    Returns:
-        Processing result message
-    """
+    """Process a user's Gmail emails into memories; return a result message."""
     log.set(user_id=user_id)
     result = await process_gmail_to_memory(user_id)
 

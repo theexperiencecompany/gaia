@@ -186,10 +186,7 @@ async def _maybe_edit_task_file(rel: str, target: EditTarget, patch: EditPatch) 
         task_ref = await gaia_task_files.resolve(rel, target.user_id)
         if task_ref is None:
             if rel == GAIA_TASKS_DIRNAME or rel.startswith(GAIA_TASKS_DIRNAME + "/"):
-                return (
-                    f"Error: {rel} is not an editable notes file. Only canvas.md and "
-                    "activity.md under /workspace/gaia-tasks/<todo>/ can be edited."
-                )
+                return gaia_task_files.NOT_A_NOTES_FILE.format(rel=rel)
             return None
         for _ in range(_EDIT_MAX_ATTEMPTS):
             try:

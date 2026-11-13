@@ -4,9 +4,9 @@
 # Why this exists: the home CI box is 8 physical cores / 16 threads, but the
 # heavy lanes size their own parallelism independently and land together. The
 # four test-python slices alone budget ~16 threads; on the SAME cores at the
-# same time run main.yml's `build` (nx --parallel 6), `test-typescript`,
-# `docker-image`, and the whole of code-quality.yml (mypy, semgrep, and the
-# sharded `mutation.sh shard`, four at a time each wanting nproc-2). Two
+# same time run ci.yml's ts-build-test (nx --parallel 6, then vitest),
+# `docker-image`, the lint jobs (mypy, semgrep) and the
+# sharded `mutation.py shard`, four at a time each wanting nproc/2). Two
 # overlapping pushes double it. The 15-min load average has been measured at
 # ~18.5 (2.3x oversubscription); the SAME PR ran 3.6 min idle vs 11.3 min
 # loaded. This governor caps the concurrent heavy work at the physical-core
@@ -24,8 +24,9 @@
 #
 # It NEVER hangs or fails a gate. It is a no-op (returns success, takes nothing)
 # when:
-#   * RUNNER_ENVIRONMENT != self-hosted  — GitHub-hosted VMs are isolated, one
-#     job per VM; there is nothing to govern and no shared box.
+#   * the job is not on the home box (ci_on_the_box, lib/runner-host.sh) —
+#     GitHub-hosted and Blacksmith VMs are isolated, one job per VM; there is
+#     nothing to govern and no shared box.
 #   * the pool directory cannot be created.
 #   * N is not a positive integer (a serial slice passes XDIST_N=0).
 #   * the acquire waits past GAIA_CPU_SLOTS_TIMEOUT (default 600s) — it logs a
@@ -46,20 +47,23 @@
 # there is no TOCTOU.
 #
 # Env:
-#   GAIA_CPU_TOKENS         Pool size (TOTAL). Default: the thread count (nproc,
-#                           16 on the box). At nproc a single run's own xdist
-#                           workers fit exactly, so a lone run never blocks
-#                           (neutral) while two overlapping runs are held to the
-#                           thread count instead of thrashing to ~4x.
+#   GAIA_CPU_TOKENS         Pool size (TOTAL). Default: one and a half times the
+#                           thread count (nproc * 3 / 2, 24 on the box). A pool
+#                           of exactly nproc made the mutation shards mutually
+#                           exclusive and 2 x nproc let four of them thrash —
+#                           see _cpu_slots_total for the 2026-09-17 measurements.
 #   GAIA_CPU_SLOTS_DIR      Override the pool directory (tests point this at a
 #                           throwaway path).
 #   GAIA_CPU_SLOTS_TIMEOUT  Max seconds to wait before failing open (600).
 #   GAIA_CPU_SLOTS_TTL      Seconds after which a grant is presumed leaked (3600).
-#   RUNNER_ENVIRONMENT      "self-hosted" enables the governor; anything else is
-#                           a no-op.
+#   RUNNER_NAME             a box runner name (gaia-home-<n>) enables the
+#                           governor; anything else is a no-op.
 #
 # Sourced, never executed: it defines functions and touches nothing at source
 # time (log.sh must already be sourced — it provides ci_warn).
+
+# shellcheck source=scripts/ci/lib/runner-host.sh
+source "$(dirname "${BASH_SOURCE[0]}")/runner-host.sh"
 
 # Parallel stacks of grants this shell currently holds (bash 3.2 has no
 # associative arrays, and these scripts reach a mac). Index i pairs a holder
@@ -67,12 +71,10 @@
 _CPU_SLOTS_HELD_FILES=()
 _CPU_SLOTS_HELD_N=()
 
-_cpu_slots_enabled() { [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ]; }
-
 # flock is the atomicity primitive; without it there is no safe critical section,
 # so the governor fails open rather than race. It is coreutils/util-linux and is
-# always present on the Linux box (the only place RUNNER_ENVIRONMENT is
-# self-hosted); this guard matters for a dev machine that force-enables the
+# always present on the Linux box (the only place the governor is enabled);
+# this guard matters for a dev machine that force-enables the
 # governor without it (e.g. a stock macOS running the tests).
 _cpu_slots_have_flock() { command -v flock >/dev/null 2>&1; }
 
@@ -81,10 +83,11 @@ _cpu_slots_is_uint() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac
 # Echo the resolved, existing pool directory; return non-zero if none is
 # writable (caller then fails open). Preference: an explicit override, then the
 # host-global /run tmpfs, then $HOME/ci-cache — the latter is shared across every
-# runner instance because they share $HOME (runner.sh's action-archive cache
-# lives there for the same reason). RUNNER_LOCAL_CACHE is deliberately NOT used:
-# it is namespaced PER runner instance, so a pool under it would give each of the
-# box's runners its own private budget and defeat the host-wide cap entirely.
+# runner instance because they share $HOME (runner.py's action-archive cache
+# lives there for the same reason). Never key the pool by RUNNER_NAME: a
+# per-instance pool gives each of the box's runners its own private budget and
+# defeats the host-wide cap. (RUNNER_LOCAL_CACHE is per runner USER, the same
+# $HOME/ci-cache on every instance, so it is not per-instance either.)
 _cpu_slots_dir() {
   local dir
   if [ -n "${GAIA_CPU_SLOTS_DIR:-}" ]; then
@@ -98,21 +101,41 @@ _cpu_slots_dir() {
   printf '%s' "$dir"
 }
 
-# The pool size. A configured value wins; otherwise the THREAD count (nproc).
-# This was tuned by measurement, not assumed: the four test-python slices' static
-# worker shares (5+7+4) are deliberately sized to sum to the box's 16 threads for
-# a SINGLE run, so a pool below that (e.g. physical cores = 8) would serialise a
-# lone run's own slices and regress the single-push case. At nproc the pool is a
-# no-op for a single run (its 16 workers exactly fit) yet still halves the
-# oversubscription when TWO runs overlap — measured on two concurrent main.yml
-# dispatches: the 1-min loadavg peak dropped from 59 (governor off) to 32 (pool
-# = 16) on the 16-thread box, with per-run wall going 6.4/6.1 min -> 5.5/4.8 min.
+# The pool size. A configured value wins; otherwise one and a half times the
+# THREAD count. Every value here was measured, and it has been three of them.
+#
+# It started at nproc, sized so a single run's four test-python slices (5+7+4
+# static worker shares = the box's 16 threads) fit exactly while two overlapping
+# runs were held to the thread count: measured on two concurrent dispatches
+# of the old main.yml, the 1-min loadavg peak dropped from 59 (governor off) to 32 (pool
+# = 16), per-run wall 6.4/6.1 min -> 5.5/4.8 min.
+#
+# At nproc the MUTATION lane then had nothing left. Measured 2026-09-17 on the
+# 16-thread box: with the pool at 16 and a shard taking 14 (nproc-2), exactly
+# ONE shard ran at a time — the second shard's 14 tokens never fit beside the
+# first's — while 19 other listeners waited and the 1-min loadavg sat at 7 on a
+# box that was doing nothing. And when many un-gated jobs DID overlap, the
+# loadavg reached 75 and mutants began hitting the then 45 s per-test timeout:
+# one module measured 138 s under that overload against 29 s without it.
+#
+# 2 x nproc was too far the other way. Same day, with the stopgap systemd
+# drop-in at GAIA_CPU_TOKENS=32 / MUTMUT_MAX_CHILDREN=8, FOUR shards ran at once
+# — 32 mutant workers plus the other lanes on 16 threads — the loadavg reached
+# 34 and shards still tripped that per-test timeout (run #1202, shards 1/6
+# and 3/6, 19:36-19:51 UTC, 2 timeouts each, 0 survivors). With only two shards
+# active (16 workers) the loadavg stayed at 5-10 and nothing timed out.
+#
+# nproc * 3 / 2 = 24 is the value between them: three 8-worker mutation shards
+# (mutation.py mutant_workers is nproc/2) plus headroom for a test slice, a
+# lone run's own 16 xdist workers still fitting exactly.
 _cpu_slots_total() {
   if _cpu_slots_is_uint "${GAIA_CPU_TOKENS:-}" && [ "${GAIA_CPU_TOKENS}" -ge 1 ]; then
     printf '%s' "$GAIA_CPU_TOKENS"
     return
   fi
-  printf '%s' "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
+  local threads
+  threads="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
+  printf '%s' "$(( threads * 3 / 2 ))"
 }
 
 _cpu_slots_jitter() { awk -v r="$RANDOM" 'BEGIN { srand(r); printf "%.2f", 1 + rand()*2 }'; }
@@ -156,7 +179,7 @@ _cpu_slots_live_locked() {
 
 cpu_slots_acquire() {
   local want="${1:-}"
-  _cpu_slots_enabled || return 0
+  ci_on_the_box || return 0
   if ! _cpu_slots_is_uint "$want" || [ "$want" -lt 1 ]; then return 0; fi
   if ! _cpu_slots_have_flock; then
     ci_warn "cpu-slots: flock not found — proceeding without the governor (fail-open)"
@@ -170,8 +193,8 @@ cpu_slots_acquire() {
   fi
   total="$(_cpu_slots_total)"
   # Never wait for more than exists: a lane whose appetite exceeds the whole
-  # pool (mutation wants nproc-2 on an 8-token pool) takes the pool and blocks
-  # the rest, which is exactly the intended serialization.
+  # pool (a mutation shard wanting nproc/2 on a 4-token pool) takes the pool and
+  # blocks the rest, which is exactly the intended serialization.
   [ "$want" -gt "$total" ] && want="$total"
 
   local lock="$dir/lock" holders="$dir/holders"
@@ -219,7 +242,7 @@ cpu_slots_acquire() {
 # acquire that took nothing) simply have no holder file and this is a no-op.
 cpu_slots_release() {
   local give="${1:-}"
-  _cpu_slots_enabled || return 0
+  ci_on_the_box || return 0
   if ! _cpu_slots_is_uint "$give" || [ "$give" -lt 1 ]; then return 0; fi
 
   local dir

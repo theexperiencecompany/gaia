@@ -16,6 +16,7 @@
       "@/*": ["./src/*"],
       "@/src": ["./src/*"],
       "@shared/*": ["../../libs/shared/ts/src/*"],
+      "@shared-assets/*": ["../../libs/shared/assets/*"],
       "@icons": [
         "./node_modules/@theexperiencecompany/gaia-icons/dist/solid-rounded"
       ],
@@ -31,5 +32,11 @@
     ".next/dev/types/**/*.ts",
     ".next/dev/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", ".next", "e2e", "playwright.config.ts"]
+  "exclude": [
+    "node_modules",
+    ".next",
+    "e2e",
+    "playwright.config.ts",
+    "playwright.selfhost.config.ts"
+  ]
 }

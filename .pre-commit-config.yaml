@@ -1,3 +1,9 @@
+# Commit hooks only. The push-time CI check is git's own pre-push hook
+# (scripts/dev/pre-push.sh): prek stashes the tree around its hooks, which a
+# multi-minute check turned into lost edits.
+default_install_hook_types: [pre-commit]
+default_stages: [pre-commit]
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -5,14 +11,19 @@ repos:
       - id: check-yaml
         priority: 0
       - id: check-json
-        exclude: ^(apps/web/.*tsconfig.*\.json|\.vscode/.*\.json|packages/cli/.*tsconfig.*\.json)$
+        # Every tsconfig is JSONC — tsc accepts comments, check-json does not.
+        # apps/desktop/tsconfig.json carries a load-bearing comment block explaining
+        # why rootDir is widened, so this was a guaranteed failure on any commit
+        # touching a .ts/.tsx file anywhere in the repo. Match tsconfigs by name
+        # rather than per-app, so a new app's tsconfig needs no entry here.
+        exclude: ^(.*tsconfig.*\.json|\.vscode/.*\.json)$
         priority: 0
       - id: check-toml
         priority: 0
       - id: check-merge-conflict
         priority: 0
       - id: check-added-large-files
-        exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock|uv.lock|apps/web/public/.*|.*\.(png|jpg|jpeg|gif|webp|svg)|.*/i18n/.*\.json)$
+        exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock|uv.lock|apps/api/openapi\.json|libs/shared/ts/src/api/generated/schema\.d\.ts|apps/web/public/.*|.*\.(png|jpg|jpeg|gif|webp|svg)|.*/i18n/.*\.json)$
         priority: 0
       - id: check-ast
         exclude: ^(mcp\.txt|apps/web/pnpm-lock\.yaml|apps/api/uv.lock)$
@@ -24,28 +35,90 @@ repos:
       - id: detect-private-key
         priority: 0
 
-  # Ruff is version-sensitive: rule promotions between releases flip previously
-  # clean files. Pin ALL surfaces to the same version and bump them together —
-  # this rev, CI's pin (.github/workflows/code-quality.yml), and the ruff entry
-  # in the root uv.lock. See #1063 for the drift this caused.
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.13
+  # Ruff is version-sensitive (#1063): every surface runs the one the root
+  # pyproject's lint group locks, so there is no second pin to bump.
+  - repo: local
     hooks:
       - id: ruff-check
+        name: ruff check
         # Autofix at commit time — parity with the biome hook below. A fix
         # fails the commit so the corrected files get re-staged.
-        args: [--fix, --exit-non-zero-on-fix]
+        entry: uv run --frozen --no-build --isolated --only-group lint ruff check --force-exclude --fix --exit-non-zero-on-fix
+        language: system
+        types_or: [python, pyi]
         priority: 0
       - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen --no-build --isolated --only-group lint ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+        priority: 0
+
+      # The touch-to-fix ratchets CI gates on, at commit time instead of 40
+      # minutes into a lane. Repo-wide scan, filename-independent: the ratchet
+      # only fails on a file the change touches, which changes.sh derives from
+      # the tree. `mypy-tests` is NOT here -- its first run in a fresh worktree
+      # builds mypy's cache (~3.5 min), which is pre-push work, not commit work.
+      - id: plr-complexity
+        name: plr-complexity ratchet (PLR0911/0912/0913/0915)
+        # A hook's PATH has no mise shims, so bare python3 can be the OS 3.9;
+        # uv runs CI's script on the .python-version interpreter.
+        entry: uv run --no-project --isolated python tools/lints/check_plr_complexity.py
+        language: system
+        # The baseline is an nx input too: a commit that only re-baselines still
+        # has to prove the ratchet accepts it.
+        files: '\.py$|^tools/lints/plr_complexity_baseline\.txt$'
+        pass_filenames: false
         priority: 0
 
   - repo: local
     hooks:
+      - id: lint-imports
+        name: import-linter (app.constants/app.config/app.utils stay leaves)
+        entry: bash -c 'cd apps/api && uv run --frozen --no-build --isolated --only-group lint lint-imports --no-cache'
+        language: system
+        files: '^apps/api/(app/.*\.py|pyproject\.toml)$'
+        pass_filenames: false
+
+      - id: uv-lock
+        name: every uv.lock still resolves from its pyproject.toml
+        entry: bash scripts/ci/audit.sh uv-lock
+        language: system
+        files: '(^|/)(pyproject\.toml|uv\.lock)$'
+        pass_filenames: false
+
       - id: openui-gen-prompt
         name: openui generated prompt up to date
         entry: bash -c 'pnpm openui:gen-prompt && git diff --exit-code apps/api/app/agents/prompts/openui_generated.txt'
         language: system
         files: '^(apps/web/src/config/openui/|scripts/openui/generate-prompt\.ts|apps/web/package\.json|pnpm-lock\.yaml)'
+        pass_filenames: false
+
+      # `files:` selects exactly what the ci:api-schema nx target's inputs do —
+      # those inputs are the source of truth for what can change the generated
+      # contract, and scripts/ci/tests/test_hook_scopes.py fails if they drift. Restaging the regenerated artifacts is deliberate:
+      # they are build outputs of the change being committed. It says which.
+      - id: api-types
+        name: openapi.json + generated API types up to date
+        entry: >-
+          bash -c 'set -e; mise run api:types; regenerated=$(git diff --name-only --
+          apps/api/openapi.json libs/shared/ts/src/api/generated/schema.d.ts); if [ -n
+          "$regenerated" ]; then echo "api-types regenerated and staged:"; echo
+          "$regenerated"; git add -- $regenerated; else echo "api-types: already in sync";
+          fi'
+        language: system
+        files: '^apps/api/app/.*\.py$|^libs/shared/py/.*\.py$|^apps/api/scripts/(export_openapi|openapi_contract)\.py$|^apps/api/tests/offline_env\.py$|^apps/api/pyproject\.toml$|^apps/api/openapi\.json$|^uv\.lock$|^libs/shared/ts/src/api/generated/|^scripts/ci/checks\.mjs$|^package\.json$'
+        pass_filenames: false
+
+      - id: analytics-types
+        name: analytics catalog JSON + generated event types up to date
+        entry: >-
+          bash -c 'set -e; mise run analytics:types; regenerated=$(git status --porcelain
+          -- libs/shared/ts/src/analytics/generated | cut -c4-); if [ -n "$regenerated" ];
+          then echo "analytics-types regenerated and staged:"; echo "$regenerated"; git add
+          -- $regenerated; else echo "analytics-types: already in sync"; fi'
+        language: system
+        files: '^libs/shared/py/analytics/|^libs/shared/ts/src/analytics/generated/|^uv\.lock$|^scripts/ci/checks\.mjs$'
         pass_filenames: false
 
       - id: generate-changelog-pages
@@ -57,10 +130,30 @@ repos:
 
       - id: biome-check
         name: Biome check (lint + format + imports)
-        entry: npx biome check --write --no-errors-on-unmatched --files-ignore-unknown=true
+        # pnpm exec, not npx: the same binary CI runs (pnpm-lock.yaml pins it),
+        # never one npx resolves from the registry.
+        entry: pnpm exec biome check --write --no-errors-on-unmatched --files-ignore-unknown=true
         language: system
         files: \.(js|jsx|ts|tsx|json|css|html)$
         exclude: ^(apps/api/|apps/voice-agent/|infra/|docs/)
+
+      - id: doc-comments
+        name: Doc comments state the contract (JSDoc / line-comment content gate)
+        # Staged files are passed as explicit args (the CHANGED_FILES contract
+        # in scripts/ci/lib/explicit-file-list.mjs), so only they are scanned.
+        entry: node scripts/ci/checks.mjs doc-comments
+        language: system
+        files: \.(js|jsx|ts|tsx|mjs|cjs)$
+        exclude: ^(apps/api/|apps/voice-agent/|infra/|docs/)
+
+      - id: bot-handles
+        name: Every bot link points at the live handle
+        # Repo-wide, never staged-file scoped: the copies live in the README, the
+        # docs and the API prompt, and the one that drifts is the one nobody edited.
+        entry: node scripts/ci/checks.mjs bot-handles
+        language: system
+        pass_filenames: false
+        always_run: true
   - repo: local
     hooks:
       - id: react-doctor

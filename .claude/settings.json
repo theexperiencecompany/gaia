@@ -5,7 +5,9 @@
   },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
-    "CLAUDE_CODE_NEW_INIT": "true"
+    "CLAUDE_CODE_NEW_INIT": "true",
+    "GH_TOKEN": "",
+    "VIRTUAL_ENV": ""
   },
   "extraKnownMarketplaces": {
     "nx-claude-plugins": {
@@ -27,7 +29,7 @@
           },
           {
             "type": "command",
-            "command": "f=$(jq -r '.tool_input.file_path // empty'); [ -z \"$f\" ] && exit 0; root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); case \"$f\" in *.ts|*.tsx|*.js|*.jsx) \"$root/node_modules/.bin/biome\" check --write \"$f\" 2>&1 || true;; *.py) uv run --project apps/api --group dev ruff format \"$f\" && uv run --project apps/api --group dev ruff check --fix \"$f\";; esac"
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); [ -z \"$f\" ] && exit 0; root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); case \"$f\" in *.ts|*.tsx|*.js|*.jsx) \"$root/node_modules/.bin/biome\" check --write \"$f\" 2>&1 || true; case \"$f\" in \"$root\"/apps/api/*|\"$root\"/apps/voice-agent/*|\"$root\"/infra/*|\"$root\"/docs/*) ;; *) node \"$root/scripts/ci/checks.mjs\" doc-comments \"$f\" || exit 2;; esac;; *.py) { uv run --project apps/api --group dev ruff format \"$f\" && uv run --project apps/api --group dev ruff check --fix \"$f\" && case \"$f\" in \"$root\"/apps/api/*) uv run --project apps/api --group dev python \"$root/tools/lints/run.py\" \"$f\";; esac; } || exit 2;; esac"
           }
         ]
       },
@@ -51,6 +53,16 @@
       }
     ],
     "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block_ci_polling.py\"",
+            "timeout": 5
+          }
+        ]
+      },
       {
         "matcher": "Agent",
         "hooks": [
@@ -95,6 +107,28 @@
           {
             "type": "command",
             "command": "sh -c 'if ! command -v entire >/dev/null 2>&1; then exit 0; fi; exec entire hooks claude-code stop'"
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'if ! command -v entire >/dev/null 2>&1; then exit 0; fi; exec entire hooks claude-code stop-failure'"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'if ! command -v entire >/dev/null 2>&1; then exit 0; fi; exec entire hooks claude-code subagent-stop'"
           }
         ]
       }

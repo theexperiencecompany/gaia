@@ -1,6 +1,4 @@
-"""
-Usage tracking service — thin orchestration over the usage-snapshot repository.
-"""
+"""Usage tracking service — thin orchestration over the usage-snapshot repository."""
 
 from datetime import UTC, datetime, timedelta
 

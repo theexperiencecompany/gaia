@@ -20,6 +20,10 @@ class SeedDevDataRequest(BaseModel):
         default_factory=list,
         description="Platforms to link (discord, slack, telegram, whatsapp)",
     )
+    pro: bool = Field(
+        default=False,
+        description="Grant an active dev Pro subscription, so paid-only surfaces open",
+    )
 
 
 class SeedDevDataResponse(BaseModel):
@@ -30,6 +34,7 @@ class SeedDevDataResponse(BaseModel):
     todos_created: int
     conversations_created: int
     platforms_linked: list[str]
+    pro: bool
     # Contract for harness clients: inject messages as these ids — never
     # re-derive the format client-side.
     platform_user_ids: dict[str, str]
@@ -66,6 +71,11 @@ class RunDevAgentRequest(BaseModel):
         max_length=100,
         description="Pass the same id across calls to keep the agent's thread state",
     )
+    model: str | None = Field(
+        default=None,
+        max_length=100,
+        description="DEV_MODEL_OPTIONS key (e.g. custom, minimax-m3). Unset = DEV_DEFAULT_MODEL.",
+    )
 
 
 class DevAgentRunResponse(BaseModel):
@@ -84,12 +94,3 @@ class DevAgentRunResponse(BaseModel):
     every 500 as infrastructure would otherwise exclude these from its accuracy
     and quietly flatter the agent.
     """
-
-
-class DevSubagentInfo(BaseModel):
-    """A subagent id/name pair accepted by the direct-run endpoint."""
-
-    id: str
-    name: str
-    short_name: str | None = None
-    agent_name: str

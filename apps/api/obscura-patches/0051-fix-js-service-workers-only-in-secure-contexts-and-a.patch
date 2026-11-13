@@ -1,0 +1,233 @@
+From 45b3b4d56ec16c9142f62b54fe5269bbca08de2a Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 07:05:11 +0530
+Subject: [PATCH] fix(js): service workers only in secure contexts, and a
+ registration's ready settles
+
+navigator.serviceWorker existed on every document and isSecureContext did
+not exist at all; in Chrome the container is [SecureContext], absent on a
+plain-http, about:blank or data: document. isSecureContext now follows the
+document URL (https, wss, file, loopback http; a blob: URL by its origin;
+an about:blank or srcdoc frame by its parent, and a frame only inside a
+secure parent), and the container is exposed only where it is true.
+
+A registration stayed workerless and navigator.serviceWorker.ready never
+settled, so a page that waits on ready before using the registration
+stalled forever. No worker script runs here, so a registered worker is
+modelled as one with no event handlers: it is active at once, ready
+resolves for a page inside its scope, and it handles no fetches or
+messages.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/js/bootstrap.js | 79 ++++++++++++++++++++++++++++---
+ crates/obscura-js/src/runtime.rs  | 42 +++++++++++++---
+ 2 files changed, 108 insertions(+), 13 deletions(-)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 7e222fa..3eac80f 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -7584,12 +7584,10 @@ globalThis.navigator = {
+     },
+     toJSON() { return {brands:this.brands,mobile:this.mobile,platform:this.platform}; },
+   },
+-  // No service worker ever runs here, so a registration stays empty
+-  // (installing/waiting/active all null) and `ready`, which waits for an
+-  // active worker, never settles -- as in a browser whose worker has not
+-  // activated. register() still resolves to a registration, because pages
+-  // attach handlers to it (nytimes.com sets `registration.onupdatefound`).
+-  serviceWorker: { ready: new Promise(() => {}), register(scriptURL, options) { return _serviceWorkerRegister(scriptURL, options); }, getRegistration(clientURL) { return _serviceWorkerGetRegistration(clientURL); }, getRegistrations() { return Promise.resolve([..._serviceWorkerRegistrations.values()]); }, startMessages() {}, controller: null, oncontrollerchange: null, onmessage: null, addEventListener(){}, removeEventListener(){}, dispatchEvent(){return true;} },
++  // A registered worker is modelled as one whose script defines no event
++  // handlers: it activates at once, so `ready` resolves for a page inside its
++  // scope as in a browser, and it never handles fetches or messages.
++  serviceWorker: { get ready() { return _serviceWorkerReady().promise; }, register(scriptURL, options) { return _serviceWorkerRegister(scriptURL, options); }, getRegistration(clientURL) { return _serviceWorkerGetRegistration(clientURL); }, getRegistrations() { return Promise.resolve([..._serviceWorkerRegistrations.values()]); }, startMessages() {}, controller: null, oncontrollerchange: null, onmessage: null, addEventListener(){}, removeEventListener(){}, dispatchEvent(){return true;} },
+   mediaDevices: {
+     enumerateDevices() {
+       return Promise.resolve([
+@@ -16187,6 +16185,20 @@ if (typeof ServiceWorkerContainer === 'undefined') {
+   globalThis.ServiceWorkerContainer = class { register(){return Promise.resolve();} getRegistrations(){return Promise.resolve([]);} };
+ }
+ 
++class ServiceWorker {
++  constructor(scriptURL) {
++    this._scriptURL = scriptURL;
++    this.onstatechange = null;
++    this.onerror = null;
++    _makeListenerBox(this);
++  }
++  get scriptURL() { return this._scriptURL; }
++  get state() { return "activated"; }
++  postMessage() {}
++}
++_markNative(ServiceWorker);
++Object.defineProperty(globalThis, "ServiceWorker", { value: ServiceWorker, writable: true, enumerable: false, configurable: true });
++
+ class ServiceWorkerRegistration {
+   constructor(scope) {
+     this._scope = scope;
+@@ -16217,6 +16229,39 @@ Object.defineProperty(globalThis, "ServiceWorkerRegistration", { value: ServiceW
+ 
+ // Registrations by scope URL for this document's lifetime.
+ var _serviceWorkerRegistrations = new Map();
++// ServiceWorkerContainer is [SecureContext]: __obscura_init exposes it only
++// to documents that are secure contexts.
++var _serviceWorkerContainer = globalThis.navigator.serviceWorker;
++
++// HTML "secure context" for a window: its URL is potentially trustworthy
++// (https, wss, file, or a loopback http host; a blob: URL by its origin), and
++// a frame's parent is one too. A top-level about:blank or data: document has
++// an opaque origin and is not; an about:blank or srcdoc frame is its parent's.
++function _isPotentiallyTrustworthyUrl(href) {
++  let url;
++  try { url = new URL(href); } catch (_e) { return false; }
++  if (url.protocol === 'blob:') {
++    try { url = new URL(url.pathname); } catch (_e) { return false; }
++  }
++  if (url.protocol === 'https:' || url.protocol === 'wss:' || url.protocol === 'file:') return true;
++  if (url.protocol !== 'http:' && url.protocol !== 'ws:') return false;
++  const host = url.hostname;
++  return host === 'localhost' || host.endsWith('.localhost') || /^127\./.test(host) || host === '[::1]';
++}
++function _isSecureContext() {
++  const href = String(globalThis.location?.href || '');
++  let parentSecure = null;
++  if (globalThis.parent && globalThis.parent !== globalThis) {
++    // A cross-origin parent is unreadable here; its URL then cannot count.
++    try { parentSecure = globalThis.parent.isSecureContext; } catch (_e) {}
++  }
++  if (href === 'about:blank' || href === 'about:srcdoc') return parentSecure === true;
++  return parentSecure !== false && _isPotentiallyTrustworthyUrl(href);
++}
++Object.defineProperty(globalThis, 'isSecureContext', {
++  get: _markNative(function isSecureContext() { return _isSecureContext(); }),
++  set: undefined, enumerable: true, configurable: true,
++});
+ // ServiceWorkerContainer.register per the Service Workers spec, minus running
+ // the worker: the script URL must be same-origin http(s), the scope defaults to
+ // the script's directory and must share its origin.
+@@ -16246,8 +16291,23 @@ function _serviceWorkerRegister(scriptURL, options) {
+     registration = new ServiceWorkerRegistration(key);
+     _serviceWorkerRegistrations.set(key, registration);
+   }
++  registration.active = new ServiceWorker(script.href);
++  if (String(globalThis.location?.href || "").startsWith(key)) {
++    _serviceWorkerReady().resolve(registration);
++  }
+   return Promise.resolve(registration);
+ }
++// navigator.serviceWorker.ready: settles with the registration whose scope
++// covers this document once it has an active worker.
++var _serviceWorkerReadyDeferred = null;
++function _serviceWorkerReady() {
++  if (!_serviceWorkerReadyDeferred) {
++    let resolve;
++    const promise = new Promise((r) => { resolve = r; });
++    _serviceWorkerReadyDeferred = { promise, resolve };
++  }
++  return _serviceWorkerReadyDeferred;
++}
+ function _serviceWorkerGetRegistration(clientURL) {
+   let url;
+   try { url = new URL(clientURL == null ? globalThis.location.href : String(clientURL), _documentBase() || globalThis.location?.href).href; }
+@@ -16463,6 +16523,13 @@ globalThis.__obscura_init = function() {
+     usedJSHeapSize: Math.floor(_totalHeap * (0.3 + _fpRand(621) * 0.5)),
+   };
+   globalThis.Notification.permission = "default";
++  if (_isSecureContext()) {
++    Object.defineProperty(globalThis.navigator, 'serviceWorker', {
++      value: _serviceWorkerContainer, writable: true, enumerable: true, configurable: true,
++    });
++  } else {
++    delete globalThis.navigator.serviceWorker;
++  }
+ 
+   // userAgentData brands and getHighEntropyValues now derive the Chrome
+   // version from navigator.userAgent and read the platform from the page
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index c93205d..3faa254 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -4367,10 +4367,14 @@ mod tests {
+     use obscura_dom::parse_html;
+ 
+     fn setup_runtime(html: &str) -> ObscuraJsRuntime {
++        setup_runtime_at(html, "http://example.com/test")
++    }
++
++    fn setup_runtime_at(html: &str, url: &str) -> ObscuraJsRuntime {
+         let dom = parse_html(html);
+         let mut rt = ObscuraJsRuntime::new();
+         rt.set_dom(dom);
+-        rt.set_url("http://example.com/test");
++        rt.set_url(url);
+         rt.set_title("Test Page");
+         rt.run_page_init();
+         rt
+@@ -7303,17 +7307,20 @@ mod tests {
+     }
+ 
+     #[tokio::test(flavor = "current_thread")]
+-    async fn service_worker_register_resolves_to_a_registration() {
+-        // nytimes.com sets `registration.onupdatefound` on the resolved value.
+-        let mut rt = setup_runtime("<html><body></body></html>");
++    async fn service_worker_register_activates_a_worker_and_settles_ready() {
++        // nytimes.com sets `registration.onupdatefound` on the resolved value,
++        // and pages wait on `ready` before using the registration.
++        let mut rt = setup_runtime_at("<html><body></body></html>", "https://example.com/test");
+         rt.evaluate(
+             r#"
+             var sw = (globalThis.__sw = []);
+             navigator.serviceWorker.register("/sw.js").then(async (registration) => {
+                 registration.onupdatefound = () => {};
+                 const found = await navigator.serviceWorker.getRegistration("/page");
++                const ready = await navigator.serviceWorker.ready;
+                 __sw.push(registration instanceof ServiceWorkerRegistration, registration.scope,
+-                    registration.active, found === registration);
++                    registration.active.state, registration.active.scriptURL,
++                    found === registration, ready === registration);
+             });
+             navigator.serviceWorker.register("https://other.example/sw.js").catch((error) => {
+                 __sw.push("rejected:" + error.name);
+@@ -7325,10 +7332,31 @@ mod tests {
+         rt.run_event_loop_bounded(100).await.unwrap();
+         assert_eq!(
+             rt.evaluate("globalThis.__sw").unwrap(),
+-            serde_json::json!(["rejected:SecurityError", true, "http://example.com/", null, true])
++            serde_json::json!([
++                "rejected:SecurityError", true, "https://example.com/", "activated",
++                "https://example.com/sw.js", true, true
++            ])
+         );
+     }
+ 
++    #[test]
++    fn service_workers_and_secure_context_follow_the_document_url() {
++        for (url, secure) in [
++            ("https://example.com/", true),
++            ("http://localhost:8080/", true),
++            ("http://127.0.0.1/", true),
++            ("http://example.com/", false),
++            ("about:blank", false),
++        ] {
++            let mut rt = setup_runtime_at("<html><body></body></html>", url);
++            assert_eq!(
++                rt.evaluate("[isSecureContext, 'serviceWorker' in navigator]").unwrap(),
++                serde_json::json!([secure, secure]),
++                "{url}"
++            );
++        }
++    }
++
+     #[test]
+     fn window_named_access_tracks_dynamic_ids_and_fragment_parsing() {
+         let mut rt = setup_runtime("<html><body><div id='host'></div></body></html>");
+@@ -20363,7 +20391,7 @@ mod tests {
+     /// "addEventListener is not a function".
+     #[test]
+     fn navigator_eventtarget_stubs_expose_add_event_listener() {
+-        let mut rt = setup_runtime("<div></div>");
++        let mut rt = setup_runtime_at("<div></div>", "https://example.com/test");
+         let result = rt
+             .evaluate(
+                 r#"

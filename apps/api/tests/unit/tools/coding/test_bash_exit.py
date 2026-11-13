@@ -15,7 +15,26 @@ from e2b import CommandExitException, TimeoutException
 import pytest
 
 from app.agents.tools.coding import bash_tool
-from app.agents.tools.coding.bash_tool import _record_bash_exit_code, _run_foreground
+from app.agents.tools.coding.bash_tool import (
+    CommandTimeoutError,
+    _BashInvocation,
+    _record_bash_exit_code,
+    _run_foreground,
+)
+
+
+def _invocation(command: str, timeout: int = 60) -> _BashInvocation:
+    return _BashInvocation(
+        user_id="u1",
+        run_id="rid",
+        command=command,
+        cwd="/workspace",
+        timeout=timeout,
+        background=False,
+        session_id=None,
+        config={},
+        scoped_tools=None,
+    )
 
 
 def _sbx_with_run(run_mock: AsyncMock) -> AsyncMock:
@@ -27,7 +46,7 @@ def _sbx_with_run(run_mock: AsyncMock) -> AsyncMock:
 
 async def test_zero_exit_returns_exit_code_and_streams() -> None:
     run = AsyncMock(return_value=SimpleNamespace(exit_code=0, stdout="done", stderr=""))
-    out = await _run_foreground(_sbx_with_run(run), "rid", "echo done", "/workspace", 60, None)
+    out = await _run_foreground(_sbx_with_run(run), _invocation("echo done"))
     assert "exit_code: 0" in out
     assert "done" in out
 
@@ -39,7 +58,7 @@ async def test_nonzero_exit_is_surfaced_as_result_not_error() -> None:
             stdout="partial out", stderr="grep: no match", exit_code=1, error=None
         )
     )
-    out = await _run_foreground(_sbx_with_run(run), "rid", "grep x f", "/workspace", 60, None)
+    out = await _run_foreground(_sbx_with_run(run), _invocation("grep x f"))
     assert "exit_code: 1" in out, "a non-zero exit must report its code, not raise"
     assert "partial out" in out
     assert "grep: no match" in out
@@ -51,16 +70,27 @@ async def test_various_nonzero_exit_codes_surface(code: int) -> None:
     run = AsyncMock(
         side_effect=CommandExitException(stdout="", stderr="boom", exit_code=code, error=None)
     )
-    out = await _run_foreground(_sbx_with_run(run), "rid", "cmd", "/workspace", 60, None)
+    out = await _run_foreground(_sbx_with_run(run), _invocation("cmd"))
     assert f"exit_code: {code}" in out
 
 
-async def test_command_timeout_propagates() -> None:
-    # A command-deadline TimeoutException must propagate (the bash() wrapper /
-    # acquire_sandbox decide eviction), not be swallowed as a normal result.
+async def test_command_timeout_propagates_as_a_command_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A command deadline must propagate (acquire_sandbox decides eviction), not be
+    # swallowed as a normal result, and must carry the deadline the command missed.
+    recorded: list[tuple[int | None, bool]] = []
+    monkeypatch.setattr(
+        bash_tool,
+        "_record_bash_exit_code",
+        lambda code, *, timed_out: recorded.append((code, timed_out)),
+    )
     run = AsyncMock(side_effect=TimeoutException("exceeding 'timeout'"))
-    with pytest.raises(TimeoutException):
-        await _run_foreground(_sbx_with_run(run), "rid", "sleep 999", "/workspace", 1, None)
+    with pytest.raises(CommandTimeoutError) as timed_out:
+        await _run_foreground(_sbx_with_run(run), _invocation("sleep 999", 7))
+    assert "within 7s" in str(timed_out.value)
+    # The dashboard's timeout bucket must see it, or a slow command looks clean.
+    assert recorded == [(None, True)]
 
 
 def test_metrics_failure_does_not_break_exit_code_recording(

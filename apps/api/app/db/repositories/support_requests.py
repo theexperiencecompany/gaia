@@ -1,11 +1,12 @@
-"""Repository for the ``support_requests`` collection — user-scoped tickets.
+"""Repository for the support_requests collection.
 
-Identity is a caller-minted UUID stored as the string ``_id`` (not an ObjectId).
-Reads are always scoped to the owning user; the listing supports an optional
-status filter with newest-first pagination.
+Identity is a caller-minted UUID stored as the string _id (not an ObjectId).
+Global rather than user-scoped because a visitor's ticket has no owning user;
+the listings are scoped to their user by their own filter, with an optional
+status filter and newest-first pagination.
 """
 
-from app.db.repositories.base import UserScopedRepository
+from app.db.repositories.base import MongoRepository
 from app.models.support_models import (
     SupportRequestDocument,
     SupportRequestStatus,
@@ -13,7 +14,7 @@ from app.models.support_models import (
 )
 
 
-class SupportRequestsRepository(UserScopedRepository[SupportRequestDocument, SupportRequestUpdate]):
+class SupportRequestsRepository(MongoRepository[SupportRequestDocument, SupportRequestUpdate]):
     collection_name = "support_requests"
     document_model = SupportRequestDocument
     update_model = SupportRequestUpdate
@@ -34,7 +35,7 @@ class SupportRequestsRepository(UserScopedRepository[SupportRequestDocument, Sup
         skip: int,
         limit: int,
     ) -> list[SupportRequestDocument]:
-        """A user's requests, newest first, optionally filtered by status."""
+        """Return a user's requests, newest first, optionally filtered by status."""
         return await self._find(
             self._user_filter(user_id, status),
             sort=[("created_at", -1)],

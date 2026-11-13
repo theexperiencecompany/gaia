@@ -1,19 +1,13 @@
 /// <reference lib="webworker" />
 
 /**
- * AudioWorkletProcessor that captures the mic at the AudioContext's native
- * sample rate, downsamples to 16 kHz mono, batches into 1280-sample frames,
- * and posts each frame to the main thread via `port.postMessage`.
+ * AudioWorkletProcessor that captures the mic at the AudioContext's native sample rate,
+ * downsamples to 16 kHz mono, batches into 1280-sample frames, and posts each frame to the main
+ * thread via `port.postMessage`. Served as a module worklet via `audioWorklet.addModule`.
  *
- * This file is intended to be served as a module worklet:
- *
- *     await audioContext.audioWorklet.addModule(
- *       new URL("@gaia/wake-word/worklet", import.meta.url),
- *     );
- *
- * Bundlers must keep this file standalone (no shared imports). Hence the
- * inlined linear resampler — it duplicates the logic in core/resampler.ts on
- * purpose so the worklet can run in any worklet global scope.
+ * Bundlers must keep this file standalone (no shared imports), hence the inlined linear
+ * resampler — it duplicates core/resampler.ts on purpose so the worklet runs in any worklet
+ * global scope.
  */
 
 declare const sampleRate: number;

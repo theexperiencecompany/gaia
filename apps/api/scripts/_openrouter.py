@@ -31,9 +31,10 @@ class GenerationRecord(BaseModel):
 
 
 class _Lookup(BaseModel):
-    """A generation lookup outcome. ``resolved`` False means the answer is
-    still unknown (network/5xx exhausted) and must NOT be cached — a 404 is a
-    resolved ``None``, because OpenRouter will never know that id again."""
+    """Generation lookup outcome; resolved=False (network/5xx exhausted) must not be cached.
+
+    A 404 is resolved with record None: OpenRouter will never know that id again.
+    """
 
     resolved: bool
     record: GenerationRecord | None = None
@@ -84,11 +85,10 @@ def _read_cache(path: Path) -> dict[str, GenerationRecord | None]:
 def default_cache_dir() -> Path:
     """Where resolved generations are cached between runs.
 
-    Under the invoking user's cache home, never a shared temp directory: the
-    cache is written and read back as the script's own input, so a world-
-    writable path lets anyone on the box pre-create it and decide what this
-    backfill believes each call cost — and that number is written to
-    ``usage_daily``. Ephemeral either way; it only makes a re-run cheaper.
+    Under the invoking user's cache home, not a shared temp directory: a
+    world-writable path would let anyone pre-create it and decide what this
+    backfill believes a call cost, which is written to usage_daily. Ephemeral
+    either way — it only makes a re-run cheaper.
     """
     xdg = os.environ.get("XDG_CACHE_HOME")
     return (Path(xdg) if xdg else Path.home() / ".cache") / "gaia-true-cost"
@@ -107,7 +107,7 @@ async def resolve_generations(
     generation_ids: Iterable[str],
     cache_path: Path,
 ) -> dict[str, GenerationRecord | None]:
-    """Resolve every generation id in ``calls``, reusing the day's cache file."""
+    """Resolve every generation id in calls, reusing the day's cache file."""
     known = _read_cache(cache_path)
     todo = sorted({gid for gid in generation_ids if gid} - set(known))
     if not todo:

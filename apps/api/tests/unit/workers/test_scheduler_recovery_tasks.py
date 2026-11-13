@@ -1,6 +1,6 @@
 """Unit tests for app.workers.tasks.scheduler_recovery_tasks.
 
-``rescan_pending_scheduled_tasks`` is the periodic safety net for deferred
+rescan_pending_scheduled_tasks is the periodic safety net for deferred
 work lost mid-run: it reaps BOTH workflows and reminders wedged in EXECUTING,
 then re-scans both schedulers. If any pass fails the whole task must fail
 loudly — a swallowed scheduler error would silently break the recovery
@@ -18,12 +18,7 @@ MODULE = "app.workers.tasks.scheduler_recovery_tasks"
 
 class TestRescanPendingScheduledTasks:
     async def test_reaps_and_rescans_both_schedulers(self):
-        """Reminders are reaped too, not just workflows.
-
-        A reminder wedged in EXECUTING is otherwise invisible forever: the
-        due-scan filters on status="scheduled", so nothing can see it again and
-        it simply never fires.
-        """
+        """A reminder wedged in EXECUTING is otherwise invisible forever — the due-scan filters on status="scheduled"."""
         workflow_reap = AsyncMock(return_value=2)
         reminder_reap = AsyncMock(return_value=1)
         workflow_scan = AsyncMock()

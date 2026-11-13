@@ -1,10 +1,10 @@
 """Base repository verification against real Mongo + Redis.
 
-A test-only ``_FixtureRepository`` (its own tiny document/update models and a
+A test-only _FixtureRepository (its own tiny document/update models and a
 throwaway collection) drives the whole base:
-- ``TestFixtureRepository`` runs the full ``UserScopedRepositoryContract``.
-- ``TestBasePrimitives`` covers the subclass-only primitives.
-- ``TestGlobalRepository`` proves the non-user-scoped ``MongoRepository`` surface.
+- TestFixtureRepository runs the full UserScopedRepositoryContract.
+- TestBasePrimitives covers the subclass-only primitives.
+- TestGlobalRepository proves the non-user-scoped MongoRepository surface.
 """
 
 from __future__ import annotations
@@ -12,7 +12,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
+from bson import ObjectId
 from pydantic import BaseModel, ConfigDict
+from pymongo.errors import BulkWriteError
 import pytest
 
 from app.constants.cache import REPO_ENTITY_TTL, REPO_QUERY_TTL
@@ -133,6 +135,26 @@ class TestBasePrimitives:
         assert after_a is not None and after_a.title == "A"
         assert after_b is not None and after_b.title == "B"
 
+    async def test_a_bulk_set_that_fails_partway_leaves_no_stale_cache(
+        self, repo, make_doc, raw_collection
+    ):
+        """An ordered bulk stops at its first failure with the earlier writes already applied."""
+        await raw_collection.create_index("title", unique=True)
+        a = await repo.create(make_doc(user_id="u", title="a"))
+        b = await repo.create(make_doc(user_id="u", title="b"))
+        await repo.get(a.id, user_id="u")  # populate entity cache
+        assert await repo.list_titles(user_id="u") == ["a", "b"]  # populate query cache
+
+        with pytest.raises(BulkWriteError):
+            await repo._bulk_set(
+                [(a.id, _FixtureUpdate(title="A")), (b.id, _FixtureUpdate(title="A"))],
+                scope="u",
+            )
+
+        after_a = await repo.get(a.id, user_id="u")
+        assert after_a is not None and after_a.title == "A"
+        assert sorted(await repo.list_titles(user_id="u")) == ["A", "b"]
+
     async def test_update_fields_no_invalidate_leaves_cache_and_generation(
         self, repo, make_doc, redis
     ):
@@ -202,15 +224,102 @@ class TestBasePrimitives:
         )
         assert missed is None  # extra_filter gate did not match
 
+    async def test_a_refused_update_evicts_the_cached_copy(self, repo, make_doc, redis):
+        """A compare-and-set refused behind the cache must leave the retry nothing stale to read."""
+        created = await repo.create(make_doc(user_id="u", count=1))
+        await repo.get(created.id, user_id="u")  # populate the entity cache
+
+        refused = await repo._apply_update(
+            created.id, "u", {"user_id": "u", "count": 999}, _FixtureUpdate(title="edited")
+        )
+
+        assert refused is None
+        assert await redis.get(repo.cache_policy.entity_key("u", created.id)) is None
+
+
+_DOUBLE_COUNT = [{"$set": {"count": {"$multiply": ["$count", 2]}}}]
+
+
+class TestPipelineUpdate:
+    """A field computed from the document it is written to, in one atomic update."""
+
+    async def test_it_writes_from_the_document_and_keeps_the_cache_coherent(
+        self, repo, make_doc, redis
+    ):
+        created = await repo.create(make_doc(user_id="u", count=4))
+        await repo.get(created.id, user_id="u")  # populate the entity cache
+        gen_key = repo.cache_policy.generation_key("u")
+        gen_before = int(await redis.get(gen_key))
+
+        matched = await repo._apply_pipeline_update_unfetched(
+            {"_id": repo._id_value(created.id)}, _DOUBLE_COUNT, scope="u", doc_id=created.id
+        )
+
+        assert matched == 1
+        assert await redis.get(repo.cache_policy.entity_key("u", created.id)) is None
+        assert int(await redis.get(gen_key)) == gen_before + 1
+        fetched = await repo.get(created.id, user_id="u")
+        assert fetched is not None and fetched.count == 8
+
+    async def test_a_write_no_reader_sees_leaves_the_cache_alone(self, repo, make_doc, redis):
+        created = await repo.create(make_doc(user_id="u", count=4))
+        await repo.get(created.id, user_id="u")
+        gen_key = repo.cache_policy.generation_key("u")
+        gen_before = int(await redis.get(gen_key))
+
+        matched = await repo._apply_pipeline_update_unfetched(
+            {"_id": repo._id_value(created.id)}, _DOUBLE_COUNT, scope=None
+        )
+
+        assert matched == 1
+        assert await redis.get(repo.cache_policy.entity_key("u", created.id)) is not None
+        assert int(await redis.get(gen_key)) == gen_before
+
+    async def test_it_writes_to_its_own_collection(
+        self, repo, make_doc, raw_collection, monkeypatch
+    ):
+        created = await repo.create(make_doc(user_id="u", count=4))
+        named: list[str] = []
+
+        def _named(name: str) -> object:
+            named.append(name)
+            return raw_collection
+
+        monkeypatch.setattr("app.db.repositories.base.get_async_collection", _named)
+        await repo._apply_pipeline_update_unfetched(
+            {"_id": repo._id_value(created.id)}, _DOUBLE_COUNT, scope=None
+        )
+
+        assert named == [repo.collection_name]
+
+    async def test_a_gate_that_misses_writes_nothing(self, repo, make_doc, redis, raw_collection):
+        created = await repo.create(make_doc(user_id="u", count=4))
+        gen_key = repo.cache_policy.generation_key("u")
+        gen_before = int(await redis.get(gen_key))
+
+        matched = await repo._apply_pipeline_update_unfetched(
+            {"_id": repo._id_value(created.id)},
+            _DOUBLE_COUNT,
+            scope="u",
+            extra_filter={"count": 999},
+        )
+
+        assert matched == 0
+        assert int(await redis.get(gen_key)) == gen_before
+        stored = await raw_collection.find_one({"_id": repo._id_value(created.id)})
+        assert stored["count"] == 4
+
 
 class _GlobalDocument(MongoDocument):
     name: str
+    tag: str = ""
 
 
 class _GlobalUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str | None = None
+    tag: str | None = None
 
 
 class _GlobalRepository(MongoRepository[_GlobalDocument, _GlobalUpdate]):
@@ -244,6 +353,18 @@ class TestGlobalRepository:
         await global_repo.create(_GlobalDocument(name="b"))
         assert await global_repo.count() == 2
 
+    async def test_upsert_inserts_then_updates_through_the_cache(self, global_repo):
+        doc_id = str(ObjectId())
+
+        await global_repo.upsert(doc_id, _GlobalUpdate(name="first", tag="kept"))
+        first = await global_repo.get(doc_id)
+        await global_repo.upsert(doc_id, _GlobalUpdate(name="second"))
+        second = await global_repo.get(doc_id)
+
+        assert first is not None and (first.name, first.tag) == ("first", "kept")
+        assert second is not None and (second.name, second.tag) == ("second", "kept")
+        assert await global_repo.count() == 1
+
 
 class _KeyedDocument(MongoDocument):
     ref: str
@@ -257,7 +378,7 @@ class _KeyedUpdate(BaseModel):
 
 
 class _KeyedRepository(MongoRepository[_KeyedDocument, _KeyedUpdate]):
-    """Identity is a business field (``ref``), not ``_id`` — the Wave-D shape."""
+    """Identity is a business field (ref), not _id — the Wave-D shape."""
 
     collection_name = "contract_fixture"
     document_model = _KeyedDocument
@@ -287,6 +408,15 @@ class TestBusinessKeyIdentity:
         assert updated is not None and updated.label == "second"
         assert await keyed_repo.delete("abc") is True
         assert await keyed_repo.get("abc") is None
+
+    async def test_upsert_creates_the_document_under_its_business_key(
+        self, keyed_repo, raw_collection
+    ):
+        await keyed_repo.upsert("fresh", _KeyedUpdate(label="made"))
+
+        fetched = await keyed_repo.get("fresh")
+        assert fetched is not None and fetched.label == "made"
+        assert await raw_collection.count_documents({}) == 1
 
     async def test_business_key_is_not_clobbered_by_object_id(self, keyed_repo):
         created = await keyed_repo.create(_KeyedDocument(ref="uuid-xyz"))

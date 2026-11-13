@@ -94,10 +94,10 @@ export default function SubtaskManager({
 
   return (
     <div className={cn("space-y-3", className)}>
-      {/* Subtasks Header */}
+      {/* Checklist header */}
       {subtasks.length > 0 && (
         <div className="flex items-center justify-between text-sm text-zinc-500">
-          <span>Subtasks</span>
+          <span>Checklist</span>
           <span>
             {" "}
             ({subtasks.filter((s) => s.completed).length}/{subtasks.length})
@@ -109,7 +109,7 @@ export default function SubtaskManager({
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Input
-            placeholder="Add a subtask..."
+            placeholder="Add a checklist item..."
             value={newSubtaskTitle}
             onChange={(e) => setNewSubtaskTitle(e.target.value)}
             onKeyDown={(e) => handleKeyDown(e, "add")}
@@ -126,7 +126,7 @@ export default function SubtaskManager({
         </Button>
       </div>
 
-      {/* Existing Subtasks */}
+      {/* Existing checklist items */}
       {subtasks.length > 0 && (
         <div className="space-y-2">
           {subtasks.map((subtask) => (

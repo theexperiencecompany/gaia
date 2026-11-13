@@ -4,6 +4,10 @@ Tests cover:
 - wrap_tool_with_null_filter: null filtering, auth re-raise, connection error callback,
   user-friendly error messages
 - wrap_tools_with_null_filter: batch wrapping
+
+Symbols the fix adds are reached through their modules: the regression lane replays the
+marked tests on the base revision, where a from-import would break collection instead of
+failing the test.
 """
 
 from unittest.mock import AsyncMock, MagicMock
@@ -11,8 +15,13 @@ from unittest.mock import AsyncMock, MagicMock
 from langchain_core.tools import BaseTool
 import pytest
 
+from app.constants.mcp import MCP_TOOL_NAME_MAX_CHARS
+from app.services.mcp.mcp_errors import MCPAuthorizationRequiredError
+from app.utils import errors
 from app.utils.mcp_utils import (
     _CONNECTION_ERROR_PATTERNS,
+    gaia_tool_names,
+    source_prefixed_tool_name,
     wrap_tool_with_null_filter,
     wrap_tools_with_null_filter,
 )
@@ -26,6 +35,7 @@ def _make_tool(name: str = "test_tool", arun: AsyncMock | None = None) -> BaseTo
     """Create a minimal BaseTool mock that behaves like a real LangChain tool."""
     tool = MagicMock(spec=BaseTool)
     tool.name = name
+    tool.metadata = None
     tool._arun = arun or AsyncMock(return_value="ok")
     return tool
 
@@ -85,6 +95,68 @@ class TestWrapToolWithNullFilter:
         wrapped = wrap_tool_with_null_filter(tool)
         with pytest.raises(Exception, match="401"):
             await wrapped._arun()
+
+    @pytest.mark.regression
+    async def test_a_401_on_a_stamped_tool_asks_the_user_to_sign_in_again(self) -> None:
+        """Regression: the raw 401 reached the agent as text, with no reconnect card and a retry."""
+        tool = _make_tool(arun=AsyncMock(side_effect=Exception("HTTP 401 Unauthorized")))
+        tool.metadata = {"integration_id": "readai"}
+
+        wrapped = wrap_tool_with_null_filter(tool)
+        with pytest.raises(errors.IntegrationNotConnectedError) as raised:
+            await wrapped._arun()
+
+        assert (raised.value.integration_id, raised.value.integration_name) == ("readai", None)
+        assert raised.value.grant_died is True
+        assert (
+            raised.value.why
+            == "The MCP server rejected the stored credentials: HTTP 401 Unauthorized"
+        )
+        assert str(raised.value.__cause__) == "HTTP 401 Unauthorized"
+
+    @pytest.mark.regression
+    async def test_a_reconnect_with_no_token_asks_the_user_to_sign_in(self) -> None:
+        """The standalone-auth MCP whose token is gone: the reconnect itself cannot authenticate."""
+        tool = _make_tool(arun=AsyncMock(side_effect=Exception("connection closed")))
+        tool.metadata = {"integration_id": "readai"}
+        reconnect = AsyncMock(side_effect=MCPAuthorizationRequiredError("readai"))
+
+        wrapped = wrap_tool_with_null_filter(tool, reconnect_and_retry=reconnect)
+        with pytest.raises(errors.IntegrationNotConnectedError) as raised:
+            await wrapped._arun()
+
+        reconnect.assert_awaited_once()
+        assert raised.value.integration_id == "readai"
+        assert isinstance(raised.value.__cause__, MCPAuthorizationRequiredError)
+        assert str(raised.value.__cause__) == (
+            "No valid token for readai. "
+            "OAuth authorization required - user must complete the OAuth flow."
+        )
+
+    @pytest.mark.parametrize("rejection", ["HTTP 401", "Request UNAUTHORIZED by server"])
+    async def test_a_reconnect_the_server_still_rejects_asks_the_user_to_sign_in(
+        self, rejection: str
+    ) -> None:
+        tool = _make_tool(arun=AsyncMock(side_effect=Exception("connection closed")))
+        tool.metadata = {"integration_id": "readai"}
+        retry_error = Exception(rejection)
+        reconnect = AsyncMock(side_effect=retry_error)
+
+        wrapped = wrap_tool_with_null_filter(tool, reconnect_and_retry=reconnect)
+        with pytest.raises(errors.IntegrationNotConnectedError) as raised:
+            await wrapped._arun()
+
+        assert raised.value.__cause__ is retry_error
+        assert raised.value.why == f"The MCP server rejected the stored credentials: {rejection}"
+
+    async def test_a_reconnect_failing_for_another_reason_is_reported_not_raised(self) -> None:
+        tool = _make_tool(arun=AsyncMock(side_effect=Exception("connection closed")))
+        tool.metadata = {"integration_id": "readai"}
+        reconnect = AsyncMock(side_effect=Exception("server busy"))
+
+        wrapped = wrap_tool_with_null_filter(tool, reconnect_and_retry=reconnect)
+
+        assert await wrapped._arun() == "MCP tool error after reconnect: server busy"
 
     async def test_reraises_unauthorized_error_case_insensitive(self) -> None:
         original = AsyncMock(side_effect=Exception("Access Unauthorized for user"))
@@ -254,3 +326,68 @@ class TestConnectionErrorPatterns:
     )
     def test_contains_key_patterns(self, expected: str) -> None:
         assert expected in _CONNECTION_ERROR_PATTERNS
+
+
+class TestGaiaToolNames:
+    def test_a_name_another_server_exposes_is_prefixed(self) -> None:
+        assert gaia_tool_names("PostHog", ["search", "query"], (), {"search"}) == {
+            "search": "posthog_search",
+            "query": "query",
+        }
+
+    def test_a_gaia_reserved_name_is_prefixed_without_any_other_server(self) -> None:
+        assert gaia_tool_names("Dodo Payments", ["execute"], {"execute"}, ()) == {
+            "execute": "dodo_payments_execute"
+        }
+
+    def test_an_unshared_unreserved_name_is_kept(self) -> None:
+        assert gaia_tool_names("PostHog", ["query"], {"execute"}, {"search"}) == {"query": "query"}
+
+    def test_a_prefixed_name_never_takes_a_name_the_server_already_uses(self) -> None:
+        assert gaia_tool_names("PostHog", ["search", "posthog_search"], (), {"search"}) == {
+            "search": "posthog_search_2",
+            "posthog_search": "posthog_search",
+        }
+
+    def test_a_prefixed_name_never_takes_a_name_just_given_to_another_tool(self) -> None:
+        names = gaia_tool_names("src", ["a", "src_a", "a_2"], (), {"a", "a_2"})
+
+        assert names == {"a": "src_a_2", "src_a": "src_a", "a_2": "src_a_2_2"}
+
+
+class TestSourcePrefixedToolName:
+    def test_prefixes_the_source_slug(self) -> None:
+        assert source_prefixed_tool_name("Dodo Payments", "execute", ()) == "dodo_payments_execute"
+
+    def test_keeps_only_function_name_safe_characters(self) -> None:
+        assert source_prefixed_tool_name("  Acme-CRM (v2)! ", "read", ()) == "acme_crm_v2_read"
+
+    def test_a_source_with_no_ascii_word_characters_gets_the_generic_prefix(self) -> None:
+        assert source_prefixed_tool_name("支付", "execute", ()) == "mcp_execute"
+
+    def test_a_long_source_is_cut_to_exactly_the_provider_function_name_limit(self) -> None:
+        name = source_prefixed_tool_name("a" * 100, "execute", ())
+
+        assert len(name) == MCP_TOOL_NAME_MAX_CHARS
+        assert name.endswith("a_execute")
+
+    def test_a_cut_that_lands_on_a_separator_leaves_no_double_separator(self) -> None:
+        # 56 prefix chars fit beside "_execute"; the 56th is the separator before "b".
+        name = source_prefixed_tool_name("a" * 55 + " b", "execute", ())
+
+        assert name == "a" * 55 + "_execute"
+
+    def test_a_taken_name_gets_the_first_free_numeric_suffix(self) -> None:
+        taken = {"dodo_payments_execute", "dodo_payments_execute_2"}
+
+        assert source_prefixed_tool_name("Dodo Payments", "execute", taken) == (
+            "dodo_payments_execute_3"
+        )
+
+    def test_a_suffixed_name_still_fits_the_provider_function_name_limit(self) -> None:
+        first = source_prefixed_tool_name("a" * 100, "execute", ())
+
+        second = source_prefixed_tool_name("a" * 100, "execute", {first})
+
+        assert len(second) == MCP_TOOL_NAME_MAX_CHARS
+        assert second.endswith("a_execute_2")

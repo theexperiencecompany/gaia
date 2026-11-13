@@ -1,22 +1,16 @@
 #!/usr/bin/env python3
-"""
-Seed script for explore/discover workflows - outcome-first curated set.
+"""Seed explore/discover workflows — outcome-first curated set.
 
-The explore use cases behind /use-cases, curated to poke.com's bar:
-- Titles are everyday outcomes ("Assignment Tracker", not "Email to Task Converter")
-- Descriptions are one-line promises ("Never be surprised by a due date again")
-- Prompts are the real runnable instructions (shown on the detail page)
-- 1-3 steps, at most one external integration per flow; 14 of 28 need none
-- Run counts are curated display values (DISPLAY_RUN_COUNTS), not measured usage
+The explore use cases behind /use-cases, curated to poke.com's bar: everyday
+outcome titles, one-line promise descriptions, real runnable prompts, 1-3
+steps with at most one external integration (14 of 28 need none), and
+curated display run counts (DISPLAY_RUN_COUNTS, not measured usage).
 
 Categories: Study, Email, Meetings, Home admin, Content, Focus & planning,
-Dev, Health & habits. 8 workflows are flagged `featured` (impact-first).
+Dev, Health & habits. 8 workflows are flagged featured (impact-first).
 
-Usage:
-  cd apps/api
-  uv run python scripts/seed_explore_workflows.py              # seed (interactive)
-  uv run python scripts/seed_explore_workflows.py --dry-run    # report only
-  uv run python scripts/seed_explore_workflows.py --force --prune
+Usage: cd apps/api && uv run python scripts/seed_explore_workflows.py
+[--dry-run] [--force --prune]
 """
 
 import argparse
@@ -32,6 +26,7 @@ import uuid
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
+from app.constants.vfs import SYSTEM_USER_ID
 from app.db.mongodb.collections import get_async_collection
 from app.models.workflow_models import (
     TriggerConfig,
@@ -39,7 +34,6 @@ from app.models.workflow_models import (
     WorkflowStep,
 )
 from app.services.system_workflows.definitions.calendar import CALENDAR_SYSTEM_WORKFLOWS
-from app.services.system_workflows.definitions.gmail import GMAIL_SYSTEM_WORKFLOWS
 from shared.py.utils.slugify import slugify
 
 workflows_collection = get_async_collection("workflows")
@@ -51,7 +45,7 @@ def create_step(
     category: str,
     description: str,
 ) -> dict[str, Any]:
-    """Helper to create a workflow step with the abstract schema."""
+    """Create a workflow step with the abstract schema."""
     return {
         "id": f"step_{step_number}",
         "title": title,
@@ -937,16 +931,6 @@ def get_health_workflows() -> list[dict[str, Any]]:
 # description, prompt, steps, trigger — is read from the system-workflow
 # definitions so the explore card can never drift from what gets provisioned.
 SYSTEM_WORKFLOW_PRESENTATION: dict[str, dict[str, Any]] = {
-    "gmail:email_intelligence": {
-        "icon": "InboxIcon",
-        "icon_color": "#ff726b",
-        "categories": ["Email", "featured"],
-    },
-    "gmail:smart_reply_drafts": {
-        "icon": "MailSend01Icon",
-        "icon_color": "#f68001",
-        "categories": ["Email"],
-    },
     "calendar:meeting_prep": {
         "icon": "UserGroupIcon",
         "icon_color": "#09b7dc",
@@ -961,15 +945,14 @@ SYSTEM_WORKFLOW_PRESENTATION: dict[str, dict[str, Any]] = {
 
 
 def get_system_workflows() -> list[dict[str, Any]]:
-    """The auto-provisioned workflows, as explore cards.
+    """Return the auto-provisioned workflows, as explore cards.
 
-    Same definitions the provisioner uses, so the card shows exactly what a user
-    gets when they connect the integration. The ``system_workflow_key`` rides
-    along to the client, which is what stops "add this" from creating a second
-    copy of one the user already has.
+    Same definitions the provisioner uses, so the card matches what a user
+    gets on connecting the integration; system_workflow_key rides along so
+    "add this" can't create a second copy of one the user already has.
     """
     configs: list[dict[str, Any]] = []
-    for key, factory in [*GMAIL_SYSTEM_WORKFLOWS, *CALENDAR_SYSTEM_WORKFLOWS]:
+    for key, factory in CALENDAR_SYSTEM_WORKFLOWS:
         request = factory()
         presentation = SYSTEM_WORKFLOW_PRESENTATION[key]
         configs.append(
@@ -1000,8 +983,6 @@ def get_system_workflows() -> list[dict[str, Any]]:
 # stable, and scaled by how broadly each flow applies rather than uniformly.
 DISPLAY_RUN_COUNTS: dict[str, int] = {
     # Built-ins — provisioned for everyone who connects the integration.
-    "Inbox Triage": 8420,
-    "Auto-Draft Replies": 6180,
     "Meeting Briefing": 5740,
     "Meeting Reminder": 7310,
     # Broad daily habits.
@@ -1155,7 +1136,7 @@ async def seed_explore_workflows(
     dry_run: bool = False,
     force: bool = False,
     backup: bool = True,
-    user_id: str = "system",
+    user_id: str = SYSTEM_USER_ID,
     prune: bool = False,
 ) -> None:
     """Seed the workflows collection with explore workflows."""
@@ -1266,7 +1247,7 @@ def parse_arguments():
     parser.add_argument(
         "--user-id",
         type=str,
-        default="system",
+        default=SYSTEM_USER_ID,
         help="User ID for workflows (default: system)",
     )
 
@@ -1274,7 +1255,7 @@ def parse_arguments():
 
 
 async def main():
-    """Main function."""
+    """Seed explore workflows."""
     args = parse_arguments()
 
     try:

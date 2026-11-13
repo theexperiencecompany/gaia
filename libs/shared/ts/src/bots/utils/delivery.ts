@@ -15,18 +15,14 @@ import { renderForPlatform } from "./formatters";
 import { chunkResponse } from "./text";
 
 /**
- * Sends `text` through `send`, split across as many messages as the platform's
- * limit requires.
+ * Sends `text` through `send`, split across as many messages as the platform's limit requires.
  *
- * Chunks are measured by their RENDERED length, because `send` is an adapter
- * entry point and every adapter runs its argument through `renderForPlatform`
- * before it reaches the API — and rendering grows text (Telegram's HTML escapes
- * `&` to `&amp;`, wraps `**bold**` in `<b>`). Sizing the raw markdown instead
- * lets a chunk that looks like it fits get rejected by the platform.
+ * Chunks are measured by their RENDERED length: every adapter runs its argument through
+ * `renderForPlatform` before it reaches the API, and rendering grows text (Telegram's HTML
+ * escapes `&` to `&amp;`, wraps `**bold**` in `<b>`) — sizing raw markdown risks a chunk that
+ * looks like it fits getting rejected by the platform.
  *
  * @param send - The adapter sender (`target.send` / `target.sendEphemeral`).
- * @param text - Raw markdown to deliver in full.
- * @param platform - Target platform, selecting both limit and renderer.
  */
 export async function sendChunked(
   send: (text: string) => Promise<unknown>,

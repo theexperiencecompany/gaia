@@ -66,7 +66,7 @@ _JSON_TYPE_NAMES = {
 
 
 def json_type(value: object) -> str:
-    """The JSON type name of a decoded value (bool before int, as in JSON).
+    """Return the JSON type name of a decoded value (bool before int, as in JSON).
 
     A namespace object also carries its sorted key names. Plain ``"object"`` made
     the two runtimes look identical whenever both merely HAD the namespace, so a
@@ -144,7 +144,7 @@ def run_emitter(name: str, command: list[str], overlay: dict[str, str]) -> list[
 
 
 def declared(section: dict[str, Any]) -> dict[str, str]:
-    """A contract section's key -> type map, minus its `$comment` prose."""
+    """Return a contract section's key -> type map, minus its `$comment` prose."""
     return {k: v for k, v in section.items() if not k.startswith("$")}
 
 
@@ -217,7 +217,7 @@ def check_envelope(
 def check_collision(
     runtime: str, events: list[dict[str, Any]], contract: dict[str, Any], failures: Failures
 ) -> None:
-    """A caller field named like an envelope key lands under the shared prefix."""
+    """Check that a caller field named like an envelope key lands under the shared prefix."""
     prefix = contract["collision_prefix"]["value"]
     scenario = next(s for s in contract["scenarios"] if s["id"] == "collision")
     line = find_by_message(events, scenario["message"])
@@ -262,14 +262,14 @@ def check_resolution(
 
 
 def find_by_message(events: list[dict[str, Any]], message: str) -> dict[str, Any] | None:
-    """The first line whose event name matches, or None."""
+    """Return the first line whose event name matches, or None."""
     return next((e for e in events if e.get("message") == message), None)
 
 
 def find_boundary(
     events: list[dict[str, Any]], contract: dict[str, Any], runtime: str, outcome: str
 ) -> dict[str, Any] | None:
-    """The canonical event for one outcome, by this runtime's boundary names."""
+    """Return the canonical event for one outcome, by this runtime's boundary names."""
     names = set(contract["boundary"]["messages"][runtime])
     return next(
         (e for e in events if e.get("message") in names and e.get("outcome") == outcome), None
@@ -277,7 +277,7 @@ def find_boundary(
 
 
 def shape(event: dict[str, Any], ignored: set[str]) -> dict[str, str]:
-    """key -> JSON type, minus the keys contract.json declares asymmetric."""
+    """Key -> JSON type, minus the keys contract.json declares asymmetric."""
     return {k: json_type(v) for k, v in event.items() if k not in ignored}
 
 
@@ -292,7 +292,7 @@ def entry_shapes(event: dict[str, Any], key: str) -> list[dict[str, str]]:
 def check_boundary_fields(
     runtime: str, event: dict[str, Any], contract: dict[str, Any], failures: Failures
 ) -> None:
-    """The canonical event carries every boundary field, correctly typed."""
+    """Check that the canonical event carries every boundary field, correctly typed."""
     for key, spec in contract["boundary"]["fields"].items():
         if key not in event:
             failures.add(
@@ -317,7 +317,7 @@ def check_boundary_fields(
 def check_exception_fields(
     runtime: str, event: dict[str, Any], contract: dict[str, Any], failures: Failures
 ) -> None:
-    """A line describing a throwable uses the two flat scalars, never an object."""
+    """Check that a line describing a throwable uses the two flat scalars, never an object."""
     for key, expected in contract["entry"]["exception"].items():
         if key.startswith("$"):
             continue

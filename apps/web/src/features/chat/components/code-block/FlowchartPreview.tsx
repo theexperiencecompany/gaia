@@ -10,10 +10,9 @@ import {
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-// Mermaid SDK init lives here (instead of CodeBlock) so the SDK is only
-// pulled into the bundle when this component is actually rendered. Combined
-// with FlowchartPreview being imported via `dynamic({ ssr: false })`, this
-// keeps mermaid (~1.3 MB) out of the SSR/Cloudflare-Worker bundle entirely.
+// Mermaid SDK init lives here, not CodeBlock, so it's only pulled into
+// the bundle when this renders; combined with `dynamic({ ssr: false })`,
+// this keeps mermaid (~1.3 MB) out of the SSR/Cloudflare-Worker bundle.
 interface MermaidInstance {
   initialize: (config: object) => void;
   contentLoaded: () => void;
@@ -99,11 +98,9 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
     setIsDragging(false);
   }, []);
 
-  // Keyboard parity for the pointer-driven pan: arrow keys nudge the diagram,
-  // so the viewport stays operable without a mouse. (tabIndex on this
-  // role="application" surface is exempted from noNoninteractiveTabindex via a
-  // file-scoped Biome override — see biome.json — because a pannable canvas has
-  // no native HTML equivalent; this is the WAI-ARIA APG canvas pattern.)
+  // Keyboard parity for pointer-driven pan: arrow keys nudge the diagram so
+  // it's operable without a mouse. tabIndex here is exempted from
+  // noNoninteractiveTabindex via a Biome override (biome.json) — WAI-ARIA APG canvas pattern, no native HTML equivalent.
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     const PAN_STEP = 40;
     switch (e.key) {

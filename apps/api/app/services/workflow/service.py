@@ -1,21 +1,18 @@
-"""
-Clean workflow service for GAIA workflow system.
-Handles CRUD operations and execution coordination.
-"""
-
 import secrets
-from typing import Any
 import uuid
 
 from pymongo.errors import DuplicateKeyError
 
 from app.constants.log_tags import LogTag
+from app.constants.trigger_gates import GateAuthor, GateOwner
 from app.db.chroma.chromadb import ChromaClient
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.caching import Cacheable
+from app.models.scheduler_models import DeactivationReason
+from app.models.trigger_gate_models import AuthoredGate
 from app.models.workflow_models import (
     CreateWorkflowRequest,
-    DeactivationReason,
+    PublicWorkflowCard,
     PublicWorkflowRow,
     PublicWorkflowsResponse,
     TriggerConfig,
@@ -28,8 +25,10 @@ from app.models.workflow_models import (
     WorkflowStatusResponse,
     WorkflowUpdate,
     WorkflowWithIntegrations,
+    public_workflow_steps,
 )
 from app.services.integrations.integration_status import get_all_integrations_status
+from app.services.triggers.gate_edits import apply_gate_edit, report_gate_edit
 from app.services.workflow.integration_requirements import (
     build_integration_refs,
     compute_integration_refs,
@@ -37,11 +36,14 @@ from app.services.workflow.integration_requirements import (
     compute_required_integrations,
 )
 from app.services.workflow.trigger_service import TriggerService
+from app.utils.auth_utils import require_owner
 from app.utils.creator import (
     SYSTEM_CREATOR_NAME,
     format_creator,
 )
+from app.utils.errors import AppError
 from app.utils.exceptions import TriggerRegistrationError
+from app.utils.schedule import validate_recurring_schedule
 from app.utils.trigger_utils import get_integration_for_trigger
 from app.utils.workflow_utils import (
     filter_existing_integration_ids,
@@ -87,12 +89,14 @@ async def generate_unique_workflow_slug(title: str, exclude_id: str | None = Non
 
 
 async def ensure_public_workflow_slug(workflow: WorkflowDocument) -> None:
-    """Lazily backfill a slug on a legacy public workflow that's missing one.
+    """Lazily backfill a slug on a legacy listed workflow that's missing one.
 
-    Mutates ``workflow.slug`` in place. No-op when the workflow is private or
-    already has a slug. Persists the new slug via the repository.
+    Mutates workflow.slug in place. No-op when the workflow is on no public
+    list (neither published nor explore) or already has a slug. Persists the
+    new slug via the repository; every public card carries a slug, so running
+    out of retries raises rather than handing the list a slug-less row.
     """
-    if not workflow.is_public or workflow.slug:
+    if not (workflow.is_public or workflow.is_explore) or workflow.slug:
         return
 
     for _ in range(_SLUG_MAX_RETRIES):
@@ -109,6 +113,9 @@ async def ensure_public_workflow_slug(workflow: WorkflowDocument) -> None:
             return
         except DuplicateKeyError:
             continue
+    raise RuntimeError(
+        f"Failed to backfill a slug for workflow {workflow.id} after {_SLUG_MAX_RETRIES} retries"
+    )
 
 
 class WorkflowService:
@@ -179,19 +186,17 @@ class WorkflowService:
     ) -> Workflow:
         """Create a new workflow with automatic timezone population.
 
-        Uses Saga pattern for atomicity:
-        1. Create workflow in pending state (activated=False)
-        2. Register Composio triggers (if needed)
-        3. Activate workflow with trigger IDs
-        4. On failure: rollback (delete workflow)
+        Saga pattern for atomicity: create pending (activated=False), register
+        Composio triggers, then activate — rolling back (delete) on failure.
         """
         workflow_id: str | None = None
         trigger_ids: list[str] = []
 
-        # A system workflow is one-per-user, keyed by system_workflow_key. The user
-        # can reach the same definition from two directions — connecting the
-        # integration (the provisioner) or adding its explore card — so hand back
-        # the one they already have instead of creating a near-duplicate.
+        # Every creator (route, tool, worker) lands here, so none can save a workflow for a non-user.
+        await require_owner(user_id)
+
+        # A system workflow is one-per-user, keyed by system_workflow_key — hand
+        # back the existing one instead of creating a near-duplicate.
         if request.system_workflow_key:
             existing = await workflow_repository.find_system_workflow(
                 user_id, request.system_workflow_key
@@ -210,10 +215,9 @@ class WorkflowService:
 
             # Automatically populate timezone field
             if trigger_config.type == "schedule":
-                # The schedule's own timezone is authoritative — it is the wall-clock
-                # context the cron was built against in the UI. Fall back to the
-                # request-resolved user timezone only when the schedule didn't carry
-                # one (e.g. the agent-created path), then UTC.
+                # The schedule's own timezone is authoritative (the wall-clock
+                # context the cron was built against); fall back to the
+                # request-resolved user timezone, then UTC.
                 timezone_to_use = trigger_config.timezone or user_timezone or "UTC"
                 log.info(
                     f"{LogTag.WORKFLOW} Creating workflow with timezone",
@@ -240,9 +244,8 @@ class WorkflowService:
             # Use provided steps or initialize empty list for generation
             workflow_steps = request.steps or []
 
-            # Step 1: Create workflow in PENDING state (activated=False). Keep
-            # trigger_config.enabled in lockstep with activated (the single liveness
-            # field) — a pending workflow is not live.
+            # Keep trigger_config.enabled in lockstep with activated (the single
+            # liveness field) — a pending workflow is not live.
             trigger_config.enabled = False
             workflow = Workflow(
                 title=request.title,
@@ -252,6 +255,11 @@ class WorkflowService:
                 icon_color=request.icon_color,
                 steps=workflow_steps,
                 trigger_config=trigger_config,
+                gate=(
+                    None
+                    if request.runs_only_when is None
+                    else AuthoredGate(condition=request.runs_only_when, author=GateAuthor.GAIA)
+                ),
                 activated=False,  # Start in pending state
                 notify_on_completion=request.notify_on_completion,
                 user_id=user_id,
@@ -266,10 +274,8 @@ class WorkflowService:
             if workflow.is_public and not workflow.slug:
                 workflow.slug = await generate_unique_workflow_slug(workflow.title)
 
-            # Persist through the repository (python mode keeps datetimes native so
-            # the scheduler's `scheduled_at: {"$lte": now}` scan matches; it raises
-            # if the insert can't be read back). The local ``workflow`` stays the
-            # response object the saga mutates and returns.
+            # python mode keeps datetimes native so the scheduler's
+            # `scheduled_at: {"$lte": now}` scan matches.
             await workflow_repository.create(WorkflowDocument(**workflow.model_dump()))
 
             workflow_id = workflow.id
@@ -321,8 +327,8 @@ class WorkflowService:
             if not workflow.id:
                 raise ValueError("Workflow ID is required")
 
-            # Step 2: Register integration triggers (this can raise TriggerRegistrationError)
-            # The handlers will rollback their own partial triggers on failure.
+            # This can raise TriggerRegistrationError; handlers roll back their
+            # own partial triggers on failure.
             (
                 trigger_ids,
                 integration_connected,
@@ -332,10 +338,8 @@ class WorkflowService:
                 trigger_config=trigger_config,
             )
 
-            # Steps supplied by the caller (adding an explore card) skip generation,
-            # so the generation-time gate never runs on them. Apply the same rule
-            # here: a workflow whose steps need apps the user hasn't connected is
-            # created inactive rather than switched on and failing on first run.
+            # Caller-supplied steps skip the generation-time integration gate, so
+            # apply it here too: created inactive rather than failing on first run.
             missing_step_integrations = await compute_missing_integrations(
                 compute_required_integrations(workflow.steps), user_id
             )
@@ -366,8 +370,7 @@ class WorkflowService:
                     trigger_name=trigger_config.trigger_name,
                 )
             else:
-                # Step 3: Activate workflow and store trigger IDs. enabled mirrors
-                # activated; keyed by id alone (the create saga owns the row).
+                # enabled mirrors activated; keyed by id alone (the create saga owns the row).
                 await workflow_repository.mark_activated_with_triggers(
                     workflow.id, trigger_ids=trigger_ids
                 )
@@ -483,7 +486,6 @@ class WorkflowService:
 
     @staticmethod
     async def get_workflow(workflow_id: str, user_id: str) -> WorkflowWithIntegrations | None:
-        """Get a workflow by ID."""
         try:
             doc = await workflow_repository.get_for_user(workflow_id, user_id)
             if not doc:
@@ -515,9 +517,9 @@ class WorkflowService:
         """List a user's workflows (newest first), excluding auto-generated todo workflows by default.
 
         Each workflow is enriched with its required/missing integrations using a
-        single connection-status call. Returns ``(workflows, total)`` where
-        ``total`` is the full match count ignoring ``limit``/``offset``. Pass
-        ``limit=None`` to fetch every match.
+        single connection-status call. Returns (workflows, total) where
+        total is the full match count ignoring limit/offset. Pass
+        limit=None to fetch every match.
         """
         try:
             docs = await workflow_repository.list_for_user(
@@ -607,7 +609,27 @@ class WorkflowService:
             # distinction `model_dump(exclude_unset=True)` encoded, kept on the
             # request so every value below is read as a typed attribute.
             provided = request.model_fields_set
-            update = WorkflowUpdate(**request.model_dump(exclude_unset=True))
+            update = WorkflowUpdate(**request.model_dump(exclude_unset=True, exclude={"gate"}))
+            if (request.trigger_config or current_workflow.trigger_config).type is not (
+                TriggerType.INTEGRATION
+            ):
+                if request.gate is not None:
+                    raise AppError(
+                        message="Only a workflow started by an integration event can have a gate",
+                        why="a gate reads the event that fired the workflow; this trigger has none",
+                        fix="send gate null, or switch the trigger to an integration event",
+                        status_code=422,
+                        meta={"workflow_id": workflow_id},
+                    )
+                if current_workflow.gate is not None:
+                    # In the trigger's own $set: a stored gate on a trigger with no event would not load.
+                    update.gate = None
+            elif "gate" in provided:
+                update.gate = (
+                    None
+                    if request.gate is None
+                    else apply_gate_edit(current_workflow.gate, request.gate)
+                )
 
             # enabled mirrors activated (the single liveness field). Resolve the
             # effective activated value for this update and never trust a client-sent
@@ -625,13 +647,9 @@ class WorkflowService:
                 new_trigger_config = request.trigger_config.model_copy(deep=True)
                 new_trigger_config.enabled = effective_activated
 
-                # Automatically populate timezone field if it's a scheduled workflow.
-                # The timezone chosen in the UI for this schedule wins. When the
-                # update omits it, keep the zone the schedule already runs in —
-                # editing a cron must not silently relocate the schedule to
-                # whichever zone the request happened to resolve. Fall back to the
-                # request-resolved user timezone only for a schedule that never had
-                # one, then UTC.
+                # The UI-chosen timezone wins; when omitted, keep the zone the
+                # schedule already runs in — editing a cron must not silently
+                # relocate it — falling back to the user timezone, then UTC.
                 if new_trigger_config.type == "schedule":
                     timezone_to_use = (
                         new_trigger_config.timezone
@@ -662,10 +680,8 @@ class WorkflowService:
                     and new_trigger_config.next_run
                     and effective_activated
                 ):
-                    # Reschedule to the new time/cron. When the workflow is instead
-                    # being disabled or made non-scheduled, no teardown is needed:
-                    # liveness is governed by `activated`, so a stale deferred fire
-                    # is rejected by the claim gate.
+                    # No teardown needed when disabling instead: liveness is
+                    # governed by `activated`, so a stale fire is rejected by the claim gate.
                     await workflow_scheduler.reschedule_workflow(
                         workflow_id,
                         new_trigger_config.next_run,
@@ -701,22 +717,13 @@ class WorkflowService:
                 if registered_trigger_ids is not None:
                     new_trigger_config.composio_trigger_ids = registered_trigger_ids
 
-                # The repository dumps the update in python mode, so
-                # trigger_config.next_run stays a native datetime (BSON date),
-                # consistent with the create and re-arm paths.
-                #
                 # Rebuilt rather than assigned directly: model_copy carries the
-                # request's __pydantic_fields_set__, and the repository's
-                # model_dump(exclude_unset=True) propagates into the nested model
-                # — so assigning it writes only the keys the client happened to
-                # send, leaving the stored sub-document a different shape from
-                # one written by the create path. Same values either way.
+                # request's __pydantic_fields_set__, which model_dump(exclude_unset=True)
+                # would propagate, writing only the keys the client happened to send.
                 update.trigger_config = TriggerConfig(**new_trigger_config.model_dump())
 
             # activated changed without a trigger_config rewrite: mirror the nested
-            # `enabled` flag by rewriting the sub-document from the current config
-            # (the typed update can't express a dotted `trigger_config.enabled` set;
-            # the trigger_config branch above already syncs enabled in Case A).
+            # `enabled` flag (the typed update can't express a dotted set).
             if "trigger_config" not in provided and "activated" in provided:
                 synced = current_workflow.trigger_config
                 synced.enabled = effective_activated
@@ -754,6 +761,8 @@ class WorkflowService:
 
             if updated is None:
                 return None
+            if "gate" in update.model_fields_set:
+                report_gate_edit(user_id, GateOwner.WORKFLOW, current_workflow.gate, update.gate)
 
             log.info(
                 f"{LogTag.WORKFLOW} Updated workflow for user",
@@ -774,7 +783,6 @@ class WorkflowService:
 
     @staticmethod
     async def delete_workflow(workflow_id: str, user_id: str) -> bool:
-        """Delete a workflow."""
         try:
             # Get workflow first to access trigger config
             workflow = await WorkflowService.get_workflow(workflow_id, user_id)
@@ -826,7 +834,6 @@ class WorkflowService:
     async def execute_workflow(
         workflow_id: str, request: WorkflowExecutionRequest, user_id: str
     ) -> WorkflowExecutionResponse:
-        """Execute a workflow."""
         try:
             workflow = await WorkflowService.get_workflow(workflow_id, user_id)
             if not workflow:
@@ -883,7 +890,6 @@ class WorkflowService:
 
     @staticmethod
     async def get_workflow_status(workflow_id: str, user_id: str) -> WorkflowStatusResponse:
-        """Get the current status of a workflow."""
         try:
             workflow = await WorkflowService.get_workflow(workflow_id, user_id)
             if not workflow:
@@ -944,11 +950,12 @@ class WorkflowService:
             trigger_config = workflow.trigger_config
             trigger_type = trigger_config.type
 
-            # Recompute next_run from the cron so a stale/frozen schedule time (e.g.
-            # left over from a prior deactivation) cannot carry over on reactivation.
-            # The schedule's stored timezone is authoritative; the activating
-            # request's tz is only a fallback for legacy rows that never stored one.
+            # Recompute next_run so a stale schedule time can't carry over on
+            # reactivation. The stored timezone wins; the request's tz is only
+            # a fallback for legacy rows that never stored one.
             if trigger_type == TriggerType.SCHEDULE and trigger_config.cron_expression:
+                # A stored schedule that breaks the rule stays off until the user fixes it.
+                validate_recurring_schedule(trigger_config.cron_expression)
                 trigger_config.update_next_run(
                     user_timezone=trigger_config.timezone or user_timezone
                 )
@@ -1062,9 +1069,12 @@ class WorkflowService:
         reason: DeactivationReason | None = None,
         blocked_on_integrations: list[str] | None = None,
     ) -> Workflow | None:
-        """Deactivate a workflow (disable its trigger). ``reason`` marks a system
-        pause; a user switching the workflow off passes none. A pause on
-        integrations a run found missing records them in the same write."""
+        """Deactivate a workflow (disable its trigger).
+
+        reason marks a system pause; a user switching the workflow off passes
+        none. A pause on integrations a run found missing records them in
+        the same write.
+        """
         try:
             workflow = await WorkflowService.get_workflow(workflow_id, user_id)
             if not workflow:
@@ -1258,44 +1268,35 @@ class WorkflowService:
 
     @staticmethod
     async def _format_public_workflow(
-        row: PublicWorkflowRow, *, default_creator_name: str | None = None
-    ) -> dict[str, Any]:
-        """Shape one hydrated marketplace row into the public-card dict.
+        row: PublicWorkflowRow,
+        *,
+        default_creator_name: str | None = None,
+        categories: list[str] | None = None,
+        total_executions: int | None = None,
+    ) -> PublicWorkflowCard:
+        """Shape one hydrated marketplace row into its public card.
 
         Shared by the community and explore lists so the two payloads can't drift.
         Backfills a legacy public workflow's missing slug in place first.
         """
         await ensure_public_workflow_slug(row)
-        normalized_steps = [
-            {
-                "id": step.id,
-                "title": step.title,
-                "description": step.description,
-                "category": step.category or "general",
-            }
-            for step in row.steps
-        ]
-        return {
-            "id": row.id,
-            "title": row.title,
-            "description": row.description,
-            "slug": row.slug,
-            "prompt": row.prompt,
-            "icon": row.icon,
-            "icon_color": row.icon_color,
-            # Present only on the built-in cards: lets the client dedupe against a
-            # workflow the user was already provisioned, and name the integration
-            # that sets it up automatically.
-            "system_workflow_key": row.system_workflow_key,
-            "source_integration": row.source_integration,
-            # The card advertises "Daily at 8am" / "on new email", so adding it has
-            # to reproduce that trigger — without this the client can only guess,
-            # and every added workflow silently became manual.
-            "trigger_config": row.trigger_config.model_dump(mode="json"),
-            "steps": normalized_steps,
-            "created_at": row.created_at,
-            "creator": format_creator(row, default_name=default_creator_name),
-        }
+        return PublicWorkflowCard(
+            id=row.id,
+            title=row.title,
+            description=row.description,
+            slug=row.slug,
+            prompt=row.prompt,
+            icon=row.icon,
+            icon_color=row.icon_color,
+            system_workflow_key=row.system_workflow_key,
+            source_integration=row.source_integration,
+            trigger_config=row.trigger_config,
+            steps=public_workflow_steps(row),
+            created_at=row.created_at,
+            creator=format_creator(row, default_name=default_creator_name),
+            categories=categories,
+            total_executions=total_executions,
+        )
 
     @staticmethod
     @Cacheable(smart_hash=True, ttl=600, model=PublicWorkflowsResponse)
@@ -1308,17 +1309,18 @@ class WorkflowService:
             rows = await workflow_repository.find_explore(limit=limit, offset=offset)
             total = await workflow_repository.count_explore()
 
-            formatted_workflows = []
-            for row in rows:
-                # Explore rows carry the community card shape plus the featured-only
-                # categories/total_executions, and default the creator to the GAIA
-                # team (the plain lookup never resolves a real user — see the repo).
-                formatted = await WorkflowService._format_public_workflow(
-                    row, default_creator_name=SYSTEM_CREATOR_NAME
+            # Explore rows carry the community card shape plus the featured-only
+            # categories/total_executions, and default the creator to the GAIA
+            # team (the plain lookup never resolves a real user — see the repo).
+            formatted_workflows = [
+                await WorkflowService._format_public_workflow(
+                    row,
+                    default_creator_name=SYSTEM_CREATOR_NAME,
+                    categories=row.use_case_categories,
+                    total_executions=row.total_executions,
                 )
-                formatted["categories"] = row.use_case_categories
-                formatted["total_executions"] = row.total_executions
-                formatted_workflows.append(formatted)
+                for row in rows
+            ]
 
             return PublicWorkflowsResponse(workflows=formatted_workflows, total=total)
 

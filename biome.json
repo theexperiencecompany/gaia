@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.2/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -15,7 +15,8 @@
     "maxSize": 2097152,
     "includes": [
       "**/*.{js,jsx,ts,tsx,json,md,mdx,yml,yaml,html,css,scss,sass}",
-      "!!apps/web/public",
+      "!!apps/web/public/*",
+      "apps/web/public/data",
       "!!**/node_modules",
       "!!**/.next",
       "!!**/dist",
@@ -41,7 +42,6 @@
       "!!.vscode",
       "!!.idea",
       "!!.github",
-      "!!.mise",
       "!!.opencode",
       "!!.worktrees",
       "!!.jscpd-report",
@@ -71,7 +71,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "a11y": {
         "noStaticElementInteractions": "off",
         "useKeyWithClickEvents": "off",
@@ -180,6 +180,93 @@
   ],
   "overrides": [
     {
+      "includes": ["**/*.{md,mdx,yml,yaml,html,css,scss,sass}"],
+      "formatter": {
+        "enabled": false
+      }
+    },
+    {
+      "includes": ["apps/web/public/data/**"],
+      "json": {
+        "formatter": {
+          "expand": "always"
+        }
+      }
+    },
+    {
+      "includes": [
+        "apps/web/src/**",
+        "!apps/web/src/lib/api/**",
+        "!apps/web/src/__tests__/**",
+        "!apps/web/src/**/__tests__/**",
+        "!apps/web/src/**/*.test.ts",
+        "!apps/web/src/**/*.test.tsx",
+        "!apps/web/src/features/team/api/teamApi.ts",
+        "!apps/web/src/lib/analytics.ts",
+        "!apps/web/src/lib/observability/**",
+        "!apps/web/src/app/global-error.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@/lib/api/client": {
+                    "importNames": ["apiauth", "api"],
+                    "message": "The axios instances belong to apps/web/src/lib/api. Use `api` from \"@/lib/api/typed\", whose paths and response shapes are checked against openapi.json; apiBaseUrl/clientHeaders/registerApiErrorHandler stay importable."
+                  },
+                  "@/lib/api/service": "apiService is the untyped request engine behind the typed client. Use `api` from \"@/lib/api/typed\" instead.",
+                  "axios": {
+                    "allowImportNames": [
+                      "AxiosError",
+                      "AxiosInstance",
+                      "AxiosRequestConfig",
+                      "AxiosResponse",
+                      "InternalAxiosRequestConfig",
+                      "isAxiosError"
+                    ],
+                    "message": "Only apps/web/src/lib/api may build an axios client. Use `api` from \"@/lib/api/typed\"; the error helpers stay importable for narrowing."
+                  },
+                  "posthog-js": "Only apps/web/src/lib/analytics.ts (and the PostHog init/exception wiring in lib/observability and global-error) talks to posthog-js. Use `track` from \"@/lib/analytics\": its event names and properties are generated from the catalog in libs/shared/py/analytics/catalog.",
+                  "posthog-node": "posthog-node is the bots' server SDK, reached only through `Analytics` in libs/shared/ts/src/analytics. Capture through that client so events stay typed by the catalog."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "libs/**",
+        "apps/bots/**",
+        "apps/desktop/**",
+        "packages/**",
+        "apps/web/src/lib/api/**",
+        "!libs/shared/ts/src/analytics/index.ts",
+        "!**/__tests__/**",
+        "!**/*.test.ts",
+        "!**/*.test.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "posthog-js": "Only apps/web/src/lib/analytics.ts (and the PostHog init/exception wiring in lib/observability and global-error) talks to posthog-js. Use `track` from \"@/lib/analytics\": its event names and properties are generated from the catalog in libs/shared/py/analytics/catalog.",
+                  "posthog-node": "posthog-node is the bots' server SDK, reached only through `Analytics` in libs/shared/ts/src/analytics. Capture through that client so events stay typed by the catalog."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "includes": ["apps/web/src/features/desktop-popup/desktop-popup.css"],
       "linter": {
         "rules": {
@@ -221,6 +308,10 @@
       "plugins": ["./config/biome-rules/no-barrel-reexport.grit"]
     },
     {
+      "includes": ["apps/web/src/**", "!apps/web/src/lib/clipboard.ts"],
+      "plugins": ["./config/biome-rules/no-direct-clipboard.grit"]
+    },
+    {
       "includes": [
         "**/*.test.ts",
         "**/*.test.tsx",
@@ -248,6 +339,16 @@
       }
     },
     {
+      "includes": ["packages/cli/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "error"
+          }
+        }
+      }
+    },
+    {
       "includes": ["**/types.ts", "**/types/**", "**/*.types.ts", "**/*.d.ts"],
       "linter": {
         "rules": {
@@ -265,6 +366,16 @@
         "rules": {
           "a11y": {
             "noNoninteractiveTabindex": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/*.test.ts", "**/*.test.tsx", "**/__tests__/**"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noComponentHookFactories": "off"
           }
         }
       }

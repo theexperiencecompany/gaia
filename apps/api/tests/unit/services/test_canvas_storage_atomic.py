@@ -1,15 +1,15 @@
 """Atomic canvas/activity writes — the branch-only storage primitives.
 
-These tests pin behavior the base revision does not have (``append_text_field``
-backing ``append_activity``/``append_log``, the ``expected_updated_at``
-compare-and-set, ``write_canvas_and_activity``, the reindex revision, and the
-empty-body embedding delete). They live in their own module rather than in
-``test_todo_canvas_storage.py`` on purpose: the regression-proof lane overlays
-this branch's test tree onto the base revision, so a file that imports
-branch-only names at module level would collection-error there (an error is not
-proof — the run never reaches an assertion). The branch-only callables are
-imported inside the tests that use them, so this module imports cleanly on base
-and each marked test then fails on the behavior, which is what the lane checks.
+These tests pin behavior the base revision does not have (append_text_field
+backing append_activity/append_log, the expected_updated_at compare-and-set,
+repair_notes, the reindex revision, and the empty-body embedding
+delete). They live in their own module rather than in test_todo_canvas_storage.py
+on purpose: the regression-proof lane overlays this branch's test tree onto the
+base revision, so a file that imports branch-only names at module level would
+collection-error there (an error is not proof — the run never reaches an
+assertion). The branch-only callables are imported inside the tests that use
+them, so this module imports cleanly on base and each marked test then fails on
+the behavior, which is what the lane checks.
 """
 
 from collections.abc import Coroutine
@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.todo_models import TodoDocument
+from app.models.todo_models import TodoDocument, TodoUpdate
 from app.services.todo_canvas_storage import (
     append_log,
     build_vfs_label,
@@ -64,13 +64,11 @@ def mock_sync():
 
 @pytest.fixture
 def captured_reindex():
-    """Capture the fire-and-forget reindex: patched spawn collects coroutines so
-    tests can await them deterministically; the embedding call itself is mocked.
+    """Capture the fire-and-forget reindex; the embedding call is mocked too.
 
-    ``create=True`` on the spawn patch keeps this fixture usable against the
-    base revision, which has no ``spawn_logged_task`` import — the regression
-    lane runs the marked tests against base, and a fixture that errors there is
-    not proof.
+    create=True keeps this usable against base revision, which has no
+    spawn_logged_task import — the regression lane runs marked tests there,
+    and an erroring fixture is not proof.
     """
     scheduled: list[tuple[str, Coroutine[Any, Any, Any]]] = []
 
@@ -87,8 +85,7 @@ def captured_reindex():
 
 
 class TestSharedPrimitives:
-    """The canvas read/write + log-append basics, kept where the atomic tests
-    live too so this module is self-contained when run alone."""
+    """The canvas read/write + log-append basics, kept here so this module is self-contained when run alone."""
 
     async def test_read_canvas_returns_content(self, mock_repo):
         mock_repo.get.return_value = _todo_doc(canvas_content="hello")
@@ -122,18 +119,6 @@ class TestWriteCanvasCompareAndSet:
 
 
 class TestActivity:
-    async def test_read_none_for_missing_todo(self, mock_repo):
-        from app.services.todo_canvas_storage import read_activity
-
-        assert await read_activity(TODO_ID, USER_ID) is None
-
-    async def test_read_empty_string_when_unset(self, mock_repo):
-        from app.services.todo_canvas_storage import read_activity
-
-        mock_repo.get.return_value = _todo_doc(activity_content=None)
-
-        assert await read_activity(TODO_ID, USER_ID) == ""
-
     async def test_write_and_triggers_sync(self, mock_repo, mock_sync, captured_reindex):
         from app.services.todo_canvas_storage import write_activity
 
@@ -206,45 +191,90 @@ class TestActivity:
         assert mock_repo.append_text_field.await_args.kwargs["suffix"] == "\n- new"
 
 
-class TestWriteCanvasAndActivity:
-    async def test_sets_both_fields_in_one_update(self, mock_repo, mock_sync, captured_reindex):
-        from app.services.todo_canvas_storage import write_canvas_and_activity
+class TestRepairNotes:
+    async def test_sets_every_given_body_in_one_update(self, mock_repo, mock_sync):
+        from app.services.todo_canvas_storage import repair_notes
 
-        scheduled, _ = captured_reindex
-        mock_repo.replace_note_fields.return_value = _todo_doc(
-            canvas_content="c", activity_content="a"
+        repaired = _todo_doc(canvas_content="c", activity_content="a")
+        mock_repo.replace_note_fields.return_value = repaired
+        notes = TodoUpdate(canvas_content="c", activity_content="a")
+
+        result = await repair_notes(TODO_ID, USER_ID, notes, expected_updated_at=None)
+
+        assert result is repaired
+        mock_repo.replace_note_fields.assert_awaited_once_with(
+            TODO_ID, USER_ID, update=notes, expected_updated_at=None, touch=False
+        )
+        mock_sync.assert_called_once_with(USER_ID)
+
+    @pytest.mark.regression
+    async def test_repair_leaves_updated_at_and_the_embedding_alone(
+        self, mock_repo, mock_sync, captured_reindex
+    ):
+        """A repair is not user activity: it neither resets dormancy nor re-embeds the same text."""
+        from app.services.todo_canvas_storage import repair_notes
+
+        scheduled, embed = captured_reindex
+        mock_repo.replace_note_fields.return_value = _todo_doc()
+
+        await repair_notes(
+            TODO_ID, USER_ID, TodoUpdate(canvas_content="c"), expected_updated_at=None
         )
 
-        ok = await write_canvas_and_activity(TODO_ID, USER_ID, canvas="c", activity="a")
+        assert mock_repo.replace_note_fields.await_args.kwargs["touch"] is False
+        assert scheduled == []
+        embed.assert_not_awaited()
 
-        assert ok is True
-        mock_repo.replace_note_fields.assert_awaited_once()
-        assert mock_repo.replace_note_fields.await_args.args == (TODO_ID, USER_ID)
-        update = mock_repo.replace_note_fields.await_args.kwargs["update"]
-        assert (update.canvas_content, update.activity_content) == ("c", "a")
-        mock_sync.assert_called_once_with(USER_ID)
-        assert [name for name, _ in scheduled] == ["canvas_reindex"]
-
-    async def test_passes_expected_updated_at(self, mock_repo, mock_sync, captured_reindex):
-        from app.services.todo_canvas_storage import write_canvas_and_activity
+    async def test_passes_expected_updated_at(self, mock_repo, mock_sync):
+        from app.services.todo_canvas_storage import repair_notes
 
         expected = datetime.now(UTC)
         mock_repo.replace_note_fields.return_value = _todo_doc()
 
-        ok = await write_canvas_and_activity(
-            TODO_ID, USER_ID, canvas="c", activity="a", expected_updated_at=expected
+        await repair_notes(
+            TODO_ID, USER_ID, TodoUpdate(canvas_content="c"), expected_updated_at=expected
         )
 
-        assert ok is True
-        kwargs = mock_repo.replace_note_fields.await_args.kwargs
-        assert kwargs.get("expected_updated_at") == expected
+        assert mock_repo.replace_note_fields.await_args.kwargs["expected_updated_at"] == expected
 
-    async def test_false_when_update_matches_nothing(self, mock_repo, mock_sync):
-        from app.services.todo_canvas_storage import write_canvas_and_activity
+    async def test_none_and_no_sync_when_update_matches_nothing(self, mock_repo, mock_sync):
+        from app.services.todo_canvas_storage import repair_notes
 
         mock_repo.replace_note_fields.return_value = None
 
-        assert await write_canvas_and_activity(TODO_ID, USER_ID, canvas="c", activity="a") is False
+        notes = TodoUpdate(canvas_content="c")
+        assert await repair_notes(TODO_ID, USER_ID, notes, expected_updated_at=None) is None
+        mock_sync.assert_not_called()
+
+
+class TestWriteObservations:
+    async def test_saves_the_body_and_syncs_without_embedding_it(
+        self, mock_repo, mock_sync, captured_reindex
+    ):
+        from app.services.todo_canvas_storage import write_observations
+
+        scheduled, embed = captured_reindex
+        stamp = datetime.now(UTC)
+        mock_repo.replace_note_fields.return_value = _todo_doc(observations_content="o")
+
+        assert await write_observations(TODO_ID, USER_ID, "o", expected_updated_at=stamp) is True
+
+        mock_repo.replace_note_fields.assert_awaited_once_with(
+            TODO_ID,
+            USER_ID,
+            update=TodoUpdate(observations_content="o"),
+            expected_updated_at=stamp,
+        )
+        mock_sync.assert_called_once_with(USER_ID)
+        assert scheduled == []
+        embed.assert_not_awaited()
+
+    async def test_false_and_no_sync_when_the_revision_moved(self, mock_repo, mock_sync):
+        from app.services.todo_canvas_storage import write_observations
+
+        mock_repo.replace_note_fields.return_value = None
+
+        assert await write_observations(TODO_ID, USER_ID, "o") is False
         mock_sync.assert_not_called()
 
 
@@ -295,8 +325,7 @@ class TestClearDeletesEmbedding:
     async def test_clearing_canvas_and_activity_deletes_embedding(
         self, mock_repo, mock_sync
     ) -> None:
-        """Clearing both bodies must remove the stale index entry, not orphan it."""
-        from app.services.todo_canvas_storage import write_canvas_and_activity
+        """Clearing the last body must remove the stale index entry, not orphan it."""
 
         scheduled: list[tuple[str, Coroutine[Any, Any, Any]]] = []
 
@@ -312,7 +341,7 @@ class TestClearDeletesEmbedding:
                 mock_repo.replace_note_fields.return_value = _todo_doc(
                     id=TODO_ID, canvas_content="", activity_content=""
                 )
-                ok = await write_canvas_and_activity(TODO_ID, USER_ID, canvas="", activity="")
+                ok = await write_canvas(TODO_ID, USER_ID, "")
 
                 assert ok is True
                 assert [name for name, _ in scheduled] == ["canvas_reindex_delete"]
@@ -327,11 +356,7 @@ class TestClearDeletesEmbedding:
 class TestAppendLog:
     @pytest.mark.regression
     async def test_routes_the_suffix_through_the_atomic_append(self, mock_repo, mock_sync) -> None:
-        """The append is one server-side concat, not a read-then-overwrite.
-
-        A missing-todo early return is identical on both revisions and would
-        pass on base; asserting the ``append_text_field`` call is what
-        distinguishes the atomic path."""
+        """Regression: asserts append_text_field is called (one server-side concat), since a missing-todo early return would pass identically on base."""
         mock_repo.append_text_field.return_value = _todo_doc()
 
         assert await append_log(TODO_ID, USER_ID, "audit v2") is True

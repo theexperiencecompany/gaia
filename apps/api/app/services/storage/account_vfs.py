@@ -1,21 +1,17 @@
-"""Account-center VFS materialization for ``/workspace/account/``.
+"""Account-center VFS materialization for /workspace/account/.
 
 Projects the user's account state (subscription, usage, settings, linked
 platforms) as read-only JSON files. Every file is written 0444 and only when
-its content actually changed (``matches_text``), so steady-state syncs do zero
+its content actually changed (matches_text), so steady-state syncs do zero
 I/O — same contract as the integrations catalog materializer.
 
-The GUIDE.md docs under ``account/`` are NOT written here: they are static
-system files (``system_files._STATIC_DOCS``), served by the read tool's memory
-fast-path and symlinked from the shared ``_system`` subtree.
+The GUIDE.md docs under account/ are NOT written here: they are static
+system files (system_files._STATIC_DOCS), served by the read tool's memory
+fast-path and symlinked from the shared _system subtree.
 
-Layout::
-
-    account/
-        subscription.json  usage.json  notifications.json
-        preferences.json   custom-instructions.json
-        voices/catalog.json          voices/selected.json
-        linked-accounts/<platform>.json
+Layout: account/{subscription,usage,notifications,preferences,
+custom-instructions}.json, voices/{catalog,selected}.json,
+linked-accounts/<platform>.json.
 """
 
 from __future__ import annotations
@@ -40,9 +36,9 @@ def materialize_account_files(
     files: list[AccountFileProjection],
     preserve_paths: set[str] | None = None,
 ) -> int:
-    """Project ``files`` under ``<user_root>/account/``, pruning stale views.
+    """Project files under <user_root>/account/, pruning stale views.
 
-    ``preserve_paths`` are workspace-relative paths whose source could not be
+    preserve_paths are workspace-relative paths whose source could not be
     read this pass (provider outage): their previous on-disk projection is kept
     instead of being pruned as stale — a stale view beats a missing one, and
     the failure is logged by the caller.
@@ -65,12 +61,12 @@ def materialize_account_files(
 
 
 def _prune_stale_json(account_root: Path, expected: set[str], preserve: set[str]) -> None:
-    """Remove *.json projections under ``account/`` that left the manifest.
+    """Remove *.json projections under account/ that left the manifest.
 
     Only data files are pruned — markdown guides belong to the system-file
     linker and are never touched here. Platform files are always re-projected
     (connected or not), so this fires only when the manifest itself shrinks.
-    Paths in ``preserve`` (a source that failed this pass) survive the prune.
+    Paths in preserve (a source that failed this pass) survive the prune.
     """
     if not account_root.is_dir():
         return

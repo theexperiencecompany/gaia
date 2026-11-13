@@ -1,8 +1,8 @@
 """Tests for the Composio CustomTool schema-inlining patch.
 
-``composio_custom_tool_schema_patch`` replaces ``CustomTool.__parse_info``
+composio_custom_tool_schema_patch replaces CustomTool.__parse_info
 (the private, name-mangled attribute) with a wrapper that resolves every
-``$ref`` in ``input_parameters`` via jsonref and converts the jsonref proxies
+$ref in input_parameters via jsonref and converts the jsonref proxies
 back to plain dicts, so schemas reach the LLM fully inlined.
 """
 
@@ -28,7 +28,7 @@ _REF_SCHEMA: dict = {
 def _call_patched(tool_info: object) -> object:
     """Invoke the patched parse_info with a stubbed original.
 
-    The wrapper reads ``_original_parse_info`` at call time; re-point it at a
+    The wrapper reads _original_parse_info at call time; re-point it at a
     stub so we exercise the wrapper in isolation, then restore it so we don't
     pollute other tests.
     """

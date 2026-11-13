@@ -27,10 +27,8 @@ async def insert_note(
     note_id = created.id
     log.info(f"{LogTag.API} Note created with ID", note_id=note_id)
 
-    # The note is already committed, so a vector-store failure must not fail the
-    # request — telling the user their note was lost would be a lie. But an
-    # unindexed note is invisible to search, so flag it for repair rather than
-    # letting it degrade silently.
+    # The note is already committed, so a vector-store failure must not fail
+    # the request; flag the unindexed note for repair instead of degrading silently.
     try:
         await index_note(note_id, user_id, created.plaintext or "")
     except Exception as e:
@@ -51,7 +49,7 @@ async def insert_note(
 
 
 async def index_note(note_id: str, user_id: str, plaintext: str) -> None:
-    """Index one note's plaintext into the ``notes`` vector collection."""
+    """Index one note's plaintext into the notes vector collection."""
     collection = await ChromaClient.get_langchain_client(collection_name=CHROMA_NOTES_COLLECTION)
     await collection.aadd_documents(
         documents=[
@@ -65,8 +63,8 @@ async def index_note(note_id: str, user_id: str, plaintext: str) -> None:
 async def reindex_note(note_id: str, user_id: str, plaintext: str) -> None:
     """Re-index a note whose first indexing attempt failed, clearing the flag.
 
-    Mirrors ``reindex_file`` in app/services/files/store.py — the repair entry
-    point for notes flagged by ``insert_note``. Failures propagate so a caller
+    Mirrors reindex_file in app/services/files/store.py — the repair entry
+    point for notes flagged by insert_note. Failures propagate so a caller
     repairing a batch sees which notes are still broken.
     """
     await index_note(note_id, user_id, plaintext)

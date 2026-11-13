@@ -7,7 +7,7 @@
  * @module
  */
 import type { BotCommand, CommandExecuteParams } from "../types";
-import { wideLog } from "../utils/wide-events";
+import { reportCommandFailure } from "../utils/commands";
 
 /** `/stop` command definition. */
 export const stopCommand: BotCommand = {
@@ -24,8 +24,9 @@ export const stopCommand: BotCommand = {
       );
       await target.sendEphemeral("⏹️ Stopped. Starting a new conversation.");
     } catch (error) {
-      wideLog.error("stop_command_error", undefined, error);
-      await target.sendEphemeral("❌ Failed to stop. Please try again.");
+      await target.sendEphemeral(
+        reportCommandFailure("reset_session", error, ctx),
+      );
     }
   },
 };

@@ -4,7 +4,6 @@ Single service approach - simple and maintainable.
 """
 
 import json
-from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
@@ -12,16 +11,29 @@ from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
 from app.constants.log_tags import LogTag
 from app.models.payment_models import (
+    CreateCheckoutSessionRequest,
     CreateSubscriptionRequest,
     CreateSubscriptionResponse,
+    DiscountCodesResponse,
     PaymentVerificationResponse,
     PlanResponse,
     UserSubscriptionStatus,
+    VerifyPaymentRequest,
 )
-from app.models.webhook_models import DodoWebhookAckResponse
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.models.webhook_models import (
+    DodoWebhookAckResponse,
+    DodoWebhookPayload,
+    WebhookProcessingStatus,
+)
+from app.services.analytics_service import capture
+from app.services.payments.discount_codes import get_discount_codes
 from app.services.payments.payment_service import payment_service
 from app.services.payments.payment_webhook_service import payment_webhook_service
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.billing import (
+    PaymentCheckoutStarted,
+    SubscriptionCancellationRequested,
+)
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -42,6 +54,18 @@ async def get_plans_endpoint(request: Request, active_only: bool = True) -> list
             error=str(e),
         )
         raise HTTPException(status_code=500, detail="Failed to get plans") from e
+
+
+@router.get("/discount-codes")
+@limiter.limit("60/minute")
+# evlog-map-disable-next-line audit -- read-only settings lookup, no state change to audit
+async def get_discount_codes_endpoint(
+    request: Request,  # noqa: ARG001 -- framework contract
+    user_id: str = Depends(get_user_id),
+) -> DiscountCodesResponse:
+    """Get the discount codes the clients advertise."""
+    log.set(user={"id": user_id}, payment={"operation": "get_discount_codes"})
+    return get_discount_codes()
 
 
 @router.post("/subscriptions")
@@ -74,11 +98,18 @@ async def create_subscription_endpoint(
             resource=str(subscription_data.product_id) if subscription_data.product_id else None,
             provider="dodo",
         )
-        capture_context_event(
-            AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
-            {"quantity": subscription_data.quantity},
+        capture(
+            UserId(user_id),
+            PaymentCheckoutStarted(
+                quantity=subscription_data.quantity,
+                source=subscription_data.source,
+                checkout_flow="redirect",
+                plan_id=subscription_data.product_id,
+            ),
         )
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         log.error(
             f"{LogTag.PAYMENT} Error creating subscription",
@@ -88,6 +119,48 @@ async def create_subscription_endpoint(
             error=str(e),
         )
         raise HTTPException(status_code=500, detail="Failed to create subscription") from e
+
+
+@router.post("/checkout-session")
+@limiter.limit("5/minute")
+async def create_checkout_session_endpoint(
+    request: Request,  # noqa: ARG001 -- framework contract
+    payload: CreateCheckoutSessionRequest,
+    user_id: str = Depends(get_user_id),
+) -> CreateSubscriptionResponse:
+    """Mint the Dodo checkout session the embedded overlay opens.
+
+    Authenticated but deliberately not gated behind Pro — a user without a
+    subscription calling this is the whole point of the paid-only flow.
+    """
+    log.set(
+        user={"id": user_id},
+        payment={
+            "operation": "create_checkout_session",
+            "billing_cycle": payload.billing_cycle,
+            "source": payload.source,
+        },
+    )
+    pro_checkout = await payment_service.create_pro_checkout(
+        user_id, payload.billing_cycle, payload.source
+    )
+    log.set_ns("payment", session_id=pro_checkout.checkout.subscription_id)
+    log.audit(
+        "overlay checkout session created",
+        actor=user_id,
+        resource=pro_checkout.plan.dodo_product_id,
+        provider="dodo",
+    )
+    capture(
+        UserId(user_id),
+        PaymentCheckoutStarted(
+            billing_cycle=payload.billing_cycle,
+            source=payload.source,
+            checkout_flow="overlay",
+            plan_id=pro_checkout.plan.dodo_product_id,
+        ),
+    )
+    return pro_checkout.checkout
 
 
 @router.post("/subscriptions/cancel", response_model=UserSubscriptionStatus)
@@ -105,8 +178,10 @@ async def cancel_subscription_endpoint(
         result = await payment_service.cancel_subscription(user_id)
         log.set(
             payment={
-                "subscription_id": (result.subscription or {}).get("dodo_subscription_id"),
-                "status": result.subscription.get("status") if result.subscription else None,
+                "subscription_id": result.subscription.dodo_subscription_id
+                if result.subscription
+                else None,
+                "status": result.subscription.status if result.subscription else None,
             }
         )
         log.audit(
@@ -114,7 +189,7 @@ async def cancel_subscription_endpoint(
             actor=user_id,
             provider="dodo",
         )
-        capture_context_event(AnalyticsEvents.SUBSCRIPTION_CANCELLATION_REQUESTED)
+        capture(UserId(user_id), SubscriptionCancellationRequested())
         return result
     except HTTPException:
         raise
@@ -132,6 +207,7 @@ async def cancel_subscription_endpoint(
 @limiter.limit("20/minute")
 async def verify_payment_endpoint(
     request: Request,  # noqa: ARG001 -- framework contract
+    body: VerifyPaymentRequest = VerifyPaymentRequest(),
     user_id: str = Depends(get_user_id),
 ) -> PaymentVerificationResponse:
     """Verify if user's payment has been completed."""
@@ -140,7 +216,9 @@ async def verify_payment_endpoint(
         payment={"operation": "verify_payment"},
     )
     try:
-        result = await payment_service.verify_payment_completion(user_id)
+        result = await payment_service.verify_payment_completion(
+            user_id, subscription_id=body.subscription_id
+        )
         log.audit("payment verification completed", actor=user_id, provider="dodo")
         return result
     except Exception as e:
@@ -189,9 +267,10 @@ async def handle_dodo_webhook(
     # seeing — still carries the payment context instead of emitting bare.
     log.set(payment={"operation": "webhook", "webhook_id": webhook_id})
 
+    # Read outside the try: a client hanging up mid-body is answered by the
+    # ClientDisconnect handler, not reported as a webhook processing failure.
+    body = await request.body()
     try:
-        # Get raw body for signature verification
-        body = await request.body()
         payload = body.decode("utf-8")
 
         # Prepare headers for verification
@@ -206,15 +285,14 @@ async def handle_dodo_webhook(
             log.warning(f"{LogTag.PAYMENT} Invalid webhook signature", webhook_id=webhook_id)
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
-        # Raw provider payload: process_webhook validates it into DodoWebhookEvent and
-        # deliberately answers 200/"failed" for shapes it can't parse, so Dodo's retry
-        # policy stays driven by the processing result rather than a request rejection.
-        webhook_data: dict[str, Any] = json.loads(payload)
-
-        log.set_ns("payment", event_type=webhook_data.get("type", "unknown"))
+        # Raw provider payload: process_webhook validates it into DodoWebhookEvent
+        # and answers with a processing result rather than raising, so the reply
+        # below is driven by what GAIA managed to do with the event.
+        webhook_data: DodoWebhookPayload = json.loads(payload)
 
         # Process the webhook with idempotency check using webhook_id
         result = await payment_webhook_service.process_webhook(webhook_data, webhook_id)
+        log.set_ns("payment", event_type=result.event_type)
 
         log.audit(
             "payment webhook processed",
@@ -222,11 +300,35 @@ async def handle_dodo_webhook(
             event_type=result.event_type,
             processing_status=result.status,
         )
-        log.info(
-            f"{LogTag.PAYMENT} Webhook processed",
-            event_type=result.event_type,
-            processing_status=result.status,
-        )
+        if result.status == WebhookProcessingStatus.FAILED:
+            # The state change never landed. Acknowledging would tell Dodo the delivery is
+            # done and stop retries — for subscription.active, a paid user never activates.
+            # Logged at error, not info, or this reads as a success on every dashboard.
+            log.error(
+                f"{LogTag.PAYMENT} Webhook not acknowledged; asking Dodo to redeliver",
+                event_type=result.event_type,
+                processing_status=result.status,
+                failure_reason=result.message,
+            )
+            raise HTTPException(status_code=503, detail=result.message)
+
+        if result.status == WebhookProcessingStatus.ABANDONED:
+            # Acknowledged, because a retry cannot land it — but at the level
+            # that gets it looked at: this is a paid user GAIA could not
+            # activate, or a billing change it could not record.
+            log.error(
+                f"{LogTag.PAYMENT} Webhook abandoned; the delivery cannot be completed by a retry",
+                event_type=result.event_type,
+                processing_status=result.status,
+                failure_reason=result.message,
+            )
+        else:
+            log.info(
+                f"{LogTag.PAYMENT} Webhook processed",
+                event_type=result.event_type,
+                processing_status=result.status,
+            )
+
         return DodoWebhookAckResponse(
             event_type=result.event_type,
             processing_status=result.status,

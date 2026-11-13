@@ -1,16 +1,17 @@
 """Outlook attachment hook: workspace-local paths become grant URLs.
 
-OUTLOOK_SEND_EMAIL / OUTLOOK_CREATE_DRAFT take `attachment` as a path string
+OUTLOOK_SEND_EMAIL / OUTLOOK_CREATE_DRAFT take attachment as a path string
 Composio fetches itself. URL values and missing keys pass through untouched;
 every workspace-local path triggers a mint — whether it arrives bare or inside
 a list, since both reach Composio the same way (fail-closed abort when the user
-is missing or the mint fails). The `user_id` strip keeps model-supplied
+is missing or the mint fails). The user_id strip keeps model-supplied
 identity out of hook params (mirrors gmail).
 """
 
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from pydantic import ValidationError
 import pytest
 
 from app.utils.composio_hooks.outlook_hooks import (
@@ -115,10 +116,12 @@ class TestOutlookAttachmentBeforeHook:
         with pytest.raises(HookAbortError, match="user context"):
             outlook_attachment_before_hook("OUTLOOK_SEND_EMAIL", "outlook", params)
 
-    def test_non_dict_arguments_passes_through(self):
+    def test_non_dict_arguments_are_rejected_at_the_boundary(self):
+        # Not a tool call at all: it fails to parse (the registry logs and runs
+        # the tool with its params untouched) and nothing is minted.
         params = {"arguments": ["not-a-dict"], "user_id": "u1"}
-        with patch(f"{HOOKS}.mint_share_url") as mint:
-            assert outlook_attachment_before_hook("OUTLOOK_SEND_EMAIL", "outlook", params) is params
+        with patch(f"{HOOKS}.mint_share_url") as mint, pytest.raises(ValidationError):
+            outlook_attachment_before_hook("OUTLOOK_SEND_EMAIL", "outlook", params)
         assert mint.called is False
 
     def test_workspace_path_mints_with_tool_attribution(self):

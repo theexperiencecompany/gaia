@@ -1,0 +1,297 @@
+"""The one LLM-composed line of GAIA's opening conversation.
+
+:mod:first_conversation is deterministic on purpose, and stays that way: it is
+the thing that always ships. This module writes only the LAST turn of it — one
+extremely specific question about what to tackle first, inferred from the three
+onboarding answers — and every failure mode returns None so the static line
+composed next door is what the user gets instead.
+
+The rules are enforced in code rather than trusted to the prompt. A model that
+answers "How can I help you today?" has produced something worse than the static
+copy, so a miss is a fallback, not a warning to ship anyway.
+"""
+
+import hashlib
+import json
+import time
+
+from pydantic import BaseModel, Field
+
+from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, metered_config
+from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT
+from app.constants.log_tags import LogTag
+from app.db.repositories.users import user_repository
+from app.models.user_models import OnboardingPreferences, StartingJobs
+from app.services.onboarding.first_message import NEED_PHRASES
+from shared.py.wide_events import log
+
+#: The ceiling for the call made AHEAD of time, while the user is still clicking
+#: through the wizard. Nobody is waiting on it, so it gets room to succeed.
+QUESTION_TIMEOUT_SECONDS = 20.0
+
+#: The ceiling for the call made at completion, when the prewarm missed. The
+#: user is watching a spinner, so this is a last chance, not a real attempt —
+#: the dev lane measured 5 to 13 seconds per compose.
+LIVE_QUESTION_TIMEOUT_SECONDS = 6.0
+
+#: Low but not zero. At 0 the question collapses onto the same two shapes for
+#: every persona; above this it starts inventing facts about their week.
+QUESTION_TEMPERATURE = 0.4
+
+#: The voice section of the comms prompt, read out of the prompt itself so the
+#: seeded question and the agent the user talks to next cannot drift apart.
+_VOICE_SECTION_START = "## Voice"
+_VOICE_SECTION_END = "## Reply, react, or stay silent"
+
+
+class FirstQuestion(BaseModel):
+    """The four starting jobs offered as chips under "What are we starting with?"."""
+
+    chips: list[str]
+
+
+class _QuestionDraft(BaseModel):
+    """The model's output.
+
+    The schema IS the check: structured output cannot hand back the wrong number of
+    chips, so nothing downstream second-guesses the words.
+    """
+
+    chips: list[str] = Field(
+        min_length=4, max_length=4, description="Exactly 4 jobs, 2 to 4 words each."
+    )
+
+
+def comms_voice_rules() -> str:
+    """Return the comms agent's own Voice section, verbatim.
+
+    Sliced out of COMMS_AGENT_PROMPT rather than duplicated, so the two can't
+    drift out of sync.
+    """
+    start = COMMS_AGENT_PROMPT.find(_VOICE_SECTION_START)
+    end = COMMS_AGENT_PROMPT.find(_VOICE_SECTION_END, start + 1)
+    # One membership test rather than two comparisons: `start == -1` on its own
+    # is unobservable (when the start marker is missing the slice below is empty
+    # anyway), so no test can pin it and a silent edit to it is free.
+    if -1 in (start, end):
+        return ""
+    return COMMS_AGENT_PROMPT[start:end].strip()
+
+
+QUESTION_PROMPT_TEMPLATE = """\
+You are GAIA. You write in this voice:
+
+{voice}
+
+A person finished signing up seconds ago. This is everything you know about \
+them, in their words. All of it is about their WORK (a "chore" is a repeated \
+work task, never housework):
+
+{answers}
+
+Your opening message ends with "What are we starting with?" and four chips \
+under it. Write the four chips: the four jobs THIS person most wants handed \
+off, ambitious ones, the things they lie awake over, not chores. You can start \
+every one of them today with research, writing, a list you hold, a plan, or a \
+job you run on a schedule. Rules:
+- 2 to 4 words each, in their language. Verb first. No "the". No ending \
+punctuation. No emoji.
+- Never the inbox or the calendar routines (sorting mail, drafting replies, \
+meeting prep): those are already on offer above the chips.
+- Never generic ("Help me", "Get organised", "Plan my day"). Each chip names a \
+real outcome in their world.
+- If they typed a need in their own words and it is a real job, it is chip one, \
+in their words, trimmed to a verb phrase. If it is not a real job, ignore it.
+- Four different jobs, no two about the same thing.
+- A job is something they would hand to a capable person to DO: it starts with \
+a verb that produces a thing (find, write, plan, build, chase, research, \
+model, prep). Never a complaint or a wish ("Never miss follow-ups", "Stop \
+re-explaining myself"), never a feeling, never "Do my research" or "Write my \
+drafts" style filler that names no outcome.
+- Write THIS person's four. The examples below show the standard, not the \
+words: copying an example's chips for a similar job is a failure.
+
+Examples of the standard. They are about OTHER people: never reuse their \
+details or their chips unless THIS person said so.
+founder, drowning in email: ["Find investors", "Fix my marketing", "Hire someone", "Write my pitch"]
+sales, follow-ups slip: ["Find leads", "Write outreach", "Prep a demo", "Build my pipeline"]
+engineer, same chores daily: ["Design my system", "Plan my sprint", "Write docs", "Ship my side project"]
+student, mornings start behind: ["Ace my exam", "Write my essay", "Land an internship", "Plan my semester"]
+marketing, typed "content calendar": ["Plan content calendar", "Grow my list", "Write a campaign", "Find influencers"]
+bakery owner, typed "chasing suppliers for invoices": ["Chase suppliers", "Find new suppliers", "Plan next month", "Write my newsletter"]
+"""
+
+
+def _answers_block(preferences: OnboardingPreferences, connected_platform: str | None) -> str:
+    """Return the onboarding answers as the model reads them, one per line."""
+    lines: list[str] = []
+    profession = (preferences.profession or "").strip()
+    if profession and profession.lower() != "other":
+        lines.append(f"- Their job, as they answered it: {profession}")
+    for need in preferences.needs or []:
+        lines.append(f"- In their words: {NEED_PHRASES[need]}")
+    if preferences.other_need:
+        lines.append(f'- In their own words: "{preferences.other_need}"')
+    if connected_platform:
+        lines.append(f"- They already text you on {connected_platform}")
+    if preferences.language:
+        lines.append(
+            f"- Their browser language, the one the chips are written in: {preferences.language}"
+        )
+    return "\n".join(lines) or "- Nothing. They answered nothing."
+
+
+async def compose_first_question(
+    preferences: OnboardingPreferences,
+    connected_platform: str | None,
+    *,
+    user_id: str | None = None,
+    timeout_seconds: float = QUESTION_TIMEOUT_SECONDS,
+) -> FirstQuestion | None:
+    """Return the four starting jobs for a brand-new user, or None for no chips.
+
+    One structured call capped at QUESTION_TIMEOUT_SECONDS with no retry;
+    every exception, timeout, or rule miss returns None. timeout_seconds
+    exists only for the persona eval script; nothing in the product passes it.
+    """
+    started = time.monotonic()
+    config = metered_config(user_id) if user_id else None
+    prompt = QUESTION_PROMPT_TEMPLATE.format(
+        voice=comms_voice_rules(),
+        answers=_answers_block(preferences, connected_platform),
+    )
+
+    try:
+        draft = await ainvoke_structured(
+            _QuestionDraft,
+            prompt,
+            label="onboarding_first_question",
+            config=config,
+            # Live at completion (2s) gets one attempt (a retry can't fit); the
+            # prewarm (8s, nobody waiting) may retry once for a bad draft.
+            options=StructuredCallOptions(
+                temperature=QUESTION_TEMPERATURE,
+                timeout=timeout_seconds,
+                max_attempts=2 if timeout_seconds >= QUESTION_TIMEOUT_SECONDS else 1,
+            ),
+        )
+    except Exception as e:
+        # Deliberately everything (LLMNotConfiguredError, TimeoutError, provider
+        # errors, schema parse failures): not one of them is a reason to leave
+        # the user without an opening conversation.
+        log.warning(
+            f"{LogTag.ONBOARDING} first question fell back",
+            outcome="fallback",
+            reason=type(e).__name__,
+            duration_s=round(time.monotonic() - started, 3),
+        )
+        return None
+
+    chips = [chip.strip() for chip in draft.chips]
+
+    log.info(
+        f"{LogTag.ONBOARDING} first question composed",
+        outcome="llm",
+        reason="ok",
+        chip_count=len(chips),
+        duration_s=round(time.monotonic() - started, 3),
+    )
+    return FirstQuestion(chips=chips)
+
+
+def answers_fingerprint(preferences: OnboardingPreferences) -> str:
+    """Return a stable hash of the answers the question is written from.
+
+    Part of the cache key rather than a stored field, so changing an answer
+    hashes to a fresh, unwritten key instead of reading a stale question.
+    """
+    answers: dict[str, object] = {
+        "profession": (preferences.profession or "").strip().lower(),
+        "needs": [need.value for need in preferences.needs or []],
+        "other_need": (preferences.other_need or "").strip().lower(),
+    }
+    # Only when set, so a question cached before the language existed keeps its key.
+    if preferences.language:
+        answers["language"] = preferences.language
+    payload = json.dumps(answers, sort_keys=True)
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
+async def seeded_chips(user_id: str, preferences: OnboardingPreferences) -> list[str]:
+    """Return the jobs drafted from these answers, or [] when none were or the answers changed since.
+
+    The one reader of the drafted jobs: the paywall preview, the welcome thread
+    and the first-chat guidance all show what this returns.
+    """
+    user = await user_repository.get(user_id)
+    jobs = user.onboarding.starting_jobs if user and user.onboarding else None
+    if jobs is None or jobs.answers_fingerprint != answers_fingerprint(preferences):
+        return []
+    return list(jobs.chips)
+
+
+async def _store(user_id: str, preferences: OnboardingPreferences, question: FirstQuestion) -> None:
+    await user_repository.set_starting_jobs(
+        user_id,
+        StartingJobs(answers_fingerprint=answers_fingerprint(preferences), chips=question.chips),
+    )
+
+
+async def prewarm_first_question(
+    user_id: str,
+    preferences: OnboardingPreferences,
+    connected_platform: str | None,
+) -> None:
+    """Draft the jobs while the user is still in the wizard and store them on their record.
+
+    Fire-and-forget: this runs detached from the request that saved the answers,
+    so it owns its own failures and raises nothing. Jobs not drafted by
+    completion get one live attempt there.
+    """
+    try:
+        question = await compose_first_question(preferences, connected_platform, user_id=user_id)
+        if question is None:
+            return
+        await _store(user_id, preferences, question)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.ONBOARDING} first question prewarm failed",
+            user_id=user_id,
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+        )
+
+
+async def resolve_first_question(
+    user_id: str,
+    preferences: OnboardingPreferences,
+    connected_platform: str | None,
+) -> FirstQuestion | None:
+    """Return the jobs to close the seeded conversation with, at completion time.
+
+    Prefers what prewarm_first_question stored; a miss gets one short live
+    attempt, stored too, then no chips.
+    """
+    stored = await seeded_chips(user_id, preferences)
+    if stored:
+        log.info(f"{LogTag.ONBOARDING} first question resolved", user_id=user_id, outcome="stored")
+        return FirstQuestion(chips=stored)
+
+    live = await compose_first_question(
+        preferences,
+        connected_platform,
+        user_id=user_id,
+        timeout_seconds=LIVE_QUESTION_TIMEOUT_SECONDS,
+    )
+    if live is None:
+        # A thread seeded without its chips is a real degradation, so it is a
+        # warning on the wide event, not an info line nobody reads.
+        log.warning(
+            f"{LogTag.ONBOARDING} first question missed: thread seeded without chips",
+            user_id=user_id,
+            outcome="fallback",
+        )
+        return None
+    await _store(user_id, preferences, live)
+    log.info(f"{LogTag.ONBOARDING} first question resolved", user_id=user_id, outcome="live")
+    return live

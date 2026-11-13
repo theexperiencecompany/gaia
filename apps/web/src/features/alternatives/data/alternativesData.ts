@@ -1,13 +1,10 @@
 /**
  * Alternative-to pages data — `/alternative-to/[slug]`
  *
- * Per-slug entries live in `apps/web/public/data/alternatives/{slug}.json`
- * (regenerate with `pnpm tsx scripts/extract-static-data.ts`). At build time
- * they're read from disk; at Cloudflare runtime they're fetched via the
- * ASSETS binding. This keeps ~3 MB of static SEO content out of handler.mjs.
- *
- * The TypeScript interface stays here so authors get type checking on
- * `entries/{slug}.ts` source files (which the codegen reads to produce JSON).
+ * Per-slug entries live in `apps/web/public/data/alternatives/{slug}.json`,
+ * which is the source. At build time they're read from disk; at Cloudflare
+ * runtime they're fetched via the ASSETS binding. This keeps ~3 MB of static
+ * SEO content out of handler.mjs.
  */
 
 import {

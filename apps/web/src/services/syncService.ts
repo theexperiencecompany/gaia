@@ -3,8 +3,15 @@ import {
   type ConversationSyncItem,
   chatApi,
   type SyncedConversation,
+  toClientMessages,
 } from "@/features/chat/api/chatApi";
 import { MAX_SYNC_CONVERSATIONS } from "@/features/chat/constants";
+import {
+  apiRowHasLiveApproval,
+  isApprovalFlagStale,
+} from "@/features/chat/utils/approvalFlag";
+import { isUnlistedConversation } from "@/features/chat/utils/unlistedConversation";
+import type { RequestOrigin } from "@/lib/api/typed";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 import {
@@ -13,12 +20,11 @@ import {
   shouldBlockSyncForConversation,
 } from "@/stores/streamStore";
 import type { MessageType } from "@/types/features/convoTypes";
+import { fromRegistryEntries } from "@/types/features/toolDataTypes";
 
-// When a remote message overwrites an existing local one, carry forward a
-// non-empty local tool_data if the remote copy lacks it. Executor tool cards are
-// produced client-side-first during streaming and saved locally on abort; the
-// backend's cancelled/partial copy may not have caught up yet, and a wholesale
-// "remote wins" replacement would otherwise delete the cards the user already saw.
+// Carries forward non-empty local tool_data when the remote copy lacks it: executor tool cards
+// are produced client-side during streaming and saved locally on abort, so the backend's
+// cancelled/partial copy may not have caught up yet — a bare "remote wins" would delete them.
 const withPreservedToolData = (remote: IMessage, local: IMessage): IMessage => {
   const remoteHasToolData =
     Array.isArray(remote.tool_data) && remote.tool_data.length > 0;
@@ -59,18 +65,15 @@ const mergeMessageLists = (
       // but keep locally-retained tool cards the backend copy may still be missing.
       messageMap.set(msg.id, withPreservedToolData(msg, existing));
     } else {
-      // Message exists locally
-      // ALWAYS prefer remote version for synced messages to ensure consistency
-      // Local timestamps might be drifted or ahead due to optimistic updates (like on abort)
-      // The only exception is 'sending' status handled above
+      // Always prefer the remote version here: local timestamps can drift ahead of the server's
+      // via optimistic updates (e.g. abort). The only exception is 'sending', handled above.
       messageMap.set(msg.id, withPreservedToolData(msg, existing));
     }
   });
 
-  // No orphan sweep: the client's send id IS the persisted message id (single
-  // identity), so the server copy lands on the same key above and replaces the
-  // optimistic record naturally. Sends the server never received stay visible
-  // and are marked failed by the turn lifecycle — never silently deleted.
+  // No orphan sweep: the client's send id IS the persisted message id, so the server copy
+  // replaces the optimistic record above naturally. Sends the server never received stay
+  // visible and are marked failed by the turn lifecycle — never silently deleted.
 
   // Convert back to array and sort by creation time
   return Array.from(messageMap.values()).toSorted(
@@ -112,8 +115,12 @@ const mapApiMessagesToStored = (
       pinned: message.pinned ?? false,
       selectedCalendarEvent: message.selectedCalendarEvent,
       selectedWorkflow: message.selectedWorkflow,
+      todoRunWake: message.todo_run_wake ?? null,
       replyToMessageId: message.replyToMessage?.id ?? null,
       replyToMessageData: message.replyToMessage ?? null,
+      kind: message.kind ?? null,
+      reacts_to_message_id: message.reacts_to_message_id ?? null,
+      stopped: message.stopped ?? null,
     } satisfies IMessage;
   });
 
@@ -136,6 +143,27 @@ const toTimestamp = (timestamp?: string): number => {
   return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
 };
 
+const toStoredConversation = (
+  conversation: SyncedConversation,
+  artifacts: IConversation["artifacts"],
+): IConversation => ({
+  id: conversation.conversation_id,
+  title: conversation.description || "Untitled conversation",
+  description: conversation.description ?? "",
+  starred: conversation.starred ?? false,
+  isSystemGenerated: conversation.is_system_generated ?? false,
+  systemPurpose: conversation.system_purpose ?? null,
+  isUnread: conversation.is_unread ?? false,
+  hasLiveApproval: apiRowHasLiveApproval(conversation),
+  todoId: conversation.todo_id ?? null,
+  source: conversation.source ?? undefined,
+  artifacts,
+  createdAt: new Date(conversation.createdAt ?? 0),
+  updatedAt: conversation.updatedAt
+    ? new Date(conversation.updatedAt)
+    : new Date(conversation.createdAt ?? 0),
+});
+
 const identifyStaleConversations = (
   localConversations: IConversation[],
   remoteConversations: Conversation[],
@@ -145,6 +173,9 @@ const identifyStaleConversations = (
       conv.id,
       conv.updatedAt || conv.createdAt,
     ]),
+  );
+  const localFlagMap = new Map(
+    localConversations.map((conv) => [conv.id, conv.hasLiveApproval]),
   );
 
   const staleItems: ConversationSyncItem[] = [];
@@ -162,7 +193,18 @@ const identifyStaleConversations = (
       continue;
     }
 
-    const remoteUpdated = toTimestamp(remote.updatedAt ?? remote.createdAt);
+    if (isApprovalFlagStale(localFlagMap.get(conversationId), remote)) {
+      // Flag flipped without touching updatedAt — refetch for the dot.
+      staleItems.push({
+        conversation_id: conversationId,
+        last_updated: localUpdatedAt.toISOString(),
+      });
+      continue;
+    }
+
+    const remoteUpdated = toTimestamp(
+      remote.updatedAt ?? remote.createdAt ?? undefined,
+    );
     const localUpdated = localUpdatedAt.getTime();
 
     if (remoteUpdated > localUpdated) {
@@ -202,6 +244,9 @@ const identifyDeletedConversations = (
   for (const local of localConversations) {
     // Skip if conversation exists on remote
     if (remoteIds.has(local.id)) continue;
+
+    // A todo chat or bot DM is never in the remote list, by design: absent there is not deleted.
+    if (isUnlistedConversation(local)) continue;
 
     // Skip if conversation is currently being streamed
     if (isConversationStreamingNow(local.id)) continue;
@@ -260,7 +305,9 @@ const warnOnMessageContentLoss = (
   }
 };
 
-export const batchSyncConversations = async (): Promise<void> => {
+export const batchSyncConversations = async (
+  origin: RequestOrigin = {},
+): Promise<void> => {
   // CRITICAL: Skip sync while any turn streams to prevent data corruption —
   // per-conversation guards above handle the fine-grained cases, this is the
   // conservative whole-batch gate.
@@ -273,19 +320,33 @@ export const batchSyncConversations = async (): Promise<void> => {
   try {
     const [remoteConversations, localConversations] = await Promise.all([
       chatApi
-        .fetchConversations(1, MAX_SYNC_CONVERSATIONS)
+        .fetchConversations(1, MAX_SYNC_CONVERSATIONS, origin)
         .then((res) => res.conversations),
       db.getAllConversations(),
     ]);
 
-    if (remoteConversations.length === 0) {
+    // An unlisted chat (todo chat, bot DM) is never in the list, so only asking about it by id
+    // shows a new message or its deletion. last_updated keeps the reply to what changed.
+    const unlistedChatItems = localConversations.flatMap(
+      (conv): ConversationSyncItem[] =>
+        isUnlistedConversation(conv)
+          ? [
+              {
+                conversation_id: conv.id,
+                last_updated: (conv.updatedAt || conv.createdAt).toISOString(),
+              },
+            ]
+          : [],
+    );
+
+    if (remoteConversations.length === 0 && unlistedChatItems.length === 0) {
       return;
     }
 
-    const staleItems = identifyStaleConversations(
-      localConversations,
-      remoteConversations,
-    );
+    const staleItems = [
+      ...identifyStaleConversations(localConversations, remoteConversations),
+      ...unlistedChatItems,
+    ];
 
     // Identify conversations that exist locally but were deleted on the server
     const deletedConversationIds = identifyDeletedConversations(
@@ -302,8 +363,12 @@ export const batchSyncConversations = async (): Promise<void> => {
       return;
     }
 
-    const { conversations: freshConversations } =
-      await chatApi.batchSyncConversations(staleItems);
+    const { conversations: freshConversations, missing } =
+      await chatApi.batchSyncConversations(staleItems, origin);
+
+    if (missing.length > 0) {
+      await db.deleteConversationsAndMessagesBulk(missing);
+    }
 
     if (freshConversations.length === 0) {
       return;
@@ -312,28 +377,19 @@ export const batchSyncConversations = async (): Promise<void> => {
     await Promise.allSettled(
       freshConversations.map(async (conversation) => {
         const conversationId = conversation.conversation_id;
-        const messages = conversation.messages ?? [];
-        const artifacts = conversation.artifacts ?? [];
+        const messages = toClientMessages(conversation.messages);
+        const artifacts = fromRegistryEntries(
+          conversation.artifacts,
+          conversationId,
+        );
 
         // Skip syncing if streaming or pending save (e.g., after abort)
         if (shouldBlockSyncForConversation(conversationId)) return;
 
-        const mappedConversation: IConversation = {
-          id: conversationId,
-          title: conversation.description || "Untitled conversation",
-          description: conversation.description,
-          starred: conversation.starred ?? false,
-          isSystemGenerated: conversation.is_system_generated ?? false,
-          isOnboardingConversation:
-            conversation.is_onboarding_conversation ?? false,
-          systemPurpose: conversation.system_purpose ?? null,
-          isUnread: conversation.is_unread ?? false,
+        const mappedConversation = toStoredConversation(
+          conversation,
           artifacts,
-          createdAt: new Date(conversation.createdAt),
-          updatedAt: conversation.updatedAt
-            ? new Date(conversation.updatedAt)
-            : new Date(conversation.createdAt),
-        };
+        );
 
         // Refresh the runtime lookup map from the server-authoritative registry.
         // Safe from clobbering a live turn: streaming conversations are filtered
@@ -375,25 +431,9 @@ export const applySyncedConversation = async (
     return;
   }
 
-  const messages = conversation.messages ?? [];
-  const artifacts = conversation.artifacts ?? [];
-
-  // Map conversation to IndexedDB format
-  const mappedConversation: IConversation = {
-    id: conversationId,
-    title: conversation.description || "Untitled conversation",
-    description: conversation.description,
-    starred: conversation.starred ?? false,
-    isSystemGenerated: conversation.is_system_generated ?? false,
-    isOnboardingConversation: conversation.is_onboarding_conversation ?? false,
-    systemPurpose: conversation.system_purpose ?? null,
-    isUnread: conversation.is_unread ?? false,
-    artifacts,
-    createdAt: new Date(conversation.createdAt),
-    updatedAt: conversation.updatedAt
-      ? new Date(conversation.updatedAt)
-      : new Date(conversation.createdAt),
-  };
+  const messages = toClientMessages(conversation.messages);
+  const artifacts = fromRegistryEntries(conversation.artifacts, conversationId);
+  const mappedConversation = toStoredConversation(conversation, artifacts);
 
   // Refresh the runtime lookup map from the server-authoritative registry. The
   // store stamps session_id onto each entry so artifact fetch URLs resolve.

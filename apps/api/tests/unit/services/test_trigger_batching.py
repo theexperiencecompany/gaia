@@ -5,13 +5,17 @@ agent run per inbound email — 56 runs in three minutes, which spent a paying
 user's whole daily budget before he had sent a single message.
 """
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 import json
 import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from arq.connections import ArqRedis
+import fakeredis.aioredis
 import pytest
+import time_machine
 
 from app.models.trigger_configs import GmailNewMessageConfig, GmailPollInboxConfig
 from app.models.workflow_models import TriggerConfig, TriggerType
@@ -23,8 +27,11 @@ from app.services.triggers.batching import (
     buffer_trigger_event,
     coalesce_window_seconds,
     drain_trigger_batch,
+    hold_trigger_batch,
+    hold_trigger_event,
     reschedule_if_refilled,
 )
+from tests.helpers import captured_wide_event
 
 MODULE = "app.services.triggers.batching"
 
@@ -127,8 +134,7 @@ class TestCoalesceWindow:
         assert coalesce_window_seconds(config) == 0
 
     def test_account_level_gmail_trigger_falls_back_to_the_daily_window(self) -> None:
-        """gmail_new_message declares no interval, and firing per email is never
-        a cadence anyone chose — it batches on the daily fallback."""
+        """gmail_new_message declares no interval, and firing per email is never a cadence anyone chose — it batches on the daily fallback."""
         config = TriggerConfig(
             type=TriggerType.INTEGRATION,
             trigger_name="gmail_new_message",
@@ -137,11 +143,20 @@ class TestCoalesceWindow:
         assert coalesce_window_seconds(config) == PER_EMAIL_FALLBACK_WINDOW_SECONDS
 
     def test_account_level_gmail_trigger_with_no_trigger_data_still_batches(self) -> None:
-        """The 126 prod workflows on this trigger carry trigger_data=None — the
-        fallback must key on the trigger name, not the config object."""
+        """The 126 prod workflows on this trigger carry trigger_data=None — the fallback must key on the trigger name, not the config object."""
         config = TriggerConfig(
             type=TriggerType.INTEGRATION,
             trigger_name="gmail_new_message",
+            trigger_data=None,
+        )
+        assert coalesce_window_seconds(config) == PER_EMAIL_FALLBACK_WINDOW_SECONDS
+
+    @pytest.mark.regression
+    def test_sent_mail_trigger_batches_on_the_daily_window(self) -> None:
+        """gmail_email_sent also fires once per message, so a burst of sent mail must not become a burst of runs."""
+        config = TriggerConfig(
+            type=TriggerType.INTEGRATION,
+            trigger_name="gmail_email_sent",
             trigger_data=None,
         )
         assert coalesce_window_seconds(config) == PER_EMAIL_FALLBACK_WINDOW_SECONDS
@@ -152,11 +167,7 @@ class TestBufferTriggerEvent:
     async def test_burst_of_events_schedules_exactly_one_run(
         self, fake_redis: _FakeRedis, enqueue: Any
     ) -> None:
-        """The whole point: 56 emails must not become 56 agent runs.
-
-        ARQ rejects the duplicate ``_job_id`` by returning None, so every event
-        after the first rides the buffer instead of starting its own run.
-        """
+        """The whole point: 56 emails must not become 56 agent runs; ARQ rejects the duplicate _job_id, so later events ride the buffer."""
         enqueue.side_effect = [MagicMock(job_id="job-1")] + [None] * 55
 
         for index in range(56):
@@ -173,8 +184,7 @@ class TestBufferTriggerEvent:
         assert enqueue.await_args.kwargs["_defer_by"] == 900
 
     async def test_payload_rides_redis_not_the_job_args(self, enqueue: Any) -> None:
-        """The job must carry only the batch key — a per-event payload in the
-        args would make every enqueue unique and defeat the dedup entirely."""
+        """The job must carry only the batch key — a per-event payload in the args would make every enqueue unique and defeat the dedup."""
         await buffer_trigger_event(
             "wf_1", "user_1", {"subject": "hi"}, 900, {"trigger_type": "integration"}
         )
@@ -259,8 +269,7 @@ class TestRedisUnavailable:
         enqueue_mock.assert_not_awaited()
 
     async def test_drain_reports_unavailability_as_none_not_empty(self) -> None:
-        """None and [] mean different things: [] lets the worker exit "cleanly",
-        None tells it the buffer may still hold events it must not claim drained."""
+        """None and [] mean different things: [] lets the worker exit "cleanly", None says the buffer may still hold undrained events."""
         with patch(f"{MODULE}.redis_cache") as cache:
             cache.redis = None
             assert await drain_trigger_batch("trigger_batch:wf_1") is None
@@ -300,9 +309,7 @@ class TestBufferTtl:
     async def test_short_window_ttl_survives_a_worker_outage(
         self, fake_redis: _FakeRedis, enqueue: Any
     ) -> None:
-        """Observed live: a 1-minute window's 4x TTL (240s) expired the batch
-        during a 268s worker outage, so the run fired against nothing and the
-        events silently vanished. The floor makes short windows restart-proof."""
+        """Observed live: a 1-minute window's 4x TTL (240s) expired the batch during a 268s worker outage, losing the events; the floor fixes this."""
         await buffer_trigger_event("wf_1", "user_1", {"id": 1}, 60, {})
         key = TRIGGER_BATCH_KEY.format(workflow_id="wf_1")
         assert fake_redis.expires[key] == TRIGGER_BATCH_TTL_FLOOR_SECONDS
@@ -318,16 +325,14 @@ class TestBufferTtl:
 
 @pytest.fixture
 def batch_log() -> Any:
-    """Spy on the module's logger so warning payloads — which reach the wide
-    event and page a human — are pinned as behaviour, not decoration."""
+    """Spy on the module's logger so warning payloads — which reach the wide event and page a human — are pinned as behaviour."""
     with patch(f"{MODULE}.log") as log_mock:
         yield log_mock
 
 
 @pytest.mark.unit
 class TestObservableBehaviour:
-    """The parts of the contract that only show up operationally: what gets
-    enqueued by name, what lands in Redis, and what the warnings say."""
+    """The parts of the contract that only show up operationally: what gets enqueued by name, what lands in Redis, what the warnings say."""
 
     async def test_the_scheduled_job_is_the_workflow_executor(self, enqueue: Any) -> None:
         await buffer_trigger_event("wf_1", "user_1", {"id": 1}, 900, {})
@@ -336,8 +341,7 @@ class TestObservableBehaviour:
     async def test_non_json_payload_fields_are_stringified_not_fatal(
         self, fake_redis: _FakeRedis, enqueue: Any
     ) -> None:
-        """Webhook payloads carry datetimes after model parsing; default=str is
-        what keeps the buffer write from raising on them."""
+        """Webhook payloads carry datetimes after model parsing; default=str is what keeps the buffer write from raising on them."""
         await buffer_trigger_event(
             "wf_1", "user_1", {"at": datetime(2026, 8, 23, tzinfo=UTC)}, 900, {}
         )
@@ -393,8 +397,7 @@ class TestObservableBehaviour:
     async def test_drain_uses_a_transactional_pipeline(
         self, fake_redis: _FakeRedis, enqueue: Any
     ) -> None:
-        """Read-and-delete must be atomic — a non-transactional drain lets an
-        event slip in between and be deleted unread."""
+        """Read-and-delete must be atomic — a non-transactional drain lets an event slip in between and be deleted unread."""
         enqueue.return_value = None
         await buffer_trigger_event("wf_1", "user_1", {"id": 1}, 900, {})
         with patch(f"{MODULE}.redis_cache") as cache:
@@ -420,6 +423,20 @@ class TestObservableBehaviour:
             batch_key=key,
         )
 
+    async def test_a_refill_is_logged_with_the_workflow_identified(
+        self, fake_redis: _FakeRedis, enqueue: Any, batch_log: Any
+    ) -> None:
+        key = TRIGGER_BATCH_KEY.format(workflow_id="wf_1")
+        fake_redis.store[key] = [json.dumps({"id": 1})]
+
+        await reschedule_if_refilled("wf_1", key, 900, {})
+
+        batch_log.info.assert_called_once_with(
+            "[TRIGGER] Trigger batch refilled mid-run — follow-up run scheduled",
+            workflow_id="wf_1",
+            window_seconds=900,
+        )
+
     async def test_refill_job_id_shape_is_exact(self, fake_redis: _FakeRedis, enqueue: Any) -> None:
         key = TRIGGER_BATCH_KEY.format(workflow_id="wf_1")
         fake_redis.store[key] = [json.dumps({"id": 1})]
@@ -435,9 +452,7 @@ class TestObservableBehaviour:
 @pytest.mark.unit
 class TestRedisCommandFailure:
     async def test_a_redis_write_error_degrades_to_immediate_dispatch(self) -> None:
-        """A raised RedisError must behave like a missing client: report the
-        failure and return False so the caller dispatches the event instead of
-        dropping it."""
+        """A raised RedisError must behave like a missing client: report the failure and return False so the caller dispatches instead of dropping."""
         from redis.exceptions import RedisError
 
         client = MagicMock()
@@ -475,8 +490,7 @@ class TestRedisCommandFailure:
 @pytest.mark.unit
 class TestEnqueuePool:
     async def test_jobs_are_enqueued_on_the_arq_pool(self, fake_redis: _FakeRedis) -> None:
-        """Both scheduling paths must hand enqueue the real ARQ pool — a None
-        pool only fails at send time, far from the mistake."""
+        """Both scheduling paths must hand enqueue the real ARQ pool — a None pool only fails at send time, far from the mistake."""
         pool = MagicMock(name="arq-pool")
         with (
             patch(f"{MODULE}.redis_cache") as cache,
@@ -494,9 +508,7 @@ class TestEnqueuePool:
     async def test_an_enqueue_failure_degrades_to_immediate_dispatch(
         self, fake_redis: _FakeRedis
     ) -> None:
-        """A buffered event with no scheduled run would sit until the next
-        event or expire — a scheduling failure must fall back to dispatching
-        the event now, duplicate risk and all."""
+        """A buffered event with no scheduled run would sit until the next event or expire, so a scheduling failure must dispatch it now."""
         with (
             patch(f"{MODULE}.redis_cache") as cache,
             patch(f"{MODULE}.log") as log_mock,
@@ -522,9 +534,7 @@ class TestEnqueuePool:
 @pytest.mark.unit
 class TestRefillTtlRenewal:
     async def test_refill_renews_the_buffer_ttl(self, fake_redis: _FakeRedis, enqueue: Any) -> None:
-        """A workflow gate-rejected all day reschedules repeatedly; without TTL
-        renewal the buffer set at first-write time expires under the cycle and
-        the events the follow-up job exists to drain silently vanish."""
+        """A workflow gate-rejected all day reschedules repeatedly; without TTL renewal the buffer expires under the cycle and events vanish."""
         key = TRIGGER_BATCH_KEY.format(workflow_id="wf_1")
         fake_redis.store[key] = [json.dumps({"id": 1})]
 
@@ -542,3 +552,116 @@ class TestRefillTtlRenewal:
         await reschedule_if_refilled("wf_1", key, day, {})
 
         assert fake_redis.expires[key] == day * 4
+
+
+# 02:30 and 08:00 on Oct 2 in Kolkata: inside the user's quiet hours, and their end.
+_NIGHT = datetime(2026, 10, 1, 21, 0, tzinfo=UTC)
+_MORNING = datetime(2026, 10, 2, 2, 30, tzinfo=UTC)
+_HELD_JOB_ID = f"trigger_batch:wf_1:held:{int(_MORNING.timestamp())}"
+
+
+@pytest.fixture
+def night_clock() -> Iterator[None]:
+    with time_machine.travel(_NIGHT, tick=False):
+        yield
+
+
+_HELD_CONTEXT = {
+    "trigger_type": "integration",
+    "trigger_batch_key": "trigger_batch:wf_1",
+    "quiet_hours": {"kind": "hold"},
+}
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("night_clock")
+class TestHoldTriggerEvent:
+    """A held event rides the workflow's batch, and its drain is the one run when quiet hours end."""
+
+    async def test_the_event_joins_the_batch_drained_at_the_morning(
+        self, fake_redis: _FakeRedis, enqueue: Any
+    ) -> None:
+        context = {"trigger_type": "integration"}
+
+        assert await hold_trigger_event("wf_1", "user_1", {"id": 1}, _MORNING, context)
+
+        key = TRIGGER_BATCH_KEY.format(workflow_id="wf_1")
+        assert [json.loads(raw) for raw in fake_redis.store[key]] == [{"id": 1}]
+        assert fake_redis.expires[key] == 4 * 5.5 * 3600
+        _pool, *job = enqueue.await_args.args
+        assert job == ["execute_workflow_by_id", "wf_1", _HELD_CONTEXT]
+        assert enqueue.await_args.kwargs == {"_job_id": _HELD_JOB_ID, "_defer_by": 5.5 * 3600}
+
+    async def test_without_redis_the_event_is_not_held_and_says_whose_it_is(self) -> None:
+        with (
+            patch(f"{MODULE}.redis_cache") as cache,
+            patch(f"{MODULE}.enqueue_worker_job", new_callable=AsyncMock) as enqueue_mock,
+        ):
+            cache.redis = None
+            async with captured_wide_event() as event:
+                held = await hold_trigger_event("wf_1", "user_1", {"id": 1}, _MORNING, {})
+
+        assert held is False
+        enqueue_mock.assert_not_awaited()
+        assert event["warnings"] == [
+            {
+                "msg": "[TRIGGER] Redis unavailable — trigger event cannot be batched",
+                "workflow_id": "wf_1",
+                "user_id": "user_1",
+            }
+        ]
+
+    async def test_a_morning_already_past_drains_at_once(
+        self, fake_redis: _FakeRedis, enqueue: Any
+    ) -> None:
+        await hold_trigger_event(
+            "wf_1", "user_1", {"id": 1}, datetime(2026, 10, 1, 8, tzinfo=UTC), {}
+        )
+
+        assert enqueue.await_args.kwargs["_defer_by"] == 0
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("night_clock")
+class TestHoldTriggerBatch:
+    """A drain due inside quiet hours moves to their end, keeping the batch until then."""
+
+    async def test_the_drain_moves_to_the_morning_and_the_batch_outlives_it(
+        self, fake_redis: _FakeRedis
+    ) -> None:
+        context = {"trigger_type": "integration", "trigger_batch_key": "trigger_batch:wf_1"}
+        server = fakeredis.aioredis.FakeRedis()
+        queue = ArqRedis(pool_or_conn=server.connection_pool)
+
+        with (
+            patch(f"{MODULE}.redis_cache") as cache,
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=queue)),
+        ):
+            cache.redis = fake_redis
+            assert await hold_trigger_batch("wf_1", _MORNING, context) is True
+            # A second drain due that night meets the same morning job, never a second run.
+            assert await hold_trigger_batch("wf_1", _MORNING, context) is True
+            (job,) = await queue.queued_jobs()
+        await server.aclose()
+
+        assert fake_redis.expires[TRIGGER_BATCH_KEY.format(workflow_id="wf_1")] == 4 * 5.5 * 3600
+        assert (job.function, job.args) == ("execute_workflow_by_id", ("wf_1", _HELD_CONTEXT))
+        assert job.job_id == _HELD_JOB_ID
+        assert job.score == int(_MORNING.timestamp() * 1000)
+
+    async def test_redis_down_holds_nothing_and_says_so(self) -> None:
+        with (
+            patch(f"{MODULE}.redis_cache") as cache,
+            patch(f"{MODULE}.enqueue_worker_job", new_callable=AsyncMock) as enqueue_mock,
+        ):
+            cache.redis = None
+            async with captured_wide_event() as event:
+                assert await hold_trigger_batch("wf_1", _MORNING, {}) is False
+
+        enqueue_mock.assert_not_awaited()
+        assert event["warnings"] == [
+            {
+                "msg": "[TRIGGER] Redis unavailable — trigger batch cannot be held",
+                "workflow_id": "wf_1",
+            }
+        ]

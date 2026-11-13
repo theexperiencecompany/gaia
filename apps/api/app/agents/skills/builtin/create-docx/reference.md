@@ -46,4 +46,4 @@ Packer.toBuffer(doc).then((buf) => writeFileSync(out, buf));
 | `children must be an array` | passed a string where children expected | wrap content in `new Paragraph(...)` / arrays |
 | writes nothing / 0 bytes | forgot to `await`/resolve `Packer.toBuffer` | keep the `.then(buf => writeFileSync(...))` |
 
-docx-js produces valid OOXML by construction — if it runs without error and writes a non-empty file, the document opens in Word.
+docx-js produces valid OOXML by construction. If it runs without error and writes a non-empty file, the document opens in Word.

@@ -1,9 +1,8 @@
 /**
  * Integration combo pages — `/automate/[slug]`
  *
- * Per-slug entries live in `apps/web/public/data/combos/{slug}.json`
- * (regenerate via `pnpm tsx scripts/extract-static-data.ts`). At Cloudflare
- * runtime they are fetched via the ASSETS binding instead of being bundled
+ * Per-slug entries live in `apps/web/public/data/combos/{slug}.json`,
+ * which is the source. At Cloudflare runtime they are fetched via the ASSETS binding instead of being bundled
  * into handler.mjs.
  */
 
@@ -27,8 +26,6 @@ export interface IntegrationCombo {
   useCases: Array<{ title: string; description: string }>;
   howItWorks: Array<{ step: string; description: string }>;
   faqs: Array<{ question: string; answer: string }>;
-  /** When set, this page's canonical points to /automate/{canonicalSlug} — use for reverse-order duplicate combos (e.g. github-slack → slack-github). */
-  canonicalSlug?: string;
 }
 
 const FEATURE = "combos";

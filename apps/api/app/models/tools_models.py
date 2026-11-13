@@ -4,8 +4,10 @@ Pydantic models for tool-related operations.
 
 from pydantic import BaseModel
 
+from app.schemas.common import ResponseModel
 
-class ToolInfo(BaseModel):
+
+class ToolInfo(ResponseModel):
     """Model for individual tool information."""
 
     name: str
@@ -19,7 +21,7 @@ class ToolInfo(BaseModel):
     locked: bool = False
 
 
-class ToolsListResponse(BaseModel):
+class ToolsListResponse(ResponseModel):
     """Response model for tools list endpoint."""
 
     tools: list[ToolInfo]

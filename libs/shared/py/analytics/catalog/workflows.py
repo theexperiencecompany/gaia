@@ -1,0 +1,140 @@
+"""Workflow events."""
+
+from typing import ClassVar, Literal
+
+from shared.py.analytics.catalog.base import ServerEvent, WebEvent
+from shared.py.analytics.catalog.delivery import ProactiveDestinationBasis, ProactiveDestinationKind
+from shared.py.analytics.catalog.properties import Identifier
+
+__all__ = [
+    "WorkflowActivated",
+    "WorkflowCardNavigate",
+    "WorkflowCreated",
+    "WorkflowCreatedOrigin",
+    "WorkflowDeactivated",
+    "WorkflowDeleted",
+    "WorkflowExecuted",
+    "WorkflowPublished",
+    "WorkflowResultDelivered",
+    "WorkflowResultDeliveryOutcome",
+    "WorkflowStepsRegenerated",
+    "WorkflowUnpublished",
+    "WorkflowUpdated",
+]
+
+
+#: user_created: saved from the editor or a confirmed chat draft; chat_agent: the agent created
+#: it straight from a chat request; todo_converted: the user turned a todo into a workflow;
+#: todo_requested: the user pressed Generate Workflow on a todo.
+WorkflowCreatedOrigin = Literal["user_created", "chat_agent", "todo_converted", "todo_requested"]
+
+
+class WorkflowCreated(ServerEvent):
+    """A workflow was created, by the user or generated for a todo; origin says which."""
+
+    event: ClassVar[str] = "workflow:created"
+    previous_names: ClassVar[tuple[str, ...]] = ("workflows:created",)
+    budget_per_user_day: ClassVar[int] = 200
+
+    origin: WorkflowCreatedOrigin
+    workflow_id: Identifier | None = None
+    trigger_type: Identifier | None = None
+    steps_count: int | None = None
+    generated_immediately: bool | None = None
+    #: Kept for the Feature Adoption insight that splits on it; origin is the finer split.
+    is_todo_workflow: bool | None = None
+
+
+class WorkflowExecuted(ServerEvent):
+    """A workflow run was queued manually, or a background-triggered run completed."""
+
+    event: ClassVar[str] = "workflow:executed"
+    previous_names: ClassVar[tuple[str, ...]] = ("workflows:executed",)
+    budget_per_user_day: ClassVar[int] = 200
+
+    workflow_id: Identifier | None = None
+    trigger_type: Identifier | None = None
+
+
+#: delivered: it reached its place (the GAIA app keeps the saved result); undelivered: the
+#: chat-app send failed; lookup_failed: no place could be resolved, so only the saved result exists.
+WorkflowResultDeliveryOutcome = Literal["delivered", "undelivered", "lookup_failed"]
+
+
+class WorkflowResultDelivered(ServerEvent):
+    """A workflow run's result was routed to the user's one proactive place; platform is the chat app that got it."""
+
+    event: ClassVar[str] = "workflow:result_delivered"
+    budget_per_user_day: ClassVar[int] = 200
+
+    workflow_id: Identifier | None = None
+    outcome: WorkflowResultDeliveryOutcome
+    destination: ProactiveDestinationKind | None = None
+    destination_basis: ProactiveDestinationBasis | None = None
+    platform: Identifier | None = None
+
+
+class WorkflowActivated(ServerEvent):
+    """A user activated a workflow."""
+
+    event: ClassVar[str] = "workflow:activated"
+    budget_per_user_day: ClassVar[int] = 10
+
+
+class WorkflowDeactivated(ServerEvent):
+    """A user deactivated a workflow."""
+
+    event: ClassVar[str] = "workflow:deactivated"
+    budget_per_user_day: ClassVar[int] = 10
+
+
+class WorkflowPublished(ServerEvent):
+    """A user published a workflow to the community."""
+
+    event: ClassVar[str] = "workflow:published"
+    previous_names: ClassVar[tuple[str, ...]] = ("workflows:published",)
+    budget_per_user_day: ClassVar[int] = 10
+
+
+class WorkflowUnpublished(ServerEvent):
+    """A user unpublished a workflow."""
+
+    event: ClassVar[str] = "workflow:unpublished"
+    previous_names: ClassVar[tuple[str, ...]] = ("workflows:unpublished",)
+    budget_per_user_day: ClassVar[int] = 50
+
+
+class WorkflowUpdated(ServerEvent):
+    """A user edited a workflow."""
+
+    event: ClassVar[str] = "workflow:updated"
+    budget_per_user_day: ClassVar[int] = 10
+
+
+class WorkflowDeleted(ServerEvent):
+    """A user deleted a workflow."""
+
+    event: ClassVar[str] = "workflow:deleted"
+    previous_names: ClassVar[tuple[str, ...]] = ("workflows:deleted",)
+    budget_per_user_day: ClassVar[int] = 50
+
+
+class WorkflowStepsRegenerated(ServerEvent):
+    """A user asked for a workflow's steps to be regenerated."""
+
+    event: ClassVar[str] = "workflow:steps_regenerated"
+    previous_names: ClassVar[tuple[str, ...]] = ("workflows:steps_regenerated",)
+    budget_per_user_day: ClassVar[int] = 25
+
+    force_different_tools: bool
+    steps_count: int
+
+
+class WorkflowCardNavigate(WebEvent):
+    """A user opened a workflow card's use-case page; client-side routing the server never sees."""
+
+    event: ClassVar[str] = "workflow_card:navigate"
+    budget_per_user_day: ClassVar[int] = 50
+
+    slug: Identifier
+    variant: Identifier

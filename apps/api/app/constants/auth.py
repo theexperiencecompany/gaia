@@ -4,23 +4,30 @@ Auth Constants.
 Constants for authentication and JWT operations.
 """
 
-# JWT algorithm
+from enum import StrEnum
+
 JWT_ALGORITHM = "HS256"
 
 # Token expiration defaults (minutes)
 AGENT_TOKEN_EXPIRY_MINUTES = 20
 
-# Login-free integration-connect magic link (delivered via bots / non-UI).
-# An opaque, single-use code bound server-side to one (user, integration).
-# 12 bytes → 96 bits of entropy → unguessable online (the only way to test a
-# code is a request to the rate-limited endpoint; there is no offline oracle).
+# Login-free integration-connect magic link: opaque, single-use, server-side
+# bound to one (user, integration). 12 bytes -> 96 bits of entropy, unguessable
+# online (only test is a request to the rate-limited endpoint).
 CONNECT_LINK_CODE_BYTES = 12
 # Short window: a "click to connect now" link, not a saved bookmark. Keeps the
 # pool of live codes small and the leak/brute-force window tiny.
 CONNECT_LINK_TTL_MINUTES = 60
 
+# One-tap platform-linking code: 16 bytes -> 22 urlsafe-base64 chars, matched
+# by the adapters' trailing-#code regex. Changing this must update
+# LINK_CODE_LENGTH in libs/shared/ts/src/bots/link-codes.ts in the same commit.
+PLATFORM_LINK_CODE_BYTES = 16
+
 # Session cookie name (WorkOS sealed session)
 WOS_SESSION_COOKIE = "wos_session"
+# How long a WorkOS session cookie lives, set at sign-in and at every refresh.
+WOS_SESSION_MAX_AGE_SECONDS = 7 * 24 * 3600
 
 # Dev auth bypass: per-request impersonation header (development only). When the
 # bypass is active, this header selects the Mongo user to authenticate as instead
@@ -30,16 +37,8 @@ DEV_USER_HEADER = "X-Dev-User"
 # "mint it via ..." phrasing is the actionable fix — keep it in the message.
 DEV_USER_MISSING_HINT = "mint it via POST /api/v1/dev/users"
 
-# OAuth login/signup method identifiers
-LOGIN_METHOD_WORKOS = "workos"
-LOGIN_METHOD_GOOGLE = "google"
-LOGIN_METHOD_EMAIL = "email"
-
-# log.audit() actors for credential routes with no user session to name. Each
-# identifies the *caller class* that authenticated (mirroring the "dodo-webhook"
-# actor on the payment webhook); `resource`/`provider` name whose account was
-# acted on. Never the credential itself.
-# Self-authenticates with the pairing / refresh credential.
+# log.audit() actors for credential routes with no user session to name; never
+# the credential itself. Self-authenticates with the pairing / refresh credential.
 AUDIT_ACTOR_DEVICE_DAEMON = "device-daemon"
 # Authenticated by the shared bot API key.
 AUDIT_ACTOR_BOT_API = "bot-api"
@@ -54,3 +53,33 @@ OAUTH_FLOW_WEB = "web"
 # Deep link URIs for native apps
 MOBILE_DEEP_LINK = "gaiamobile://auth/callback"
 DESKTOP_DEEP_LINK = "gaia://auth/callback"
+
+
+class InstanceRole(StrEnum):
+    """A self-host account's role: the first account administers the instance."""
+
+    ADMIN = "admin"
+    MEMBER = "member"
+
+
+class RegistrationPolicy(StrEnum):
+    """Who may create a self-host account once the administrator exists."""
+
+    INVITE_ONLY = "invite_only"
+    OPEN = "open"
+
+
+# Self-host invite links: 32 bytes -> 43 urlsafe chars; only the SHA-256 digest is stored.
+INVITE_TOKEN_BYTES = 32
+
+# OWASP-recommended bcrypt cost for interactive logins (~250ms per verify).
+BCRYPT_ROUNDS = 12
+# The shortest password a new local account or a password change accepts.
+MIN_PASSWORD_LENGTH = 8
+
+# Random bytes in the password the admin reset script prints (24 url-safe chars).
+RESET_PASSWORD_TOKEN_BYTES = 18
+INVITE_TTL_DAYS = 7
+
+# instance_settings key holding the self-host registration policy.
+REGISTRATION_SETTINGS_KEY = "registration"

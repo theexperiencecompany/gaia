@@ -1,14 +1,14 @@
-export interface TriggerConfig {
-  type: string;
-  enabled: boolean;
-  cron_expression?: string;
-  timezone?: string;
-  next_run?: string;
-  trigger_name?: string;
-  integration_id?: string;
-  trigger_slug?: string;
-  [key: string]: unknown;
-}
+import type {
+  TriggerConfig,
+  WorkflowStepOutput,
+  WorkflowWithIntegrations,
+} from "../api/generated";
+
+export type {
+  TriggerConfig,
+  WorkflowListResponse,
+  WorkflowResponse,
+} from "../api/generated";
 
 export interface ExecutionConfig {
   method: "chat" | "background" | "hybrid";
@@ -38,42 +38,9 @@ export interface ContentCreator {
   avatar?: string;
 }
 
-export interface WorkflowStep {
-  id: string;
-  title: string;
-  category: string;
-  description: string;
-  order?: number;
-}
+export type WorkflowStep = WorkflowStepOutput;
 
-export interface Workflow {
-  id: string;
-  title: string;
-  description: string;
-  prompt: string;
-  steps: WorkflowStep[];
-  trigger_config: TriggerConfig;
-  execution_config: ExecutionConfig;
-  metadata: WorkflowMetadata;
-  activated: boolean;
-  /** Whether GAIA sends the automatic completion notification after each run */
-  notify_on_completion: boolean;
-  user_id: string;
-  created_at: string;
-  updated_at: string;
-  last_executed_at?: string;
-  current_step_index: number;
-  execution_logs: string[];
-  error_message?: string;
-  total_executions: number;
-  successful_executions: number;
-  is_public?: boolean;
-  created_by?: string;
-  creator?: ContentCreator;
-  is_system_workflow?: boolean;
-  source_integration?: string;
-  system_workflow_key?: string;
-}
+export type Workflow = WorkflowWithIntegrations;
 
 export interface CommunityWorkflow {
   id: string;
@@ -85,18 +52,6 @@ export interface CommunityWorkflow {
   creator: ContentCreator;
   categories?: string[];
   total_executions?: number;
-}
-
-export interface WorkflowListResponse {
-  workflows: Workflow[];
-  total_count: number;
-  page: number;
-  page_size: number;
-}
-
-export interface WorkflowResponse {
-  workflow: Workflow;
-  message: string;
 }
 
 export interface CreateWorkflowPayload {

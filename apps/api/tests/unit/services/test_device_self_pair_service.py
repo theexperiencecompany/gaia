@@ -2,7 +2,7 @@
 
 Proves the per-user active-device cap fires identically from BOTH entry points
 (self_pair_device and approve_pairing), and that the browser-approval path leaves
-``client`` NULL while self-pair stamps it. The Postgres session and Redis are the
+client NULL while self-pair stamps it. The Postgres session and Redis are the
 only fakes — the real service logic runs.
 """
 
@@ -124,11 +124,10 @@ class TestApprovePairingSharedCap:
         }
         mock_set_cache = AsyncMock(return_value=True)
         mock_delete = AsyncMock(return_value=None)
+        mock_lookup = AsyncMock(return_value=pending)
         with (
             patch(_DB_SESSION, _fake_session_factory(session)),
-            patch.object(
-                device_service, "lookup_pending_by_user_code", AsyncMock(return_value=pending)
-            ),
+            patch.object(device_service, "lookup_pending_by_user_code", mock_lookup),
             patch.object(device_service, "set_cache", mock_set_cache),
             patch.object(device_service, "get_and_delete_cache", mock_delete),
         ):
@@ -158,6 +157,7 @@ class TestApprovePairingSharedCap:
         # The spent user_code's reverse lookup is dropped so it can't be reused,
         # and the lookup is normalized to upper-case first.
         mock_delete.assert_awaited_once_with(device_service._user_code_key("GAIA-7F3K"))
+        mock_lookup.assert_awaited_once_with("GAIA-7F3K")
 
     async def test_same_cap_rejects_approve_pairing(self) -> None:
         session = _FakeSession(active_count=MAX_ACTIVE_DEVICES_PER_USER)

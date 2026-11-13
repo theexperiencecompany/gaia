@@ -1,11 +1,11 @@
 """
-One-time, idempotent migration: re-resolve `icon_url` on custom integrations.
+One-time, idempotent migration: re-resolve icon_url on custom integrations.
 
 Custom MCP integrations store the favicon resolved at creation time. The resolver
 was upgraded to resolve per host (Smithery registry icon -> host <link rel=icon>
 -> Google S2), so integrations created before the upgrade keep a stale icon (e.g.
 every Smithery server stored Smithery's generic grid). This re-resolves each
-custom integration that has an MCP server URL and updates `icon_url` when it
+custom integration that has an MCP server URL and updates icon_url when it
 resolves to a specific icon.
 
 Only documents whose resolved icon differs from what's stored are written, and a

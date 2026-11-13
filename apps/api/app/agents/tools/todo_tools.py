@@ -10,36 +10,29 @@ InjectedState and Command(update=...). No middleware, no markers,
 no class — just pure functions with closures over `source`.
 
 Streaming: Each mutation emits a `todo_progress` event via
-get_stream_writer() so the frontend renders progress in real-time.
+current_stream_writer() so the frontend renders progress in real-time.
 
-Pre-model hook: `create_todo_pre_model_hook()` injects current task
-context into the latest non-memory SystemMessage before each LLM call.
+Each result carries the whole plan as it now stands, so the thread holds the
+current plan where it last changed; the instructions live in the executor's
+static prompt (TODO_SYSTEM_PROMPT).
 """
 
-from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from langchain.tools import InjectedToolCallId
-from langchain_core.messages import SystemMessage, ToolMessage
-from langchain_core.runnables import RunnableConfig
+from langchain_core.messages import ToolMessage
 from langchain_core.tools import BaseTool, tool
-from langgraph.config import get_stream_writer
 from langgraph.prebuilt import InjectedState
-from langgraph.store.base import BaseStore
 from langgraph.types import Command
 from typing_extensions import TypedDict
 
-from app.agents.context.slots import TODO_CONTEXT_MARKER, mark
 from app.agents.prompts.todo_prompts import (
     PLAN_TASKS_DESCRIPTION,
-    TODO_SYSTEM_PROMPT,
     UPDATE_TASKS_DESCRIPTION,
 )
-from app.constants.log_tags import LogTag
-from app.override.langgraph_bigtool.utils import State
-from shared.py.wide_events import log
+from app.models.agent_models import current_stream_writer
 
 TODO_TOOL_NAMES: set[str] = {"plan_tasks", "update_tasks"}
 
@@ -84,23 +77,16 @@ def _emit_todo_progress(todos: list[Todo], source: str, source_label: str | None
     }
     if source_label:
         snapshot["integration_name"] = source_label
-    payload = {"todo_progress": snapshot}
-    try:
-        writer = get_stream_writer()
-        writer(payload)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.TOOL} Stream writer not available for todo_progress",
-            error_type=type(e).__name__,
-        )
+    current_stream_writer()({"todo_progress": snapshot})
 
 
 def _format_todos(todos: list[Todo]) -> str:
-    """Format todos for context injection."""
+    """Render the plan as a tool result states it."""
     if not todos:
         return ""
 
     lines = ["## Current Tasks"]
+    todo: Todo
     for i, todo in enumerate(todos, 1):
         icon = {
             "completed": "\u2713",
@@ -111,6 +97,69 @@ def _format_todos(todos: list[Todo]) -> str:
         lines.append(f"[{icon}] {i}. ({todo['id']}) {todo['content']}")
 
     return "\n".join(lines)
+
+
+def _with_plan(summary: str, todos: list[Todo]) -> str:
+    """Return a tool result's summary followed by the plan as it now stands, when there is one."""
+    plan = _format_todos(todos)
+    return f"{summary}\n\n{plan}" if plan else summary
+
+
+def _by_id(todos: list[Todo]) -> dict[str, Todo]:
+    """Return the plan's tasks keyed by id."""
+    by_id: dict[str, Todo] = {}
+    for todo in todos:
+        task: Todo = todo
+        by_id[task["id"]] = task
+    return by_id
+
+
+def _batch_problems(updates: list[TaskUpdate], todo_map: dict[str, Todo]) -> list[str]:
+    """Return why a batch cannot apply, checked whole: a partial apply would land valid additions twice on retry."""
+    problems: list[str] = []
+    if not updates:
+        problems.append("the updates list was empty")
+    for entry in updates:
+        update: TaskUpdate = entry
+        task_id = update.get("task_id")
+        if task_id:
+            if task_id not in todo_map:
+                problems.append(f"no task with id '{task_id}' exists")
+            elif not update.get("status"):
+                problems.append(f"task '{task_id}' was given no status to apply")
+        elif not update.get("content"):
+            problems.append("an entry had neither a task_id to update nor content to add")
+    return problems
+
+
+def _apply_updates(updates: list[TaskUpdate], todos: list[Todo]) -> tuple[list[Todo], str]:
+    """Return the plan with a validated batch applied, and a summary of what changed.
+
+    Validation guarantees every entry updates a known task or adds one, so the
+    summary is never empty.
+    """
+    now = datetime.now(UTC).isoformat()
+    updated_todos: list[Todo] = [t.copy() for t in todos]
+    todo_map = _by_id(updated_todos)
+    summary_parts: list[str] = []
+    added: list[str] = []
+    for entry in updates:
+        update: TaskUpdate = entry
+        task_id = update.get("task_id")
+        content = update.get("content")
+        status = update.get("status")
+        if task_id and status:
+            todo_map[task_id]["status"] = status
+            summary_parts.append(f"{task_id}→{status}")
+        elif content:
+            new_todo: Todo = Todo(
+                id=str(uuid4())[:8], content=content, status="pending", created_at=now
+            )
+            updated_todos.append(new_todo)
+            added.append(content)
+    if added:
+        summary_parts.append(f"added: {', '.join(added)}")
+    return updated_todos, "; ".join(summary_parts)
 
 
 def create_todo_tools(source: str = "executor", source_label: str | None = None) -> list[BaseTool]:
@@ -129,19 +178,16 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
         List of two BaseTool instances
     """
 
-    # TODO: Remove these tool calls from the conversation history, we are tracking
-    # the tasks in state and these tool calls are just for updating the state.
-    # We should not be adding these tool calls to the conversation history.
-
     @tool(description=PLAN_TASKS_DESCRIPTION)
     async def plan_tasks(
         tasks: list[TaskInput],
         tool_call_id: Annotated[str, InjectedToolCallId],
-    ) -> Command[Any]:
+    ) -> Command[str]:
         """Create a task plan for multi-step work."""
         now = datetime.now(UTC).isoformat()
         new_todos: list[Todo] = []
 
+        task: TaskInput
         for i, task in enumerate(tasks):
             new_todos.append(
                 Todo(
@@ -154,13 +200,16 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
 
         _emit_todo_progress(new_todos, source, source_label)
 
-        first_task = new_todos[0]["content"] if new_todos else "none"
+        first_task = next((todo["content"] for todo in new_todos), "none")
         return Command(
             update={
                 "todos": new_todos,
                 "messages": [
                     ToolMessage(
-                        content=f"Created plan with {len(new_todos)} tasks. Starting: {first_task}",
+                        content=_with_plan(
+                            f"Created plan with {len(new_todos)} tasks. Starting: {first_task}",
+                            new_todos,
+                        ),
                         tool_call_id=tool_call_id,
                         name="plan_tasks",
                         additional_kwargs={"todo_tool": True, "todo_source": source},
@@ -174,36 +223,10 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
         updates: list[TaskUpdate],
         tool_call_id: Annotated[str, InjectedToolCallId],
         todos: Annotated[list[Todo], InjectedState("todos")],
-    ) -> Command[Any]:
+    ) -> Command[str]:
         """Update task statuses and/or add new tasks in a single call."""
-        now = datetime.now(UTC).isoformat()
-        updated_todos: list[Todo] = [t.copy() for t in todos]
-        todo_map = {t["id"]: t for t in updated_todos}
-
-        summary_parts: list[str] = []
-        added: list[str] = []
-
-        # Validate the whole batch before applying any of it. Two reasons this is
-        # all-or-nothing rather than best-effort: a silently skipped entry told
-        # the model "no changes" while reporting success, so it moved on with a
-        # checklist that never advanced; and partial application makes the
-        # model's retry non-idempotent — the valid additions would land twice
-        # once it corrects the bad entry and resends the batch.
-        problems: list[str] = []
-        if not updates:
-            problems.append("the updates list was empty")
-        for entry in updates:
-            task_id = entry.get("task_id")
-            content = entry.get("content")
-            status = entry.get("status")
-            if task_id:
-                if task_id not in todo_map:
-                    problems.append(f"no task with id '{task_id}' exists")
-                elif not status:
-                    problems.append(f"task '{task_id}' was given no status to apply")
-            elif not content:
-                problems.append("an entry had neither a task_id to update nor content to add")
-
+        todo_map = _by_id(todos)
+        problems = _batch_problems(updates, todo_map)
         if problems:
             return Command(
                 update={
@@ -224,32 +247,7 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
                 }
             )
 
-        for entry in updates:
-            task_id = entry.get("task_id")
-            content = entry.get("content")
-            status = entry.get("status")
-
-            if task_id:
-                # Update existing task
-                if task_id in todo_map and status:
-                    todo_map[task_id]["status"] = status
-                    summary_parts.append(f"{task_id}→{status}")
-            elif content:
-                # Add new task
-                new_todo = Todo(
-                    id=str(uuid4())[:8],
-                    content=content,
-                    status="pending",
-                    created_at=now,
-                )
-                updated_todos.append(new_todo)
-                todo_map[new_todo["id"]] = new_todo
-                added.append(content)
-
-        if added:
-            summary_parts.append(f"added: {', '.join(added)}")
-
-        summary = "; ".join(summary_parts) if summary_parts else "no changes"
+        updated_todos, summary = _apply_updates(updates, todos)
         _emit_todo_progress(updated_todos, source, source_label)
 
         return Command(
@@ -257,7 +255,7 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
                 "todos": updated_todos,
                 "messages": [
                     ToolMessage(
-                        content=f"Updated tasks: {summary}",
+                        content=_with_plan(f"Updated tasks: {summary}", updated_todos),
                         tool_call_id=tool_call_id,
                         name="update_tasks",
                         additional_kwargs={"todo_tool": True, "todo_source": source},
@@ -267,34 +265,3 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
         )
 
     return [plan_tasks, update_tasks]
-
-
-def create_todo_pre_model_hook(
-    source: str = "executor",
-) -> Callable[[State, RunnableConfig, BaseStore], State]:
-    """Pre-model hook that emits a fresh ``todo_context`` SystemMessage each step.
-
-    Appends and marks; where the message lands, and which older copy it replaces,
-    is ``manage_system_prompts_node``'s job — this hook runs before it. Placing
-    the message itself is what used to make its position depend on which other
-    slots happened to be occupied that turn.
-    """
-    del source  # intentionally unused — kept for signature stability
-
-    def todo_pre_model_hook(state: State, config: RunnableConfig, store: BaseStore) -> State:  # noqa: ARG001 -- LangChain injects config/store via the tool-call signature
-        messages = list(state.get("messages", []))
-        if not messages:
-            return state
-
-        todos = state.get("todos", [])
-        parts = [TODO_SYSTEM_PROMPT]
-        if todos:
-            parts.append(_format_todos(todos))
-
-        todo_msg = mark(
-            SystemMessage(content="\n\n".join(parts)),
-            TODO_CONTEXT_MARKER,
-        )
-        return cast(State, {**state, "messages": [*messages, todo_msg]})
-
-    return todo_pre_model_hook

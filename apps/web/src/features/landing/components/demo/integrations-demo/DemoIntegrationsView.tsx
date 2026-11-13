@@ -34,31 +34,34 @@ function DemoIntegrationRow({
   const isPublic = integration.isPublic;
 
   return (
-    <div
-      className="flex min-h-16 cursor-pointer items-center gap-4 overflow-hidden rounded-2xl bg-zinc-800/0 px-4 py-3 hover:bg-zinc-800 transition-all duration-200"
-      onClick={() => onClick(integration.id)}
-    >
-      <div className="shrink-0">
-        {getToolCategoryIcon(integration.id, {
-          size: 32,
-          width: 32,
-          height: 32,
-          showBackground: false,
-        })}
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="flex items-center gap-2">
-          <span className="font-medium">{integration.name}</span>
-          {isPublic && (
-            <Chip size="sm" variant="flat" color="secondary">
-              Community
-            </Chip>
-          )}
+    <div className="flex min-h-16 items-center gap-4 overflow-hidden rounded-2xl bg-zinc-800/0 px-4 py-3 hover:bg-zinc-800 transition-colors duration-200">
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-4 text-left"
+        onClick={() => onClick(integration.id)}
+      >
+        <div className="shrink-0">
+          {getToolCategoryIcon(integration.id, {
+            size: 32,
+            width: 32,
+            height: 32,
+            showBackground: false,
+          })}
         </div>
-        <div className="truncate text-sm font-light text-zinc-400">
-          {integration.description}
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{integration.name}</span>
+            {isPublic && (
+              <Chip size="sm" variant="flat" color="secondary">
+                Community
+              </Chip>
+            )}
+          </div>
+          <div className="truncate text-sm font-light text-zinc-400">
+            {integration.description}
+          </div>
         </div>
-      </div>
+      </button>
       <div className="shrink-0">
         {isConnected ? (
           <Chip size="sm" variant="flat" color="success">

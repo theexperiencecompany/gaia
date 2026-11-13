@@ -1,7 +1,6 @@
-# STATIC system prompt for the follow-up actions node. Must be byte-identical
-# across users/turns so implicit prompt caching hits. All per-user and
-# per-turn content (tool_names, conversation summary, format instructions) is
-# passed in a separate dynamic-context message produced in the node itself.
+# STATIC prompt for the follow-up actions node; must stay byte-identical across
+# users/turns for implicit prompt caching. Per-user/per-turn content is passed
+# in a separate dynamic-context message produced by the node itself.
 SUGGEST_FOLLOW_UP_ACTIONS = """
 Suggest 2-4 follow-up actions the user might want next. Each one becomes the user's next message verbatim when they tap it, so write it the way the USER would say it. If nothing is genuinely useful, return an empty array.
 
@@ -19,6 +18,9 @@ CONVERSION LENS (what to pick):
 FORM:
 - Short (aim under ~30 characters), self-contained, and actionable. It must stand on its own as a message.
 - It INITIATES something. Don't ask the user a question back or request input from them.
+
+ALWAYS ANSWER BY CALLING THE TOOL, including when the answer is nothing: an
+empty list is a valid result. Never reply in prose instead of calling it.
 
 RETURN AN EMPTY ARRAY WHEN:
 - The user seems done ("thanks", "perfect", "got it") or the conversation has naturally wrapped.

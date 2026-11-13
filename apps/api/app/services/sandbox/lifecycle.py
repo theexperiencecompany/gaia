@@ -5,16 +5,12 @@ Public API:
     async with acquire_sandbox(user_id) as sbx:
         await sbx.commands.run(...)
 
-The context manager handles:
-  - per-user serialization via `asyncio.Lock` + refcount
-  - first-call sandbox creation; subsequent-call connect (auto-resumes a paused
-    sandbox — there is no separate resume step)
-  - mount-script execution after every cold boot
-  - canary verification (E2B GH#884 mitigation) — force recreate if FS is
-    stale across a pause/resume cycle
-  - debounced pause-on-idle when refcount returns to zero
-
-The yielded object is a live `AsyncSandbox` from `e2b`.
+The context manager handles per-user serialization (asyncio.Lock + refcount),
+first-call creation vs. subsequent-call connect (auto-resumes a paused sandbox
+— no separate resume step), mount-script execution after every cold boot,
+canary verification (E2B GH#884 mitigation, force recreate on stale FS across
+pause/resume), and debounced pause-on-idle when refcount hits zero. Yields a
+live AsyncSandbox from e2b.
 """
 
 from __future__ import annotations
@@ -24,29 +20,58 @@ import base64
 from collections.abc import AsyncIterator
 import contextlib
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from pathlib import Path
 import time
-from typing import Any, cast
+from typing import cast
 from urllib.parse import unquote, urlsplit, urlunsplit
 
-from e2b import AsyncSandbox
+from e2b import AsyncSandbox, NotFoundException, SandboxState
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.config.deployment import DeploymentKind
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
+from app.constants.providers import CredentialProviderName
 from app.constants.sandbox import (
     HEALTH_PROBE_REQUEST_TIMEOUT_SECONDS,
+    HEALTH_PROBE_RETRY_REQUEST_TIMEOUT_SECONDS,
+    HEALTH_PROBE_RETRY_WAIT_TIMEOUT_SECONDS,
     HEALTH_PROBE_WAIT_TIMEOUT_SECONDS,
+    SANDBOX_AGENTS_SETUP_TIMEOUT_SECONDS,
     SANDBOX_CONNECT_TIMEOUT_SECONDS,
-    SANDBOX_LIFETIME_SECONDS,
-    SANDBOX_TIMEOUT_REFRESH_SECONDS,
+    SANDBOX_MOUNT_TIMEOUT_SECONDS,
 )
 from app.db.repositories.e2b_sandboxes import e2b_sandbox_repository
 from app.decorators import enforce_rate_limit
-from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
+from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState, SandboxAcquisition
+from app.services.agent_lab.agents_home import build_agents_setup_command, restored_from
+from app.services.agent_lab.agents_saves import save_agents_home
+from app.services.agent_lab.lab_runs import lab_run_status
+from app.services.agent_lab.sandbox_events import SandboxEventKind, report_sandbox_event
+from app.services.feature_flags import is_agent_lab_enabled
+from app.services.providers.provider_credentials_service import (
+    ProviderConfig,
+    resolve as resolve_e2b_config,
+)
 from app.services.sandbox.artifact_watcher import start_watcher_for
-from app.services.sandbox.errors import SandboxAcquisitionError, SandboxRateLimitError
-from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
+from app.services.sandbox.errors import (
+    CodeExecutionDisabledError,
+    SandboxAcquisitionError,
+    SandboxRateLimitError,
+)
+from app.services.sandbox.local_sandbox import (
+    LocalDockerSandbox,
+    get_local_sandbox,
+    pop_local_sandbox,
+)
+from app.services.sandbox.pool import (
+    PooledSandbox,
+    get_sandbox_pool,
+    is_agent_lab_template,
+    refresh_sandbox_timeout,
+    sandbox_lifetime_seconds,
+)
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
 from app.services.storage import (
     FsOps,
@@ -59,15 +84,72 @@ from shared.py.wide_events import log
 
 CANARY_PATH = "/workspace/.gaia/canary.txt"
 MOUNT_SCRIPT_PATH = "/etc/gaia/mount.sh"  # template-baked copy (runtime-ship fallback)
-# The API ships its OWN copy of mount_juicefs.sh into the sandbox at acquire time
-# (see _run_mount_script), so changes to the mount script take effect on the next
-# sandbox without an E2B template rebuild. Timeout covers the in-script
-# mount-readiness poll (primary + skills + system, ~105s worst case) plus margin.
+# The API ships its own copy of mount_juicefs.sh at acquire time (see
+# _run_mount_script), so script changes need no template rebuild.
 MOUNT_SCRIPT_FILE = Path(__file__).resolve().parents[3] / "scripts" / "mount_juicefs.sh"
-MOUNT_SCRIPT_TIMEOUT_SECONDS = 120
 # Graceful JuiceFS unmount before a hard kill — short, best-effort.
 JFS_UNMOUNT_TIMEOUT_SECONDS = 15
 SANDBOX_CREATION_FEATURE_KEY = "sandbox_creation"
+
+
+async def _resolved_e2b_api_key() -> str | None:
+    """Return the E2B key from the credential store, falling back to the environment.
+
+    Single seam for every E2B routing decision here: a key saved in Settings
+    wins over the env var without a restart, and resolutions cache for 60s.
+    """
+    config: ProviderConfig | None = await resolve_e2b_config(CredentialProviderName.E2B)
+    return config.api_key if config else None
+
+
+async def use_local_sandbox() -> bool:
+    """Report whether coding sandboxes should be local Docker-exec containers.
+
+    Self-host without a resolvable E2B credential is the only mode that routes
+    here, and only when the operator opted in; otherwise CodeExecutionDisabledError.
+    Checked per acquire so saving an E2B key switches backends with no restart.
+    """
+    if settings.deployment.kind is not DeploymentKind.SELFHOST:
+        return False
+    if await _resolved_e2b_api_key() is not None:
+        return False
+    if not settings.deployment.local_code_sandbox:
+        raise CodeExecutionDisabledError
+    return True
+
+
+@contextlib.asynccontextmanager
+async def _acquire_local_sandbox(user_id: str) -> AsyncIterator[LocalDockerSandbox]:
+    """Yield the local Docker-exec sandbox with the E2B path acquire guarantees.
+
+    Per-user serialized with death-eviction of dead containers; JuiceFS mounts
+    and pause scheduling are absent because a local volume needs neither.
+    """
+    pool = get_sandbox_pool()
+    lock = await pool.get_lock(user_id)
+    await lock.acquire()
+    try:
+        sbx = get_local_sandbox(user_id)
+        async with fs_timer(FsOps.SBX_ACQUIRE):
+            created = await sbx.ensure_started()
+        _record(operation="acquire", source="local_docker", sandbox_id=sbx.sandbox_id)
+        if created:
+            # A run watching this user lived in a container that is gone, so this is a replacement.
+            await _set_up_agents_home(user_id, sbx, replaced=True)
+        try:
+            yield sbx
+        except Exception:
+            # Same contract as the E2B branch below: if a tool op failed AND
+            # the container died underneath it, evict so the next acquire
+            # doesn't hand out the same corpse.
+            if not await sbx.is_running():
+                _record(health_ok=False)
+                pop_local_sandbox(user_id)
+                with contextlib.suppress(Exception):
+                    await sbx.kill()
+            raise
+    finally:
+        lock.release()
 
 
 def _now() -> datetime:
@@ -75,11 +157,11 @@ def _now() -> datetime:
 
 
 def _record(**fields: object) -> None:
-    """Merge ``fields`` into the wide event's ``sandbox`` namespace.
+    """Merge fields into the wide event's sandbox namespace.
 
-    Thin wrapper over ``log.set_ns`` so the multi-step acquire path accumulates
-    into one ``sandbox`` dict instead of clobbering it. Valid keys are the
-    ``SandboxContext`` schema in ``shared.py.wide_events``.
+    Thin wrapper over log.set_ns so the multi-step acquire path accumulates
+    into one sandbox dict instead of clobbering it. Valid keys are the
+    SandboxContext schema in shared.py.wide_events.
     """
     log.set_ns("sandbox", **fields)
 
@@ -87,14 +169,10 @@ def _record(**fields: object) -> None:
 def _split_meta_url(url: str) -> tuple[str, str]:
     """Split a Postgres meta URL into (url_without_password, password).
 
-    Keeping the password out of the URL argv is mandatory: the juicefs daemon
-    long-lives with the URL spliced into its `cmdline`, and Linux exposes
-    `/proc/<pid>/cmdline` world-readable. The unprivileged sandbox user could
-    otherwise recover the meta-DB Postgres credentials with one `cat`. JuiceFS
-    reads `META_PASSWORD` from env when the URL has no userinfo password.
-
-    Empty / userinfo-less URLs round-trip cleanly so callers don't need to
-    branch (dev / local Postgres without a password).
+    Keeping the password out of argv is mandatory: the juicefs daemon
+    long-lives with the URL in its cmdline, and /proc/<pid>/cmdline is
+    world-readable. JuiceFS reads META_PASSWORD from env when the URL has no
+    userinfo password; empty/userinfo-less URLs round-trip cleanly.
     """
     if not url:
         return "", ""
@@ -115,26 +193,12 @@ def _split_meta_url(url: str) -> tuple[str, str]:
 
 
 def _mount_env(user_id: str, shard_id: int) -> dict[str, str]:
-    """Build the env block consumed by ``mount.sh``.
+    """Build the env block consumed by mount.sh.
 
-    These values are credentials: the JuiceFS metadata URL plus R2 keys give
-    full filesystem access. They MUST NOT appear in argv or in any
-    unprivileged process's environ.
-
-    Delivery model: the API invokes ``mount.sh`` via
-    ``commands.run(MOUNT_SCRIPT_PATH, user="root", envs=mount_env)``. e2b's
-    envd (running as root inside the sandbox) sets these on the new root
-    process directly — there is no unprivileged intermediate shell, and the
-    sandbox user (who has no `sudo`) cannot read root's ``/proc/<pid>/environ``
-    (mode 0o400).
-
-    The meta URL is split here so the Postgres password rides in
-    ``META_PASSWORD`` env (which JuiceFS reads) instead of being spliced into
-    the URL argv passed to the long-running juicefs daemon — that argv shows
-    up world-readable in ``/proc/<pid>/cmdline``.
-
-    ``.strip()`` because Infisical-fetched secrets sometimes pick up trailing
-    newlines that AWS SigV4 then rejects with cryptic "InvalidSignature".
+    These are credentials (JuiceFS metadata URL + R2 keys); they MUST NOT reach
+    argv or any unprivileged environ — envd sets them on the root process,
+    unreadable to the no-sudo sandbox user. .strip(): Infisical secrets
+    sometimes carry trailing newlines that break AWS SigV4.
     """
     meta_url_with_pw = shard_meta_url(shard_id)
     meta_url, meta_password = _split_meta_url(meta_url_with_pw)
@@ -158,15 +222,13 @@ async def _enforce_creation_limit(user_id: str) -> None:
     try:
         await enforce_rate_limit(user_id, SANDBOX_CREATION_FEATURE_KEY)
     except RateLimitExceededException as e:
-        # HTTPException.detail is typed `str` by Starlette, but
-        # RateLimitExceededException always sets it to a dict at runtime — cast
-        # to Any so the isinstance check isn't (incorrectly) statically unreachable.
-        raw_detail = cast(Any, e.detail)
-        detail: dict[str, Any] = raw_detail if isinstance(raw_detail, dict) else {}
+        # The gate and reset ride on the exception itself (not the wire
+        # detail), so there is nothing to dig out of a string-keyed dict.
+        reset = e.reset_time.isoformat() if e.reset_time is not None else None
         _record(
             rate_limited=True,
-            rate_limit_reset=detail.get("reset_time"),
-            rate_limit_plan=detail.get("plan_required"),
+            rate_limit_reset=reset,
+            rate_limit_plan=e.plan_required,
         )
         log.warning(
             f"{LogTag.SANDBOX} creation rate limit hit user",
@@ -175,10 +237,10 @@ async def _enforce_creation_limit(user_id: str) -> None:
             error_type=type(e).__name__,
         )
         message = "sandbox creation limit reached"
-        if detail.get("reset_time"):
-            message += f"; resets at {detail['reset_time']}"
-        if detail.get("plan_required"):
-            message += f" (upgrade to {detail['plan_required'].upper()} for higher limits)"
+        if reset is not None:
+            message += f"; resets at {reset}"
+        if e.plan_required is not None:
+            message += f" (upgrade to {e.plan_required.upper()} for higher limits)"
         raise SandboxRateLimitError(message) from e
     except Exception as e:
         log.error(
@@ -190,12 +252,31 @@ async def _enforce_creation_limit(user_id: str) -> None:
         raise SandboxAcquisitionError(f"sandbox creation limit check failed: {e}") from e
 
 
-async def _create_fresh_sandbox(user_id: str, shard_id: int) -> AsyncSandbox:
-    """Provision a new E2B sandbox for the user, run mount script, return handle."""
-    if not settings.E2B_API_KEY:
-        raise SandboxAcquisitionError("E2B_API_KEY is not configured")
+async def _template_for(user_id: str) -> str:
+    """Return the template the user's sandbox must run: the 8GB agent-lab one when their flag is on."""
+    if await is_agent_lab_enabled(user_id):
+        if not settings.E2B_AGENT_LAB_TEMPLATE_ID:
+            raise SandboxAcquisitionError("E2B_AGENT_LAB_TEMPLATE_ID is not configured")
+        return settings.E2B_AGENT_LAB_TEMPLATE_ID
     if not settings.E2B_TEMPLATE_ID:
         raise SandboxAcquisitionError("E2B_TEMPLATE_ID is not configured")
+    return settings.E2B_TEMPLATE_ID
+
+
+def _needs_agent_lab_upgrade(current_template_id: str | None, template_id: str) -> bool:
+    """Whether a live sandbox must be replaced to move a flagged user onto the agent-lab template.
+
+    Never the other way: the flag reads off whenever PostHog is unreachable,
+    and replacing then would kill a coding agent mid-run.
+    """
+    return is_agent_lab_template(template_id) and current_template_id != template_id
+
+
+async def _create_fresh_sandbox(user_id: str, shard_id: int, template_id: str) -> AsyncSandbox:
+    """Provision a new E2B sandbox for the user, run mount script, return handle."""
+    e2b_api_key = await _resolved_e2b_api_key()
+    if not e2b_api_key:
+        raise SandboxAcquisitionError("E2B_API_KEY is not configured")
 
     async_sandbox_cls = AsyncSandbox
 
@@ -206,20 +287,21 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> AsyncSandbox:
         f"{LogTag.SANDBOX} creating fresh sandbox",
         user_id=user_id,
         shard_id=shard_id,
-        e2b_template_id=settings.E2B_TEMPLATE_ID,
+        e2b_template_id=template_id,
         e2b_domain=settings.E2B_DOMAIN,
     )
     async with fs_timer(FsOps.SBX_CREATE):
         sbx = await async_sandbox_cls.create(
-            template=settings.E2B_TEMPLATE_ID,
-            timeout=SANDBOX_LIFETIME_SECONDS,
+            template=template_id,
+            timeout=sandbox_lifetime_seconds(template_id),
             metadata={"user_id": user_id, "shard_id": str(shard_id)},
+            api_key=e2b_api_key,
         )
     sandbox_id = getattr(sbx, "sandbox_id", None)
     _record(
         created=True,
         sandbox_id=sandbox_id,
-        template_id=settings.E2B_TEMPLATE_ID,
+        template_id=template_id,
         shard_id=shard_id,
     )
     log.info(
@@ -231,26 +313,49 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> AsyncSandbox:
     return sbx
 
 
+async def _set_up_agents_home(
+    user_id: str, sbx: AsyncSandbox | LocalDockerSandbox, *, replaced: bool
+) -> None:
+    """Lay out the coding agents' home on a fresh agent-lab or local sandbox, restoring the last save.
+
+    Runs once the sandbox is recorded, so a failure never orphans it: the
+    error is logged, the next run seed retries the idempotent setup, and a
+    replacement still tells the todos watching its runs what came back.
+    """
+    try:
+        result = await sbx.commands.run(
+            build_agents_setup_command(), timeout=SANDBOX_AGENTS_SETUP_TIMEOUT_SECONDS
+        )
+        saved_at = restored_from(result.stdout)
+        restored = (
+            f"their home was restored from the save at {saved_at}"
+            if saved_at
+            else "no save existed to restore"
+        )
+        log.info(f"{LogTag.SANDBOX} agents home ready", user_id=user_id, restored_from=saved_at)
+    except Exception as e:
+        log.error(
+            f"{LogTag.SANDBOX} agents home setup failed",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        restored = f"restoring their home failed ({str(e)[:300]}); the next launch retries it"
+    if replaced:
+        await report_sandbox_event(
+            user_id,
+            SandboxEventKind.REPLACED,
+            f"the sandbox was replaced, so the coding agents' processes stopped; {restored}",
+        )
+
+
 async def _run_mount_script(sbx: AsyncSandbox, mount_env: dict[str, str]) -> None:
     """Run the JuiceFS mount script in the sandbox as root.
 
-    Ships the API's CURRENT copy of ``mount_juicefs.sh`` at acquire time
-    (base64 -> ``bash -s``) instead of executing the copy baked into the E2B
-    template, so changes to the mount script take effect on the next sandbox
-    without rebuilding the template. The script body is not secret and rides in
-    argv; the credentials stay in ``envs`` (never in argv), and nothing is
-    written to a sandbox file that root then executes. Falls back to the
-    template-baked copy if the API's own file is unreadable.
-
-    The mount itself is best-effort inside the script: if the JuiceFS metadata
-    DB or R2 isn't reachable, the script falls back to a plain ``/workspace``
-    and exits 0. We only raise here if the script genuinely crashed.
-
-    ``user="root"`` makes e2b's envd fork the process directly as root, with
-    ``envs=mount_env`` set on that root process's environment. The unprivileged
-    sandbox user never holds the credentials (no ``sudo --preserve-env`` shell,
-    no parent-shell environ race), and has no ``sudo``, so root's
-    ``/proc/<pid>/environ`` stays inaccessible.
+    Ships the API's current mount_juicefs.sh (base64 -> bash -s), not the
+    template-baked copy, so script changes need no template rebuild —
+    falls back to the template-baked copy if unreadable. The mount itself is
+    best-effort; this only raises if the script crashed.
     """
     try:
         script = await asyncio.to_thread(MOUNT_SCRIPT_FILE.read_bytes)
@@ -261,7 +366,7 @@ async def _run_mount_script(sbx: AsyncSandbox, mount_env: dict[str, str]) -> Non
     async with fs_timer(FsOps.SBX_MOUNT_SCRIPT):
         result = await sbx.commands.run(
             cmd,
-            timeout=MOUNT_SCRIPT_TIMEOUT_SECONDS,
+            timeout=SANDBOX_MOUNT_TIMEOUT_SECONDS,
             envs=mount_env,
             user="root",
         )
@@ -287,7 +392,7 @@ async def _run_mount_script(sbx: AsyncSandbox, mount_env: dict[str, str]) -> Non
 async def _run_silent(sbx: AsyncSandbox, cmd: str, *, timeout: int = 10) -> tuple[int, str, str]:
     """Run a command, returning (exit_code, stdout, stderr) without raising.
 
-    `sbx.commands.run` raises `CommandExitException` on any non-zero exit,
+    sbx.commands.run raises CommandExitException on any non-zero exit,
     which is wrong for our internal probes (mountpoint -q, canary read, etc.)
     where non-zero is a legitimate "no" answer, not an error.
     """
@@ -306,18 +411,12 @@ async def _run_silent(sbx: AsyncSandbox, cmd: str, *, timeout: int = 10) -> tupl
 
 
 async def _ensure_mounted(sbx: AsyncSandbox, mount_env: dict[str, str]) -> None:
-    """No-op if /workspace is a HEALTHY mount, else re-run mount script.
+    """No-op if /workspace is a HEALTHY mount, else re-run the mount script.
 
-    Handles stale FUSE mounts after pause/resume. A wedged JuiceFS endpoint
-    (dead/stuck daemon, or a mount that came up against a misconfigured meta/R2)
-    still passes ``mountpoint -q`` but returns EIO on every I/O, so we probe real
-    I/O (``stat``, ``timeout``-bounded) rather than just the mount-table entry —
-    otherwise a wedged ``/workspace`` is never re-mounted and keeps erroring.
-    ``mount.sh`` tears the stale mount down and remounts when re-run.
-
-    ``mount_env`` is required because the credentials are no longer sandbox-wide
-    — every call site that may re-run the script must supply them (see
-    ``_mount_env``).
+    A wedged JuiceFS mount can pass mountpoint -q but return EIO on I/O, so
+    this probes real I/O (stat, bounded) instead — mount.sh tears down and
+    remounts when re-run. mount_env is required since credentials are no
+    longer sandbox-wide (see _mount_env).
     """
     async with fs_timer(FsOps.SBX_ENSURE_MOUNTED):
         exit_code, _, _ = await _run_silent(
@@ -330,8 +429,8 @@ async def _ensure_mounted(sbx: AsyncSandbox, mount_env: dict[str, str]) -> None:
 async def _write_canary(sbx: AsyncSandbox) -> str:
     """Write a fresh canary timestamp and return its value.
 
-    Native `files.write` auto-creates the `.gaia/` parent and treats the
-    timestamp as data, not shell argv — no `mkdir`/`echo` round-trip.
+    Native files.write auto-creates the .gaia/ parent and treats the
+    timestamp as data, not shell argv — no mkdir/echo round-trip.
     """
     ts = _now().isoformat()
     await sbx.files.write(CANARY_PATH, ts)
@@ -348,11 +447,12 @@ async def _read_canary(sbx: AsyncSandbox) -> str | None:
     return content.strip() or None
 
 
-async def _verify_canary_or_die(entry: PooledSandbox) -> bool:
-    """Check that the in-sandbox canary matches our cached value.
+async def _verify_canary_or_die(user_id: str, entry: PooledSandbox) -> bool:
+    """Check the in-sandbox canary against our cached value or the one Mongo records for this sandbox.
 
-    Returns True if the canary is valid (proceed with the call). Returns False
-    if the FS appears stale and the sandbox should be discarded + recreated.
+    Returns False when the FS appears stale and the sandbox should be
+    discarded + recreated. Another replica resuming the sandbox rewrites the
+    canary and records it, so a match there is adopted, not stale.
     """
     async with fs_timer(FsOps.SBX_CANARY_VERIFY):
         if entry.last_canary_ts is None:
@@ -360,22 +460,33 @@ async def _verify_canary_or_die(entry: PooledSandbox) -> bool:
             entry.last_canary_ts = await _write_canary(entry.sandbox)
             return True
         actual = await _read_canary(entry.sandbox)
-        return actual == entry.last_canary_ts
+        if actual is not None and actual == entry.last_canary_ts:
+            return True
+        doc = await e2b_sandbox_repository.get_for_user(user_id)
+        recorded_here = (
+            doc is not None
+            and doc.sandbox_id == entry.sandbox.sandbox_id
+            and doc.last_canary_ts == actual
+        )
+        if actual is not None and recorded_here:
+            entry.last_canary_ts = actual
+            return True
+        return False
 
 
-async def _connect_sandbox(sandbox_id: str) -> AsyncSandbox | None:
+async def _connect_sandbox(sandbox_id: str, lifetime_seconds: int) -> AsyncSandbox | None:
     """Connect to a recorded sandbox, auto-resuming it if paused. None on failure.
 
-    `AsyncSandbox.connect` already resumes a paused sandbox — there is no
-    separate `resume()` in the SDK. Passing `timeout` refreshes the sandbox's
-    server-side lifetime so a resumed sandbox doesn't inherit the SDK's short
-    default. Bounded so a hung E2B control-plane call falls through to a fresh
-    create instead of stalling the agent.
+    AsyncSandbox.connect already resumes a paused sandbox — there is no
+    separate resume() in the SDK. Passing timeout refreshes the sandbox's
+    server-side lifetime; bounded so a hung E2B control-plane call falls
+    through to a fresh create instead of stalling the agent.
     """
+    e2b_api_key = await _resolved_e2b_api_key()
     async with fs_timer(FsOps.SBX_CONNECT_RESUME):
         try:
             return await asyncio.wait_for(
-                AsyncSandbox.connect(sandbox_id, timeout=SANDBOX_LIFETIME_SECONDS),
+                AsyncSandbox.connect(sandbox_id, timeout=lifetime_seconds, api_key=e2b_api_key),
                 timeout=SANDBOX_CONNECT_TIMEOUT_SECONDS,
             )
         except Exception as e:
@@ -388,28 +499,73 @@ async def _connect_sandbox(sandbox_id: str) -> AsyncSandbox | None:
             return None
 
 
-async def _health_probe(sbx: AsyncSandbox) -> bool:
+async def _health_probe(
+    sbx: AsyncSandbox,
+    request_timeout: int = HEALTH_PROBE_REQUEST_TIMEOUT_SECONDS,
+    wait_timeout: int = HEALTH_PROBE_WAIT_TIMEOUT_SECONDS,
+) -> bool:
     """Return True if the sandbox responds within a short window.
 
     Uses the official E2B health endpoint (HTTP GET /health) which is faster
     and more reliable than spawning a shell process — a degraded sandbox can
-    still fork `true` while being unable to execute real I/O workloads.
+    still fork true while being unable to execute real I/O workloads.
     """
     async with fs_timer(FsOps.SBX_HEALTH_PROBE):
         try:
             return await asyncio.wait_for(
-                sbx.is_running(request_timeout=HEALTH_PROBE_REQUEST_TIMEOUT_SECONDS),
-                timeout=HEALTH_PROBE_WAIT_TIMEOUT_SECONDS,
+                sbx.is_running(request_timeout=request_timeout), timeout=wait_timeout
             )
         except Exception:
             return False
+
+
+class SandboxLiveness(StrEnum):
+    """What a cached or resumed handle points at: usable, frozen (resume it), or gone (recreate)."""
+
+    ALIVE = "alive"
+    PAUSED = "paused"
+    GONE = "gone"
+
+
+async def _liveness(sbx: AsyncSandbox) -> SandboxLiveness:
+    """Classify the sandbox, asking E2B's control plane before calling a missed probe a death.
+
+    One missed /health probe is not death: a live sandbox misses it about 1 in
+    60 times, and killing on that killed the coding agent running inside. A
+    longer second probe decides, also when the control plane cannot be asked.
+    """
+    if await _health_probe(sbx):
+        return SandboxLiveness.ALIVE
+    try:
+        info = await asyncio.wait_for(
+            AsyncSandbox.get_info(sbx.sandbox_id, api_key=await _resolved_e2b_api_key()),
+            timeout=SANDBOX_CONNECT_TIMEOUT_SECONDS,
+        )
+    except NotFoundException:
+        return SandboxLiveness.GONE
+    except Exception as e:
+        log.warning(
+            f"{LogTag.SANDBOX} control plane unreachable; the second probe decides",
+            sandbox_id=sbx.sandbox_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+    else:
+        if info.state == SandboxState.PAUSED:
+            return SandboxLiveness.PAUSED
+    alive = await _health_probe(
+        sbx,
+        request_timeout=HEALTH_PROBE_RETRY_REQUEST_TIMEOUT_SECONDS,
+        wait_timeout=HEALTH_PROBE_RETRY_WAIT_TIMEOUT_SECONDS,
+    )
+    return SandboxLiveness.ALIVE if alive else SandboxLiveness.GONE
 
 
 async def _ensure_watcher(user_id: str, entry: PooledSandbox) -> None:
     """Start the artifact watcher if it isn't already running.
 
     Best-effort: the watcher is a latency optimization for surfacing
-    `artifacts/` artifacts; the host-side JuiceFS list is authoritative,
+    artifacts/ artifacts; the host-side JuiceFS list is authoritative,
     so a watcher failure must never block sandbox acquisition.
     """
     if entry.watcher is not None and entry.watcher.is_alive():
@@ -420,8 +576,11 @@ async def _ensure_watcher(user_id: str, entry: PooledSandbox) -> None:
 
 
 async def _stop_watcher(entry: PooledSandbox) -> None:
-    """Stop + drop the watcher. HTTP/2 streams to envd don't survive
-    pause/kill, so we reopen on the next acquire."""
+    """Stop and drop the watcher.
+
+    HTTP/2 streams to envd don't survive pause/kill, so we reopen on the next
+    acquire.
+    """
     if entry.watcher is not None:
         with contextlib.suppress(Exception):
             await entry.watcher.stop()
@@ -429,12 +588,12 @@ async def _stop_watcher(entry: PooledSandbox) -> None:
 
 
 async def _seed_user_subtrees(user_id: str) -> None:
-    """Pre-create the per-user JuiceFS subtrees the sandbox's --subdir mounts
-    need on the HOST side, so the sandbox never has to do a full-FS admin
-    mount itself.
+    """Pre-create the per-user JuiceFS subtrees the sandbox's --subdir mounts need.
 
-    Soft-fails when the host JuiceFS mount is missing (dev mode) — the
-    sandbox-side mount.sh will then take its ephemeral-fallback branch.
+    Done on the HOST side, so the sandbox never has to do a full-FS admin
+    mount itself. Soft-fails when the host JuiceFS mount is missing (dev
+    mode) — the sandbox-side mount.sh will then take its ephemeral-fallback
+    branch.
     """
     try:
         await ensure_user_workspace(user_id)
@@ -445,43 +604,53 @@ async def _seed_user_subtrees(user_id: str) -> None:
         return
 
 
-async def _reuse_cached_entry(user_id: str, mount_env: dict[str, str]) -> PooledSandbox | None:
+async def _reuse_cached_entry(
+    user_id: str, mount_env: dict[str, str], template_id: str
+) -> PooledSandbox | None:
     """Return a healthy cached PooledSandbox, or None if it must be recreated.
 
-    Evicts the cached entry when it is unhealthy or its canary is stale.
+    Evicts the cached entry when it is unhealthy, its canary is stale, or the
+    user has outgrown its template.
     """
     pool = get_sandbox_pool()
     entry = pool.get(user_id)
     if entry is None or entry.sandbox is None:
         return None
 
-    # Stop any in-flight idle-pause before reusing, and wait for it to actually
-    # finish — a bare cancel() only *requests* cancellation, so without the await
-    # the pause could already be mid-flight server-side and we'd reuse a pausing
-    # sandbox (the health probe below would then force a wasteful recreate).
+    if _needs_agent_lab_upgrade(entry.template_id, template_id):
+        _record(cache_evicted="template_upgrade")
+        log.info(f"{LogTag.SANDBOX} replacing cached sandbox with the agent-lab template")
+        await mark_sandbox_dead(user_id)
+        return None
+
+    # Wait for the cancel to actually finish — a bare cancel() only requests it,
+    # and without the await we could reuse a still-pausing sandbox, forcing a
+    # wasteful recreate at the health probe below.
     await _cancel_pause_task(entry)
 
-    # Cheap liveness check first — if the cached handle is stale (sandbox
-    # was paused / killed since we last touched it), evict and create
-    # fresh. Otherwise we'd hang for the full command timeout below.
-    if not await _health_probe(entry.sandbox):
+    # Cheap liveness check first: a stale handle would hang for the full
+    # command timeout below. Paused since (a failed renew, another replica):
+    # drop the handle, Mongo's record resumes it. Gone: recreate.
+    liveness = await _liveness(entry.sandbox)
+    if liveness == SandboxLiveness.PAUSED:
+        _record(cache_evicted="paused")
+        log.info(f"{LogTag.SANDBOX} cached sandbox paused; resuming from record", user_id=user_id)
+        await _stop_watcher(entry)
+        pool.evict(user_id)
+        return None
+    if liveness == SandboxLiveness.GONE:
         _record(cache_evicted="unhealthy")
         log.info(f"{LogTag.SANDBOX} cached sandbox unhealthy user=; evicting", user_id=user_id)
         await mark_sandbox_dead(user_id)
         return None
 
-    # Running commands does NOT reset E2B's server-side kill timer — only
-    # connect()/set_timeout() do. Refresh it so a continuously active session is
-    # never killed mid-use at the original create deadline — but only once per
-    # refresh window, not on every tool call: a rapid multi-tool turn would
-    # otherwise pay a set_timeout round-trip per call for no benefit.
-    if time.monotonic() - entry.timeout_refreshed_at > SANDBOX_TIMEOUT_REFRESH_SECONDS:
-        with contextlib.suppress(Exception):
-            await entry.sandbox.set_timeout(SANDBOX_LIFETIME_SECONDS)
-            entry.timeout_refreshed_at = time.monotonic()
+    # Running commands does NOT reset E2B's kill timer — only connect()/
+    # set_timeout() do, so refresh it here (window-gated inside, so a rapid
+    # multi-tool turn pays no round-trip per call for no benefit).
+    await refresh_sandbox_timeout(entry)
 
     await _ensure_mounted(entry.sandbox, mount_env)
-    if not await _verify_canary_or_die(entry):
+    if not await _verify_canary_or_die(user_id, entry):
         _record(cache_evicted="canary_stale")
         log.warning(f"{LogTag.SANDBOX} canary stale user=; recreating sandbox", user_id=user_id)
         await mark_sandbox_dead(user_id)
@@ -499,11 +668,11 @@ async def _resume_existing_sandbox(
     if sandbox_id is None:
         return None
     log.info(f"{LogTag.SANDBOX} resuming sandbox", sandbox_id=sandbox_id)
-    sbx = await _connect_sandbox(sandbox_id)
+    sbx = await _connect_sandbox(sandbox_id, sandbox_lifetime_seconds(doc.template_id))
     if sbx is None:
         _record(resume_status="failed")
         return None
-    if not await _health_probe(sbx):
+    if await _liveness(sbx) != SandboxLiveness.ALIVE:
         _record(resume_status="unhealthy")
         log.info(
             f"{LogTag.SANDBOX} resumed sandbox still unhealthy after connect; falling through to fresh create",
@@ -516,8 +685,12 @@ async def _resume_existing_sandbox(
     return sbx
 
 
-async def _acquire_or_create(user_id: str) -> PooledSandbox:
-    """Return a PooledSandbox for the user, creating/resuming as needed."""
+async def _acquire_or_create(user_id: str, template_id: str) -> PooledSandbox:
+    """Return a PooledSandbox for the user on template_id, creating/resuming as needed.
+
+    template_id comes from _template_for, evaluated before the user's lock so
+    the flag lookup never holds it.
+    """
     pool = get_sandbox_pool()
     shard_id = shard_for(user_id)
     _record(operation="acquire", shard_id=shard_id)
@@ -525,7 +698,7 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
     # stale FUSE without resorting to sandbox-wide credential env vars.
     mount_env = _mount_env(user_id, shard_id)
 
-    cached = await _reuse_cached_entry(user_id, mount_env)
+    cached = await _reuse_cached_entry(user_id, mount_env, template_id)
     if cached is not None:
         _record(
             source="cache",
@@ -538,14 +711,13 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
     sbx: AsyncSandbox | None = None
     workspace_version = 0
     source = "create"
+    # A resumed sandbox keeps the template it was built from, not today's choice.
+    running_template_id: str | None = template_id
 
     if doc is not None and doc.shard_id != shard_id:
-        # An existing user is pinned to the shard their workspace actually lives
-        # on. `shard_for` recomputes from the CURRENT JUICEFS_NUM_SHARDS, so
-        # raising the shard count would otherwise silently route them at a
-        # different meta DB and their workspace would read as empty. This is the
-        # read site shard_router's docstring promises ("we never re-shard a user
-        # without an explicit migration") and previously did not exist.
+        # Pin to the shard the user's workspace actually lives on: shard_for
+        # recomputes from the CURRENT JUICEFS_NUM_SHARDS, so raising the shard
+        # count would otherwise silently route them to a different meta DB (empty workspace).
         log.info(
             f"{LogTag.SANDBOX} honouring recorded shard",
             user_id=user_id,
@@ -557,19 +729,28 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
         mount_env = _mount_env(user_id, shard_id)
 
     if doc is not None and doc.sandbox_id and doc.state != E2bSandboxState.DEAD:
-        sbx = await _resume_existing_sandbox(doc, mount_env)
         workspace_version = doc.workspace_version
-        if sbx is not None:
-            source = "resume"
+        if _needs_agent_lab_upgrade(doc.template_id, template_id):
+            _record(resume_status="template_upgrade")
+            log.info(
+                f"{LogTag.SANDBOX} replacing recorded sandbox with the agent-lab template",
+                sandbox_id=doc.sandbox_id,
+            )
+            # Killed by id, not resumed first: its JuiceFS sessions go to the stale reaper.
+            await AsyncSandbox.kill(doc.sandbox_id, api_key=await _resolved_e2b_api_key())
+        else:
+            sbx = await _resume_existing_sandbox(doc, mount_env)
+            if sbx is not None:
+                source = "resume"
+                running_template_id = doc.template_id
 
     if sbx is None:
         await _enforce_creation_limit(user_id)
-        # Pre-create the per-user subtrees host-side so the sandbox's
-        # ``--subdir`` mounts find them ready. Doing this on the host (which
-        # holds the full JuiceFS mount) avoids ever exposing the full
-        # cross-user namespace inside the sandbox, even briefly.
+        # Pre-create the per-user subtrees host-side so the sandbox's --subdir
+        # mounts find them ready — done on the host (full JuiceFS mount) so the
+        # sandbox never briefly sees the full cross-user namespace.
         await _seed_user_subtrees(user_id)
-        sbx = await _create_fresh_sandbox(user_id, shard_id)
+        sbx = await _create_fresh_sandbox(user_id, shard_id, template_id)
         workspace_version += 1
 
     _record(
@@ -581,30 +762,39 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
     canary_ts = await _write_canary(sbx)
 
     await e2b_sandbox_repository.record_acquisition(
-        user_id=user_id,
-        sandbox_id=getattr(sbx, "sandbox_id", None),
-        template_id=settings.E2B_TEMPLATE_ID,
-        shard_id=shard_id,
-        workspace_version=workspace_version,
-        last_canary_ts=canary_ts,
-        timestamp=_now(),
+        SandboxAcquisition(
+            user_id=user_id,
+            sandbox_id=sbx.sandbox_id,
+            template_id=running_template_id,
+            shard_id=shard_id,
+            workspace_version=workspace_version,
+            last_canary_ts=canary_ts,
+            timestamp=_now(),
+        )
     )
 
     # create()/connect() just set the kill timer to a full lifetime, so stamp
     # the refresh clock now — the first reuse won't redundantly re-set it.
     entry = PooledSandbox(
-        sandbox=sbx, last_canary_ts=canary_ts, timeout_refreshed_at=time.monotonic()
+        sandbox=sbx,
+        last_canary_ts=canary_ts,
+        timeout_refreshed_at=time.monotonic(),
+        template_id=running_template_id,
     )
     pool.put(user_id, entry)
     await _ensure_watcher(user_id, entry)
+    if source == "create" and is_agent_lab_template(template_id):
+        await _set_up_agents_home(
+            user_id, sbx, replaced=doc is not None and doc.sandbox_id is not None
+        )
     return entry
 
 
 async def _cancel_pause_task(entry: PooledSandbox) -> None:
-    """Cancel a pending idle-pause task and wait for it to fully unwind."""
+    """Cancel a pending idle-pause task and wait for it to fully unwind; never the calling task."""
     task = entry.pause_task
     entry.pause_task = None
-    if task is None or task.done():
+    if task is None or task is asyncio.current_task():
         return
     task.cancel()
     with contextlib.suppress(asyncio.CancelledError, Exception):
@@ -614,9 +804,12 @@ async def _cancel_pause_task(entry: PooledSandbox) -> None:
 async def _pause_sandbox(user_id: str, entry: PooledSandbox) -> bool:
     """Pause the sandbox and record the paused state. False on failure.
 
-    The SDK method is `beta_pause` (there is no plain `pause`); it snapshots
-    both filesystem and memory so a later `connect()` resumes in place.
+    The SDK method is beta_pause (there is no plain pause); it snapshots
+    both filesystem and memory so a later connect() resumes in place. An
+    agent-lab sandbox saves its agents' home first, in case it never resumes.
     """
+    if is_agent_lab_template(entry.template_id):
+        await save_agents_home(user_id, entry.sandbox)
     try:
         await entry.sandbox.beta_pause()
         await e2b_sandbox_repository.mark_paused(user_id, timestamp=_now())
@@ -635,15 +828,10 @@ async def _pause_sandbox(user_id: str, entry: PooledSandbox) -> bool:
 async def _idle_on_every_replica(user_id: str) -> bool:
     """Has nobody, on any replica, used this user's sandbox during the idle window?
 
-    ``entry.refcount`` only knows about this process. The pause timer also
-    outlives the acquisition lease that guarded the turn, so by the time it
-    fires another replica may have connected to the same sandbox (its id comes
-    from Mongo) and started a long run — pausing then kills that user's tool
-    call mid-command. ``last_used_at`` is stamped on every release from every
-    replica, which makes it the shared idleness signal; this is the same
-    predicate the hourly sweep uses in ``find_idle_user_ids``.
-
-    A missing record means nothing has claimed it, so the pause proceeds.
+    entry.refcount only knows this process. The pause timer outlives the
+    acquisition lease, so another replica may have started a long run by the
+    time it fires — pausing then kills that call mid-command. last_used_at
+    (stamped on every release, every replica) is the shared idleness signal.
     """
     doc = await e2b_sandbox_repository.get_for_user(user_id)
     if doc is None or doc.last_used_at is None:
@@ -668,10 +856,10 @@ def _schedule_pause(user_id: str, entry: PooledSandbox) -> None:
         await asyncio.sleep(settings.E2B_SANDBOX_IDLE_PAUSE_SECONDS)
         if entry.refcount > 0:
             return
-        if not await _idle_on_every_replica(user_id):
+        # At fire time, so a run starting or ending in the idle window counts.
+        if is_agent_lab_template(entry.template_id) and (await lab_run_status(user_id)).live:
             return
-        await _stop_watcher(entry)
-        await _pause_sandbox(user_id, entry)
+        await pause_idle_sandbox(user_id)
 
     # Replace any prior pending pause so two tasks can't both fire on one entry.
     if entry.pause_task is not None and not entry.pause_task.done():
@@ -680,18 +868,12 @@ def _schedule_pause(user_id: str, entry: PooledSandbox) -> None:
 
 
 async def _release_juicefs_sessions(sbx: AsyncSandbox) -> None:
-    """Unmount the in-sandbox JuiceFS daemons so they deregister their metadata
-    sessions before the sandbox is killed.
+    """Unmount the in-sandbox JuiceFS daemons before the sandbox is killed.
 
-    A hard ``sandbox.kill()`` SIGKILLs the juicefs daemons without a clean
-    unmount, so their sessions stay registered in the metadata engine until the
-    stale-session timeout — and the volume's GC owner keeps re-scanning those
-    dead sessions (``SMEMBERS``/``ZSCORE`` per session) the whole time. A clean
-    ``juicefs umount`` lets each daemon close its session immediately. Bind
-    mounts are detached first so the underlying FUSE mounts aren't busy.
-
-    Best-effort: any failure just defers cleanup to the GC owner's stale reaper,
-    so this never blocks or fails eviction.
+    A hard sandbox.kill() SIGKILLs the daemons without unmounting, leaving
+    sessions registered until the stale-session timeout. A clean umount closes
+    each session immediately; bind mounts are detached first so the FUSE
+    mounts aren't busy. Best-effort: failure defers to the GC's stale reaper.
     """
     cmd = (
         "for m in /workspace/skills /workspace/.system /workspace; do "
@@ -718,53 +900,120 @@ async def _hard_evict(user_id: str, entry: PooledSandbox) -> None:
 
 
 async def mark_sandbox_dead(user_id: str) -> None:
-    """Forcibly drop the cached sandbox and mark it dead in Mongo. Caller's
-    next acquire will create a fresh one."""
+    """Forcibly drop the cached sandbox and mark it dead in Mongo.
+
+    Only that sandbox: another process may already have recorded its
+    replacement, which the next acquire then resumes instead of creating one.
+    """
     _record(marked_dead=True)
     log.info(f"{LogTag.SANDBOX} marking sandbox dead user", user_id=user_id)
     entry = get_sandbox_pool().get(user_id)
+    sandbox_id: str | None = None
     if entry is not None:
+        sandbox_id = entry.sandbox.sandbox_id
         await _hard_evict(user_id, entry)
-    await e2b_sandbox_repository.mark_dead(user_id, timestamp=_now())
+    await e2b_sandbox_repository.mark_dead(user_id, sandbox_id=sandbox_id, timestamp=_now())
 
 
-async def pause_sandbox_for_user(user_id: str) -> bool:
-    """Synchronous pause request (e.g. for tests or maintenance)."""
-    entry = get_sandbox_pool().get(user_id)
-    if entry is None:
-        return False
-    await _cancel_pause_task(entry)
-    await _stop_watcher(entry)
-    return await _pause_sandbox(user_id, entry)
+async def renew_sandbox(user_id: str) -> None:
+    """Restart E2B's lifetime clock with a pause and resume; processes and local disk survive.
+
+    E2B ends a sandbox at its team's lifetime cap from its start and set_timeout
+    cannot pass that, while a resume restarts the clock (both measured). A
+    resume that fails leaves the sandbox paused, not lost: it is recorded so,
+    and the next acquire resumes it.
+    """
+    pool = get_sandbox_pool()
+    template_id = await _template_for(user_id)
+    async with pool.distributed_lock(user_id):
+        entry = await _acquire_or_create(user_id, template_id)
+        await _cancel_pause_task(entry)
+        await _stop_watcher(entry)
+        sandbox_id = entry.sandbox.sandbox_id
+        await entry.sandbox.beta_pause()
+        resumed = await _connect_sandbox(sandbox_id, sandbox_lifetime_seconds(entry.template_id))
+        if resumed is None:
+            await e2b_sandbox_repository.mark_paused(user_id, timestamp=_now())
+            pool.evict(user_id)
+            raise SandboxAcquisitionError(
+                f"renewing sandbox {sandbox_id} paused it but the resume failed; "
+                "the next acquire resumes it"
+            )
+        entry.sandbox = resumed
+        entry.timeout_refreshed_at = time.monotonic()
+        # The resume can leave a stale FUSE mount, and the agents' saves write to it.
+        doc = await e2b_sandbox_repository.get_for_user(user_id)
+        if doc is None:
+            raise SandboxAcquisitionError(f"sandbox record for {user_id} vanished during renew")
+        await _ensure_mounted(resumed, _mount_env(user_id, doc.shard_id))
+        await _ensure_watcher(user_id, entry)
+        await e2b_sandbox_repository.touch_last_used(user_id, timestamp=_now())
+        log.info(
+            f"{LogTag.SANDBOX} renewed sandbox lifetime", user_id=user_id, sandbox_id=sandbox_id
+        )
+
+
+async def pause_idle_sandbox(user_id: str) -> bool:
+    """Pause the user's running sandbox from any process once nobody used it in the idle window.
+
+    Under the user's lock, so no command another replica starts during the
+    save is frozen mid-run. The idle timer and keep-warm (a coding agent makes
+    no GAIA calls) both pause through here. False when nothing was running or
+    it is still in use.
+    """
+    pool = get_sandbox_pool()
+    async with pool.distributed_lock(user_id):
+        doc = await e2b_sandbox_repository.get_for_user(user_id)
+        if doc is None or doc.state != E2bSandboxState.ACTIVE or doc.sandbox_id is None:
+            return False
+        if not await _idle_on_every_replica(user_id):
+            return False
+        entry = pool.get(user_id)
+        if entry is not None and entry.refcount > 0:
+            return False
+        if entry is None:
+            sbx = await _connect_sandbox(doc.sandbox_id, sandbox_lifetime_seconds(doc.template_id))
+            if sbx is None:
+                return False
+            entry = PooledSandbox(sandbox=sbx, template_id=doc.template_id)
+        await _cancel_pause_task(entry)
+        await _stop_watcher(entry)
+        paused = await _pause_sandbox(user_id, entry)
+        # The pooled handle points at a frozen sandbox; the next acquire resumes it from Mongo.
+        pool.evict(user_id)
+        return paused
 
 
 @contextlib.asynccontextmanager
 async def acquire_sandbox(user_id: str) -> AsyncIterator[AsyncSandbox]:
-    """Context manager that yields a live `AsyncSandbox` for the user.
+    """Yield a live sandbox for the user, serialized per user with debounced pause.
 
-    Serializes against concurrent calls for the same user. Schedules a
-    debounced pause when the last in-flight call finishes.
+    On self-host without an E2B key this yields the local Docker-exec backend
+    and bypasses the E2B pool machinery entirely.
     """
     if not user_id:
         raise SandboxAcquisitionError("user_id is required")
 
+    if await use_local_sandbox():
+        async with _acquire_local_sandbox(user_id) as sbx:
+            yield sbx
+        return
+
     pool = get_sandbox_pool()
+    template_id = await _template_for(user_id)
     async with pool.distributed_lock(user_id):
         async with fs_timer(FsOps.SBX_ACQUIRE):
-            entry = await _acquire_or_create(user_id)
+            entry = await _acquire_or_create(user_id, template_id)
         entry.refcount += 1
         _record(refcount=entry.refcount)
         sandbox_dead = False
         try:
             yield entry.sandbox
         except Exception:
-            # A tool op failed. It could mean the sandbox itself died (E2B
-            # timeout/kill, transport gone) or just a command/file error. Ask
-            # the official /health endpoint rather than parsing error text — if
-            # it's not running, evict so the next acquire recreates. Owning this
-            # here means every tool (bash/read/write/edit) gets death-eviction
-            # uniformly; none need their own detection.
-            sandbox_dead = not await _health_probe(entry.sandbox)
+            # A tool op failed — could be the sandbox itself dying or just a
+            # command error. Ask the official /health endpoint rather than parse
+            # error text; owning eviction here means every tool gets it uniformly.
+            sandbox_dead = await _liveness(entry.sandbox) == SandboxLiveness.GONE
             if sandbox_dead:
                 _record(health_ok=False)
             raise

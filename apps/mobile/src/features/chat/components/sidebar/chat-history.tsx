@@ -355,10 +355,9 @@ function ChatItem({
     dragX: SharedValue<number>,
   ) => <DeleteSwipeAction dragX={dragX} onDelete={handleSwipeDelete} />;
 
-  // RNGH-aware tap + long-press composition. Plain RN Pressable inside
-  // ReanimatedSwipeable + DrawerLayout has its onPress swallowed when the
-  // parent pan gesture is still resolving — gesture-handler's tap gesture
-  // routes through the same arbitration system and fires reliably.
+  // RNGH-aware tap + long-press: plain RN Pressable inside ReanimatedSwipeable +
+  // DrawerLayout has its onPress swallowed while the parent pan gesture resolves —
+  // gesture-handler's tap gesture routes through the same arbitration and fires reliably.
   const tapGesture = useMemo(
     () =>
       Gesture.Tap()

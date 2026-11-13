@@ -1,22 +1,8 @@
 #!/usr/bin/env node
 /**
- * Promote prerendered (landing) HTML into the Workers Static Assets directory
- * so Cloudflare serves them from the edge WITHOUT invoking the OpenNext worker.
- *
- * Why: on Cloudflare the worker runs in front of the cache, so worker-served
- * HTML always pays the worker's cold-start (~1.5s on a cold isolate). Static
- * assets are served by Workers Assets in front of the worker (~0.05–0.25s,
- * cold-immune). The landing pages are static marketing content, so they belong
- * on the asset layer, not behind the worker.
- *
- * Run AFTER `opennextjs-cloudflare build` and BEFORE deploy:
- *   opennextjs-cloudflare build && node scripts/promote-static-landing.mjs && wrangler deploy
- *
- * Excluded on purpose:
- *  - i18n locale-DETECTION routes (learn/automate/compare/alternative-to/for):
- *    these redirect based on Accept-Language and must keep running the worker.
- *  - auth routes (login/signup/desktop-login): keep server logic.
- *  - all (main) app routes: not in the (landing) group, never touched here.
+ * Promote prerendered landing HTML into Workers Static Assets so Cloudflare serves it from the edge without invoking the OpenNext worker (worker-served HTML pays ~1.5s cold-start on a cold isolate vs ~0.05–0.25s cold-immune for Workers Assets).
+ * Run after `opennextjs-cloudflare build`, before `wrangler deploy`: opennextjs-cloudflare build && node scripts/promote-static-landing.mjs && wrangler deploy.
+ * Excludes i18n locale-detection routes (learn/automate/compare/alternative-to/for — redirect on Accept-Language, must keep running the worker), auth routes (login/signup/desktop-login — keep server logic), and all (main) app routes (never touched here).
  */
 import { existsSync, readdirSync, mkdirSync, copyFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";

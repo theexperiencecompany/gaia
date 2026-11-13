@@ -1,10 +1,11 @@
-"""Tests for app/helpers/message_helpers.py"""
+"""Tests for app/helpers/message_helpers.py."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import SystemMessage
 import pytest
 
+from app.agents.prompts.workflow_prompts import TRIGGERED_ACCOUNT_SECTION
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
 from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
 from app.helpers.message_helpers import (
@@ -16,12 +17,14 @@ from app.helpers.message_helpers import (
     format_tool_selection_message,
     format_workflow_execution_message,
 )
+from app.models.calendar_models import GoogleCalendarEventDateTime
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.workflow_models import WorkflowStep
 
 # ---------------------------------------------------------------------------
 # create_system_message
@@ -29,23 +32,20 @@ from app.models.message_models import (
 
 
 class TestCreateSystemMessage:
-    """The main system prompt must be byte-identical across users/channels so
-    implicit LLM caching hits. No `{user_name}` interpolation lives here —
-    per-user context is assembled separately by ``app.agents.context``."""
+    """The main system prompt must be byte-identical across users/channels so implicit LLM caching hits."""
 
     def test_comms_agent_static_is_per_channel(self) -> None:
-        """Different user_name must produce identical content on the same
-        channel (byte-stable prefix). Different channels produce different
-        content (OpenUI on web, platform restrictions on WhatsApp)."""
+        """Different user_name must produce identical content on the same channel; different channels differ."""
         web_a = create_system_message(user_name="Foo", agent_type="comms", source="web")
         web_b = create_system_message(user_name="Bar", agent_type="comms", source="web")
         whatsapp = create_system_message(user_name="Foo", agent_type="comms", source="whatsapp")
         assert isinstance(web_a, SystemMessage)
         assert web_a.content == web_b.content
         assert web_a.content != whatsapp.content
-        # Output-format addenda should be inline in the static per-channel
-        # prompt — web has OpenUI, text-only has platform restrictions.
-        assert ":::openui" in web_a.content
+        # Output-format addenda are inline in the static per-channel prompt (web
+        # has OpenUI, text-only has platform restrictions). Assert on the addendum
+        # marker, not the fence literal: the base prompt names :::openui either way.
+        assert "## Output Format (this app renders rich components)" in web_a.content
         assert "Platform Context" in whatsapp.content
 
     def test_executor_agent_is_static(self) -> None:
@@ -82,6 +82,9 @@ class TestFormatToolSelectionMessage:
         assert "Find info about AI" in result
         assert "Web Search" in result
         assert "TOOL SELECTION" in result
+        assert "activate_integration" in result
+        assert "handoff" not in result
+        assert "subagent:" not in result
 
     def test_without_content(self) -> None:
         result = format_tool_selection_message(
@@ -112,7 +115,7 @@ class TestFormatWorkflowExecutionMessage:
             id="wf1",
             title="My Workflow",
             description="desc",
-            steps=[{"title": "Step 1", "category": "ai", "description": "Do AI"}],
+            steps=[WorkflowStep(title="Step 1", category="ai", description="Do AI")],
         )
         mock_wf = MagicMock()
         mock_wf.title = "DB Workflow"
@@ -136,13 +139,65 @@ class TestFormatWorkflowExecutionMessage:
         assert "DB Step" in result
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("trigger_type", ["gmail", None], ids=["email", "other"])
+    async def test_a_run_let_through_quiet_hours_is_told_to_say_why(
+        self, trigger_type: str | None
+    ) -> None:
+        selected = SelectedWorkflowData(id="wf9", title="Replies", description="d", steps=[])
+        reason = "someone is waiting on you for a meeting happening soon"
+        context = {
+            "type": trigger_type,
+            "quiet_hours": {"kind": "bypass", "reason": reason},
+            "workflow_id": "wf9",
+        }
+
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            let_through = await format_workflow_execution_message(
+                selected, user_id="u1", trigger_context=context
+            )
+            held = await format_workflow_execution_message(
+                selected, user_id="u1", trigger_context={**context, "quiet_hours": {"kind": "hold"}}
+            )
+
+        assert f"quiet-hours bypass: {reason}." in let_through
+        assert f"I'm interrupting your quiet hours because {reason}." in let_through
+        assert "quiet-hours bypass" not in held
+
+    @pytest.mark.asyncio
+    async def test_the_bypass_note_follows_a_playbook_fallback_on_its_own_paragraph(
+        self,
+    ) -> None:
+        selected = SelectedWorkflowData(id="wf9", title="Replies", description="d", steps=[])
+        reason = "someone is waiting on you for a meeting happening soon"
+        context = {
+            "quiet_hours": {"kind": "bypass", "reason": reason},
+            "playbook_fallback": "The playbook stopped at step 2.",
+            "workflow_id": "wf9",
+        }
+
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            message = await format_workflow_execution_message(
+                selected, user_id="u1", trigger_context=context
+            )
+
+        assert f"The playbook stopped at step 2.\n\nquiet-hours bypass: {reason}." in message
+
+    @pytest.mark.asyncio
     async def test_manual_fallback_to_selected_data(self) -> None:
         selected = SelectedWorkflowData(
             id="wf2",
             title="Fallback WF",
             description="fallback desc",
             prompt="custom prompt",
-            steps=[{"title": "S1", "category": "c1", "description": "d1"}],
+            steps=[WorkflowStep(title="S1", category="c1", description="d1")],
         )
 
         with patch(
@@ -160,7 +215,7 @@ class TestFormatWorkflowExecutionMessage:
             id="wf3",
             title="Email WF",
             description="email desc",
-            steps=[{"title": "ES", "category": "email", "description": "email step"}],
+            steps=[WorkflowStep(title="ES", category="email", description="email step")],
         )
         trigger_ctx = {
             "type": "gmail",
@@ -190,7 +245,7 @@ class TestFormatWorkflowExecutionMessage:
             id="wf4",
             title="No User WF",
             description="d",
-            steps=[{"title": "S", "category": "c", "description": "d"}],
+            steps=[WorkflowStep(title="S", category="c", description="d")],
         )
         result = await format_workflow_execution_message(selected)
         assert "No User WF" in result
@@ -201,7 +256,7 @@ class TestFormatWorkflowExecutionMessage:
             id="wf5",
             title="Error WF",
             description="err desc",
-            steps=[{"title": "E", "category": "e", "description": "e"}],
+            steps=[WorkflowStep(title="E", category="e", description="e")],
         )
 
         with patch(
@@ -220,7 +275,7 @@ class TestFormatWorkflowExecutionMessage:
             id="wf6",
             title="Long Email WF",
             description="d",
-            steps=[{"title": "S", "category": "c", "description": "d"}],
+            steps=[WorkflowStep(title="S", category="c", description="d")],
         )
         trigger_ctx = {
             "type": "gmail",
@@ -255,17 +310,14 @@ class TestSignalMatchingSectionRenders:
     async def test_an_integration_fire_with_tracked_todos_renders_the_signal_section(
         self,
     ) -> None:
-        """Production: every ``calendar_event_starting_soon`` fire for a user with
-        tracked todos failed with ``KeyError: 'date'`` (54 in one day). The signal
-        matching instructions carry a literal example, ``"- {date} {what happened}"``,
-        and ``str.format`` read it as two placeholders. The example must reach the
-        agent verbatim, braces and all, and the section must render at all.
-        """
+        """Regression: str.format read the literal example "- {date} {what happened}" as real placeholders, causing KeyError: 'date' 54 times in one day in production."""
         selected = SelectedWorkflowData(
             id="wf_meeting",
             title="Meeting Reminder",
             description="Remind me before meetings",
-            steps=[{"title": "Remind", "category": "calendar", "description": "send the reminder"}],
+            steps=[
+                WorkflowStep(title="Remind", category="calendar", description="send the reminder")
+            ],
         )
         trigger_ctx = {
             "type": "googlecalendar",
@@ -293,35 +345,56 @@ class TestFormatCalendarEventContext:
             id="ev1",
             summary="Team Standup",
             description="Daily sync",
-            start={"dateTime": "2024-01-01T09:00:00"},
-            end={"dateTime": "2024-01-01T09:30:00"},
+            start=GoogleCalendarEventDateTime(dateTime="2024-01-01T09:00:00"),
+            end=GoogleCalendarEventDateTime(dateTime="2024-01-01T09:30:00"),
             calendarTitle="Work",
         )
         result = format_calendar_event_context(event, "What should I prepare?")
         assert "Team Standup" in result
         assert "Work" in result
+        assert "2024-01-01T09:00:00 to 2024-01-01T09:30:00" in result
         assert "What should I prepare?" in result
+
+    def test_timed_event_without_bounds_reads_unknown(self) -> None:
+        event = SelectedCalendarEventData(
+            id="ev1b",
+            summary="Standup",
+            description="",
+            start=GoogleCalendarEventDateTime(),
+            end=GoogleCalendarEventDateTime(),
+        )
+        assert "Unknown to Unknown" in format_calendar_event_context(event)
+
+    def test_all_day_event_without_a_date_reads_unknown_date(self) -> None:
+        event = SelectedCalendarEventData(
+            id="ev2b",
+            summary="Holiday",
+            description="",
+            start=GoogleCalendarEventDateTime(),
+            end=GoogleCalendarEventDateTime(),
+            isAllDay=True,
+        )
+        assert "All day on Unknown date" in format_calendar_event_context(event)
 
     def test_all_day_event(self) -> None:
         event = SelectedCalendarEventData(
             id="ev2",
             summary="Holiday",
             description="",
-            start={"date": "2024-12-25"},
-            end={"date": "2024-12-26"},
+            start=GoogleCalendarEventDateTime(date="2024-12-25"),
+            end=GoogleCalendarEventDateTime(date="2024-12-26"),
             isAllDay=True,
         )
         result = format_calendar_event_context(event)
-        assert "All day" in result
-        assert "2024-12-25" in result
+        assert "All day on 2024-12-25" in result
 
     def test_no_calendar_title(self) -> None:
         event = SelectedCalendarEventData(
             id="ev3",
             summary="Meeting",
             description="desc",
-            start={"dateTime": "2024-01-01T10:00:00"},
-            end={"dateTime": "2024-01-01T11:00:00"},
+            start=GoogleCalendarEventDateTime(dateTime="2024-01-01T10:00:00"),
+            end=GoogleCalendarEventDateTime(dateTime="2024-01-01T11:00:00"),
         )
         result = format_calendar_event_context(event)
         assert "Calendar:" not in result
@@ -361,6 +434,18 @@ class TestFormatFilesList:
         assert format_files_list(None) == ""
         assert format_files_list([]) == ""
 
+    @pytest.mark.parametrize("guide", [True, False])
+    def test_an_agent_never_receives_the_blob_url(self, guide: bool) -> None:
+        """Models get bytes (summaries, inline images), never a URL: a self-hosted blob URL is private."""
+        url = "/api/v1/blobs/u1/file_f1_a.png"
+        files = [
+            FileData(fileId="f1", url=url, filename="a.png", description="a cat"),
+            FileData(fileId="f2", url=url, filename="b.png", sandbox_path="/m/b.png"),
+        ]
+        assert url not in format_files_list(
+            files, conversation_id="c1", include_processing_guide=guide
+        )
+
     def test_empty_file_ids(self) -> None:
         files = [FileData(fileId="f1", url="u", filename="test.txt")]
         assert format_files_list(files, file_ids=[]) == ""
@@ -398,10 +483,7 @@ class TestFormatFilesList:
         result = format_files_list(files, conversation_id="conv123")
         assert "/workspace/sessions/conv123/user-uploaded/a.txt" in result
 
-    # The workspace mirror is best-effort — it needs JuiceFS, and `sandbox_path`
-    # is None whenever it was unavailable. Handing the agent a path anyway sent
-    # the executor into read/bash attempts that could only fail; it burned the
-    # recursion limit on a real GAIA .xlsx case doing exactly that.
+    # sandbox_path is None when the JuiceFS mirror was unavailable; handing the agent a path anyway burned the recursion limit on a real .xlsx case.
 
     def test_omits_the_path_when_the_file_never_reached_the_workspace(self) -> None:
         files = [FileData(fileId="f1", url="u", filename="a.txt", sandbox_path=None)]
@@ -413,7 +495,7 @@ class TestFormatFilesList:
     def test_drops_the_read_bash_guide_when_nothing_is_on_disk(self) -> None:
         files = [FileData(fileId="f1", url="u", filename="a.txt", description="a summary")]
         result = format_files_list(files, conversation_id="conv123")
-        assert "read the file at its path" not in result
+        assert "Read the file at its path" not in result
         assert "copy into" not in result
         assert ".summary.md" not in result
         assert "a summary" in result
@@ -429,12 +511,12 @@ class TestFormatFilesList:
             )
         ]
         result = format_files_list(files, conversation_id="conv123")
-        assert "read the file at its path" in result
+        assert "Read the file at its path" in result
         assert "/workspace/sessions/conv123/user-uploaded/a.txt.summary.md" in result
 
 
 class TestWorkflowExecutionMessageBranches:
-    """The branch choices and bounds inside ``format_workflow_execution_message``.
+    """The branch choices and bounds inside format_workflow_execution_message.
 
     The existing tests above assert a title survives into the output, which a
     great many wrong implementations also satisfy. These pin the decisions: which
@@ -450,7 +532,7 @@ class TestWorkflowExecutionMessageBranches:
             title="Morning Brief",
             description="desc",
             prompt="do the thing",
-            steps=[{"title": "S1", "category": "c1", "description": "d1"}],
+            steps=[WorkflowStep(title="S1", category="c1", description="d1")],
         )
 
     @staticmethod
@@ -561,9 +643,7 @@ class TestWorkflowExecutionMessageBranches:
 
     @pytest.mark.asyncio
     async def test_a_gmail_trigger_missing_every_field_renders_the_stated_defaults(self) -> None:
-        """A Gmail trigger can arrive with an unparsed header or no timestamp. The
-        prompt still has to read as a sentence, so each blank renders its own named
-        placeholder rather than the literal ``None`` a bare ``.get`` would leave."""
+        """Each missing field renders its own named placeholder, not the literal None a bare .get would leave."""
         with self._no_db_workflow():
             result = await format_workflow_execution_message(
                 self._selected(),
@@ -579,8 +659,7 @@ class TestWorkflowExecutionMessageBranches:
 
     @pytest.mark.asyncio
     async def test_an_email_body_at_the_preview_limit_is_not_marked_truncated(self) -> None:
-        """Exactly at the bound is a whole body, not a cut one — an ellipsis here
-        tells the agent to go fetch a rest that does not exist."""
+        """Exactly at the bound is a whole body, not a cut one — an ellipsis would imply a nonexistent rest."""
         with self._no_db_workflow():
             result = await format_workflow_execution_message(
                 self._selected(),
@@ -609,8 +688,7 @@ class TestWorkflowExecutionMessageBranches:
 
     @pytest.mark.asyncio
     async def test_a_manual_run_ends_with_the_users_own_message(self) -> None:
-        """The user's words are the last thing the prompt says, so the model reads
-        them as the instruction rather than as one more line of workflow boilerplate."""
+        """The user's words are the last thing the prompt says, so the model reads them as the instruction."""
         with self._no_db_workflow():
             result = await format_workflow_execution_message(
                 self._selected(), user_id="u1", existing_content="Run it now please"
@@ -634,8 +712,7 @@ class TestWorkflowExecutionMessageBranches:
 
 
 class TestUploadedFileLines:
-    """One attachment's rendered lines. ``format_files_list`` only joins these, so
-    the path, the id and the summary bound are all decided here."""
+    """One attachment's rendered lines; format_files_list only joins these."""
 
     @staticmethod
     def _file(**overrides: object) -> FileData:
@@ -657,7 +734,7 @@ class TestUploadedFileLines:
         entry = _uploaded_file_lines(self._file(sandbox_path=None), "conv1", True)
 
         assert entry == (
-            ["- a.txt  (id: f1) — not on disk, use `search_uploaded_files`"],
+            ["- a.txt  (id: f1), not on disk, use `search_uploaded_files`"],
             False,
         )
 
@@ -675,8 +752,7 @@ class TestUploadedFileLines:
         )
 
     def test_an_over_long_summary_is_cut_at_the_limit_with_no_dangling_space(self) -> None:
-        """The cut lands mid-sentence, so the character before it is often a space.
-        Leaving it in puts the ellipsis adrift from the last word it belongs to."""
+        """The cut often lands right after a space; leaving it in strands the ellipsis from the last word."""
         body = "s" * (UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS - 1)
         entry = _uploaded_file_lines(
             self._file(description=f"{body} tail-past-the-limit"), "conv1", True
@@ -693,3 +769,90 @@ class TestUploadedFileLines:
 
     def test_an_unsafe_filename_is_dropped_rather_than_rendered(self) -> None:
         assert _uploaded_file_lines(self._file(filename=".."), "conv1", True) is None
+
+
+class TestTheTriggeringAccountReachesTheWorkflow:
+    """With several mailboxes, the run must act on the one that received the event, not the primary."""
+
+    @staticmethod
+    def _selected() -> SelectedWorkflowData:
+        return SelectedWorkflowData(
+            id="wf_1",
+            title="Triage",
+            description="desc",
+            prompt="triage it",
+            steps=[WorkflowStep(title="S1", category="c1", description="d1")],
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_single_event_names_its_account(self) -> None:
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={"trigger_data": {"payload": {}, "gaia_account": "me@gmail.com"}},
+            )
+
+        assert result.endswith(TRIGGERED_ACCOUNT_SECTION.format(accounts="me@gmail.com"))
+
+    @pytest.mark.asyncio
+    async def test_the_account_follows_the_playbook_fallback_without_replacing_it(self) -> None:
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={
+                    "playbook_fallback": "\n\nThe playbook stopped at step 2.",
+                    "trigger_data": {"gaia_account": "me@gmail.com"},
+                },
+            )
+
+        assert result.endswith(
+            "\n\nThe playbook stopped at step 2."
+            + TRIGGERED_ACCOUNT_SECTION.format(accounts="me@gmail.com")
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_batch_names_every_account_its_events_arrived_on_once(self) -> None:
+        events = [
+            {"gaia_account": "b@x.com"},
+            {"gaia_account": "a@x.com"},
+            {"gaia_account": "b@x.com"},
+        ]
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={"trigger_data": {"events": events, "count": 3}},
+            )
+
+        assert result.endswith(TRIGGERED_ACCOUNT_SECTION.format(accounts="a@x.com, b@x.com"))
+
+    @pytest.mark.asyncio
+    async def test_a_provider_payload_of_any_shape_never_breaks_the_message(self) -> None:
+        """Provider payloads are open-shaped; one that collides with our keys must be ignored, not validated."""
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={"trigger_data": {"events": ["not", "objects"], "gaia_account": 7}},
+            )
+
+        assert "Triage" in result
+        assert "triggered by an event on the user's account" not in result

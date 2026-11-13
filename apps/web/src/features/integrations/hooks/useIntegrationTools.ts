@@ -2,8 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { formatToolName, toTitleCase } from "@/features/chat/utils/chatUtils";
 
-import { integrationsApi } from "../api/integrationsApi";
-import { integrationKeys } from "../api/queryKeys";
+import { integrationQueries } from "../api/queries";
 import type { Integration } from "../types";
 import { escapeRegExp } from "../utils/toolMentions";
 
@@ -11,6 +10,8 @@ export interface IntegrationToolEntry {
   name: string;
   label: string;
   destructive: boolean;
+  /** The server's HIL key for this tool's approval override; sent back unchanged. */
+  approvalKey: string;
 }
 
 export interface UseIntegrationToolsReturn {
@@ -29,10 +30,9 @@ export const useIntegrationTools = (
   integration: Integration,
   categoryPrefix?: string,
 ): UseIntegrationToolsReturn => {
-  const { data, isLoading } = useQuery({
-    queryKey: integrationKeys.tools(integration.id),
-    queryFn: () => integrationsApi.getIntegrationTools(integration.id),
-  });
+  const { data, isLoading } = useQuery(
+    integrationQueries.tools(integration.id),
+  );
 
   const { tools, mentionNames } = useMemo(() => {
     const prefixRegex = categoryPrefix
@@ -48,7 +48,12 @@ export const useIntegrationTools = (
       // (e.g. removing "Gmail" from "Gmailsearch" yields "search"), so
       // re-apply Title Case to guarantee every word starts uppercase.
       const label = toTitleCase(stripped || formatted);
-      return { name: tool.name, label, destructive: tool.destructive ?? false };
+      return {
+        name: tool.name,
+        label,
+        destructive: tool.destructive ?? false,
+        approvalKey: tool.approval_key,
+      };
     });
 
     const mentionNames = Array.from(

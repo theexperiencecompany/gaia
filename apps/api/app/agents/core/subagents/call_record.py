@@ -38,7 +38,7 @@ def _compact_json(value: object) -> str:
 
 
 def _truncated_arg(value: object) -> object:
-    """The value itself when small, else its serialized form cut to the cap."""
+    """Return the value itself when small, else its serialized form cut to the cap."""
     rendered = value if isinstance(value, str) else _compact_json(value)
     if len(rendered) <= MAX_RECORDED_ARG_CHARS:
         return value
@@ -46,15 +46,15 @@ def _truncated_arg(value: object) -> object:
 
 
 def parsed_result(message: ToolMessage) -> object | None:
-    """The tool result parsed as the record parses it; ``None`` for block content."""
+    """Return the tool result parsed as the record parses it; None for block content."""
     content = message.content
     return parse_result(content) if isinstance(content, str) else None
 
 
 def is_error_envelope(result: object) -> bool:
-    """A "successful" tool message whose body says the call failed.
+    """Return whether this is a "successful" tool message whose body says the call failed.
 
-    Many tools answer with ``{"success": false, ...}`` or ``{"error": "..."}``
+    Many tools answer with {"success": false, ...} or {"error": "..."}
     under a normal status, so status alone does not say the call worked.
     """
     if not isinstance(result, dict):
@@ -66,13 +66,11 @@ def is_error_envelope(result: object) -> bool:
 
 
 def successful_call_lines(messages: Sequence[AnyMessage]) -> list[str]:
-    """One ``TOOL_NAME({"arg":value})`` line per successful call, in call order.
+    """Return one TOOL_NAME({"arg":value}) line per successful call, in call order.
 
-    A call counts as successful only when a non-error ``ToolMessage`` answers its
-    id and its body is not an error envelope. ``finish_task`` is infrastructure,
-    never a playbook step, so it is dropped even when it succeeded. A call whose
-    result carried no items is kept but marked, so the executor sees an empty
-    step before freezing it.
+    A call counts as successful only when a non-error ToolMessage answers its
+    id and its body is not an error envelope. finish_task is dropped even on
+    success. A result with no items is kept but marked.
     """
     results: dict[str, object | None] = {}
     for message in messages:
@@ -103,8 +101,7 @@ def successful_call_lines(messages: Sequence[AnyMessage]) -> list[str]:
 
 
 def append_call_record(text: str, messages: Sequence[AnyMessage]) -> str:
-    """``text`` with the run's call record appended, unchanged when there is
-    nothing to record."""
+    """Return text with the run's call record appended, unchanged when there is nothing to record."""
     lines = successful_call_lines(messages)
     if not lines:
         return text

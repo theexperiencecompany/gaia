@@ -5,10 +5,11 @@ import {
   getFileTypeExtension,
   getFormattedFileType,
 } from "@/features/chat/components/files/fileTypeConfig";
-import type { FileData } from "@/types/shared/fileTypes";
+import { isPrivateBlobUrl } from "@/lib/privateBlob";
+import type { AttachedFileData } from "@/types/shared/fileTypes";
 
 interface ChatBubbleFilePreviewProps {
-  files: FileData[];
+  files: AttachedFileData[];
 }
 
 const ChatBubbleFilePreview: React.FC<ChatBubbleFilePreviewProps> = ({
@@ -28,6 +29,7 @@ const ChatBubbleFilePreview: React.FC<ChatBubbleFilePreviewProps> = ({
               <div className="w-full overflow-hidden">
                 <Image
                   src={file.url}
+                  unoptimized={isPrivateBlobUrl(file.url)}
                   alt={file.filename}
                   width={1000}
                   height={1000}

@@ -16,19 +16,6 @@
   },
   "ignore": {
     "overrides": [
-      // ── Codegen source-of-truth data files ──────────────────────────────
-      // entries/*.ts and combosData-*.ts are compiled to JSON in public/data/
-      // by `pnpm tsx scripts/extract-static-data.ts`; the app fetches the JSON
-      // at runtime (Cloudflare ASSETS binding). No static imports BY DESIGN —
-      // headers of alternativesData.ts / combosData.ts document this pipeline.
-      {
-        "files": [
-          "src/features/alternatives/data/entries/**",
-          "src/features/comparisons/data/entries/**",
-          "src/features/integrations/data/combosData-*.ts"
-        ],
-        "rules": ["deslop/unused-file"]
-      },
       // ── Intentionally disabled feature (parked, not dead) ───────────────
       // The calendar feature is temporarily disabled: (main)/calendar/page.tsx
       // renders notFound() and its CalendarPage import is commented out with
@@ -223,6 +210,24 @@
       {
         "files": ["src/features/desktop-popup/sync.ts"],
         "rules": ["react-doctor/effect-needs-cleanup"]
+      },
+      // INVALID_CREDENTIALS_COPY / WRONG_CURRENT_PASSWORD_COPY are user-facing
+      // error strings, not secrets; the rule matches on their names.
+      {
+        "files": [
+          "src/features/auth/components/LoginForm.tsx",
+          "src/features/settings/components/PasswordChangeSection.tsx"
+        ],
+        "rules": ["react-doctor/no-secrets-in-client-code"]
+      },
+      // isSubmitting stays set on success while router.push navigates away (the
+      // form unmounts), blocking a double submit; failure paths reset it.
+      {
+        "files": [
+          "src/features/auth/components/LoginForm.tsx",
+          "src/features/auth/components/SignupForm.tsx"
+        ],
+        "rules": ["react-doctor/no-loading-flag-reset-outside-finally"]
       }
     ]
   }

@@ -24,6 +24,7 @@ import {
   getWindowRoute,
   isProductionServer,
 } from "./server-config";
+import { getDesktopSettings } from "./settings";
 
 /** Milliseconds to wait for the server to report ready before proceeding. */
 const SERVER_STARTUP_TIMEOUT_MS = 15_000;
@@ -101,19 +102,10 @@ export function getServerUrl(): string {
 }
 
 /**
- * Start the Next.js standalone server as a child process.
- *
- * Selects a port via `findAvailablePort()` and passes it explicitly.
- * The actual bound port is then confirmed by parsing Next.js's stdout
- * before the promise resolves, so `getServerUrl()` always reflects the
- * real port even if a TOCTOU race caused Next.js to land on a different one.
- *
- * Rejects if:
- * - The child process fails to spawn (ENOENT, EACCES, etc.)
- * - The process exits before printing "Ready"
- * - The startup timeout (15 s) elapses and no port was parsed from stdout
- *
- * @throws If the server cannot be started.
+ * Start the Next.js standalone server as a child process. Picks a port via
+ * `findAvailablePort()`, then confirms the actual bound port by parsing Next.js's
+ * stdout (so `getServerUrl()` is correct even under a TOCTOU race). Rejects on a
+ * spawn failure, an early exit, or the 15s startup timeout with no port parsed.
  */
 export async function startNextServer(): Promise<void> {
   shutdownRequested = false;
@@ -131,10 +123,9 @@ export async function startNextServer(): Promise<void> {
     console.log(`Starting Next.js server on port ${chosenPort}...`);
     console.log(`Server path: ${serverPath}`);
 
-    // utilityProcess runs server.js on Electron's bundled Node inside a
-    // proper helper process: no reliance on PATH `node` (absent in
-    // Finder-launched apps) and no bouncing "exec" Dock icon, which spawning
-    // process.execPath with ELECTRON_RUN_AS_NODE causes on macOS.
+    // utilityProcess runs server.js on Electron's bundled Node in a proper helper
+    // process: no reliance on PATH `node` (absent in Finder-launched apps), and no
+    // bouncing "exec" Dock icon (which process.execPath + ELECTRON_RUN_AS_NODE causes on macOS).
     serverProcess = utilityProcess.fork(serverPath, [], {
       serviceName: "GAIA Next.js server",
       env: {
@@ -155,10 +146,9 @@ export async function startNextServer(): Promise<void> {
 
       if (resolved) return;
 
-      // Parse the actual bound port from Next.js startup output,
-      // e.g. "- Local:  http://localhost:49821"
-      // This arrives before the "Ready" line, so serverPort is set
-      // before we resolve.
+      // Parse the actual bound port from Next.js's startup output (e.g. "- Local:
+      // http://localhost:49821"), which arrives before "Ready" so serverPort is
+      // set before we resolve.
       if (serverPort === 0) {
         const match = message.match(/localhost:(\d+)/);
         const portStr = match?.[1];
@@ -207,6 +197,8 @@ export async function startNextServer(): Promise<void> {
 
       // Unexpected post-startup crash — attempt to recover.
       console.error(`Next.js server crashed unexpectedly (code ${code})`);
+      const localOrigin = `${getServerUrl()}/`;
+      const { selfHostOrigin } = getDesktopSettings();
 
       if (restartAttempts >= MAX_RESTART_ATTEMPTS) {
         console.error(
@@ -229,6 +221,12 @@ export async function startNextServer(): Promise<void> {
           // islands to the wrong page, silently breaking them until restart.
           for (const win of BrowserWindow.getAllWindows()) {
             if (win.isDestroyed()) continue;
+            // Windows on a self-hosted server never used this one.
+            if (
+              selfHostOrigin &&
+              !win.webContents.getURL().startsWith(localOrigin)
+            )
+              continue;
             const route = getWindowRoute(win);
             if (!route) continue; // splash / untracked windows keep their page
             win.loadURL(`${newUrl}${route}`).catch(console.error);

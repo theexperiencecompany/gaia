@@ -5,7 +5,7 @@ keeps firing on schedule, burns LLM spend, and delivers a failed or empty run
 that reads to the user as "GAIA is broken" rather than "Gmail needs
 reconnecting". Pausing turns an invisible failure into a visible, fixable state.
 
-Both halves go through ``WorkflowService`` rather than the repository, so the
+Both halves go through WorkflowService rather than the repository, so the
 workflow's Composio trigger is unregistered upstream on pause and re-registered
 on resume — a trigger left enabled on a dead account is upstream state GAIA no
 longer tracks.
@@ -17,12 +17,20 @@ from dataclasses import dataclass
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
-from app.models.workflow_models import DeactivationReason, WorkflowDocument, WorkflowUpdate
+from app.models.scheduler_models import DeactivationReason
+from app.models.workflow_models import (
+    IntegrationRef,
+    Workflow,
+    WorkflowDocument,
+    WorkflowUpdate,
+)
 from app.services.triggers.subscription_service import (
+    AccountScope,
     pause_subscriptions_for_trigger_names,
     resync_subscriptions_for_trigger_names,
 )
 from app.services.workflow.integration_requirements import (
+    compute_missing_integrations,
     compute_required_integrations,
     confirm_disconnected,
 )
@@ -31,7 +39,7 @@ from shared.py.wide_events import log
 
 
 async def pause_workflows_for_expired_integration(user_id: str, integration_id: str) -> list[str]:
-    """Pause every activated workflow of ``user_id`` that needs ``integration_id``.
+    """Pause every activated workflow of user_id that needs integration_id.
 
     Returns the titles of the workflows paused, for the user-facing notification.
     One workflow that fails to pause is logged and skipped rather than aborting
@@ -58,13 +66,6 @@ async def pause_workflows_for_expired_integration(user_id: str, integration_id: 
                 error_type=type(e).__name__,
             )
 
-    # Todo subscriptions on this integration's triggers die with the connection
-    # too. They pause rather than deactivate (todos have no activated flag) and
-    # their todos gain the blocking label, so a dead watch is visible.
-    await pause_subscriptions_for_trigger_names(
-        user_id, _trigger_names_for_integration(integration_id)
-    )
-
     if paused:
         log.info(
             f"{LogTag.WORKFLOW} Paused workflows for expired integration",
@@ -77,8 +78,7 @@ async def pause_workflows_for_expired_integration(user_id: str, integration_id: 
 
 @dataclass(frozen=True, slots=True)
 class PauseOutcome:
-    """What a blocked-run claim came to: the blockers the workflow is now
-    paused on, and the named integrations the run had no business naming."""
+    """What a blocked-run claim came to: the blockers paused on, and the integrations the run had no business naming."""
 
     paused: list[str]
     unrelated: list[str]
@@ -93,15 +93,10 @@ async def pause_workflow_for_missing_integrations(
 ) -> PauseOutcome:
     """Pause one workflow whose run found integrations it needs unconnected.
 
-    A claim is a model's, so it is held to the run's own evidence first: an
-    integration counts only when the workflow's declared steps require it or
-    this run handed off to it (``used_by_run``). Anything else is reported back
-    as unrelated and nothing is paused — a disconnected Slack must not park a
-    Gmail workflow until Slack is connected. What passes is then confirmed
-    against real connection status; ``paused`` is empty when nothing checked
-    out, and the caller treats the run as an ordinary decline. The list is
-    stored on the workflow because the resume side cannot re-derive it; see
-    ``WorkflowDocument.blocked_on_integrations``.
+    Only integrations the workflow's steps require or the run actually used
+    count; anything else is reported as unrelated and nothing is paused. What
+    passes is confirmed against real connection status, then stored on the
+    workflow (blocked_on_integrations) since the resume side can't re-derive it.
     """
     workflow = await workflow_repository.get_for_user(workflow_id, user_id)
     if workflow is None:
@@ -150,13 +145,12 @@ async def pause_workflow_for_missing_integrations(
 def _wants_integration(
     workflow: WorkflowDocument, integration_id: str, reason: DeactivationReason
 ) -> bool:
-    """Whether reconnecting ``integration_id`` should un-pause this workflow.
+    """Whether reconnecting integration_id should un-pause this workflow.
 
-    For an expiry the declared steps are the only record of what it needs. For a
-    blocked run the workflow carries what the run actually found, which is the
-    better answer — but the declared steps are still consulted, because resuming
-    a workflow that is still blocked costs one run that pauses it again, while
-    failing to resume one leaves it dead until the user edits it.
+    For an expiry, only the declared steps count. For a blocked run, the
+    workflow's own found blockers take precedence, but declared steps are
+    still checked — a false resume just re-pauses on the next run, while a
+    missed one leaves the workflow dead until the user edits it.
     """
     required = compute_required_integrations(workflow.steps, workflow.trigger_config)
     if integration_id in required:
@@ -167,8 +161,67 @@ def _wants_integration(
     )
 
 
+async def pause_workflow_before_fire(workflow: Workflow) -> list[IntegrationRef]:
+    """Pause workflow before it fires when an integration it needs is not connected.
+
+    Complements pause_workflows_for_expired_integration, which relies on a
+    Composio webhook that a revoked/missing webhook or a never-connected
+    integration never sends — without this a workflow fires forever (186 of
+    649 bot messages in production were repeats, one thread had 22 identical).
+    """
+    required = compute_required_integrations(workflow.steps, workflow.trigger_config)
+    missing = await compute_missing_integrations(required, workflow.user_id)
+    if not missing or not workflow.id:
+        return []
+
+    await WorkflowService.deactivate_workflow(
+        workflow.id,
+        workflow.user_id,
+        reason=DeactivationReason.INTEGRATION_NEVER_CONNECTED,
+        blocked_on_integrations=[ref.id for ref in missing],
+    )
+    log.warning(
+        f"{LogTag.WORKFLOW} Workflow paused at fire time — required integration not connected",
+        workflow_id=workflow.id,
+        user_id=workflow.user_id,
+        missing_integrations=[ref.id for ref in missing],
+    )
+    return missing
+
+
+async def pause_watches_for_expired_account(
+    user_id: str, integration_id: str, account_id: str, *, integration_expired: bool
+) -> int:
+    """Pause the todo watches an account's death stops; returns how many todos paused.
+
+    A watch limited to that account stops with it. One watching every account
+    keeps firing while another account lives, so it pauses only once the whole
+    integration has expired. Paused watches flag their todos with the blocking label.
+    """
+    return await pause_subscriptions_for_trigger_names(
+        user_id,
+        _trigger_names_for_integration(integration_id),
+        AccountScope(account_id=account_id, every_account=integration_expired),
+    )
+
+
+async def resume_watches_for_connected_account(
+    user_id: str, integration_id: str, account_id: str
+) -> int:
+    """Resume the todo watches an account's (re)connect revives; returns how many todos resumed.
+
+    Those limited to that account, and those watching every account, since the
+    integration lives again; watches limited to another, still dead account stay paused.
+    """
+    return await resync_subscriptions_for_trigger_names(
+        user_id,
+        _trigger_names_for_integration(integration_id),
+        AccountScope(account_id=account_id, every_account=True),
+    )
+
+
 def _trigger_names_for_integration(integration_id: str) -> set[str]:
-    """The GAIA-facing trigger names an integration publishes."""
+    """Return the GAIA-facing trigger names an integration publishes."""
     integration = get_integration_by_id(integration_id)
     if integration is None:
         return set()
@@ -180,14 +233,11 @@ def _trigger_names_for_integration(integration_id: str) -> set[str]:
 
 
 async def resume_workflows_for_reconnected_integration(user_id: str, integration_id: str) -> int:
-    """Re-activate the workflows paused for ``integration_id``, now that it is back.
+    """Re-activate the workflows paused for integration_id, now that it is back.
 
-    Only touches workflows the system paused — ``INTEGRATION_EXPIRED`` (a live
-    connection died) and ``INTEGRATION_NEVER_CONNECTED`` (a run found one that
-    was never connected) — so a workflow the user switched off themselves is
-    never silently re-enabled. One still missing another integration cannot be
-    re-activated — ``activate_workflow`` raises and it is left paused for a
-    later reconnect.
+    Only touches workflows the system paused (INTEGRATION_EXPIRED,
+    INTEGRATION_NEVER_CONNECTED) — a workflow the user switched off stays off.
+    One still missing another integration is left paused for a later reconnect.
     """
     resumed = 0
 
@@ -235,12 +285,6 @@ async def resume_workflows_for_reconnected_integration(user_id: str, integration
                     workflow.id, user_id, WorkflowUpdate(blocked_on_integrations=[])
                 )
             resumed += 1
-
-    # Mirror of the pause side: the reconnect gives the subscriptions a fresh
-    # connected account, so they re-register and drop the blocking label.
-    await resync_subscriptions_for_trigger_names(
-        user_id, _trigger_names_for_integration(integration_id)
-    )
 
     if resumed:
         log.info(

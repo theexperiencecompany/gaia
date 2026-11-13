@@ -43,23 +43,15 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    # The public build values (vars.NEXT_PUBLIC_*) live on the production
+    # environment, the same place deploy-web.yml reads them from.
+    environment: production
+
     steps:
       # Checkout source for package/build tooling.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Install Node package manager + runtime.
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10 # v6.0.10
-        with:
-          version: 10.17.1
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.1
-        with:
-          node-version: 22
-          cache: "pnpm"
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-node-pnpm
 
       # Keep desktop package version aligned with release tag before packaging.
       # On a manual dispatch the tag comes from the `tag` input (backfill path);
@@ -90,12 +82,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y rpm
 
-      # Build platform-specific desktop distribution artifacts.
+      # Build platform-specific desktop distribution artifacts. NEXT_PUBLIC_*
+      # is inlined at build time, so an empty value ships an installer with
+      # that feature dead (desktop analytics was off this way); fail instead.
       - name: Build Desktop (${{ matrix.target }})
-        run: pnpm nx dist:${{ matrix.target }} desktop
+        shell: bash
+        run: |
+          missing=$(for name in ${!NEXT_PUBLIC_@}; do [ -n "${!name}" ] || echo "$name"; done)
+          if [ -n "$missing" ]; then
+            echo "::error::Empty in the production environment's variables: $(echo $missing). Set them under Settings → Environments → production."
+            exit 1
+          fi
+          pnpm nx dist:${{ matrix.target }} desktop
         env:
           CI: true
           NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
+          NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # No paid Apple Developer ID / notarization. Disabling auto-discovery
           # makes electron-builder skip real signing and lets the afterSign hook
@@ -142,7 +144,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write # read the quality gate's runs, and re-run one a newer push cancelled
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The tags, so the release tag resolves to its commit.
+          fetch-depth: 0
+          persist-credentials: false
       - name: Resolve release tag
         id: tag
         env:
@@ -153,16 +161,18 @@ jobs:
           set -euo pipefail
           TAG="$RELEASE_TAG"
           [ -n "$TAG" ] || TAG="$INPUT_TAG"
-          if [ -z "$TAG" ]; then
-            TAG=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName \
-              | jq -r '[.[] | select(.tagName | startswith("desktop-v"))][0].tagName // empty')
-          fi
-          [ -n "$TAG" ] || { echo "::error::No desktop release tag to publish to (no release event, no tag input, no desktop-* release found)"; exit 1; }
+          [ -n "$TAG" ] || TAG="$(bash scripts/ci/release.sh desktop-tag)"
           echo "Publishing installers to $TAG"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
+      - name: Wait for ci.yml's quality gate on the release commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: bash scripts/ci/release.sh wait-quality-gate
+
       - name: Download installer artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: desktop-installers-*
           merge-multiple: true
@@ -184,14 +194,7 @@ jobs:
           # --clobber makes re-runs idempotent (a partial first attempt's
           # assets are replaced instead of failing the whole publish).
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber "${FILES[@]}"
-          # Mark Latest only when this IS the newest desktop release — a
-          # backfill for an older tag must not steal Latest from a newer one
-          # (electron-updater resolves /releases/latest).
-          NEWEST=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName \
-            | jq -r '[.[] | select(.tagName | startswith("desktop-v"))][0].tagName // empty')
-          if [ "$TAG" = "$NEWEST" ]; then
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --latest
-          else
-            echo "::notice::Not marking $TAG as Latest — newest desktop release is $NEWEST"
-          fi
+          # Latest goes to the manifest's desktop release, so a backfill for an
+          # older tag never steals it (electron-updater resolves /releases/latest).
+          bash scripts/ci/release.sh mark-desktop-latest
           echo "### ✅ Installers published to $TAG (${#FILES[@]} files)" >> "$GITHUB_STEP_SUMMARY"

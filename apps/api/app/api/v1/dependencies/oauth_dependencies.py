@@ -1,18 +1,23 @@
 from datetime import datetime
-from typing import Any, cast
 
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
+from fastapi.exceptions import WebSocketException
 
 from app.config.settings import settings
-from app.constants.auth import DEV_USER_MISSING_HINT
+from app.constants.auth import DEV_USER_MISSING_HINT, WOS_SESSION_COOKIE
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
-from app.models.user_models import AuthenticatedUser, UserUpdate, user_to_legacy_dict
+from app.models.user_models import AuthenticatedUser, UserUpdate
 from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
     resolve_dev_bypass_user,
+)
+from app.utils.local_auth_utils import (
+    LOCAL_SESSION_COOKIE,
+    LocalSessionFailure,
+    authenticate_local_session,
 )
 from app.utils.timezone import Timezone, TimezoneSource, resolve_home_timezone
 from shared.py.wide_events import log, spawn_logged_task
@@ -42,52 +47,56 @@ async def _backfill_user_timezone(user_id: str, tz: str) -> None:
 # so `async def` is deliberately the cheaper of the two — and it runs on every
 # authenticated request. Dropping `async` would add a threadpool hop per request.
 async def get_current_user(request: Request) -> AuthenticatedUser:  # NOSONAR python:S7503
-    """
-    Retrieves the current user from request state.
-    Authentication is handled by the WorkOSAuthMiddleware.
-
-    Args:
-        request: FastAPI request object with authenticated user in state
-
-    Returns:
-        User data dictionary with authentication info
+    """Return the authenticated user from request state (set by WorkOSAuthMiddleware).
 
     Raises:
-        HTTPException: On authentication failure
+        HTTPException: On authentication failure.
     """
-    if not hasattr(request.state, "authenticated") or not request.state.authenticated:
+    user = await get_optional_user(request)
+    if user is None:
         log.info(f"{LogTag.OAUTH} No authenticated user found in request state")
         raise HTTPException(
             status_code=401,
             detail={
-                "error_code": NOT_AUTHENTICATED,
+                "code": NOT_AUTHENTICATED,
                 "message": "Authentication required",
             },
         )
-    if not request.state.user:
+    return user
+
+
+# NOSONAR justification: same as get_current_user — reads request.state only.
+async def get_optional_user(request: Request) -> AuthenticatedUser | None:  # NOSONAR python:S7503
+    """Return the session user, or None when the request carries no session (a public route's visitor).
+
+    Raises:
+        HTTPException: When the request is marked authenticated but carries no user.
+    """
+    if not getattr(request.state, "authenticated", False):
+        return None
+    # request.state is Starlette's untyped bag; the auth middlewares only ever
+    # put an AuthenticatedUser there when authenticated=True, and this is the
+    # one place that fact is checked rather than assumed.
+    user = request.state.user
+    if not isinstance(user, AuthenticatedUser):
         log.error(f"{LogTag.OAUTH} User marked as authenticated but no user data found")
         raise HTTPException(
             status_code=401,
             detail={
-                "error_code": NOT_AUTHENTICATED,
+                "code": NOT_AUTHENTICATED,
                 "message": "User data missing",
             },
         )
 
-    # request.state is Starlette's untyped bag (Any); WorkOSAuthMiddleware always
-    # sets .user to the dict built by build_user_context() when authenticated=True.
-    user = cast(dict[str, Any], request.state.user)
     log.set(
         auth={
-            "user_id": user.get("user_id"),
-            "email": user.get("email"),
-            "method": user.get("auth_provider", "workos"),
-            "is_agent_token": bool(user.get("is_agent_token", False)),
+            "user_id": user.user_id,
+            "email": user.email,
+            "method": user.auth_provider or "workos",
+            "is_agent_token": user.impersonated,
         }
     )
-    # request.state is untyped by Starlette; the middleware only ever puts an
-    # AuthenticatedUser there (see WorkOSAuthMiddleware).
-    return cast(AuthenticatedUser, user)
+    return user
 
 
 # NOSONAR justification: same as get_current_user above — a FastAPI dependency that
@@ -96,77 +105,109 @@ async def get_user_id(  # NOSONAR python:S7503
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> str:
     """Extract user_id from authenticated user or raise 400."""
-    user_id = user.get("user_id")
-    if not user_id:
+    if not user.user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
-    return str(user_id)
+    return user.user_id
+
+
+def _ws_unauthenticated(reason: str) -> WebSocketException:
+    """Reject the dial with a policy-violation close, so no unauthenticated socket opens."""
+    log.set(disconnect_reason="auth_failure")
+    return WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason=reason)
+
+
+def _require_ws_user_id(user: AuthenticatedUser) -> AuthenticatedUser:
+    """Guarantee the caller gets a user it can key on, or no socket at all."""
+    if not user.user_id:
+        log.warning(f"{LogTag.OAUTH} WebSocket user context carries no user_id")
+        raise _ws_unauthenticated("authenticated user has no id")
+    return user
+
+
+def _ws_token(websocket: WebSocket, cookie_name: str) -> str | None:
+    """Session token from cookie, else the Sec-WebSocket-Protocol bearer fallback.
+
+    Mobile clients cannot send cookies, so the token also rides the protocol
+    header as "Bearer, <token>". Both WS branches read it the same way.
+    """
+    token = websocket.cookies.get(cookie_name)
+    if token:
+        return token
+    protocol_header = websocket.headers.get(
+        "sec-websocket-protocol",
+        "",  # pragma: no mutate — any default without the Bearer prefix reads the same
+    )
+    if protocol_header.startswith("Bearer, "):
+        return protocol_header[8:]
+    return None
+
+
+_WS_LOCAL_SESSION_REASONS: dict[LocalSessionFailure, str] = {
+    LocalSessionFailure.INVALID_OR_EXPIRED: "local session token rejected",
+    LocalSessionFailure.UNKNOWN_USER: "local session user not found",
+}
+
+
+async def _local_ws_user(websocket: WebSocket) -> AuthenticatedUser:
+    """Authenticate a WS connection against the local session store.
+
+    Same session JWT and resolver the HTTP middleware uses; WebSockets never
+    pass through that middleware, so they call the resolver themselves.
+    """
+    token = _ws_token(websocket, LOCAL_SESSION_COOKIE)
+    if not token:
+        log.info(f"{LogTag.OAUTH} No local session cookie or protocol token in WebSocket request")
+        raise _ws_unauthenticated("no local session cookie or protocol token")
+
+    session = await authenticate_local_session(token)
+    if isinstance(session, LocalSessionFailure):
+        log.warning(
+            f"{LogTag.OAUTH} WebSocket local-session authentication failed",
+            auth_failure=session,
+        )
+        raise _ws_unauthenticated(_WS_LOCAL_SESSION_REASONS[session])
+    return session
 
 
 async def get_current_user_ws(websocket: WebSocket) -> AuthenticatedUser:
+    """Authenticate a WebSocket connection from its cookie or Bearer subprotocol.
+
+    Mobile clients cannot send cookies, so the token also rides the
+    Sec-WebSocket-Protocol header as "Bearer, <token>". Every auth failure
+    raises WebSocketException instead of returning an empty user.
     """
-    Authenticate a user from a WebSocket connection using cookies.
-    This is a special version of get_current_user for WebSocket connections.
-
-    For mobile clients that cannot send cookies, the token is passed via the
-    Sec-WebSocket-Protocol header (subprotocol) for security. This prevents
-    token exposure in server logs and referrers.
-
-    Protocol format: "Bearer, <token>" (client sends ['Bearer', token])
-
-    Args:
-        websocket: The WebSocket connection with cookies
-
-    Returns:
-        User data dictionary with authentication info
-
-    Raises:
-        WebSocketException: Connection will be closed on auth failure
-    """
-    # Dev auth bypass — WebSockets never pass through WorkOSAuthMiddleware
-    # (BaseHTTPMiddleware only handles HTTP), so the bypass is mirrored here,
-    # including the X-Dev-User per-request impersonation header. get_settings()
+    # WebSockets skip WorkOSAuthMiddleware (HTTP only), so the dev bypass —
+    # including X-Dev-User impersonation — is mirrored here. get_settings()
     # hard-fails if this is set in production.
-    if settings.ENV == "development" and settings.DEV_AUTH_BYPASS_EMAIL:
-        target_email, user_data = await resolve_dev_bypass_user(
-            websocket.headers, websocket.cookies
-        )
+    if settings.deployment.dev_tools and settings.DEV_AUTH_BYPASS_EMAIL:
+        target_email, user_data = await resolve_dev_bypass_user(websocket)
         if user_data is not None:
-            return build_user_context(
-                user_to_legacy_dict(user_data), auth_provider="workos", dev_bypass=True
+            return _require_ws_user_id(
+                build_user_context(user_data, auth_provider="workos", dev_bypass=True)
             )
         log.error(
             f"{LogTag.OAUTH} Dev bypass target has no Mongo user",
             target_email=target_email,
             fix=DEV_USER_MISSING_HINT,
         )
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return {}
+        raise _ws_unauthenticated("dev bypass target has no Mongo user")
 
-    # Extract the session cookie from WebSocket
-    wos_session = websocket.cookies.get("wos_session")
+    if settings.deployment.local_auth:
+        return await _local_ws_user(websocket)
 
-    # Fallback: check Sec-WebSocket-Protocol header for mobile clients
-    # Client sends: new WebSocket(url, ['Bearer', token])
-    # Server receives: "Bearer, <token>" in sec-websocket-protocol header
-    if not wos_session:
-        protocol_header = websocket.headers.get("sec-websocket-protocol", "")
-        if protocol_header.startswith("Bearer, "):
-            wos_session = protocol_header[8:]  # Extract token after "Bearer, "
-
+    wos_session = _ws_token(websocket, WOS_SESSION_COOKIE)
     if not wos_session:
         log.info(f"{LogTag.OAUTH} No session cookie or protocol token in WebSocket request")
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return {}
+        raise _ws_unauthenticated("no session cookie or protocol token")
 
     # Use shared authentication logic
     user_info, _ = await authenticate_workos_session(session_token=wos_session)
 
-    if not user_info:
+    if user_info is None:
         log.warning(f"{LogTag.OAUTH} WebSocket authentication failed")
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return {}
+        raise _ws_unauthenticated("session token rejected")
 
-    return cast(AuthenticatedUser, user_info)
+    return _require_ws_user_id(user_info)
 
 
 GET_USER_TZ_TYPE = tuple[str, datetime]
@@ -177,10 +218,9 @@ def get_user_timezone(
         default="UTC", alias="x-timezone", description="User's timezone identifier"
     ),
 ) -> GET_USER_TZ_TYPE:
-    """Current time in the request's ``x-timezone`` header zone (defaults to UTC).
+    """Return the current time in the request's x-timezone header zone (defaults to UTC).
 
-    Returns ``(canonical_timezone, now)``. Offset-aware and never raises on a
-    malformed header (falls back to UTC) via ``Timezone.parse``.
+    Offset-aware and never raises on a malformed header (falls back to UTC).
     """
     tz = Timezone.parse(x_timezone)
     now = tz.now()
@@ -194,38 +234,26 @@ async def get_user_timezone_from_preferences(
         default="", alias="x-timezone", description="Browser timezone fallback"
     ),
 ) -> str:
-    """
-    Resolve the user's home timezone, healing a stale/junk stored "UTC".
+    """Resolve the user's home timezone, healing a stale/junk stored "UTC".
 
-      1. A real (non-UTC) `user.timezone` stored in Mongo is authoritative.
-      2. Otherwise — stored value is empty OR a low-confidence "UTC" (often a
-         junk default that then sticks forever and silently runs everything in
-         UTC) — a valid non-UTC `x-timezone` header wins and is backfilled,
-         healing the stored value so header-less background paths (scheduled
-         workflows, notifications) converge to the user's real zone.
-      3. UTC as last resort, or a genuine stored "UTC" when there is no better
-         signal.
-
-    Emits the wide-event field `timezone_source` so every request makes it
-    visible which branch was used.
+    A real non-UTC stored timezone wins; otherwise a valid x-timezone header
+    heals it (so header-less background paths converge on the real zone);
+    UTC is the last resort. Emits timezone_source on the wide event.
     """
-    user_id = user.get("user_id")
+    user_id = user.user_id
 
     try:
-        resolved = resolve_home_timezone(user.get("timezone"), x_timezone)
+        resolved = resolve_home_timezone(user.timezone, x_timezone)
         log.set(timezone_source=resolved.source.value, user_timezone=resolved.timezone.value)
 
         if resolved.source is TimezoneSource.X_TIMEZONE_HEADER:
             log.warning(
                 f"{LogTag.OAUTH} Healing user.timezone from x-timezone header",
                 user_id=user_id,
-                stored_timezone=(user.get("timezone") or "").strip() or None,
+                stored_timezone=(user.timezone or "").strip() or None,
                 header_timezone=resolved.timezone.value,
             )
-        elif (
-            resolved.source is TimezoneSource.FALLBACK_UTC
-            and not (user.get("timezone") or "").strip()
-        ):
+        elif resolved.source is TimezoneSource.FALLBACK_UTC and not (user.timezone or "").strip():
             log.warning(
                 f"{LogTag.OAUTH} user.timezone missing and no valid x-timezone header; falling back to UTC",
                 user_id=user_id,

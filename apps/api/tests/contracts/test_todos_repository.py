@@ -1,19 +1,28 @@
 """Contract + finder tests for TodosRepository against real Mongo + Redis.
 
 Todos is the migration's stress test, so this file also exercises the base
-primitives it forced into existence: ``_apply_ops`` (array/positional/$unset),
-``_bulk_set``/``_bulk_delete``, and their user-scope enforcement.
+primitives it forced into existence: _apply_ops (array/positional/$unset),
+_bulk_set/_bulk_delete, and their user-scope enforcement.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+import time
 
+from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 import pytest
 
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import BLOCKING_LABEL, GAIA_TRACKED_LABEL
+from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT, GateAuthor, SystemGatePreset
+from app.db.mongodb import indexes
+from app.db.repositories import todos as todos_repository_module
 from app.db.repositories.todos import TodosRepository
+from app.models import todo_models
+from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
     Priority,
     SearchMode,
@@ -23,13 +32,19 @@ from app.models.todo_models import (
     TodoSearchParams,
     TodoUpdate,
 )
+from app.models.trigger_gate_models import AuthoredGate, GateSkipRecord, SystemGate
 from app.models.trigger_subscription_models import (
+    ConditionMatch,
+    ConditionOperator,
     SubscriptionAction,
+    SubscriptionCondition,
     SubscriptionResolution,
-    SubscriptionStatus,
     TriggerSubscription,
+    TriggerSubscriptionStatus,
 )
 from tests.contracts.base_contract import UserScopedRepositoryContract
+
+_DESK_GATE = SystemGate(preset=SystemGatePreset.INBOX_DESK)
 
 
 @pytest.fixture
@@ -64,8 +79,86 @@ def _subscription(**overrides: object) -> TriggerSubscription:
     )
 
 
+def _condition(field_name: str, value: str) -> SubscriptionCondition:
+    return SubscriptionCondition(
+        field_name=field_name, operator=ConditionOperator.EQUALS, value=value
+    )
+
+
 def _all_params(**overrides: object) -> TodoSearchParams:
     return TodoSearchParams.model_validate({"mode": SearchMode.TEXT, **overrides})
+
+
+@contextmanager
+def _host_zone_ahead_of_utc(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Run the block on a host clock 5h30 ahead of UTC, so a naive local stamp is caught."""
+    monkeypatch.setenv("TZ", "Asia/Kolkata")
+    time.tzset()
+    try:
+        yield
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+
+
+def _skips(count: int) -> list[GateSkipRecord]:
+    start = datetime(2026, 11, 1, tzinfo=UTC)
+    return [
+        GateSkipRecord(
+            event=f'Bank <alerts@bank.example>, "Statement {n}"',
+            certainty=0.99,
+            at=start + timedelta(minutes=n),
+        )
+        for n in range(count)
+    ]
+
+
+class TestGateSkipRecord:
+    async def test_a_hundred_skips_keep_the_newest_few_and_count_all_and_leave_activity_alone(
+        self, repo, make_doc
+    ):
+        gate = AuthoredGate(condition="the email needs me", author=GateAuthor.GAIA)
+        watch, other = _subscription(gate=gate), _subscription(gate=gate)
+        doc = await repo.create(
+            make_doc(user_id="u", activity_content="- ran", trigger_subscriptions=[watch, other])
+        )
+        skips = _skips(100)
+
+        for skip in skips:
+            await repo.remember_subscription_gate_skip(
+                user_id="u", subscription_id=watch.id, skip=skip
+            )
+
+        stored = await repo.get(doc.id, user_id="u")
+        kept, untouched = (w.gate for w in stored.trigger_subscriptions)
+        assert kept.recent_skips == skips[-GATE_RECENT_SKIPS_KEPT:]
+        assert GATE_RECENT_SKIPS_KEPT == 5
+        assert kept.skipped_count == 100
+        assert (untouched.recent_skips, untouched.skipped_count) == ([], 0)
+        assert stored.activity_content == "- ran"
+
+    async def test_a_skip_is_never_written_to_another_users_watch(self, repo, make_doc):
+        gate = AuthoredGate(condition="the email needs me", author=GateAuthor.GAIA)
+        watch = _subscription(gate=gate)
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[watch]))
+
+        await repo.remember_subscription_gate_skip(
+            user_id="intruder", subscription_id=watch.id, skip=_skips(1)[0]
+        )
+
+        stored = await repo.get(doc.id, user_id="u")
+        assert stored.trigger_subscriptions[0].gate.skipped_count == 0
+
+    async def test_a_watch_without_a_gate_is_left_without_one(self, repo, make_doc):
+        watch = _subscription(gate=None)
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[watch]))
+
+        await repo.remember_subscription_gate_skip(
+            user_id="u", subscription_id=watch.id, skip=_skips(1)[0]
+        )
+
+        stored = await repo.get(doc.id, user_id="u")
+        assert stored.trigger_subscriptions[0].gate is None
 
 
 class TestTodosRepository(UserScopedRepositoryContract):
@@ -99,6 +192,36 @@ class TestTodosRepository(UserScopedRepositoryContract):
         page = await repo.list_page(user_id="u", params=_all_params(), inbox_project_id="inbox-1")
         assert page.total == 1
         assert page.items[0].title == "inbox"
+
+    @pytest.mark.parametrize(
+        "only_filter",
+        [
+            {"q": "milk"},
+            {"completed": False},
+            {"priority": Priority.HIGH},
+            {"labels": ["errand"]},
+        ],
+        ids=["text", "completed", "priority", "labels"],
+    )
+    async def test_list_page_any_one_filter_lifts_the_inbox_default(
+        self, repo, make_doc, only_filter
+    ):
+        for project_id in ("inbox-1", "p2"):
+            await repo.create(
+                make_doc(
+                    user_id="u",
+                    title=f"Buy milk {project_id}",
+                    project_id=project_id,
+                    priority=Priority.HIGH,
+                    labels=["errand"],
+                )
+            )
+
+        page = await repo.list_page(
+            user_id="u", params=_all_params(**only_filter), inbox_project_id="inbox-1"
+        )
+
+        assert sorted(t.project_id for t in page.items) == ["inbox-1", "p2"]
 
     async def test_list_page_text_search(self, repo, make_doc):
         await repo.create(make_doc(user_id="u", title="Buy milk"))
@@ -134,8 +257,7 @@ class TestTodosRepository(UserScopedRepositoryContract):
         assert all(t.priority is Priority.HIGH for t in page.items)
 
     async def test_list_page_slices_pages_without_overlap(self, repo, make_doc):
-        """page/per_page walk disjoint windows, and every page reports the
-        unpaginated total for the same filter."""
+        """page/per_page walk disjoint windows, and every page reports the unpaginated total for the same filter."""
         now = datetime.now(UTC)
         for i in range(5):
             await repo.create(
@@ -261,6 +383,226 @@ class TestTodosRepository(UserScopedRepositoryContract):
         active = await repo.list_active_tracked("u", limit=10)
         assert [t.title for t in active] == ["open"]
 
+    async def test_list_active_tracked_returns_the_freshest_up_to_the_limit(
+        self, repo, make_doc, raw_collection
+    ):
+        now = datetime.now(UTC)
+        # Inserted out of freshness order so an unsorted read would fail here.
+        for title, age in (("stale", 3), ("fresh", 0), ("middle", 1)):
+            todo = await repo.create(
+                make_doc(user_id="u", title=title, labels=[GAIA_TRACKED_LABEL])
+            )
+            await raw_collection.update_one(
+                {"_id": ObjectId(todo.id)}, {"$set": {"updated_at": now - timedelta(hours=age)}}
+            )
+
+        found = await repo.list_active_tracked("u", limit=2)
+
+        assert [t.title for t in found] == ["fresh", "middle"]
+
+    async def test_list_active_tracked_is_generation_cached(self, repo, make_doc, raw_collection):
+        """The active-tracked list is served from Redis until a write bumps the generation."""
+        user = "tracked-cache-user"
+        await repo.create(make_doc(user_id=user, labels=[GAIA_TRACKED_LABEL], title="a"))
+        assert [t.title for t in await repo.list_active_tracked(user, limit=10)] == ["a"]
+
+        # Direct insert with no generation bump — the cached list must not see it.
+        await raw_collection.insert_one(
+            make_doc(user_id=user, labels=[GAIA_TRACKED_LABEL], title="b").model_dump(
+                exclude={"id"}
+            )
+        )
+        assert [t.title for t in await repo.list_active_tracked(user, limit=10)] == ["a"]
+
+        # A repo write bumps the generation → the finder re-queries and sees both.
+        await repo.create(make_doc(user_id=user, labels=[GAIA_TRACKED_LABEL], title="c"))
+        assert sorted(t.title for t in await repo.list_active_tracked(user, limit=10)) == [
+            "a",
+            "b",
+            "c",
+        ]
+
+    async def test_list_active_tracked_keeps_todos_carrying_every_given_label(self, repo, make_doc):
+        tracked = GAIA_TRACKED_LABEL
+        await repo.create(make_doc(user_id="u", title="both", labels=[tracked, "a", "b"]))
+        await repo.create(make_doc(user_id="u", title="only a", labels=[tracked, "a"]))
+        await repo.create(make_doc(user_id="u", title="untracked", labels=["a", "b"]))
+        await repo.create(
+            make_doc(user_id="u", title="done", labels=[tracked, "a", "b"], completed=True)
+        )
+        # Primes the cache for this generation: a filtered read must not be served from it.
+        assert len(await repo.list_active_tracked("u", limit=10)) == 2
+
+        found = await repo.list_active_tracked("u", limit=10, labels=["b", "a"])
+
+        assert [t.title for t in found] == ["both"]
+
+    async def test_list_active_tracked_keeps_the_todo_owning_an_external_ref(self, repo, make_doc):
+        thread = todo_models.ExternalRef(
+            source=todo_models.ExternalRefSource.GMAIL_THREAD, id="thread-1"
+        )
+        other = todo_models.ExternalRef(
+            source=todo_models.ExternalRefSource.GMAIL_THREAD, id="thread-2"
+        )
+        tracked = [GAIA_TRACKED_LABEL]
+        done = await repo.create(
+            make_doc(user_id="u", title="done", labels=tracked, external_ref=thread)
+        )
+        await repo.update(done.id, user_id="u", update=TodoUpdate(completed=True))
+        await repo.create(make_doc(user_id="u", title="owner", labels=tracked, external_ref=thread))
+        await repo.create(make_doc(user_id="u", title="other", labels=tracked, external_ref=other))
+        await repo.create(make_doc(user_id="u", title="plain", labels=tracked))
+        await repo.create(
+            make_doc(user_id="u2", title="theirs", labels=tracked, external_ref=thread)
+        )
+
+        found = await repo.list_active_tracked("u", limit=10, external_ref=thread)
+
+        assert [t.title for t in found] == ["owner"]
+
+    async def test_find_latest_by_external_ref_is_the_users_newest_open_or_completed(
+        self, repo, make_doc, raw_collection
+    ):
+        desk = todo_models.ExternalRef(source=todo_models.ExternalRefSource.INBOX_DESK, id="gmail")
+        thread = todo_models.ExternalRef(
+            source=todo_models.ExternalRefSource.GMAIL_THREAD, id="gmail"
+        )
+        now = datetime.now(UTC)
+        # The oldest goes in first, so a read in insertion order would answer it.
+        for title, owner, ref, age, completed in (
+            ("first", "u", desk, 3, True),
+            ("stopped", "u", desk, 1, True),
+            ("theirs", "u2", desk, 0, False),
+            ("thread", "u", thread, 0, False),
+        ):
+            todo = await repo.create(
+                make_doc(user_id=owner, title=title, external_ref=ref, completed=completed)
+            )
+            await raw_collection.update_one(
+                {"_id": ObjectId(todo.id)}, {"$set": {"created_at": now - timedelta(hours=age)}}
+            )
+
+        latest = await repo.find_latest_by_external_ref("u", desk)
+        nothing = await repo.find_latest_by_external_ref("u3", desk)
+
+        assert latest is not None
+        assert (latest.title, latest.completed) == ("stopped", True)
+        assert nothing is None
+
+    async def test_list_open_by_external_ref_source_is_every_users_open_todo_of_that_kind(
+        self, repo, make_doc
+    ):
+        desk = todo_models.ExternalRef(source=todo_models.ExternalRefSource.INBOX_DESK, id="gmail")
+        thread = todo_models.ExternalRef(
+            source=todo_models.ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611"
+        )
+        for title, owner, ref, completed in (
+            ("open desk", "u", desk, False),
+            ("their desk", "u2", desk, False),
+            ("stopped desk", "u3", desk, True),
+            ("thread", "u", thread, False),
+            ("no ref", "u", None, False),
+        ):
+            await repo.create(
+                make_doc(user_id=owner, title=title, external_ref=ref, completed=completed)
+            )
+
+        found = await repo.list_open_by_external_ref_source(
+            todo_models.ExternalRefSource.INBOX_DESK
+        )
+
+        assert sorted(t.title for t in found) == ["open desk", "their desk"]
+
+    # ---- sub-todos ----------------------------------------------------------
+
+    async def test_top_level_listing_leaves_out_every_sub_todo(self, repo, make_doc):
+        tracked = [GAIA_TRACKED_LABEL]
+        desk = await repo.create(make_doc(user_id="u", title="desk", labels=tracked))
+        await repo.create(
+            make_doc(user_id="u", title="thread", labels=tracked, parent_todo_id=desk.id)
+        )
+        # A document written before sub-todos existed has no parent_todo_id field at all.
+        await repo.create(make_doc(user_id="u", title="legacy", labels=tracked))
+
+        found = await repo.list_active_tracked("u", limit=10, top_level=True)
+
+        assert sorted(t.title for t in found) == ["desk", "legacy"]
+
+    async def test_the_default_listing_keeps_sub_todos(self, repo, make_doc):
+        tracked = [GAIA_TRACKED_LABEL]
+        desk = await repo.create(make_doc(user_id="u", title="desk", labels=tracked))
+        await repo.create(
+            make_doc(user_id="u", title="thread", labels=tracked, parent_todo_id=desk.id)
+        )
+
+        found = await repo.list_active_tracked("u", limit=10)
+
+        assert sorted(t.title for t in found) == ["desk", "thread"]
+
+    async def test_one_parents_open_sub_todos_are_listed(self, repo, make_doc):
+        tracked = [GAIA_TRACKED_LABEL]
+        desk = await repo.create(make_doc(user_id="u", title="desk", labels=tracked))
+        other = await repo.create(make_doc(user_id="u", title="other", labels=tracked))
+        await repo.create(
+            make_doc(user_id="u", title="open", labels=tracked, parent_todo_id=desk.id)
+        )
+        await repo.create(
+            make_doc(
+                user_id="u", title="done", labels=tracked, parent_todo_id=desk.id, completed=True
+            )
+        )
+        await repo.create(
+            make_doc(user_id="u", title="elsewhere", labels=tracked, parent_todo_id=other.id)
+        )
+
+        found = await repo.list_active_tracked("u", limit=10, parent_todo_id=desk.id)
+
+        assert [t.title for t in found] == ["open"]
+
+    async def test_open_sub_todos_are_counted_per_parent_for_the_caller_only(self, repo, make_doc):
+        tracked = [GAIA_TRACKED_LABEL]
+        desk = await repo.create(make_doc(user_id="u", title="desk", labels=tracked))
+        lone = await repo.create(make_doc(user_id="u", title="lone", labels=tracked))
+        for i in range(3):
+            await repo.create(make_doc(user_id="u", title=f"t{i}", parent_todo_id=desk.id))
+        await repo.create(
+            make_doc(user_id="u", title="done", parent_todo_id=desk.id, completed=True)
+        )
+        await repo.create(make_doc(user_id="u2", title="theirs", parent_todo_id=desk.id))
+
+        counts = await repo.count_open_sub_todos("u", [desk.id, lone.id])
+
+        assert counts == {desk.id: 3}
+
+    async def test_find_sub_todos_returns_open_and_completed_of_every_given_parent(
+        self, repo, make_doc
+    ):
+        a = await repo.create(make_doc(user_id="u", title="a"))
+        b = await repo.create(make_doc(user_id="u", title="b"))
+        await repo.create(make_doc(user_id="u", title="a1", parent_todo_id=a.id))
+        await repo.create(make_doc(user_id="u", title="b1", parent_todo_id=b.id, completed=True))
+        await repo.create(make_doc(user_id="u", title="loose"))
+        await repo.create(make_doc(user_id="u2", title="theirs", parent_todo_id=a.id))
+
+        found = await repo.find_sub_todos("u", [a.id, b.id])
+
+        assert sorted(t.title for t in found) == ["a1", "b1"]
+
+    async def test_list_page_filters_by_parent_across_projects(self, repo, make_doc):
+        await repo.create(
+            make_doc(user_id="u", title="in inbox", project_id="inbox-1", parent_todo_id="p")
+        )
+        await repo.create(
+            make_doc(user_id="u", title="elsewhere", project_id="p2", parent_todo_id="p")
+        )
+        await repo.create(make_doc(user_id="u", title="unrelated", project_id="inbox-1"))
+
+        page = await repo.list_page(
+            user_id="u", params=_all_params(parent_todo_id="p"), inbox_project_id="inbox-1"
+        )
+
+        assert sorted(t.title for t in page.items) == ["elsewhere", "in inbox"]
+
     async def test_vfs_partitions_by_tracked_label(self, repo, make_doc):
         cutoff = datetime.now(UTC) - timedelta(days=7)
         await repo.create(make_doc(user_id="u", title="tracked", labels=[GAIA_TRACKED_LABEL]))
@@ -286,6 +628,31 @@ class TestTodosRepository(UserScopedRepositoryContract):
         due = await repo.find_due_tracked_all_users(now=now, max_retries=3, limit=100)
         assert len(due) == 1
         assert due[0].user_id == "u2"
+
+    async def test_a_paused_tracked_todo_is_never_due_and_is_found_by_its_reason(
+        self, repo, make_doc
+    ):
+        now = datetime.now(UTC)
+        created = await repo.create(
+            make_doc(
+                user_id="u-paused",
+                labels=[GAIA_TRACKED_LABEL],
+                scheduled_at=now - timedelta(minutes=5),
+                gaia_retry_count=0,
+            )
+        )
+        await repo.update(
+            created.id,
+            user_id="u-paused",
+            update=TodoUpdate(pause_reason=DeactivationReason.SUBSCRIPTION_LAPSED),
+        )
+
+        due = await repo.find_due_tracked_all_users(now=now, max_retries=3, limit=100)
+        assert created.id not in [t.id for t in due]
+        paused = await repo.find_paused_for_reason(
+            "u-paused", DeactivationReason.SUBSCRIPTION_LAPSED
+        )
+        assert [t.id for t in paused] == [created.id]
 
     # ---- trigger-subscription finders --------------------------------------
 
@@ -322,7 +689,7 @@ class TestTodosRepository(UserScopedRepositoryContract):
         paused = _subscription(
             resolution=SubscriptionResolution.TRIGGER_ID,
             composio_trigger_ids=["ti_1"],
-            status=SubscriptionStatus.PAUSED,
+            status=TriggerSubscriptionStatus.PAUSED,
         )
         await repo.create(make_doc(user_id="u", title="live", trigger_subscriptions=[live]))
         await repo.create(
@@ -359,21 +726,12 @@ class TestTodosRepository(UserScopedRepositoryContract):
 
         assert [t.title for t in found] == ["gmail"]
 
-    async def test_a_subscription_written_by_update_is_findable(self, repo, make_doc):
-        """Registration writes through ``update``, not ``create``.
-
-        ``_apply_update`` dumps with ``exclude_unset=True``, which recurses into
-        the nested subscription: every field left at its default was dropped
-        before reaching Mongo, so the stored record had no ``status`` — and the
-        dispatch finders match on ``status``. The write succeeded, the document
-        looked plausible, and the watch simply never fired.
-        """
+    async def test_an_appended_subscription_is_findable(self, repo, make_doc):
+        """Regression: a write that dropped default-valued nested subscription fields (including status) left dispatch finders matching nothing."""
         doc = await repo.create(make_doc(user_id="u"))
         subscription = _subscription()
 
-        await repo.update(
-            doc.id, user_id="u", update=TodoUpdate(trigger_subscriptions=[subscription])
-        )
+        await repo.add_trigger_subscription(doc.id, user_id="u", subscription=subscription)
 
         found = await repo.find_active_by_user_and_trigger("u", "gmail_new_message")
         assert [t.id for t in found] == [doc.id]
@@ -381,21 +739,75 @@ class TestTodosRepository(UserScopedRepositoryContract):
         stored = await repo.get(doc.id, user_id="u")
         written = stored.trigger_subscriptions[0]
         assert written.id == subscription.id
-        assert written.status is SubscriptionStatus.ACTIVE
+        assert written.status is TriggerSubscriptionStatus.ACTIVE
         assert written.created_at is not None
 
-    async def test_a_trigger_id_subscription_written_by_update_is_findable(self, repo, make_doc):
+    async def test_an_appended_trigger_id_subscription_is_findable(self, repo, make_doc):
         doc = await repo.create(make_doc(user_id="u"))
         subscription = _subscription(
             resolution=SubscriptionResolution.TRIGGER_ID, composio_trigger_ids=["ti_upd"]
         )
 
-        await repo.update(
-            doc.id, user_id="u", update=TodoUpdate(trigger_subscriptions=[subscription])
-        )
+        await repo.add_trigger_subscription(doc.id, user_id="u", subscription=subscription)
 
         found = await repo.find_active_by_composio_trigger("ti_upd")
         assert [t.id for t in found] == [doc.id]
+
+    async def test_a_gate_is_set_on_the_one_run_watch_it_names(
+        self, repo, make_doc, raw_collection
+    ):
+        desk_mail, other = (
+            _subscription(gate=_DESK_GATE),
+            _subscription(trigger_name="gmail_email_sent"),
+        )
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[desk_mail, other]))
+        off = _DESK_GATE.model_copy(update={"enabled": False})
+
+        written = await repo.set_subscription_gate(
+            doc.id, user_id="u", subscription_id=desk_mail.id, gate=off
+        )
+
+        assert written is not None
+        assert [w.gate for w in written.trigger_subscriptions] == [off, None]
+        raw = await raw_collection.find_one({"_id": ObjectId(doc.id)})
+        assert raw["trigger_subscriptions"][0]["gate"] == {
+            "kind": "system",
+            "recent_skips": [],
+            "skipped_count": 0,
+            "preset": "inbox_desk",
+            "enabled": False,
+        }
+
+    async def test_a_gate_write_refreshes_the_cached_copy(self, repo, make_doc):
+        watch = _subscription(gate=_DESK_GATE)
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[watch]))
+        await repo.get(doc.id, user_id="u")  # warm the entity cache
+        off = _DESK_GATE.model_copy(update={"enabled": False})
+
+        await repo.set_subscription_gate(doc.id, user_id="u", subscription_id=watch.id, gate=off)
+
+        cached = await repo.get(doc.id, user_id="u")
+        assert cached is not None
+        assert [w.gate for w in cached.trigger_subscriptions] == [off]
+
+    @pytest.mark.parametrize(
+        ("owner", "action"),
+        [("intruder", SubscriptionAction.EXECUTE), ("u", SubscriptionAction.NOTIFY)],
+        ids=["another_users_todo", "a_watch_that_starts_no_run"],
+    )
+    async def test_a_gate_write_it_may_not_make_writes_nothing(
+        self, repo, make_doc, raw_collection, owner, action
+    ):
+        watch = _subscription(action=action)
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[watch]))
+        before = await raw_collection.find_one({"_id": ObjectId(doc.id)})
+
+        written = await repo.set_subscription_gate(
+            doc.id, user_id=owner, subscription_id=watch.id, gate=_DESK_GATE
+        )
+
+        assert written is None
+        assert await raw_collection.find_one({"_id": ObjectId(doc.id)}) == before
 
     async def test_count_trigger_references_counts_across_users(self, repo, make_doc):
         sub = _subscription(
@@ -412,7 +824,7 @@ class TestTodosRepository(UserScopedRepositoryContract):
         paused = _subscription(
             resolution=SubscriptionResolution.TRIGGER_ID,
             composio_trigger_ids=["ti_1"],
-            status=SubscriptionStatus.PAUSED,
+            status=TriggerSubscriptionStatus.PAUSED,
         )
         await repo.create(make_doc(user_id="u", trigger_subscriptions=[paused]))
 
@@ -488,8 +900,7 @@ class TestTodosRepository(UserScopedRepositoryContract):
 
 
 class TestAppendTextField:
-    """``append_text_field`` is one atomic server-side concatenation — concurrent
-    appends cannot read-then-clobber each other."""
+    """append_text_field is one atomic concatenation - concurrent appends can't clobber each other."""
 
     @pytest.mark.regression
     async def test_append_onto_missing_field(self, repo, make_doc):
@@ -513,6 +924,50 @@ class TestAppendTextField:
         assert updated is not None
         assert updated.activity_content == "- a\n- b"
 
+    async def test_a_keyed_append_retried_after_a_lost_ack_lands_once(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1"))
+
+        for _ in range(2):
+            updated = await repo.append_text_field(
+                created.id, "u1", field="activity_content", suffix="\nrun r1: b", once="run r1:"
+            )
+
+        assert updated is not None
+        assert updated.activity_content == "run r1: b"
+
+    async def test_an_append_trims_only_leading_newlines(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1"))
+
+        updated = await repo.append_text_field(
+            created.id, "u1", field="log_content", suffix="\n\nXmas list"
+        )
+
+        assert updated is not None
+        assert updated.log_content == "Xmas list"
+
+    async def test_an_append_stamps_updated_at_in_utc_whatever_the_host_zone(
+        self, repo, make_doc, monkeypatch
+    ):
+        """Writers compare-and-set on updated_at, so an append must move it, in UTC."""
+        created = await repo.create(make_doc(user_id="u1"))
+        with _host_zone_ahead_of_utc(monkeypatch):
+            updated = await repo.append_text_field(
+                created.id, "u1", field="activity_content", suffix="\n- a"
+            )
+
+        assert updated is not None
+        assert abs(updated.updated_at - datetime.now(UTC)) < timedelta(minutes=1)
+        assert updated.updated_at > created.updated_at
+
+    async def test_an_append_refreshes_the_cached_copy(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1", activity_content="- a"))
+        await repo.get(created.id, user_id="u1")  # warm the entity cache
+
+        await repo.append_text_field(created.id, "u1", field="activity_content", suffix="\n- b")
+
+        cached = await repo.get(created.id, user_id="u1")
+        assert cached is not None and cached.activity_content == "- a\n- b"
+
     async def test_append_missing_todo_returns_none(self, repo):
         assert (
             await repo.append_text_field("0" * 24, "u1", field="log_content", suffix="\n- x")
@@ -533,8 +988,7 @@ class TestAppendTextField:
 
 
 class TestReplaceNoteFields:
-    """``replace_note_fields`` is the compare-and-set primitive for note bodies:
-    with a revision it only writes when nothing else won the race."""
+    """replace_note_fields is compare-and-set: a revision write only lands if nothing else won the race."""
 
     @pytest.mark.regression
     async def test_replace_with_matching_revision(self, repo, make_doc):
@@ -567,6 +1021,41 @@ class TestReplaceNoteFields:
         untouched = await repo.get_by_id(created.id)
         assert untouched is not None and untouched.canvas_content == "v1"
 
+    @pytest.mark.regression
+    async def test_a_refused_write_leaves_no_stale_copy_cached(
+        self, repo, make_doc, raw_collection
+    ):
+        """A revision that moved behind the cache must not refuse every retry that re-reads it."""
+        created = await repo.create(make_doc(user_id="u1", canvas_content="v1"))
+        stale = await repo.get(created.id, user_id="u1")
+        assert stale is not None and stale.updated_at is not None
+        await raw_collection.update_one(
+            {"_id": repo._id_value(created.id)},
+            {
+                "$set": {
+                    "canvas_content": "v1b",
+                    "updated_at": stale.updated_at + timedelta(seconds=1),
+                }
+            },
+        )
+        refused = await repo.replace_note_fields(
+            created.id,
+            "u1",
+            update=TodoUpdate(canvas_content="v2"),
+            expected_updated_at=stale.updated_at,
+        )
+        assert refused is None
+
+        reread = await repo.get(created.id, user_id="u1")
+        assert reread is not None and reread.canvas_content == "v1b"
+        retried = await repo.replace_note_fields(
+            created.id,
+            "u1",
+            update=TodoUpdate(canvas_content="v2"),
+            expected_updated_at=reread.updated_at,
+        )
+        assert retried is not None and retried.canvas_content == "v2"
+
     async def test_replace_without_revision_always_writes(self, repo, make_doc):
         created = await repo.create(make_doc(user_id="u1", canvas_content="v1"))
 
@@ -578,6 +1067,334 @@ class TestReplaceNoteFields:
         )
 
         assert updated is not None and updated.canvas_content == "v2"
+
+    @pytest.mark.regression
+    async def test_untouched_replace_keeps_updated_at(self, repo, make_doc, raw_collection):
+        """A canvas repair is not activity: dormancy and recency read updated_at."""
+        created = await repo.create(make_doc(user_id="u1", canvas_content="v1"))
+        idle_since = datetime(2026, 9, 1, tzinfo=UTC)
+        await raw_collection.update_one(
+            {"_id": repo._id_value(created.id)}, {"$set": {"updated_at": idle_since}}
+        )
+
+        updated = await repo.replace_note_fields(
+            created.id,
+            "u1",
+            update=TodoUpdate(canvas_content="v2"),
+            expected_updated_at=idle_since,
+            touch=False,
+        )
+
+        assert updated is not None and updated.canvas_content == "v2"
+        stored = await repo.get_by_id(created.id)
+        assert stored is not None and stored.updated_at == idle_since
+
+    async def test_untouched_replace_still_refuses_a_stale_revision(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1", canvas_content="v1"))
+
+        assert (
+            await repo.replace_note_fields(
+                created.id,
+                "u1",
+                update=TodoUpdate(canvas_content="v2"),
+                expected_updated_at=datetime(2020, 1, 1, tzinfo=UTC),
+                touch=False,
+            )
+            is None
+        )
+
+
+class TestUpdateIfScheduledAt:
+    """A finished run moves the schedule on only if nothing rescheduled the todo while it ran."""
+
+    async def test_moves_the_schedule_when_it_is_unchanged(self, repo, make_doc):
+        due = datetime(2026, 9, 27, 9, 0, tzinfo=UTC)
+        created = await repo.create(make_doc(user_id="u1", scheduled_at=due))
+        stored = await repo.get(created.id, user_id="u1")
+        assert stored is not None
+
+        updated = await repo.update_if_scheduled_at(
+            created.id,
+            "u1",
+            expected=stored.scheduled_at,
+            update=TodoUpdate(scheduled_at=due + timedelta(days=1)),
+        )
+
+        assert updated is not None and updated.scheduled_at == due + timedelta(days=1)
+        # Read back through the user's cache scope, which the earlier get populated.
+        reread = await repo.get(created.id, user_id="u1")
+        assert reread is not None and reread.scheduled_at == due + timedelta(days=1)
+
+    async def test_a_schedule_set_meanwhile_is_kept(self, repo, make_doc):
+        due = datetime(2026, 9, 27, 9, 0, tzinfo=UTC)
+        created = await repo.create(make_doc(user_id="u1", scheduled_at=due))
+        follow_up = due + timedelta(hours=3)
+        await repo.update(created.id, user_id="u1", update=TodoUpdate(scheduled_at=follow_up))
+
+        assert (
+            await repo.update_if_scheduled_at(
+                created.id, "u1", expected=due, update=TodoUpdate(scheduled_at=None)
+            )
+            is None
+        )
+        kept = await repo.get(created.id, user_id="u1")
+        assert kept is not None and kept.scheduled_at == follow_up
+
+    async def test_an_unscheduled_todo_matches_an_expected_none(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1"))
+
+        updated = await repo.update_if_scheduled_at(
+            created.id, "u1", expected=None, update=TodoUpdate(gaia_retry_count=0)
+        )
+
+        assert updated is not None
+
+
+class TestAddTriggerSubscription:
+    """The watch append is one atomic update that dedupes in Mongo, never a read-modify-write."""
+
+    async def test_a_new_watch_joins_the_ones_already_there(self, repo, make_doc):
+        first = _subscription(trigger_name="slack_new_message")
+        created = await repo.create(make_doc(user_id="u1", trigger_subscriptions=[first]))
+        second = _subscription()
+
+        updated = await repo.add_trigger_subscription(created.id, user_id="u1", subscription=second)
+
+        assert updated is not None
+        assert [sub.id for sub in updated.trigger_subscriptions] == [first.id, second.id]
+        assert updated.updated_at > created.updated_at
+        cached = await repo.get(created.id, user_id="u1")
+        assert cached is not None
+        assert [sub.id for sub in cached.trigger_subscriptions] == [first.id, second.id]
+
+    @pytest.mark.regression
+    async def test_an_identical_active_watch_is_kept_and_nothing_is_appended(self, repo, make_doc):
+        existing = _subscription(
+            conditions=[_condition("thread_id", "t-1"), _condition("from", "a@b.c")],
+            trigger_data={"window": "1h", "channel": "C1"},
+        )
+        created = await repo.create(make_doc(user_id="u1", trigger_subscriptions=[existing]))
+        # The same watch, its conditions and trigger_data keys in another order.
+        twin = _subscription(
+            conditions=[_condition("from", "a@b.c"), _condition("thread_id", "t-1")],
+            trigger_data={"channel": "C1", "window": "1h"},
+        )
+
+        updated = await repo.add_trigger_subscription(created.id, user_id="u1", subscription=twin)
+
+        assert updated is not None
+        assert [sub.id for sub in updated.trigger_subscriptions] == [existing.id]
+        assert updated.updated_at == created.updated_at
+
+    @pytest.mark.regression
+    async def test_a_paused_twin_is_not_a_duplicate(self, repo, make_doc):
+        """Regression: a re-added watch returned its paused twin, which cannot fire."""
+        paused = _subscription(status=TriggerSubscriptionStatus.PAUSED)
+        created = await repo.create(make_doc(user_id="u1", trigger_subscriptions=[paused]))
+        live = _subscription()
+
+        updated = await repo.add_trigger_subscription(created.id, user_id="u1", subscription=live)
+
+        assert updated is not None
+        assert [sub.id for sub in updated.trigger_subscriptions] == [paused.id, live.id]
+
+    async def test_a_paused_watch_is_appended_beside_its_active_twin(self, repo, make_doc):
+        live = _subscription()
+        created = await repo.create(make_doc(user_id="u1", trigger_subscriptions=[live]))
+        paused = _subscription(status=TriggerSubscriptionStatus.PAUSED)
+
+        updated = await repo.add_trigger_subscription(created.id, user_id="u1", subscription=paused)
+
+        assert updated is not None
+        assert [sub.id for sub in updated.trigger_subscriptions] == [live.id, paused.id]
+
+    async def test_an_append_stamps_updated_at_in_utc_whatever_the_host_zone(
+        self, repo, make_doc, monkeypatch
+    ):
+        created = await repo.create(make_doc(user_id="u1"))
+        with _host_zone_ahead_of_utc(monkeypatch):
+            updated = await repo.add_trigger_subscription(
+                created.id, user_id="u1", subscription=_subscription()
+            )
+
+        assert updated is not None
+        assert abs(updated.updated_at - datetime.now(UTC)) < timedelta(minutes=1)
+
+    @pytest.mark.parametrize(
+        "different",
+        [
+            {"cooldown_seconds": 3600},
+            {"trigger_data": {"window": "15m"}},
+            {"account_id": "acct_home"},
+            {"action": SubscriptionAction.NOTIFY},
+            {"match": ConditionMatch.ANY},
+            {"conditions": [_condition("thread_id", "t-2")]},
+            {"trigger_name": "gmail_email_sent"},
+        ],
+    )
+    async def test_a_watch_with_other_settings_is_another_watch(self, repo, make_doc, different):
+        existing = _subscription(
+            account_id="acct_work",
+            conditions=[_condition("thread_id", "t-1")],
+            trigger_data={"window": "1h"},
+        )
+        created = await repo.create(make_doc(user_id="u1", trigger_subscriptions=[existing]))
+        other = existing.model_copy(update={"id": "other", **different})
+
+        updated = await repo.add_trigger_subscription(created.id, user_id="u1", subscription=other)
+
+        assert updated is not None
+        assert [sub.id for sub in updated.trigger_subscriptions] == [existing.id, "other"]
+
+    async def test_a_value_shaped_like_a_field_path_is_stored_as_written(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1"))
+        watch = _subscription(
+            conditions=[_condition("subject", "$title")], trigger_data={"tag": "$labels"}
+        )
+
+        updated = await repo.add_trigger_subscription(created.id, user_id="u1", subscription=watch)
+
+        assert updated is not None
+        (stored,) = updated.trigger_subscriptions
+        assert stored.conditions[0].value == "$title"
+        assert stored.trigger_data == {"tag": "$labels"}
+
+    async def test_the_append_is_scoped_to_the_todos_owner(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1"))
+
+        assert (
+            await repo.add_trigger_subscription(
+                created.id, user_id="u2", subscription=_subscription()
+            )
+            is None
+        )
+        unchanged = await repo.get(created.id, user_id="u1")
+        assert unchanged is not None and unchanged.trigger_subscriptions == []
+
+
+class TestRemoveTriggerSubscriptions:
+    async def test_pulls_only_the_named_watch_and_returns_the_todo_before(self, repo, make_doc):
+        kept, gone = _subscription(trigger_name="slack_new_message"), _subscription()
+        created = await repo.create(make_doc(user_id="u1", trigger_subscriptions=[kept, gone]))
+        await repo.get(created.id, user_id="u1")  # warm the entity cache
+
+        before = await repo.remove_trigger_subscriptions(
+            created.id, user_id="u1", subscription_ids=[gone.id]
+        )
+
+        assert before is not None
+        assert [sub.id for sub in before.trigger_subscriptions] == [kept.id, gone.id]
+        after = await repo.get(created.id, user_id="u1")
+        assert after is not None
+        assert [sub.id for sub in after.trigger_subscriptions] == [kept.id]
+
+    async def test_a_watch_the_todo_does_not_hold_removes_nothing(self, repo, make_doc):
+        kept = _subscription()
+        created = await repo.create(make_doc(user_id="u1", trigger_subscriptions=[kept]))
+
+        assert (
+            await repo.remove_trigger_subscriptions(
+                created.id, user_id="u1", subscription_ids=["absent"]
+            )
+            is None
+        )
+        after = await repo.get(created.id, user_id="u1")
+        assert after is not None
+        assert [sub.id for sub in after.trigger_subscriptions] == [kept.id]
+
+
+class TestClearTriggerSubscriptions:
+    async def test_drops_every_watch_and_returns_what_it_dropped(self, repo, make_doc):
+        watches = [_subscription(), _subscription(status=TriggerSubscriptionStatus.PAUSED)]
+        created = await repo.create(make_doc(user_id="u1", trigger_subscriptions=watches))
+        await repo.get(created.id, user_id="u1")  # warm the entity cache
+
+        before = await repo.clear_trigger_subscriptions(created.id, user_id="u1")
+
+        assert before is not None
+        assert [sub.id for sub in before.trigger_subscriptions] == [w.id for w in watches]
+        after = await repo.get(created.id, user_id="u1")
+        assert after is not None and after.trigger_subscriptions == []
+
+    async def test_a_todo_without_watches_has_nothing_to_clear(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1"))
+
+        assert await repo.clear_trigger_subscriptions(created.id, user_id="u1") is None
+
+
+class TestPauseAndResumeTriggerSubscriptions:
+    async def test_pausing_marks_only_the_named_watches_and_blocks_the_todo_once(
+        self, repo, make_doc
+    ):
+        hit, spared = _subscription(), _subscription(trigger_name="slack_new_message")
+        created = await repo.create(
+            make_doc(user_id="u1", labels=["keepme"], trigger_subscriptions=[hit, spared])
+        )
+        await repo.get(created.id, user_id="u1")  # warm the entity cache
+
+        for _ in range(2):
+            paused = await repo.pause_trigger_subscriptions(
+                created.id, user_id="u1", subscription_ids={hit.id}
+            )
+
+        assert paused is not None
+        assert {s.id: s.status for s in paused.trigger_subscriptions} == {
+            hit.id: TriggerSubscriptionStatus.PAUSED,
+            spared.id: TriggerSubscriptionStatus.ACTIVE,
+        }
+        assert paused.labels == ["keepme", BLOCKING_LABEL]
+        cached = await repo.get(created.id, user_id="u1")
+        assert cached is not None and cached.labels == ["keepme", BLOCKING_LABEL]
+
+    async def test_resuming_the_last_paused_watch_lifts_the_block(self, repo, make_doc):
+        watch = _subscription(
+            status=TriggerSubscriptionStatus.PAUSED, composio_trigger_ids=["ti_old"]
+        )
+        created = await repo.create(
+            make_doc(user_id="u1", labels=[BLOCKING_LABEL, "keepme"], trigger_subscriptions=[watch])
+        )
+
+        resumed = await repo.resume_trigger_subscriptions(
+            created.id, user_id="u1", trigger_ids={watch.id: ["ti_new"]}
+        )
+
+        assert resumed is not None
+        (stored,) = resumed.trigger_subscriptions
+        assert stored.status is TriggerSubscriptionStatus.ACTIVE
+        assert stored.composio_trigger_ids == ["ti_new"]
+        assert resumed.labels == ["keepme"]
+        cached = await repo.get(created.id, user_id="u1")
+        assert cached is not None and cached.labels == ["keepme"]
+
+    async def test_a_watch_still_paused_keeps_the_block(self, repo, make_doc):
+        work = _subscription(status=TriggerSubscriptionStatus.PAUSED, account_id="acct_work")
+        home = _subscription(status=TriggerSubscriptionStatus.PAUSED, account_id="acct_home")
+        created = await repo.create(
+            make_doc(user_id="u1", labels=[BLOCKING_LABEL], trigger_subscriptions=[work, home])
+        )
+        listing = {"user_id": "u1", "params": _all_params(), "inbox_project_id": None}
+        await repo.list_page(**listing)  # warm the cached listing
+
+        resumed = await repo.resume_trigger_subscriptions(
+            created.id, user_id="u1", trigger_ids={work.id: []}
+        )
+
+        assert resumed is not None
+        assert {s.id: s.status for s in resumed.trigger_subscriptions} == {
+            work.id: TriggerSubscriptionStatus.ACTIVE,
+            home.id: TriggerSubscriptionStatus.PAUSED,
+        }
+        assert resumed.labels == [BLOCKING_LABEL]
+        (listed,) = (await repo.list_page(**listing)).items
+        assert listed.trigger_subscriptions[0].status is TriggerSubscriptionStatus.ACTIVE
+
+    async def test_resuming_a_missing_todo_writes_nothing(self, repo):
+        assert (
+            await repo.resume_trigger_subscriptions(
+                str(ObjectId()), user_id="u1", trigger_ids={"absent": []}
+            )
+            is None
+        )
 
 
 class TestCrossDomainDeletes:
@@ -601,7 +1418,7 @@ class TestCrossDomainDeletes:
 
 
 class TestTrackedShortIdFinder:
-    """``find_tracked_by_short_id`` backs ``<slug>-<shortid>`` folder resolution."""
+    """find_tracked_by_short_id backs slug-shortid folder resolution."""
 
     async def test_matches_object_id_suffix_for_tracked_todos_only(self, repo, make_doc):
         tracked = await repo.create(make_doc(user_id="u1", labels=[GAIA_TRACKED_LABEL]))
@@ -634,8 +1451,7 @@ class TestTrackedShortIdFinder:
 
 
 class TestLegacyMigrationScan:
-    """``list_tracked_for_legacy_migration`` pages every tracked todo — active
-    or completed — in ``_id`` order, so the migration sweep cannot skip records."""
+    """list_tracked_for_legacy_migration pages every todo in _id order, so the sweep can't skip records."""
 
     @pytest.mark.regression
     async def test_pages_active_and_completed_in_id_order(self, repo, make_doc):
@@ -650,3 +1466,118 @@ class TestLegacyMigrationScan:
         page_two = await repo.list_tracked_for_legacy_migration(limit=2, after_id=page_one[-1].id)
         assert [t.id for t in page_two] == sorted([first.id, last.id])[2:]
         assert await repo.list_tracked_for_legacy_migration(limit=2, after_id=last.id) == []
+
+
+class TestLinkWorkflow:
+    """link_workflow is the only writer of workflow_id, and it never links a tracked todo."""
+
+    async def test_links_a_classic_todo(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1", labels=[]))
+        linked = await repo.link_workflow(created.id, user_id="u1", workflow_id="wf1")
+        assert linked is not None and linked.workflow_id == "wf1"
+
+    async def test_refuses_a_tracked_todo_and_writes_nothing(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1", labels=[GAIA_TRACKED_LABEL]))
+        assert await repo.link_workflow(created.id, user_id="u1", workflow_id="wf1") is None
+        stored = await repo.get_by_id(created.id)
+        assert stored is not None and stored.workflow_id is None
+
+    async def test_is_user_scoped(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="owner", labels=[]))
+        assert await repo.link_workflow(created.id, user_id="attacker", workflow_id="wf1") is None
+
+    async def test_a_link_is_visible_through_the_cached_read(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1", labels=[]))
+        primed = await repo.get(created.id, user_id="u1")
+        assert primed is not None and primed.workflow_id is None
+
+        await repo.link_workflow(created.id, user_id="u1", workflow_id="wf1")
+
+        fresh = await repo.get(created.id, user_id="u1")
+        assert fresh is not None and fresh.workflow_id == "wf1"
+
+
+class TestOpenExternalRefIndex:
+    """One open todo per (user, external object), enforced by the index startup ships."""
+
+    @pytest.fixture(autouse=True)
+    async def _shipped_index(self, raw_collection) -> None:
+        await raw_collection.create_index(
+            indexes.TODO_OPEN_EXTERNAL_REF_KEYS, **indexes.TODO_OPEN_EXTERNAL_REF_OPTIONS
+        )
+
+    @staticmethod
+    def _thread(thread_id: str = "thread-1") -> todo_models.ExternalRef:
+        return todo_models.ExternalRef(
+            source=todo_models.ExternalRefSource.GMAIL_THREAD, id=thread_id
+        )
+
+    async def test_a_second_open_todo_for_the_same_thread_is_rejected(self, repo, make_doc):
+        await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+        with pytest.raises(DuplicateKeyError):
+            await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+
+    async def test_completing_the_todo_frees_the_thread(self, repo, make_doc):
+        first = await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+        await repo.update(first.id, user_id="u1", update=TodoUpdate(completed=True))
+
+        second = await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+
+        assert second.id != first.id
+        assert second.external_ref == self._thread()
+
+    async def test_todos_without_a_ref_never_collide(self, repo, make_doc):
+        for i in range(3):
+            await repo.create(make_doc(user_id="u1", title=f"plain {i}"))
+        assert await repo.count_for_user("u1") == 3
+
+    async def test_the_same_thread_is_independent_per_user_and_per_thread(self, repo, make_doc):
+        await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+        await repo.create(make_doc(user_id="u2", external_ref=self._thread()))
+        await repo.create(make_doc(user_id="u1", external_ref=self._thread("thread-2")))
+        assert await repo.count_for_user("u1") == 2
+
+    async def test_a_ref_lookup_is_served_by_the_partial_index(self, raw_collection):
+        """An untyped equality is not provably inside the partial filter, so Mongo scanned every open todo."""
+        query = {
+            "user_id": "u1",
+            **todos_repository_module._external_ref_filter(self._thread()),
+            "completed": False,
+        }
+
+        plan = (await raw_collection.find(query).explain())["queryPlanner"]["winningPlan"]
+
+        assert indexes.TODO_OPEN_EXTERNAL_REF_OPTIONS["name"] in str(plan)
+
+    async def test_find_open_by_external_ref_returns_only_the_open_owner_todo(self, repo, make_doc):
+        done = await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+        await repo.update(done.id, user_id="u1", update=TodoUpdate(completed=True))
+        open_todo = await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+        await repo.create(make_doc(user_id="u1", external_ref=self._thread("thread-2")))
+
+        found = await repo.find_open_by_external_ref("u1", self._thread())
+
+        assert found is not None and found.id == open_todo.id
+        assert await repo.find_open_by_external_ref("u2", self._thread()) is None
+        assert await repo.find_open_by_external_ref("u1", self._thread("thread-3")) is None
+
+
+async def test_running_tracked_todos_are_the_users_open_unpaused_tracked_ones(repo, make_doc):
+    running = await repo.create(make_doc(user_id="u1", labels=[GAIA_TRACKED_LABEL], title="run"))
+    await repo.create(make_doc(user_id="u1", title="untracked"))
+    await repo.create(
+        make_doc(user_id="u1", labels=[GAIA_TRACKED_LABEL], title="done", completed=True)
+    )
+    await repo.create(
+        make_doc(
+            user_id="u1",
+            labels=[GAIA_TRACKED_LABEL],
+            title="paused",
+            pause_reason=DeactivationReason.USER_DORMANT,
+        )
+    )
+    await repo.create(make_doc(user_id="u2", labels=[GAIA_TRACKED_LABEL], title="other"))
+
+    found = await repo.find_running_tracked_for_user("u1")
+
+    assert [todo.id for todo in found] == [running.id]

@@ -1,10 +1,10 @@
 """@tiered_rate_limit must enforce regardless of what the auth param is named.
 
 Regression cover for a silent failure: the decorator used to resolve the caller
-by looking for a kwarg literally named ``user``, so an endpoint that named it
-``current_user``/``user_id``/``_user`` skipped rate limiting entirely — no log,
+by looking for a kwarg literally named user, so an endpoint that named it
+current_user/user_id/_user skipped rate limiting entirely — no log,
 no error, just unlimited access. These tests drive real routes through the real
-``WorkOSAuthMiddleware`` and assert the limiter actually fired.
+WorkOSAuthMiddleware and assert the limiter actually fired.
 """
 
 from collections.abc import Awaitable, Callable
@@ -17,8 +17,9 @@ import pytest
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.core.request_context import set_authenticated_user
 from app.decorators import tiered_rate_limit
+from app.models.user_models import AuthenticatedUser
 
-USER = {"user_id": "u1", "email": "a@b.c"}
+USER = AuthenticatedUser(user_id="u1", email="a@b.c")
 
 
 def _build_app() -> FastAPI:
@@ -38,17 +39,21 @@ def _build_app() -> FastAPI:
 
     @app.get("/named-user")
     @tiered_rate_limit("generate_image")
-    async def named_user(user: dict = Depends(get_current_user)) -> dict[str, str]:
+    async def named_user(user: AuthenticatedUser = Depends(get_current_user)) -> dict[str, str]:
         return {"ok": "1"}
 
     @app.get("/named-current-user")
     @tiered_rate_limit("generate_image")
-    async def named_current_user(current_user: dict = Depends(get_current_user)) -> dict[str, str]:
+    async def named_current_user(
+        current_user: AuthenticatedUser = Depends(get_current_user),
+    ) -> dict[str, str]:
         return {"ok": "1"}
 
     @app.get("/named-underscore-user")
     @tiered_rate_limit("generate_image")
-    async def named_underscore_user(_user: dict = Depends(get_current_user)) -> dict[str, str]:
+    async def named_underscore_user(
+        _user: AuthenticatedUser = Depends(get_current_user),
+    ) -> dict[str, str]:
         return {"ok": "1"}
 
     @app.get("/named-user-id")
@@ -125,13 +130,7 @@ def test_no_duplicate_decorator_remains() -> None:
 
 @pytest.mark.asyncio
 async def test_route_without_an_auth_dependency_is_still_limited() -> None:
-    """Auth comes from the middleware, not the handler's signature.
-
-    ``search_email_endpoint`` takes only ``query: str`` — no auth dependency at
-    all — yet it sits behind the global auth middleware and carries a
-    ``web_search`` limit. Resolving the caller from the request context (rather
-    than the handler's kwargs) is what lets that route be billed.
-    """
+    """search_email_endpoint takes only query: str, no auth dependency, yet resolving the caller from request context still lets it be billed."""
     app = FastAPI()
 
     @app.middleware("http")

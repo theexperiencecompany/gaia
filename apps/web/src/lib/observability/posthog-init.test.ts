@@ -9,34 +9,43 @@
  * replay needs a code change to enable. This pins that init carries an
  * explicit `session_recording` block.
  */
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const initMock = vi.fn();
+const sdkOrder: string[] = [];
+// Loading a lazy chunk takes real time, which is what lets posthog's own 1ms initial-pageview timer win.
+const CHUNK_LOAD_MS = 5;
+const POSTHOG_INITIAL_PAGEVIEW_DELAY_MS = 1;
 
 vi.mock("posthog-js", () => ({ default: { init: initMock } }));
+vi.mock("@sentry/nextjs", () => ({ init: vi.fn() }));
+
+async function runIdleLoader(): Promise<void> {
+  // instrumentation-client.ts only arms itself when `window` exists and
+  // schedules loading via the bare `requestIdleCallback` global.
+  let idleCallback: (() => Promise<void>) | undefined;
+  vi.stubGlobal("window", { requestIdleCallback: true });
+  vi.stubGlobal("requestIdleCallback", (callback: () => Promise<void>) => {
+    idleCallback = callback;
+  });
+  await import("../../../instrumentation-client");
+  expect(idleCallback).toBeDefined();
+  await idleCallback?.();
+}
 
 describe("instrumentation-client posthog init", () => {
   beforeEach(() => {
     vi.resetModules();
-    initMock.mockClear();
+    vi.doUnmock("@/lib/analytics");
+    initMock.mockReset();
+    sdkOrder.length = 0;
     vi.unstubAllGlobals();
     vi.stubEnv("NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN", "phc_test_token");
   });
 
   it("passes an explicit session_recording block to posthog.init", async () => {
-    // instrumentation-client.ts only arms itself when `window` exists and
-    // schedules loading via the bare `requestIdleCallback` global.
-    // Capture the idle-time loader instead of waiting for it.
-    let idleCallback: (() => void) | undefined;
-    vi.stubGlobal("window", { requestIdleCallback: true });
-    vi.stubGlobal("requestIdleCallback", (callback: () => void) => {
-      idleCallback = callback;
-    });
-
-    await import("../../../instrumentation-client");
-    expect(idleCallback).toBeDefined();
-
-    idleCallback?.();
+    await runIdleLoader();
     await vi.waitFor(() => {
       expect(initMock).toHaveBeenCalledTimes(1);
     });
@@ -48,5 +57,62 @@ describe("instrumentation-client posthog init", () => {
     expect(token).toBe("phc_test_token");
     expect(config["disable_session_recording"]).not.toBe(true);
     expect(config["session_recording"]).toEqual({});
+  });
+
+  it("masks the customer's email and payment ids a Dodo return URL carries", async () => {
+    await runIdleLoader();
+    await vi.waitFor(() => {
+      expect(initMock).toHaveBeenCalledTimes(1);
+    });
+
+    const [, config] = initMock.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    // The SDK masks these at the source: events, person properties and the
+    // flags request alike. A before_send hook would miss the last two.
+    expect(config["mask_personal_data_properties"]).toBe(true);
+    expect(config["custom_personal_data_properties"]).toEqual(
+      expect.arrayContaining(["email", "payment_id", "subscription_id"]),
+    );
+  });
+
+  it("drops a legacy email identity before posthog's initial pageview", async () => {
+    vi.doMock("@/lib/analytics", async () => {
+      await new Promise((resolve) => setTimeout(resolve, CHUNK_LOAD_MS));
+      return {
+        connectPostHog: () => sdkOrder.push("connect_posthog"),
+      };
+    });
+    initMock.mockImplementation(() => {
+      setTimeout(
+        () => sdkOrder.push("initial_pageview"),
+        POSTHOG_INITIAL_PAGEVIEW_DELAY_MS,
+      );
+    });
+
+    await runIdleLoader();
+    await vi.waitFor(() => {
+      expect(sdkOrder).toHaveLength(2);
+    });
+
+    expect(sdkOrder.indexOf("connect_posthog")).toBeLessThan(
+      sdkOrder.indexOf("initial_pageview"),
+    );
+  });
+
+  it("logs an error when a production build has no project token", async () => {
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN", "");
+    vi.stubEnv("NODE_ENV", "production");
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    await runIdleLoader();
+
+    expect(initMock).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining("NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN"),
+    );
   });
 });

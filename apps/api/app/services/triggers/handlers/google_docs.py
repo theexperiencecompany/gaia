@@ -1,6 +1,4 @@
-"""
-Google Docs trigger handler.
-"""
+"""Google Docs trigger handler."""
 
 from typing import Any, ClassVar
 

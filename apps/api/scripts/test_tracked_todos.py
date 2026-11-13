@@ -26,11 +26,10 @@ import os
 from pathlib import Path
 import sys
 import time
-import uuid
 
 from dotenv import load_dotenv
 import httpx
-from jose import jwt
+import jwt
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 # Secrets and the test user identity come from the environment (.env). Never
@@ -291,7 +290,7 @@ SCENARIOS: list[TestScenario] = [
 
 
 def _parse_sse_line(line: str) -> dict | None:
-    """Parse a single `data: ...` SSE line into an event dict; return None to skip."""
+    """Parse a single data: ... SSE line into an event dict; return None to skip."""
     if not line.startswith("data: "):
         return None
     raw = line[6:]
@@ -336,7 +335,7 @@ async def send_chat_message(
     client: httpx.AsyncClient,
     token: str,
     message: str,
-    conversation_id: str,
+    conversation_id: str | None,
     history: list[dict],
 ) -> ChatResult:
     """Send a message and collect the full SSE stream."""
@@ -499,7 +498,7 @@ def _check_search_first(chat_results: list[ChatResult]) -> tuple[list[str], list
 
 
 def _check_recurring_fields(scenario: TestScenario, new_todos: list[dict]) -> list[str]:
-    """Validate recurring-todo fields for the recurring scenario (tagged ``recurring``)."""
+    """Validate recurring-todo fields for the recurring scenario (tagged recurring)."""
     if "recurring" not in scenario.tags or not new_todos:
         return []
     todo = new_todos[0]
@@ -528,6 +527,26 @@ def _evaluate_scenario(
     return failures, notes
 
 
+def _missing_integrations(scenario: TestScenario, connected: set[str] | None) -> list[str]:
+    """Integrations a skippable scenario needs that the account has not connected."""
+    if not (scenario.requires_integrations and scenario.skip_if_no_integrations):
+        return []
+    avail = connected or set()
+    return [i for i in scenario.requires_integrations if i.lower() not in avail]
+
+
+def _print_chat_result(result: ChatResult) -> None:
+    """Print one chat turn's error, or its tools and reply preview."""
+    if result.error:
+        print(f"    ERROR: {result.error}")
+        return
+    tool_names = [t["name"] for t in result.tool_calls]
+    print(f"    Tools: {tool_names or '(none)'}")
+    if result.response_text:
+        preview = result.response_text[:120].replace("\n", " ")
+        print(f"    Reply: {preview}...")
+
+
 async def run_scenario(
     scenario: TestScenario,
     token: str,
@@ -539,28 +558,26 @@ async def run_scenario(
     print(f"[{scenario.id}] {scenario.name}")
     print(f"  Tags: {', '.join(scenario.tags)}")
 
-    # Skip if required integrations are not connected
-    if scenario.requires_integrations and scenario.skip_if_no_integrations:
-        avail = connected_integrations or set()
-        missing = [i for i in scenario.requires_integrations if i.lower() not in avail]
-        if missing:
-            print(f"  ⏭️  SKIPPED — integrations not connected: {missing}")
-            return ScenarioResult(
-                scenario=scenario,
-                chat_results=[],
-                todos_before=[],
-                todos_after=[],
-                passed=True,
-                failures=[],
-                notes=[f"Skipped: integrations not connected: {missing}"],
-            )
+    missing = _missing_integrations(scenario, connected_integrations)
+    if missing:
+        print(f"  ⏭️  SKIPPED — integrations not connected: {missing}")
+        return ScenarioResult(
+            scenario=scenario,
+            chat_results=[],
+            todos_before=[],
+            todos_after=[],
+            passed=True,
+            failures=[],
+            notes=[f"Skipped: integrations not connected: {missing}"],
+        )
 
     async with httpx.AsyncClient(timeout=STREAM_TIMEOUT) as client:
         # Capture todos before
         todos_before = await get_tracked_todos()
         before_ids = {t["id"] for t in todos_before}
 
-        conversation_id = str(uuid.uuid4())
+        # The first send opens the conversation; its init frame names the id later sends reuse.
+        conversation_id: str | None = None
         history: list[dict] = []
         chat_results: list[ChatResult] = []
 
@@ -568,15 +585,11 @@ async def run_scenario(
             print(f"  Chat {i + 1}: {message[:80]}{'...' if len(message) > 80 else ''}")
             result = await send_chat_message(client, token, message, conversation_id, history)
             chat_results.append(result)
+            conversation_id = conversation_id or next(
+                (e["conversation_id"] for e in result.raw_events if e.get("conversation_id")), None
+            )
 
-            if result.error:
-                print(f"    ERROR: {result.error}")
-            else:
-                tool_names = [t["name"] for t in result.tool_calls]
-                print(f"    Tools: {tool_names or '(none)'}")
-                if result.response_text:
-                    preview = result.response_text[:120].replace("\n", " ")
-                    print(f"    Reply: {preview}...")
+            _print_chat_result(result)
 
             # Update history for next chat
             history.append({"role": "user", "content": message})

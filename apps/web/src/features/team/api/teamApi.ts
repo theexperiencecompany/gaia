@@ -1,4 +1,11 @@
-import { api } from "@/lib/api/client";
+import { apiauth } from "@/lib/api/client";
+
+/**
+ * KNOWN BROKEN: no /api/v1/team route exists, so every call here 404s and the
+ * blog editor's author picker never populates. It is also why this is the one
+ * caller left on raw axios — the path-typed client has no schema path to accept.
+ * Resolving it (grow the route, or delete this and the picker) is a product call.
+ */
 
 export interface TeamMember {
   id: string;
@@ -9,47 +16,9 @@ export interface TeamMember {
   twitter?: string;
 }
 
-export interface TeamMemberCreate {
-  name: string;
-  role: string;
-  avatar?: string;
-  linkedin?: string;
-  twitter?: string;
-}
-
-export interface TeamMemberUpdate {
-  name?: string;
-  role?: string;
-  avatar?: string;
-  linkedin?: string;
-  twitter?: string;
-}
-
 export const teamApi = {
   getTeamMembers: async (): Promise<TeamMember[]> => {
-    const response = await api.get<TeamMember[]>("/team");
+    const response = await apiauth.get<TeamMember[]>("/team");
     return response.data;
-  },
-
-  getTeamMember: async (id: string): Promise<TeamMember> => {
-    const response = await api.get<TeamMember>(`/team/${id}`);
-    return response.data;
-  },
-
-  createTeamMember: async (member: TeamMemberCreate): Promise<TeamMember> => {
-    const response = await api.post<TeamMember>("/team", member);
-    return response.data;
-  },
-
-  updateTeamMember: async (
-    id: string,
-    member: TeamMemberUpdate,
-  ): Promise<TeamMember> => {
-    const response = await api.put<TeamMember>(`/team/${id}`, member);
-    return response.data;
-  },
-
-  deleteTeamMember: async (id: string): Promise<void> => {
-    await api.delete(`/team/${id}`);
   },
 };

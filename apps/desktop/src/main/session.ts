@@ -10,13 +10,20 @@
  * @module session
  */
 
+import {
+  LOCAL_SESSION_COOKIE,
+  WOS_SESSION_COOKIE,
+} from "@gaia/shared/utils/sessionCookies";
 import { session } from "electron";
 import { getApiOrigin, isApiOriginSecure } from "./api-origin";
+import { getDesktopSettings } from "./settings";
 
-/** Name of the WorkOS session cookie the app authenticates with. The bridge
- * logout hook watches this same cookie on `session.defaultSession` to detect
- * sign-out, so both sites key off one constant rather than a magic string. */
-export const WOS_SESSION_COOKIE = "wos_session";
+/** The cookie that holds the signed-in session for the server this app uses. */
+export function getSessionCookieName(): string {
+  return getDesktopSettings().selfHostOrigin
+    ? LOCAL_SESSION_COOKIE
+    : WOS_SESSION_COOKIE;
+}
 
 /**
  * Install a `webRequest.onHeadersReceived` filter that rewrites
@@ -29,6 +36,9 @@ export const WOS_SESSION_COOKIE = "wos_session";
  * Should be called once during startup, after `app.ready`.
  */
 export function fixSessionCookies(): void {
+  // A self-hosted window loads the server's own origin, so its session cookie
+  // is first-party and its SameSite=Lax persists as-is.
+  if (getDesktopSettings().selfHostOrigin) return;
   if (!isApiOriginSecure()) return;
 
   const apiOrigin = getApiOrigin();
@@ -41,11 +51,9 @@ export function fixSessionCookies(): void {
       if (headers["set-cookie"]) {
         headers["set-cookie"] = headers["set-cookie"].map((c: string) => {
           if (!c.includes(WOS_SESSION_COOKIE)) return c;
-          // SameSite=None is only valid WITH Secure — without it Chromium
-          // silently drops the cookie. In dev the API omits Secure (http),
-          // so rotated sessions were being lost and the stale cookie kept
-          // 401-ing. localhost is a trustworthy origin, so Secure cookies
-          // are accepted over http there.
+          // SameSite=None needs Secure or Chromium drops the cookie; the dev
+          // API omits Secure over http, which lost rotated sessions to stale
+          // 401s. localhost accepts Secure cookies over http, so we add it.
           let patched = c.replace(/SameSite=\w+/i, "SameSite=None");
           if (!/;\s*Secure/i.test(patched)) patched += "; Secure";
           return patched;

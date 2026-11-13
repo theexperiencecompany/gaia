@@ -25,10 +25,9 @@ interface DetectionRecord {
   timeToWakeMs: number | null;
 }
 
-// Timestamps are formatted once when a detection is recorded (a client-side
-// event, never during render), so locale/timezone differences between server
-// and browser can't cause hydration mismatches. Module scope avoids rebuilding
-// the formatter per record.
+// Timestamps format once per detection (client-side, never during render)
+// so server/browser locale differences can't cause hydration mismatches;
+// module scope avoids rebuilding the formatter per record.
 const firedAtFormatter = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
   minute: "2-digit",

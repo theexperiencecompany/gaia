@@ -1,26 +1,88 @@
-"""
-Sentry configuration for error tracking and performance monitoring.
-"""
+"""Sentry configuration for error tracking and performance monitoring."""
 
-from collections.abc import Callable
-from typing import Any
+from collections.abc import Callable, Mapping
+import re
+from typing import Protocol, TypedDict, cast
 
 from loguru import logger as _loguru
+from pydantic import BaseModel, ConfigDict, ValidationError
 import sentry_sdk
+from sentry_sdk.consts import OP
+from sentry_sdk.integrations.langchain import LangchainIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
+from sentry_sdk.integrations.loguru import LoguruIntegration
+from sentry_sdk.types import Event, Hint
 
+from app.config.deployment import DeploymentKind
 from app.config.loggers import REQUEST_LOGGER_NAME
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from shared.py.wide_events import log
+from shared.py.logging import (
+    ARQ_LOGGER_DISPLAY_NAME,
+    MCP_USE_LOGGER_DISPLAY_NAME,
+    OTEL_LOGGER_DISPLAY_NAME,
+    env_context,
+)
+from shared.py.wide_events import (
+    BOUNDARY_FAILURE_MESSAGE,
+    BOUNDARY_LOGGER_NAMES,
+    current_event_fields,
+    log,
+)
+
+
+class _Level(Protocol):
+    no: int
+    name: str
+
+
+class _Exception(Protocol):
+    value: BaseException | None
+
+
+class _Extra(TypedDict, total=False):
+    """The one wide-event field the sink routes on; the rest is scrubbed generically."""
+
+    logger_name: str
+
+
+class _Record(TypedDict):
+    """The loguru record fields the Sentry sink reads (loguru's Record is stub-only)."""
+
+    level: _Level
+    extra: _Extra
+    exception: _Exception | None
+    module: str
+    message: str
+
+
+class _Message(Protocol):
+    record: _Record
+
 
 # Direct identifiers never leave the process for Sentry. Pseudonymous ids
-# (user_id, user.id, trace_id, request_id) stay — they are the correlation
-# handles that make an issue actionable. When an investigation genuinely needs
-# the identifying detail, join back to the full wide event in Loki via trace_id.
+# (user_id, trace_id, request_id) stay for correlation; join back to the
+# full wide event in Loki via trace_id when the identifying detail is needed.
 _PII_KEYS = frozenset({"client_ip", "email", "user_agent", "user_email"})
 
+# ARQ logs a job failure from outside the job's context; ArqIntegration reports it
+# itself, with the job's own trace, so the library's line cannot be deduped and is dropped.
+_REPORTED_BY_CALLER_LOGGERS = frozenset({ARQ_LOGGER_DISPLAY_NAME})
 
-def _scrub_pii(extra: dict[str, Any]) -> dict[str, Any]:
+# Connect attempts only: MCPClient.connect re-reports them with the integration id.
+# The library's background session task has no caller in app/, so it stays.
+_MCP_USE_CONNECT_DUPLICATES = (
+    "OAuth initialization failed",
+    "MCP protocol error during initialization",
+    "Failed to connect to",
+    "Both transport methods failed",
+)
+
+# Long enough to tell two messages apart, short enough for a readable issue title.
+_FINGERPRINT_MESSAGE_CHARS = 160
+
+
+def _scrub_pii(extra: Mapping[str, object]) -> dict[str, object]:
     """Drop direct identifiers from wide-event fields, including nested dicts (user.email)."""
     return {
         key: _scrub_pii(value) if isinstance(value, dict) else value
@@ -29,41 +91,191 @@ def _scrub_pii(extra: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# Spans LangchainIntegration opens around one model call (chat and completion models).
+_LLM_CALL_SPAN_OPS = frozenset({OP.GEN_AI_CHAT, OP.GEN_AI_PIPELINE})
+
+
+class _TraceContext(BaseModel):
+    """The two fields of an event's trace context that name the span it was captured in."""
+
+    origin: str | None = None
+    op: str | None = None
+
+
+class _EventContexts(BaseModel):
+    trace: _TraceContext = _TraceContext()
+
+
+class _CapturedSpan(BaseModel):
+    """The part of a Sentry event that says which span captured it; other fields are ignored."""
+
+    contexts: _EventContexts = _EventContexts()
+
+
+def _drop_llm_attempt_errors(event: Event, _hint: Hint) -> Event | None:
+    """Drop the error LangchainIntegration captures for every failed model call.
+
+    Every model call runs through ainvoke_llm's retry and fallback policy, and its
+    caller reports the failure only once the policy gives up; capturing each
+    attempt turned upstream 429s into Sentry errors.
+    """
+    trace = _CapturedSpan.model_validate(event).contexts.trace
+    if trace.origin == LangchainIntegration.origin and trace.op in _LLM_CALL_SPAN_OPS:
+        return None
+    return event
+
+
+# Anything a message can vary on: ids, numbers and URLs. Stripping them makes two
+# reports of one failure share a fingerprint instead of opening an issue each.
+_MESSAGE_VARIABLES = re.compile(
+    r"https?://\S+"
+    r"|\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+    r"|\b[0-9a-fA-F]{8,}\b"
+    r"|\d+"
+)
+
+
+class _EventUser(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: str | None = None
+
+
+class _EventExtras(BaseModel):
+    """The wide-event fields an event carries back from its log record."""
+
+    model_config = ConfigDict(extra="allow")
+
+    user: _EventUser | None = None
+    user_id: str | None = None
+
+
+class _EventTags(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    logger: str | None = None
+
+
+class _EventLogEntry(BaseModel):
+    formatted: str | None = None
+    message: str | None = None
+
+
+class _EventFields(BaseModel):
+    """The parts of a Sentry event before_send reads, as attributes."""
+
+    exception: dict[str, object] | None = None
+    extra: _EventExtras = _EventExtras()
+    tags: _EventTags = _EventTags()
+    logentry: _EventLogEntry = _EventLogEntry()
+    message: str | None = None
+    logger: str | None = None
+    user: _EventUser | None = None
+
+
+def _stable_fingerprint(event: Event) -> list[str] | None:
+    """Group a log message by what it says, not by the ids it happens to contain.
+
+    Sentry's default for a message event is its literal text, so a library that
+    puts a URL or a user id in the sentence opens a new issue per value. An event
+    carrying an exception is left alone: its stack is the better grouping key.
+    """
+    fields = _EventFields.model_validate(event)
+    if fields.exception:
+        return None
+    message = fields.logentry.formatted or fields.logentry.message or fields.message or ""
+    logger_name = fields.tags.logger or fields.logger
+    normalised = " ".join(_MESSAGE_VARIABLES.sub("#", str(message)).split())[
+        :_FINGERPRINT_MESSAGE_CHARS
+    ]
+    if not normalised:
+        # A blank key would merge every message-less event into one issue.
+        return None
+    return ["log", str(logger_name or "app"), normalised]
+
+
+def _attribute_user(event: Event) -> None:
+    """Copy the wide event's user id onto the Sentry user, so users-affected counts.
+
+    The id already rides every record's extras, because routes and worker tasks
+    stamp the user namespace. Nothing else has to call set_user, and that
+    includes ARQ jobs, which have no request to set it from.
+    """
+    fields = _EventFields.model_validate(event)
+    if fields.user is not None and fields.user.id:
+        return
+    user_id = fields.extra.user.id if fields.extra.user else None
+    if not user_id:
+        user_id = fields.extra.user_id
+    if not user_id:
+        # A log line binds only its own kwargs; the request's user rides the event.
+        event_user = _EventExtras.model_validate(current_event_fields()).user
+        user_id = event_user.id if event_user else None
+    if user_id:
+        merged = fields.user.model_dump() if fields.user else {}
+        event["user"] = {**merged, "id": user_id}
+
+
+def _before_send(event: Event, hint: Hint) -> Event | None:
+    """Decide every event's fate: drop retried LLM attempts, then group and attribute it."""
+    event = _drop_llm_attempt_errors(event, hint)
+    if event is None:
+        return None
+    try:
+        _attribute_user(event)
+        fingerprint = _stable_fingerprint(event)
+    except (ValidationError, TypeError, AttributeError) as exc:
+        # A hook that raises makes the SDK drop the event: ship it ungrouped instead.
+        log.warning("sentry_event_shaping_failed", error_type=type(exc).__name__)
+        return event
+    if fingerprint is not None and "fingerprint" not in event:
+        event["fingerprint"] = fingerprint
+    return event
+
+
+def _record_is_skipped(record: _Record, logger_name: str | None) -> bool:
+    """Return True when this record is a roll-up, or another surface already reports it."""
+    if logger_name == REQUEST_LOGGER_NAME:
+        return True
+    if logger_name in BOUNDARY_LOGGER_NAMES:
+        return True
+    if logger_name in _REPORTED_BY_CALLER_LOGGERS:
+        return True
+    if logger_name == MCP_USE_LOGGER_DISPLAY_NAME:
+        return str(record["message"]).startswith(_MCP_USE_CONNECT_DUPLICATES)
+    if logger_name == OTEL_LOGGER_DISPLAY_NAME:
+        # Trace loss is not a user-facing failure: the line stays in Loki.
+        return True
+    return record["message"] == BOUNDARY_FAILURE_MESSAGE and record["exception"] is None
+
+
 def _make_sentry_loguru_sink() -> Callable[[object], None]:
-    """Return a Loguru sink that forwards ERROR+ records to Sentry.
+    """Return the Loguru sink that is the one path from a log record to a Sentry event.
 
-    Loguru does not emit through Python's stdlib logging, so Sentry's
-    built-in LoggingIntegration / enable_logs=True never sees Loguru
-    error() / critical() / exception() calls. This sink bridges that gap.
-
-    Exceptions in the record are captured via capture_exception so that
-    Sentry shows the full traceback. Plain error messages without an
-    attached exception are forwarded as capture_message with level=error.
+    Sentry's own Loguru and logging integrations are disabled in init_sentry, so
+    every record — app or library (stdlib reaches Loguru via the intercept
+    handler) — passes this sink's filters and PII scrub exactly once.
     """
 
     def _sink(message: object) -> None:
-        record = message.record  # type: ignore[attr-defined]  # loguru's sink hands us a Message whose .record attr is untyped upstream
+        # loguru hands the sink a Message whose .record is a stub-only TypedDict;
+        # cast to the local shape so the field reads are key-checked.
+        record: _Record = cast(_Message, message).record
         if record["level"].no < 40:  # below ERROR — skip
             return
 
-        extra = dict(record["extra"])
+        extra: _Extra = record["extra"]
+        logger_name = extra.get("logger_name")
 
-        # Skip the per-request wide-event roll-up (the single "http_request"
-        # line LoggingMiddleware emits with logger_name="REQUEST"). Forwarding
-        # it would turn every 5xx into a Sentry event with the constant message
-        # "http_request" — all grouped under one useless issue — carrying the
-        # full wide event (user email, client_ip) in extras. The underlying
-        # log.error() / log.exception() calls that made the request an ERROR
-        # already pass through this sink individually with proper grouping, so
-        # nothing is lost by dropping the roll-up.
-        if extra.get("logger_name") == REQUEST_LOGGER_NAME:
+        if _record_is_skipped(record, logger_name):
             return
+
         exc_info = record["exception"]
 
         with sentry_sdk.new_scope() as scope:
-            scope.set_tag("logger", extra.get("logger_name", "app"))
+            scope.set_tag("logger", logger_name or "app")
             scope.set_tag("module", record["module"])
-            for key, value in _scrub_pii(extra).items():
+            for key, value in _scrub_pii(cast("Mapping[str, object]", extra)).items():
                 if key != "logger_name":
                     scope.set_extra(key, value)
 
@@ -91,19 +303,16 @@ def init_sentry() -> None:
         # Keep request headers, cookies and client IPs out of Sentry events —
         # the loguru sink already forwards the pseudonymous ids needed to
         # correlate an issue back to its wide event in Loki.
-        # https://docs.sentry.io/platforms/python/data-management/data-collected/
         send_default_pii=False,
-        # Set traces_sample_rate to 1.0 to capture 100%
-        # of transactions for tracing.
-        traces_sample_rate=0.1 if settings.ENV == "production" else 1.0,
-        # Set profile_session_sample_rate to 1.0 to profile 100%
-        # of profile sessions.
-        profiles_sample_rate=0.1 if settings.ENV == "production" else 1.0,
-        # enable_logs captures stdlib logging records via Sentry's logging
-        # integration. Loguru errors are captured separately via the sink below.
-        enable_logs=True,
+        traces_sample_rate=0.1 if settings.deployment.kind is DeploymentKind.PRODUCTION else 1.0,
+        profiles_sample_rate=0.1 if settings.deployment.kind is DeploymentKind.PRODUCTION else 1.0,
         profile_lifecycle="trace",
+        # Both re-send every log record the sink below already forwards, unfiltered and unscrubbed.
+        disabled_integrations=[LoguruIntegration(), LoggingIntegration()],
+        before_send=_before_send,
     )
+    # The API and the ARQ worker share one project; the Promtail service name tells them apart.
+    sentry_sdk.get_global_scope().set_tag("service", env_context().service)
 
     # Bridge Loguru → Sentry for ERROR and CRITICAL records.
     # Without this, log.error() / log.exception() calls are only visible

@@ -52,7 +52,12 @@ def _download_headers(filename: str) -> dict[str, str]:
 # so Starlette never 307-redirects (which would echo the bearer token into a
 # Location header) — include_router drops a router-level redirect_slashes flag.
 @router.get("/files/s/{filename}", include_in_schema=False)
-@router.get("/files/s/{filename}/", include_in_schema=False)
+@router.get(
+    "/files/s/{filename}/",
+    include_in_schema=False,
+    # Hidden, but still in the id namespace, which both spellings would share.
+    operation_id="shares_download_shared_file_slash",
+)
 async def download_shared_file(
     filename: str,  # noqa: ARG001 -- FastAPI binds the {filename} route segment; the served name comes from the signed grant, not this value
     token: str = "",  # pragma: no mutate -- an absent token and any invalid token both redeem to None, so the default's value is unobservable (both give the uniform 404)

@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from pydantic import Field
 
 from shared.py.settings import BaseAppSettings
-from shared.py.voice import DEVELOPMENT_VOICE_AGENT_NAME, PRODUCTION_VOICE_AGENT_NAME
+from shared.py.voice import default_voice_agent_name
 from shared.py.wide_events import log
 from src.constants import LogTag
 
@@ -32,11 +32,7 @@ class VoiceAgentSettings(BaseAppSettings):
     # dispatched to it by name. Development gets its own name so a local worker
     # never competes with staging's on the shared LiveKit project.
     VOICE_AGENT_NAME: str = Field(
-        default_factory=lambda data: (
-            DEVELOPMENT_VOICE_AGENT_NAME
-            if data["ENV"] == "development"
-            else PRODUCTION_VOICE_AGENT_NAME
-        )
+        default_factory=lambda data: default_voice_agent_name(data["ENV"])
     )
 
     # Consumed by livekit-plugins-deepgram via env var — not passed explicitly in code
@@ -47,8 +43,8 @@ class VoiceAgentSettings(BaseAppSettings):
 def get_settings() -> VoiceAgentSettings:
     """Return the cached settings instance, constructing it on first call.
 
-    ``VoiceAgentSettings`` reads ``os.environ`` at construction time, so
-    Infisical secrets must already be injected (``start_worker()`` does this)
+    VoiceAgentSettings reads os.environ at construction time, so
+    Infisical secrets must already be injected (start_worker() does this)
     before the first call — otherwise the cached instance is built from an
     incomplete environment.
     """
@@ -65,6 +61,18 @@ def bootstrap_settings() -> VoiceAgentSettings:
     its config from the inherited env without re-fetching from Infisical.
     """
     settings = get_settings()
+    missing_voice_keys = [
+        key for key in ("DEEPGRAM_API_KEY", "ELEVENLABS_API_KEY") if not getattr(settings, key)
+    ]
+    if missing_voice_keys:
+        # Optional providers (self-host runs without them): warn at boot so the
+        # gap is visible upfront instead of surfacing as a per-room plugin error.
+        # The per-session failure itself stays loud — a voice pipeline without
+        # STT/TTS has nothing to degrade to.
+        log.warning(
+            f"{LogTag.VOICE} Voice provider keys not set — voice sessions will "
+            f"fail until configured: {', '.join(missing_voice_keys)}"
+        )
     log.info(f"{LogTag.VOICE} Voice agent settings initialized")
     return settings
 

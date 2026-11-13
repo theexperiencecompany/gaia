@@ -9,16 +9,21 @@ Requires: PostgreSQL service container (DATABASE_URL env var).
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from uuid import uuid4
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.checkpoint.base import empty_checkpoint
 import psycopg
+import psycopg.conninfo
 import pytest
 
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from tests.e2e._harness.graph_run import comms_graph, run_graph
+
+#: Far beyond a sequential setup (a few seconds), far below a hang.
+_RACING_SETUP_SECONDS = 60
 
 # ---------------------------------------------------------------------------
 # Fixtures (postgres_url comes from service/conftest.py)
@@ -101,12 +106,7 @@ class TestThreadIsolation:
     """Checkpoints from different thread_ids must not bleed into each other."""
 
     async def test_two_threads_store_independently(self, manager: CheckpointerManager) -> None:
-        """
-        Checkpoints written under thread_1 must not appear when querying thread_2.
-
-        This guards against a misconfigured connection pool or schema bug that
-        would cause LangGraph to serve the wrong conversation history to a user.
-        """
+        """Guards against a misconfigured connection pool or schema bug serving the wrong conversation history to a user."""
         checkpointer = manager.get_checkpointer()
         thread_1 = str(uuid4())
         thread_2 = str(uuid4())
@@ -132,11 +132,7 @@ class TestThreadIsolation:
         assert result_1.checkpoint["id"] != result_2.checkpoint["id"]
 
     async def test_thread_1_not_visible_from_thread_2(self, manager: CheckpointerManager) -> None:
-        """
-        alist on thread_2 must not yield checkpoints belonging to thread_1.
-
-        If isolation breaks, a user could receive another user's conversation.
-        """
+        """If isolation breaks, a user could receive another user's conversation."""
         checkpointer = manager.get_checkpointer()
         thread_1 = str(uuid4())
         thread_2 = str(uuid4())
@@ -158,7 +154,7 @@ class TestThreadIsolation:
     async def test_multiple_checkpoints_per_thread_ordered(
         self, manager: CheckpointerManager
     ) -> None:
-        """alist must return all checkpoints for a thread, newest first."""
+        """Alist must return all checkpoints for a thread, newest first."""
         checkpointer = manager.get_checkpointer()
         thread_id = str(uuid4())
         config = _thread_config(thread_id)
@@ -192,7 +188,7 @@ class TestCheckpointStorageStaysBounded:
     the thread; the pre-model filtering was request-only, so the checkpoint
     accumulated one full stack per run (39 copies on one workflow thread) and
     the end-graph hook node re-serialized the whole accumulated list into
-    ``checkpoint_writes`` on every run — 19 GB of Postgres from one database.
+    checkpoint_writes on every run — 19 GB of Postgres from one database.
     This drives the REAL comms graph against the REAL Postgres checkpointer and
     measures actual stored bytes for the thread.
     """
@@ -255,12 +251,38 @@ class TestCheckpointStorageStaysBounded:
             row = await cur.fetchone()
         total_bytes = int(row[0]) if row else 0
 
-        # Each run legitimately stores ~one prompt stack (the graph input write
-        # and its delta blob). The regression stored the full ACCUMULATED list
-        # again per run — super-linear growth that blows straight through this
-        # linear budget (measured: ~3.5x over it at 4 runs, growing per run).
+        # Each run legitimately stores ~one prompt stack. The regression stored
+        # the full accumulated list again per run — super-linear growth that
+        # blows this linear budget (measured ~3.5x over it at 4 runs).
         budget = runs * stack_bytes * 3
         assert total_bytes < budget, (
             f"thread stored {total_bytes} bytes after {runs} runs "
             f"(budget {budget}); checkpoint growth is super-linear again"
         )
+
+
+@pytest.fixture
+async def fresh_database(postgres_url: str) -> AsyncIterator[str]:
+    """Create a database no checkpointer has set up yet, as a first deploy or a fresh CI service has."""
+    name = f"checkpointer_setup_{uuid4().hex[:12]}"
+    admin = await psycopg.AsyncConnection.connect(postgres_url, autocommit=True)
+    try:
+        await admin.execute(f'CREATE DATABASE "{name}"')
+        yield str(psycopg.conninfo.make_conninfo(postgres_url, dbname=name))
+        await admin.execute(f'DROP DATABASE "{name}" WITH (FORCE)')
+    finally:
+        await admin.close()
+
+
+@pytest.mark.service
+@pytest.mark.regression
+async def test_starters_racing_on_a_fresh_database_all_finish_setup(fresh_database: str) -> None:
+    """Regression: a starter blocked in pg_advisory_lock and the holder's CREATE INDEX CONCURRENTLY waited on each other forever."""
+    managers = [CheckpointerManager(conninfo=fresh_database) for _ in range(4)]
+    try:
+        async with asyncio.timeout(_RACING_SETUP_SECONDS):
+            await asyncio.gather(*(manager.setup() for manager in managers))
+    finally:
+        await asyncio.gather(*(manager.close() for manager in managers))
+
+    assert all(manager.get_checkpointer() is not None for manager in managers)

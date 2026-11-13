@@ -33,7 +33,7 @@ export function ImageBubble({
   if (!imageData.url && !isGenerating) return null;
 
   const prompt = imageData.prompt?.trim();
-  const improvedPrompt = imageData.improvedPrompt?.trim();
+  const improvedPrompt = imageData.improved_prompt?.trim();
 
   return (
     <>
@@ -124,7 +124,7 @@ export function ImageBubble({
         isVisible={viewerVisible}
         imageUrl={imageData.url}
         prompt={imageData.prompt}
-        improvedPrompt={imageData.improvedPrompt}
+        improvedPrompt={imageData.improved_prompt ?? undefined}
         onClose={() => setViewerVisible(false)}
       />
     </>

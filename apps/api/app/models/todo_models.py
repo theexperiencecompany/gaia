@@ -1,13 +1,34 @@
-from datetime import UTC, datetime
-from enum import Enum
-from typing import Annotated
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from enum import Enum, StrEnum
+from typing import Annotated, NamedTuple
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.general import MAX_PAGE_NUMBER
+from app.constants.todos import (
+    GAIA_TRACKED_LABEL,
+    TODO_RECURRENCE_SHORTCUTS,
+    NoReplyPlan,
+    WaitingOn,
+)
 from app.db.repositories.base import UserScopedDocument
-from app.models.trigger_subscription_models import TriggerSubscription
+from app.models.scheduler_models import DeactivationReason
+from app.models.trigger_subscription_models import TriggerSubscription, TriggerSubscriptionView
 from app.models.workflow_models import WorkflowWithIntegrations
+from app.schemas.common import ResponseModel
+from app.utils.schedule import validate_recurring_schedule
+
+
+def validate_todo_recurrence(recurrence: str) -> str:
+    """Hold a tracked todo's run schedule to the rule: a shortcut, or an acceptable cron.
+
+    Only a tracked todo's recurrence schedules runs; a plain todo's is display-only
+    (mobile stores an RRULE there) and is never validated as a schedule.
+    """
+    if recurrence in TODO_RECURRENCE_SHORTCUTS:
+        return recurrence
+    return validate_recurring_schedule(recurrence)
 
 
 class Priority(str, Enum):
@@ -17,8 +38,46 @@ class Priority(str, Enum):
     NONE = "none"  # no color
 
 
-class SubTask(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class ExternalRefSource(StrEnum):
+    """The kind of outside object a todo is about."""
+
+    GMAIL_THREAD = "gmail_thread"
+    # A mailbox the Inbox desk triages, keyed by its integration id.
+    INBOX_DESK = "inbox_desk"
+
+    @property
+    def owns_report_form(self) -> bool:
+        """Whether this kind's run guidance sets its final report's form, so it reaches the user as written."""
+        return self in (ExternalRefSource.INBOX_DESK, ExternalRefSource.GMAIL_THREAD)
+
+    @property
+    def speaks_under_parent(self) -> bool:
+        """Whether a sub-todo of this kind still tells the user itself: a thread's news cannot wait for its parent."""
+        return self is ExternalRefSource.GMAIL_THREAD
+
+
+class ExternalRef(BaseModel):
+    """The outside object a todo is about; at most one open todo per user holds a given ref."""
+
+    model_config = ConfigDict(frozen=True)
+
+    source: ExternalRefSource
+    id: str = Field(min_length=1)
+    # The connected account the object lives in: a Gmail thread id means nothing outside its mailbox.
+    account: str | None = None
+
+
+def default_notify_on_run(*, parent_todo_id: str | None, external_ref: ExternalRef | None) -> bool:
+    """Say whether a todo's runs reach the user when nobody chose: a sub-todo reports to its parent unless its kind speaks."""
+    return parent_todo_id is None or (
+        external_ref is not None and external_ref.source.speaks_under_parent
+    )
+
+
+class SubTask(ResponseModel):
+    model_config = ConfigDict(
+        from_attributes=True, json_schema_serialization_defaults_required=True
+    )
 
     id: str = Field(default="", description="Unique identifier for the subtask")
     title: str = Field(..., description="Title of the subtask")
@@ -60,7 +119,12 @@ class TodoBase(BaseModel):
     )
     recurrence: str | None = Field(
         default=None,
-        description="Recurrence pattern: 'daily', 'weekly', 'every_4h', or cron expression '0 9 * * 1'. Always evaluated in the user's current timezone (user.timezone).",
+        description=(
+            "On a tracked todo, its run schedule: 'daily', 'weekly', 'every_4h', 'every_1h', "
+            "or a 5-field cron that fires at most once an hour, evaluated in the user's "
+            "current timezone (user.timezone). On a plain todo, display-only recurrence "
+            "(e.g. an RRULE) that nothing runs."
+        ),
     )
     gaia_retry_count: int = Field(
         default=0,
@@ -74,6 +138,14 @@ class TodoBase(BaseModel):
         default_factory=list,
         description="IDs of related past tracked todos (institutional memory references)",
     )
+    notify_on_run: bool = Field(
+        default=True,
+        description=(
+            "Deliver this tracked todo's run result to the user's chat platform when a "
+            "scheduled or triggered run finishes. The tracked-todo equivalent of a "
+            "workflow's notify_on_completion; unrelated to the todo being marked completed."
+        ),
+    )
 
 
 # For creating new todos
@@ -82,6 +154,13 @@ class TodoModel(TodoBase):
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @model_validator(mode="after")
+    def tracked_recurrence_is_a_run_schedule(self) -> "TodoModel":
+        """Validate the recurrence as a run schedule when this todo is tracked."""
+        if self.recurrence and GAIA_TRACKED_LABEL in self.labels:
+            validate_todo_recurrence(self.recurrence)
+        return self
 
 
 # For updating todos - all fields optional
@@ -104,10 +183,20 @@ class TodoUpdateRequest(BaseModel):
     scheduled_at: datetime | None = None
     recurrence: str | None = None
     expires_at: datetime | None = None
+    notify_on_run: bool | None = None
 
 
 # For responses with ID and user_id
-class TodoResponse(TodoBase):
+class PendingApprovalRef(BaseModel):
+    """A live approval parked against this todo — the UI's jump link to the
+    conversation holding the card. Oldest live row wins; terminal rows never
+    appear here."""
+
+    approval_id: str = Field(..., description="Ledger approval id (ap_*)")
+    conversation_id: str = Field(..., description="Conversation holding the card")
+
+
+class TodoResponse(TodoBase, ResponseModel):
     """Complete todo response with all fields"""
 
     id: str = Field(..., description="Unique identifier")
@@ -121,24 +210,52 @@ class TodoResponse(TodoBase):
         default_factory=list,
         description="Tool categories from linked workflow steps for icon display",
     )
-    trigger_subscriptions: list[TriggerSubscription] = Field(
+    trigger_subscriptions: list[TriggerSubscriptionView] = Field(
         default_factory=list,
         description="Read-only; subscriptions are written by trigger registration, not by clients",
     )
+    pending_approval: PendingApprovalRef | None = Field(
+        default=None,
+        description="Oldest live approval parked against this todo, if any — the UI's jump link to the card's conversation",
+    )
+    parent_todo_id: str | None = Field(
+        default=None,
+        description="Read-only; the tracked todo this one is a sub-todo of, set by GAIA",
+    )
+    sub_todo_count: int = Field(default=0, description="Open sub-todos of this tracked todo")
 
     @classmethod
     def from_document(
-        cls, doc: "TodoDocument", *, workflow_categories: list[str] | None = None
+        cls,
+        doc: "TodoDocument",
+        *,
+        workflow_categories: list[str] | None = None,
+        pending_approval: PendingApprovalRef | None = None,
+        sub_todo_count: int = 0,
     ) -> "TodoResponse":
         """Project a stored ``TodoDocument`` onto the API response shape. The
         tracked-only fields (canvas/log content, retry state) are dropped by
-        ``extra="ignore"``; ``workflow_categories`` is enrichment, not stored."""
+        ``extra="ignore"``; ``workflow_categories``, ``pending_approval`` and
+        ``sub_todo_count`` are enrichment, not stored."""
         return cls.model_validate(
-            {**doc.model_dump(), "workflow_categories": workflow_categories or []}
+            {
+                **doc.model_dump(),
+                "workflow_categories": workflow_categories or [],
+                "pending_approval": pending_approval,
+                "sub_todo_count": sub_todo_count,
+            }
         )
 
 
 # Project models
+@dataclass(frozen=True)
+class TrackedTodoCreation:
+    """What create_tracked_todo made: a new todo, or the completed one its ref had, reopened."""
+
+    todo: TodoResponse
+    reopened: bool
+
+
 class ProjectBase(BaseModel):
     """Base model for project fields"""
 
@@ -201,13 +318,20 @@ class SubtaskUpdateRequest(BaseModel):
 
 
 # Pagination and stats
-class PaginationMeta(BaseModel):
+class PaginationMeta(ResponseModel):
     total: int = Field(..., description="Total number of items")
     page: int = Field(..., description="Current page (1-based)")
     per_page: int = Field(..., description="Items per page")
     pages: int = Field(..., description="Total number of pages")
     has_next: bool = Field(..., description="Whether there's a next page")
     has_prev: bool = Field(..., description="Whether there's a previous page")
+
+
+class SubTodoCount(BaseModel):
+    """One $group row: a parent (its _id) with the number of its open sub-todos."""
+
+    parent_todo_id: str = Field(validation_alias="_id")
+    count: int
 
 
 class TodoLabelCount(BaseModel):
@@ -228,7 +352,7 @@ class TodoStats(BaseModel):
     labels: list[TodoLabelCount] | None = None
 
 
-class TodoListResponse(BaseModel):
+class TodoListResponse(ResponseModel):
     data: list[TodoResponse]
     meta: PaginationMeta
     stats: TodoStats | None = None
@@ -239,6 +363,12 @@ class TodoCanvasResponse(BaseModel):
 
     content: str
     activity: str
+
+
+class TodoConversationResponse(BaseModel):
+    """The tracked todo's own chat, where its runs execute; kept out of the chat list."""
+
+    conversation_id: str
 
 
 # Search
@@ -259,20 +389,16 @@ class TodoSearchParams(BaseModel):
     due_date_start: datetime | None = None
     due_date_end: datetime | None = None
     labels: list[str] | None = None
+    parent_todo_id: str | None = None
     page: int = Field(default=1, ge=1)
     per_page: int = Field(default=50, ge=1, le=100)
     include_stats: bool = Field(default=False)
 
 
-class TodoListQuery(BaseModel):
-    """Flattened query params for ``GET /todos`` (bound via ``Depends()``).
+class TodoListParams(BaseModel):
+    """The query string of GET /todos, bound with Depends() so each field is its own param."""
 
-    Bound as a dependency, not ``Query()``: FastAPI does not flatten
-    query-models through ``include_router``, so a ``Query()``-bound model
-    422s every request expecting a JSON body. ``Depends()`` binds each
-    field as its own flattened query param (same wire as the individual
-    ``Query()`` params it replaces).
-    """
+    model_config = ConfigDict(frozen=True)
 
     q: str | None = Field(default=None, description="Search query")
     mode: SearchMode = Field(
@@ -284,6 +410,9 @@ class TodoListQuery(BaseModel):
     has_due_date: bool | None = None
     overdue: bool | None = None
     labels: list[str] | None = None
+    parent_todo_id: str | None = Field(
+        default=None, description="Only sub-todos of this tracked todo"
+    )
     due_after: datetime | None = Field(default=None, description="Due date after this date")
     due_before: datetime | None = Field(default=None, description="Due date before this date")
     due_today: bool = Field(default=False, description="Only todos due today")
@@ -291,6 +420,53 @@ class TodoListQuery(BaseModel):
     page: int = Field(default=1, ge=1, le=MAX_PAGE_NUMBER)
     per_page: int = Field(default=50, ge=1, le=100)
     include_stats: bool = Field(default=False, description="Include statistics in response")
+
+    @property
+    def filters_applied(self) -> list[str]:
+        applied = (
+            ("query", bool(self.q)),
+            ("project", bool(self.project_id)),
+            ("completed", self.completed is not None),
+            ("priority", bool(self.priority)),
+            ("labels", bool(self.labels)),
+            ("parent", bool(self.parent_todo_id)),
+            ("due_today", self.due_today),
+            ("due_this_week", self.due_this_week),
+            ("date_range", bool(self.due_after or self.due_before)),
+        )
+        return [name for name, is_applied in applied if is_applied]
+
+    def to_search_params(self) -> TodoSearchParams:
+        """Build the service-level search with due_today and due_this_week resolved.
+
+        Those flags become a concrete due-date range that overrides due_after and due_before.
+        """
+        due_after, due_before = self.due_after, self.due_before
+        if self.due_today:
+            today = datetime.now(UTC).date()
+            due_after = datetime.combine(today, datetime.min.time()).replace(tzinfo=UTC)
+            due_before = datetime.combine(today, datetime.max.time()).replace(tzinfo=UTC)
+        elif self.due_this_week:
+            now = datetime.now(UTC)
+            due_after = now
+            due_before = now + timedelta(days=7)
+
+        return TodoSearchParams(
+            q=self.q,
+            mode=self.mode,
+            project_id=self.project_id,
+            completed=self.completed,
+            priority=self.priority,
+            has_due_date=self.has_due_date,
+            overdue=self.overdue,
+            due_date_start=due_after,
+            due_date_end=due_before,
+            labels=self.labels,
+            parent_todo_id=self.parent_todo_id,
+            page=self.page,
+            per_page=self.per_page,
+            include_stats=self.include_stats,
+        )
 
 
 # Bulk operations
@@ -308,7 +484,8 @@ class BulkMoveRequest(BulkOperationRequest):
 
 class BulkOperationResponse(BaseModel):
     success: list[str] = Field(default_factory=list)
-    failed: list[dict[str, object]] = Field(default_factory=list)
+    # Todo ids, like ``success``: tracked todos whose completion failed in a bulk complete.
+    failed: list[str] = Field(default_factory=list)
     total: int
     message: str
 
@@ -349,12 +526,9 @@ class TodoWorkflowStatusResponse(BaseModel):
     workflow: WorkflowWithIntegrations | None = None
 
 
-# Repository layer — persisted documents, typed updates, and aggregation results.
-# ``TodoDocument`` is the full stored shape (a superset of ``TodoResponse``): it
-# also carries the tracked-todo fields (canvas/log content, scheduling, retry
-# state) that the executor and maintenance sweep read and write. Dormant legacy
-# fields (goal/offer experiments) are dropped on read via ``extra="ignore"`` and
-# preserved on write because updates are ``$set``-only.
+# TodoDocument (superset of TodoResponse) adds tracked-todo fields (canvas/log,
+# scheduling, retry) the executor reads/writes; dormant legacy fields drop on
+# read via extra="ignore" but persist on write, since updates are $set-only.
 
 
 class TodoDocument(UserScopedDocument):
@@ -377,10 +551,23 @@ class TodoDocument(UserScopedDocument):
     gaia_retry_count: int = 0
     expires_at: datetime | None = None
     references: list[str] = Field(default_factory=list)
+    # Set only through tracked_todo_service, which enforces one level under an open tracked todo.
+    parent_todo_id: str | None = None
+    notify_on_run: bool = True
+    #: Why the system paused this tracked todo's runs; None while it runs normally.
+    pause_reason: DeactivationReason | None = None
+    # A tracked todo's open state: what it waits for until scheduled_at (see open_state.py).
+    waiting_on: WaitingOn | None = None
+    question: str | None = None
+    if_no_reply: NoReplyPlan | None = None
+    default_action: str | None = None
+    reasks_used: int = 0
+    hold_checks: int = 0
     completed_at: datetime | None = None
-    # Canvas + activity + log bodies for tracked todos live on the document itself.
+    # Canvas, activity, observations and log bodies for tracked todos live on the document itself.
     canvas_content: str | None = None
     activity_content: str | None = None
+    observations_content: str | None = None
     log_content: str | None = None
     trigger_subscriptions: list[TriggerSubscription] = Field(default_factory=list)
     # Sender of the email an onboarding-seeded todo was extracted from.
@@ -388,8 +575,15 @@ class TodoDocument(UserScopedDocument):
     # The chat that created this tracked todo, captured at creation. None for todos
     # created outside a chat (onboarding/REST).
     source_conversation_id: str | None = None
+    # Set only at insert, never updated: the unique index keys on it while the todo is open.
+    external_ref: ExternalRef | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    @property
+    def runs_once(self) -> bool:
+        """Whether nothing will wake this todo again: no recurrence and no watch."""
+        return not (self.recurrence or self.trigger_subscriptions)
 
 
 class TodoUpdate(BaseModel):
@@ -406,7 +600,6 @@ class TodoUpdate(BaseModel):
     project_id: str | None = None
     completed: bool | None = None
     subtasks: list[SubTask] | None = None
-    workflow_id: str | None = None
     workflow_activated: bool | None = None
     vfs_path: str | None = None
     scheduled_at: datetime | None = None
@@ -414,12 +607,21 @@ class TodoUpdate(BaseModel):
     gaia_retry_count: int | None = None
     expires_at: datetime | None = None
     references: list[str] | None = None
+    parent_todo_id: str | None = None
+    notify_on_run: bool | None = None
+    pause_reason: DeactivationReason | None = None
+    waiting_on: WaitingOn | None = None
+    question: str | None = None
+    if_no_reply: NoReplyPlan | None = None
+    default_action: str | None = None
+    reasks_used: int | None = None
+    hold_checks: int | None = None
     completed_at: datetime | None = None
     canvas_content: str | None = None
     activity_content: str | None = None
+    observations_content: str | None = None
     log_content: str | None = None
     source_conversation_id: str | None = None
-    trigger_subscriptions: list[TriggerSubscription] | None = None
 
 
 class ProjectDocument(UserScopedDocument):
@@ -449,7 +651,7 @@ class ProjectWithCount(ProjectDocument):
     todo_count: int = 0
 
 
-class TodoCounts(BaseModel):
+class TodoCounts(ResponseModel):
     """Dashboard/sidebar counts for a user's todos."""
 
     inbox: int = 0
@@ -464,3 +666,31 @@ class TodoPage(BaseModel):
 
     items: list[TodoDocument] = Field(default_factory=list)
     total: int = 0
+
+
+@dataclass(frozen=True)
+class UpdateFieldInputs:
+    """The raw agent-supplied field values for update_tracked_todo, bundled so the
+    validator chain that consumes them is one small helper instead of six inline
+    guards on the tool body."""
+
+    labels: list[str] | None
+    due_date: str | None
+    priority: Priority | None
+    scheduled_at: str | None
+    recurrence: str | None
+    expires_at: str | None
+
+
+class TodoRunContext(NamedTuple):
+    """What a run reads beyond its own todo: its parent's rules, sub-todos, past lessons, account."""
+
+    parent_rules: str = ""
+    # When the parent runs next, on the user's clock; "" for a todo with no scheduled parent.
+    parent_next_run: str = ""
+    sub_todos: str = ""
+    learnings: str = ""
+    # The current name of the account the todo's outside object lives in; "" when it names none.
+    ref_account: str = ""
+    # The object's account is no longer connected, so the object cannot be reached.
+    ref_account_gone: bool = False

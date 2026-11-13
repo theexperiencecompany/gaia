@@ -1,0 +1,133 @@
+# L1: one minor detail missing, with an obvious safe default. Use the default,
+# mention it briefly, ask nothing.
+
+- id: own-l1-water-afternoon
+  ticket: "'This afternoon' has a safe default time: set it, don't ask when."
+  prompt: "remind me to drink water this afternoon"
+  tags: [ownership, L1, reminder]
+  expected:
+    category: l1_default
+    delegation: required
+    ownership:
+      brief: {terms: [water], min_criteria: 1}
+      followup: required
+      followup_contains: water
+      questions: {min: 0, max: 0}
+      max_words: 50
+    must_not_communicate: ["what time would you like", "what time should"]
+    score: {gates: [delegation, executor_brief, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l1-groceries
+  ticket: "Bare todo: add it as written, don't ask for a due date."
+  prompt: "add groceries to my list"
+  tags: [ownership, L1, todo]
+  setup:
+    verify: {todos_containing: grocer}
+  expected:
+    category: l1_default
+    delegation: required
+    ownership:
+      brief: {terms: [grocer], min_criteria: 1}
+      followup: forbidden
+      questions: {min: 0, max: 0}
+      max_words: 50
+    end_state: {todos_containing: 1}
+    score: {gates: [delegation, executor_brief, end_state, followup, question_budget, reply_brevity]}
+
+- id: own-l1-garage-tonight
+  ticket: "'Tonight' defaults to an evening time: set it."
+  prompt: "remind me tonight to lock the garage"
+  tags: [ownership, L1, reminder]
+  expected:
+    category: l1_default
+    delegation: required
+    ownership:
+      brief: {terms: [garage], min_criteria: 1}
+      followup: required
+      followup_contains: garage
+      questions: {min: 0, max: 0}
+      max_words: 50
+    must_not_communicate: ["what time would you like", "what time should"]
+    score: {gates: [delegation, executor_brief, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l1-mom-morning
+  ticket: "'Tomorrow morning' defaults to a morning time: set it."
+  prompt: "remind me tomorrow morning to call mom"
+  tags: [ownership, L1, reminder]
+  expected:
+    category: l1_default
+    delegation: required
+    ownership:
+      brief: {terms: [mom], min_criteria: 1}
+      followup: required
+      followup_contains: mom
+      questions: {min: 0, max: 0}
+      max_words: 50
+    must_not_communicate: ["what time would you like", "what time should"]
+    score: {gates: [delegation, executor_brief, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l1-dentist-next-week
+  ticket: "Loose due date: add the todo with a reasonable date, don't interrogate."
+  prompt: "add book dentist to my todos for sometime next week"
+  tags: [ownership, L1, todo]
+  setup:
+    verify: {todos_containing: dentist}
+  expected:
+    category: l1_default
+    delegation: required
+    ownership:
+      brief: {terms: [dentist], min_criteria: 1}
+      followup: forbidden
+      questions: {min: 0, max: 0}
+      max_words: 50
+    end_state: {todos_containing: 1}
+    score: {gates: [delegation, executor_brief, end_state, followup, question_budget, reply_brevity]}
+
+- id: own-l1-stretch-hourly
+  ticket: "'Every couple of hours' maps to a sane recurring schedule: set it."
+  prompt: "remind me to stretch every couple of hours during the workday"
+  tags: [ownership, L1, reminder, recurring]
+  expected:
+    category: l1_default
+    delegation: required
+    ownership:
+      brief: {terms: [stretch], min_criteria: 1}
+      followup: required
+      followup_contains: stretch
+      questions: {min: 0, max: 0}
+      max_words: 50
+    must_not_communicate: ["how often would you like", "what time should"]
+    score: {gates: [delegation, executor_brief, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l1-plants-weekend
+  ticket: "'Before the weekend' defaults to a Friday time: set it."
+  prompt: "remind me before the weekend to water the plants"
+  tags: [ownership, L1, reminder]
+  expected:
+    category: l1_default
+    delegation: required
+    ownership:
+      brief: {terms: [plant], min_criteria: 1}
+      followup: required
+      followup_contains: plant
+      questions: {min: 0, max: 0}
+      max_words: 50
+    must_not_communicate: ["what time would you like", "which day should"]
+    score: {gates: [delegation, executor_brief, followup, question_budget, reply_brevity, must_not_communicate]}
+
+- id: own-l1-dry-cleaning
+  ticket: "Informal 'put it on my list': a todo, no question."
+  prompt: "put pick up dry cleaning on my list"
+  tags: [ownership, L1, todo]
+  setup:
+    verify: {todos_containing: dry cleaning}
+  expected:
+    category: l1_default
+    delegation: required
+    ownership:
+      brief: {terms: [dry cleaning], min_criteria: 1}
+      followup: forbidden
+      questions: {min: 0, max: 0}
+      max_words: 50
+    end_state: {todos_containing: 1}
+    score: {gates: [delegation, executor_brief, end_state, followup, question_budget, reply_brevity]}

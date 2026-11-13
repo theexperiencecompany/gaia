@@ -3,13 +3,13 @@
 These builders feed the SSE chat stream and the message-to-tool_data
 conversion, so the wire contract is the invariant:
 
-- ``format_sse_response`` / ``format_sse_data`` must always emit a
-  ``data: <json>\\n\\n`` frame whose JSON parses and carries the input back
+- format_sse_response / format_sse_data must always emit a
+  data: <json>\\n\\n frame whose JSON parses and carries the input back
   losslessly — including text with quotes, newlines, and non-ASCII characters.
-  An interpolation bug (``str()`` instead of ``json.dumps``) would produce an
+  An interpolation bug (str() instead of json.dumps) would produce an
   unparseable frame for exactly those inputs.
-- ``convert_legacy_tool_data`` must move every non-None legacy tool field into
-  a ``tool_data`` entry with a parseable ISO timestamp, never leave a converted
+- convert_legacy_tool_data must move every non-None legacy tool field into
+  a tool_data entry with a parseable ISO timestamp, never leave a converted
   field at the top level, and preserve pre-existing unified entries.
 """
 
@@ -60,6 +60,27 @@ JSON_VALUE = st.recursive(
     ),
     max_leaves=20,
 )
+
+
+LEGACY_FIELD = next(field for field in tool_fields if field != "tool_data")
+
+
+class TestConvertLegacyToolDataExamples:
+    def test_existing_entries_come_first_and_the_legacy_field_is_appended(self) -> None:
+        existing = {"tool_name": "search_results", "data": {"q": "x"}}
+        output = convert_legacy_tool_data({"tool_data": [existing], LEGACY_FIELD: {"v": 1}})
+
+        entries = output["tool_data"]
+        assert isinstance(entries, list)
+        assert entries[0] == existing
+        assert [(e["tool_name"], e["data"]) for e in entries[1:]] == [(LEGACY_FIELD, {"v": 1})]
+        assert LEGACY_FIELD not in output
+
+    def test_an_empty_tool_data_list_is_left_as_it_was(self) -> None:
+        assert convert_legacy_tool_data({"tool_data": [], "content": "hi"}) == {
+            "tool_data": [],
+            "content": "hi",
+        }
 
 
 class TestConvertLegacyToolData:

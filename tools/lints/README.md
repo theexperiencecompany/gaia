@@ -9,7 +9,7 @@ runner. They run in the `static-python` CI job and the api pre-commit config.
 # Needs Python 3.12+ (the version CI runs) and refuses to start on anything
 # older — the rules parse app sources with the running interpreter's `ast`, so
 # an older python crashes rules on syntax it cannot parse:
-uv run --project apps/api python tools/lints/run.py apps/api/app
+uv run --project apps/api python tools/lints/run.py apps/api/app apps/api/tests
 
 # Unit tests:
 uv run --project apps/api pytest tools/lints/test_lints.py -q
@@ -214,6 +214,10 @@ result = run(cmd)  # noqa: S603 -- operator-supplied command is the feature
 const x: any = load(); // biome-ignore lint/suspicious/noExplicitAny: gallery-only demo
 ```
 
+A `biome-ignore` names the one rule it silences (`lint/<group>/<rule>`); a
+blanket `biome-ignore lint:` or `lint/<group>:` fails, because it hides every
+rule in reach, not the one that fired.
+
 The reason states the ROOT CAUSE (upstream typing gap, framework contract,
 deliberate choice). Another tool directive (``NOSONAR …``) is not a reason.
 The bar is presence; review judges quality.
@@ -286,6 +290,140 @@ violation now and delete its line from the baseline.
 diff every other lane uses. On a push/full scan (no PR base ref), there is no
 notion of "touched" — grandfathered violations stay quiet, same as before.
 
+**Deferral:** a baseline line may carry a third tab-separated field,
+`deferred-until=YYYY-MM-DD; <reason>`. While the date is in the future a
+touched file's known violation emits a `::warning` annotation naming the
+deferral instead of failing; once the date has passed it fails with
+"deferral expired — fix or renew with a reason". The reason is reviewed like
+any other diff, and `--update` preserves the field.
+
+---
+
+## mypy-tests-ratchet
+
+A touch-to-fix ratchet like `plr-complexity-ratchet`, sharing its mechanics
+(`_ratchet.py`) and its baseline format:
+
+```bash
+python3 tools/lints/check_mypy_tests.py           # check
+python3 tools/lints/check_mypy_tests.py --update  # record the current baseline
+```
+
+**Rule:** `mypy apps/api/tests` (the `api:type-check` environment and flags,
+under the root config's loose `tests.*` override) reports no error the
+baseline `tools/lints/mypy_tests_baseline.txt` does not already list per
+(file, error code), and none in a file the PR touches.
+
+**Why:** `api:type-check` covers `apps/api/app` only, so a test calling a
+renamed function, a removed attribute or a wrong signature type-checked clean
+and failed (or silently passed against a mock) at runtime. The existing debt
+was too large to fix in one pass; touching a file is when its debt gets paid.
+
+**Fix:** type the fixture, mock or call properly. If the file is
+grandfathered and your PR touches it, fix its listed errors and delete their
+lines from the baseline. Deferrals work exactly as in `plr-complexity-ratchet`.
+
+---
+
+## typed-boundaries
+
+A touch-to-fix ratchet like `plr-complexity-ratchet`, sharing its mechanics
+(`_ratchet.py`) and its baseline format:
+
+```bash
+python3 tools/lints/check_typed_boundaries.py           # check
+python3 tools/lints/check_typed_boundaries.py --update  # record the current baseline
+python3 tools/lints/check_typed_boundaries.py --count   # the debt, per rule and directory
+```
+
+**Rule:** under `apps/api/app/`, (TB001) no parameter or return annotated
+`Any`, `dict`, or `dict[str, Any]` — anything whose keys a reader must guess —
+and (TB002) no `value.get("key")` / `value["key"]` read. Reads on a map keyed
+by a *protocol* rather than a shape (`os.environ`, `request.headers`,
+`query_params`, `path_params`, `cookies`) are fine; `Literal["…"]` is a type,
+not a read; a `.get(...)` call used as a decorator (`@router.get("/path")`) is
+a registration, not a read. A read on a name annotated with a TypedDict
+(a parameter or annotated assignment in the same function or module) is a
+declared shape that mypy key-checks — Type Safety item 6 — so it is exempt too:
+TypedDicts are discovered from `class X(TypedDict)` across the scan, and the
+library ones (`ToolCall`, `RunnableConfig`) are named in `EXTERNAL_TYPEDDICTS`.
+The check is syntactic: a TypedDict reached through an attribute chain or an
+unannotated loop variable is still flagged — bind it to an annotated local.
+
+**Why:** a string key is a guess about a shape that nothing checks: a typo
+compiles, a renamed field compiles, a key the producer never sets compiles and
+surfaces as a `None` three layers away. Every one of the contract bugs this
+rule postdates — `improvedPrompt` vs `improved_prompt`, `total_count` never
+sent, a `status` no endpoint emitted, `error_code` vs `code` — was a string
+key nobody could type-check. The shape belongs in a model at the boundary
+(repository, provider client, request body), read once by string there and by
+attribute everywhere else; mypy then owns every read.
+
+**Fix:** declare the shape — a Pydantic model for anything that crosses a
+validation boundary (a document, a provider payload, a request) or a
+`TypedDict`/dataclass for an in-process record — and read its attribute. The
+`BOUNDARY_MODULES` map in the script names the few files that *are* the
+boundary (the Mongo base repository, the vendored library patches); string
+keys are the point there and nowhere else. A new entry there needs a reason
+and a review, not a convenience.
+
+**Baseline** `tools/lints/typed_boundaries_baseline.txt`, one line per
+(file, rule): a listed file only stays quiet while untouched; the PR that
+touches it fixes its violations and deletes the line. Deferrals work as for the
+PLR ratchet.
+## import-cost
+
+Not an AST rule — it imports the real modules in fresh subprocesses under
+`python -X importtime`, so it is a standalone script/hook rather than
+something through `run.py`:
+
+```bash
+python3 tools/lints/check_import_cost.py            # check (exits 1 over budget)
+python3 tools/lints/check_import_cost.py --report   # every module's cost, gates nothing
+```
+
+**Rule:** every git-tracked module under `apps/api/app/{constants,config,utils,models}`
+must import, ON ITS OWN, inside `MODULE_BUDGET_MS`; the three entry points
+(`tests.conftest`, `app.main`, `app.worker`) have their own budgets in
+`ENTRY_BUDGET_MS`. "On its own" is literal: each module is imported alone in
+a fresh subprocess, so its cost is its own body plus everything it is the
+first to import — which is what `-X importtime` reports as the cumulative
+column for the root of a lone import.
+
+**Why:** a base-layer module is imported by everything above it, so its cost
+is paid by every test session, every worker boot and every CLI start.
+`import app.constants.llm` measured 1.6 s and pulled transformers,
+langchain_core and langsmith; a constants module must be a leaf. Plugin
+autoload and this import graph together were 3.2 s and 2.8 s of a 7.4 s
+pytest run that executed 0.24 s of test.
+
+**No list, no baseline.** Nothing here names a package. Which modules are
+measured is discovered from `git ls-files`, so a new file is covered the
+moment it is committed; how expensive a package is, is measured rather than
+asserted. Where a heavy package may be imported FROM is a separate question
+and belongs in `[tool.importlinter]`'s layers contract, not in a list here.
+
+**Fix:** the failure prints the most expensive path out of the module —
+`app.utils.chat_utils -> app.agents.llm.chatbot (6487 ms) -> ...`. Cut the
+first edge. A base-layer module must not reach up into a layer above it, and
+a type-only import is still a runtime import in this repo (no
+`TYPE_CHECKING`), so move the shared type down rather than importing the
+heavy module to name it.
+
+**Noise:** the box runs the test and mutation lanes on the same cores, so a
+single slow read is a coin flip. One sweep decides the common case; only a
+module that blew its budget is re-measured (`CONFIRM_RUNS`), and the cheapest
+reading wins. Re-running the whole sweep three times costs six minutes to
+change no answer.
+
+**Status (2026-09-17):** the CI step runs with `--report` and gates nothing.
+Measured on the home box, every module under `app/utils` and `app/models`
+costs 6-15 s alone, because those layers import upward
+(`app.utils.chat_utils` -> `app.agents.llm.chatbot`). Gating today would red
+~200 modules on a PR that caused none of them. Drop `--report` from the
+`ci:import-cost` target in `tools/ci/project.json` once the layering is fixed —
+that is the whole change.
+
 ---
 
 ## no-silent-fallback
@@ -353,3 +491,144 @@ an allowlisted function pushes its count past the audited number and is
 reported, so a historical exemption can never absorb new code. An entry comes
 out when its model gains a datetime field and the calls take `mode="json"`;
 never raise a count.
+
+---
+
+## docstring-content
+
+**Rule:** a docstring states the contract. Ruff's `D`/`DOC` rules (in
+`pyproject.toml`) check its shape; this rule checks what is inside:
+
+| Code | Reported when |
+| --- | --- |
+| DS1 | longer than 6 lines (function), 12 (class), 15 (module) |
+| DS2 | any backtick |
+| DS3 | RST/Sphinx markup — ` ``x`` `, `:param`, `:returns:`, `:raises:`, `.. note::`, `>>>` |
+| DS4 | a `test_*` function/method docstring longer than one line |
+| DS5 | a summary that only restates the function name |
+| DS6 | an `Args:` entry that only restates the argument name |
+| DS7 | a type written inside an `Args:` entry |
+| DS8 | an `Examples:` section |
+
+**Why:** a docstring is read by every caller, so every line of narrative in it
+is paid for many times over. The patterns above are what 900+ docstrings in
+`app/` had accumulated: pasted PR descriptions, RST markup nothing renders,
+`user_id: The user ID.`, and example blocks that rot the moment a signature
+changes. The *why* of a change belongs in its PR; the code is the example.
+
+**Scope:** `app/` and `tests/` (this rule opts into the test tree via
+`INCLUDES_TESTS`). DS4 applies to `test_*` functions/methods only — a test
+module or test class docstring is graded by the ordinary DS1 caps (15/12)
+instead, since the test *name* is what DS4's "the name is the doc" reasoning
+is about; a module has no name to carry that.
+
+Docstrings that are runtime data are never checked, from two sources that
+never drift against each other:
+
+- **The ONE source of truth for "this whole file is runtime data"** is root
+  `pyproject.toml`'s own `[tool.ruff.lint.per-file-ignores]` — any glob whose
+  ignore list already contains `"D"` (route handlers feeding OpenAPI,
+  `@tool` bodies, pydantic models/schemas, argparse `--help` scripts, …)
+  exempts the whole file here too, parsed straight from that table rather
+  than a second hardcoded path list. The repo root is auto-detected by
+  walking up from the scanned files to the nearest `pyproject.toml` that
+  actually configures ruff (skipping one like `apps/api/pyproject.toml`
+  that exists only for `uv`/mypy/coverage); `run.py --repo-root PATH`
+  overrides that for the rare case a scan targets a tree where
+  auto-detection can't find it.
+- **What ruff's per-file config cannot see**, because it is not file-shaped:
+  `@tool` / `@custom_tool` / `@with_doc`-decorated functions, `@router.*`
+  handlers, `BaseModel` / `BaseSettings` / `BaseTool` subclasses anywhere,
+  and a `BaseModel` / `TypedDict` referenced by name as an argument to
+  `with_structured_output` / `bind_tools` anywhere in the tree — only a
+  literal class name written at the call site is caught, not one threaded
+  through a variable or a wrapper function.
+
+**Fix:** shorten. Keep the summary line and the one constraint the name does
+not carry; delete the rest. A test's name is its doc — one line at most, and
+only when it says something the name cannot (a regression reference).
+
+**No allowlist.** The cleanup that introduced this rule brought both trees to
+zero, and there is no `noqa` — a finding is fixed by editing the docstring.
+
+---
+
+## comment-content
+
+**Rule:** a comment is one line of *why* at the point of surprise.
+
+| Code | Reported when |
+| --- | --- |
+| CM1 | more than 3 consecutive own-line comment lines |
+| CM2 | a banner (`# ----`, `# ====`) or `# Step N` inside a function body |
+| CM3 | a comment whose only content is the statement directly below it |
+
+Pragmas (`noqa`, `type:`, `pragma`, `fmt`, `nosec`, `NOSONAR`, …) and trailing
+comments never count.
+
+**Why:** a four-line paragraph above `= 40` hides the one fact that mattered
+(`40 is too tight; truncates real work`); the benchmark story behind it belongs
+in the PR. A numbered `# Step 1` narration inside a function is a function that
+wants splitting. `# sort by date` above `rows.sort(key=by_date)` is noise that
+teaches readers to skip comments — which is how the load-bearing one gets
+skipped too.
+
+**Scope:** `app/` and `tests/`. Module- and class-level banners are allowed on
+purpose: a constants file or a 300-field `Settings` class is supposed to be
+sectioned, and the banner *is* the section.
+
+**Fix:** keep the numbers, limits and constraints; delete the sentences around
+them. If a block genuinely cannot fit in three lines of facts, the surprise is
+big enough to be a named helper or a paragraph in the PR — not a comment.
+
+**No allowlist**, no `noqa`.
+
+---
+
+## tool-pins
+
+**Rule:** the Python lint and audit tools (ruff, bandit, interrogate, xenon,
+import-linter, pip-audit, and mypy's version) are declared once, in the root
+`pyproject.toml`'s `lint` dependency group at exact versions, and locked in
+`uv.lock`. Every surface runs them from it (`uv run --frozen --no-build
+--isolated --only-group lint <tool>`), and the guard fails on a `uvx` run of
+any of them, which would name a version of its own. The `EXPECTED` table is
+left with what no lockfile pins for every consumer: biome (the version
+pnpm-lock.yaml resolved, mirrored in every `biome.json` `$schema` URL) and uv
+itself.
+
+Node is handled differently on purpose. Rather than restate one version on nine
+surfaces and compare them, there is exactly one declaration — `.node-version` —
+and every consumer derives from it: mise (root and every per-app `mise.toml`)
+via `idiomatic_version_file_enable_tools`, and actions/setup-node in
+`setup-node-pnpm` (which every workflow installs through) via
+`node-version-file: .node-version`. The single permitted mirror is one
+`ARG NODE_VERSION` default per Dockerfile (`infra/docker/ci-base.Dockerfile`, `apps/web/Dockerfile`,
+`apps/bots/Dockerfile`), because Docker cannot read a file in a `FROM` line.
+The guard fails on any other hardcoded node version anywhere in `mise.toml`,
+`apps/*/mise.toml`, `docs/mise.toml`, the workflows, the composite actions, or the
+Dockerfiles.
+
+Python and Rust follow the same shape. Python is declared in `.python-version`
+(uv and mise both read it) and mirrored by `ARG PYTHON_VERSION` in
+`apps/api/Dockerfile` and `apps/voice-agent/Dockerfile`. Rust has no idiomatic
+file, so `mise.toml` declares it and `apps/api/Dockerfile` mirrors it with
+`ARG RUST_VERSION`. A stray `python = "3.x"` in any `mise.toml`, a per-app
+`.python-version`, or a `python:3.x` / `rust:1.x` image tag all fail the guard —
+`apps/api/.python-version` pinning 3.12.11 against the root's 3.12.15 is the
+drift that motivated it.
+
+**Why:** "passed locally" must mean "passes CI". A ruff release promotes rules
+(0.16.0 shipped ISC004/RUF036), a biome release changes formatting — an
+unpinned surface goes red or green on its own schedule, with no commit to blame.
+Node is the same failure with a worse blast radius: `node = "22"` and
+`node-version: "22"` are ranges that follow the registry, so a Monday image
+build and a Friday CI run can be different runtimes, and a node EOL line
+(`node:20-alpine`) keeps building quietly while it stops receiving security
+fixes. This repo ran 20, 22 and 24 at once, including two per-app `mise.toml`
+files that overrode the root — nobody chose that.
+
+**Fix:** bump `.node-version` and the three Dockerfile `ARG` defaults, in one
+commit. That is the whole procedure. Adding `node = "x"` to any `mise.toml`, or
+`node-version:` to a workflow, fails the guard — the version belongs in one
+file.

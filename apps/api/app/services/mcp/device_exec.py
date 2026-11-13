@@ -1,10 +1,10 @@
-"""Run a shell command on a paired device over the bridge (``run_on_device``).
+"""Run a shell command on a paired device over the bridge (run_on_device).
 
-Mirrors ``DeviceConnector``'s transport — ``send_down`` plus the shared per-pod
+Mirrors DeviceConnector's transport — send_down plus the shared per-pod
 up-listener inbox keyed on the session id — but for the exec frame pair instead
-of MCP: send one ``EXEC_OPEN`` and accumulate the ``EXEC_STDOUT``/``EXEC_STDERR``
-stream until ``EXEC_EXIT``, bounded by a wall-clock timeout. The daemon runs the
-command as the user; this side only relays and collects.
+of MCP: send one EXEC_OPEN and accumulate the EXEC_STDOUT/EXEC_STDERR stream
+until EXEC_EXIT, bounded by a wall-clock timeout. The daemon runs the command
+as the user; this side only relays and collects.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ class DeviceExecResult(BaseModel):
 async def run_device_command(
     device_id: str, command: str, cwd: str | None = None
 ) -> DeviceExecResult:
-    """Send ``command`` to the device and collect its output until it exits."""
+    """Send command to the device and collect its output until it exits."""
     if not redis_cache.redis:
         raise DeviceExecError("Device bridge unavailable (no Redis connection)")
     if not await is_online(device_id):

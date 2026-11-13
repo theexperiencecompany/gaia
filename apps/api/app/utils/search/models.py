@@ -35,3 +35,9 @@ class WebSearchResult(BaseModel):
     answer: str = ""
     query: str
     provider: str | None = None
+
+
+class ResearchSearchResult(BaseModel):
+    """The wire shape ``search_for_research`` returns: results only, for deep research."""
+
+    results: list[SearchResultItem] = Field(default_factory=list)

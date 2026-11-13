@@ -40,11 +40,9 @@ def _cached_jsonschema_to_pydantic_by_key(schema_key: str) -> type[BaseModel]:
 def _memoized_jsonschema_to_pydantic(schema: dict[str, Any]) -> type[BaseModel]:
     """Drop-in replacement for mcp_use's jsonschema_to_pydantic with an LRU cache.
 
-    Falls through to the original when the schema isn't JSON-serializable
-    (rare, but possible if a server smuggles non-JSON types into inputSchema).
-    Do NOT pass `default=str` to json.dumps — it would silently coerce
-    non-serializable values into their string form, building a lossy cache
-    key and risking two different schemas mapping to the same Pydantic model.
+    Falls through to the original when the schema isn't JSON-serializable. Do
+    not pass default=str to json.dumps — it would build a lossy cache key and
+    risk two different schemas mapping to the same Pydantic model.
     """
     try:
         key = json.dumps(schema, sort_keys=True)
@@ -70,14 +68,7 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
     """
 
     async def create_tools(self, client: MCPClient) -> list[BaseTool]:
-        """Create LangChain tools, skipping any with invalid schemas.
-
-        Args:
-            client: BaseMCPClient instance with active session
-
-        Returns:
-            List of successfully converted LangChain tools
-        """
+        """Create LangChain tools, skipping any with invalid schemas."""
         # Get connectors from active sessions
         sessions = client.get_all_active_sessions()
         if not sessions:
@@ -205,19 +196,6 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
         return successfully_converted
 
     async def _convert_single_tool(self, mcp_tool: Tool, connector: BaseConnector) -> BaseTool:
-        """Convert a single MCP tool to LangChain format.
-
-        Args:
-            mcp_tool: MCP tool to convert
-            connector: MCP connector instance
-
-        Returns:
-            Converted LangChain tool
-
-        Raises:
-            Exception: If conversion fails
-        """
-        # Use the parent class's conversion logic
-        # This calls jsonschema_to_pydantic internally
+        """Convert a single MCP tool to LangChain format."""
         converted = self._convert_tool(mcp_tool, connector)
         return converted

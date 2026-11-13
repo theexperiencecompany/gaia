@@ -1,18 +1,16 @@
-"""Unit tests for the logging middleware and log_function_call decorator.
+"""Unit tests for the logging middleware.
 
-Tests cover LoggingMiddleware (skip paths, status code handling, trace-id
-propagation, exception handling, request/response size capture) and the
-log_function_call decorator (async/sync, slow function warnings, error
-logging).
+Covers skip paths, status code handling, trace-id propagation, exception
+handling, and request/response size capture.
 """
 
-import asyncio
 from unittest.mock import MagicMock, patch
 
-import pytest
 from starlette.testclient import TestClient
 
-from app.api.v1.middleware.logging import LoggingMiddleware, log_function_call
+from app.api.v1.middleware.logging import LoggingMiddleware
+from app.models.user_models import AuthenticatedUser
+from shared.py.wide_events import log as wide_log
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -21,7 +19,7 @@ from app.api.v1.middleware.logging import LoggingMiddleware, log_function_call
 
 def _build_test_app(skip_paths: frozenset | None = None):
     """Create a minimal FastAPI app with LoggingMiddleware."""
-    from fastapi import FastAPI
+    from fastapi import FastAPI, Request
     from fastapi.responses import JSONResponse
 
     app = FastAPI()
@@ -53,6 +51,17 @@ def _build_test_app(skip_paths: frozenset | None = None):
     @app.get("/api/v1/raise")
     async def raise_route():
         raise RuntimeError("boom")
+
+    @app.get("/api/v1/authed")
+    async def authed_route(request: Request):
+        request.state.user = AuthenticatedUser(user_id="user_42")
+        return {"result": "ok"}
+
+    @app.get("/api/v1/authed-explicit-id")
+    async def authed_explicit_id_route(request: Request):
+        request.state.user = AuthenticatedUser(user_id="user_42")
+        wide_log.set(user={"id": "handler_chosen_id"})
+        return {"result": "ok"}
 
     app.add_middleware(LoggingMiddleware)
     return app
@@ -109,6 +118,9 @@ class TestLoggingMiddlewareNormalRequests:
         assert context["status_code"] == 200
         assert "duration_ms" in context
         mock_bound.log.assert_called_once()
+        # A clean 2xx with no warning/error calls stays at INFO, and every HTTP
+        # event is emitted under the one name the dashboards query.
+        assert mock_bound.log.call_args[0] == ("INFO", "http_request")
 
     def test_400_response_logged_as_warning(self) -> None:
         app = _build_test_app()
@@ -133,6 +145,33 @@ class TestLoggingMiddlewareNormalRequests:
         mock_bound.log.assert_called_once()
         level = mock_bound.log.call_args[0][0]
         assert level == "ERROR"
+
+
+class TestLoggingMiddlewareUserContext:
+    """The authenticated user's id is merged into the emitted event."""
+
+    def test_authenticated_user_id_is_stamped_on_the_event(self) -> None:
+        app = _build_test_app()
+        with patch("app.api.v1.middleware.logging.request_logger") as mock_logger:
+            client = TestClient(app)
+            resp = client.get("/api/v1/authed")
+        assert resp.status_code == 200
+        assert mock_logger.bind.call_args[1]["user"] == {"id": "user_42"}
+
+    def test_handler_set_user_id_wins_over_the_request_user(self) -> None:
+        app = _build_test_app()
+        with patch("app.api.v1.middleware.logging.request_logger") as mock_logger:
+            client = TestClient(app)
+            resp = client.get("/api/v1/authed-explicit-id")
+        assert resp.status_code == 200
+        assert mock_logger.bind.call_args[1]["user"] == {"id": "handler_chosen_id"}
+
+    def test_unauthenticated_request_carries_no_user(self) -> None:
+        app = _build_test_app()
+        with patch("app.api.v1.middleware.logging.request_logger") as mock_logger:
+            client = TestClient(app)
+            client.get("/api/v1/test")
+        assert "user" not in mock_logger.bind.call_args[1]
 
 
 class TestLoggingMiddlewareTraceId:
@@ -199,91 +238,3 @@ class TestLoggingMiddlewareRequestSize:
         assert resp.status_code == 200
         context = mock_logger.bind.call_args[1]
         assert context["request_size_bytes"] == 0
-
-
-# ===========================================================================
-# log_function_call decorator
-# ===========================================================================
-
-
-class TestLogFunctionCallAsync:
-    """Async function decoration."""
-
-    async def test_async_function_returns_result(self) -> None:
-        @log_function_call
-        async def add(a: int, b: int) -> int:
-            return a + b
-
-        result = await add(1, 2)
-        assert result == 3
-
-    async def test_async_slow_function_warns(self) -> None:
-        @log_function_call
-        async def slow():
-            await asyncio.sleep(0)
-            return "done"
-
-        with patch("app.api.v1.middleware.logging.time.time") as mock_time:
-            # Simulate >1s execution
-            mock_time.side_effect = [0.0, 2.0]
-            with patch("app.api.v1.middleware.logging.wide_log.warning") as mock_warn:
-                result = await slow()
-            mock_warn.assert_called_once()
-            assert "slow function" in mock_warn.call_args[0][0]
-        assert result == "done"
-
-    async def test_async_function_error_logs_error(self) -> None:
-        @log_function_call
-        async def fail():
-            raise ValueError("oops")
-
-        with patch("app.api.v1.middleware.logging.wide_log.error") as mock_err:
-            with pytest.raises(ValueError, match="oops"):
-                await fail()
-            mock_err.assert_called_once()
-            assert "function failed" in mock_err.call_args[0][0]
-
-
-class TestLogFunctionCallSync:
-    """Sync function decoration."""
-
-    def test_sync_function_returns_result(self) -> None:
-        @log_function_call
-        def multiply(a: int, b: int) -> int:
-            return a * b
-
-        assert multiply(3, 4) == 12
-
-    def test_sync_slow_function_warns(self) -> None:
-        @log_function_call
-        def slow():
-            return "done"
-
-        with patch("app.api.v1.middleware.logging.time.time") as mock_time:
-            mock_time.side_effect = [0.0, 1.5]
-            with patch("app.api.v1.middleware.logging.wide_log.warning") as mock_warn:
-                result = slow()
-            mock_warn.assert_called_once()
-        assert result == "done"
-
-    def test_sync_function_error_logs_error(self) -> None:
-        @log_function_call
-        def fail():
-            raise RuntimeError("sync fail")
-
-        with patch("app.api.v1.middleware.logging.wide_log.error") as mock_err:
-            with pytest.raises(RuntimeError, match="sync fail"):
-                fail()
-            mock_err.assert_called_once()
-
-    def test_sync_fast_function_no_warning(self) -> None:
-        @log_function_call
-        def fast():
-            return 42
-
-        with patch("app.api.v1.middleware.logging.time.time") as mock_time:
-            mock_time.side_effect = [0.0, 0.1]
-            with patch("app.api.v1.middleware.logging.wide_log.warning") as mock_warn:
-                result = fast()
-            mock_warn.assert_not_called()
-        assert result == 42

@@ -1,15 +1,15 @@
 #!/usr/bin/env python
 """Liveness probe for the ARQ worker, invoked by the Docker healthcheck.
 
-The worker refreshes its own ``arq:health:<hostname>`` key from its poll loop every
-``health_check_interval`` seconds with a TTL of ``interval + 1`` (see arq's
-``Worker.record_health``), so the key disappears within ~31s if the loop wedges
-or the process dies. Checking that key is exactly what ``arq --check`` does
-internally — but ``arq --check`` first imports the whole application, which a
+The worker refreshes its own arq:health:<hostname> key from its poll loop every
+health_check_interval seconds with a TTL of interval + 1 (see arq's
+Worker.record_health), so the key disappears within ~31s if the loop wedges
+or the process dies. Checking that key is exactly what arq --check does
+internally — but arq --check first imports the whole application, which a
 Docker healthcheck cannot do: it runs outside the entrypoint, so it has no
 Infisical credentials and the import dies during settings bootstrap.
 
-This probe imports nothing from ``app`` (so no application change can break it)
+This probe imports nothing from app (so no application change can break it)
 and talks only to Redis — the worker's own job substrate.
 """
 

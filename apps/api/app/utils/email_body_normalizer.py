@@ -7,10 +7,10 @@ quoted replies, which the user finds useful for thread context).
 
 Pure functions, no side effects. Safe to apply multiple times (idempotent).
 
-Used by ``GMAIL_FETCH_MESSAGES`` to keep typical inbox responses
+Used by GMAIL_FETCH_MESSAGES to keep typical inbox responses
 under the inline-context threshold. When the aggregate is still too big,
-``WorkspaceCompactionMiddleware`` writes the result to a file the agent
-mines with ``query_json``/``grep``; the offloaded JSONL is meaningfully
+WorkspaceCompactionMiddleware writes the result to a file the agent
+mines with query_json/grep; the offloaded JSONL is meaningfully
 smaller too because every message was already normalized.
 """
 
@@ -22,9 +22,8 @@ import re
 from bs4 import BeautifulSoup
 
 # Signature block: everything after the standard "-- " delimiter on its own
-# line (RFC 3676 §4.3). Includes the sender's title, phone, pronouns,
-# "Sent from my iPhone", etc. Quoted replies don't start with "-- " so they're
-# unaffected.
+# line (RFC 3676 §4.3, includes title/phone/"Sent from my iPhone" etc.).
+# Quoted replies don't start with "-- " so they're unaffected.
 _SIGNATURE_DELIMITER_RE = re.compile(r"^-- ?$", re.MULTILINE)
 
 # Legal disclaimer markers. Match at the start of a paragraph (preceded by
@@ -57,10 +56,9 @@ _US_POSTAL_RE = re.compile(
     r"\b\d{1,6}\s+[A-Z][\w\s]{2,40},?\s+Suite\s+\d+,\s+[A-Z][\w\s]+,\s+[A-Z]{2}\s+\d{5}\b"
 )
 _UNSUBSCRIBE_FOOTER_RE = re.compile(_UNSUBSCRIBE_PATTERN, re.IGNORECASE)
-# A trailing paragraph with an unsubscribe marker only counts as a footer
-# when it is footer-shaped: terse ("Click here to unsubscribe from future
-# emails.") or link-carrying. Long link-free prose that merely mentions the
-# keyword is content and must be kept.
+# A trailing paragraph counts as a footer only when footer-shaped: terse
+# ("Click here to unsubscribe...") or link-carrying — long link-free prose
+# that merely mentions the keyword is content and must be kept.
 _FOOTER_MAX_LEN = 300
 
 # A URL token in prose. Used both to detect link-carrying footers and to
@@ -104,7 +102,7 @@ _HTML_TAG_RE = re.compile(r"</?[a-zA-Z][^>]*>")
 
 
 def strip_signature(body: str) -> str:
-    """Remove the signature block (everything after ``-- \\n`` on its own line)."""
+    """Remove the signature block (everything after -- \\n on its own line)."""
     match = _SIGNATURE_DELIMITER_RE.search(body)
     if match is None:
         return body
@@ -128,16 +126,11 @@ def _is_footer_paragraph(paragraph: str) -> bool:
 def strip_unsubscribe_footers(body: str) -> str:
     """Remove unsubscribe / mailing-address footer paragraphs.
 
-    Footers are stripped only from the trailing region: paragraphs are
-    walked from the end and dropped while they look like footers. A marker
-    mid-body — e.g. a human asking to be unsubscribed — is never dropped,
-    and a body that is entirely footer-shaped is kept as-is: losing a
-    footer is cheap, losing content is not.
+    Only strips the trailing region, walking paragraphs from the end while they look like footers; a marker mid-body is never dropped, and a body that is entirely footer-shaped is kept as-is — losing a footer is cheap, losing content is not.
     """
-    # Drop multi-line address blocks (≥ 2 lines, contains a US postal
-    # address) first, so a keyword footer sitting directly above one still
-    # counts as trailing. Inline mentions of addresses in prose are 1-line
-    # and have surrounding sentence content, so they're preserved.
+    # Drop multi-line (≥2 line) US-postal-address blocks first, so a keyword
+    # footer sitting above one still counts as trailing; 1-line inline address
+    # mentions in prose have surrounding sentence content and are preserved.
     kept: list[str] = []
     for p in body.split("\n\n"):
         if not _US_POSTAL_RE.search(p):
@@ -166,10 +159,9 @@ def strip_tracking_params(text: str) -> str:
     return _URL_RE.sub(_clean_url, text)
 
 
-# Punctuation that commonly follows a URL in prose rather than belonging to
-# it. Closing brackets are split off only when unbalanced within the match —
-# a ")" without a matching "(" in the URL belongs to the surrounding
-# markdown/prose, e.g. "[View order](https://shop.com/order)".
+# Punctuation that commonly follows a URL in prose rather than belonging to it.
+# Closing brackets split off only when unbalanced in the match — a ")" with no
+# matching "(" belongs to surrounding markdown/prose, e.g. "[text](url)".
 _URL_TRAILING_PUNCTUATION = ".,;:!?"
 _URL_CLOSING_BRACKETS = {")": "(", "]": "[", "}": "{"}
 
@@ -200,10 +192,9 @@ def _clean_url(match: re.Match[str]) -> str:
     pairs = [pair for pair in query.split("&") if pair]
     kept = []
     for pair in pairs:
-        # partition (not split): the key is everything before the first "=";
-        # a value may itself contain "=" (base64 padding), which split(maxsplit)
-        # variants handle differently and mutation-equivalent maxsplit values
-        # would survive the gate on.
+        # partition (not split): a value may itself contain "=" (base64
+        # padding), which split(maxsplit) variants handle differently and a
+        # mutation-equivalent maxsplit value would survive the test gate on.
         key = pair.partition("=")[0]
         if key.lower() in _TRACKING_PARAMS:
             continue
@@ -227,16 +218,15 @@ def collapse_whitespace(body: str) -> str:
 def html_to_text(html: str) -> str:
     """Extract plain text from HTML, unescape entities, collapse whitespace.
 
-    Block-level elements (``<p>``, ``<div>``, ``<br>``, ``<li>``, ``<h1-6>``,
-    ``<tr>``, ``<br>``, end-of-block) introduce paragraph breaks so the
+    Block-level elements (<p>, <div>, <br>, <li>, <h1-6>,
+    <tr>, <br>, end-of-block) introduce paragraph breaks so the
     paragraph-based rules downstream can identify boilerplate sections.
     """
     if not html or "<" not in html:
         return unescape(html)
-    # Parse the raw HTML BEFORE unescaping. Unescaping first would turn an
-    # escaped literal like ``&lt;script&gt;keep&lt;/script&gt;`` into a real
-    # tag that decompose() then deletes, losing user-visible content. We
-    # unescape the extracted text at the end instead.
+    # Parse the raw HTML before unescaping: unescaping first would turn an
+    # escaped literal like &lt;script&gt;keep&lt;/script&gt; into a real tag
+    # that decompose() deletes, losing content — unescape at the end instead.
     soup = BeautifulSoup(html, "html.parser")
     # Drop script/style entirely (they may have text we don't want).
     for tag in soup(["script", "style"]):
@@ -255,22 +245,9 @@ def html_to_text(html: str) -> str:
 
 
 def normalize_email_body(body: str) -> str:
-    """Normalize an email body for LLM consumption.
+    """Normalize an email body (plain text or HTML) for LLM consumption; empty string in, empty string out.
 
-    Args:
-        body: Raw email body text. May be plain text or HTML; the function
-            handles both. Passing an empty string returns an empty string.
-
-    Returns:
-        The normalized body. All rules are idempotent; calling this function
-        twice produces the same result as calling it once.
-
-    Note:
-        **Quoted replies are intentionally NOT stripped.** Lines starting with
-        ``>`` and the ``On <date>, <sender> wrote:`` attribution line are
-        preserved — they give context into the older conversation, which
-        the user finds useful. See ``test_quoted_replies_are_kept`` for the
-        explicit guardrail.
+    Idempotent — calling twice matches calling once. Quoted replies (lines starting with >, "On <date>, <sender> wrote:") are intentionally kept for context; see test_quoted_replies_are_kept.
     """
     if not body:
         return body

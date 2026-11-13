@@ -5,8 +5,9 @@ by :mod:`app.services.account_fs`. Deliberately curated (not raw document
 dumps): provider ids and internal bookkeeping never reach the agent's workspace.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
+from app.models.user_models import OnboardingNeed
 from app.schemas.usage import BudgetWindow, FeatureUsageSummary
 
 
@@ -41,10 +42,12 @@ class NotificationsProjection(BaseModel):
 
 
 class PreferencesProjection(BaseModel):
-    """``account/preferences.json`` — response style + home timezone."""
+    """``account/preferences.json`` — persona, response style + home timezone."""
 
     response_style: str | None = None
     timezone: str | None = None
+    profession: str | None = None
+    needs: list[OnboardingNeed] | None = None
 
 
 class CustomInstructionsProjection(BaseModel):
@@ -77,9 +80,14 @@ class LinkedAccountProjection(BaseModel):
 
     platform: str
     connected: bool = False
-    connected_at: str | None = None
+    # Aliases read a PlatformLinkEntry (camelCase, as stored) straight into this shape.
+    connected_at: str | None = Field(
+        default=None, validation_alias=AliasChoices("connected_at", "connectedAt")
+    )
     username: str | None = None
-    display_name: str | None = None
+    display_name: str | None = Field(
+        default=None, validation_alias=AliasChoices("display_name", "displayName")
+    )
 
 
 __all__ = [

@@ -133,7 +133,7 @@ function SummaryCard({ summary, period }: SummaryCardProps) {
     },
     {
       label: "Plan",
-      value: isPro ? "Pro" : "Free",
+      value: isPro ? "Pro" : "None",
       sub: undefined,
     },
   ];
@@ -180,7 +180,7 @@ function SummaryCard({ summary, period }: SummaryCardProps) {
               color: isPro ? C.primary : C.textMuted,
             }}
           >
-            {isPro ? "PRO" : "FREE"}
+            {isPro ? "PRO" : "NO PLAN"}
           </Text>
         </View>
       </View>

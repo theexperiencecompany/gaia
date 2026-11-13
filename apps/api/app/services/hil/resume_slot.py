@@ -2,10 +2,10 @@
 
 A batch pause has several approvals sharing one executor thread; two decisions
 landing close together must not start two concurrent LangGraph runs on it
-(checkpoint corruption). ``resolution`` claims the slot before dispatching a
+(checkpoint corruption). resolution claims the slot before dispatching a
 resume; the dispatched run releases it when it finalizes (completes, errors, or
 pauses again). A decision that loses the claim skips dispatch — it is already
-durable on its record, and the in-flight join round or the sweep collects it.
+durable on its record, and the in-flight run's replayed gates or the sweep collect it.
 """
 
 from app.constants.hil import HIL_RESUME_ACTIVE_KEY_PREFIX, HIL_RESUME_ACTIVE_TTL_SECONDS
@@ -26,7 +26,9 @@ async def claim_resume_dispatch(conversation_id: str) -> bool:
 
 
 async def release_resume_dispatch(conversation_id: str) -> None:
-    """Free the slot. Safe when unset; at most one executor run exists per
-    conversation (busy lock), so an unconditional delete cannot hit another run's
-    claim."""
+    """Free the slot. Safe when unset.
+
+    At most one executor run exists per conversation (busy lock), so an
+    unconditional delete cannot hit another run's claim.
+    """
     await redis_cache.client.delete(_key(conversation_id))

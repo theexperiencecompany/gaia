@@ -1,20 +1,13 @@
 """FINANCIAL MODEL TEMPLATE (openpyxl) — a 5-year P&L projection + dashboard.
 
-This is benchmark-quality few-shot reference material. It demonstrates the full
-openpyxl surface an LLM needs to build a polished workbook:
+Benchmark-quality few-shot reference material demonstrating the full
+openpyxl surface: styling, number_format, layout, conditional formatting,
+and charts.
 
-  * Styling      — Font / PatternFill / Alignment / Border / Side
-  * Numbers      — number_format (currency '"$"#,##0', percent '0.0%')
-  * Layout       — column_dimensions[..].width, freeze_panes, merged title cells
-  * Highlighting — conditional formatting (ColorScaleRule + DataBarRule)
-  * Charts       — openpyxl.chart BarChart + LineChart with Reference/categories
-
-CRITICAL CONTRACT — NO LIVE FORMULAS.
-The sandbox has no spreadsheet recalc engine, so a written `=SUM(...)` shows up
-blank when opened. Every authoritative number below is computed in *Python* and
-the resulting value is written into the cell. Where a formula is instructive we
-write it as a plain string into a clearly-labeled, separate "formula" cell so a
-reader can see the math — but it is never the source of truth.
+CRITICAL CONTRACT — NO LIVE FORMULAS. The sandbox has no recalc engine, so
+a written =SUM(...) shows up blank when opened. Every authoritative number
+is computed in *Python* and written as a value; an instructive formula goes
+into a separate, clearly-labeled "formula" cell instead.
 
 Run via: bash scripts/build.sh report.py out.xlsx
 """
@@ -121,8 +114,11 @@ def merge_title(ws: Worksheet, span: str, text: str) -> None:
 
 # --- Core computation (pure Python — produces every authoritative number) -----
 def compute_model() -> dict:
-    """Build the 5-year P&L. Returns a dict of label -> list-of-yearly-values
-    plus the year labels and derived summary metrics. No spreadsheet math."""
+    """Build the 5-year P&L.
+
+    Returns a dict of label -> list-of-yearly-values plus the year labels
+    and derived summary metrics. No spreadsheet math.
+    """
     a = ASSUMPTIONS
     n = a["years"]
     years = [a["start_year"] + i for i in range(n)]
@@ -307,8 +303,11 @@ def _build_margin_table(
 
 
 def build_model(ws: Worksheet, model: dict) -> tuple[int, int]:
-    """Render the P&L. Returns the 1-based row index of the Revenue row so the
-    dashboard charts can build References into it."""
+    """Render the P&L.
+
+    Returns the 1-based row index of the Revenue row so the dashboard
+    charts can build References into it.
+    """
     years = model["years"]
     n = len(years)
     # Columns: A=label, B..=years, last=Total.
@@ -408,10 +407,8 @@ def build_dashboard(
         DataBarRule(start_type="min", end_type="max", color=ACCENT),
     )
 
-    # --- Chart 1: BarChart — Revenue vs Net Income by year --------------------
-    # References point at the MODEL sheet. Revenue is at `revenue_row`; Net
-    # Income is the last row of the P&L block. We locate Net Income by scanning
-    # the rows definition (it is always the final entry).
+    # References point at the MODEL sheet. Net Income is the last row of the
+    # P&L block (rows are contiguous).
     net_income_row = (
         revenue_row + sum(1 for _ in model["rows"]) - 1
     )  # rows are contiguous; Net Income is last
@@ -440,7 +437,6 @@ def build_dashboard(
     bar.set_categories(cats)
     ws.add_chart(bar, "D3")
 
-    # --- Chart 2: LineChart — Net Margin trend --------------------------------
     # Net Margin is the 3rd margin row (margin_hdr + 3).
     net_margin_row = margin_hdr + 3
     line = LineChart()

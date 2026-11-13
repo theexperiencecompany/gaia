@@ -35,7 +35,7 @@ _SCOPE_SEGMENT = "/app/agents/tools/"
 
 
 def _missing_json_mode(call: ast.Call) -> bool:
-    """True when the dump call does not pin ``mode="json"`` literally."""
+    """Return True when the dump call does not pin ``mode="json"`` literally."""
     for kw in call.keywords:
         if kw.arg == "mode":
             return not (isinstance(kw.value, ast.Constant) and kw.value.value == "json")

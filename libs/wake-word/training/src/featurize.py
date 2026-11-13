@@ -24,6 +24,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import librosa
 import numpy as np
 import onnxruntime as ort
 import soundfile as sf
@@ -131,8 +132,6 @@ def _read_wav(path: Path) -> np.ndarray:
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
     if sr != TARGET_SR:
-        import librosa
-
         audio = librosa.resample(audio, orig_sr=sr, target_sr=TARGET_SR)
     return audio.astype(np.float32)
 
@@ -234,7 +233,8 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=4)
     args = parser.parse_args()
 
-    args.out.mkdir(parents=True, exist_ok=True)
+    # offline training tool writing features where its operator asks; no trust boundary crossed
+    args.out.mkdir(parents=True, exist_ok=True)  # NOSONAR pythonsecurity:S8707
 
     f = Featurizer(
         mel_path=args.models / "melspectrogram.onnx",

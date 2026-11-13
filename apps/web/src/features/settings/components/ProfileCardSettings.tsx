@@ -17,7 +17,8 @@ import {
   holoCardApi,
 } from "@/features/onboarding/api/holoCardApi";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
+import { copyWithFeedback } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
 
 export default function ProfileCardSettings() {
@@ -43,13 +44,12 @@ export default function ProfileCardSettings() {
     fetchData();
   }, []);
 
-  const handleCopyLink = () => {
-    if (!holoCardData?.holo_card_id && typeof window !== "undefined") return;
-    const url = `${window.location.origin}/profile/${holoCardData?.holo_card_id}`;
-    navigator.clipboard.writeText(url);
-    trackEvent(ANALYTICS_EVENTS.PROFILE_LINK_COPIED, {
-      holo_card_id: holoCardData?.holo_card_id,
-    });
+  const handleCopyLink = async () => {
+    const holoCardId = holoCardData?.holo_card_id;
+    if (!holoCardId) return;
+    const url = `${window.location.origin}/profile/${holoCardId}`;
+    if (!(await copyWithFeedback(url))) return;
+    track("profile:link_copied", { holo_card_id: holoCardId });
     toast.success("Profile link copied to clipboard!");
   };
 
@@ -73,8 +73,7 @@ export default function ProfileCardSettings() {
 
   // Memoized on `holoCardData` so identity is stable across unrelated
   // re-renders (integration polling, etc.) — HoloCardEditor's render-phase
-  // reset keys on object identity and would otherwise clobber the user's
-  // in-progress overlay pick with the stale server value on every parent render.
+  // reset keys on identity and would otherwise clobber an in-progress overlay pick with the stale value.
   const displayData: HoloCardDisplayData | null = useMemo(
     () =>
       holoCardData

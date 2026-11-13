@@ -1,9 +1,9 @@
 """Real-Postgres coverage for the naive-timestamp -> timestamptz promotion.
 
-``_ensure_timestamptz_columns`` runs on every startup (``init_postgresql``
-calls it right after ``create_all``) and had no test at all. The whitelist it
+_ensure_timestamptz_columns runs on every startup (init_postgresql
+calls it right after create_all) and had no test at all. The whitelist it
 walks happens to hold only lowercase, non-reserved identifiers, so the old
-unquoted ``ALTER TABLE {table} ALTER COLUMN {column}`` worked by luck: the
+unquoted ALTER TABLE {table} ALTER COLUMN {column} worked by luck: the
 moment an entry needs quoting — a mixed-case column, or one named after a
 reserved word — Postgres case-folds the identifier, the ALTER fails against a
 column that "does not exist", and startup dies.
@@ -47,7 +47,7 @@ def connection(postgres_url: str) -> Iterator[Connection]:
 
 @pytest.fixture
 def legacy_table(connection: Connection) -> Iterator[None]:
-    """A table holding a naive ``timestamp`` column whose name requires quoting."""
+    """Create a table holding a naive timestamp column whose name requires quoting."""
     connection.execute(DDL(f"DROP TABLE IF EXISTS {_QUALIFIED}"))
     connection.execute(
         DDL(f"CREATE TABLE {_QUALIFIED} (id serial PRIMARY KEY, {_QUOTED_COLUMN} timestamp)")

@@ -6,13 +6,10 @@ import { del, get, set } from "idb-keyval";
 
 /**
  * Creates an IndexedDB persister that degrades to a no-op when IndexedDB
- * cannot be opened. iOS Safari refuses to open it under private browsing,
- * storage pressure, or the long-standing WebKit bug, throwing
- * `DOMException: UnknownError: Unable to open database file on disk`. Rather
- * than let every persist tick reject as an uncaught promise, the first failure
- * disables persistence for the session — the query cache still works from
- * memory, only cross-reload restoration is lost.
- * @see https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API
+ * can't open — iOS Safari refuses it under private browsing, storage
+ * pressure, or a long-standing WebKit bug (`UnknownError: Unable to open
+ * database file on disk`). The first failure disables persistence for the
+ * session; the query cache still works from memory, only cross-reload restoration is lost.
  */
 export function createIDBPersister(
   idbValidKey: IDBValidKey = "reactQuery",

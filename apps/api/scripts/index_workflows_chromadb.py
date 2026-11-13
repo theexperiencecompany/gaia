@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
-"""
-Script to index existing workflows in ChromaDB.
-Stores all workflows from MongoDB into ChromaDB for semantic search.
+"""Index existing workflows from MongoDB into ChromaDB for semantic search.
 
-Usage:
-    python scripts/index_workflows_chromadb.py
+Usage: python scripts/index_workflows_chromadb.py
 """
 
 import asyncio

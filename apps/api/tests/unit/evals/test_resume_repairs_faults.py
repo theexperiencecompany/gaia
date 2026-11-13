@@ -1,8 +1,8 @@
 """A run contaminated by an outage has to be repairable.
 
-The publish gate now refuses a run whose `failed` records never actually ran.
-That verdict is only useful if it can be worked off: `failed` is a terminal
-status, so `--resume` used to skip exactly the cases that needed re-running, and
+The publish gate now refuses a run whose failed records never actually ran.
+That verdict is only useful if it can be worked off: failed is a terminal
+status, so --resume used to skip exactly the cases that needed re-running, and
 the journal is append-only so the record cannot be edited. The run was stuck —
 blocked from publishing, unable to be repaired, re-run from scratch or nothing.
 """

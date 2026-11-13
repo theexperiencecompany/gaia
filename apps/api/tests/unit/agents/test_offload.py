@@ -1,8 +1,8 @@
-"""Structured offload marker helpers — round-trip, lift, tolerance.
+"""Structured offload marker helpers — round-trip and tolerance.
 
 Pure unit tests (no I/O). Cover the read-side validators whose contracts must
-agree: read_offload only guarantees `path`, so tools_for_offload must tolerate a
-missing/unknown `fmt` (F1), and read_offload must never raise on a non-dict
+agree: read_offload only guarantees path, so tools_for_offload must tolerate a
+missing/unknown fmt (F1), and read_offload must never raise on a non-dict
 additional_kwargs (F2).
 """
 
@@ -14,9 +14,8 @@ from langchain_core.messages import ToolMessage
 import pytest
 
 from app.agents.workspace.offload import (
-    OFFLOAD_RESULT_KEY,
+    extract_offload_records,
     mark_offload,
-    pop_offload_descriptor,
     read_offload,
     sniff_offload_fmt,
     tools_for_offload,
@@ -58,33 +57,6 @@ def test_read_offload_non_dict_additional_kwargs_returns_none() -> None:
     assert read_offload(SimpleNamespace(additional_kwargs="not-a-dict")) is None  # type: ignore[arg-type]  # SimpleNamespace fakes a ToolMessage
     assert read_offload(SimpleNamespace(additional_kwargs=None)) is None  # type: ignore[arg-type]  # SimpleNamespace fakes a ToolMessage
     assert read_offload(SimpleNamespace()) is None  # type: ignore[arg-type]  # SimpleNamespace fakes a ToolMessage
-
-
-# --- pop_offload_descriptor -------------------------------------------------- #
-
-
-def test_pop_descriptor_strips_key_and_keeps_real_fields() -> None:
-    result = {"total_messages": 5, "inline_preview": [1, 2], OFFLOAD_RESULT_KEY: INFO}
-    info = pop_offload_descriptor(result)
-    assert info == INFO
-    assert OFFLOAD_RESULT_KEY not in result  # popped so it can't leak into content
-    assert OFFLOAD_RESULT_KEY not in str(result)
-    assert result == {"total_messages": 5, "inline_preview": [1, 2]}  # real fields survive
-
-
-@pytest.mark.parametrize(
-    "descriptor",
-    [{"fmt": "jsonl"}, {"path": 5}, "not-a-dict", None, [1, 2]],
-)
-def test_pop_descriptor_malformed_returns_none_but_still_pops(descriptor: object) -> None:
-    result = {"a": 1, OFFLOAD_RESULT_KEY: descriptor}
-    assert pop_offload_descriptor(result) is None
-    assert OFFLOAD_RESULT_KEY not in result  # always removed, even when invalid
-
-
-@pytest.mark.parametrize("result", [[1, 2], "str", None, 42, {"a": 1}])
-def test_pop_descriptor_no_key_or_non_dict_is_none(result: object) -> None:
-    assert pop_offload_descriptor(result) is None
 
 
 # --- tools_for_offload ------------------------------------------------------- #
@@ -129,3 +101,42 @@ def test_tools_for_offload_missing_fmt_defaults_to_grep() -> None:
 )
 def test_sniff_offload_fmt(text: str, fmt: str) -> None:
     assert sniff_offload_fmt(text) == fmt
+
+
+# --- extract_offload_records -------------------------------------------------- #
+
+
+def test_extract_offload_records_unwraps_a_composio_envelope() -> None:
+    text = (
+        '{"data": {"fetched_count": 2, "messages": [{"id": "a"}, {"id": "b"}]},'
+        ' "error": null, "successful": true}'
+    )
+
+    extracted = extract_offload_records(text)
+
+    assert extracted is not None
+    assert extracted.records == [{"id": "a"}, {"id": "b"}]
+    assert extracted.metadata == {"error": None, "successful": True, "data.fetched_count": 2}
+
+
+def test_extract_offload_records_ignores_leading_whitespace() -> None:
+    extracted = extract_offload_records('\n  {"data": [{"id": "a"}]}')
+
+    assert extracted is not None and extracted.records == [{"id": "a"}]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '[{"a": 1}]',  # a top-level array is already queryable as-is
+        '{"a": [{"x": 1}], "b": [{"y": 2}]}',  # two collections: no single record set
+        '{"a": 1, "b": "c"}',  # no collection at all
+        '{"a": [1, 2]}',  # a list of scalars is not records
+        '{"a": []}',  # nothing to split out
+        '{"a": {"b": [{"x": 1}], "c": {"d": 1}}}',  # a nested object beside the records
+        '{"a": 1}\n{"b": 2}',  # JSONL is already records
+        "not json",
+    ],
+)
+def test_extract_offload_records_declines_what_has_no_single_record_list(text: str) -> None:
+    assert extract_offload_records(text) is None

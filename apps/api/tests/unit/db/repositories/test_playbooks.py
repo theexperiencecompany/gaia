@@ -1,11 +1,11 @@
-"""Hermetic unit tests for ``PlaybooksRepository``.
+"""Hermetic unit tests for PlaybooksRepository.
 
-The real-Mongo proof lives in ``tests/contracts/test_playbooks_repository.py``;
+The real-Mongo proof lives in tests/contracts/test_playbooks_repository.py;
 this tier pins the exact shape of the writes the repository hands the driver —
 that a first authoring is ONE atomic upsert rather than a read-then-insert two
 concurrent authors can both pass, and that a run outcome lands only on the
 playbook that was actually replayed. The driver is mocked at
-``app.db.repositories.base.get_async_collection``, the single seam every read and
+app.db.repositories.base.get_async_collection, the single seam every read and
 write in the base repository goes through.
 """
 
@@ -68,12 +68,9 @@ def _raw(**overrides: Any) -> dict[str, Any]:
 def collection() -> Iterator[MagicMock]:
     mock = MagicMock()
     mock.find_one = AsyncMock(return_value=None)
-    # The write asks first whether the body is in a heal status (no upsert),
-    # then upserts the reset; the default collection holds no such body.
-    # The write tries the status-guarded phases first (a heal-born rewrite, then
-    # a never-replayed body) and upserts the reset only when neither matched;
-    # the default collection holds no such body. Outcome writes are also
-    # status-guarded but never bump the revision, and are left alone.
+    # The write tries status-guarded phases first (heal-born rewrite, then
+    # never-replayed body) and upserts the reset only when neither matches;
+    # outcome writes are also status-guarded but never bump the revision.
     mock.find_one_and_update = AsyncMock(
         side_effect=lambda filter_, update, **_kwargs: None
         if "last_run_status" in filter_ and "revision" in update.get("$inc", {})
@@ -89,13 +86,11 @@ def repo() -> PlaybooksRepository:
 
 
 def _raw_update_spy(*outcomes: Any) -> tuple[Any, list[dict[str, Any]]]:
-    """A stand-in for the base repository's raw-update seam, carrying its real
-    signature so a dropped argument fails here rather than reaching the driver.
+    """Stand in for the base repository's raw-update seam, with its real signature.
 
-    The seam is where the cache scope and the upsert flag are decided; neither
-    reaches ``find_one_and_update``, so they are only observable from this side.
-    Each entry of ``outcomes`` is the next call's return value, or an exception
-    to raise from it.
+    The cache scope and upsert flag are decided here and never reach
+    find_one_and_update. Each outcome is the next call's return value, or an
+    exception to raise from it.
     """
     calls: list[dict[str, Any]] = []
     queued = list(outcomes)
@@ -176,9 +171,7 @@ class TestUpsertForWorkflow:
     async def test_the_written_body_is_the_whole_playbook_and_nothing_else(
         self, repo: PlaybooksRepository, collection: MagicMock
     ) -> None:
-        """A rewrite replaces the workflow's one record in place, so the ``$set``
-        IS the new playbook. A field that goes missing here is silently kept from
-        the body just thrown away; one that arrives as null erases it."""
+        """A rewrite replaces the workflow's one record in place, so the $set is the new playbook — a missing field silently drops it."""
         await repo.upsert_for_workflow(_doc())
 
         _filter, update = collection.find_one_and_update.await_args.args
@@ -223,8 +216,7 @@ class TestUpsertForWorkflow:
     async def test_both_attempts_are_written_in_the_global_scope(
         self, repo: PlaybooksRepository
     ) -> None:
-        """``playbooks`` is a global collection, so both the first attempt and the
-        duplicate-key retry name the global cache scope."""
+        """Playbooks is a global collection, so both the first attempt and the duplicate-key retry name the global cache scope."""
         spy, calls = _raw_update_spy(None, None, DuplicateKeyError("E11000 duplicate key"), _doc())
 
         with patch.object(PlaybooksRepository, "_apply_raw_update", spy):
@@ -249,8 +241,7 @@ class TestUpsertForWorkflow:
     async def test_a_rewrite_out_of_a_heal_carries_the_attempts_it_spent(
         self, repo: PlaybooksRepository
     ) -> None:
-        """Matched on the stored status, never read-then-written: a body in a
-        heal status takes one status-guarded write that grows the count."""
+        """Matched on the stored status, never read-then-written: a body in a heal status takes one status-guarded write that grows the count."""
         spy, calls = _raw_update_spy(_doc())
 
         with patch.object(PlaybooksRepository, "_apply_raw_update", spy):
@@ -266,9 +257,7 @@ class TestUpsertForWorkflow:
     async def test_a_playbook_that_vanished_mid_upsert_names_its_workflow(
         self, repo: PlaybooksRepository
     ) -> None:
-        """An upsert that matches nothing and inserts nothing cannot be reported as
-        a generic failure: the message is the only pointer to which workflow lost
-        its write."""
+        """An upsert that matches and inserts nothing cannot be a generic failure — the message must name which workflow lost its write."""
         spy, _calls = _raw_update_spy(None, None, None)
 
         with (
@@ -347,9 +336,7 @@ class TestRecordRunOutcome:
     async def test_a_suspect_that_does_not_count_records_the_reason_without_growing(
         self, repo: PlaybooksRepository, collection: MagicMock
     ) -> None:
-        """The narration's verdict is an opinion: it sends the fire to the agent
-        but must not be able to delete a playbook on its own. Two such verdicts
-        in a row on a correct playbook were seen live."""
+        """The narration's verdict is an opinion; it sends the fire to the agent but must not be able to delete a playbook on its own."""
         collection.find_one_and_update = AsyncMock(return_value=_raw(suspect_streak=0))
 
         await repo.record_run_outcome(
@@ -392,7 +379,7 @@ class TestRecordRunOutcome:
     async def test_with_a_revision_the_write_lands_only_on_that_body(
         self, repo: PlaybooksRepository, collection: MagicMock
     ) -> None:
-        """``playbook_id`` survives a rewrite, so on its own it guarded nothing."""
+        """playbook_id survives a rewrite, so on its own it guarded nothing."""
         await repo.record_run_outcome(
             WORKFLOW_ID,
             USER_ID,
@@ -497,11 +484,12 @@ class TestIncrementHealAttempts:
 
 
 class TestTheScopeAndShapeOfEveryRawWrite:
-    """The raw-update seam carries two things ``find_one_and_update`` never sees:
-    the cache scope the write invalidates, and how the outcome update was asked
-    for. ``playbooks`` is a global collection, so every write names the global
-    scope; a per-user scope would bump a generation nobody reads and leave the
-    global one stale."""
+    """The raw-update seam carries two things find_one_and_update never sees.
+
+    The cache scope the write invalidates, and how the outcome update was
+    asked for. playbooks is a global collection, so every write names the
+    global scope — a per-user scope would leave the global one stale.
+    """
 
     async def test_a_plain_outcome_is_recorded_in_the_global_scope(
         self, repo: PlaybooksRepository
@@ -518,9 +506,7 @@ class TestTheScopeAndShapeOfEveryRawWrite:
     async def test_both_writes_of_a_suspect_landing_are_global(
         self, repo: PlaybooksRepository
     ) -> None:
-        """The growing write is tried first and matches nothing on an already
-        suspect playbook; the plain fallback then runs. Both are the same
-        collection and must invalidate the same scope."""
+        """The growing write is tried first and matches nothing on an already suspect playbook; the plain fallback must invalidate the same scope."""
         spy, calls = _raw_update_spy(None, _doc())
 
         with patch.object(PlaybooksRepository, "_apply_raw_update", spy):
@@ -546,11 +532,7 @@ class TestTheScopeAndShapeOfEveryRawWrite:
     async def test_each_outcome_write_states_its_own_streak_intent(
         self, repo: PlaybooksRepository, collection: MagicMock
     ) -> None:
-        """The two suspect writes differ ONLY in whether they grow the streak, and
-        the fallback is the one that lands on a playbook already marked suspect.
-        It says so explicitly rather than leaning on a default, because the two
-        calls sit three lines apart and a reader has to be able to tell them
-        apart at the call site."""
+        """The two suspect writes differ only in whether they grow the streak, stated explicitly rather than leaning on a default."""
         seen: list[tuple[Any, Any, dict[str, Any]]] = []
 
         def _outcome_update(
@@ -600,8 +582,7 @@ class TestDeleteRevision:
     async def test_the_delete_is_keyed_on_the_revision_it_judged(
         self, repo: PlaybooksRepository, collection: MagicMock
     ) -> None:
-        """A heal rewrites in place and bumps the revision; a discard decided
-        against the old body must not take the replacement with it."""
+        """A heal rewrites in place and bumps the revision; a discard decided against the old body must not take the replacement with it."""
         collection.delete_one = AsyncMock(return_value=MagicMock(deleted_count=0))
         removed = await repo.delete_revision(WORKFLOW_ID, USER_ID, playbook_id="pb_1", revision=3)
         assert removed is False
@@ -629,10 +610,12 @@ class TestDeleteRevision:
 
 @pytest.mark.unit
 class TestTheWriteIsTheTransition:
-    """``_outcome_update`` splits the lifecycle transition into the part that
-    depends on the stored state and the part that does not. Applying the write
-    to a document must land exactly where ``transition`` says a replay lands,
-    for every outcome from every prior status, or the two have drifted."""
+    """_outcome_update splits the lifecycle transition into stored-state and stateless parts.
+
+    Applying the write to a document must land exactly where transition says
+    a replay lands, for every outcome from every prior status, or the two
+    have drifted.
+    """
 
     @pytest.mark.parametrize(
         ("prior", "outcome"),
@@ -679,8 +662,7 @@ class TestTheWriteIsTheTransition:
 async def test_an_ask_slot_source_is_written_by_its_alias(
     repo: PlaybooksRepository, collection: MagicMock
 ) -> None:
-    """The document model reads ``$ask``; a write that spells the field name
-    stores a body the read refuses. The stored form is the read form."""
+    """The document model reads $ask; a write that spells the field name stores a body the read refuses."""
     await repo.upsert_for_workflow(
         _doc(
             steps=[

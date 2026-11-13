@@ -7,7 +7,7 @@ import { DemoFinalCard } from "./DemoFinalCards";
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
-export interface WorkflowStep {
+export interface DemoWorkflowStep {
   id: string;
   label: string;
   detail: string;
@@ -17,7 +17,7 @@ export interface WorkflowStep {
 interface WorkflowsDemoBaseProps {
   title: string;
   schedule: string;
-  steps: WorkflowStep[];
+  steps: DemoWorkflowStep[];
   fallbackIcon?: (isDone: boolean, isRunning: boolean) => ReactNode;
 }
 

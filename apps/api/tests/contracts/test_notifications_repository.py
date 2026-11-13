@@ -1,4 +1,4 @@
-"""Contract tests for NotificationRepository (business-key identity = UUID ``id``)."""
+"""Contract tests for NotificationRepository (business-key identity = UUID id)."""
 
 from __future__ import annotations
 
@@ -75,10 +75,9 @@ class TestNotificationRepository:
 
 class TestMarkAllReadForUser:
     async def test_marks_every_delivered_notification_not_just_a_page(self, repo):
-        # Regression: "mark all as read" must cover every DELIVERED notification
-        # for the user, not only however many a paginated client has loaded.
-        # 5 is arbitrary but exceeds any single-item/page assumption a caller
-        # like a UI's "first N loaded" bug would silently rely on.
+        # Regression: "mark all as read" must cover every DELIVERED notification for the
+        # user, not only however many a paginated client loaded. 5 is arbitrary but exceeds
+        # any single-item/page assumption a caller could silently rely on.
         ids = [f"bulk-{i}" for i in range(5)]
         for notification_id in ids:
             await repo.create(

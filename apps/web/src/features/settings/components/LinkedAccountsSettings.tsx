@@ -5,23 +5,24 @@ import { Chip } from "@heroui/chip";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import {
+  PhoneLinkModal,
+  type PhoneLinkTarget,
+} from "@/components/shared/PhoneLinkModal";
+import {
   BOT_AUTH_COMMAND,
   BOT_PLATFORM_ICONS,
   BOT_PLATFORM_LABELS,
 } from "@/config/botPlatforms";
-import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
-import {
-  PhoneLinkModal,
-  type PhoneLinkTarget,
-} from "@/features/settings/components/PhoneLinkModal";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import { OpenPlatformChatButton } from "@/features/settings/components/OpenPlatformChatButton";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { apiService } from "@/lib/api/service";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
+import { api } from "@/lib/api/typed";
 import { toast } from "@/lib/toast";
-import { usePricingModalStore } from "@/stores/pricingModalStore";
-import type { PlatformLink } from "@/types/platform";
+import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
+import type { PlatformLinks } from "@/types/platform";
 
 interface PlatformConfig {
   id: string;
@@ -32,6 +33,8 @@ interface PlatformConfig {
   connectedDescription: string;
   premium?: boolean;
   requiresPhone?: boolean;
+  /** The linked account has a DM chat the web app can open. */
+  chat?: boolean;
 }
 
 const PLATFORMS: PlatformConfig[] = [
@@ -42,6 +45,7 @@ const PLATFORMS: PlatformConfig[] = [
     image: BOT_PLATFORM_ICONS.telegram,
     color: "#0088cc",
     connectedDescription: "Message your bot on Telegram to chat with GAIA",
+    chat: true,
   },
   {
     id: "whatsapp",
@@ -50,6 +54,7 @@ const PLATFORMS: PlatformConfig[] = [
     color: "#25D366",
     description: "Connect GAIA to WhatsApp (Beta)",
     connectedDescription: "Message GAIA on WhatsApp",
+    chat: true,
   },
   {
     id: "imessage",
@@ -60,6 +65,7 @@ const PLATFORMS: PlatformConfig[] = [
     connectedDescription: "Message GAIA from your iPhone or Mac",
     premium: true,
     requiresPhone: true,
+    chat: true,
   },
   {
     id: "slack",
@@ -80,9 +86,7 @@ const PLATFORMS: PlatformConfig[] = [
 ];
 
 export default function LinkedAccountsSettings() {
-  const [platformLinks, setPlatformLinks] = useState<
-    Record<string, PlatformLink | null>
-  >({});
+  const [platformLinks, setPlatformLinks] = useState<PlatformLinks>({});
   const [isLoading, setIsLoading] = useState(true);
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(
     null,
@@ -97,8 +101,13 @@ export default function LinkedAccountsSettings() {
   // starting over) invalidates that request, so a late reply cannot drop the
   // previous attempt's number into the session the user is now in.
   const connectAttemptRef = useRef(0);
-  const { data: subscriptionStatus } = useUserSubscriptionStatus();
-  const openPricingModal = usePricingModalStore((s) => s.openModal);
+  const { isPaid, isUnknown } = useIsPaid();
+  const billingEnabled = useDeployment().bills;
+  // Unknown status stays permissive: the backend enforces the gate, and
+  // blocking a paying customer is worse than a brief open window.
+  const isLockedBehindPro = (platform: PlatformConfig) =>
+    billingEnabled && !!platform.premium && !isUnknown && !isPaid;
+  const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
 
   const clearPollTimer = () => {
     if (pollTimerRef.current) {
@@ -114,15 +123,10 @@ export default function LinkedAccountsSettings() {
     };
   }, []);
 
-  const fetchPlatformLinks = async (): Promise<Record<
-    string,
-    PlatformLink | null
-  > | null> => {
+  const fetchPlatformLinks = async (): Promise<PlatformLinks | null> => {
     try {
       setIsLoading(true);
-      const data = await apiService.get<{
-        platform_links: Record<string, PlatformLink | null>;
-      }>("/platform-links", { silent: true });
+      const data = await api.get("/api/v1/platform-links", { silent: true });
       setPlatformLinks(data.platform_links || {});
       return data.platform_links || {};
     } catch {
@@ -134,8 +138,11 @@ export default function LinkedAccountsSettings() {
   };
 
   const startConnect = (platform: PlatformConfig) => {
-    if (platform.premium && !subscriptionStatus?.is_subscribed) {
-      openPricingModal();
+    if (isLockedBehindPro(platform)) {
+      openUpgradeModal(undefined, {
+        dismissible: true,
+        source: "settings_linked_accounts",
+      });
       return;
     }
     if (platform.requiresPhone) {
@@ -151,19 +158,11 @@ export default function LinkedAccountsSettings() {
     try {
       setConnectingPlatform(platformId);
 
-      const wasConnected = platformLinks[platformId]?.platformUserId != null;
-
-      const data = await apiService.post<{
-        auth_url?: string;
-        instructions?: string;
-        action_link?: string;
-        contact_number?: string;
-        auth_type: string;
-      }>(
-        `/platform-links/${platformId}/connect`,
-        phoneNumber ? { phone: phoneNumber } : {},
-        { silent: true },
-      );
+      const data = await api.post("/api/v1/platform-links/{platform}/connect", {
+        path: { platform: platformId },
+        body: phoneNumber ? { phone: phoneNumber } : {},
+        silent: true,
+      });
 
       if (attempt !== connectAttemptRef.current) return;
 
@@ -183,15 +182,7 @@ export default function LinkedAccountsSettings() {
         pollTimerRef.current = setInterval(() => {
           if (popup?.closed) {
             clearPollTimer();
-            void fetchPlatformLinks().then((links) => {
-              if (
-                !wasConnected &&
-                links?.[platformId]?.platformUserId != null
-              ) {
-                trackEvent(ANALYTICS_EVENTS.BOT_CONNECTED, {
-                  bot_id: platformId,
-                });
-              }
+            void fetchPlatformLinks().then(() => {
               setConnectingPlatform(null);
             });
           }
@@ -202,7 +193,7 @@ export default function LinkedAccountsSettings() {
         setPhoneLinkTarget({
           contactNumber: data.contact_number,
           command: BOT_AUTH_COMMAND,
-          actionLink: data.action_link,
+          actionLink: data.action_link ?? undefined,
         });
         setConnectingPlatform(null);
       } else if (data.auth_type === "manual" && data.instructions) {
@@ -222,7 +213,8 @@ export default function LinkedAccountsSettings() {
           ...(data.action_link && {
             action: {
               label: "Open",
-              onClick: () => window.open(data.action_link, "_blank"),
+              onClick: () =>
+                window.open(data.action_link ?? undefined, "_blank"),
             },
           }),
         });
@@ -239,10 +231,10 @@ export default function LinkedAccountsSettings() {
 
   const handleDisconnect = async (platformId: string) => {
     try {
-      await apiService.delete(`/platform-links/${platformId}`, {
+      await api.delete("/api/v1/platform-links/{platform}", {
+        path: { platform: platformId },
         silent: true,
       });
-      trackEvent(ANALYTICS_EVENTS.BOT_DISCONNECTED, { bot_id: platformId });
       toast.success(`Disconnected from ${platformId}`);
       await fetchPlatformLinks();
     } catch {
@@ -287,7 +279,7 @@ export default function LinkedAccountsSettings() {
               }
             >
               <div className="flex items-center gap-3">
-                {platform.premium && !subscriptionStatus?.is_subscribed && (
+                {isLockedBehindPro(platform) && (
                   <Chip size="sm" variant="flat" color="warning">
                     Pro
                   </Chip>
@@ -297,6 +289,9 @@ export default function LinkedAccountsSettings() {
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                     Connected
                   </span>
+                )}
+                {isConnected && platform.chat && (
+                  <OpenPlatformChatButton platform={platform.id} />
                 )}
                 <Button
                   variant="flat"

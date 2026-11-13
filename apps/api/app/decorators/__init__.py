@@ -1,13 +1,16 @@
-"""
-Decorators package for GAIA backend.
-"""
+"""Decorators package for GAIA backend."""
 
 from .caching import Cacheable, CacheInvalidator
 from .documentation import with_doc
+from .entitlements import (
+    SubscriptionRequiredException,
+    is_paid,
+    require_active_subscription,
+)
 from .rate_limiting import (
     LangChainRateLimitError,
     clear_user_context,
-    enforce_daily_cost_budget,
+    enforce_cost_budget,
     enforce_rate_limit,
     enforce_tiered_limit,
     get_current_rate_limit_info,
@@ -19,12 +22,11 @@ from .rate_limiting import (
 __all__ = [
     # Documentation
     "with_doc",
-    # Rate limiting
     "with_rate_limiting",
     "tiered_rate_limit",
     "enforce_rate_limit",
     "enforce_tiered_limit",
-    "enforce_daily_cost_budget",
+    "enforce_cost_budget",
     "LangChainRateLimitError",
     "set_user_context",
     "clear_user_context",
@@ -32,4 +34,8 @@ __all__ = [
     # Caching
     "Cacheable",
     "CacheInvalidator",
+    # Entitlements
+    "SubscriptionRequiredException",
+    "is_paid",
+    "require_active_subscription",
 ]

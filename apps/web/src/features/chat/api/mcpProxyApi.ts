@@ -1,4 +1,4 @@
-import axios from "axios";
+import { ApiError } from "@shared/api";
 import type {
   MCPPromptsListResult,
   MCPResourceReadResult,
@@ -6,7 +6,7 @@ import type {
   MCPResourceTemplatesListResult,
   MCPToolCallResult,
 } from "@/features/chat/types/mcpProxy";
-import { apiauth } from "@/lib/api/client";
+import { api } from "@/lib/api/typed";
 
 export type {
   MCPPromptsListResult,
@@ -42,18 +42,8 @@ function getServerUrlCandidates(serverUrl: string): string[] {
 }
 
 function extractErrorMessage(error: unknown): string {
-  if (axios.isAxiosError(error)) {
-    const detail = error.response?.data;
-    if (detail && typeof detail === "object" && "detail" in detail) {
-      const value = detail.detail;
-      if (typeof value === "string" && value.trim()) {
-        return value;
-      }
-    }
-    if (typeof detail === "string" && detail.trim()) {
-      return detail;
-    }
-    return error.message;
+  if (error instanceof ApiError) {
+    return error.envelope?.message ?? error.message;
   }
   if (error instanceof Error) {
     return error.message;
@@ -68,19 +58,22 @@ function normalizeToolArguments(args: unknown): Record<string, unknown> {
   return {};
 }
 
+/**
+ * Retry one proxy call across the server URL spellings an MCP server may
+ * answer on (trailing slash or not), returning the first that succeeds.
+ *
+ * The item shapes the UI reads are narrower than the API's
+ * `dict[str, Any]` lists, so the result is narrowed here rather than at every
+ * field access.
+ */
 async function proxyAcrossCandidates<T>(
   serverUrl: string,
-  path: string,
-  body: Record<string, unknown>,
+  send: (candidateServerUrl: string) => Promise<unknown>,
 ): Promise<{ result?: T; error?: unknown }> {
   let lastError: unknown = null;
   for (const candidateServerUrl of getServerUrlCandidates(serverUrl)) {
     try {
-      const response = await apiauth.post<T>(path, {
-        ...body,
-        server_url: candidateServerUrl,
-      });
-      return { result: response.data };
+      return { result: (await send(candidateServerUrl)) as T };
     } catch (error) {
       lastError = error;
     }
@@ -93,11 +86,17 @@ export async function callMCPAppTool(
   toolName: string,
   args: unknown,
 ): Promise<MCPToolCallResult> {
-  const safeArgs = normalizeToolArguments(args);
   const { result, error } = await proxyAcrossCandidates<MCPToolCallResult>(
     serverUrl,
-    "/mcp/proxy/tool-call",
-    { tool_name: toolName, arguments: safeArgs },
+    (server_url) =>
+      api.post("/api/v1/mcp/proxy/tool-call", {
+        body: {
+          server_url,
+          tool_name: toolName,
+          arguments: normalizeToolArguments(args),
+        },
+        silent: true,
+      }),
   );
   if (result) return result;
   return buildErrorResult(extractErrorMessage(error));
@@ -107,12 +106,13 @@ export async function listMCPResources(
   serverUrl: string,
   cursor?: string,
 ): Promise<MCPResourcesListResult> {
-  const body: Record<string, unknown> = {};
-  if (cursor !== undefined) body.cursor = cursor;
   const { result, error } = await proxyAcrossCandidates<MCPResourcesListResult>(
     serverUrl,
-    "/mcp/proxy/resources/list",
-    body,
+    (server_url) =>
+      api.post("/api/v1/mcp/proxy/resources/list", {
+        body: { server_url, cursor },
+        silent: true,
+      }),
   );
   if (result) return result;
   throw new Error(extractErrorMessage(error));
@@ -122,13 +122,14 @@ export async function listMCPResourceTemplates(
   serverUrl: string,
   cursor?: string,
 ): Promise<MCPResourceTemplatesListResult> {
-  const body: Record<string, unknown> = {};
-  if (cursor !== undefined) body.cursor = cursor;
   const { result, error } =
     await proxyAcrossCandidates<MCPResourceTemplatesListResult>(
       serverUrl,
-      "/mcp/proxy/resources/templates/list",
-      body,
+      (server_url) =>
+        api.post("/api/v1/mcp/proxy/resources/templates/list", {
+          body: { server_url, cursor },
+          silent: true,
+        }),
     );
   if (result) return result;
   throw new Error(extractErrorMessage(error));
@@ -140,8 +141,11 @@ export async function readMCPResource(
 ): Promise<MCPResourceReadResult> {
   const { result, error } = await proxyAcrossCandidates<MCPResourceReadResult>(
     serverUrl,
-    "/mcp/proxy/resources/read",
-    { uri },
+    (server_url) =>
+      api.post("/api/v1/mcp/proxy/resources/read", {
+        body: { server_url, uri },
+        silent: true,
+      }),
   );
   if (result) return result;
   throw new Error(extractErrorMessage(error));
@@ -151,12 +155,13 @@ export async function listMCPPrompts(
   serverUrl: string,
   cursor?: string,
 ): Promise<MCPPromptsListResult> {
-  const body: Record<string, unknown> = {};
-  if (cursor !== undefined) body.cursor = cursor;
   const { result, error } = await proxyAcrossCandidates<MCPPromptsListResult>(
     serverUrl,
-    "/mcp/proxy/prompts/list",
-    body,
+    (server_url) =>
+      api.post("/api/v1/mcp/proxy/prompts/list", {
+        body: { server_url, cursor },
+        silent: true,
+      }),
   );
   if (result) return result;
   throw new Error(extractErrorMessage(error));

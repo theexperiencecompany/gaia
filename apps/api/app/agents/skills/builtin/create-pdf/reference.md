@@ -15,7 +15,7 @@
 - Page break: `#pagebreak()`.
 
 ## Fonts
-Use Typst's bundled **New Computer Modern** (default) or **Libertinus Serif** — no download needed. Avoid naming a font that may be absent; if a font is missing Typst warns and substitutes, which can shift layout.
+Use Typst's bundled **New Computer Modern** (default) or **Libertinus Serif**. No download needed. Avoid naming a font that may be absent; if a font is missing Typst warns and substitutes, which can shift layout.
 
 ## Common error → fix
 | Error message contains | Cause | Fix |
@@ -31,4 +31,4 @@ Switch to a `.tex` file (same `build.sh`, pass the `.tex`) when:
 - You need a specific LaTeX package with no Typst equivalent (e.g. exotic chem/music/linguistics packages).
 - The user requires a specific journal/publisher class (`\documentclass{...}`).
 - Typst fails twice on the same construct and a LaTeX equivalent is straightforward.
-tectonic auto-downloads only the packages the document uses; standard `article`/`report` classes work out of the box. Keep LaTeX minimal — no manual multi-pass needed, tectonic handles reruns.
+tectonic auto-downloads only the packages the document uses; standard `article`/`report` classes work out of the box. Keep LaTeX minimal. No manual multi-pass needed, tectonic handles reruns.

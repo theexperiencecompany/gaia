@@ -1,10 +1,12 @@
 """Tests for app.agents.skills.github_discovery."""
 
+import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+import respx
 
 from app.agents.skills.github_discovery import (
     DiscoveredSkill,
@@ -15,6 +17,30 @@ from app.agents.skills.github_discovery import (
     discover_skills_from_repo,
     get_skill_from_repo,
 )
+from app.agents.skills.utils import GITHUB_API_BASE, get_github_headers, github_url
+from app.config.settings import settings
+from app.constants.log_tags import LogTag
+from app.services.providers.provider_credentials_service import resolve
+from tests.helpers import InMemoryCredentialStore
+
+
+async def test_github_requests_carry_the_token_saved_in_settings(
+    selfhost_credential_store: InMemoryCredentialStore,
+) -> None:
+    selfhost_credential_store.save("github", api_key="ghp_saved")  # pragma: allowlist secret
+    await resolve("github")
+
+    assert get_github_headers()["Authorization"] == "token ghp_saved"
+
+
+async def test_github_requests_are_anonymous_without_a_token(
+    selfhost_credential_store: InMemoryCredentialStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "GITHUB_TOKEN", None)
+    await resolve("github")
+
+    assert "Authorization" not in get_github_headers()
+
 
 # ---------------------------------------------------------------------------
 # DiscoveredSkill
@@ -110,10 +136,15 @@ class TestFetchGitTree:
                 return_value=mock_client,
             ),
             patch("app.agents.skills.github_discovery.get_github_headers", return_value={}),
+            patch("app.agents.skills.github_discovery.log") as mock_log,
         ):
             entries, branch = await _fetch_git_tree("owner", "repo", "main")
 
-        assert entries == []
+        assert (entries, branch) == ([], "main")
+        # The operator's only hint that adding a GitHub token would fix discovery.
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.SKILLS} GitHub rate limited; a GitHub token raises the limit"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -454,3 +485,47 @@ class TestGetSkillFromRepo:
         ):
             result = await get_skill_from_repo("o/r", "nonexistent")
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# GitHub API traversal
+# ---------------------------------------------------------------------------
+
+
+class TestGithubApiTraversal:
+    """httpx collapses dot segments, so an unchecked ref aims the server's GitHub token at any API path."""
+
+    @pytest.mark.parametrize(
+        ("repo_url", "branch"),
+        [
+            ("../..", "main"),
+            ("owner/repo", "../../../../user"),
+        ],
+    )
+    async def test_dot_segment_is_rejected_before_any_request(
+        self, repo_url: str, branch: str
+    ) -> None:
+        with respx.mock:
+            with pytest.raises(ValueError, match="Invalid GitHub path segment"):
+                await discover_skills_from_repo(repo_url, branch)
+
+    @pytest.mark.parametrize(
+        ("parts", "shown"),
+        [
+            (("repos", "owner", "."), "repos/owner/."),
+            (("repos", "owner", "a//b"), "repos/owner/a//b"),
+        ],
+    )
+    def test_github_url_names_the_rejected_ref(self, parts: tuple[str, ...], shown: str) -> None:
+        with pytest.raises(
+            ValueError, match=f"^Invalid GitHub path segment in '{re.escape(shown)}'$"
+        ):
+            github_url(GITHUB_API_BASE, *parts)
+
+    async def test_query_characters_are_encoded_not_interpreted(self) -> None:
+        with respx.mock:
+            route = respx.get(f"{GITHUB_API_BASE}/repos/owner/repo/git/trees/main%3Fx%3D1").mock(
+                return_value=httpx.Response(200, json={"tree": [], "truncated": False})
+            )
+            await discover_skills_from_repo("owner/repo", "main?x=1")
+        assert route.called

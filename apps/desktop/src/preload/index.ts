@@ -23,6 +23,7 @@ import type {
 import type {
   DesktopPermissionPane,
   DesktopPermissionStatus,
+  DesktopServerConnectResult,
   DesktopSettingsSnapshot,
   DesktopShortcutUpdateResult,
   DesktopToolRequest,
@@ -116,15 +117,10 @@ const api = {
     ipcRenderer.send(IPC.popupResize, height),
 
   /**
-   * Subscribe to popup activation events.
-   *
-   * Fired when the assistant popup is shown so the renderer can play
-   * its entrance animation. The payload carries how it was summoned
-   * ("wake-word" | "shortcut") — the acknowledgment sound is scoped to
-   * voice activations.
-   *
-   * @param callback - Handler invoked with the activation payload.
-   * @returns A cleanup function that removes the listener.
+   * Subscribe to popup activation events, fired when the assistant popup is shown
+   * so the renderer can play its entrance animation. Payload carries how it was
+   * summoned ("wake-word" | "shortcut") — the acknowledgment sound is scoped to
+   * voice activations. Returns a cleanup function that removes the listener.
    */
   onPopupActivate: (
     callback: (data: { trigger: "wake-word" | "shortcut" }) => void,
@@ -217,6 +213,16 @@ const api = {
   /** Switch the dock icon (Arc-style) and persist the choice. */
   setAppIcon: (id: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC.desktopSettingsSetIcon, id),
+
+  /** Validate a self-hosted server address; on success the app relaunches
+   * against it. Accepted only from the bundled web app. */
+  connectSelfHostServer: (
+    address: string,
+  ): Promise<DesktopServerConnectResult> =>
+    ipcRenderer.invoke(IPC.desktopServerConnect, address),
+
+  /** Forget the self-hosted server and relaunch against GAIA Cloud. */
+  switchToGaiaCloud: (): void => ipcRenderer.send(IPC.desktopServerUseCloud),
 
   /**
    * Device bridge control surface — pair this Mac, run/stop its MCP tunnel,

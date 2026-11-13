@@ -8,12 +8,26 @@ holds the executor to. The user's verbatim request rides along separately.
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
+from pydantic import BaseModel
 import pytest
 
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
+from app.agents.prompts.playbook_prompts import PLAYBOOK_CHECK_BRIEF
 from app.agents.tools.executor_tool import call_executor
+from app.constants.agents import (
+    DONE_EVIDENCE_RULE,
+    IRREVERSIBLE_APPROVED_BRIEF,
+    IRREVERSIBLE_UNAPPROVED_BRIEF,
+    TIME_HORIZON_BRIEF,
+    AgentTag,
+    TimeHorizon,
+    wrap_agent_payload,
+)
+from app.models.ownership_models import ExecutorIntent
+from tests.helpers import load_llm_stub_module
 
 
 class TestComposeTaskBrief:
@@ -54,14 +68,12 @@ class TestComposeTaskBrief:
             "\n\n"
             "<last_run>\nat: 2026-08-27T09:00:00+00:00\n</last_run>"
             "\n\n"
-            "Definition of done (every item must be true before you finish):\n- digest sent"
+            "Definition of done (every item must be true before you finish):\n- digest sent\n"
+            f"{DONE_EVIDENCE_RULE}"
         )
 
     def test_the_brief_layout_is_exact(self):
-        """The executor reads this back as its own instructions, so the layout is
-        the contract: sections separated by a blank line, criteria one per line.
-        Run the criteria together and the definition of done becomes one unreadable
-        line the model is asked to satisfy item by item."""
+        """The layout is the contract: sections separated by a blank line, criteria one per line."""
         out = compose_executor_brief(
             "triage my inbox",
             ["promos archived", "offer flagged"],
@@ -74,12 +86,68 @@ class TestComposeTaskBrief:
             "triage my inbox"
             "\n\n"
             "Definition of done (every item must be true before you finish):\n"
-            "- promos archived\n- offer flagged"
+            f"- promos archived\n- offer flagged\n{DONE_EVIDENCE_RULE}"
         )
+
+
+class TestIntentInTheBrief:
+    def test_the_intent_sits_between_the_task_and_the_definition_of_done(self):
+        out = compose_executor_brief(
+            "remind me friday about the visa documents",
+            ["a reminder fires friday"],
+            intent=ExecutorIntent(
+                desired_outcome="never misses the visa filing",
+                time_horizon=TimeHorizon.DEADLINE,
+                defaults_assumed=("9am for friday",),
+            ),
+        )
+
+        assert out == (
+            "remind me friday about the visa documents"
+            "\n\n"
+            "Outcome the user actually wants: never misses the visa filing\n"
+            f"Time horizon: {TIME_HORIZON_BRIEF[TimeHorizon.DEADLINE]}\n"
+            "Defaults assumed (name them in your report):\n- 9am for friday\n"
+            f"{IRREVERSIBLE_UNAPPROVED_BRIEF}"
+            "\n\n"
+            "Definition of done (every item must be true before you finish):\n"
+            f"- a reminder fires friday\n{DONE_EVIDENCE_RULE}"
+        )
+
+    def test_an_approved_irreversible_action_says_so(self):
+        out = compose_executor_brief(
+            "delete all 4 todos",
+            ["no todos remain"],
+            intent=ExecutorIntent(
+                desired_outcome="a clean todo list",
+                time_horizon=TimeHorizon.ONE_SHOT,
+                irreversible_approved=True,
+            ),
+        )
+
+        assert IRREVERSIBLE_APPROVED_BRIEF in out
+        assert IRREVERSIBLE_UNAPPROVED_BRIEF not in out
+
+    async def test_call_executor_carries_the_intent_into_the_dispatched_brief(self):
+        dispatched = await _dispatched_brief(
+            {
+                "task": "check back tomorrow on the lisbon flights",
+                "acceptance_criteria": ["a check-in fires tomorrow evening"],
+                "desired_outcome": "the lisbon flights get booked",
+                "time_horizon": "ongoing",
+                "defaults_assumed": ["6pm for evening"],
+            },
+            {"thread_id": "conv-1"},
+        )
+
+        assert "Outcome the user actually wants: the lisbon flights get booked" in dispatched
+        assert TIME_HORIZON_BRIEF[TimeHorizon.ONGOING] in dispatched
+        assert "- 6pm for evening" in dispatched
 
 
 async def _dispatched_brief(tool_args: dict, configurable: dict) -> str:
     """Invoke call_executor and return the brief it handed to _dispatch_executor."""
+    tool_args = {"desired_outcome": "it is done", "time_horizon": "one_shot", **tool_args}
     with patch(
         "app.agents.tools.executor_tool._dispatch_executor",
         new=AsyncMock(return_value="Task accepted"),
@@ -112,7 +180,7 @@ class TestVerbatimRequestComesFromTheServer:
     Routing it through the model made it a model output: asked to emit the full
     task AND re-transcribe a request that may run to MAX_MESSAGE_LENGTH, the
     comms model degenerates — repeating tokens and spilling the schema's own key
-    names into `acceptance_criteria`. The server already holds the user's words,
+    names into acceptance_criteria. The server already holds the user's words,
     so the model is no longer asked for them.
     """
 
@@ -129,9 +197,7 @@ class TestVerbatimRequestComesFromTheServer:
         assert "verbatim_request" not in call_executor.args
 
     async def test_a_long_request_is_carried_unclipped(self):
-        """`user_messages` is clipped to HIL_JUDGE_MAX_TURN_CHARS (800); the verbatim
-        backstop must not be, or long asks — exactly the ones that broke the model —
-        silently lose their tail."""
+        """user_messages is clipped to HIL_JUDGE_MAX_TURN_CHARS (800); the verbatim backstop must not be."""
         long_request = "archive the promo from " + ", ".join(
             f"sender{n}@example.com" for n in range(200)
         )
@@ -156,8 +222,10 @@ class TestVerbatimRequestComesFromTheServer:
 
 
 class TestPreviousRunReachesTheExecutor:
-    """A workflow run's checkpoint threads are dropped before it starts, so the
-    previous run reaches the worker tier here or not at all."""
+    """A workflow run's checkpoint threads are dropped before it starts.
+
+    The previous run reaches the worker tier here or not at all.
+    """
 
     async def test_a_workflow_run_carries_its_previous_run_into_the_brief(self):
         last_run = '<last_run>\nGMAIL_FETCH({"query": "is:unread"})\n</last_run>\n'
@@ -175,9 +243,7 @@ class TestPreviousRunReachesTheExecutor:
         assert '<last_run>\nGMAIL_FETCH({"query": "is:unread"})\n</last_run>' in dispatched_task
 
     async def test_the_playbook_check_is_asked_about_this_workflow_and_this_user(self):
-        """The check reads the workflow's playbook and the user's own run history —
-        asked about the wrong one (or about nobody), it answers about a run that
-        never happened and the executor writes a playbook from it."""
+        """Asked about the wrong workflow or user, the check answers about a run that never happened."""
         with (
             patch(
                 "app.agents.tools.executor_tool.get_last_run_brief",
@@ -212,6 +278,78 @@ class TestPreviousRunReachesTheExecutor:
 
         mock_last_run.assert_not_awaited()
         assert "last_run" not in dispatched_task
+
+
+_SCRIPT = '[[tool:create_reminder {"title": "stretch"}]] [[say:Reminder set!]]'
+_LAST_RUN = wrap_agent_payload(AgentTag.LAST_RUN, "status: completed\ncreate_reminder({})")
+_FALLBACK_NOTE = wrap_agent_payload(AgentTag.PLAYBOOK_FALLBACK, "Replay stopped at step 2.")
+
+
+class TestTheSimStubRunsABriefsScriptOnce:
+    """Under --sim the brief carries the script twice (quote, then task); one turn once made two reminders."""
+
+    @pytest.mark.parametrize(
+        "sections",
+        [
+            {"acceptance_criteria": ["done"]},
+            {"acceptance_criteria": ["done"], "last_run": _LAST_RUN},
+            {"acceptance_criteria": [], "last_run": _LAST_RUN},
+            {
+                "acceptance_criteria": [],
+                "playbook_check": f"{_FALLBACK_NOTE}\n\n{PLAYBOOK_CHECK_BRIEF}",
+            },
+            {
+                "acceptance_criteria": ["done"],
+                "last_run": _LAST_RUN,
+                "playbook_check": f"{_FALLBACK_NOTE}\n\n{PLAYBOOK_CHECK_BRIEF}",
+            },
+        ],
+        ids=["criteria", "last-run", "last-run-no-criteria", "playbook-note", "every-section"],
+    )
+    def test_a_brief_quoting_the_request_yields_one_tool_call(
+        self, sections: dict[str, Any]
+    ) -> None:
+        stub = load_llm_stub_module("directives")
+        criteria = sections.pop("acceptance_criteria")
+        brief = compose_executor_brief(_SCRIPT, criteria, verbatim_request=_SCRIPT, **sections)
+        tools = frozenset({"create_reminder"})
+        turn: list[dict[str, object]] = [{"role": "user", "content": brief}]
+        after_one: list[dict[str, object]] = [
+            *turn,
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "create_reminder", "arguments": "{}"},
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "content": "ok"},
+        ]
+
+        assert stub.resolve_response(turn, tools) == stub.ToolCallResponse(
+            name="create_reminder", args={"title": "stretch"}
+        )
+        assert stub.resolve_response(after_one, tools) == stub.SayResponse(text="Reminder set!")
+
+
+@pytest.mark.regression
+def test_the_stubs_scripted_hand_off_is_a_call_the_real_tool_accepts() -> None:
+    """Regression: call_executor gained required args the stub never sent, so --sim and the browser stack started nothing."""
+    stub = load_llm_stub_module("directives")
+    script = '[[tool:create_reminder {"title": "x"}]] [[say:ok]]'
+
+    hand_off = stub.resolve_response(
+        [{"role": "user", "content": script}], frozenset({stub.CALL_EXECUTOR_TOOL})
+    )
+
+    schema = call_executor.tool_call_schema
+    assert isinstance(schema, type) and issubclass(schema, BaseModel)
+    assert hand_off.name == call_executor.name
+    schema.model_validate(hand_off.args)
 
 
 if __name__ == "__main__":

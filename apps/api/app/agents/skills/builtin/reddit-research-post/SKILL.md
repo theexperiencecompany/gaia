@@ -1,6 +1,6 @@
 ---
 name: reddit-research-post
-description: Research subreddits and create posts — find the right subreddit, analyze trends, check rules and flairs, craft content, draft for review
+description: "Research subreddits and create posts: find the right subreddit, analyze trends, check rules and flairs, craft content, draft for review"
 target: reddit_agent
 ---
 
@@ -21,23 +21,28 @@ REDDIT_GET_SUBREDDITS_SEARCH(q="artificial intelligence", limit=10)
 REDDIT_GET_SUBREDDIT_RULES(subreddit="MachineLearning")
 ```
 
-**Analyze what works — read top posts:**
+**Analyze what works. Read top posts:**
 ```
 REDDIT_GET_R_TOP(subreddit="MachineLearning", t="month", limit=10)
 REDDIT_RETRIEVE_REDDIT_POST(subreddit="startup", sort="hot", max_results=10)
 ```
 
-### Using spawn_subagent for Multiple Subreddits
+### Several subreddits: one spawn per subreddit
 
-When researching multiple subreddits in parallel:
+One subreddit's rules and top posts are a few direct calls: make them yourself. For
+several subreddits, and if you can spawn subagents, give each its own spawn, all in
+the same turn. When and how to brief one is in spawn_subagent's description.
 
 ```
-spawn_subagent(task="Research r/MachineLearning - top posts and rules", context="Focus on what content succeeds and community rules")
-spawn_subagent(task="Research r/startup - top posts and rules", context="Focus on what content succeeds and community rules")
-spawn_subagent(task="Research r/AI - top posts and rules", context="Focus on what content succeeds and community rules")
+spawn_subagent(
+  task="Research r/MachineLearning: its posting rules, and what this month's top 10 posts have in common (format, length, flair, title style). Return the rules verbatim, the patterns with a post link for each, and anything you could not read.",
+  integration_ids=["reddit"],
+)
+spawn_subagent(
+  task="Research r/startups: same brief. Posting rules verbatim, what this month's top 10 posts have in common with a link each, and anything you could not read.",
+  integration_ids=["reddit"],
+)
 ```
-
-This enables parallel research across multiple subreddits.
 
 **Think:**
 - What post types succeed? (text, link, image)
@@ -91,7 +96,7 @@ Reddit Post Draft:
 
 Subreddit: r/startup
 Flair: "Discussion"
-Title: "We cut our customer onboarding time by 60% — here's exactly how"
+Title: "We cut our customer onboarding time by 60%, here's exactly how"
 
 ---
 [Body preview]
@@ -108,7 +113,7 @@ Should I post this?
 ```
 REDDIT_CREATE_REDDIT_POST(
   subreddit="startup",
-  title="We cut our customer onboarding time by 60% — here's exactly how",
+  title="We cut our customer onboarding time by 60%, here's exactly how",
   text="Full markdown body...",
   kind="self",
   flair_id="uuid-from-flair-list"  # Must be valid UUID from REDDIT_GET_R_SUBREDDIT_LINK_FLAIR_V2

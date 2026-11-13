@@ -1,0 +1,20 @@
+{
+  "suite": "browser",
+  "run_id": "harness-r8_chrome",
+  "app_version": "d465ac72a",
+  "baseline_accuracy": 1.0,
+  "graded": 22,
+  "errored": 0,
+  "per_category": {
+    "everyday": [
+      15,
+      15
+    ],
+    "hard": [
+      7,
+      7
+    ]
+  },
+  "provisional": "recorded by the out-of-tree harness this suite replaces (pass r8_chrome, 2026-10-02, on Chrome, real sites, production models), whose scorers it ports one for one; not by this suite's own runner, so its cases ran with one shared Pro user and without the journal's publish checks. Re-record with `mise eval:browser -- --rebaseline` before trusting a comparison.",
+  "captured_at": "2026-10-02"
+}

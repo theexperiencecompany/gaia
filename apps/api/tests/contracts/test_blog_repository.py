@@ -1,7 +1,7 @@
 """Contract tests for BlogsRepository (global, read-through with a team join).
 
-The author ``$lookup`` resolves to the real ``gaia_test.team`` collection (a
-``$lookup`` binds by collection name at the database level, not through the
+The author $lookup resolves to the real gaia_test.team collection (a
+$lookup binds by collection name at the database level, not through the
 patched accessor), so these tests seed a uniquely-identified team member there
 and assert membership — robust to the shared collection under parallel xdist.
 """
@@ -25,7 +25,7 @@ def repo(raw_collection) -> BlogsRepository:
 
 @pytest.fixture
 async def team(raw_collection) -> AsyncIterator[AsyncIOMotorCollection]:
-    """The shared ``gaia_test.team`` collection, with per-test ids cleaned up."""
+    """Return the shared gaia_test.team collection, with per-test ids cleaned up."""
     coll = raw_collection.database["team"]
     inserted: list[ObjectId] = []
 

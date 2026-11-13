@@ -35,9 +35,17 @@ describe("parseInline — one segment per construct", () => {
       { type: "strikethrough", text: "gone" },
     ]);
     expect(parseInline("`x = 1`")).toEqual([{ type: "code", text: "x = 1" }]);
-    expect(parseInline("$E=mc^2$")).toEqual([
+    expect(parseInline("$$E=mc^2$$")).toEqual([
       { type: "mathInline", text: "E=mc^2" },
     ]);
+  });
+
+  it("keeps a single dollar sign as literal text", () => {
+    expect(parseInline("$E=mc^2$")).toEqual([
+      { type: "text", text: "$E=mc^2$" },
+    ]);
+    const prices = "Aug 2026 $347.53 USD standout; Sep 2026 $8 succeeded.";
+    expect(parseInline(prices)).toEqual([{ type: "text", text: prices }]);
   });
 
   it("decodes HTML entities in plain text", () => {
@@ -128,6 +136,11 @@ describe("repairStreamingMarkdown", () => {
 
   it("does not alter complete markdown", () => {
     const md = "# Title\n\ndone **bold** `code`\n";
+    expect(repairStreamingMarkdown(md)).toBe(md);
+  });
+
+  it("does not treat inline math at line start as an open math fence", () => {
+    const md = "$$E=mc^2$$ is famous";
     expect(repairStreamingMarkdown(md)).toBe(md);
   });
 });

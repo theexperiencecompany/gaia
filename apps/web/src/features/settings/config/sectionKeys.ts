@@ -4,6 +4,9 @@ export const VALID_SECTIONS = [
   "account",
   "profile",
   "linked-accounts",
+  "providers",
+  "integrations-setup",
+  "members",
   "subscription",
   "usage",
   "preferences",
@@ -13,6 +16,8 @@ export const VALID_SECTIONS = [
   "skills",
   "notifications",
   "devices",
+  "browser",
+  "experimental",
   "desktop",
 ] as const;
 

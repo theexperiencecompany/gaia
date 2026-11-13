@@ -2,7 +2,7 @@
 
 Pure functions shared by the write path (ingestion), the read path
 (retrieval), and the management accessors — the single place where database
-rows become ``app.models.memory_models`` objects.
+rows become app.models.memory_models objects.
 """
 
 from app.constants.memory import (

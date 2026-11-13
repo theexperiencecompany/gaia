@@ -1,7 +1,7 @@
 """Docstrings for the persistent coding tools (bash / read / write / edit).
 
 All four tools operate inside the user's persistent E2B sandbox. The
-sandbox's `/workspace` is backed by Cloudflare R2 via JuiceFS, so files,
+sandbox's /workspace is backed by Cloudflare R2 via JuiceFS, so files,
 installed packages, and any state created by the agent survive across
 conversations.
 """
@@ -34,6 +34,22 @@ USE FOR:
 - Git operations: `git clone …`, `git status`, `git diff`
 - Quick one-liners and pipelines that don't fit `read`/`write`/`edit`
 
+GAIA TOOLS FROM SCRIPTS (code mode):
+Python scripts you run here can call GAIA integration tools directly:
+    from gaia import execute
+    emails = execute("GMAIL_FETCH_EMAILS", {"max_results": 50})
+`execute(tool_name, data)` returns the tool's parsed JSON output, or raises
+GaiaToolError whose message carries the exact validation errors: fix `data`
+and rerun. Get a tool's args from retrieve_tools first. When its doc has no
+Returns line, or a depth-collapsed one, call `schema(tool_name)` (also importable
+from gaia) or read the cached file at /workspace/.gaia/tools/<TOOL_NAME>.json
+before writing code that consumes the output; never guess shapes. Prefer ONE
+script that fetches, filters/computes in Python, acts, and prints a concise
+summary; large payloads stay in variables instead of the conversation. Calls
+are budgeted per bash run; batch work rather than looping one call at a time.
+If the import fails with "No module named 'gaia'", code mode is not configured
+on this deployment; use the execute tool from the conversation instead.
+
 DO NOT USE FOR:
 - Reading a single file when you just want to see it (use `read`)
 - Writing a whole file (use `write`)
@@ -48,6 +64,28 @@ PARAMETERS:
 - background (bool): If true, runs the command detached and returns a `pid`
   plus a log path the agent can `tail` later. Useful for servers, watch
   processes, anything long-running.
+- run_todo_id (str): Tracked todo id to launch this command as a sandbox
+  run (Claude Code / OpenCode). Passing it SUBSCRIBES THAT TODO TO THE RUN.
+  Omit for ordinary commands.
+
+SANDBOX RUNS (run_todo_id):
+When set, BEFORE your command runs the tool does three visible things:
+(1) mints a run token bound to this run + user, (2) sets up the agents' home
+`~/agents/` on local disk (Claude hooks settings, OpenCode plugin, save/hook
+scripts; a fresh sandbox first restores it from /workspace/agents/home.tgz)
+plus the run's sourceable `~/agents/runs/<run>/lab-env`, and injects the run env
+into your command: GAIA_LAB_CALLBACK_URL, GAIA_LAB_TOKEN, GAIA_LAB_RUN_ID,
+GAIA_LAB_CLAUDE_SETTINGS, OPENCODE_CONFIG_DIR, (3) subscribes the todo to the
+run: every event the agent reports (finished, needs input, error) runs the todo
+with that event attached, until the todo ends. Run the CLI from the project's
+folder under `~/agents/work/`: launch Claude with
+`--settings "$GAIA_LAB_CLAUDE_SETTINGS"`; OpenCode loads its plugin from
+OPENCODE_CONFIG_DIR. Every event saves the agents' home first. A later bash call
+(resume) gets no env injected: `set -a; . ~/agents/runs/<run>/lab-env; set +a`
+first, and run it with background=True too, then end the turn: the resumed
+agent's next event wakes the todo. After the sandbox is replaced the agent's
+process is gone: resume with run_todo_id again instead. Flag off, unknown todo,
+or seed failure returns a loud error and runs nothing.
 
 OUTPUT:
 A formatted string with `exit_code`, the stdout, and the stderr (capped at
@@ -59,6 +97,7 @@ EXAMPLES:
 ✅ bash("pip install requests && python -c 'import requests; print(requests.__version__)'")
 ✅ bash("python script.py", cwd="/workspace/project", timeout=60)
 ✅ bash("python server.py", background=True)  # returns {pid, log_path}
+✅ bash("mkdir -p ~/agents/work/repo && cd ~/agents/work/repo && claude -p 'fix it' --output-format stream-json --verbose --settings \"$GAIA_LAB_CLAUDE_SETTINGS\"", background=True, run_todo_id="todo-1")
 """
 
 READ_TOOL = """
@@ -180,7 +219,8 @@ Built for mining offloaded files when you only need the matching lines, instead
 of reading the whole file back into context. Read-only; searches ONE file.
 
 PARAMETERS:
-- pattern (str): A regular expression (or literal text) to match.
+- pattern (str): An extended regular expression (or literal text) to match:
+  `job|recruit|hiring` matches any of the three.
 - path (str): Workspace path to ONE file. Relative paths resolve against your
   session root; absolute `/workspace/...` paths also work.
 - ignore_case (bool): If true (-i), match case-insensitively. Default false.

@@ -89,7 +89,7 @@ class FileFacts:
 
 
 def _iter_own_scope(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.AST]:
-    """The handler's own nodes, stopping at nested scopes (route-contract semantics)."""
+    """Return the handler's own nodes, stopping at nested scopes (route-contract semantics)."""
     out: list[ast.AST] = []
     stack: list[ast.AST] = list(func.body)
     while stack:
@@ -145,7 +145,7 @@ def _route_decorators(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tupl
 
 
 def _registered_routes(tree: ast.Module) -> dict[str, list[tuple[str, str]]]:
-    """``(method, path)`` per endpoint function registered imperatively.
+    """Return ``(method, path)`` per endpoint function registered imperatively.
 
     ``router.add_api_route("/x", handler, methods=["POST"])`` is exactly what
     ``@router.post("/x")`` compiles down to, and FastAPI serves the two
@@ -181,7 +181,7 @@ def _registered_routes(tree: ast.Module) -> dict[str, list[tuple[str, str]]]:
 
 
 def repo_relative(path: Path) -> str:
-    """The path from the monorepo anchor down — never the absolute prefix.
+    """Return the path from the monorepo anchor down — never the absolute prefix.
 
     Used for sensitivity terms and for baseline matching: an absolute prefix
     belongs to the machine, not the repo (a CI worktree named ``base-checkout``
@@ -196,7 +196,7 @@ def repo_relative(path: Path) -> str:
 
 
 def _log_attr(node: ast.Call, log_aliases: frozenset[str]) -> str | None:
-    """The ``<method>`` of a ``log.<method>(...)`` call (any import alias), else None."""
+    """Return the ``<method>`` of a ``log.<method>(...)`` call (any import alias), else None."""
     func = node.func
     if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
         if func.value.id in log_aliases:
@@ -359,7 +359,7 @@ def _collect_handler_facts(
 
 
 def _own_router_prefix(tree: ast.Module) -> str:
-    """The ``APIRouter(prefix=…)`` this file declares, before it is mounted."""
+    """Return the ``APIRouter(prefix=…)`` this file declares, before it is mounted."""
     for node in tree.body:
         if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
             continue

@@ -1,1 +1,82 @@
-{"slug":"linear-figma","toolA":"Linear","toolASlug":"linear","toolB":"Figma","toolBSlug":"figma","tagline":"Link Figma designs to Linear issues and notify designers of engineering updates","metaTitle":"Linear + Figma Integration - Design and Engineering in Sync","metaDescription":"Connect Linear and Figma with GAIA. Automatically attach Figma frame links to Linear issues, notify designers when implementation starts, and surface design feedback directly in your issue tracker.","keywords":["Linear Figma integration","Linear Figma sync","attach Figma to Linear","design engineering workflow","Linear Figma automation","connect Linear and Figma","design handoff automation"],"intro":"Design handoffs between Figma and Linear are a perennial source of friction. Engineers hunt through Figma for the right frame version. Designers have no visibility into whether their specifications are being implemented correctly or when implementation is underway. Comments about design discrepancies live in two separate tools and never reach the right person.\n\nGAIA creates a live connection between Figma and Linear so that designs and implementation tasks are always paired. When an engineer creates a Linear issue for a feature, GAIA can link the relevant Figma frame automatically. When a designer publishes a new version, GAIA notifies the engineering team. When an engineer marks a design issue in Linear, GAIA can route the feedback directly to the Figma comment thread.\n\nThis integration is most valuable for product teams running fast design-development cycles where misaligned expectations between design and engineering add unnecessary rework.","useCases":[{"title":"Auto-attach Figma frames to Linear issues","description":"When a new Linear issue is tagged with the design label, GAIA searches the connected Figma project for matching frames by name and attaches the direct link, so engineers always have the correct design reference without asking the design team."},{"title":"Notify engineers when Figma designs are updated","description":"When a designer publishes a new version of a Figma frame linked to an active Linear issue, GAIA adds a comment to the Linear issue flagging the update and summarizing what changed so engineers know to review the latest specs."},{"title":"Alert designers when implementation begins","description":"When a Linear issue moves from To Do to In Progress, GAIA notifies the designer listed in the Figma file that engineering has started implementation, giving them a window to catch any last-minute spec issues before code is written."},{"title":"Route Linear design feedback to Figma comments","description":"When an engineer adds a comment on a Linear issue that references a design discrepancy, GAIA posts the feedback as a comment in the linked Figma frame so designers receive it in their native tool without checking Linear."},{"title":"Track design review status in Linear","description":"GAIA monitors Figma for design approval annotations and updates the corresponding Linear issue status to Design Approved automatically, keeping the issue workflow accurate without requiring designers to update Linear manually."}],"howItWorks":[{"step":"Connect Figma and Linear to GAIA","description":"Authorize GAIA with your Figma account and Linear workspace. Map Figma projects to Linear teams so GAIA knows which Figma files are associated with which engineering workflows."},{"step":"Define naming conventions and trigger rules","description":"Set the naming patterns GAIA should use to match Figma frames to Linear issues, which Linear labels or states should trigger designer notifications, and how design feedback comments should be forwarded."},{"step":"Design and build in parallel with full visibility","description":"GAIA maintains the link between design and implementation automatically. Designers see when their work enters development. Engineers always have the latest design specs. Feedback flows between tools without manual forwarding."}],"faqs":[{"question":"How does GAIA match Figma frames to Linear issues automatically?","answer":"GAIA uses configurable matching rules — by default it looks for Figma frames whose names match the Linear issue title or ID. You can also link them explicitly by pasting a Figma URL into a Linear issue, which GAIA registers as the canonical design reference."},{"question":"Can GAIA embed Figma previews directly in Linear?","answer":"GAIA attaches Figma frame links to Linear issues. Linear natively renders Figma URLs as previews, so engineers see a design thumbnail inline in the issue without leaving their workflow."},{"question":"Does GAIA work with Figma branches for design versioning?","answer":"Yes. GAIA can be configured to track a specific Figma branch and notify engineers when that branch is merged, signaling that the final approved designs are ready for implementation."}]}
+{
+  "slug": "linear-figma",
+  "toolA": "Linear",
+  "toolASlug": "linear",
+  "toolB": "Figma",
+  "toolBSlug": "figma",
+  "tagline": "Use Linear's Figma integration for design previews, and GAIA for the issue, GitHub and Slack work around handoff",
+  "metaTitle": "Linear Figma Integration: Attach Designs to Issues",
+  "metaDescription": "Linear's Figma integration previews designs in issues, and its Figma plugin files issues from a frame. GAIA handles the Linear, GitHub and Slack side.",
+  "keywords": [
+    "Linear Figma integration",
+    "Linear Figma sync",
+    "attach Figma to Linear",
+    "design engineering workflow",
+    "Linear Figma automation",
+    "connect Linear and Figma",
+    "design handoff automation"
+  ],
+  "intro": "To integrate Figma with Linear, turn on the built-in integration from the integrations settings. After that, a design file or frame link pasted into an issue or comment shows a live preview of the design. In the design app, the official plugin lets you create an issue from a selected frame, or link an existing one, without leaving the file. Those two pieces together are the official integration: designs attached to issues, and issues created from designs.\n\nIf your team also runs GitHub and Slack, connect them natively as well. The GitHub integration links pull requests to issues and moves issues forward as pull requests open and merge. The Slack integration creates issues from messages and posts issue updates to channels. With all three on, all four tools share links and previews without another tool in the middle.\n\nGAIA does not connect to Figma, so it cannot read frames, versions, or comments in your files. What it handles is the work around design handoff in Linear, GitHub and Slack: it creates issues that carry the links you give it, reacts when issues are created, updated, or commented on, and messages designers and engineers in Slack when something needs them. Event triggers are available in GAIA, so these workflows can run as soon as an issue changes, not only on a schedule.",
+  "useCases": [
+    {
+      "title": "Create Linear issues with the design link attached",
+      "description": "Paste a Figma link in chat and describe the work. GAIA creates the Linear issue in the right team with a title, a description, and the link, so the integration shows the preview."
+    },
+    {
+      "title": "Turn design review notes into issues",
+      "description": "Paste your review notes or a list of requested changes, and GAIA files one issue per item with the related design link, plus the assignee, labels, and cycle you name."
+    },
+    {
+      "title": "Tell designers when implementation starts",
+      "description": "A workflow triggered by issue updates checks for design-labeled issues that moved to In Progress and messages the designer in Slack with the issue link."
+    },
+    {
+      "title": "Route engineering questions on design issues to Slack",
+      "description": "When someone comments on a design-labeled issue, GAIA posts the comment and the issue link to your design channel in Slack, so designers see questions without watching the issue tracker."
+    },
+    {
+      "title": "Send a weekly design handoff report",
+      "description": "Every week, GAIA searches for design-related issues and sends you a summary: what is waiting on design, what is in development, and which issues have no design link in their description."
+    }
+  ],
+  "howItWorks": [
+    {
+      "step": "Turn on the Figma integration, then connect Linear to GAIA",
+      "description": "Enable the integration for design previews, and install the plugin if designers want to file issues from Figma. Then connect Linear to GAIA from the integrations page, plus Slack or GitHub if your workflows use them."
+    },
+    {
+      "step": "Describe the workflow in plain English",
+      "description": "Create a workflow, for example: \"When an issue with the label design moves to In Progress, message its designer in #design on Slack.\" Or ask in chat to file issues from a design link."
+    },
+    {
+      "step": "GAIA runs it in the background",
+      "description": "Triggered workflows run when the event arrives, scheduled ones on your timetable, and each reports what it did. Destructive actions such as deleting issues or comments follow your approval settings."
+    }
+  ],
+  "faqs": [
+    {
+      "question": "How does GAIA match design frames to issues automatically?",
+      "answer": "It does not. GAIA has no connection to design files, so it cannot search them or match frames by name. The link comes from you or your team: paste the design URL into the issue (GAIA adds it when it creates the issue for you) or create the issue from the design file with the official plugin."
+    },
+    {
+      "question": "Can GAIA embed design previews directly in issues?",
+      "answer": "The preview comes from the official design integration, not from GAIA. Once it is on, any design link in an issue description or comment renders as a preview, including links GAIA adds when it creates or updates issues."
+    },
+    {
+      "question": "Does GAIA work with branches for design versioning?",
+      "answer": "No. GAIA cannot see design branches, versions, or merges. If you want the issue to reflect that a design is final, have the designer change the issue state or add a label, and a GAIA workflow can react to that change."
+    },
+    {
+      "question": "How do I integrate Figma with Linear?",
+      "answer": "Turn on the integration from the integrations settings and sign in with your design account. Paste design links into issues to get previews. Designers can also install the official plugin to create or link issues from a frame."
+    },
+    {
+      "question": "How do I connect GitHub, Slack and the design app to my issues?",
+      "answer": "Use the native integration for each: the design integration for previews, GitHub for linking pull requests and updating issue status, and Slack for creating issues from messages and posting updates. Add GAIA when you want routines across them, such as messaging a designer in Slack when an issue starts development, or a weekly handoff summary."
+    },
+    {
+      "question": "Is there an official integration for design previews?",
+      "answer": "Yes. The issue tracker ships its own integration and plugin for design files. GAIA does not replace either one; it works on the issue, GitHub and Slack side of the handoff."
+    }
+  ]
+}

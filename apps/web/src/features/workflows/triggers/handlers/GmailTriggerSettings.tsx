@@ -13,14 +13,14 @@ import {
   TriggerSettingsCard,
 } from "../components/TriggerSettingsCard";
 import type { TriggerSettingsProps } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 
-interface GmailPollTriggerData {
+type GmailPollTriggerData = {
   trigger_name: string;
   interval: number;
-}
+};
 
-export interface GmailPollConfig extends TriggerConfig {
+export interface GmailPollConfig extends TriggerConfigDraft {
   trigger_name?: string;
   trigger_data?: GmailPollTriggerData;
 }

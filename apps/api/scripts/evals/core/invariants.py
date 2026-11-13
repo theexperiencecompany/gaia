@@ -84,7 +84,7 @@ def check_records(
 ) -> InvariantReport:
     """Cross-check a run's journal against itself, and against the cost tracker.
 
-    ``metered_by_case`` is the tracker's own per-case (input, output) readings —
+    metered_by_case is the tracker's own per-case (input, output) readings —
     derived by a completely different path from the journal's figures, which is
     exactly what makes the comparison worth anything. The comparison covers only
     cases present on BOTH sides: a resumed run's journal carries earlier passes
@@ -92,7 +92,7 @@ def check_records(
     the journal never recorded. Whole-run totals disagree by construction in
     both directions; the intersection cannot.
 
-    ``sim`` marks a scripted-stub run: the stub reports no usage, so zero tokens
+    sim marks a scripted-stub run: the stub reports no usage, so zero tokens
     is the true measurement there, and the token floor would reject every sim
     run forever — a gate that is always red gets switched off.
     """

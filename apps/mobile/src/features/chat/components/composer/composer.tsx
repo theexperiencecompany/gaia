@@ -52,12 +52,12 @@ interface SelectedToolData {
   category: string;
 }
 
-interface SelectedWorkflowData {
+interface ComposerWorkflowPick {
   id: string;
   title: string;
 }
 
-interface SelectedCalendarEventData {
+interface ComposerCalendarEventPick {
   id: string;
   title: string;
 }
@@ -78,13 +78,13 @@ interface ComposerProps {
   onCancel?: () => void;
   selectedTool?: SelectedToolData | null;
   onRemoveTool?: () => void;
-  selectedWorkflow?: SelectedWorkflowData | null;
+  selectedWorkflow?: ComposerWorkflowPick | null;
   onRemoveWorkflow?: () => void;
   onToolSelected?: (toolName: string, toolCategory: string) => void;
   onWorkflowSelected?: (workflow: { id: string; title: string }) => void;
   replyTo?: ReplyToData | null;
   onRemoveReply?: () => void;
-  selectedCalendarEvent?: SelectedCalendarEventData | null;
+  selectedCalendarEvent?: ComposerCalendarEventPick | null;
   onRemoveCalendarEvent?: () => void;
 }
 

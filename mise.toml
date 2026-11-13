@@ -6,15 +6,13 @@
 # nx manages build caching and project graph
 #
 # Quick Start:
-#   mise setup        # First-time setup (all apps)
+#   mise bootstrap    # First-time setup: packages, Docker, toolchain, all apps
 #   mise dev          # Start API + web
 #   mise tasks        # List all available tasks
 #
 # Documentation: https://docs.heygaia.io/developers/commands
 # ═══════════════════════════════════════════════════════════════════════════════
-
-experimental_monorepo_root = true
-
+#
 # ─────────────────────────────────────────────────────────────────────────────
 # MONOREPO CONFIGURATION
 # ─────────────────────────────────────────────────────────────────────────────
@@ -42,57 +40,66 @@ experimental_monorepo_root = true
 #   - Local tasks (cd apps/api && mise dev) = when working in one app
 #
 
-# [monorepo]
-# config_roots = [
-#     "apps/api",
-#     "apps/web",
-#     "apps/desktop",
-#     "apps/mobile",
-#     "docs",
-#     "apps/voice-agent",
-#     "apps/bots/*",
-# ]
+[monorepo]
+config_roots = [
+    "apps/api",
+    "apps/web",
+    "apps/desktop",
+    "apps/mobile",
+    "docs",
+    "apps/voice-agent",
+    "apps/bots/*",
+]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TOOLS & ENVIRONMENT
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tools]
-python = "3.12"
-node = "22"
-java = "21"
-uv = "latest"
+# Python and Node come from .python-version / .node-version (see [settings]);
+# Rust has no idiomatic file, so it is declared here and mirrored in the image.
+rust = "1.99.1"
+uv = "0.12.23"  # same as .github/actions/setup-uv and the Dockerfiles; tools/lints/check_tool_pins.py holds them together
 prek = "0.2.23"
-"npm:nx" = "latest"
-"npm:mintlify" = "latest"
+"npm:nx" = "22.7.7"  # matches package.json's nx; a newer CLI than the workspace breaks task resolution
+"npm:mintlify" = "4.2.988"
+# apps/mobile tasks shell out to `eas`; a floating global CLI changes build output.
+"npm:eas-cli" = "25.3.0"
 # worktrunk (`wt`) — parallel-worktree workflow. Pinned so every clone gets the same CLI.
 "ubi:max-sixty/worktrunk" = { version = "0.68.0", exe = "wt" }
+# The proxy the browser stack runs in front of the API: the Caddy self-host ships
+# (docker-compose.selfhost.yml) and CI installs (scripts/ci/browser.sh locate).
+caddy = "2.10.2"
 
 [env]
 _.python.venv = { path = ".venv", create = true }
-MISE_NODE_COREPACK = "1"
 # Per-worktree port allocation written by `mise run wt:env`. Optional: mise silently
 # skips it when absent, so the main worktree keeps today's defaults (ports 8000/3000).
 _.file = ".env.worktree"
 
 [settings]
 experimental = true
-task.monorepo_depth = 4
-task.monorepo_exclude_dirs = ["node_modules", ".next", ".venv", "__pycache__", "dist", "build", ".expo"]
+# Node's version lives in .node-version and nowhere else — mise and
+# actions/setup-node both read that one file. Enabling idiomatic version files
+# is what lets mise honour it; without this setting mise ignores .node-version and
+# silently falls back to the global default, which is the drift this prevents.
+idiomatic_version_file_enable_tools = ["node", "python"]
+# a setting, not [env]: [env] is exported to commands, never read as mise config, so node installed without pnpm
+node.corepack = true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SETUP & INSTALLATION
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks."setup:env"]
-description = "Check if environment files exist for all apps"
+description = "Create missing environment files for all apps from their examples (never overwrites)"
 run = '''
 echo "Checking environment files..."
-missing=""
 
-# API (Manual check)
+# API (Auto-copy; the template carries no secrets — fill in keys or use Infisical)
 if [ ! -f "apps/api/.env" ]; then
-    missing="$missing\n  cp apps/api/.env.example apps/api/.env"
+    echo "Creating apps/api/.env from example (add your keys, or use Infisical)"
+    cp apps/api/.env.example apps/api/.env
 fi
 
 # Web (Auto-copy)
@@ -107,13 +114,6 @@ if [ ! -f "apps/mobile/.env" ] && [ -f "apps/mobile/.env.example" ]; then
     cp apps/mobile/.env.example apps/mobile/.env
 fi
 
-if [ -n "$missing" ]; then
-    echo "ERROR: Missing API environment file!"
-    echo ""
-    echo "Please copy the example file (contains secrets):"
-    echo -e "$missing"
-    exit 1
-fi
 echo "Environment files ready"
 '''
 
@@ -144,12 +144,56 @@ echo "Installing voice-agent dependencies..."
 echo "All dependencies installed"
 '''
 
-[tasks.setup]
-description = "Complete project setup for all apps (API, Web, Desktop, Mobile, Voice)"
+# ─────────────────────────────────────────────────────────────────────────────
+# CONTRIBUTOR MACHINE SETUP (`mise bootstrap`)
+# ─────────────────────────────────────────────────────────────────────────────
+# From a fresh clone to a machine that runs `mise dev`, in one command:
+#   1. [bootstrap.packages]: git and curl.
+#   2. The post-packages hook: Docker, installed the way `gaia up` installs it
+#      (Docker's get.docker.com script on Linux, never the distro's older
+#      docker.io); on macOS it asks for OrbStack or Docker Desktop.
+#   3. The [tools] toolchain.
+#   4. [tasks.bootstrap]: env files, JS + Python deps, voice models, databases.
+# `mise run bootstrap` runs step 4 alone; `gaia init` and `gaia setup` call it
+# after checking the prerequisites themselves.
+#
+# Self-hosters never use this: they install with
+# `curl -fsSL https://heygaia.io/install.sh | sh`, which needs no checkout and no mise.
+[bootstrap.packages]
+"apt:git" = "latest"
+"apt:curl" = "latest"
+"brew:git" = { os = "macos" }
+"brew:curl" = { os = "macos" }
+
+[bootstrap.hooks.post-packages]
+run = """
+set -eu
+command -v docker >/dev/null 2>&1 && exit 0
+if [ "$(uname -s)" != "Linux" ]; then
+  echo "Docker isn't installed. Install OrbStack (https://orbstack.dev) or Docker Desktop, open it, then run 'mise bootstrap' again." >&2
+  exit 1
+fi
+# Docker's script installs docker-ce with the Compose plugin and starts the daemon.
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker "$USER"
+"""
+
+[tasks.bootstrap]
+description = "Contributor setup: env files, JS + Python deps, voice models, then the databases (`mise bootstrap` sets up the machine first)"
 depends = ["setup:env", "setup:deps", "setup:voice-agent"]
 run = '''
+set -eu
 echo "Starting Docker services..."
-nx run docker:docker:up
+if docker info >/dev/null 2>&1; then
+  nx run docker:docker:up
+elif command -v sg >/dev/null 2>&1 && id -nG "$USER" | grep -qw docker; then
+  # Just added to the docker group, which only a new login carries: enter it for this one command.
+  sg docker -c "nx run docker:docker:up"
+  echo "Log out and back in so every new shell can reach Docker."
+else
+  echo "Docker isn't answering. Start it (OrbStack, Docker Desktop or 'sudo systemctl start docker'), then run 'mise run bootstrap'." >&2
+  exit 1
+fi
 echo ""
 echo "Setup complete! Run 'mise dev' to start development servers."
 '''
@@ -175,6 +219,8 @@ else
   offset=$(( (sum % 199 + 1) * 10 ))
 fi
 
+chroma_suffix=""
+if [ "$offset" -ne 0 ]; then chroma_suffix="_wt$offset"; fi
 api_port=$(( 8000 + offset ))
 web_port=$(( 3000 + offset ))
 
@@ -203,6 +249,10 @@ BOT_DISCORD_PORT=$(( 3200 + offset ))
 BOT_SLACK_PORT=$(( 3201 + offset ))
 BOT_TELEGRAM_PORT=$(( 3202 + offset ))
 BOT_WHATSAPP_PORT=$(( 3203 + offset ))
+# All worktrees share one local ChromaDB, and the tool and trigger stores delete
+# rows their own registry does not know, so each linked worktree gets its own
+# collection names (empty on main, which keeps the default names).
+GAIA_CHROMA_COLLECTION_SUFFIX=$chroma_suffix
 EOF
 
 echo "wt:env → $root/.env.worktree (offset $offset): API_PORT=$api_port WEB_PORT=$web_port"
@@ -223,6 +273,17 @@ curl -sfS -X POST "$base/seed" -H 'content-type: application/json' \
 echo ""
 echo "seeded $DEV_USER (boot with \`mise dev --agent\` or \`mise dev --sim\` — pass DEV_USER=$DEV_USER to bypass-auth as this user)"
 '''
+
+[tasks."web:visual"]
+description = "Screenshot-diff the key marketing pages on the built Cloudflare worker against a baseline, pixel for pixel. Build first (`pnpm --filter ./apps/web cf:build`); on the base branch's build run `mise web:visual --update` to capture the baseline into apps/web/e2e/visual/.baseline/, then rebuild on your branch and run `mise web:visual`."
+usage = 'flag "--update" help="Capture the baseline instead of comparing against it"'
+run = """
+if [ "${usage_update:-}" = "true" ]; then
+  bash scripts/ci/smoke-worker.sh visual update
+else
+  bash scripts/ci/smoke-worker.sh visual
+fi
+"""
 
 [tasks."e2e:web"]
 description = "Run web Playwright e2e against a running dev stack. Start `mise dev --sim` (or `mise dev --agent` for a real LLM) in another terminal first — both boot with the dev auth bypass on. Set E2E_SIM=1 to include the scripted-chat spec. Honors WEB_PORT/API_PORT from .env.worktree."
@@ -366,16 +427,80 @@ run = "nx affected -t build"
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks.test]
-description = "Run all JS/TS tests via Nx"
+description = "Run every Nx project's tests (TS and the full API pytest suite with xdist workers): heavy, prefer mise test:one locally"
 run = "nx run-many -t test --parallel=3"
 
 [tasks."test:affected"]
 description = "Test only affected projects"
 run = "nx affected -t test --parallel=3"
 
-[tasks."test:python"]
-description = "Run all Python tests with real services via Dagger"
-run = "dagger call -s test-python"
+[tasks."api:types"]
+description = "Export apps/api/openapi.json and regenerate the TypeScript API types in libs/shared/ts/src/api/generated (CI fails when either drifts)"
+run = "node scripts/ci/checks.mjs api-schema --write"
+
+[tasks."analytics:e2e"]
+description = "Boot the API and ARQ worker in sim mode sending to the gaia-test PostHog project, drive every analytics journey (onboarding, paywall, signed payment webhook, web chat, workflow, bot via gaia-sim), then assert each event arrived exactly once, on the user's Mongo id, with catalog-valid properties, attribution and session. Needs POSTHOG_E2E_PROJECT_TOKEN and POSTHOG_E2E_PERSONAL_API_KEY; team members run it as `mise infisical analytics:e2e`"
+usage = '''
+flag "--no-assert" help="Drive the journeys without a personal API key and assert nothing (exits 2)"
+'''
+run = '''
+set -eu
+: "${POSTHOG_E2E_PROJECT_TOKEN:?export the gaia-test project token as POSTHOG_E2E_PROJECT_TOKEN}"
+bash scripts/dev/assert-not-prod.sh "the analytics e2e (dev auth bypass + sim mode)"
+export LLM_STUB_PORT="${LLM_STUB_PORT:-9797}"
+bash scripts/dev/check-ports.sh API="${API_PORT:-8000}" LLM_STUB="$LLM_STUB_PORT"
+nx run docker:docker:up
+
+# Every process started here sends to gaia-test, whatever project the environment names.
+export POSTHOG_PROJECT_TOKEN="$POSTHOG_E2E_PROJECT_TOKEN"
+export POSTHOG_HOST="https://us.i.posthog.com"
+export DEV_AUTH_BYPASS_EMAIL="analytics-e2e@gaia.local"
+export GAIA_SIM_MODE=1
+export OPENROUTER_BASE_URL="http://localhost:$LLM_STUB_PORT/api/v1"
+export ANALYTICS_MONGO_URI="${ANALYTICS_MONGO_URI:-mongodb://localhost:27017}"
+api="http://localhost:${API_PORT:-8000}"
+
+uv run tools/llm-stub/server.py &
+stub_pid=$!
+( cd apps/api && exec uv run --group backend uvicorn app.main:app --host 127.0.0.1 --port "${API_PORT:-8000}" --log-level warning ) &
+api_pid=$!
+# The real worker, so workflow runs and background work take their production path.
+( cd apps/api && exec uv run --group backend arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG ) &
+worker_pid=$!
+trap 'kill "$stub_pid" "$api_pid" "$worker_pid" 2>/dev/null || true' EXIT INT TERM
+
+# A fresh worktree's first boot indexes the tool store in Chroma, which took over 180s.
+boot_timeout_s=600
+deadline=$(( $(date +%s) + boot_timeout_s ))
+until curl -s -o /dev/null "$api/health"; do
+  kill -0 "$api_pid" 2>/dev/null || { echo "the API exited while starting" >&2; exit 1; }
+  [ "$(date +%s)" -lt "$deadline" ] || { echo "the API did not answer within ${boot_timeout_s}s" >&2; exit 1; }
+  sleep 1
+done
+
+# The e2e itself waits for the worker's health key and fails loudly without it.
+kill -0 "$worker_pid" 2>/dev/null || { echo "the ARQ worker exited while starting" >&2; exit 1; }
+
+no_assert=""
+[ "${usage_no_assert:-}" = "true" ] && no_assert="--no-assert"
+cd apps/api && uv run --group backend python -m scripts.analytics_ops e2e --api-url "$api" --email "$DEV_AUTH_BYPASS_EMAIL" $no_assert
+'''
+
+[tasks."analytics:reconcile"]
+description = "Print PostHog next to Mongo ground truth (signups, messages per source, payments and subscription events, support requests, LLM cost, active subscribers) for the last 30 days; exit 1 on drift. Needs POSTHOG_PERSONAL_API_KEY and a read-only ANALYTICS_MONGO_URI"
+run = "cd apps/api && uv run --group backend python -m scripts.analytics_ops reconcile"
+
+[tasks."analytics:backfill"]
+description = "PostHog backfills, dry run unless --apply: `merge-email-persons` (IRREVERSIBLE merges; --pilot N first), then `backfill-paid-status`, then `backfill-history`. Example: `mise analytics:backfill merge-email-persons --pilot 5`"
+run = "cd apps/api && uv run --group backend python -m scripts.analytics_ops"
+
+[tasks."analytics:types"]
+description = "Export the Pydantic event catalog to analytics-catalog.json and regenerate the TypeScript event types in libs/shared/ts/src/analytics/generated (CI fails when either drifts)"
+run = "node scripts/ci/checks.mjs analytics-catalog --write"
+
+[tasks."analytics:check"]
+description = "Check the live PostHog project against the event catalog and config/posthog/ (needs POSTHOG_PERSONAL_API_KEY; CI's analytics-check lane)"
+run = "python3 scripts/ci/analytics.py check"
 
 [tasks."test:python:hermetic"]
 description = "Run the hermetic API suite (no Docker, no network) — must finish within the fast-suite budget"
@@ -383,27 +508,43 @@ run = "cd apps/api && uv run --group backend --group dev pytest -q --tb=short"
 
 [tasks."test:python:real"]
 description = "Run the real-infra tier (Postgres/Redis/Mongo/Chroma via docker compose) — opt-in"
-run = "cd apps/api && USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real tests/contracts tests/e2e/test_hil_barrier_e2e.py tests/e2e/test_hil_spawn_e2e.py --tb=short -q"
+run = "cd apps/api && USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real tests/contracts tests/e2e/test_hil_barrier_e2e.py tests/e2e/test_hil_spawn_e2e.py --ignore=tests/integration/real/browser --tb=short -q"
+
+[tasks."test:python:browser"]
+description = "Run the hermetic browser stack (API, worker, Chrome and Obscura hosts, fake models, fixture site) — needs the real services, CHROMIUM_BIN or google-chrome, and OBSCURA_BIN"
+run = "cd apps/api && USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real/browser -n 2 --tb=short -q"
+
+[tasks."test:one"]
+description = "Run one or more API test files exactly as CI does, minus xdist: `mise test:one tests/unit/x.py [more...]` (keeps --strict-markers and the -m filter; `-o addopts=\"\"` silently drops both)"
+run = "cd apps/api && uv run --group backend --group dev pytest -p no:xdist -q {{arg(name=\"paths\", var=true)}}"
 
 [tasks."test:python:unit"]
 description = "Run Python unit tests only (no services, fast)"
-run = "cd apps/api && USE_REAL_SERVICES=0 uv run pytest tests/unit --tb=short -q"
-
-[tasks."test:python:coverage"]
-description = "Run Python tests with coverage via Dagger"
-run = "dagger call -s test-python-coverage"
+run = "cd apps/api && USE_REAL_SERVICES=0 uv run --group backend --group dev pytest tests/unit --tb=short -q"
 
 [tasks."test:typescript"]
-description = "Run JS/TS tests via Nx"
-run = "nx run-many -t test --parallel=3"
+description = "Run JS/TS tests via Nx (the TypeScript projects only; `mise test` adds the API suite)"
+run = "nx run-many -t test --projects tag:scope:typescript --parallel=3"
 
 [tasks."test:bots"]
 description = "Test all bots (Discord, Slack, Telegram, WhatsApp)"
-run = "cd apps/bots && pnpm vitest run"
+run = "nx run bots-e2e:test"
+
+[tasks."cli:try"]
+description = "Try this tree's CLI on a fresh VM without CI or a publish: builds + packs the CLI, builds the self-host bundle (release.sh selfhost-bundle), serves them and install.sh over HTTP (port CLI_TRY_PORT, default 8790) and prints the commands to paste in the VM. Images are a published release's: GAIA_VERSION, default the newest cli-v* tag"
+run = "bash scripts/dev/cli-try.sh"
 
 [tasks."test:cli"]
 description = "Run CLI tests"
-run = "cd packages/cli && pnpm vitest run"
+run = "nx run cli:test"
+
+[tasks."cli:schema"]
+description = "Regenerate the CLI's vendored API config schema (packages/cli/src/lib/api-config-schema.generated.json) from the API's settings groups and capability table — CI's api-schema lane fails when it drifts"
+run = "node scripts/ci/checks.mjs cli-config-schema --write"
+
+[tasks."deploy:templates"]
+description = "Regenerate the one-click deploy templates (deploy/coolify/gaia.yaml, render.yaml, deploy/proxy.Dockerfile) from the self-host compose file, its Caddyfile and the CLI's machine secrets — CI's api-schema lane fails when they drift"
+run = "node scripts/ci/checks.mjs deploy-templates --write"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LINTING & FORMATTING
@@ -433,6 +574,27 @@ run = "nx run-many -t format:check --parallel=3"
 description = "Whitespace/indentation only for affected projects — does NOT sort imports"
 run = "nx affected -t format --parallel=3"
 
+# Whole-repo Python lint/format, scoped to the files no Nx project owns.
+#
+# `nx run-many -t format` only reaches the 12 Nx projects (apps/*, libs/*).
+# CI runs `ruff format --check .` from the repo root, which also covers the ~161
+# Python files under scripts/, tools/, .agents/skills/, docs/ and
+# libs/wake-word/ — none of which belong to an Nx project. That asymmetry is how
+# scripts/ci/tests/test_workflow_suites.py and scripts/test/mutation_classify.py
+# sat unformatted since 2026-09-24 and only ever failed in CI.
+#
+# These run CI's exact command, from the root, at CI's exact pin, so a clean
+# local run means a clean lane. Keep the ruff version in lockstep with
+# .github/workflows/ci.yml, .pre-commit-config.yaml and uv.lock —
+# `python3 tools/lints/check_tool_pins.py` enforces that.
+[tasks."lint:py"]
+description = "Whole-repo Python lint + format check — CI's exact ruff command (covers scripts/, tools/)"
+run = "uv run --frozen --no-build --isolated --only-group lint ruff check . && uv run --frozen --no-build --isolated --only-group lint ruff format --check ."
+
+[tasks."lint:py:fix"]
+description = "Whole-repo Python autofix + format — CI's exact ruff command"
+run = "uv run --frozen --no-build --isolated --only-group lint ruff check --fix . && uv run --frozen --no-build --isolated --only-group lint ruff format ."
+
 [tasks."type-check"]
 description = "Type-check all apps (parallel with caching)"
 run = "nx run-many -t type-check --parallel=3"
@@ -450,8 +612,8 @@ description = "pnpm audit (prod, >=high) with expiring allowlist in config/pnpm-
 run = "bash scripts/ci/audit.sh pnpm"
 
 [tasks."audit:deps:test"]
-description = "Unit tests for the CI shell gates (runner.sh, audit.sh, ...)"
-run = "uv run --no-project --with pytest pytest scripts/ci -q"
+description = "Unit tests for the CI shell gates (runner.py, audit.sh, ...)"
+run = "uv run --frozen --isolated --only-group harness pytest scripts/ci -q"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PRE-COMMIT HOOKS
@@ -462,8 +624,8 @@ description = "Run all pre-commit checks (workspace mode)"
 run = "prek run --all-files"
 
 [tasks."pre-commit:install"]
-description = "Install pre-commit hooks using prek"
-run = "prek install"
+description = "Install the commit hooks (prek) and the pre-push CI check (scripts/dev/pre-push.sh)"
+run = ["prek install --hook-type pre-commit", "scripts/dev/pre-push.sh install"]
 
 [tasks."pre-commit:run"]
 description = "Run pre-commit hooks on staged files"
@@ -493,10 +655,6 @@ run = "nx run-many -t clean"
 description = "Clean Nx cache"
 run = "nx reset"
 
-[tasks."dagger-clean"]
-description = "Clear Dagger engine local cache"
-run = "dagger core engine local-cache prune"
-
 # ─────────────────────────────────────────────────────────────────────────────
 # NX UTILITIES
 # ─────────────────────────────────────────────────────────────────────────────
@@ -513,75 +671,15 @@ run = "nx affected:graph"
 # CI/CD COMMANDS
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Dagger (only for tasks that need service containers) ──
-
-[tasks."ci:test-python"]
-description = "Run Python tests via Dagger with real services (same as CI)"
-run = "dagger call -s test-python"
-
-[tasks."ci:test-python:coverage"]
-description = "Run Python tests with coverage via Dagger"
-run = "dagger call -s test-python-coverage"
-
-[tasks."ci:quality"]
-description = "Run full quality gate via Dagger (local convenience, runs everything)"
-run = "dagger call -s quality-checks"
-
-[tasks."ci:quality:debug"]
-description = "Run quality gate with interactive debugging on failure"
-run = "dagger call quality-checks --interactive"
-
-[tasks."ci:quality:verbose"]
-description = "Run quality gate with full TUI and debug logs"
-run = "dagger call -vv quality-checks"
-
-# ── Docker image builds via Dagger ──
-
-[tasks."ci:docker"]
-description = "Build all Docker images via Dagger"
-run = "dagger call -s docker-build-all"
-
-[tasks."ci:docker:api"]
-description = "Build API Docker image via Dagger"
-run = "dagger call -s docker-build --app api"
-
-[tasks."ci:docker:web"]
-description = "Build web Docker image via Dagger"
-run = "dagger call -s docker-build --app web"
-
-[tasks."ci:docker:voice-agent"]
-description = "Build voice-agent Docker image via Dagger"
-run = "dagger call -s docker-build --app voice-agent"
-
-[tasks."ci:docker:bot-discord"]
-description = "Build Discord bot Docker image via Dagger"
-run = "dagger call -s docker-build --app bot-discord"
-
-[tasks."ci:docker:bot-slack"]
-description = "Build Slack bot Docker image via Dagger"
-run = "dagger call -s docker-build --app bot-slack"
-
-[tasks."ci:docker:bot-telegram"]
-description = "Build Telegram bot Docker image via Dagger"
-run = "dagger call -s docker-build --app bot-telegram"
-
-[tasks."ci:docker:bot-whatsapp"]
-description = "Build WhatsApp bot Docker image via Dagger"
-run = "dagger call -s docker-build --app bot-whatsapp"
-
-[tasks."ci:docker:bot-imessage"]
-description = "Build iMessage bot Docker image via Dagger"
-run = "dagger call -s docker-build --app bot-imessage"
-
 # ── GitHub Actions simulation (via act) ──
 
 [tasks."ci:act:quality"]
-description = "Dry-run quality-checks workflow locally with act"
-run = "act workflow_dispatch -n -W .github/workflows/main.yml"
+description = "Dry-run the CI workflow locally with act"
+run = "act workflow_dispatch -n -W .github/workflows/ci.yml"
 
 [tasks."ci:act:quality:run"]
-description = "Actually run quality-checks workflow locally with act"
-run = "act workflow_dispatch -W .github/workflows/main.yml"
+description = "Actually run the CI workflow locally with act"
+run = "act workflow_dispatch -W .github/workflows/ci.yml"
 
 [tasks."ci:act:desktop"]
 description = "Test desktop-release workflow locally with act (dry-run)"
@@ -631,6 +729,10 @@ run = "docker compose -f apps/api/scripts/evals/infra/compose.opik.yml down -v"
 description = "Run the eval-harness smoke suite (3 toy cases; verifies rotation, journal, report)"
 run = "cd apps/api && uv run --group backend python -m scripts.evals run --suite smoke"
 
+[tasks."eval:browser"]
+description = "Run the browser quality eval: real models drive the hosts BROWSER_HOST_URL / BROWSER_FALLBACK_HOST_URL through 22 real-site tasks (bills model calls; not a CI gate; OPENROUTER_MODEL names the browser agent's model for the record)"
+run = "bash scripts/ci/browser.sh eval"
+
 [tasks."eval:gate"]
 description = "Stub-driven regression gate (free) — run before pushing agent/LLM/tool changes"
 run = "cd apps/api && uv run --group backend python -m scripts.evals run --suite regression --sim"
@@ -662,13 +764,38 @@ run = "python3 tools/evlog_map --all"
 # ── Agent-legible gates ──────────────────────────────────────────────────────
 [tasks."ci:local"]
 description = "Run CI quality gates locally (same lanes/versions as GitHub Actions); --list shows all lanes"
-run = "python3 scripts/dev/gaia_verify.py"
+# --no-project: the runner is stdlib-only.
+run = "uv run --no-project python scripts/dev/gaia_verify.py"
 
+
+[tasks."ratchets"]
+description = "Run the touch-to-fix ratchets CI gates on (plr-complexity, mypy-tests) at CI's exact commands, without the rest of ci:local. plr also runs at commit; mypy-tests is ~7s warm, ~3.5min on the first run in a fresh worktree"
+run = "python3 tools/lints/check_plr_complexity.py && python3 tools/lints/check_mypy_tests.py"
 
 [tasks."pr:comments"]
 description = "Fetch PR review threads read-only: resolution state, IDs for resolve/reply, next-step syntax"
-run = "python3 scripts/dev/pr_comments.py"
+run = "uv run python scripts/dev/pr_comments.py"
+
+[tasks."pr:conflicts"]
+description = "Replay the merge queue for open PRs (default: yours): which conflict with master or with each other, and the order to queue them"
+run = "uv run python scripts/dev/pr_conflicts.py"
 
 [tasks."ci:remote"]
-description = "Merge-readiness dashboard for a PR's GitHub gates: checks, conflicts, reviews, unresolved threads (--watch to poll)"
-run = "python3 scripts/dev/ci_remote.py"
+description = "Why a PR is red: each failing lane's verdict artifact or error-anchored job log, plus conflicts, reviews, threads and the gh stack (--verbose/--json/--watch)"
+run = "uv run python scripts/dev/ci_remote.py"
+
+[tasks."ci:watch"]
+description = "Wait on a PR's CI: `mise ci:watch <PR|branch>` polls up to an hour and exits at the first red check, printing its failure. The only sanctioned way to wait on CI"
+run = "uv run python scripts/dev/ci_remote.py --watch --fail-fast --max-wait 3600"
+
+[tasks."ci:status"]
+description = "One normalized read of a PR's CI: red lanes, verdict findings, failing mutation modules and the last log lines. Use this instead of raw `gh pr checks` / `gh run view`"
+run = "uv run python scripts/dev/ci_remote.py --json --compact --no-stack"
+
+[tasks."mutation:one"]
+description = "Run ONE changed app module locally and print its surviving mutants with file:line, full diff and mapped tests: `mise mutation:one app/services/x.py`"
+run = "uv run python scripts/ci/mutation.py one"
+
+[tasks."mutation:survivors"]
+description = "Print every surviving mutant from a shard artifact (shard.verdict.json, record dir, or shard.log) with file:line, change, full diff and tests: `mise mutation:survivors <source>`"
+run = "uv run python scripts/ci/mutation.py survivors"

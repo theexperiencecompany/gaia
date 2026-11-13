@@ -10,17 +10,18 @@ Flow:
 """
 
 import asyncio
+from dataclasses import dataclass
 import time
 import traceback
-from typing import TypedDict
 
 from app.constants.log_tags import LogTag
 from app.utils.crawl4ai_utils import get_browser_semaphore, managed_crawler
 from shared.py.wide_events import log
 
 
-class ProfileCrawlResult(TypedDict):
-    """Outcome of one profile crawl. Exactly one of ``content``/``error`` is set."""
+@dataclass(frozen=True, slots=True)
+class ProfileCrawlResult:
+    """Outcome of one profile crawl. Exactly one of content/error is set."""
 
     url: str
     platform: str
@@ -31,26 +32,15 @@ class ProfileCrawlResult(TypedDict):
 async def crawl_profile_url(
     url: str, platform: str, semaphore: asyncio.Semaphore
 ) -> ProfileCrawlResult:
-    """
-    Crawl a single profile URL using crawl4ai.
-
-    Args:
-        url: Profile URL to crawl
-        platform: Platform name (e.g., 'twitter', 'github')
-        semaphore: Concurrency control semaphore
-
-    Returns:
-        Dict with url, platform, content (markdown), and error if failed
-    """
+    """Crawl a single profile URL using crawl4ai."""
     async with semaphore:
         start_time = time.time()
         try:
             log.info(f"{LogTag.MEMORY} Crawling profile", platform=platform, url=url)
 
             # Process-wide cap on live Chromium instances (shared with
-            # crawl4ai_utils) so concurrent profile crawls can't fan out into
-            # dozens of browsers; managed_crawler guarantees the browser is
-            # torn down even when this task is cancelled mid-crawl.
+            # crawl4ai_utils); managed_crawler tears the browser down even
+            # if this task is cancelled mid-crawl.
             async with (
                 get_browser_semaphore(),
                 managed_crawler(context_name=f"{platform} profile crawl") as crawler,
@@ -76,12 +66,9 @@ async def crawl_profile_url(
                     duration_s=round(elapsed, 2),
                     content_size=content_size,
                 )
-                return {
-                    "url": url,
-                    "platform": platform,
-                    "content": result.markdown,
-                    "error": None,
-                }
+                return ProfileCrawlResult(
+                    url=url, platform=platform, content=result.markdown, error=None
+                )
         except Exception as e:
             elapsed = time.time() - start_time
             error_type = type(e).__name__
@@ -103,9 +90,6 @@ async def crawl_profile_url(
                 traceback=traceback.format_exc(),
             )
 
-            return {
-                "url": url,
-                "platform": platform,
-                "content": None,
-                "error": f"{error_type}: {error_msg}",
-            }
+            return ProfileCrawlResult(
+                url=url, platform=platform, content=None, error=f"{error_type}: {error_msg}"
+            )

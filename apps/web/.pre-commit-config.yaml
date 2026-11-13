@@ -1,3 +1,6 @@
+# Commit-time only; the pre-push stage belongs to the root ci:local hook.
+default_stages: [pre-commit]
+
 repos:
   - repo: local
     hooks:

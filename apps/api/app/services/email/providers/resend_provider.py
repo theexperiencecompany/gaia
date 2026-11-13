@@ -5,17 +5,35 @@ import asyncio
 import resend
 
 from app.config.settings import settings
+from app.constants.providers import CredentialProviderName
 from app.services.email.models import EmailMessage
+from app.services.providers.provider_credentials_service import (
+    ProviderConfig,
+    resolve as resolve_resend_config,
+)
 
 
 class ResendEmailProvider:
     """EmailProvider backed by the Resend HTTP API."""
 
-    def __init__(self) -> None:
-        resend.api_key = settings.RESEND_API_KEY
+    async def _apply_api_key(self) -> None:
+        """Point the Resend SDK global key at the active credential.
+
+        Resolves store-first with env fallback on every call so a key saved at
+        runtime applies without a restart.
+        """
+        config: ProviderConfig | None = await resolve_resend_config(CredentialProviderName.RESEND)
+        api_key = config.api_key if config else None
+        if not api_key:
+            raise RuntimeError(
+                "Resend is not configured: store a Resend credential in "
+                "Settings or set RESEND_API_KEY to send email."
+            )
+        resend.api_key = api_key
 
     async def send(self, message: EmailMessage) -> None:
         """Deliver one message via Resend."""
+        await self._apply_api_key()
         params: resend.Emails.SendParams = {
             "from": message.sender,
             "to": message.to,
@@ -26,11 +44,15 @@ class ResendEmailProvider:
             params["reply_to"] = message.reply_to
         if message.headers:
             params["headers"] = message.headers
+        options: resend.Emails.SendOptions | None = (
+            {"idempotency_key": message.idempotency_key} if message.idempotency_key else None
+        )
         # The Resend SDK is synchronous — run it in a thread to keep the event loop free.
-        await asyncio.to_thread(resend.Emails.send, params)
+        await asyncio.to_thread(resend.Emails.send, params, options)
 
     async def add_contact(self, user_email: str, user_name: str | None = None) -> None:
         """Add a contact to the Resend audience. No-op when RESEND_AUDIENCE_ID is unset."""
+        await self._apply_api_key()
         if not settings.RESEND_AUDIENCE_ID:
             return
 

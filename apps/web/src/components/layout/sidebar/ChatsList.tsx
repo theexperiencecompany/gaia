@@ -65,9 +65,9 @@ export default function ChatsList() {
       userId: conv.user_id,
       starred: conv.starred ?? false,
       isSystemGenerated: conv.is_system_generated ?? false,
-      isOnboardingConversation: conv.is_onboarding_conversation ?? false,
       systemPurpose: conv.system_purpose ?? null,
       isUnread: conv.is_unread ?? false,
+      hasLiveApproval: conv.has_live_approval ?? false,
       createdAt: new Date(conv.createdAt),
       updatedAt: conv.updatedAt
         ? new Date(conv.updatedAt)
@@ -237,6 +237,9 @@ export default function ChatsList() {
                             conversation.systemPurpose ?? undefined
                           }
                           isUnread={conversation.isUnread ?? false}
+                          hasPendingApproval={
+                            conversation.hasLiveApproval ?? false
+                          }
                         />
                       ))}
                   </div>
@@ -267,6 +270,9 @@ export default function ChatsList() {
                         name={conversation.title || "New chat"}
                         starred={conversation.starred ?? false}
                         isUnread={conversation.isUnread ?? false}
+                        hasPendingApproval={
+                          conversation.hasLiveApproval ?? false
+                        }
                       />
                     ))}
                   </div>
@@ -303,6 +309,9 @@ export default function ChatsList() {
                           name={conversation.title || "New chat"}
                           starred={conversation.starred ?? false}
                           isUnread={conversation.isUnread ?? false}
+                          hasPendingApproval={
+                            conversation.hasLiveApproval ?? false
+                          }
                         />
                       ))}
                   </div>

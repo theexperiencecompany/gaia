@@ -21,8 +21,17 @@ from app.schemas.mcp import (
     MCPProxyToolCallRequest,
     MCPProxyToolCallResponse,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import capture
 from app.services.mcp.mcp_client import get_mcp_client
+from app.services.mcp.server_routing import (
+    call_tool_on_server,
+    list_prompts_on_server,
+    list_resource_templates_on_server,
+    list_resources_on_server,
+    read_resource_on_server,
+)
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.agents import ToolUsed
 from shared.py.wide_events import McpContext, log
 
 router = APIRouter()
@@ -43,7 +52,7 @@ async def proxy_mcp_tool_call(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> MCPProxyToolCallResponse:
     """Proxy a tools/call request from an MCP App iframe to the MCP server."""
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
     log.set(
@@ -54,17 +63,15 @@ async def proxy_mcp_tool_call(
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
-        result = await mcp_client.call_tool_on_server(
+        result = await call_tool_on_server(
+            mcp_client,
             server_url=request.server_url,
             tool_name=request.tool_name,
             arguments=request.arguments,
         )
         log.set(outcome="success")
         log.set_ns("mcp", success=not result.isError)
-        capture_context_event(
-            AnalyticsEvents.TOOL_USED,
-            {"tool_name": request.tool_name, "source": "mcp_app"},
-        )
+        capture(UserId(user_id), ToolUsed(tool_name=request.tool_name, source="mcp_app"))
         return MCPProxyToolCallResponse(
             content=[block.model_dump() for block in result.content],
             is_error=result.isError,
@@ -100,14 +107,15 @@ async def proxy_mcp_resources_list(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> MCPProxyResourcesListResponse:
     """Proxy a resources/list request from an MCP App iframe to the MCP server."""
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
     log.set(user={"id": user_id}, operation="mcp_proxy_resources_list")
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
-        result = await mcp_client.list_resources_on_server(
+        result = await list_resources_on_server(
+            mcp_client,
             server_url=request.server_url,
             cursor=request.cursor,
         )
@@ -147,14 +155,15 @@ async def proxy_mcp_resource_templates_list(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> MCPProxyResourceTemplatesListResponse:
     """Proxy a resources/templates/list request from an MCP App iframe."""
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
     log.set(user={"id": user_id}, operation="mcp_proxy_resource_templates_list")
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
-        result = await mcp_client.list_resource_templates_on_server(
+        result = await list_resource_templates_on_server(
+            mcp_client,
             server_url=request.server_url,
             cursor=request.cursor,
         )
@@ -196,7 +205,7 @@ async def proxy_mcp_resource_read(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> MCPProxyResourceReadResponse:
     """Proxy a resources/read request from an MCP App iframe to the MCP server."""
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
     log.set(
@@ -207,7 +216,8 @@ async def proxy_mcp_resource_read(
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
-        result = await mcp_client.read_resource_on_server(
+        result = await read_resource_on_server(
+            mcp_client,
             server_url=request.server_url,
             uri=request.uri,
         )
@@ -247,14 +257,15 @@ async def proxy_mcp_prompts_list(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> MCPProxyPromptsListResponse:
     """Proxy a prompts/list request from an MCP App iframe to the MCP server."""
-    user_id = user.get("user_id")
+    user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
     log.set(user={"id": user_id}, operation="mcp_proxy_prompts_list")
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
-        result = await mcp_client.list_prompts_on_server(
+        result = await list_prompts_on_server(
+            mcp_client,
             server_url=request.server_url,
             cursor=request.cursor,
         )

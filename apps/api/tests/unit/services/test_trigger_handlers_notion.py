@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.trigger_config import TriggerOptionsQuery
 from app.services.triggers.handlers.notion import NotionTriggerHandler
 
 # ---------------------------------------------------------------------------
@@ -72,12 +73,19 @@ class TestGetConfigOptions:
             mock_cls.model_validate.return_value = mock_data
 
             result = await handler.get_config_options(
-                "notion_new_page_in_db", "database_id", "u1", "notion"
+                TriggerOptionsQuery(
+                    trigger_name="notion_new_page_in_db",
+                    field_name="database_id",
+                    user_id="u1",
+                    integration_id="notion",
+                )
             )
 
         assert len(result) == 1
         assert result[0].value == "db1"
         assert result[0].label == "My Database"
+        svc.get_tool.assert_called_once_with("NOTION_FETCH_DATA", user_id="u1")
+        mock_tool.invoke.assert_called_once_with({"fetch_type": "databases", "page_size": 100})
 
     @pytest.mark.asyncio
     @patch("app.services.triggers.handlers.notion.get_composio_service")
@@ -101,10 +109,16 @@ class TestGetConfigOptions:
         with patch("app.services.triggers.handlers.notion.NotionFetchDataData") as mock_cls:
             mock_cls.model_validate.return_value = mock_data
             result = await handler.get_config_options(
-                "notion_page_updated", "page_id", "u1", "notion"
+                TriggerOptionsQuery(
+                    trigger_name="notion_page_updated",
+                    field_name="page_id",
+                    user_id="u1",
+                    integration_id="notion",
+                )
             )
 
         assert result[0].value == "pg1"
+        mock_tool.invoke.assert_called_once_with({"fetch_type": "pages", "page_size": 100})
 
     @pytest.mark.asyncio
     @patch("app.services.triggers.handlers.notion.get_composio_service")
@@ -124,10 +138,47 @@ class TestGetConfigOptions:
         with patch("app.services.triggers.handlers.notion.NotionFetchDataData") as mock_cls:
             mock_cls.model_validate.return_value = mock_data
             result = await handler.get_config_options(
-                "notion_all_page_events", "something_else", "u1", "notion"
+                TriggerOptionsQuery(
+                    trigger_name="notion_all_page_events",
+                    field_name="something_else",
+                    user_id="u1",
+                    integration_id="notion",
+                )
             )
 
         assert result == []
+        mock_tool.invoke.assert_called_once_with({"fetch_type": "all", "page_size": 100})
+
+    @pytest.mark.asyncio
+    @patch("app.services.triggers.handlers.notion.get_composio_service")
+    async def test_search_is_forwarded_as_the_query(self, mock_get_svc: MagicMock) -> None:
+        handler = _make_handler()
+
+        mock_data = MagicMock()
+        mock_data.get_items.return_value = []
+
+        mock_tool = MagicMock()
+        mock_tool.invoke.return_value = {"successful": True, "data": {}}
+
+        svc = MagicMock()
+        svc.get_tool.return_value = mock_tool
+        mock_get_svc.return_value = svc
+
+        with patch("app.services.triggers.handlers.notion.NotionFetchDataData") as mock_cls:
+            mock_cls.model_validate.return_value = mock_data
+            await handler.get_config_options(
+                TriggerOptionsQuery(
+                    trigger_name="notion_new_page_in_db",
+                    field_name="database_id",
+                    user_id="u1",
+                    integration_id="notion",
+                    search="roadmap",
+                )
+            )
+
+        mock_tool.invoke.assert_called_once_with(
+            {"fetch_type": "databases", "page_size": 100, "query": "roadmap"}
+        )
 
     @pytest.mark.asyncio
     @patch("app.services.triggers.handlers.notion.get_composio_service")
@@ -139,9 +190,15 @@ class TestGetConfigOptions:
         mock_get_svc.return_value = svc
 
         result = await handler.get_config_options(
-            "notion_new_page_in_db", "database_id", "u1", "notion"
+            TriggerOptionsQuery(
+                trigger_name="notion_new_page_in_db",
+                field_name="database_id",
+                user_id="u1",
+                integration_id="notion",
+            )
         )
         assert result == []
+        svc.get_tool.assert_called_once_with("NOTION_FETCH_DATA", user_id="u1")
 
     @pytest.mark.asyncio
     @patch("app.services.triggers.handlers.notion.get_composio_service")
@@ -156,7 +213,12 @@ class TestGetConfigOptions:
         mock_get_svc.return_value = svc
 
         result = await handler.get_config_options(
-            "notion_new_page_in_db", "database_id", "u1", "notion"
+            TriggerOptionsQuery(
+                trigger_name="notion_new_page_in_db",
+                field_name="database_id",
+                user_id="u1",
+                integration_id="notion",
+            )
         )
         assert result == []
 
@@ -167,7 +229,12 @@ class TestGetConfigOptions:
 
         mock_get_svc.side_effect = RuntimeError("fail")
         result = await handler.get_config_options(
-            "notion_new_page_in_db", "database_id", "u1", "notion"
+            TriggerOptionsQuery(
+                trigger_name="notion_new_page_in_db",
+                field_name="database_id",
+                user_id="u1",
+                integration_id="notion",
+            )
         )
         assert result == []
 
@@ -197,7 +264,12 @@ class TestGetConfigOptions:
         with patch("app.services.triggers.handlers.notion.NotionFetchDataData") as mock_cls:
             mock_cls.model_validate.return_value = mock_data
             result = await handler.get_config_options(
-                "notion_new_page_in_db", "database_id", "u1", "notion"
+                TriggerOptionsQuery(
+                    trigger_name="notion_new_page_in_db",
+                    field_name="database_id",
+                    user_id="u1",
+                    integration_id="notion",
+                )
             )
 
         assert len(result) == 1

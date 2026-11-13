@@ -30,6 +30,7 @@ export type GaiaIconComponent = React.ComponentType<IconProps>;
 
 function createIcon(name: IconName) {
   const { viewBox, paths } = iconPathData[name];
+  // biome-ignore lint/correctness/noComponentHookFactories: icon factory; one component per SVG path set, created once at module load
   return function GaiaIcon({
     size = 24,
     width,

@@ -8,19 +8,7 @@ from app.config.settings import settings
 
 
 async def verify_composio_webhook_signature(request: Request) -> tuple[bytes, str]:
-    """
-    Verify the authenticity of a Composio webhook request.
-
-    Args:
-        request: The FastAPI request object
-
-    Returns:
-        tuple: (body bytes, webhook_id)
-
-    Raises:
-        HTTPException: If signature verification fails
-    """
-    # Get the raw body for signature verification
+    """Verify the authenticity of a Composio webhook request; returns (body, webhook_id)."""
     body = await request.body()
 
     # Get the signature and timestamp from headers

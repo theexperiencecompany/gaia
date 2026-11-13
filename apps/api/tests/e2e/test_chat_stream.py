@@ -1,8 +1,8 @@
 """Chat-stream scenarios driven through the real compiled comms graph.
 
-Where ``test_tool_visibility.py`` pins the frame contract with a scripted event
-sequence, this file runs the actual GAIA graph — ``build_comms_graph``, the real
-pre-model hooks, the real ``ToolNode``, the real memory tools — and asserts on
+Where test_tool_visibility.py pins the frame contract with a scripted event
+sequence, this file runs the actual GAIA graph — build_comms_graph, the real
+pre-model hooks, the real ToolNode, the real memory tools — and asserts on
 the SSE transcript the client would receive. Only the model is faked, and only
 because a real one is not deterministic.
 
@@ -34,9 +34,9 @@ def _registry(real_tool_registry):
 async def stream_turn(graph: Any, prompt: str, thread_id: str, user_id: str) -> Transcript:
     """Run one user turn through the graph and parse what the client sees.
 
-    The run config comes from the production ``build_agent_config`` rather than
-    a hand-rolled dict: tools read the user from ``config["metadata"]`` while the
-    graph reads it from ``config["configurable"]``, and only the real builder
+    The run config comes from the production build_agent_config rather than
+    a hand-rolled dict: tools read the user from config["metadata"] while the
+    graph reads it from config["configurable"], and only the real builder
     populates both.
     """
     config = await build_agent_config(
@@ -62,8 +62,7 @@ def _call(name: str, args: dict[str, Any], call_id: str) -> dict[str, Any]:
 
 class TestPlainReply:
     async def test_a_plain_answer_streams_text_and_nothing_else(self):
-        """No tool ran, so no tool card may appear. A stray ``tool_data`` frame
-        here is a card the user sees for work that never happened."""
+        """No tool ran; a stray tool_data frame here would be a card for work that never happened."""
         async with comms_graph(["The answer is 42."]) as graph:
             transcript = await stream_turn(graph, "What is the meaning?", "t1", "u1")
 
@@ -73,8 +72,7 @@ class TestPlainReply:
         assert transcript.is_done
 
     async def test_the_persisted_text_matches_what_was_streamed(self):
-        """The completion marker feeds MongoDB; a mismatch means the reload of
-        a conversation shows different text than the live turn did."""
+        """The completion marker feeds MongoDB; a mismatch means a reload shows different text than the live turn did."""
         async with comms_graph(["Streamed and stored."]) as graph:
             transcript = await stream_turn(graph, "hi", "t1", "u1")
 
@@ -88,8 +86,7 @@ class TestPlainReply:
 
 class TestToolTurn:
     async def test_the_call_its_arguments_and_its_result_all_reach_the_client(self):
-        """The whole point of streaming tool calls: the card shows up with the
-        arguments the model chose, and fills in with the real tool's output."""
+        """The whole point of streaming tool calls: the card shows the model's arguments and fills in with the tool's real output."""
         async with comms_graph(
             [
                 _call("add_memory", {"content": "Dhruv drinks oat milk"}, call_id="tc_mem"),
@@ -109,8 +106,7 @@ class TestToolTurn:
         assert transcript.final_text() == "Noted."
 
     async def test_the_tool_card_precedes_its_result_on_the_wire(self):
-        """The card must render before the result exists — that is what makes
-        the tool call visible while it is still running."""
+        """The card must render before the result exists — that is what makes the tool call visible while it is still running."""
         async with comms_graph(
             [_call("add_memory", {"content": "x"}, call_id="tc_mem"), "ok"]
         ) as graph:
@@ -120,8 +116,7 @@ class TestToolTurn:
         assert kinds.index("tool_data") < kinds.index("tool_output")
 
     async def test_the_result_carries_the_call_id_the_card_was_emitted_with(self):
-        """The frontend joins on this id alone. If the ids disagree the card
-        renders forever without ever showing a result."""
+        """The frontend joins on this id alone — if the ids disagree the card renders forever without a result."""
         async with comms_graph(
             [_call("add_memory", {"content": "x"}, call_id="tc_join"), "ok"]
         ) as graph:
@@ -131,8 +126,7 @@ class TestToolTurn:
         assert [o.tool_call_id for o in transcript.outputs()] == ["tc_join"]
 
     async def test_the_executor_handoff_is_visible_as_its_own_card(self):
-        """``call_executor`` is how every non-trivial request leaves the comms
-        tier; if it does not stream, the UI goes silent while work happens."""
+        """call_executor is how every non-trivial request leaves the comms tier; if it does not stream, the UI goes silent while work happens."""
         async with comms_graph(
             [_call("call_executor", {"task": "book a flight"}, call_id="tc_exec"), "On it."]
         ) as graph:
@@ -165,9 +159,7 @@ class TestToolTurn:
 
 class TestAcrossTurns:
     async def test_last_turns_tool_card_does_not_replay_into_this_turn(self):
-        """Turn 2's pre-model hooks re-emit turn 1's ``AIMessage``, tool calls
-        and all. Without the node gate in ``execute_graph_streaming`` the user
-        sees turn 1's card appear again under turn 2's reply."""
+        """Turn 2's pre-model hooks re-emit turn 1's AIMessage; without the node gate in execute_graph_streaming its card would replay under turn 2."""
         thread = f"t-{uuid4()}"
         async with comms_graph(
             [
@@ -185,8 +177,7 @@ class TestAcrossTurns:
         assert second.final_text() == "Just chatting now."
 
     async def test_each_turn_persists_only_its_own_text(self):
-        """The completion marker must not accumulate across turns — the second
-        turn's stored message would otherwise contain the first turn's reply."""
+        """The completion marker must not accumulate across turns — the second turn's stored message would otherwise contain the first turn's reply."""
         thread = f"t-{uuid4()}"
         async with comms_graph(["First reply.", "Second reply."]) as graph:
             first = await stream_turn(graph, "one", thread, "u1")

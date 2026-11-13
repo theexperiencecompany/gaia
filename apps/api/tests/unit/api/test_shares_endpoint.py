@@ -140,4 +140,4 @@ async def test_every_failure_answers_the_same_uniform_body(client: AsyncClient) 
     with patch(f"{ENDPOINT}.redeem_share_grant", return_value=None):
         response = await client.get("/api/v1/files/s/report.pdf?token=t")
     assert response.status_code == 404
-    assert response.json() == {"detail": "Not found"}
+    assert response.json() == {"message": "Not found"}

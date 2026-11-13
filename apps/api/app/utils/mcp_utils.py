@@ -5,13 +5,22 @@ Contains helper functions for MCP client operations including
 PKCE generation, tool wrapping, and schema handling.
 """
 
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Collection, Iterable, Sequence
 from functools import wraps
 import inspect
+import re
 
 from langchain_core.tools import BaseTool
 
 from app.constants.log_tags import LogTag
+from app.constants.mcp import (
+    MCP_TOOL_NAME_MAX_CHARS,
+    MCP_TOOL_NAME_SEPARATOR,
+    MCP_UNNAMED_SOURCE_PREFIX,
+)
+from app.models.mcp_config import McpToolProvenance
+from app.services.mcp.mcp_errors import MCPAuthorizationRequiredError
+from app.utils.errors import IntegrationNotConnectedError
 from shared.py.wide_events import log
 
 
@@ -24,6 +33,49 @@ def canonical_tool_name_map(names: Iterable[str]) -> dict[str, str]:
     LLM call misses the strict bound-set membership check.
     """
     return {n.replace("-", "_"): n for n in names}
+
+
+def source_prefixed_tool_name(source_name: str, tool_name: str, taken: Collection[str]) -> str:
+    """Name a tool after its source, not in taken: ("Dodo Payments", "execute") -> "dodo_payments_execute".
+
+    A name already taken gets a numeric suffix (dodo_payments_execute_2).
+    """
+    sep = MCP_TOOL_NAME_SEPARATOR
+    slug = re.sub(r"[^a-z0-9]+", sep, source_name.lower()).strip(sep)
+    attempt = 1
+    while True:
+        suffix = f"{sep}{attempt}" if attempt > 1 else ""
+        budget = MCP_TOOL_NAME_MAX_CHARS - len(tool_name) - len(sep) - len(suffix)
+        prefix = slug[:budget].rstrip(sep)
+        name = f"{prefix or MCP_UNNAMED_SOURCE_PREFIX}{sep}{tool_name}{suffix}"
+        if name not in taken:
+            return name
+        attempt += 1
+
+
+def gaia_tool_names(
+    source_name: str,
+    server_names: Sequence[str],
+    reserved: Collection[str],
+    shared: Collection[str],
+    taken: Collection[str] = (),
+) -> dict[str, str]:
+    """Map each server tool name to its GAIA-facing name.
+
+    A name is source-prefixed iff GAIA reserves it or another of the user's MCP
+    servers exposes it (shared), so the result never depends on connect order.
+    A prefixed name never lands on one in taken (another server's GAIA names).
+    """
+    clashing = {name for name in server_names if name in reserved or name in shared}
+    taken = {*reserved, *(set(server_names) - clashing), *taken}
+    names: dict[str, str] = {}
+    for name in server_names:
+        if name in clashing:
+            names[name] = source_prefixed_tool_name(source_name, name, taken)
+            taken.add(names[name])
+        else:
+            names[name] = name
+    return names
 
 
 _CONNECTION_ERROR_PATTERNS = (
@@ -48,6 +100,19 @@ _CONNECTION_ERROR_PATTERNS = (
 )
 
 
+def _sign_in_required(tool: BaseTool, cause: Exception) -> Exception:
+    """Return the not-connected error for the MCP server a tool belongs to, or the cause when unstamped."""
+    provenance = McpToolProvenance.model_validate(tool.metadata or {})
+    if not provenance.integration_id:
+        return cause
+    return IntegrationNotConnectedError(
+        integration_id=provenance.integration_id,
+        integration_name=None,
+        why=f"The MCP server rejected the stored credentials: {cause}",
+        grant_died=True,
+    )
+
+
 def wrap_tool_with_null_filter(
     tool: BaseTool,
     on_connection_error: Callable[[], None] | None = None,
@@ -55,24 +120,14 @@ def wrap_tool_with_null_filter(
 ) -> BaseTool:
     """Wrap a LangChain MCP tool with null-arg filtering and transparent reconnect.
 
-    Three behaviors:
-    1. Filter `None`-valued args before calling the underlying tool (MCP servers
-       reject `null` for optional fields; they want them omitted).
-    2. On a connection-loss OR 401/unauthorized error (both mean a dead/expired
-       session), evict the stale session via `on_connection_error` and — if
-       `reconnect_and_retry` is provided — rebuild the connector (refreshing the
-       token) and retry once. A 401 that survives the refresh is re-raised so the
-       user can re-authenticate.
-
-    The underlying tool's `_arun` is stashed on the wrapped tool as `_original_arun`
-    so the reconnect path can bypass this wrapper when invoking the fresh tool
-    (otherwise a second failure would recurse).
+    Filters None-valued args (MCP servers reject null for optional fields).
+    On connection-loss or 401, evicts the stale session and, if
+    reconnect_and_retry is given, rebuilds the connector and retries once —
+    a 401 surviving the refresh is re-raised.
     """
-    # mcp_use's McpToLangChainAdapter sets handle_tool_error=True by default,
-    # which swallows exceptions and returns a formatted error string. That
-    # hides connection-loss errors from our wrapper — we'd never see the
-    # exception, just a result string we couldn't react to. Flip it off so
-    # the inner _arun re-raises and we can run the reconnect path.
+    # mcp_use's adapter sets handle_tool_error=True by default, swallowing
+    # exceptions as a formatted string; flip it off so _arun re-raises and
+    # the reconnect path can run.
     if hasattr(tool, "handle_tool_error"):
         tool.handle_tool_error = False
 
@@ -136,14 +191,16 @@ def wrap_tool_with_null_filter(
                             tool_name=tool.name,
                             error_type=type(retry_err).__name__,
                         )
-                        # A 401 that survives a fresh token = server rejecting a valid
-                        # token; surface it so the user can re-authenticate.
-                        if "401" in str(retry_err) or "unauthorized" in str(retry_err).lower():
-                            raise
+                        # A 401 that survives a fresh token, or no token at all: only
+                        # the user can fix it, by signing in again.
+                        if isinstance(retry_err, MCPAuthorizationRequiredError) or (
+                            "401" in str(retry_err) or "unauthorized" in str(retry_err).lower()
+                        ):
+                            raise _sign_in_required(tool, retry_err) from retry_err
                         return f"MCP tool error after reconnect: {retry_err}"
 
                 if is_auth_error:
-                    raise
+                    raise _sign_in_required(tool, e) from e
 
             if "Cannot read properties of undefined" in error_msg:
                 return (
@@ -151,10 +208,8 @@ def wrap_tool_with_null_filter(
                     f"request. This is typically a bug in the MCP server implementation. "
                     f"Error: {error_msg}"
                 )
-            # Match real network/asyncio timeout exceptions (e.g. TimeoutError,
-            # ReadTimeout, asyncio.TimeoutError) by type rather than a string
-            # substring — "timeout" inside a tool error message would otherwise
-            # get rebranded as an MCP server timeout.
+            # Matched by type, not substring — "timeout" inside a tool error
+            # message would otherwise get rebranded as an MCP server timeout.
             if isinstance(e, TimeoutError) or "timeouterror" in type(e).__name__.lower():
                 return f"The MCP server timed out. Please try again. Error: {error_msg}"
             return f"MCP tool error: {error_msg}"

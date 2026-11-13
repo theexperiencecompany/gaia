@@ -2,15 +2,13 @@ import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
-import { AppIcon, Clock04Icon, PlayIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { AppStatusChip } from "@/shared/components/ui/app-status-chip";
 import { WORKFLOW_COLORS } from "../constants/colors";
-import { ACTIVATION_STATUS, EXECUTION_STATUS } from "../constants/status";
-import { useWorkflowPolling } from "../hooks/use-workflow-polling";
+import { ACTIVATION_STATUS } from "../constants/status";
 import type { Workflow } from "../types/workflow-types";
-import { formatRunCount, getTriggerLabel } from "../utils/format-utils";
+import { WorkflowCardMetaRow } from "./workflow-card-meta-row";
 import { WorkflowStepIcons } from "./workflow-step-icons";
 
 interface WorkflowCardProps {
@@ -31,7 +29,6 @@ export function WorkflowCard({ workflow, onPress }: WorkflowCardProps) {
   const router = useRouter();
   const { spacing, fontSize, moderateScale } = useResponsive();
   const [optimistic, setOptimistic] = useState<Workflow>(workflow);
-  const polling = useWorkflowPolling();
 
   // Sync prop into local state when the parent re-fetches the row. We only
   // hard-replace when the id changes; otherwise the optimistic snapshot is
@@ -51,16 +48,8 @@ export function WorkflowCard({ workflow, onPress }: WorkflowCardProps) {
     }
   };
 
-  const triggerLabel = getTriggerLabel(
-    optimistic.trigger_config?.type ?? "manual",
-  );
-  const runCountText = formatRunCount(optimistic.total_executions ?? 0);
   const activation =
     ACTIVATION_STATUS[optimistic.activated ? "activated" : "deactivated"];
-
-  const showTrigger = triggerLabel !== "Manual";
-  const showRunCount = runCountText !== "Never run";
-  const hasMeta = showTrigger || showRunCount;
 
   return (
     <Pressable
@@ -83,18 +72,10 @@ export function WorkflowCard({ workflow, onPress }: WorkflowCardProps) {
       >
         <WorkflowStepIcons steps={optimistic.steps} />
 
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          {polling.status !== "idle" ? (
-            <AppStatusChip
-              status={EXECUTION_STATUS[polling.status].chipStatus}
-              label={EXECUTION_STATUS[polling.status].label}
-            />
-          ) : null}
-          <AppStatusChip
-            status={activation.chipStatus}
-            label={activation.label}
-          />
-        </View>
+        <AppStatusChip
+          status={activation.chipStatus}
+          label={activation.label}
+        />
       </View>
 
       <View>
@@ -123,92 +104,7 @@ export function WorkflowCard({ workflow, onPress }: WorkflowCardProps) {
         ) : null}
       </View>
 
-      {hasMeta || optimistic.is_system_workflow ? (
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginTop: 2,
-          }}
-        >
-          <View
-            style={{
-              flex: 1,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            {showTrigger ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 4,
-                  flexShrink: 1,
-                }}
-              >
-                <AppIcon
-                  icon={Clock04Icon}
-                  size={12}
-                  color={WORKFLOW_COLORS.textZinc500}
-                />
-                <Text
-                  style={{
-                    fontSize: fontSize.xs,
-                    color: WORKFLOW_COLORS.textZinc500,
-                  }}
-                  numberOfLines={1}
-                >
-                  {triggerLabel}
-                </Text>
-              </View>
-            ) : null}
-
-            {showTrigger && showRunCount ? (
-              <View
-                style={{
-                  width: 2,
-                  height: 2,
-                  borderRadius: 1,
-                  backgroundColor: WORKFLOW_COLORS.textZinc600,
-                }}
-              />
-            ) : null}
-
-            {showRunCount ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 4,
-                  flexShrink: 0,
-                }}
-              >
-                <AppIcon
-                  icon={PlayIcon}
-                  size={12}
-                  color={WORKFLOW_COLORS.textZinc500}
-                />
-                <Text
-                  style={{
-                    fontSize: fontSize.xs,
-                    color: WORKFLOW_COLORS.textZinc500,
-                  }}
-                  numberOfLines={1}
-                >
-                  {runCountText}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-
-          {optimistic.is_system_workflow ? (
-            <AppStatusChip tone="accent" label="System" />
-          ) : null}
-        </View>
-      ) : null}
+      <WorkflowCardMetaRow workflow={optimistic} />
     </Pressable>
   );
 }

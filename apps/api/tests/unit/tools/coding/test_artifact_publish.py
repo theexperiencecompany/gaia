@@ -1,6 +1,6 @@
 """Layer 2 — artifact event publishing (write/edit/bash share one owner).
 
-Mocks only `publish_artifact_event` (the Redis wire boundary) and asserts on
+Mocks only publish_artifact_event (the Redis wire boundary) and asserts on
 the actual event dict the production code constructs — path stripping, the
 inline-body rule, and that write and bash produce IDENTICAL events for the
 same logical file (the #8 unification).

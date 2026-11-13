@@ -1,6 +1,6 @@
 """Unit tests for the blog service.
 
-The service is thin orchestration over ``blog_repository`` (pagination + a 404):
+The service is thin orchestration over blog_repository (pagination + a 404):
 these tests mock that repository seam. The aggregation, author-join and content
 normalisation live in the repository and are covered by its real-DB contract
 suite; the regex-injection guard is asserted here against the repository's own
@@ -16,6 +16,8 @@ import pytest
 from app.db.repositories.blog import blog_repository
 from app.models.blog_models import AuthorDetails, BlogPost
 from app.services.blog_service import BlogService
+from app.utils.log_identifiers import user_text_shape
+from tests.helpers import captured_wide_event
 from tests.unit.services.regex_helpers import collect_regex_values
 
 
@@ -110,6 +112,17 @@ class TestGetBlogCount:
 
 
 class TestSearchBlogs:
+    async def test_the_event_records_the_query_shape_and_never_its_words(self, mock_blog_repo):
+        mock_blog_repo.search = AsyncMock(return_value=[_blog_post()])
+
+        async with captured_wide_event() as event:
+            await BlogService.search_blogs("my divorce papers")
+
+        assert event["blog"] == {
+            "search_query": user_text_shape("my divorce papers"),
+            "result_count": 1,
+        }
+
     async def test_searches_by_query(self, mock_blog_repo):
         mock_blog_repo.search = AsyncMock(return_value=[_blog_post(category="Tech")])
 
@@ -136,9 +149,7 @@ class TestSearchBlogs:
 
 class TestSearchBlogsRegexEscaping:
     async def test_search_query_is_regex_escaped(self):
-        """The repository must feed a literal (escaped) query into every $regex
-        stage; a raw metacharacter query would otherwise run as an arbitrary
-        pattern. Asserted against the repository's own pipeline builder."""
+        """The repository must feed a literal (escaped) query into every $regex stage, not a raw metacharacter pattern."""
         raw_query = "a.*(b|c)+[x]$"
         escaped = re.escape(raw_query)
         assert escaped != raw_query

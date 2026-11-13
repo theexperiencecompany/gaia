@@ -1,14 +1,14 @@
 """Session lifecycle: on-disk enumeration, deletion, meta touching, idle scan.
 
 This module is the only thing that decides which conversations the artifact
-watcher rescans (``list_session_ids`` / ``sessions_root_inode``), which session
+watcher rescans (list_session_ids / sessions_root_inode), which session
 trees get recursively deleted, and which sessions the idle pruner destroys. A
 wrong answer here is either a conversation whose files silently never appear in
 the UI, or a user's data deleted early — neither shows up in a log line.
 
 The filesystem IS the logic under test, so it is not mocked: the JuiceFS mount
-root is pointed at a real ``tmp_path`` and the real directory walking runs. The
-only mocked boundaries are ``_is_mounted`` (a tmpdir is not a real mountpoint),
+root is pointed at a real tmp_path and the real directory walking runs. The
+only mocked boundaries are _is_mounted (a tmpdir is not a real mountpoint),
 the Mongo-backed instructions read, and the skill materializers, which live in
 their own module.
 """
@@ -38,8 +38,8 @@ CONV = "conv-a"
 def set_mounted(monkeypatch: pytest.MonkeyPatch, value: bool) -> None:
     """Flip the mount-presence probe in both namespaces that read it.
 
-    ``lifecycle`` imported ``_is_mounted`` by value, and ``_require_mount``
-    (reached via ``session_base``) reads the ``juicefs`` module global — a test
+    lifecycle imported _is_mounted by value, and _require_mount
+    (reached via session_base) reads the juicefs module global — a test
     that patched only one would leave half the guards live.
     """
     monkeypatch.setattr("app.services.storage.juicefs._is_mounted", lambda: value)
@@ -141,10 +141,9 @@ async def test_another_users_sessions_are_never_listed(mount: Path) -> None:
     hasattr(os, "geteuid") and os.geteuid() == 0, reason="root ignores directory permissions"
 )
 async def test_an_unreadable_sessions_directory_surfaces_the_os_error(mount: Path) -> None:
-    # Pins the contract the watcher sees: unlike sessions_root_inode (which
-    # swallows OSError), this call propagates. Adding a blanket except here
-    # would turn a broken mount into "the user has no conversations" and the
-    # watcher would silently forget every session it was tracking.
+    # Unlike sessions_root_inode (which swallows OSError), this call must
+    # propagate: a blanket except would turn a broken mount into "no
+    # conversations" and the watcher would forget every session it tracked.
     d = sessions_dir(mount)
     make_session(mount, CONV)
     d.chmod(0o000)
@@ -465,15 +464,13 @@ def materializers(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Any]]:
 
 @pytest.fixture
 def instructions_source(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
-    """Stand in for the Mongo-backed per-user instructions read."""
+    """Stand in for the Mongo-backed per-user instructions read; only USER has any."""
     payload: dict[str, str] = {}
 
     async def get_all(user_id: str) -> dict[str, str]:
-        return dict(payload)
+        return dict(payload) if user_id == USER else {}
 
-    monkeypatch.setattr(
-        "app.services.integration_instructions_service.get_all_instructions", get_all
-    )
+    monkeypatch.setattr("app.services.user_instructions_service.get_all_instructions", get_all)
     return payload
 
 
@@ -533,6 +530,22 @@ async def test_edited_instructions_force_a_rewrite(
     await lc.materialize_user_integrations(USER, {"gmail"})
     assert ("instructions", {"gmail": "never cc legal"}) in materializers
     assert (mount / "users" / USER / INSTRUCTIONS_MARKER).read_text() != before
+
+
+async def test_the_global_scope_is_never_projected_under_integrations(
+    mount: Path, materializers: list[tuple[str, Any]], instructions_source: dict[str, str]
+) -> None:
+    # account/custom-instructions.json owns the global scope; writing it here would
+    # create integrations/global/agent/instructions.md for an integration that does not exist.
+    instructions_source["gmail"] = "always cc legal"
+    instructions_source["global"] = "reply in Spanish"
+    await lc.materialize_user_integrations(USER, {"gmail"})
+    assert ("instructions", {"gmail": "always cc legal"}) in materializers
+    materializers.clear()
+
+    instructions_source["global"] = "reply in French"
+    await lc.materialize_user_integrations(USER, {"gmail"})
+    assert materializers == [], "a global-scope edit rewrote the integrations projection"
 
 
 async def test_a_new_skill_library_version_forces_a_rewrite(

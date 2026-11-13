@@ -31,7 +31,7 @@ def _wf(wf_id: str, trigger_name: str, ids: list[str] | None) -> WorkflowDocumen
 
 
 def _repo_returning(workflows: list[WorkflowDocument]) -> MagicMock:
-    """A stand-in for workflow_repository — the resync's find + repoint seam."""
+    """Build a stand-in for workflow_repository — the resync's find + repoint seam."""
     repo = MagicMock()
     repo.find_active_integration_workflows = AsyncMock(return_value=workflows)
     repo.set_composio_trigger_ids = AsyncMock()

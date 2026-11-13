@@ -2,7 +2,7 @@
 
 Section structure, the empty-user contract, which documents are (and are
 NOT) injected, and graceful behavior when Redis is unavailable. Cache
-invalidation through ``retain`` is covered in ``test_consolidation``.
+invalidation through retain is covered in test_consolidation.
 """
 
 from datetime import UTC, datetime

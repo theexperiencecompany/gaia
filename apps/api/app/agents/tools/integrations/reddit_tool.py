@@ -1,13 +1,19 @@
 """Reddit custom tools using Composio custom tool infrastructure."""
 
-from typing import Any
-
 from composio import Composio
 from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
-from app.services.composio.proxy_client import proxy_request_sync
+from app.models.integrations.composio import CustomToolAuthCredentials
+from app.models.integrations.reddit import (
+    RedditAccount,
+    RedditMessage,
+    RedditMessageListing,
+    RedditSubreddit,
+    RedditSubredditListing,
+)
+from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -21,32 +27,34 @@ def register_reddit_custom_tools(composio: Composio) -> list[str]:
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
         execute_request: ExecuteRequestFn,
-        auth_credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+        auth_credentials: dict[str, object],
+    ) -> dict[str, object]:
         """Get Reddit context snapshot: user profile, subscribed subreddits, and unread messages.
 
         Zero required parameters. Returns authenticated user's Reddit state.
         """
         del request, execute_request  # unused: framework-mandated custom-tool signature
-        user_id = auth_credentials.get("user_id")
-        if not user_id:
+        try:
+            user_id = CustomToolAuthCredentials.parse(auth_credentials).user_id
+        except ValueError as e:
             raise AppError(
-                message="Missing user_id in auth_credentials",
+                message=str(e),
                 why="CUSTOM_GATHER_CONTEXT requires a user-scoped auth context",
                 status_code=500,
-            )
+            ) from e
 
-        me: dict[str, Any] = {}
+        me: RedditAccount | None = None
         try:
-            me = (
+            me = RedditAccount.model_validate(
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=REDDIT_TOOLKIT,
-                    endpoint=f"{REDDIT_API_BASE}/api/v1/me",
-                    method="GET",
-                    headers=_REDDIT_HEADERS,
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=REDDIT_TOOLKIT,
+                        endpoint=f"{REDDIT_API_BASE}/api/v1/me",
+                        method="GET",
+                        headers=_REDDIT_HEADERS,
+                    )
                 )
-                or {}
             )
         except Exception as e:
             log.set(
@@ -54,28 +62,20 @@ def register_reddit_custom_tools(composio: Composio) -> list[str]:
             )
             log.error(f"{LogTag.TOOL} Reddit /me fetch failed", exc=e)
 
-        subreddits: list[dict[str, Any]] = []
+        subreddits: list[RedditSubreddit] = []
         try:
-            subs_data = (
+            subreddits = RedditSubredditListing.model_validate(
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=REDDIT_TOOLKIT,
-                    endpoint=f"{REDDIT_API_BASE}/subreddits/mine/subscriber",
-                    method="GET",
-                    query={"limit": 5},
-                    headers=_REDDIT_HEADERS,
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=REDDIT_TOOLKIT,
+                        endpoint=f"{REDDIT_API_BASE}/subreddits/mine/subscriber",
+                        method="GET",
+                        query={"limit": 5},
+                        headers=_REDDIT_HEADERS,
+                    )
                 )
-                or {}
-            )
-            children = subs_data.get("data", {}).get("children", [])
-            subreddits = [
-                {
-                    "name": c["data"].get("display_name"),
-                    "title": c["data"].get("title", "")[:80],
-                    "subscribers": c["data"].get("subscribers", 0),
-                }
-                for c in children
-            ]
+            ).things
         except Exception as e:
             log.set(
                 user_id=user_id,
@@ -84,29 +84,20 @@ def register_reddit_custom_tools(composio: Composio) -> list[str]:
             )
             log.error(f"{LogTag.TOOL} Reddit subreddits fetch failed", exc=e)
 
-        unread_messages: list[dict[str, Any]] = []
+        unread_messages: list[RedditMessage] = []
         try:
-            messages_data = (
+            unread_messages = RedditMessageListing.model_validate(
                 proxy_request_sync(
-                    user_id=user_id,
-                    toolkit=REDDIT_TOOLKIT,
-                    endpoint=f"{REDDIT_API_BASE}/message/unread",
-                    method="GET",
-                    query={"limit": 5},
-                    headers=_REDDIT_HEADERS,
+                    ProxyRequest(
+                        user_id=user_id,
+                        toolkit=REDDIT_TOOLKIT,
+                        endpoint=f"{REDDIT_API_BASE}/message/unread",
+                        method="GET",
+                        query={"limit": 5},
+                        headers=_REDDIT_HEADERS,
+                    )
                 )
-                or {}
-            )
-            children = messages_data.get("data", {}).get("children", [])
-            unread_messages = [
-                {
-                    "id": c["data"].get("id"),
-                    "subject": c["data"].get("subject", "")[:80],
-                    "author": c["data"].get("author"),
-                    "created_utc": c["data"].get("created_utc"),
-                }
-                for c in children
-            ]
+            ).things
         except Exception as e:
             log.set(
                 user_id=user_id,
@@ -117,16 +108,31 @@ def register_reddit_custom_tools(composio: Composio) -> list[str]:
 
         return {
             "user": {
-                "name": me.get("name"),
-                "id": me.get("id"),
-                "link_karma": me.get("link_karma", 0),
-                "comment_karma": me.get("comment_karma", 0),
-                "total_karma": me.get("total_karma", 0),
-                "icon_img": me.get("icon_img"),
-                "is_gold": me.get("is_gold", False),
+                "name": me.name if me is not None else None,
+                "id": me.id if me is not None else None,
+                "link_karma": me.link_karma if me is not None else 0,
+                "comment_karma": me.comment_karma if me is not None else 0,
+                "total_karma": me.total_karma if me is not None else 0,
+                "icon_img": me.icon_img if me is not None else None,
+                "is_gold": me.is_gold if me is not None else False,
             },
-            "subscribed_subreddits": subreddits,
-            "unread_messages": unread_messages,
+            "subscribed_subreddits": [
+                {
+                    "name": subreddit.display_name,
+                    "title": subreddit.title[:80],
+                    "subscribers": subreddit.subscribers,
+                }
+                for subreddit in subreddits
+            ],
+            "unread_messages": [
+                {
+                    "id": message.id,
+                    "subject": message.subject[:80],
+                    "author": message.author,
+                    "created_utc": message.created_utc,
+                }
+                for message in unread_messages
+            ],
             "unread_message_count": len(unread_messages),
         }
 

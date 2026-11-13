@@ -1,8 +1,8 @@
 """Smoke-test a (re)built gaia-coder E2B template's JuiceFS mounts.
 
-Creates a real E2B sandbox from ``settings.E2B_TEMPLATE_ID``, seeds the per-user
-subtrees (what the dockered API does host-side via ``ensure_user_workspace``),
-runs the PRODUCTION mount script, then verifies the ``/_system`` bake, the
+Creates a real E2B sandbox from settings.E2B_TEMPLATE_ID, seeds the per-user
+subtrees (what the dockered API does host-side via ensure_user_workspace),
+runs the PRODUCTION mount script, then verifies the /_system bake, the
 JuiceFS mounts and their flags, a simulated session's folders, and the graceful
 unmount path. Kills the sandbox at the end.
 

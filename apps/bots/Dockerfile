@@ -3,7 +3,12 @@
 
 ARG BOT_NAME
 
-FROM node:20-alpine AS builder
+# Node version is declared once in .node-version. Docker cannot read a file in a
+# FROM line, so this default mirrors it and tools/lints/check_tool_pins.py fails
+# if the two disagree. Build scripts may override with --build-arg NODE_VERSION.
+ARG NODE_VERSION=24.22.1
+
+FROM node:${NODE_VERSION}-alpine AS builder
 ARG BOT_NAME
 WORKDIR /app
 
@@ -16,8 +21,11 @@ RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY patches ./patches
 
-# Copy shared lib (bundled into output by tsup) and the target bot
+# Copy shared lib (bundled into output by tsup) and the target bot. The bot
+# identity JSON sits one level above libs/shared/ts and is imported by the
+# shared constants module, so it has to travel with the same copy.
 COPY libs/shared/ts ./libs/shared/ts
+COPY libs/shared/bot-identity.json ./libs/shared/
 COPY apps/bots/${BOT_NAME} ./apps/bots/${BOT_NAME}
 
 # Install all dependencies for building
@@ -47,7 +55,7 @@ RUN set -e; \
     fi
 
 # ---- Production image ----
-FROM node:20-alpine AS runner
+FROM node:${NODE_VERSION}-alpine AS runner
 ARG BOT_NAME
 WORKDIR /app
 
@@ -60,12 +68,17 @@ COPY --from=builder /peers/ ./
 COPY scripts/docker-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# Stamped on every log line and served on /health as `commit` (logger.ts
+# resolveCommit); the deploy workflow checks it against the deployed image.
+ARG GIT_COMMIT_SHA=""
+
 # ENV is the Infisical environment slug the bots loader reads. Pin it here so a
 # deployed container never falls back to the loader's development default;
 # docker-compose.prod.yml sets it again per service, this covers everything else.
 ENV NODE_ENV=production \
     ENV=production \
-    BOT_NAME=${BOT_NAME}
+    BOT_NAME=${BOT_NAME} \
+    GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 
 USER node
 

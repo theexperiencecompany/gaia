@@ -1,6 +1,6 @@
 """Head + tail truncation for tool outputs that may be unbounded.
 
-Used by the `bash` tool so a runaway command doesn't return MB of text into
+Used by the bash tool so a runaway command doesn't return MB of text into
 the conversation. Keeps the start (where errors usually appear) and the end
 (where final results appear) with a clearly-marked skip in the middle.
 """
@@ -16,7 +16,7 @@ def truncate_head_tail(
     head_bytes: int = DEFAULT_HEAD_BYTES,
     tail_bytes: int = DEFAULT_TAIL_BYTES,
 ) -> str:
-    """Cap a string at `head_bytes + tail_bytes` with a skip indicator.
+    """Cap a string at head_bytes + tail_bytes with a skip indicator.
 
     Operates on UTF-8 byte length so the cap reflects what the LLM actually
     consumes. Returns the original string unchanged if it fits.

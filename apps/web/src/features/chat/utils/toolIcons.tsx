@@ -10,6 +10,7 @@
  */
 
 import {
+  AiWebBrowsingIcon,
   AlarmClockIcon,
   AppStoreIcon,
   BodyPartMuscleIcon,
@@ -40,6 +41,7 @@ import {
   Target02Icon,
   TaskDailyIcon,
   ToolsIcon,
+  UserAccountIcon,
   WindowsNewIcon,
   WorkflowCircle06Icon,
   ZapIcon,
@@ -84,6 +86,7 @@ const isRenderableIconSrc = (src: string): boolean => {
 
 /** Map icon component names to actual React components */
 const iconComponentMap: Record<string, React.ComponentType<IconProps>> = {
+  AiWebBrowsingIcon,
   CheckListIcon,
   Clock04Icon,
   CheckmarkCircle02Icon,
@@ -108,6 +111,7 @@ const iconComponentMap: Record<string, React.ComponentType<IconProps>> = {
   NotificationIcon,
   InformationCircleIcon,
   ToolsIcon,
+  UserAccountIcon,
   ConnectIcon,
   SquareArrowUpRight02Icon,
   PackageOpenIcon,

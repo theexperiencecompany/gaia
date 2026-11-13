@@ -63,19 +63,29 @@ const mergedSpec = {
   ],
   examples: openuiExamples,
   additionalRules: openuiAdditionalRules,
-  // Suppress react-ui's default preamble ("Your ENTIRE response must be valid
-  // openui-lang code — no markdown"). GAIA uses OpenUI selectively inside
-  // `:::openui` fences mixed with prose — its OPENUI_SURFACE_POLICY (Python)
-  // owns the framing. We only want the syntax rules + component signatures here.
+  // Suppress react-ui's default preamble ("Your ENTIRE response must be valid openui-lang
+  // code — no markdown"): GAIA uses OpenUI inside `:::openui` fences mixed with prose, and its
+  // OPENUI_SURFACE_POLICY (Python) owns the framing — only the syntax rules/signatures are needed.
   preamble: "",
 };
 
 const prompt = generatePrompt(mergedSpec);
 
+// lang-core hardcodes this rule into every prompt; GAIA renders the user's real
+// data, so it tells comms to invent numbers. Throw if the wording moves, so a
+// library bump cannot quietly bring it back.
+const FABRICATE_DATA_RULE =
+  "- When asked about data, generate realistic/plausible data\n";
+if (!prompt.includes(FABRICATE_DATA_RULE)) {
+  throw new Error(
+    "lang-core's plausible-data rule changed wording: re-check generatePrompt output",
+  );
+}
+
 // This artifact lands in apps/api/app/agents/prompts/, where the repo rule
 // forbids em/en dashes in prompt prose. Normalize any the react-ui library or
 // the component descriptions emit so every regeneration stays compliant.
-const sanitized = prompt.replace(/[—–]/g, "-");
+const sanitized = prompt.replace(FABRICATE_DATA_RULE, "").replace(/[—–]/g, "-");
 
 mkdirSync(dirname(OUTPUT_PATH), { recursive: true });
 writeFileSync(OUTPUT_PATH, sanitized, "utf-8");

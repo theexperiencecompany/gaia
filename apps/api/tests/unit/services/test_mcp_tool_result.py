@@ -2,11 +2,11 @@
 
 Two guards live here, both of which failed in review:
 
-- `_tool_result_to_content` replaces mcp_use's `str(tool_result.content)`, which
-  leaked pydantic reprs and destroyed images. A `str(item)` fallback for any
+- _tool_result_to_content replaces mcp_use's str(tool_result.content), which
+  leaked pydantic reprs and destroyed images. A str(item) fallback for any
   content type it forgets to handle re-opens exactly that hole.
-- `_json_safe_tool_result` feeds the MCP-UI iframe. Media blocks are plain dicts,
-  so they sail through a naive `json.dumps` serializability probe and ship
+- _json_safe_tool_result feeds the MCP-UI iframe. Media blocks are plain dicts,
+  so they sail through a naive json.dumps serializability probe and ship
   megabytes of base64 into the SSE event.
 """
 
@@ -15,6 +15,7 @@ import io
 from typing import Any
 
 from mcp.types import (
+    BlobResourceContents,
     CallToolResult,
     EmbeddedResource,
     ImageContent,
@@ -23,7 +24,7 @@ from mcp.types import (
 )
 from PIL import Image
 
-from app.constants.mcp import EMPTY_TOOL_RESULT
+from app.constants.mcp import EMPTY_TOOL_RESULT, MCP_UNSUPPORTED_CONTENT_NOTICE
 from app.constants.media import MAX_MEDIA_BLOCKS_PER_TOOL_RESULT
 from app.helpers.agent_helpers import _json_safe_tool_result
 from app.services.mcp.langchain_adapter import _tool_result_to_content
@@ -54,8 +55,7 @@ class TestToolResultToContent:
         assert out == "line one\nline two"
 
     async def test_an_embedded_text_resource_yields_its_text_not_a_pydantic_repr(self) -> None:
-        """Filesystem and database MCP servers routinely return EmbeddedResource.
-        `str(item)` gives `type='resource' resource=TextResourceContents(...)`."""
+        """str(item) on an EmbeddedResource gives a repr, not its text — must extract the text."""
         embedded = EmbeddedResource(
             type="resource",
             resource=TextResourceContents(uri="file:///a.sql", text="SELECT 1;"),
@@ -67,9 +67,18 @@ class TestToolResultToContent:
         assert "TextResourceContents" not in out
         assert "resource=" not in out
 
+    async def test_an_embedded_binary_resource_is_named_not_dumped(self) -> None:
+        embedded = EmbeddedResource(
+            type="resource",
+            resource=BlobResourceContents(uri="file:///a.bin", blob="AAAA"),
+        )
+
+        out = await _tool_result_to_content(_result(embedded))
+
+        assert out == MCP_UNSUPPORTED_CONTENT_NOTICE.format(kind="EmbeddedResource")
+
     async def test_an_empty_result_says_so_rather_than_returning_nothing(self) -> None:
-        """A void MCP action (a delete) legally returns no content. An empty
-        ToolMessage tells the model nothing and some providers reject it."""
+        """A void action's empty content must still say so — an empty ToolMessage tells the model nothing."""
         assert await _tool_result_to_content(_result()) == EMPTY_TOOL_RESULT
 
     async def test_an_image_becomes_a_media_block_carrying_real_pixels(self) -> None:
@@ -109,8 +118,7 @@ class TestToolResultToContent:
         assert not [b for b in out if b["type"] == "text"]
 
     async def test_an_undecodable_image_degrades_to_a_note_and_keeps_the_text(self) -> None:
-        """A hostile or buggy server must not be able to fail the whole tool call
-        — the text half of the result is usually what the model needed."""
+        """A hostile or buggy server must not be able to fail the whole tool call."""
         broken = ImageContent(type="image", data="!!!not base64!!!", mimeType="image/png")
 
         out = await _tool_result_to_content(_result(_text("still useful"), broken))
@@ -124,8 +132,7 @@ class TestToolResultToContent:
 
 class TestJsonSafeToolResult:
     def test_a_media_block_list_is_stripped_to_its_text(self) -> None:
-        """The iframe payload is JSON-serialized into the SSE event. Media blocks
-        are plain dicts, so json.dumps happily embeds a megabyte of base64."""
+        """Media blocks are plain dicts, so json.dumps would embed a megabyte of base64 unstripped."""
         big = "QUJD" * 50_000
         content = [
             {"type": "text", "text": "Image file shot.png"},

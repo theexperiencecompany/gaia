@@ -1,0 +1,142 @@
+"""Launch Obscura: a CDP server (obscura serve) on a free port, not a chrome-with-a-debug-flag.
+
+The interactive browser host and the crawl4ai engine start it the same way.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+import os
+import socket
+
+import httpx
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from app.browser_host.memory import memory_usage_mb
+from app.browser_host.process import spawn_engine, stop_process, until_published
+from app.config.browser_host_settings import OBSCURA_PRIVATE_NETWORK_ENV, browser_host_settings
+
+_LOOPBACK = "127.0.0.1"
+# The --max-old-space-size in Obscura's DEFAULT_V8_FLAGS on 64-bit (crates/obscura-cli/src/main.rs).
+OBSCURA_DEFAULT_HEAP_MB = 4096
+_V8_HEAP_SHARE_OF_MEMORY = 4
+# A floor so a tiny memory limit still loads real pages.
+_MIN_PAGE_HEAP_MB = 128
+#: A command waits on the script phase it started, so its budget ends after that phase's.
+_COMMAND_OVER_SCRIPT_SECONDS = 10
+
+
+@dataclass(frozen=True, slots=True)
+class LaunchedEngine:
+    """An engine process that has published its CDP endpoint."""
+
+    proc: asyncio.subprocess.Process
+    port: int
+    ws_url: str
+
+    @property
+    def http_url(self) -> str:
+        """The DevTools HTTP endpoint, for clients that discover the websocket themselves."""
+        # The engine's DevTools endpoint on loopback speaks plain HTTP only.
+        return f"http://{_LOOPBACK}:{self.port}"  # NOSONAR python:S5332
+
+
+class _DevToolsVersion(BaseModel):
+    """The one field of the /json/version document the launcher waits for."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    web_socket_debugger_url: str = Field(alias="webSocketDebuggerUrl")
+
+
+def free_local_port() -> int:
+    """Return a loopback port nothing listens on now, for an engine that only serves a port it is named."""
+    with socket.socket() as probe:
+        probe.bind((_LOOPBACK, 0))
+        port: int = probe.getsockname()[1]
+    return port
+
+
+def obscura_page_heap_mb(memory_limit_mb: float) -> int | None:
+    """Return the per-page V8 heap cap for a memory limit; None while Obscura's own default fits.
+
+    Each page owns an isolate, so one page retaining memory without bound would get the
+    whole engine OOM-killed under a heap larger than the container. V8 sizes its heap to
+    a quarter of memory, as Node does for a cgroup limit.
+    """
+    quarter_mb = int(memory_limit_mb) // _V8_HEAP_SHARE_OF_MEMORY
+    if quarter_mb >= OBSCURA_DEFAULT_HEAP_MB:
+        return None
+    return max(quarter_mb, _MIN_PAGE_HEAP_MB)
+
+
+def obscura_serve_argv(port: int) -> list[str]:
+    """Build the obscura serve argv for port, stealthed, with each page's heap fitted to memory.
+
+    Raises when OBSCURA_BIN is unset: fail loud, never silently fall back to another engine.
+    """
+    obscura_bin = browser_host_settings.OBSCURA_BIN
+    if not obscura_bin:
+        raise RuntimeError("Obscura requires OBSCURA_BIN to be set")
+    _, memory_limit_mb = memory_usage_mb()
+    heap_mb = obscura_page_heap_mb(memory_limit_mb)
+    # --v8-flags is a top-level option, so it precedes the subcommand.
+    v8_flags = [] if heap_mb is None else ["--v8-flags", f"--max-old-space-size={heap_mb}"]
+    return [obscura_bin, *v8_flags, "serve", "--port", str(port), "--stealth"]
+
+
+def obscura_serve_env() -> dict[str, str]:
+    """Return the environment an Obscura process runs with: ours plus its script and command deadlines.
+
+    Obscura refuses private addresses on its own unless told otherwise, and is told
+    only while the host allows private origins (a test stack); the proxy keeps
+    explicit navigations to exactly those origins. A test stack's CA becomes its trust store.
+    """
+    env = {key: value for key, value in os.environ.items() if key != OBSCURA_PRIVATE_NETWORK_ENV}
+    script_deadline = browser_host_settings.OBSCURA_SCRIPT_DEADLINE_SECONDS
+    env["OBSCURA_SCRIPT_DEADLINE_MS"] = str(script_deadline * 1000)
+    env["OBSCURA_CDP_COMMAND_TIMEOUT_MS"] = str(
+        (script_deadline + _COMMAND_OVER_SCRIPT_SECONDS) * 1000
+    )
+    if browser_host_settings.BROWSER_HOST_ALLOW_PRIVATE_ORIGINS:
+        env[OBSCURA_PRIVATE_NETWORK_ENV] = "1"
+    if browser_host_settings.BROWSER_HOST_TEST_CA_FILE:
+        # Obscura's trust store, replaced: a test stack's engine reaches only its fixture site.
+        env["SSL_CERT_FILE"] = browser_host_settings.BROWSER_HOST_TEST_CA_FILE
+    return env
+
+
+def _json_version_reader(
+    client: httpx.AsyncClient, port: int
+) -> Callable[[], Awaitable[str | None]]:
+    """Read the root webSocketDebuggerUrl off /json/version; None while nothing answers there."""
+
+    async def read() -> str | None:
+        try:
+            # Loopback DevTools endpoint: plain HTTP only.
+            url = f"http://{_LOOPBACK}:{port}/json/version"  # NOSONAR python:S5332
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return _DevToolsVersion.model_validate(resp.json()).web_socket_debugger_url
+        except (httpx.HTTPError, ValidationError):
+            return None
+
+    return read
+
+
+async def launch_obscura() -> LaunchedEngine:
+    """Start an Obscura on a free port once its CDP endpoint answers.
+
+    The process is stopped before any failure propagates, so a failed launch leaves nothing behind.
+    """
+    port = free_local_port()
+    proc = await spawn_engine(obscura_serve_argv(port), obscura_serve_env())
+    try:
+        async with httpx.AsyncClient() as client:
+            ws_url = await until_published(proc, _json_version_reader(client, port))
+    except BaseException:
+        await stop_process(proc)
+        raise
+    return LaunchedEngine(proc=proc, port=port, ws_url=ws_url)

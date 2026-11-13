@@ -9,7 +9,7 @@ Covers:
 
 Same capture strategy as test_small_integration_tools.py: register the custom
 tools against a capturing Composio mock, then invoke the inner functions
-directly with mock auth_credentials. The seam here is ``proxy_request_sync``
+directly with mock auth_credentials. The seam here is proxy_request_sync
 (these tools proxy through the composio proxy client instead of execute_tool).
 """
 

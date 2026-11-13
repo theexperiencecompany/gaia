@@ -94,12 +94,7 @@ class TestExecuteGraphStreamingReal:
         assert len(data_chunks) > 0, "Must yield at least one data: chunk"
 
     async def test_cancellation_stops_streaming(self, real_redis):
-        """A cancelled stream must break out early and flag the marker as cancelled.
-
-        Both runs are identical except for the Redis cancel flag, so the control
-        run pins down what "not cancelled" looks like — without it, a stream that
-        ran to completion would satisfy the cancelled-run assertions too.
-        """
+        """A control run (identical but for the Redis cancel flag) pins down what "not cancelled" looks like, since a completed stream would also pass otherwise."""
         control_id = "cancel-stream-control"
         cancelled_id = "cancel-stream-cancelled"
         for sid in (control_id, cancelled_id):

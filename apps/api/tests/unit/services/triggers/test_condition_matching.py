@@ -26,7 +26,7 @@ SHEETS = "google_sheets_new_row"
 DOCS = "google_docs_document_updated"
 
 
-def _c(field_name: str, operator: ConditionOperator, value: str | int | float):
+def _c(field_name: str, operator: ConditionOperator, value: bool | str | int | float):
     return SubscriptionCondition(field_name=field_name, operator=operator, value=value)
 
 
@@ -158,6 +158,44 @@ class TestListConditions:
         )
 
 
+class TestBooleanConditions:
+    @pytest.mark.parametrize(
+        ("operator", "value", "actual", "expected"),
+        [
+            (ConditionOperator.EQUALS, True, True, True),
+            (ConditionOperator.EQUALS, "true", False, False),
+            (ConditionOperator.EQUALS, " True ", True, True),
+            (ConditionOperator.EQUALS, "FALSE", False, True),
+            (ConditionOperator.NOT_EQUALS, False, True, True),
+            (ConditionOperator.NOT_EQUALS, "false", False, False),
+            # A word that is not true or false holds no value, so neither operator matches.
+            (ConditionOperator.EQUALS, "yes", False, False),
+            (ConditionOperator.NOT_EQUALS, "yes", True, False),
+        ],
+    )
+    def test_operators(
+        self, operator: ConditionOperator, value: bool | str, actual: bool, expected: bool
+    ) -> None:
+        condition = _c("continues_thread", operator, value)
+        assert (
+            evaluate_condition(condition, {"continues_thread": actual}, MatchableFieldType.BOOLEAN)
+            is expected
+        )
+
+    @pytest.mark.parametrize("operator", [ConditionOperator.EQUALS, ConditionOperator.NOT_EQUALS])
+    def test_a_non_boolean_payload_value_satisfies_neither_operator(
+        self, operator: ConditionOperator
+    ) -> None:
+        condition = _c("continues_thread", operator, True)
+        assert not evaluate_condition(
+            condition, {"continues_thread": 1}, MatchableFieldType.BOOLEAN
+        )
+
+    def test_an_absent_signal_satisfies_neither_operator(self) -> None:
+        for operator in (ConditionOperator.EQUALS, ConditionOperator.NOT_EQUALS):
+            assert not conditions_match(GMAIL, [_c("continues_thread", operator, True)], {})
+
+
 class TestChainSemantics:
     def test_no_conditions_matches_every_event(self) -> None:
         assert conditions_match(GMAIL, [], {"thread_id": "anything"}) is True
@@ -196,7 +234,7 @@ class TestChainSemantics:
 
 
 class TestAnyMatch:
-    """`match=ANY` is a flat OR — one true condition fires it.
+    """match=ANY is a flat OR — one true condition fires it.
 
     This is how a single subscription watches "from acme.com OR from northwind.com"
     without splitting into two. The ALL default is exercised throughout
@@ -255,15 +293,7 @@ class TestAnyMatch:
 
 
 class TestComparatorFallthrough:
-    """An operator no comparator branch handles must return exactly ``False`` —
-    never ``None`` or ``True``.
-
-    A ``None`` collapses to falsy in the AND/OR chain, so ``conditions_match``
-    alone cannot tell it apart from a real no-match; asserting on
-    ``evaluate_condition`` directly is what pins the wildcard default. A ``True``
-    default would fire a subscription on an operator that was never meant to
-    apply to the field's type.
-    """
+    """An unhandled operator must return exactly False, not None or True — pinned via evaluate_condition directly, since conditions_match's AND/OR chain hides a None as falsy too."""
 
     def test_a_string_field_with_a_numeric_operator_is_exactly_false(self) -> None:
         cond = _c("subject", ConditionOperator.GREATER_THAN, "x")

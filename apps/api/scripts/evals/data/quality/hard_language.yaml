@@ -170,8 +170,8 @@
       criteria:
         - "MUST NOT: the reply is written in capital letters."
         - "MUST NOT: the reply comments on the user's use of capitals or tells them to calm down."
-        - "MUST: the reply registers the urgency in its wording rather than ignoring it."
-        - "MUST: the reply is one short line."
+        - "MUST: a written acknowledgment registers the urgency rather than ignoring it; a reaction alone is fine."
+        - "MUST: the acknowledgment is a reaction, or one short line."
     score: {gates: [tool_call_correctness, must_not_communicate]}
 
 - id: quality-hard-language-half-french-weather

@@ -1,0 +1,131 @@
+From 0c6970b3bbf60865c0061114184072a53c0ab609 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 06:30:07 +0530
+Subject: [PATCH] fix(js): checkVisibility counts an inline svg's drawn content
+ as having boxes
+
+checkVisibility() treated an element without a layout rect as having no box.
+The shapes, groups, text and nested svgs inside an inline <svg> are drawn by
+the SVG renderer within the root's box and get no rect of their own, so all
+of them read invisible where Chrome reports them visible (a click target
+like <svg><a>...</a></svg> was skipped). An SVG element under a root that
+has a box now generates one unless it or an SVG ancestor computes
+display:none. Compared with Chrome on 40 elements: inline svg content now
+matches; still differing are content-visibility:hidden (not implemented),
+empty inline elements on an empty line (no rect yet), <stop>, and
+foreignObject content (not rendered).
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/src/ops.rs       |  2 +-
+ crates/obscura-js/src/runtime.rs   | 33 +++++++++++++++++++++++++
+ crates/obscura-render/src/paint.rs | 39 ++++++++++++++++++++++++++++++
+ 3 files changed, 73 insertions(+), 1 deletion(-)
+
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index e80b448..8c0a4f5 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -7204,7 +7204,7 @@ fn op_element_visibility(state: &OpState, nid: u32, frame_id: u32) -> i32 {
+         return -1;
+     };
+     let id = obscura_dom::tree::NodeId::new(nid);
+-    if !prepared.layout().rects.contains_key(&id) {
++    if !prepared.generates_box(dom, id) {
+         return 0;
+     }
+     1 | if prepared.visibility_hidden(dom, id) { 2 } else { 0 }
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index a897ae4..b820fd1 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -7515,6 +7515,39 @@ mod tests {
+         );
+     }
+ 
++    #[cfg(feature = "render")]
++    #[test]
++    fn check_visibility_counts_inline_svg_content_as_boxes() {
++        // The SVG renderer draws an inline <svg>'s content inside the root's
++        // box, so its shapes have no rect of their own but are visible.
++        let dom = parse_html(
++            r#"<html><body>
++                <svg id="icon" width="20" height="20"><g id="g"><path id="path" d="M0 0h10v10z"/></g>
++                  <g id="gone" style="display:none"><rect id="under-gone" width="5" height="5"/></g>
++                  <rect id="hidden" style="visibility:hidden" width="5" height="5"/></svg>
++                <svg id="unrendered" style="display:none"><rect id="in-unrendered" width="5" height="5"/></svg>
++            </body></html>"#,
++        );
++        let mut rt = ObscuraJsRuntime::new();
++        rt.set_dom(dom);
++        rt.set_viewport(800.0, 600.0);
++        rt.run_page_init();
++
++        let result = rt
++            .evaluate(
++                r#"Object.fromEntries(["icon", "g", "path", "gone", "under-gone", "hidden", "unrendered", "in-unrendered"]
++                    .map(id => [id, document.getElementById(id).checkVisibility({checkVisibilityCSS: true})]))"#,
++            )
++            .unwrap();
++        assert_eq!(
++            result,
++            serde_json::json!({
++                "icon": true, "g": true, "path": true, "gone": false, "under-gone": false,
++                "hidden": false, "unrendered": false, "in-unrendered": false,
++            })
++        );
++    }
++
+     #[cfg(feature = "render")]
+     #[test]
+     fn inline_split_around_blocks_has_geometry_and_hit_tests_through_the_block() {
+diff --git a/crates/obscura-render/src/paint.rs b/crates/obscura-render/src/paint.rs
+index e3a59c5..fca65ea 100644
+--- a/crates/obscura-render/src/paint.rs
++++ b/crates/obscura-render/src/paint.rs
+@@ -1070,6 +1070,45 @@ impl PreparedRender {
+         false
+     }
+ 
++    /// Whether the element generates a box (CSSOM View checkVisibility step 1).
++    /// The content of an inline `<svg>` is drawn by the SVG renderer inside the
++    /// root's box rather than laid out, so it has no rect of its own; an SVG
++    /// element under a root that has a box generates one unless it or an SVG
++    /// ancestor computes `display: none`.
++    pub fn generates_box(&self, tree: &DomTree, id: obscura_dom::tree::NodeId) -> bool {
++        const SVG: &str = "http://www.w3.org/2000/svg";
++        let rects = &self.layout.rects;
++        if rects.contains_key(&id) {
++            return true;
++        }
++        let mut current = Some(id);
++        while let Some(node) = current {
++            let Some(is_svg_root) = tree
++                .with_node(node, |n| {
++                    n.as_element()
++                        .filter(|name| &*name.ns == SVG)
++                        .map(|name| &*name.local == "svg")
++                })
++                .flatten()
++            else {
++                return false;
++            };
++            if node != id && is_svg_root && rects.contains_key(&node) {
++                return true;
++            }
++            if self
++                .layout
++                .styles
++                .get(&node)
++                .is_none_or(|style| style.display == crate::Display::None)
++            {
++                return false;
++            }
++            current = tree.with_node(node, |n| n.parent).flatten();
++        }
++        false
++    }
++
+     /// Whether an element's computed visibility is hidden.
+     pub fn visibility_hidden(&self, tree: &DomTree, id: obscura_dom::tree::NodeId) -> bool {
+         self.inherited_flag(tree, id, |style| style.visibility_hidden)

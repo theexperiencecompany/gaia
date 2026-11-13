@@ -6,8 +6,10 @@ a concurrent run against the shared test DB can't collide.
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-import uuid
+from unittest.mock import AsyncMock, patch
 
 from bson import ObjectId
 import pytest
@@ -15,31 +17,33 @@ import pytest
 from app.db.repositories.reminders import RemindersRepository
 from app.models.reminder_models import (
     AgentType,
+    CreateReminderRequest,
     ReminderDocument,
     ReminderStatus,
     ReminderUpdate,
     StaticReminderPayload,
 )
+from app.models.scheduler_models import DeactivationReason
 from app.services.reminder_service import ReminderScheduler
 from app.utils.occurrence import parse_occurrence_stamp
 
 _MISSING_OBJECT_ID = "0" * 24
 
 
-def _uid(prefix: str) -> str:
-    return f"{prefix}_{uuid.uuid4().hex[:12]}"
+def _uid() -> str:
+    return str(ObjectId())
 
 
 def _reminder(**overrides: object) -> ReminderDocument:
     data: dict[str, object] = {
-        "user_id": _uid("u"),
+        "user_id": _uid(),
         "agent": AgentType.STATIC,
         "payload": StaticReminderPayload(title="Drink water", body="stay hydrated"),
         "scheduled_at": datetime.now(UTC) + timedelta(hours=1),
         "status": ReminderStatus.SCHEDULED,
     }
     data.update(overrides)
-    return ReminderDocument(**data)
+    return ReminderDocument.model_validate(data)
 
 
 @pytest.fixture
@@ -66,11 +70,11 @@ class TestRemindersCore:
         assert await repo.get_for_user(created.id, "attacker") is None
 
     async def test_list_for_user_with_status_and_pagination(self, repo):
-        owner = _uid("owner")
+        owner = _uid()
         await repo.create(_reminder(user_id=owner, status=ReminderStatus.SCHEDULED))
         await repo.create(_reminder(user_id=owner, status=ReminderStatus.SCHEDULED))
         await repo.create(_reminder(user_id=owner, status=ReminderStatus.COMPLETED))
-        await repo.create(_reminder(user_id=_uid("other")))
+        await repo.create(_reminder(user_id=_uid()))
         assert len(await repo.list_for_user(owner)) == 3
         scheduled = await repo.list_for_user(owner, status=ReminderStatus.SCHEDULED)
         assert len(scheduled) == 2
@@ -96,7 +100,7 @@ class TestRemindersScheduler:
         assert [r.id for r in pending] == [due.id]
 
     async def test_set_status_reschedule_fields_and_user_guard(self, repo):
-        owner = _uid("owner")
+        owner = _uid()
         rem = await repo.create(_reminder(user_id=owner))
         run_at = datetime.now(UTC) + timedelta(days=1)
         ok = await repo.set_status(
@@ -111,6 +115,37 @@ class TestRemindersScheduler:
         assert await repo.set_status(rem.id, ReminderStatus.COMPLETED) is True
         assert (await repo.get(rem.id)).status == ReminderStatus.COMPLETED
 
+    async def test_a_system_pause_is_found_by_its_reason_and_a_resume_clears_it(self, repo):
+        owner = _uid()
+        lapsed = await repo.create(_reminder(user_id=owner, repeat="0 9 * * *"))
+        by_user = await repo.create(_reminder(user_id=owner, repeat="0 9 * * *"))
+        await repo.set_status(
+            lapsed.id, ReminderStatus.PAUSED, pause_reason=DeactivationReason.SUBSCRIPTION_LAPSED
+        )
+        await repo.set_status(by_user.id, ReminderStatus.PAUSED)
+
+        found = await repo.find_paused_for_reason(owner, DeactivationReason.SUBSCRIPTION_LAPSED)
+        assert [r.id for r in found] == [lapsed.id]
+        assert found[0].pause_reason is DeactivationReason.SUBSCRIPTION_LAPSED
+
+        await repo.update_for_user(
+            lapsed.id, owner, ReminderUpdate(status=ReminderStatus.SCHEDULED, pause_reason=None)
+        )
+        assert (await repo.get(lapsed.id)).pause_reason is None
+        assert (
+            await repo.find_paused_for_reason(owner, DeactivationReason.SUBSCRIPTION_LAPSED) == []
+        )
+
+    async def test_a_legacy_row_that_breaks_the_schedule_rule_still_loads(
+        self, repo, raw_collection
+    ):
+        rem = await repo.create(_reminder(repeat="0 9 * * *"))
+        await raw_collection.update_one(
+            {"_id": ObjectId(rem.id)}, {"$set": {"repeat": "* * * * *"}}
+        )
+
+        assert (await repo.get(rem.id)).repeat == "* * * * *"
+
     async def test_set_status_missing_returns_false(self, repo):
         assert await repo.set_status(_MISSING_OBJECT_ID, ReminderStatus.COMPLETED) is False
 
@@ -122,20 +157,7 @@ class TestRemindersScheduler:
         assert (await repo.get(rem.id)).status == ReminderStatus.EXECUTING
 
     async def test_claim_pin_rejects_a_stale_occurrence(self, repo):
-        """A duplicate job armed for an occurrence that already ran must not fire.
-
-        Status alone is not enough for a RECURRING reminder. Two pods booting
-        minutes apart each enqueue a job for the same overdue reminder under a
-        different id (the past-due re-arm uses each process's own clock), so ARQ
-        does not dedup them. The first job claims, runs, and
-        ``handle_recurring_task`` puts the row back to SCHEDULED for the NEXT
-        occurrence — at which point the second job finds status="scheduled"
-        again, claims it, and delivers the same reminder a second time while
-        also eating an occurrence out of the series.
-
-        Pinning the armed occurrence is what closes it, exactly as
-        ``WorkflowsRepository.claim_for_execution`` pins ``next_run``.
-        """
+        """Status alone is not enough for RECURRING: two pods' jobs for the same overdue reminder must not both claim it once one has re-armed the row for the next occurrence."""
         first_run = (datetime.now(UTC) - timedelta(minutes=5)).replace(microsecond=0)
         next_run = first_run + timedelta(days=1)
         rem = await repo.create(_reminder(scheduled_at=first_run, status=ReminderStatus.SCHEDULED))
@@ -155,14 +177,7 @@ class TestRemindersScheduler:
         assert await repo.claim_for_execution(rem.id, expected_scheduled_at=next_run) is True
 
     async def test_find_stale_executing_returns_only_wedged_rows(self, repo, raw_collection):
-        """The recovery sweep's candidates: EXECUTING since before the cutoff.
-
-        A claim flips SCHEDULED -> EXECUTING with no lease. If the worker dies
-        before re-arming (a rolling deploy SIGKILLs it, or the job is cancelled
-        and its retry finds the row already claimed), the row stays EXECUTING
-        forever — and ``find_pending_before`` filters on ``status="scheduled"``,
-        so nothing can ever see it again. The reminder simply never fires.
-        """
+        """A row stuck EXECUTING since before the cutoff (a worker died without re-arming) never fires again unless the recovery sweep finds it."""
         now = datetime.now(UTC)
         wedged = await repo.create(_reminder(status=ReminderStatus.EXECUTING))
         # ``_insert`` always stamps updated_at=now, so age the wedged row directly.
@@ -183,21 +198,12 @@ class TestRemindersScheduler:
         assert [r.id for r in stale] == [wedged.id]
 
     async def test_claim_without_a_pin_still_claims(self, repo):
-        """Jobs enqueued before the stamp existed carry none — a deploy must not
-        strand them."""
+        """Jobs enqueued before the stamp existed carry none — a deploy must not strand them."""
         rem = await repo.create(_reminder(status=ReminderStatus.SCHEDULED))
         assert await repo.claim_for_execution(rem.id) is True
 
     async def test_claim_pin_survives_the_real_stamp_round_trip(self, repo):
-        """The pin must match the armed occurrence through ARQ's serialized args.
-
-        "Remind me in 10 minutes" arms ``now + delta``, which carries
-        microseconds. The stamp the job travels with is a unix int, so it comes
-        back floored to the second, while Mongo holds the armed instant at BSON's
-        millisecond precision — an equality pin never matched and the reminder
-        silently never fired. Driven through the real producer and parser so the
-        encoding itself is under test, not a hand-built stamp.
-        """
+        """The pin must match the armed occurrence through ARQ's real int-seconds stamp, not the sub-second instant Mongo holds."""
         armed = datetime.now(UTC) + timedelta(minutes=10)
         assert armed.microsecond, "fixture must carry a sub-second component"
         rem = await repo.create(_reminder(scheduled_at=armed, status=ReminderStatus.SCHEDULED))
@@ -219,7 +225,7 @@ class TestRemindersScheduler:
 
 class TestRemindersUpdate:
     async def test_update_for_user_partial_and_scoped(self, repo):
-        owner = _uid("owner")
+        owner = _uid()
         rem = await repo.create(_reminder(user_id=owner, repeat=None))
         before = rem.updated_at
         updated = await repo.update_for_user(
@@ -256,7 +262,7 @@ class TestRemindersUpdate:
         assert await repo.get(recent_done.id) is not None
 
     async def test_update_replaces_payload(self, repo):
-        owner = _uid("owner")
+        owner = _uid()
         rem = await repo.create(_reminder(user_id=owner))
         updated = await repo.update_for_user(
             rem.id,
@@ -264,3 +270,109 @@ class TestRemindersUpdate:
             ReminderUpdate(payload=StaticReminderPayload(title="New", body="body")),
         )
         assert updated is not None and updated.payload.title == "New"
+
+
+def _create_request(title: str = "Drink water", **overrides: object) -> CreateReminderRequest:
+    data: dict[str, object] = {
+        "agent": AgentType.STATIC,
+        "payload": StaticReminderPayload(title=title, body="stay hydrated"),
+        "scheduled_at": datetime(2099, 1, 1, 9, 0, tzinfo=UTC),
+    }
+    data.update(overrides)
+    return CreateReminderRequest.model_validate(data)
+
+
+@pytest.fixture
+def scheduler() -> Iterator[ReminderScheduler]:
+    """Yield the real scheduler with only the ARQ enqueue stubbed, so the dedupe runs on real Mongo + Redis."""
+    service = ReminderScheduler()
+    with patch.object(service, "schedule_task", new=AsyncMock()):
+        yield service
+
+
+class TestReminderCreationIsIdempotent:
+    @pytest.mark.regression
+    async def test_the_same_reminder_asked_for_twice_is_created_once(
+        self, scheduler, raw_collection
+    ):
+        owner = _uid()
+        first = await scheduler.create_reminder(_create_request(), user_id=owner)
+        second = await scheduler.create_reminder(_create_request(), user_id=owner)
+
+        assert await raw_collection.count_documents({"user_id": owner}) == 1
+        assert second.reminder_id == first.reminder_id
+        assert (first.created, second.created) == (True, False)
+        scheduler.schedule_task.assert_awaited_once()
+
+    @pytest.mark.regression
+    async def test_two_identical_creates_at_once_still_make_one_reminder(
+        self, scheduler, raw_collection
+    ):
+        owner = _uid()
+        results = await asyncio.gather(
+            scheduler.create_reminder(_create_request(), user_id=owner),
+            scheduler.create_reminder(_create_request(), user_id=owner),
+        )
+
+        assert await raw_collection.count_documents({"user_id": owner}) == 1
+        assert sorted(r.created for r in results) == [False, True]
+
+    async def test_a_finished_reminder_does_not_block_asking_again(
+        self, scheduler, repo, raw_collection
+    ):
+        owner = _uid()
+        first = await scheduler.create_reminder(_create_request(), user_id=owner)
+        await repo.set_status(first.reminder_id, ReminderStatus.CANCELLED)
+
+        again = await scheduler.create_reminder(_create_request(), user_id=owner)
+
+        assert again.created
+        assert await raw_collection.count_documents({"user_id": owner}) == 2
+
+    @pytest.mark.parametrize(
+        "other",
+        [
+            {"title": "Stretch"},
+            {"scheduled_at": datetime(2099, 1, 1, 10, 0, tzinfo=UTC)},
+            {"repeat": "0 9 * * *"},
+        ],
+    )
+    async def test_a_different_text_or_schedule_is_a_different_reminder(
+        self, scheduler, raw_collection, other
+    ):
+        owner = _uid()
+        await scheduler.create_reminder(_create_request(), user_id=owner)
+        result = await scheduler.create_reminder(_create_request(**other), user_id=owner)
+
+        assert result.created
+        assert await raw_collection.count_documents({"user_id": owner}) == 2
+
+    async def test_a_one_time_reminder_is_not_the_twin_of_a_recurring_one(
+        self, scheduler, raw_collection
+    ):
+        owner = _uid()
+        await scheduler.create_reminder(_create_request(repeat="0 9 * * *"), user_id=owner)
+        result = await scheduler.create_reminder(_create_request(), user_id=owner)
+
+        assert result.created
+        assert await raw_collection.count_documents({"user_id": owner}) == 2
+
+    async def test_another_users_identical_reminder_is_not_theirs(self, scheduler, raw_collection):
+        await scheduler.create_reminder(_create_request(), user_id=_uid())
+        result = await scheduler.create_reminder(_create_request(), user_id=_uid())
+
+        assert result.created
+
+
+async def test_scheduled_for_user_is_every_armed_reminder_of_that_user(repo):
+    owner = _uid()
+    soon = await repo.create(_reminder(user_id=owner))
+    overdue = await repo.create(
+        _reminder(user_id=owner, scheduled_at=datetime.now(UTC) - timedelta(days=1))
+    )
+    await repo.create(_reminder(user_id=owner, status=ReminderStatus.COMPLETED))
+    await repo.create(_reminder(user_id=_uid()))
+
+    found = await repo.find_scheduled_for_user(owner)
+
+    assert sorted(r.id for r in found) == sorted([soon.id, overdue.id])

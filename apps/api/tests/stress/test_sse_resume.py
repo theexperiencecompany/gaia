@@ -1,15 +1,15 @@
 """Stress: SSE resume-from-cursor and mid-stream cancellation.
 
 Real code under test:
-1. ``StreamManager.subscribe_stream`` (``app/core/stream_manager.py``) — the
-   cursor/resume mechanism: every frame carries an ``id:`` line (the Redis
-   Stream entry id) and ``subscribe_executor_stream`` reconnects with
-   ``Last-Event-ID``, so a reloaded client replays only what it missed.
+1. StreamManager.subscribe_stream (app/core/stream_manager.py) — the
+   cursor/resume mechanism: every frame carries an id: line (the Redis
+   Stream entry id) and subscribe_executor_stream reconnects with
+   Last-Event-ID, so a reloaded client replays only what it missed.
    Redis Streams are an in-process fake with cursor-ordered xadd/xread.
-2. The per-chunk cancellation loop of ``execute_graph_streaming``
-   (``app/helpers/agent_helpers.py``) — the graph driver checks
-   ``stream_manager.is_cancelled(stream_id)`` before every event, so flipping
-   the flag mid-stream must stop production, emit the ``cancelled`` nostream
+2. The per-chunk cancellation loop of execute_graph_streaming
+   (app/helpers/agent_helpers.py) — the graph driver checks
+   stream_manager.is_cancelled(stream_id) before every event, so flipping
+   the flag mid-stream must stop production, emit the cancelled nostream
    marker, and record the interruption once.
 """
 
@@ -35,9 +35,9 @@ STREAM_ID = "stream-stress-001"
 class _FakeStreamsRedis:
     """In-process Redis stand-in mirroring the client contract.
 
-    Streams are an ordered list of ``(entry_id, fields)`` per key with
+    Streams are an ordered list of (entry_id, fields) per key with
     monotonic ids ("0-1", "0-2", ...) exactly like the real thing, so the
-    xread-after-cursor semantics and the SSE ``id:`` cursor lines round-trip.
+    xread-after-cursor semantics and the SSE id: cursor lines round-trip.
     Plain keys hold raw JSON strings, matching RedisCache's
     serialize/deserialize round-trip.
     """
@@ -153,9 +153,7 @@ async def _publish_full_stream(fake: _FakeStreamsRedis) -> None:
 
 class TestStreamResumeFromCursor:
     async def test_resume_from_cursor_replays_only_new_events(self):
-        """A client that reconnects with Last-Event-ID (the ``id:`` line of the
-        last frame it saw) must receive exactly the frames it missed — never a
-        redelivery, never a gap."""
+        """Resumes with Last-Event-ID — the id: line of the last frame the client saw."""
         fake = _FakeStreamsRedis()
         await _publish_full_stream(fake)
 
@@ -181,8 +179,7 @@ class TestStreamResumeFromCursor:
         assert resumed == ["id: 0-3\ndata: chunk-3\n\n"]
 
     async def test_cancel_flag_flips_and_subscribers_terminate_on_cancelled_signal(self):
-        """cancel_stream sets the flag the producer checks per chunk, and the
-        CANCELLED log entry ends a subscriber with [DONE] instead of hanging."""
+        """cancel_stream ends a subscriber with [DONE] instead of hanging."""
         fake = _FakeStreamsRedis()
         with patch.object(redis_cache, "redis", fake):
             assert await stream_manager.is_cancelled(STREAM_ID) is False
@@ -197,9 +194,7 @@ class TestStreamResumeFromCursor:
 
 class TestMidStreamCancellation:
     async def test_flipping_the_flag_mid_stream_stops_the_graph_driver(self):
-        """The real producer loop checks the flag before every event: a cancel
-        landing while the graph is still emitting must abandon the run early,
-        mark it cancelled, and record the interruption exactly once."""
+        """A mid-emission cancel abandons the run early and records the interruption exactly once."""
         fake = _FakeStreamsRedis()
         graph = _FakeGraph(total_events=30)
         config = {"configurable": {"stream_id": STREAM_ID}}

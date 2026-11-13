@@ -8,12 +8,9 @@ interface CompactMarkdownProps {
   content: unknown;
 }
 
-// Compact heading/list/spacing scale for the tool-output card. Everything else
-// (GFM, tables, syntax-highlighted code, links, math) comes from the canonical
-// MarkdownRenderer, so there's ONE markdown pipeline instead of two. These
-// overrides win over MarkdownRenderer's chat-bubble defaults because Tailwind
-// Typography styles via zero-specificity :where(), and the merged `components`
-// map applies ours last.
+// Compact heading/list/spacing scale for the tool-output card only — GFM,
+// tables, code, links, math all come from MarkdownRenderer (one pipeline).
+// These win because Tailwind Typography uses :where() and ours merge last.
 const COMPACT_COMPONENTS: Components = {
   h1: ({ children, ...props }) => (
     <h1

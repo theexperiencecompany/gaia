@@ -1,60 +1,18 @@
 """Keep the name of the upstream that actually served an OpenRouter call.
 
-OpenRouter is an aggregator: every chat-completion body it returns carries a
-top-level ``provider`` field naming the real upstream that served the request
-("OpenAI", "Baidu", "StreamLake", ...). That name is the only handle on *which*
-upstream answered, and nothing downstream can currently see it, for two
-independent reasons — both of which this patch closes.
+OpenRouter's body carries provider (e.g. "OpenAI"), naming the real upstream,
+but the SDK models drop it (no extra="allow") and ChatOpenRouter never reads
+it, always stamping model_provider="openrouter" instead. extra="allow" alone
+would NOT be enough: both models' serialize_model wrap serializer rebuilds its
+output from model_fields only, so the field is declared at runtime and stamped onto
+response_metadata[PROVIDER_NAME_METADATA_KEY] — never model_provider, which
+is LangChain's own integration-name field for ls_provider/tracing.
 
-1. **The ``openrouter`` SDK throws it away.** ``ChatResult`` and
-   ``ChatStreamChunk`` (both Speakeasy-generated) declare no ``provider`` field,
-   and their pydantic config does not set ``extra="allow"``, so pydantic's
-   default ``extra="ignore"`` drops the key during validation. By the time
-   ``ChatOpenRouter`` calls ``model_dump(by_alias=True)`` the name is already
-   gone, so no amount of patching langchain alone can recover it. Declaring the
-   field at runtime is what makes it survive — note that ``extra="allow"`` would
-   NOT be enough, because both models' hand-written ``serialize_model`` wrap
-   serializer rebuilds its output from ``model_fields`` only and discards
-   anything extra.
-
-2. **``ChatOpenRouter`` never reads it.** ``_create_chat_result`` lifts
-   ``model``/``system_fingerprint``/``cost`` off the payload and
-   ``_convert_chunk_to_message_chunk`` builds the streaming chunk's
-   ``response_metadata``, but neither looks at ``provider``. Both stamp
-   ``model_provider`` as the literal ``"openrouter"`` — the aggregator's own
-   name, which is exactly the value that is not useful.
-
-The upstream name lands in ``response_metadata[PROVIDER_NAME_METADATA_KEY]``
-rather than in ``model_provider``: ``model_provider`` is LangChain's own field
-naming the *integration* that produced the message, it is what
-``ls_provider``/tracing key off, and "openrouter" is the honest answer there.
-Overwriting it would make the two meanings collide.
-
-Verified against live OpenRouter traffic (openai/gpt-4o-mini, 2026-08): the
-non-streaming body carries ``provider``, and so does *every* streamed chunk —
-7 of 7 on an 8-chunk answer. Those repeats would merge into
-"OpenAIOpenAIOpenAI...", because ``AIMessageChunk.__add__`` merges
-``response_metadata`` with ``merge_dicts``, which concatenates equal strings for
-any key outside its small idempotent set — the same failure that once doubled
-``model_name`` into a pricing key matching nothing. So ``_stream``/``_astream``
-are wrapped to keep the name on the first chunk that carries it and strip it
-from the rest.
-
-Stamping only the ``finish_reason`` chunk instead would look tidier and is
-wrong: that slot is not unique either. The same live 8-chunk answer carried TWO
-finish events — one closing the reasoning block, one closing the content — and
-doubled the name just as thoroughly. "First one wins" is the only rule that
-holds however many chunks carry it, and it keeps the fix in this module rather
-than adding a key to another patch's idempotent set.
-
-Both wrappers delegate to the original and only add the key, so upstream's
-behaviour is untouched everywhere ``provider`` is absent (custom base-URL lanes,
-OpenAI-compatible gateways that do not send it).
-
-Drop this patch once the SDK declares ``provider`` on both response models and
-``ChatOpenRouter`` surfaces it — ``_declare_provider_field`` fails loudly if the
-SDK adds the field, so a dependency bump cannot silently leave a stale patch in
-place.
+Verified live: provider and finish_reason both repeat on every streamed
+chunk, which AIMessageChunk.__add__ would concatenate (the same defect that
+once doubled model_name into a dead pricing key). _stream/_astream keep only
+the first chunk's value; drop this patch once the SDK declares provider
+itself — _declare_provider_field fails loudly if it does.
 """
 
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping
@@ -69,20 +27,17 @@ from pydantic.fields import FieldInfo
 
 from app.constants.llm import PROVIDER_NAME_METADATA_KEY
 
-#: Response-metadata keys that arrive on more than one streamed chunk and would
-#: otherwise merge into a doubled string. Both are read downstream as exact
-#: values — one prices a call, the other alarms on truncation — so a
-#: concatenated value matches nothing rather than being merely untidy.
+#: Keys that arrive on more than one streamed chunk and would merge into a
+#: doubled string. Both are read downstream as exact values (pricing,
+#: truncation alarm), so a concatenated value matches nothing at all.
 _DEDUPED_RESPONSE_KEYS = (PROVIDER_NAME_METADATA_KEY, "finish_reason")
 
 #: The top-level key OpenRouter names the serving upstream under.
 _WIRE_PROVIDER_KEY = "provider"
 
-#: The annotation the injected field carries. Deliberately loose: pydantic types
-#: ``FieldInfo.annotation`` as ``type[Any] | None``, but its runtime contract
-#: accepts any annotation object — ``str | None`` is a ``types.UnionType``, not a
-#: ``type``, so the honest value does not fit the declared parameter. Narrowing
-#: this would mean restating pydantic's signature, not making the code safer.
+#: Deliberately loose: pydantic types FieldInfo.annotation as type[Any] | None,
+#: but str | None is a types.UnionType at runtime, not a type — narrowing this
+#: would mean restating pydantic's signature, not making the code safer.
 _PROVIDER_ANNOTATION: Any = str | None
 
 #: The two SDK response models that parse a chat completion — non-streaming and
@@ -90,10 +45,9 @@ _PROVIDER_ANNOTATION: Any = str | None
 _SDK_RESPONSE_MODELS = (SDKChatResult, SDKChatStreamChunk)
 
 _ORIGINAL_CREATE_CHAT_RESULT = ChatOpenRouter._create_chat_result
-#: Typed as the pass-throughs this module treats them as — it hands them whatever
-#: it was handed. `run_manager` is deliberately absent from the wrappers'
-#: signatures: langchain-core never passes it, and letting it ride in `**kwargs`
-#: forwards it untouched if that ever changes, rather than silently dropping it.
+#: Typed as pass-throughs: hands them whatever it was handed. run_manager is
+#: absent from the wrappers' signatures (langchain-core never passes it);
+#: letting it ride in **kwargs forwards it untouched if that ever changes.
 _ORIGINAL_STREAM: Callable[..., Iterator[ChatGenerationChunk]] = ChatOpenRouter._stream
 _ORIGINAL_ASTREAM: Callable[..., AsyncIterator[ChatGenerationChunk]] = ChatOpenRouter._astream
 _ORIGINAL_CONVERT_CHUNK = _chat_models._convert_chunk_to_message_chunk
@@ -106,7 +60,7 @@ _INJECTED_FIELD = FieldInfo(annotation=_PROVIDER_ANNOTATION, default=None)
 
 
 def _declare_provider_field() -> None:
-    """Give both SDK response models a real ``provider`` field so pydantic keeps it."""
+    """Give both SDK response models a real provider field so pydantic keeps it."""
     for model in _SDK_RESPONSE_MODELS:
         existing = model.model_fields.get(_WIRE_PROVIDER_KEY)
         if existing is _INJECTED_FIELD:
@@ -148,9 +102,9 @@ def _convert_chunk_to_message_chunk(
 ) -> BaseMessageChunk:
     """Stamp the serving upstream's name onto one streamed chunk.
 
-    Patched here rather than in ``_stream``/``_astream`` because this is the one
+    Patched here rather than in _stream/_astream because this is the one
     function both of them route every chunk through, and it is the only place
-    with the raw wire chunk the name arrives on. ``_keep_first_provider_name``
+    with the raw wire chunk the name arrives on. _keep_first_provider_name
     then reduces the repeats to one — see its docstring for why.
     """
     message_chunk = _ORIGINAL_CONVERT_CHUNK(chunk, default_class)
@@ -168,41 +122,12 @@ def _convert_chunk_to_message_chunk(
 
 
 def _keep_first_response_key(chunk: ChatGenerationChunk, key: str, kept_so_far: int) -> int:
-    """Drop ``key`` from every chunk after the first; return 1 if this one kept it.
+    """Drop key from every chunk after the first; return 1 if this one kept it.
 
-    A running count rather than a bool so the caller's accumulator has to start
-    at a real number — the arithmetic is what makes a wrong initial value fail
-    loudly instead of silently behaving like "not seen yet".
-
-    ``AIMessageChunk.__add__`` merges ``response_metadata`` with ``merge_dicts``,
-    which CONCATENATES equal strings for any key outside its small idempotent
-    set. So any repeated key merges into a doubled value, and both keys this
-    module de-duplicates arrive more than once:
-
-    - ``provider`` is repeated by OpenRouter on every chunk, merging into
-      "BaiduBaiduBaidu".
-    - ``finish_reason`` arrives once per finish event, and a streamed answer has
-      more than one — verified live, an 8-chunk answer carried TWO (one closing
-      the reasoning block, one closing the content). Observed in the ledger as
-      ``"stopstop"`` and ``"tool_callstool_calls"``.
-
-    Both are the same defect that once doubled ``model_name`` into a pricing key
-    matching nothing. A doubled ``finish_reason`` is worse than useless: a query
-    for ``length`` can never match, so the truncation alarm the field exists for
-    can never fire.
-
-    "First one wins" is the only rule that holds however many chunks carry a
-    key. It is a real tradeoff for ``finish_reason``: a stream whose two finish
-    events disagree reports the earlier one. Every doubled value observed live
-    was an identical pair (``"stopstop"``, ``"tool_callstool_calls"``), and a
-    single wrong-but-valid reason is still queryable, whereas a concatenation
-    matches nothing at all.
-
-    ``generation_info`` is stripped alongside ``response_metadata`` because
-    ``BaseChatModel.stream`` re-merges it back over the message
-    (``_gen_info_and_msg_metadata``, chat_models.py:781/914) AFTER this runs —
-    deleting from the metadata alone is silently undone one frame later, which
-    is exactly how the doubled values reached the ledger.
+    merge_dicts concatenates repeated string keys, so provider and finish_reason double
+    ("BaiduBaidu", "stopstop"); a live 8-chunk answer carried two finish events, so
+    first-one-wins reports the earlier one if they disagree. generation_info is stripped
+    too: BaseChatModel.stream _gen_info_and_msg_metadata (chat_models.py:781/914) re-merges it.
     """
     if not isinstance(chunk.message, AIMessageChunk):
         return 0
@@ -222,7 +147,7 @@ def _stream(
     stop: list[str] | None = None,
     **kwargs: object,
 ) -> Iterator[ChatGenerationChunk]:
-    """``ChatOpenRouter._stream`` with every repeated metadata key reduced to one."""
+    """ChatOpenRouter._stream with every repeated metadata key reduced to one."""
     kept = dict.fromkeys(_DEDUPED_RESPONSE_KEYS, 0)
     for chunk in _ORIGINAL_STREAM(self, messages, stop=stop, **kwargs):
         for key in _DEDUPED_RESPONSE_KEYS:
@@ -236,7 +161,7 @@ async def _astream(
     stop: list[str] | None = None,
     **kwargs: object,
 ) -> AsyncIterator[ChatGenerationChunk]:
-    """``ChatOpenRouter._astream`` with every repeated metadata key reduced to one."""
+    """ChatOpenRouter._astream with every repeated metadata key reduced to one."""
     kept = dict.fromkeys(_DEDUPED_RESPONSE_KEYS, 0)
     async for chunk in _ORIGINAL_ASTREAM(self, messages, stop=stop, **kwargs):
         for key in _DEDUPED_RESPONSE_KEYS:

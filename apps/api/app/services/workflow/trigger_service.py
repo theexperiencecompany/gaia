@@ -5,7 +5,7 @@ Provides high-level trigger operations that delegate to provider-specific handle
 Handles Composio trigger reference counting to prevent premature deletion.
 """
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import all_integrations
 from app.constants.log_tags import LogTag
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
@@ -32,7 +32,7 @@ class TriggerService:
         """
         triggers = []
 
-        for integration in OAUTH_INTEGRATIONS:
+        for integration in all_integrations():
             for trigger_config in integration.associated_triggers:
                 if trigger_config.workflow_trigger_schema:
                     schema = trigger_config.workflow_trigger_schema
@@ -59,14 +59,10 @@ class TriggerService:
     ) -> list[str]:
         """Filter trigger IDs to those safe to delete from Composio.
 
-        Composio upserts identical configs onto one trigger instance, so a workflow
-        and a tracked todo can share an id. A trigger is safe to delete only when
-        NEITHER consumer references it — counting workflows alone would delete a
-        live todo subscription's trigger, and vice versa.
-
-        The two counts are summed here rather than in either repository: each one
-        reads only its own collection (the ``repository-boundaries`` rule). The
-        owner being deleted is excluded from its own side of the count.
+        Composio upserts identical configs onto one trigger instance, so a
+        workflow and a tracked todo can share an id — safe to delete only
+        when NEITHER consumer still references it. The owner being deleted
+        is excluded from its own side of the count.
         """
         safe_to_delete = []
 
@@ -109,7 +105,7 @@ class TriggerService:
         """Register triggers for an owner (a workflow or a tracked todo).
 
         Returns the registered Composio trigger IDs (may be empty on success, e.g.
-        account-level Gmail has no per-workflow IDs). With ``raise_on_failure``,
+        account-level Gmail has no per-workflow IDs). With raise_on_failure,
         raises TriggerRegistrationError when the handler is missing or raises.
         """
         handler = get_handler_by_name(trigger_name)
@@ -156,11 +152,10 @@ class TriggerService:
     ) -> bool:
         """Unregister triggers using the appropriate handler.
 
-        Only deletes a trigger from Composio when neither a workflow nor a tracked
-        todo still references it: Composio upserts, so owners with identical configs
-        share a trigger ID. Pass the owner being torn down (``workflow_id`` or
-        ``todo_id``) so it is not counted as a remaining reference to itself.
-        Returns True once the operation completes, even if some triggers were kept.
+        Only deletes a trigger from Composio when neither a workflow nor a
+        tracked todo still references it (owners with identical configs
+        share a trigger ID). Pass the owner being torn down so it is not
+        counted as a reference to itself.
         """
         if not trigger_ids:
             return True
@@ -210,12 +205,9 @@ class TriggerService:
     async def resync_user_workflow_triggers(user_id: str, trigger_names: list[str]) -> None:
         """Re-register a user's activated integration workflows after a (re)connect.
 
-        Reconnecting an integration creates a fresh Composio connected account,
-        so per-workflow triggers registered against the old account stop firing
-        and the stored ``composio_trigger_ids`` go permanently stale. Re-register
-        each affected workflow against the current account and repoint its ids.
-        Failures are logged per workflow — one broken workflow must not block
-        the rest of the resync (or the OAuth flow it runs behind).
+        Reconnecting creates a fresh Composio connected account, so triggers
+        registered against the old one go permanently stale. Failures are
+        logged per workflow so one broken workflow can't block the rest.
         """
         if not trigger_names:
             return

@@ -1,4 +1,4 @@
-"""Tests for app/services/photon/photon_client.py"""
+"""Tests for app/services/photon/photon_client.py."""
 
 from base64 import b64encode
 from collections.abc import Iterator
@@ -25,7 +25,6 @@ REGISTER_FAILURE_MESSAGE = "Could not register your number for iMessage"
 UNREGISTER_FAILURE_MESSAGE = "Could not disconnect your number from iMessage"
 RETRY_FIX = "verify the Photon project credentials and plan user limit, then retry"
 NETWORK_FIX = "check outbound network access to spectrum.photon.codes, then retry"
-PARSE_WHY_PREFIX = "Photon user payload could not be parsed: "
 PYDANTIC_DOC_URL = "https://errors.pydantic.dev"
 
 PHONE = "+9779743679108"
@@ -61,12 +60,21 @@ def _listing(*users: dict[str, object]) -> dict[str, object]:
     return {"succeed": True, "data": {"users": list(users), "total": len(users)}}
 
 
-def _assert_photon_error(exc: AppError, *, message: str, why: str, fix: str) -> None:
-    """Every Photon failure carries the same four-field 502 contract."""
+def _assert_photon_error(
+    exc: AppError, *, message: str, upstream: dict[str, object], fix: str
+) -> None:
+    """Every Photon failure is the same 502 contract, with the diagnostic off the wire.
+
+    The why is read by the user, so it says the same operator-safe thing every
+    time; which internal endpoint failed and what the provider said live in meta
+    for the wide event.
+    """
     assert exc.message == message
-    assert exc.why == why
+    assert exc.why == photon_client._UPSTREAM_WHY
     assert exc.fix == fix
     assert exc.status_code == 502
+    assert exc.public == {}
+    assert exc.meta["upstream"] == upstream
 
 
 _RealAsyncClient = httpx.AsyncClient
@@ -130,7 +138,12 @@ class TestRegisterSharedUser:
         _assert_photon_error(
             exc_info.value,
             message=REGISTER_FAILURE_MESSAGE,
-            why="Photon could not be reached for POST /users/: ConnectTimeout: timed out",
+            upstream={
+                "method": "POST",
+                "path": "/users/",
+                "error_type": "ConnectTimeout",
+                "error": "timed out",
+            },
             fix=NETWORK_FIX,
         )
 
@@ -144,7 +157,7 @@ class TestRegisterSharedUser:
         _assert_photon_error(
             exc_info.value,
             message=REGISTER_FAILURE_MESSAGE,
-            why="Photon returned HTTP 302 for POST /users/",
+            upstream={"method": "POST", "path": "/users/", "status": 302},
             fix=RETRY_FIX,
         )
 
@@ -158,7 +171,7 @@ class TestRegisterSharedUser:
         _assert_photon_error(
             exc_info.value,
             message=REGISTER_FAILURE_MESSAGE,
-            why="Photon returned HTTP 402 for POST /users/",
+            upstream={"method": "POST", "path": "/users/", "status": 402},
             fix=RETRY_FIX,
         )
 
@@ -170,7 +183,7 @@ class TestRegisterSharedUser:
         _assert_photon_error(
             exc_info.value,
             message=REGISTER_FAILURE_MESSAGE,
-            why="Photon returned a non-JSON body for POST /users/",
+            upstream={"method": "POST", "path": "/users/", "reason": "non-JSON body"},
             fix=RETRY_FIX,
         )
 
@@ -182,7 +195,7 @@ class TestRegisterSharedUser:
         _assert_photon_error(
             exc_info.value,
             message=REGISTER_FAILURE_MESSAGE,
-            why="Photon returned a JSON list, not an envelope, for POST /users/",
+            upstream={"method": "POST", "path": "/users/", "body_type": "list"},
             fix=RETRY_FIX,
         )
 
@@ -204,10 +217,12 @@ class TestRegisterSharedUser:
         _assert_photon_error(
             exc_info.value,
             message=REGISTER_FAILURE_MESSAGE,
-            why=(
-                "Photon returned an unsuccessful envelope for POST /users/: "
-                "code=max_shared_users message=plan limit reached"
-            ),
+            upstream={
+                "method": "POST",
+                "path": "/users/",
+                "code": "max_shared_users",
+                "message": "plan limit reached",
+            },
             fix=RETRY_FIX,
         )
 
@@ -221,7 +236,11 @@ class TestRegisterSharedUser:
         _assert_photon_error(
             exc_info.value,
             message=REGISTER_FAILURE_MESSAGE,
-            why="Photon envelope for POST /users/ carried no `data` object",
+            upstream={
+                "method": "POST",
+                "path": "/users/",
+                "reason": "envelope carried no data object",
+            },
             fix=RETRY_FIX,
         )
 
@@ -238,10 +257,11 @@ class TestRegisterSharedUser:
         assert error.message == REGISTER_FAILURE_MESSAGE
         assert error.fix == RETRY_FIX
         assert error.status_code == 502
-        assert error.why.startswith(PARSE_WHY_PREFIX)
-        assert "phoneNumber" in error.why
-        # include_url=False keeps pydantic's doc links out of our operator-facing why.
-        assert PYDANTIC_DOC_URL not in error.why
+        assert error.why == photon_client._UPSTREAM_WHY
+        issues = repr(error.meta["upstream"]["validation_errors"])
+        assert "phoneNumber" in issues
+        # include_url=False keeps pydantic's doc links out of the wide event.
+        assert PYDANTIC_DOC_URL not in issues
 
     @pytest.mark.parametrize("missing", ["SPECTRUM_PROJECT_ID", "SPECTRUM_PROJECT_SECRET"])
     async def test_unconfigured_credentials_raise(self, missing: str) -> None:
@@ -347,7 +367,7 @@ class TestUnregisterSharedUser:
         _assert_photon_error(
             exc_info.value,
             message=UNREGISTER_FAILURE_MESSAGE,
-            why="Photon returned HTTP 500 for DELETE /users/pu-1/",
+            upstream={"method": "DELETE", "path": "/users/pu-1/", "status": 500},
             fix=RETRY_FIX,
         )
 
@@ -361,7 +381,12 @@ class TestUnregisterSharedUser:
         _assert_photon_error(
             exc_info.value,
             message=UNREGISTER_FAILURE_MESSAGE,
-            why="Photon could not be reached for GET /users/: ReadTimeout: timed out",
+            upstream={
+                "method": "GET",
+                "path": "/users/",
+                "error_type": "ReadTimeout",
+                "error": "timed out",
+            },
             fix=NETWORK_FIX,
         )
 
@@ -375,7 +400,7 @@ class TestUnregisterSharedUser:
         _assert_photon_error(
             exc_info.value,
             message=UNREGISTER_FAILURE_MESSAGE,
-            why="Photon user listing carried no `users` array",
+            upstream={"reason": "user listing carried no users array"},
             fix=RETRY_FIX,
         )
 
@@ -392,9 +417,10 @@ class TestUnregisterSharedUser:
         assert error.message == UNREGISTER_FAILURE_MESSAGE
         assert error.fix == RETRY_FIX
         assert error.status_code == 502
-        assert error.why.startswith(PARSE_WHY_PREFIX)
-        assert "phoneNumber" in error.why
-        assert PYDANTIC_DOC_URL not in error.why
+        assert error.why == photon_client._UPSTREAM_WHY
+        issues = repr(error.meta["upstream"]["validation_errors"])
+        assert "phoneNumber" in issues
+        assert PYDANTIC_DOC_URL not in issues
 
 
 @pytest.mark.unit

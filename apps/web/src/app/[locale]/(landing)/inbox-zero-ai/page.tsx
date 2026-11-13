@@ -12,10 +12,13 @@ import {
 } from "@/lib/seo";
 import InboxZeroAiClient from "./InboxZeroAiClient";
 
+const PAGE_TITLE = "AI Email Triage: Reach Inbox Zero in Gmail Automatically";
+const PAGE_DESCRIPTION =
+  "GAIA reads your inbox, labels emails by urgency, drafts replies, and creates tasks automatically. Reach inbox zero without spending hours in email.";
+
 export const metadata: Metadata = generatePageMetadata({
-  title: "Inbox Zero with AI — Automated Email Triage by GAIA",
-  description:
-    "GAIA reads your inbox, labels emails by urgency, drafts replies, and creates tasks automatically. Reach inbox zero without spending hours in email. Free tier available.",
+  title: PAGE_TITLE,
+  description: PAGE_DESCRIPTION,
   path: "/inbox-zero-ai",
   keywords: [
     "inbox zero AI",
@@ -33,19 +36,24 @@ export const metadata: Metadata = generatePageMetadata({
 
 const faqs = [
   {
+    question: "How do I get to inbox zero with AI?",
+    answer:
+      "Let the AI do the first pass. Connect Gmail and GAIA labels each email by urgency, drafts replies to the ones that need you, turns requests into tasks and archives what needs nothing, so what is left in your inbox is only what needs your decision.",
+  },
+  {
     question: "Does GAIA read my emails?",
     answer:
-      "Yes — that's how it triages them. GAIA reads the subject, sender, and body of each email to classify urgency and draft replies. On the self-hosted tier, this processing happens entirely on your own server. On the cloud tier, emails are processed securely and never used to improve our services. To generate responses, email content is shared with third-party AI model providers as described in our Privacy Policy.",
+      "Yes, that's how it triages them. GAIA reads the subject, sender, and body of each email to classify urgency and draft replies. On the self-hosted tier, this processing happens entirely on your own server. On the cloud tier, emails are processed securely and never used to improve our services. To generate responses, email content is shared with third-party AI model providers as described in our Privacy Policy.",
   },
   {
     question: "Can I customize how GAIA triages my inbox?",
     answer:
-      "Yes. You can define custom rules in natural language — for example, 'anything from my investors is always urgent' or 'newsletters go straight to archive.' GAIA learns your preferences over time and applies them consistently.",
+      "Yes. You can define custom rules in natural language, for example, 'anything from my investors is always urgent' or 'newsletters go straight to archive.' GAIA learns your preferences over time and applies them consistently.",
   },
   {
     question: "Will GAIA accidentally delete important emails?",
     answer:
-      "GAIA never deletes emails. It labels and archives — which means everything is still there, just organized. The archive operation in Gmail moves emails out of your inbox but keeps them fully accessible. You can always find an archived email via search.",
+      "GAIA never deletes emails. It labels and archives, which means everything is still there, just organized. The archive operation in Gmail moves emails out of your inbox but keeps them fully accessible. You can always find an archived email via search.",
   },
   {
     question: "Does this work with Google Workspace?",
@@ -57,7 +65,7 @@ const faqs = [
 const triageSteps = [
   {
     name: "Connect your Gmail account",
-    text: "Authorize GAIA to access your Gmail via Google OAuth. This takes under 2 minutes and uses the official Google API — no password sharing, no third-party scraping.",
+    text: "Authorize GAIA to access your Gmail via Google OAuth. This takes under 2 minutes and uses the official Google API, no password sharing, no third-party scraping.",
   },
   {
     name: "Set your triage preferences",
@@ -65,14 +73,14 @@ const triageSteps = [
   },
   {
     name: "Wake up to an organized inbox",
-    text: "GAIA runs your triage overnight (or in real-time during the day). You open your inbox to labeled, prioritized emails — and drafted replies waiting for your approval.",
+    text: "GAIA runs your triage overnight (or in real-time during the day). You open your inbox to labeled, prioritized emails and drafted replies waiting for your approval.",
   },
 ];
 
 export default function InboxZeroAiPage() {
   const webPageSchema = generateWebPageSchema(
-    "Inbox Zero with AI — Automated Email Triage by GAIA",
-    "GAIA reads your inbox, labels emails by urgency, drafts replies, and creates tasks automatically. Reach inbox zero without spending hours in email. Free tier available.",
+    PAGE_TITLE,
+    PAGE_DESCRIPTION,
     `${siteConfig.url}/inbox-zero-ai`,
     [
       { name: "Home", url: siteConfig.url },

@@ -2,7 +2,7 @@
 
 The engine funnels every LLM call (extraction, categorize, reconcile,
 episode summary, consolidation) through
-``app.memory.extraction._invoke_structured``. ``FakeMemoryLLM.invoke``
+app.memory.extraction._invoke_structured. FakeMemoryLLM.invoke
 replaces it per test: register exactly one canned pydantic response (or a
 callable over the prompt messages) per output schema, and any unregistered
 call fails the test loudly. Everything downstream — degradation paths,
@@ -37,13 +37,9 @@ _CANDIDATE_ID_PATTERN = re.compile(r"id=([0-9a-f-]{36})")
 
 
 def human_prompt(messages: list[BaseMessage]) -> str:
-    """Everything the model was shown after the system message, joined.
+    """Return everything the model was shown after the system message, joined.
 
-    Positional reads (``messages[-1]``) are not safe here: extraction sends the
-    transcript AND a trailing volatile-context message (today's date, recently
-    stored facts) so the cacheable prefix stays byte-stable, while the other
-    operations send a single human message. A responder matching on prompt text
-    must see the whole human side either way.
+    Not messages[-1]: extraction appends a trailing volatile-context message (today's date, recent facts) after the transcript, while other operations send a single human message — a prompt-text responder must see the whole human side either way.
     """
     return "\n".join(str(message.content) for message in messages if message.type != "system")
 
@@ -69,7 +65,7 @@ class RecordedCall:
 
 
 class FakeMemoryLLM:
-    """Canned, recorded replacement for ``extraction._invoke_structured``."""
+    """Canned, recorded replacement for extraction._invoke_structured."""
 
     def __init__(self) -> None:
         self.calls: list[RecordedCall] = []

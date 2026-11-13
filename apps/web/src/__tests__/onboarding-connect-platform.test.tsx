@@ -1,0 +1,328 @@
+// @vitest-environment jsdom
+/**
+ * `useConnectPlatform` — the one seam between a platform button and the
+ * one-tap linking handoff.
+ *
+ * What is pinned here: the minted code reaches every button (so nobody has to
+ * type /auth), the mint failing still lets a user through on the old links,
+ * picking a platform submits only once its link has landed (submitting on the
+ * click seeded the first conversation before the link existed, so its
+ * "I'm on your Telegram too" line never appeared), and skipping just advances.
+ */
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, render, renderHook, waitFor } from "@testing-library/react";
+import { type ReactNode, StrictMode } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mintLinkCode = vi.fn();
+const fetchPlatformLinks = vi.fn();
+const apiPost = vi.fn();
+const setPendingPrompt = vi.fn();
+
+vi.mock("@/features/onboarding/api/onboardingApi", () => ({
+  mintLinkCode: () => mintLinkCode(),
+  fetchPlatformLinks: () => fetchPlatformLinks(),
+}));
+
+vi.mock("@/lib/api/typed", () => ({
+  api: { post: (...args: unknown[]) => apiPost(...args) },
+}));
+
+vi.mock("@/lib/toast", () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
+}));
+
+vi.mock("@/stores/composerStore", () => ({
+  useComposerStore: (selector: (s: unknown) => unknown) =>
+    selector({ setPendingPrompt }),
+}));
+
+import { useConnectPlatform } from "@/features/onboarding/hooks/useConnectPlatform";
+
+const CODE = "Ab3-_xY9zQ1234567890wE";
+const FIRST_MESSAGE =
+  "Hi! I'm a founder. I could use help with my inbox and my todos. Who are you?";
+const MINTED = {
+  code: CODE,
+  first_message: FIRST_MESSAGE,
+  handoff_text: `${FIRST_MESSAGE} #${CODE}`,
+  links: {
+    telegram: `https://t.me/heygaia_bot?start=${CODE}`,
+    whatsapp: `https://wa.me/12038429512?text=encoded%20${CODE}`,
+  },
+};
+
+/** Mirrors the hook's query key; the mint is cached under it, as in the app. */
+const LINK_CODE_QUERY_KEY = ["onboarding", "platform-link-code"];
+
+/** One client per test: the mint is cached per key, exactly as in the app. */
+function makeWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const Wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+  return { Wrapper, queryClient };
+}
+
+/**
+ * Renders the hook and waits for the mint to settle (resolved or failed), so
+ * every test starts from the state the user actually sees: buttons wired to
+ * the minted links. Waiting on the query state rather than a fixed number of
+ * microtasks is what keeps this stable on a loaded CI box.
+ */
+async function renderConnect(dispatch = vi.fn(), onConfirmed = vi.fn()) {
+  const { Wrapper, queryClient } = makeWrapper();
+  const result = renderHook(
+    () => useConnectPlatform(dispatch, true, onConfirmed),
+    {
+      wrapper: Wrapper,
+    },
+  );
+  await waitFor(() => expect(mintLinkCode).toHaveBeenCalledOnce());
+  await waitFor(() =>
+    expect(queryClient.getQueryState(LINK_CODE_QUERY_KEY)?.status).not.toBe(
+      "pending",
+    ),
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  return { ...result, dispatch, onConfirmed };
+}
+
+describe("useConnectPlatform", () => {
+  let openSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mintLinkCode.mockResolvedValue(MINTED);
+    fetchPlatformLinks.mockResolvedValue({ platform_links: {} });
+    openSpy = vi.fn();
+    vi.stubGlobal("open", openSpy);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+
+  it("mints one code on stage entry, not per button", async () => {
+    const { result } = await renderConnect();
+
+    act(() => result.current.connect("telegram"));
+    act(() => result.current.connect("whatsapp"));
+
+    expect(mintLinkCode).toHaveBeenCalledOnce();
+  });
+
+  // The server composes `first_message` from the stored profession + needs, so
+  // a code minted before the PATCH lands says "Hi! Who are you?" instead of
+  // "Hi! I'm a founder…" — on the web opener and every platform handoff.
+  it("does not mint before the answers are persisted, and mints once after", async () => {
+    const { rerender } = renderHook(
+      ({ persisted }: { persisted: boolean }) =>
+        useConnectPlatform(vi.fn(), persisted, vi.fn()),
+      { wrapper: makeWrapper().Wrapper, initialProps: { persisted: false } },
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mintLinkCode).not.toHaveBeenCalled();
+
+    rerender({ persisted: true });
+    await waitFor(() => expect(mintLinkCode).toHaveBeenCalledOnce());
+  });
+
+  // The stage renders the hook twice — once for the picker, once for the
+  // composer's "I'll do it later" — and React StrictMode double-invokes every
+  // effect. That was four mints (and four dead codes) per stage entry.
+  it("mints exactly once per stage entry across both hook users under StrictMode", async () => {
+    function TwoConsumers() {
+      useConnectPlatform(vi.fn(), true, vi.fn());
+      useConnectPlatform(vi.fn(), true, vi.fn());
+      return null;
+    }
+    const { Wrapper } = makeWrapper();
+
+    render(
+      <Wrapper>
+        <StrictMode>
+          <TwoConsumers />
+        </StrictMode>
+      </Wrapper>,
+    );
+
+    await waitFor(() => expect(mintLinkCode).toHaveBeenCalledOnce());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mintLinkCode).toHaveBeenCalledOnce();
+  });
+
+  it("opens the code-carrying deep link for telegram and waits for the link", async () => {
+    const { result, dispatch, onConfirmed } = await renderConnect();
+
+    act(() => result.current.connect("telegram"));
+
+    expect(openSpy).toHaveBeenCalledWith(
+      MINTED.links.telegram,
+      "_blank",
+      "noopener,noreferrer",
+    );
+    expect(result.current.awaitingPlatform).toBe("telegram");
+    await waitFor(() => expect(fetchPlatformLinks).toHaveBeenCalled());
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(onConfirmed).not.toHaveBeenCalled();
+  });
+
+  it("submits onboarding once the chosen platform's link lands", async () => {
+    const { result, dispatch, onConfirmed } = await renderConnect();
+    fetchPlatformLinks.mockResolvedValue({
+      platform_links: { telegram: { platformUserId: "tg-1" } },
+    });
+
+    act(() => result.current.connect("telegram"));
+
+    await waitFor(() => expect(onConfirmed).toHaveBeenCalledOnce());
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "platformConnected",
+      platform: "telegram",
+    });
+  });
+
+  it("does not take another platform's link as the chosen one", async () => {
+    const { result, onConfirmed } = await renderConnect();
+    fetchPlatformLinks.mockResolvedValue({
+      platform_links: { whatsapp: { platformUserId: "wa-1" } },
+    });
+
+    act(() => result.current.connect("telegram"));
+
+    await waitFor(() => expect(fetchPlatformLinks).toHaveBeenCalled());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(onConfirmed).not.toHaveBeenCalled();
+  });
+
+  it("finishes with an app the user walked away from if that is where they linked", async () => {
+    // One code rides every app's link, so whichever app redeems it is the link:
+    // opening Telegram, switching to WhatsApp, then tapping Start in Telegram
+    // links Telegram, and the stage must not wait on WhatsApp forever.
+    const { result, dispatch, onConfirmed } = await renderConnect();
+
+    act(() => result.current.connect("telegram"));
+    act(() => result.current.chooseAnother());
+    fetchPlatformLinks.mockResolvedValue({
+      platform_links: { telegram: { platformUserId: "tg-1" } },
+    });
+    act(() => result.current.connect("whatsapp"));
+
+    // Within one poll interval of the link landing.
+    await waitFor(() => expect(onConfirmed).toHaveBeenCalledOnce(), {
+      timeout: 3000,
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "platformConnected",
+      platform: "telegram",
+    });
+  });
+
+  it("goes back to the picker on choose-another without submitting", async () => {
+    const { result, onConfirmed } = await renderConnect();
+
+    act(() => result.current.connect("telegram"));
+    act(() => result.current.chooseAnother());
+
+    expect(result.current.awaitingPlatform).toBeNull();
+    expect(onConfirmed).not.toHaveBeenCalled();
+  });
+
+  it("opens the code-carrying deep link for whatsapp", async () => {
+    const { result } = await renderConnect();
+
+    act(() => result.current.connect("whatsapp"));
+
+    expect(openSpy.mock.calls[0][0]).toBe(MINTED.links.whatsapp);
+  });
+
+  it("falls back to the plain bot link when minting failed", async () => {
+    mintLinkCode.mockRejectedValue(new Error("boom"));
+    const { result } = await renderConnect();
+
+    act(() => result.current.connect("telegram"));
+
+    expect(openSpy.mock.calls[0][0]).toBe("https://t.me/heygaia_bot");
+  });
+
+  it("builds the iMessage sms: handoff from the registered contact number", async () => {
+    apiPost.mockResolvedValue({
+      auth_type: "manual",
+      contact_number: "+15551234567",
+      action_link: "https://photon.test/redirect",
+    });
+    const { result } = await renderConnect();
+
+    act(() => result.current.connect("imessage"));
+    expect(result.current.phoneModalOpen).toBe(true);
+    expect(openSpy).not.toHaveBeenCalled();
+
+    act(() => result.current.submitPhone("+15559999999"));
+    await waitFor(() => expect(result.current.phoneTarget).not.toBeNull());
+
+    expect(result.current.phoneTarget).toEqual({
+      contactNumber: "+15551234567",
+      command: MINTED.handoff_text,
+      actionLink: `sms:+15551234567&body=${encodeURIComponent(MINTED.handoff_text)}`,
+    });
+
+    act(() => result.current.closePhoneModal());
+    expect(result.current.awaitingPlatform).toBe("imessage");
+  });
+
+  it("keeps the /auth instructions for iMessage when minting failed", async () => {
+    mintLinkCode.mockRejectedValue(new Error("boom"));
+    apiPost.mockResolvedValue({
+      auth_type: "manual",
+      contact_number: "+15551234567",
+      action_link: "https://photon.test/redirect",
+    });
+    const { result } = await renderConnect();
+
+    act(() => result.current.submitPhone("+15559999999"));
+    await waitFor(() => expect(result.current.phoneTarget).not.toBeNull());
+
+    expect(result.current.phoneTarget).toEqual({
+      contactNumber: "+15551234567",
+      command: "/auth",
+      actionLink: "https://photon.test/redirect",
+    });
+  });
+
+  it("advances without staging any prompt when platforms are skipped", async () => {
+    const { result, dispatch, onConfirmed } = await renderConnect();
+
+    await act(async () => {
+      result.current.skip();
+    });
+
+    // The server seeds GAIA's "Getting started" conversation on completion and
+    // the guard lands the user in it, so staging the opener as the user's own
+    // turn here would replay onboarding into an unrelated chat.
+    expect(setPendingPrompt).not.toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledWith({ type: "skipPlatforms" });
+    expect(onConfirmed).toHaveBeenCalledOnce();
+  });
+
+  it("still advances on skip when minting failed", async () => {
+    mintLinkCode.mockRejectedValue(new Error("boom"));
+    const { result, dispatch } = await renderConnect();
+
+    await act(async () => {
+      result.current.skip();
+    });
+
+    expect(setPendingPrompt).not.toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledWith({ type: "skipPlatforms" });
+  });
+});

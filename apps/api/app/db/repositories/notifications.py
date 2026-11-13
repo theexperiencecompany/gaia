@@ -1,8 +1,8 @@
 """Repository for the notifications collection.
 
-Identity is the UUID ``id`` field, not Mongo's ``_id`` — updates and lookups key
+Identity is the UUID id field, not Mongo's _id — updates and lookups key
 on it. Updates are free-form field patches (an action result may set arbitrary
-fields), so they go through ``update_fields`` rather than a rigid update model.
+fields), so they go through update_fields rather than a rigid update model.
 """
 
 from datetime import UTC, datetime
@@ -37,7 +37,7 @@ class NotificationRepository(MongoRepository[NotificationRecord, NotificationUpd
         return await self._find_one(filter_)
 
     async def update_fields(self, notification_id: str, **fields: object) -> None:
-        """Apply a free-form field patch. ``updated_at`` is auto-stamped by the base."""
+        """Apply a free-form field patch. updated_at is auto-stamped by the base."""
         await self._apply_raw_update(
             {"id": notification_id},
             {"$set": dict(fields)},
@@ -71,12 +71,10 @@ class NotificationRepository(MongoRepository[NotificationRecord, NotificationUpd
     async def mark_all_read_for_user(self, user_id: str, *, channel_type: str | None = None) -> int:
         """Mark every DELIVERED notification for a user as READ in one write.
 
-        The base only exposes single-document raw-update seams, and this one
-        has to touch an unbounded set the caller cannot enumerate, so it issues
-        its own ``update_many``. That makes this module a second holder of the
-        collection accessor, so the contract fixture swaps it here too.
-        ``cache_policy`` is ``None`` here, so there is no entity cache or
-        generation counter to refresh. Returns the number updated.
+        Issues its own update_many (unbounded set; base only exposes single-doc
+        updates), so contract fixtures must patch this module's collection
+        accessor too. cache_policy is None: no entity cache or generation
+        counter to refresh.
         """
         filter_ = self._user_filter(user_id, NotificationStatus.DELIVERED, channel_type, None, None)
         result = await get_async_collection(self.collection_name).update_many(

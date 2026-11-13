@@ -102,10 +102,8 @@ async def search_public_integrations(
         return matches
 
     except Exception as e:
-        # Re-raise so an unreachable ChromaDB isn't reported as "no matching
-        # integrations" — tool retrieval needs the failure to distinguish a
-        # total search outage, and the marketplace endpoint should 500 honestly
-        # rather than render an empty catalog.
+        # Re-raise so an unreachable ChromaDB isn't reported as "no matching integrations" —
+        # the marketplace endpoint should 500 honestly rather than render an empty catalog.
         log.error(
             f"{LogTag.CHROMA} Failed to search public integrations", error_type=type(e).__name__
         )

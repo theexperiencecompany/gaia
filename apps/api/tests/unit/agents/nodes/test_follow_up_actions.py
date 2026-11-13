@@ -1,15 +1,23 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from prometheus_client import REGISTRY
 import pytest
 
+from app.agents.context.slots import PRESENCE_NOTE_MARKER, mark
 from app.agents.core.nodes.follow_up_actions_node import (
     _FOLLOW_UP_CONTEXT_MAX_CHARS,
     SUGGEST_FOLLOW_UP_ACTIONS,
     FollowUpActions,
+    _delegated_to_executor,
     _pretty_print_messages,
     follow_up_actions_node,
+    generate_follow_up_actions,
 )
+from app.constants.general import CALL_EXECUTOR_NAME
+from app.constants.log_tags import LogTag
+from app.models import integration_models
+from tests.helpers import captured_wide_event
 
 
 def _make_state(messages=None):
@@ -58,10 +66,7 @@ class TestPrettyPrintMessages:
         assert _pretty_print_messages(messages) == expected
 
     def test_context_over_the_cap_keeps_exactly_the_newest_chars(self):
-        # A maxed-out executor result used to flow verbatim into the follow-up
-        # request. The cap trims the HEAD, never the tail: follow-ups react to
-        # the newest exchange, so dropping the end would suggest actions for a
-        # turn that already scrolled past.
+        # The cap trims the HEAD, never the tail: follow-ups react to the newest exchange.
         messages = [HumanMessage(content="A" * 4_000), AIMessage(content="B" * 4_000)]
         full = "".join(m.pretty_repr() for m in messages)
         assert len(full) > _FOLLOW_UP_CONTEXT_MAX_CHARS
@@ -82,7 +87,7 @@ class TestFollowUpActionsNode:
         mock_writer = MagicMock(side_effect=RuntimeError("stream closed"))
 
         with patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=mock_writer,
         ):
             result = await follow_up_actions_node(state, config, store)
@@ -100,7 +105,7 @@ class TestFollowUpActionsNode:
         mock_writer = MagicMock(side_effect=written_values.append)
 
         with patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=mock_writer,
         ):
             result = await follow_up_actions_node(state, config, store)
@@ -119,13 +124,92 @@ class TestFollowUpActionsNode:
         mock_writer = MagicMock(side_effect=written_values.append)
 
         with patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=mock_writer,
         ):
             result = await follow_up_actions_node(state, config, store)
 
         assert result is state
         assert {"follow_up_actions": []} in written_values
+
+    @pytest.mark.asyncio
+    async def test_a_state_without_messages_writes_empty_actions(self):
+        state = {"selected_tool_ids": [], "todos": []}
+        written_values = []
+        mock_writer = MagicMock(side_effect=written_values.append)
+
+        with patch(
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+            return_value=mock_writer,
+        ):
+            result = await follow_up_actions_node(state, _make_config(), _make_store())
+
+        assert result is state
+        assert {"follow_up_actions": []} in written_values
+
+    @pytest.mark.asyncio
+    async def test_node_emits_latency_span(self):
+        state = _make_state([HumanMessage(content="hi")])
+        config = {
+            "configurable": {
+                "user_id": "user-123",
+                "thread_id": "thread-abc",
+                "agent_name": "node-test-agent",
+            },
+        }
+        before = (
+            REGISTRY.get_sample_value(
+                "graph_node_seconds_count",
+                {"node": "follow_up_actions", "agent": "node-test-agent"},
+            )
+            or 0.0
+        )
+        mock_writer = MagicMock(side_effect=lambda *a, **k: None)
+
+        with patch(
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+            return_value=mock_writer,
+        ):
+            await follow_up_actions_node(state, config, _make_store())
+
+        assert (
+            REGISTRY.get_sample_value(
+                "graph_node_seconds_count",
+                {"node": "follow_up_actions", "agent": "node-test-agent"},
+            )
+            == before + 1
+        )
+
+    @pytest.mark.asyncio
+    async def test_node_records_the_exact_elapsed_seconds(self):
+        # Two pinned clock reads land exactly 0.25; a sign error (end + start) would
+        # record 20.25, so this pins the direction of the subtraction, not just that
+        # an observation happened.
+        state = _make_state([HumanMessage(content="hi")])
+        config = {
+            "configurable": {
+                "user_id": "user-123",
+                "thread_id": "thread-abc",
+                "agent_name": "span-test-agent",
+            },
+        }
+        labels = {"node": "follow_up_actions", "agent": "span-test-agent"}
+        before = REGISTRY.get_sample_value("graph_node_seconds_sum", labels) or 0.0
+        mock_writer = MagicMock(side_effect=lambda *a, **k: None)
+
+        with (
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+                return_value=mock_writer,
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.time.perf_counter",
+                side_effect=[10.0, 10.25],
+            ),
+        ):
+            await follow_up_actions_node(state, config, _make_store())
+
+        assert REGISTRY.get_sample_value("graph_node_seconds_sum", labels) == before + 0.25
 
     @pytest.mark.asyncio
     async def test_happy_path_with_user_id_streams_actions(self):
@@ -151,15 +235,17 @@ class TestFollowUpActionsNode:
 
         with (
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
                 return_value=mock_writer,
             ),
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
                 new=AsyncMock(
-                    return_value={"tool_names": ["xyztest_invoice_tool", "xyztest_sms_tool"]}
+                    return_value=integration_models.UserIntegrationCapabilities(
+                        tool_names=["xyztest_invoice_tool", "xyztest_sms_tool"]
+                    )
                 ),
-            ),
+            ) as capabilities,
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.ainvoke_structured",
                 new=capture_invoke,
@@ -168,14 +254,12 @@ class TestFollowUpActionsNode:
             result = await follow_up_actions_node(state, config, store)
 
         assert result is state
+        capabilities.assert_awaited_once_with("user-123")
         assert {"main_response_complete": True} in written_values
         assert {"follow_up_actions": suggested_actions} in written_values
 
-        # The node assembles [static_system, dynamic_context]. Tool names live in
-        # the dynamic-context message so the static system prefix stays
-        # byte-identical across users (prompt-cache friendly). There is no third
-        # human message: the context used to be sent twice, and the duplicate was
-        # ~350 tokens of uncached per-turn weight for no added information.
+        # [static_system, dynamic_context]: tool names live in dynamic_context so the
+        # static prefix stays byte-identical across users (prompt-cache friendly).
         assert len(captured_llm_inputs) == 1
         msgs = captured_llm_inputs[0]
         assert len(msgs) == 2
@@ -206,7 +290,7 @@ class TestFollowUpActionsNode:
 
         with (
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
                 return_value=mock_writer,
             ),
             patch(
@@ -240,12 +324,14 @@ class TestFollowUpActionsNode:
 
         with (
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
                 return_value=MagicMock(),
             ),
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
-                new=AsyncMock(return_value={"tool_names": []}),
+                new=AsyncMock(
+                    return_value=integration_models.UserIntegrationCapabilities(tool_names=[])
+                ),
             ),
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.ainvoke_structured",
@@ -255,16 +341,11 @@ class TestFollowUpActionsNode:
             await follow_up_actions_node(state, config, store)
 
         assert len(captured_invocations) == 1
-        # [static_system, dynamic_context, human_message]
         llm_msgs = captured_invocations[0]
-        # Two messages, not three — the context is carried once, in the
-        # dynamic-context system message, never repeated as a human turn.
+        # Two messages, not three — the context is carried once, never repeated as a human turn.
         assert len(llm_msgs) == 2
 
-        # The HumanMessage content is the pretty-printed slice of recent_messages.
         # With 6 input messages and a window of 4, only messages 2-5 must appear.
-        # The window rides in the dynamic-context message now that the duplicate
-        # human turn is gone — same content, one copy.
         context_msg = llm_msgs[1]
         for i in range(2, 6):
             assert f"message {i}" in context_msg.content
@@ -289,12 +370,14 @@ class TestFollowUpActionsNode:
 
         with (
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
                 return_value=mock_writer,
             ),
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
-                new=AsyncMock(return_value={"tool_names": []}),
+                new=AsyncMock(
+                    return_value=integration_models.UserIntegrationCapabilities(tool_names=[])
+                ),
             ),
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.ainvoke_structured",
@@ -323,7 +406,7 @@ class TestFollowUpActionsNode:
         mock_writer = MagicMock(side_effect=failing_second_write)
 
         with patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=mock_writer,
         ):
             result = await follow_up_actions_node(state, config, store)
@@ -347,12 +430,14 @@ class TestFollowUpActionsNode:
 
         with (
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
                 return_value=MagicMock(),
             ),
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
-                new=AsyncMock(return_value={"tool_names": []}),
+                new=AsyncMock(
+                    return_value=integration_models.UserIntegrationCapabilities(tool_names=[])
+                ),
             ),
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.ainvoke_structured",
@@ -364,3 +449,186 @@ class TestFollowUpActionsNode:
         assert result is state
         # State messages should be unchanged — actions go only through the writer
         assert result["messages"] == original_messages
+
+
+NODE = "app.agents.core.nodes.follow_up_actions_node"
+
+
+class TestGenerateFollowUpActionsNeverRaises:
+    @pytest.mark.regression
+    async def test_a_failing_capabilities_fetch_yields_no_actions_and_an_error(self) -> None:
+        llm = AsyncMock()
+        with (
+            patch(
+                f"{NODE}.get_user_integration_capabilities",
+                new=AsyncMock(side_effect=RuntimeError("capabilities down")),
+            ),
+            patch(f"{NODE}.ainvoke_structured", new=llm),
+        ):
+            async with captured_wide_event() as event:
+                actions = await generate_follow_up_actions("ctx", "user-123", _make_config())
+
+        assert actions == []
+        llm.assert_not_awaited()
+        (error,) = [e for e in event["errors"] if e.get("error") == "capabilities down"]
+        assert error["user_id"] == "user-123"
+        assert error["error_type"] == "RuntimeError"
+
+    @pytest.mark.regression
+    async def test_a_failing_registry_fallback_yields_no_actions(self) -> None:
+        with patch(
+            f"{NODE}.get_tool_registry", new=AsyncMock(side_effect=RuntimeError("no registry"))
+        ):
+            assert await generate_follow_up_actions("ctx", None, _make_config()) == []
+
+    async def test_an_llm_failure_is_logged_as_an_error(self) -> None:
+        with (
+            patch(
+                f"{NODE}.get_user_integration_capabilities",
+                new=AsyncMock(return_value=integration_models.UserIntegrationCapabilities()),
+            ),
+            patch(f"{NODE}.ainvoke_structured", new=AsyncMock(side_effect=ValueError("bad json"))),
+        ):
+            async with captured_wide_event() as event:
+                actions = await generate_follow_up_actions("ctx", "user-123", _make_config())
+
+        assert actions == []
+        assert [e["error_type"] for e in event["errors"]] == ["ValueError"]
+
+    async def test_the_failure_is_logged_with_its_message_and_the_users_id(self) -> None:
+        with (
+            patch(
+                f"{NODE}.get_user_integration_capabilities",
+                new=AsyncMock(return_value=integration_models.UserIntegrationCapabilities()),
+            ),
+            patch(f"{NODE}.ainvoke_structured", new=AsyncMock(side_effect=ValueError("bad json"))),
+        ):
+            async with captured_wide_event() as event:
+                await generate_follow_up_actions("ctx", "user-123", _make_config())
+
+        (error,) = event["errors"]
+        assert error["msg"] == f"{LogTag.AGENT} Follow-up action generation failed"
+        assert error["user_id"] == "user-123"
+        assert error["error"] == "bad json"
+
+    async def test_capabilities_are_read_for_the_asking_user(self) -> None:
+        capabilities = AsyncMock(
+            return_value=integration_models.UserIntegrationCapabilities(tool_names=["a_tool"])
+        )
+        llm = AsyncMock(return_value=FollowUpActions(actions=["Do it"]))
+        with (
+            patch(f"{NODE}.get_user_integration_capabilities", new=capabilities),
+            patch(f"{NODE}.ainvoke_structured", new=llm),
+        ):
+            actions = await generate_follow_up_actions("ctx", "user-123", _make_config())
+
+        assert actions == ["Do it"]
+        capabilities.assert_awaited_once_with("user-123")
+
+
+def _call(name: str) -> dict[str, object]:
+    return {"name": name, "args": {}, "id": f"call-{name}", "type": "tool_call"}
+
+
+class TestDelegatedToExecutor:
+    def test_a_call_to_the_executor_this_turn_is_delegation(self) -> None:
+        messages = [
+            HumanMessage(content="hi"),
+            AIMessage(content="", tool_calls=[_call(CALL_EXECUTOR_NAME)]),
+        ]
+        assert _delegated_to_executor(messages) is True
+
+    def test_a_call_to_another_tool_is_not_delegation(self) -> None:
+        messages = [
+            HumanMessage(content="hi"),
+            AIMessage(content="", tool_calls=[_call("web_search")]),
+        ]
+        assert _delegated_to_executor(messages) is False
+
+    def test_a_non_ai_message_before_the_call_does_not_hide_it(self) -> None:
+        messages = [
+            HumanMessage(content="hi"),
+            ToolMessage(content="ok", tool_call_id="x"),
+            AIMessage(content="", tool_calls=[_call(CALL_EXECUTOR_NAME)]),
+        ]
+        assert _delegated_to_executor(messages) is True
+
+    def test_a_delegation_before_the_last_human_turn_does_not_count(self) -> None:
+        messages = [
+            HumanMessage(content="first"),
+            AIMessage(content="", tool_calls=[_call(CALL_EXECUTOR_NAME)]),
+            HumanMessage(content="second"),
+            AIMessage(content="plain reply"),
+        ]
+        assert _delegated_to_executor(messages) is False
+
+
+def _ai_calling(name: str) -> AIMessage:
+    return AIMessage(content="", tool_calls=[{"name": name, "args": {}, "id": f"call-{name}"}])
+
+
+class TestExecutorDelegationSkip:
+    """A turn handed to the executor gets its follow-ups from the executor, not from comms."""
+
+    @staticmethod
+    async def _run(messages: list) -> tuple[list, AsyncMock]:
+        written: list = []
+        generate = AsyncMock(return_value=["Next step"])
+        with (
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+                return_value=MagicMock(side_effect=written.append),
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.generate_follow_up_actions",
+                new=generate,
+            ),
+        ):
+            await follow_up_actions_node(_make_state(messages), _make_config(), _make_store())
+        return written, generate
+
+    @pytest.mark.asyncio
+    async def test_an_executor_call_after_tool_traffic_skips_follow_ups(self) -> None:
+        written, generate = await self._run(
+            [
+                HumanMessage(content="Book my flight"),
+                _ai_calling("search_flights"),
+                ToolMessage(content="3 flights", tool_call_id="call-search_flights"),
+                _ai_calling("call_executor"),
+            ]
+        )
+
+        assert written == [{"main_response_complete": True}]
+        generate.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_turn_calling_other_tools_still_gets_follow_ups(self) -> None:
+        written, generate = await self._run(
+            [HumanMessage(content="Weather?"), _ai_calling("get_weather")]
+        )
+
+        assert written == [{"main_response_complete": True}, {"follow_up_actions": ["Next step"]}]
+        generate.assert_awaited_once()
+
+
+class TestThePresenceNoteIsNotContext:
+    """GAIA's surface-change note is not part of the exchange follow-ups react to."""
+
+    async def test_the_note_never_reaches_the_follow_up_context(self) -> None:
+        note = mark(
+            HumanMessage(content="[Surface change: now on Telegram.]"), PRESENCE_NOTE_MARKER
+        )
+        messages = [
+            HumanMessage(content="first question"),
+            AIMessage(content="first answer"),
+            note,
+            HumanMessage(content="Weather?"),
+            AIMessage(content="Sunny."),
+        ]
+
+        _, generate = await TestExecutorDelegationSkip._run(messages)
+
+        context = generate.await_args.args[0]
+        assert "Surface change" not in context
+        # The note does not take a slot in the four-message window either.
+        assert "first question" in context

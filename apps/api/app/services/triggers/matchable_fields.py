@@ -1,35 +1,30 @@
 """Curated matchable fields per trigger — what a subscription condition may test.
 
-Derived from the payload models in ``app/models/composio_schemas/``, which were
-verified against Composio's live triggers API. The full payload models stay loose
-because external webhooks omit fields; this catalog is the narrower set we are
-willing to match on, and it is also what the agent is shown before it writes a
-condition, so it builds from known data instead of guessing.
+Derived from the payload models in app/models/composio_schemas/, verified
+against Composio's live triggers API; it is the narrower set we are willing to
+match on, and what the agent is shown before it writes a condition.
 
-Every verified payload field is either catalogued or listed in ``excluded`` with a
-reason. Two reasons recur:
+Every verified payload field is either catalogued or listed in excluded with a
+reason: a *nested free-form dict* (a blob like data/task whose inner shape was
+not verified upstream) or a *list of objects* (attendees, attachments, authors
+— dicts the operator table has no meaning for).
 
-- *nested free-form dict* — the provider ships a blob (``data``, ``task``) whose
-  inner shape was not verified upstream. Cataloguing a key inside it would be the
-  guessing this module exists to prevent.
-- *list of objects* — attendees, attachments and authors are lists of dicts, which
-  the operator table has no meaning for.
-
-Dotted names (``document.id``) are supported for one level, and only where the
-nested value is itself a typed model — that is the difference between a verified
-field and a guess.
+Dotted names (document.id) are supported for one level, and only where the
+nested value is itself a typed model.
 """
 
 from collections.abc import Mapping
 from types import MappingProxyType
 
+from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.models.composio_schemas import (
     AsanaTaskCreatedPayload,
     GitHubCommitEventPayload,
     GitHubIssueAddedEventPayload,
     GitHubPullRequestEventPayload,
     GitHubStarAddedEventPayload,
-    GmailNewMessagePayload,
+    GmailEmailSentPayload,
+    GmailNewMessageEvent,
     GoogleCalendarEventCreatedPayload,
     GoogleCalendarEventStartingSoonPayload,
     GoogleDocsDocumentDeletedPayload,
@@ -60,6 +55,7 @@ _STRING = MatchableFieldType.STRING
 _INTEGER = MatchableFieldType.INTEGER
 _NUMBER = MatchableFieldType.NUMBER
 _STRING_LIST = MatchableFieldType.STRING_LIST
+_BOOLEAN = MatchableFieldType.BOOLEAN
 
 
 def _f(name: str, type_: MatchableFieldType, description: str, example: str) -> MatchableField:
@@ -67,15 +63,35 @@ def _f(name: str, type_: MatchableFieldType, description: str, example: str) -> 
 
 
 _GMAIL_NEW_MESSAGE = MatchableTrigger(
-    payload_model=GmailNewMessagePayload,
+    payload_model=GmailNewMessageEvent,
     fields=(
         _f("thread_id", _STRING, "Gmail thread the message belongs to", "18c9f0a1b2c3d4e5"),
         _f("message_id", _STRING, "Stable id of this message", "18c9f0a1b2c3d4e6"),
         _f("sender", _STRING, "Sender email address", "alice@acme.com"),
         _f("to", _STRING, "Recipient email address", "you@example.com"),
         _f("subject", _STRING, "Email subject line", "Re: Invoice 4021"),
-        _f("message_text", _STRING, "Plain-text body of the message", "Thanks — approved."),
+        _f("message_text", _STRING, "Plain-text body of the message", "Thanks, approved."),
         _f("label_ids", _STRING_LIST, "Gmail labels applied to the message", "INBOX"),
+        _f(
+            "continues_thread",
+            _BOOLEAN,
+            "The message joins a thread that already had messages; a cold 'Re:' starts a new one",
+            "true",
+        ),
+        _f("gmail_category", _STRING, "Gmail's inbox tab", "CATEGORY_PERSONAL"),
+        _f("has_list_unsubscribe", _BOOLEAN, "Carries a List-Unsubscribe header", "false"),
+        _f(
+            "bulk_or_auto_submitted",
+            _BOOLEAN,
+            "Marked bulk or auto-submitted by its headers",
+            "false",
+        ),
+        _f(
+            "sender_looks_automated",
+            _BOOLEAN,
+            "The sender reads as a no-reply or notification address",
+            "false",
+        ),
     ),
     excluded={
         "id": "Raw Gmail message id; match on message_id, which is the stable one.",
@@ -83,6 +99,31 @@ _GMAIL_NEW_MESSAGE = MatchableTrigger(
         "attachment_list": _OBJECT_LIST,
         "payload": _NESTED_BLOB,
         "preview": _NESTED_BLOB,
+    },
+)
+
+_GMAIL_EMAIL_SENT = MatchableTrigger(
+    payload_model=GmailEmailSentPayload,
+    fields=(
+        _f("thread_id", _STRING, "Gmail thread the sent message belongs to", "18c9f0a1b2c3d4e5"),
+        _f("message_id", _STRING, "Stable id of the sent message", "18c9f0a1b2c3d4e6"),
+        _f(
+            "recipients",
+            _STRING,
+            "Every To, Cc and Bcc address, comma-separated",
+            "alice@acme.com, bob@acme.com",
+        ),
+        _f("to", _STRING, "To recipients", "alice@acme.com"),
+        _f("subject", _STRING, "Email subject line", "Re: Invoice 4021"),
+        _f("message_text", _STRING, "Plain-text body of the sent message", "Approved, thanks."),
+    ),
+    excluded={
+        "sender": "Always the user themselves; it distinguishes nothing.",
+        "attachment_list": _OBJECT_LIST,
+        "cc": "Covered by recipients, which lists To, Cc and Bcc together.",
+        "bcc": "Covered by recipients, which lists To, Cc and Bcc together.",
+        "message_timestamp": "Provider-formatted string; use the event's arrival time instead.",
+        "payload": _NESTED_BLOB,
     },
 )
 
@@ -121,8 +162,7 @@ def _notion(payload_model: type, page_description: str) -> MatchableTrigger:
 
 
 def _google_doc(payload_model: type, document_description: str) -> MatchableTrigger:
-    """Docs triggers carry a typed ``GoogleDocsDocument``, so one level of dotting
-    stays verified rather than guessed."""
+    """Docs triggers carry a typed GoogleDocsDocument, so one level of dotting stays verified."""
     return MatchableTrigger(
         payload_model=payload_model,
         fields=(
@@ -152,11 +192,13 @@ def _google_doc(payload_model: type, document_description: str) -> MatchableTrig
 
 MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
     {
-        # Gmail — both triggers deliver the same payload.
-        "gmail_new_message": _GMAIL_NEW_MESSAGE,
+        # Gmail — the inbox and poll triggers deliver the same payload.
+        GMAIL_NEW_MESSAGE_TRIGGER_NAME: _GMAIL_NEW_MESSAGE,
         "gmail_poll_inbox": _GMAIL_NEW_MESSAGE,
+        GMAIL_EMAIL_SENT_TRIGGER_NAME: _GMAIL_EMAIL_SENT,
         "calendar_event_created": MatchableTrigger(
             payload_model=GoogleCalendarEventCreatedPayload,
+            title_field="summary",
             fields=(
                 _f("event_id", _STRING, "Unique id of the event", "7k2m4n6p8q"),
                 _f("calendar_id", _STRING, "Calendar the event lives on", "primary"),
@@ -169,6 +211,7 @@ MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
         ),
         "calendar_event_starting_soon": MatchableTrigger(
             payload_model=GoogleCalendarEventStartingSoonPayload,
+            title_field="summary",
             fields=(
                 _f("event_id", _STRING, "Unique id of the event", "7k2m4n6p8q"),
                 _f("calendar_id", _STRING, "Calendar the event lives on", "primary"),
@@ -224,6 +267,7 @@ MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
         ),
         "google_sheets_new_sheet": MatchableTrigger(
             payload_model=GoogleSheetsNewSheetAddedPayload,
+            title_field="sheet_name",
             fields=(
                 _f("spreadsheet_id", _STRING, "Spreadsheet the sheet was added to", "1BxiMVs0XRA5"),
                 _f("sheet_name", _STRING, "New sheet tab name", "Q4"),
@@ -244,6 +288,7 @@ MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
         ),
         "github_pr_event": MatchableTrigger(
             payload_model=GitHubPullRequestEventPayload,
+            title_field="title",
             fields=(
                 _f("action", _STRING, "What happened to the PR", "opened"),
                 _f("number", _INTEGER, "PR number", "1096"),
@@ -256,6 +301,7 @@ MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
         ),
         "github_issue_added": MatchableTrigger(
             payload_model=GitHubIssueAddedEventPayload,
+            title_field="title",
             fields=(
                 _f("action", _STRING, "What happened to the issue", "opened"),
                 _f("issue_id", _INTEGER, "Unique issue id", "2841003911"),
@@ -306,6 +352,7 @@ MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
         ),
         "slack_channel_created": MatchableTrigger(
             payload_model=SlackChannelCreatedPayload,
+            title_field="name",
             fields=(
                 _f("id", _STRING, "New channel id", "C01ABCDEF"),
                 _f("name", _STRING, "New channel name", "proj-acme"),
@@ -332,5 +379,5 @@ MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
 
 
 def get_matchable_trigger(trigger_name: str) -> MatchableTrigger | None:
-    """The catalog entry for ``trigger_name``, or None when it is not subscribable."""
+    """Return the catalog entry for trigger_name, or None when it is not subscribable."""
     return MATCHABLE_TRIGGERS.get(trigger_name)

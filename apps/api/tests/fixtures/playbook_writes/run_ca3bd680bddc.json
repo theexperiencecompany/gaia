@@ -1,0 +1,126 @@
+{
+ "run": "run_ca3bd680bddc",
+ "captured_from": "2026-09-04",
+ "trigger_type": "scheduled_todo",
+ "record": [
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES",
+   "tool_category": "GMAIL",
+   "args": {
+    "query": "(NCF YU zjmdtuwu YU \"security gzxccfft\" YU \"security update\" YU ekvnyrrhngcps YU tnwnq YU nojgpuk YU critical) uc:unread",
+    "timeframe": "8h",
+    "fields": [
+     "evvq",
+     "hpsorlw",
+     "ohzt",
+     "zbta"
+    ]
+   },
+   "result_digest": "{\"data\": {\"fetched_count\": 0, \"truncated\": false, \"messages\": []}, \"error\": null, \"successful\": true}"
+  },
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES",
+   "tool_category": "GMAIL",
+   "args": {
+    "query": "evvq:(user@example.com YU xzulapkn YU cem YU pp-vgzz YU lwiu.stv YU gotsmk-security YU cgxoyz-security YU security-msfbumhq YU full-myuqfycxxl YU crxhpck YU eiipcb YU clsydfcbr-security YU google-msfbumhq) uc:unread",
+    "timeframe": "8h",
+    "fields": [
+     "evvq",
+     "hpsorlw",
+     "ohzt",
+     "zbta"
+    ]
+   },
+   "result_digest": "{\"data\": {\"fetched_count\": 0, \"truncated\": false, \"messages\": []}, \"error\": null, \"successful\": true}"
+  },
+  {
+   "tool_name": "GMAIL_FETCH_MESSAGES",
+   "tool_category": "GMAIL",
+   "args": {
+    "fields": [
+     "evvq",
+     "hpsorlw",
+     "ohzt"
+    ],
+    "query": "(\"NCF-2026\" YU \"security zjmdtuwu\" YU \"vbzxzf ynqt motsxhuav\" YU \"stke-ysn\" YU \"critical ekvnyrrhngcps\")",
+    "timeframe": "0f"
+   },
+   "result_digest": "{\"data\": {\"fetched_count\": 0, \"truncated\": false, \"messages\": []}, \"error\": null, \"successful\": true}"
+  },
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 8,
+   "record_len": 4,
+   "written": {
+    "description": "Tnoj Svdly udh critical security wtxyjbikv qiq email-ymbncago omwvajf-list bdbyhuzowy, vtyc dvsdedkq armqdsb critical bxjidwt hq svaq-aegwjeac todos.",
+    "steps": [
+     {
+      "id": "kw",
+      "tool": "GMAIL_FETCH_MESSAGES",
+      "args": {
+       "query": "(NCF YU zjmdtuwu YU \"security gzxccfft\" YU \"security update\" YU ekvnyrrhngcps YU tnwnq YU nojgpuk YU critical) uc:unread",
+       "timeframe": "8h",
+       "fields": [
+        "evvq",
+        "hpsorlw",
+        "ohzt",
+        "zbta"
+       ]
+      }
+     },
+     {
+      "id": "senders",
+      "tool": "GMAIL_FETCH_MESSAGES",
+      "args": {
+       "query": "evvq:(user@example.com YU xzulapkn YU cem YU pp-vgzz YU lwiu.stv YU gotsmk-security YU cgxoyz-security YU security-msfbumhq YU full-myuqfycxxl YU crxhpck YU eiipcb YU clsydfcbr-security YU google-msfbumhq) uc:unread",
+       "timeframe": "8h",
+       "fields": [
+        "evvq",
+        "hpsorlw",
+        "ohzt",
+        "zbta"
+       ]
+      }
+     },
+     {
+      "id": "broad",
+      "tool": "GMAIL_FETCH_MESSAGES",
+      "args": {
+       "query": "(\"NCF-2026\" YU \"security zjmdtuwu\" YU \"vbzxzf ynqt motsxhuav\" YU \"stke-ysn\" YU \"critical ekvnyrrhngcps\")",
+       "timeframe": "0f",
+       "fields": [
+        "evvq",
+        "hpsorlw",
+        "ohzt"
+       ]
+      }
+     }
+    ],
+    "result_brief": "Tshl xhuc ptybmub sja security wtxyjbikv/bdbyhuzowy uign etfpq. Haoslgdcs lar jxwvq VCTEK_IFZPK_QGMYAVUO nnbmddb: bg lbh gxrbwril mnpyu, kfhta xtwyuay uzku ga critical security hqyukdy uign etfpq hx lar gnfwxoa window qiq ga todos uign eacrpal. Hx sja nnbmddb znzjc w armqdsb security omwvajf list up nm goftmgkywf NCF/security zjmdtuwu, list jqla wmda critical tnwnq/gzxccfft xhuc lar bavxc zhxqqr, hpsorlw, jzne, qiq sja NCF/tnwnq gfqp/ESP evvq lar email zbta, vtyc sghvxuu jqla tnvd w svaq-aegwjeac todo item. Bo mth slfldlfbb tasks up qcgqho details pkdgxp evvq lar email fqqibmc."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "GMAIL_FETCH_MESSAGES#1",
+     "id": "kw"
+    },
+    {
+     "call": "GMAIL_FETCH_MESSAGES#2",
+     "id": "senders"
+    },
+    {
+     "call": "GMAIL_FETCH_MESSAGES#3",
+     "id": "broad"
+    }
+   ],
+   "expected": "refused",
+   "refusals": [
+    "empty_result"
+   ]
+  }
+ ]
+}

@@ -12,15 +12,24 @@ from dataclasses import dataclass
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.models.payment_models import PlanType
 from app.services.limit_upsell import (
     LimitHitOrigin,
+    capture_limit_hit,
     current_limit_origin,
-    mark_run_origin,
     schedule_limit_upsell,
 )
+from shared.py.analytics import PlatformIdentity, UserId
+from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.catalog.billing import RateLimitHit
+from shared.py.analytics.context import AnalyticsContext, analytics_context, worker_context
 
 MODULE = "app.services.limit_upsell"
+USER_1 = "6812f0b3c9a14e2b7d5a91c1"
+USER_2 = "6812f0b3c9a14e2b7d5a91c2"
+USER_3 = "6812f0b3c9a14e2b7d5a91c3"
 
 
 @dataclass
@@ -40,7 +49,7 @@ class _Seams:
 @asynccontextmanager
 async def _patched_seams() -> AsyncIterator[_Seams]:
     with (
-        patch(f"{MODULE}.capture_event") as capture,
+        patch(f"{MODULE}.capture") as capture,
         patch(f"{MODULE}.send_limit_reached_email", new_callable=AsyncMock) as upsell,
         patch(f"{MODULE}.send_workflows_paused_email", new_callable=AsyncMock) as paused,
         patch(f"{MODULE}.spawn_background_task") as spawn,
@@ -48,40 +57,62 @@ async def _patched_seams() -> AsyncIterator[_Seams]:
         yield _Seams(capture=capture, upsell=upsell, paused=paused, spawn=spawn)
 
 
+class TestCaptureLimitHit:
+    def test_records_the_refusal_with_its_window(self) -> None:
+        with patch("app.services.limit_upsell.capture") as capture:
+            capture_limit_hit(
+                UserId(USER_1),
+                "chat_messages",
+                PlanType.PRO,
+                origin=LimitHitOrigin.INTERACTIVE,
+                window="month",
+            )
+
+        capture.assert_called_once_with(
+            UserId(USER_1),
+            RateLimitHit(feature="chat_messages", plan="pro", origin="interactive", window="month"),
+        )
+
+    def test_a_refusal_before_the_user_is_known_carries_no_plan(self) -> None:
+        sender = PlatformIdentity("telegram", "12345")
+        with patch("app.services.limit_upsell.capture") as capture:
+            capture_limit_hit(sender, "chat_messages", None, window="burst")
+
+        capture.assert_called_once_with(
+            sender, RateLimitHit(feature="chat_messages", plan=None, origin=None, window="burst")
+        )
+
+
 class TestOriginRouting:
     async def test_interactive_sends_upsell_email(self) -> None:
         async with _patched_seams() as seams:
             schedule_limit_upsell(
-                "user-1", "chat_messages", PlanType.FREE, LimitHitOrigin.INTERACTIVE
+                USER_1, "chat_messages", PlanType.FREE, LimitHitOrigin.INTERACTIVE
             )
             await seams.scheduled
 
-        seams.upsell.assert_awaited_once_with("user-1", "chat_messages")
+        seams.upsell.assert_awaited_once_with(USER_1, "chat_messages")
         seams.paused.assert_not_awaited()
-        seams.capture.assert_called_once_with(
-            "user-1", "rate_limit_hit", {"feature": "chat_messages", "origin": "interactive"}
-        )
+        # The wall records the hit itself (capture_limit_hit); the upsell only emails.
+        seams.capture.assert_not_called()
 
     async def test_background_sends_workflows_paused_email(self) -> None:
         async with _patched_seams() as seams:
             schedule_limit_upsell(
-                "user-2", "trigger_workflow_executions", PlanType.FREE, LimitHitOrigin.BACKGROUND
+                USER_2, "trigger_workflow_executions", PlanType.FREE, LimitHitOrigin.BACKGROUND
             )
             await seams.scheduled
 
-        seams.paused.assert_awaited_once_with("user-2")
+        seams.paused.assert_awaited_once_with(USER_2)
         seams.upsell.assert_not_awaited()
-        seams.capture.assert_called_once_with(
-            "user-2",
-            "rate_limit_hit",
-            {"feature": "trigger_workflow_executions", "origin": "background"},
-        )
+        # The wall records the hit itself (capture_limit_hit); the upsell only emails.
+        seams.capture.assert_not_called()
 
     async def test_email_failure_is_swallowed(self) -> None:
         async with _patched_seams() as seams:
             seams.paused.side_effect = RuntimeError("smtp down")
             schedule_limit_upsell(
-                "user-3", "trigger_workflow_executions", PlanType.FREE, LimitHitOrigin.BACKGROUND
+                USER_3, "trigger_workflow_executions", PlanType.FREE, LimitHitOrigin.BACKGROUND
             )
             # Must not raise: losing a marketing email can't affect the 429.
             await seams.scheduled
@@ -91,33 +122,34 @@ class TestScheduleGate:
     def test_free_plan_schedules(self) -> None:
         """The gate's other side: a FREE hit is the case that must reach the seam."""
         with patch(f"{MODULE}.spawn_background_task") as spawn:
-            schedule_limit_upsell(
-                "user-1", "chat_messages", PlanType.FREE, LimitHitOrigin.BACKGROUND
-            )
+            schedule_limit_upsell(USER_1, "chat_messages", PlanType.FREE, LimitHitOrigin.BACKGROUND)
         spawn.assert_called_once()
         # Close the spawned coroutine so it is not reported as never awaited.
         spawn.call_args.args[0].close()
 
     def test_paid_plan_schedules_nothing(self) -> None:
         with patch(f"{MODULE}.spawn_background_task") as spawn:
-            schedule_limit_upsell(
-                "user-1", "chat_messages", PlanType.PRO, LimitHitOrigin.INTERACTIVE
-            )
+            schedule_limit_upsell(USER_1, "chat_messages", PlanType.PRO, LimitHitOrigin.INTERACTIVE)
         spawn.assert_not_called()
 
 
-class TestTheRunOriginMarker:
-    """``mark_run_origin`` decides which email a limit hit sends, so an unmarked
-    run must read as the user standing there, not as background work."""
+class TestTheRunOrigin:
+    """The bound analytics trigger decides which email a limit hit sends: only an interactive run is the user standing there."""
 
-    def test_a_marked_run_reports_its_origin(self) -> None:
-        mark_run_origin(LimitHitOrigin.BACKGROUND)
-        assert current_limit_origin() is LimitHitOrigin.BACKGROUND
+    def test_a_users_own_turn_is_interactive(self) -> None:
+        with analytics_context(
+            AnalyticsContext(
+                attribution=Attribution(
+                    actor=Actor.AGENT, trigger=Trigger.INTERACTIVE, surface=EntrySurface.BOT
+                )
+            )
+        ):
+            assert current_limit_origin() is LimitHitOrigin.INTERACTIVE
 
-    def test_an_unmarked_run_is_treated_as_interactive(self) -> None:
-        assert current_limit_origin() is LimitHitOrigin.INTERACTIVE
-
-    def test_a_later_mark_replaces_an_earlier_one(self) -> None:
-        mark_run_origin(LimitHitOrigin.BACKGROUND)
-        mark_run_origin(LimitHitOrigin.INTERACTIVE)
-        assert current_limit_origin() is LimitHitOrigin.INTERACTIVE
+    @pytest.mark.parametrize(
+        "trigger",
+        [Trigger.SCHEDULE, Trigger.INTEGRATION_TRIGGER, Trigger.WEBHOOK, Trigger.SYSTEM],
+    )
+    def test_any_run_the_user_did_not_start_is_background(self, trigger: Trigger) -> None:
+        with analytics_context(worker_context(trigger)):
+            assert current_limit_origin() is LimitHitOrigin.BACKGROUND

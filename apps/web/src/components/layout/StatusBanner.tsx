@@ -1,14 +1,12 @@
 "use client";
 
 import { Alert01Icon, Cancel01Icon } from "@icons";
-import axios from "axios";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const PING_URL =
-  process.env.NODE_ENV === "development"
-    ? `${process.env.NEXT_PUBLIC_API_BASE_URL}ping`
-    : "https://api.heygaia.io/api/v1/ping";
+import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
+
+const PING_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}ping`;
 const STATUS_URL = "https://status.heygaia.io";
 const POLL_INTERVAL = 60_000;
 
@@ -16,11 +14,14 @@ export default function StatusBanner() {
   const [isDown, setIsDown] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isSelfHost = useDeployment().kind === "selfhost";
 
   const checkStatus = useCallback(async () => {
     try {
-      const res = await axios.get(PING_URL);
-      if (res.status >= 200 && res.status < 300) {
+      // A status probe, not an API call: in production it targets the public
+      // ping endpoint directly, so it stays off the app's API client.
+      const res = await fetch(PING_URL, { cache: "no-store" });
+      if (res.ok) {
         setIsDown(false);
       } else {
         setIsDown(true);
@@ -47,15 +48,22 @@ export default function StatusBanner() {
       <div className="flex items-center gap-2">
         <Alert01Icon className="size-4 shrink-0" />
         <span>
-          We&apos;re experiencing some issues. Some features may be unavailable.{" "}
-          <Link
-            href={STATUS_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline underline-offset-2 hover:text-amber-300"
-          >
-            Learn more
-          </Link>
+          {isSelfHost ? (
+            "Can't reach your GAIA API. Check that the backend is running."
+          ) : (
+            <>
+              We&apos;re experiencing some issues. Some features may be
+              unavailable.{" "}
+              <Link
+                href={STATUS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2 hover:text-amber-300"
+              >
+                Learn more
+              </Link>
+            </>
+          )}
         </span>
       </div>
       <button

@@ -46,10 +46,7 @@ export default function SelectedWorkflowIndicator({
         showExecutions={false}
       />
       {onRemove && (
-        <div
-          className="absolute top-4 right-4 z-20"
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div className="absolute top-4 right-4 z-20">
           <Button
             isIconOnly
             size="sm"

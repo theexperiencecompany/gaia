@@ -83,7 +83,7 @@ def run_scenario(
 
 
 def _results_path(requested: Path) -> Path:
-    """The results file, kept inside the working directory or the system temp dir.
+    """Return the results file, kept inside the working directory or the system temp dir.
 
     A dev tool takes its output path from the command line; keeping it under
     one of two known roots means a stray argument cannot write anywhere else.

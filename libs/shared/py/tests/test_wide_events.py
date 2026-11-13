@@ -156,6 +156,52 @@ class TestWideEventLoggerLevels:
         # Should call loguru with exception=True
         mock_loguru.opt.assert_called_with(depth=1, exception=True)
 
+    @pytest.mark.parametrize(
+        ("method", "bucket"),
+        [
+            ("warning", "warnings"),
+            ("error", "errors"),
+            ("critical", "errors"),
+            ("exception", "errors"),
+        ],
+    )
+    @patch("shared.py.wide_events._loguru")
+    def test_a_line_logged_while_handling_an_exception_carries_it(
+        self, mock_loguru: MagicMock, method: str, bucket: str
+    ):
+        """Regression: '[CHAT] Fallback save failed for stream' reached Loki three times with no error class or message."""
+        try:
+            raise TimeoutError("mongo write timed out")
+        except TimeoutError:
+            getattr(log, method)("save failed", stream_id="s1")
+
+        (entry,) = log.get()[bucket]
+        assert entry == {
+            "msg": "save failed",
+            "stream_id": "s1",
+            "error_type": "TimeoutError",
+            "error": "mongo write timed out",
+        }
+        mock_loguru.opt.return_value.bind.assert_called_once_with(
+            stream_id="s1", error_type="TimeoutError", error="mongo write timed out"
+        )
+
+    @patch("shared.py.wide_events._loguru")
+    def test_an_explicit_error_field_wins_over_the_handled_exception(self, mock_loguru: MagicMock):
+        try:
+            raise KeyError("raw")
+        except KeyError:
+            log.error("lookup failed", error="no such user")
+
+        assert log.get()["errors"][0]["error"] == "no such user"
+        assert "error_type" not in log.get()["errors"][0]
+
+    @patch("shared.py.wide_events._loguru")
+    def test_a_line_outside_any_handler_carries_no_error(self, mock_loguru: MagicMock):
+        log.warning("quota at 90%")
+
+        assert log.get()["warnings"][0] == {"msg": "quota at 90%"}
+
     @patch("shared.py.wide_events._loguru")
     def test_warning_with_kwargs(self, mock_loguru: MagicMock):
         log.warning("slow query", query="SELECT *", duration_ms=5000)
@@ -292,11 +338,11 @@ class TestTraceId:
 
 
 def _emitted_event(mock_loguru: MagicMock) -> dict:
-    """The event the boundary actually emitted.
+    """Return the event the boundary actually emitted.
 
-    Read this instead of ``log.get()`` after a boundary exits. A boundary
+    Read this instead of log.get() after a boundary exits. A boundary
     restores the enclosing accumulator on exit, so once it has closed there is
-    deliberately nothing left to read — asserting on ``log.get()`` afterwards
+    deliberately nothing left to read — asserting on log.get() afterwards
     only passed while boundaries leaked their state outward, which was the bug.
     """
     return dict(mock_loguru.bind.call_args.kwargs)
@@ -394,6 +440,18 @@ class TestWideTask:
         assert len(event["errors"]) == 1
         assert event["errors"][0]["error"] == "bad value"
         assert event["errors"][0]["error_type"] == "ValueError"
+
+    @pytest.mark.asyncio
+    @patch("shared.py.wide_events._loguru")
+    async def test_a_failure_the_body_handled_is_not_reported_as_success(
+        self, mock_loguru: MagicMock
+    ):
+        async with wide_task("handled_task"):
+            log.fail("engine_crash", engine="obscura")
+        event = _emitted_event(mock_loguru)
+        assert event["outcome"] == "failed"
+        assert event["reason"] == "engine_crash"
+        assert event["engine"] == "obscura"
 
 
 # ---------------------------------------------------------------------------

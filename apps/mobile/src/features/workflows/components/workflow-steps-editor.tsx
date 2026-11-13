@@ -10,7 +10,8 @@ interface WorkflowStepsEditorProps {
 }
 
 function generateId(): string {
-  return Math.random().toString(36).slice(2, 10);
+  // client-local React key for an unsaved step, never sent or trusted as an identifier
+  return Math.random().toString(36).slice(2, 10); // NOSONAR typescript:S2245
 }
 
 export function WorkflowStepsEditor({

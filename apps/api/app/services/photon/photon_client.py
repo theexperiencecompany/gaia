@@ -20,6 +20,9 @@ _SHARED_USER_TYPE = "shared"
 _REGISTER_FAILURE = "Could not register your number for iMessage"
 _UNREGISTER_FAILURE = "Could not disconnect your number from iMessage"
 _RETRY_FIX = "verify the Photon project credentials and plan user limit, then retry"
+#: ``why`` is read by the user. Which internal endpoint failed, with what
+#: status and what provider body, belongs in the wide event instead.
+_UPSTREAM_WHY = "The iMessage provider did not answer successfully"
 
 
 class PhotonUser(BaseModel):
@@ -54,7 +57,7 @@ async def _photon_request(
     payload: dict[str, str] | None = None,
     params: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Call the project-scoped Photon management API and unwrap its `{succeed, data}` envelope."""
+    """Call the project-scoped Photon management API and unwrap its {succeed, data} envelope."""
     auth = _auth()
     url = f"{SPECTRUM_API_BASE}/projects/{auth[0]}{path}"
     try:
@@ -63,17 +66,24 @@ async def _photon_request(
     except httpx.RequestError as exc:
         raise create_error(
             message=failure_message,
-            why=f"Photon could not be reached for {method} {path}: {type(exc).__name__}: {exc}",
+            why=_UPSTREAM_WHY,
             fix="check outbound network access to spectrum.photon.codes, then retry",
             status_code=502,
+            upstream={
+                "method": method,
+                "path": path,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            },
         ) from exc
 
     if not resp.is_success:
         raise create_error(
             message=failure_message,
-            why=f"Photon returned HTTP {resp.status_code} for {method} {path}",
+            why=_UPSTREAM_WHY,
             fix=_RETRY_FIX,
             status_code=502,
+            upstream={"method": method, "path": path, "status": resp.status_code},
         )
 
     try:
@@ -81,37 +91,43 @@ async def _photon_request(
     except ValueError as exc:
         raise create_error(
             message=failure_message,
-            why=f"Photon returned a non-JSON body for {method} {path}",
+            why=_UPSTREAM_WHY,
             fix=_RETRY_FIX,
             status_code=502,
+            upstream={"method": method, "path": path, "reason": "non-JSON body"},
         ) from exc
 
     if not isinstance(body, dict):
         raise create_error(
             message=failure_message,
-            why=f"Photon returned a JSON {type(body).__name__}, not an envelope, for {method} {path}",
+            why=_UPSTREAM_WHY,
             fix=_RETRY_FIX,
             status_code=502,
+            upstream={"method": method, "path": path, "body_type": type(body).__name__},
         )
 
     if body.get("succeed") is not True:
         raise create_error(
             message=failure_message,
-            why=(
-                f"Photon returned an unsuccessful envelope for {method} {path}: "
-                f"code={body.get('code')} message={body.get('message')}"
-            ),
+            why=_UPSTREAM_WHY,
             fix=_RETRY_FIX,
             status_code=502,
+            upstream={
+                "method": method,
+                "path": path,
+                "code": body.get("code"),
+                "message": body.get("message"),
+            },
         )
 
     data = body.get("data")
     if not isinstance(data, dict):
         raise create_error(
             message=failure_message,
-            why=f"Photon envelope for {method} {path} carried no `data` object",
+            why=_UPSTREAM_WHY,
             fix=_RETRY_FIX,
             status_code=502,
+            upstream={"method": method, "path": path, "reason": "envelope carried no data object"},
         )
     return data
 
@@ -122,9 +138,10 @@ def _parse_user(model: type[_PhotonUserT], data: object, failure_message: str) -
     except ValidationError as exc:
         raise create_error(
             message=failure_message,
-            why=f"Photon user payload could not be parsed: {exc.errors(include_url=False)}",
+            why=_UPSTREAM_WHY,
             fix=_RETRY_FIX,
             status_code=502,
+            upstream={"validation_errors": exc.errors(include_url=False)},
         ) from exc
 
 
@@ -151,9 +168,10 @@ async def unregister_shared_user(phone_number: str) -> bool:
     if not isinstance(entries, list):
         raise create_error(
             message=_UNREGISTER_FAILURE,
-            why="Photon user listing carried no `users` array",
+            why=_UPSTREAM_WHY,
             fix=_RETRY_FIX,
             status_code=502,
+            upstream={"reason": "user listing carried no users array"},
         )
 
     users = [_parse_user(_ListedPhotonUser, entry, _UNREGISTER_FAILURE) for entry in entries]

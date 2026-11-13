@@ -1,14 +1,9 @@
 import { resolve } from "node:path";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 
-// @gaia/shared is a no-build TypeScript workspace lib — its package.json
-// "exports" point straight at .ts source. It is a BUILD-TIME source dependency
-// inlined into the bundle, not a runtime node_modules module, so it is NOT a
-// package.json dependency: a workspace symlink under node_modules is unused at
-// runtime and breaks electron-builder's asar packager (it resolves outside the
-// app dir). Instead, every @gaia/shared import is aliased to its source path
-// and bundled as app code. The regex covers all subpaths — current and future
-// — so there is no per-entry maintenance.
+// @gaia/shared (a no-build workspace lib pointing at .ts source) is build-time-only,
+// not a package.json dependency — a node_modules symlink resolves outside the app
+// dir and breaks electron-builder's asar packager. Aliased to source instead.
 const SHARED_SRC = resolve(__dirname, "../../libs/shared/ts/src");
 const sharedAlias = [
   { find: /^@gaia\/shared$/, replacement: resolve(SHARED_SRC, "index.ts") },

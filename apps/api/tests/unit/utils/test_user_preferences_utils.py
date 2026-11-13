@@ -5,12 +5,17 @@ from unittest.mock import patch
 
 import pytest
 
+from app.models.user_models import OnboardingPreferences, OnboardingSubdocument
 from app.utils.user_preferences_utils import (
     build_user_context_parts,
     format_profession_for_display,
     format_response_style_instruction,
     format_user_preferences_for_agent,
+    format_writing_style_for_prompt,
+    onboarding_preferences,
 )
+
+WRITING_STYLE_HEADER = "Learned Writing Style (match this tone and voice when composing the email):"
 
 # ---------------------------------------------------------------------------
 # format_response_style_instruction
@@ -95,13 +100,18 @@ class TestBuildUserContextParts:
         preferences: dict[str, Any] = {
             "profession": "software engineer",
             "response_style": "brief",
-            "custom_instructions": "Always use Python examples",
         }
         parts = build_user_context_parts(preferences)
-        assert len(parts) == 3
-        assert parts[0] == "User Profession: Software Engineer"
-        assert parts[1] == "Communication Style: Keep responses brief and to the point"
-        assert parts[2] == "Special Instructions: Always use Python examples"
+        assert parts == [
+            "User Profession: Software Engineer",
+            "Communication Style: Keep responses brief and to the point",
+        ]
+        mock_log.set.assert_called_once_with(
+            operation="build_user_context_parts",
+            has_profession=True,
+            has_response_style=True,
+            has_language=False,
+        )
 
     @patch("app.utils.user_preferences_utils.log")
     def test_empty_preferences(self, mock_log: Any) -> None:
@@ -119,16 +129,31 @@ class TestBuildUserContextParts:
         assert parts == ["Communication Style: Use a casual and friendly tone"]
 
     @patch("app.utils.user_preferences_utils.log")
-    def test_only_custom_instructions(self, mock_log: Any) -> None:
-        parts = build_user_context_parts({"custom_instructions": "Respond in Spanish"})
-        assert parts == ["Special Instructions: Respond in Spanish"]
+    def test_the_browser_language_is_rendered_after_the_style(self, mock_log: Any) -> None:
+        """The comms prompt greets in it before the user has written a word."""
+        parts = build_user_context_parts(
+            {"profession": "doctor", "response_style": "casual", "language": "de"}
+        )
+        assert parts == [
+            "User Profession: Doctor",
+            "Communication Style: Use a casual and friendly tone",
+            "Browser Language: de",
+        ]
+        assert mock_log.set.call_args.kwargs["has_language"] is True
+
+    @patch("app.utils.user_preferences_utils.log")
+    def test_a_legacy_custom_instructions_key_is_not_rendered(self, mock_log: Any) -> None:
+        """Old Mongo rows still carry it; instructions now reach the prompt as their own section."""
+        parts = build_user_context_parts(
+            {"profession": "doctor", "custom_instructions": "Respond in Spanish"}
+        )
+        assert parts == ["User Profession: Doctor"]
 
     @patch("app.utils.user_preferences_utils.log")
     def test_none_values_ignored(self, mock_log: Any) -> None:
         preferences: dict[str, Any] = {
             "profession": None,
             "response_style": None,
-            "custom_instructions": None,
         }
         parts = build_user_context_parts(preferences)
         assert parts == []
@@ -138,20 +163,9 @@ class TestBuildUserContextParts:
         preferences: dict[str, Any] = {
             "profession": "",
             "response_style": "",
-            "custom_instructions": "",
         }
         parts = build_user_context_parts(preferences)
         assert parts == []
-
-    @patch("app.utils.user_preferences_utils.log")
-    def test_whitespace_only_custom_instructions_ignored(self, mock_log: Any) -> None:
-        parts = build_user_context_parts({"custom_instructions": "   "})
-        assert parts == []
-
-    @patch("app.utils.user_preferences_utils.log")
-    def test_custom_instructions_stripped(self, mock_log: Any) -> None:
-        parts = build_user_context_parts({"custom_instructions": "  Be concise  "})
-        assert parts == ["Special Instructions: Be concise"]
 
     @patch("app.utils.user_preferences_utils.log")
     def test_unknown_response_style_used_as_is(self, mock_log: Any) -> None:
@@ -173,13 +187,42 @@ class TestBuildUserContextParts:
         assert len(parts) == 1
         assert parts[0] == f"User Profession: {long_profession.title()}"
 
-    @patch("app.utils.user_preferences_utils.log")
-    def test_long_custom_instructions_still_included(self, mock_log: Any) -> None:
-        # build_user_context_parts does NOT enforce length limits
-        long_instructions = "x" * 1000
-        parts = build_user_context_parts({"custom_instructions": long_instructions})
-        assert len(parts) == 1
-        assert parts[0] == f"Special Instructions: {long_instructions}"
+
+# ---------------------------------------------------------------------------
+# format_writing_style_for_prompt
+# ---------------------------------------------------------------------------
+
+
+class TestFormatWritingStyleForPrompt:
+    def test_the_users_edited_summary_wins_over_the_learned_one(self) -> None:
+        result = format_writing_style_for_prompt(
+            {"summary": "Formal", "user_edited_summary": "Warm"}
+        )
+        assert result == f"{WRITING_STYLE_HEADER}\n  Style: Warm"
+
+    def test_the_learned_summary_is_used_when_the_user_never_edited_it(self) -> None:
+        result = format_writing_style_for_prompt({"summary": "Formal"})
+        assert result == f"{WRITING_STYLE_HEADER}\n  Style: Formal"
+
+    def test_no_summary_renders_nothing_even_with_an_example(self) -> None:
+        assert format_writing_style_for_prompt({"example": "Hi there"}) == ""
+
+    def test_example_blocks_are_rendered_in_their_voice(self) -> None:
+        result = format_writing_style_for_prompt(
+            {
+                "summary": "Warm",
+                "example": {
+                    "greeting": "Hi Sam,",
+                    "body": ["Thanks."],
+                    "signoff": "Best,",
+                    "name": "Ana",
+                },
+            }
+        )
+        assert result == (
+            f"{WRITING_STYLE_HEADER}\n  Style: Warm\n"
+            '  Example email in their voice:\n    "Hi Sam,\n\nThanks.\n\nBest,\nAna"'
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -201,15 +244,12 @@ class TestFormatUserPreferencesForAgent:
         preferences: dict[str, Any] = {
             "profession": "designer",
             "response_style": "detailed",
-            "custom_instructions": "Use visual examples",
         }
         result = format_user_preferences_for_agent(preferences)
-        assert result is not None
-        lines = result.split("\n")
-        assert len(lines) == 3
-        assert lines[0] == "User Profession: Designer"
-        assert lines[1] == "Communication Style: Provide detailed and comprehensive responses"
-        assert lines[2] == "Special Instructions: Use visual examples"
+        assert result == (
+            "User Profession: Designer\n"
+            "Communication Style: Provide detailed and comprehensive responses"
+        )
 
     @patch("app.utils.user_preferences_utils.log")
     def test_single_preference_returns_string(self, mock_log: Any) -> None:
@@ -221,7 +261,6 @@ class TestFormatUserPreferencesForAgent:
         preferences: dict[str, Any] = {
             "profession": "",
             "response_style": "",
-            "custom_instructions": "",
         }
         result = format_user_preferences_for_agent(preferences)
         assert result is None
@@ -231,7 +270,6 @@ class TestFormatUserPreferencesForAgent:
         preferences: dict[str, Any] = {
             "profession": None,
             "response_style": None,
-            "custom_instructions": None,
         }
         result = format_user_preferences_for_agent(preferences)
         assert result is None
@@ -244,3 +282,39 @@ class TestFormatUserPreferencesForAgent:
         ):
             result = format_user_preferences_for_agent({"profession": "doctor"})
             assert result is None
+
+
+# ---------------------------------------------------------------------------
+# onboarding_preferences
+# ---------------------------------------------------------------------------
+
+
+class TestOnboardingPreferences:
+    """UserDocument.onboarding is typed; AuthenticatedUser.onboarding is still the raw Mongo dict."""
+
+    def test_typed_subdocument_yields_only_the_stored_preference_keys(self) -> None:
+        onboarding = OnboardingSubdocument(
+            preferences=OnboardingPreferences(profession="doctor"),
+            writing_style={"summary": "terse"},
+        )
+
+        preferences, writing_style = onboarding_preferences(onboarding)
+
+        assert preferences == {"profession": "doctor"}
+        assert writing_style == {"summary": "terse"}
+
+    def test_typed_subdocument_without_preferences_reads_as_none(self) -> None:
+        onboarding = OnboardingSubdocument(writing_style={"summary": "terse"})
+
+        assert onboarding_preferences(onboarding) == (None, {"summary": "terse"})
+
+    def test_typed_subdocument_without_writing_style_reads_as_none(self) -> None:
+        onboarding = OnboardingSubdocument(preferences=OnboardingPreferences(profession="doctor"))
+
+        assert onboarding_preferences(onboarding) == ({"profession": "doctor"}, None)
+
+    @pytest.mark.parametrize("onboarding", [None, OnboardingSubdocument()])
+    def test_missing_onboarding_reads_as_a_pair_of_none(
+        self, onboarding: OnboardingSubdocument | None
+    ) -> None:
+        assert onboarding_preferences(onboarding) == (None, None)

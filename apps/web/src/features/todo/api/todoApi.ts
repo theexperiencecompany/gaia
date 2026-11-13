@@ -1,25 +1,28 @@
-import { TODO_ENDPOINTS } from "@shared/api/todosApi";
-import { createTodoApi, type HttpAdapter } from "@shared/todos";
-import { apiService } from "@/lib/api/service";
+import type { GateEdit, TodoCanvasResponse } from "@shared/api/generated";
+import { createTodoApi } from "@shared/todos";
+import { todoHttpAdapter } from "@/lib/api/todoHttpAdapter";
+import { api } from "@/lib/api/typed";
+import type { Todo } from "@/types/features/todoTypes";
 
-const httpAdapter: HttpAdapter = {
-  get: (url, options) => apiService.get(url, options),
-  post: (url, data, options) => apiService.post(url, data, options),
-  put: (url, data, options) => apiService.put(url, data, options),
-  patch: (url, data, options) => apiService.patch(url, data, options),
-  delete: (url, data, options) => apiService.delete(url, data, options),
-};
+export const todoApi = createTodoApi(todoHttpAdapter);
 
-export const todoApi = createTodoApi(httpAdapter);
+/** A tracked todo's notes: `content` is canvas.md, `activity` is activity.md. */
+export type TodoNotes = TodoCanvasResponse;
 
-export interface TodoNotes {
-  /** canvas.md: the recall doc (Key Details / Current State / Context / Learnings). */
-  content: string;
-  /** activity.md: the dated log, oldest first. */
-  activity: string;
-}
-
-export const getTodoCanvas = async (todoId: string): Promise<TodoNotes> =>
-  apiService.get<TodoNotes>(TODO_ENDPOINTS.canvas(todoId), {
+export const getTodoCanvas = (todoId: string): Promise<TodoNotes> =>
+  api.get("/api/v1/todos/{todo_id}/canvas", {
+    path: { todo_id: todoId },
     silent: true,
+  });
+
+/** Store the user's edit to the gate on one of a tracked todo's run watches. */
+export const editSubscriptionGate = (
+  todoId: string,
+  subscriptionId: string,
+  edit: GateEdit,
+): Promise<Todo> =>
+  api.patch("/api/v1/todos/{todo_id}/subscriptions/{subscription_id}/gate", {
+    path: { todo_id: todoId, subscription_id: subscriptionId },
+    body: edit,
+    errorMessage: "Couldn't save the condition",
   });

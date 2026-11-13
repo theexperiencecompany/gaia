@@ -1,6 +1,6 @@
-"""Real-Postgres test for the per-user active-device cap in ``_create_device``.
+"""Real-Postgres test for the per-user active-device cap in _create_device.
 
-The cap COUNT query is ``WHERE user_id == user_id AND status == ACTIVE``. A unit
+The cap COUNT query is "WHERE user_id == user_id AND status == ACTIVE". A unit
 test with a fake session can't see those predicates — the fake returns a fixed
 count regardless of the query. Only real Postgres proves that the count includes
 *this* user's ACTIVE devices and excludes another user's devices and this user's

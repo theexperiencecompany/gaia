@@ -1,21 +1,9 @@
 /**
- * electron-builder afterSign hook (macOS).
- *
- * Two mutually exclusive paths, chosen by whether real code signing ran:
- *
- * - Real signing DISABLED (CSC_IDENTITY_AUTO_DISCOVERY=false — dev/CI builds):
- *   the packaged app keeps only the Electron binary's linker signature with a
- *   broken bundle seal. macOS 26's RunningBoard kills LaunchServices-launched
- *   apps with an invalid seal ~12s after launch (Dock icon appears, then
- *   vanishes). Ad-hoc signing restores a valid seal so local Finder launches
- *   run. This path never touches notarization.
- *
- * - Real Developer-ID signing RAN (CSC_LINK/CSC_KEY_PASSWORD present): submit
- *   the signed app to Apple for notarization when the notarization credentials
- *   are set (APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID). Without a
- *   stable Developer-ID signature AND notarization, the TCC Full Disk Access
- *   grant resets on every rebuild (different cdhash), so this is the gate for
- *   the persistent-grant goal. Skipped with a warning when creds are absent.
+ * electron-builder afterSign hook (macOS). Two mutually exclusive paths:
+ * - Signing disabled (dev/CI): ad-hoc sign restores a valid seal — macOS 26's
+ *   RunningBoard kills an invalid-seal app ~12s after launch. No notarization.
+ * - Signed (Developer-ID): notarizes when Apple ID creds are set, required so
+ *   the TCC Full Disk Access grant survives a rebuild (differs by cdhash otherwise).
  */
 const { execFileSync } = require("node:child_process");
 const path = require("node:path");

@@ -12,7 +12,7 @@ export interface OpenUIExample {
 }
 
 const analyticsDashboard = `root = Stack([header, kpis, charts, bottom], "column", "m")
-header = Card([CardHeader("Analytics Dashboard", "Overview of key metrics — last 30 days")], "clear")
+header = Card([CardHeader("Analytics Dashboard", "Overview of key metrics for the last 30 days")], "clear")
 
 kpis = Stack([kpi1, kpi2, kpi3, kpi4], "row", "m", "stretch")
 kpi1 = Card([TextContent("Total Revenue", "small"), TextContent("$142,580", "large-heavy"), Tag("+12.4%", null, "sm", "success")], "card")
@@ -21,7 +21,7 @@ kpi3 = Card([TextContent("New Orders", "small"), TextContent("5,847", "large-hea
 kpi4 = Card([TextContent("Churn Rate", "small"), TextContent("3.2%", "large-heavy"), Tag("-0.5%", null, "sm", "success")], "card")
 
 charts = Stack([revenueCard, trafficCard], "row", "m", "stretch")
-revenueCard = Card([CardHeader("Monthly Revenue", "Jan – Jun 2024"), revenueChart], "card")
+revenueCard = Card([CardHeader("Monthly Revenue", "Jan to Jun 2024"), revenueChart], "card")
 revenueChart = BarChart(["Jan", "Feb", "Mar", "Apr", "May", "Jun"], [revenueSeries], "grouped", "Month", "Revenue ($)")
 revenueSeries = Series("Revenue", [98200, 105400, 117800, 122300, 134900, 142580])
 trafficCard = Card([CardHeader("Website Traffic", "Daily visitors"), trafficChart], "card")
@@ -135,7 +135,7 @@ offices = [{"lat": 40.7128, "lng": -74.006, "label": "New York"}, {"lat": 51.507
 const placesMap = `root = Stack([header, map], "column", "m")
 header = Card([CardHeader("SF Coffee Tour", "tap a pin for the address")], "clear")
 map = MapBlock(37.78, -122.42, "San Francisco", 13, spots)
-spots = [{"lat": 37.7765, "lng": -122.3946, "label": "Sightglass", "popup": "270 7th St — pour-over"}, {"lat": 37.7857, "lng": -122.4011, "label": "Blue Bottle", "popup": "66 Mint St"}, {"lat": 37.7694, "lng": -122.4862, "label": "Andytown", "tooltip": "3655 Lawton St"}]`;
+spots = [{"lat": 37.7765, "lng": -122.3946, "label": "Sightglass", "popup": "270 7th St (pour-over)"}, {"lat": 37.7857, "lng": -122.4011, "label": "Blue Bottle", "popup": "66 Mint St"}, {"lat": 37.7694, "lng": -122.4862, "label": "Andytown", "tooltip": "3655 Lawton St"}]`;
 
 const complexCharts = `root = Stack([header, row1, row2], "column", "m")
 header = Card([CardHeader("Charts", "Complex multi-series chart types")], "clear")

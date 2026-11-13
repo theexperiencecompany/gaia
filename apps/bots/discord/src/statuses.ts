@@ -4,10 +4,9 @@ import { ActivityType } from "discord.js";
 // Rotating presence statuses
 // ---------------------------------------------------------------------------
 
-// Discord renders the activity type itself: ActivityType.Listening shows as
-// "Listening to {name}" and ActivityType.Competing as "Competing in {name}".
-// So Listening/Competing names must NOT repeat that preposition, otherwise the
-// client shows "Listening to to …". Watching/Playing take the name verbatim.
+// Discord renders Listening as "Listening to {name}" and Competing as "Competing
+// in {name}" — names must not repeat that preposition (else "to to …").
+// Watching/Playing take the name verbatim.
 export const ROTATING_STATUSES: { type: ActivityType; name: string }[] = [
   { type: ActivityType.Watching, name: "over your goals" },
   { type: ActivityType.Listening, name: "your inner procrastinator" },

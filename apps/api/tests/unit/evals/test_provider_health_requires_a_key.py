@@ -1,13 +1,13 @@
 """A lane exempt from the probe is not exempt from having credentials.
 
-``configured()`` used to answer "yes" for the gemini lane whether or not
-``GOOGLE_API_KEY`` was set, and ``health_check`` returned "verified by key
+configured() used to answer "yes" for the gemini lane whether or not
+GOOGLE_API_KEY was set, and health_check returned "verified by key
 presence only" with no key present. The lane joined the rotation and then failed
 at transport time on every single case — an outage the health check exists to
 catch before the first model call.
 
-The second half is the config loader: a lane that declares no ``base_url_env``
-used to inherit ``DEV_LLM_BASE_URL``, so the native lanes' health probe (and any
+The second half is the config loader: a lane that declares no base_url_env
+used to inherit DEV_LLM_BASE_URL, so the native lanes' health probe (and any
 rotation retry) pointed at the very backend they exist to be an alternative to.
 """
 
@@ -15,7 +15,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import httpx
 import pytest
+import respx
 from scripts.evals.core.providers import ProviderConfig, health_check, load_config
 
 CONFIG = """
@@ -45,11 +47,11 @@ model_env = "JUDGE_MODEL"
 """
 
 
-def _lane(lane: str, api_key: str | None) -> ProviderConfig:
+def _lane(lane: str, api_key: str | None, base_url: str | None = None) -> ProviderConfig:
     return ProviderConfig(
         name=lane,
         lane=lane,
-        base_url=None,
+        base_url=base_url,
         api_key=api_key,
         model="a-model",
         budget_usd=0.0,
@@ -90,3 +92,36 @@ def test_a_native_lane_does_not_inherit_the_custom_development_endpoint(
 
     assert cfg.providers["opencode"].base_url == "http://localhost:9/api/v1"
     assert cfg.providers["openrouter"].base_url is None
+
+
+@pytest.mark.parametrize(
+    ("status", "reason"),
+    [
+        (200, ""),
+        (400, ""),
+        (401, "custom rejected the API key (401)"),
+        (402, "custom quota exhausted (402)"),
+        (429, "custom quota exhausted (429)"),
+        (499, ""),
+        (500, "custom server error (500)"),
+    ],
+)
+@respx.mock
+def test_the_custom_lane_probe_reads_its_status(status: int, reason: str) -> None:
+    route = respx.post("https://gw.example/v1/chat/completions").mock(
+        return_value=httpx.Response(status)
+    )
+    check = health_check(_lane("custom", "a-key", "https://gw.example/v1/"))
+
+    assert (check.ok, check.reason) == (not reason, reason)
+    assert route.calls.last.request.headers["Authorization"] == "Bearer a-key"
+
+
+@respx.mock
+def test_an_unreachable_custom_lane_is_not_healthy() -> None:
+    respx.post("https://gw.example/v1/chat/completions").mock(
+        side_effect=httpx.ConnectError("refused")
+    )
+    check = health_check(_lane("custom", "a-key", "https://gw.example/v1"))
+
+    assert (check.ok, check.reason) == (False, "custom unreachable: refused")

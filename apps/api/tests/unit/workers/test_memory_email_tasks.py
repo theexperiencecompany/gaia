@@ -207,8 +207,7 @@ class TestProcessGmailEmailsToMemory:
     # ------------------------------------------------------------------
 
     async def test_already_processed_key_missing_defaults_false(self, ctx):
-        """When already_processed is absent, .get() returns False and we
-        proceed to the count-based branch."""
+        """A missing already_processed key defaults False via .get(), taking the count-based branch."""
         with patch(
             "app.workers.tasks.memory_email_tasks.process_gmail_to_memory",
             new_callable=AsyncMock,

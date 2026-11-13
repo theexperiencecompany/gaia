@@ -1,6 +1,6 @@
 """Device connect-token minting/verification and refresh-credential hashing.
 
-The daemon presents a short-lived JWT (``aud=device-bridge``) on the WebSocket
+The daemon presents a short-lived JWT (aud=device-bridge) on the WebSocket
 upgrade. It obtains that JWT by exchanging a long-lived refresh credential, which
 rotates on every exchange. We store only the SHA-256 of the refresh credential.
 """
@@ -9,7 +9,8 @@ from datetime import UTC, datetime, timedelta
 import hashlib
 import secrets
 
-from jose import JWTError, jwt
+import jwt
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.config.settings import settings
 from app.constants.auth import JWT_ALGORITHM
@@ -34,7 +35,7 @@ def generate_refresh_token() -> str:
 
 
 def create_device_token(device_id: str, user_id: str) -> tuple[str, int]:
-    """Mint a short-lived device connect JWT. Returns ``(token, expires_in_seconds)``."""
+    """Mint a short-lived device connect JWT. Returns (token, expires_in_seconds)."""
     expires_in = DEVICE_TOKEN_EXPIRY_MINUTES * 60
     now = datetime.now(UTC)
     payload = {
@@ -49,25 +50,33 @@ def create_device_token(device_id: str, user_id: str) -> tuple[str, int]:
     return token, expires_in
 
 
+class _DeviceTokenPayload(BaseModel):
+    """The raw claims of a device connect JWT."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    sub: str | None = None
+    role: str | None = None
+    device_id: str | None = None
+
+
 def verify_device_token(token: str) -> DeviceTokenClaims | None:
-    """Verify a device connect JWT. Returns ``{user_id, device_id}`` or ``None``.
+    """Verify a device connect JWT. Returns {user_id, device_id} or None.
 
     The audience check is what stops a chat agent-token or any other HS256 token
     signed with the same secret from authenticating as a device.
     """
     try:
-        payload = jwt.decode(
-            token,
-            _SECRET,
-            algorithms=[JWT_ALGORITHM],
-            audience=DEVICE_TOKEN_AUDIENCE,
+        payload = _DeviceTokenPayload.model_validate(
+            jwt.decode(
+                token,
+                _SECRET,
+                algorithms=[JWT_ALGORITHM],
+                audience=DEVICE_TOKEN_AUDIENCE,
+            )
         )
-    except JWTError:
+    except (jwt.PyJWTError, ValidationError):
         return None
-    if payload.get("role") != "device":
+    if payload.role != "device" or not payload.sub or not payload.device_id:
         return None
-    user_id = payload.get("sub")
-    device_id = payload.get("device_id")
-    if not user_id or not device_id:
-        return None
-    return DeviceTokenClaims(user_id=str(user_id), device_id=str(device_id))
+    return DeviceTokenClaims(user_id=payload.sub, device_id=payload.device_id)

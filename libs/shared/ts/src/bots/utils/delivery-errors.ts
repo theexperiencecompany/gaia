@@ -47,8 +47,8 @@ export function isMessageGoneError(error: unknown): boolean {
 }
 
 /**
- * How long to wait before retrying a rate-limited edit, or `null` when the
- * failure was not a rate limit. Reads the platform's own `retry_after`
+ * How long to wait before retrying a rate-limited platform call (an edit, a
+ * send), or `null` when the failure was not a rate limit. Reads the platform's own `retry_after`
  * (seconds) when it gave one.
  */
 export function retryAfterMs(error: unknown): number | null {

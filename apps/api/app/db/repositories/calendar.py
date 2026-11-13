@@ -1,6 +1,6 @@
-"""Repository for the ``calendar`` collection — per-user calendar preferences.
+"""Repository for the calendar collection — per-user calendar preferences.
 
-Global, keyed by ``user_id`` (one preferences doc per user). Stores the ids of
+Global, keyed by user_id (one preferences doc per user). Stores the ids of
 the calendars a user has selected to surface in the app.
 """
 
@@ -23,9 +23,7 @@ class CalendarRepository(MongoRepository[CalendarPreferencesDocument, CalendarPr
         return await self._find_one({"user_id": user_id})
 
     async def set_selected_calendars(self, user_id: str, selected_calendars: list[str]) -> bool:
-        """Upsert the user's selected-calendar ids. Returns whether anything
-        changed — ``False`` when the stored selection already equals the given
-        one (mirrors the pre-repository ``modified_count``/``upserted_id`` check)."""
+        """Upsert the user's selected-calendar ids; False when the stored selection is unchanged."""
         existing = await self._find_one({"user_id": user_id})
         if existing is not None and existing.selected_calendars == selected_calendars:
             return False

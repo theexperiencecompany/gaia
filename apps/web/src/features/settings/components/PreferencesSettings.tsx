@@ -6,9 +6,13 @@ import {
   SelectItem,
   type SharedSelection,
 } from "@heroui/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authApi } from "@/features/auth/api/authApi";
-import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
+import {
+  patchCurrentUser,
+  useCurrentUser,
+} from "@/features/auth/hooks/useCurrentUser";
 import { CustomResponseStyleInput } from "@/features/settings/components/CustomResponseStyleInput";
 import { HilApprovalMode } from "@/features/settings/components/HilApprovalMode";
 import { StatusIndicator } from "@/features/settings/components/StatusIndicator";
@@ -180,13 +184,11 @@ export default function PreferencesSettings({
 }: {
   setModalAction: React.Dispatch<React.SetStateAction<ModalAction | null>>;
 }) {
-  const user = useUser();
-  const { updateUser } = useUserActions();
+  const user = useCurrentUser();
+  const queryClient = useQueryClient();
   const [isUpdating, setIsUpdating] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // custom_instructions is owned by Settings > Custom Instructions and saved
-  // independently, so it's deliberately not part of this surface's payload.
   const [preferences, setPreferences] = useState<PreferenceValues>({
     profession: user.onboarding?.preferences?.profession || "",
     response_style: user.onboarding?.preferences?.response_style || "",
@@ -203,14 +205,14 @@ export default function PreferencesSettings({
         const response = await authApi.updateUserTimezone(timezone || "");
         if (response.success) {
           // Update user state with new timezone
-          updateUser({ timezone: timezone || undefined });
+          patchCurrentUser(queryClient, { timezone: timezone || undefined });
         }
       } catch (error) {
         console.error("Error updating timezone:", error);
         throw error;
       }
     },
-    [updateUser],
+    [queryClient],
   );
 
   const updatePreferences = useCallback(
@@ -221,16 +223,15 @@ export default function PreferencesSettings({
 
         const { timezone, profession, response_style } = updatedPreferences;
 
-        // PATCH only the fields this surface owns. Empty strings are sent as-is
-        // and normalized to "cleared" server-side; the backend merges these in
-        // without disturbing custom_instructions (owned by another surface).
+        // Empty strings are sent as-is and normalized to "cleared" server-side.
         const response = await authApi.updateOnboardingPreferences({
           profession,
           response_style,
         });
 
         if (response.success) {
-          updateUser(
+          patchCurrentUser(
+            queryClient,
             mergedOnboardingUpdate(user.onboarding, {
               profession: profession || undefined,
               response_style: response_style || undefined,
@@ -260,7 +261,7 @@ export default function PreferencesSettings({
         setIsUpdating(false);
       }
     },
-    [updateTimezone, updateUser, user.onboarding],
+    [updateTimezone, queryClient, user.onboarding],
   );
 
   // Debounced update function

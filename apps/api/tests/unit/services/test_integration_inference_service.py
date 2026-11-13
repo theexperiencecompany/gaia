@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.models.integration_models import StoredIntegrationTool
 from app.models.oauth_models import IntegrationContent
 from app.services.integrations.integration_inference_service import (
     _is_complete,
@@ -33,7 +34,7 @@ def _complete_content() -> IntegrationContent:
 @pytest.fixture
 def mock_llm():
     with (
-        patch(f"{_MOD}.get_helper_llm", return_value=SimpleNamespace()) as m_llm,
+        patch(f"{_MOD}.resolve_model", return_value=SimpleNamespace()) as m_llm,
         patch(f"{_MOD}.ainvoke_llm", new_callable=AsyncMock) as m_invoke,
         patch(f"{_MOD}.ainvoke_structured", new_callable=AsyncMock) as m_structured,
     ):
@@ -42,12 +43,14 @@ def mock_llm():
 
 class TestToolsSummary:
     def test_joins_first_n_names(self):
-        tools = [{"name": "a"}, {"name": "b"}, {"name": "c"}, {"name": "d"}]
+        tools = [StoredIntegrationTool(name=n) for n in ("a", "b", "c", "d")]
 
         assert _tools_summary(tools, 2) == "a, b"
 
     def test_skips_nameless_tools(self):
-        assert _tools_summary([{"name": "a"}, {"description": "x"}], 5) == "a"
+        tools = [StoredIntegrationTool(name="a"), StoredIntegrationTool(name="", description="x")]
+
+        assert _tools_summary(tools, 5) == "a"
 
     def test_none_when_empty(self):
         assert _tools_summary([], 5) == "None"
@@ -72,7 +75,11 @@ class TestInferIntegrationCategory:
         mock_llm.invoke.return_value = SimpleNamespace(text="Productivity")
 
         category = await infer_integration_category(
-            "My Tool", "desc", [{"name": "a"}], "https://x.example"
+            "My Tool",
+            "desc",
+            [StoredIntegrationTool(name="a")],
+            "https://x.example",
+            user_id="u1",
         )
 
         assert category == "productivity"
@@ -83,19 +90,25 @@ class TestInferIntegrationCategory:
         # The label becomes ``agent_name`` on the llm_call wide event, which is
         # how this lane's auxiliary COGS is split from the other one-shots.
         assert mock_llm.invoke.await_args.kwargs["label"] == "integration_category"
+        assert mock_llm.invoke.await_args.kwargs["config"]["configurable"]["user_id"] == "u1"
 
     async def test_unrecognized_category_falls_back_to_other(self, mock_llm):
         mock_llm.invoke.return_value = SimpleNamespace(text="flying-spaghetti")
 
         assert (
-            await infer_integration_category("My Tool", "desc", [], "https://x.example") == "other"
+            await infer_integration_category(
+                "My Tool", "desc", [], "https://x.example", user_id="u1"
+            )
+            == "other"
         )
 
     async def test_case_insensitive_match(self, mock_llm):
         mock_llm.invoke.return_value = SimpleNamespace(text="  Developer  ")
 
         assert (
-            await infer_integration_category("My Tool", "desc", [], "https://x.example")
+            await infer_integration_category(
+                "My Tool", "desc", [], "https://x.example", user_id="u1"
+            )
             == "developer"
         )
 
@@ -103,14 +116,20 @@ class TestInferIntegrationCategory:
         mock_llm.invoke.side_effect = RuntimeError("llm down")
 
         assert (
-            await infer_integration_category("My Tool", "desc", [], "https://x.example") == "other"
+            await infer_integration_category(
+                "My Tool", "desc", [], "https://x.example", user_id="u1"
+            )
+            == "other"
         )
 
     async def test_timeout_falls_back_to_other(self, mock_llm):
         mock_llm.invoke.side_effect = TimeoutError()
 
         assert (
-            await infer_integration_category("My Tool", "desc", [], "https://x.example") == "other"
+            await infer_integration_category(
+                "My Tool", "desc", [], "https://x.example", user_id="u1"
+            )
+            == "other"
         )
 
 
@@ -122,7 +141,7 @@ class TestInferIntegrationContent:
         result = await infer_integration_content(
             "My Tool",
             "desc",
-            [{"name": "a"}],
+            [StoredIntegrationTool(name="a")],
             "https://x.example",
             "productivity",
             user_id="u-1",

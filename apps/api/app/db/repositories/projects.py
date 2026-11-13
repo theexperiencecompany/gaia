@@ -14,11 +14,11 @@ class ProjectsRepository(UserScopedRepository[ProjectDocument, ProjectUpdate]):
     cache_policy = CachePolicy(prefix=PROJECT_CACHE_PREFIX)
 
     async def get_default_inbox(self, user_id: str) -> ProjectDocument | None:
-        """The user's default Inbox project, or ``None`` if not created yet."""
+        """Return the user's default Inbox project, or None if not created yet."""
         return await self._find_one({"user_id": user_id, "is_default": True})
 
     async def delete_all_for_user(self, user_id: str) -> int:
-        """Delete every project owned by ``user_id`` (dev-data reset); returns the count."""
+        """Delete every project owned by user_id (dev-data reset); returns the count."""
         return await self._delete_many({"user_id": user_id}, scope=user_id)
 
     async def get_or_create_inbox(self, user_id: str) -> ProjectDocument:
@@ -40,11 +40,9 @@ class ProjectsRepository(UserScopedRepository[ProjectDocument, ProjectUpdate]):
     async def list_with_counts(self, *, user_id: str) -> list[ProjectWithCount]:
         """All of a user's projects, newest first, each with its todo count.
 
-        The ``todo_count`` derives from the todos collection, so it is eventually
-        consistent: this query cache is orphaned by *project* writes, not by todo
-        writes, so a count can lag a todo move by at most ``REPO_QUERY_TTL`` (or
-        until the next project mutation). The count is a secondary display value;
-        the authoritative list of todos never comes from here.
+        todo_count is eventually consistent: this query cache is orphaned by
+        *project* writes, not todo writes, so a count can lag a todo move by up
+        to REPO_QUERY_TTL. The authoritative list of todos never comes from here.
         """
         pipeline: list[dict[str, object]] = [
             {"$match": {"user_id": user_id}},

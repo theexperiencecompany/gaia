@@ -17,22 +17,17 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, "node_modules"),
 ];
 
-// 3. Add aliases:
-//    - @shared  → libs/shared  (monorepo shared library)
-//    - @/assets → apps/mobile/assets  (project assets folder)
-//      NOTE: Metro does not read tsconfig paths, so the @/assets alias that
-//      TypeScript resolves must be explicitly mirrored here. Without this,
-//      require("@/assets/...") would fall through to the @/* → ./src/* rule
-//      and fail because ./src/assets/ does not exist.
+// Aliases mirror tsconfig paths (Metro doesn't read them): @shared → libs/shared,
+// @/assets → apps/mobile/assets — without this require("@/assets/...") falls
+// through to the @/* → ./src/* rule and fails (./src/assets/ doesn't exist).
 config.resolver.extraNodeModules = {
   "@shared": path.resolve(workspaceRoot, "libs/shared"),
   "@/assets": path.resolve(projectRoot, "assets"),
   // Mirror the web alias pattern, but point @icons to the RN-safe wrapper.
   "@icons": path.resolve(projectRoot, "src/lib/gaia-icons.tsx"),
-  // Resolve to the TS source rather than the package entry. The workspace
-  // symlink exists under the isolated linker, but this keeps sub-path imports
-  // like @gaia/shared/icons resolving to src/icons/index.ts without relying on
-  // Metro's package-exports resolution.
+  // Resolves to TS source (not the package entry) so sub-path imports like
+  // @gaia/shared/icons resolve to src/icons/index.ts without relying on Metro's
+  // package-exports resolution (the workspace symlink still exists under the isolated linker).
   "@gaia/shared": path.resolve(workspaceRoot, "libs/shared/ts/src"),
 };
 

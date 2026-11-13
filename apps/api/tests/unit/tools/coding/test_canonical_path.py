@@ -24,10 +24,8 @@ from app.agents.workspace.paths import WORKSPACE_ROOT, session_dir
     ],
 )
 def test_paths_escaping_workspace_are_rejected(escape: str) -> None:
-    # The rejection message deliberately does NOT echo the path back — tool
-    # errors reach the LLM, and the path may carry host-side internals.
-    # Anchored: the exact message is LLM-facing contract, not an implementation
-    # detail — a mutated message still has to fail this test.
+    # No echo: tool errors reach the LLM and the path may carry host-side internals.
+    # The exact message is an LLM-facing contract, asserted verbatim.
     with pytest.raises(ValueError, match=r"^path must stay inside /workspace$"):
         canonical_path(escape, session_id="c1")
 
@@ -39,11 +37,9 @@ def test_rejection_message_does_not_echo_the_path() -> None:
 
 
 def test_containment_is_workspace_wide_not_session_scoped() -> None:
-    # BY DESIGN, the gate enforces /workspace, NOT the session: the sandbox is
-    # per-USER, and a user reaches their own cross-session dirs (user-uploaded/,
-    # pinned/, .system/, other conversations) — the same access bash cwd already
-    # has. So `..` resolving up to /workspace/sessions is valid, not a leak.
-    # This test exists so that behavior isn't later "fixed" as a vulnerability.
+    # BY DESIGN: the gate enforces /workspace, not the session — the sandbox is
+    # per-user, so `..` resolving up to /workspace/sessions is valid, not a leak.
+    # Guards against this later being "fixed" as a vulnerability.
     up, _, _ = canonical_path("..", session_id="c1")
     assert up == "/workspace/sessions"
     other, _, conv = canonical_path("../other/scratch/x", session_id="c1")

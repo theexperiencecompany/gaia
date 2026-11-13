@@ -1,7 +1,7 @@
 """Checking a run's claim that an integration was missing, before acting on it.
 
 The rest of this module derives requirements from a workflow's declared steps.
-``confirm_disconnected`` is the one function whose input comes from a run instead
+confirm_disconnected is the one function whose input comes from a run instead
 — and a run is a model, so its claim is the thing under test here.
 """
 
@@ -30,8 +30,7 @@ class TestConfirmDisconnected:
         assert [c.args for c in by_id.call_args_list] == [("gmail",), ("github",)]
 
     async def test_it_drops_an_integration_gaia_does_not_have(self) -> None:
-        """A hallucinated id must not pause anything: there is nothing for the
-        user to go and connect."""
+        """A hallucinated id must not pause anything: there is nothing for the user to go and connect."""
         with (
             patch(STATUS_TARGET, AsyncMock(return_value={})),
             patch(f"{MODULE}.get_integration_by_id", return_value=None),

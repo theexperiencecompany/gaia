@@ -1,9 +1,11 @@
 """Unit tests for app.memory.chroma_store — per-conversation chunk deletion.
 
-The Chroma collection is mocked at the ``_get_collection`` seam; the id-prefix
+The Chroma collection is mocked at the _get_collection seam; the id-prefix
 selection logic under test is real.
 """
 
+import asyncio
+import threading
 from unittest.mock import AsyncMock, patch
 
 from chromadb.errors import ChromaError
@@ -55,11 +57,11 @@ class TestDeleteConversationChunks:
 class _RacyChromaServer:
     """A shared Chroma server where a concurrent creator won the race.
 
-    ``list_collections`` returns a stale (empty) snapshot while the collection
+    list_collections returns a stale (empty) snapshot while the collection
     is in fact already registered, so the old check-then-create path calls
-    ``create_collection`` and the server rejects it as a duplicate — exactly
-    the ``Collection [...] already exists`` teardown failure seen under xdist.
-    ``get_or_create_collection`` reads the real state and returns it.
+    create_collection and the server rejects it as a duplicate — exactly
+    the Collection [...] already exists teardown failure seen under xdist.
+    get_or_create_collection reads the real state and returns it.
     """
 
     def __init__(self, existing: dict[str, AsyncMock]) -> None:
@@ -91,8 +93,7 @@ class TestGetCollectionConcurrentCreate:
         existing = AsyncMock()
         server = _RacyChromaServer({name: existing})
         # Drop the per-loop cache so _get_collection actually queries the client.
-        chroma_store._loop_collections.clear()
-        chroma_store._loop_locks.clear()
+        chroma_store._loop_states.clear()
 
         with patch.object(ChromaClient, "get_client", AsyncMock(return_value=server)):
             collection = await chroma_store._get_collection(name)
@@ -101,12 +102,7 @@ class TestGetCollectionConcurrentCreate:
 
 
 class _ConflictingChromaServer:
-    """A server whose get-or-create rejects a differing persisted embedding
-    function, exercising ``_get_collection``'s plain-get fallback.
-
-    ``get_collection`` is keyed by name, so a fallback that drops the name (or
-    returns nothing) fails to resolve the right collection.
-    """
+    """A server whose get-or-create rejects a differing persisted embedding function, exercising the plain-get fallback."""
 
     def __init__(self, by_name: dict[str, AsyncMock]) -> None:
         self._by_name = by_name
@@ -126,10 +122,32 @@ class TestGetCollectionEmbeddingConflictFallback:
         name = CHROMA_CONVERSATION_CHUNKS_COLLECTION
         existing = AsyncMock()
         server = _ConflictingChromaServer({name: existing})
-        chroma_store._loop_collections.clear()
-        chroma_store._loop_locks.clear()
+        chroma_store._loop_states.clear()
 
         with patch.object(ChromaClient, "get_client", AsyncMock(return_value=server)):
             collection = await chroma_store._get_collection(name)
 
         assert collection is existing
+
+
+@pytest.mark.unit
+class TestLoopStateEviction:
+    async def test_a_closed_loops_state_is_dropped_on_next_access(self) -> None:
+        seen: list[int] = []
+
+        def _use_and_close() -> None:
+            async def _main() -> None:
+                seen.append(id(asyncio.get_running_loop()))
+                chroma_store._loop_state()
+
+            asyncio.run(_main())
+
+        thread = threading.Thread(target=_use_and_close)
+        thread.start()
+        thread.join()
+        (loop_id,) = seen
+        assert loop_id in chroma_store._loop_states
+        collections, lock = chroma_store._loop_state()
+        assert chroma_store._loop_state()[0] is collections
+        assert chroma_store._loop_state()[1] is lock
+        assert loop_id not in chroma_store._loop_states

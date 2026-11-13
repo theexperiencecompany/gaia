@@ -4,7 +4,7 @@ The storage primitives funnel every read and write through the todos
 repository — a write only succeeds when the repository confirms the update
 matched. Branch-only primitives (atomic append, compare-and-set, the
 activity/log pair and the empty-body embedding delete) live in
-``test_canvas_storage_atomic.py``: the regression-proof lane overlays this
+test_canvas_storage_atomic.py: the regression-proof lane overlays this
 branch's tests onto the base revision, so this module must import only what the
 base also exports.
 """
@@ -41,7 +41,7 @@ def _todo_doc(**overrides: object) -> TodoDocument:
         "updated_at": datetime.now(UTC),
     }
     data.update(overrides)
-    return TodoDocument(**data)
+    return TodoDocument.model_validate(data)
 
 
 @pytest.fixture
@@ -111,11 +111,6 @@ class TestBuildVfsLabel:
 
     def test_label_never_contains_user_id(self) -> None:
         assert USER_ID not in build_vfs_label(TODO_ID)
-
-    def test_archive_label_format(self) -> None:
-        assert build_vfs_label(TODO_ID, archived=True) == (
-            f"/workspace/gaia-tasks/archive/{TODO_ID}"
-        )
 
 
 class TestReadCanvas:

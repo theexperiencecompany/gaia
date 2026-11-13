@@ -1,0 +1,226 @@
+From 1b21215d5d4b5c63dc308443da4eca5ce80fb5ba Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 05:58:57 +0530
+Subject: [PATCH] fix(cdp): a page's Page events reach every session attached
+ to it that enabled Page
+
+Page events went only to the session whose command caused them, so a second
+client watching a tab (a live view next to the agent driving it) never saw
+the frameNavigated, lifecycle or load events of navigations the other session
+drove, and had to poll for them. Chrome sends a page's Page events to every
+session of that page with the domain enabled. Sessions that call Page.enable
+are tracked (Page.disable, detach and page close forget them), and the events
+leaving the connection are fanned out to them, except screencast frames,
+which belong to each screencast's own ack loop.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-cdp/src/dispatch.rs       | 87 ++++++++++++++++++++++++
+ crates/obscura-cdp/src/domains/page.rs   |  9 +++
+ crates/obscura-cdp/src/domains/target.rs |  1 +
+ crates/obscura-cdp/src/server.rs         |  6 +-
+ 4 files changed, 100 insertions(+), 3 deletions(-)
+
+diff --git a/crates/obscura-cdp/src/dispatch.rs b/crates/obscura-cdp/src/dispatch.rs
+index b57b755..78c47de 100644
+--- a/crates/obscura-cdp/src/dispatch.rs
++++ b/crates/obscura-cdp/src/dispatch.rs
+@@ -91,6 +91,9 @@ pub struct CdpContext {
+     /// Sessions that called Runtime.enable. Console and exception events are
+     /// page-scoped but only delivered to these subscribers.
+     pub runtime_enabled_sessions: HashSet<String>,
++    /// Sessions that called Page.enable. A page's Page events reach every one
++    /// of them attached to it, not only the session whose command caused them.
++    pub page_enabled_sessions: HashSet<String>,
+     // Legacy direct-embedder configuration. Protocol-created worlds live only
+     // in `page_isolated_worlds`, so this vector does not grow with page churn.
+     pub isolated_worlds: Vec<String>,
+@@ -197,6 +200,7 @@ impl CdpContext {
+             binding_sessions: HashMap::new(),
+             opened_windows: HashMap::new(),
+             runtime_enabled_sessions: HashSet::new(),
++            page_enabled_sessions: HashSet::new(),
+             preload_counter: 0,
+             fetch_intercept: FetchInterceptState::new(),
+             intercept_tx: None,
+@@ -317,6 +321,42 @@ impl CdpContext {
+         Ok(page_ids)
+     }
+ 
++    /// Take the events to send, with each page-scoped Page event also addressed
++    /// to every other session of its page that enabled Page, as Chrome does: a
++    /// second client watching a tab sees the navigations another one drives.
++    pub(crate) fn take_pending_events(&mut self) -> Vec<CdpEvent> {
++        let events = std::mem::take(&mut self.pending_events);
++        if self.page_enabled_sessions.is_empty() {
++            return events;
++        }
++        let mut out = Vec::with_capacity(events.len());
++        for event in events {
++            let watchers: Vec<String> = match (&event.session_id, is_page_scoped_page_event(&event.method)) {
++                (Some(origin), true) => match self.sessions.get(origin) {
++                    Some(page_id) => self
++                        .page_enabled_sessions
++                        .iter()
++                        .filter(|session| *session != origin && self.sessions.get(*session) == Some(page_id))
++                        .cloned()
++                        .collect(),
++                    None => Vec::new(),
++                },
++                _ => Vec::new(),
++            };
++            let copies: Vec<CdpEvent> = watchers
++                .into_iter()
++                .map(|session| CdpEvent {
++                    method: event.method.clone(),
++                    params: event.params.clone(),
++                    session_id: Some(session),
++                })
++                .collect();
++            out.push(event);
++            out.extend(copies);
++        }
++        out
++    }
++
+     pub fn get_page(&self, id: &str) -> Option<&Page> {
+         self.pages.iter().find(|p| p.id == id)
+     }
+@@ -355,6 +395,7 @@ impl CdpContext {
+         }
+         for session_id in &removed_sessions {
+             self.runtime_enabled_sessions.remove(session_id);
++            self.page_enabled_sessions.remove(session_id);
+         }
+         if let Some(context_ids) = self.page_contexts.remove(id) {
+             for context_id in context_ids {
+@@ -665,6 +706,15 @@ mod context_ownership_tests {
+ 
+ }
+ 
++/// Whether a Page event belongs to the page rather than to the session that
++/// asked for it. Screencast frames are per session: each screencast has its own
++/// frame acks.
++fn is_page_scoped_page_event(method: &str) -> bool {
++    method.starts_with("Page.")
++        && method != "Page.screencastFrame"
++        && method != "Page.screencastVisibilityChanged"
++}
++
+ /// Whether a CDP method can be served WITHOUT acquiring the per-connection V8 lock.
+ ///
+ /// Methods listed here were audited to confirm they do not transitively
+@@ -1203,6 +1253,43 @@ mod tests {
+         }
+     }
+ 
++    #[tokio::test]
++    async fn page_events_reach_every_session_of_the_page_that_enabled_page() {
++        let mut ctx = CdpContext::new();
++        let page = ctx.create_page();
++        let other_page = ctx.create_page();
++        for (session, owner) in [("driver", &page), ("viewer", &page), ("quiet", &page), ("elsewhere", &other_page)] {
++            ctx.sessions.insert(session.into(), owner.clone());
++        }
++        for session in ["viewer", "elsewhere"] {
++            let enable = CdpRequest { session_id: Some(session.into()), ..req("Page.enable") };
++            assert!(dispatch(&enable, &mut ctx).await.error.is_none());
++        }
++        ctx.pending_events.clear();
++        for method in ["Page.frameNavigated", "Page.screencastFrame", "Network.requestWillBeSent"] {
++            ctx.pending_events.push(CdpEvent { method: method.into(), params: json!({}), session_id: Some("driver".into()) });
++        }
++
++        let sent: Vec<(String, String)> = ctx
++            .take_pending_events()
++            .into_iter()
++            .map(|event| (event.method, event.session_id.unwrap()))
++            .collect();
++
++        let expected = [
++            ("Page.frameNavigated", "driver"),
++            ("Page.frameNavigated", "viewer"),
++            ("Page.screencastFrame", "driver"),
++            ("Network.requestWillBeSent", "driver"),
++        ];
++        assert_eq!(sent, expected.map(|(m, s)| (m.to_string(), s.to_string())));
++
++        let disable = CdpRequest { session_id: Some("viewer".into()), ..req("Page.disable") };
++        assert!(dispatch(&disable, &mut ctx).await.error.is_none());
++        ctx.pending_events.push(CdpEvent { method: "Page.loadEventFired".into(), params: json!({}), session_id: Some("driver".into()) });
++        assert_eq!(ctx.take_pending_events().len(), 1);
++    }
++
+     #[tokio::test]
+     async fn audits_enable_returns_empty_success() {
+         let mut ctx = CdpContext::new();
+diff --git a/crates/obscura-cdp/src/domains/page.rs b/crates/obscura-cdp/src/domains/page.rs
+index 9f8f497..07c3ab2 100644
+--- a/crates/obscura-cdp/src/domains/page.rs
++++ b/crates/obscura-cdp/src/domains/page.rs
+@@ -1398,6 +1398,9 @@ pub async fn handle(
+ ) -> Result<Value, String> {
+     match method {
+         "enable" => {
++            if let Some(session) = session_id {
++                ctx.page_enabled_sessions.insert(session.clone());
++            }
+             // Chrome loads a new target's initial about:blank right after
+             // createTarget, so by the time a client attaches and calls
+             // Page.enable the page has already produced its load events.
+@@ -1516,6 +1519,12 @@ pub async fn handle(
+ 
+             Ok(json!({ "executionContextId": context.id }))
+         }
++        "disable" => {
++            if let Some(session) = session_id {
++                ctx.page_enabled_sessions.remove(session);
++            }
++            Ok(json!({}))
++        }
+         "setLifecycleEventsEnabled" => Ok(json!({})),
+         // Scoped to the target of the session that adds it, as in Chrome: a
+         // script one tab registers does not run in another. runImmediately
+diff --git a/crates/obscura-cdp/src/domains/target.rs b/crates/obscura-cdp/src/domains/target.rs
+index 334666d..59b1d1f 100644
+--- a/crates/obscura-cdp/src/domains/target.rs
++++ b/crates/obscura-cdp/src/domains/target.rs
+@@ -226,6 +226,7 @@ pub async fn handle(
+                 let page_id = ctx.sessions.get(session_id).cloned();
+                 ctx.sessions.remove(session_id);
+                 ctx.runtime_enabled_sessions.remove(session_id);
++                ctx.page_enabled_sessions.remove(session_id);
+                 if let Some(page_id) = page_id {
+                     ctx.refresh_runtime_event_collection(&page_id);
+                 }
+diff --git a/crates/obscura-cdp/src/server.rs b/crates/obscura-cdp/src/server.rs
+index 0429d32..ff8d562 100644
+--- a/crates/obscura-cdp/src/server.rs
++++ b/crates/obscura-cdp/src/server.rs
+@@ -1374,7 +1374,7 @@ fn forward_pending_events(
+     let Some(reply_tx) = reply_tx else {
+         return;
+     };
+-    for event in ctx.pending_events.drain(..) {
++    for event in ctx.take_pending_events() {
+         if let Ok(json) = serde_json::to_string(&event) {
+             let _ = reply_tx.send(json);
+         }
+@@ -1774,7 +1774,7 @@ fn send_navigate_response(
+ }
+ 
+ fn forward_events(ctx: &mut CdpContext, reply_tx: &mpsc::UnboundedSender<String>) {
+-    for event in ctx.pending_events.drain(..) {
++    for event in ctx.take_pending_events() {
+         if let Ok(json) = serde_json::to_string(&event) {
+             let _ = reply_tx.send(json);
+         }
+@@ -1806,7 +1806,7 @@ async fn process_cdp_message(
+     // Playwright awaits the response and immediately reads state wired up
+     // by those events; if the response lands first, accessing
+     // Target._page errors with "Cannot read properties of undefined".
+-    for event in ctx.pending_events.drain(..) {
++    for event in ctx.take_pending_events() {
+         if let Ok(json) = serde_json::to_string(&event) {
+             let _ = reply_tx.send(json);
+         }

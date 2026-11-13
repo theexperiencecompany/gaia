@@ -1,4 +1,4 @@
-"""The ``<playbook_check>`` gate and where the block is delivered.
+"""The <playbook_check> gate and where the block is delivered.
 
 It exists to ask one question once: is this run worth freezing? So it must be
 absent whenever the answer is already known (a playbook that replayed cleanly,
@@ -6,9 +6,9 @@ or one not yet tried) and present when it is not (no playbook, or one whose
 last replay failed).
 
 Where it is delivered is load-bearing too, and is pinned here: it rides in the
-executor's brief, because ``write_playbook`` is an executor tool and comms —
+executor's brief, because write_playbook is an executor tool and comms —
 which narrates the finished result — binds only call_executor/cancel_executor/
-memory and is built with ``disable_retrieve_tools=True``. Delivered at
+memory and is built with disable_retrieve_tools=True. Delivered at
 narration time it would ask the narrator for a tool it cannot reach.
 """
 
@@ -28,15 +28,15 @@ from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE,
 )
 from app.agents.tools.playbook_tools import write_playbook
-from app.constants.agents import PLAYBOOK_CHECK_TAG, PLAYBOOK_DECLINE_LIMIT
+from app.constants.agents import PLAYBOOK_CHECK_TAG
 from app.constants.log_tags import LogTag
+from app.db.repositories.workflows import workflow_repository
 from app.models.playbook_models import (
     DeclineKind,
-    HandoffStep,
+    ForEachStep,
     PlaybookDocument,
     PlaybookRunOutcome,
     PlaybookRunStatus,
-    PlaybookStepInput,
     ToolStep,
 )
 from app.models.workflow_execution_models import RecordedCall
@@ -47,33 +47,12 @@ from app.services.workflow.playbook.check import (
     heal_brief,
     playbook_check_brief,
 )
+from app.services.workflow.playbook.record import PlaybookPick
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 
 MODULE = "app.services.workflow.playbook.check"
 USER_ID = "user-1"
 WORKFLOW_ID = "wf-1"
-
-
-def _workflow(*, declines: int = 0, declined_hash: str | None = None) -> WorkflowDocument:
-    return WorkflowDocument(
-        id=WORKFLOW_ID,
-        user_id=USER_ID,
-        title="Daily agenda",
-        prompt="Mail the agenda",
-        steps=[],
-        trigger_config=TriggerConfig(type=TriggerType.SCHEDULE, enabled=True),
-        playbook_declines=declines,
-        playbook_declined_hash=declined_hash,
-    )
-
-
-@pytest.fixture(autouse=True)
-def _workflow_lookup():
-    """The workflow read behind the decline gate; a fresh workflow by default."""
-    with patch(
-        f"{MODULE}.workflow_repository.get_for_user", AsyncMock(return_value=_workflow())
-    ) as lookup:
-        yield lookup
 
 
 def _playbook(status: PlaybookRunStatus, reason: str | None = None) -> PlaybookDocument:
@@ -102,11 +81,7 @@ async def test_asks_when_the_workflow_has_no_playbook():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status", [PlaybookRunStatus.FAILED, PlaybookRunStatus.SUSPECT])
 async def test_asks_to_heal_when_the_last_replay_did_not_hold(status: PlaybookRunStatus):
-    """A broken playbook is healed, not re-decided from scratch.
-
-    The agent gets the recorded reason and is told to read the stored sequence,
-    so it fixes the step that went wrong instead of rediscovering everything.
-    """
+    """A broken playbook is healed, not re-decided from scratch; the agent gets the recorded reason and reads the stored sequence."""
     reason = "step events (list_events) returned no items"
     playbook = _playbook(status, reason)
     with patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=playbook)):
@@ -121,8 +96,7 @@ async def test_asks_to_heal_when_the_last_replay_did_not_hold(status: PlaybookRu
 
 @pytest.mark.asyncio
 async def test_the_heal_brief_says_whether_the_replay_stopped_or_was_not_trusted():
-    """Same loop, different diagnosis: a stop points at a call that broke, a
-    suspect result at a call that answered with the wrong thing."""
+    """Same loop, different diagnosis: a stop points at a call that broke, a suspect result at one that answered wrong."""
     with patch(
         f"{MODULE}.playbook_repository.get_for_workflow",
         AsyncMock(return_value=_playbook(PlaybookRunStatus.FAILED, "boom")),
@@ -168,13 +142,7 @@ async def test_a_lookup_failure_costs_the_check_not_the_run():
 
 @pytest.mark.asyncio
 async def test_a_swallowed_lookup_failure_is_still_reported():
-    """The one swallow in this path must stay visible in the wide event.
-
-    Returning "" on a lookup failure is deliberate, but a silent swallow would
-    make a permanently broken playbooks collection look exactly like a workflow
-    that simply never qualified — the check would stop happening and nothing
-    anywhere would say why.
-    """
+    """Returning "" on a lookup failure is deliberate, but a silent swallow would make it indistinguishable from a workflow that never qualified."""
     with (
         patch(
             f"{MODULE}.playbook_repository.get_for_workflow",
@@ -194,11 +162,11 @@ async def test_a_swallowed_lookup_failure_is_still_reported():
 
 
 def _recording_lookup(calls: list, result):
-    """A repository read with the REAL two-positional signature.
+    """Read the repository with the REAL two-positional signature.
 
-    ``AsyncMock`` accepts any arguments, so a call that loses ``user_id`` or
+    AsyncMock accepts any arguments, so a call that loses user_id or
     passes it in the wrong slot reads exactly like a correct one. Spelling the
-    signature out makes a dropped argument a ``TypeError`` and records the rest.
+    signature out makes a dropped argument a TypeError and records the rest.
     """
 
     async def lookup(workflow_id: str, user_id: str):
@@ -210,9 +178,10 @@ def _recording_lookup(calls: list, result):
 
 @pytest.mark.asyncio
 class TestTheLookupsAreScopedToTheOwner:
-    """Both reads are owned reads: the workflow id and the user id, in that
-    order. Swapping or dropping one turns the check into a cross-tenant read (or
-    a swallowed ``TypeError``, which reads as "this workflow never qualified")."""
+    """Both reads are owned: the workflow id and the user id, in that order.
+
+    Swapping or dropping one turns the check into a cross-tenant read, or a swallowed TypeError read as "never qualified".
+    """
 
     async def test_the_playbook_is_read_for_this_workflow_and_this_user(self):
         calls: list = []
@@ -224,84 +193,31 @@ class TestTheLookupsAreScopedToTheOwner:
         assert calls == [(WORKFLOW_ID, USER_ID)]
         assert brief == PLAYBOOK_CHECK_BRIEF
 
-    async def test_the_workflow_behind_the_decline_gate_is_read_for_the_same_pair(self):
-        calls: list = []
-        with (
-            patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)),
-            patch(
-                f"{MODULE}.workflow_repository.get_for_user",
-                new=_recording_lookup(calls, _workflow()),
-            ),
-        ):
-            brief = await playbook_check_brief(WORKFLOW_ID, USER_ID)
 
-        assert calls == [(WORKFLOW_ID, USER_ID)]
-        assert brief == PLAYBOOK_CHECK_BRIEF
-
-
+@pytest.mark.regression
 @pytest.mark.asyncio
-class TestDeclinesAreRemembered:
-    """Declining used to persist nothing, so a workflow whose order genuinely
-    varies was asked the ~600-token question on every fire, forever."""
+async def test_a_workflow_is_asked_on_every_run_until_it_has_a_playbook():
+    """Regression: three declines used to retire a workflow for good (316 of them by 2026-09-30)."""
+    prompt = "Mail the agenda"
+    declined_thrice = WorkflowDocument.model_validate(
+        {
+            "id": WORKFLOW_ID,
+            "user_id": USER_ID,
+            "title": "Daily agenda",
+            "prompt": prompt,
+            "steps": [],
+            "trigger_config": TriggerConfig(type=TriggerType.SCHEDULE, enabled=True),
+            "playbook_declines": 3,
+            "playbook_declined_hash": workflow_hash(prompt, []),
+        }
+    )
+    with (
+        patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)),
+        patch.object(workflow_repository, "get_for_user", AsyncMock(return_value=declined_thrice)),
+    ):
+        briefs = [await playbook_check_brief(WORKFLOW_ID, USER_ID) for _ in range(5)]
 
-    def _hash(self) -> str:
-        workflow = _workflow()
-        return workflow_hash(workflow.prompt, workflow.steps)
-
-    async def test_stays_silent_after_the_limit_on_the_same_workflow(self, _workflow_lookup):
-        _workflow_lookup.return_value = _workflow(
-            declines=PLAYBOOK_DECLINE_LIMIT, declined_hash=self._hash()
-        )
-        with patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)):
-            assert await playbook_check_brief(WORKFLOW_ID, USER_ID) == ""
-
-    async def test_the_skipped_check_says_why_and_how_many_declines(self, _workflow_lookup):
-        """A check that stops happening has to be readable in the wide event.
-
-        Without the namespace a workflow that hit the decline limit is
-        indistinguishable from one that never qualified, and the decline count
-        is the only thing that says how close it got.
-        """
-        _workflow_lookup.return_value = _workflow(
-            declines=PLAYBOOK_DECLINE_LIMIT, declined_hash=self._hash()
-        )
-        with (
-            patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)),
-            patch(f"{MODULE}.log.set_ns") as set_ns,
-        ):
-            assert await playbook_check_brief(WORKFLOW_ID, USER_ID) == ""
-
-        set_ns.assert_called_once_with(
-            "playbook", check_skipped="declined", declines=PLAYBOOK_DECLINE_LIMIT
-        )
-
-    async def test_keeps_asking_below_the_limit(self, _workflow_lookup):
-        _workflow_lookup.return_value = _workflow(
-            declines=PLAYBOOK_DECLINE_LIMIT - 1, declined_hash=self._hash()
-        )
-        with patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)):
-            assert await playbook_check_brief(WORKFLOW_ID, USER_ID) == PLAYBOOK_CHECK_BRIEF
-
-    async def test_asks_again_once_the_workflow_is_edited(self, _workflow_lookup):
-        """The declines were about a different workflow; an edit changes the hash."""
-        _workflow_lookup.return_value = _workflow(
-            declines=PLAYBOOK_DECLINE_LIMIT, declined_hash="hash-of-the-workflow-before-the-edit"
-        )
-        with patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)):
-            assert await playbook_check_brief(WORKFLOW_ID, USER_ID) == PLAYBOOK_CHECK_BRIEF
-
-    async def test_a_stored_playbook_never_consults_the_declines(self, _workflow_lookup):
-        _workflow_lookup.return_value = _workflow(
-            declines=PLAYBOOK_DECLINE_LIMIT, declined_hash=self._hash()
-        )
-        with patch(
-            f"{MODULE}.playbook_repository.get_for_workflow",
-            AsyncMock(return_value=_playbook(PlaybookRunStatus.FAILED, "boom")),
-        ):
-            brief = await playbook_check_brief(WORKFLOW_ID, USER_ID)
-
-        assert "boom" in brief
-        _workflow_lookup.assert_not_awaited()
+    assert briefs == [PLAYBOOK_CHECK_BRIEF] * 5
 
 
 FALLBACK_NOTE = (
@@ -319,7 +235,7 @@ FALLBACK_NOTE = (
 class TestSameFireFallbackBrief:
     """A replay that stops partway is finished by the agent in the same fire.
 
-    ``call_executor`` then saw FAILED and injected the heal brief ("do the work
+    call_executor then saw FAILED and injected the heal brief ("do the work
     properly yourself") while the "these steps ALREADY RAN" note only reached
     comms. The executor read one without the other and repeated side effects.
     """
@@ -371,7 +287,7 @@ class TestHealBriefRendering:
 
     Every slot in it is model-facing text: the verdict, the recorded reason and
     the already-ran block. A substring check passes on a brief that renders
-    ``None`` into a slot or leaves a filler token behind, and the executor is
+    None into a slot or leaves a filler token behind, and the executor is
     the only one who would notice.
     """
 
@@ -426,12 +342,9 @@ def test_the_check_names_both_decision_tools_so_the_executor_can_act():
 
 
 def test_the_check_asks_whether_every_frozen_call_actually_returned_the_data():
-    # Regression: a playbook froze a call that came back empty, because the
-    # agent had reasoned around the gap and the sequence still "worked". The
-    # last question makes an empty, errored or partial result a reason to fix
-    # the args or decline, and the decision rule has to read against it. The
-    # numbering moved when the old ask question was dropped, so the rule and the
-    # question it names have to be re-pinned together.
+    # Regression: a frozen call that came back empty, errored, or partial was
+    # not caught. The numbering moved when the old ask question was dropped, so
+    # the rule and question are re-pinned together.
     assert "5." in PLAYBOOK_CHECK_BRIEF
     assert "these five" in PLAYBOOK_CHECK_BRIEF
     assert "came back empty, with an error, or partial" in PLAYBOOK_CHECK_BRIEF
@@ -443,11 +356,7 @@ def test_the_check_asks_whether_every_frozen_call_actually_returned_the_data():
 
 
 def test_the_narration_is_told_the_result_is_final_text_written_once():
-    """Seen on a live replay: the narration wrote a draft, then "hmm, the brief
-    is strict about exactly 3 bullets. Let me redo:", then the rewrite — all
-    inside the ``result`` field, which is delivered to the user verbatim. The
-    structured output cannot separate a draft from the answer, so the prompt
-    has to forbid the draft. If this fails, that self-talk ships again."""
+    """Seen on a live replay: the narration drafted then rewrote inline in the result field; structured output can't separate a draft from the answer."""
     rendered = PLAYBOOK_NARRATION_PROMPT.format(
         description="d", completed="c", asks="none", result_brief="three bullets"
     )
@@ -457,30 +366,22 @@ def test_the_narration_is_told_the_result_is_final_text_written_once():
 
 
 def test_the_check_teaches_the_inline_ask_slot_and_no_ask_section():
-    """The slot is only reachable if the placeholder question names it.
-
-    An ask used to be a top-level table, and five of the eight ever written in
-    production were referenced by no step at all — declared, filled by a model
-    call, thrown away. If this fails, the brief is either teaching the dead
-    section again or has stopped teaching the slot, and the model has nowhere to
-    put a value it genuinely cannot freeze.
-    """
+    """An ask used to be a top-level table; 5 of the 8 ever written in production were referenced by no step and thrown away."""
     assert '{"$ask":' in PLAYBOOK_CHECK_BRIEF
     assert "cannot be frozen or built from" in PLAYBOOK_CHECK_BRIEF
     assert "synthesize" not in PLAYBOOK_CHECK_BRIEF
     assert "ask entry" not in PLAYBOOK_CHECK_BRIEF
 
 
-def test_the_check_shows_a_literal_example_of_the_shape_it_asks_for():
-    """Prose about the shape is what the schema already says; the example is
-    what shows a handoff carrying its child, a slot sitting inside an argument,
-    and the result_brief at the end. If it goes missing the model is back to
-    inferring the layout from a sentence, which is how the 63% rejection rate
-    happened."""
-    assert "result_brief:" in PLAYBOOK_CHECK_BRIEF
-    assert "GMAIL_FETCH_MESSAGES" in PLAYBOOK_CHECK_BRIEF
-    assert "handoff: gmail" in PLAYBOOK_CHECK_BRIEF
-    assert "tool: web_search_tool" in PLAYBOOK_CHECK_BRIEF
+def test_the_check_shows_a_record_and_the_write_picked_from_it():
+    """The example is a record as read_run_record shows it and the picks made over it, not steps to retype."""
+    assert (
+        '"call": "GMAIL_FETCH_MESSAGES#1", "tool": "GMAIL_FETCH_MESSAGES"' in PLAYBOOK_CHECK_BRIEF
+    )
+    assert '"call": "web_search_tool#1",' in PLAYBOOK_CHECK_BRIEF
+    assert '"vary"' in PLAYBOOK_CHECK_BRIEF
+    assert '"result_brief"' in PLAYBOOK_CHECK_BRIEF
+    assert "Call read_run_record" in PLAYBOOK_CHECK_BRIEF
 
 
 def test_the_heal_brief_names_the_tools_the_executor_needs():
@@ -498,10 +399,9 @@ def test_the_heal_brief_names_the_tools_the_executor_needs():
 
 
 def test_the_heal_brief_makes_the_agent_probe_before_accepting_an_empty_result():
-    # A heal run that re-ran the frozen call, got nothing again, and rewrote
-    # the same sequence proved nothing: the call may simply be asking the
-    # wrong question. Emptiness has to be established more broadly than the
-    # frozen call before the same sequence is written back.
+    # A heal run that re-ran the frozen call and got nothing again proved
+    # nothing: emptiness must be established more broadly than the frozen call
+    # before the same sequence is rewritten.
     assert "probing more broadly than the frozen call" in PLAYBOOK_HEAL_BRIEF
     assert "a longer window, the filter dropped" in PLAYBOOK_HEAL_BRIEF
     assert "Put what you checked in the reason" in PLAYBOOK_HEAL_BRIEF
@@ -519,51 +419,36 @@ def test_the_heal_brief_demands_a_decision_even_when_no_more_calls_are_needed():
         assert "—" not in text
 
 
-def test_the_check_points_at_the_handoff_result_for_a_handoffs_nested_steps():
-    # A handoff step must carry the calls its subagent ran, and the only place
-    # the executor can copy them from is the handoff's own result record.
-    assert "record of the calls" in PLAYBOOK_CHECK_BRIEF
-    assert "nested steps" in PLAYBOOK_CHECK_BRIEF
+def test_the_check_says_nothing_is_retyped():
+    # 88% of refused hand-written writes were a call retyped wrong (prod, Sep-Oct 2026).
+    assert "You never retype a tool name or an argument" in PLAYBOOK_CHECK_BRIEF
 
 
-def test_the_tools_own_schema_carries_the_step_shape():
-    """The binding, not the prompt, is what teaches the model the shape.
-
-    Regression: the playbook arrived as one opaque YAML string, so the bound
-    schema said only "argument 2 is a string" and a live run invented a `goal`
-    field three times running. The structure has to be in the schema, and a key
-    that is not in it has to be refused.
-    """
+def test_the_tools_own_schema_carries_the_pick_shape():
+    """Regression: an opaque YAML string schema ("argument 2 is a string") let a live run invent a goal field three times running."""
     schema = write_playbook.tool_call_schema.model_json_schema()
 
     assert {"description", "steps", "result_brief"} == set(schema["properties"])
     # The workflow is resolved from the run's config server-side. Exposing it as
     # an argument is what let a live run hallucinate "inbox-triage" as an id.
     assert "workflow_id" not in schema["properties"]
-    step = schema["$defs"][PlaybookStepInput.__name__]
-    assert {"id", "tool", "args", "handoff", "steps"} <= set(step["properties"])
+    step = schema["$defs"][PlaybookPick.__name__]
+    assert set(step["properties"]) == {"call", "id", "vary", "for_each", "max_items"}
+    assert step["required"] == ["call"]
+    assert step["properties"]["call"]["type"] == "string"
 
-    child_name = step["properties"]["steps"]["items"]["$ref"].rsplit("/", 1)[-1]
-    child = schema["$defs"][child_name]
-    assert {"id", "tool", "args"} <= set(child["properties"])
-    # Depth-1 by construction: the child cannot carry steps, so the schema has
-    # no self-$ref for a provider to mishandle.
-    assert "steps" not in child["properties"]
-
-    # A key the schema never asked for is dropped, not refused: the shape rule
-    # is the only thing worth failing a write over.
-    step_input = PlaybookStepInput.model_validate(
-        {"id": "agenda", "tool": "list_events", "goal": "read the events"}
-    )
-    assert not hasattr(step_input, "goal")
-    with pytest.raises(ValidationError, match="exactly one of"):
-        PlaybookStepInput.model_validate({"id": "agenda", "goal": "read the events"})
+    # A key the schema never asked for is dropped, not refused.
+    pick = PlaybookPick.model_validate({"call": "list_events#1", "goal": "read the events"})
+    assert not hasattr(pick, "goal")
+    with pytest.raises(ValidationError, match="call"):
+        PlaybookPick.model_validate({"id": "agenda", "goal": "read the events"})
 
 
 class TestBriefsCarryTheDecisionTag:
-    """The executor graph recognises a briefed run by ``PLAYBOOK_CHECK_TAG`` on
-    the task turn. A brief that stops opening with it silently switches the
-    finish-gate off for every run it briefs."""
+    """A briefed run is recognised by PLAYBOOK_CHECK_TAG on the task turn.
+
+    A brief that stops opening with it silently switches the finish-gate off for every run it briefs.
+    """
 
     @pytest.mark.parametrize("brief", [PLAYBOOK_CHECK_BRIEF, PLAYBOOK_HEAL_BRIEF])
     def test_every_brief_opens_with_the_tag(self, brief: str) -> None:
@@ -580,15 +465,8 @@ WRITTEN = '{"success": true, "data": {"playbook_id": "pb_1", "steps": 1}}'
 REFUSED = "Error: ValidationError: 1 validation error for write_playbook"
 
 
-def _frozen(*tools: str, handoff: str | None = None) -> PlaybookDocument:
-    if handoff:
-        steps = [
-            HandoffStep(
-                id="h", handoff=handoff, steps=[ToolStep(id=t, tool=t, args={}) for t in tools]
-            )
-        ]
-    else:
-        steps = [ToolStep(id=t, tool=t, args={}) for t in tools]
+def _frozen(*tools: str) -> PlaybookDocument:
+    steps: list[ToolStep | ForEachStep] = [ToolStep(id=t, tool=t, args={}) for t in tools]
     return PlaybookDocument(
         playbook_id="pb_1",
         workflow_id=WORKFLOW_ID,
@@ -603,10 +481,10 @@ def _frozen(*tools: str, handoff: str | None = None) -> PlaybookDocument:
 
 
 class TestFrozenOnEmpty:
-    """Seen live: an authoring run froze a fetch that had returned no items, and
-    the replay's empty-vs-previous check could never fire because the previous
-    run was that same empty one. The run that writes a playbook is the one
-    place the emptiness is provable, deterministically."""
+    """Seen live: an authoring run froze a fetch that had returned no items, and the replay's empty-vs-previous check could never fire.
+
+    The run that writes a playbook is the one place the emptiness is provable, deterministically.
+    """
 
     def test_a_frozen_call_that_returned_no_items_is_named(self) -> None:
         reason = frozen_on_empty(
@@ -626,18 +504,10 @@ class TestFrozenOnEmpty:
         assert frozen_on_empty(_frozen("get_weather"), [_call("get_weather", "Sunny, 24C")]) is None
 
     def test_the_last_attempt_is_the_one_that_counts(self) -> None:
-        """A first attempt that came back empty and a retry that found items is
-        the discovery the check brief tells the model to leave out."""
+        """A first attempt that came back empty and a retry that found items is the discovery the check brief tells the model to leave out."""
         trace = [_call("GMAIL_FETCH_MESSAGES", EMPTY), _call("GMAIL_FETCH_MESSAGES", FULL)]
 
         assert frozen_on_empty(_frozen("GMAIL_FETCH_MESSAGES"), trace) is None
-
-    def test_handoff_children_are_inspected(self) -> None:
-        reason = frozen_on_empty(
-            _frozen("GMAIL_FETCH_MESSAGES", handoff="gmail"), [_call("GMAIL_FETCH_MESSAGES", EMPTY)]
-        )
-
-        assert reason is not None
 
     def test_a_frozen_tool_the_run_never_called_is_left_alone(self) -> None:
         assert (
@@ -675,9 +545,7 @@ class TestDistrustFreshPlaybook:
         record.assert_not_awaited()
 
     async def test_a_playbook_frozen_on_an_empty_result_is_recorded_suspect(self) -> None:
-        playbook = _frozen("GMAIL_FETCH_MESSAGES", handoff="gmail").model_copy(
-            update={"revision": 3}
-        )
+        playbook = _frozen("GMAIL_FETCH_MESSAGES").model_copy(update={"revision": 3})
         with (
             patch(
                 f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=playbook)
@@ -737,8 +605,7 @@ class TestDistrustFreshPlaybook:
         )
 
     async def test_a_playbook_that_vanished_before_the_audit_is_left_alone(self) -> None:
-        """The write landed but the read came back empty (deleted, or another
-        writer got there first). There is nothing to mark suspect."""
+        """The write landed but the read came back empty (deleted, or another writer got there first); nothing to mark suspect."""
         with (
             patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)),
             patch(f"{MODULE}.playbook_repository.record_run_outcome", AsyncMock()) as record,
@@ -753,10 +620,7 @@ class TestDistrustFreshPlaybook:
         record.assert_not_awaited()
 
     async def test_a_playbook_that_has_already_been_replayed_is_not_re_audited(self) -> None:
-        """Only a never-replayed playbook is fresh. A stored verdict belongs to
-        the replay that earned it, and overwriting it with SUSPECT from an old
-        trace would send a working playbook back to the agent.
-        """
+        """Only a never-replayed playbook is fresh; overwriting a stored verdict with SUSPECT from an old trace would send a working playbook back."""
         playbook = _frozen("GMAIL_FETCH_MESSAGES").model_copy(
             update={"last_run_status": PlaybookRunStatus.SUCCESS}
         )
@@ -776,10 +640,7 @@ class TestDistrustFreshPlaybook:
         record.assert_not_awaited()
 
     async def test_the_distrust_is_reported_with_the_playbook_and_the_reason(self) -> None:
-        """Marking a just-written playbook suspect flips the next fire from
-        replay to heal. Unreported, that looks like the agent simply decided to
-        re-author, with nothing anywhere naming the empty call that caused it.
-        """
+        """Marking a just-written playbook suspect flips the next fire from replay to heal; unreported, it looks like the agent decided to re-author."""
         with (
             patch(
                 f"{MODULE}.playbook_repository.get_for_workflow",
@@ -822,11 +683,7 @@ class TestDistrustFreshPlaybook:
 
 
 def test_the_check_brief_makes_the_agent_write_the_sequence_before_judging():
-    """The false declines this closes all had the same shape: the agent judged
-    from memory of the run, saw that the arguments had differed, and called that
-    a changing sequence. Writing the placeholder list first means the variation
-    is already handled by the time question 4 is asked.
-    """
+    """The false declines this closes all had the same shape: the agent judged from memory and called differing arguments a changing sequence."""
     write_step = PLAYBOOK_CHECK_BRIEF.index("WRITE THE SEQUENCE OUT")
     judge_step = PLAYBOOK_CHECK_BRIEF.index("Now look at the list from question 2")
     assert write_step < judge_step, "the list has to be written before it is judged"
@@ -838,8 +695,7 @@ def test_the_check_brief_makes_the_agent_write_the_sequence_before_judging():
 
 
 def test_the_check_brief_names_every_decline_kind_the_tool_accepts():
-    """A kind the brief does not mention is one the agent will not reach for, and
-    the blocked_* kinds are the ones that stop a workflow burning a run a day."""
+    """A kind the brief does not mention is one the agent will not reach for; the blocked_* kinds stop a workflow burning a run a day."""
     for kind in DeclineKind:
         assert kind.value in PLAYBOOK_CHECK_BRIEF, f"{kind.value} is unreachable from the brief"
     assert "branch_on naming the ONE call" in PLAYBOOK_CHECK_BRIEF
@@ -847,12 +703,7 @@ def test_the_check_brief_names_every_decline_kind_the_tool_accepts():
 
 
 def test_a_write_tools_own_record_is_not_an_empty_result() -> None:
-    """The prod bug: create_todo answers with the todo it just made, whose
-    ``labels`` is [] when the caller passed none. largest_list_len looks past
-    the top level, so that read as "returned no items" and marked the playbook
-    suspect. Four of the eight suspects in production were this, and each cost a
-    full agentic heal run.
-    """
+    """Prod bug: create_todo's empty labels=[] read as "returned no items"; 4 of 8 production suspects were this, each costing a full heal run."""
     playbook = _frozen("create_todo")
     record = '{"successful": true, "data": {"todo": {"labels": [], "title": "Buy milk"}}}'
 
@@ -860,10 +711,7 @@ def test_a_write_tools_own_record_is_not_an_empty_result() -> None:
 
 
 def test_a_fetch_that_found_nothing_is_still_suspect() -> None:
-    """The check must keep firing where it matters, including the commonest
-    shape of all: a fetch whose result only the narration reads. An earlier fix
-    scoped this to steps another step referenced, which let exactly that shape
-    through."""
+    """An earlier fix scoped this check to steps another step referenced, which let a fetch whose result only the narration reads through."""
     playbook = _frozen("GMAIL_FETCH_MESSAGES")
     nothing = '{"successful": true, "data": {"messages": []}}'
 

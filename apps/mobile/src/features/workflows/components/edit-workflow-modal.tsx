@@ -1,6 +1,6 @@
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Image as ExpoImage } from "expo-image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef } from "react";
 import { ActivityIndicator, Pressable, TextInput, View } from "react-native";
 import { AppIcon, Clock04Icon, PlayIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -21,7 +21,7 @@ import {
 } from "./schedule-builder";
 import { type TriggerMode, TriggerModeTabs } from "./trigger-mode-tabs";
 import {
-  type TriggerOption,
+  type TriggerPickerOption,
   TriggerPickerSheet,
   type TriggerPickerSheetRef,
 } from "./trigger-picker-sheet";
@@ -80,6 +80,73 @@ function scheduleConfigFromCron(cron: string | undefined): ScheduleConfig {
   return { preset: "custom", customCron: cron };
 }
 
+interface EditFormState {
+  title: string;
+  description: string;
+  prompt: string;
+  steps: WorkflowStep[];
+  mode: TriggerMode;
+  scheduleConfig: ScheduleConfig;
+  selectedTrigger: TriggerPickerOption | null;
+  triggerConfig: TriggerConfig | null;
+}
+
+const EMPTY_FORM: EditFormState = {
+  title: "",
+  description: "",
+  prompt: "",
+  steps: [],
+  mode: "manual",
+  scheduleConfig: DEFAULT_SCHEDULE_CONFIG,
+  selectedTrigger: null,
+  triggerConfig: null,
+};
+
+type EditFormAction =
+  | { type: "seed"; form: EditFormState }
+  | { type: "set"; patch: Partial<EditFormState> };
+
+function editFormReducer(
+  state: EditFormState,
+  action: EditFormAction,
+): EditFormState {
+  switch (action.type) {
+    case "seed":
+      return action.form;
+    case "set":
+      return { ...state, ...action.patch };
+  }
+}
+
+/** The form as a loaded workflow fills it. */
+function formFromWorkflow(workflow: Workflow): EditFormState {
+  const triggerType = workflow.trigger_config?.type;
+  const isIntegrationTrigger =
+    !!triggerType && triggerType !== "manual" && triggerType !== "schedule";
+  return {
+    title: workflow.title,
+    description: workflow.description ?? "",
+    prompt: workflow.prompt ?? "",
+    steps: workflow.steps ?? [],
+    mode: modeFromTriggerType(triggerType),
+    scheduleConfig: scheduleConfigFromCron(
+      workflow.trigger_config?.cron_expression ?? undefined,
+    ),
+    selectedTrigger: isIntegrationTrigger
+      ? deriveSelectedTrigger(
+          workflow.trigger_config as unknown as RawTriggerConfig,
+        )
+      : null,
+    triggerConfig: isIntegrationTrigger
+      ? {
+          ...(workflow.trigger_config as unknown as TriggerConfig),
+          type: triggerType,
+          enabled: workflow.activated,
+        }
+      : null,
+  };
+}
+
 function modeFromTriggerType(type: string | undefined): TriggerMode {
   if (!type || type === "manual") return "manual";
   if (type === "schedule" || type === "scheduled") return "schedule";
@@ -96,7 +163,7 @@ interface RawTriggerConfig {
 
 function deriveSelectedTrigger(
   raw: RawTriggerConfig | undefined,
-): TriggerOption | null {
+): TriggerPickerOption | null {
   if (!raw) return null;
   const slug = raw.trigger_slug ?? raw.trigger_name;
   if (!slug) return null;
@@ -117,52 +184,24 @@ export function EditWorkflowModal({
 }: EditWorkflowModalProps) {
   const { spacing, fontSize, moderateScale } = useResponsive();
   const { updateWorkflow, isUpdating, actionError } = useWorkflowActions();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const [steps, setSteps] = useState<WorkflowStep[]>([]);
-  const [mode, setMode] = useState<TriggerMode>("manual");
-  const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>(
-    DEFAULT_SCHEDULE_CONFIG,
-  );
-  const [selectedTrigger, setSelectedTrigger] = useState<TriggerOption | null>(
-    null,
-  );
-  const [triggerConfig, setTriggerConfig] = useState<TriggerConfig | null>(
-    null,
-  );
+  const [form, dispatch] = useReducer(editFormReducer, EMPTY_FORM);
+  const {
+    title,
+    description,
+    prompt,
+    steps,
+    mode,
+    scheduleConfig,
+    selectedTrigger,
+    triggerConfig,
+  } = form;
+  const set = (patch: Partial<EditFormState>) =>
+    dispatch({ type: "set", patch });
   const triggerPickerRef = useRef<TriggerPickerSheetRef>(null);
 
   // Seed fields whenever a different workflow is loaded
   useEffect(() => {
-    if (workflow) {
-      setTitle(workflow.title);
-      setDescription(workflow.description ?? "");
-      setPrompt(workflow.prompt ?? "");
-      setSteps(workflow.steps ?? []);
-      const triggerType = workflow.trigger_config?.type;
-      setMode(modeFromTriggerType(triggerType));
-      setScheduleConfig(
-        scheduleConfigFromCron(workflow.trigger_config?.cron_expression),
-      );
-      if (
-        triggerType &&
-        triggerType !== "manual" &&
-        triggerType !== "schedule" &&
-        triggerType !== "scheduled"
-      ) {
-        const raw = workflow.trigger_config as unknown as RawTriggerConfig;
-        setSelectedTrigger(deriveSelectedTrigger(raw));
-        setTriggerConfig({
-          ...(workflow.trigger_config as unknown as TriggerConfig),
-          type: triggerType,
-          enabled: workflow.activated,
-        });
-      } else {
-        setSelectedTrigger(null);
-        setTriggerConfig(null);
-      }
-    }
+    if (workflow) dispatch({ type: "seed", form: formFromWorkflow(workflow) });
   }, [workflow]);
 
   const buildTriggerConfig = (): UpdateWorkflowPayload["trigger_config"] => {
@@ -270,7 +309,7 @@ export function EditWorkflowModal({
                 placeholder="Workflow title"
                 placeholderTextColor="#555"
                 value={title}
-                onChangeText={setTitle}
+                onChangeText={(value) => set({ title: value })}
                 maxLength={100}
               />
             </View>
@@ -292,7 +331,7 @@ export function EditWorkflowModal({
                 placeholder="What does this workflow do?"
                 placeholderTextColor="#555"
                 value={description}
-                onChangeText={setDescription}
+                onChangeText={(value) => set({ description: value })}
                 multiline
                 numberOfLines={3}
                 maxLength={300}
@@ -311,19 +350,25 @@ export function EditWorkflowModal({
                 placeholder="Instructions for GAIA..."
                 placeholderTextColor="#555"
                 value={prompt}
-                onChangeText={setPrompt}
+                onChangeText={(value) => set({ prompt: value })}
                 multiline
                 maxLength={5000}
               />
             </View>
 
-            <WorkflowStepsEditor steps={steps} onChange={setSteps} />
+            <WorkflowStepsEditor
+              steps={steps}
+              onChange={(value) => set({ steps: value })}
+            />
 
             <View style={{ gap: spacing.sm }}>
               <Text style={{ fontSize: fontSize.xs, color: "#8a9099" }}>
                 Trigger
               </Text>
-              <TriggerModeTabs value={mode} onChange={setMode} />
+              <TriggerModeTabs
+                value={mode}
+                onChange={(value) => set({ mode: value })}
+              />
 
               {mode === "manual" ? (
                 <ManualPanel />
@@ -337,7 +382,7 @@ export function EditWorkflowModal({
                 >
                   <ScheduleBuilder
                     value={scheduleConfig}
-                    onChange={setScheduleConfig}
+                    onChange={(value) => set({ scheduleConfig: value })}
                   />
                 </View>
               ) : (
@@ -420,10 +465,9 @@ export function EditWorkflowModal({
 
       <TriggerPickerSheet
         ref={triggerPickerRef}
-        onSelect={setSelectedTrigger}
+        onSelect={(trigger) => set({ selectedTrigger: trigger })}
         onSaveConfig={(trigger, config) => {
-          setSelectedTrigger(trigger);
-          setTriggerConfig(config);
+          set({ selectedTrigger: trigger, triggerConfig: config });
         }}
       />
     </BottomSheet>
@@ -480,7 +524,7 @@ function ManualPanel() {
 }
 
 interface TriggerPanelProps {
-  selected: TriggerOption | null;
+  selected: TriggerPickerOption | null;
   onPick: () => void;
 }
 

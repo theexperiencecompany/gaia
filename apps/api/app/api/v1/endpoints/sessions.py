@@ -11,15 +11,16 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.agents.workspace.paths import detect_content_type
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.db.repositories.conversations import conversation_repository
 from app.decorators import tiered_rate_limit
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.schemas.errors import error_responses
+from app.services.analytics_service import capture
+from app.services.conversation_service import require_owned_conversation
 from app.services.storage import (
     ArtifactInfo,
     JuiceFSUnavailable,
@@ -28,26 +29,25 @@ from app.services.storage import (
     pin_session_artifact,
     resolve_session_path,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import SessionArtifactPinned
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/sessions", tags=["Sessions"])
 
 _DOWNLOAD_OCTET = "application/octet-stream"
-# Content types a browser executes script from when navigated to top-level —
-# served with a sandbox CSP so agent-authored artifacts can't run JS on the API
-# origin (which holds the session cookie). Covers HTML and every XML flavour
-# detect_content_type emits.
+# Content types a browser executes script from when navigated to top-level;
+# served with a sandbox CSP so artifacts can't run JS on the API origin
+# (which holds the session cookie). Covers every XML flavour detect_content_type emits.
 _ACTIVE_CONTENT_TYPES = (
     "text/html",
     "image/svg+xml",
     "application/xhtml+xml",
     "application/xml",
 )
-# Known-safe types rendered inline in-app via the served URL (<img>/<iframe
-# src>). Everything else — active content, octet-stream, etc. — is force-
-# downloaded so a direct/shared link can't execute on the API origin. HTML is
-# deliberately absent: its in-app preview fetches the text and renders it in a
-# sandboxed srcDoc iframe, so forcing download here doesn't affect preview.
+# Known-safe types rendered inline via the served URL; everything else is
+# force-downloaded so a direct/shared link can't execute on the API origin.
+# HTML is deliberately absent: its preview renders in a sandboxed srcDoc iframe.
 _SAFE_INLINE_TYPES = (
     "image/png",
     "image/jpeg",
@@ -58,6 +58,8 @@ _SAFE_INLINE_TYPES = (
 
 
 class PinRequest(BaseModel):
+    """An artifact to copy into the user's pinned workspace folder."""
+
     path: str = Field(..., description="Path relative to the session's artifacts/")
     target_name: str | None = Field(
         default=None, description="Optional filename for the pinned copy"
@@ -65,16 +67,9 @@ class PinRequest(BaseModel):
 
 
 class PinResponse(BaseModel):
+    """Where the pinned copy now lives."""
+
     pinned_path: str = Field(..., description="/workspace/... path of the pinned copy")
-
-
-async def _assert_owns(user_id: str, conv_id: str) -> None:
-    """403 unless (user_id, conv_id) is a conversation owned by this user."""
-    if not await conversation_repository.exists(conv_id, user_id=user_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Conversation not found or not owned by this user",
-        )
 
 
 def _serve(host_path: Path, *, is_artifact: bool, filename: str) -> FileResponse:
@@ -90,10 +85,9 @@ def _serve(host_path: Path, *, is_artifact: bool, filename: str) -> FileResponse
     if content_type in _ACTIVE_CONTENT_TYPES:
         # Agent-generated HTML/SVG/XML is untrusted — neuter scripts/same-origin.
         headers["Content-Security-Policy"] = "sandbox"
-    # Force download for anything not a known-safe inline type so a direct/shared
-    # artifact link can't execute JS on the API origin. FileResponse's filename=
-    # emits an RFC-encoded `Content-Disposition: attachment`, so an agent-chosen
-    # name with quotes or CR/LF can't inject or break the header.
+    # Force download for anything not a known-safe inline type so a shared link
+    # can't execute JS on the API origin. filename= emits an RFC-encoded
+    # Content-Disposition, so a quoted/CR-LF filename can't inject the header.
     force_download = content_type not in _SAFE_INLINE_TYPES
     return FileResponse(
         path=str(host_path),
@@ -125,9 +119,10 @@ async def _resolve_file(
 async def list_session_artifacts(
     conv_id: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
 ) -> list[ArtifactInfo]:
-    user_id = user["user_id"]
+    """List the files the agent produced in this conversation's workspace."""
+    user_id = user.user_id
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "list_artifacts"})
-    await _assert_owns(user_id, conv_id)
+    await require_owned_conversation(conv_id, user_id)
     try:
         items = await list_artifacts(user_id, conv_id)
     except JuiceFSUnavailable as e:
@@ -141,19 +136,23 @@ async def list_session_artifacts(
 
 @router.get(
     "/{conv_id}/artifacts/{path:path}",
-    responses={
-        400: {"description": "Invalid path"},
-        404: {"description": "File not found"},
-        503: {"description": "Workspace storage offline"},
-    },
+    response_class=FileResponse,
+    responses=error_responses(
+        {
+            400: "Invalid path",
+            404: "File not found",
+            503: "Workspace storage offline",
+        }
+    ),
 )
 @tiered_rate_limit("session_files")
 async def get_artifact_file(
     conv_id: str, path: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
 ) -> FileResponse:
-    user_id = user["user_id"]
+    """Serve one agent-produced file from this conversation's workspace."""
+    user_id = user.user_id
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "get_artifact"})
-    await _assert_owns(user_id, conv_id)
+    await require_owned_conversation(conv_id, user_id)
     host_path = await _resolve_file(user_id, conv_id, "artifacts", path)
     return _serve(host_path, is_artifact=True, filename=path.rsplit("/", 1)[-1])
 
@@ -163,9 +162,10 @@ async def get_artifact_file(
 async def list_uploads(
     conv_id: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
 ) -> list[ArtifactInfo]:
-    user_id = user["user_id"]
+    """List the files the user attached in this conversation."""
+    user_id = user.user_id
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "list_uploads"})
-    await _assert_owns(user_id, conv_id)
+    await require_owned_conversation(conv_id, user_id)
     try:
         items = await list_user_uploaded(user_id, conv_id)
     except JuiceFSUnavailable as e:
@@ -179,19 +179,23 @@ async def list_uploads(
 
 @router.get(
     "/{conv_id}/uploads/{path:path}",
-    responses={
-        400: {"description": "Invalid path"},
-        404: {"description": "File not found"},
-        503: {"description": "Workspace storage offline"},
-    },
+    response_class=FileResponse,
+    responses=error_responses(
+        {
+            400: "Invalid path",
+            404: "File not found",
+            503: "Workspace storage offline",
+        }
+    ),
 )
 @tiered_rate_limit("session_files")
 async def get_upload_file(
     conv_id: str, path: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
 ) -> FileResponse:
-    user_id = user["user_id"]
+    """Serve one file the user attached in this conversation."""
+    user_id = user.user_id
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "get_upload"})
-    await _assert_owns(user_id, conv_id)
+    await require_owned_conversation(conv_id, user_id)
     host_path = await _resolve_file(user_id, conv_id, "uploaded", path)
     return _serve(host_path, is_artifact=False, filename=path.rsplit("/", 1)[-1])
 
@@ -199,21 +203,24 @@ async def get_upload_file(
 @router.post(
     "/{conv_id}/pin",
     status_code=status.HTTP_201_CREATED,
-    responses={
-        400: {"description": "Invalid path"},
-        404: {"description": "Artifact not found"},
-        503: {"description": "Workspace storage offline"},
-    },
+    responses=error_responses(
+        {
+            400: "Invalid path",
+            404: "Artifact not found",
+            503: "Workspace storage offline",
+        }
+    ),
 )
 @tiered_rate_limit("session_files")
 async def pin_artifact(
     conv_id: str,
     payload: PinRequest,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
-) -> JSONResponse:
-    user_id = user["user_id"]
+) -> PinResponse:
+    """Copy an artifact into the user's pinned folder so it outlives the conversation."""
+    user_id = user.user_id
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "pin"})
-    await _assert_owns(user_id, conv_id)
+    await require_owned_conversation(conv_id, user_id)
     try:
         pinned_path = await pin_session_artifact(
             user_id, conv_id, payload.path, payload.target_name
@@ -224,8 +231,5 @@ async def pin_artifact(
         raise HTTPException(status_code=404, detail="Artifact not found") from e
     except JuiceFSUnavailable as e:
         raise HTTPException(status_code=503, detail="Workspace storage offline") from e
-    capture_context_event(AnalyticsEvents.SESSION_ARTIFACT_PINNED)
-    return JSONResponse(
-        status_code=status.HTTP_201_CREATED,
-        content=PinResponse(pinned_path=pinned_path).model_dump(),
-    )
+    capture(UserId(user_id), SessionArtifactPinned())
+    return PinResponse(pinned_path=pinned_path)

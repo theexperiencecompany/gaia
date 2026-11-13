@@ -1,11 +1,12 @@
-"""Unit tests for the subagent registry (`app.agents.core.subagents.registry`).
+"""Unit tests for the subagent registry (app.agents.core.subagents.registry).
 
-These tests cover `all_subagents()` (OAuth-derived + builtins) and
-`get_subagent_by_id()`. Moved here from `test_subagent_runner.py` after the
-refactor that introduced the `Subagent` dataclass and centralized lookups in
+These tests cover all_subagents() (OAuth-derived + builtins) and
+get_subagent_by_id(). Moved here from test_subagent_runner.py after the
+refactor that introduced the Subagent dataclass and centralized lookups in
 the registry module.
 """
 
+from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,8 +14,10 @@ import pytest
 from app.agents.core.subagents.builtin_subagents import BUILTIN_SUBAGENTS
 from app.agents.core.subagents.registry import (
     _from_oauth,
+    _third_party_name_matchers,
     all_subagents,
     get_subagent_by_id,
+    providers_named_in,
 )
 from app.models.mcp_config import ComposioConfig, MCPConfig, SubAgentConfig
 from app.models.oauth_models import OAuthIntegration
@@ -33,7 +36,6 @@ def _make_subagent_config(
         has_subagent=True,
         agent_name=agent_name,
         tool_space=f"{integration_id}_space",
-        handoff_tool_name=f"call_{integration_id}",
         domain=integration_id,
         capabilities=f"{integration_id} capabilities",
         use_cases=f"{integration_id} use cases",
@@ -49,9 +51,9 @@ def _make_real_oauth_integration(
     provider: str = "github",
     mcp_config: MCPConfig | None = None,
 ) -> OAuthIntegration:
-    """Build a real `OAuthIntegration` instance (not a MagicMock).
+    """Build a real OAuthIntegration instance (not a MagicMock).
 
-    Used in `_from_oauth` and identity-check tests where a real Pydantic
+    Used in _from_oauth and identity-check tests where a real Pydantic
     model is required so attribute access goes through field validation.
     """
     return OAuthIntegration(
@@ -88,7 +90,6 @@ def _make_integration(
             has_subagent=True,
             agent_name=agent_name,
             tool_space=f"{integration_id}_space",
-            handoff_tool_name=f"call_{integration_id}",
             domain=integration_id,
             capabilities=f"{integration_id} capabilities",
             use_cases=f"{integration_id} use cases",
@@ -124,18 +125,37 @@ FAKE_INTEGRATIONS = [
 
 
 def _clear_registry_cache() -> None:
-    """`all_subagents()` is `@functools.cache`d, and so is everything derived
-    from it. Tests that patch OAUTH_INTEGRATIONS or BUILTIN_SUBAGENTS must clear
-    the caches first."""
+    """all_subagents() is @functools.cached; tests patching OAUTH_INTEGRATIONS/BUILTIN_SUBAGENTS must clear it first."""
     all_subagents.cache_clear()
+
+
+@pytest.fixture
+def _fake_provider_registry():
+    """Five composio providers incl. the three common-word ids; clears both caches around the test."""
+    _clear_registry_cache()
+    _third_party_name_matchers.cache_clear()
+    fakes = [
+        _make_integration("trello", "trello", True, "trello_agent"),
+        _make_integration("notion", "notion", True, "notion_agent"),
+        _make_integration("slack", "slack", True, "slack_agent"),
+        _make_integration("linear", "linear", True, "linear_agent"),
+        _make_integration("todoist", "todoist", True, "todoist_agent"),
+    ]
+    with (
+        patch(
+            "app.config.oauth_config.OAUTH_INTEGRATIONS",
+            fakes,
+        ),
+        patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
+    ):
+        yield
+    _clear_registry_cache()
+    _third_party_name_matchers.cache_clear()
 
 
 @pytest.fixture(autouse=True)
 def _restore_real_registry_after_each_test():
-    """Without this, a test that patches OAUTH_INTEGRATIONS/BUILTIN_SUBAGENTS and
-    populates the cache under the patch leaves that fake result cached for the
-    rest of the process — every other test in the suite that calls
-    all_subagents()/get_subagent_by_id() afterward would see the fake data."""
+    """Without this, a patched OAUTH_INTEGRATIONS/BUILTIN_SUBAGENTS test leaves its fake cache for the rest of the process."""
     yield
     _clear_registry_cache()
 
@@ -150,7 +170,7 @@ class TestAllSubagents:
         _clear_registry_cache()
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 FAKE_INTEGRATIONS,
             ),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
@@ -166,7 +186,7 @@ class TestAllSubagents:
     def test_empty_integrations(self):
         _clear_registry_cache()
         with (
-            patch("app.agents.core.subagents.registry.OAUTH_INTEGRATIONS", []),
+            patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
         ):
             assert all_subagents() == ()
@@ -182,7 +202,7 @@ class TestGetSubagentById:
         _clear_registry_cache()
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 FAKE_INTEGRATIONS,
             ),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
@@ -195,7 +215,7 @@ class TestGetSubagentById:
         _clear_registry_cache()
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 FAKE_INTEGRATIONS,
             ),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
@@ -208,7 +228,7 @@ class TestGetSubagentById:
         _clear_registry_cache()
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 FAKE_INTEGRATIONS,
             ),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
@@ -220,7 +240,7 @@ class TestGetSubagentById:
         _clear_registry_cache()
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 FAKE_INTEGRATIONS,
             ),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
@@ -232,7 +252,7 @@ class TestGetSubagentById:
         _clear_registry_cache()
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 FAKE_INTEGRATIONS,
             ),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
@@ -244,7 +264,7 @@ class TestGetSubagentById:
         _clear_registry_cache()
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 FAKE_INTEGRATIONS,
             ),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
@@ -289,9 +309,7 @@ class TestFromOauth:
 
     def test_config_is_same_object_as_integration_subagent_config(self) -> None:
         # Identity check (not equality): the registry MUST pass through the
-        # integration's SubAgentConfig instance unchanged. Re-instantiating it
-        # would be a wasted allocation and make tests that mutate config
-        # behave inconsistently.
+        # integration's SubAgentConfig instance unchanged.
         integ = _make_real_oauth_integration(integration_id="github")
 
         result = _from_oauth(integ)
@@ -321,7 +339,7 @@ class TestAllSubagentsCachingAndOrdering:
 
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [oauth_integ, invalid_integ],
             ),
             patch(
@@ -341,7 +359,7 @@ class TestAllSubagentsCachingAndOrdering:
     def test_result_is_cached_by_identity(self) -> None:
         _clear_registry_cache()
         with (
-            patch("app.agents.core.subagents.registry.OAUTH_INTEGRATIONS", []),
+            patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
         ):
             first = all_subagents()
@@ -350,10 +368,8 @@ class TestAllSubagentsCachingAndOrdering:
         assert first is second
 
     def test_cache_clear_returns_fresh_tuple(self) -> None:
-        # Use both an OAuth-derived AND a builtin entry so the result is
-        # `tuple(...) + (builtin,)` — a freshly allocated tuple each call.
-        # CPython optimizes `() + non_empty_tuple` to return the non-empty
-        # tuple itself, which would break identity-inequality assertions.
+        # CPython optimizes `() + non_empty_tuple` to return the non-empty tuple
+        # itself, so include a builtin entry to keep this a fresh tuple each call.
         builtin = Subagent(
             id="builtin_for_cache_test",
             name="Builtin",
@@ -364,7 +380,7 @@ class TestAllSubagentsCachingAndOrdering:
         _clear_registry_cache()
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [_make_integration("github")],
             ),
             patch(
@@ -391,7 +407,7 @@ class TestGetSubagentByIdExtended:
     def test_finds_real_gaia_builtin(self) -> None:
         _clear_registry_cache()
         # Patch out OAuth integrations but keep the real BUILTIN_SUBAGENTS.
-        with patch("app.agents.core.subagents.registry.OAUTH_INTEGRATIONS", []):
+        with patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []):
             result = get_subagent_by_id("gaia_knowledge_guide")
 
         assert result is not None
@@ -401,7 +417,7 @@ class TestGetSubagentByIdExtended:
 
     def test_finds_real_gaia_builtin_uppercase(self) -> None:
         _clear_registry_cache()
-        with patch("app.agents.core.subagents.registry.OAUTH_INTEGRATIONS", []):
+        with patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []):
             result = get_subagent_by_id("GAIA_KNOWLEDGE_GUIDE")
 
         assert result is not None
@@ -409,7 +425,7 @@ class TestGetSubagentByIdExtended:
 
     def test_finds_real_gaia_builtin_with_whitespace(self) -> None:
         _clear_registry_cache()
-        with patch("app.agents.core.subagents.registry.OAUTH_INTEGRATIONS", []):
+        with patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []):
             result = get_subagent_by_id("  gaia_knowledge_guide  ")
 
         assert result is not None
@@ -418,7 +434,7 @@ class TestGetSubagentByIdExtended:
     def test_unknown_id_returns_none_without_raising(self) -> None:
         _clear_registry_cache()
         with (
-            patch("app.agents.core.subagents.registry.OAUTH_INTEGRATIONS", []),
+            patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
         ):
             assert get_subagent_by_id("does_not_exist") is None
@@ -429,7 +445,7 @@ class TestGetSubagentByIdExtended:
 
         with (
             patch(
-                "app.agents.core.subagents.registry.OAUTH_INTEGRATIONS",
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
                 [oauth_integ],
             ),
             patch("app.agents.core.subagents.registry.BUILTIN_SUBAGENTS", ()),
@@ -443,5 +459,59 @@ class TestGetSubagentByIdExtended:
         # `agent_name` lives in a separate key space — it's the LangGraph
         # provider name, not a lookup key. Looking up by it must return None.
         _clear_registry_cache()
-        with patch("app.agents.core.subagents.registry.OAUTH_INTEGRATIONS", []):
+        with patch("app.config.oauth_config.OAUTH_INTEGRATIONS", []):
             assert get_subagent_by_id("gaia_knowledge_guide_agent") is None
+
+
+# ---------------------------------------------------------------------------
+# providers_named_in — common-word providers need a capitalized mention
+# ---------------------------------------------------------------------------
+
+
+def _named_ids(text: str) -> list[str]:
+    return [sa.id for sa in providers_named_in(text)]
+
+
+class TestProvidersNamedIn:
+    def test_lowercase_verb_phrase_does_not_flag_slack(self, _fake_provider_registry) -> None:
+        assert _named_ids("cut some slack") == []
+
+    def test_lowercase_adjective_does_not_flag_linear(self, _fake_provider_registry) -> None:
+        assert _named_ids("linear progress on the migration") == []
+
+    def test_lowercase_noun_phrase_does_not_flag_notion(self, _fake_provider_registry) -> None:
+        assert _named_ids("the notion that this works") == []
+
+    def test_capitalized_comparative_still_flags(self, _fake_provider_registry) -> None:
+        assert "notion" in _named_ids("migrate Trello cards, unlike Notion")
+
+    def test_capitalized_slack_still_flags(self, _fake_provider_registry) -> None:
+        assert _named_ids("Post it to Slack for the team") == ["slack"]
+
+    def test_allcaps_still_flags(self, _fake_provider_registry) -> None:
+        assert _named_ids("sync my NOTION database") == ["notion"]
+
+    def test_ordinary_provider_still_flags_lowercase(self, _fake_provider_registry) -> None:
+        assert _named_ids("add it to my todoist") == ["todoist"]
+
+    def test_a_skipped_common_word_does_not_hide_a_later_provider(
+        self, _fake_provider_registry
+    ) -> None:
+        assert _named_ids("cut some slack and add it to my todoist") == ["todoist"]
+
+
+class TestInternalSubagentsAreNeverForeignProviders:
+    """Against the real registry, where internal subagents sit between the third-party ones."""
+
+    @pytest.fixture(autouse=True)
+    def _real_matchers(self) -> Iterator[None]:
+        _clear_registry_cache()
+        _third_party_name_matchers.cache_clear()
+        yield
+        _third_party_name_matchers.cache_clear()
+
+    def test_an_internal_subagents_name_is_ordinary_prose(self) -> None:
+        assert _named_ids("add these to my todos") == []
+
+    def test_a_provider_listed_after_an_internal_subagent_still_flags(self) -> None:
+        assert _named_ids("put it in Todoist") == ["todoist"]

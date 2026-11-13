@@ -1,8 +1,8 @@
 """normalize_custom_event turns get_stream_writer() card payloads into tool_data.
 
 Regression: the device onboarding/approval cards emit
-``{"device_onboarding_required": {...}}`` / ``{"device_approval_required": {...}}``
-via get_stream_writer(), but those keys were missing from ``tool_fields`` — the
+{"device_onboarding_required": {...}} / {"device_approval_required": {...}}
+via get_stream_writer(), but those keys were missing from tool_fields — the
 single registry normalize_custom_event iterates. An unrecognized key is returned
 as a "non-tool event" (passed through unwrapped), so no tool_data frame ever
 reached the frontend and the card silently never rendered. The agent then had a

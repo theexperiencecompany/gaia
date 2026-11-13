@@ -13,13 +13,8 @@ MODULE = "app.agents.tools.context_tool"
 
 
 def _make_config(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
-    """Return a minimal RunnableConfig-like dict with metadata.user_id."""
-    return {"metadata": {"user_id": user_id}}
-
-
-def _make_config_no_user() -> dict[str, Any]:
-    """Config with no user_id to trigger auth errors."""
-    return {"metadata": {}}
+    """Return a minimal RunnableConfig-like dict naming the run user."""
+    return {"configurable": {"user_id": user_id}, "metadata": {"user_id": user_id}}
 
 
 # ---------------------------------------------------------------------------
@@ -32,10 +27,8 @@ class TestGatherContext:
 
     @patch(f"{MODULE}.fetch_all_providers")
     @patch(f"{MODULE}.resolve_providers", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_happy_path_auto_detect_providers(
         self,
-        mock_get_user: MagicMock,
         mock_resolve: AsyncMock,
         mock_fetch: MagicMock,
     ) -> None:
@@ -59,13 +52,12 @@ class TestGatherContext:
         assert result["_performance"]["providers_attempted"] == 2
         assert result["_performance"]["providers_succeeded"] == 2
         mock_resolve.assert_awaited_once()
+        assert mock_resolve.await_args.args[:2] == (None, FAKE_USER_ID)
 
     @patch(f"{MODULE}.fetch_all_providers")
     @patch(f"{MODULE}.resolve_providers", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_specific_providers(
         self,
-        mock_get_user: MagicMock,
         mock_resolve: AsyncMock,
         mock_fetch: MagicMock,
     ) -> None:
@@ -85,26 +77,10 @@ class TestGatherContext:
         assert result["providers_queried"] == ["slack"]
         mock_resolve.assert_awaited_once()
 
-    @patch(f"{MODULE}.get_user_id_from_config", return_value="")
-    async def test_no_user_returns_auth_error(
-        self,
-        mock_get_user: MagicMock,
-    ) -> None:
-        """gather_context without user_id returns auth error."""
-        from app.agents.tools.context_tool import gather_context
-
-        result = await gather_context.coroutine(
-            config=_make_config_no_user(),
-        )
-
-        assert result == {"error": "User authentication required", "data": None}
-
     @patch(f"{MODULE}.fetch_all_providers")
     @patch(f"{MODULE}.resolve_providers", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_defaults_date_to_today(
         self,
-        mock_get_user: MagicMock,
         mock_resolve: AsyncMock,
         mock_fetch: MagicMock,
     ) -> None:
@@ -125,10 +101,8 @@ class TestGatherContext:
 
     @patch(f"{MODULE}.fetch_all_providers")
     @patch(f"{MODULE}.resolve_providers", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_no_connected_providers(
         self,
-        mock_get_user: MagicMock,
         mock_resolve: AsyncMock,
         mock_fetch: MagicMock,
     ) -> None:
@@ -149,10 +123,8 @@ class TestGatherContext:
 
     @patch(f"{MODULE}.fetch_all_providers")
     @patch(f"{MODULE}.resolve_providers", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
     async def test_performance_metrics_present(
         self,
-        mock_get_user: MagicMock,
         mock_resolve: AsyncMock,
         mock_fetch: MagicMock,
     ) -> None:

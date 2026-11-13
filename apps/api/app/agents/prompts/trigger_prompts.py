@@ -1,17 +1,12 @@
-"""
-Trigger context template for workflow generation.
-Simple template that accepts raw trigger config data as JSON.
-"""
+"""Trigger context template for workflow generation, from raw trigger config data as JSON."""
 
 import json
 from typing import Any
 
 from app.models.workflow_models import TriggerConfig
 
-# The one caller passes a validated ``TriggerConfig``, but both functions also
-# handle the raw-dict form the workflow/scheduler codebase still produces
-# elsewhere (see the scheduler_service.py ANN401 note). Naming both is honest
-# about what they accept without deleting a live branch.
+# Both functions also handle the raw-dict form the workflow/scheduler
+# codebase still produces elsewhere (see scheduler_service.py ANN401 note).
 TriggerConfigInput = TriggerConfig | dict[str, Any]
 
 TRIGGER_CONTEXT_TEMPLATE = """## TRIGGER CONTEXT:
@@ -77,26 +72,16 @@ def generate_trigger_specific_guidance(trigger_config: TriggerConfigInput | None
 
 
 def generate_trigger_context(trigger_config: TriggerConfigInput | None = None) -> str:
-    """
-    Generate trigger context for workflow prompts.
-
-    Args:
-        trigger_config: Trigger configuration object or dict
-
-    Returns:
-        Formatted trigger context string for workflow generation
-    """
+    """Generate trigger context for workflow prompts."""
     if not trigger_config:
         return "No trigger configuration provided - this is a manual workflow."
 
-    # Convert to dict first, then to JSON
     if hasattr(trigger_config, "model_dump"):
         config_dict = trigger_config.model_dump(mode="json")
     else:
         config_dict = trigger_config
     trigger_data = json.dumps(config_dict, indent=2)
 
-    # Generate trigger-specific guidance
     trigger_specific_guidance = generate_trigger_specific_guidance(trigger_config)
 
     return TRIGGER_CONTEXT_TEMPLATE.format(

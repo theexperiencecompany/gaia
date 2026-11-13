@@ -109,7 +109,7 @@ def select_cases(cases: list[Case], opts: RunOptions, journal: RunJournal) -> li
     Kept whole and apart from the run loop because the selection is where every
     "the run did nothing and said nothing" defect has come from — and because
     testing it against a journal costs nothing, while testing it through
-    ``run_suite`` costs a live API and a model bill.
+    run_suite costs a live API and a model bill.
     """
     if opts.only:
         # --from is an ordered cursor, so it cannot pick out a case that sorts
@@ -123,11 +123,9 @@ def select_cases(cases: list[Case], opts: RunOptions, journal: RunJournal) -> li
     if opts.from_case:
         cases = [c for c in cases if c.id >= opts.from_case]
 
-    # Journal-based selection is ONE decision, not a chain of filters that empty
-    # each other out. --only-failed used to run after --resume had already
-    # removed every finished case, so it selected nothing; without --resume the
-    # journal was new, so it also selected nothing. It silently did nothing in
-    # both modes, which is why every retry has been a full re-run.
+    # Journal-based selection is ONE decision, not a chain of filters: running
+    # --only-failed after --resume already removed finished cases silently
+    # selected nothing in both modes, so every retry became a full re-run.
     if opts.only_failed:
         latest = journal.latest_per_case()
         if not latest:
@@ -161,9 +159,8 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
         or f"{opts.suite}-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
     )
     # Checked before RunJournal, which creates the directory unconditionally: a
-    # mistyped run id used to produce an empty run dir with no run.json, and the
-    # first read of its metadata then died on `NoneType has no attribute` pages
-    # later, in a place that says nothing about the typo.
+    # mistyped run id used to leave an empty run dir whose metadata read then
+    # died on `NoneType has no attribute` far from the actual typo.
     if opts.resume is not None and not (RUNS_DIR / opts.resume / "run.json").exists():
         raise SystemExit(f"--resume: no run '{opts.resume}' under {RUNS_DIR}")
     journal = RunJournal(RUNS_DIR, run_id)
@@ -214,44 +211,34 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
         return os.environ.get("EVALS_DEFER_OPIK_SINK", "") == "1"
 
     # Records appended during THIS invocation, kept apart from the journal's
-    # full history: a resumed or --only-failed run appends a second attempt for
-    # cases the journal already holds, and the publish invariants must validate
-    # exactly what this run measured against what this run metered — the same
-    # scope on both sides.
+    # full history: a resumed run appends a second attempt for cases the
+    # journal already holds, and publish must validate this run's own scope.
     run_records: list[dict[str, Any]] = []
 
     def record_case(
         case: Case, run: CaseRun, scores: dict[str, float], status: str, error: str | None
     ) -> None:
-        """Journal a finished case and mirror it into Opik — including failures,
-        which are exactly the cases worth looking at in the UI."""
+        """Journal a finished case and mirror it into Opik, including failures — exactly the cases worth looking at in the UI."""
         source = _attribute_tokens(run, tracker, case.id)
         record = _record(case, run, scores, status, error, source)
         journal.append(record)
         run_records.append(record)
-        # The live sink serialises and compresses every transcript on SDK
-        # background threads DURING the run — on long-context suites that burned
-        # more CPU than the cases themselves. `evals seed` rebuilds the same
-        # traces from the journal afterwards, so deferring loses nothing.
+        # The live sink serializes/compresses every transcript on SDK background
+        # threads during the run, which burned more CPU than the cases themselves
+        # on long-context suites; `evals seed` rebuilds traces afterwards.
         if not _sink_deferred():
             _log_trace(suite.project, run_id, record, prices, suite.name, app_version)
 
     aborted: str | None = None
     run_status = "finished"
 
-    # Both modes run inside this one try, so an interrupt is recorded the same
-    # way whichever it was. A concurrent run used to return from its own branch
-    # before the handler existed: Ctrl-C on one left the traces unflushed and
-    # `run.json` saying "running" forever, which resume, sweep and ingest all
-    # read as a run still in flight.
+    # Both modes run inside this one try so an interrupt is recorded the same
+    # way: before this handler existed, Ctrl-C left traces unflushed and
+    # run.json saying "running" forever, which resume/sweep/ingest read as live.
     try:
-        # Concurrency pins ONE provider for the whole run, deliberately.
-        # pin_settings mutates a shared settings singleton and resets the lazy
-        # provider, so two cases pinning different lanes would race — and
-        # re-pinning mid-flight is the same engine-reset that turned one
-        # Postgres blip into 76 fabricated zeros. Rotation is therefore a
-        # sequential-only feature; a pinned run that loses its provider aborts
-        # rather than silently continuing on another.
+        # Concurrency deliberately pins ONE provider (rotation is sequential
+        # only): pin_settings mutates a shared settings singleton, so re-pinning
+        # mid-flight once turned one Postgres blip into 76 fabricated zeros.
         if opts.concurrency > 1:
             pinned_name = healthy[0]
             pin_settings(cfg.providers[pinned_name])
@@ -315,12 +302,9 @@ async def _run_cases_sequentially(
             aborted = "total budget cap exceeded — remaining cases were not attempted"
             break
         last_error: str | None = None
-        # Rotation is per case. It used to persist across cases, so once an
-        # earlier case had rotated past the last provider, every remaining
-        # case skipped the loop entirely — no attempt, no error, no journal
-        # record. The cases did not fail; they silently ceased to exist.
-        # Providers whose budget is exhausted are still skipped below, so
-        # resetting costs nothing.
+        # Rotation is reset per case: it used to persist across cases, so once
+        # one case rotated past the last provider, every remaining case
+        # skipped the loop with no attempt, no error, no journal record.
         provider_index = 0
         while provider_index < len(healthy):
             provider_name = healthy[provider_index]
@@ -351,11 +335,9 @@ async def _run_cases_sequentially(
                 print(f"  ✗ {case.id} [{provider_name}] provider error: {e.reason} — rotating")
                 provider_index += 1
             except Exception as e:
-                # An outage reaches this loop as an ordinary exception unless
-                # some suite happened to hand-wrap it. Classifying here — the
-                # one place a fault becomes a status — is what stops the next
-                # 400 cases from measuring the outage instead of the agent,
-                # whichever suite and whichever backend went away.
+                # Classifying here is the one place a fault becomes a status,
+                # which stops the next 400 cases from measuring the outage
+                # instead of the agent.
                 fault = faults.classify(e)
                 if fault is not None and faults.confirmed_down(fault):
                     aborted = str(fault.as_infra_error())
@@ -378,10 +360,9 @@ async def _run_cases_sequentially(
                 break
         if aborted:
             break
-        # Every case leaves a record. Without the `or` clause a case that
-        # never entered the loop at all — every provider over budget —
-        # produced no error and so no record, and vanished from the run
-        # without ever being counted as unrun.
+        # Every case leaves a record: without the `or` clause, a case that
+        # never entered the loop (every provider over budget) vanished from
+        # the run without ever being counted as unrun.
         if journal.record_for(case.id) is None:
             reason = last_error or (
                 f"no provider available: every lane in {healthy} was over budget "
@@ -411,7 +392,7 @@ async def _run_cases_sequentially(
 
 
 def _app_version() -> str:
-    """The app build under test: nearest tag plus short sha, or the sha alone."""
+    """Return the app build under test: nearest tag plus short sha, or the sha alone."""
 
     # parents[4] resolves to apps/ — a git invocation there still finds the
     # repository root by walking up, which is all the describe needs.
@@ -431,11 +412,11 @@ def _app_version() -> str:
 
 
 def _require_meta(journal: RunJournal) -> RunMeta:
-    """The run's metadata, which every path into the loop guarantees exists.
+    """Return the run's metadata, which every path into the loop guarantees exists.
 
-    ``run.json`` is written before the first case and only ever updated after,
+    run.json is written before the first case and only ever updated after,
     so its absence means the run directory itself is broken. Saying that is the
-    whole job — the alternative, a default ``RunMeta``, publishes a run under an
+    whole job — the alternative, a default RunMeta, publishes a run under an
     empty suite name and an empty app version as though both were real.
     """
     meta = journal.load_meta()
@@ -460,8 +441,6 @@ def _publish_run(
     # A loud stop beats a plausible figure: both defects this catches
     # (cumulative tokens, an outage scored as zeros) reached a PR because no
     # quantity was ever checked against a second, independently-derived one.
-    # The check runs before finalization so a run whose numbers do not
-    # reconcile is never published as an experiment at all.
     invariants = check_records(
         run_records,
         metered_by_case={
@@ -503,7 +482,7 @@ async def _run_cases_concurrently(
     provider_name: str,
     record_case: Callable[[Case, CaseRun, dict[str, float], str, str | None], None],
 ) -> str | None:
-    """Run cases against one pinned provider, at most ``concurrency`` at a time.
+    """Run cases against one pinned provider, at most concurrency at a time.
 
     Safe only because a case now owns its user: two cases sharing an account
     would write over each other's todos and memory. Returns an abort reason when
@@ -565,13 +544,9 @@ async def _run_cases_concurrently(
 def _score_or_zero(case: Case, run: CaseRun, suite: Suite) -> dict[str, float]:
     """Grade the case, or record the zero a declined case earned.
 
-    A case that produced no answer gets no scores: scoring it would write a
-    phantom 0.0 into the metric averages. A DECLINED case is the exception —
-    the benchmark asked a question we have no way to answer, which is worth
-    exactly zero and belongs in the average. The zero is written here rather
-    than left to each suite's scorer so that every suite counts a skip the same
-    way; GAIA's official scorer already treats an unanswered question as 0.0,
-    and this agrees with it.
+    A case with no answer gets no scores (would write a phantom 0.0 into
+    averages); a DECLINED case is the exception, scored zero here so every
+    suite counts a skip the same way, matching GAIA's official scorer.
     """
     if case.skip_reason:
         return dict.fromkeys(case.gates, 0.0)
@@ -581,18 +556,14 @@ def _score_or_zero(case: Case, run: CaseRun, suite: Suite) -> dict[str, float]:
 def _status_from_scores(case: Case, scores: dict[str, float], error: str | None) -> str:
     """Grade a case, keeping "the agent was wrong" apart from "the case blew up".
 
-    ``failed`` means the agent answered and missed the gate — a real quality
-    signal. ``errored`` means no answer was produced (timeout, crash, dead
-    backend), which is not a quality signal and must not be averaged into one.
-    ``skipped`` means we declined to attempt the case at all — which IS a
-    quality signal, scored zero and kept in the denominator, because the
-    benchmark asked and we had no answer.
+    failed = the agent answered and missed the gate. errored = no answer was
+    produced (timeout/crash/dead backend) and must not be averaged as quality.
+    skipped = declined to attempt, scored zero and kept in the denominator.
     """
     if case.skip_reason:
-        # Checked before the error, deliberately: the transport signals a skip
-        # by setting `error`, so reading the error first would file every skip
-        # as an outage — which is how a suite scored 36/89 and published 40.4%
-        # when the benchmark it claims to run has 165 questions.
+        # Checked before the error: the transport signals a skip by also
+        # setting `error`, and reading the error first once filed every skip
+        # as an outage, scoring 36/89 as 40.4% on a 165-question benchmark.
         return "skipped"
     if error:
         return "errored"
@@ -613,9 +584,9 @@ def _log_trace(
 ) -> None:
     """Log one journaled case as an Opik trace with its feedback scores.
 
-    Built from the journal record, so a live run and a later ``seed`` backfill
+    Built from the journal record, so a live run and a later seed backfill
     produce the identical trace. Opik being down must not fail the eval run —
-    the journal still holds the case and ``seed`` picks it up later — so the
+    the journal still holds the case and seed picks it up later — so the
     failure is reported and the loop continues.
     """
     try:
@@ -646,10 +617,9 @@ def _flush_traces(project: str) -> None:
 #: Provider-reported usage for every LLM call the case made. The real number.
 TOKENS_METERED = "metered"
 
-#: A transport's own guess, because its endpoint reports no usage. Not a
-#: measurement: it sees the prompt and the answer, never the system prompt, the
-#: tool schemas or the agent's intermediate turns, so it reads low by orders of
-#: magnitude and must never be summed into a cost figure unlabelled.
+#: A transport's own guess when its endpoint reports no usage. Not a
+#: measurement — it never sees the system prompt, tool schemas or
+#: intermediate turns, so it reads low by orders of magnitude.
 TOKENS_ESTIMATED = "estimated"
 
 #: Nothing was measured and nothing was claimed.
@@ -659,16 +629,9 @@ TOKENS_NONE = "none"
 def _attribute_tokens(run: CaseRun, tracker: EvalCostTracker, case_id: str) -> str:
     """Settle what this case's tokens are, and say where the figure came from.
 
-    One definition for every suite: the provider-reported input and output of
-    every LLM call made while serving the case. Suites used to each answer this
-    themselves and answered it five different ways — a delta on a shared meter
-    (right only when one case runs at a time), a per-provider running total
-    (never right), a character estimate of the prompt (low by ~1000x). The
-    meter is per case now, so the harness can answer it once, here.
-
-    A transport's own figure survives only where the meter saw nothing at all —
-    an HTTP endpoint that reports no usage — and is labelled as the estimate it
-    is rather than passing for a measurement.
+    One definition for every suite: provider-reported input/output per call,
+    replacing suite-specific guesses (one low by ~1000x). A transport's own
+    estimate survives only when the meter saw nothing, and is labelled as such.
     """
     metered_in, metered_out = tracker.case_totals(case_id)
     if metered_in or metered_out:
@@ -767,11 +730,9 @@ def _print_summary(journal: RunJournal, suite: str, prices: PriceBook) -> None:
     attempted = graded - skipped
     tokens_in, tokens_out = journal.tokens()
     print("\n" + "=" * 60)
-    # Two numbers, and which is which has to be unmistakable. The headline is
-    # over everything the benchmark asked, counting what we declined as the
-    # zeros they are — that is the figure comparable to anyone else's. The
-    # second is diagnostic: how the agent does on what it can attempt at all.
-    # Errors are excluded from both, because an outage measured nothing.
+    # The headline is over everything asked (declined counted as zero, the
+    # figure comparable to anyone else's); the second is diagnostic, over what
+    # was attempted. Errors are excluded from both — an outage measured nothing.
     if graded:
         print(
             f"SUITE {suite} · "

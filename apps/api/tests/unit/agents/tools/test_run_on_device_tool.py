@@ -181,9 +181,8 @@ async def test_unrelated_stderr_gets_no_privacy_hint(stderr):
 
 
 # --- exact composed output ---------------------------------------------------
-# The tool joins its parts into one blob the model reads verbatim. A wrong
-# header, a dropped interpolation, or a flipped branch changes what the model
-# is told the command did, so pin the exact bytes rather than a substring.
+# The tool joins parts into one blob the model reads verbatim; pin exact bytes
+# (header wording, interpolation, branch) rather than a substring.
 
 
 async def test_successful_output_is_exactly_composed():
@@ -234,15 +233,14 @@ async def test_truncation_line_present_only_when_truncated():
 
 
 # --- macOS TCC (Full Disk Access) hint ---------------------------------------
-# The exact wording differs by client and is guidance the user acts on, so the
-# whole string is behavior. Pin both hints by equality, then prove run_on_device
-# appends the right one only when stderr signals a privacy block.
+# Wording differs by client and is user-facing guidance, so pin both hints by
+# equality and prove run_on_device appends the right one only on a privacy block.
 
 _DESKTOP_HINT = (
     "\nmacOS blocked this path with its privacy protection (TCC); you cannot grant "
     "this yourself. This device is the GAIA desktop app. Tell the user to grant it "
     "Full Disk Access in System Settings > Privacy & Security > Full Disk Access "
-    "(enable GAIA), then reopen the app — the grant carries into the commands it "
+    "(enable GAIA), then reopen the app. The grant carries into the commands it "
     "runs. They can open that pane with "
     '`open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"`.'
 )

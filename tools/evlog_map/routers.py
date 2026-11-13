@@ -28,7 +28,7 @@ _PREFIX_KWARG = "prefix"
 
 
 def _module_file(module: str, package_root: Path) -> Path | None:
-    """The file backing a dotted module name, module or package."""
+    """Return the file backing a dotted module name, module or package."""
     relative = module.replace(".", "/")
     for candidate in (package_root / f"{relative}.py", package_root / relative / "__init__.py"):
         if candidate.is_file():
@@ -55,7 +55,7 @@ def _import_bindings(tree: ast.Module) -> dict[str, tuple[str, str]]:
 def _router_module(
     expr: ast.expr, bindings: dict[str, tuple[str, str]], package_root: Path, source: Path
 ) -> str:
-    """The module owning the router named by an ``include_router`` argument."""
+    """Return the module owning the router named by an ``include_router`` argument."""
     base = expr.value if isinstance(expr, ast.Attribute) else expr
     if not isinstance(base, ast.Name) or base.id not in bindings:
         raise ValueError(

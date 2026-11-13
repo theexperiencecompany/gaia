@@ -1,4 +1,4 @@
-import { ScrollView, View } from "react-native";
+import { View } from "react-native";
 import { Calendar03Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import {
@@ -9,9 +9,9 @@ import {
 // -- Types --------------------------------------------------------------------
 
 export interface CalendarListFetchItem {
-  id: string;
   name: string;
-  description?: string;
+  id: string;
+  description: string;
   backgroundColor?: string;
 }
 
@@ -19,59 +19,54 @@ interface CalendarListFetchCardProps {
   data: CalendarListFetchItem[];
 }
 
-// -- Calendar list fetch card -------------------------------------------------
+// Restored-history only: old conversations still carry this key. Read-only,
+// no draft or add flows (those moved to HIL approvals by design).
 
 export function CalendarListFetchCard({ data }: CalendarListFetchCardProps) {
-  if (!data?.length) return null;
-
-  const sorted = [...data].sort((a, b) => a.name.localeCompare(b.name));
-  const title = `Fetched ${sorted.length} Calendar${sorted.length === 1 ? "" : "s"}`;
+  const items = (Array.isArray(data) ? data : [data]).filter(
+    (calendar) => calendar.name,
+  );
 
   return (
     <ToolCardShell>
-      <ToolCardHeader icon={Calendar03Icon} title={title} />
-
-      <ScrollView
-        style={{ maxHeight: 200 }}
-        nestedScrollEnabled
-        showsVerticalScrollIndicator={false}
-      >
-        {sorted.map((calendar, index) => {
-          const dot = calendar.backgroundColor ?? "#00bbff";
-          return (
+      <ToolCardHeader
+        icon={Calendar03Icon}
+        iconColor="#00bbff"
+        title="Calendars"
+        count={items.length}
+      />
+      {items.length === 0 ? (
+        <Text className="text-muted text-sm">No calendars in this list.</Text>
+      ) : (
+        <View className="gap-2">
+          {items.map((calendar) => (
             <View
-              key={calendar.id}
-              className="flex-row items-center gap-3 py-3"
-              style={{
-                borderTopWidth: index === 0 ? 0 : 1,
-                borderTopColor: "rgba(63,63,70,0.6)",
-              }}
+              key={calendar.id || calendar.name}
+              className="flex-row items-start gap-2 rounded-xl bg-zinc-900 p-3"
             >
-              {/* Color dot */}
               <View
-                className="w-3 h-3 rounded-full flex-shrink-0"
-                style={{ backgroundColor: dot }}
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  marginTop: 5,
+                  backgroundColor: calendar.backgroundColor || "#00bbff",
+                }}
               />
               <View className="flex-1 min-w-0">
-                <Text
-                  className="text-zinc-300 text-sm font-medium"
-                  numberOfLines={1}
-                >
+                <Text className="text-sm text-zinc-100" numberOfLines={1}>
                   {calendar.name}
                 </Text>
                 {calendar.description ? (
-                  <Text
-                    className="text-zinc-500 text-xs mt-0.5"
-                    numberOfLines={1}
-                  >
+                  <Text className="text-xs text-muted mt-0.5" numberOfLines={2}>
                     {calendar.description}
                   </Text>
                 ) : null}
               </View>
             </View>
-          );
-        })}
-      </ScrollView>
+          ))}
+        </View>
+      )}
     </ToolCardShell>
   );
 }

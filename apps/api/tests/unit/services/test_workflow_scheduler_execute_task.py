@@ -1,9 +1,9 @@
-"""``WorkflowScheduler.execute_task`` is the BaseSchedulerService entry point.
+"""WorkflowScheduler.execute_task is the BaseSchedulerService entry point.
 
-Nothing calls it today (ARQ jobs call ``execute_workflow_by_id`` directly),
+Nothing calls it today (ARQ jobs call execute_workflow_by_id directly),
 but the base class requires it, so the one implementation must be the real
 fire: quota, execution record, playbook replay and notification all live in
-``execute_workflow_by_id``. Calling ``execute_workflow_as_chat`` directly ran a
+execute_workflow_by_id. Calling execute_workflow_as_chat directly ran a
 workflow with none of them.
 """
 

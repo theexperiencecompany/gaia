@@ -4,7 +4,10 @@ import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 import { usePathname } from "@/i18n/navigation";
 
-import { useIntegrationModalStore } from "@/stores/integrationModalStore";
+import {
+  useIntegrationModalActions,
+  useIntegrationModalOpen,
+} from "@/stores/uiStore";
 
 import { MCPIntegrationModal } from "./MCPIntegrationModal";
 
@@ -18,8 +21,8 @@ import { MCPIntegrationModal } from "./MCPIntegrationModal";
 export function GlobalIntegrationModal() {
   const router = useRouter();
   const pathname = usePathname();
-  const isOpen = useIntegrationModalStore((state) => state.isOpen);
-  const closeModal = useIntegrationModalStore((state) => state.closeModal);
+  const isOpen = useIntegrationModalOpen();
+  const { closeIntegrationModal } = useIntegrationModalActions();
 
   // Handle when integration is created - navigate to integrations page with ID
   const handleIntegrationCreated = useCallback(
@@ -42,7 +45,7 @@ export function GlobalIntegrationModal() {
   return (
     <MCPIntegrationModal
       isOpen={isOpen}
-      onClose={closeModal}
+      onClose={closeIntegrationModal}
       onIntegrationCreated={handleIntegrationCreated}
     />
   );

@@ -3,20 +3,31 @@
 The runner replaces the prepare/execute pair the oauth-registered subagents use,
 so the two things every handoff has to get right are its own here: it must
 inherit the executor's configurable (and with it the run's resolved lane), and it
-must never hand ``create_workflow`` an empty string as if it were a draft.
+must never hand create_workflow an empty string as if it were a draft.
 """
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessageChunk, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessageChunk,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
+from langchain_core.messages.base import TextAccessor
 from langgraph.errors import GraphRecursionError
+from langgraph.graph.state import CompiledStateGraph
 import pytest
 
 from app.agents.context.assemble import AssembledContext
-from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
+from app.agents.core.held_replies import HeldReplies
+from app.constants.agents import NO_ANSWER_NOTICE
+from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT, LLMProviderName
 from app.helpers.agent_helpers import AgentIdentity, AgentThread
+from app.models.agent_models import AgentConfigurable
 from app.services.workflow.workflow_subagent import SubagentRunContext, WorkflowSubagentRunner
 
 _MOD = "app.services.workflow.workflow_subagent"
@@ -28,10 +39,10 @@ _TEXT_DEPRECATION = "ignore::langchain_core._api.deprecation.LangChainDeprecatio
 
 
 class _NoTextChunk(AIMessageChunk):
-    """A chunk whose ``text`` attribute is absent, forcing the str(content) path."""
+    """A chunk whose text attribute is absent, forcing the str(content) path."""
 
     @property
-    def text(self) -> str:
+    def text(self) -> TextAccessor:
         raise AttributeError("no text here")
 
 
@@ -47,23 +58,23 @@ class _Run:
     result: str
     build_config: AsyncMock
     stream_turn: AsyncMock
+    assemble: AsyncMock
 
 
-async def _execute(draft: str, base_configurable: dict | None = None) -> _Run:
+async def _execute(draft: str, base_configurable: AgentConfigurable | None = None) -> _Run:
     """Drive execute() with everything outside it stubbed at its seams."""
     build_config = AsyncMock(return_value={"configurable": {"thread_id": "workflow_t1"}})
     stream_turn = AsyncMock(return_value=(draft, False))
+    assemble = AsyncMock(
+        return_value=AssembledContext(
+            stable=SystemMessage(content="ctx", additional_kwargs={"dynamic_context": True}),
+            volatile=None,
+        )
+    )
     with (
         patch(f"{_MOD}.get_workflow_subagent", new_callable=AsyncMock, return_value=MagicMock()),
         patch(f"{_MOD}.build_agent_config", build_config),
-        patch(
-            f"{_MOD}.assemble_context",
-            new_callable=AsyncMock,
-            return_value=AssembledContext(
-                stable=SystemMessage(content="ctx", additional_kwargs={"dynamic_context": True}),
-                volatile=None,
-            ),
-        ),
+        patch(f"{_MOD}.assemble_context", assemble),
         patch(
             f"{_MOD}.build_connected_integrations_hint",
             new_callable=AsyncMock,
@@ -85,7 +96,9 @@ async def _execute(draft: str, base_configurable: dict | None = None) -> _Run:
                 user_name="Dev", user_timezone="UTC", base_configurable=base_configurable
             ),
         )
-    return _Run(result=result, build_config=build_config, stream_turn=stream_turn)
+    return _Run(
+        result=result, build_config=build_config, stream_turn=stream_turn, assemble=assemble
+    )
 
 
 @pytest.mark.unit
@@ -96,19 +109,26 @@ class TestTheDraftItHandsBack:
         assert run.result == '{"title": "Inbox digest"}'
 
     async def test_an_empty_answer_becomes_a_terminal_string_not_an_empty_draft(self) -> None:
-        """``create_workflow`` reads this as the agent's answer; "" would look like
-        a successful run that produced nothing."""
+        """create_workflow reads this as the agent's answer; "" would look like a successful run producing nothing."""
         run = await _execute("")
 
-        assert run.result == "Task completed"
+        assert run.result == NO_ANSWER_NOTICE.format(name="The workflow assistant")
 
 
 @pytest.mark.unit
 class TestTheLaneItInherits:
     async def test_it_runs_on_its_parents_configurable(self) -> None:
-        """The executor's bag carries the run's resolved lane, so without this a
-        pro user's workflow authoring silently drops to the default model."""
-        parent = {"user_id": "u1", "lane": {"provider": "openrouter", "model": "paid/model"}}
+        """The executor's bag carries the run's resolved lane, or a pro user's authoring silently drops to the default model."""
+        parent: AgentConfigurable = {
+            "user_id": "u1",
+            "lane": {
+                "provider": LLMProviderName.OPENROUTER,
+                "model": "paid/model",
+                "reasoning": None,
+                "provider_pin": None,
+                "max_input_tokens": 200_000,
+            },
+        }
 
         run = await _execute('{"title": "x"}', base_configurable=parent)
 
@@ -125,17 +145,39 @@ class TestTheLaneItInherits:
             ),
         }
 
+    async def test_the_first_turn_carries_the_task_its_context_and_a_clock(self) -> None:
+        """The graph's first state is the whole brief: prompt, assembled context, the request and today's date."""
+        run = await _execute('{"title": "x"}')
+
+        state = run.stream_turn.call_args_list[0].args[1]
+        assert state["intent"] == "every monday, summarize my inbox"
+        assert state["integration_usernames"] == {}
+        system, context, request, clock = state["messages"]
+        assert isinstance(system, SystemMessage)
+        assert context.content == "ctx"
+        assert isinstance(request, HumanMessage)
+        assert (
+            request.content == "connected: none\n\n---\n\nRequest: every monday, summarize my inbox"
+        )
+        assert isinstance(clock, BaseMessage)
+
+    async def test_its_context_is_recalled_for_this_task_and_this_user(self) -> None:
+        """Memory and section recall must search on the request being authored, for the caller, not an empty query."""
+        run = await _execute('{"title": "x"}')
+
+        (section_context,) = run.assemble.await_args.args
+        assert section_context.query == "every monday, summarize my inbox"
+        assert section_context.user_id == "u1"
+
     async def test_authoring_runs_on_a_capped_step_budget(self) -> None:
-        """A wandering model must reach the forced-finalize fallback quickly rather
-        than burning a full agent's recursion budget first."""
+        """A wandering model must reach the forced-finalize fallback quickly, not burn a full agent's recursion budget."""
         run = await _execute('{"title": "x"}')
 
         config = run.stream_turn.call_args.args[2]
         assert config["recursion_limit"] == WORKFLOW_SUBAGENT_RECURSION_LIMIT
 
     async def test_the_context_stream_writer_reaches_the_streaming_loop(self) -> None:
-        """The caller's writer is what forwards tool entries to the chat UI; a
-        runner that drops it streams nothing without any error anywhere."""
+        """The caller's writer forwards tool entries to the chat UI; a runner that drops it streams nothing, silently."""
         writer = MagicMock()
         with (
             patch(
@@ -237,80 +279,79 @@ class _StreamGraph:
 @pytest.mark.unit
 class TestConsumeMessageChunk:
     def test_a_silent_chunk_is_ignored(self) -> None:
-        chunk = AIMessageChunk(content="hidden")
+        held = HeldReplies()
 
-        result = WorkflowSubagentRunner._consume_message_chunk(
-            (chunk, {"silent": True}), MagicMock(), "kept"
+        WorkflowSubagentRunner._consume_message_chunk(
+            (AIMessageChunk(content="hidden", id="m1"), {"silent": True}), MagicMock(), held
         )
 
-        assert result == "kept"
+        assert held.reply_text() == ""
 
-    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
-    def test_an_ai_chunks_text_is_appended(self) -> None:
-        result = WorkflowSubagentRunner._consume_message_chunk(
-            (AIMessageChunk(content="Hello"), {}), None, ""
+    def test_an_ai_chunks_text_is_held_as_the_reply(self) -> None:
+        held = HeldReplies()
+
+        WorkflowSubagentRunner._consume_message_chunk(
+            (AIMessageChunk(content="Hello", id="m1"), {}), None, held
         )
 
-        assert result == "Hello"
+        assert held.reply_text() == "Hello"
 
-    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
-    def test_an_empty_ai_chunk_appends_nothing(self) -> None:
-        result = WorkflowSubagentRunner._consume_message_chunk(
-            (AIMessageChunk(content=""), {}), MagicMock(), "kept"
+    def test_an_empty_ai_chunk_holds_nothing(self) -> None:
+        held = HeldReplies()
+
+        WorkflowSubagentRunner._consume_message_chunk(
+            (AIMessageChunk(content="", id="m1"), {}), MagicMock(), held
         )
 
-        assert result == "kept"
+        assert held.reply_text() == ""
+
+    def test_text_beside_a_tool_call_is_not_the_reply(self) -> None:
+        """Regression: narration before a tool call was handed to the JSON parser as part of the reply."""
+        held = HeldReplies()
+        narrating = AIMessageChunk(
+            content="Let me look that up.",
+            id="m1",
+            tool_call_chunks=[{"name": "lookup", "args": "{}", "id": "tc1", "index": 0}],
+        )
+
+        WorkflowSubagentRunner._consume_message_chunk((narrating, {}), None, held)
+        WorkflowSubagentRunner._consume_message_chunk(
+            (AIMessageChunk(content="the draft", id="m2"), {}), None, held
+        )
+
+        assert held.reply_text() == "the draft"
 
     @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
     def test_a_tool_result_is_streamed_as_tool_output(self) -> None:
         writer = MagicMock()
+        held = HeldReplies()
 
-        result = WorkflowSubagentRunner._consume_message_chunk(
-            (ToolMessage(content="tool ran", tool_call_id="tc1"), {}), writer, ""
+        WorkflowSubagentRunner._consume_message_chunk(
+            (ToolMessage(content="tool ran", tool_call_id="tc1"), {}), writer, held
         )
 
         writer.assert_called_once_with(
             {"tool_output": {"tool_call_id": "tc1", "output": "tool ran"}}
         )
-        assert result == ""
+        assert held.reply_text() == ""
 
-    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
     def test_a_tool_result_without_a_writer_changes_nothing(self) -> None:
-        result = WorkflowSubagentRunner._consume_message_chunk(
-            (ToolMessage(content="tool ran", tool_call_id="tc1"), {}), None, ""
+        held = HeldReplies()
+
+        WorkflowSubagentRunner._consume_message_chunk(
+            (ToolMessage(content="tool ran", tool_call_id="tc1"), {}), None, held
         )
 
-        assert result == ""
+        assert held.reply_text() == ""
 
-    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
     def test_a_block_list_content_is_unwrapped_via_text_not_str(self) -> None:
-        """``text()`` extracts the blocks' text; ``str(content)`` would ship the
-        raw repr of the block list to the user."""
-        chunk = AIMessageChunk(content=[{"type": "text", "text": "abc", "index": 0}])
+        """Text extracts the blocks' text; str(content) would ship the raw repr of the block list to the user."""
+        held = HeldReplies()
+        chunk = AIMessageChunk(content=[{"type": "text", "text": "abc", "index": 0}], id="m1")
 
-        result = WorkflowSubagentRunner._consume_message_chunk((chunk, {}), None, "")
+        WorkflowSubagentRunner._consume_message_chunk((chunk, {}), None, held)
 
-        assert result == "abc"
-
-    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
-    def test_a_chunk_without_text_falls_back_to_its_content(self) -> None:
-        result = WorkflowSubagentRunner._consume_message_chunk(
-            (_NoTextChunk(content="plain"), {}), None, ""
-        )
-
-        assert result == "plain"
-
-    @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
-    def test_a_falsy_tool_message_is_skipped_like_any_falsy_chunk(self) -> None:
-        """Only real message chunks reach the writer; a falsey value must not
-        slip through the guard as a tool output."""
-        writer = MagicMock()
-        falsy_tool = _FalsyToolMessage(content="", tool_call_id="tc1")
-
-        result = WorkflowSubagentRunner._consume_message_chunk((falsy_tool, {}), writer, "kept")
-
-        writer.assert_not_called()
-        assert result == "kept"
+        assert held.reply_text() == "abc"
 
 
 @pytest.mark.unit
@@ -358,7 +399,7 @@ class TestStreamTurnModes:
             return_value=[("tc1", {"tool_name": "search_triggers"})],
         ):
             message, hit_limit = await WorkflowSubagentRunner._stream_turn(
-                _StreamGraph(events), {}, {}, writer, set()
+                cast(CompiledStateGraph, _StreamGraph(events)), {}, {}, writer, set()
             )
         return message, hit_limit, writer
 
@@ -393,7 +434,7 @@ class TestStreamTurnModes:
 
         writer = MagicMock()
         message, hit_limit = await WorkflowSubagentRunner._stream_turn(
-            _RecursingGraph([]), {}, {}, writer, set()
+            cast(CompiledStateGraph, _RecursingGraph([])), {}, {}, writer, set()
         )
 
         assert message == "partial"
@@ -401,9 +442,7 @@ class TestStreamTurnModes:
 
     @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
     async def test_the_dedup_set_and_writer_are_forwarded_intact(self) -> None:
-        """The caller's emitted-tool-calls set and stream writer must reach the
-        per-event handlers — a dropped set would re-stream already-seen tool
-        entries, and a dropped writer silently kills all streaming."""
+        """A dropped emitted-tool-calls set re-streams already-seen entries; a dropped writer silently kills streaming."""
         writer = MagicMock()
         dedup = {"tc0"}
         with (
@@ -419,11 +458,14 @@ class TestStreamTurnModes:
             ) as consume,
         ):
             await WorkflowSubagentRunner._stream_turn(
-                _StreamGraph(
-                    [
-                        ("updates", {"node": {"messages": []}}),
-                        ("messages", (AIMessageChunk(content="Hi"), {})),
-                    ]
+                cast(
+                    CompiledStateGraph,
+                    _StreamGraph(
+                        [
+                            ("updates", {"node": {"messages": []}}),
+                            ("messages", (AIMessageChunk(content="Hi"), {})),
+                        ]
+                    ),
                 ),
                 {},
                 {},
@@ -437,7 +479,7 @@ class TestStreamTurnModes:
     @pytest.mark.filterwarnings(_TEXT_DEPRECATION)
     async def test_a_custom_event_with_no_writer_is_ignored_not_fatal(self) -> None:
         message, hit_limit = await WorkflowSubagentRunner._stream_turn(
-            _StreamGraph([("custom", {"step": 1})]), {}, {}, None, set()
+            cast(CompiledStateGraph, _StreamGraph([("custom", {"step": 1})])), {}, {}, None, set()
         )
 
         assert message == ""

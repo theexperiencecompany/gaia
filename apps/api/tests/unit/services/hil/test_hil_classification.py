@@ -6,9 +6,10 @@ Two invariants carry the security weight, and both are attacked here:
   must resolve to *destructive*. A classifier that returns False when it is broken is a
   classifier that runs destructive tools unattended.
 * **The MCP hint escalates only.** An untrusted MCP server may flag danger but must never
-  clear it: ``destructiveHint=False`` and ``readOnlyHint=True`` mean "defer", not "safe".
+  clear it: destructiveHint=False and readOnlyHint=True mean "defer", not "safe".
 """
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -23,6 +24,7 @@ from app.services.hil.classification import (
     mcp_destructive_hint,
 )
 from app.services.hil.prompts import TOOL_CLASSIFY_PROMPT
+from app.services.hil.tool_key import MCPToolIdentity
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 
 from .conftest import make_tool
@@ -38,7 +40,7 @@ def registry_with(flag: bool | None) -> MagicMock:
 
 
 @pytest.fixture
-def mongo() -> MagicMock:
+def mongo() -> Iterator[MagicMock]:
     with patch(f"{MODULE}.hil_tool_risk_repository") as repo:
         repo.find_classification = AsyncMock(return_value=None)
         repo.upsert_classification = AsyncMock()
@@ -108,7 +110,9 @@ class TestMcpHintEscalatesOnly:
         "metadata",
         [None, {}, {MCP_ANNOTATIONS_METADATA_KEY: None}, {MCP_ANNOTATIONS_METADATA_KEY: "yes"}],
     )
-    def test_missing_or_malformed_annotations_yield_no_opinion(self, metadata: object) -> None:
+    def test_missing_or_malformed_annotations_yield_no_opinion(
+        self, metadata: dict[str, object] | None
+    ) -> None:
         assert mcp_destructive_hint(make_tool(metadata=metadata)) is None
 
     def test_a_truthy_but_non_true_hint_is_not_accepted(self) -> None:
@@ -222,10 +226,11 @@ class TestRegistryAndCache:
 
 
 class TestTheClassifierCallItself:
-    """The verdict is cached per tool for every user, so this call is made once and
-    read forever. A mislabelled call lands its COGS on the wrong lane, and an
-    unbounded one holds the first gated call of a tool open for as long as the
-    provider takes."""
+    """The verdict is cached per tool per user forever, so this call runs exactly once.
+
+    A mislabelled call lands its COGS on the wrong lane, and an unbounded one
+    holds the first gated call of a tool open for as long as the provider takes.
+    """
 
     async def test_the_call_is_labelled_bounded_and_deliberately_unattributed(
         self,
@@ -263,3 +268,91 @@ class TestTheClassifierCallItself:
         assert prompt == TOOL_CLASSIFY_PROMPT.format(
             name="mystery_tool", description="(none provided)"
         )
+
+
+def _on(integration_id: str, server_name: str) -> MCPToolIdentity:
+    return MCPToolIdentity(integration_id=integration_id, server_name=server_name)
+
+
+class TestMcpVerdictsAreScopedToTheirServer:
+    """Two MCP servers may expose the same tool name; neither may borrow the other's verdict."""
+
+    async def test_an_mcp_tool_never_borrows_a_same_named_registry_verdict(
+        self, mongo: MagicMock
+    ) -> None:
+        # A reviewed-safe registry tool named like the MCP tool must not clear it.
+        registry = registry_with(False)
+        mongo.find_classification = AsyncMock(
+            return_value=HILToolRiskRecord(
+                tool_name="mcp:srv_a:send_email", description_hash="h", is_destructive=True
+            )
+        )
+        with patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)):
+            result = await is_tool_destructive(
+                "send_email", "Send an email.", mcp_tool=_on("srv_a", "send_email")
+            )
+
+        assert result is True
+        assert mongo.find_classification.await_args.args[0] == "mcp:srv_a:send_email"
+        registry.is_tool_destructive.assert_not_called()
+        registry.mark_tool_destructive.assert_not_called()
+
+    async def test_a_fresh_mcp_verdict_is_persisted_under_its_server_scope(
+        self, mongo: MagicMock
+    ) -> None:
+        with patch(
+            f"{MODULE}.ainvoke_structured",
+            new=AsyncMock(return_value=_ClassifyResult(is_destructive=True, rationale="del")),
+        ) as llm:
+            assert await is_tool_destructive(
+                "delete_item", "Deletes.", mcp_tool=_on("srv_a", "delete_item")
+            )
+
+        assert mongo.upsert_classification.await_args.args[0].tool_name == "mcp:srv_a:delete_item"
+        # The LLM classifies the tool by its real name, not the storage key.
+        _schema, prompt = llm.await_args.args
+        assert prompt == TOOL_CLASSIFY_PROMPT.format(name="delete_item", description="Deletes.")
+
+    async def test_a_renamed_tools_verdict_is_keyed_on_its_server_side_name(
+        self, mongo: MagicMock
+    ) -> None:
+        with patch(
+            f"{MODULE}.ainvoke_structured",
+            new=AsyncMock(return_value=_ClassifyResult(is_destructive=True, rationale="del")),
+        ):
+            await is_tool_destructive(
+                "posthog_delete_item", "Deletes.", mcp_tool=_on("srv_a", "delete_item")
+            )
+
+        assert mongo.upsert_classification.await_args.args[0].tool_name == "mcp:srv_a:delete_item"
+
+    async def test_one_servers_cached_verdict_is_not_reused_for_another(
+        self, mongo: MagicMock
+    ) -> None:
+        safe_on_a = HILToolRiskRecord(
+            tool_name="mcp:srv_a:delete_item", description_hash="h", is_destructive=False
+        )
+
+        async def _find(key: str, _hash: str) -> HILToolRiskRecord | None:
+            return safe_on_a if key == "mcp:srv_a:delete_item" else None
+
+        mongo.find_classification = AsyncMock(side_effect=_find)
+        with patch(
+            f"{MODULE}.ainvoke_structured",
+            new=AsyncMock(return_value=_ClassifyResult(is_destructive=True, rationale="del")),
+        ) as llm:
+            on_a = await is_tool_destructive(
+                "delete_item", "Deletes.", mcp_tool=_on("srv_a", "delete_item")
+            )
+            on_b = await is_tool_destructive(
+                "delete_item", "Deletes.", mcp_tool=_on("srv_b", "delete_item")
+            )
+
+        assert on_a is False
+        assert on_b is True
+        assert llm.await_count == 1
+
+    async def test_an_mcp_classification_failure_still_fails_closed(self) -> None:
+        with patch(f"{MODULE}.hil_tool_risk_repository") as repo:
+            repo.find_classification = AsyncMock(side_effect=ConnectionError("mongo down"))
+            assert await is_tool_destructive("x", "d", mcp_tool=_on("srv_a", "x")) is True

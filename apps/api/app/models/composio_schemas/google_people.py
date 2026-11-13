@@ -11,12 +11,21 @@ from typing import NotRequired, TypedDict
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class GooglePersonFieldSource(BaseModel):
+    """The ``metadata.source`` of a person field — where People got it (``PROFILE``, ``CONTACT``, ...)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    type: str | None = None
+
+
 class GooglePersonFieldMetadata(BaseModel):
     """The ``metadata`` block on a person field, flagging the primary entry."""
 
     model_config = ConfigDict(extra="allow")
 
     primary: bool | None = None
+    source: GooglePersonFieldSource | None = None
 
 
 class GooglePersonName(BaseModel):
@@ -37,6 +46,16 @@ class GooglePersonValue(BaseModel):
     metadata: GooglePersonFieldMetadata | None = None
 
 
+class GooglePersonPhoto(BaseModel):
+    """One entry of a person's ``photos``; ``default`` marks Google's generated monogram."""
+
+    model_config = ConfigDict(extra="allow")
+
+    url: str | None = None
+    default: bool | None = None
+    metadata: GooglePersonFieldMetadata | None = None
+
+
 class GooglePerson(BaseModel):
     """A People API ``person`` resource."""
 
@@ -46,6 +65,8 @@ class GooglePerson(BaseModel):
     names: list[GooglePersonName] = Field(default_factory=list)
     email_addresses: list[GooglePersonValue] = Field(default_factory=list, alias="emailAddresses")
     phone_numbers: list[GooglePersonValue] = Field(default_factory=list, alias="phoneNumbers")
+    photos: list[GooglePersonPhoto] = Field(default_factory=list)
+    biographies: list[GooglePersonValue] = Field(default_factory=list)
 
 
 class GooglePeopleSearchResult(BaseModel):

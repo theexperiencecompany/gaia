@@ -17,32 +17,14 @@ from shared.py.wide_events import log
 
 
 class ChromaClient:
-    """
-    Simple proxy for ChromaDB clients that delegates to lazy providers.
-    This class provides access to:
-    1. The raw AsyncClientAPI client for direct ChromaDB interactions
-    2. The Langchain Chroma client for vector search integrations
-    3. Collection-specific Langchain clients via dynamically created providers
-    """
+    """Proxy for the raw, langchain, and per-collection ChromaDB clients via lazy providers."""
 
     @classmethod
     async def get_client(
         cls,
         request: Request | None = None,
     ) -> AsyncClientAPI:
-        """
-        Get the ChromaDB client from the application state or from lazy providers.
-
-        Args:
-            request: The FastAPI request object
-
-        Returns:
-            The ChromaDB client
-
-        Raises:
-            RuntimeError: If ChromaDB client is not available
-        """
-        # Get the client from the lazy provider
+        """Get the ChromaDB client, raising RuntimeError if it is not available."""
         try:
             client = await providers.aget("chromadb_client")
             if client is None:
@@ -65,22 +47,7 @@ class ChromaClient:
         embedding_function: Embeddings | None = None,
         create_if_not_exists: bool = True,
     ) -> Chroma:
-        """
-        Get a langchain Chroma client for a specific collection.
-
-        Args:
-            collection_name: The name of the collection to connect to. If None, returns the default client.
-            embedding_function: Optional embedding function to use with the client.
-                               If None, the default embedding model will be used.
-            create_if_not_exists: Whether to create the collection if it doesn't exist.
-
-        Returns:
-            The langchain Chroma client for the specified collection
-
-        Raises:
-            RuntimeError: If langchain Chroma client is not available
-        """
-        # Ensure we have the embedding function
+        """Get a langchain Chroma client, or the default client when collection_name is None."""
         if embedding_function is None:
             embedding_function = await providers.aget("google_embeddings")
 
@@ -118,10 +85,8 @@ class ChromaClient:
             if not constructor_client:
                 raise RuntimeError("ChromaDB constructor client not initialized")
 
-            # Ensure the collection exists using the synchronous constructor client.
-            # get_or_create, not list-then-create: two processes sharing one
-            # Chroma (xdist workers on a CI lane) both see "missing" and the
-            # second create fails with "Collection [...] already exists".
+            # get_or_create, not list-then-create: concurrent xdist workers can both
+            # see "missing" and the second create fails with "already exists".
             if create_if_not_exists:
                 constructor_client.get_or_create_collection(
                     name=collection_name,
@@ -164,12 +129,7 @@ class ChromaClient:
     strategy=MissingKeyStrategy.WARN,
 )
 async def init_chromadb_client() -> AsyncClientAPI:
-    """
-    Initialize ChromaDB async client.
-
-    Returns:
-        AsyncClientAPI: The ChromaDB async client
-    """
+    """Initialize the ChromaDB async client."""
     host: str = settings.CHROMADB_HOST
     port: int = settings.CHROMADB_PORT
 
@@ -197,12 +157,9 @@ async def init_chromadb_client() -> AsyncClientAPI:
     )
     log.info(f"{LogTag.CHROMA} Connected to ChromaDB at", host=host, port=port)
 
-    # Named via the constants so the GAIA_CHROMA_COLLECTION_SUFFIX namespace
-    # applies here too: bootstrapping unsuffixed collections while the app
-    # reads suffixed ones would leave every lane querying an empty collection.
-    # get_or_create, not list-then-create: several processes may bootstrap the
-    # same Chroma at once (xdist workers on a CI lane) and the second create
-    # would fail with "Collection [...] already exists".
+    # Named via the constants so GAIA_CHROMA_COLLECTION_SUFFIX applies here too.
+    # get_or_create, not list-then-create: concurrent xdist workers can both
+    # bootstrap the same Chroma and the second create would fail as "exists".
     for collection_name in (
         CHROMA_NOTES_COLLECTION,
         CHROMA_DOCUMENTS_COLLECTION,
@@ -226,27 +183,15 @@ async def init_chromadb_client() -> AsyncClientAPI:
     strategy=MissingKeyStrategy.WARN,
 )
 def init_chromadb_constructor() -> ClientAPI:
-    """
-    Initialize ChromaDB constructor client for langchain.
-    This is a workaround to avoid the `coroutine` error in langchain
-    when using the async client directly.
-
-    Returns:
-        ClientAPI: The ChromaDB constructor client
-    """
+    """Initialize the sync ChromaDB client for langchain, avoiding its async coroutine error."""
     log.debug(f"{LogTag.CHROMA} Initializing ChromaDB constructor client")
 
     host: str = settings.CHROMADB_HOST
     port: int = settings.CHROMADB_PORT
 
-    # HttpClient, NOT Client: only HttpClient sets chroma_api_impl to the FastAPI
-    # backend. chromadb.Client() keeps the default RustBindingsAPI with
-    # is_persistent=False and never reads chroma_server_host/port, so passing
-    # them in Settings built a process-local in-memory store that silently
-    # answered its own reads while nothing ever reached the server — every
-    # collection written through this client (documents, notes, gaia_canvas)
-    # sat at zero rows on the server while looking healthy in-process.
-    # Telemetry off for the same reason as init_chromadb_client.
+    # HttpClient, NOT Client: chromadb.Client() defaults to an in-memory
+    # RustBindingsAPI that ignores chroma_server_host/port, so every write
+    # through it silently never reaches the server. Telemetry off as above.
     constructor_client = chromadb.HttpClient(
         host=host,
         port=port,
@@ -269,20 +214,13 @@ def init_chromadb_constructor() -> ClientAPI:
     strategy=MissingKeyStrategy.WARN,
 )
 def init_langchain_chroma() -> Chroma:
-    """
-    Initialize default Langchain Chroma client.
-
-    Returns:
-        Chroma: The default Langchain Chroma client
-    """
+    """Initialize the default Langchain Chroma client."""
     log.debug(f"{LogTag.CHROMA} Initializing default Langchain Chroma client")
 
-    # Get the constructor client
     constructor_client = providers.get("chromadb_constructor")
     if not constructor_client:
         raise RuntimeError("ChromaDB constructor client not initialized")
 
-    # Create default langchain client with no specific collection
     langchain_chroma_client = Chroma(
         client=constructor_client,
         embedding_function=providers.get("google_embeddings"),
@@ -292,12 +230,7 @@ def init_langchain_chroma() -> Chroma:
 
 
 def init_chroma() -> None:
-    """
-    Backward compatibility function to initialize ChromaDB client and store in app state.
-    This is mainly for compatibility with existing code that calls init_chroma explicitly.
-
-    In new code, prefer using ChromaClient.get_client() directly which lazily initializes.
-    """
+    """Backward-compat init; prefer ChromaClient.get_client() in new code."""
     try:
         init_chromadb_client()
         init_chromadb_constructor()

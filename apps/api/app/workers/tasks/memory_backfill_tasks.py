@@ -1,14 +1,14 @@
 """Daily backfill of long-term memory for users who predate the memory engine.
 
 Users created before the live memory pipeline shipped have conversation history
-that never went through ``memory_node``. A daily cron (``backfill_active_users``)
+that never went through memory_node. A daily cron (backfill_active_users)
 scans for recently-active, pre-launch, not-yet-backfilled users and enqueues a
-per-user job (``backfill_user_memories``) that replays their conversations
-through ``memory_engine.retain`` and notifies them once their memory is ready.
+per-user job (backfill_user_memories) that replays their conversations
+through memory_engine.retain and notifies them once their memory is ready.
 
-The ``memory_backfilled`` marker makes the whole thing idempotent and, as a
+The memory_backfilled marker makes the whole thing idempotent and, as a
 free side effect, picks up users who only just became active again: when a
-dormant account logs back in its ``last_active_at`` is bumped, so the next cron
+dormant account logs back in its last_active_at is bumped, so the next cron
 run sees it as eligible and backfills it.
 """
 
@@ -24,6 +24,7 @@ from app.constants.memory import (
     MEMORY_BACKFILL_MAX_USERS_PER_RUN,
     MemorySourceType,
 )
+from app.constants.notifications import MEMORY_SETTINGS_URL
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.memory.consolidation import cancel_consolidation
@@ -45,7 +46,6 @@ from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import MemoryContext, UserContext, log
 
 _BACKFILL_TASK = "backfill_user_memories"
-_MEMORY_SETTINGS_URL = "/settings/memory"
 
 
 def _active_since() -> datetime:
@@ -125,10 +125,9 @@ async def backfill_user_memories(ctx: dict[str, Any], user_id: str) -> str:  # n
         processed += 1
 
     if processed:
-        # Each retain only *scheduled* a debounced (120s) core-document
-        # consolidation. Cancel it and run one pass inline so the memory is
-        # genuinely ready when we notify — and so the result survives a
-        # worker restart that would otherwise drop the debounced pass.
+        # Each retain only scheduled a debounced (120s) consolidation; cancel it
+        # and run inline so memory is ready before notify, and the result
+        # survives a worker restart that would otherwise drop the debounced pass.
         await cancel_consolidation(user_id)
         last_day = max(_conversation_date(doc).date() for doc in docs)
         await memory_engine.summarize_episode(user_id, last_day)
@@ -196,7 +195,7 @@ async def _notify_memory_ready(user_id: str) -> None:
                             style=ActionStyle.PRIMARY,
                             config=ActionConfig(
                                 redirect=RedirectConfig(
-                                    url=_MEMORY_SETTINGS_URL,
+                                    url=MEMORY_SETTINGS_URL,
                                     open_in_new_tab=False,
                                     close_notification=True,
                                 )

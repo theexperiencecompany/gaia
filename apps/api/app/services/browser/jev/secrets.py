@@ -1,0 +1,156 @@
+"""The credentials a task was given, by name, and the one rule that keeps them out of what people and models read.
+
+The task carries <secret>name</secret> placeholders; only the page ever
+receives a value, and only on the site the executor named for that secret:
+Jev fills a field from here, and the Browser-Use agent through its sensitive_data.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+import re
+from urllib.parse import quote, quote_plus, urlsplit
+
+from app.constants.browser import JEV_SECRET_MASK, JEV_SECRET_NAME_TYPED
+from app.schemas.browser import BrowserTaskSecret
+from app.services.browser.exceptions import BrowserAutomationError
+from app.utils.sites import PLACEHOLDER, on_site
+
+
+def _encodings(value: str) -> set[str]:
+    """Return every form a value takes: as typed, and as a URL encodes it."""
+    return {value, quote_plus(value), quote(value)}
+
+
+class _Replacer:
+    """Replace each form with its stand-in in one pass, so no stand-in is rewritten again.
+
+    A placeholder already in the text is kept whole, so masking twice changes nothing
+    even when a value occurs inside a placeholder ("<secret>admin</secret>" for "admin").
+    """
+
+    def __init__(self, stand_ins: dict[str, str]) -> None:
+        self._stand_ins = stand_ins
+        # Alternatives compete only where one starts another; reverse order puts the longer first.
+        forms = sorted(stand_ins, reverse=True)
+        alternatives = [PLACEHOLDER.pattern, *map(re.escape, forms)]
+        self._pattern = re.compile("|".join(alternatives)) if forms else None
+
+    def __call__(self, text: str) -> str:
+        if self._pattern is None:
+            return text
+        return self._pattern.sub(
+            lambda match: self._stand_ins.get(match.group(0), match.group(0)), text
+        )
+
+
+def _masked_by_name(values: dict[str, str]) -> _Replacer:
+    return _Replacer(
+        {
+            form: f"<secret>{name}</secret>"
+            for name, value in values.items()
+            for form in _encodings(value)
+        }
+    )
+
+
+def _masked(values: Iterable[str]) -> _Replacer:
+    return _Replacer({form: JEV_SECRET_MASK for value in values for form in _encodings(value)})
+
+
+class SecretWithheld(BrowserAutomationError):
+    """A placeholder was not typed: it names no secret, or the page is not on its secret's site."""
+
+
+def is_placeholder(text: str) -> bool:
+    """Whether text is one <secret>name</secret> placeholder and nothing else."""
+    return PLACEHOLDER.fullmatch(text) is not None
+
+
+def holds_placeholder(text: str) -> bool:
+    """Whether text has a <secret>name</secret> placeholder anywhere in it."""
+    return PLACEHOLDER.search(text) is not None
+
+
+class RunSecrets:
+    """Secret values by placeholder name, each typed only on its own site, never read back."""
+
+    def __init__(self, secrets: dict[str, BrowserTaskSecret]) -> None:
+        self._secrets = {name: secret for name, secret in secrets.items() if secret.value}
+        self._values = {name: secret.value for name, secret in self._secrets.items()}
+        # A form sent by GET puts a password in the next page's URL, encoded.
+        self._mask = _masked_by_name(self._values)
+        #: Values the run typed into a password field that the task never named a secret.
+        self._typed: set[str] = set()
+        self._redact = _masked(self._values.values())
+
+    @property
+    def names(self) -> list[str]:
+        return list(self._values)
+
+    @property
+    def sites(self) -> list[str]:
+        """The site each secret is typed on: sites the user named for the task."""
+        return [secret.site for secret in self._secrets.values()]
+
+    def refuse_a_name(self, typed: str) -> None:
+        """Raise SecretWithheld when typed is a secret's name: its value comes only from its placeholder."""
+        name = typed.strip()
+        if name in self._values:
+            raise SecretWithheld(JEV_SECRET_NAME_TYPED.format(name=name))
+
+    def value_for(self, placeholder: str, url: str) -> str:
+        """Return the value placeholder stands for on url's page; raise SecretWithheld off its site."""
+        match = PLACEHOLDER.fullmatch(placeholder)
+        secret = self._secrets.get(match.group(1)) if match else None
+        if secret is None:
+            raise SecretWithheld(f"{placeholder} names no secret this task was given.")
+        # https only, as the sensitive_data Browser-Use fills from; a page with no host is on no site.
+        page = urlsplit(url)
+        if (
+            page.scheme != "https"
+            or page.hostname is None
+            or not on_site(page.hostname, secret.site)
+        ):
+            raise SecretWithheld(
+                f"{placeholder} is typed only on {secret.site}; this page is not on it."
+            )
+        return secret.value
+
+    def mask(self, text: str) -> str:
+        """Replace every secret value in text with its placeholder, for text a model reads."""
+        return self._mask(text)
+
+    def excerpt(self, text: str, cut: bool) -> str:
+        """Mask text that was cut at its end: a value the cut split leaves no prefix behind."""
+        if cut:
+            forms = {form for value in self._values.values() for form in _encodings(value)}
+            split = max(
+                (k for form in forms for k in range(len(form)) if text.endswith(form[:k])),
+                default=0,
+            )
+            text = text[: len(text) - split]
+        return self._mask(text)
+
+    def learn(self, typed: str) -> None:
+        """Treat a value the run typed into a password field as a secret for everything a person reads.
+
+        A task can spell a password out instead of naming a secret; once it is in
+        a password field, it is one, and the page may echo it (a GET form puts it in the URL).
+        """
+        if not typed or PLACEHOLDER.fullmatch(typed):
+            return
+        self._typed.add(typed)
+        self._redact = _masked([*self._values.values(), *self._typed])
+
+    def redact(self, text: str) -> str:
+        """Replace every secret value and placeholder with the mask, for text a person reads."""
+        return PLACEHOLDER.sub(JEV_SECRET_MASK, self._redact(text))
+
+    def sensitive_data(self) -> dict[str, str | dict[str, str]]:
+        """Return the map Browser-Use's agent fills <secret>name</secret> from, each secret under its own site."""
+        by_site: dict[str, dict[str, str]] = {}
+        for name, secret in self._secrets.items():
+            for pattern in (f"https://{secret.site}", f"https://*.{secret.site}"):
+                by_site.setdefault(pattern, {})[name] = secret.value
+        return {pattern: values for pattern, values in by_site.items()}

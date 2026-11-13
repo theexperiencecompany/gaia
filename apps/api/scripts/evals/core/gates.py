@@ -1,27 +1,27 @@
 """Turn a case's declared gates into runtime scores.
 
-``expected.score.gates`` names the checks that decide pass/fail (the runner reads
+expected.score.gates names the checks that decide pass/fail (the runner reads
 the same list). This maps each name to the one scorer that implements it, so a
 suite never re-implements a check and a gate name means the same thing in every
 suite. An unknown gate name raises rather than scoring 0 — a typo in YAML would
 otherwise show up as a permanently failing case nobody can explain.
 
-That "otherwise" was not hypothetical. ``CapabilitySuite.score()`` used to
+That "otherwise" was not hypothetical. CapabilitySuite.score() used to
 implement three gate names inline instead of coming through here, so a case
-declaring ``no_forbidden_tools`` got no entry in the scores dict at all;
-``runner._status_from_scores`` reads a missing gate back as ``0.0``, and the case
+declaring no_forbidden_tools got no entry in the scores dict at all;
+runner._status_from_scores reads a missing gate back as 0.0, and the case
 was permanently red no matter what the agent did. It was the only case in its
 category, so the category reported 0% and the agent took the blame. Two things
 follow, and both are load-bearing:
 
 * **One implementation per gate name.** A suite-local copy of a shared check is
-  a copy that silently diverges; every suite dispatches through :data:`GATES`.
-* **A name nothing implements is an ERROR, never a 0.0.** :func:`validate_gates`
+  a copy that silently diverges; every suite dispatches through :data:GATES.
+* **A name nothing implements is an ERROR, never a 0.0.** :func:validate_gates
   is called from every suite's loader, so the run dies at load time with the case
   id and the known names — before a single model call is spent — instead of
   reporting an agent failure that never happened.
 
-``verify`` cannot catch this class on its own: an unscored gate rejects every
+verify cannot catch this class on its own: an unscored gate rejects every
 forgery, so the case reports as *proven* while being incapable of passing. It
 asks whether a case can go red; this asks whether it can go green.
 """
@@ -43,11 +43,9 @@ from .types import Case, CaseRun
 
 _Scorer = Callable[[Case, CaseRun], float]
 
-#: A gate a suite computes inside its own ``score()`` rather than through this
-#: dispatcher — a benchmark metric like ``gaia_exact`` or ``probes``, whose value
-#: comes from the transport's end state rather than from a reusable check.
-#: Declaring it as ``{name: SELF_SCORED}`` tells :func:`validate_gates` the name
-#: is real, without claiming this module can produce it.
+#: A gate a suite computes inside its own score() rather than through this
+#: dispatcher (e.g. gaia_exact, probes, from the transport's end state).
+#: {name: SELF_SCORED} tells validate_gates the name is real but not ours.
 SELF_SCORED: _Scorer | None = None
 
 #: Every gate name shared across suites, and the single implementation of each.
@@ -89,7 +87,7 @@ ExtraGates = Mapping[str, _Scorer | None]
 
 
 def known_gates(extra: ExtraGates | None = None) -> dict[str, _Scorer | None]:
-    """The shared gates plus whatever this suite implements for itself."""
+    """Return the shared gates plus whatever this suite implements for itself."""
     return {**GATES, **dict(extra or {})}
 
 
@@ -112,9 +110,9 @@ def validate_gates(
 
 
 def score_gates(case: Case, run: CaseRun, extra: ExtraGates | None = None) -> dict[str, float]:
-    """Score every gate the case declares, plus their mean as ``overall``.
+    """Score every gate the case declares, plus their mean as overall.
 
-    ``extra`` carries the suite's own gates. A name mapped to :data:`SELF_SCORED`
+    extra carries the suite's own gates. A name mapped to :data:SELF_SCORED
     is validated but not dispatched — its suite fills the value in afterwards.
     """
     available = known_gates(extra)

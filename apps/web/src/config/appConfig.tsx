@@ -1,3 +1,4 @@
+import type { EventProperties } from "@gaia/shared/analytics/events";
 import {
   ArrowRight02Icon,
   BlushBrush02Icon,
@@ -23,8 +24,9 @@ import {
   LinkedinIcon,
   TwitterIcon,
   WhatsappIcon,
-  YoutubeIcon,
 } from "@/components/shared/icons";
+import { siteConfig } from "@/lib/seo";
+import { vanityTarget } from "../../vanity-redirects.mjs";
 
 const BotPlatformIcon = ({
   src,
@@ -52,6 +54,11 @@ export interface AppLink {
   hideNavbar?: boolean;
 }
 
+/** An auth link; its href doubles as `navigation:cta_clicked`'s destination. */
+interface AuthLink extends AppLink {
+  href: EventProperties["navigation:cta_clicked"]["destination"];
+}
+
 export interface LinkSection {
   title: string;
   links: AppLink[];
@@ -61,6 +68,7 @@ type NavIconComponent = ComponentType<{
   width?: number;
   height?: number;
   color?: string;
+  "aria-hidden"?: boolean;
 }>;
 
 // Factories keep the link pools declarative one-liners instead of repeating
@@ -102,7 +110,7 @@ const socialLink = (
 ): AppLink => ({
   href,
   label,
-  icon: <Icon width={size} height={size} color={color} />,
+  icon: <Icon width={size} height={size} color={color} aria-hidden />,
   external: true,
   description,
 });
@@ -150,7 +158,7 @@ export const appConfig = {
         "Keep your data on your own infrastructure",
       ),
       botLink(
-        "/whatsapp",
+        vanityTarget("/whatsapp"),
         "WhatsApp",
         "/images/icons/macos/whatsapp.webp",
         "Chat with GAIA on WhatsApp",
@@ -205,9 +213,15 @@ export const appConfig = {
     ] as AppLink[],
 
     resources: [
-      navLink("/roadmap", "Roadmap", MapsIcon, "What we're shipping next", {
-        external: true,
-      }),
+      navLink(
+        vanityTarget("/roadmap"),
+        "Roadmap",
+        MapsIcon,
+        "What we're shipping next",
+        {
+          external: true,
+        },
+      ),
       navLink(
         "/blog",
         "Blog",
@@ -228,7 +242,7 @@ export const appConfig = {
         "Learn about GAIA and the team behind it",
       ),
       navLink(
-        "/request-feature",
+        vanityTarget("/request-feature"),
         "Request a Feature",
         Idea01Icon,
         "Tell us what to build next",
@@ -290,43 +304,35 @@ export const appConfig = {
 
     connect: [
       socialLink(
-        "https://discord.heygaia.io",
+        siteConfig.links.discord,
         "Discord",
         DiscordIcon,
         "#5865f2",
         "Join Discord Community",
       ),
       socialLink(
-        "https://x.com/trygaia",
+        siteConfig.links.twitter,
         "Twitter",
         TwitterIcon,
         "#08a0e9",
         "Follow us for updates",
       ),
       socialLink(
-        "https://github.com/theexperiencecompany",
+        siteConfig.links.repo,
         "GitHub",
         Github,
         "white",
         "Check out our open source projects",
       ),
       socialLink(
-        "https://whatsapp.heygaia.io",
+        siteConfig.links.whatsapp,
         "WhatsApp",
         WhatsappIcon,
         "#25D366",
         "Join WhatsApp Community",
       ),
       socialLink(
-        "https://youtube.com/@theexperiencecompany",
-        "YouTube",
-        YoutubeIcon,
-        "#FF0000",
-        "Subscribe to our YouTube Channel",
-        25,
-      ),
-      socialLink(
-        "https://www.linkedin.com/company/heygaia",
+        siteConfig.links.linkedin,
         "LinkedIn",
         LinkedinIcon,
         "#0077B5",
@@ -402,24 +408,34 @@ export const appConfig = {
         icon: <MessageMultiple02Icon width={17} color={"currentColor"} />,
         requiresAuth: true,
       },
-    ] as AppLink[],
+    ] satisfies AuthLink[],
   },
 };
 
-// Curated footer — hand-picked and hand-ordered, independent of the navbar
-// link pool. Programmatic SEO pages (glossary, alternatives, automation
-// combos, personas) are intentionally excluded; they are linked from their
-// hub pages and sitemaps instead.
+// Curated footer, independent of the navbar link pool. It links the hubs of the
+// programmatic SEO families (each hub links its own pages), never the pages themselves.
 export const footerSections: LinkSection[] = [
   {
     title: "Product",
     links: [
+      { label: "Features", href: "/features" },
       { label: "Download", href: "/download" },
       { label: "Use Cases", href: "/use-cases" },
       { label: "Marketplace", href: "/marketplace" },
       { label: "Bots", href: "/bots" },
       { label: "Pricing", href: "/pricing" },
-      { label: "Roadmap", href: "/roadmap", external: true },
+      { label: "Roadmap", href: vanityTarget("/roadmap"), external: true },
+    ],
+  },
+  {
+    title: "Explore",
+    links: [
+      { label: "Compare GAIA", href: "/compare" },
+      { label: "Alternatives", href: "/alternative-to" },
+      { label: "Automations", href: "/automate" },
+      { label: "AI Glossary", href: "/learn" },
+      { label: "GAIA for Your Role", href: "/for" },
+      { label: "Best AI Assistants", href: "/best-ai-assistant" },
     ],
   },
   {
@@ -431,13 +447,18 @@ export const footerSections: LinkSection[] = [
         external: true,
       },
       { label: "Blog", href: "/blog" },
+      { label: "FAQ", href: "/faq" },
       {
         label: "Release Notes",
         href: "https://docs.heygaia.io/release-notes",
         external: true,
       },
-      { label: "Status", href: "/status", external: true },
-      { label: "Request a Feature", href: "/request-feature", external: true },
+      { label: "Status", href: vanityTarget("/status"), external: true },
+      {
+        label: "Request a Feature",
+        href: vanityTarget("/request-feature"),
+        external: true,
+      },
     ],
   },
   {
@@ -454,6 +475,7 @@ export const footerSections: LinkSection[] = [
     links: [
       { label: "Terms of Use", href: "/terms" },
       { label: "Privacy Policy", href: "/privacy" },
+      { label: "Subprocessors", href: "/privacy#subprocessors" },
     ],
   },
 ];

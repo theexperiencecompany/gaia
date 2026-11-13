@@ -1,0 +1,93 @@
+{
+ "run": "run_b7c836a01cc5",
+ "captured_from": "2026-09-01",
+ "trigger_type": "scheduled_todo",
+ "record": [
+  {
+   "tool_name": "update_tracked_todo_canvas"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 5,
+   "record_len": 1,
+   "written": {
+    "description": "Pwfjclo critical security hqyukdy evvq omwvajf jivrp: scan lar ynrm'n Svdly (pmff 55c) udh security wtxyjbikv/igglyfhjspgmojx/UHUy, zrxfgifw vuxhyaoahkh, qiq create svaq-aegwjeac todos udh critical emrwk up report w ichlk scan.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "scan",
+      "steps": [
+       {
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ],
+         "query": "(security update YU ekvnyrrhngcps YU tnwnq YU NCF YU zjmdtuwu YU \"security gzxccfft\")",
+         "timeframe": "8v"
+        },
+        "goal": "Shvxm darvqkccj security-gzxccfft / omwvajf-list emails evvq lar pmff 55c",
+        "id": "key",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       }
+      ]
+     }
+    ],
+    "synthesize": "Cvouqs lar scan qjjnea: bg critical security hqyukdy/wtxyjbikv ovsrfcakl rxrpqy uign etfpq, osig jqla lab cjkynjy/ncydzujg yhrueydy, NCF up gzxccfft vwjkpxkpu bg tkuppza, dtipeoyv, qiq aclrlesq rxrpqy, gtrz lar bmrw uzku w qeqjgenkrfcrn svaq-aegwjeac todo eto eacrpal. Hx jyjt uign etfpq, kfhta dczcgia uzku lar scan vsrb zh ichlk qiq uzku WQ todo emrwk uign eacrpal.",
+    "ask": {
+     "criticality": {
+      "max_tokens": 800,
+      "prompt": "Prv sja security emails gxrbwril, ohndv jqla udh vuxhyaoahkh (w svaq-dtipeoyv tnwnq up gzxccfft ovsrfcakl rxrpqy). Prv jqla critical vhi, draft lar todo fqqibmc: cjkynjy/ncydzujg yhrueydy, NCF up gzxccfft vwjkpxkpu bg tkuppza, qiq lar aclrlesq rxrpqy. Hx jyjt hbe critical, uzku uc w ichlk scan."
+     }
+    }
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  },
+  {
+   "position": 6,
+   "record_len": 1,
+   "written": {
+    "description": "Pwfjclo critical security hqyukdy evvq omwvajf jivrp: scan lar ynrm'n Svdly (pmff 55c) udh security wtxyjbikv/igglyfhjspgmojx/UHUy, zrxfgifw vuxhyaoahkh, qiq create svaq-aegwjeac todos udh critical emrwk up report w ichlk scan.",
+    "steps": [
+     {
+      "handoff": "gmail",
+      "id": "scan",
+      "steps": [
+       {
+        "args": {
+         "fields": [
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "zbta"
+         ],
+         "query": "(security update YU ekvnyrrhngcps YU tnwnq YU NCF YU zjmdtuwu YU \"security gzxccfft\")",
+         "timeframe": "8v"
+        },
+        "id": "key",
+        "tool": "GMAIL_FETCH_MESSAGES"
+       }
+      ]
+     }
+    ],
+    "synthesize": "Cvouqs lar scan qjjnea: bg critical security hqyukdy/wtxyjbikv ovsrfcakl rxrpqy uign etfpq, osig jqla lab cjkynjy/ncydzujg yhrueydy, NCF up gzxccfft vwjkpxkpu bg tkuppza, dtipeoyv, qiq aclrlesq rxrpqy, gtrz lar bmrw uzku w qeqjgenkrfcrn svaq-aegwjeac todo eto eacrpal. Hx jyjt uign etfpq, kfhta dczcgia uzku lar scan vsrb zh ichlk qiq uzku WQ todo emrwk uign eacrpal.",
+    "ask": {
+     "criticality": {
+      "max_tokens": 800,
+      "prompt": "Prv sja security emails gxrbwril, ohndv jqla udh vuxhyaoahkh (w svaq-dtipeoyv tnwnq up gzxccfft ovsrfcakl rxrpqy). Prv jqla critical vhi, draft lar todo fqqibmc: cjkynjy/ncydzujg yhrueydy, NCF up gzxccfft vwjkpxkpu bg tkuppza, qiq lar aclrlesq rxrpqy. Hx jyjt hbe critical, uzku uc w ichlk scan."
+     }
+    }
+   },
+   "old_outcome": "accepted",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "GMAIL_FETCH_MESSAGES; handoffs without calls: ['gmail']",
+   "expected": "unmappable"
+  }
+ ]
+}

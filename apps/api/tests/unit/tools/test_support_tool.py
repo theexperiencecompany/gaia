@@ -3,6 +3,11 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from app.models.agent_models import RunUserMissingError
+from app.models.user_models import UserDocument
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -29,13 +34,13 @@ def _writer() -> MagicMock:
 
 
 class TestCreateSupportTicket:
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_service")
     async def test_happy_path_support(self, mock_user_svc: MagicMock, mock_gsw: MagicMock) -> None:
         w = _writer()
         mock_gsw.return_value = w
         mock_user_svc.get_user_by_id = AsyncMock(
-            return_value={"email": "test@example.com", "name": "Test User"}
+            return_value=UserDocument(email="test@example.com", name="Test User")
         )
 
         from app.agents.tools.support_tool import create_support_ticket
@@ -46,8 +51,10 @@ class TestCreateSupportTicket:
             title="App crashes on login",
             description="When I try to log in with Google, the app crashes immediately.",
         )
-        assert result.startswith("I've prepared a support ticket draft for you to review."), result
-        assert "review" in result.lower()
+        assert result == (
+            "Drafted a support ticket for you. Check it over and hit "
+            "Submit Ticket when it looks right."
+        )
         # Verify writer was called with progress and data
         assert w.call_count == 2
         progress_call = w.call_args_list[0][0][0]
@@ -59,12 +66,12 @@ class TestCreateSupportTicket:
         assert ticket["title"] == "App crashes on login"
         assert ticket["user_email"] == "test@example.com"
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_service")
     async def test_happy_path_feature(self, mock_user_svc: MagicMock, mock_gsw: MagicMock) -> None:
         mock_gsw.return_value = _writer()
         mock_user_svc.get_user_by_id = AsyncMock(
-            return_value={"email": "test@example.com", "name": "Test User"}
+            return_value=UserDocument(email="test@example.com", name="Test User")
         )
 
         from app.agents.tools.support_tool import create_support_ticket
@@ -75,21 +82,18 @@ class TestCreateSupportTicket:
             title="Add dark mode",
             description="I would love to have a dark mode option in the settings.",
         )
-        assert result.startswith("I've prepared a feature request draft for you to review."), result
+        assert result.startswith("Drafted a feature request for you."), result
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_service")
     async def test_mixed_case_type_labels_correctly(
         self, mock_user_svc: MagicMock, mock_gsw: MagicMock
     ) -> None:
-        """Regression: the confirmation label must come from the normalized enum,
-        not the raw LLM-supplied string. 'Feature' streams a feature ticket but
-        used to be announced as a support ticket because the raw string never
-        equals SupportRequestType.FEATURE."""
+        """Regression: "Feature" used to be announced as a support ticket because the raw LLM string never equals SupportRequestType.FEATURE; the label must come from the normalized enum."""
         w = _writer()
         mock_gsw.return_value = w
         mock_user_svc.get_user_by_id = AsyncMock(
-            return_value={"email": "test@example.com", "name": "Test User"}
+            return_value=UserDocument(email="test@example.com", name="Test User")
         )
 
         from app.agents.tools.support_tool import create_support_ticket
@@ -103,18 +107,29 @@ class TestCreateSupportTicket:
         data_call = w.call_args_list[1][0][0]
         ticket = data_call["support_ticket_data"][0]
         assert ticket["type"] == "feature"
-        assert result.startswith("I've prepared a feature request draft for you to review."), result
+        assert result.startswith("Drafted a feature request for you."), result
 
-    async def test_no_user_id(self) -> None:
+    async def test_no_user_id_is_refused(self) -> None:
         from app.agents.tools.support_tool import create_support_ticket
 
-        result = await create_support_ticket.coroutine(
-            config=_cfg_no_user(),
-            ticket_type="support",
-            title="Test",
-            description="A test description for the ticket.",
-        )
-        assert "authentication required" in result.lower()
+        with pytest.raises(RunUserMissingError):
+            await create_support_ticket.coroutine(
+                config=_cfg_no_user(),
+                ticket_type="support",
+                title="Test",
+                description="A test description for the ticket.",
+            )
+
+    async def test_config_without_metadata_is_refused(self) -> None:
+        from app.agents.tools.support_tool import create_support_ticket
+
+        with pytest.raises(RunUserMissingError):
+            await create_support_ticket.coroutine(
+                config={},
+                ticket_type="support",
+                title="Test",
+                description="A test description for the ticket.",
+            )
 
     @patch(f"{MODULE}.user_service")
     async def test_user_not_found(self, mock_user_svc: MagicMock) -> None:
@@ -132,7 +147,7 @@ class TestCreateSupportTicket:
 
     @patch(f"{MODULE}.user_service")
     async def test_user_no_email(self, mock_user_svc: MagicMock) -> None:
-        mock_user_svc.get_user_by_id = AsyncMock(return_value={"name": "Test User"})
+        mock_user_svc.get_user_by_id = AsyncMock(return_value=UserDocument(name="Test User"))
 
         from app.agents.tools.support_tool import create_support_ticket
 
@@ -144,13 +159,13 @@ class TestCreateSupportTicket:
         )
         assert "email is required" in result.lower()
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_service")
     async def test_strips_whitespace(self, mock_user_svc: MagicMock, mock_gsw: MagicMock) -> None:
         w = _writer()
         mock_gsw.return_value = w
         mock_user_svc.get_user_by_id = AsyncMock(
-            return_value={"email": "test@example.com", "name": "Test User"}
+            return_value=UserDocument(email="test@example.com", name="Test User")
         )
 
         from app.agents.tools.support_tool import create_support_ticket
@@ -178,15 +193,17 @@ class TestCreateSupportTicket:
             title="Test",
             description="A test description for the ticket.",
         )
-        assert "error" in result.lower()
+        assert result.startswith("Could not prepare your support ticket:")
         assert "DB down" in result
 
-    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.user_service")
     async def test_user_name_defaults(self, mock_user_svc: MagicMock, mock_gsw: MagicMock) -> None:
         w = _writer()
         mock_gsw.return_value = w
-        mock_user_svc.get_user_by_id = AsyncMock(return_value={"email": "test@example.com"})
+        mock_user_svc.get_user_by_id = AsyncMock(
+            return_value=UserDocument(email="test@example.com")
+        )
 
         from app.agents.tools.support_tool import create_support_ticket
 

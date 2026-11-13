@@ -3,7 +3,7 @@ Service tests: verify the exact SSE wire format yielded by subscribe_stream.
 
 Calls real StreamManager.subscribe_stream() against real Redis Streams.
 Asserts on the exact strings that reach the HTTP response body: replayable
-frames are id-tagged (``id: <entry-id>\\ndata: {json}\\n\\n``) while control
+frames are id-tagged (id: <entry-id>\\ndata: {json}\\n\\n) while control
 frames ([DONE], errors, keepalives) carry no id line.
 """
 
@@ -33,7 +33,7 @@ class TestSSEContract:
     """Verify the SSE wire format contract of subscribe_stream."""
 
     async def test_text_chunks_are_id_tagged_sse_frames(self, real_redis):
-        """Every text chunk yielded must match: id: <entry-id>\\ndata: {json}\\n\\n"""
+        """Every text chunk yielded must match: id: <entry-id>\\ndata: {json}\\n\\n."""
         await StreamManager.start_stream("sse-1", "c1", "u1")
         received: list[str] = []
 
@@ -96,7 +96,7 @@ class TestSSEContract:
         assert payload["error"] == "LLM timed out"
 
     async def test_keepalive_format(self, real_redis):
-        """Idle streams must yield keepalive as exactly: data: {"keepalive":true}\\n\\n"""
+        """Idle streams must yield keepalive as exactly: data: {"keepalive":true}\\n\\n."""
         await StreamManager.start_stream("sse-4", "c4", "u4")
         received: list[str] = []
 

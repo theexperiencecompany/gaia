@@ -1,9 +1,8 @@
-"""Layer 3 — read tool internals: sandbox fallback, ``_read_special`` routing,
-and the ``read`` tool's exact argument forwarding.
+"""Layer 3 — read tool internals: sandbox fallback, special-read routing, and the read tool's exact argument forwarding.
 
 Mocks the files boundary (get_info + read) and the special-read collaborators
-(``_read_image``, ``system_file_body``, ``gaia_task_files``) so each branch's
-exact arguments are pinned. Asserts behavior, not call counts.
+(_read_image, system_file_body, gaia_task_files) so each branch's exact
+arguments are pinned. Asserts behavior, not call counts.
 """
 
 from __future__ import annotations

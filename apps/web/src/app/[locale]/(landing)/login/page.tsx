@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 
 import { RedirectLoader } from "@/components/shared/RedirectLoader";
-import { apiauth } from "@/lib/api/client";
+import { resolveInstanceAuthMode } from "@/features/auth/api/serverSetupStatusApi";
+import { AuthShell } from "@/features/auth/components/AuthShell";
+import { LoginForm } from "@/features/auth/components/LoginForm";
+import { apiBaseUrl } from "@/lib/api/client";
 import { generatePageMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
@@ -24,7 +27,21 @@ export default async function LoginPage({
   // to `/`, making the latter protocol-relative).
   const safeReturnUrl =
     returnUrl && /^\/[^/\\]/.test(returnUrl) ? returnUrl : undefined;
-  const oauthUrl = `${apiauth.getUri()}oauth/login/workos${safeReturnUrl ? `?return_url=${encodeURIComponent(safeReturnUrl)}` : ""}`;
+  // Self-host instances run local email/password auth; everything else keeps
+  // the classic WorkOS OAuth redirect.
+  const authMode = await resolveInstanceAuthMode();
+  if (authMode === "local") {
+    return (
+      <AuthShell
+        title="Welcome back"
+        subtitle="Sign in to your self-hosted GAIA instance."
+      >
+        <LoginForm safeReturnUrl={safeReturnUrl} />
+      </AuthShell>
+    );
+  }
+
+  const oauthUrl = `${apiBaseUrl}/oauth/login/workos${safeReturnUrl ? `?return_url=${encodeURIComponent(safeReturnUrl)}` : ""}`;
 
   return (
     <div className="h-screen">

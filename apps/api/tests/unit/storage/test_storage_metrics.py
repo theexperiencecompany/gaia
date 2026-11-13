@@ -1,24 +1,16 @@
 """FS metrics: per-op aggregation, the Prometheus surface, and fs_timer's guarantees.
 
-Every storage call site funnels through ``fs_timer`` / ``record_fs_op``. Two
-failure shapes matter and are both invisible at runtime: the aggregate silently
-under-reporting (a slow op that never shows up on a dashboard, an error counted
-as a success), and the metrics layer itself breaking the operation it measures
-(a swallowed exception, a leaked in-flight gauge that makes every panel read
-"stuck").
+Every storage call site funnels through fs_timer / record_fs_op. Two failure shapes matter and
+are invisible at runtime: the aggregate silently under-reporting (a slow op that never shows up,
+an error counted as a success), and the metrics layer itself breaking the operation it measures.
 
-Known ContextVar wart, verified in-process and pinned by the two isolation
-tests below: a task spawned *before* the request records its first FS op gets a
-bucket of its own that nobody ever flushes, so its ops reach Prometheus but
-never the wide event. Spawned *after*, the same task shares the bucket and is
-billed to the request. Whether a fire-and-forget op shows up in ``fs={}`` is
-therefore decided by unrelated ordering earlier in the turn.
+Known ContextVar wart, pinned by the two isolation tests below: a task spawned before the request
+records its first FS op gets its own bucket that nobody flushes (reaches Prometheus, never the
+wide event); spawned after, it shares the bucket and is billed to the request instead.
 
-Boundaries mocked: nothing. The Prometheus collectors are in-process, so the
-real registry is read back via ``REGISTRY.get_sample_value``; each test uses a
-unique op name so its samples cannot collide with another test's. The only
-patched objects are deliberately-broken collector stubs used to prove the
-registry-failure guards actually guard.
+Boundaries mocked: nothing — the Prometheus collectors are in-process, read back via
+REGISTRY.get_sample_value with a unique op name per test. Only the deliberately-broken collector
+stubs are patched, to prove the registry-failure guards actually guard.
 """
 
 from __future__ import annotations
@@ -50,7 +42,7 @@ def _clean_bucket() -> Iterator[None]:
     """Start every test from an empty ContextVar bucket.
 
     Sync tests mutate the caller's context directly, so without this a leftover
-    bucket from a previous test would make `flush` assertions read another
+    bucket from a previous test would make flush assertions read another
     test's numbers.
     """
     m._metrics_var.set(None)
@@ -399,11 +391,9 @@ async def test_two_concurrent_requests_do_not_see_each_others_fs_metrics() -> No
 async def test_a_background_task_spawned_by_a_request_bills_its_fs_work_to_that_request(
     op: str,
 ) -> None:
-    # A chat turn fans FS work out into fire-and-forget tasks (the artifact
-    # forwarder, the last-active touch). Their cost belongs on the turn's wide
-    # event, and it only gets there because the child inherits the bucket the
-    # request already created. Guarding this because it holds only while the
-    # bucket exists at spawn time — see the module note on orphaned buckets.
+    # A fire-and-forget task (artifact forwarder, last-active touch) bills its FS cost to the
+    # request's wide event only by inheriting the bucket the request created — holds only while
+    # that bucket still exists at spawn time; see the module note on orphaned buckets.
     record_fs_op(op, duration_ms=1.0)
 
     async def background() -> None:

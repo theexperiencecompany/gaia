@@ -7,11 +7,21 @@
  * from `../types`.
  */
 
+import type {
+  CommunityIntegrationItem,
+  CommunityListResponse,
+  MyIntegrationItem,
+  PublicIntegrationDetailResponse,
+} from "@shared/api/generated";
+
+export type {
+  CreateCustomIntegrationRequest,
+  CreateCustomIntegrationResponse,
+} from "@shared/api/generated";
+
 export type {
   IntegrationConnectionData,
   IntegrationStatusRecord as IntegrationStatus,
-  IntegrationToolsResponse,
-  MyIntegrationsResponse,
 } from "@shared/types";
 
 /**
@@ -30,13 +40,6 @@ export type IntegrationCategoryValue =
   | "capabilities"
   | "other";
 
-export interface IntegrationInstructions {
-  integrationId: string;
-  content: string;
-  updatedBy: "user" | "agent";
-  updatedAt: string | null;
-}
-
 export interface Integration {
   id: string;
   name: string;
@@ -49,6 +52,10 @@ export interface Integration {
   isFeatured?: boolean;
   managedBy?: "self" | "composio" | "mcp" | "internal";
   available?: boolean;
+  /** Composio integration this instance has no auth config for; Connect cannot work. */
+  instanceSetupRequired?: boolean;
+  /** "instance": a Composio toolkit the admin enabled from the catalog (no triggers). */
+  origin?: MyIntegrationItem["origin"];
   authType?: "oauth" | "bearer" | "none";
   source?: "platform" | "custom";
   requiresAuth?: boolean;
@@ -64,39 +71,10 @@ export interface Integration {
   slug: string;
 }
 
-export interface CreateCustomIntegrationRequest {
-  name: string;
-  description?: string;
-  category?: string;
-  server_url: string;
-  requires_auth?: boolean;
-  auth_type?: "none" | "oauth" | "bearer";
-  is_public?: boolean;
-  bearer_token?: string;
-}
-
-/**
- * Result of connection testing after creating a custom integration
- * Matches backend CustomIntegrationConnectionResult
- */
-export interface ConnectionTestResult {
-  status: "connected" | "requires_oauth" | "failed" | "created";
-  toolsCount?: number;
-  oauthUrl?: string;
-  error?: string;
-}
-
 /**
  * Response from create custom integration endpoint
  * Matches backend CreateCustomIntegrationResponse
  */
-export interface CreateCustomIntegrationResponse {
-  status: string;
-  message: string;
-  integrationId: string;
-  name: string;
-  connection?: ConnectionTestResult;
-}
 
 /**
  * Suggested public integration from search
@@ -124,55 +102,30 @@ export interface IntegrationListStreamData {
  * Community/Public Marketplace Types
  */
 
-export interface IntegrationHowItWorksStep {
-  title: string;
-  body: string;
-}
-
-export interface IntegrationFAQ {
-  question: string;
-  answer: string;
-}
-
-export interface IntegrationContent {
-  useCases: string[];
-  howItWorks: IntegrationHowItWorksStep[];
-  faqs: IntegrationFAQ[];
-}
-
-export interface CommunityIntegrationCreator {
-  name: string | null;
-  picture: string | null;
-}
-
-export interface CommunityIntegration {
-  integrationId: string;
-  slug: string;
-  name: string;
-  description: string;
-  category: string;
-  iconUrl: string | null;
-  cloneCount: number;
-  toolCount: number;
-  tools: Array<{ name: string; description: string | null }>;
-  publishedAt: string | null;
-  creator: CommunityIntegrationCreator | null;
+/** A marketplace card; `source` is set client-side to tell native from community. */
+export type CommunityIntegration = CommunityIntegrationItem & {
   source?: "platform" | "custom";
+};
+
+export type CommunityIntegrationsResponse = CommunityListResponse;
+
+export type PublicIntegrationResponse = PublicIntegrationDetailResponse;
+
+/** One button in the seeded Getting-started thread's connect row. An entry
+ * with an `integration_id` shows that app's icon; the last one is the
+ * integrations page itself. `href` is an in-app path, opened in the same tab. */
+/** How a connect starts: a bearer token for MCP servers, or the expired account to sign back in. */
+export interface IntegrationConnectOptions {
+  bearerToken?: string;
+  accountId?: string;
 }
 
-export interface CommunityIntegrationsResponse {
-  integrations: CommunityIntegration[];
-  total: number;
-  hasMore: boolean;
+export interface ConnectOption {
+  integration_id?: string;
+  label: string;
+  href: string;
 }
 
-export interface PublicIntegrationResponse extends CommunityIntegration {
-  mcpConfig?: {
-    serverUrl: string;
-    requiresAuth: boolean;
-    authType: string | null;
-  } | null;
-  source?: "platform" | "custom";
-  authType?: "oauth" | "bearer" | "none" | null;
-  content?: IntegrationContent | null;
+export interface ConnectOptionsData {
+  options: ConnectOption[];
 }

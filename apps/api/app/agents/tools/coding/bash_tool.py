@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from collections.abc import Mapping
 import contextlib
+from dataclasses import dataclass
 import posixpath
 import time
 from typing import Annotated
@@ -12,7 +14,7 @@ import uuid
 
 from e2b import CommandExitException, TimeoutException
 from langchain_core.runnables.config import RunnableConfig
-from langchain_core.tools import tool
+from langchain_core.tools import BaseTool, tool
 from prometheus_client import Counter
 
 from app.agents.tools.coding._artifacts import publish_artifact
@@ -39,13 +41,36 @@ from app.constants.sandbox import (
     BASH_MAX_TIMEOUT_SECONDS,
     WORKSPACE_TMP_SUFFIX,
 )
+from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL
+from app.db.repositories.todos import todo_repository
 from app.decorators import with_doc, with_rate_limiting
+from app.models.todo_models import TodoDocument
+from app.services.agent_lab.lab_runs import (
+    LAB_SEED_TIMEOUT_SECONDS,
+    LabAccess,
+    lab_access,
+    subscribe_todo_to_run,
+)
+from app.services.agent_lab.sandbox_setup import (
+    build_seed_command,
+    lab_env,
+    lab_env_path,
+    lab_events_url,
+    mint_lab_hooks_token,
+)
+from app.services.feature_flags import is_code_mode_enabled
 from app.services.sandbox import (
     SandboxAcquisitionError,
     acquire_sandbox,
 )
+from app.services.sandbox.execute_client import (
+    mint_execute_env,
+    sandbox_execute_enabled,
+    seed_execute_client,
+)
 from app.services.storage import FsOps, fs_timer
 from app.services.storage.metrics import _register_once
+from app.services.triggers.subscription_service import unregister_subscription
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
 from app.utils.output_limiter import truncate_head_tail
 from shared.py.wide_events import log
@@ -54,16 +79,9 @@ MAX_TIMEOUT_SECONDS = 600
 DEFAULT_TIMEOUT_SECONDS = 120
 MAX_COMMAND_LENGTH = 16_000
 
-# Bucketed bash exit code counter. The buckets (string labels) are part of the
-# `fs-metrics-coverage` capability contract; changing them requires a spec
-# update. Raw exit codes would be ≤256 series per process — wasted cardinality
-# when 95% are 0. The bucket choice mirrors the standard shell semantics:
-#   - 0           → success
-#   - 1-126       → generic command failure
-#   - 127         → command not found
-#   - 128-254     → killed by signal (128 + signal_number)
-#   - 255         → catch-all error
-#   - "timeout"   → killed by our own `_run_foreground` deadline
+# Bucketed bash exit code counter (fs-metrics-coverage contract). Mirrors
+# shell semantics: 0=success, 1-126=generic failure, 127=not found,
+# 128-254=killed by signal, 255=catch-all, "timeout"=our deadline.
 _BASH_EXIT_CODE_TOTAL = _register_once(
     "tool_bash_exit_code_total",
     lambda: Counter(
@@ -134,16 +152,13 @@ def _resolve_cwd(cwd: str, session_id: str | None) -> tuple[str, str | None]:
         return session_dir(session_id), None
     if cwd:
         # A relative cwd joins to the session dir (or /workspace), mirroring
-        # canonical_path so `cwd="scratch"` means the session's scratch — the
-        # same session-relative model read/write use.
+        # canonical_path, so `cwd="scratch"` means the session's scratch.
         if not cwd.startswith("/"):
             base = session_dir(session_id) if session_id else WORKSPACE_ROOT
             cwd = posixpath.join(base, cwd)
         # Normalize BEFORE the containment check — otherwise `/workspace/../etc`
-        # (or a relative `../` that climbs out after the join) starts with
-        # `/workspace/` and slips past, then the shell resolves the `..` and
-        # lands outside. The gate is load-bearing against prompt-injection drift
-        # reaching host-internal config (`/etc/gaia`).
+        # starts with `/workspace/`, slips past, and the shell resolves the
+        # `..` to escape — a gate against reaching host config (`/etc/gaia`).
         normalized = posixpath.normpath(cwd)
         if not is_under_workspace(normalized):
             return cwd, f"Error: cwd must be under {WORKSPACE_ROOT}"
@@ -151,34 +166,249 @@ def _resolve_cwd(cwd: str, session_id: str | None) -> tuple[str, str | None]:
     return cwd, None
 
 
-@tool
-@with_rate_limiting("bash_execution")
-@with_doc(BASH_TOOL)
-async def bash(
-    config: RunnableConfig,
-    command: Annotated[str, "Shell command to run inside /workspace"],
-    cwd: Annotated[
-        str,
-        "Working directory; defaults to your session root (holds artifacts/, scratch/, user-uploaded/)",
-    ] = "",
-    # Agent-facing tool parameter: the e2b server-side command deadline (see
-    # _run_foreground). A local asyncio.timeout context manager can't replace it
-    # — it would cancel our coroutine without killing the remote command.
-    timeout: Annotated[
-        int, "Seconds before kill"
-    ] = BASH_DEFAULT_TIMEOUT_SECONDS,  # NOSONAR python:S7483
-    background: Annotated[bool, "Run detached; returns pid + log path"] = False,
+def build_bash_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> BaseTool:
+    """The bash tool, optionally carrying one agent's tool space into code mode.
+
+    Bash is the other door to the execute proxy: every command runs with a token
+    its scripts use to call GAIA tools, so that token has to carry the same
+    confinement the agent's own ``execute`` has — otherwise a subagent refused a
+    tool by the proxy runs it from a one-line script instead. ``scoped_tools`` is
+    the subagent's live tool dict, read at call time exactly as
+    ``build_execute_tool`` reads it; the executor passes nothing, because its
+    space is the whole registry.
+    """
+
+    @tool
+    @with_rate_limiting("bash_execution")
+    @with_doc(BASH_TOOL)
+    async def bash(
+        config: RunnableConfig,
+        command: Annotated[str, "Shell command to run inside /workspace"],
+        cwd: Annotated[
+            str,
+            "Working directory; defaults to your session root (holds artifacts/, scratch/, user-uploaded/)",
+        ] = "",
+        # Agent-facing tool parameter: the e2b server-side command deadline (see
+        # _run_foreground). A local asyncio.timeout context manager can't replace it
+        # — it would cancel our coroutine without killing the remote command.
+        timeout: Annotated[
+            int, "Seconds before kill"
+        ] = BASH_DEFAULT_TIMEOUT_SECONDS,  # NOSONAR python:S7483
+        background: Annotated[bool, "Run detached; returns pid + log path"] = False,
+        run_todo_id: Annotated[
+            str | None,
+            "Tracked todo id: seed a sandbox run and subscribe the todo to its "
+            "events before running. See SANDBOX RUNS in the description.",
+        ] = None,
+    ) -> str:
+        """Run a shell command in the user's persistent coding sandbox."""
+        request = _BashRequest(
+            command=command,
+            cwd=cwd,
+            timeout=timeout,
+            background=background,
+            run_todo_id=run_todo_id,
+        )
+        return await _run_bash(config=config, request=request, scoped_tools=scoped_tools)
+
+    return bash
+
+
+# The unscoped tool the global registry publishes — the executor's space is the
+# whole registry, so it needs no confinement.
+bash = build_bash_tool()
+
+
+@dataclass(frozen=True)
+class _BashRequest:
+    """One bash tool call as the model made it: what to run, before identity resolution."""
+
+    command: str
+    cwd: str
+    timeout: int
+    background: bool
+    run_todo_id: str | None
+
+
+@dataclass(frozen=True)
+class _BashInvocation:
+    """One bash call: what to run, where, and under whose identity."""
+
+    user_id: str
+    run_id: str
+    command: str
+    cwd: str
+    timeout: int
+    background: bool
+    session_id: str | None
+    config: RunnableConfig
+    scoped_tools: Mapping[str, BaseTool] | None
+
+
+async def _build_execute_env(run: _BashInvocation, sbx: object) -> dict[str, str] | None:
+    """Seed code mode and mint the per-run execute env, or None when code mode is off."""
+    # Two gates: the env secret arms the mechanism globally, the
+    # per-user flag rolls it out (default off).
+    if not sandbox_execute_enabled() or not await is_code_mode_enabled(run.user_id):
+        return None
+    # Code mode token is per-invocation, process-scoped, TTL-bound to this
+    # command's timeout (see execute_client.py threat model): bash scripts
+    # may call GAIA tools via from gaia import execute.
+    await seed_execute_client(sbx)
+    return mint_execute_env(
+        user_id=run.user_id,
+        run_id=run.run_id,
+        config=run.config,
+        sandbox_id=getattr(sbx, "sandbox_id", None),
+        command_timeout_seconds=BASH_MAX_TIMEOUT_SECONDS if run.background else run.timeout,
+        scoped_tool_names=None if run.scoped_tools is None else sorted(run.scoped_tools),
+    )
+
+
+@dataclass(frozen=True)
+class _LabRun:
+    """A seeded agent-lab run: its id, the todo's subscription to it, and the GAIA_LAB_* env."""
+
+    run_id: str
+    subscription_id: str
+    env: dict[str, str]
+
+
+class BackgroundStartError(RuntimeError):
+    """The detached command printed no pid, so nothing is running."""
+
+
+class CommandTimeoutError(RuntimeError):
+    """The foreground command ran past its deadline: an expected outcome, not a tool fault."""
+
+    def __init__(self, timeout_seconds: int) -> None:
+        super().__init__(
+            f"command did not finish within {timeout_seconds}s; rerun with a larger timeout "
+            f"(max {BASH_MAX_TIMEOUT_SECONDS}) or with background=True"
+        )
+
+
+async def _resolve_lab_todo(*, user_id: str, run_todo_id: str) -> TodoDocument | str:
+    """Fetch the tracked todo the run attaches to, or the loud error for the tool."""
+    try:
+        todo = await todo_repository.get(run_todo_id, user_id=user_id)
+    except Exception as e:
+        return f"Error: cannot resolve tracked todo {run_todo_id} ({e}), ran nothing"
+    if todo is None:
+        return f"Error: tracked todo {run_todo_id} not found, ran nothing"
+    # Events for any of these 404 or get skipped, so the run would work on unheard.
+    if GAIA_TRACKED_LABEL not in todo.labels:
+        return f"Error: todo {run_todo_id} is not a tracked todo, ran nothing"
+    if todo.completed:
+        return f"Error: tracked todo {run_todo_id} is completed; create a new one, ran nothing"
+    if FAILED_LABEL in todo.labels:
+        return f"Error: tracked todo {run_todo_id} is marked failed; reset it first, ran nothing"
+    return todo
+
+
+async def _seed_lab_run(*, user_id: str, sandbox_run_id: str, sbx: object) -> tuple[str, str] | str:
+    """Mint the hooks token, stage the seed, run it; or the loud error. Returns (url, token)."""
+    try:
+        url = lab_events_url(sbx)
+        token = mint_lab_hooks_token(user_id, sandbox_run_id)
+        seed = build_seed_command(url, token, sandbox_run_id)
+    except Exception as e:
+        return f"Error: lab seed setup failed ({e}), ran nothing"
+    try:
+        # Absolute paths inside, so no cwd; minimal kwargs keep the seed
+        # runnable on the same surface the fake-sandbox harness implements.
+        await sbx.commands.run(seed, timeout=LAB_SEED_TIMEOUT_SECONDS)  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
+    except Exception as e:
+        return f"Error: lab seed failed ({e}), ran nothing"
+    return url, token
+
+
+async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _LabRun | str:
+    """Mint the run token, stage the seed, and subscribe the todo; or return the loud error.
+
+    On any failure the caller runs nothing. The error is a plain string (the
+    tool's contract), not a raise — the command must never execute unseeded.
+    """
+    access = await lab_access(user_id)
+    if access == LabAccess.NOT_PAID:
+        return "Error: sandbox agent runs need a paid plan (run_todo_id), ran nothing"
+    if access == LabAccess.FLAG_OFF:
+        return "Error: agent lab is disabled for this user (run_todo_id needs the AGENT_LAB flag)"
+    todo = await _resolve_lab_todo(user_id=user_id, run_todo_id=run_todo_id)
+    if isinstance(todo, str):
+        return todo
+    sandbox_run_id = uuid.uuid4().hex
+    seed = await _seed_lab_run(user_id=user_id, sandbox_run_id=sandbox_run_id, sbx=sbx)
+    if isinstance(seed, str):
+        return seed
+    url, token = seed
+    try:
+        subscription = await subscribe_todo_to_run(todo, sandbox_run_id)
+    except Exception as e:
+        return f"Error: subscribing todo {run_todo_id} to the run failed ({e}), ran nothing"
+    return _LabRun(
+        run_id=sandbox_run_id,
+        subscription_id=subscription.id,
+        env=lab_env(url, token, sandbox_run_id),
+    )
+
+
+def _lab_footer(lab: _LabRun, run_todo_id: str) -> str:
+    """Tell the model what the run parameter did and the one record it still owes."""
+    return (
+        f"sandbox_run_id: {lab.run_id} (GAIA_LAB_* and OPENCODE_CONFIG_DIR injected; a later "
+        f"resume sources {lab_env_path(lab.run_id)}). "
+        f"Todo {run_todo_id} is now subscribed to this run: every event the agent "
+        "reports (finished, needs input, error) runs the todo with that event.\n"
+        "Record the pid and log path on the todo's canvas so later runs can find the log."
+    )
+
+
+async def _lab_run_and_env(
+    *, user_id: str, run_todo_id: str | None, sbx: object, base_env: dict[str, str] | None
+) -> tuple[_LabRun | None, dict[str, str] | None] | str:
+    """Set up the lab run for run_todo_id and merge its env over base_env; error as string."""
+    if run_todo_id is None:
+        return None, base_env
+    setup = await _setup_lab_run(user_id=user_id, run_todo_id=run_todo_id, sbx=sbx)
+    if isinstance(setup, str):
+        return setup
+    return setup, {**(base_env or {}), **setup.env}
+
+
+async def _run_sandbox_command(
+    *,
+    sbx: object,
+    run: _BashInvocation,
+    command_env: dict[str, str] | None,
+    background: bool,
+    lab: _LabRun | None,
+    run_todo_id: str | None,
 ) -> str:
-    """Run a shell command in the user's persistent coding sandbox."""
+    """Run the command detached or in the foreground; a run that never started unsubscribes."""
+    try:
+        if background:
+            return await _run_background(sbx, run, command_env)
+        return await _run_foreground(sbx, run, command_env)
+    except Exception:
+        # A run that never started must not stay subscribed and count as live.
+        # Equivalent under mutation: lab is set exactly when run_todo_id is
+        # (_lab_run_and_env); the second test only narrows run_todo_id's type.
+        if lab is not None and run_todo_id is not None:  # pragma: no mutate
+            await unregister_subscription(run_todo_id, run.user_id, lab.subscription_id)
+        raise
 
-    log.set(tool={"name": "bash", "action": "execute"})
 
-    if not command or not command.strip():
+async def _prepare_invocation(
+    *, config: RunnableConfig, request: _BashRequest, scoped_tools: Mapping[str, BaseTool] | None
+) -> _BashInvocation | str:
+    """Validate the request and resolve identity; or the plain error string for the tool."""
+    if not request.command or not request.command.strip():
         return "Error: command cannot be empty"
-    if len(command) > BASH_MAX_COMMAND_LENGTH:
+    if len(request.command) > BASH_MAX_COMMAND_LENGTH:
         return f"Error: command exceeds {BASH_MAX_COMMAND_LENGTH} characters"
 
-    timeout = max(1, min(timeout, BASH_MAX_TIMEOUT_SECONDS))
+    timeout = max(1, min(request.timeout, BASH_MAX_TIMEOUT_SECONDS))
     run_id = uuid.uuid4().hex[:12]
 
     try:
@@ -187,52 +417,99 @@ async def bash(
         return f"Error: {e}"
 
     session_id = get_session_id(config)
-    cwd, cwd_error = _resolve_cwd(cwd, session_id)
+    cwd, cwd_error = _resolve_cwd(request.cwd, session_id)
     if cwd_error:
         return cwd_error
+
+    return _BashInvocation(
+        user_id=user_id,
+        run_id=run_id,
+        command=request.command,
+        cwd=cwd,
+        timeout=timeout,
+        background=request.background,
+        session_id=session_id,
+        config=config,
+        scoped_tools=scoped_tools,
+    )
+
+
+async def _execute_invocation(*, run: _BashInvocation, run_todo_id: str | None) -> str:
+    """Run one prepared invocation in the sandbox: env, lab setup, dispatch, artifacts."""
+    try:
+        async with fs_timer(FsOps.TOOL_BASH), acquire_sandbox(run.user_id) as sbx:
+            if run.cwd:
+                # Session dirs are created on demand, so a resolved cwd may
+                # not exist yet. `make_dir` creates parents and no-ops if it
+                # already exists.
+                with contextlib.suppress(Exception):
+                    await sbx.files.make_dir(run.cwd)
+            execute_env = await _build_execute_env(run, sbx)
+            lab_result = await _lab_run_and_env(
+                user_id=run.user_id, run_todo_id=run_todo_id, sbx=sbx, base_env=execute_env
+            )
+            if isinstance(lab_result, str):
+                return _emit_bash_error(run.run_id, lab_result, lab_result, run.session_id)
+            lab, command_env = lab_result
+            try:
+                result = await _run_sandbox_command(
+                    sbx=sbx,
+                    run=run,
+                    command_env=command_env,
+                    background=run.background,
+                    lab=lab,
+                    run_todo_id=run_todo_id,
+                )
+            except BackgroundStartError as e:
+                return _emit_bash_error(run.run_id, str(e), f"Error: {e}", run.session_id)
+            if not run.background and run.session_id:
+                # A bash command can create artifacts many ways (cat, python, mv,
+                # curl -o, …), not just the write tool. Enumerate the session's
+                # artifacts/ from the sandbox itself (no cross-mount race) in real time.
+                async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
+                    await _publish_artifacts(sbx, run.user_id, run.session_id)
+            # Equivalent under mutation: lab is set exactly when run_todo_id is
+            # (_lab_run_and_env); the second test only narrows run_todo_id's type.
+            if lab is not None and run_todo_id is not None:  # pragma: no mutate
+                result = f"{result}\n{_lab_footer(lab, run_todo_id)}"
+            return result
+    except SandboxAcquisitionError as e:
+        return _emit_bash_error(
+            run.run_id, str(e), f"Error: sandbox unavailable ({e})", run.session_id
+        )
+    except CommandTimeoutError as e:
+        # Counted in the "timeout" exit-code bucket; caught outside acquire_sandbox
+        # so its liveness probe still evicts a sandbox that died mid-command.
+        return _emit_bash_error(run.run_id, str(e), f"Error: {e}", run.session_id)
+    except Exception as e:
+        # acquire_sandbox already evicted the sandbox if it died; surface it.
+        log.error(f"{LogTag.SANDBOX} bash tool failed", error_type=type(e).__name__, exc_info=True)
+        return _emit_bash_error(run.run_id, str(e), f"Error executing command: {e}", run.session_id)
+
+
+async def _run_bash(
+    *, config: RunnableConfig, request: _BashRequest, scoped_tools: Mapping[str, BaseTool] | None
+) -> str:
+    """Run one bash tool call: validate, resolve identity, execute in the sandbox."""
+    log.set(tool={"name": "bash", "action": "execute"})
+
+    run = await _prepare_invocation(config=config, request=request, scoped_tools=scoped_tools)
+    if isinstance(run, str):
+        return run
 
     safe_emit(
         {
             "bash_data": {
-                "id": run_id,
-                "command": command,
-                "cwd": cwd or WORKSPACE_ROOT,
+                "id": run.run_id,
+                "command": run.command,
+                "cwd": run.cwd or WORKSPACE_ROOT,
                 "status": "starting",
             }
         },
-        session_id=session_id,
+        session_id=run.session_id,
     )
 
-    try:
-        async with fs_timer(FsOps.TOOL_BASH), acquire_sandbox(user_id) as sbx:
-            if cwd:
-                # Session dirs are created on demand — nothing pre-creates them
-                # host-side at chat start — so any resolved cwd (the session
-                # root or e.g. `scratch/<job>`) may not exist yet. `make_dir`
-                # creates parents and no-ops if the dir exists; _resolve_cwd
-                # guarantees a non-empty cwd is inside the workspace.
-                with contextlib.suppress(Exception):
-                    await sbx.files.make_dir(cwd)
-            if background:
-                return await _run_background(sbx, run_id, command, cwd, session_id)
-            result = await _run_foreground(sbx, run_id, command, cwd, timeout, session_id)
-            # A bash command can create artifacts any number of ways (cat,
-            # python, mv, curl -o, …), not just the write tool. Enumerate the
-            # session's artifacts/ from the sandbox itself (it sees its
-            # own writes instantly — no host-mount/cross-mount race) and push
-            # them in real time; the chat forwarder relays them as SSE during
-            # this turn. De-duped downstream by (session_id, path).
-            if session_id:
-                async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
-                    await _publish_artifacts(sbx, user_id, session_id)
-            return result
-    except SandboxAcquisitionError as e:
-        return _emit_bash_error(run_id, str(e), f"Error: sandbox unavailable ({e})", session_id)
-    except Exception as e:
-        # acquire_sandbox already evicted the sandbox if this failure means it
-        # died (it health-checks on any error) — here we just surface it.
-        log.error(f"{LogTag.SANDBOX} bash tool failed", error_type=type(e).__name__, exc_info=True)
-        return _emit_bash_error(run_id, str(e), f"Error executing command: {e}", session_id)
+    return await _execute_invocation(run=run, run_todo_id=request.run_todo_id)
 
 
 async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None:
@@ -247,13 +524,9 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
     of how many artifacts the turn produced.
     """
     artifacts_root = session_artifacts(session_id)
-    # NUL-delimited fields AND records. Filenames cannot contain NUL bytes on
-    # Linux, so this delimitation is desync-proof even when the agent creates
-    # artifacts whose names contain tabs or newlines. Each artifact emits
-    # exactly four NUL-terminated fields: <path>\0<size>\0<mtime>\0<base64>\0.
-    # Real mtime is required so the chat-stream forwarder's
-    # (event,path,size_bytes,mtime) dedup actually skips unchanged files —
-    # using `time.time()` here would invalidate the signature on every push.
+    # NUL-delimited fields AND records (desync-proof, filenames can't contain
+    # NUL). Each artifact emits <path>\0<size>\0<mtime>\0<base64>\0. Real
+    # mtime is required so the forwarder's dedup skips unchanged files.
     max_inline = INLINE_ARTIFACT_MAX_BYTES
     enumerate_cmd = (
         f"find {sh_quote(artifacts_root)} -type f "
@@ -324,12 +597,7 @@ async def _persist_run_log(sbx: object, run_id: str, stdout: str, stderr: str) -
 
 
 async def _run_foreground(
-    sbx: object,
-    run_id: str,
-    command: str,
-    cwd: str,
-    timeout: int,
-    session_id: str | None,
+    sbx: object, run: _BashInvocation, envs: dict[str, str] | None = None
 ) -> str:
     """Run a command synchronously and stream stdout/stderr chunks."""
 
@@ -337,39 +605,38 @@ async def _run_foreground(
         safe_emit(
             {
                 "bash_data": {
-                    "id": run_id,
+                    "id": run.run_id,
                     "status": "running",
                     "stream": "stdout",
                     "chunk": chunk,
                 }
             },
-            session_id=session_id,
+            session_id=run.session_id,
         )
 
     def _on_stderr(chunk: str) -> None:
         safe_emit(
             {
                 "bash_data": {
-                    "id": run_id,
+                    "id": run.run_id,
                     "status": "running",
                     "stream": "stderr",
                     "chunk": chunk,
                 }
             },
-            session_id=session_id,
+            session_id=run.session_id,
         )
 
     try:
-        # `timeout` is the e2b server-side command-stream deadline; when it fires
-        # the SDK raises TimeoutException and stops streaming. A local
-        # asyncio.timeout would only cancel our coroutine, not the remote
-        # command, which is why S7483 does not apply here.
+        # `run.timeout` is the e2b server-side deadline; a local asyncio.timeout
+        # would only cancel our coroutine, not the remote command.
         result = await sbx.commands.run(  # type: ignore[attr-defined]  # e2b SDK ships no stubs  # NOSONAR python:S7483
-            command,
-            cwd=cwd or WORKSPACE_ROOT,
+            run.command,
+            cwd=run.cwd or WORKSPACE_ROOT,
+            envs=envs or {},
             on_stdout=_on_stdout,
             on_stderr=_on_stderr,
-            timeout=timeout,
+            timeout=run.timeout,
         )
         exit_code = getattr(result, "exit_code", None)
         stdout = getattr(result, "stdout", "") or ""
@@ -379,7 +646,10 @@ async def _run_foreground(
         # command outcome, not a tool failure — the SDK raises instead of
         # returning, so translate it back into a result we report normally.
         exit_code, stdout, stderr = e.exit_code, e.stdout or "", e.stderr or ""
-    except (TimeoutException, TimeoutError, asyncio.CancelledError):
+    except (TimeoutException, TimeoutError) as e:
+        _record_bash_exit_code(None, timed_out=True)
+        raise CommandTimeoutError(run.timeout) from e
+    except asyncio.CancelledError:
         _record_bash_exit_code(None, timed_out=True)
         raise
     except Exception:
@@ -388,17 +658,17 @@ async def _run_foreground(
 
     _record_bash_exit_code(exit_code, timed_out=False)
 
-    await _persist_run_log(sbx, run_id, stdout, stderr)
+    await _persist_run_log(sbx, run.run_id, stdout, stderr)
 
     safe_emit(
         {
             "bash_data": {
-                "id": run_id,
+                "id": run.run_id,
                 "status": "exited",
                 "exit_code": exit_code,
             }
         },
-        session_id=session_id,
+        session_id=run.session_id,
     )
 
     parts: list[str] = [f"exit_code: {exit_code}"]
@@ -410,37 +680,40 @@ async def _run_foreground(
 
 
 async def _run_background(
-    sbx: object,
-    run_id: str,
-    command: str,
-    cwd: str,
-    session_id: str | None,
+    sbx: object, run: _BashInvocation, envs: dict[str, str] | None = None
 ) -> str:
-    """Detach a long-running command and return its pid + log path."""
-    log_path = f"{runs_log_dir()}/{run_id}.log"
+    """Detach a long-running command and return its pid + log path.
+
+    The nohup child inherits ``envs``, so background scripts can call GAIA
+    tools too, until the token's TTL (bounded by BASH_MAX_TIMEOUT_SECONDS)
+    runs out; after that calls fail with 401 rather than living forever.
+    """
+    log_path = f"{runs_log_dir()}/{run.run_id}.log"
+    # Braces keep `&` on nohup alone: `a && b & echo` backgrounds the whole list
+    # in a subshell that holds stdout, so the launch blocks until the command ends.
     wrapped = (
         f"mkdir -p {sh_quote(runs_log_dir())} && "
-        f"nohup bash -c {sh_quote(command)} > {sh_quote(log_path)} 2>&1 "
-        "& echo $!"
+        f"{{ nohup bash -c {sh_quote(run.command)} > {sh_quote(log_path)} 2>&1 & }} "
+        "&& echo $!"
     )
     result = await sbx.commands.run(  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
-        wrapped, cwd=cwd or WORKSPACE_ROOT, timeout=10
+        wrapped, cwd=run.cwd or WORKSPACE_ROOT, envs=envs or {}, timeout=10
     )
     pid = (getattr(result, "stdout", "") or "").strip()
     if not pid:
-        return (
-            f"Error: failed to start background command (stderr: {getattr(result, 'stderr', '')})"
+        raise BackgroundStartError(
+            f"failed to start background command (stderr: {getattr(result, 'stderr', '')})"
         )
     safe_emit(
         {
             "bash_data": {
-                "id": run_id,
+                "id": run.run_id,
                 "status": "background_started",
                 "pid": pid,
                 "log_path": log_path,
             }
         },
-        session_id=session_id,
+        session_id=run.session_id,
     )
     return (
         f"Started in background. pid={pid}, log_path={log_path}\n"

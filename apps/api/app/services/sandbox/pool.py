@@ -1,14 +1,14 @@
 """In-process E2B sandbox pool.
 
-The pool holds a single live `AsyncSandbox` per user_id. Reuse across tool
+The pool holds a single live AsyncSandbox per user_id. Reuse across tool
 calls avoids reconnecting to E2B's control plane for every command. The pool
-also exposes per-user `asyncio.Lock` + refcount used by the lifecycle layer to
+also exposes per-user asyncio.Lock + refcount used by the lifecycle layer to
 serialize calls and time pause-on-idle correctly.
 
 The pool is per-API-process, not cross-process. Two API replicas operating on
 the same user will each hold their own AsyncSandbox handle; E2B coordinates
 the underlying sandbox state. That's fine — the lifecycle layer reconciles via
-the Mongo `e2b_sandboxes` doc as the source of truth for `sandbox_id`.
+the Mongo e2b_sandboxes doc as the source of truth for sandbox_id.
 """
 
 from __future__ import annotations
@@ -17,18 +17,24 @@ import asyncio
 from collections.abc import AsyncIterator
 import contextlib
 from dataclasses import dataclass, field
+import time
 
 from e2b import AsyncSandbox
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
+from app.constants.providers import CredentialProviderName
 from app.constants.sandbox import (
+    SANDBOX_LIFETIME_SECONDS,
     SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS,
     SANDBOX_LOCK_LEASE_SECONDS,
     SANDBOX_LOCK_MAX_HOLD_SECONDS,
     SANDBOX_LOCK_RENEW_SECONDS,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
+from app.services.providers.provider_credentials_service import (
+    resolve as resolve_e2b_config,
+)
 from app.services.sandbox.artifact_watcher import ArtifactWatcher
 from app.services.sandbox.errors import SandboxAcquisitionError
 from app.services.sandbox.shard_router import shard_for
@@ -51,6 +57,7 @@ class PooledSandbox:
     # monotonic timestamp of the last sandbox kill-timer refresh (set_timeout)
     timeout_refreshed_at: float = 0.0
     watcher: ArtifactWatcher | None = None
+    template_id: str | None = None
 
 
 class SandboxPool:
@@ -65,10 +72,8 @@ class SandboxPool:
         # to zero re-publish 0 explicitly (Prometheus gauges otherwise hold
         # their last positive value indefinitely).
         self._known_shards: set[int] = set()
-        # Seed warm-pool gauges at zero for each configured shard so the
-        # dashboard renders a flat zero line instead of "No data" until the
-        # warm pool capability (sibling change e2b-perf-metrics-and-
-        # improvements) actually populates entries.
+        # Seed warm-pool gauges at zero for each shard so the dashboard renders
+        # a flat zero line instead of "No data" until the warm pool populates entries.
         for shard in range(max(1, settings.JUICEFS_NUM_SHARDS)):
             set_sandbox_pool_size("warm", str(shard), 0)
 
@@ -86,17 +91,15 @@ class SandboxPool:
         return self._entries.get(user_id)
 
     def put(self, user_id: str, entry: PooledSandbox) -> None:
-        """Cache ``entry`` as the user's pooled sandbox and republish pool size."""
+        """Cache entry as the user's pooled sandbox and republish pool size."""
         self._entries[user_id] = entry
         self._publish_size()
 
     def evict(self, user_id: str) -> PooledSandbox | None:
         """Remove and return the user's pooled entry (keeps its lock); republish size."""
-        # Deliberately does NOT prune _lock_registry: an unheld lock can still
-        # have a concurrent acquirer mid-`get_lock`→`acquire` that would then be
-        # handed a different Lock object, breaking per-user mutual exclusion.
-        # The registry grows only with distinct active users and resets on
-        # deploy — a bounded, minor cost not worth that race.
+        # Deliberately does NOT prune _lock_registry: a concurrent acquirer
+        # mid-`get_lock`->`acquire` could be handed a different Lock object,
+        # breaking mutual exclusion. Growth is bounded (distinct active users) and resets on deploy.
         removed = self._entries.pop(user_id, None)
         if removed is not None:
             self._publish_size()
@@ -110,15 +113,10 @@ class SandboxPool:
     async def distributed_lock(self, user_id: str) -> AsyncIterator[None]:
         """Serialize sandbox acquisition for one user across every replica.
 
-        Two locks, because they answer different questions. The in-process
-        ``asyncio.Lock`` collapses this pod's concurrent acquirers so only one of
-        them talks to Redis; the Redis lease then serializes against the *other*
-        pods. Without the first, every coroutine on the pod would queue on Redis;
-        without the second, two pods would create the same user's sandbox twice.
-
-        Failing to take the Redis lease raises rather than proceeding: entering
-        the critical section unprotected is the exact double-create this exists
-        to prevent, and doing it silently would make that damage invisible.
+        Two locks answer different questions: the in-process asyncio.Lock
+        collapses this pod's concurrent acquirers so only one talks to Redis,
+        and the Redis lease then serializes against the other pods. Failing
+        to take the Redis lease raises rather than proceeding silently.
         """
         async with await self.get_lock(user_id):
             async with _redis_user_lock(user_id):
@@ -127,14 +125,10 @@ class SandboxPool:
     def _publish_size(self) -> None:
         """Recompute per-shard pool occupancy and publish to Prometheus.
 
-        Walks ``_entries`` once, buckets by ``shard_for(user_id)``, and emits
-        one ``sandbox_pool_size{kind="user",shard=...}`` gauge value per
-        shard. Re-publishes 0 for previously-seen shards now empty so the
-        gauge falls instead of holding its last positive value forever.
-
-        The walk is O(N) where N is the active user count (typically small;
-        one entry per active user per replica). If this gets expensive we
-        switch to incremental counts; today it's cheap.
+        Walks _entries once, buckets by shard_for(user_id), and emits one
+        gauge per shard — re-publishing 0 for now-empty shards so the gauge
+        falls instead of holding its last positive value. O(N) in active
+        users; cheap today.
         """
         counts: dict[int, int] = {}
         # Snapshot keys: a concurrent put/evict from another user's acquire can
@@ -154,39 +148,39 @@ _pool_singleton: SandboxPool | None = None
 
 @lazy_provider(
     name="e2b_sandbox_pool",
-    required_keys=[settings.E2B_API_KEY],
+    required_keys=[],
     strategy=MissingKeyStrategy.WARN,
-    warning_message=(
-        "E2B_API_KEY is not configured. Coding tools (bash/read/write/edit) "
-        "will return errors until it is set."
-    ),
 )
-def init_sandbox_pool() -> SandboxPool:
+async def init_sandbox_pool() -> SandboxPool:
     """Lazy-provider factory; also memoizes the module-level singleton.
 
-    Registered with `@lazy_provider` purely to expose the E2B_API_KEY
-    dependency to provider_registration. The `@lazy_provider` decorator
-    wraps the return value, so callers should use `get_sandbox_pool()` to
-    get the unwrapped `SandboxPool` instance.
+    Registered with @lazy_provider purely to expose the E2B_API_KEY
+    dependency to provider_registration. The @lazy_provider decorator
+    wraps the return value, so callers should use get_sandbox_pool() to
+    get the unwrapped SandboxPool instance.
     """
     global _pool_singleton
     if _pool_singleton is None:
         log.info(f"{LogTag.SANDBOX} initializing pool")
         _pool_singleton = SandboxPool()
+    config = await resolve_e2b_config(CredentialProviderName.E2B)
+    if config is None:
+        log.warning(
+            "E2B is not configured (no stored credential and no E2B_API_KEY): "
+            "hosted sandboxes are unavailable. On self-host, coding tools "
+            "fall back to the local Docker backend."
+        )
     return _pool_singleton
 
 
 @contextlib.asynccontextmanager
 async def _redis_user_lock(user_id: str) -> AsyncIterator[None]:
-    """Hold the cross-replica lease for ``user_id`` for the duration of the block.
+    """Hold the cross-replica lease for user_id for the duration of the block.
 
-    Correctness-critical: not holding the lease raises rather than entering the
-    critical section unprotected — the exact double-create the lock exists to
-    prevent — so a failed acquire (another replica held it past the window, or
-    Redis is unavailable) becomes a ``SandboxAcquisitionError``. The lease is
-    short and watchdog-renewed, so a pod that dies holding it frees the user
-    within ``SANDBOX_LOCK_LEASE_SECONDS`` while a slow-but-alive holder keeps it
-    for as long as the work actually takes.
+    Correctness-critical: a failed acquire (another replica held it past the
+    window, or Redis is unavailable) raises rather than entering the critical
+    section unprotected. The lease is short and watchdog-renewed, so a dead
+    pod frees the user within SANDBOX_LOCK_LEASE_SECONDS.
     """
     lock = DistributedLock(
         f"{SANDBOX_LOCK_KEY_PREFIX}{user_id}",
@@ -205,13 +199,51 @@ async def _redis_user_lock(user_id: str) -> AsyncIterator[None]:
 
 
 def get_sandbox_pool() -> SandboxPool:
-    """Synchronous accessor for the SandboxPool singleton.
+    """Return the SandboxPool singleton, synchronously.
 
     The pool itself does no I/O at construction time, so we don't need the
-    full `providers.aget` machinery here. Initializes on first call.
+    full providers.aget machinery here. Initializes on first call.
     """
     global _pool_singleton
     if _pool_singleton is None:
         log.info(f"{LogTag.SANDBOX} initializing pool")
         _pool_singleton = SandboxPool()
     return _pool_singleton
+
+
+def is_agent_lab_template(template_id: str | None) -> bool:
+    """Whether template_id is the configured agent-lab template; never true when none is configured."""
+    lab_template = settings.E2B_AGENT_LAB_TEMPLATE_ID
+    return lab_template is not None and template_id == lab_template
+
+
+def sandbox_lifetime_seconds(template_id: str | None) -> int:
+    """Return the kill-timer lifetime for a sandbox built from template_id: the lab setting, else 1h."""
+    return (
+        settings.E2B_AGENT_LAB_LIFETIME_SECONDS
+        if is_agent_lab_template(template_id)
+        else SANDBOX_LIFETIME_SECONDS
+    )
+
+
+async def refresh_sandbox_timeout(entry: PooledSandbox) -> bool:
+    """Refresh the sandbox kill timer once half its lifetime has passed since the last refresh.
+
+    Half the lifetime skips a set_timeout round trip on every tool call. Not
+    immortality: E2B still ends a sandbox at its team's cap from the start;
+    only a pause and resume (lifecycle.renew_sandbox) restarts that clock.
+    """
+    lifetime = sandbox_lifetime_seconds(entry.template_id)
+    if time.monotonic() - entry.timeout_refreshed_at <= lifetime // 2:
+        return False
+    try:
+        await entry.sandbox.set_timeout(lifetime)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.SANDBOX} timeout refresh failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return False
+    entry.timeout_refreshed_at = time.monotonic()
+    return True

@@ -13,7 +13,8 @@ from app.constants.nurture import (
     NURTURE_MIN_DAYS_BETWEEN_EMAILS,
     NurtureStep,
 )
-from app.models.user_models import UserDocument
+from app.models.nurture_models import NurtureHistoryEntry, NurtureStepStatus
+from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.services.nurture.service import (
     _process_user,
     _select_step,
@@ -22,7 +23,11 @@ from app.services.nurture.service import (
     _within_frequency_caps,
     run_nurture_sequence,
 )
+from app.services.providers.provider_credentials_service import ProviderConfig
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.onboarding import NurtureEmailSent
 
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 NOW = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
 
 
@@ -39,31 +44,35 @@ def _step(**overrides) -> NurtureStep:
     return NurtureStep(**fields)
 
 
+def _entry(status: NurtureStepStatus, at: datetime) -> NurtureHistoryEntry:
+    return NurtureHistoryEntry(step="step_a", at=at, status=status)
+
+
 class TestWithinFrequencyCaps:
     def test_empty_history_allows_send(self) -> None:
         assert _within_frequency_caps([], NOW) is True
 
     def test_ignores_non_sent_entries(self) -> None:
-        history = [{"status": "skipped", "at": NOW.replace(tzinfo=None)}]
+        history = [_entry(NurtureStepStatus.SKIPPED, NOW.replace(tzinfo=None))]
         assert _within_frequency_caps(history, NOW) is True
 
     def test_blocks_after_weekly_cap(self) -> None:
         history = [
-            {"status": "sent", "at": (NOW - timedelta(days=d)).replace(tzinfo=None)}
+            _entry(NurtureStepStatus.SENT, (NOW - timedelta(days=d)).replace(tzinfo=None))
             for d in (1, 2, 3)
         ]
         assert _within_frequency_caps(history, NOW) is False
 
     def test_allows_under_weekly_cap_but_blocks_recent_send(self) -> None:
-        history = [{"status": "sent", "at": (NOW - timedelta(hours=1)).replace(tzinfo=None)}]
+        history = [_entry(NurtureStepStatus.SENT, (NOW - timedelta(hours=1)).replace(tzinfo=None))]
         assert _within_frequency_caps(history, NOW) is False
 
     def test_allows_when_last_send_is_old_enough(self) -> None:
         history = [
-            {
-                "status": "sent",
-                "at": (NOW - timedelta(days=NURTURE_MIN_DAYS_BETWEEN_EMAILS)).replace(tzinfo=None),
-            }
+            _entry(
+                NurtureStepStatus.SENT,
+                (NOW - timedelta(days=NURTURE_MIN_DAYS_BETWEEN_EMAILS)).replace(tzinfo=None),
+            )
         ]
         assert _within_frequency_caps(history, NOW) is True
 
@@ -149,6 +158,24 @@ class TestSelectStep:
         assert step is not None and step.key == "step_b"
         mock_record.assert_awaited_once_with("u-1", "step_a", NOW, status="skipped")
 
+    async def test_onboarding_gated_step_selected_only_once_onboarding_completed(self) -> None:
+        """The gate is read off the user document, not assumed — held for a user who never finished onboarding, selected for one who did."""
+        gated = _step(key="gated", day_offset=1, requires_onboarding=True)
+        with patch("app.services.nurture.service.NURTURE_STEPS", [gated]):
+            onboarded = UserDocument(
+                id="u-1",
+                email="u@example.com",
+                onboarding=OnboardingSubdocument(completed=True),
+            )
+            assert await _select_step(onboarded, 1, set(), NOW) == gated
+
+            unonboarded = UserDocument(
+                id="u-2",
+                email="u2@example.com",
+                onboarding=OnboardingSubdocument(completed=False),
+            )
+            assert await _select_step(unonboarded, 1, set(), NOW) is None
+
     async def test_returns_none_when_every_step_blocked(self) -> None:
         user = UserDocument(id="u-1", email="u@example.com")
         with (
@@ -214,7 +241,7 @@ class TestSendStep:
 class TestProcessUser:
     def _user(self, **overrides) -> UserDocument:
         fields = dict(
-            id="u-1",
+            id=USER_ID,
             email="u@example.com",
             created_at="2026-05-30T12:00:00Z",
             notification_channel_prefs={},
@@ -231,37 +258,51 @@ class TestProcessUser:
             assert await _process_user(self._user(email=None), NOW) is False
 
     async def test_sends_and_records_on_success(self) -> None:
-        user = self._user()
+        sent = _entry(NurtureStepStatus.SENT, datetime(2026, 5, 20, 12, 0))
+        user = self._user(nurture={"completed_steps": ["welcome"], "history": [sent.model_dump()]})
+        step = _step()
         with (
             patch("app.services.nurture.service.is_within_local_daytime", return_value=True),
             patch(
                 "app.services.nurture.service.normalize_channel_preferences",
                 return_value={"email": True},
             ),
-            patch("app.services.nurture.service._within_frequency_caps", return_value=True),
+            patch(
+                "app.services.nurture.service._within_frequency_caps", return_value=True
+            ) as mock_caps,
             patch(
                 "app.services.nurture.service._select_step",
                 new_callable=AsyncMock,
-                return_value=_step(),
-            ),
+                return_value=step,
+            ) as mock_select,
             patch("app.services.nurture.service._send_step", new_callable=AsyncMock) as mock_send,
             patch(
                 "app.services.nurture.service._record_step", new_callable=AsyncMock
             ) as mock_record,
-            patch("app.services.nurture.service.capture_event") as mock_capture,
+            patch("app.services.nurture.service.capture") as mock_capture,
         ):
             result = await _process_user(user, NOW)
 
         assert result is True
-        mock_send.assert_awaited_once()
-        mock_record.assert_awaited_once()
-        mock_capture.assert_called_once()
+        mock_caps.assert_called_once_with([sent], NOW)
+        mock_select.assert_awaited_once_with(user, 2, {"welcome"}, NOW)
+        mock_send.assert_awaited_once_with(user, step)
+        mock_record.assert_awaited_once_with(
+            USER_ID, "first_win", NOW, status=NurtureStepStatus.SENT
+        )
+        mock_capture.assert_called_once_with(
+            UserId(USER_ID), NurtureEmailSent(step="first_win", day_offset=1)
+        )
 
 
 class TestRunNurtureSequence:
     async def test_skips_when_email_not_configured(self) -> None:
         with (
             patch("app.services.nurture.service.settings") as mock_settings,
+            patch(
+                "app.services.nurture.service.resolve_resend_config",
+                new=AsyncMock(return_value=None),
+            ),
             patch("app.services.nurture.service.log"),
         ):
             mock_settings.RESEND_API_KEY = None
@@ -272,6 +313,16 @@ class TestRunNurtureSequence:
         users = [self._user(f"u-{i}") for i in range(2)]
         with (
             patch("app.services.nurture.service.settings") as mock_settings,
+            patch(
+                "app.services.nurture.service.resolve_resend_config",
+                new=AsyncMock(
+                    side_effect={
+                        "resend": ProviderConfig(
+                            api_key="re-stored",
+                        )
+                    }.get
+                ),
+            ),
             patch(
                 "app.services.nurture.service.user_repository.find_nurture_candidates",
                 new_callable=AsyncMock,
@@ -284,7 +335,6 @@ class TestRunNurtureSequence:
             ),
             patch("app.services.nurture.service.log"),
         ):
-            mock_settings.RESEND_API_KEY = "k"
             mock_settings.EMAIL_UNSUBSCRIBE_SECRET = "s"
             result = await run_nurture_sequence()
 

@@ -2,7 +2,9 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.constants.general import MAX_PAGE_NUMBER
 
 
 class TriggerFieldConfig(BaseModel):
@@ -26,6 +28,39 @@ class TriggerConfigFieldSchema(BaseModel):
     max: int | None = None
     options_endpoint: str | None = None
     description: str | None = None
+
+
+class IndexedTriggerValue(BaseModel):
+    """The trigger fields the triggers store persists per entry; its other keys are ignored."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    slug: str
+    name: str
+    description: str | None
+    integration_id: str
+    integration_name: str
+
+
+class TriggerSearchConfigField(BaseModel):
+    """One config field of a searched trigger, as the agent reads it."""
+
+    type: Literal["string", "integer", "boolean", "number"]
+    description: str | None
+    default: bool | int | float | str
+    required: bool
+
+
+class TriggerSearchResult(BaseModel):
+    """A trigger matched by semantic search, with the user's connection status and its config fields."""
+
+    trigger_slug: str
+    trigger_name: str
+    description: str | None
+    integration_id: str
+    integration_name: str
+    is_connected: bool
+    config_fields: dict[str, TriggerSearchConfigField]
 
 
 class WorkflowTriggerSchema(BaseModel):
@@ -60,6 +95,46 @@ class TriggerOptionGroup(BaseModel):
 
     group: str
     options: list[TriggerOption]
+
+
+class TriggerOptionsParams(BaseModel):
+    """The query string of ``GET /triggers/options``."""
+
+    model_config = ConfigDict(frozen=True)
+
+    integration_id: str = Field(description="The integration ID (e.g., 'slack', 'trello')")
+    trigger_slug: str = Field(description="The trigger slug (e.g., 'slack_new_message')")
+    field_name: str = Field(default="", description="The config field name (e.g., 'channel_id')")
+    parent_values: str = Field(
+        default="",
+        description="Comma-separated parent IDs for cascading options (e.g., 'ws1,ws2')",
+    )
+    page: int = Field(
+        default=1,
+        ge=1,
+        le=MAX_PAGE_NUMBER,
+        description="Page number (starting from 1), for paged handlers",
+    )
+    search: str = Field(default="", description="Filter options by label substring")
+
+    @property
+    def parent_ids(self) -> list[str] | None:
+        ids = [value.strip() for value in self.parent_values.split(",") if value.strip()]
+        return ids or None
+
+
+class TriggerOptionsQuery(BaseModel):
+    """One request for a trigger config field's dynamic options."""
+
+    model_config = ConfigDict(frozen=True)
+
+    trigger_name: str
+    field_name: str
+    user_id: str
+    integration_id: str
+    parent_ids: list[str] | None = None
+    page: int = 1
+    search: str = ""
 
 
 class TriggerOptionsResponse(BaseModel):

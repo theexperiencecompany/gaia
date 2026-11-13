@@ -1,7 +1,6 @@
-"""Surfacing the device-onboarding card and the device-approval link, plus the
-agent copy for each.
+"""Build the device-onboarding card, approval link, and matching agent copy.
 
-Mirrors ``app/utils/integration_checker.py``: the UI card and the agent's
+Mirrors app/utils/integration_checker.py: the UI card and the agent's
 instruction are one operation, and the wording is source-category aware -
 URL-free on UI (the card carries the action) and inline on text-only clients
 (bots, background) where there is no card. The approve link is only ever
@@ -9,35 +8,32 @@ surfaced to the user on the authenticated approval page; the agent never
 approves a pairing code itself.
 """
 
-from typing import cast
-
-from langgraph.config import get_config, get_stream_writer
-
 from app.constants.device_bridge import (
     CLI_INSTALL_COMMANDS,
+    CLI_NPM_INSTALL_COMMAND,
     DEVICE_BRIDGE_DOCS_URL,
     DEVICE_PAIR_COMMAND,
     DEVICE_UP_COMMAND,
 )
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import (
+    current_run_config,
+    current_stream_writer,
+    read_agent_configurable,
+)
 from app.models.chat_models import SourceCategory
 from app.services.device.device_service import build_device_approve_url
 
 
 def _current_source_category() -> str | None:
     """Read the source category (ui/bot/bg) from the active graph run, or None."""
-    try:
-        config = get_config()
-    except RuntimeError:
-        return None
-    return cast(str | None, agent_configurable(config).get("source_category"))
+    return read_agent_configurable(current_run_config()).source_category
 
 
 def request_device_onboarding() -> str:
     """Show the device-onboarding card (install + pair) and return the agent copy."""
     source_category = _current_source_category()
     if source_category is not None:
-        get_stream_writer()(
+        current_stream_writer()(
             {
                 "device_onboarding_required": {
                     "install_commands": CLI_INSTALL_COMMANDS,
@@ -59,7 +55,7 @@ def request_device_onboarding() -> str:
             "approve_device_pairing with that code."
         )
     return (
-        f"Ask the user to install the GAIA CLI with `{CLI_INSTALL_COMMANDS['npm']}` "
+        f"Ask the user to install the GAIA CLI with `{CLI_NPM_INSTALL_COMMAND}` "
         f"(Node 20+, macOS/Linux/Windows-WSL2), run `{DEVICE_PAIR_COMMAND}`, and paste the "
         f"code it prints so you can call approve_device_pairing. Full guide: "
         f"{DEVICE_BRIDGE_DOCS_URL}"
@@ -76,7 +72,7 @@ def request_device_approval(user_code: str) -> str:
     approve_url = build_device_approve_url(code)
     source_category = _current_source_category()
     if source_category is not None:
-        get_stream_writer()(
+        current_stream_writer()(
             {
                 "device_approval_required": {
                     "approve_url": approve_url,

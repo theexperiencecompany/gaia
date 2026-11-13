@@ -11,7 +11,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.db.mongodb.indexes import create_playbook_indexes
+from app.db.mongodb.indexes import (
+    create_conversation_indexes,
+    create_payment_indexes,
+    create_playbook_indexes,
+)
 from app.db.mongodb.mongodb import MongoDB, init_mongodb
 
 # ---------------------------------------------------------------------------
@@ -155,10 +159,10 @@ class TestMongoDBInitializeIndexes:
 
     @patch("app.db.mongodb.mongodb.AsyncIOMotorClient")
     @patch("app.db.mongodb.mongodb.log")
-    async def test_initialize_indexes_handles_exception(
+    async def test_initialize_indexes_propagates_exception(
         self, mock_log: MagicMock, mock_motor: MagicMock
     ) -> None:
-        """Exception in create_all_indexes should be caught and logged."""
+        """Propagate exceptions so boot aborts instead of coming up healthy."""
         mock_motor.return_value = MagicMock()
         mongo = MongoDB(uri="mongodb://localhost:27017", db_name="test_db")
         mock_log.reset_mock()
@@ -168,11 +172,8 @@ class TestMongoDBInitializeIndexes:
             new_callable=AsyncMock,
             side_effect=RuntimeError("index boom"),
         ):
-            # Should not raise
-            await mongo._initialize_indexes()
-
-        mock_log.error.assert_called_once()
-        assert "index" in mock_log.error.call_args[0][0].lower()
+            with pytest.raises(RuntimeError, match="index boom"):
+                await mongo._initialize_indexes()
 
 
 # ---------------------------------------------------------------------------
@@ -340,8 +341,7 @@ class TestCollectionsLazyLoading:
 
 
 class TestGetAsyncCollection:
-    """The single supported accessor — the named per-collection module
-    attributes were removed once every domain moved behind a repository."""
+    """The single supported accessor; named per-collection module attributes were removed once every domain moved behind a repository."""
 
     def test_resolves_by_mongo_name(self) -> None:
         with patch("app.db.mongodb.collections._get_collection") as mock_get:
@@ -374,7 +374,6 @@ _INDEX_CREATORS = [
     "create_project_indexes",
     "create_note_indexes",
     "create_file_indexes",
-    "create_mail_indexes",
     "create_calendar_indexes",
     "create_blog_indexes",
     "create_notification_indexes",
@@ -385,16 +384,25 @@ _INDEX_CREATORS = [
     "create_usage_indexes",
     "create_integration_indexes",
     "create_user_integration_indexes",
-    "create_integration_instructions_indexes",
+    "create_user_instructions_indexes",
     "create_device_token_indexes",
     "create_installed_skills_indexes",
     "create_workflow_execution_indexes",
     "create_bot_session_indexes",
     "create_e2b_sandbox_indexes",
     "create_hil_approvals_indexes",
+    "create_approval_ledger_indexes",
     "create_pending_platform_registration_indexes",
+    "create_browser_profiles_indexes",
+    "create_browser_tasks_indexes",
     "create_llm_call_indexes",
+    "create_local_credential_indexes",
+    "create_local_invite_indexes",
+    "create_instance_settings_indexes",
     "create_playbook_indexes",
+    "create_provider_credential_indexes",
+    "create_tool_output_shapes_indexes",
+    "create_email_verdict_indexes",
 ]
 
 
@@ -403,8 +411,7 @@ class TestCreatePlaybookIndexes:
     async def test_one_playbook_per_workflow_is_a_unique_index(
         self, mock_get_collection: MagicMock
     ) -> None:
-        """The repository's atomic upsert relies on the (workflow_id, user_id)
-        unique index to reject the loser of two concurrent first authorings."""
+        """The repository's atomic upsert relies on the (workflow_id, user_id) unique index to reject the loser of a concurrent race."""
         collection = MagicMock()
         collection.create_index = AsyncMock()
         mock_get_collection.return_value = collection
@@ -415,6 +422,55 @@ class TestCreatePlaybookIndexes:
         collection.create_index.assert_awaited_once_with(
             [("workflow_id", 1), ("user_id", 1)], unique=True
         )
+
+
+class TestCreateConversationIndexes:
+    @patch("app.db.mongodb.indexes.get_async_collection")
+    async def test_a_tracked_todo_has_at_most_one_chat(
+        self, mock_get_collection: MagicMock
+    ) -> None:
+        """A run and an "Open chat" tap at once both create; the unique binding makes one of them lose."""
+        collection = MagicMock()
+        collection.create_index = AsyncMock()
+        mock_get_collection.return_value = collection
+
+        await create_conversation_indexes()
+
+        mock_get_collection.assert_called_once_with("conversations")
+        collection.create_index.assert_any_await(
+            [("user_id", 1), ("todo_id", 1)],
+            unique=True,
+            name="user_todo_conversation_unique",
+            partialFilterExpression={"todo_id": {"$type": "string"}},
+        )
+
+
+class TestCreatePaymentIndexes:
+    @patch("app.db.mongodb.indexes.get_async_collection")
+    async def test_checkout_sessions_indexes_back_the_webhook_race_lookups(
+        self, mock_get_collection: MagicMock
+    ) -> None:
+        """A checkout session is looked up by its unique provider session_id and listed per user newest-first."""
+        collections: dict[str, MagicMock] = {}
+
+        def collection_for(name: str) -> MagicMock:
+            if name not in collections:
+                collection = MagicMock()
+                collection.create_index = AsyncMock()
+                collections[name] = collection
+            return collections[name]
+
+        mock_get_collection.side_effect = collection_for
+
+        await create_payment_indexes()
+
+        assert "checkout_sessions" in collections
+        checkout_calls = collections["checkout_sessions"].create_index.await_args_list
+        assert [call.args for call in checkout_calls] == [
+            ("session_id",),
+            ([("user_id", 1), ("created_at", -1)],),
+        ]
+        assert [call.kwargs for call in checkout_calls] == [{"unique": True}, {}]
 
 
 class TestCreateAllIndexes:
@@ -487,6 +543,90 @@ class TestCreateAllIndexes:
         finally:
             for p in patches_dict.values():
                 p.stop()
+
+    @patch("app.db.mongodb.indexes.log")
+    @pytest.mark.parametrize(
+        ("creator", "collection"),
+        [
+            ("create_local_credential_indexes", "auth_credentials"),
+            ("create_local_invite_indexes", "auth_invites"),
+            ("create_instance_settings_indexes", "instance_settings"),
+            ("create_provider_credential_indexes", "provider_credentials"),
+        ],
+    )
+    async def test_create_all_indexes_security_critical_failure_raises(
+        self,
+        mock_log: MagicMock,
+        creator: str,
+        collection: str,
+    ) -> None:
+        """Abort startup when a security-critical index build fails; the indexes are the enforcement."""
+        patches_dict = {
+            name: patch(f"app.db.mongodb.indexes.{name}", new_callable=AsyncMock)
+            for name in _INDEX_CREATORS
+        }
+        mocks = {name: p.start() for name, p in patches_dict.items()}
+
+        # Make only the security-critical creator raise
+        mocks[creator].side_effect = RuntimeError("duplicate key E11000")
+
+        try:
+            from app.db.mongodb.indexes import create_all_indexes
+
+            with pytest.raises(RuntimeError) as exc_info:
+                await create_all_indexes()
+        finally:
+            for p in patches_dict.values():
+                p.stop()
+
+        # The error names the collection and the underlying cause
+        message = str(exc_info.value)
+        assert "Security-critical" in message
+        assert collection in message
+        assert "duplicate key E11000" in message
+
+        # The existing per-collection error logging still ran first
+        logged_collections = [
+            c.kwargs["collection_name"]
+            for c in mock_log.error.call_args_list
+            if "collection_name" in c.kwargs
+        ]
+        assert collection in logged_collections
+
+    @patch("app.db.mongodb.indexes.log")
+    async def test_create_all_indexes_mixed_failures_still_raise(self, mock_log: MagicMock) -> None:
+        """A simultaneous non-critical failure doesn't soften the critical abort."""
+        patches_dict = {}
+        for name in _INDEX_CREATORS:
+            patches_dict[name] = patch(
+                f"app.db.mongodb.indexes.{name}",
+                new_callable=AsyncMock,
+            )
+
+        mocks = {}
+        for name, p in patches_dict.items():
+            mocks[name] = p.start()
+
+        mocks["create_user_indexes"].side_effect = RuntimeError("user index fail")
+        mocks["create_local_credential_indexes"].side_effect = RuntimeError("slot duplicate")
+
+        try:
+            from app.db.mongodb.indexes import create_all_indexes
+
+            with pytest.raises(RuntimeError) as exc_info:
+                await create_all_indexes()
+        finally:
+            for p in patches_dict.values():
+                p.stop()
+
+        # Both failures got their per-collection error log before the abort
+        logged_collections = [
+            c.kwargs["collection_name"]
+            for c in mock_log.error.call_args_list
+            if "collection_name" in c.kwargs
+        ]
+        assert set(logged_collections) == {"users", "auth_credentials"}
+        assert "auth_credentials" in str(exc_info.value)
 
     @patch("app.db.mongodb.indexes.log")
     async def test_create_all_indexes_critical_error_propagates(self, mock_log: MagicMock) -> None:

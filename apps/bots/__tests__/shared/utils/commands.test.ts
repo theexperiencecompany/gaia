@@ -16,6 +16,7 @@ import type { CommandContext, GaiaClient } from "@gaia/shared/bots";
 import {
   dispatchTodoSubcommand,
   dispatchWorkflowSubcommand,
+  GaiaApiError,
   handleConversationList,
   handleNewConversation,
   handleTodoComplete,
@@ -27,8 +28,13 @@ import {
   handleWorkflowExecute,
   handleWorkflowGet,
   handleWorkflowList,
+  helpCommand,
+  type RichMessage,
+  type RichMessageTarget,
+  withWideEvent,
 } from "@gaia/shared/bots";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { captureBotEvents } from "../helpers/capture-bot-event";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -389,6 +395,25 @@ describe("handleConversationList", () => {
   });
 });
 
+describe("helpCommand", () => {
+  it("links to the instance the bot serves, not heygaia.io", async () => {
+    const gaia = makeGaia();
+    vi.mocked(gaia.getFrontendUrl).mockReturnValue("https://gaia.example.com");
+    const sendRich = vi.fn().mockResolvedValue({});
+    const target = { sendRich } as unknown as RichMessageTarget;
+
+    await helpCommand.execute({ gaia, target, ctx, args: {} });
+
+    const message = sendRich.mock.calls[0]?.[0] as RichMessage;
+    expect(message.links?.map((link) => link.url)).toContain(
+      "https://gaia.example.com",
+    );
+    expect(message.links?.map((link) => link.url)).not.toContain(
+      "https://heygaia.io",
+    );
+  });
+});
+
 describe("handleNewConversation", () => {
   it("resets session and returns confirmation message", async () => {
     const gaia = makeGaia();
@@ -414,8 +439,42 @@ describe("handleNewConversation", () => {
 
     const result = await handleNewConversation(gaia, ctx);
 
-    expect(result).toContain("Failed");
+    expect(result).toContain("Something went wrong");
     expect(result).not.toContain("Connection lost");
+  });
+
+  it("an unlinked account's /new is a failed command naming why, and tells the user to link", async () => {
+    const gaia = makeGaia();
+    vi.mocked(gaia.resetSession).mockRejectedValue(
+      new GaiaApiError("API error: 401", 401, {
+        message: "This platform account is not linked to a GAIA account.",
+        code: "BOT_ACCOUNT_NOT_LINKED",
+      }),
+    );
+
+    let reply = "";
+    const [event] = await captureBotEvents("command", () =>
+      withWideEvent("command", { platform: "telegram" }, async () => {
+        reply = await handleNewConversation(gaia, ctx);
+      }),
+    );
+
+    expect(event).toMatchObject({
+      outcome: "failed",
+      reason: "account_not_linked",
+      http_status: 401,
+      error_code: "BOT_ACCOUNT_NOT_LINKED",
+    });
+    expect(event.errors).toEqual([
+      expect.objectContaining({
+        msg: "reset_session_failed",
+        error_type: "GaiaApiError",
+        http_status: 401,
+        error_code: "BOT_ACCOUNT_NOT_LINKED",
+      }),
+    ]);
+    expect(reply).toContain("Telegram account isn't linked to GAIA");
+    expect(reply).toContain("/auth");
   });
 });
 

@@ -16,7 +16,7 @@ BLOG_SERVICE = "app.api.v1.endpoints.blog"
 
 
 class TestGetBlogs:
-    """GET /api/v1/blogs"""
+    """GET /api/v1/blogs."""
 
     async def test_page_over_max_returns_422(self, client: AsyncClient) -> None:
         resp = await client.get(f"/api/v1/blogs?page={MAX_PAGE_NUMBER + 1}")

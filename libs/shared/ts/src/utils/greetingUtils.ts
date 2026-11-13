@@ -83,7 +83,7 @@ const getTimeBasedGreeting = (
     "Still cooking something{name}?",
     "Midnight clarity unlocked{name}.",
     "Night shift in progress{name}.",
-    "Who needs 9–5 anyway{name}?",
+    "Who needs 9 to 5 anyway{name}?",
     "Dark hours, bright ideas{name}.",
     "World's quiet, your turn{name}.",
     "Night = deep work zone{name}.",
@@ -102,7 +102,8 @@ const getTimeBasedGreeting = (
     greetings = nightGreetings;
   }
 
-  const randomIndex = Math.floor(Math.random() * greetings.length);
+  // picks a cosmetic greeting; nothing security-relevant
+  const randomIndex = Math.floor(Math.random() * greetings.length); // NOSONAR typescript:S2245
   const template = greetings[randomIndex];
 
   if (!includeName || !userName || userName.trim() === "") {

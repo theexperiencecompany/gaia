@@ -4,15 +4,15 @@
  * Helper functions for displaying trigger information using backend schemas.
  */
 
+import {
+  getTriggerDisplayInfoBySlug,
+  type TriggerDisplayInfo,
+} from "@shared/workflows";
 import type { Integration } from "@/features/integrations/types";
 
 import type { Workflow } from "../api/workflowApi";
 import { getScheduleDescription } from "../utils/cronUtils";
-import {
-  getTriggerDisplayInfoBySlug,
-  type TriggerDisplayInfo,
-} from "./registryDisplay";
-import type { TriggerConfig, TriggerSchema } from "./types";
+import type { TriggerConfigDraft, TriggerSchema } from "./types";
 
 /**
  * Find integration by ID from list.
@@ -68,7 +68,7 @@ export function getTriggerDisplayInfo(
 
   const displayInfo: TriggerDisplayInfo = getTriggerDisplayInfoBySlug(
     triggerSlug,
-    trigger_config as TriggerConfig,
+    trigger_config as TriggerConfigDraft,
   ) ?? {
     label: "unknown trigger",
     integrationId: null,

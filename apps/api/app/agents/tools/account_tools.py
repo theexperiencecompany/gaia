@@ -15,15 +15,14 @@ from app.decorators import enforce_rate_limit
 from app.services.account_fs import schedule_account_sync
 from app.services.account_settings import (
     select_voice,
-    set_custom_instructions,
     set_notification_channels,
     set_preferences,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.platform_link_service import (
     disconnect_platform_account,
     start_platform_connect,
 )
+from shared.py.analytics.catalog.settings import AccountSettingChanged
 from shared.py.wide_events import log
 
 HIL_CONFIRM_NOTE = (
@@ -48,13 +47,6 @@ class UpdatePreferencesArgs(BaseModel):
     timezone: str | None = Field(
         default=None,
         description="Home timezone as an IANA identifier, e.g. 'America/New_York', 'Asia/Kolkata'",
-    )
-
-
-class UpdateCustomInstructionsArgs(BaseModel):
-    instructions: str = Field(
-        description="Standing instructions applied to every conversation (max 500 chars). "
-        "Pass an empty string to clear them."
     )
 
 
@@ -95,7 +87,7 @@ update_notification_settings = define_mutation_tool(
     ),
     args_model=UpdateNotificationSettingsArgs,
     apply=set_notification_channels,
-    event=AnalyticsEvents.ACCOUNT_SETTING_CHANGED,
+    event=AccountSettingChanged(area="notifications"),
     resync=schedule_account_sync,
 )
 
@@ -108,20 +100,7 @@ update_preferences = define_mutation_tool(
     ),
     args_model=UpdatePreferencesArgs,
     apply=set_preferences,
-    event=AnalyticsEvents.ACCOUNT_SETTING_CHANGED,
-    resync=schedule_account_sync,
-)
-
-update_custom_instructions = define_mutation_tool(
-    name="update_custom_instructions",
-    area="custom_instructions",
-    description=(
-        "Replace the user's standing custom instructions for every conversation. "
-        "Pass an empty string to clear them. " + HIL_CONFIRM_NOTE
-    ),
-    args_model=UpdateCustomInstructionsArgs,
-    apply=set_custom_instructions,
-    event=AnalyticsEvents.ACCOUNT_SETTING_CHANGED,
+    event=AccountSettingChanged(area="preferences"),
     resync=schedule_account_sync,
 )
 
@@ -134,7 +113,7 @@ set_selected_voice = define_mutation_tool(
     ),
     args_model=SetSelectedVoiceArgs,
     apply=select_voice,
-    event=AnalyticsEvents.ACCOUNT_SETTING_CHANGED,
+    event=AccountSettingChanged(area="voice"),
     resync=schedule_account_sync,
 )
 
@@ -155,10 +134,6 @@ async def _manage_linked_account(
         return "\n".join(parts)
 
     await disconnect_platform_account(user_id, platform)
-    capture_context_event(
-        AnalyticsEvents.ACCOUNT_PLATFORM_DISCONNECTED,
-        {"area": "linked_accounts"},
-    )
     schedule_account_sync(user_id)
     log.set(action="disconnect", platform=platform)
     return (
@@ -184,7 +159,6 @@ manage_linked_account = define_mutation_tool(
 tools = [
     update_notification_settings,
     update_preferences,
-    update_custom_instructions,
     set_selected_voice,
     manage_linked_account,
 ]

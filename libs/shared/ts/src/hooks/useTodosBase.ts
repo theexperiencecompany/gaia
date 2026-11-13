@@ -19,7 +19,6 @@ export interface TodoFilterState {
   labels?: string[];
   projectId?: string;
   search?: string;
-  starred?: boolean;
   overdue?: boolean;
   dueToday?: boolean;
   dueThisWeek?: boolean;
@@ -91,10 +90,6 @@ export function filterTodos(todos: Todo[], filter: TodoFilterState): Todo[] {
     }
 
     if (!matchesSearch(todo, filter.search)) return false;
-
-    if (filter.starred !== undefined && todo.starred !== filter.starred) {
-      return false;
-    }
 
     if (!matchesDueDate(todo, filter)) return false;
 
@@ -172,7 +167,7 @@ export function groupTodosByProject(
   const projectMap = new Map(projects.map((p) => [p.id, p]));
 
   for (const todo of todos) {
-    const project = projectMap.get(todo.project_id);
+    const project = projectMap.get(todo.project_id ?? "");
     const key = project ? project.name : "No Project";
 
     if (!groups[key]) {

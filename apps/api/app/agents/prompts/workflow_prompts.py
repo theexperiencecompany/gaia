@@ -1,6 +1,4 @@
-"""
-Workflow generation prompts for GAIA workflow system.
-"""
+"""Workflow generation prompts for GAIA workflow system."""
 
 # =============================================================================
 # WHAT A WORKFLOW'S EXECUTION PROMPT MAY CONTAIN
@@ -8,8 +6,7 @@ Workflow generation prompts for GAIA workflow system.
 
 # Stated once, spliced into both authors of a workflow `prompt`: the chat
 # assistant (WORKFLOW_AGENT_SYSTEM_PROMPT) and the editor's generate-instructions
-# button (WORKFLOW_PROMPT_GENERATION_SYSTEM). One copy is what stops the two from
-# drifting, which is how the assistant ended up with no rule at all.
+# button (WORKFLOW_PROMPT_GENERATION_SYSTEM), so the two can't drift apart.
 WORKFLOW_INSTRUCTIONS_CONTRACT = """The executor reads these instructions after the trigger has
 already fired and handed over its data, so they say only WHAT TO DO. Leave out when the run
 happens (cron, clock times, "every morning"), what started it ("when a new email arrives"), and
@@ -112,8 +109,8 @@ CRITICAL REQUIREMENTS:
 1. Use ONLY the exact category names from the AVAILABLE TOOL CATEGORIES above
 2. Each step must specify 'category' using the EXACT category name (e.g., "gmail", "googlecalendar", "todos", "reminders")
 3. Create 3-5 HIGHLY OPTIMIZED steps that accomplish the goal with maximum efficiency
-4. The execution agent will use `handoff` to delegate to subagents based on category
-5. Categories like gmail, notion, github, slack, googlecalendar route to specialized subagents
+4. The execution agent will use `activate_integration` to load each step's integration in-context, then run its tools itself via `execute`
+5. Categories like gmail, notion, github, slack, googlecalendar name the integration to activate; the executor activates it and acts on it itself
 6. Categories like todos, reminders, search, development use direct tool execution
 7. ELIMINATE any step that doesn't directly contribute to the end goal
 8. Use `gaia` category for steps that involve GAIA's own reasoning, writing, analysis, or synthesis with NO external tool call.
@@ -125,14 +122,14 @@ CRITICAL REQUIREMENTS:
 **Steps are GENERIC descriptions, NOT specific tool calls!**
 
 - **You generate WHAT should happen**, the execution LLM will decide HOW
-- **Use descriptive titles**: "Search for client context" not "GMAIL_SEARCH_MESSAGES"
+- **Use descriptive titles**: "Search for client context" not "GMAIL_FETCH_EMAILS"
 - **Focus on intent**: The `category` provides routing, the `description` provides context
 - **Let execution decide**: The executing LLM has full context and will choose optimal tools
 - **Think high-level**: "Create follow-up reminder" instead of "create_todo with title=..."
 
 **Step Structure:**
 - `title`: Human-readable step name (what action to take)
-- `category`: Which system/subagent handles this step (gmail, notion, todos, reminders, etc.)
+- `category`: Which integration handles this step (gmail, notion, todos, reminders, etc.)
 - `description`: Detailed context about what this step should accomplish
 - `inputs`: Optional hints/parameters, but the executor makes final decisions
 
@@ -252,6 +249,12 @@ announce that the workflow finished or to deliver its result: that would notify 
 Only call send_notification if the workflow instructions above explicitly ask for an immediate
 or conditional alert during the run (e.g. "ping me on WhatsApp if an email is urgent").
 """
+
+# Appended when the triggering event names which of the user's accounts received it.
+TRIGGERED_ACCOUNT_SECTION = """
+
+This run was triggered by an event on the user's account {accounts}. Act on that same
+account: pass it as `account` to execute for that integration's tools."""
 
 WORKFLOW_SILENT_NOTIFY_SECTION = """
 NOTIFICATIONS: This workflow is configured to run silently. GAIA does NOT send an automatic

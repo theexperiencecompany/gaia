@@ -3,7 +3,7 @@
 The catalog is owned by GAIA (not fetched from ElevenLabs at request time) so
 the voice picker is stable, fast, and works without an upstream call. Preview
 URLs are the only upstream-sourced field — resolved lazily from the ElevenLabs
-voices API and cached (see ``voice_service.get_elevenlabs_voices``).
+voices API and cached (see voice_service.get_elevenlabs_voices).
 
 All IDs are stable ElevenLabs premade voices available to every API key.
 """
@@ -31,7 +31,7 @@ VOICE_CATALOG: list[VoiceCatalogEntry] = [
         "accent": "American",
         "country_code": "US",
         "gender": "Female",
-        "description": "Calm and composed — a steady narrator",
+        "description": "Calm and composed, a steady narrator",
     },
     {
         "voice_id": "EXAVITQu4vr4xnSDxMaL",
@@ -49,7 +49,7 @@ VOICE_CATALOG: list[VoiceCatalogEntry] = [
         "accent": "American",
         "country_code": "US",
         "gender": "Female",
-        "description": "Upbeat and sunny — energetic delivery",
+        "description": "Upbeat and sunny, energetic delivery",
     },
     {
         "voice_id": "cgSgspJ2msm6clMCkdW9",
@@ -103,7 +103,7 @@ VOICE_CATALOG: list[VoiceCatalogEntry] = [
         "accent": "American",
         "country_code": "US",
         "gender": "Male",
-        "description": "Deep and resonant — classic narration",
+        "description": "Deep and resonant, classic narration",
     },
     {
         "voice_id": "TxGEqnHWrfWFTfGW9XjX",
@@ -148,7 +148,7 @@ VOICE_CATALOG: list[VoiceCatalogEntry] = [
         "accent": "American",
         "country_code": "US",
         "gender": "Male",
-        "description": "Casual and natural — coffee-chat energy",
+        "description": "Casual and natural, coffee-chat energy",
     },
     {
         "voice_id": "nPczCjzI2devNBz1zQrb",
@@ -220,7 +220,7 @@ VOICE_CATALOG: list[VoiceCatalogEntry] = [
         "accent": "American",
         "country_code": "US",
         "gender": "Neutral",
-        "description": "Calm and neutral — relaxed presence",
+        "description": "Calm and neutral, relaxed presence",
     },
 ]
 

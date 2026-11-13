@@ -1,9 +1,5 @@
-import { api } from "@/lib/api/client";
-import type { DesktopRelease } from "../types";
+import { api } from "@/lib/api/typed";
 
 export const desktopApi = {
-  getLatestRelease: async (): Promise<DesktopRelease> => {
-    const response = await api.get<DesktopRelease>("/desktop/releases/latest");
-    return response.data;
-  },
+  getLatestRelease: () => api.get("/api/v1/desktop/releases/latest"),
 };

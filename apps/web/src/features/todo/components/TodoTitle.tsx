@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { TodoLinkPreview } from "./TodoLinkPreview";
 
 interface TitleSegment {
@@ -53,11 +53,11 @@ export const TodoTitle = memo(function TodoTitle({
   title,
   className,
 }: TodoTitleProps) {
+  const segments = useMemo(() => parseTitle(title ?? ""), [title]);
+
   if (!title) {
     return <span className={className}>Untitled</span>;
   }
-
-  const segments = parseTitle(title);
 
   // If no URLs found, render plain text
   if (segments.length === 1 && segments[0].type === "text") {

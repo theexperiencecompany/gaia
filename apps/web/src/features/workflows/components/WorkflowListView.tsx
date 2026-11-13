@@ -41,9 +41,9 @@ const WorkflowRow = memo(
 
         {/* Workflow Title */}
         <div className="min-w-0 flex-1">
-          <h4 className="font-medium text-white line-clamp-1">
+          <h3 className="font-medium text-white line-clamp-1">
             {workflow.title}
-          </h4>
+          </h3>
           {workflow.description && (
             <p className="mt-0.5 text-xs text-zinc-400 line-clamp-1">
               {workflow.description}
@@ -108,7 +108,7 @@ const WorkflowListView = memo(({ workflows = [] }: WorkflowListViewProps) => {
         description: "Get a plain-English summary of what each workflow does",
         onPress: () =>
           appendToInput(
-            "Give me a plain-English summary of each of my active workflows — what triggers them, what they do, and what problem they're solving for me.",
+            "Give me a plain-English summary of each of my active workflows: what triggers them, what they do, and what problem they're solving for me.",
           ),
       },
       {

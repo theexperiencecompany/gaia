@@ -1,11 +1,13 @@
-import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
-import type { ReplyToMessageData } from "@/stores/replyToMessageStore";
+import type {
+  ReplyToMessageData,
+  SelectedCalendarEventData,
+} from "@/stores/composerStore.types";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
-import type { FileData } from "@/types/shared/fileTypes";
+import type { AttachedFileData } from "@/types/shared/fileTypes";
 
 export interface TurnOptions {
-  fileData: FileData[];
+  fileData: AttachedFileData[];
   selectedTool: string | null;
   toolCategory: string | null;
   selectedWorkflow: WorkflowData | null;
@@ -15,6 +17,8 @@ export interface TurnOptions {
   /** Conversation to stream into; null starts a new conversation. */
   conversationId: string | null;
   isOnboardingDemo: boolean;
+  /** The user resent an earlier message from its retry action. */
+  isRetry: boolean;
   /** Re-attach to an already-running turn's event log instead of POSTing a
    *  new one (reload-mid-stream recovery). The log replays from the start, so
    *  the accumulator rebuilds the full turn. */

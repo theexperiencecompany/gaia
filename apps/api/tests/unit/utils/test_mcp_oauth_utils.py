@@ -1,23 +1,7 @@
-"""Unit tests for app.utils.mcp_oauth_utils module.
+"""Unit tests for app.utils.mcp_oauth_utils.
 
-Tests cover:
-- validate_https_url: HTTPS validation, HTTP rejection, localhost exceptions
-- is_localhost_url: localhost, loopback addresses, regular domains
-- validate_oauth_endpoints: all endpoints valid, one invalid raises error
-- extract_auth_challenge: 401 with WWW-Authenticate, non-401, timeout, connect error
-- find_protected_resource_metadata: found at first URL, found at second, not found
-- fetch_auth_server_metadata: OAuth discovery, OIDC fallback, full fallback
-- revoke_token: success, failure, timeout, client auth variants
-- validate_token_response: valid, missing access_token, wrong token_type
-- validate_pkce_support: S256 present, plain only, none
-- validate_jwt_issuer: valid JWT, non-JWT, mismatched issuer, decode error
-- parse_oauth_error_response: JSON, non-JSON, parse error
-- get_client_metadata_document_url: URL construction
-- introspect_token: success, failure, timeout
-- select_authorization_server: single, multiple
-
-The OAuth discovery functions take official ``mcp`` SDK models
-(``OAuthMetadata`` / ``ProtectedResourceMetadata``) rather than plain dicts,
+The OAuth discovery functions take official mcp SDK models
+(OAuthMetadata / ProtectedResourceMetadata) rather than plain dicts,
 so the helpers below build those models with sane HTTPS defaults.
 """
 
@@ -56,9 +40,9 @@ from app.utils.mcp_oauth_utils import (
 
 
 def _make_as_metadata(**overrides: Any) -> OAuthMetadata:
-    """Build an ``OAuthMetadata`` with valid HTTPS defaults.
+    """Build an OAuthMetadata with valid HTTPS defaults.
 
-    Pass ``None`` for a field to explicitly drop an optional endpoint, or any
+    Pass None for a field to explicitly drop an optional endpoint, or any
     value (e.g. an HTTP URL) to override a default for a specific test.
     """
     fields: dict[str, Any] = {
@@ -267,7 +251,7 @@ class TestExtractAuthChallenge:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await extract_auth_challenge("https://mcp.example.com")
 
         assert "resource_metadata" in result
@@ -277,6 +261,18 @@ class TestExtractAuthChallenge:
         )
         assert result["scope"] == "read write"
         assert "raw" in result
+
+    async def test_the_challenge_is_read_past_a_redirect(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/mcp":
+                return httpx.Response(307, headers={"Location": "https://mcp.example.com/mcp/"})
+            return httpx.Response(401, headers={"WWW-Authenticate": 'Bearer scope="read"'})
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=client):
+            result = await extract_auth_challenge("https://mcp.example.com/mcp")
+
+        assert result["scope"] == "read"
 
     async def test_401_with_error_fields(self) -> None:
         mock_response = MagicMock()
@@ -290,7 +286,7 @@ class TestExtractAuthChallenge:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await extract_auth_challenge("https://mcp.example.com")
 
         assert result["error"] == "invalid_token"
@@ -306,7 +302,7 @@ class TestExtractAuthChallenge:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await extract_auth_challenge("https://mcp.example.com")
 
         assert result == {"raw": ""}
@@ -320,7 +316,7 @@ class TestExtractAuthChallenge:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await extract_auth_challenge("https://mcp.example.com")
 
         assert result == {}
@@ -331,7 +327,7 @@ class TestExtractAuthChallenge:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await extract_auth_challenge("https://slow.example.com")
 
         assert result == {}
@@ -342,7 +338,7 @@ class TestExtractAuthChallenge:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             with pytest.raises(httpx.ConnectError):
                 await extract_auth_challenge("https://down.example.com")
 
@@ -352,7 +348,7 @@ class TestExtractAuthChallenge:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await extract_auth_challenge("https://broken.example.com")
 
         assert result == {}
@@ -377,7 +373,7 @@ class TestFindProtectedResourceMetadata:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await find_protected_resource_metadata("https://mcp.example.com/api/v1")
 
         assert result is not None
@@ -406,7 +402,7 @@ class TestFindProtectedResourceMetadata:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await find_protected_resource_metadata("https://mcp.example.com/api/v1")
 
         assert result is not None
@@ -422,7 +418,7 @@ class TestFindProtectedResourceMetadata:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await find_protected_resource_metadata("https://mcp.example.com/api")
 
         assert result is None
@@ -438,7 +434,7 @@ class TestFindProtectedResourceMetadata:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await find_protected_resource_metadata("https://mcp.example.com")
 
         assert result is not None
@@ -455,7 +451,7 @@ class TestFindProtectedResourceMetadata:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await find_protected_resource_metadata("https://mcp.example.com")
 
         assert result is None
@@ -479,7 +475,7 @@ class TestFindProtectedResourceMetadata:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await find_protected_resource_metadata("https://mcp.example.com/path")
 
         # Second candidate should succeed
@@ -494,16 +490,16 @@ class TestFindProtectedResourceMetadata:
 class TestFetchAuthServerMetadata:
     """Tests for fetch_auth_server_metadata — RFC 8414 discovery with fallback.
 
-    Discovery now issues ``client.send(create_oauth_metadata_request(url))`` and
-    returns a validated :class:`OAuthMetadata` model. On total failure it returns
-    an origin-only fallback model rather than a dict with a ``fallback`` flag.
+    Discovery now issues client.send(create_oauth_metadata_request(url)) and
+    returns a validated :class:OAuthMetadata model. On total failure it returns
+    an origin-only fallback model rather than a dict with a fallback flag.
     """
 
     @staticmethod
     def _send_returning(handler: Any) -> AsyncMock:
-        """Build a mock httpx client whose ``send`` delegates to ``handler``.
+        """Build a mock httpx client whose send delegates to handler.
 
-        ``handler`` receives the ``httpx.Request`` and returns a mock response.
+        handler receives the httpx.Request and returns a mock response.
         """
         mock_client = AsyncMock()
         mock_client.send = AsyncMock(side_effect=lambda request, **kwargs: handler(request))
@@ -527,7 +523,7 @@ class TestFetchAuthServerMetadata:
 
         mock_client = self._send_returning(handler)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await fetch_auth_server_metadata("https://auth.example.com")
 
         assert str(result.issuer) == "https://auth.example.com/"
@@ -552,7 +548,7 @@ class TestFetchAuthServerMetadata:
 
         mock_client = self._send_returning(handler)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await fetch_auth_server_metadata("https://auth.example.com")
 
         assert str(result.issuer) == "https://auth.example.com/"
@@ -567,7 +563,7 @@ class TestFetchAuthServerMetadata:
 
         mock_client = self._send_returning(handler)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await fetch_auth_server_metadata("https://auth.example.com")
 
         assert str(result.issuer) == "https://auth.example.com/"
@@ -587,7 +583,7 @@ class TestFetchAuthServerMetadata:
 
         mock_client = self._send_returning(handler)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             await fetch_auth_server_metadata("https://auth.example.com/tenant1")
 
         # Should try path-aware OAuth and OIDC first
@@ -611,7 +607,7 @@ class TestFetchAuthServerMetadata:
 
         mock_client = self._send_returning(handler)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await fetch_auth_server_metadata("https://auth.example.com")
 
         # All candidates failed -> origin fallback model still returned.
@@ -627,7 +623,7 @@ class TestFetchAuthServerMetadata:
 
         mock_client = self._send_returning(handler)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await fetch_auth_server_metadata("https://server.smithery.ai/excalidraw")
 
         # Fallback should use origin only, NOT include /excalidraw
@@ -652,7 +648,7 @@ class TestRevokeToken:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await revoke_token(
                 "https://auth.example.com/revoke",
                 token="test_token",
@@ -670,7 +666,7 @@ class TestRevokeToken:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await revoke_token(
                 "https://auth.example.com/revoke",
                 token="test_token",
@@ -684,7 +680,7 @@ class TestRevokeToken:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await revoke_token(
                 "https://auth.example.com/revoke",
                 token="test_token",
@@ -698,7 +694,7 @@ class TestRevokeToken:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await revoke_token(
                 "https://auth.example.com/revoke",
                 token="test_token",
@@ -715,7 +711,7 @@ class TestRevokeToken:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             await revoke_token(
                 "https://auth.example.com/revoke",
                 token="test_token",
@@ -742,7 +738,7 @@ class TestRevokeToken:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             await revoke_token(
                 "https://auth.example.com/revoke",
                 token="test_token",
@@ -771,7 +767,7 @@ class TestRevokeToken:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             await revoke_token(
                 "https://auth.example.com/revoke",
                 token="my_refresh",
@@ -788,6 +784,23 @@ class TestRevokeToken:
 # ---------------------------------------------------------------------------
 
 
+# Every RFC 7662 claim the model declares, so a dump can be compared whole.
+_INTROSPECTION_DEFAULTS = {
+    "active": None,
+    "scope": None,
+    "client_id": None,
+    "username": None,
+    "token_type": None,
+    "exp": None,
+    "iat": None,
+    "nbf": None,
+    "sub": None,
+    "aud": None,
+    "iss": None,
+    "jti": None,
+}
+
+
 class TestIntrospectToken:
     """Tests for introspect_token — RFC 7662 token introspection."""
 
@@ -802,15 +815,16 @@ class TestIntrospectToken:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await introspect_token(
                 "https://auth.example.com/introspect",
                 token="test_token",
             )
 
         assert result is not None
-        assert result["active"] is True
-        assert result["scope"] == "read write"
+        assert result.active is True
+        assert result.scope == "read write"
+        assert result.model_dump() == {**_INTROSPECTION_DEFAULTS, **introspection_data}
 
     async def test_non_200_returns_none(self) -> None:
         mock_response = MagicMock()
@@ -822,7 +836,7 @@ class TestIntrospectToken:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await introspect_token(
                 "https://auth.example.com/introspect",
                 token="test_token",
@@ -836,7 +850,7 @@ class TestIntrospectToken:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await introspect_token(
                 "https://auth.example.com/introspect",
                 token="test_token",
@@ -850,7 +864,7 @@ class TestIntrospectToken:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await introspect_token(
                 "https://auth.example.com/introspect",
                 token="test_token",
@@ -875,7 +889,7 @@ class TestIntrospectToken:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             await introspect_token(
                 "https://auth.example.com/introspect",
                 token="test_token",
@@ -934,11 +948,24 @@ class TestParseOauthErrorResponse:
             json_data={
                 "error": "server_error",
                 "error_description": "Internal failure",
+                "error_uri": "https://docs.example.com/errors/server_error",
             },
         )
         result = parse_oauth_error_response(response)
 
         assert result["error"] == "server_error"
+        assert result["error_description"] == "Internal failure"
+        assert result["error_uri"] == "https://docs.example.com/errors/server_error"
+
+    def test_non_json_content_type_json_body_without_error_code(self) -> None:
+        response = _make_response(
+            status_code=400,
+            headers={"content-type": "text/html"},
+            json_data={"error_description": "Internal failure"},
+        )
+        result = parse_oauth_error_response(response)
+
+        assert result["error"] == "unknown_error"
         assert result["error_description"] == "Internal failure"
 
     def test_non_json_content_type_non_json_body(self) -> None:
@@ -1160,7 +1187,7 @@ class TestFetchProtectedResourceMetadata:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             result = await fetch_protected_resource_metadata(
                 "https://mcp.example.com/.well-known/oauth-protected-resource"
             )
@@ -1181,7 +1208,7 @@ class TestFetchProtectedResourceMetadata:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             with pytest.raises(httpx.HTTPStatusError):
                 await fetch_protected_resource_metadata(
                     "https://mcp.example.com/.well-known/oauth-protected-resource"
@@ -1201,7 +1228,7 @@ class TestFetchProtectedResourceMetadata:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.utils.mcp_oauth_utils.httpx.AsyncClient", return_value=mock_client):
+        with patch("app.utils.mcp_oauth_utils.mcp_http_client", return_value=mock_client):
             await fetch_protected_resource_metadata(
                 "https://example.com/.well-known/oauth-protected-resource"
             )

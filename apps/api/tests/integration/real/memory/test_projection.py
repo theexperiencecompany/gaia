@@ -1,9 +1,9 @@
 """Workspace projection tests — /workspace/memory materialized to a tmp root.
 
-``sync_user_memory_fs`` is exercised end-to-end (fetch from real Postgres,
-hash gate, materialize) with the JuiceFS mount redirected into ``tmp_path``
-via the two seams the scheduler module already owns (``_is_mounted`` and
-``user_workspace_path``). The fire-and-forget schedulers inside management/
+sync_user_memory_fs is exercised end-to-end (fetch from real Postgres,
+hash gate, materialize) with the JuiceFS mount redirected into tmp_path
+via the two seams the scheduler module already owns (_is_mounted and
+user_workspace_path). The fire-and-forget schedulers inside management/
 ingestion are silenced so every write in these tests is an explicit,
 awaited sync — no background tasks racing the assertions.
 """

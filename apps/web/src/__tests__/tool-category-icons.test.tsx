@@ -3,15 +3,10 @@ import { describe, expect, it } from "vitest";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
-// Every tool category the API's registry serves today, as returned by
-// GET /api/v1/tools. `billing` shipped with no entry in toolIconConfigs, so
-// getToolCategoryIcon returned null and its rows and category tab rendered with
-// no icon at all — nothing failed, it just looked broken. Adding a category
-// backend-side without an icon is the recurring shape of that bug.
-//
-// Keep this list in step with `_add_category(...)` in
-// apps/api/app/agents/tools/core/registry.py.
+// Must match `_add_category(...)` in apps/api/app/agents/tools/core/registry.py —
+// `billing` shipped with no icon entry, so it silently rendered with no icon.
 const BUILTIN_TOOL_CATEGORIES = [
+  "account",
   "billing",
   "context",
   "creative",

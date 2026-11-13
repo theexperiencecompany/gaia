@@ -1,6 +1,6 @@
-"""Unit tests for ``app.memory.pg_store.memories`` — CRUD over the memories table.
+"""Unit tests for app.memory.pg_store.memories — CRUD over the memories table.
 
-Every function talks to Postgres through the module-level ``memory_session``
+Every function talks to Postgres through the module-level memory_session
 seam; that seam is mocked (hermetic, no I/O). The SQL statements the functions
 build are compiled against the Postgres dialect and asserted on their bound
 parameters, so scoping (owner + live filters), lineage wiring, pagination,
@@ -61,7 +61,7 @@ def make_record(
     relation_type: str | None = None,
     is_latest: bool = True,
 ) -> MemoryRecord:
-    """A detached MemoryRecord — no session, no DB."""
+    """Build a detached MemoryRecord — no session, no DB."""
     now = datetime.now(UTC)
     return MemoryRecord(
         id=memory_id or uuid.uuid4(),
@@ -87,7 +87,7 @@ def make_record(
 
 @contextmanager
 def _patched_memory_session(session: MagicMock) -> Iterator[MagicMock]:
-    """Patch ``memories.memory_session`` so ``async with`` yields ``session``."""
+    """Patch memories.memory_session so async with yields session."""
     ctx = MagicMock()
     ctx.__aenter__ = AsyncMock(return_value=session)
     ctx.__aexit__ = AsyncMock(return_value=None)
@@ -96,21 +96,21 @@ def _patched_memory_session(session: MagicMock) -> Iterator[MagicMock]:
 
 
 def _scalars_result(rows: list[MemoryRecord]) -> MagicMock:
-    """A result whose ``.scalars().all()`` returns ``rows``."""
+    """Build a result whose .scalars().all() returns rows."""
     result = MagicMock()
     result.scalars.return_value.all.return_value = rows
     return result
 
 
 def _all_result(rows: list[tuple[Any, ...]]) -> MagicMock:
-    """A result whose ``.all()`` returns ``rows``."""
+    """Build a result whose .all() returns rows."""
     result = MagicMock()
     result.all.return_value = rows
     return result
 
 
 def _scalar_one_result(value: Any) -> MagicMock:
-    """A result whose ``.scalar_one()`` returns ``value``."""
+    """Build a result whose .scalar_one() returns value."""
     result = MagicMock()
     result.scalar_one.return_value = value
     return result
@@ -123,12 +123,12 @@ def _compiled(stmt: Select | Update) -> tuple[str, dict[str, Any]]:
 
 
 def _executed_stmts(session: MagicMock) -> list[Select | Update]:
-    """The statements passed to ``session.execute``, in call order."""
+    """Return the statements passed to session.execute, in call order."""
     return [call.args[0] for call in session.execute.await_args_list]
 
 
 def _param_values(params: dict[str, Any], prefix: str) -> list[Any]:
-    """All bound-param values whose bind names start with ``prefix``."""
+    """All bound-param values whose bind names start with prefix."""
     return [value for key, value in params.items() if key.startswith(prefix)]
 
 
@@ -869,9 +869,7 @@ class TestGetAgendaMemories:
 
 class TestSweepExpiredMemories:
     async def test_retires_past_due_rows_and_returns_owner_id_pairs(self) -> None:
-        """The swept row ids come back too: the worker must retire the same
-        rows' Chroma flags, or reconciliation keeps matching them and swallows
-        identical restatements as DUPLICATE forever."""
+        """The swept row ids come back too, so the worker can retire the same rows' Chroma flags."""
         id_a, id_b, id_c = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
         session = MagicMock()
         session.execute = AsyncMock(
@@ -945,11 +943,7 @@ class TestSweepExpiredMemories:
 
 class TestBackfillAgendaExpiry:
     async def test_stamps_only_live_expiryless_agenda_rows(self) -> None:
-        """Legacy agenda rows (pre task-shelf-life) carry no ``forget_after``,
-        so the sweep never retires them: production held year-old items in the
-        always-injected agenda block. The stamp must scope to exactly the
-        agenda folder's live expiry-less rows — anything wider would put an
-        expiry on durable facts."""
+        """Legacy agenda rows carry no forget_after; the stamp must scope to only the live expiry-less agenda rows."""
         session = MagicMock()
         result = MagicMock()
         result.rowcount = 152

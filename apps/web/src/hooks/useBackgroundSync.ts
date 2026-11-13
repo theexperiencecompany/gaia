@@ -22,7 +22,8 @@ const useSyncStatusStore = create<SyncStatusState>((set) => ({
   setSyncError: (error) => set({ syncError: error }),
 }));
 
-export const useBackgroundSync = () => {
+/** Keep the local conversation cache in sync with the server while enabled. */
+export const useBackgroundSync = (enabled: boolean) => {
   const lastSyncTimeRef = useRef(0);
   const initialSyncCompleted = useSyncStatusStore(
     (state) => state.initialSyncCompleted,
@@ -35,14 +36,17 @@ export const useBackgroundSync = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined" || typeof document === "undefined") {
+    if (
+      !enabled ||
+      typeof window === "undefined" ||
+      typeof document === "undefined"
+    ) {
       return;
     }
 
-    // Guards the post-await writes below: an in-flight sync that resolves
-    // after this effect cleaned up must not touch component state. Store
-    // flags stay unconditional — they record global sync facts that outlive
-    // this component.
+    // Guards the post-await writes below: a sync that resolves after this
+    // effect cleaned up must not touch component state. Store flags stay
+    // unconditional — they record global sync facts that outlive this component.
     let cancelled = false;
 
     const runSync = async () => {
@@ -54,7 +58,8 @@ export const useBackgroundSync = () => {
         setIsSyncing(true);
         setError(null);
         setSyncError(null);
-        await batchSyncConversations();
+        // Mount, the interval, focus and reconnect all fire with no user action.
+        await batchSyncConversations({ background: true });
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : "Failed to sync conversations";
@@ -92,7 +97,7 @@ export const useBackgroundSync = () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("online", handleOnline);
     };
-  }, [setInitialSyncCompleted, setSyncError]);
+  }, [enabled, setInitialSyncCompleted, setSyncError]);
 
   return { isSyncing, error };
 };

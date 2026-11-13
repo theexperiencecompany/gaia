@@ -1,15 +1,17 @@
 """Unit tests for the conversation service layer.
 
-The service is functional; it orchestrates ``conversation_repository`` and maps
+The service is functional; it orchestrates conversation_repository and maps
 its results to HTTP responses. Per the repository-layer contract, these tests
 mock the repository singleton (never the DB) and assert the service's own
 behaviour — auth guards, 404 mapping, response shapes, and that each function
-delegates to the right repository method with the caller's ``user_id``. The
+delegates to the right repository method with the caller's user_id. The
 repository's own behaviour (user-scoping, source persistence, message stripping,
 pin semantics) is covered by the real-DB contract suite.
 """
 
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
+from uuid import UUID
 
 from fastapi import HTTPException
 import pytest
@@ -28,24 +30,39 @@ from app.models.conversation_models import (
     ConversationMessageHit,
     ConversationSummary,
 )
+from app.models.user_models import AuthenticatedUser
 from app.services import conversation_service
-from app.services.analytics_service import AnalyticsEvents
 from app.services.conversation_service import (
     batch_sync_conversations,
     create_conversation_service,
     create_system_conversation,
     delete_all_conversations,
     delete_conversation,
+    delete_todo_conversations,
     get_conversation,
     get_conversations,
+    get_or_create_todo_conversation,
     get_starred_messages,
     mark_conversation_as_read,
     mark_conversation_as_unread,
     pin_message,
+    require_owned_conversation,
     star_conversation,
     update_conversation_description,
     update_messages,
 )
+from app.utils.errors import AppError
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.chat import (
+    ChatConversationCreated,
+    ChatConversationDeleted,
+    ChatConversationRenamed,
+    ChatConversationStarred,
+    ChatMessagePinned,
+    ChatMessageUnpinned,
+)
+
+USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
 
 @pytest.fixture
@@ -58,26 +75,26 @@ def mock_repo():
 
 @pytest.fixture
 def test_user():
-    return {"user_id": "user_123", "email": "test@example.com"}
+    return AuthenticatedUser(user_id=USER_ID, email="test@example.com")
 
 
 @pytest.fixture(autouse=True)
 def _no_analytics():
     """Neutralize analytics captures for tests not asserting on them.
 
-    ``capture_event`` resolves the PostHog provider at call time, which is not
+    capture resolves the PostHog provider at call time, which is not
     registered in this test module's import chain — capture-specific tests
     patch the call explicitly and assert on it.
     """
     with (
-        patch("app.services.conversation_service.capture_event"),
+        patch("app.services.conversation_service.capture"),
     ):
         yield
 
 
 def _document(**overrides) -> ConversationDocument:
     data = {
-        "user_id": "user_123",
+        "user_id": USER_ID,
         "conversation_id": "conv_abc",
         "createdAt": "2026-01-01T00:00:00+00:00",
     }
@@ -93,17 +110,19 @@ class TestCreateConversationService:
         result = await create_conversation_service(conversation, test_user)
 
         assert result.conversation_id == "conv_abc"
-        assert result.user_id == "user_123"
+        assert result.user_id == USER_ID
         assert result.detail == "Conversation created successfully"
         # The document handed to the repository carries the caller's user_id + fields.
         document = mock_repo.create.call_args[0][0]
-        assert document.user_id == "user_123"
+        assert document.user_id == USER_ID
         assert document.conversation_id == "conv_abc"
         assert document.description == "Test Chat"
 
     async def test_raises_403_when_no_user_id(self, mock_repo):
         with pytest.raises(HTTPException) as exc_info:
-            await create_conversation_service(ConversationModel(conversation_id="c"), {})
+            await create_conversation_service(
+                ConversationModel(conversation_id="c"), AuthenticatedUser(user_id="")
+            )
         assert exc_info.value.status_code == 403
 
     async def test_raises_500_on_repository_error(self, mock_repo, test_user):
@@ -116,20 +135,19 @@ class TestCreateConversationService:
         mock_repo.create.return_value = _document()
         conversation = ConversationModel(conversation_id="conv_abc", description="Test Chat")
 
-        with patch("app.services.conversation_service.capture_event") as mock_capture:
+        with patch("app.services.conversation_service.capture") as mock_capture:
             await create_conversation_service(conversation, test_user)
 
         mock_capture.assert_called_once_with(
-            "user_123",
-            AnalyticsEvents.CONVERSATION_CREATED,
-            {"is_system_generated": False, "is_onboarding_demo": False},
+            UserId(USER_ID),
+            ChatConversationCreated(is_system_generated=False, is_onboarding_demo=False),
         )
 
     async def test_no_capture_on_repository_error(self, mock_repo, test_user):
         mock_repo.create.side_effect = Exception("DB connection failed")
         with (
             pytest.raises(HTTPException),
-            patch("app.services.conversation_service.capture_event") as mock_capture,
+            patch("app.services.conversation_service.capture") as mock_capture,
         ):
             await create_conversation_service(ConversationModel(conversation_id="c"), test_user)
         mock_capture.assert_not_called()
@@ -157,7 +175,7 @@ class TestGetConversation:
         assert result.conversation_id == "conv_abc"
         assert result.description == "Test"
         # Scoped by the caller's user_id.
-        assert mock_repo.get.call_args.kwargs["user_id"] == "user_123"
+        assert mock_repo.get.call_args.kwargs["user_id"] == USER_ID
 
     async def test_raises_404_when_not_found(self, mock_repo, test_user):
         mock_repo.get.return_value = None
@@ -171,7 +189,7 @@ class TestStarConversation:
         mock_repo.set_starred.return_value = True
         result = await star_conversation("conv_abc", True, test_user)
         assert result.starred is True
-        assert mock_repo.set_starred.call_args.kwargs["user_id"] == "user_123"
+        assert mock_repo.set_starred.call_args.kwargs["user_id"] == USER_ID
 
     async def test_raises_404_when_not_found(self, mock_repo, test_user):
         mock_repo.set_starred.return_value = False
@@ -181,27 +199,34 @@ class TestStarConversation:
 
     async def test_captures_conversation_starred(self, mock_repo, test_user):
         mock_repo.set_starred.return_value = True
-        with patch("app.services.conversation_service.capture_event") as mock_capture:
+        with patch("app.services.conversation_service.capture") as mock_capture:
             await star_conversation("conv_abc", True, test_user)
         mock_capture.assert_called_once_with(
-            "user_123",
-            AnalyticsEvents.CONVERSATION_STARRED,
-            {"starred": True, "conversation_id": "conv_abc"},
+            UserId(USER_ID),
+            ChatConversationStarred(starred=True, conversation_id="conv_abc"),
         )
 
 
 class TestDeleteConversation:
     async def test_deletes_single(self, mock_repo, test_user):
         mock_repo.delete.return_value = True
+        sessions = AsyncMock()
+        threads = AsyncMock()
         with (
-            patch.object(conversation_service, "delete_session_dir", new=AsyncMock()),
-            patch.object(conversation_service, "_cleanup_checkpoint_threads", new=AsyncMock()),
-            patch("app.services.conversation_service.capture_event") as mock_capture,
+            patch.object(conversation_service, "delete_session_dir", new=sessions),
+            patch.object(conversation_service, "_cleanup_checkpoint_threads", new=threads),
+            patch("app.services.conversation_service.capture") as mock_capture,
         ):
             result = await delete_conversation("conv_abc", test_user)
-        assert result.conversation_id == "conv_abc"
+        assert (result.conversation_id, result.message) == (
+            "conv_abc",
+            "Conversation deleted successfully",
+        )
+        # What outlives the document goes with it: the session dir and the checkpoints.
+        sessions.assert_awaited_once_with(USER_ID, "conv_abc")
+        threads.assert_awaited_once_with("conv_abc")
         mock_capture.assert_called_once_with(
-            "user_123", AnalyticsEvents.CONVERSATION_DELETED, {"conversation_id": "conv_abc"}
+            UserId(USER_ID), ChatConversationDeleted(conversation_id="conv_abc")
         )
 
     async def test_raises_404_when_not_found(self, mock_repo, test_user):
@@ -211,21 +236,20 @@ class TestDeleteConversation:
         assert exc_info.value.status_code == 404
 
     async def test_delete_all_cleans_up_each_conversation(self, mock_repo, test_user):
-        mock_repo.delete_all_for_user.return_value = ["conv_1", "conv_2"]
+        mock_repo.delete_all_chats_for_user.return_value = ["conv_1", "conv_2"]
         cleanup = AsyncMock()
         with (
             patch.object(conversation_service, "_cleanup_checkpoint_threads", new=cleanup),
-            patch("app.services.conversation_service.capture_event") as mock_capture,
+            patch("app.services.conversation_service.capture") as mock_capture,
         ):
             result = await delete_all_conversations(test_user)
         assert result.message == "All conversations deleted successfully"
-        assert cleanup.await_count == 2
-        mock_capture.assert_called_once_with(
-            "user_123", AnalyticsEvents.CONVERSATION_DELETED, {"count": 2}
-        )
+        mock_repo.delete_all_chats_for_user.assert_awaited_once_with(USER_ID)
+        assert [c.args for c in cleanup.await_args_list] == [("conv_1",), ("conv_2",)]
+        mock_capture.assert_called_once_with(UserId(USER_ID), ChatConversationDeleted(count=2))
 
     async def test_delete_all_raises_404_when_none(self, mock_repo, test_user):
-        mock_repo.delete_all_for_user.return_value = []
+        mock_repo.delete_all_chats_for_user.return_value = []
         with pytest.raises(HTTPException) as exc_info:
             await delete_all_conversations(test_user)
         assert exc_info.value.status_code == 404
@@ -245,12 +269,11 @@ class TestUpdateDescription:
 
     async def test_captures_conversation_renamed(self, mock_repo, test_user):
         mock_repo.set_description.return_value = True
-        with patch("app.services.conversation_service.capture_event") as mock_capture:
+        with patch("app.services.conversation_service.capture") as mock_capture:
             await update_conversation_description("conv_abc", "New Description", test_user)
         mock_capture.assert_called_once_with(
-            "user_123",
-            AnalyticsEvents.CONVERSATION_RENAMED,
-            {"conversation_id": "conv_abc"},
+            UserId(USER_ID),
+            ChatConversationRenamed(conversation_id="conv_abc"),
         )
 
 
@@ -263,7 +286,7 @@ class TestMarkAsReadUnread:
 
     async def test_mark_as_read_rejects_unauthenticated(self, mock_repo):
         with pytest.raises(HTTPException) as exc_info:
-            await mark_conversation_as_read("conv_abc", {})
+            await mark_conversation_as_read("conv_abc", AuthenticatedUser(user_id=""))
         assert exc_info.value.status_code == 403
 
     async def test_mark_as_unread(self, mock_repo, test_user):
@@ -274,7 +297,7 @@ class TestMarkAsReadUnread:
 
     async def test_mark_as_unread_rejects_unauthenticated(self, mock_repo):
         with pytest.raises(HTTPException) as exc_info:
-            await mark_conversation_as_unread("conv_abc", {})
+            await mark_conversation_as_unread("conv_abc", AuthenticatedUser(user_id=""))
         assert exc_info.value.status_code == 403
 
     async def test_mark_as_unread_raises_404(self, mock_repo, test_user):
@@ -294,7 +317,7 @@ class TestListConversations:
         ]
         mock_repo.count_active.return_value = 25
 
-        result = await get_conversations({"user_id": "user_abc"}, page=2, limit=10)
+        result = await get_conversations(AuthenticatedUser(user_id="user_abc"), page=2, limit=10)
 
         ids = [c.conversation_id for c in result.conversations]
         assert ids == ["s1", "a1"]  # starred first
@@ -308,7 +331,7 @@ class TestListConversations:
         mock_repo.list_starred_summaries.return_value = []
         mock_repo.list_active_summaries.return_value = []
         mock_repo.count_active.return_value = 0
-        await get_conversations({"user_id": "user_1"}, page=1, limit=10)
+        await get_conversations(AuthenticatedUser(user_id="user_1"), page=1, limit=10)
         assert mock_repo.list_starred_summaries.call_args[0][0] == "user_1"
         assert mock_repo.list_active_summaries.call_args[0][0] == "user_1"
         assert mock_repo.count_active.call_args[0][0] == "user_1"
@@ -323,7 +346,7 @@ class TestUpdateMessages:
         result = await update_messages(request, test_user)
         assert result.message_ids == ["m1"]
         assert result.conversation_id == "conv_abc"
-        assert mock_repo.append_messages.call_args.kwargs["user_id"] == "user_123"
+        assert mock_repo.append_messages.call_args.kwargs["user_id"] == USER_ID
 
     async def test_raises_404_when_conversation_missing(self, mock_repo, test_user):
         mock_repo.append_messages.return_value = None
@@ -344,6 +367,32 @@ class TestPinMessage:
         result = await pin_message("conv_abc", "msg_1", True, test_user)
         assert result.pinned is True
         assert "pinned successfully" in result.message
+        mock_repo.get.assert_awaited_once_with("conv_abc", user_id=USER_ID)
+        mock_repo.set_message_pinned.assert_awaited_once_with(
+            "conv_abc", user_id=USER_ID, message_id="msg_1", pinned=True
+        )
+
+    async def test_pin_captures_pinned_with_user_id(self, mock_repo, test_user):
+        mock_repo.get.return_value = _document(
+            messages=[{"type": "bot", "response": "Hello", "message_id": "msg_1"}]
+        )
+        mock_repo.set_message_pinned.return_value = True
+        with patch(
+            "app.services.conversation_service.capture",
+        ) as mock_capture:
+            await pin_message("conv_abc", "msg_1", True, test_user)
+        mock_capture.assert_called_once_with(UserId(USER_ID), ChatMessagePinned())
+
+    async def test_unpin_captures_unpinned_with_user_id(self, mock_repo, test_user):
+        mock_repo.get.return_value = _document(
+            messages=[{"type": "bot", "response": "Hello", "message_id": "msg_1"}]
+        )
+        mock_repo.set_message_pinned.return_value = True
+        with patch(
+            "app.services.conversation_service.capture",
+        ) as mock_capture:
+            await pin_message("conv_abc", "msg_1", False, test_user)
+        mock_capture.assert_called_once_with(UserId(USER_ID), ChatMessageUnpinned())
 
     async def test_raises_404_conversation_not_found(self, mock_repo, test_user):
         mock_repo.get.return_value = None
@@ -371,6 +420,7 @@ class TestGetStarredMessages:
         result = await get_starred_messages(test_user)
         assert len(result.results) == 1
         assert result.results[0].conversation_id == "conv_1"
+        mock_repo.list_pinned_messages.assert_awaited_once_with(USER_ID)
 
     async def test_returns_empty(self, mock_repo, test_user):
         mock_repo.list_pinned_messages.return_value = []
@@ -382,9 +432,9 @@ class TestCreateSystemConversation:
     async def test_creates(self, mock_repo):
         mock_repo.create.return_value = _document()
         result = await create_system_conversation(
-            "user_123", "Email Actions", SystemPurpose.EMAIL_PROCESSING
+            USER_ID, "Email Actions", SystemPurpose.EMAIL_PROCESSING
         )
-        assert result.user_id == "user_123"
+        assert result.user_id == USER_ID
         assert result.is_system_generated is True
         assert result.system_purpose == SystemPurpose.EMAIL_PROCESSING
         document = mock_repo.create.call_args[0][0]
@@ -393,26 +443,27 @@ class TestCreateSystemConversation:
     async def test_raises_500_on_error(self, mock_repo):
         mock_repo.create.side_effect = Exception("DB error")
         with pytest.raises(HTTPException) as exc_info:
-            await create_system_conversation("user_123", "Test", SystemPurpose.OTHER)
+            await create_system_conversation(USER_ID, "Test", SystemPurpose.OTHER)
         assert exc_info.value.status_code == 500
 
     async def test_captures_system_conversation_created(self, mock_repo):
         mock_repo.create.return_value = _document()
-        with patch("app.services.conversation_service.capture_event") as mock_capture:
+        with patch("app.services.conversation_service.capture") as mock_capture:
             await create_system_conversation(
-                "user_123", "Email Actions", SystemPurpose.WORKFLOW_EXECUTION
+                USER_ID, "Email Actions", SystemPurpose.WORKFLOW_EXECUTION
             )
         mock_capture.assert_called_once_with(
-            "user_123",
-            AnalyticsEvents.CONVERSATION_CREATED,
-            {"is_system_generated": True, "system_purpose": "workflow_execution"},
+            UserId(USER_ID),
+            ChatConversationCreated(is_system_generated=True, system_purpose="workflow_execution"),
         )
 
 
 class TestBatchSyncConversations:
     async def test_rejects_unauthenticated(self, mock_repo):
         with pytest.raises(HTTPException) as exc_info:
-            await batch_sync_conversations(BatchSyncRequest(conversations=[]), {})
+            await batch_sync_conversations(
+                BatchSyncRequest(conversations=[]), AuthenticatedUser(user_id="")
+            )
         assert exc_info.value.status_code == 403
 
     async def test_returns_empty_for_empty_request(self, mock_repo, test_user):
@@ -420,8 +471,30 @@ class TestBatchSyncConversations:
         assert result.conversations == []
         mock_repo.find_updated_since.assert_not_called()
 
-    async def test_returns_rows_with_active_stream_id(self, mock_repo, test_user):
+    async def test_reports_active_stream_of_an_up_to_date_conversation(self, mock_repo, test_user):
+        """A reloading client holding current history is sent no row, yet must still learn its turn is live."""
+        mock_repo.find_updated_since.return_value = []
+        mock_repo.owned_ids.return_value = {"conv_abc"}
+        resumable = AsyncMock(return_value="stream-1")
+        with patch.object(
+            conversation_service.stream_manager, "get_resumable_stream_id", new=resumable
+        ):
+            request = BatchSyncRequest(
+                conversations=[
+                    ConversationSyncItem(
+                        conversation_id="conv_abc", last_updated="2026-01-01T00:00:00+00:00"
+                    )
+                ]
+            )
+            result = await batch_sync_conversations(request, test_user)
+
+        assert result.conversations == []
+        assert result.active_streams == {"conv_abc": "stream-1"}
+        resumable.assert_awaited_once_with(USER_ID, "conv_abc")
+
+    async def test_returns_rows_and_active_streams(self, mock_repo, test_user):
         mock_repo.find_updated_since.return_value = [_document(description="Updated Chat")]
+        mock_repo.owned_ids.return_value = {"conv_abc"}
         with patch.object(
             conversation_service.stream_manager,
             "get_resumable_stream_id",
@@ -435,7 +508,196 @@ class TestBatchSyncConversations:
         assert len(result.conversations) == 1
         row = result.conversations[0]
         assert row.conversation_id == "conv_abc"
-        assert row.active_stream_id == "stream-1"
+        assert result.active_streams == {"conv_abc": "stream-1"}
         # The internal user_id/_id must not leak into a serialized sync row.
         serialized = row.model_dump()
         assert "user_id" not in serialized and "_id" not in serialized
+
+    async def test_flagged_row_reaches_the_client(self, mock_repo, test_user):
+        """The sidebar dot reads batch-sync rows: a dropped flag here is a missing dot no frontend mapping can recover."""
+        mock_repo.find_updated_since = AsyncMock(return_value=[_document(has_live_approval=True)])
+        with patch.object(
+            conversation_service.stream_manager,
+            "get_resumable_stream_id",
+            new=AsyncMock(return_value=None),
+        ):
+            request = BatchSyncRequest(
+                conversations=[ConversationSyncItem(conversation_id="conv_abc")]
+            )
+            result = await batch_sync_conversations(request, test_user)
+
+        (row,) = result.conversations
+        assert row.has_live_approval is True
+
+    async def test_unflagged_row_reads_unset(self, mock_repo, test_user):
+        mock_repo.find_updated_since = AsyncMock(return_value=[_document()])
+        with patch.object(
+            conversation_service.stream_manager,
+            "get_resumable_stream_id",
+            new=AsyncMock(return_value=None),
+        ):
+            request = BatchSyncRequest(
+                conversations=[ConversationSyncItem(conversation_id="conv_abc")]
+            )
+            result = await batch_sync_conversations(request, test_user)
+
+        assert result.conversations[0].has_live_approval in (None, False)
+
+    async def test_a_todos_chat_tells_the_client_which_todo_it_belongs_to(
+        self, mock_repo, test_user
+    ):
+        """A client that opened a todo's chat keeps it in its own store; this is how it keeps it out of the list."""
+        mock_repo.find_updated_since = AsyncMock(return_value=[_document(todo_id="todo-1")])
+        with patch.object(
+            conversation_service.stream_manager,
+            "get_resumable_stream_id",
+            new=AsyncMock(return_value=None),
+        ):
+            request = BatchSyncRequest(
+                conversations=[ConversationSyncItem(conversation_id="conv_abc")]
+            )
+            result = await batch_sync_conversations(request, test_user)
+
+        assert result.conversations[0].todo_id == "todo-1"
+
+    async def test_an_asked_for_chat_the_user_no_longer_owns_comes_back_missing(
+        self, mock_repo, test_user
+    ):
+        """A client drops a deleted chat only when sync names it missing; one it still owns stays."""
+        mock_repo.find_updated_since = AsyncMock(return_value=[])
+        mock_repo.owned_ids = AsyncMock(return_value={"conv_kept"})
+        items = [
+            ConversationSyncItem(conversation_id="conv_kept"),
+            ConversationSyncItem(conversation_id="conv_gone"),
+        ]
+
+        result = await batch_sync_conversations(BatchSyncRequest(conversations=items), test_user)
+
+        assert result.missing == ["conv_gone"]
+        mock_repo.find_updated_since.assert_awaited_once_with(USER_ID, items)
+        mock_repo.owned_ids.assert_awaited_once_with(USER_ID, ["conv_kept", "conv_gone"])
+
+
+class TestTrackedTodoChat:
+    async def test_an_existing_chat_is_returned_without_creating_one(self, mock_repo):
+        mock_repo.find_todo_conversation_id.return_value = "conv-existing"
+
+        conversation_id = await get_or_create_todo_conversation(USER_ID, "todo-1", "Watch")
+
+        assert conversation_id == "conv-existing"
+        mock_repo.find_todo_conversation_id.assert_awaited_once_with(USER_ID, "todo-1")
+        mock_repo.try_create.assert_not_awaited()
+
+    async def test_the_first_use_creates_an_unlisted_chat_bound_to_the_todo(self, mock_repo):
+        mock_repo.find_todo_conversation_id.return_value = None
+        mock_repo.try_create.return_value = True
+
+        conversation_id = await get_or_create_todo_conversation(
+            USER_ID, "todo-1", "Watch the deploy"
+        )
+
+        (created,) = mock_repo.try_create.await_args.args
+        assert conversation_id == created.conversation_id
+        assert (created.user_id, created.todo_id, created.description) == (
+            USER_ID,
+            "todo-1",
+            "Watch the deploy",
+        )
+        # Never a chat the user has to read: no unread dot, no system section.
+        assert created.is_unread is False
+        assert created.is_system_generated is False
+        # A fresh id, and a timezone-aware creation time the list sorts by.
+        assert str(UUID(created.conversation_id)) == created.conversation_id
+        assert datetime.fromisoformat(created.createdAt).utcoffset() == timedelta(0)
+
+    async def test_the_loser_of_a_creation_race_gets_the_winners_chat(self, mock_repo):
+        mock_repo.find_todo_conversation_id.side_effect = [None, "conv-winner"]
+        mock_repo.try_create.return_value = False
+
+        conversation_id = await get_or_create_todo_conversation(USER_ID, "todo-1", "Watch")
+
+        assert conversation_id == "conv-winner"
+        assert [c.args for c in mock_repo.find_todo_conversation_id.await_args_list] == [
+            (USER_ID, "todo-1"),
+            (USER_ID, "todo-1"),
+        ]
+
+    async def test_a_race_whose_winner_cannot_be_read_fails_loudly(self, mock_repo):
+        mock_repo.find_todo_conversation_id.return_value = None
+        mock_repo.try_create.return_value = False
+
+        with pytest.raises(RuntimeError, match="todo-1"):
+            await get_or_create_todo_conversation(USER_ID, "todo-1", "Watch")
+
+    async def test_deleting_todos_cleans_up_after_each_of_their_chats(self, mock_repo):
+        mock_repo.delete_for_todos.return_value = ["conv-1", "conv-2"]
+        cleanup = AsyncMock()
+        sessions = AsyncMock()
+        with (
+            patch.object(conversation_service, "_cleanup_checkpoint_threads", new=cleanup),
+            patch.object(conversation_service, "delete_session_dir", new=sessions),
+            patch("app.services.conversation_service.capture") as mock_capture,
+        ):
+            await delete_todo_conversations(USER_ID, ["todo-1", "todo-2"])
+
+        mock_repo.delete_for_todos.assert_awaited_once_with(USER_ID, ["todo-1", "todo-2"])
+        assert [c.args for c in cleanup.await_args_list] == [("conv-1",), ("conv-2",)]
+        assert [c.args for c in sessions.await_args_list] == [
+            (USER_ID, "conv-1"),
+            (USER_ID, "conv-2"),
+        ]
+        # Not a conversation the user deleted: no chat analytics for it.
+        mock_capture.assert_not_called()
+
+
+class TestRequireOwnedConversation:
+    async def test_the_owner_passes(self, owned_conversations: set[tuple[str, str]]) -> None:
+        owned_conversations.add(("conv_abc", USER_ID))
+
+        await require_owned_conversation("conv_abc", USER_ID)
+
+    @pytest.mark.parametrize(
+        ("conversation_id", "user_id"),
+        [("conv_abc", "someone-else"), ("conv_missing", USER_ID)],
+    )
+    async def test_a_foreign_or_missing_conversation_is_the_same_404(
+        self, owned_conversations: set[tuple[str, str]], conversation_id: str, user_id: str
+    ) -> None:
+        owned_conversations.add(("conv_abc", USER_ID))
+
+        with pytest.raises(AppError) as raised:
+            await require_owned_conversation(conversation_id, user_id)
+
+        assert (raised.value.status_code, raised.value.code, raised.value.message) == (
+            404,
+            "CONVERSATION_NOT_FOUND",
+            "Conversation not found",
+        )
+
+
+class TestConversationSizeCap:
+    """A chat thread is one Mongo document; past 16MB it can never be written again."""
+
+    async def test_a_chat_append_caps_history_by_default(self, monkeypatch) -> None:
+        from app.constants.chat import CONVERSATION_MAX_MESSAGES
+        from app.services import conversation_service
+
+        seen: dict[str, object] = {}
+
+        async def record(conversation_id: str, **kwargs: object) -> list[str]:
+            seen.update(kwargs)
+            return ["m1"]
+
+        monkeypatch.setattr(
+            "app.services.conversation_service.conversation_repository.append_messages", record
+        )
+
+        await conversation_service.update_messages(
+            UpdateMessagesRequest(
+                conversation_id="c1",
+                messages=[MessageModel(type="user", response="", message_id="m1")],
+            ),
+            user=AuthenticatedUser(user_id="u1"),
+        )
+
+        assert seen["max_messages"] == CONVERSATION_MAX_MESSAGES

@@ -1,25 +1,17 @@
 /**
  * The derivations `useIntegrations` hands every non-integrations-page surface.
  *
- * `getIntegrationStatus` used to return only `{integrationId, connected}`, so
- * the dashboard/settings/calendar CTAs rendered a first-time "Connect" for an
- * integration the user had already connected and which then broke. It now
- * carries the raw `status`, which is what lets those surfaces run it through
- * `integrationConnectionState` + `CONNECT_ACTION_LABEL` and say "Reconnect".
- * The catalog mapping likewise carries `expiredAt`, which the integrations row
- * renders as "Disconnected <n> ago".
- *
- * Fidelity note: this workspace has no jsdom/happy-dom and no
- * `@testing-library/react`, so there is no renderer. These tests drive the pure
- * derivations the hook is built from, which is where all of this logic lives.
- * What is NOT exercised: that the hook wires them up, and no component renders
- * at all — that the row actually paints "Disconnected 3 days ago", or that the
- * dashboard button paints "Reconnect", is unverified here.
+ * `getIntegrationStatus` used to return only `{integrationId, connected}`,
+ * so an already-connected integration showed a first-time "Connect" CTA; it
+ * now carries `status` (via `integrationConnectionState`) for "Reconnect",
+ * and `expiredAt` for "Disconnected <n> ago". Fidelity: no renderer — these
+ * drive the pure derivations directly; hook wiring and actual rendering aren't exercised.
  */
 import type { MyIntegrationItem } from "@shared/types";
 import {
   CONNECT_ACTION_LABEL,
   integrationConnectionState,
+  reconcileIntegrationStatus,
 } from "@shared/utils";
 import { describe, expect, it } from "vitest";
 import {
@@ -96,6 +88,38 @@ describe("findIntegrationStatus", () => {
 
   it("returns undefined for an integration missing from the catalog", () => {
     expect(statusOf([item({})], "notion")).toBeUndefined();
+  });
+});
+
+describe("reconcileIntegrationStatus", () => {
+  it("overlays a refreshed status without hiding created states", () => {
+    expect(
+      reconcileIntegrationStatus("not_connected", true, "composio", true),
+    ).toBe("connected");
+    expect(reconcileIntegrationStatus("created", true, "mcp", true)).toBe(
+      "connected",
+    );
+    expect(reconcileIntegrationStatus("expired", true, "mcp", true)).toBe(
+      "connected",
+    );
+    expect(reconcileIntegrationStatus("expired", false, "mcp", true)).toBe(
+      "expired",
+    );
+  });
+
+  it("downgrades only an auth-required MCP with stale connected status", () => {
+    expect(reconcileIntegrationStatus("connected", false, "mcp", true)).toBe(
+      "created",
+    );
+    expect(
+      reconcileIntegrationStatus("connected", false, "composio", true),
+    ).toBe("connected");
+  });
+
+  it("keeps the snapshot status while the refresh query is pending", () => {
+    expect(
+      reconcileIntegrationStatus("connected", undefined, "mcp", true),
+    ).toBe("connected");
   });
 });
 

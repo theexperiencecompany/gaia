@@ -1,9 +1,8 @@
 /**
  * Comparison pages data — `/compare/[slug]`
  *
- * Per-slug entries live in `apps/web/public/data/comparisons/{slug}.json`
- * (regenerate via `pnpm tsx scripts/extract-static-data.ts`). At Cloudflare
- * runtime they are fetched via the ASSETS binding instead of being bundled
+ * Per-slug entries live in `apps/web/public/data/comparisons/{slug}.json`,
+ * which is the source. At Cloudflare runtime they are fetched via the ASSETS binding instead of being bundled
  * into handler.mjs.
  */
 

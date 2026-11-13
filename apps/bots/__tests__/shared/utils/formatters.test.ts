@@ -219,13 +219,9 @@ describe("formatConversationList", () => {
 // convertToTelegramHtml — Telegram HTML parse mode
 // ---------------------------------------------------------------------------
 describe("convertToTelegramHtml", () => {
-  // --- Regression guards ---------------------------------------------------
-  // These encode the exact production bug legacy Markdown caused (captured in
-  // the live DOM: an auth token's underscores were parsed as italics and
-  // silently dropped, corrupting the link). They assert OBSERVABLE output, so
-  // they fail on any parse mode that mangles URLs/underscores — which is what
-  // makes them catch the regression the old implementation-coupled tests
-  // could not.
+  // Regression guards: legacy Markdown parsed an auth token's underscores as
+  // italics and silently dropped them, corrupting the link. Asserting observable
+  // output catches any parse mode that mangles URLs/underscores.
 
   it("keeps underscores in a bare URL intact (no italic, nothing dropped)", () => {
     const out = convertToTelegramHtml(
@@ -259,8 +255,6 @@ describe("convertToTelegramHtml", () => {
       "I have 3 apples and 12 oranges",
     );
   });
-
-  // --- Formatting conversions ---------------------------------------------
 
   it("converts **bold** to <b>", () => {
     expect(convertToTelegramHtml("Hello **world**")).toBe("Hello <b>world</b>");
@@ -638,19 +632,17 @@ describe("formatBotError", () => {
 
   it("prefers the server's message over the generic throttle line", () => {
     // Every 429 used to render "you're sending messages too fast", which is
-    // wrong for the budget wall — waiting does not fix it. FastAPI nests the
-    // real copy under `detail` for the rate-limit family.
+    // wrong for the budget wall — waiting does not fix it. The envelope's
+    // `message` carries the real copy for the rate-limit family.
     const err = {
       response: {
         status: 429,
         data: {
-          detail: {
-            error: "rate_limit_exceeded",
-            feature: "chat_messages",
-            message:
-              "You've used today's AI usage allowance. Upgrade to Pro for higher limits.",
-            plan_required: "pro",
-          },
+          code: "rate_limit_exceeded",
+          feature: "chat_messages",
+          message:
+            "You've used today's AI usage allowance. Upgrade to Pro for higher limits.",
+          plan_required: "pro",
         },
       },
     };
@@ -660,13 +652,13 @@ describe("formatBotError", () => {
     expect(result).not.toContain("too fast");
   });
 
-  it("uses a plain-string 429 detail as-is", () => {
+  it("uses a plain 429 message as-is", () => {
     // The bot's flat anti-spam limiter raises HTTPException with a bare string.
     const err = {
       response: {
         status: 429,
         data: {
-          detail:
+          message:
             "Rate limit exceeded. Please wait before sending more messages.",
         },
       },

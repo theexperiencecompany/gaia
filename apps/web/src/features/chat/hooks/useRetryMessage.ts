@@ -1,7 +1,6 @@
 import { useCallback, useState } from "react";
 
-import { useSendMessage } from "@/hooks/useSendMessage";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { sendMessage } from "@/features/chat/stream/sendMessage";
 import { useChatStore } from "@/stores/chatStore";
 
 /**
@@ -13,7 +12,6 @@ import { useChatStore } from "@/stores/chatStore";
  */
 export const useRetryMessage = () => {
   const [isRetrying, setIsRetrying] = useState(false);
-  const sendMessage = useSendMessage();
 
   const retryMessage = useCallback(
     async (conversationId: string, messageId: string) => {
@@ -57,12 +55,6 @@ export const useRetryMessage = () => {
 
       setIsRetrying(true);
 
-      trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_RETRIED, {
-        message_id: messageId,
-        conversation_id: conversationId,
-        retry_source: targetMessage.role === "user" ? "user" : "bot",
-      });
-
       try {
         // The send flow handles everything — optimistic UI, persistence,
         // streaming, and the turn's loading indicator.
@@ -74,6 +66,7 @@ export const useRetryMessage = () => {
           selectedWorkflow: userMessage.selectedWorkflow,
           selectedCalendarEvent: userMessage.selectedCalendarEvent,
           replyToMessage: userMessage.replyToMessageData,
+          isRetry: true,
         });
       } catch (error) {
         console.error("[useRetryMessage] Error retrying message:", error);
@@ -81,7 +74,7 @@ export const useRetryMessage = () => {
         setIsRetrying(false);
       }
     },
-    [isRetrying, sendMessage],
+    [isRetrying],
   );
 
   return { retryMessage, isRetrying };

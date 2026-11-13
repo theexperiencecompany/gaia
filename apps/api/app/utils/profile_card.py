@@ -32,16 +32,10 @@ def assign_random_house() -> House:
 
 
 def generate_random_color() -> tuple[str, int]:
-    """
-    Generate a random vibrant color or gradient for holo card overlay.
+    """Generate a random vibrant color or gradient for holo card overlay.
 
-    50% chance of gradient vs solid color.
-    Colors are HSL-based for better vibrancy control.
-
-    Returns:
-        Tuple of (color_string, opacity_percentage)
-        - color_string: CSS color (rgba) or linear-gradient
-        - opacity_percentage: 30-80%
+    50% chance of gradient vs solid; HSL-based for vibrancy. Returns
+    (color_string, opacity_percentage) with opacity in 30-80%.
     """
     is_gradient = random.random() > 0.5  # nosec B311
 
@@ -102,16 +96,9 @@ def generate_random_color() -> tuple[str, int]:
 
 
 async def get_user_metadata(user_id: str, user: UserDocument | None = None) -> UserProfileMetadata:
-    """
-    Calculate user metadata for profile card.
+    """Compute user metadata for the profile card: account_number and member_since.
 
-    Computes:
-    - account_number: Sequential number based on creation date
-    - member_since: Formatted date string
-
-    Args:
-        user_id: User ID
-        user: The already-loaded user, to skip the repository read
+    user: the already-loaded user, to skip the repository read.
     """
     try:
         if user is None:
@@ -173,8 +160,8 @@ async def generate_holo_card_content(
     if user is None:
         user = await user_repository.get(user_id)
     name = (user.name if user else None) or "User"
-    onboarding = (user.onboarding if user else None) or {}
-    profession = (onboarding.get("preferences") or {}).get("profession") or ""
+    preferences = user.onboarding.preferences if user and user.onboarding else None
+    profession = (preferences.profession if preferences else None) or ""
 
     if not context_summary.strip():
         default_bio = get_random_bio_for_profession(name, profession or "other")

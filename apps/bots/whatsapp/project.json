@@ -4,7 +4,7 @@
   "root": "apps/bots/whatsapp",
   "sourceRoot": "apps/bots/whatsapp/src",
   "projectType": "application",
-  "tags": ["scope:typescript"],
+  "tags": ["scope:typescript", "release:bots"],
   "release": {
     "docker": {
       "repositoryName": "theexperiencecompany/gaia-bot-whatsapp"
@@ -50,18 +50,25 @@
     "type-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm tsc --noEmit",
+        "command": "node \"$NX_WORKSPACE_ROOT/scripts/ts/type-check.mjs\" --noEmit",
         "cwd": "{projectRoot}"
       }
     },
     "docker:build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker buildx build --platform linux/amd64 --cache-from type=registry,ref=ghcr.io/theexperiencecompany/gaia-bot-whatsapp:buildcache --cache-to type=registry,ref=ghcr.io/theexperiencecompany/gaia-bot-whatsapp:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd --build-arg BOT_NAME=whatsapp -f apps/bots/Dockerfile -t apps-bots-whatsapp:latest -t bot-whatsapp:latest -t ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest --load .",
+        "command": "docker buildx build --platform linux/amd64 --cache-from type=registry,ref=ghcr.io/theexperiencecompany/gaia-bot-whatsapp:buildcache --cache-to type=registry,ref=ghcr.io/theexperiencecompany/gaia-bot-whatsapp:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd --build-arg BOT_NAME=whatsapp --build-arg GIT_COMMIT_SHA=$(git rev-parse HEAD) -f apps/bots/Dockerfile -t apps-bots-whatsapp:latest -t bot-whatsapp:latest -t ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest --load .",
         "cwd": "."
       },
       "cache": true,
-      "inputs": ["production", "^production"],
+      "inputs": [
+        "production",
+        "^production",
+        "{workspaceRoot}/apps/bots/Dockerfile",
+        "{workspaceRoot}/apps/bots/package.json",
+        "{workspaceRoot}/pnpm-workspace.yaml",
+        "{workspaceRoot}/.dockerignore"
+      ],
       "metadata": {
         "technologies": ["docker"]
       }

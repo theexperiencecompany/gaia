@@ -23,10 +23,7 @@ from app.models.workflow_models import (
     WorkflowStep,
 )
 
-# ---------------------------------------------------------------------------
 # Direct imports from the modules under test.
-# Deleting any of these source files will cause ImportError here.
-# ---------------------------------------------------------------------------
 from app.services.workflow.execution_service import (
     complete_execution,
     create_execution,
@@ -34,6 +31,7 @@ from app.services.workflow.execution_service import (
 )
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.services.workflow.validators import WorkflowValidator
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -109,7 +107,7 @@ def mock_executions_repo():
 def mock_redis_pool(route_enqueue_via_pool):
     """Patch RedisPoolManager.get_pool used by WorkflowQueueService.
 
-    ``route_enqueue_via_pool`` (shared conftest) routes the wide-event enqueue
+    route_enqueue_via_pool (shared conftest) routes the wide-event enqueue
     wrapper through pool.enqueue_job, so the tests' existing pool mocks and
     assertions stay authoritative.
     """
@@ -436,6 +434,25 @@ class TestWorkflowQueueServiceExecution:
         args = mock_redis_pool.enqueue_job.call_args[0]
         assert args[2] == {}
 
+    @pytest.mark.parametrize(
+        ("defer_until", "queue_mode"),
+        [(None, "immediate"), (datetime(2026, 10, 2, 2, 30, tzinfo=UTC), "deferred")],
+    )
+    async def test_the_wide_event_says_whether_the_run_waits(
+        self, mock_redis_pool, defer_until: datetime | None, queue_mode: str
+    ) -> None:
+        mock_redis_pool.enqueue_job.return_value = MagicMock(job_id="job_q")
+
+        async with captured_wide_event() as event:
+            await WorkflowQueueService.queue_workflow_execution(
+                WORKFLOW_ID, USER_ID, defer_until=defer_until
+            )
+
+        assert (event["queue_mode"], event["defer_until"]) == (
+            queue_mode,
+            defer_until.isoformat() if defer_until else None,
+        )
+
     async def test_queue_execution_returns_false_on_exception(self, mock_redis_pool):
         mock_redis_pool.enqueue_job.side_effect = Exception("redis timeout")
 
@@ -473,7 +490,7 @@ class TestWorkflowQueueServiceTodo:
         await WorkflowQueueService.queue_todo_workflow_generation("todo_x", USER_ID, "Title")
 
         args = mock_redis_pool.enqueue_job.call_args[0]
-        assert args[0] == "process_workflow_generation_task"
+        assert args == ("process_workflow_generation_task", "todo_x", USER_ID, "Title", "")
 
     async def test_queue_todo_generation_returns_false_when_job_none(self, mock_redis_pool):
         mock_redis_pool.enqueue_job.return_value = None

@@ -1,15 +1,15 @@
 """System-owned workspace files — one logical copy for ALL users.
 
-``INDEX.md``, the per-area ``GUIDE.md`` docs, and the built-in skill bodies are
+INDEX.md, the per-area GUIDE.md docs, and the built-in skill bodies are
 authored by GAIA and identical for every user. This module is the single
-enumeration of them — each one's canonical ``/workspace``-relative path and its
+enumeration of them — each one's canonical /workspace-relative path and its
 body (already in process memory) — so the same list can drive:
 
-  - the ``read`` tool's memory fast-path (serve these without touching JuiceFS),
-  - writing the shared ``_system`` subtree once (no per-user duplication),
+  - the read tool's memory fast-path (serve these without touching JuiceFS),
+  - writing the shared _system subtree once (no per-user duplication),
   - symlinking them into each user's workspace.
 
-Bodies come from ``operational_docs`` / ``skill_loader`` (process memory; see the
+Bodies come from operational_docs / skill_loader (process memory; see the
 scale notes there). Paths use the SAME constants the materializers write, so this
 list can never drift from what lands on JuiceFS.
 """
@@ -79,20 +79,19 @@ _STATIC_DOCS: list[tuple[str, str]] = [
 
 
 def builtin_skill_root_rel(skill: BuiltinSkill) -> str:
-    """``/workspace``-relative directory of a builtin skill — matches materialize_skills."""
+    """/workspace-relative directory of a builtin skill — matches materialize_skills."""
     if skill.subagent_id == EXECUTOR_SUBAGENT_ID:
         return f"skills/{skill.slug}"
     return f"integrations/{skill.subagent_id}/agent/skills/{skill.slug}"
 
 
 def builtin_skill_rel_path(skill: BuiltinSkill) -> str:
-    """``/workspace``-relative path of a builtin skill body — matches materialize_skills."""
+    """/workspace-relative path of a builtin skill body — matches materialize_skills."""
     return f"{builtin_skill_root_rel(skill)}/{SKILL_BODY_FILENAME}"
 
 
 def system_files() -> list[SystemFile]:
-    """Every system-owned file: static docs + builtin skill bodies + the skills'
-    bundled resources (templates/, reference.md, scripts/…)."""
+    """Every system-owned file: static docs, builtin skill bodies, and their bundled resources."""
     files = [SystemFile(path, body) for path, body in _STATIC_DOCS]
     for skill in load_builtin_skills():
         root = builtin_skill_root_rel(skill)

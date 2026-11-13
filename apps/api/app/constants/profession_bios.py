@@ -199,16 +199,7 @@ PROFESSION_BIOS: dict[str, list[str]] = {
 
 
 def get_random_bio_for_profession(name: str, profession: str) -> str:
-    """
-    Get a random bio for a given profession.
-
-    Args:
-        name: User's name to insert into the bio
-        profession: The profession key (lowercase)
-
-    Returns:
-        A formatted bio string with the user's name
-    """
+    """Return a random bio for the given profession, with the name filled in."""
     # Normalize profession to lowercase
     profession = profession.lower().strip()
 

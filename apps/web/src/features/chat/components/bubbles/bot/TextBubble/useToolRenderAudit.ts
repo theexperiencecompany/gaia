@@ -1,7 +1,7 @@
 import { TOOL_CALLS_DATA_TOOL_NAME } from "@shared/chat";
 import React from "react";
 
-import type { ToolDataEntry } from "@/config/registries/toolRegistry";
+import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import { streamLog } from "@/lib/streamLogger";
 import { hasToolRenderer } from "./ToolRenderers";
 
@@ -29,7 +29,7 @@ const isDev = process.env.NODE_ENV !== "production";
 // not how many times React re-ran.
 const audited = new Set<string>();
 
-const outcomeFor = (entry: ToolDataEntry): ToolRenderOutcome => {
+const outcomeFor = (entry: TypedToolDataEntry): ToolRenderOutcome => {
   const name = entry.tool_name;
   if (name === TOOL_CALLS_DATA_TOOL_NAME || name === "subagent_group") {
     return "unified-thread";
@@ -41,7 +41,7 @@ const outcomeFor = (entry: ToolDataEntry): ToolRenderOutcome => {
 
 export const useToolRenderAudit = (
   messageId: string | undefined,
-  toolData: ToolDataEntry[] | null | undefined,
+  toolData: TypedToolDataEntry[] | null | undefined,
 ): void => {
   React.useEffect(() => {
     if (!isDev || !messageId || !toolData) return;

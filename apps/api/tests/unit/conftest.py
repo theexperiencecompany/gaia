@@ -1,14 +1,76 @@
 """Shared fixtures for unit tests."""
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
+from loguru import logger as loguru_logger
 import pytest
+import sentry_sdk
+from sentry_sdk.envelope import Envelope
+from sentry_sdk.transport import Transport
+from sentry_sdk.types import Event
 
+from app.agents.core.background import session as stream_session
+from app.config.sentry import init_sentry
+from app.config.settings import settings
+from app.services.providers import provider_credentials_service
 from tests.factories import make_config, make_state, make_user
-from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
+from tests.helpers import (
+    CREDENTIAL_STORE_SECRET,
+    InMemoryCredentialStore,
+    create_fake_llm,
+    create_fake_llm_with_tool_calls,
+)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_stream_registries() -> Iterator[None]:
+    # Module-global: a stream id another test left abandoned makes finalize skip delivery.
+    stream_session._sessions.clear()
+    stream_session._abandoned.clear()
+    yield
+    stream_session._sessions.clear()
+    stream_session._abandoned.clear()
+
+
+class _CapturingTransport(Transport):
+    """Keep every error event the client would send to Sentry, in send order."""
+
+    def __init__(self, options: dict[str, object]) -> None:
+        super().__init__(options)
+        self.events: list[Event] = []
+
+    def capture_envelope(self, envelope: Envelope) -> None:
+        event = envelope.get_event()
+        if event is not None:
+            self.events.append(event)
+
+
+@pytest.fixture
+def sentry_events() -> Iterator[list[Event]]:
+    """Run the real init_sentry against a transport stub; yields the error events sent."""
+    with (
+        patch("app.config.sentry.settings.SENTRY_DSN", "https://public@sentry.invalid/1"),
+        patch("app.config.sentry._loguru") as sentry_loguru,
+    ):
+        init_sentry()
+    # Re-run the sink registration on the real logger so this fixture owns its handler ids.
+    added_sinks = [
+        loguru_logger.add(*call.args, **call.kwargs) for call in sentry_loguru.add.call_args_list
+    ]
+    client = sentry_sdk.get_client()
+    transport = _CapturingTransport(client.options)
+    client.transport = transport
+    yield transport.events
+    for handler_id in added_sinks:
+        loguru_logger.remove(handler_id)
+    # init_sentry's tags live on the global scope; left there, a later test reads them as its own.
+    global_scope = sentry_sdk.get_global_scope()
+    global_scope.clear()
+    global_scope.set_client(None)
 
 
 @pytest.fixture
@@ -42,7 +104,6 @@ def mock_mongodb():
         "files_collection",
         "notifications_collection",
         "feedback_collection",
-        "mail_collection",
         "blog_collection",
         "support_collection",
         "payments_collection",
@@ -89,3 +150,24 @@ def sample_state():
 @pytest.fixture
 def sample_config() -> dict:
     return make_config()
+
+
+@pytest.fixture
+def selfhost_credential_store(monkeypatch: pytest.MonkeyPatch) -> Iterator[InMemoryCredentialStore]:
+    """Boot as self-host with an empty in-memory credential store and no cached resolutions."""
+    store = InMemoryCredentialStore()
+
+    async def _secret() -> str:
+        return CREDENTIAL_STORE_SECRET
+
+    monkeypatch.setattr(settings, "ENV", "selfhost")
+    monkeypatch.setattr(settings, "AUTH_MODE", "local")
+    monkeypatch.setattr(provider_credentials_service, "provider_credentials_repository", store)
+    monkeypatch.setattr(provider_credentials_service, "get_instance_secret", _secret)
+    saved_snapshot = dict(provider_credentials_service.resolved_configs)
+    provider_credentials_service._cache.clear()
+    provider_credentials_service.resolved_configs.clear()
+    yield store
+    provider_credentials_service._cache.clear()
+    provider_credentials_service.resolved_configs.clear()
+    provider_credentials_service.resolved_configs.update(saved_snapshot)

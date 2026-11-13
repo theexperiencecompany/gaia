@@ -1,6 +1,6 @@
 """Unit tests for UsageService.
 
-The service is a thin orchestration over ``usage_snapshot_repository``; these
+The service is a thin orchestration over usage_snapshot_repository; these
 tests mock that repository (never the DB) and assert the service's own behaviour
 — delegation and the feature-key filter. The repository's hourly-upsert and
 scoping behaviour is covered by the real-DB contract suite.

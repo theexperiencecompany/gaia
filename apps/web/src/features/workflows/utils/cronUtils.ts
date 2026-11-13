@@ -180,29 +180,18 @@ export const getScheduleDescription = (cron: string): string => {
   }
 };
 
-export interface CronValidation {
-  isValid: boolean;
-  description?: string;
-  error?: string;
-}
-
-// Parse an arbitrary cron expression into a human-readable description,
-// reporting invalid expressions. Handles step/range/list syntax that the
-// simple parser above treats as opaque "custom" expressions.
-export const describeCron = (cron: string): CronValidation => {
-  if (!cron.trim()) {
-    return { isValid: false };
-  }
-
+// A plain-English description of a cron expression, or undefined when cronstrue
+// cannot read it. Description only: whether the schedule is acceptable is the
+// server's call (useCronValidation).
+export const describeCron = (cron: string): string | undefined => {
+  const expression = cron.trim();
+  if (!expression) return undefined;
   try {
-    const description = cronstrue.toString(cron, {
+    return cronstrue.toString(expression, {
       throwExceptionOnParseError: true,
       verbose: false,
     });
-    return { isValid: true, description };
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Invalid cron expression";
-    return { isValid: false, error: message.replace(/^Error:\s*/, "") };
+  } catch {
+    return undefined;
   }
 };

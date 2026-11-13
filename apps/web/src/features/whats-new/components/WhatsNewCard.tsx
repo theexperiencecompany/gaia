@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Cancel01Icon } from "@icons";
 import Image from "next/image";
 import { useEffect } from "react";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { useWhatsNewStore } from "@/stores/whatsNewStore";
 import { useReleases } from "../hooks/useReleases";
 import { formatReleaseDate } from "../utils/formatReleaseDate";
@@ -23,7 +23,7 @@ export function WhatsNewCard() {
 
   useEffect(() => {
     if (!isLoading && releases.length > 0) {
-      trackEvent(ANALYTICS_EVENTS.WHATS_NEW_CARD_SHOWN, {
+      track("whats_new:card_shown", {
         unseenCount: unseen.length,
       });
     }
@@ -32,7 +32,7 @@ export function WhatsNewCard() {
   if (isLoading || releases.length === 0 || isDismissed) return null;
 
   const handleOpen = () => {
-    trackEvent(ANALYTICS_EVENTS.WHATS_NEW_CARD_CLICKED, {
+    track("whats_new:card_clicked", {
       source: "sidebar_card",
     });
     openModal(0);
@@ -40,7 +40,7 @@ export function WhatsNewCard() {
 
   const handleDismiss = () => {
     if (!latest) return;
-    trackEvent(ANALYTICS_EVENTS.WHATS_NEW_CARD_DISMISSED, {
+    track("whats_new:card_dismissed", {
       releaseId: latest.id,
     });
     dismissCard(latest.id);

@@ -14,28 +14,28 @@
  */
 
 import { join } from "node:path";
-import { app, BrowserWindow, type Event, shell } from "electron";
+import { app, BrowserWindow, type Event, screen, shell } from "electron";
 import { getApiOrigin } from "../api-origin";
 import { getServerUrl } from "../server";
+import { loadServerForm } from "../server-switch";
+import { getDesktopSettings } from "../settings";
 import { loadAppRoute } from "./load-url";
+import { MAIN_NORMAL_WIDTH, resolveNormalBounds } from "./loader-geometry";
 import { classifyNavigation } from "./navigation-policy";
-import { closeSplashWindow } from "./splash";
+import { closeSplashWindow, getLoaderBounds } from "./splash";
+
+/** Chromium's net::ERR_ABORTED: a load superseded by another navigation, not a failure. */
+const ERR_ABORTED = -3;
 
 /**
- * Guard top-level navigation of the main window.
- *
- * The renderer shares the privileged preload bridge, so any XSS or
- * rogue redirect that navigates the window to an attacker origin would
- * hand that origin our IPC surface. We therefore block navigation to any
- * origin outside the app's known-good set (web server + API origin).
- *
- * @param event - The `will-navigate` / `will-redirect` event.
- * @param url - The target URL being navigated to.
+ * Guard top-level navigation of the main window. The renderer shares the
+ * privileged preload bridge, so an XSS or rogue redirect to an attacker origin
+ * would hand that origin our IPC surface — block navigation outside the app's
+ * known-good origins (web server + API origin).
  */
 function guardNavigation(event: Event, url: string): void {
-  // Web server (dev or embedded prod) and API origin are the only
-  // origins that may drive the main window — reuse the exact helpers the
-  // loader and cookie logic use so this can never drift from them.
+  // Only the bundled web server and the API origin (a self-hosted server's own
+  // origin) may drive the window; the loader's helpers keep these in sync.
   const allowedOrigins = new Set([
     new URL(getServerUrl()).origin,
     new URL(getApiOrigin()).origin,
@@ -102,25 +102,25 @@ export function consumePendingDeepLink(): string | null {
 }
 
 /**
- * Create the main application window.
- *
- * The window is created **hidden** (`show: false`) and starts
- * polling for the appropriate server (production or dev) in the
- * background. Once the server responds and the page loads, the
- * renderer is expected to send a `window-ready` IPC message
- * which triggers {@link showMainWindow}.
- *
- * @param serverReady - Callback returning `true` when the production
- *   server is up. Ignored in development mode.
+ * Create the main application window. Created **hidden** (`show: false`) and
+ * polls for the appropriate server (prod or dev, `serverReady` ignored in dev)
+ * in the background; once it responds and the page loads, the renderer sends
+ * `window-ready`, which triggers {@link showMainWindow}.
  */
 export async function createMainWindow(
   serverReady: () => boolean,
 ): Promise<void> {
+  // Start at the splash loader's centered bounds so the reveal is a
+  // scale-up from exactly where the loader was (see showMainWindow).
+  const { x, y, width, height } = getLoaderBounds();
+
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 1024,
-    minHeight: 700,
+    x,
+    y,
+    width,
+    height,
+    minWidth: 640,
+    minHeight: 400,
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: "hiddenInset",
@@ -163,18 +163,33 @@ export async function createMainWindow(
     event.preventDefault();
   });
 
+  // A self-hosted server that is down would leave a blank window; show the
+  // bundled server form instead so the user can retry or switch servers.
+  const win = mainWindow;
+  win.webContents.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      const { selfHostOrigin } = getDesktopSettings();
+      if (!isMainFrame || !selfHostOrigin || errorCode === ERR_ABORTED) return;
+      if (!validatedURL.startsWith(`${selfHostOrigin}/`)) return;
+      console.error(
+        `[Main] Self-hosted server failed to load (${errorDescription}):`,
+        validatedURL,
+      );
+      loadServerForm(win, "unreachable", serverReady).catch(console.error);
+    },
+  );
+
   loadAppRoute(mainWindow, "/desktop-login", serverReady).catch(console.error);
 }
 
 /**
- * Show the main window and close the splash screen.
+ * Show the main window, close the splash, and scale up into the full app.
  *
- * Called when the renderer sends the `window-ready` IPC signal,
- * or by the fallback timeout. Maximises the window for a
- * fullscreen-like experience.
+ * Driven by the renderer's window-ready IPC signal or by the fallback timeout.
+ * Order is load-bearing: maximize() is a no-op on a still-hidden macOS window.
  *
- * @returns The pending deep-link URL that should be processed
- *   after the window is visible, or `null`.
+ * @returns A deep-link URL to process now that the window is visible, or null.
  */
 export function showMainWindow(): string | null {
   if (windowShown) return null;
@@ -187,13 +202,30 @@ export function showMainWindow(): string | null {
     return null;
   }
 
-  mainWindow.maximize();
   mainWindow.show();
   mainWindow.focus();
-  console.log("[Main] Main window shown and focused");
+  console.log("[Main] Main window shown at loader bounds");
 
   console.log("[Main] About to close splash window");
   closeSplashWindow();
+
+  // Scale up into the full app: raise the minimums first so the maximised
+  // size is legal, then zoom. macOS animates maximize() from the small
+  // centered bounds shown above.
+  mainWindow.setMinimumSize(1024, 700);
+  mainWindow.maximize();
+  console.log("[Main] Main window scaled to full size");
+
+  // The zoom above maximised from the loader frame, so the first restore would
+  // land on the loader size; expand once, then leave later cycles native. The
+  // width guard stops the handler shrinking an already-normal-sized window.
+  const win = mainWindow;
+  win.once("unmaximize", () => {
+    if (win.isDestroyed()) return;
+    const [width = 0] = win.getSize();
+    if (width >= MAIN_NORMAL_WIDTH) return;
+    win.setBounds(resolveNormalBounds(screen.getPrimaryDisplay().workArea));
+  });
 
   return consumePendingDeepLink();
 }

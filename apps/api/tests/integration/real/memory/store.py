@@ -55,15 +55,9 @@ class MemorySpec(TypedDict, total=False):
     entities: list[tuple[str, str]]  # (name, entity_type)
 
 
-# Passage embedding is a pure function of (model, text), and the seeded corpora
-# are fixed module constants re-planted under a fresh uuid user for every test.
-# The vectors ARE the real model's output, nothing is synthesized — but the
-# same 60-memory corpus is not re-embedded on every test, nor cold by every
-# xdist worker on every run: an in-process dict sits in front of an on-disk
-# per-model archive under the fastembed weights cache, so only the first run
-# ever pays the sidecar round-trip. The seed path is not what these tests
-# assert on; recall still runs real embed_query, real Chroma ANN, real
-# Postgres FTS and the real cross-encoder rerank.
+# Passage embedding is a pure function of (model, text); the same 60-memory
+# corpus is cached (in-process dict + on-disk per-model archive) so only the
+# first run pays the sidecar round-trip — real vectors, never synthesized.
 _seed_embedding_cache: dict[str, list[float]] = {}
 
 # Override for the on-disk archive's directory; defaults to a subdirectory of
@@ -103,8 +97,7 @@ def _load_seed_cache(path: Path) -> dict[str, np.ndarray]:
 
 
 def _store_seed_cache(path: Path, vectors: dict[str, np.ndarray]) -> None:
-    """Merge into the archive atomically (temp file + os.replace) so concurrent
-    xdist writers never leave a torn file; last writer wins on the merge."""
+    """Merge into the archive atomically (temp file + os.replace) so concurrent xdist writers never leave a torn file; last writer wins on the merge."""
     path.parent.mkdir(parents=True, exist_ok=True)
     merged = {**_load_seed_cache(path), **vectors}
     fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".npz.tmp")

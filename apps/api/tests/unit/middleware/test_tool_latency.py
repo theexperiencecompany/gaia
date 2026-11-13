@@ -1,0 +1,281 @@
+"""Unit tests for per-tool-call latency spans (Task 7)."""
+
+import time
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from langchain.agents.middleware import AgentMiddleware, AgentState
+from langchain_core.messages import ToolCall, ToolMessage
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import BaseTool
+from langgraph.errors import GraphBubbleUp
+from langgraph.prebuilt.tool_node import ToolCallRequest
+from prometheus_client import REGISTRY
+import pytest
+
+from app.agents.middleware.executor import MiddlewareExecutor, _tool_metric_name
+from app.agents.middleware.runtime_adapter import BigtoolToolRuntime
+
+
+def _count(tool_name: str, status: str) -> float:
+    return (
+        REGISTRY.get_sample_value(
+            "tool_call_seconds_count", {"tool_name": tool_name, "status": status}
+        )
+        or 0.0
+    )
+
+
+def _sum(tool_name: str, status: str) -> float:
+    return (
+        REGISTRY.get_sample_value(
+            "tool_call_seconds_sum", {"tool_name": tool_name, "status": status}
+        )
+        or 0.0
+    )
+
+
+class _RegularTool(BaseTool):
+    """A non-MCP tool: no tool_connector, so it keeps its own name."""
+
+    name: str = "web_search"
+    description: str = "A regular tool."
+
+    def _run(self) -> None:
+        return None
+
+
+class _McpTool(BaseTool):
+    name: str = "user_defined_thing"
+    description: str = "An MCP tool."
+    tool_connector: object = object()
+
+    def _run(self) -> None:
+        return None
+
+
+def test_metric_name_keeps_a_regular_tools_own_name() -> None:
+    # ``or`` instead of ``and`` would collapse EVERY non-None tool to "mcp".
+    assert _tool_metric_name("web_search", _RegularTool()) == "web_search"
+
+
+def test_metric_name_collapses_an_mcp_tool() -> None:
+    assert _tool_metric_name("user_defined_thing", _McpTool()) == "mcp"
+
+
+def test_metric_name_falls_back_to_unknown_without_a_name() -> None:
+    assert _tool_metric_name("", None) == "unknown"
+
+
+async def _invoke(
+    executor: MiddlewareExecutor,
+    tool_call: ToolCall,
+    tool: Any,
+    invoke_fn: Any,
+) -> Any:
+    config: RunnableConfig = {"configurable": {"user_id": "6812f0b3c9a14e2b7d5a91cc"}}
+    request = ToolCallRequest(
+        tool_call=tool_call,
+        tool=tool,
+        state={"messages": []},
+        runtime=BigtoolToolRuntime.from_graph_context(config),
+    )
+    with patch("app.agents.middleware.executor.capture"):
+        return await executor.wrap_tool_invocation(request, invoke_fn)
+
+
+async def test_successful_call_observes_tool_span() -> None:
+    before = _count("lat-tool-ok", "success")
+    invoke_fn = AsyncMock(return_value=ToolMessage(content="ok", tool_call_id="c1"))
+    result = await _invoke(
+        MiddlewareExecutor([]), {"name": "lat-tool-ok", "args": {}, "id": "c1"}, None, invoke_fn
+    )
+    assert result.content == "ok"
+    assert _count("lat-tool-ok", "success") == before + 1
+
+
+async def test_failing_call_observes_error_span() -> None:
+    before = _count("lat-tool-bad", "error")
+    invoke_fn = AsyncMock(side_effect=RuntimeError("tool exploded"))
+    with pytest.raises(RuntimeError, match="tool exploded"):
+        await _invoke(
+            MiddlewareExecutor([]),
+            {"name": "lat-tool-bad", "args": {}, "id": "c1"},
+            None,
+            invoke_fn,
+        )
+    assert _count("lat-tool-bad", "error") == before + 1
+
+
+async def test_mcp_tool_collapses_to_mcp_label() -> None:
+    """MCP tool names are unbounded cardinality: the collector sees mcp, the wide event the real name."""
+    before = _count("mcp", "success")
+    mcp_tool = MagicMock()
+    mcp_tool.tool_connector = MagicMock()
+    invoke_fn = AsyncMock(return_value=ToolMessage(content="ok", tool_call_id="c1"))
+    await _invoke(
+        MiddlewareExecutor([]),
+        {"name": "lat-user-defined-tool", "args": {}, "id": "c1"},
+        mcp_tool,
+        invoke_fn,
+    )
+    assert _count("mcp", "success") == before + 1
+    assert _count("lat-user-defined-tool", "success") == 0.0
+
+
+async def test_successful_call_records_exact_seconds() -> None:
+    # Pinned clock: the recorded sample must be the elapsed subtraction in
+    # SECONDS. A sign error (end + start) would record 20.25 here.
+    labels = {"tool_name": "lat-tool-exact", "status": "success"}
+    before = _sum("lat-tool-exact", "success")
+    invoke_fn = AsyncMock(return_value=ToolMessage(content="ok", tool_call_id="c1"))
+    with patch("app.agents.middleware.executor.perf_counter", side_effect=[10.0, 10.25]):
+        await _invoke(
+            MiddlewareExecutor([]),
+            {"name": "lat-tool-exact", "args": {}, "id": "c1"},
+            None,
+            invoke_fn,
+        )
+    assert REGISTRY.get_sample_value("tool_call_seconds_sum", labels) == before + 0.25
+
+
+async def test_pinned_clock_ignores_other_code_timing_itself_during_the_call() -> None:
+    """Regression: the pinned clock leaked to every perf_counter caller, so any other timer on the loop ate its values."""
+    labels = {"tool_name": "lat-tool-timed-neighbour", "status": "success"}
+    before = _sum("lat-tool-timed-neighbour", "success")
+
+    async def _tool_that_times_itself(*_args: Any, **_kwargs: Any) -> ToolMessage:
+        time.perf_counter()
+        return ToolMessage(content="ok", tool_call_id="c1")
+
+    with patch("app.agents.middleware.executor.perf_counter", side_effect=[10.0, 10.25]):
+        await _invoke(
+            MiddlewareExecutor([]),
+            {"name": "lat-tool-timed-neighbour", "args": {}, "id": "c1"},
+            None,
+            _tool_that_times_itself,
+        )
+    assert REGISTRY.get_sample_value("tool_call_seconds_sum", labels) == before + 0.25
+
+
+async def test_failing_call_records_exact_seconds() -> None:
+    labels = {"tool_name": "lat-tool-exact-bad", "status": "error"}
+    before = _sum("lat-tool-exact-bad", "error")
+    invoke_fn = AsyncMock(side_effect=RuntimeError("tool exploded"))
+    with (
+        patch("app.agents.middleware.executor.perf_counter", side_effect=[5.0, 5.5]),
+        pytest.raises(RuntimeError, match="tool exploded"),
+    ):
+        await _invoke(
+            MiddlewareExecutor([]),
+            {"name": "lat-tool-exact-bad", "args": {}, "id": "c1"},
+            None,
+            invoke_fn,
+        )
+    assert REGISTRY.get_sample_value("tool_call_seconds_sum", labels) == before + 0.5
+    # The tool already ran once: the fallback must re-raise, not run it again.
+    invoke_fn.assert_awaited_once()
+
+
+async def test_hil_pause_is_neither_success_nor_error() -> None:
+    """A gate interrupt propagates and leaves no span: the pause is HIL wait, not tool time."""
+
+    class _Gate(AgentMiddleware[AgentState[Any], Any]):
+        async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> Any:
+            raise GraphBubbleUp("paused")
+
+    for status in ("success", "error"):
+        before = _count("lat-tool-gated", status)
+        with pytest.raises(GraphBubbleUp):
+            await _invoke(
+                MiddlewareExecutor([_Gate()]),
+                {"name": "lat-tool-gated", "args": {}, "id": "c1"},
+                None,
+                AsyncMock(),
+            )
+        assert _count("lat-tool-gated", status) == before
+
+
+async def test_middleware_chain_routes_through_each_wrapper() -> None:
+    """A wrapper wired to None must still route through the middleware, not call the tool directly."""
+    seen: list[str] = []
+
+    class _Recorder(AgentMiddleware[AgentState[Any], Any]):
+        async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> Any:
+            seen.append("async")
+            return await handler(request)
+
+    class _SyncRecorder(AgentMiddleware[AgentState[Any], Any]):
+        def wrap_tool_call(self, request: ToolCallRequest, handler: Any) -> Any:
+            seen.append("sync")
+
+            # A sync hook may hand back a coroutine for the bridge to await —
+            # transform inside it so the result provably flowed through here.
+            async def _transform() -> Any:
+                result = await handler(request)
+                return ToolMessage(content=f"{result.content}[sync]", tool_call_id="c1")
+
+            return _transform()
+
+    invoke_fn = AsyncMock(return_value=ToolMessage(content="ok", tool_call_id="c1"))
+    result = await _invoke(
+        MiddlewareExecutor([_Recorder(), _SyncRecorder()]),
+        {"name": "lat-tool-chained", "args": {}, "id": "c1"},
+        None,
+        invoke_fn,
+    )
+    # The transform proves the result flowed through both wrappers: the
+    # direct-invocation fallback returns the raw tool result untouched.
+    assert result.content == "ok[sync]"
+    assert seen == ["async", "sync"]
+    invoke_fn.assert_awaited_once()
+
+
+async def test_pre_tool_failure_records_exact_error_seconds_and_never_runs_the_tool() -> None:
+    """A pre-tool break is refused, not retried, and records the elapsed seconds as an error."""
+
+    class _PreToolBreak(AgentMiddleware[AgentState[Any], Any]):
+        async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> Any:
+            raise RuntimeError("pre-tool middleware broke")
+
+    labels = {"tool_name": "lat-tool-pre-break", "status": "error"}
+    before = _sum("lat-tool-pre-break", "error")
+    ok_before = _count("lat-tool-pre-break", "success")
+    invoke_fn = AsyncMock()
+    with patch("app.agents.middleware.executor.perf_counter", side_effect=[7.0, 7.5]):
+        result = await _invoke(
+            MiddlewareExecutor([_PreToolBreak()]),
+            {"name": "lat-tool-pre-break", "args": {}, "id": "c1"},
+            None,
+            invoke_fn,
+        )
+
+    assert result.status == "error"
+    assert REGISTRY.get_sample_value("tool_call_seconds_sum", labels) == before + 0.5
+    assert _count("lat-tool-pre-break", "success") == ok_before
+    invoke_fn.assert_not_awaited()
+
+
+async def test_post_tool_middleware_failure_still_records_success() -> None:
+    """A middleware that breaks after the tool succeeded is still a successful tool call; the status label is the tool's outcome."""
+
+    class _PostToolBreak(AgentMiddleware[AgentState[Any], Any]):
+        async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> Any:
+            await handler(request)  # the tool runs and succeeds here
+            raise RuntimeError("post-tool middleware broke")
+
+    ok_before = _count("lat-tool-post", "success")
+    err_before = _count("lat-tool-post", "error")
+    invoke_fn = AsyncMock(return_value=ToolMessage(content="shipped", tool_call_id="c1"))
+    result = await _invoke(
+        MiddlewareExecutor([_PostToolBreak()]),
+        {"name": "lat-tool-post", "args": {}, "id": "c1"},
+        None,
+        invoke_fn,
+    )
+
+    # The raw tool result is shipped (re-invoking would double its side effects).
+    assert result.content == "shipped"
+    assert _count("lat-tool-post", "success") == ok_before + 1
+    assert _count("lat-tool-post", "error") == err_before
+    invoke_fn.assert_awaited_once()

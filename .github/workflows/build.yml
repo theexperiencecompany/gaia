@@ -22,6 +22,15 @@ on:
           - auto
           - deploy
           - none
+      # Build the full self-host image set a CLI release pins (gaia, gaia-web
+      # and the bots, arm64 halves and multi-arch :<sha> indexes included) for
+      # the dispatched commit on any branch, so a beta can be cut from a PR
+      # head. Publishes images only: deploys stay master-only in deploy.sh plan.
+      release_images:
+        description: "Build the self-host image set a CLI release pins for this commit"
+        required: false
+        default: false
+        type: boolean
   # Reusable workflow entrypoint used by main quality workflow.
   workflow_call:
     inputs:
@@ -30,7 +39,7 @@ on:
         required: false
         type: string
         default: auto
-      # Two-phase invocation from main.yml: phase=build builds+publishes images
+      # Two-phase invocation from ci.yml: phase=build builds+publishes images
       # in parallel with the quality gate; phase=deploy runs the deploy plan +
       # swarm deploy AFTER the gate, fed by the build phase's outputs (passed as
       # inputs below). Unset (manual dispatch / repository_dispatch) keeps the
@@ -100,10 +109,121 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  docker-release:
-    # GitHub-hosted only (org rule: no blacksmith anywhere). Skips entirely in
-    # phase=deploy (the deploy phase consumes this phase's outputs via inputs).
+  # The one affected check every image lane gates on. GitHub-hosted only (org
+  # rule: no blacksmith anywhere). Skips entirely in phase=deploy (the deploy
+  # phase consumes the build phase's outputs via inputs).
+  affected:
     if: inputs.phase != 'deploy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      api: ${{ steps.affected.outputs.api }}
+      bots: ${{ steps.affected.outputs.bots }}
+      web: ${{ steps.affected.outputs.web }}
+      # Build + publish the gaia / gaia-web / bot images: affected, or a CLI
+      # release commit (its publish pins this commit's :<sha> set). Deploys
+      # still key on api/web/bots alone, so a CLI-only release never redeploys
+      # the backend.
+      api_image: ${{ steps.affected.outputs.api_image }}
+      web_image: ${{ steps.affected.outputs.web_image }}
+      bots_image: ${{ steps.affected.outputs.bots_image }}
+      # A CLI release commit; only it builds the self-host bots' arm64 half.
+      cli_release: ${{ steps.cli-release.outputs.required }}
+    steps:
+      # Full history: nx-set-shas resolves NX_BASE to the pre-push master SHA,
+      # which a shallow clone does not contain ("fatal: bad object").
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Restore Nx cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-${{ hashFiles('apps/**','libs/**') }}
+          restore-keys: |
+            nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-
+
+      - name: Set Nx SHAs
+        uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
+        with:
+          main-branch-name: master
+
+      - name: Setup Node.js + pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      # Login so the affected check can query GHCR for missing images.
+      - name: Log in to GHCR
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Does this commit release the CLI?
+        id: cli-release
+        if: github.ref == 'refs/heads/master' || inputs.release_images
+        env:
+          RELEASE_IMAGES: ${{ inputs.release_images }}
+        run: bash scripts/ci/release.sh cli-release-images
+
+      # Which images this push changes: the nx.json release groups (apps = api +
+      # voice-agent, bots) with an affected docker:build task, and web's.
+      - name: Ask nx which images this push changes
+        id: nx
+        run: bash scripts/ci/changes.sh affected --since-last-success
+
+      - name: Check affected projects
+        id: affected
+        env:
+          CLI_RELEASE: ${{ steps.cli-release.outputs.required }}
+          API: ${{ contains(fromJSON(steps.nx.outputs.release_groups), 'apps') }}
+          BOTS: ${{ contains(fromJSON(steps.nx.outputs.release_groups), 'bots') }}
+          WEB: ${{ contains(fromJSON(steps.nx.outputs.tasks), 'web:docker:build') }}
+        run: |
+          set -euo pipefail
+          api=$API
+          bots=$BOTS
+          web=$WEB
+
+          # Force a group's build when one of its images has no :latest in GHCR
+          # yet (first-time bootstrap); the repos come from lib/image-repos.sh.
+          if [ "${{ github.ref }}" = "refs/heads/master" ]; then
+            missing="$(bash scripts/ci/release.sh missing-latest)"
+            if [[ "$missing" == *apps* && "$api" = "false" ]]; then
+              echo "⚠️ An apps image is missing from GHCR — forcing build"
+              api=true
+            fi
+            if [[ "$missing" == *bots* && "$bots" = "false" ]]; then
+              echo "⚠️ A bot image is missing from GHCR — forcing build"
+              bots=true
+            fi
+          fi
+
+          api_image=$api
+          web_image=$web
+          bots_image=$bots
+          if [ "${CLI_RELEASE:-false}" = "true" ]; then
+            echo "CLI release commit: publishing the gaia, gaia-web and bot images it pins"
+            api_image=true
+            web_image=true
+            bots_image=true
+          fi
+
+          echo "api=$api" >> "$GITHUB_OUTPUT"
+          echo "bots=$bots" >> "$GITHUB_OUTPUT"
+          echo "web=$web" >> "$GITHUB_OUTPUT"
+          echo "api_image=$api_image" >> "$GITHUB_OUTPUT"
+          echo "web_image=$web_image" >> "$GITHUB_OUTPUT"
+          echo "bots_image=$bots_image" >> "$GITHUB_OUTPUT"
+
+  docker-release:
+    needs: [affected]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -111,8 +231,8 @@ jobs:
       packages: write
       actions: read
     outputs:
-      api_affected: ${{ steps.affected.outputs.api }}
-      bots_affected: ${{ steps.affected.outputs.bots }}
+      api_affected: ${{ needs.affected.outputs.api }}
+      bots_affected: ${{ needs.affected.outputs.bots }}
       # True only when a push step for an affected scope actually succeeded —
       # tracked separately from this job's overall .result because a later
       # step (e.g. Discord command sync) can fail AFTER images already landed
@@ -126,8 +246,7 @@ jobs:
       bots_tag: ${{ steps.image-tags.outputs.bots_tag }}
 
     steps:
-      # Prepare repository + tooling so Nx can calculate affected projects.
-      # keep in sync with docker-web / docker-release — checkout + nx-set-shas + setup-node-pnpm
+      # Prepare repository + tooling for nx release.
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -148,86 +267,29 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Set Nx SHAs
-        uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
+        uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
         with:
           main-branch-name: master
 
       - name: Setup Node.js + pnpm
         uses: ./.github/actions/setup-node-pnpm
-        # with:
-        #   nx-cloud-access-token: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }} # disabled — local .nx/cache only, no Nx Cloud (cost)
 
       - name: Sync Python dependencies (Nx cached)
         run: pnpm exec nx sync api
-        # env:
-        #   NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }} # disabled — local .nx/cache only
 
-      # Login early so the affected check can query GHCR for missing images.
+      # resolve-image-tags pushes the released tags to GHCR.
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Map affected project list to deployable backend scopes.
-      - name: Check affected projects
-        id: affected
-        run: |
-          # Fail loud: a broken nx invocation must fail this job, not silently
-          # yield an empty list (which would skip image builds and deploys).
-          set -euo pipefail
-          # nx may output JSON arrays or one-per-line; normalize to newline-separated.
-          AFFECTED="$(pnpm exec nx show projects --affected | tr -d '[]"' | tr ',' '\n' | sed '/^$/d')"
-
-          echo "Affected projects:"
-          echo "$AFFECTED"
-
-          api=false
-          bots=false
-
-          if echo "$AFFECTED" | grep -qx "api" || echo "$AFFECTED" | grep -qx "voice-agent"; then
-            api=true
-          fi
-
-          if echo "$AFFECTED" | grep -qx "bot-discord" || echo "$AFFECTED" | grep -qx "bot-slack" || echo "$AFFECTED" | grep -qx "bot-telegram" || echo "$AFFECTED" | grep -qx "bot-whatsapp" || echo "$AFFECTED" | grep -qx "bot-imessage"; then
-            bots=true
-          fi
-
-          # Force build if images don't exist in GHCR yet (first-time bootstrap).
-          # Only check on master branch to avoid unnecessary builds on feature branches.
-          if [ "${{ github.ref }}" = "refs/heads/master" ]; then
-            image_missing() {
-              ! docker manifest inspect "$1" > /dev/null 2>&1
-            }
-
-            if [ "$api" = "false" ]; then
-              if image_missing "ghcr.io/theexperiencecompany/gaia:latest" || image_missing "ghcr.io/theexperiencecompany/gaia-voice-agent:latest"; then
-                echo "⚠️ API/voice-agent image missing from GHCR — forcing build"
-                api=true
-              fi
-            fi
-
-            if [ "$bots" = "false" ]; then
-               if image_missing "ghcr.io/theexperiencecompany/gaia-bot-discord:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-slack:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-telegram:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest" || \
-                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-imessage:latest"; then
-                echo "⚠️ Bot image(s) missing from GHCR — forcing build"
-                bots=true
-              fi
-            fi
-          fi
-
-          echo "api=$api" >> "$GITHUB_OUTPUT"
-          echo "bots=$bots" >> "$GITHUB_OUTPUT"
-
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Determine version scheme
-        if: steps.affected.outputs.api == 'true' || steps.affected.outputs.bots == 'true'
+        if: needs.affected.outputs.api_image == 'true' || needs.affected.outputs.bots_image == 'true'
         id: version
         run: |
           if [ "${{ github.ref }}" = "refs/heads/master" ]; then
@@ -239,13 +301,13 @@ jobs:
       # Publish API image tags when API-related scope changed.
       - name: Release apps Docker images
         id: release-apps
-        if: steps.affected.outputs.api == 'true'
+        if: needs.affected.outputs.api_image == 'true'
         run: pnpm exec nx release --group=apps --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
 
       # Publish bot image tags when bot scope changed.
       - name: Release bots Docker images
         id: release-bots
-        if: steps.affected.outputs.bots == 'true'
+        if: needs.affected.outputs.bots_image == 'true'
         run: pnpm exec nx release --group=bots --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
 
       # Captured right after the push steps, before Discord command sync —
@@ -255,8 +317,8 @@ jobs:
         id: publish-status
         if: always()
         env:
-          API_AFFECTED: ${{ steps.affected.outputs.api }}
-          BOTS_AFFECTED: ${{ steps.affected.outputs.bots }}
+          API_AFFECTED: ${{ needs.affected.outputs.api }}
+          BOTS_AFFECTED: ${{ needs.affected.outputs.bots }}
           API_RELEASE_OUTCOME: ${{ steps.release-apps.outcome }}
           BOTS_RELEASE_OUTCOME: ${{ steps.release-bots.outcome }}
         run: |
@@ -278,7 +340,7 @@ jobs:
       # rather than as a silent "nothing published".
       - name: Resolve immutable image tags
         id: image-tags
-        if: steps.affected.outputs.api == 'true' || steps.affected.outputs.bots == 'true'
+        if: needs.affected.outputs.api_image == 'true' || needs.affected.outputs.bots_image == 'true'
         env:
           VERSION_SCHEME: ${{ steps.version.outputs.scheme }}
           APPS_RELEASE_OUTCOME: ${{ steps.release-apps.outcome }}
@@ -287,7 +349,7 @@ jobs:
 
       # Discord command sync is only meaningful for production bot deploys.
       - name: Register Discord slash commands
-        if: steps.affected.outputs.bots == 'true' && github.ref == 'refs/heads/master'
+        if: needs.affected.outputs.bots == 'true' && github.ref == 'refs/heads/master'
         working-directory: apps/bots/discord
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
@@ -295,86 +357,274 @@ jobs:
         run: pnpm deploy-commands
 
       - name: Skip notification
-        if: steps.affected.outputs.api != 'true' && steps.affected.outputs.bots != 'true'
+        if: needs.affected.outputs.api_image != 'true' && needs.affected.outputs.bots_image != 'true'
         run: echo "No affected API/bot Docker projects, skipping build"
 
-  # Publishes the gaia-web image consumed by docker-compose.selfhost.yml.
-  # This is a package publish for self-hosters, not a production deploy —
-  # the hosted frontend deploys itself via Cloudflare Workers Builds.
-  docker-web:
-    if: inputs.phase != 'deploy'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+  # Self-hosters run the API image (gaia, also the ARQ worker) on arm64 too.
+  # docker-release publishes the amd64 image through nx release; this builds
+  # the arm64 half on a native arm runner (the Dockerfile compiles Rust, far
+  # too slow under QEMU) and pushes it by digest, untagged.
+  # Not master-only: a workflow_dispatch on a branch publishes the same
+  # multi-arch :<sha> a self-host end-to-end run pins with GAIA_VERSION.
+  docker-api-arm64:
+    needs: [affected]
+    if: needs.affected.outputs.api_image == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
-      actions: read
     outputs:
-      # Immutable tag of the image this run pushed (empty when web wasn't
-      # affected); phase=deploy promotes it to :latest after the gate passes.
-      web_sha: ${{ steps.web-affected.outputs.web == 'true' && github.sha || '' }}
+      digest: ${{ steps.build.outputs.digest }}
     steps:
-      # Prepare repository + tooling for affected check and optional image build.
-      # Full history: nx-set-shas resolves NX_BASE to the pre-push master SHA,
-      # which a shallow clone does not contain ("fatal: bad object" in the
-      # affected check). docker-release fetches full history for the same reason.
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
 
-      - name: Restore Nx cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .nx/cache
-          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-${{ hashFiles('apps/**','libs/**') }}
-          restore-keys: |
-            nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-
-
-      - name: Set Nx SHAs
-        uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
-        with:
-          main-branch-name: master
-
-      - name: Setup Node.js + pnpm
-        uses: ./.github/actions/setup-node-pnpm
-
-      # Convert Nx affected output into a simple boolean consumed by downstream jobs.
-      - name: Check if web is affected
-        id: web-affected
-        run: |
-          # Fail loud: a broken nx invocation must fail this job, not silently
-          # yield an empty list (which would skip the web image build).
-          set -euo pipefail
-          # nx may output JSON arrays or one-per-line; normalize to newline-separated.
-          AFFECTED="$(pnpm exec nx show projects --affected | tr -d '[]"' | tr ',' '\n' | sed '/^$/d')"
-          if echo "$AFFECTED" | grep -qx "web"; then
-            echo "web=true" >> $GITHUB_OUTPUT
-          else
-            echo "web=false" >> $GITHUB_OUTPUT
-          fi
-          echo "Affected projects:"
-          echo "$AFFECTED"
-
-      # Registry/buildx setup is only needed when web image should be rebuilt.
       - name: Log in to GHCR
-        if: steps.web-affected.outputs.web == 'true'
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Same build as apps/api/project.json docker:build, for linux/arm64. Its
+      # own cache ref: a per-platform cache written to the shared :buildcache
+      # would overwrite the amd64 build's cache on every run.
+      - name: Build and push API arm64 image by digest
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          platforms: linux/arm64
+          build-args: GIT_COMMIT_SHA=${{ github.sha }}
+          outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/gaia,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/gaia:buildcache-arm64
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/gaia:buildcache-arm64,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd
+
+  # Folds the arm64 image into the immutable release tag docker-release just
+  # pushed, so gaia:<apps_tag> — and the :latest that `deploy.sh retag` later
+  # copies from it — is a linux/amd64 + linux/arm64 index. The same index is
+  # also tagged :<commit sha>, the tag gaia-web carries too, so one
+  # GAIA_VERSION=<sha> pins API, worker and web to the same commit. Registry-side only;
+  # the amd64 manifest (what production runs) is carried over unchanged.
+  # Idempotent: a re-run produces the same index digest. Runs (and fails loud)
+  # even when the arm64 build failed, rather than skipping into an amd64-only
+  # release tag.
+  docker-api-manifest:
+    needs: [docker-release, docker-api-arm64]
+    if: ${{ !cancelled() && needs.docker-release.outputs.apps_tag != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      packages: write
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Add arm64 to the API release tag
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/gaia
+          APPS_TAG: ${{ needs.docker-release.outputs.apps_tag }}
+          COMMIT_SHA: ${{ github.sha }}
+          ARM64_DIGEST: ${{ needs.docker-api-arm64.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ARM64_DIGEST" ]; then
+            echo "::error::no arm64 API image to add to $IMAGE:$APPS_TAG (docker-api-arm64 did not succeed); the release tag is amd64-only"
+            exit 1
+          fi
+          docker buildx imagetools create -t "$IMAGE:$APPS_TAG" -t "$IMAGE:$COMMIT_SHA" "$IMAGE:$APPS_TAG" "$IMAGE@$ARM64_DIGEST"
+          docker buildx imagetools inspect "$IMAGE:$APPS_TAG"
+
+  # Self-hosters run the bots on arm64 too; production's bot images stay
+  # amd64-only. Only a CLI release commit builds the arm64 half (native arm
+  # runner, pushed by digest, untagged), and nothing on the production deploy
+  # path waits for it: deployment-plan does not need these jobs.
+  docker-bots-arm64:
+    needs: [affected]
+    if: needs.affected.outputs.cli_release == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digests: ${{ steps.build.outputs.digests }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build and push the self-host bot arm64 images by digest
+        id: build
+        env:
+          GIT_COMMIT_SHA: ${{ github.sha }}
+        run: bash scripts/ci/release.sh selfhost-bots-arm64
+
+  # Tags each self-host bot :<commit sha> as an amd64 + arm64 index, the tag
+  # `release.sh pin-selfhost-release` waits for and tags v<CLI version>. The
+  # release's own bots tag (what production deploys) is left as it is. Fails
+  # loud, rather than skipping, when the arm64 build did not succeed.
+  docker-bots-manifest:
+    needs: [affected, docker-release, docker-bots-arm64]
+    if: ${{ !cancelled() && needs.affected.outputs.cli_release == 'true' && needs.docker-release.outputs.bots_tag != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Tag the self-host bots :<sha> for amd64 + arm64
+        env:
+          BOTS_TAG: ${{ needs.docker-release.outputs.bots_tag }}
+          COMMIT_SHA: ${{ github.sha }}
+          ARM64_DIGESTS: ${{ needs.docker-bots-arm64.outputs.digests }}
+        run: bash scripts/ci/release.sh selfhost-bots-manifest
+
+  # Builds the gaia-web image consumed by docker-compose.selfhost.yml, once
+  # per platform on a native runner (QEMU would multiply the Next.js build
+  # time), each pushed by digest; docker-web assembles the tagged index.
+  # This is a package publish for self-hosters, not a production deploy —
+  # the hosted frontend deploys itself via Cloudflare Workers Builds.
+  docker-web-build:
+    needs: [affected]
+    if: needs.affected.outputs.web_image == 'true'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Layer cache lives in GHCR, not the GHA cache service: the type=gha
+      # export of this image measured 449s of the 951s job (the GHA cache API
+      # writes large layers at ~10MB/s) while the actual GHCR image push is
+      # ~40s on the same runner. One cache ref per platform, so the two legs
+      # never overwrite each other's cache.
+      - name: Build and push web image by digest
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/gaia-web,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/gaia-web:buildcache-${{ matrix.arch }}
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/gaia-web:buildcache-${{ matrix.arch }},mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd
+
+      # Matrix legs cannot each set a job output, so the digest travels as an
+      # artifact named after its platform.
+      - name: Record image digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/web-digests"
+          touch "$RUNNER_TEMP/web-digests/${DIGEST#sha256:}"
+
+      - name: Upload image digest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/web-digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Tags the multi-platform gaia-web index from both platform digests.
+  docker-web:
+    needs: [docker-web-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      packages: write
+    outputs:
+      # Immutable tag of the image this run pushed; phase=deploy promotes it
+      # to :latest after the gate passes. The job is skipped (and the workflow
+      # output empty) when web wasn't affected.
+      web_sha: ${{ github.sha }}
+    steps:
+      - name: Download image digests
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: web-digest-*
+          path: ${{ runner.temp }}/web-digests
+          merge-multiple: true
+
+      - name: Log in to GHCR
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # phase=build runs BEFORE the quality gate, so it publishes only the
-      # immutable :<sha> tag (the duplicate tag lines below collapse to one);
+      # immutable :<sha> tag (the duplicate -t below collapses to one);
       # promote-latest re-points :latest after the gate passes. The legacy
       # single-phase flow keeps pushing :latest/dev-<sha> directly.
       - name: Determine image tag
-        if: steps.web-affected.outputs.web == 'true'
         id: tag
         env:
           PHASE: ${{ inputs.phase }}
@@ -389,29 +639,22 @@ jobs:
             echo "tag=dev-$(printf '%s' "$GIT_SHA" | cut -c1-7)" >> "$GITHUB_OUTPUT"
           fi
 
-      # Build and push web image tags for deploy workflow to consume.
-      # Layer cache lives in GHCR (:buildcache), not the GHA cache service:
-      # the type=gha export of this image measured 449s of the 951s job (the
-      # GHA cache API writes large layers at ~10MB/s) while the actual GHCR
-      # image push is ~40s on the same runner.
-      - name: Build and push web Docker image
-        if: steps.web-affected.outputs.web == 'true'
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: .
-          file: apps/web/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/gaia-web:${{ steps.tag.outputs.tag }}
-            ghcr.io/${{ github.repository_owner }}/gaia-web:${{ github.sha }}
-          build-args: |
-            NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1/
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/gaia-web:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/gaia-web:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd
-
-      - name: Skip notification
-        if: steps.web-affected.outputs.web != 'true'
-        run: echo "Web not affected, skipping Docker build"
+      - name: Create multi-platform web image
+        working-directory: ${{ runner.temp }}/web-digests
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/gaia-web
+          TAG: ${{ steps.tag.outputs.tag }}
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          digests=(*)
+          if [ "${#digests[@]}" -ne 2 ]; then
+            echo "::error::expected 2 platform digests, got ${#digests[@]}: ${digests[*]}"
+            exit 1
+          fi
+          docker buildx imagetools create -t "$IMAGE:$TAG" -t "$IMAGE:$GIT_SHA" \
+            "$IMAGE@sha256:${digests[0]}" "$IMAGE@sha256:${digests[1]}"
+          docker buildx imagetools inspect "$IMAGE:$GIT_SHA"
 
   # Grafana provisioning (dashboards/datasources/alerting) is baked into a custom
   # image so production needs no host bind mount. Built unconditionally — it's a
@@ -441,14 +684,14 @@ jobs:
           persist-credentials: false
 
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # Same phase rule as docker-web: no :latest before the gate — the
       # deploy's `deploy.sh retag` (post-convergence) and promote-latest
@@ -469,7 +712,7 @@ jobs:
           fi
 
       - name: Build and push Grafana image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .infra/docker/observability/grafana
           file: .infra/docker/observability/grafana/Dockerfile
@@ -493,7 +736,7 @@ jobs:
     # Never in phase=build: that invocation runs BEFORE the quality gate, and
     # its GATE_RESULT would fall through to the legacy 'success' default —
     # planning there would deploy ungated code in parallel with the gate.
-    needs: [docker-release, docker-grafana]
+    needs: [docker-release, docker-api-manifest, docker-grafana]
     if: always() && inputs.phase != 'build'
     runs-on: ubuntu-latest
     outputs:
@@ -543,6 +786,10 @@ jobs:
     needs: [deployment-plan]
     if: always() && inputs.phase != 'build' && needs.deployment-plan.outputs.backend_orphaned == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # failing-checks reads this commit's check-runs to name the cause.
+      checks: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -551,20 +798,27 @@ jobs:
       # logged by the script either way, and a webhook hiccup must not turn
       # an otherwise-green run red — the run didn't get worse because Discord
       # dropped a message about it.
-      - name: Notify Discord — publish without deploy
+      - name: Notify — publish without deploy
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          COLOR: "#ff6b6b"
-          MESSAGE: |
-            🚨 **Publish Without Deploy Detected**
-            **Commit:** `${{ github.sha }}`
-            **Branch:** ${{ github.ref_name }}
-            **Actor:** ${{ github.actor }}
-            **Backend images (api/voice-agent/bots) were published to GHCR (immutable tags) but the backend deploy did NOT run.** docker-release result: `${{ needs.deployment-plan.outputs.docker_release_result }}`.
-            `:latest` did not move — it is re-pointed only after a successful deploy — so restarts on the Swarm host keep the deployed build. But master is now ahead of production: the published images are sitting undeployed.
-            **To ship them:** fix the red lane and re-run the master workflow (or push a fix). `gh workflow run build.yml --ref master -f deployment_mode=deploy` redeploys only what `:latest` currently points at — the last successfully deployed build, not this run's images.
-        run: bash scripts/ci/deploy.sh notify
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          GH_TOKEN: ${{ github.token }}
+          STATE: deploy_blocked
+          SUBJECT: backend images published, prod did not get them
+          IMPACT: unchanged, still on the last deployed build. Nothing is broken; this build is not live.
+          ACTION: fix the red lane, then re-run the master run to ship this build.
+          CLEARS_WHEN: a master run's quality-gate goes green and its deploy runs.
+        run: |
+          set -euo pipefail
+          sha="${GITHUB_SHA:-$(git rev-parse HEAD)}"
+          # One API call. A failed lookup must not read as "nothing failed" —
+          # say the cause is unknown and keep the alert.
+          if ! cause=$(bash scripts/ci/deploy.sh failing-checks "$sha" 1); then
+            cause="check-run lookup failed on ${sha:0:8} — see this run's log"
+            echo "::warning::failing-checks lookup failed; the message states the cause as unknown"
+          fi
+          CAUSE="$cause" bash scripts/ci/deploy.sh notify
 
   # Trigger backend production deploy only when deploy plan allows it.
   trigger-deploy:
@@ -602,7 +856,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

@@ -1,0 +1,1319 @@
+From faa795461e0a32e0bea687e317d303846eadb943 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 01:41:58 +0530
+Subject: [PATCH] fix(cdp): Page.navigate answers when the document commits,
+ and reports each lifecycle step as it happens
+
+Page.navigate answered only after the whole load (stylesheets, every script,
+frames) or the end-to-end OBSCURA_NAV_TIMEOUT_MS deadline, and then emitted
+init, commit, DOMContentLoaded, load and networkIdle together with one
+timestamp. A client with Chrome's expectations (answer at commit, then wait
+for lifecycle events) timed the call out on slow pages, and the deadline left
+pages whose scripts outran it without them.
+
+The page now reports its navigation steps as they happen
+(NavigationProgress: Committed, DomContentLoaded, Load). The server answers
+Page.navigate and Page.reload at the commit with frameId and loaderId, emits
+the document's request and frameNavigated then, DOMContentLoaded and load
+when the document fires them, and the remaining requests, networkIdle (only
+when nothing is in flight) and frameStoppedLoading when loading ends. A script
+that navigates again while loading commits under a new loader. A navigation
+that fails before committing answers with errorText, as Chrome does, not a
+protocol error. History traversal and script-started navigations report
+through the same events.
+
+OBSCURA_NAV_TIMEOUT_MS now bounds getting the document, up to commit; what the
+committed document loads is bounded by each phase's own budget.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-browser/src/lib.rs         |   2 +-
+ crates/obscura-browser/src/page.rs        | 150 ++++--
+ crates/obscura-cdp/src/dispatch.rs        |   5 +-
+ crates/obscura-cdp/src/domains/page.rs    | 582 +++++++++++++---------
+ crates/obscura-cdp/src/domains/runtime.rs |  34 +-
+ crates/obscura-cdp/src/server.rs          | 215 ++++++--
+ 6 files changed, 631 insertions(+), 357 deletions(-)
+
+diff --git a/crates/obscura-browser/src/lib.rs b/crates/obscura-browser/src/lib.rs
+index 03c8083..df3e2a7 100644
+--- a/crates/obscura-browser/src/lib.rs
++++ b/crates/obscura-browser/src/lib.rs
+@@ -14,7 +14,7 @@ pub use obscura_js::{
+     validate_capture_region, AnimationSample, AnimationSampleMode, AnimationSampleTime,
+     CaptureError, CaptureRegion,
+ };
+-pub use page::{NetworkEvent, Page, PageError};
++pub use page::{NavigationProgress, NetworkEvent, Page, PageError};
+ #[cfg(feature = "render")]
+ pub use pdf::{RasterPdfError, RasterPdfOptions, RasterPdfPageRange};
+ // Re-exported so the embeddable `obscura` crate (which depends on obscura-browser,
+diff --git a/crates/obscura-browser/src/page.rs b/crates/obscura-browser/src/page.rs
+index 222d32b..1c681ab 100644
+--- a/crates/obscura-browser/src/page.rs
++++ b/crates/obscura-browser/src/page.rs
+@@ -160,6 +160,24 @@ pub struct NetworkEvent {
+     pub timestamp: f64,
+ }
+ 
++/// What a navigation has reached, reported while it is still loading so a
++/// CDP client hears each step when it happens, as Chrome reports it.
++#[derive(Debug, Clone)]
++pub enum NavigationProgress {
++    /// A new document replaced the old one (HTML "commit"): its URL and the
++    /// response it was made from (none for about:blank).
++    Committed {
++        url: String,
++        /// The document's title as parsed, before any script changes it.
++        title: String,
++        document: Option<NetworkEvent>,
++    },
++    /// The document's DOMContentLoaded event has fired.
++    DomContentLoaded,
++    /// The window's load event has fired.
++    Load,
++}
++
+ #[derive(Debug, Clone)]
+ pub struct StoredResponseBody {
+     pub body: String,
+@@ -270,6 +288,8 @@ pub struct Page {
+     // contract. Includes `Runtime.addBinding` shims so puppeteer's
+     // `exposeFunction` bindings exist before inline `<script>` tags execute.
+     preload_scripts: Vec<String>,
++    /// Where an in-flight navigation reports its commit and lifecycle steps.
++    navigation_progress: Option<tokio::sync::mpsc::UnboundedSender<NavigationProgress>>,
+     /// Whether at least one attached CDP session enabled the Runtime domain.
+     /// Page-owned so the subscription survives replacement of the JS runtime
+     /// during navigation.
+@@ -1120,6 +1140,7 @@ impl Page {
+             blocked_url_patterns: Vec::new(),
+             intercept_tx: None,
+             preload_scripts: Vec::new(),
++            navigation_progress: None,
+             runtime_events_enabled: std::cell::Cell::new(false),
+             console_messages_enabled: std::cell::Cell::new(false),
+             pending_frame_work: std::collections::VecDeque::new(),
+@@ -1131,14 +1152,15 @@ impl Page {
+         }
+     }
+ 
+-    /// Set the end-to-end navigation deadline for this page. This page-scoped
+-    /// value takes precedence over `OBSCURA_NAV_TIMEOUT_MS`; callers that do
+-    /// not set it retain the existing environment-configurable 30s default.
++    /// Set how long a navigation of this page may take to get its document,
++    /// up to commit. This page-scoped value takes precedence over
++    /// `OBSCURA_NAV_TIMEOUT_MS`; callers that do not set it retain the
++    /// environment-configurable 30s default.
+     pub fn set_navigation_timeout(&mut self, timeout: std::time::Duration) {
+         self.navigation_timeout = Some(timeout);
+     }
+ 
+-    /// Return the effective end-to-end navigation deadline for this page.
++    /// Return the effective navigation-to-commit deadline for this page.
+     pub fn navigation_timeout(&self) -> std::time::Duration {
+         self.navigation_timeout
+             .unwrap_or_else(default_navigation_timeout)
+@@ -2894,6 +2916,10 @@ impl Page {
+                 "<dom-content-loaded>",
+                 "try { document.dispatchEvent(new Event('DOMContentLoaded', {bubbles:true,cancelable:false})); } catch(e) {}",
+             );
++            // A field borrow, not report_navigation: the runtime is borrowed.
++            if let Some(progress) = &self.navigation_progress {
++                let _ = progress.send(NavigationProgress::DomContentLoaded);
++            }
+ 
+             let load_blockers_finished =
+                 Self::drive_load_delaying_scripts(js, script_deadline).await;
+@@ -2917,6 +2943,10 @@ impl Page {
+                    try { window.dispatchEvent(loadEvent); } catch(e) {}\n\
+                  } catch(e) {}",
+             );
++            // A field borrow, not report_navigation: the runtime is borrowed.
++            if let Some(progress) = &self.navigation_progress {
++                let _ = progress.send(NavigationProgress::Load);
++            }
+         }
+         if let Some(token) = exec_wd {
+             if let Some(js) = self.js.as_mut() {
+@@ -2952,32 +2982,9 @@ impl Page {
+         method: &str,
+         body: &str,
+     ) -> Result<(), PageError> {
+-        // Hard ceiling on a single end-to-end navigation. Without this a slow
+-        // primary fetch or a runaway settle loop can hold the V8 lock for
+-        // arbitrarily long (we've measured 60+ seconds on JS-heavy news
+-        // sites), wedging every other in-flight CDP request because the
+-        // dispatcher holds the lock across the entire handler. 30 seconds
+-        // matches reqwest's default per-request timeout — the worst case is
+-        // one slow primary GET plus one slow JS-redirect chain step. Override
+-        // with `OBSCURA_NAV_TIMEOUT_MS=NN`, or set a page-scoped deadline when
+-        // the automation request already has an explicit timeout.
+-        let nav_timeout = self.navigation_timeout();
+-        let nav_timeout_ms = duration_millis_u64(nav_timeout);
+-
+-        let result = match tokio::time::timeout(
+-            nav_timeout,
+-            self.navigate_with_wait_post_inner(url_str, wait_until, method, body, ""),
+-        )
+-        .await
+-        {
+-            Ok(r) => r,
+-            Err(_) => {
+-                self.lifecycle = crate::lifecycle::LifecycleState::Failed;
+-                Err(PageError::NetworkError(format!(
+-                    "navigation exceeded {nav_timeout_ms}ms deadline"
+-                )))
+-            }
+-        };
++        let result = self
++            .navigate_with_wait_post_inner(url_str, wait_until, method, body, "")
++            .await;
+         if result.is_ok() {
+             self.push_history(self.url_string());
+         }
+@@ -3310,10 +3317,23 @@ impl Page {
+                     }
+                 }
+             }
++            self.report_navigation(NavigationProgress::Committed {
++                url: self.url_string(),
++                title: self.title.clone(),
++                document: None,
++            });
++            self.report_navigation(NavigationProgress::DomContentLoaded);
++            self.report_navigation(NavigationProgress::Load);
+             return Ok(());
+         }
+ 
+-        let response = if url.scheme() == "data" {
++        // The deadline covers getting the document, up to its commit. What
++        // the committed document loads after that is bounded by each phase's
++        // own budget, and the client hears about it through lifecycle events.
++        let nav_timeout = self.navigation_timeout();
++        let nav_timeout_ms = duration_millis_u64(nav_timeout);
++        let fetched = tokio::time::timeout(nav_timeout, async {
++        if url.scheme() == "data" {
+             let content_type = url_str
+                 .strip_prefix("data:")
+                 .and_then(|s| s.split(',').next())
+@@ -3337,10 +3357,15 @@ impl Page {
+         } else {
+             self.do_fetch(&url).await
+         }
+-        .map_err(|e| {
+-            self.lifecycle = LifecycleState::Failed;
+-            PageError::NetworkError(e.to_string())
+-        })?;
++        })
++        .await;
++        let response = match fetched {
++            Ok(response) => response.map_err(|e| PageError::NetworkError(e.to_string())),
++            Err(_) => Err(PageError::NetworkError(format!(
++                "navigation exceeded {nav_timeout_ms}ms before the document arrived"
++            ))),
++        }
++        .inspect_err(|_| self.lifecycle = LifecycleState::Failed)?;
+ 
+         // Store binary main resources (images, PDFs, octet-stream) base64 so
+         // Network.getResponseBody returns intact bytes. A UTF-8-lossy text store
+@@ -3378,6 +3403,17 @@ impl Page {
+ 
+         self.dom = Some(dom);
+         self.init_js();
++        let document = self
++            .network_events
++            .iter()
++            .rev()
++            .find(|event| event.resource_type == "Document")
++            .cloned();
++        self.report_navigation(NavigationProgress::Committed {
++            url: self.url_string(),
++            title: self.title.clone(),
++            document,
++        });
+         let author_stylesheets = self.fetch_stylesheets().await;
+ 
+         // Inject CSS as a global so getComputedStyle and any CSS-aware shim
+@@ -4593,6 +4629,26 @@ impl Page {
+         self.preload_scripts = scripts;
+     }
+ 
++    /// Report navigation steps (commit, DOMContentLoaded, load) to `progress`
++    /// as they happen, or stop reporting with `None`.
++    pub fn set_navigation_progress(
++        &mut self,
++        progress: Option<tokio::sync::mpsc::UnboundedSender<NavigationProgress>>,
++    ) {
++        self.navigation_progress = progress;
++    }
++
++    fn report_navigation(&self, step: NavigationProgress) {
++        if let Some(progress) = &self.navigation_progress {
++            let _ = progress.send(step);
++        }
++    }
++
++    /// Whether no request this page started is still in flight.
++    pub fn network_is_idle(&self) -> bool {
++        self.http_client.active_requests() == 0
++    }
++
+     /// Append a script that runs in the page before any of the page's own
+     /// `<script>` tags, matching CDP `Page.addScriptToEvaluateOnNewDocument`.
+     /// Takes effect on the next navigation (`goto` / `navigate*`).
+@@ -4657,24 +4713,14 @@ impl Page {
+                         .map(|target| navigation_referrer(source, &target))
+                 })
+                 .unwrap_or_default();
+-            let nav_timeout = self.navigation_timeout();
+-            let nav_timeout_ms = duration_millis_u64(nav_timeout);
+-            let result = tokio::time::timeout(
+-                nav_timeout,
+-                self.navigate_with_wait_post_inner(
+-                    &url,
+-                    crate::lifecycle::WaitUntil::Load,
+-                    &method,
+-                    &body,
+-                    &source_url,
+-                ),
++            self.navigate_with_wait_post_inner(
++                &url,
++                crate::lifecycle::WaitUntil::Load,
++                &method,
++                &body,
++                &source_url,
+             )
+-            .await
+-            .map_err(|_| {
+-                self.lifecycle = crate::lifecycle::LifecycleState::Failed;
+-                PageError::NetworkError(format!("navigation exceeded {nav_timeout_ms}ms deadline"))
+-            })?;
+-            result?;
++            .await?;
+             self.push_history(self.url_string());
+             Ok(true)
+         } else {
+diff --git a/crates/obscura-cdp/src/dispatch.rs b/crates/obscura-cdp/src/dispatch.rs
+index 518757a..6578693 100644
+--- a/crates/obscura-cdp/src/dispatch.rs
++++ b/crates/obscura-cdp/src/dispatch.rs
+@@ -758,8 +758,9 @@ pub async fn dispatch(req: &CdpRequest, ctx: &mut CdpContext) -> CdpResponse {
+     // CLI uses a process-level hard deadline for this; the long-running server
+     // cannot force-exit, so we terminate just the offending isolate instead.
+     // OBSCURA_CDP_COMMAND_TIMEOUT_MS tunes the bound (0 disables); the default
+-    // leaves headroom for the slowest legitimate navigation, which already
+-    // self-bounds via OBSCURA_NAV_TIMEOUT_MS plus the watchdog-bounded settle.
++    // leaves headroom for the slowest legitimate navigation, whose document
++    // fetch is bounded by OBSCURA_NAV_TIMEOUT_MS and whose load phases by
++    // their own budgets.
+     let cmd_budget_ms: u64 = std::env::var("OBSCURA_CDP_COMMAND_TIMEOUT_MS")
+         .ok()
+         .and_then(|s| s.parse().ok())
+diff --git a/crates/obscura-cdp/src/domains/page.rs b/crates/obscura-cdp/src/domains/page.rs
+index e6d8ff1..6ec79f5 100644
+--- a/crates/obscura-cdp/src/domains/page.rs
++++ b/crates/obscura-cdp/src/domains/page.rs
+@@ -833,208 +833,332 @@ pub(crate) fn command_can_change_screencast_frame(method: &str) -> bool {
+     )
+ }
+ 
+-/// Emit the post-navigation event stream into `ctx.pending_events`. Shared
+-/// by both the in-process `do_navigate` path and the spawned path in
+-/// `server::process_navigation`, so the recent goto-returns-Response /
+-/// per-isolated-world fixes don't have to be duplicated.
+-pub fn emit_navigation_events(
+-    ctx: &mut CdpContext,
+-    session_id: &Option<String>,
+-    frame_id: &str,
+-    loader_id: &str,
+-    page_url: &str,
+-    page_id: &str,
+-    network_events: &[obscura_browser::NetworkEvent],
+-    wait_until: WaitUntil,
+-    reached_network_idle: bool,
+-) {
+-    ctx.current_loader_ids
+-        .insert(page_id.to_string(), loader_id.to_string());
+-    ctx.nav_events_emitted.insert(page_id.to_string());
+-    let es = session_id.clone();
+-    let ts = timestamp();
+-
+-    // Real Chrome uses the navigation's loaderId as the main document's
+-    // request id, and Puppeteer/Playwright identify the navigation response
+-    // via `requestId === loaderId && type === "Document"` (issue #189).
+-    let nav_request_ids: Vec<String> = {
+-        let mut nav_seen = false;
+-        network_events
+-            .iter()
+-            .map(|ev| {
+-                if !nav_seen && ev.resource_type == "Document" && ev.url == page_url {
+-                    nav_seen = true;
+-                    loader_id.to_string()
+-                } else {
+-                    ev.request_id.clone()
+-                }
+-            })
+-            .collect()
+-    };
+-    let nav_idx: Option<usize> = network_events
+-        .iter()
+-        .position(|ev| ev.resource_type == "Document" && ev.url == page_url);
+-
+-    // The main resource's body is stored under its internal request id, but the
+-    // client sees it as `loader_id` (the requestId we report above). Alias it so
+-    // Network.getResponseBody(loaderId) resolves, which is the only way a client
+-    // navigating straight to an image/PDF/other resource can read the main body
+-    // (issue #340). Also read the real Content-Type so frameNavigated reports the
+-    // actual mime instead of a hardcoded text/html.
+-    let mut nav_mime = "text/html".to_string();
+-    if let Some(idx) = nav_idx {
+-        let internal_id = &network_events[idx].request_id;
+-        if let Some(ct) = network_events[idx].response_headers.get("content-type") {
+-            // Strip any `; charset=...` parameter; frameNavigated wants the essence.
+-            nav_mime = ct.split(';').next().unwrap_or(ct).trim().to_string();
++/// The CDP events of one navigation, emitted as it reaches each step, the way
++/// Chrome reports them: the commit (document request, frameNavigated, fresh
++/// execution contexts, `commit`), then `DOMContentLoaded` and `load` when the
++/// document fires them, then the rest of the network log, `networkIdle` when
++/// nothing is in flight, and frameStoppedLoading. A page script that
++/// navigates again while loading commits a new document under a new loader.
++pub(crate) struct NavigationEvents {
++    session_id: Option<String>,
++    frame_id: String,
++    page_id: String,
++    browser_context_id: String,
++    /// The loader of the document committed last. The first commit uses the
++    /// loaderId the `Page.navigate` response carries.
++    loader_id: String,
++    commits: usize,
++    /// Main-document responses already reported, by the page's request id,
++    /// with the loader id they are reported under.
++    documents: Vec<(String, String)>,
++}
++
++impl NavigationEvents {
++    /// The events of a navigation of `page`, whose first commit is reported
++    /// under `loader_id`.
++    pub(crate) fn new(
++        session_id: &Option<String>,
++        page: &obscura_browser::Page,
++        loader_id: &str,
++    ) -> Self {
++        Self {
++            session_id: session_id.clone(),
++            frame_id: page.frame_id.clone(),
++            page_id: page.id.clone(),
++            browser_context_id: page.context.id.clone(),
++            loader_id: loader_id.to_string(),
++            commits: 0,
++            documents: Vec::new(),
+         }
+-        if internal_id != loader_id {
+-            if let Some(page) = ctx.get_page_mut(page_id) {
+-                page.alias_response_body(internal_id, loader_id);
++    }
++
++    /// The navigation starts: Chrome reports frameStartedLoading.
++    pub(crate) fn started(&self, ctx: &mut CdpContext) {
++        ctx.pending_events.push(CdpEvent {
++            method: "Page.frameStartedLoading".into(),
++            params: json!({"frameId": self.frame_id}),
++            session_id: self.session_id.clone(),
++        });
++    }
++
++    /// Whether a document has committed.
++    pub(crate) fn committed(&self) -> bool {
++        self.commits > 0
++    }
++
++    pub(crate) fn progress(
++        &mut self,
++        ctx: &mut CdpContext,
++        step: obscura_browser::NavigationProgress,
++    ) {
++        match step {
++            obscura_browser::NavigationProgress::Committed { url, title, document } => {
++                if self.commits > 0 {
++                    self.loader_id = format!("loader-{}", uuid::Uuid::new_v4());
++                }
++                self.commits += 1;
++                self.commit(ctx, &url, document.as_ref());
++                // The target's URL changes when the document commits; clients
++                // that track TargetInfo would otherwise keep the old one for
++                // the whole load.
++                self.target_info_changed(ctx, &url, &title);
++            }
++            obscura_browser::NavigationProgress::DomContentLoaded => {
++                self.lifecycle(ctx, "DOMContentLoaded");
++                ctx.pending_events.push(CdpEvent {
++                    method: "Page.domContentEventFired".into(),
++                    params: json!({"timestamp": timestamp()}),
++                    session_id: self.session_id.clone(),
++                });
++            }
++            obscura_browser::NavigationProgress::Load => {
++                self.lifecycle(ctx, "load");
++                ctx.pending_events.push(CdpEvent {
++                    method: "Page.loadEventFired".into(),
++                    params: json!({"timestamp": timestamp()}),
++                    session_id: self.session_id.clone(),
++                });
+             }
+         }
+     }
+ 
+-    // Playwright needs `Network.requestWillBeSent` for the main document to
+-    // arrive BEFORE `Page.frameNavigated` (issue #190).
+-    if let Some(idx) = nav_idx {
+-        let net_event = &network_events[idx];
+-        let rid = &nav_request_ids[idx];
++    fn lifecycle(&self, ctx: &mut CdpContext, name: &str) {
+         ctx.pending_events.push(CdpEvent {
+-            method: "Network.requestWillBeSent".into(),
+-            params: json!({"requestId": rid, "loaderId": loader_id, "documentURL": page_url, "request": {"url": net_event.url, "method": net_event.method, "headers": net_event.headers}, "timestamp": net_event.timestamp, "wallTime": net_event.timestamp, "initiator": {"type": "other"}, "type": net_event.resource_type, "frameId": frame_id}),
+-            session_id: es.clone(),
++            method: "Page.lifecycleEvent".into(),
++            params: json!({"frameId": self.frame_id, "loaderId": self.loader_id, "name": name, "timestamp": timestamp()}),
++            session_id: self.session_id.clone(),
+         });
+     }
+ 
+-    let contexts = ctx.commit_default_context(page_id, frame_id, page_url);
+-    let runtime_sessions = ctx.runtime_sessions_for_page(page_id);
+-    let mut phase1 = vec![CdpEvent {
+-        method: "Page.lifecycleEvent".into(),
+-        params: json!({"frameId": frame_id, "loaderId": loader_id, "name": "init", "timestamp": ts}),
+-        session_id: es.clone(),
+-    }];
+-    for runtime_session in &runtime_sessions {
+-        phase1.push(CdpEvent::with_session(
+-            "Runtime.executionContextsCleared",
+-            json!({}),
+-            runtime_session.clone(),
+-        ));
+-    }
+-    phase1.push(CdpEvent {
+-        method: "Page.frameNavigated".into(),
+-        params: json!({"frame": frame_value(frame_id, None, loader_id, page_url, &nav_mime), "type": "Navigation"}),
+-        session_id: es.clone(),
+-    });
+-    for runtime_session in runtime_sessions {
+-        for context in &contexts {
+-            phase1.push(super::runtime::execution_context_created_event(
+-                context,
+-                Some(runtime_session.clone()),
++    fn commit(
++        &mut self,
++        ctx: &mut CdpContext,
++        url: &str,
++        document: Option<&obscura_browser::NetworkEvent>,
++    ) {
++        ctx.current_loader_ids
++            .insert(self.page_id.clone(), self.loader_id.clone());
++        ctx.nav_events_emitted.insert(self.page_id.clone());
++        let es = self.session_id.clone();
++        let loader_id = self.loader_id.clone();
++        let frame_id = self.frame_id.clone();
++        // Real Chrome uses the navigation's loaderId as the main document's
++        // request id, and Puppeteer/Playwright identify the navigation
++        // response via `requestId === loaderId && type === "Document"`
++        // (issue #189). Playwright needs its requestWillBeSent to arrive
++        // BEFORE Page.frameNavigated (issue #190). The frame reports the
++        // response's real Content-Type essence.
++        let mut mime = "text/html".to_string();
++        if let Some(document) = document {
++            if let Some(ct) = document.response_headers.get("content-type") {
++                mime = ct.split(';').next().unwrap_or(ct).trim().to_string();
++            }
++            self.documents
++                .push((document.request_id.clone(), loader_id.clone()));
++            ctx.pending_events.push(CdpEvent {
++                method: "Network.requestWillBeSent".into(),
++                params: json!({"requestId": loader_id, "loaderId": loader_id, "documentURL": url, "request": {"url": document.url, "method": document.method, "headers": document.headers}, "timestamp": document.timestamp, "wallTime": document.timestamp, "initiator": {"type": "other"}, "type": document.resource_type, "frameId": frame_id}),
++                session_id: es.clone(),
++            });
++        }
++        let contexts = ctx.commit_default_context(&self.page_id, &frame_id, url);
++        let runtime_sessions = ctx.runtime_sessions_for_page(&self.page_id);
++        self.lifecycle(ctx, "init");
++        for runtime_session in &runtime_sessions {
++            ctx.pending_events.push(CdpEvent::with_session(
++                "Runtime.executionContextsCleared",
++                json!({}),
++                runtime_session.clone(),
+             ));
+         }
++        ctx.pending_events.push(CdpEvent {
++            method: "Page.frameNavigated".into(),
++            params: json!({"frame": frame_value(&frame_id, None, &loader_id, url, &mime), "type": "Navigation"}),
++            session_id: es.clone(),
++        });
++        for runtime_session in runtime_sessions {
++            for context in &contexts {
++                ctx.pending_events.push(super::runtime::execution_context_created_event(
++                    context,
++                    Some(runtime_session.clone()),
++                ));
++            }
++        }
++        self.lifecycle(ctx, "commit");
++        if let Some(document) = document {
++            self.network_response(ctx, document, &loader_id);
++        }
+     }
+-    phase1.push(CdpEvent { method: "Page.lifecycleEvent".into(), params: json!({"frameId": frame_id, "loaderId": loader_id, "name": "commit", "timestamp": ts}), session_id: es.clone() });
+-    ctx.pending_events.extend(phase1);
+ 
+-    if ctx.fetch_intercept.enabled {
+-        for (i, net_event) in network_events.iter().enumerate() {
+-            let rid = &nav_request_ids[i];
++    /// Fetch.requestPaused (when interception is on), responseReceived and
++    /// loadingFinished for one completed request.
++    fn network_response(
++        &self,
++        ctx: &mut CdpContext,
++        event: &obscura_browser::NetworkEvent,
++        request_id: &str,
++    ) {
++        let es = self.session_id.clone();
++        if ctx.fetch_intercept.enabled {
+             ctx.pending_events.push(CdpEvent {
+                 method: "Fetch.requestPaused".into(),
+                 params: json!({
+-                    "requestId": rid,
++                    "requestId": request_id,
+                     "request": {
+-                        "url": net_event.url,
+-                        "method": net_event.method,
+-                        "headers": net_event.headers,
++                        "url": event.url,
++                        "method": event.method,
++                        "headers": event.headers,
+                     },
+-                    "frameId": frame_id,
+-                    "resourceType": net_event.resource_type,
+-                    "networkId": rid,
++                    "frameId": self.frame_id,
++                    "resourceType": event.resource_type,
++                    "networkId": request_id,
+                 }),
+                 session_id: es.clone(),
+             });
+         }
++        ctx.pending_events.push(CdpEvent {
++            method: "Network.responseReceived".into(),
++            params: json!({"requestId": request_id, "loaderId": self.loader_id, "timestamp": event.timestamp, "type": event.resource_type, "response": {"url": event.url, "status": event.status, "statusText": "", "headers": &*event.response_headers, "mimeType": event.response_headers.get("content-type").cloned().unwrap_or_default()}, "frameId": self.frame_id}),
++            session_id: es.clone(),
++        });
++        ctx.pending_events.push(CdpEvent {
++            method: "Network.loadingFinished".into(),
++            params: json!({"requestId": request_id, "timestamp": event.timestamp, "encodedDataLength": event.body_size}),
++            session_id: es,
++        });
+     }
+ 
+-    for (i, net_event) in network_events.iter().enumerate() {
+-        let rid = &nav_request_ids[i];
+-        if Some(i) != nav_idx {
++    /// Target.targetInfoChanged: strict CDP clients (browser-use, and
++    /// Puppeteer/Playwright `page.url()` tracking) cache the TargetInfo from
++    /// attachedToTarget and only refresh it on this event. Emitted
++    /// browser-level (no sessionId).
++    fn target_info_changed(&self, ctx: &mut CdpContext, url: &str, title: &str) {
++        ctx.pending_events.push(CdpEvent::new(
++            "Target.targetInfoChanged",
++            json!({
++                "targetInfo": {
++                    "targetId": self.page_id,
++                    "type": "page",
++                    "title": title,
++                    "url": url,
++                    "attached": true,
++                    "canAccessOpener": false,
++                    "browserContextId": self.browser_context_id,
++                }
++            }),
++        ));
++    }
++
++    /// The navigation has finished loading (or stopped): report the requests
++    /// the document made, `networkIdle` when none is still in flight, and
++    /// frameStoppedLoading.
++    pub(crate) fn finish(
++        &mut self,
++        ctx: &mut CdpContext,
++        page_url: &str,
++        network_events: &[obscura_browser::NetworkEvent],
++        network_idle: bool,
++    ) {
++        // The client sees each main resource under its loader id; alias the
++        // stored body so Network.getResponseBody(loaderId) resolves (#340).
++        if let Some(page) = ctx.get_page_mut(&self.page_id) {
++            for (request_id, loader_id) in &self.documents {
++                if request_id != loader_id {
++                    page.alias_response_body(request_id, loader_id);
++                }
++            }
++        }
++        let es = self.session_id.clone();
++        for event in network_events {
++            if self.documents.iter().any(|(request_id, _)| *request_id == event.request_id) {
++                continue;
++            }
+             ctx.pending_events.push(CdpEvent {
+                 method: "Network.requestWillBeSent".into(),
+-                params: json!({"requestId": rid, "loaderId": loader_id, "documentURL": page_url, "request": {"url": net_event.url, "method": net_event.method, "headers": net_event.headers}, "timestamp": net_event.timestamp, "wallTime": net_event.timestamp, "initiator": {"type": "other"}, "type": net_event.resource_type, "frameId": frame_id}),
++                params: json!({"requestId": event.request_id, "loaderId": self.loader_id, "documentURL": page_url, "request": {"url": event.url, "method": event.method, "headers": event.headers}, "timestamp": event.timestamp, "wallTime": event.timestamp, "initiator": {"type": "other"}, "type": event.resource_type, "frameId": self.frame_id}),
+                 session_id: es.clone(),
+             });
++            self.network_response(ctx, event, &event.request_id);
++        }
++        if self.committed() && network_idle {
++            self.lifecycle(ctx, "networkIdle");
+         }
+         ctx.pending_events.push(CdpEvent {
+-            method: "Network.responseReceived".into(),
+-            params: json!({"requestId": rid, "loaderId": loader_id, "timestamp": net_event.timestamp, "type": net_event.resource_type, "response": {"url": net_event.url, "status": net_event.status, "statusText": "", "headers": &*net_event.response_headers, "mimeType": net_event.response_headers.get("content-type").cloned().unwrap_or_default()}, "frameId": frame_id}),
+-            session_id: es.clone(),
++            method: "Page.frameStoppedLoading".into(),
++            params: json!({"frameId": self.frame_id}),
++            session_id: es,
+         });
++        let title = ctx
++            .get_page(&self.page_id)
++            .map(|page| page.title.clone())
++            .unwrap_or_default();
++        self.target_info_changed(ctx, page_url, &title);
++    }
++}
++
++/// Collect what a page reported while it navigated inline, and stop it
++/// reporting.
++pub(crate) fn take_navigation_progress(
++    page: &mut obscura_browser::Page,
++    mut progress: tokio::sync::mpsc::UnboundedReceiver<obscura_browser::NavigationProgress>,
++) -> Vec<obscura_browser::NavigationProgress> {
++    page.set_navigation_progress(None);
++    let mut steps = Vec::new();
++    while let Ok(step) = progress.try_recv() {
++        steps.push(step);
++    }
++    steps
++}
++
++/// Report a navigation the page ran to completion inline (a history
++/// traversal, or one a script started during a command) from the steps it
++/// reported while loading. With no new document (a history API route) the
++/// frame moved within its document.
++pub(crate) fn emit_completed_navigation(
++    ctx: &mut CdpContext,
++    session_id: &Option<String>,
++    steps: Vec<obscura_browser::NavigationProgress>,
++) {
++    let loader_id = format!("loader-{}", uuid::Uuid::new_v4());
++    let Some((mut events, frame_id, page_id, page_url, network_events, network_idle)) =
++        ctx.get_session_page_mut(session_id).map(|page| {
++            page.sync_js_network_events();
++            (
++                NavigationEvents::new(session_id, page, &loader_id),
++                page.frame_id.clone(),
++                page.id.clone(),
++                page.url_string(),
++                page.network_events.drain(..).collect::<Vec<_>>(),
++                page.lifecycle.is_network_idle() || page.network_is_idle(),
++            )
++        })
++    else {
++        return;
++    };
++    if steps.is_empty() {
++        // Fork: a single page app that routes itself through history has
++        // still navigated; the client is told the frame moved, under the
++        // document's own loader.
++        let loader_id = ctx
++            .current_loader_ids
++            .get(&page_id)
++            .cloned()
++            .unwrap_or_else(|| format!("loader-blank-{page_id}"));
+         ctx.pending_events.push(CdpEvent {
+-            method: "Network.loadingFinished".into(),
+-            params: json!({"requestId": rid, "timestamp": net_event.timestamp, "encodedDataLength": net_event.body_size}),
+-            session_id: es.clone(),
++            method: "Page.frameNavigated".into(),
++            params: json!({
++                "frame": frame_value(&frame_id, None, &loader_id, &page_url, "text/html"),
++                "type": "Navigation",
++            }),
++            session_id: session_id.clone(),
+         });
++        return;
+     }
+-
+-    let mut phase3 = vec![
+-        CdpEvent {
+-            method: "Page.lifecycleEvent".into(),
+-            params: json!({"frameId": frame_id, "loaderId": loader_id, "name": "DOMContentLoaded", "timestamp": ts}),
+-            session_id: es.clone(),
+-        },
+-        CdpEvent {
+-            method: "Page.domContentEventFired".into(),
+-            params: json!({"timestamp": ts}),
+-            session_id: es.clone(),
+-        },
+-        CdpEvent {
+-            method: "Page.lifecycleEvent".into(),
+-            params: json!({"frameId": frame_id, "loaderId": loader_id, "name": "load", "timestamp": ts}),
+-            session_id: es.clone(),
+-        },
+-        CdpEvent {
+-            method: "Page.loadEventFired".into(),
+-            params: json!({"timestamp": ts}),
+-            session_id: es.clone(),
+-        },
+-    ];
+-    if reached_network_idle || matches!(wait_until, WaitUntil::Load | WaitUntil::DomContentLoaded) {
+-        let idle_ts = timestamp();
+-        phase3.push(CdpEvent { method: "Page.lifecycleEvent".into(), params: json!({"frameId": frame_id, "loaderId": loader_id, "name": "networkIdle", "timestamp": idle_ts}), session_id: es.clone() });
+-    }
+-    phase3.push(CdpEvent {
+-        method: "Page.frameStoppedLoading".into(),
+-        params: json!({"frameId": frame_id}),
+-        session_id: es,
+-    });
+-    ctx.pending_events.extend(phase3);
+-
+-    // Target.targetInfoChanged: strict CDP clients (browser-use, and
+-    // Puppeteer/Playwright `page.url()` tracking) cache the TargetInfo from
+-    // attachedToTarget and only refresh it on this event. Without it they keep
+-    // reporting the pre-navigation url/title (about:blank) and never see the
+-    // loaded page. Emit it browser-level (no sessionId) with the new url/title.
+-    let (tic_title, tic_ctx) = ctx
+-        .get_page(page_id)
+-        .map(|p| (p.title.clone(), p.context.id.clone()))
+-        .unwrap_or_default();
+-    ctx.pending_events.push(CdpEvent::new(
+-        "Target.targetInfoChanged",
+-        json!({
+-            "targetInfo": {
+-                "targetId": page_id,
+-                "type": "page",
+-                "title": tic_title,
+-                "url": page_url,
+-                "attached": true,
+-                "canAccessOpener": false,
+-                "browserContextId": tic_ctx,
+-            }
+-        }),
+-    ));
++    events.started(ctx);
++    for step in steps {
++        events.progress(ctx, step);
++    }
++    events.finish(ctx, &page_url, &network_events, network_idle);
+ }
+ 
+ /// Emit completed script-initiated requests after the document lifecycle has
+@@ -1171,67 +1295,63 @@ async fn do_navigate(
+     }
+ 
+     let preload_scripts: Vec<String> = ctx.preload_scripts.iter().map(|(_, s)| s.clone()).collect();
+-
+-    let (frame_id, loader_id, network_events, page_url, page_id, reached_network_idle) = {
++    let loader_id = format!("loader-{}", uuid::Uuid::new_v4());
++    let (progress_tx, mut progress) = tokio::sync::mpsc::unbounded_channel();
++
++    let page = ctx
++        .get_session_page_mut(session_id)
++        .ok_or("No page for session")?;
++    let frame_id = page.frame_id.clone();
++    let mut events = NavigationEvents::new(session_id, page, &loader_id);
++    events.started(ctx);
++    let (result, network_events, page_url, network_idle) = {
+         let page = ctx
+             .get_session_page_mut(session_id)
+             .ok_or("No page for session")?;
+-        let frame_id = page.frame_id.clone();
+-        let loader_id = format!("loader-{}", uuid::Uuid::new_v4());
+-
+         // Preloads (addBinding shims, addScriptToEvaluateOnNewDocument sources)
+         // must run BEFORE the page's own scripts (CDP contract). Hand them to
+         // the page so navigate_single can inject them at the right point.
+         page.set_preload_scripts(preload_scripts);
++        page.set_navigation_progress(Some(progress_tx));
+ 
+         let nav_method = params
+             .get("__method")
+             .and_then(|v| v.as_str())
+             .unwrap_or("GET");
+         let nav_body = params.get("__body").and_then(|v| v.as_str()).unwrap_or("");
+-        if nav_method == "POST" && !nav_body.is_empty() {
+-            page.navigate_with_wait_post(url, wait_until, nav_method, nav_body)
+-                .await
+-                .map_err(|e| e.to_string())?;
++        let result = if nav_method == "POST" && !nav_body.is_empty() {
++            page.navigate_with_wait_post(url, wait_until, nav_method, nav_body).await
+         } else {
+-            page.navigate_with_wait(url, wait_until)
+-                .await
+-                .map_err(|e| e.to_string())?;
+-        }
+-
+-        let reached_network_idle = page.lifecycle.is_network_idle();
++            page.navigate_with_wait(url, wait_until).await
++        };
++        page.set_navigation_progress(None);
+         // Fold in script-initiated requests (fetch/XHR/dynamic resource) so they
+         // emit as Network events alongside static subresources (#406).
+         page.sync_js_network_events();
+-        let network_events: Vec<_> = page.network_events.drain(..).collect();
+-        let page_url = page.url_string();
+-        let page_id = page.id.clone();
+         (
+-            frame_id,
+-            loader_id,
+-            network_events,
+-            page_url,
+-            page_id,
+-            reached_network_idle,
++            result,
++            page.network_events.drain(..).collect::<Vec<_>>(),
++            page.url_string(),
++            page.lifecycle.is_network_idle() || page.network_is_idle(),
+         )
+     };
++    while let Ok(step) = progress.try_recv() {
++        events.progress(ctx, step);
++    }
++    events.finish(ctx, &page_url, &network_events, network_idle);
++    // A failure after the commit (a later client-side hop) is the new
++    // document's business; Page.navigate answered for the first one.
++    let error = result.err().filter(|_| !events.committed()).map(|e| e.to_string());
++    Ok(navigate_response(&frame_id, &loader_id, error))
++}
+ 
+-    emit_navigation_events(
+-        ctx,
+-        session_id,
+-        &frame_id,
+-        &loader_id,
+-        &page_url,
+-        &page_id,
+-        &network_events,
+-        wait_until,
+-        reached_network_idle,
+-    );
+-
+-    Ok(json!({
+-        "frameId": frame_id,
+-        "loaderId": loader_id,
+-    }))
++/// `Page.navigate`'s result, as Chrome shapes it: a navigation that failed
++/// before committing a document carries `errorText`, not a protocol error.
++pub(crate) fn navigate_response(frame_id: &str, loader_id: &str, error: Option<String>) -> Value {
++    match error {
++        Some(error_text) => json!({"frameId": frame_id, "loaderId": loader_id, "errorText": error_text}),
++        None => json!({"frameId": frame_id, "loaderId": loader_id}),
++    }
+ }
+ 
+ pub async fn handle(
+@@ -1488,53 +1608,31 @@ pub async fn handle(
+                 (url, snapshot.0, snapshot.1)
+             };
+             if let Some(url) = target_url {
++                let (progress_tx, progress) = tokio::sync::mpsc::unbounded_channel();
+                 let nav_result = {
+                     let page = ctx
+                         .get_session_page_mut(session_id)
+                         .ok_or("No page for session")?;
++                    page.set_navigation_progress(Some(progress_tx));
+                     page.navigate_with_wait(&url, WaitUntil::DomContentLoaded)
+                         .await
+                 };
+                 // navigate_with_wait's push_history rewrote history during the
+                 // load, so restore the snapshot either way. On failure the page
+                 // never moved — put the cursor back where it was (#920).
++                let page = ctx
++                    .get_session_page_mut(session_id)
++                    .ok_or("No page for session")?;
++                page.history = saved_history;
+                 if let Err(e) = nav_result {
+-                    if let Some(page) = ctx.get_session_page_mut(session_id) {
+-                        page.history = saved_history;
+-                        page.history_index = prev_index;
+-                    }
++                    page.history_index = prev_index;
++                    let steps = take_navigation_progress(page, progress);
++                    emit_completed_navigation(ctx, session_id, steps);
+                     return Err(e.to_string());
+                 }
+-                let (frame_id, page_id, network_events, page_url, reached_idle) = {
+-                    let page = ctx
+-                        .get_session_page_mut(session_id)
+-                        .ok_or("No page for session")?;
+-                    page.history = saved_history;
+-                    page.history_index = entry_id;
+-                    // Flush script-initiated network events before draining,
+-                    // matching do_navigate — otherwise fetch/XHR requests the
+-                    // navigated page starts are dropped from CDP events (#920).
+-                    page.sync_js_network_events();
+-                    (
+-                        page.frame_id.clone(),
+-                        page.id.clone(),
+-                        page.network_events.drain(..).collect::<Vec<_>>(),
+-                        page.url_string(),
+-                        page.lifecycle.is_network_idle(),
+-                    )
+-                };
+-                let loader_id = format!("loader-{}", uuid::Uuid::new_v4());
+-                emit_navigation_events(
+-                    ctx,
+-                    session_id,
+-                    &frame_id,
+-                    &loader_id,
+-                    &page_url,
+-                    &page_id,
+-                    &network_events,
+-                    WaitUntil::DomContentLoaded,
+-                    reached_idle,
+-                );
++                page.history_index = entry_id;
++                let steps = take_navigation_progress(page, progress);
++                emit_completed_navigation(ctx, session_id, steps);
+             }
+             Ok(json!({}))
+         }
+diff --git a/crates/obscura-cdp/src/domains/runtime.rs b/crates/obscura-cdp/src/domains/runtime.rs
+index 94f43df..d7070af 100644
+--- a/crates/obscura-cdp/src/domains/runtime.rs
++++ b/crates/obscura-cdp/src/domains/runtime.rs
+@@ -1,4 +1,3 @@
+-use obscura_browser::lifecycle::WaitUntil;
+ use obscura_js::runtime::RemoteObjectInfo;
+ use serde_json::{json, Value};
+ 
+@@ -52,33 +51,14 @@ async fn emit_post_eval_nav(
+     let page = ctx
+         .get_session_page_mut(session_id)
+         .ok_or("No page")?;
+-    let did_navigate = page.process_pending_navigation().await.map_err(|e| e.to_string())?;
+-    if !did_navigate {
+-        return Ok(());
++    let (progress_tx, progress) = tokio::sync::mpsc::unbounded_channel();
++    page.set_navigation_progress(Some(progress_tx));
++    let navigated = page.process_pending_navigation().await;
++    let steps = super::page::take_navigation_progress(page, progress);
++    if navigated.as_ref().is_ok_and(|moved| *moved) || !steps.is_empty() {
++        super::page::emit_completed_navigation(ctx, session_id, steps);
+     }
+-    let (frame_id, page_url, page_id, network_events, reached_idle) = {
+-        let p = ctx.get_session_page_mut(session_id).ok_or("No page")?;
+-        (
+-            p.frame_id.clone(),
+-            p.url_string(),
+-            p.id.clone(),
+-            p.network_events.drain(..).collect::<Vec<_>>(),
+-            p.lifecycle.is_network_idle(),
+-        )
+-    };
+-    let loader_id = format!("loader-{}", uuid::Uuid::new_v4());
+-    super::page::emit_navigation_events(
+-        ctx,
+-        session_id,
+-        &frame_id,
+-        &loader_id,
+-        &page_url,
+-        &page_id,
+-        &network_events,
+-        WaitUntil::Load,
+-        reached_idle,
+-    );
+-    Ok(())
++    navigated.map(|_| ()).map_err(|e| e.to_string())
+ }
+ 
+ pub async fn handle(
+diff --git a/crates/obscura-cdp/src/server.rs b/crates/obscura-cdp/src/server.rs
+index ca99f8d..4d69614 100644
+--- a/crates/obscura-cdp/src/server.rs
++++ b/crates/obscura-cdp/src/server.rs
+@@ -1293,7 +1293,7 @@ async fn pump_and_forward_screencast_frames(
+ // literal text (e.g. a `Runtime.evaluate` expression). See issue #363.
+ fn is_navigate_method(text: &str) -> bool {
+     serde_json::from_str::<CdpRequest>(text)
+-        .map(|req| req.method == "Page.navigate")
++        .map(|req| req.method == "Page.navigate" || req.method == "Page.reload")
+         .unwrap_or(false)
+ }
+ 
+@@ -1425,7 +1425,13 @@ async fn process_with_interception(
+     // was never resumed once the dispatch-path resume was removed in #872) is
+     // therefore no longer needed and would strand concurrent pages.
+ 
+-    let url = req.params.get("url").and_then(|v| v.as_str()).unwrap_or("");
++    // Page.reload navigates to the page's current URL.
++    let current_url = page.url_string();
++    let url = if req.method == "Page.reload" {
++        current_url.as_str()
++    } else {
++        req.params.get("url").and_then(|v| v.as_str()).unwrap_or("")
++    };
+     let wait_until = crate::domains::page::parse_wait_until(&req.params);
+     let nav_method = req.params.get("__method").and_then(|v| v.as_str()).unwrap_or("GET").to_string();
+     let nav_body = req.params.get("__body").and_then(|v| v.as_str()).unwrap_or("").to_string();
+@@ -1440,6 +1446,18 @@ async fn process_with_interception(
+     let frame_id = page.frame_id.clone();
+     let loader_id = format!("loader-{}", uuid::Uuid::new_v4());
+ 
++    // The navigation reports its commit and lifecycle steps as they happen:
++    // Page.navigate is answered at the commit, as Chrome answers it, and the
++    // document's DOMContentLoaded and load reach the client when they fire.
++    let (progress_tx, mut progress_rx) =
++        mpsc::unbounded_channel::<obscura_browser::NavigationProgress>();
++    page.set_navigation_progress(Some(progress_tx));
++    let mut events =
++        crate::domains::page::NavigationEvents::new(&session_for_events, &page, &loader_id);
++    events.started(ctx);
++    forward_events(ctx, reply_tx);
++    let mut answered = false;
++
+     let (nav_done_tx, mut nav_done_rx) = mpsc::channel::<(obscura_browser::Page, Result<(), String>)>(1);
+     let url_owned = url.to_string();
+     let nav_v8_lock = ctx.v8_lock.clone();
+@@ -1492,6 +1510,21 @@ async fn process_with_interception(
+         let has_irx = intercept_rx.is_some();
+ 
+         tokio::select! {
++            biased;
++            Some(step) = progress_rx.recv() => {
++                let commit = matches!(step, obscura_browser::NavigationProgress::Committed { .. });
++                events.progress(ctx, step);
++                forward_events(ctx, reply_tx);
++                if commit && !answered && send_command_response {
++                    answered = true;
++                    send_navigate_response(
++                        reply_tx,
++                        req.id,
++                        &req.session_id,
++                        crate::domains::page::navigate_response(&frame_id, &loader_id, None),
++                    );
++                }
++            }
+             Some((returned_page, result)) = nav_done_rx.recv() => {
+                 page_back = Some(returned_page);
+                 navigate_result = result;
+@@ -1568,6 +1601,11 @@ async fn process_with_interception(
+     // (it drains `deferred` before pulling the next message off `rx`).
+ 
+     let mut page = page_back.expect("navigation task should return the page");
++    page.set_navigation_progress(None);
++    // Steps the page reported just before it finished.
++    while let Ok(step) = progress_rx.try_recv() {
++        events.progress(ctx, step);
++    }
+ 
+     // Fold in network events for script-initiated requests (fetch/XHR/dynamic
+     // resource) so they emit as Network.requestWillBeSent / responseReceived
+@@ -1575,44 +1613,27 @@ async fn process_with_interception(
+     page.sync_js_network_events();
+     let network_events: Vec<_> = page.network_events.drain(..).collect();
+     let page_url = page.url_string();
+-    let page_id_for_events = page.id.clone();
+-    let reached_network_idle = page.lifecycle.is_network_idle();
++    let network_idle = page.lifecycle.is_network_idle() || page.network_is_idle();
+ 
+     ctx.pages.push(page);
+ 
+     #[cfg(feature = "render")]
+     let navigation_succeeded = navigate_result.is_ok();
+-    let response = match navigate_result {
+-        Ok(()) => crate::types::CdpResponse::success(
++    events.finish(ctx, &page_url, &network_events, network_idle);
++    forward_events(ctx, reply_tx);
++    if send_command_response && !answered {
++        // A navigation that failed before committing a document reports why
++        // in errorText, as Chrome does; one that committed answered above.
++        let error = navigate_result
++            .err()
++            .filter(|_| !events.committed());
++        send_navigate_response(
++            reply_tx,
+             req.id,
+-            json!({"frameId": frame_id, "loaderId": loader_id}),
+-            req.session_id.clone(),
+-        ),
+-        Err(e) => crate::types::CdpResponse::error(req.id, -32000, e, req.session_id.clone()),
+-    };
+-
+-    if send_command_response {
+-        if let Ok(json) = serde_json::to_string(&response) {
+-            let _ = reply_tx.send(json);
+-        }
++            &req.session_id,
++            crate::domains::page::navigate_response(&frame_id, &loader_id, error),
++        );
+     }
+-
+-    // Shared event emission: includes the post-#190 Network.requestWillBeSent
+-    // -before-frameNavigated ordering, the #189 requestId=loaderId trick that
+-    // makes `page.goto()` resolve to a Response, and the #192 per-isolated-
+-    // world fresh context ids. Pushes to `ctx.pending_events`; we then drain
+-    // to the WS reply channel.
+-    crate::domains::page::emit_navigation_events(
+-        ctx,
+-        &session_for_events,
+-        &frame_id,
+-        &loader_id,
+-        &page_url,
+-        &page_id_for_events,
+-        &network_events,
+-        wait_until,
+-        reached_network_idle,
+-    );
+     #[cfg(feature = "render")]
+     if navigation_succeeded {
+         if let Err(error) = crate::domains::page::queue_screencast_frame(
+@@ -1621,6 +1642,22 @@ async fn process_with_interception(
+             tracing::warn!("could not produce post-navigation screencast frame: {error}");
+         }
+     }
++    forward_events(ctx, reply_tx);
++}
++
++fn send_navigate_response(
++    reply_tx: &mpsc::UnboundedSender<String>,
++    id: u64,
++    session_id: &Option<String>,
++    result: serde_json::Value,
++) {
++    let response = crate::types::CdpResponse::success(id, result, session_id.clone());
++    if let Ok(json) = serde_json::to_string(&response) {
++        let _ = reply_tx.send(json);
++    }
++}
++
++fn forward_events(ctx: &mut CdpContext, reply_tx: &mpsc::UnboundedSender<String>) {
+     for event in ctx.pending_events.drain(..) {
+         if let Ok(json) = serde_json::to_string(&event) {
+             let _ = reply_tx.send(json);
+@@ -1869,6 +1906,118 @@ mod tests {
+         }
+     }
+ 
++    #[tokio::test(flavor = "current_thread")]
++    async fn page_navigate_answers_at_commit_and_reports_load_when_it_fires() {
++        // The document arrives at once; its one script takes a second. Chrome
++        // answers Page.navigate when the document commits and reports load
++        // when the script has run; the answer must not wait for the script.
++        std::env::set_var("OBSCURA_ALLOW_PRIVATE_NETWORK", "1");
++        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
++        let addr = listener.local_addr().unwrap();
++        tokio::spawn(async move {
++            loop {
++                let Ok((mut socket, _)) = listener.accept().await else { return };
++                tokio::spawn(async move {
++                    use tokio::io::{AsyncReadExt, AsyncWriteExt};
++                    let mut buf = [0u8; 2048];
++                    let n = socket.read(&mut buf).await.unwrap_or(0);
++                    let request = String::from_utf8_lossy(&buf[..n]).to_string();
++                    let (content_type, body) = if request.starts_with("GET /slow.js") {
++                        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
++                        ("application/javascript", "window.__slow = 1;")
++                    } else {
++                        ("text/html", "<html><body><p>doc</p><script src=/slow.js></script></body></html>")
++                    };
++                    let response = format!(
++                        "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
++                        body.len()
++                    );
++                    let _ = socket.write_all(response.as_bytes()).await;
++                });
++            }
++        });
++        tokio::task::LocalSet::new()
++            .run_until(async move {
++                let (server_tx, server_rx) = tokio::sync::mpsc::unbounded_channel();
++                let (reply_tx, mut reply_rx) = tokio::sync::mpsc::unbounded_channel();
++                let shutdown = std::sync::Arc::new(tokio::sync::Notify::new());
++                let default_context = crate::dispatch::CdpContext::new().default_context;
++                let processor = tokio::task::spawn_local(super::cdp_processor(
++                    server_rx,
++                    default_context,
++                    shutdown,
++                ));
++                server_tx
++                    .send(super::ServerMessage::NewConnection { reply_tx: reply_tx.clone() })
++                    .unwrap();
++                reply_rx.recv().await.expect("processor init");
++                let send = |value: serde_json::Value| {
++                    server_tx
++                        .send(super::ServerMessage::Cdp(super::CdpMessage {
++                            text: value.to_string(),
++                            reply_tx: reply_tx.clone(),
++                        }))
++                        .unwrap();
++                };
++                async fn next(
++                    reply_rx: &mut tokio::sync::mpsc::UnboundedReceiver<String>,
++                ) -> serde_json::Value {
++                    let raw = tokio::time::timeout(std::time::Duration::from_secs(10), reply_rx.recv())
++                        .await
++                        .expect("reply timeout")
++                        .expect("reply channel");
++                    serde_json::from_str(&raw).unwrap()
++                }
++                send(json!({"id": 1, "method": "Target.createTarget", "params": {"url": "about:blank"}}));
++                let mut session_id = None;
++                loop {
++                    let value = next(&mut reply_rx).await;
++                    if session_id.is_none() {
++                        session_id = value["params"]["sessionId"].as_str().map(str::to_string);
++                    }
++                    if value["id"] == 1 {
++                        break;
++                    }
++                }
++                let session_id = session_id.expect("attached page session");
++                send(json!({
++                    "id": 2,
++                    "method": "Page.navigate",
++                    "sessionId": session_id,
++                    "params": {"url": format!("http://{addr}/")},
++                }));
++                let started = std::time::Instant::now();
++                let mut order = Vec::new();
++                let mut loader_id = None;
++                loop {
++                    let value = next(&mut reply_rx).await;
++                    if value["id"] == 2 {
++                        assert!(value["result"]["errorText"].is_null(), "{value}");
++                        loader_id = value["result"]["loaderId"].as_str().map(str::to_string);
++                        order.push(("answer".to_string(), started.elapsed()));
++                    } else if value["method"] == "Page.lifecycleEvent" {
++                        let name = value["params"]["name"].as_str().unwrap().to_string();
++                        if name == "load" {
++                            assert_eq!(value["params"]["loaderId"].as_str(), loader_id.as_deref());
++                        }
++                        let done = name == "load";
++                        order.push((name, started.elapsed()));
++                        if done {
++                            break;
++                        }
++                    }
++                }
++                let names: Vec<&str> = order.iter().map(|(name, _)| name.as_str()).collect();
++                assert_eq!(names, ["init", "commit", "answer", "DOMContentLoaded", "load"]);
++                let answered = order[2].1;
++                let loaded = order[4].1;
++                assert!(answered < std::time::Duration::from_millis(800), "answered after {answered:?}");
++                assert!(loaded >= std::time::Duration::from_millis(1000), "load after {loaded:?}");
++                processor.abort();
++            })
++            .await;
++    }
++
+     #[tokio::test(flavor = "current_thread")]
+     async fn page_runtime_advances_while_cdp_client_is_silent() {
+         tokio::task::LocalSet::new()

@@ -1,7 +1,4 @@
-"""The playbook lifecycle, exhaustively: every (status, event) pair, and the two
-limits, as a table. A rule that lived in a docstring is a rule nobody can prove
-still holds; this is where each one is proved.
-"""
+"""The playbook lifecycle, exhaustively: every (status, event) pair and the two limits, as a table."""
 
 from itertools import product
 
@@ -78,11 +75,8 @@ class TestTransitionTable:
 
         after = transition(before, Rewritten())
 
-        # A rewrite out of a heal run spends one attempt on the body it replaces
-        # and carries the count forward; only a trusted replay clears it. Seen
-        # live: a body whose $ask no model could fill failed every replay, the
-        # agent finishing the fire rewrote it identically, and a reset count
-        # meant the cycle never reached the limit.
+        # A rewrite out of a heal run spends one attempt and carries the count forward; only a trusted
+        # replay clears it. Seen live: an unfillable $ask failed every replay and a reset count never hit the limit.
         assert after == PlaybookLifecycle(
             status=PlaybookRunStatus.NOT_RUN,
             reason=None,
@@ -99,8 +93,7 @@ class TestTransitionTable:
     def test_a_second_write_in_the_same_heal_run_keeps_the_attempt_the_first_carried(
         self,
     ) -> None:
-        """Seen live: the executor was re-prompted to decide and wrote the body
-        twice; the second write found a NOT_RUN body and reset the count."""
+        """Seen live: the executor wrote the body twice; the second write found a NOT_RUN body and reset the count."""
         state = _state(PlaybookRunStatus.FAILED, heals=1)
         first = transition(state, Rewritten())
         second = transition(first, Rewritten())

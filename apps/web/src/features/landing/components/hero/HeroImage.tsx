@@ -37,10 +37,9 @@ export default function HeroImage({
   const [previousTime, setPreviousTime] = useState<TimeOfDay | null>(null);
   const [lastTime, setLastTime] = useState<TimeOfDay>(timeOfDay);
 
-  // Adjust state when the prop changes (the documented "adjusting state on prop
-  // change" pattern) so the crossfade can render the outgoing wallpaper while
-  // the new one animates in. Calling setState during render re-runs immediately
-  // before commit; a ref mutation here is unsafe (React can discard the render).
+  // Adjust state during render (the documented pattern) so the crossfade can
+  // render the outgoing wallpaper while the new one animates in — a ref
+  // mutation here is unsafe since React can discard the render.
   if (timeOfDay !== lastTime) {
     setPreviousTime(lastTime);
     setLastTime(timeOfDay);
@@ -144,9 +143,8 @@ export default function HeroImage({
             alt="Hero wallpaper"
             className="object-cover"
             // LCP element: render immediately (no JS-gated opacity fade) so it
-            // paints from the SSR HTML + preload as soon as bytes arrive, rather
-            // than waiting for hydration + onLoad. Time-of-day transitions still
-            // animate via the clip-path on the wrapping m.div.
+            // paints from SSR HTML as soon as bytes arrive, not after hydration.
+            // Time-of-day transitions still animate via the wrapping m.div's clip-path.
             shouldHaveInitialFade={false}
             priority={true}
           />

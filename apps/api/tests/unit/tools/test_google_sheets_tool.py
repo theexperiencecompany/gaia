@@ -1,14 +1,14 @@
 """Unit tests for app.agents.tools.integrations.google_sheets_tool.
 
-Only the true I/O boundary is faked: `proxy_request_sync`, patched in both this
-module and `google_sheets_utils`, is routed through a single fake Sheets/Drive
+Only the true I/O boundary is faked: proxy_request_sync, patched in both this
+module and google_sheets_utils, is routed through a single fake Sheets/Drive
 API. Everything else — A1 parsing, sheet/column resolution, request assembly —
 runs for real, so the assertions below are against the exact JSON Google would
 receive.
 
 Several production bugs were found while writing these tests and fixed at the
-root in `google_sheets_tool.py`, `google_sheets_utils.py` and
-`google_sheets_models.py`; the tests pinning them down are marked "BUG:".
+root in google_sheets_tool.py, google_sheets_utils.py and
+google_sheets_models.py; the tests pinning them down are marked "BUG:".
 """
 
 from typing import Any, cast
@@ -21,7 +21,6 @@ from app.agents.tools.integrations.google_sheets_tool import (
     NEW_FORMAT_RULE_INDEX,
     RECENT_SPREADSHEETS_PAGE_SIZE,
     SHEETS_TOOLKIT,
-    _user_id,
     register_google_sheets_custom_tools,
 )
 from app.models.common_models import GatherContextInput
@@ -34,6 +33,7 @@ from app.models.google_sheets_models import (
     ShareRecipient,
     ShareSpreadsheetInput,
 )
+from app.services.composio.proxy_client import ProxyRequest
 from app.utils.errors import AppError
 from app.utils.google_sheets_utils import DRIVE_API_BASE, SHEETS_API_BASE
 
@@ -63,23 +63,23 @@ class FakeSheetsApi:
         self.files: Any = []
         self.files_error: Exception | None = None
 
-        self.calls: list[dict[str, Any]] = []
-        self.batch_bodies: list[dict[str, Any]] = []
-        self.permission_calls: list[dict[str, Any]] = []
+        self.calls: list[ProxyRequest] = []
+        self.batch_bodies: list[Any] = []
+        self.permission_calls: list[ProxyRequest] = []
 
-    def __call__(self, **kwargs: Any) -> Any:
-        self.calls.append(kwargs)
-        endpoint = kwargs["endpoint"]
+    def __call__(self, request: ProxyRequest) -> Any:
+        self.calls.append(request)
+        endpoint = request.endpoint
 
         if endpoint.endswith(":batchUpdate"):
-            self.batch_bodies.append(kwargs["body"])
+            self.batch_bodies.append(request.body)
             if self.batch_error is not None:
                 raise self.batch_error
             return self.batch_response
 
         if endpoint.endswith("/permissions"):
-            self.permission_calls.append(kwargs)
-            email = kwargs["body"]["emailAddress"]
+            self.permission_calls.append(request)
+            email = cast(dict[str, Any], request.body)["emailAddress"]
             failure = self.failing_recipients.get(email, self.permission_error)
             if failure is not None:
                 raise failure
@@ -194,23 +194,27 @@ class TestRegistration:
 
 
 # ---------------------------------------------------------------------------
-# _user_id
+# auth credentials
 # ---------------------------------------------------------------------------
 
 
 class TestUserId:
-    def test_returns_the_credential_user_id(self) -> None:
-        assert _user_id({"user_id": "abc"}) == "abc"
+    def test_requests_are_sent_as_the_credential_user(self, tools: Any, api: Any) -> None:
+        tools["CUSTOM_GATHER_CONTEXT"](GatherContextInput(), MagicMock(), {"user_id": "abc"})
+        assert api.calls[0].user_id == "abc"
 
     @pytest.mark.parametrize(
         "credentials",
         [{}, {"user_id": ""}, {"user_id": None}, {"user_id": 42}, {"userId": "abc"}],
     )
-    def test_unusable_credentials_are_rejected(self, credentials: dict[str, Any]) -> None:
+    def test_unusable_credentials_are_rejected(
+        self, tools: Any, api: Any, credentials: dict[str, Any]
+    ) -> None:
         # Falling through with a blank/None user id would send the request as
         # nobody and surface as a confusing 500 deep inside the proxy.
         with pytest.raises(ValueError, match="Missing user_id in auth_credentials"):
-            _user_id(credentials)
+            tools["CUSTOM_GATHER_CONTEXT"](GatherContextInput(), MagicMock(), credentials)
+        assert api.calls == []
 
 
 # ---------------------------------------------------------------------------
@@ -256,11 +260,11 @@ class TestShareSpreadsheet:
         )
 
         call = api.permission_calls[0]
-        assert call["endpoint"] == f"{DRIVE_API_BASE}/files/{SPREADSHEET}/permissions"
-        assert call["method"] == "POST"
-        assert call["toolkit"] == SHEETS_TOOLKIT
-        assert call["user_id"] == "user-42"
-        assert call["body"] == {
+        assert call.endpoint == f"{DRIVE_API_BASE}/files/{SPREADSHEET}/permissions"
+        assert call.method == "POST"
+        assert call.toolkit == SHEETS_TOOLKIT
+        assert call.user_id == "user-42"
+        assert call.body == {
             "type": "user",
             "role": "commenter",
             "emailAddress": "a@x.com",
@@ -280,7 +284,7 @@ class TestShareSpreadsheet:
             ),
         )
 
-        assert api.permission_calls[0]["query"] == {"sendNotificationEmail": expected}
+        assert api.permission_calls[0].query == {"sendNotificationEmail": expected}
 
     def test_every_recipient_gets_its_own_request(self, tools: Any, api: Any) -> None:
         result = _call(
@@ -296,7 +300,7 @@ class TestShareSpreadsheet:
             ),
         )
 
-        assert [c["body"]["emailAddress"] for c in api.permission_calls] == [
+        assert [cast(dict[str, Any], c.body)["emailAddress"] for c in api.permission_calls] == [
             "a@x.com",
             "b@x.com",
             "c@x.com",
@@ -316,10 +320,9 @@ class TestShareSpreadsheet:
         assert result["shared"][0]["permission_id"] is None
         assert result["total_shared"] == 1
 
-    # BUG: the per-recipient `errors` list was built and then dropped from the
-    # response, so a partial failure reported `total_failed: 1` with no way to
-    # tell the user which address failed or why — and the tool's own docs
-    # promised an `errors` field.
+    # BUG: the per-recipient errors list was built and then dropped from the response, so a
+    # partial failure reported total_failed: 1 with no way to tell which address failed or why —
+    # despite the tool's own docs promising an errors field.
     def test_partial_failure_reports_which_recipient_failed_and_why(
         self, tools: Any, api: Any
     ) -> None:
@@ -443,9 +446,9 @@ class TestCreatePivotTable:
     def test_targets_the_batch_update_endpoint(self, tools: Any, api: Any) -> None:
         _call(tools, "CUSTOM_CREATE_PIVOT_TABLE", _pivot())
 
-        batch = next(c for c in api.calls if c["endpoint"].endswith(":batchUpdate"))
-        assert batch["endpoint"] == f"{SHEETS_API_BASE}/{SPREADSHEET}:batchUpdate"
-        assert batch["method"] == "POST"
+        batch = next(c for c in api.calls if c.endpoint.endswith(":batchUpdate"))
+        assert batch.endpoint == f"{SHEETS_API_BASE}/{SPREADSHEET}:batchUpdate"
+        assert batch.method == "POST"
 
     def test_column_groupings_are_included_when_requested(self, tools: Any, api: Any) -> None:
         _call(tools, "CUSTOM_CREATE_PIVOT_TABLE", _pivot(columns=["Product"]))
@@ -617,7 +620,7 @@ class TestSetDataValidation:
         }
 
     def test_dropdown_list_requires_values(self, tools: Any, api: Any) -> None:
-        with pytest.raises(ValueError, match="values required for dropdown_list"):
+        with pytest.raises(ValueError, match=r"^values required for dropdown_list$"):
             _call(tools, "CUSTOM_SET_DATA_VALIDATION", _validation(values=None))
 
     def test_dropdown_range_references_the_source_as_a_formula(self, tools: Any, api: Any) -> None:
@@ -633,7 +636,7 @@ class TestSetDataValidation:
         }
 
     def test_dropdown_range_requires_a_source_range(self, tools: Any, api: Any) -> None:
-        with pytest.raises(ValueError, match="source_range required for dropdown_range"):
+        with pytest.raises(ValueError, match=r"^source_range required for dropdown_range$"):
             _call(
                 tools, "CUSTOM_SET_DATA_VALIDATION", _validation(validation_type="dropdown_range")
             )
@@ -700,7 +703,7 @@ class TestSetDataValidation:
         }
 
     def test_custom_formula_requires_a_formula(self, tools: Any, api: Any) -> None:
-        with pytest.raises(ValueError, match="formula required for custom_formula"):
+        with pytest.raises(ValueError, match=r"^formula required for custom_formula$"):
             _call(
                 tools, "CUSTOM_SET_DATA_VALIDATION", _validation(validation_type="custom_formula")
             )
@@ -1102,6 +1105,34 @@ class TestCreateChart:
         assert len(basic["series"]) == 1
         source = basic["series"][0]["series"]["sourceRange"]["sources"][0]
         assert (source["startColumnIndex"], source["endColumnIndex"]) == (1, 2)
+        assert source["sheetId"] == 111
+
+    @pytest.mark.parametrize(
+        ("data_range", "domain", "series"),
+        [
+            ("C1:E10", (2, 3), [(3, 4), (4, 5)]),
+            ("1:C10", (None, 1), [(1, 2), (2, 3)]),
+            ("C1:10", (2, None), [(2, None)]),
+        ],
+        ids=["offset-from-column-a", "open-start-column", "open-end-column"],
+    )
+    def test_domain_and_series_columns_follow_the_data_range(
+        self,
+        tools: Any,
+        api: Any,
+        data_range: str,
+        domain: tuple[int | None, int | None],
+        series: list[tuple[int | None, int | None]],
+    ) -> None:
+        _call(tools, "CUSTOM_CREATE_CHART", _chart(data_range=data_range))
+
+        def bounds(data: dict[str, Any]) -> tuple[int | None, int | None]:
+            source = data["sourceRange"]["sources"][0]
+            return source.get("startColumnIndex"), source.get("endColumnIndex")
+
+        basic = _chart_request(api)["spec"]["basicChart"]
+        assert bounds(basic["domains"][0]["domain"]) == domain
+        assert [bounds(s["series"]) for s in basic["series"]] == series
 
     # BUG: a whole-column data range collapsed to cell A1, so a chart over
     # "A:C" was built from a single cell.
@@ -1315,9 +1346,9 @@ class TestGatherContext:
         _call(tools, "CUSTOM_GATHER_CONTEXT", GatherContextInput())
 
         call = api.calls[0]
-        assert call["endpoint"] == f"{DRIVE_API_BASE}/files"
-        assert call["method"] == "GET"
-        assert call["query"] == {
+        assert call.endpoint == f"{DRIVE_API_BASE}/files"
+        assert call.method == "GET"
+        assert call.query == {
             "q": "mimeType='application/vnd.google-apps.spreadsheet'",
             "orderBy": "viewedByMeTime desc",
             "pageSize": RECENT_SPREADSHEETS_PAGE_SIZE,
@@ -1369,3 +1400,35 @@ class TestGatherContext:
         # is not hidden by the best-effort handling above.
         with pytest.raises(ValueError, match="Missing user_id"):
             tools["CUSTOM_GATHER_CONTEXT"](GatherContextInput(), MagicMock(), {})
+
+
+# ---------------------------------------------------------------------------
+# Shared write-tool contract
+# ---------------------------------------------------------------------------
+
+_WRITE_TOOLS = [
+    ("CUSTOM_CREATE_PIVOT_TABLE", _pivot),
+    ("CUSTOM_SET_DATA_VALIDATION", _validation),
+    ("CUSTOM_ADD_CONDITIONAL_FORMAT", _format),
+    ("CUSTOM_CREATE_CHART", _chart),
+]
+
+
+@pytest.mark.parametrize(("name", "build"), _WRITE_TOOLS, ids=[n for n, _ in _WRITE_TOOLS])
+class TestWriteTools:
+    def test_every_request_is_sent_as_the_credential_user(
+        self, tools: Any, api: Any, name: str, build: Any
+    ) -> None:
+        _call(tools, name, build())
+
+        assert api.batch_bodies
+        assert {c.user_id for c in api.calls} == {AUTH["user_id"]}
+
+    def test_batch_update_targets_the_requested_spreadsheet(
+        self, tools: Any, api: Any, name: str, build: Any
+    ) -> None:
+        _call(tools, name, build())
+
+        assert [c.endpoint for c in api.calls if c.endpoint.endswith(":batchUpdate")] == [
+            f"{SHEETS_API_BASE}/{SPREADSHEET}:batchUpdate"
+        ]

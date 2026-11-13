@@ -1,11 +1,17 @@
 """Unit tests for app.utils.favicon_utils — favicon fetching with Redis caching."""
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+import respx
 
+from app.config.settings import settings
 from app.utils.favicon_utils import (
+    BROWSER_UA,
+    HTTP_TIMEOUT,
+    IconCandidate,
     _fetch_favicon_impl,
     _fetch_smithery_icon,
     _get_domain_cache_key,
@@ -14,6 +20,7 @@ from app.utils.favicon_utils import (
     _parse_icons_from_html,
     _select_best_icon,
     _smithery_qualified_name,
+    _try_html_link_parsing,
     _validate_favicon_url,
     fetch_favicon_from_url,
     legacy_favicon_url,
@@ -43,7 +50,7 @@ class TestGetDomainCacheKey:
         assert key == "favicon:https://app.example.org:8443"
 
     def test_scheme_is_part_of_key(self) -> None:
-        """http and https for the same host get distinct cache keys."""
+        """Http and https for the same host get distinct cache keys."""
         # NOSONAR python:S5332 — the http:// literal is intentional here: this
         # asserts the cache key separates schemes; no real connection is made.
         http_key = _get_domain_cache_key("http://example.com")  # NOSONAR python:S5332
@@ -167,15 +174,15 @@ class TestParseIconsFromHtml:
         icons = _parse_icons_from_html(html, "https://example.com")
 
         assert len(icons) == 3
-        assert icons[0]["href"] == "https://example.com/favicon.ico"
-        assert icons[0]["format"] == "ico"
-        assert icons[0]["size"] == 16
-        assert icons[1]["href"] == "https://example.com/icon-192.png"
-        assert icons[1]["format"] == "png"
-        assert icons[1]["size"] == 192
-        assert icons[2]["href"] == "https://example.com/icon.svg"
-        assert icons[2]["format"] == "svg"
-        assert icons[2]["size"] == 0
+        assert icons[0].href == "https://example.com/favicon.ico"
+        assert icons[0].format == "ico"
+        assert icons[0].size == 16
+        assert icons[1].href == "https://example.com/icon-192.png"
+        assert icons[1].format == "png"
+        assert icons[1].size == 192
+        assert icons[2].href == "https://example.com/icon.svg"
+        assert icons[2].format == "svg"
+        assert icons[2].size == 0
 
     def test_no_icon_links(self) -> None:
         """HTML without any link[rel=icon] yields empty list."""
@@ -191,8 +198,8 @@ class TestParseIconsFromHtml:
         </head></html>
         """
         icons = _parse_icons_from_html(html, "https://example.com/page/")
-        assert icons[0]["href"] == "https://example.com/assets/icon.png"
-        assert icons[1]["href"] == "https://example.com/page/icons/favicon.ico"
+        assert icons[0].href == "https://example.com/assets/icon.png"
+        assert icons[1].href == "https://example.com/page/icons/favicon.ico"
 
     def test_data_uri_skipped(self) -> None:
         """data: URIs are filtered out (empty string after _make_absolute_url)."""
@@ -209,14 +216,14 @@ class TestParseIconsFromHtml:
         html = """<html><head><link rel="icon" href="/icon.gif"></head></html>"""
         icons = _parse_icons_from_html(html, "https://example.com")
         assert len(icons) == 1
-        assert icons[0]["format"] == "other"
+        assert icons[0].format == "other"
 
     def test_shortcut_icon_rel(self) -> None:
         """rel='shortcut icon' (contains 'icon') is also matched."""
         html = """<html><head><link rel="shortcut icon" href="/favicon.ico"></head></html>"""
         icons = _parse_icons_from_html(html, "https://example.com")
         assert len(icons) == 1
-        assert icons[0]["href"] == "https://example.com/favicon.ico"
+        assert icons[0].href == "https://example.com/favicon.ico"
 
 
 # ---------------------------------------------------------------------------
@@ -234,24 +241,24 @@ class TestSelectBestIcon:
     def test_png_prioritized_over_ico(self) -> None:
         """PNG format has higher priority than ICO."""
         icons = [
-            {"href": "https://example.com/fav.ico", "size": 32, "format": "ico"},
-            {"href": "https://example.com/fav.png", "size": 32, "format": "png"},
+            IconCandidate(href="https://example.com/fav.ico", size=32, format="ico"),
+            IconCandidate(href="https://example.com/fav.png", size=32, format="png"),
         ]
         assert _select_best_icon(icons) == "https://example.com/fav.png"
 
     def test_larger_size_preferred_within_same_format(self) -> None:
         """Within the same format, larger sizes are preferred (secondary sort desc)."""
         icons = [
-            {"href": "https://example.com/small.png", "size": 16, "format": "png"},
-            {"href": "https://example.com/large.png", "size": 256, "format": "png"},
+            IconCandidate(href="https://example.com/small.png", size=16, format="png"),
+            IconCandidate(href="https://example.com/large.png", size=256, format="png"),
         ]
         assert _select_best_icon(icons) == "https://example.com/large.png"
 
     def test_png_beats_svg_even_if_svg_larger(self) -> None:
         """Format priority trumps size — PNG beats SVG even if SVG is larger."""
         icons = [
-            {"href": "https://example.com/huge.svg", "size": 1024, "format": "svg"},
-            {"href": "https://example.com/small.png", "size": 16, "format": "png"},
+            IconCandidate(href="https://example.com/huge.svg", size=1024, format="svg"),
+            IconCandidate(href="https://example.com/small.png", size=16, format="png"),
         ]
         assert _select_best_icon(icons) == "https://example.com/small.png"
 
@@ -282,7 +289,7 @@ class TestValidateFaviconUrl:
         """200 response with image content-type returns True."""
         response = MagicMock(status_code=200, headers={"content-type": "image/png"})
         client = _mock_async_client(response)
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch("app.utils.favicon_utils.mcp_http_client", return_value=client):
             assert await _validate_favicon_url("https://example.com/favicon.png") is True
 
     @patch("app.utils.favicon_utils.log")
@@ -290,7 +297,7 @@ class TestValidateFaviconUrl:
         """Non-200 status code returns False."""
         response = MagicMock(status_code=404, headers={"content-type": "text/html"})
         client = _mock_async_client(response)
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch("app.utils.favicon_utils.mcp_http_client", return_value=client):
             assert await _validate_favicon_url("https://example.com/favicon.png") is False
 
     @patch("app.utils.favicon_utils.log")
@@ -298,14 +305,14 @@ class TestValidateFaviconUrl:
         """200 response with non-image content-type returns False."""
         response = MagicMock(status_code=200, headers={"content-type": "text/html"})
         client = _mock_async_client(response)
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch("app.utils.favicon_utils.mcp_http_client", return_value=client):
             assert await _validate_favicon_url("https://example.com/favicon.png") is False
 
     @patch("app.utils.favicon_utils.log")
     async def test_http_error_returns_false(self, _mock_log: MagicMock) -> None:
         """Network error during HEAD request returns False."""
         client = _mock_async_client(head_side_effect=httpx.ConnectError("refused"))
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch("app.utils.favicon_utils.mcp_http_client", return_value=client):
             assert await _validate_favicon_url("https://example.com/favicon.png") is False
 
 
@@ -319,7 +326,7 @@ class TestFetchSmitheryIcon:
 
     async def test_non_smithery_returns_none_without_http(self) -> None:
         """A non-Smithery URL short-circuits to None (no registry call)."""
-        with patch("app.utils.favicon_utils.httpx.AsyncClient") as mock_client:
+        with patch("app.utils.favicon_utils.mcp_http_client") as mock_client:
             assert await _fetch_smithery_icon("https://example.com/x") is None
             mock_client.assert_not_called()
 
@@ -330,7 +337,7 @@ class TestFetchSmitheryIcon:
         response.json.return_value = {"iconUrl": "https://api.smithery.ai/servers/brave/icon"}
         client = _mock_async_client()
         client.get.return_value = response
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch("app.utils.favicon_utils.mcp_http_client", return_value=client):
             result = await _fetch_smithery_icon("https://server.smithery.ai/brave")
         assert result == "https://api.smithery.ai/servers/brave/icon"
 
@@ -340,7 +347,7 @@ class TestFetchSmitheryIcon:
         response = MagicMock(status_code=403)
         client = _mock_async_client()
         client.get.return_value = response
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch("app.utils.favicon_utils.mcp_http_client", return_value=client):
             assert await _fetch_smithery_icon("https://server.smithery.ai/brave") is None
 
     @patch("app.utils.favicon_utils.log")
@@ -350,7 +357,7 @@ class TestFetchSmitheryIcon:
         response.json.return_value = {"iconUrl": None}
         client = _mock_async_client()
         client.get.return_value = response
-        with patch("app.utils.favicon_utils.httpx.AsyncClient", return_value=client):
+        with patch("app.utils.favicon_utils.mcp_http_client", return_value=client):
             assert await _fetch_smithery_icon("https://server.smithery.ai/brave") is None
 
 
@@ -489,3 +496,103 @@ class TestFetchFaviconImpl:
         mock_legacy.return_value = "https://www.google.com/s2/favicons?domain=example.com&sz=256"
         result = await _fetch_favicon_impl("https://example.com/mcp")
         assert result == "https://www.google.com/s2/favicons?domain=example.com&sz=256"
+
+
+PUBLIC_HOST = "cdn.example.com"
+PRIVATE_HOST = "intranet.example"
+
+
+class TestFaviconFetchSSRF:
+    """The icon lookup on custom-integration create dials only what the deployment allows."""
+
+    @pytest.fixture(autouse=True)
+    def _resolve(self) -> Iterator[None]:
+        addresses = {PUBLIC_HOST: "93.184.216.34", PRIVATE_HOST: "10.0.0.7"}
+        with patch(
+            "app.utils.url_safety._resolve", side_effect=lambda host, _port: [addresses[host]]
+        ):
+            yield
+
+    @respx.mock(assert_all_called=False)
+    async def test_gaia_cloud_never_fetches_a_private_hosts_page(
+        self, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
+        route = respx_mock.get(f"https://{PRIVATE_HOST}")
+
+        icon = await _fetch_favicon_impl(f"https://{PRIVATE_HOST}/mcp")
+
+        assert not route.called
+        assert icon == legacy_favicon_url(f"https://{PRIVATE_HOST}/mcp")
+
+    @respx.mock(assert_all_called=False)
+    async def test_gaia_cloud_refuses_a_redirect_into_a_private_host(
+        self, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
+        respx_mock.head(f"https://{PUBLIC_HOST}/icon.png").respond(
+            302, headers={"location": f"https://{PRIVATE_HOST}/icon.png"}
+        )
+        private = respx_mock.head(f"https://{PRIVATE_HOST}/icon.png")
+
+        assert await _validate_favicon_url(f"https://{PUBLIC_HOST}/icon.png") is False
+        assert not private.called
+
+    @respx.mock(assert_all_called=False)
+    async def test_a_selfhost_instance_reads_the_icon_a_server_on_its_network_declares(
+        self, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        respx_mock.get(f"https://{PRIVATE_HOST}").respond(
+            200, html='<link rel="icon" href="/logo.png">'
+        )
+        respx_mock.head(f"https://{PRIVATE_HOST}/logo.png").respond(
+            200, headers={"content-type": "image/png"}
+        )
+
+        assert await _fetch_favicon_impl(f"https://{PRIVATE_HOST}/mcp") == (
+            f"https://{PRIVATE_HOST}/logo.png"
+        )
+
+
+class TestFaviconProbesPresentAsABrowser:
+    """Both probes send a browser UA under the 3s budget and follow redirects to the real icon."""
+
+    @pytest.fixture(autouse=True)
+    def _public(self, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+        monkeypatch.setattr(settings, "ENV", "production")
+        with patch("app.utils.url_safety._resolve", return_value=["93.184.216.34"]):
+            yield
+
+    @staticmethod
+    def _assert_browser_request(request: httpx.Request) -> None:
+        assert request.headers["user-agent"] == BROWSER_UA
+        assert request.extensions["timeout"] == httpx.Timeout(HTTP_TIMEOUT).as_dict()
+
+    @respx.mock(assert_all_called=False)
+    async def test_the_icon_check_follows_a_moved_icon(self, respx_mock: respx.MockRouter) -> None:
+        moved = respx_mock.head(f"https://{PUBLIC_HOST}/icon.png").respond(
+            301, headers={"location": f"https://{PUBLIC_HOST}/v2/icon.png"}
+        )
+        final = respx_mock.head(f"https://{PUBLIC_HOST}/v2/icon.png").respond(
+            200, headers={"content-type": "image/png"}
+        )
+
+        assert await _validate_favicon_url(f"https://{PUBLIC_HOST}/icon.png") is True
+        self._assert_browser_request(moved.calls.last.request)
+        self._assert_browser_request(final.calls.last.request)
+
+    @respx.mock(assert_all_called=False)
+    async def test_the_page_read_follows_a_moved_page(self, respx_mock: respx.MockRouter) -> None:
+        moved = respx_mock.get(f"https://{PUBLIC_HOST}/").respond(
+            302, headers={"location": f"https://{PUBLIC_HOST}/home"}
+        )
+        final = respx_mock.get(f"https://{PUBLIC_HOST}/home").respond(
+            200, html='<link rel="icon" href="/logo.png">'
+        )
+
+        assert await _try_html_link_parsing(f"https://{PUBLIC_HOST}/") == (
+            f"https://{PUBLIC_HOST}/logo.png"
+        )
+        self._assert_browser_request(moved.calls.last.request)
+        self._assert_browser_request(final.calls.last.request)

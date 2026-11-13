@@ -1,7 +1,7 @@
 """Decode, validate, and budget-fit images for inline model context.
 
-Every producer of inline media — the workspace `read` tool, MCP tool results,
-the device bridge — routes through ``ImageCodec`` before its bytes become a
+Every producer of inline media — the workspace read tool, MCP tool results,
+the device bridge — routes through ImageCodec before its bytes become a
 content block. That makes one place responsible for the guarantees a provider
 request depends on: the data is a real image, its MIME is one the provider
 accepts, its pixels and bytes are bounded.
@@ -60,7 +60,7 @@ class InlineImage:
 
 
 class ImageCodec:
-    """Turns raw image bytes into an ``InlineImage`` a provider will accept."""
+    """Turns raw image bytes into an InlineImage a provider will accept."""
 
     @staticmethod
     def mime_for_path(path: str) -> str | None:
@@ -69,7 +69,7 @@ class ImageCodec:
 
     @classmethod
     async def from_bytes(cls, data: bytes) -> InlineImage:
-        """Fit raw image bytes to the inline budget. Raises ``InvalidImageError``."""
+        """Fit raw image bytes to the inline budget. Raises InvalidImageError."""
         return await asyncio.to_thread(cls._fit, data)
 
     @classmethod
@@ -115,12 +115,12 @@ class ImageCodec:
 
     @staticmethod
     def _probe(data: bytes) -> tuple[str | None, tuple[int, int]]:
-        """The sniffed MIME and dimensions of a real image. Raises ``InvalidImageError``.
+        """Return the sniffed MIME and dimensions of a real image, or raise InvalidImageError.
 
         The MIME comes off the decoded header, never from the caller — a file
-        extension and an MCP server's declared ``mimeType`` can both lie, and a block
+        extension and an MCP server's declared mimeType can both lie, and a block
         whose mime_type contradicts its payload is rejected outright by the provider
-        (Gemini 400s on `inline_data`). ``None`` means a format with no safe MIME.
+        (Gemini 400s on inline_data). None means a format with no safe MIME.
         """
         try:
             with Image.open(BytesIO(data)) as image:
@@ -135,11 +135,9 @@ class ImageCodec:
     def _transcode(data: bytes) -> bytes:
         """Downscale and re-encode as JPEG under the inline byte budget.
 
-        Animated formats keep frame one. Quality steps down until the payload fits
-        ``TARGET_INLINE_IMAGE_BYTES`` — a dense 1568px image can still exceed it at
-        full quality, and that payload is persisted in every checkpoint. The last
-        step is the floor: it ships even if still over budget, rather than failing
-        the turn over an unusually dense image.
+        Animated formats keep frame one. Quality steps down until the payload
+        fits TARGET_INLINE_IMAGE_BYTES; the last step ships even if still
+        over budget, rather than failing the turn.
         """
         try:
             image = Image.open(BytesIO(data)).convert("RGB")

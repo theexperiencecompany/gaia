@@ -4,20 +4,24 @@ Mocks only the aio-pika channel (the I/O boundary) and exercises the real
 reconnect-retry, declare-or-not, and dead-letter topology code.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+import asyncio
+import time
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import aio_pika
 from aio_pika.exceptions import ChannelPreconditionFailed
 import pytest
 
-from app.constants.outbound import OUTBOUND_DLX, OUTBOUND_QUEUES, dlq_name
+from app.constants.log_tags import LogTag
+from app.constants.outbound import OUTBOUND_DLX, OUTBOUND_QUEUES, dlq_name, work_queue_arguments
+from app.db import rabbitmq
 from app.db.rabbitmq import RabbitMQPublisher
+from tests.helpers import captured_wide_event
 
 
 @pytest.fixture
 def connected_publisher() -> tuple[RabbitMQPublisher, MagicMock]:
-    """A publisher whose connection/channel report healthy, so ``ensure_connected``
-    is a no-op and tests drive the real publish/declare paths."""
+    """Return a publisher whose connection/channel report healthy, so ensure_connected is a no-op."""
     pub = RabbitMQPublisher("amqp://test")
     pub.connection = MagicMock(is_closed=False)
     channel = MagicMock(is_closed=False)
@@ -25,8 +29,7 @@ def connected_publisher() -> tuple[RabbitMQPublisher, MagicMock]:
     channel.declare_queue = AsyncMock()
     channel.declare_exchange = AsyncMock()
     pub.channel = channel
-    # Simulate the startup topology declaration already having run, so the
-    # publish tests isolate the publish path (self-heal is exercised separately).
+    # Simulate the topology already declared, isolating the publish path.
     pub._outbound_topology_declared = True
     return pub, channel
 
@@ -39,21 +42,82 @@ class TestPublishWithRetry:
         channel.default_exchange.publish.assert_awaited_once()
         channel.declare_queue.assert_not_awaited()  # topology is pre-declared
 
+    async def test_publish_outbound_asks_for_no_declare_explicitly(
+        self, connected_publisher
+    ) -> None:
+        """Declare must be False, not merely falsy — watching declare_queue cannot tell False from None."""
+        pub, _ = connected_publisher
+        with patch.object(pub, "_publish_with_retry", new=AsyncMock()) as publish_with_retry:
+            await pub.publish_outbound("outbound.whatsapp", b"{}")
+
+        assert publish_with_retry.await_args.kwargs["declare"] is False
+
+    async def test_publish_outbound_routes_to_the_queue_it_was_given(
+        self, connected_publisher
+    ) -> None:
+        """The routing key is the queue name on the default exchange, which has no binding to fall back on."""
+        pub, channel = connected_publisher
+        await pub.publish_outbound("outbound.whatsapp", b"{}")
+        assert (
+            channel.default_exchange.publish.await_args.kwargs["routing_key"] == "outbound.whatsapp"
+        )
+
+    async def test_publish_outbound_stamps_the_broker_ttl(self, connected_publisher) -> None:
+        """The TTL rides on the AMQP message so the broker expires it with no consumer."""
+        pub, channel = connected_publisher
+        await pub.publish_outbound("outbound.whatsapp", b"{}", expiration=3600)
+        message = channel.default_exchange.publish.await_args.args[0]
+        assert message.expiration == 3600
+
+    async def test_every_published_message_is_persistent(self, connected_publisher) -> None:
+        """A durable queue only keeps persistent messages; published transient, a reply is lost on restart while the queue survives."""
+        pub, channel = connected_publisher
+        await pub.publish_outbound("outbound.whatsapp", b"{}")
+        message = channel.default_exchange.publish.await_args.args[0]
+        assert message.delivery_mode == aio_pika.DeliveryMode.PERSISTENT
+
     async def test_publish_outbound_retries_once_then_succeeds(self, connected_publisher) -> None:
         pub, channel = connected_publisher
         channel.default_exchange.publish.side_effect = [RuntimeError("boom"), None]
-        await pub.publish_outbound("outbound.whatsapp", b"{}")
+
+        async with captured_wide_event() as wide:
+            await pub.publish_outbound("outbound.whatsapp", b"{}")
+
         # First attempt failed, reconnect path retried and succeeded.
         assert channel.default_exchange.publish.await_count == 2
+        # Asserted whole: blanking any field left a warning that names nothing.
+        assert wide["warnings"] == [
+            {
+                "msg": f"{LogTag.STARTUP} Failed to publish to RabbitMQ, attempting recovery",
+                "queue_name": "outbound.whatsapp",
+                "error": "boom",
+                "error_type": "RuntimeError",
+            }
+        ]
 
     async def test_publish_outbound_raises_when_both_attempts_fail(
         self, connected_publisher
     ) -> None:
         pub, channel = connected_publisher
         channel.default_exchange.publish.side_effect = RuntimeError("down")
-        with pytest.raises(RuntimeError):
-            await pub.publish_outbound("outbound.whatsapp", b"{}")
+
+        async with captured_wide_event() as wide:
+            with pytest.raises(RuntimeError):
+                await pub.publish_outbound("outbound.whatsapp", b"{}")
+
         assert channel.default_exchange.publish.await_count == 2
+        # The propagating exception carries no queue, so this entry is the
+        # only record of which conversation went silent.
+        assert wide["errors"] == [
+            {
+                "msg": (
+                    f"{LogTag.STARTUP} Publish to RabbitMQ failed after retry — message dropped"
+                ),
+                "queue_name": "outbound.whatsapp",
+                "error": "down",
+                "error_type": "RuntimeError",
+            }
+        ]
 
     async def test_publish_declares_the_queue_on_demand(self, connected_publisher) -> None:
         pub, channel = connected_publisher
@@ -98,9 +162,7 @@ class TestDeclareOutboundTopology:
 
 @pytest.mark.asyncio
 class TestLazyOutboundTopologyDeclare:
-    """The first publish_outbound declares the topology lazily so a message
-    never outruns the declaration; a divergent-args redeclare must not wedge
-    delivery forever."""
+    """The first publish_outbound declares the topology lazily so a message never outruns the declaration."""
 
     async def test_first_publish_declares_topology_then_publishes(
         self, connected_publisher
@@ -120,10 +182,8 @@ class TestLazyOutboundTopologyDeclare:
     async def test_precondition_failed_marks_declared_and_still_publishes(
         self, connected_publisher
     ) -> None:
-        # A queue already exists with divergent arguments: the redeclare is
-        # rejected, but the queue IS present, so the publish must still go
-        # through. The flag is set so we stop re-attempting the failing declare
-        # on every publish (the wedge this guards against).
+        # A queue with divergent arguments rejects the redeclare, but the
+        # queue IS present, so the publish must still go through.
         pub, channel = connected_publisher
         pub._outbound_topology_declared = False
         channel.declare_exchange = AsyncMock(
@@ -154,10 +214,8 @@ class TestLazyOutboundTopologyDeclare:
     async def test_non_precondition_declare_error_propagates_and_leaves_flag_false(
         self, connected_publisher
     ) -> None:
-        # Only PRECONDITION_FAILED is self-healed. A transient declare failure
-        # (broker blip, connection error) must NOT be swallowed: it propagates,
-        # nothing is published, and the flag stays False so the NEXT publish
-        # retries the declare instead of assuming a broken topology is fine.
+        # Only PRECONDITION_FAILED is self-healed; a transient declare failure
+        # must propagate, and the flag stays False so the next publish retries.
         pub, channel = connected_publisher
         pub._outbound_topology_declared = False
         channel.declare_exchange = AsyncMock(side_effect=RuntimeError("broker blip"))
@@ -186,3 +244,171 @@ class TestLazyOutboundTopologyDeclare:
 
         assert pub._outbound_topology_declared is True  # declare won't be retried
         assert channel.default_exchange.publish.await_count == 2  # tried + retried
+
+
+@pytest.mark.asyncio
+class TestAmqpAwaitsAreBounded:
+    """Every AMQP await has a deadline, so a stalled broker cannot hang a request.
+
+    Chat-stream is exempt from the request-timeout middleware, so an un-bounded
+    publish there hangs the request (and a graceful uvicorn reload) forever.
+    """
+
+    async def test_hanging_publish_times_out_instead_of_hanging(
+        self, connected_publisher, monkeypatch
+    ) -> None:
+        pub, channel = connected_publisher
+        monkeypatch.setattr(rabbitmq, "RABBITMQ_PUBLISH_TIMEOUT_SECONDS", 0.05)
+
+        async def _never_returns(*args: object, **kwargs: object) -> None:
+            await asyncio.sleep(3600)
+
+        channel.default_exchange.publish = AsyncMock(side_effect=_never_returns)
+
+        started = time.monotonic()
+        with pytest.raises(TimeoutError):
+            await pub.publish_outbound("outbound.whatsapp", b"{}")
+        # Both attempts bounded: well under the 3600s hang, not the wall clock.
+        assert time.monotonic() - started < 1.0
+        assert channel.default_exchange.publish.await_count == 2
+
+    async def test_hanging_publish_ends_in_the_failed_outcome(
+        self, connected_publisher, monkeypatch
+    ) -> None:
+        """The caller contract in outbound_delivery still holds: FAILED, not a hang."""
+        pub, channel = connected_publisher
+        monkeypatch.setattr(rabbitmq, "RABBITMQ_PUBLISH_TIMEOUT_SECONDS", 0.05)
+
+        async def _never_returns(*args: object, **kwargs: object) -> None:
+            await asyncio.sleep(3600)
+
+        channel.default_exchange.publish = AsyncMock(side_effect=_never_returns)
+
+        # Mirrors outbound_delivery's ``except Exception -> OutboundResult.FAILED``.
+        try:
+            await pub.publish_outbound("outbound.whatsapp", b"{}")
+            outcome = "published"
+        except Exception:
+            outcome = "failed"
+        assert outcome == "failed"
+
+    async def test_connect_passes_explicit_timeout_and_heartbeat(self, monkeypatch) -> None:
+        pub = RabbitMQPublisher("amqp://test")
+        connection = MagicMock(is_closed=False)
+        connection.channel = AsyncMock(return_value=MagicMock(is_closed=False))
+        connect_robust = AsyncMock(return_value=connection)
+        monkeypatch.setattr(aio_pika, "connect_robust", connect_robust)
+
+        await pub.connect()
+
+        kwargs = connect_robust.await_args.kwargs
+        assert kwargs["timeout"] == rabbitmq.RABBITMQ_CONNECT_TIMEOUT_SECONDS
+        assert kwargs["heartbeat"] == rabbitmq.RABBITMQ_HEARTBEAT_SECONDS
+
+    async def test_concurrent_ensure_connected_creates_one_connection(self, monkeypatch) -> None:
+        pub = RabbitMQPublisher("amqp://test")
+
+        async def _slow_connect(*args: object, **kwargs: object) -> MagicMock:
+            await asyncio.sleep(0.05)
+            connection = MagicMock(is_closed=False)
+            connection.channel = AsyncMock(return_value=MagicMock(is_closed=False))
+            return connection
+
+        connect_robust = AsyncMock(side_effect=_slow_connect)
+        monkeypatch.setattr(aio_pika, "connect_robust", connect_robust)
+
+        await asyncio.gather(*(pub.ensure_connected() for _ in range(5)))
+
+        assert connect_robust.await_count == 1
+
+    async def test_topology_declare_is_bounded(self, connected_publisher, monkeypatch) -> None:
+        pub, channel = connected_publisher
+        pub._outbound_topology_declared = False
+        monkeypatch.setattr(rabbitmq, "RABBITMQ_TOPOLOGY_TIMEOUT_SECONDS", 0.05)
+
+        async def _never_returns(*args: object, **kwargs: object) -> None:
+            await asyncio.sleep(3600)
+
+        channel.declare_exchange = AsyncMock(side_effect=_never_returns)
+
+        started = time.monotonic()
+        with pytest.raises(TimeoutError):
+            await pub.declare_outbound_topology()
+        assert time.monotonic() - started < 1.0
+        # A timed-out declare must not be recorded as done.
+        assert pub._outbound_topology_declared is False
+
+
+@pytest.mark.asyncio
+class TestTopologyArgumentsMatchTheConsumer:
+    """Every declaration argument is a contract with the bot consumer: a drifted flag or key is PRECONDITION_FAILED at startup."""
+
+    async def test_each_queue_and_binding_is_declared_exactly(self, connected_publisher) -> None:
+        pub, channel = connected_publisher
+        dlx = MagicMock()
+        channel.declare_exchange = AsyncMock(return_value=dlx)
+        queue_mock = MagicMock(bind=AsyncMock())
+        channel.declare_queue = AsyncMock(return_value=queue_mock)
+
+        await pub.declare_outbound_topology()
+
+        for queue in OUTBOUND_QUEUES.values():
+            channel.declare_queue.assert_any_await(dlq_name(queue), durable=True)
+            channel.declare_queue.assert_any_await(
+                queue, durable=True, arguments=work_queue_arguments(queue)
+            )
+            queue_mock.bind.assert_any_await(dlx, routing_key=dlq_name(queue))
+        assert channel.declare_queue.await_count == 2 * len(OUTBOUND_QUEUES)
+        assert pub._outbound_topology_declared is True
+
+    async def test_no_channel_after_connecting_is_a_named_failure(self) -> None:
+        pub = RabbitMQPublisher("amqp://test")
+        pub.ensure_connected = AsyncMock()  # type: ignore[method-assign] -- the seam under test is what follows it
+
+        with pytest.raises(RuntimeError, match="^Failed to establish RabbitMQ connection$"):
+            await pub.declare_outbound_topology()
+
+        assert pub._outbound_topology_declared is False
+
+    async def test_a_half_open_connection_is_closed_before_reconnecting(self, monkeypatch) -> None:
+        """A connect() timeout between connection and channel leaves an open socket; the reconnect must close it, not just forget it."""
+        pub = RabbitMQPublisher("amqp://test")
+        stale = MagicMock(is_closed=False)
+        stale.close = AsyncMock()
+        pub.connection = stale
+        pub.channel = None
+        fresh = MagicMock(is_closed=False)
+        fresh.channel = AsyncMock(return_value=MagicMock(is_closed=False))
+        monkeypatch.setattr(aio_pika, "connect_robust", AsyncMock(return_value=fresh))
+
+        await pub.ensure_connected()
+
+        stale.close.assert_awaited_once()
+        assert pub.connection is fresh
+
+    async def test_a_stale_connection_that_will_not_close_does_not_block_the_reconnect(
+        self, monkeypatch
+    ) -> None:
+        pub = RabbitMQPublisher("amqp://test")
+        stale = MagicMock(is_closed=False)
+        stale.close = AsyncMock(side_effect=RuntimeError("socket gone"))
+        pub.connection = stale
+        pub.channel = None
+        fresh = MagicMock(is_closed=False)
+        fresh.channel = AsyncMock(return_value=MagicMock(is_closed=False))
+        monkeypatch.setattr(aio_pika, "connect_robust", AsyncMock(return_value=fresh))
+
+        await pub.ensure_connected()
+
+        assert pub.connection is fresh
+
+    async def test_connect_dials_the_configured_url(self, monkeypatch) -> None:
+        pub = RabbitMQPublisher("amqp://broker.example/vhost")
+        connection = MagicMock(is_closed=False)
+        connection.channel = AsyncMock(return_value=MagicMock(is_closed=False))
+        connect_robust = AsyncMock(return_value=connection)
+        monkeypatch.setattr(aio_pika, "connect_robust", connect_robust)
+
+        await pub.connect()
+
+        assert connect_robust.await_args.args == ("amqp://broker.example/vhost",)

@@ -1,5 +1,5 @@
-"""
-Detailed breakdown of app code in the handler bundle.
+"""Detailed breakdown of app code in the handler bundle.
+
 Groups by directory/feature to show where the size is coming from.
 """
 

@@ -8,6 +8,7 @@
 
 // Type-only import — zero runtime cost.
 import type * as SentryNs from "@sentry/nextjs";
+import { DODO_RETURN_IDENTIFYING_PARAMS } from "@/features/pricing/lib/dodoReturnUrl";
 import {
   EXTENSION_URL_PATTERNS,
   filterExceptionBeforeSend,
@@ -29,6 +30,8 @@ if (typeof window !== "undefined") {
 
         Sentry.init({
           dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+          // Inlined at build time; must equal the release the maps upload under.
+          release: process.env.NEXT_PUBLIC_SENTRY_RELEASE,
 
           // Replay integration is lazy-loaded below after init — ~100KB gzipped.
           integrations: [],
@@ -39,11 +42,9 @@ if (typeof window !== "undefined") {
           replaysOnErrorSampleRate: 1.0,
           debug: false,
 
-          // Drop noise thrown by crawlers, browser extensions, and third-party
-          // scripts on our SEO pages. `ignoreErrors` / `denyUrls` handle the
-          // benign message classes and extension URLs; `beforeSend` enforces
-          // the bundle-frame allowlist those options cannot express, keeping
-          // both sinks in agreement with PostHog's `before_send`.
+          // Drop noise from crawlers, extensions, and third-party scripts on SEO
+          // pages: `ignoreErrors`/`denyUrls` handle benign messages and extension
+          // URLs; `beforeSend` enforces the bundle-frame allowlist those can't express, matching PostHog's `before_send`.
           ignoreErrors: [...IGNORED_EXCEPTION_MESSAGES],
           denyUrls: [...EXTENSION_URL_PATTERNS],
           beforeSend: filterSentryEvent,
@@ -51,11 +52,9 @@ if (typeof window !== "undefined") {
 
         _captureRouterTransitionStart = Sentry.captureRouterTransitionStart;
 
-        // Session Replay is a heavy integration (~100KB, ~760ms of script
-        // execution) that provides no value before the user engages with the
-        // page. Loading it during initial load dominated TBT on content pages,
-        // so defer it to the first user interaction — error replay still works
-        // for any session a real user actually participates in.
+        // Session Replay is heavy (~100KB, ~760ms exec) with no value before
+        // engagement — it dominated TBT on content pages, so defer to first
+        // interaction; error replay still works for any session a user participates in.
         const loadReplay = () => {
           Sentry.lazyLoadIntegration("replayIntegration")
             .then((replayIntegration) => {
@@ -86,27 +85,28 @@ if (typeof window !== "undefined") {
       }
     }
 
-    // PostHog (any environment where the project token is set)
+    // PostHog (any environment where the project token is set). A missing
+    // token is the normal local setup; in production it is an outage (web
+    // analytics went dark for 25 days this way), so it is never silent there.
     const posthogProjectToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
     if (!posthogProjectToken) {
-      if (process.env.NODE_ENV === "development") {
+      if (process.env.NODE_ENV === "production") {
         console.error(
-          new Error(
-            "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN is configured",
-          ),
+          "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN is unset in this production build: analytics is off",
         );
       }
       return;
     }
 
     try {
-      const { default: posthog } = await import("posthog-js");
+      const [{ default: posthog }, analytics] = await Promise.all([
+        import("posthog-js"),
+        import("@/lib/analytics"),
+      ]);
       posthog.init(posthogProjectToken, {
-        // Ingestion goes through the first-party /ingest proxy (see the
-        // rewrites in next.config.mjs, which point it at
-        // NEXT_PUBLIC_POSTHOG_HOST) so ad blockers cannot drop events.
-        // ui_host names the real instance so the toolbar and "view in
-        // PostHog" links resolve to the configured region, not the US default.
+        // Ingestion goes through the first-party /ingest proxy (see next.config.mjs
+        // rewrites → NEXT_PUBLIC_POSTHOG_HOST) so ad blockers can't drop events;
+        // ui_host resolves the toolbar/"view in PostHog" links to the configured region.
         api_host: "/ingest",
         ui_host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
         defaults: "2025-05-24",
@@ -116,10 +116,19 @@ if (typeof window !== "undefined") {
         // `session_recording` block the SDK sends events but no `$snapshot`
         // data, leaving Replay/Sessions empty.
         session_recording: {},
+        // A Dodo return URL carries the customer's email and payment ids; the
+        // SDK masks them at the source, so no event, person property or flags
+        // request sends them. Also masks ad click ids (gclid etc.), barely used.
+        mask_personal_data_properties: true,
+        custom_personal_data_properties: [...DODO_RETURN_IDENTIFYING_PARAMS],
         // Drop the same crawler / extension / third-party exception noise
         // Sentry filters above so both sinks stay in agreement.
         before_send: filterExceptionBeforeSend,
       });
+
+      // Synchronously, before posthog's next-tick initial pageview can carry a
+      // legacy email id; then everything buffered while init waited replays in order.
+      analytics.connectPostHog(posthog);
     } catch {
       // Analytics should never break the app.
     }
@@ -133,8 +142,7 @@ if (typeof window !== "undefined") {
 }
 
 // Next.js calls this hook at the start of every client-side navigation.
-// Transitions that occur before Sentry loads (first few navigations after
-// initial page load) will not be tracked — which is an acceptable tradeoff
-// for eliminating ~630ms of TBT from the landing page.
+// Transitions before Sentry loads go untracked — an acceptable tradeoff for
+// eliminating ~630ms of TBT from the landing page.
 export const onRouterTransitionStart: typeof SentryNs.captureRouterTransitionStart =
   (...args) => _captureRouterTransitionStart?.(...args);

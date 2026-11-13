@@ -13,12 +13,10 @@ from typing import Any
 from langchain.agents.middleware.types import (
     AgentState,
     ModelRequest,
-    ToolCallRequest,
 )
 from langchain.tools import ToolRuntime
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import SystemMessage
-from langchain_core.messages.tool import ToolCall
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.runtime import Runtime
@@ -33,9 +31,9 @@ def _noop_stream_writer(_: object) -> None:
     return
 
 
-def to_agent_state(state: State | dict[str, Any]) -> AgentState[Any]:
+def to_agent_state(state: State) -> AgentState[object]:
     """Convert graph state into LangChain AgentState-compatible shape."""
-    agent_state: AgentState[Any] = AgentState(messages=list(state.get("messages", [])))
+    agent_state: AgentState[object] = AgentState(messages=list(state.get("messages", [])))
     jump_to = state.get("jump_to")
     if jump_to in {"tools", "model", "end"}:
         agent_state["jump_to"] = jump_to
@@ -105,17 +103,14 @@ class BigtoolToolRuntime(ToolRuntime[None, dict[str, Any]]):
         config: RunnableConfig,
         store: BaseStore | None = None,
         tool_name: str | None = None,
-        state: dict[str, Any] | None = None,
-        context: None = None,
-        stream_writer: StreamWriter = _noop_stream_writer,
         tool_call_id: str | None = None,
     ) -> "BigtoolToolRuntime":
         """Create tool runtime with defaults suitable for middleware wrappers."""
         return cls(
-            state={} if state is None else state,
-            context=context,
+            state={},
+            context=None,
             config=config,
-            stream_writer=stream_writer,
+            stream_writer=_noop_stream_writer,
             tool_call_id=tool_call_id,
             store=store,
             tool_name=tool_name,
@@ -126,24 +121,10 @@ def create_model_request(
     model: BaseChatModel,
     state: State,
     runtime: BigtoolRuntime,
-    tools: Sequence[BaseTool | dict[str, Any]],
+    tools: Sequence[BaseTool | dict[str, object]],
     system_message: SystemMessage | None = None,
 ) -> ModelRequest:
-    """
-    Create a ModelRequest from langgraph_bigtool context.
-
-    This is passed to wrap_model_call middleware.
-
-    Args:
-        model: The LLM being used
-        state: Current graph state
-        runtime: The BigtoolRuntime adapter
-        tools: List of tools bound to the model
-        system_message: Optional system message (extracted from messages)
-
-    Returns:
-        ModelRequest compatible with LangChain middleware
-    """
+    """Create a ModelRequest from langgraph_bigtool context, for wrap_model_call middleware."""
     messages = list(state.get("messages", []))
 
     # Extract system message if present
@@ -154,11 +135,9 @@ def create_model_request(
             if extracted_system is None:
                 extracted_system = msg
             else:
-                # Extra system frames (dynamic context, memory recall,
-                # todo context) must ride in the request's message list —
-                # the final handler prepends only ``system_message``, so
-                # dropping them here would silently erase the dynamic
-                # context and every memory recall from the model's prompt.
+                # Extra system frames must ride in the message list — the
+                # final handler prepends only ``system_message``, so dropping
+                # them here would erase dynamic context and memory recall.
                 non_system_messages.append(msg)
         else:
             non_system_messages.append(msg)
@@ -180,39 +159,4 @@ def create_model_request(
         state=agent_state,
         runtime=runtime,
         model_settings={},
-    )
-
-
-def create_tool_call_request(
-    tool_call: dict[str, Any],
-    tool: BaseTool | None,
-    state: State,
-    runtime: BigtoolToolRuntime,
-) -> ToolCallRequest:
-    """
-    Create a ToolCallRequest from langgraph_bigtool context.
-
-    This is passed to wrap_tool_call middleware.
-
-    Args:
-        tool_call: The tool call dict with id, name, args
-        tool: The resolved BaseTool instance (if found)
-        state: Current graph state
-        runtime: The BigtoolToolRuntime adapter
-
-    Returns:
-        ToolCallRequest compatible with LangChain middleware
-    """
-    # Convert dict to ToolCall TypedDict
-    tc: ToolCall = {
-        "name": tool_call.get("name", ""),
-        "args": tool_call.get("args", {}),
-        "id": tool_call.get("id"),
-    }
-
-    return ToolCallRequest(
-        tool_call=tc,
-        tool=tool,
-        state=state,
-        runtime=runtime,
     )

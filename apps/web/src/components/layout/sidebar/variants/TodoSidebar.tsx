@@ -1,5 +1,6 @@
 "use client";
 
+import type { EventProperties } from "@gaia/shared/analytics/events";
 import { Button } from "@heroui/button";
 import { useDisclosure } from "@heroui/modal";
 import {
@@ -20,7 +21,7 @@ import TodoModal from "@/features/todo/components/TodoModal";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { priorityTextColors } from "@/features/todo/utils/priorityColors";
 import { usePathname } from "@/i18n/navigation";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { track } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { Priority } from "@/types/features/todoTypes";
 import { accordionItemStyles } from "../constants";
@@ -64,23 +65,30 @@ const PRIORITY_MENU_ITEMS = [
     label: "High Priority",
     icon: HighPriorityIcon,
     href: "/todos/priority/high",
+    view: "priority_high",
   },
   {
     label: "Medium Priority",
     icon: MediumPriorityIcon,
     href: "/todos/priority/medium",
+    view: "priority_medium",
   },
   {
     label: "Low Priority",
     icon: LowPriorityIcon,
     href: "/todos/priority/low",
+    view: "priority_low",
   },
-];
+] satisfies MenuItem[];
+
+type TodoView = EventProperties["todos:view_changed"]["view_kind"];
 
 type MenuItem = {
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string; color?: string }>;
+  iconColor?: string;
   href: string;
+  view: TodoView;
   count?: number;
 };
 
@@ -88,7 +96,7 @@ type SidebarSectionProps = {
   title?: string;
   items: MenuItem[];
   activeItem: string;
-  onItemClick: (href: string) => void;
+  onItemClick: (item: MenuItem) => void;
   action?: React.ReactNode;
   emptyState?: {
     loading: boolean;
@@ -117,7 +125,9 @@ function SidebarSection({
           <Button
             key={item.href}
             fullWidth
-            startContent={<item.icon className="w-[20px]" />}
+            startContent={
+              <item.icon className="w-[20px]" color={item.iconColor} />
+            }
             endContent={
               item.count !== undefined && (
                 <span className="ml-auto text-xs">{item.count}</span>
@@ -127,7 +137,7 @@ function SidebarSection({
             variant="light"
             radius="sm"
             size="sm"
-            onPress={() => onItemClick(item.href)}
+            onPress={() => onItemClick(item)}
           >
             {item.label}
           </Button>
@@ -185,20 +195,10 @@ export default function TodoSidebar() {
     };
   }, [loadProjects, loadCounts, loadLabels]);
 
-  const handleNavigation = (href: string) => {
-    trackEvent(ANALYTICS_EVENTS.TODOS_VIEW_CHANGED, {
-      view: href,
-      previous_view: pathname,
-    });
-    router.push(href);
+  const handleNavigation = (item: MenuItem) => {
+    track("todos:view_changed", { view_kind: item.view });
+    router.push(item.href);
   };
-
-  // const handleSearch = (e: React.FormEvent) => {
-  //   e.preventDefault();
-  //   if (searchQuery.trim()) {
-  //     router.push(`/todos/search?q=${encodeURIComponent(searchQuery)}`);
-  //   }
-  // };
 
   const mainMenuItems: MenuItem[] = useMemo(
     () => [
@@ -206,24 +206,28 @@ export default function TodoSidebar() {
         label: "Inbox",
         icon: InboxIcon,
         href: "/todos",
+        view: "inbox",
         count: counts.inbox,
       },
       {
         label: "Today",
         icon: Calendar01Icon,
         href: "/todos/today",
+        view: "today",
         count: counts.today,
       },
       {
         label: "Upcoming",
         icon: CalendarUpload02Icon,
         href: "/todos/upcoming",
+        view: "upcoming",
         count: counts.upcoming,
       },
       {
         label: "Completed",
         icon: InboxCheckIcon,
         href: "/todos/completed",
+        view: "completed",
         count: counts.completed,
       },
     ],
@@ -238,6 +242,7 @@ export default function TodoSidebar() {
             label: label.name,
             icon: LabelTagIcon,
             href: `/todos/label/${encodeURIComponent(label.name)}`,
+            view: "label",
             count: label.count,
           }))
         : [],
@@ -249,17 +254,12 @@ export default function TodoSidebar() {
     const items: MenuItem[] = [];
     for (const project of projects) {
       if (project.is_default) continue;
-      const color = project.color;
-      const ProjectColorIcon = ({
-        className: _className,
-      }: {
-        className?: string;
-      }) => <ProjectIcon color={color} />;
-      ProjectColorIcon.displayName = `ProjectIcon_${project.id}`;
       items.push({
         label: project.name,
-        icon: ProjectColorIcon,
+        icon: ProjectIcon,
+        iconColor: project.color,
         href: `/todos/project/${project.id}`,
+        view: "project",
         count: project.todo_count,
       });
     }

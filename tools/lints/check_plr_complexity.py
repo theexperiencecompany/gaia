@@ -10,29 +10,26 @@ notice a PR making an already-flagged function *worse* -- ruff's per-file
 ignore silences a rule for the whole file, not just the violations recorded
 at the time.
 
-This script closes that gap: a violation is allowed only if it is (a) already
-in the checked-in baseline, AND (b) its file is not touched by the current
-PR. Touch a grandfathered file and its known violations stop being free --
-fix them in the same PR, same as any other lint failure. A genuinely new
-violation (new file, or a rule the file didn't already have) is never
-grandfathered, touched or not.
+The ratchet mechanics (grandfathered only while untouched, expiring
+deferrals, ``--update``) live in ``_ratchet.py`` and are shared with the other
+baseline-carrying lints; this script only knows how to ask ruff for the
+current violations.
 
 Usage::
 
     python3 tools/lints/check_plr_complexity.py       # check (exits 1 on failure)
     python3 tools/lints/check_plr_complexity.py --update   # record the current baseline
-
-Stdlib only, like the AST rules and the ignore-ratchet beside it.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 
-from _common import Violation, report_rule
+from _ratchet import REPO_ROOT, RatchetRule, run_ratchet
 
 RULE = "plr-complexity-ratchet"
 WHY = (
@@ -43,14 +40,11 @@ WHY = (
 DOC = "tools/lints/README.md#plr-complexity-ratchet"
 
 _HERE = Path(__file__).resolve().parent
-REPO_ROOT = _HERE.parents[1]
 BASELINE = _HERE / "plr_complexity_baseline.txt"
-CHANGES_SCRIPT = REPO_ROOT / "scripts" / "ci" / "changes.sh"
 PLR_RULES = ("PLR0911", "PLR0912", "PLR0913", "PLR0915")
-FULL_SENTINEL = "__FULL__"
 
-# Pinned to the same ruff version as the "Python ruff" CI lane
-# (.github/workflows/code-quality.yml) -- bump both together. `uvx` resolves
+# Pinned to the same ruff version as the python-ruff CI check
+# (.github/workflows/ci.yml) -- bump both together. `uvx` resolves
 # it without requiring a separate "install ruff onto PATH" CI step.
 _RUFF_CMD = ["uvx", "--no-build", "ruff@0.14.13"]
 
@@ -64,7 +58,24 @@ _BASELINE_HEADER = """\
 #
 # One line per (file, rule), tab-separated, sorted. Regenerate with:
 #   python3 tools/lints/check_plr_complexity.py --update
+#
+# A line may carry a third field, "deferred-until=YYYY-MM-DD; <reason>", to
+# keep a touched file's known violation from failing until that date (CI
+# warns instead). Past the date it fails again: fix it, or renew the deferral
+# with a fresh reason. --update keeps the field.
 """
+
+
+def _untracked_python() -> set[str]:
+    """Python files git does not track: prek stashes unstaged edits, not these, so no commit holds them."""
+    proc = subprocess.run(  # nosec B603 - fixed git argv, no shell
+        ["git", "ls-files", "--others", "--exclude-standard", "--", "*.py"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return set(proc.stdout.splitlines())
 
 
 def _current_violations() -> dict[tuple[str, str], int]:
@@ -93,106 +104,30 @@ def _current_violations() -> dict[tuple[str, str], int]:
         print(proc.stderr, file=sys.stderr)
         raise SystemExit(f"{RULE}: ruff failed unexpectedly (exit {proc.returncode})")
     violations = json.loads(proc.stdout)
+    outside_commit = _untracked_python() if os.environ.get("PRE_COMMIT") else set()
     out: dict[tuple[str, str], int] = {}
     for v in violations:
         path = Path(v["filename"]).resolve().relative_to(REPO_ROOT).as_posix()
+        if path in outside_commit:
+            continue
         key = (path, v["code"])
         out.setdefault(key, v["location"]["row"])
     return out
 
 
-def _touched_files() -> set[str] | None:
-    """Files this PR changed, or ``None`` on a full/push scan (no diff to check)."""
-    proc = subprocess.run(  # nosec B603 - fixed repo script argv, no shell
-        [str(CHANGES_SCRIPT), "files", "py"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    lines = [line for line in proc.stdout.splitlines() if line]
-    if lines == [FULL_SENTINEL]:
-        return None
-    return set(lines)
-
-
-def read_baseline() -> set[tuple[str, str]]:
-    if not BASELINE.exists():
-        return set()
-    entries: set[tuple[str, str]] = set()
-    for raw in BASELINE.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        path, rule = line.split("\t")
-        entries.add((path, rule))
-    return entries
-
-
-def write_baseline(entries: set[tuple[str, str]]) -> None:
-    body = "\n".join(f"{path}\t{rule}" for path, rule in sorted(entries))
-    BASELINE.write_text(f"{_BASELINE_HEADER}{body}\n", encoding="utf-8")
+_RATCHET = RatchetRule(
+    name=RULE,
+    why=WHY,
+    doc=DOC,
+    baseline=BASELINE,
+    header=_BASELINE_HEADER,
+    script="tools/lints/check_plr_complexity.py",
+    fix_new="new complexity violation -- simplify the function",
+)
 
 
 def main(argv: list[str]) -> int:
-    current = _current_violations()
-    current_keys = set(current)
-
-    if "--update" in argv:
-        previous = read_baseline()
-        write_baseline(current_keys)
-        print(
-            f"{RULE}: baseline updated -- {len(current_keys)} known violation(s) "
-            f"(+{len(current_keys - previous)} / -{len(previous - current_keys)}). "
-            "Commit the diff so the change is reviewable."
-        )
-        return 0
-
-    baseline = read_baseline()
-    touched = _touched_files()
-
-    unexpected = current_keys - baseline
-    must_fix_now: set[tuple[str, str]] = set()
-    if touched is not None:
-        must_fix_now = {(path, rule) for path, rule in baseline if path in touched}
-
-    failures = unexpected | must_fix_now
-    if failures:
-        violations = []
-        for path, rule in sorted(failures):
-            is_new = (path, rule) in unexpected
-            fix = (
-                "new complexity violation -- simplify the function, or if it's "
-                "a genuine one-off, justify it in review and add it to "
-                "tools/lints/plr_complexity_baseline.txt with --update"
-                if is_new
-                else (
-                    "this file is grandfathered for this rule, but this PR "
-                    "touches it -- fix the violation now and delete its line "
-                    "from tools/lints/plr_complexity_baseline.txt"
-                )
-            )
-            label = "new" if is_new else "touched, grandfathered"
-            violations.append(
-                Violation(
-                    path=Path(path),
-                    line=current.get((path, rule), 0),
-                    detail=f"{rule} ({label})",
-                    fix=fix,
-                )
-            )
-        report_rule(RULE, WHY, DOC, violations)
-        return 1
-
-    fixed = baseline - current_keys
-    if fixed:
-        print(f"{RULE}: {len(fixed)} grandfathered violation(s) no longer present -- nice.")
-        for path, rule in sorted(fixed):
-            print(f"  - {path} ({rule})")
-        print("  Lock the win in with: python3 tools/lints/check_plr_complexity.py --update")
-
-    print(f"{RULE}: {len(current_keys)} current violation(s), all grandfathered and untouched")
-    return 0
+    return run_ratchet(_RATCHET, _current_violations(), argv)
 
 
 if __name__ == "__main__":

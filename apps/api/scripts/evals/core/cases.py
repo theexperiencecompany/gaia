@@ -1,14 +1,14 @@
 """Load a suite's cases from its YAML data directory.
 
 One loader, shared by every suite that keeps its ground truth in
-``data/<suite>/*.yaml``. Files are read in filename order and case ids must be
+data/<suite>/*.yaml. Files are read in filename order and case ids must be
 unique across the whole directory — a duplicate id silently shadows a case in
 the journal and the Opik trace key, so it fails loud here instead.
 
-Known debt: ``suites/quality.py`` and ``suites/capability.py`` predate this and
+Known debt: suites/quality.py and suites/capability.py predate this and
 carry their own near-identical loaders (quality folds unknown top-level keys into
-``setup``, capability reads an explicit ``setup:`` block). They should converge
-on this function; this file is the target shape — an explicit ``setup:`` block,
+setup, capability reads an explicit setup: block). They should converge
+on this function; this file is the target shape — an explicit setup: block,
 because "whatever keys I didn't recognise" is not a schema.
 """
 
@@ -26,9 +26,9 @@ from .types import Case
 def load_case_files(
     data_dir: Path, suite: str, extra_gates: ExtraGates | None = None
 ) -> list[Case]:
-    """Every case defined under ``data_dir``, validated and id-unique.
+    """Every case defined under data_dir, validated and id-unique.
 
-    ``extra_gates`` names the gates the calling suite implements beyond the
+    extra_gates names the gates the calling suite implements beyond the
     shared set, so a gate name nothing can score dies here rather than being
     read back as 0.0 at verdict time and reported as an agent failure.
     """

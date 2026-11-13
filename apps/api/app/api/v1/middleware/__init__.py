@@ -1,30 +1,9 @@
+"""API v1 middleware package.
+
+Deliberately empty. Re-exports here made importing the rate limiter execute
+auth too, so every importer paid workos and the whole middleware stack
+(131 modules, ~0.2 s). Import each middleware from its own module.
+
+tiered_rate_limit lives in app/decorators/rate_limiting.py; a second copy here
+once drifted and silently skipped rate limiting.
 """
-API v1 Middleware package initialization.
-
-Exposes main middleware classes, decorators, and utilities for easy import.
-"""
-
-from .auth import PostHogRequestContextMiddleware, WorkOSAuthMiddleware
-from .logging import LoggingMiddleware, log_function_call
-from .profiling import ProfilingMiddleware
-from .rate_limiter import limiter
-from .tiered_rate_limiter import (
-    RateLimitExceededException,
-    TieredRateLimiter,
-    UsageInfo,
-)
-
-# `tiered_rate_limit` is deliberately NOT re-exported here: it lives in
-# app/decorators/rate_limiting.py. A second copy in this package drifted and
-# silently skipped rate limiting — import it from `app.decorators`.
-__all__ = [
-    "PostHogRequestContextMiddleware",
-    "WorkOSAuthMiddleware",
-    "LoggingMiddleware",
-    "log_function_call",
-    "ProfilingMiddleware",
-    "limiter",
-    "TieredRateLimiter",
-    "RateLimitExceededException",
-    "UsageInfo",
-]

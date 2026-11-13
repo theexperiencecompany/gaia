@@ -11,6 +11,7 @@ in production only.
 from unittest.mock import AsyncMock, patch
 
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
+from tests.helpers import captured_wide_event
 
 MODULE = "app.workers.tasks.hil_sweep_tasks"
 
@@ -36,3 +37,16 @@ class TestTheCronRunsTheSweep:
             result = await sweep_hil_approvals({})
 
         assert result == "expired=3 redispatched=2"
+
+    async def test_the_counts_land_on_the_wide_event(self) -> None:
+        with patch(
+            f"{MODULE}.sweep_approvals",
+            new=AsyncMock(return_value={"expired": 3, "redispatched": 2}),
+        ):
+            async with captured_wide_event() as event:
+                await sweep_hil_approvals({})
+
+        assert {key: event.get(key) for key in ("expired_count", "redispatched_count")} == {
+            "expired_count": 3,
+            "redispatched_count": 2,
+        }

@@ -13,6 +13,9 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.models.trigger_gate_models import QuietHoursBypass, TriggerGate, TriggerGateView
+from app.schemas.common import ResponseModel
+
 
 class MatchableFieldType(StrEnum):
     """The payload types a condition can be written against.
@@ -25,6 +28,7 @@ class MatchableFieldType(StrEnum):
     INTEGER = "integer"
     NUMBER = "number"
     STRING_LIST = "string_list"
+    BOOLEAN = "boolean"
 
 
 class ConditionOperator(StrEnum):
@@ -62,6 +66,8 @@ _NUMERIC_OPERATORS = frozenset(
     }
 )
 
+_BOOLEAN_OPERATORS = frozenset({ConditionOperator.EQUALS, ConditionOperator.NOT_EQUALS})
+
 # On a list field the operators test membership, not substring.
 _LIST_OPERATORS = frozenset({ConditionOperator.CONTAINS, ConditionOperator.NOT_CONTAINS})
 
@@ -70,6 +76,7 @@ OPERATORS_BY_FIELD_TYPE: Mapping[MatchableFieldType, frozenset[ConditionOperator
     MatchableFieldType.INTEGER: _NUMERIC_OPERATORS,
     MatchableFieldType.NUMBER: _NUMERIC_OPERATORS,
     MatchableFieldType.STRING_LIST: _LIST_OPERATORS,
+    MatchableFieldType.BOOLEAN: _BOOLEAN_OPERATORS,
 }
 
 
@@ -99,6 +106,11 @@ class MatchableTrigger(BaseModel):
         default_factory=dict,
         description="Payload field name -> why it is not matchable",
     )
+    title_field: str | None = Field(
+        default=None,
+        exclude=True,
+        description="The field that names one event to the user, as a skipped run does",
+    )
 
     def field(self, name: str) -> MatchableField | None:
         return next((f for f in self.fields if f.name == name), None)
@@ -117,7 +129,7 @@ class SubscriptionAction(StrEnum):
     UNBLOCK = "unblock"
 
 
-class SubscriptionStatus(StrEnum):
+class TriggerSubscriptionStatus(StrEnum):
     ACTIVE = "active"
     # Set when the integration behind the subscription loses its connection.
     PAUSED = "paused"
@@ -155,7 +167,8 @@ class SubscriptionCondition(BaseModel):
 
     field_name: str = Field(description="A field name from the trigger's matchable catalog")
     operator: ConditionOperator
-    value: str | int | float
+    # bool first: in a smart union an int field would otherwise read True as 1.
+    value: bool | str | int | float
 
 
 class TriggerSubscription(BaseModel):
@@ -165,6 +178,10 @@ class TriggerSubscription(BaseModel):
 
     id: str = Field(default_factory=lambda: str(uuid4()))
     trigger_name: str
+    account_id: str | None = Field(
+        default=None,
+        description="GAIA id of the one connected account whose events fire it; None for every account",
+    )
     conditions: list[SubscriptionCondition] = Field(default_factory=list)
     match: ConditionMatch = Field(
         default=ConditionMatch.ALL,
@@ -189,7 +206,11 @@ class TriggerSubscription(BaseModel):
             "with the user's original config instead of resetting to defaults."
         ),
     )
-    status: SubscriptionStatus = SubscriptionStatus.ACTIVE
+    gate: TriggerGate | None = Field(
+        default=None,
+        description="The check a fired event must pass before an EXECUTE subscription runs",
+    )
+    status: TriggerSubscriptionStatus = TriggerSubscriptionStatus.ACTIVE
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @model_validator(mode="after")
@@ -205,6 +226,22 @@ class TriggerSubscription(BaseModel):
         """
         self.__pydantic_fields_set__.update(type(self).model_fields.keys())
         return self
+
+    @model_validator(mode="after")
+    def _gate_only_on_a_run(self) -> "TriggerSubscription":
+        """Allow a gate only where it saves a run: a gated COMPLETE could drop the reply a todo waits for."""
+        if self.gate is not None and self.action is not SubscriptionAction.EXECUTE:
+            raise ValueError(f"a gate needs action execute, not {self.action.value}")
+        return self
+
+
+class TriggerSubscriptionView(TriggerSubscription, ResponseModel):
+    """A subscription as the API returns it, its gate with what the user reads about it."""
+
+    gate: TriggerGateView | None = Field(
+        default=None,
+        description="The check a fired event must pass before an EXECUTE subscription runs",
+    )
 
 
 class TriggerOrigin(BaseModel):
@@ -225,7 +262,17 @@ class TriggerOrigin(BaseModel):
         default_factory=dict,
         description="The webhook payload that matched, for the agent's context",
     )
-    defer_attempts: int = Field(
-        default=0,
-        description="How many times this fire was re-enqueued past a held execution lock",
+    quiet_hours_bypass: QuietHoursBypass | None = Field(
+        default=None,
+        description="Why this run interrupts the user's quiet hours, when its gate let it through",
     )
+
+
+class ConditionArgs(BaseModel):
+    """One condition as the model sent it; each key keeps its original type or is absent."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    field_name: str | int | float | None = None
+    operator: str | int | float | None = None
+    value: bool | str | int | float | None = None

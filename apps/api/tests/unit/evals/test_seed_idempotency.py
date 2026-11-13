@@ -9,7 +9,7 @@ both silently:
 * the lookup keyed on trace metadata, so renaming a metadata field made every
   key miss and every case duplicate.
 
-Identity now comes from the journal (``CaseTrace.key``) and the trace id is
+Identity now comes from the journal (CaseTrace.key) and the trace id is
 derived from it, so a second write targets the same row. These tests pin that,
 and pin the loud failure for the one case it cannot cover — rows written before
 derived ids existed, which a seed would still duplicate.
@@ -73,12 +73,9 @@ class _FakeClient:
 
     def trace(self, **kwargs: Any) -> _FakeTrace:
         self.writes += 1
-        # Faithful to the real backend on both branches: it upserts on a supplied
-        # id (verified against the live Opik before this design was chosen), and
-        # mints a fresh one when the caller omits it — which is exactly how the
-        # duplicates were created. Minting here rather than raising KeyError is
-        # what makes a regression fail as "two rows", the real symptom, instead
-        # of as a crash that could be mistaken for a broken test.
+        # Faithful to the real backend (verified against live Opik): upserts on
+        # a supplied id, mints a fresh one when omitted — exactly how the
+        # duplicates were created, so a regression fails as "two rows", not a crash.
         trace_id = kwargs.get("id") or str(uuid.uuid4())
         self.rows[trace_id] = kwargs
         return _FakeTrace(self.sink, trace_id)
@@ -119,13 +116,7 @@ def test_re_seeding_refreshes_rather_than_skips(fake_client: _FakeClient) -> Non
 
 
 def test_a_metadata_rename_cannot_defeat_idempotency(fake_client: _FakeClient) -> None:
-    """The root cause, pinned.
-
-    Identity is derived from the journal, so changing what we *publish* as
-    metadata must not change which row a case writes to. If this ever fails,
-    idempotency has been coupled back to metadata and the next rename will
-    silently duplicate everything again.
-    """
+    """Identity is derived from the journal, so changing published metadata must not change which row a case writes to."""
     before = opiksink.trace_id_for(PROJECT, _trace())
     renamed = _trace()
     object.__setattr__(renamed, "category", "totally-different-metadata")
@@ -135,15 +126,7 @@ def test_a_metadata_rename_cannot_defeat_idempotency(fake_client: _FakeClient) -
 def test_a_resumed_run_journalling_a_case_twice_still_writes_one_trace(
     fake_client: _FakeClient,
 ) -> None:
-    """The bug a full rebuild found, after the first idempotency fix looked done.
-
-    A resumed run writes the same case twice with slightly different timestamps
-    and durations. The derived id embedded the case's own start time (a UUIDv7
-    carries a millisecond clock in its first 48 bits), so the two records
-    produced ids that matched in their hash half and differed in their clock
-    half — and the second inserted a duplicate. Three of these survived a full
-    rebuild of nine projects.
-    """
+    """A resumed run's two writes embed different start times in the UUIDv7 clock half of the derived id, so ids differ (3 of 9 projects hit this)."""
     first = _trace(ts="2026-08-08T06:36:12.100000+00:00", duration_s=4.20)
     second = _trace(ts="2026-08-08T06:36:12.140000+00:00", duration_s=4.19)
     # Deliberately not a 40ms shift in both: started_at is ts minus duration, so
@@ -167,11 +150,7 @@ def test_two_different_cases_are_not_collapsed(fake_client: _FakeClient) -> None
 
 
 def test_seeding_over_legacy_traces_fails_loudly(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Rows written before derived ids exist would still be duplicated.
-
-    Upsert cannot help there — the old row has a random id. That case has to
-    abort with an instruction, not quietly double the project.
-    """
+    """Rows written before derived ids exist have a random id, so upsert can't help; this must abort with an instruction, not double silently."""
     monkeypatch.setattr(opiksink, "legacy_case_traces", lambda _project, _expected: 387)
     with pytest.raises(seed_module.LegacyTracesPresentError) as caught:
         seed_module._refuse_to_double(PROJECT, [_trace()])

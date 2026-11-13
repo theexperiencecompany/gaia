@@ -11,15 +11,21 @@ from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.agents.core.background.executor_progress import RunProgress
+from app.models.executor_activity_models import ExecutorActivity, ExecutorActivitySnapshot
+from app.models.integration_models import UserIntegrationDocument
 from app.models.memory_models import MemoryEntry, MemorySearchResult
+from app.models.presence_models import PresenceSnapshot
 from app.models.todo_models import TodoDocument
+from app.services.browser.chat_task import ChatBrowserTasks
+from app.services.delivery.chat_channel import InApp, ProactiveTarget
 from app.services.gaia_knowledge_service import KnowledgeResult
 
 
 def memory(content: str, *, mentioned: str | None = None) -> MemoryEntry:
-    """A recalled memory. ``mentioned`` fixes the date ``entry_to_note`` renders."""
+    """Build a recalled memory; mentioned fixes the date entry_to_note renders."""
     return MemoryEntry(
         content=content,
         mentioned_at=datetime.fromisoformat(mentioned).replace(tzinfo=UTC) if mentioned else None,
@@ -41,23 +47,30 @@ class ContextSources:
     skills: str = ""
     #: ``get_connected_integrations_named`` shape: ``[{"id": ..., "name": ...}]``.
     connected_integrations: list[dict[str, str]] = field(default_factory=list)
-    provider_metadata: dict[str, str] = field(default_factory=dict)
-    custom_instructions: str = ""
+    #: Integrations holding several accounts, for the manifest's account lists.
+    multi_account_records: list[UserIntegrationDocument] = field(default_factory=list)
+    #: The user's "global" standing instructions, the only scope a context section reads.
+    global_instructions: str = ""
     active_todo: TodoDocument | None = None
     #: Ground-truth block the workflow authoring tier folds into its human turn.
     workflow_integrations_hint: str = ""
     #: Task id of a live background executor run, or ``None`` for "not busy".
     executor_busy_task_id: str | None = None
-    #: Comms-only: the onboarding system prompt for this turn, or ``None`` when
-    #: the conversation is not an onboarding one.
-    onboarding_prompt: str | None = None
+    #: The browser tasks the chat controls; none by default.
+    browser_tasks: ChatBrowserTasks = field(
+        default_factory=lambda: ChatBrowserTasks(running=[], paused=None)
+    )
+    #: What the root's presence read returns; the default is a user never seen anywhere.
+    presence: PresenceSnapshot = field(
+        default_factory=lambda: PresenceSnapshot(captured_at=0, last_seen={})
+    )
+    #: The one place a proactive message would land on.
+    proactive_target: ProactiveTarget = field(default_factory=lambda: InApp(reason="no_chat_app"))
 
 
-#: The real clients underneath the faked edges. Every one of these is reachable
-#: from some context section's call graph, so leaving them live would let a
-#: section that grows a new read pass by silently hitting a store instead of a
-#: declared fake. Fenced rather than stubbed: a hit is a bug in the harness's
-#: coverage, not a value to guess at.
+#: The real clients underneath the faked edges, reachable from some context
+#: section's call graph; fenced rather than stubbed so a section that grows
+#: a new read fails loudly instead of silently hitting a real store.
 _FENCED_CLIENTS = (
     "app.db.mongodb.collections.get_async_collection",
     "app.db.redis.get_cache",
@@ -122,16 +135,25 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
                 AsyncMock(return_value=list(sources.connected_integrations)),
             )
         )
+        # The device manifest is a cached live read (Postgres) behind @Cacheable.
+        # The fixture declares no devices, so pin the empty manifest rather than
+        # letting the snapshot depend on whatever devices the environment holds.
         enter(
             patch(
-                "app.agents.context.sections.get_provider_metadata",
-                AsyncMock(return_value=dict(sources.provider_metadata)),
+                "app.agents.context.fetchers.get_device_manifest",
+                AsyncMock(return_value=[]),
+            )
+        )
+        enter(
+            patch(
+                "app.agents.context.fetchers.list_account_records",
+                AsyncMock(return_value=list(sources.multi_account_records)),
             )
         )
         enter(
             patch(
                 "app.agents.context.sections.get_instructions",
-                AsyncMock(return_value=sources.custom_instructions),
+                AsyncMock(return_value=sources.global_instructions),
             )
         )
         enter(
@@ -146,42 +168,50 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
                 AsyncMock(return_value=sources.workflow_integrations_hint),
             )
         )
-        # Whether a turn is an onboarding turn is decided by a Mongo probe plus
-        # the user document. That resolution is its own subject with its own
-        # tests; here only its answer matters, so the answer is what is pinned.
+        # Roots with no presence read it (comms in _core_agent_logic, others in
+        # build_agent_config); a background note reads it live with its target.
+        for reader in (
+            "app.agents.core.agent.read_presence",
+            "app.helpers.agent_helpers.read_presence",
+            "app.agents.context.presence_note.read_presence",
+        ):
+            enter(patch(reader, AsyncMock(return_value=sources.presence)))
         enter(
             patch(
-                "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
-                AsyncMock(return_value=sources.onboarding_prompt),
+                "app.agents.context.presence_note.resolve_proactive_target",
+                AsyncMock(return_value=sources.proactive_target),
             )
         )
-        # The tracked-todos summary sits behind @Cacheable, which would reach a
-        # real Redis. Patched at the cached wrapper so the harness stays
-        # hermetic and the value is the declared one rather than whatever a
-        # previous run happened to leave in the cache.
-        enter(
-            patch(
-                "app.agents.context.fetchers._cached_tracked_todos_summary",
-                AsyncMock(return_value=sources.tracked_todos),
-            )
-        )
-        enter(_patch_executor_lock(sources.executor_busy_task_id))
+        enter(_patch_live_work(sources.executor_busy_task_id, sources.browser_tasks))
         for target in _FENCED_CLIENTS:
             enter(patch(target, _fence(target)))
         yield
 
 
 @contextmanager
-def _patch_executor_lock(task_id: str | None) -> Iterator[None]:
-    """Pin the comms executor-busy lock ``executor_status_hook`` reads.
+def _patch_live_work(task_id: str | None, browser_tasks: ChatBrowserTasks) -> Iterator[None]:
+    """Pin what the comms turn-start live-work sections read.
 
-    The hook treats a missing client as "not busy", which is the same observable
-    state as an unheld lock — so ``None`` covers both without a Redis server.
+    task_id None is an idle executor; otherwise a live run holding the lock with
+    no subagents and no recorded progress.
     """
-    with patch("app.agents.core.nodes.executor_status.redis_cache") as fake_cache:
-        if task_id is None:
-            fake_cache.client = None
-        else:
-            fake_cache.client = AsyncMock()
-            fake_cache.client.get = AsyncMock(return_value=f"stream-1:{task_id}")
+    snapshot = (
+        ExecutorActivitySnapshot(ExecutorActivity.IDLE)
+        if task_id is None
+        else ExecutorActivitySnapshot(ExecutorActivity.RUNNING, task_id, f"stream-1:{task_id}")
+    )
+    running = MagicMock()
+    running.return_value.live = AsyncMock(return_value=[])
+    with (
+        patch(
+            "app.agents.context.live_work.read_executor_activity",
+            AsyncMock(return_value=snapshot),
+        ),
+        patch("app.agents.context.live_work.RunningSubagents", running),
+        patch("app.agents.context.live_work.read_progress", AsyncMock(return_value=RunProgress())),
+        patch(
+            "app.agents.context.live_work.chat_browser_tasks",
+            AsyncMock(return_value=browser_tasks),
+        ),
+    ):
         yield

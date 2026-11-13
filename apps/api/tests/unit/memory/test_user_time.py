@@ -1,4 +1,4 @@
-"""Journal-day bucketing on the user's wall clock (``app.memory.user_time``)."""
+"""Journal-day bucketing on the user's wall clock (app.memory.user_time)."""
 
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -80,10 +80,7 @@ class TestLocalToday:
 @pytest.mark.unit
 class TestRepositoryFailureFallsBackToUTC:
     async def test_a_repository_error_resolves_to_utc_instead_of_raising(self) -> None:
-        """The repository raises for a malformed user id (bson InvalidId) and
-        for infra failures; timezone resolution is enrichment, so a lookup
-        failure must degrade to UTC — raising here crashed every retain in the
-        real-infra suite, whose synthetic user ids are not ObjectIds."""
+        """Raising here crashed every retain in the real-infra suite, whose synthetic user ids are not ObjectIds."""
         with patch.object(
             user_time.user_repository, "get", AsyncMock(side_effect=ValueError("bad id"))
         ):
@@ -92,9 +89,7 @@ class TestRepositoryFailureFallsBackToUTC:
         assert tz == user_time.Timezone.utc()
 
     async def test_the_degraded_lookup_is_visible_in_the_wide_event(self) -> None:
-        """Failing open must not fail silent: the fallback warns with the
-        event name and the structured fields (user, error type, message) that
-        make a broken timezone preference diagnosable from the wide event."""
+        """The warning carries user id, error type, and message for diagnosis."""
         with (
             patch.object(
                 user_time.user_repository, "get", AsyncMock(side_effect=ValueError("bad id"))

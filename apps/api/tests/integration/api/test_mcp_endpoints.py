@@ -1,18 +1,22 @@
-"""Integration tests for MCP API endpoints.
+"""Integration tests for MCP API endpoints."""
 
-Tests the routes mounted at /api/v1/mcp/:
-
-  POST /api/v1/mcp/test/{integration_id}   – probe / connect an MCP server
-  GET  /api/v1/mcp/oauth/callback           – handle OAuth code exchange
-
-External I/O (MCPClient, IntegrationResolver, Redis, tool registry) is fully
-mocked.  The real FastAPI app is used via ASGITransport so routing, request
-validation, and auth enforcement are exercised for real.
-"""
-
+from collections.abc import Callable, Iterator
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from bson import ObjectId
+from fastapi import FastAPI
+import httpx
 import pytest
+
+from app.config.settings import settings
+from app.db.repositories.local_credentials import local_credentials_repository
+from app.db.repositories.users import user_repository
+from app.models.auth_models import LocalCredentialDocument
+from app.models.user_models import UserDocument
+from app.utils import local_auth_utils
+from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE, issue_session_token
+from tests.helpers import hostile_jwts
 
 # ---------------------------------------------------------------------------
 # Shared payload builders
@@ -37,8 +41,6 @@ def _make_resolved_integration(
 def _make_mcp_client(
     probe_result: dict | None = None,
     connect_tools: list | None = None,
-    oauth_url: str = "https://oauth.provider.test/authorize",
-    handle_oauth_tools: list | None = None,
 ):
     """Build a mock MCPClient instance."""
     client = MagicMock()
@@ -46,11 +48,7 @@ def _make_mcp_client(
         return_value=probe_result or {"requires_auth": False, "error": None}
     )
     client.connect = AsyncMock(return_value=connect_tools or [MagicMock(name="tool_a")])
-    client.build_oauth_auth_url = AsyncMock(return_value=oauth_url)
     client.update_integration_auth_status = AsyncMock()
-    client.handle_oauth_callback = AsyncMock(
-        return_value=handle_oauth_tools or [MagicMock(name="tool_x")]
-    )
     return client
 
 
@@ -193,11 +191,15 @@ class TestMCPTestConnectionEndpoint:
                 "auth_type": "oauth",
                 "error": None,
             },
-            oauth_url="https://auth.provider.test/oauth/authorize?client_id=abc",
         )
         mock_get_client.return_value = mock_client
 
-        response = await test_client.post("/api/v1/mcp/test/oauth-integration")
+        with patch(
+            "app.api.v1.endpoints.mcp.build_oauth_auth_url",
+            new_callable=AsyncMock,
+            return_value="https://auth.provider.test/oauth/authorize?client_id=abc",
+        ):
+            response = await test_client.post("/api/v1/mcp/test/oauth-integration")
 
         assert response.status_code == 200
         data = response.json()
@@ -270,7 +272,7 @@ class TestMCPTestConnectionEndpoint:
             new_callable=AsyncMock,
         ) as mock_invalidate:
             await test_client.post("/api/v1/mcp/test/cache-check-integration")
-            mock_invalidate.assert_awaited_once_with(str(test_user["user_id"]))
+            mock_invalidate.assert_awaited_once_with(str(test_user.user_id))
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +284,22 @@ class TestMCPTestConnectionEndpoint:
 class TestMCPOAuthCallbackEndpoint:
     """Tests for GET /api/v1/mcp/oauth/callback."""
 
+    @pytest.fixture(autouse=True)
+    def first_connection(self):
+        with patch(
+            "app.services.mcp.oauth_callback.user_integration_repository.has_connected_before",
+            new_callable=AsyncMock,
+            return_value=False,
+        ):
+            yield
+
+    @pytest.fixture(autouse=True)
+    def exchange(self):
+        with patch(
+            "app.services.mcp.oauth_callback.handle_oauth_callback", new_callable=AsyncMock
+        ) as mock:
+            yield mock
+
     @patch(
         "app.api.v1.endpoints.mcp.get_mcp_client",
         new_callable=AsyncMock,
@@ -291,7 +309,7 @@ class TestMCPOAuthCallbackEndpoint:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.api.v1.endpoints.mcp.invalidate_user_integration_caches",
+        "app.services.mcp.oauth_callback.invalidate_user_integration_caches",
         new_callable=AsyncMock,
     )
     @patch(
@@ -310,9 +328,7 @@ class TestMCPOAuthCallbackEndpoint:
         mock_resolve.return_value = _make_resolved_integration()
         mock_resolve.return_value.name = "My MCP Integration"
 
-        mock_client = _make_mcp_client(
-            handle_oauth_tools=[MagicMock(name="tool1"), MagicMock(name="tool2")]
-        )
+        mock_client = _make_mcp_client()
         mock_client.token_store = MagicMock()
         mock_client.token_store.clear_excluded_scopes = AsyncMock()
         mock_get_client.return_value = mock_client
@@ -451,13 +467,14 @@ class TestMCPOAuthCallbackEndpoint:
         mock_resolve,
         mock_get_client,
         test_client,
+        exchange,
     ):
         """GET /api/v1/mcp/oauth/callback redirects to error page when handle_oauth_callback raises."""
         mock_resolve.return_value = _make_resolved_integration()
         mock_resolve.return_value.name = "Failing Integration"
 
         mock_client = _make_mcp_client()
-        mock_client.handle_oauth_callback = AsyncMock(side_effect=ValueError("Invalid state token"))
+        exchange.side_effect = ValueError("Invalid state token")
         mock_get_client.return_value = mock_client
 
         state = "bad-token:failing-integration:/integrations"
@@ -482,7 +499,7 @@ class TestMCPOAuthCallbackEndpoint:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.api.v1.endpoints.mcp.invalidate_user_integration_caches",
+        "app.services.mcp.oauth_callback.invalidate_user_integration_caches",
         new_callable=AsyncMock,
     )
     @patch(
@@ -501,7 +518,7 @@ class TestMCPOAuthCallbackEndpoint:
         mock_resolve.return_value = _make_resolved_integration()
         mock_resolve.return_value.name = "Some Integration"
 
-        mock_client = _make_mcp_client(handle_oauth_tools=[MagicMock()])
+        mock_client = _make_mcp_client()
         mock_client.token_store = MagicMock()
         mock_client.token_store.clear_excluded_scopes = AsyncMock()
         mock_get_client.return_value = mock_client
@@ -588,13 +605,8 @@ class TestMCPOAuthCallbackEndpoint:
         location = response.headers.get("location", "")
         assert "authorization_failed" in location
 
-    # ------------------------------------------------------------------
-    # OAuth state validation – invalid and expired state tests
-    # These test the state-parsing guard in mcp_oauth_callback.
-    # Mocking is at the Redis/HTTP client boundary (get_and_delete_cache /
-    # handle_oauth_callback) rather than at the service layer so that the
-    # endpoint's own state-validation logic is exercised.
-    # ------------------------------------------------------------------
+    # OAuth state validation tests, mocked at the Redis/HTTP client boundary so
+    # the endpoint's own state-validation logic in mcp_oauth_callback is exercised.
 
     @patch(
         "app.api.v1.endpoints.mcp.get_frontend_url",
@@ -605,18 +617,7 @@ class TestMCPOAuthCallbackEndpoint:
         mock_frontend_url,
         test_client,
     ):
-        """GET /api/v1/mcp/oauth/callback with a structurally invalid state redirects to error.
-
-        The state parameter must have at least two colon-separated parts
-        (token:integration_id[:redirect_path]). A state that cannot be split
-        is caught by the endpoint's parsing guard and results in an
-        invalid_state redirect, NOT a 200.
-
-        This test mocks at the HTTP helper (get_frontend_url) only, so the
-        full state-parsing code path in the endpoint runs for real.
-        If the state-parsing guard is removed, the endpoint would attempt to
-        continue with empty integration_id and the assertion would fail.
-        """
+        """GET /api/v1/mcp/oauth/callback with a structurally invalid state redirects to error."""
         # State with only one segment (no colon) – structurally invalid
         invalid_state = "completelynocolonsatall"
         response = await test_client.get(
@@ -650,31 +651,17 @@ class TestMCPOAuthCallbackEndpoint:
         mock_resolve,
         mock_get_client,
         test_client,
+        exchange,
     ):
-        """GET /api/v1/mcp/oauth/callback with an expired (unknown) state token redirects to error.
-
-        The state token (first part of the state string) is validated by
-        MCPClient.handle_oauth_callback() which calls
-        MCPTokenStore.verify_oauth_state(). When the Redis key has expired
-        (or never existed), verify_oauth_state returns (False, None) and
-        handle_oauth_callback raises ValueError("Invalid state token").
-
-        The endpoint catches this and maps "state" in the error message to
-        the "invalid_state" error code. This test mocks at the MCPClient
-        boundary (not the service layer) so the endpoint's own exception
-        mapping runs for real.
-
-        If the exception-to-error-code mapping is removed, the test fails
-        because a different error code or no redirect would be produced.
-        """
+        """GET /api/v1/mcp/oauth/callback with an expired (unknown) state token redirects to error."""
         mock_resolve.return_value = _make_resolved_integration()
         mock_resolve.return_value.name = "Test Integration"
 
         mock_client = _make_mcp_client()
         # Simulate what happens when Redis has expired the OAuth state key:
         # verify_oauth_state returns (False, None) → handle_oauth_callback raises
-        mock_client.handle_oauth_callback = AsyncMock(
-            side_effect=ValueError("Invalid state token: state has expired or does not exist")
+        exchange.side_effect = ValueError(
+            "Invalid state token: state has expired or does not exist"
         )
         mock_get_client.return_value = mock_client
 
@@ -712,26 +699,15 @@ class TestMCPOAuthCallbackEndpoint:
         mock_resolve,
         mock_get_client,
         test_client,
+        exchange,
     ):
-        """GET /api/v1/mcp/oauth/callback with a mismatched state token redirects to error.
-
-        When the state token in the callback does not match what was stored
-        in Redis (e.g. replay attack or wrong session), handle_oauth_callback
-        raises a ValueError containing "state". The endpoint must map this
-        to the invalid_state error code in the redirect URL.
-
-        This is tested by mocking handle_oauth_callback to raise the same
-        exception that MCPClient raises on state mismatch, which is the
-        deepest boundary that can be mocked without modifying Redis directly.
-        """
+        """GET /api/v1/mcp/oauth/callback with a mismatched state token redirects to error."""
         mock_resolve.return_value = _make_resolved_integration()
         mock_resolve.return_value.name = "Test Integration"
 
         mock_client = _make_mcp_client()
-        mock_client.handle_oauth_callback = AsyncMock(
-            side_effect=ValueError(
-                "OAuth state mismatch: received token does not match stored state"
-            )
+        exchange.side_effect = ValueError(
+            "OAuth state mismatch: received token does not match stored state"
         )
         mock_get_client.return_value = mock_client
 
@@ -746,3 +722,126 @@ class TestMCPOAuthCallbackEndpoint:
         location = response.headers.get("location", "")
         assert "invalid_state" in location
         assert "status=failed" in location
+
+
+# ---------------------------------------------------------------------------
+# Test: the callback behind the real session middleware (self-host login)
+# ---------------------------------------------------------------------------
+
+_SESSION_SECRET = "mcp-callback-session-secret-" + "s" * 16  # pragma: allowlist secret
+_SESSION_USER_ID = str(ObjectId())
+_SESSION_TOKEN_VERSION = 2
+
+
+@pytest.mark.integration
+class TestMcpOAuthCallbackSessionAuth:
+    """The callback acts for the user the gaia_session JWT names, and for nobody on a bad one.
+
+    Every other callback test swaps in MockAuthMiddleware, so a session
+    decoder that refused real tokens or accepted forged ones would pass them.
+    """
+
+    @pytest.fixture
+    def session_app(
+        self, monkeypatch: pytest.MonkeyPatch, real_auth_app: Callable[[None], FastAPI]
+    ) -> FastAPI:
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        monkeypatch.setattr(local_auth_utils, "_resolved_secret", _SESSION_SECRET)
+        monkeypatch.setattr(
+            local_credentials_repository,
+            "get_by_user_id",
+            AsyncMock(
+                return_value=LocalCredentialDocument(
+                    user_id=_SESSION_USER_ID,
+                    password_hash="unused",  # pragma: allowlist secret
+                    token_version=_SESSION_TOKEN_VERSION,
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            user_repository,
+            "get",
+            AsyncMock(
+                return_value=UserDocument(id=_SESSION_USER_ID, email="self@host.test", name="Self")
+            ),
+        )
+        return real_auth_app(None)
+
+    @pytest.fixture
+    def callback_seams(self) -> Iterator[tuple[AsyncMock, AsyncMock]]:
+        client = _make_mcp_client()
+        client.token_store = MagicMock(clear_excluded_scopes=AsyncMock())
+        with (
+            patch(
+                "app.api.v1.endpoints.mcp.get_mcp_client",
+                new_callable=AsyncMock,
+                return_value=client,
+            ) as get_client,
+            patch(
+                "app.api.v1.endpoints.mcp.IntegrationResolver.resolve",
+                new_callable=AsyncMock,
+                return_value=_make_resolved_integration(),
+            ),
+            patch(
+                "app.services.mcp.oauth_callback.user_integration_repository.has_connected_before",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.services.mcp.oauth_callback.invalidate_user_integration_caches",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.services.mcp.oauth_callback.handle_oauth_callback", new_callable=AsyncMock
+            ) as exchange,
+            patch("app.api.v1.endpoints.mcp.get_frontend_url", return_value="http://frontend.test"),
+        ):
+            yield get_client, exchange
+
+    async def _callback(self, app: FastAPI, session_token: str) -> httpx.Response:
+        transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            client.cookies.set(LOCAL_SESSION_COOKIE, session_token)
+            return await client.get(
+                "/api/v1/mcp/oauth/callback",
+                params={"code": "auth-code", "state": "csrf-state:test-integration:/integrations"},
+                follow_redirects=False,
+            )
+
+    async def test_an_issued_session_completes_the_callback_as_its_user(
+        self, session_app: FastAPI, callback_seams: tuple[AsyncMock, AsyncMock]
+    ) -> None:
+        get_client, exchange = callback_seams
+        token = await issue_session_token(_SESSION_USER_ID, _SESSION_TOKEN_VERSION)
+
+        response = await self._callback(session_app, token)
+
+        assert response.status_code == 307, response.text
+        assert response.headers["location"].startswith(
+            "http://frontend.test/integrations?id=test-integration&status=connected"
+        )
+        get_client.assert_awaited_once_with(user_id=_SESSION_USER_ID)
+        assert exchange.await_args.kwargs["state"] == "csrf-state"
+
+    @pytest.mark.parametrize("kind", [*sorted(hostile_jwts({}, "s")), "revoked_version"])
+    async def test_a_bad_session_is_401_and_never_exchanges_the_code(
+        self, session_app: FastAPI, callback_seams: tuple[AsyncMock, AsyncMock], kind: str
+    ) -> None:
+        get_client, exchange = callback_seams
+        claims = {
+            "sub": _SESSION_USER_ID,
+            "ver": _SESSION_TOKEN_VERSION,
+            "exp": int(time.time()) + 3600,
+        }
+        tokens = {
+            **hostile_jwts(claims, _SESSION_SECRET),
+            "revoked_version": await issue_session_token(
+                _SESSION_USER_ID, _SESSION_TOKEN_VERSION - 1
+            ),
+        }
+
+        response = await self._callback(session_app, tokens[kind])
+
+        assert response.status_code == 401, response.text
+        get_client.assert_not_awaited()
+        exchange.assert_not_awaited()

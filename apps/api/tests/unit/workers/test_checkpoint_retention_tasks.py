@@ -3,8 +3,8 @@
 Spawn threads embed a LIVE conversation's uuid, so the orphan sweep can never
 reclaim them — this third phase is their only collector. Its two sharp edges are
 pinned here: the age comes from decoding the uuid6 checkpoint id (there is no
-timestamp column), and the ``spawn_`` prefix contains ``_``, a LIKE wildcard
-that must be escaped or ``spawnXanything`` matches too.
+timestamp column), and the spawn_ prefix contains _, a LIKE wildcard
+that must be escaped or spawnXanything matches too.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -26,7 +26,7 @@ _GREGORIAN_EPOCH = datetime(1582, 10, 15, tzinfo=UTC)
 
 
 def uuid6_aged(days_ago: float) -> str:
-    """A uuid6 whose embedded timestamp lies ``days_ago`` in the past."""
+    """Build a uuid6 whose embedded timestamp lies days_ago in the past."""
     ticks = int(
         (datetime.now(UTC) - timedelta(days=days_ago) - _GREGORIAN_EPOCH).total_seconds()
         * 10_000_000

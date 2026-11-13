@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12"
 # dependencies = ["pyyaml==6.0.3"]
 # ///
 """Derive a Prometheus-native rule file from the Grafana-managed alert rules.

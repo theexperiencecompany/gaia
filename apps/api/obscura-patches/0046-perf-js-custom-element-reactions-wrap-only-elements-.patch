@@ -1,0 +1,117 @@
+From 0c0db005625ff5f3633f5c5530c394b88aaba191 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 06:19:34 +0530
+Subject: [PATCH] perf(js): custom element reactions wrap only elements that
+ can have a definition
+
+Once any custom element was defined, every insert, removal and innerHTML
+queried all elements of the subtree, wrapped each one in a JS object kept in
+the node cache, and checked it for a definition and a shadow root. Only a
+name with a hyphen can be defined, so a native shadow-including walk now
+returns just those elements, in the same order. Five innerHTML writes of
+15,000 elements with a defined element present: 401 ms before, 102 ms
+after; appending the same subtree: 66 ms before, 5 ms after; the same 60
+connectedCallback calls.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/js/bootstrap.js | 24 +++++++------------
+ crates/obscura-js/src/ops.rs      | 40 +++++++++++++++++++++++++++++++
+ 2 files changed, 48 insertions(+), 16 deletions(-)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 5ca502f..78695fc 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -2231,25 +2231,17 @@ function _ceReport(error) {
+     else console.error(error);
+   } catch (_e) {}
+ }
+-// Elements of `root`'s subtree (root included) in shadow-including tree order.
++// The elements of `root`'s subtree (root included) that can have a custom
++// element definition, in shadow-including tree order. Only names with a hyphen
++// can, so other elements are never wrapped.
+ function _ceElementsIn(root, includeRoot = true) {
++  if (!root || (root.nodeType !== 1 && root.nodeType !== 11 && root.nodeType !== 9)) return [];
++  const ids = _domParse("custom_element_candidates", root._nid, includeRoot ? "1" : "0") || [];
+   const out = [];
+-  const visit = (node) => {
+-    const ids = _domParse("query_selector_all_scoped", node._nid, "*") || [];
+-    for (const nid of ids) {
+-      const el = _wrapEl(+nid);
+-      if (!el) continue;
+-      out.push(el);
+-      const shadow = _shadowRootForHost(el, true);
+-      if (shadow) visit(shadow);
+-    }
+-  };
+-  if (includeRoot && root && root.nodeType === 1) {
+-    out.push(root);
+-    const shadow = _shadowRootForHost(root, true);
+-    if (shadow) visit(shadow);
++  for (const nid of ids) {
++    const el = _wrapEl(+nid);
++    if (el) out.push(el);
+   }
+-  if (root && (root.nodeType === 1 || root.nodeType === 11 || root.nodeType === 9)) visit(root);
+   return out;
+ }
+ function _ceIsUpgraded(el) {
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index 7462d35..e80b448 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -1653,6 +1653,38 @@ fn op_shadow_root_info(state: &OpState, host_nid: u32, frame_id: u32) -> String
+         .unwrap_or_default()
+ }
+ 
++/// The elements of `root`'s subtree (`root` itself when `include_root`) that
++/// could be autonomous custom elements, in shadow-including tree order. A valid
++/// custom element name contains a hyphen, so no other element can have a
++/// definition, and custom element reactions need not wrap them.
++fn custom_element_candidates(dom: &DomTree, root: NodeId, include_root: bool) -> Vec<NodeId> {
++    let mut out = Vec::new();
++    let mut stack = vec![(root, include_root)];
++    while let Some((node, include)) = stack.pop() {
++        let is_candidate = dom
++            .with_node(node, |n| {
++                n.as_element().is_some_and(|name| {
++                    &*name.ns == "http://www.w3.org/1999/xhtml" && name.local.contains('-')
++                })
++            })
++            .unwrap_or(false);
++        if include && is_candidate {
++            out.push(node);
++        }
++        // Visited after `node`, before its light children: the shadow tree
++        // comes first in shadow-including order.
++        for child in dom.children(node).into_iter().rev() {
++            stack.push((child, true));
++        }
++        if include {
++            if let Some(shadow) = dom.shadow_root(node) {
++                stack.push((shadow, false));
++            }
++        }
++    }
++    out
++}
++
+ #[op2]
+ #[string]
+ fn op_dom(
+@@ -2117,6 +2149,14 @@ fn op_dom_inner(shared: SharedState, cmd: String, arg1: String, arg2: String) ->
+                 .collect();
+             serde_json::to_string(&ids).unwrap_or_else(|_| "[]".into())
+         }
++        "custom_element_candidates" => {
++            let root = NodeId::new(arg1.parse::<u32>().unwrap_or(0));
++            let ids: Vec<u32> = custom_element_candidates(dom, root, arg2 == "1")
++                .into_iter()
++                .map(|id| id.index() as u32)
++                .collect();
++            serde_json::to_string(&ids).unwrap_or_else(|_| "[]".into())
++        }
+         "assigned_slot" => {
+             let nid = arg1.parse::<u32>().unwrap_or(0);
+             dom.assigned_slot(NodeId::new(nid))

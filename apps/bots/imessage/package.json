@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@gaia/shared": "workspace:*",
-    "@grpc/grpc-js": "^1.14.4",
+    "@grpc/grpc-js": "^1.14.5",
     "nice-grpc": "^2.1.17",
     "nice-grpc-common": "^2.0.4",
     "spectrum-ts": "^12.7.0"

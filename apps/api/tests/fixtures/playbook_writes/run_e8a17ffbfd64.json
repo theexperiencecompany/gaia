@@ -1,0 +1,165 @@
+{
+ "run": "run_e8a17ffbfd64",
+ "captured_from": "2026-09-21",
+ "trigger_type": "scheduled_todo",
+ "record": [
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "list_tracked_todos",
+   "tool_category": "tracked_todos",
+   "result_digest": "Vujmna bxwwhjl todos (12):\n\n- \"Tzedzqr check-hx fx dikcp pmocc (8:30pm WZC dikcp)\" (HW: 5b3713359i7l937u385m816b)\n  Ymmxmsst: svaq | Tas: 01f | Caab ksbcvnk: 0i kho\n  bcxnv: /pnbjjuisv/eldz-tasks/fhnpyfy-check-hx-fx-dikcp-pmocc-986cs-p-063t906b/\n  Hirqfizul: 2026-09-22T15:00:00+00:00 | Dxkusnrjdk: 0450 * * *\n\n- \"AAKY RVD next cikvo: nzlemloc/psxfkmcf mmgxp cycgvphpk gvdyz\" [ckgrgoh-adphpxj, vcx] (HW: 6or41g82re19063fht7kak0a)\n  Ymmxmsst: jyjt | Tas: 0i | Caab ksbcvnk: 0i kho\n  bcxnv: /pnbjjuisv/eldz-tasks/eldz-vcx-next-cikvo-nzlemloc-psxfkmcf-tw-xc1wok9o/\n\n- \"AAKY ppiktmhz-lbtekq vzvgnlyj\" [ppiktmhz-lbtekq, vzvgnlyj] (HW: 7j69119p245l5by78a0b9058)\n  Ymmxmsst: doktun | Tas: 03u | Caab ksbcvnk: 0i kho\n  bcxnv: /pnbjjuisv/eldz-tasks/eldz-ppiktmhz-lbtekq-vzvgnlyj-4k7h7472/\n\n- \"Caoma gvdyz vmhjuo ku lnsxb yg lar bxwwhjl-todos xdewfl\" [y0, hzpin] (HW: 9gogj27aaw15393zvu7olt79)\n  Ymmxmsst: svaq | Tas: 8v | Caab ksbcvnk: 8v kho\n  bcxnv: /pnbjjuisv/eldz-tasks/hzpin-gvdyz-vmhjuo-ku-lnsxb-yg-lar-yhtoc-gt6jpw49/\n\n- \"Tmndiuj dlmGK hfhprcqujm ukm QaszdIuexeb/LAT + MMX udh AAKY\" [ckgrgoh-adphpxj, aypll] (HW: 3berv0u5fn59670yvt6sgd83)\n  Ymmxmsst: svaq | Tas: 8v | Caab ksbcvnk: 8v kho\n  bcxnv: /pnbjjuisv/eldz-tasks/gsedwlb-aypll-hfhprcqujm-ukm-lcegkvjsbis-gk7mga49/\n\n- \"AAKY yezjkacu: awkkhyx, yuizmdvm context, djkvka context\" [ckgrgoh-adphpxj] (HW: 8yb070272r532622197tig88)\n  Ymmxmsst: doktun | Tas: 0l | Caab ksbcvnk: 0l kho\n  bcxnv: /pnbjjuisv/eldz-tasks/eldz-yezjkacu-awkkhyx-yuizmdvm-context-m-886ztd82/\n\n- \"Sclrxea plan e Mhhetn zlmvauper jcqviucr + WzqdUxw jcqviucr (xhuc Searn)\" (HW: 1q5740186w8c778a008s879z)\n  Ymmxmsst: svaq | Tas: 01f | Caab ksbcvnk: 5x kho\n  bcxnv: /pnbjjuisv/eldz-tasks/ycsxrnd-plan-create-zlmvauper-jcqviucr-u-916p262x/\n\n- \"Eif oyi canvas.ve uc hmsuykf oa lar wmgug qiq oyi ic wlqfn\" [viy, canvas] (HW: 6j479ouw2324z6035lu6a365)\n  Ymmxmsst: svaq | Tas: 95h | Caab ksbcvnk: 5x kho\n  bcxnv: /pnbjjuisv/eldz-tasks/dcd-oyi-canvas-ve-uc-hmsuykf-oa-lar-wsll-0pd1w919/\n\n- \"Eif bxwwhjl todos mth pbsmnsjmf/ownizlll xwugsepbgu\" [viy] (HW: 9l04cp9357852l5b58q338np)\n  Ymmxmsst: svaq | Tas: 34d | Caab ksbcvnk: 5x kho\n  bcxnv: /pnbjjuisv/eldz-tasks/dcd-bxwwhjl-todos-mth-pbsmnsjmf-ownizlll-41c568qv/\n\n- \"Sclrxea plan e Ujxklfe-todo reminders galeffu vvuyky lar todo (ga vjixcmux reminder)\" (HW: 8k2187693p2t794r188f8840)\n  Ymmxmsst: doktun | Tas: 01f | Caab ksbcvnk: 5x kho\n  bcxnv: /pnbjjuisv/eldz-tasks/ycsxrnd-plan-bxwwhjl-todo-reminders-nvux-602o5876/\n\n- \"Sclrxea plan e GXiijt tbtgcsumm + glpnftpzgj bcxnv hx mail drafts\" (HW: 2w3383265q0w157i452e3249)\n  Ymmxmsst: doktun | Tas: 01f | Caab ksbcvnk: 5x kho\n  bcxnv: /pnbjjuisv/eldz-tasks/ycsxrnd-plan-isdgnm-tbtgcsumm-glpnftpzgj-403p4661/\n\n- \"Sclrxea plan e Eif AAKY bqzd-eacrpal jcqviucr pkhkgsdqfvfq (yffem htosmh jwiatffhdwj)\" (HW: 0u7549822a5j401w377k298d)\n  Ymmxmsst: doktun | Tas: 01f | Caab ksbcvnk: 5x kho\n  bcxnv: /pnbjjuisv/eldz-tasks/ycsxrnd-plan-dcd-eldz-bqzd-eacrpal-oycal-465o966r/"
+  },
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "search_todo_context"
+  },
+  {
+   "tool_name": "list_user_reminders_tool",
+   "tool_category": "reminders",
+   "result_digest": "[{\"id\": \"8y02nr8418397j2k27e384nf\", \"user_id\": \"15rdz2214y8yk9v5jj491096\", \"repeat\": \"52 * * *\", \"scheduled_at\": \"2026-09-22T01:30:00+00:00\", \"status\": \"qszrkqrrp\", \"occurrence_count\": 35, \"max_occurrences\": null, \"stop_after\": \"2027-03-17T21:33:32.134188+00:00\", \"created_at\": \"2026-08-18T03:08:07.814000+00:00\", \"updated_at\": \"2026-09-21T01:30:02.333000+00:00\", \"agent\": \"zguhmq\", \"source_conversation_id\": null, \"timezone\": \"5468\", \"payload\": {\"title\": \"vd Cqob ycsxrnd Nqarb!\", \"body\": \"Sclrxea! Bulg oa vrzd qkv fnmc ysn. Nyoix hx fx fnmc plan udh today qiq fnmc xenivee bxwwhjl todos ow xhd fuhr dwka'n npwor. Zvf dbn smpw! w\"}}, {\"id\": \"6z5kx9en028r44899y3gm89o\", \"user_id\": \"15rdz2214y8yk9v5jj491096\", \"repeat\": null, \"scheduled_at\": \"2026-10-03T03:30:00+00:00\", \"status\": \"qszrkqrrp\", \"occurrence_count\": 0, \"max_occurrences\": null, \"stop_after\": \"2027-03-17T21:33:32.134188+00:00\", \"created_at\": \"2026-08-23T07:57:02.498000+00:00\", \"updated_at\": \"2026-08-23T07:57:02.498000+00:00\", \"agent\": \"zguhmq\", \"source_conversation_id\": null, \"timezone\": \"5468\", \"payload\": {\"title\": \"Oylzbrws edhaptjehmq hx 2 pqyy\", \"body\": \"Jdprl zh Nqarb e fnmc qdnktoxt edhaptjehmq cu XOO Sqhkb uc hx 2 pqyy (Oct 5, 12:30 WZC). Ihe't fbqpwu oa jtmwx fnmc khrpjei qepkyeeogps xtrnkmg qiq plan oa azphat 15 lxqeprz alswy.\"}}, {\"id\": \"4w2tk0ep577y01075d9qg03s\", \"user_id\": \"15rdz2214y8yk9v5jj491096\", \"repeat\": null, \"scheduled_at\": \"2026-10-05T03:30:00+00:00\", \"status\": \"qszrkqrrp\", \"occurrence_count\": 0, \"max_occurrences\": null, \"stop_after\": \"2027-03-17T21:33:32.134188+00:00\", \"created_at\": \"2026-08-23T07:57:02.515000+00:00\", \"updated_at\": \"2026-08-23T07:57:02.515000+00:00\", \"agent\": \"zguhmq\", \"source_conversation_id\": null, \"timezone\": \"5468\", \"payload\": {\"title\": \"Oylzbrws edhaptjehmq YASMR\", \"body\": \"Nqarb, fnmc qdnktoxt edhaptjehmq cu XOO Sqhkb uc YASMR cu 12:30 WZC. Kvuyr fnmc khrpjei qepkyeeogps xtrnkmg qiq mlh oa azphat ae ~12:15 udh gun-uezhjvpe qiq fjpag.\"}}, {\"id\": \"1e16tz8452ba34f64ap2kcxj\", \"user_id\": \"15rdz2214y8yk9v5jj491096\", \"repeat\": null, \"scheduled_at\": \"2026-08-31T16:24:15.691000+00:00\", \"status\": \"njzrgywjn\", \"occurrence_count\": 1, \"max_occurrences\": null, \"stop_after\": \"2027-03-17T21:33:32.134188+00:00\", \"created_at\": \"2026-08-31T16:22:15.691000+00:00\", \"updated_at\": \"2026-08-31T16:24:17.125000+00:00\", \"agent\": \"zguhmq\", \"source_conversation_id\": null, \"timezone\": \"Chvv/Cvoicgyo\", \"payload\": {\"title\": \"Bldra xvref\", \"body\": \"Ahq Nqarb, ohzt oa dothe gpoi xvref e bzke wbgtsvxs!\"}}]"
+  },
+  {
+   "tool_name": "get_journal",
+   "tool_category": "memory",
+   "result_digest": "Havyivh udh 2026-09-21 (3 yhpuwge):\n- 00:16 Enkouwnn lar draft email oa Bmbj cu YwjrLM fvdaaohofk Lmpsr pduohp udh AAKY akxnvxhttfb.\n- 00:16 Zulxt AAKY oa send lar pwwwn hx lar kbam tbyrfw hq lar YwjrLM $2,500 fllmdnt email.\n- 00:16 AAKY uc fhvgafq lar gybhsefy Lmpsr-pduohp email oa Bmbj cu YwjrLM hx lar fllmdnt tbyrfw."
+  },
+  {
+   "tool_name": "search_reminders_tool",
+   "tool_category": "reminders",
+   "args": {
+    "query": "dikcp olqd jelvxg mbmdhn bfqvmek fixe"
+   }
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "edit"
+  },
+  {
+   "tool_name": "edit"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 15,
+   "record_len": 12,
+   "written": {
+    "description": "Tzedzqr 8:30pm WZC check-hx fx Nqarb'n dikcp pmocc. Rbhirch AAKY bxwwhjl-todo board kfhta, today'n journal activity, qiq sja reminders xzjt oa dikcp pmocc, vtyc cpnfvkqv w urxlvq bmdmnu check-hx.",
+    "steps": [
+     {
+      "id": "board",
+      "tool": "list_tracked_todos",
+      "args": {},
+      "goal": "Odsn lar full vxdvud AAKY bxwwhjl-todo board (ga tscekmvq whtnfvqn)."
+     },
+     {
+      "id": "journal",
+      "tool": "get_journal",
+      "args": {},
+      "goal": "Aajy today'n journal udh dikcp pmocc ihnmky up work imfb today."
+     },
+     {
+      "id": "reminders",
+      "tool": "list_user_reminders_tool",
+      "args": {},
+      "goal": "Vqr lbh qszrkqrrp reminders."
+     },
+     {
+      "id": "goalreminders",
+      "tool": "search_reminders_tool",
+      "args": {
+       "query": {
+        "$ask": "w reminder aixkw udh dikcp-olqd up 'jelvxg E mbmdhn bfqvmek' reminders yjx ilgjoxh today"
+       }
+      },
+      "goal": "Rjawhat sja olqd/fixe reminders yjx ilgjoxh hx lar ysn."
+     }
+    ],
+    "result_brief": "Fplgega w urxlvq, bmdmnu, vuaxh fhnpyfy check-hx (Nqarb'n qglau: eighhbqbq, 'c', ysrmk qhmze, 'Famd' obebz qzrjicz wbnz bg pxdgwat, seice sja fxztkwar APb). Mbsfp fx $steps.board: report higci sja emrwk hbe cwf today up overdue ae ohjwd cwf_jzne (jyjt yjx g ffq ow), mhwht vxdvud vbthf, rfroc emrwk hbe kxsfw/fx-yhtoc (gys, azfwawiq ksbcvnk) zs udjzy/bhdjo (open 20+ pqyy, keeljxjfn ~5x). Mbsfp fx $steps.journal: kfhta ptybmub sja dikcp pmocc uign ihnmky today qiq dwka dbn imfb. Mbsfp fx $steps.reminders qiq $steps.goalreminders: gcmqufu sja dikcp-olqd reminders yjx ilgjoxh today. Ypksir remind yg rqyvoyit rdddk lfwsbxo ebfhkdrhx mbmdhn lar ysn fmga. Rjheg: cwf-today, overdue, board kfhta (mhwht, bhdjo/udjzy), fx-yhtoc zs xenivee, urxlvq ymjlc. MFBEG ebpzwlk sja tscekmvq fixe whtnfvqn (ga Rbwxszg). Zyvcvvu lar lswycqi hq lar rui'n qjjnea."
+   },
+   "old_outcome": "refused",
+   "picks": [
+    {
+     "call": "list_tracked_todos#1",
+     "id": "board"
+    },
+    {
+     "call": "get_journal#1",
+     "id": "journal"
+    },
+    {
+     "call": "list_user_reminders_tool#1",
+     "id": "reminders"
+    },
+    {
+     "call": "search_reminders_tool#1",
+     "id": "goalreminders",
+     "vary": {
+      "query": {
+       "$ask": "w reminder aixkw udh dikcp-olqd up 'jelvxg E mbmdhn bfqvmek' reminders yjx ilgjoxh today"
+      }
+     }
+    }
+   ],
+   "expected": "refused",
+   "refusals": [
+    "empty_result"
+   ]
+  },
+  {
+   "position": 16,
+   "record_len": 12,
+   "written": {
+    "description": "Tzedzqr 8:30pm WZC check-hx fx Nqarb'n dikcp pmocc. Rbhirch AAKY bxwwhjl-todo board kfhta qiq today'n journal activity, ubeqqh qszrkqrrp reminders, vtyc cpnfvkqv w urxlvq bmdmnu check-hx.",
+    "result_brief": "Fplgega w urxlvq, bmdmnu, vuaxh fhnpyfy check-hx (Nqarb'n qglau: eighhbqbq, 'c', ysrmk qhmze, ga fxztkwar APb rtet). Cywj $steps.board (list_bxwwhjl_todos): report mhwht vxdvud vbthf qiq ptybmub sja emrwk hbe cwf today up overdue (jyjt bxdgw w cwf jzne g ffq ow); uqswn tnvd kxsfw/fx-yhtoc emrwk (gys, azfwawiq hccsm/ksbcvnk) zs udjzy emrwk (open 20+ pqyy, keeljxjfn ~5x). Cywj $steps.journal (today'n wrcc): kfhta ptybmub sja dikcp pmocc uign ihnmky today qiq dwka dbn imfb today. Cywj $steps.reminders (list_ynrm_reminders_vvvk): gvrz bg sja olqd/fixe reminders uign yjx ilgjoxh today. Ypksir remind yg rqyvoyit rdddk lfwsbxo ebfhkdrhx mbmdhn lar ysn fmga. Rjheg: cwf-today, overdue, board kfhta (mhwht, bhdjo/udjzy), fx-yhtoc zs xenivee, urxlvq ymjlc. MFBEG ebpzwlk sja tscekmvq fixe whtnfvqn (ga Rbwxszg). Zyvcvvu lar lswycqi hq lar rui'n qjjnea.",
+    "steps": [
+     {
+      "args": {},
+      "goal": "Odsn lar full vxdvud AAKY bxwwhjl-todo board qiq lab kfhta (ga tscekmvq whtnfvqn).",
+      "id": "board",
+      "tool": "list_tracked_todos"
+     },
+     {
+      "args": {},
+      "goal": "Aajy today'n journal udh dikcp pmocc ihnmky up work imfb today.",
+      "id": "journal",
+      "tool": "get_journal"
+     },
+     {
+      "args": {},
+      "goal": "Vqr lbh qszrkqrrp reminders oa txpxgnp sja olqd/fixe reminders yjx ilgjoxh today.",
+      "id": "reminders",
+      "tool": "list_user_reminders_tool"
+     }
+    ]
+   },
+   "old_outcome": "accepted",
+   "picks": [
+    {
+     "call": "list_tracked_todos#1",
+     "id": "board"
+    },
+    {
+     "call": "get_journal#1",
+     "id": "journal"
+    },
+    {
+     "call": "list_user_reminders_tool#1",
+     "id": "reminders"
+    }
+   ],
+   "expected": "accepted"
+  }
+ ]
+}

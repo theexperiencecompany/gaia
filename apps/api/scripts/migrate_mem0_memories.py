@@ -2,8 +2,8 @@
 One-time, idempotent migration: import mem0 memories into the GAIA memory engine.
 
 Pages every user's memories out of the mem0 v2 API over plain HTTP (the
-``mem0ai`` dependency is removed from this codebase) and feeds each fact
-through ``memory_engine.retain_single``, which categorizes, deduplicates,
+mem0ai dependency is removed from this codebase) and feeds each fact
+through memory_engine.retain_single, which categorizes, deduplicates,
 embeds, and files it. mem0 entries are already atomic facts, so no transcript
 extraction runs — only the lightweight categorize path.
 

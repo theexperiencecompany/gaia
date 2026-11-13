@@ -7,6 +7,8 @@ both together.
 
 from pydantic import BaseModel, Field
 
+from app.schemas.common import ResponseModel
+
 
 class FeaturePeriodUsage(BaseModel):
     """One feature's usage within one window (day or month)."""
@@ -25,7 +27,7 @@ class FeatureUpgrade(BaseModel):
     month: int
 
 
-class FeatureUsageSummary(BaseModel):
+class FeatureUsageSummary(ResponseModel):
     title: str
     description: str
     upgrade: FeatureUpgrade
@@ -33,7 +35,7 @@ class FeatureUsageSummary(BaseModel):
     periods: dict[str, FeaturePeriodUsage] = Field(default_factory=dict)
 
 
-class BudgetWindow(BaseModel):
+class BudgetWindow(ResponseModel):
     """One cost-budget window: how much of the allowance is used, and when it
     resets. Deliberately no raw USD — see ``cost_budget.get_budget_status``."""
 
@@ -41,14 +43,14 @@ class BudgetWindow(BaseModel):
     reset_time: str
 
 
-class UsageBudget(BaseModel):
+class UsageBudget(ResponseModel):
     daily: BudgetWindow
     # Free has no monthly cost budget, so this is null there.
     monthly: BudgetWindow | None = None
     per_request_token_ceiling: int
 
 
-class ActivityDay(BaseModel):
+class ActivityDay(ResponseModel):
     """One UTC day of the heatmap: actions plus the tokens they burned.
 
     Token counts are the *charged* ones only — the same spend the budget
@@ -68,7 +70,7 @@ class ActivityDay(BaseModel):
     reasoning_tokens: int
 
 
-class UsageActivityResponse(BaseModel):
+class UsageActivityResponse(ResponseModel):
     """Year activity grid + the user's standing, from the daily rollups."""
 
     days: list[ActivityDay]
@@ -79,7 +81,7 @@ class UsageActivityResponse(BaseModel):
     tier: str | None = None
 
 
-class UsageSummary(BaseModel):
+class UsageSummary(ResponseModel):
     user_id: str
     plan_type: str
     # The feature the usage UI leads with, owned by the API so the client never

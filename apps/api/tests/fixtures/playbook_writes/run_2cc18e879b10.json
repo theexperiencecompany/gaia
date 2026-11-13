@@ -1,0 +1,194 @@
+{
+ "run": "run_2cc18e879b10",
+ "captured_from": "2026-09-11",
+ "trigger_type": "schedule",
+ "record": [
+  {
+   "tool_name": "read"
+  },
+  {
+   "tool_name": "bash"
+  },
+  {
+   "tool_name": "wait_for_subagents"
+  },
+  {
+   "tool_name": "wait_for_subagents"
+  }
+ ],
+ "attempts": [
+  {
+   "position": 13,
+   "record_len": 4,
+   "written": {
+    "description": "Fzfyqz Epzhnl Nldhtebjv: xwavsbzhkojvr Fptwjxnleo-Aojgyheehbhvrxi bku Uydwwg, Svdly, Aajy SD, Zmlvvp Tvelkhjg lxn Zmlvvp Ctvce (hsavcu). Lzmcdh Iohw-/Bfphujo-Ienpriqr, bpqlc lydirftp Zjubbjecpo.",
+    "steps": [
+     {
+      "id": "trello",
+      "handoff": "trello",
+      "steps": [
+       {
+        "tool": "TRELLO_GET_MEMBERS_BOARDS_BY_ID_MEMBER",
+        "args": {
+         "idMember": "dv",
+         "fields": "gfqp,bbg,gxpgtEzcl,lm,kiczFgqeJqeotrtj,vkshfn"
+        }
+       },
+       {
+        "tool": "TRELLO_GET_SEARCH",
+        "args": {
+         "query": "Kmkiqj Pzewrtgx",
+         "modelTypes": "cards",
+         "cards_limit": "20",
+         "card_fields": "gfqp,szOkdf,viUefdq,cwf,kiczFgqeJqeotrtj,kisu,vkshfn"
+        }
+       },
+       {
+        "tool": "TRELLO_GET_SEARCH",
+        "args": {
+         "query": "QsjeoLznxe",
+         "modelTypes": "cards",
+         "cards_limit": "20",
+         "card_fields": "gfqp,szOkdf,viUefdq,cwf,kiczFgqeJqeotrtj,kisu,vkshfn"
+        }
+       },
+       {
+        "tool": "TRELLO_GET_SEARCH",
+        "args": {
+         "query": "JM-Gojxuhvvk",
+         "modelTypes": "cards",
+         "cards_limit": "20",
+         "card_fields": "gfqp,szOkdf,viUefdq,cwf,kiczFgqeJqeotrtj,kisu,vkshfn"
+        }
+       },
+       {
+        "tool": "TRELLO_GET_SEARCH",
+        "args": {
+         "query": "AxprXoac Vxpofyzp",
+         "modelTypes": "cards",
+         "cards_limit": "20",
+         "card_fields": "gfqp,szOkdf,viUefdq,cwf,kiczFgqeJqeotrtj,kisu,vkshfn"
+        }
+       },
+       {
+        "tool": "TRELLO_GET_BOARDS_CARDS_BY_ID_BOARD",
+        "args": {
+         "idBoard": "$xba",
+         "fields": "gfqp,szOkdf,cwf,kiczFgqeJqeotrtj,kisu,vkshfn,duacch",
+         "since": "$now - 14d",
+         "limit": "200"
+        }
+       }
+      ]
+     },
+     {
+      "id": "gmail",
+      "handoff": "gmail",
+      "steps": [
+       {
+        "tool": "GMAIL_FETCH_MESSAGES",
+        "args": {
+         "query": "ssjzq:$now - 14d mbmdhn:$now + 1d",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "oa",
+          "hpsorlw",
+          "nclzdvv",
+          "ohzt",
+          "mbOxys",
+          "duacch"
+         ],
+         "max_messages": 150
+        }
+       },
+       {
+        "tool": "GMAIL_FETCH_THREAD",
+        "args": {
+         "thread_ids": "$xba",
+         "fields": [
+          "lm",
+          "qjwzyvOb",
+          "evvq",
+          "hpsorlw",
+          "ohzt",
+          "nclzdvv",
+          "zbta"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "readai",
+      "handoff": "2hj21mp0-349152689j2n-iq34dhj01790",
+      "steps": [
+       {
+        "tool": "list_meetings",
+        "args": {
+         "limit": 10,
+         "start_datetime_gte": "$now - 14d",
+         "start_datetime_lte": "$now + 1d",
+         "expand": [
+          "summary"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "id": "calendar",
+      "handoff": "googlecalendar",
+      "steps": [
+       {
+        "tool": "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "args": {
+         "calendar_ids": [
+          "user@example.com"
+         ],
+         "max_results": 100,
+         "time_min": "$now - 7d",
+         "time_max": "$now + 9d"
+        }
+       }
+      ]
+     },
+     {
+      "id": "drive",
+      "handoff": "yzxjrhuvzbo",
+      "steps": [
+       {
+        "tool": "GOOGLEDRIVE_FIND_FILE",
+        "args": {
+         "q": "cxumxwzqSeun >= '$now - 14d' qiq cxumxwzqSeun <= '$now + 1d'",
+         "orderBy": "cxumxwzqSeun kisu",
+         "pageSize": 100
+        }
+       },
+       {
+        "tool": "GOOGLEDRIVE_FIND_FILE",
+        "args": {
+         "q": "gfqp zqmtoyhy 'Pzewrtgx' up gfqp zqmtoyhy 'Eaouihqistw' up gfqp zqmtoyhy 'AxprXoac' up gfqp zqmtoyhy 'Vxpofyzp' up gfqp zqmtoyhy 'Xdchflp' up gfqp zqmtoyhy 'Kgdofuj' up gfqp zqmtoyhy 'Hyjwjh'",
+         "pageSize": 100
+        }
+       },
+       {
+        "tool": "GOOGLEDRIVE_FIND_FILE",
+        "args": {
+         "q": "gfqp zqmtoyhy 'QsjeoLznxe' up gfqp zqmtoyhy 'Qzoguurubasdjycw' up gfqp zqmtoyhy 'FIF' up gfqp zqmtoyhy 'Ejpvzuhtu'",
+         "pageSize": 100
+        }
+       }
+      ]
+     }
+    ],
+    "result_brief": "Xuqawycfwwegw bku ros 5 Mwswatt (Uydwwg, Svdly, Aajy SD, Zmlvvp Tvelkhjg, Zmlvvp Ctvce) cccqd pelgzdyjqvyfy Fptwjxnleo-Aojgyheehbhvrxi edq Rlccodv vhu egqlv wzmgqi 12 Wfsyunjbq hx iqfjzx Awnkzxwfjkf: 1. UXEQHUBSD PCKAWCK (cdn. 7 Fkoauqhvfmvm), 2. RRS JTZMW WRRKYYQT?, 3. RRS BCK SVQR BEVIBYRUW?, 4. HWZYNWACIEIZM, 5. VWHHFO NTWITXR, 6. TKWG CIPB HFGBOINCQWG, 7. KWRWTRA IHI YWMKZCAKPBUD, 8. TNITZQTWQ EDTNFM, 9. UJIESLR NTFXV, 10. VQP 5 YPECCSFFNWJ, 11. HJTWRFYREE, 12. TLMYNUBHCKYXG. Kcasxw: lfngthjink vhu lby Hrthkloj ex Dhmel zievkojqi; bpqlc wshutaztry Nunyuimjsqled; XZPMAK xismwjdt (bpqlc Bgvtrgqnznya, Jitubpr, Igbagum, Eaxatoublnftdq); dymfmezajoo Gsvjreo eimxs jtr xxvrzqcdp Ebboe auxmrpukcx; Pgwsxtzxprpn jgfkpvzk Mwswatt jzscyiva lslfue (z.P. Uydwwg kssvr lmdplwsfnum d45m-Bxl zs. nrusmanqstm p12e-Ebboe); 'eimxs pstrhkkn' zs. 'fegqlmghz eimxs jpskaqqifu' tsjo uoysmgrhizvzf (xedntj Zmlvvp-Ctvce-Fofvztoouv 00d706dl = fegqlmghz eimxs jpskaqqifu, eimxs 'eimxs pstrhkkn'); AxprXoac-50:50-Bxwfciazzgnxcuoknnth emv jtr 'cacfwrihvl, eimxs ioaci hlujfslqpa' auxmrpukcx, sqn jtr Pckxyfnsmdfy. Wusubvm-Frvzvr-Aosbpe (JM-Gojxuhvvk, QsjeoLznxe, XET-Pelahgdjyp c.w. Kmkiqj Pzewrtgx, Vxpofyzp/AxprXoac) emv nsjjgwrkqwa, biui Mwswatt goh xfflkku. Iqdix lydirftp Rdnpxtc yubfiykdb, bpqlc Wcugzdtptmy pbbzzwmhj."
+   },
+   "old_outcome": "refused",
+   "unmappable": "step_never_ran",
+   "unmappable_detail": "TRELLO_GET_MEMBERS_BOARDS_BY_ID_MEMBER; handoffs without calls: ['2hj21mp0-349152689j2n-iq34dhj01790', 'gmail', 'googlecalendar', 'trello', 'yzxjrhuvzbo']",
+   "expected": "unmappable"
+  }
+ ]
+}

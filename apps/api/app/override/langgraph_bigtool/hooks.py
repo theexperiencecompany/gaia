@@ -1,8 +1,4 @@
-"""
-Hook execution utilities for LangGraph agents.
-
-Provides sync and async hook execution for pre_model, end_graph, etc.
-"""
+"""Sync and async hook execution utilities for LangGraph agents (pre_model, end_graph, etc)."""
 
 import asyncio
 from collections.abc import Awaitable, Callable
@@ -26,17 +22,7 @@ async def execute_hooks(
     config: RunnableConfig,
     store: BaseStore,
 ) -> State:
-    """Execute hooks sequentially, handling both sync and async hooks.
-
-    Args:
-        hooks: List of hook functions to execute
-        state: Current agent state
-        config: Runnable configuration
-        store: LangGraph store instance
-
-    Returns:
-        Updated state after all hooks have executed
-    """
+    """Execute hooks sequentially in order, awaiting any that return a coroutine."""
     if not hooks:
         return state
 
@@ -50,8 +36,11 @@ async def execute_hooks(
 
 
 def changed_hook_keys(before: State, after: State) -> State:
-    """Keys the hook chain changed (by identity) — echoing unchanged channels
-    re-serializes the full message list into the checkpoint on every run."""
+    """Return the keys the hook chain changed, by identity.
+
+    Echoing an unchanged channel re-serializes the full message list into
+    the checkpoint on every run.
+    """
     if after is before:
         return cast("State", {})
     before_dict = cast("dict[str, object]", before)
@@ -71,17 +60,7 @@ def sync_execute_hooks(
     config: RunnableConfig,
     store: BaseStore,
 ) -> State:
-    """Execute hooks in a sync context by running an event loop.
-
-    Args:
-        hooks: List of hook functions to execute
-        state: Current agent state
-        config: Runnable configuration
-        store: LangGraph store instance
-
-    Returns:
-        Updated state after all hooks have executed
-    """
+    """Run hooks synchronously by driving execute_hooks on a dedicated event loop."""
     if not hooks:
         return state
 

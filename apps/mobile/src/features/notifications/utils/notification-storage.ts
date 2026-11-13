@@ -7,9 +7,6 @@ import { notificationsApi } from "@/features/notifications/api/notifications-api
 
 const PUSH_TOKEN_KEY = "expo_push_token";
 
-/**
- * Get the stored push token
- */
 export async function getStoredPushToken(): Promise<string | null> {
   try {
     return await SecureStore.getItemAsync(PUSH_TOKEN_KEY);

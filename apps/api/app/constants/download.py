@@ -1,9 +1,7 @@
-"""URL-download tool constants — fetch a URL to a workspace file the model can `read`."""
+"""URL-download tool constants — fetch a URL to a workspace file the model can read."""
 
 # Hard ceiling on a downloaded file, enforced while streaming (never trust the
-# server's Content-Length). Matches the chat upload cap: a download is just
-# another way a file enters the workspace, and should not be able to smuggle in
-# something an upload could not.
+# server's Content-Length). Matches the chat upload cap.
 MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024
 
 # Wall-clock budget for the whole fetch, redirects included.

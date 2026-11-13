@@ -2,34 +2,14 @@
 """
 Enhanced subscription data fixer for the AI platform.
 
-This script handles:
-- Finding subscriptions with invalid plan_ids (not present in plans collection)
-- Cleaning up (deleting) subscriptions with invalid plan_ids
-- Updating invalid subscriptions to valid plan_ids (GAIA Pro Monthly/Yearly)
-- Displaying plan and subscription details for review
-- Maintaining data integrity and providing detailed logging
+Finds subscriptions with invalid plan_ids, and can delete them or update
+them to a valid GAIA Pro Monthly/Yearly plan, with detailed logging.
 
-IMPORTANT: Run this script from the correct directory!
+Run from apps/api/: python scripts/fix_subscription_data.py (also works via
+PYTHONPATH=/app, or python -m scripts.fix_subscription_data from other cwds).
 
-1. If running locally:
-    cd /path/to/your/gaia/apps/api
-    python scripts/fix_subscription_data.py
-
-2. If running inside Docker container:
-    cd /app
-    python scripts/fix_subscription_data.py
-
-3. Alternative Docker approach (set PYTHONPATH):
-    PYTHONPATH=/app python scripts/fix_subscription_data.py
-
-4. Run as module (from app directory):
-    python -m scripts.fix_subscription_data
-
-Script options (interactive):
-1. Delete invalid subscriptions (cleanup)
-2. Update invalid subscriptions to GAIA Pro Monthly
-3. Update invalid subscriptions to GAIA Pro Yearly
-4. Show details and exit
+Script options (interactive): delete invalid subscriptions, update to GAIA
+Pro Monthly, update to GAIA Pro Yearly, or show details and exit.
 """
 
 import asyncio
@@ -45,6 +25,8 @@ from bson import ObjectId
 
 from app.db.mongodb.collections import get_async_collection
 from app.db.mongodb.mongodb import init_mongodb
+from app.utils.money import format_money
+from scripts._prompt import ainput
 from shared.py.wide_events import log as logger
 
 plans_collection = get_async_collection("subscription_plans")
@@ -152,7 +134,7 @@ async def show_plans():
         async for plan in plans_cursor:
             print(f"ID: {plan['_id']}")
             print(f"Name: {plan['name']}")
-            print(f"Amount: ₹{plan['amount'] / 100:.2f}")
+            print(f"Amount: {format_money(plan['amount'], plan['currency'])}")
             print(f"Duration: {plan['duration']}")
             print(f"Active: {plan['is_active']}")
             print("-" * 40)
@@ -162,7 +144,7 @@ async def show_plans():
 
 
 async def main():
-    """Main function to fix subscription data."""
+    """Fix subscription data."""
     print("🔧 Subscription Data Fixer")
     print("=" * 50)
 
@@ -172,7 +154,6 @@ async def main():
     # Show available plans
     await show_plans()
 
-    # Find invalid subscriptions
     invalid_subs, _valid_subs, valid_plan_ids = await find_invalid_subscriptions()
 
     if not invalid_subs:
@@ -185,12 +166,14 @@ async def main():
     print("3. Update them to point to GAIA Pro Yearly")
     print("4. Show details and exit")
 
-    choice = input("\nEnter your choice (1-4): ").strip()
+    choice = (await ainput("\nEnter your choice (1-4): ")).strip()
 
     if choice == "1":
         confirm = (
-            input(
-                f"⚠️  Are you sure you want to DELETE {len(invalid_subs)} subscriptions? (yes/no): "
+            (
+                await ainput(
+                    f"⚠️  Are you sure you want to DELETE {len(invalid_subs)} subscriptions? (yes/no): "
+                )
             )
             .strip()
             .lower()

@@ -7,21 +7,30 @@ three files. This script turns a coverage database recorded WITH dynamic
 contexts (``--cov-context=test``) into a source-file -> test-ids map, and then
 turns a diff into the subset of tests that can actually see the change.
 
-Three subcommands:
+Four subcommands:
 
   record --coverage-db .coverage.unit --out test-impact-map-unit.json
       Read a coverage DB and emit the map.
 
   fetch
-      Download the newest map artifact for this slice into $MAP_DIR.
+      Download the newest AVAILABLE map artifact for this slice into $MAP_DIR:
+      the newest trusted master run is tried first, then each older one in
+      order until a map lands. One run whose artifact is missing (deleted,
+      expired, or a recording that did not upload) must not force the whole
+      slice.
 
   select
-      Diff the PR against its merge-base and write
-      apps/api/.test-impact/selected-<slice>.txt — either a list of pytest
-      node ids or the single line ``ALL``. `pytest.sh slice` consumes it.
+      Diff HEAD against the commit the map was recorded at and write the
+      slice's selection file — a list of pytest node ids or the line ``ALL``.
+
+  selection-path
+      Print where that file lives, so `pytest.sh slice` reads it without
+      re-deriving the path: $RUNNER_TEMP/test-impact on a runner, which is
+      per-job, so a selection an earlier job left in the box's persistent
+      workspace can never narrow a later run; apps/api/.test-impact off one.
 
 `fetch` and `select` read their inputs from the environment (SLICE_NAME,
-SLICE_PATHS, SLICE_IGNORE, BASE_REF, MAP_DIR, TEST_IMPACT_ENABLED,
+SLICE_PATHS, SLICE_IGNORE, MAP_DIR, TEST_IMPACT_ENABLED,
 GITHUB_REPOSITORY) so a workflow step stays one command
 line; every input also has an explicit flag, which is how the tests drive it.
 
@@ -30,13 +39,13 @@ The full suite on master is the backstop, so a wrong-but-wide answer costs
 seconds and a wrong-but-narrow answer would cost a green PR on a broken tree.
 
 Off switch: TEST_IMPACT_ENABLED=0 (or false) makes `fetch` download nothing and
-`select` write ALL; main.yml exposes it as a workflow_dispatch input so a full
-run on a branch is one click away when a selection looks wrong.
+`select` write ALL, so a full run on a branch is one env var away when a
+selection looks wrong.
 
-Staleness: a map older than the PR's merge-base is still valid because
-selection is by file, not by revision. What an old map can miss is coverage
-that only exists after a refactor, and every shape of that (new file, moved
-file, changed conftest, changed dependency) is one of the ALL fallbacks.
+Staleness: the diff runs from the map's own commit, so whatever master changed
+after the map was recorded (a new test, a moved file) is part of the change and
+selected like the PR's own edits. Any of the newest trusted maps is therefore
+sound; an older one only selects more.
 
 Map schema (JSON):
   {"meta": {"sha": ..., "slice": ..., "version": 1},
@@ -51,16 +60,17 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 from typing import Any
 
+from lib.github import GitHub, GitHubError, field_of, records, text_of
+
 MAP_VERSION = 1
 
-# Where the slice's selection and its scratch files live, relative to the repo
-# root. `pytest.sh slice` reads selected-<slice>.txt from here.
-SELECTION_DIR = Path("apps/api/.test-impact")
+# Off a runner, where the slice's selection and its scratch files live,
+# relative to the repo root every caller runs from.
+LOCAL_SELECTION_DIR = Path("apps/api/.test-impact")
 DEFAULT_MAP_DIR = ".test-impact-map"
 ARTIFACT_PREFIX = "test-impact-map-"
 
@@ -101,14 +111,14 @@ INERT_DIRS = ("docs/",)
 # The whole of scripts/ci/ counts, not a hand-picked few: EVERY script in there
 # shapes the environment the suite runs in — the services it talks to
 # (test-services.sh), the sidecar it embeds against (embedding-sidecar.sh), the
-# parallelism it gets (runner.sh parallel), the image digests those pull
+# parallelism it gets (runner.py parallel), the image digests those pull
 # (lib/service-images.sh). Naming individual files meant a change to any of the
 # others left the map trusted, and a stale map's answer is a silently narrower
 # test run. Widening is cheap; being wrong here is a green PR on a broken tree.
 SUITE_CONFIG_NAMES = frozenset(
     {"uv.lock", "pyproject.toml", ".python-version", "pytest.ini", "setup.cfg", "tox.ini"}
 )
-SUITE_CONFIG_PATHS = frozenset({".github/workflows/main.yml"})
+SUITE_CONFIG_PATHS = frozenset({".github/workflows/ci.yml"})
 SUITE_CONFIG_PREFIXES = ("scripts/ci/", ".github/actions/setup-python-test-env/")
 
 TEST_MODULE_PREFIX = "test_"
@@ -116,13 +126,13 @@ TEST_MODULE_SUFFIX = "_test.py"
 
 
 def is_inert(rel: str) -> bool:
-    """True for a path under apps/api that cannot change any test's outcome."""
+    """Return True for a path under apps/api that cannot change any test's outcome."""
     name = rel.rsplit("/", 1)[-1]
     return name in INERT_NAMES or rel.endswith(INERT_SUFFIXES) or rel.startswith(INERT_DIRS)
 
 
 def is_suite_config(path: str) -> bool:
-    """True for a repo-relative path that configures the test run itself."""
+    """Return True for a repo-relative path that configures the test run itself."""
     name = path.rsplit("/", 1)[-1]
     return (
         name in SUITE_CONFIG_NAMES
@@ -132,7 +142,7 @@ def is_suite_config(path: str) -> bool:
 
 
 def is_test_module(rel: str) -> bool:
-    """True for a file pytest collects tests from (``test_*.py`` / ``*_test.py``)."""
+    """Return True for a file pytest collects tests from (``test_*.py`` / ``*_test.py``)."""
     name = rel.rsplit("/", 1)[-1]
     return (name.startswith(TEST_MODULE_PREFIX) and name.endswith(".py")) or name.endswith(
         TEST_MODULE_SUFFIX
@@ -265,7 +275,7 @@ class Selection:
 
 
 def _classify_outside_api(path: str, sel: Selection) -> None:
-    """A change outside apps/api: suite config or importable Python widens.
+    """Classify a change outside apps/api: suite config or importable Python widens.
 
     Any Python outside (libs/shared/py, tools) can be imported by the API;
     coverage only mapped app/**, so the map cannot name its tests.
@@ -277,7 +287,7 @@ def _classify_outside_api(path: str, sel: Selection) -> None:
 
 
 def _classify_test_path(rel: str, sel: Selection, repo_root: Path) -> None:
-    """A change under tests/: run the test module, widen on anything else."""
+    """Classify a change under tests/: run the test module, widen on anything else."""
     if rel.rsplit("/", 1)[-1] in INERT_NAMES:
         return
     if not is_test_module(rel):
@@ -296,7 +306,7 @@ def _classify_test_path(rel: str, sel: Selection, repo_root: Path) -> None:
 def _classify_app_path(
     rel: str, sel: Selection, files: dict[str, list[str]], repo_root: Path
 ) -> None:
-    """A change under app/: the mapped tests, or widen when the map has none."""
+    """Classify a change under app/: the mapped tests, or widen when the map has none."""
     if rel in files:
         sel.ids.update(files[rel])
         sel.reasons.append(f"{rel} covered by {len(files[rel])} tests")
@@ -329,7 +339,7 @@ def _classify_change(
 class SliceScope:
     """What ONE slice runs — the three lists are only meaningful together.
 
-    `paths` and `exclude` come from the same matrix entry (`matrix.slice.paths`
+    `paths` and `exclude` come from the same slice definition (`SLICE_PATHS`
     and its `--ignore` flags): unit-b's paths are `tests/unit tests/meta` and it
     ignores the three directories unit-a owns, so neither list alone says what
     the slice runs. `always` is the API contract, which every slice runs.
@@ -407,10 +417,25 @@ def select_tests(
     return node_ids, head + extra, estimated, total
 
 
+def selection_file(slice_name: str) -> Path:
+    """Return the one path `select` writes a slice's selection to and `pytest.sh slice` reads."""
+    runner_temp = os.environ.get("RUNNER_TEMP")
+    base = Path(runner_temp) / "test-impact" if runner_temp else LOCAL_SELECTION_DIR
+    return base / f"selected-{slice_name}.txt"
+
+
+def cmd_selection_path(args: argparse.Namespace) -> int:
+    slice_name = args.slice or os.environ.get("SLICE_NAME", "")
+    if not slice_name:
+        raise SystemExit("selection-path: SLICE_NAME (or --slice) is required")
+    print(selection_file(slice_name).resolve())
+    return 0
+
+
 def _parse_ignore(slice_ignore: str) -> list[str]:
     """``--ignore=tests/unit/services --ignore=...`` -> the bare paths.
 
-    matrix.slice.ignore is a pytest flag list, because that is what the slice
+    SLICE_IGNORE is a pytest flag list, because that is what the slice
     runner needs; the selector needs the same information as plain paths.
     Reading it from the one place the workflow already states it keeps the two
     from drifting — a slice whose exclusions were listed twice would drift.
@@ -419,7 +444,7 @@ def _parse_ignore(slice_ignore: str) -> list[str]:
 
 
 def _enabled() -> bool:
-    """The off switch: an explicit 0/false runs the whole slice, unselected."""
+    """Read the off switch: an explicit 0/false runs the whole slice, unselected."""
     return os.environ.get("TEST_IMPACT_ENABLED", "1").lower() not in {"0", "false"}
 
 
@@ -438,36 +463,53 @@ def _emit(slice_name: str, mode: str, summary: str) -> None:
             fh.write(f"{line}\n\n")
 
 
-def _git(*argv: str) -> str | None:
-    """Run git, returning stdout, or None when it fails (caller widens to ALL)."""
-    proc = subprocess.run(["git", *argv], capture_output=True, text=True, check=False)
+# Bounded like changes.sh's base fetch: a stalled connection fails in seconds, not at the job cap.
+FETCH = ("-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=20", "fetch", "--no-tags")
+FETCH_TIMEOUT_S = 60
+
+
+def _git(*argv: str, timeout: float | None = None) -> str | None:
+    """Run git, returning stdout, or None when it fails or times out (caller widens to ALL)."""
+    try:
+        proc = subprocess.run(
+            ["git", *argv], capture_output=True, text=True, check=False, timeout=timeout
+        )
+    except subprocess.TimeoutExpired:
+        return None
     return proc.stdout if proc.returncode == 0 else None
 
 
-def _changed_since_merge_base(base_ref: str, scratch: Path) -> list[str] | None:
-    """The PR's own diff, or None when the merge-base cannot be resolved.
+def _changed_since_the_maps(map_paths: list[str], scratch: Path) -> list[str] | None:
+    """Return every file that differs from what the maps were recorded at, or None when unknowable.
 
-    The merge-base, not the base tip: we only want what this PR changed. No
-    --depth on the fetch — on the box's persistent workspace a depth-limited
-    fetch marks the repo shallow again, and the next checkout pays a full
-    re-unshallow from GitHub (measured 104 s per job).
+    From the map's commit, not the merge-base: a test master added after the
+    map was recorded is in no map, so only a diff that spans it selects it.
     """
-    _git("fetch", "--no-tags", "origin", base_ref)
-    merge_base = _git("merge-base", f"origin/{base_ref}", "HEAD")
-    if not merge_base or not merge_base.strip():
-        return None
-    diff = _git("diff", "--name-only", merge_base.strip(), "HEAD")
-    if diff is None:
-        return None
-    scratch.write_text(diff)
-    return [line for line in diff.splitlines() if line.strip()]
+    changed: set[str] = set()
+    for path in map_paths:
+        sha = json.loads(Path(path).read_text()).get("meta", {}).get("sha")
+        if not sha:
+            return None
+        # A runner checkout may predate the map's commit. Never --depth: it marks the
+        # box's persistent clone shallow and its later merge-base diffs fail.
+        if _git("cat-file", "-e", f"{sha}^{{commit}}") is None and (
+            _git(*FETCH, "origin", sha, timeout=FETCH_TIMEOUT_S) is None
+            or _git("cat-file", "-e", f"{sha}^{{commit}}") is None
+        ):
+            return None
+        diff = _git("diff", "--name-only", sha, "HEAD")
+        if diff is None:
+            return None
+        changed |= {line for line in diff.splitlines() if line.strip()}
+    scratch.write_text("".join(f"{f}\n" for f in sorted(changed)))
+    return sorted(changed)
 
 
 def cmd_select(args: argparse.Namespace) -> int:
     slice_name = args.slice or os.environ.get("SLICE_NAME", "")
     if not slice_name and not (args.out and args.map):
         raise SystemExit("select: SLICE_NAME (or --slice) is required to derive its paths")
-    out = Path(args.out) if args.out else SELECTION_DIR / f"selected-{slice_name}.txt"
+    out = Path(args.out) if args.out else selection_file(slice_name)
     out.parent.mkdir(parents=True, exist_ok=True)
 
     if not _enabled():
@@ -486,20 +528,19 @@ def cmd_select(args: argparse.Namespace) -> int:
     if args.changed:
         changed = [line for line in Path(args.changed).read_text().splitlines() if line.strip()]
     else:
-        base_ref = os.environ.get("BASE_REF") or "master"
-        found = _changed_since_merge_base(base_ref, out.parent / "changed-files.txt")
+        found = _changed_since_the_maps(map_paths, out.parent / "changed-files.txt")
         if found is None:
             out.write_text(f"{ALL_MARKER}\n")
-            _emit(
-                slice_name,
-                "all",
-                f"ran ALL (no merge-base with origin/{base_ref} — shallow checkout?)",
+            _emit(slice_name, "all", "ran ALL (the map's commit could not be fetched)")
+            print(
+                f"::warning::test impact ({slice_name}): the map's commit could not be fetched, "
+                "so this slice ran every test instead of the ones the change reaches"
             )
             return 0
         changed = found
 
     # tests/contracts is the API contract and always runs; the bridge slice
-    # never reaches this command at all (see main.yml).
+    # never reaches this command at all (see ci.yml).
     restrict_to = args.restrict_to or os.environ.get("SLICE_PATHS", "").split()
     exclude = args.exclude or _parse_ignore(os.environ.get("SLICE_IGNORE", ""))
 
@@ -534,14 +575,23 @@ def cmd_select(args: argparse.Namespace) -> int:
 
 
 def cmd_fetch(args: argparse.Namespace) -> int:
-    """Download the newest map artifact for this slice into $MAP_DIR.
+    """Download the newest AVAILABLE map artifact for this slice into $MAP_DIR.
 
-    Maps are uploaded as workflow artifacts by master / dispatch runs (main.yml
+    Maps are uploaded as workflow artifacts by master / dispatch runs (ci.yml
     "Upload test impact map"), not actions/cache: a pull_request run may only
     restore caches written on its own merge ref or on the default branch, so a
     map recorded by a master run was invisible to the PR — measured: four maps
     in the cache, every lane "ran ALL". Artifacts are fetched by run, which any
     job with actions:read may do.
+
+    The trusted runs are tried newest-first and the search stops at the first
+    one whose artifact downloads — the listing's newest entry is not always the
+    newest run that HAS a map (observed: a stale API page resolving to a
+    3-week-old run whose map artifacts were gone turned every PR slice into a
+    full run). A run that is the newest overall but missing its map must not
+    waste the fetch; the next-newest is a perfectly good map (selection is by
+    file, so age within the listing matters only for files that did not exist
+    then — and every one of those shapes widens to ALL elsewhere).
 
     Every failure mode leaves no map, and `select` then runs the whole slice.
     """
@@ -561,16 +611,32 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     map_dir = Path(os.environ.get("MAP_DIR", DEFAULT_MAP_DIR))
     map_dir.mkdir(parents=True, exist_ok=True)
 
-    run = _newest_trusted_run(repo)
-    if run is None:
+    try:
+        runs = _trusted_runs(repo)
+    except GitHubError as err:
+        print(
+            f"::warning::test impact ({slice_name}): the trusted master runs are unreadable "
+            f"({err}); running the whole slice"
+        )
+        return 0
+    if not runs:
         print(f"test impact ({slice_name}): no trusted master run with a map yet")
         return 0
-    run_id, created = run
-    return _download_map(repo, artifact, run_id, created, map_dir, slice_name)
+    for run_id, created in runs:
+        if _download_map(repo, artifact, run_id, map_dir):
+            print(f"test impact ({slice_name}): map from run {run_id} ({created})")
+            return 0
+    newest_run_id = runs[0][0]
+    print(
+        f"::warning::test impact ({slice_name}): no {artifact} in any of the "
+        f"{len(runs)} newest trusted master runs (newest {newest_run_id}); "
+        "running the whole slice"
+    )
+    return 0
 
 
-def _newest_trusted_run(repo: str) -> tuple[int, str] | None:
-    """The newest successful push-to-master run of main.yml, or None.
+def _trusted_runs(repo: str) -> list[tuple[int, str]]:
+    """Successful push-to-master runs of ci.yml, newest first.
 
     Resolved by RUN, never by the artifact's ``head_branch`` string. A branch
     name is not provenance: a fork can open a PR from a branch it named
@@ -580,40 +646,34 @@ def _newest_trusted_run(repo: str) -> tuple[int, str] | None:
     a PR author choose which of our tests run against their diff — a map that
     claims one test covers everything skips the suite.
 
-    So: ask the API for runs of main.yml that are ``event=push`` on ``master``
+    So: ask the API for runs of ci.yml that are ``event=push`` on ``master``
     and ``status=success``, and then re-check each candidate's own event and
     head repository, because query parameters are a filter, not a guarantee.
+    The whole filtered list is returned, not just the first entry: callers
+    walk it until one run's map artifact actually downloads.
     """
-    listing = _gh_json(
-        f"repos/{repo}/actions/workflows/main.yml/runs"
+    listing = GitHub.from_env().get(
+        f"repos/{repo}/actions/workflows/ci.yml/runs"
         "?branch=master&event=push&status=success&per_page=20"
     )
-    for run in (listing or {}).get("workflow_runs", []):
+    runs: list[tuple[int, str]] = []
+    for run in records(listing, "workflow_runs"):
         if run.get("event") == "pull_request":
             continue
-        head_repo = (run.get("head_repository") or {}).get("full_name")
-        if head_repo != repo:
+        head_repo = run.get("head_repository")
+        if not isinstance(head_repo, dict) or head_repo.get("full_name") != repo:
             continue
-        return int(run["id"]), str(run.get("created_at", ""))
-    return None
+        runs.append((field_of(run, "id", int), text_of(run, "created_at")))
+    return runs
 
 
-def _gh_json(endpoint: str) -> dict[str, Any] | None:
-    """`gh api <endpoint>` decoded, or None when gh/the API fails."""
-    if shutil.which("gh") is None:
-        return None
-    proc = subprocess.run(["gh", "api", endpoint], capture_output=True, text=True, check=False)
-    if proc.returncode != 0:
-        return None
-    try:
-        return json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        return None
+def _download_map(repo: str, artifact: str, run_id: int, map_dir: Path) -> bool:
+    """Try to land <artifact>.json from ``run_id`` into ``map_dir``.
 
-
-def _download_map(
-    repo: str, artifact: str, run_id: int, created: str, map_dir: Path, slice_name: str
-) -> int:
+    Returns True when the artifact downloaded to a non-empty file. A missing
+    or empty artifact is NOT an error — the caller walks the next-newest
+    trusted run, and only if none lands does the slice fall back to ALL.
+    """
     proc = subprocess.run(
         [
             "gh",
@@ -633,14 +693,9 @@ def _download_map(
     )
     landed = map_dir / f"{artifact}.json"
     if proc.returncode == 0 and landed.is_file() and landed.stat().st_size > 0:
-        print(f"test impact ({slice_name}): map from run {run_id} ({created})")
-        return 0
+        return True
     landed.unlink(missing_ok=True)
-    print(
-        f"::warning::test impact ({slice_name}): could not download {artifact} "
-        f"from run {run_id}; running the whole slice"
-    )
-    return 0
+    return False
 
 
 # ── cli ──────────────────────────────────────────────────────────────────────
@@ -666,8 +721,8 @@ def build_parser() -> argparse.ArgumentParser:
     sel = sub.add_parser("select", help="impact map + diff -> node ids")
     sel.add_argument("--slice", default="", help="defaults to $SLICE_NAME")
     sel.add_argument("--map", action="append", help="defaults to $MAP_DIR/<artifact>.json")
-    sel.add_argument("--changed", help="defaults to the diff against the merge-base")
-    sel.add_argument("--out", help="defaults to apps/api/.test-impact/selected-<slice>.txt")
+    sel.add_argument("--changed", help="defaults to the diff from the map's commit")
+    sel.add_argument("--out", help="defaults to the path `selection-path` prints")
     sel.add_argument("--repo-root", default="apps/api", help="for existence checks")
     sel.add_argument(
         "--restrict-to",
@@ -688,6 +743,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="paths that always run, e.g. tests/contracts",
     )
     sel.set_defaults(func=cmd_select)
+
+    path = sub.add_parser("selection-path", help="where select writes this slice's selection")
+    path.add_argument("--slice", default="", help="defaults to $SLICE_NAME")
+    path.set_defaults(func=cmd_selection_path)
     return parser
 
 

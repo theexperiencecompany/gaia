@@ -18,14 +18,14 @@ import {
 } from "../components/TriggerSettingsCard";
 import { useTriggerOptions } from "../hooks/useTriggerOptions";
 import type { TriggerSettingsProps } from "../registry";
-import type { TriggerConfig } from "../types";
+import type { TriggerConfigDraft } from "../types";
 
-interface LinearTriggerData {
+type LinearTriggerData = {
   trigger_name: string;
   team_id?: string;
-}
+};
 
-export interface LinearConfig extends TriggerConfig {
+export interface LinearConfig extends TriggerConfigDraft {
   trigger_name?: string;
   trigger_data?: LinearTriggerData;
 }

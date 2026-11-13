@@ -6,12 +6,15 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from shared.py.analytics.catalog.properties import Identifier
+
 
 class MCPProxyToolCallRequest(BaseModel):
     """Proxy a tools/call from an MCP App iframe."""
 
     server_url: str
-    tool_name: str
+    # The MCP spec's tool-name charset is [A-Za-z0-9_.-]; anything else 422s before the call.
+    tool_name: Identifier
     arguments: dict[str, Any] = {}
 
 

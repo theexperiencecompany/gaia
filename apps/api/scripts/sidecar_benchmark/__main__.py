@@ -44,8 +44,7 @@ BASE_URL = f"http://127.0.0.1:{PORT}"
 
 
 def _free_port() -> int:
-    """A currently-free loopback port, so concurrent benchmark runs never
-    fight over a fixed one."""
+    """Return a currently-free loopback port, so concurrent benchmark runs never fight over a fixed one."""
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
@@ -116,7 +115,7 @@ _WORDS = [
 
 
 def make_text(target_chars: int, rng: random.Random) -> str:
-    """A deterministic-ish pseudo sentence blob of ~target_chars characters."""
+    """Build a deterministic-ish pseudo sentence blob of ~target_chars characters."""
     parts: list[str] = []
     size = 0
     while size < target_chars:
@@ -359,7 +358,7 @@ async def scenario_batch_sweep(sidecar: Sidecar) -> dict:
 
 
 async def scenario_concurrency_sweep(tag: str) -> dict:
-    """Fixed total work at increasing client concurrency × ONNX thread budgets."""
+    """Run fixed total work at increasing client concurrency x ONNX thread budgets."""
     grid_threads = (
         [int(t) for t in os.getenv("BENCH_THREADS").split(",")]
         if os.getenv("BENCH_THREADS")

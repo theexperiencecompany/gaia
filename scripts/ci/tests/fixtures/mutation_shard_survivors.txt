@@ -1,0 +1,109 @@
+=== app/api/v1/endpoints/bot.py ===
+mutating app/api/v1/endpoints/bot.py (tests: tests/unit/api/test_bot_endpoint.py tests/unit/api/test_bot_stream_helpers.py) ...
+MUTATION FAILED — the suite would not notice if this code were wrong:
+
+      app.api.v1.endpoints.bot.x__may_mint_bot_upgrade_link__mutmut_3: survived
+      app.api.v1.endpoints.bot.x__may_mint_bot_upgrade_link__mutmut_4: survived
+      app.api.v1.endpoints.bot.x__may_mint_bot_upgrade_link__mutmut_5: survived
+      app.api.v1.endpoints.bot.x__may_mint_bot_upgrade_link__mutmut_7: survived
+      app.api.v1.endpoints.bot.x__may_mint_bot_upgrade_link__mutmut_8: survived
+      app.api.v1.endpoints.bot.x__may_mint_bot_upgrade_link__mutmut_9: survived
+      app.api.v1.endpoints.bot.x__may_mint_bot_upgrade_link__mutmut_10: survived
+      app.api.v1.endpoints.bot.x__may_mint_bot_upgrade_link__mutmut_11: survived
+# app.api.v1.endpoints.bot.x__may_mint_bot_upgrade_link__mutmut_3: survived
+--- app/api/v1/endpoints/bot.py
++++ app/api/v1/endpoints/bot.py
+@@ -15,7 +15,7 @@
+     """
+     try:
+         claimed = await redis_cache.client.set(
+-            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", "1", nx=True, ex=BOT_UPGRADE_LINK_TTL
++            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", None, nx=True, ex=BOT_UPGRADE_LINK_TTL
+         )
+     except Exception as e:
+         log.warning(
+# app.api.v1.endpoints.bot.x__may_mint_bot_upgrade_link__mutmut_4: survived
+--- app/api/v1/endpoints/bot.py
++++ app/api/v1/endpoints/bot.py
+@@ -15,7 +15,7 @@
+     """
+     try:
+         claimed = await redis_cache.client.set(
+-            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", "1", nx=True, ex=BOT_UPGRADE_LINK_TTL
++            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", "1", nx=None, ex=BOT_UPGRADE_LINK_TTL
+         )
+     except Exception as e:
+         log.warning(
+# app.api.v1.endpoints.bot.x__may_mint_bot_upgrade_link__mutmut_5: survived
+--- app/api/v1/endpoints/bot.py
++++ app/api/v1/endpoints/bot.py
+@@ -15,7 +15,7 @@
+     """
+     try:
+         claimed = await redis_cache.client.set(
+-            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", "1", nx=True, ex=BOT_UPGRADE_LINK_TTL
++            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", "1", nx=True, ex=None
+         )
+     except Exception as e:
+         log.warning(
+# app.api.v1.endpoints.bot.x__may_mint_bot_upgrade_link__mutmut_7: survived
+--- app/api/v1/endpoints/bot.py
++++ app/api/v1/endpoints/bot.py
+@@ -15,7 +15,7 @@
+     """
+     try:
+         claimed = await redis_cache.client.set(
+-            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", "1", nx=True, ex=BOT_UPGRADE_LINK_TTL
++            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", nx=True, ex=BOT_UPGRADE_LINK_TTL
+         )
+     except Exception as e:
+         log.warning(
+# app.api.v1.endpoints.bot.x__may_mint_bot_upgrade_link__mutmut_8: survived
+--- app/api/v1/endpoints/bot.py
++++ app/api/v1/endpoints/bot.py
+@@ -15,7 +15,7 @@
+     """
+     try:
+         claimed = await redis_cache.client.set(
+-            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", "1", nx=True, ex=BOT_UPGRADE_LINK_TTL
++            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", "1", ex=BOT_UPGRADE_LINK_TTL
+         )
+     except Exception as e:
+         log.warning(
+# app.api.v1.endpoints.bot.x__may_mint_bot_upgrade_link__mutmut_9: survived
+--- app/api/v1/endpoints/bot.py
++++ app/api/v1/endpoints/bot.py
+@@ -15,8 +15,7 @@
+     """
+     try:
+         claimed = await redis_cache.client.set(
+-            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", "1", nx=True, ex=BOT_UPGRADE_LINK_TTL
+-        )
++            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", "1", nx=True, )
+     except Exception as e:
+         log.warning(
+             f"{LogTag.PAYMENT} Bot upgrade-link window unavailable, falling back to pricing page",
+# app.api.v1.endpoints.bot.x__may_mint_bot_upgrade_link__mutmut_10: survived
+--- app/api/v1/endpoints/bot.py
++++ app/api/v1/endpoints/bot.py
+@@ -15,7 +15,7 @@
+     """
+     try:
+         claimed = await redis_cache.client.set(
+-            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", "1", nx=True, ex=BOT_UPGRADE_LINK_TTL
++            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", "XX1XX", nx=True, ex=BOT_UPGRADE_LINK_TTL
+         )
+     except Exception as e:
+         log.warning(
+# app.api.v1.endpoints.bot.x__may_mint_bot_upgrade_link__mutmut_11: survived
+--- app/api/v1/endpoints/bot.py
++++ app/api/v1/endpoints/bot.py
+@@ -15,7 +15,7 @@
+     """
+     try:
+         claimed = await redis_cache.client.set(
+-            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", "1", nx=True, ex=BOT_UPGRADE_LINK_TTL
++            f"{BOT_UPGRADE_LINK_PREFIX}{user_id}", "1", nx=False, ex=BOT_UPGRADE_LINK_TTL
+         )
+     except Exception as e:
+         log.warning(

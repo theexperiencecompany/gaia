@@ -22,10 +22,9 @@ _ArgTuple = tuple[str, str | None, str | None, dict[str, Any]]
 
 class TestDispatchTodoSubscriptions:
     async def test_each_name_is_dispatched_with_the_full_unaltered_arg_tuple(self) -> None:
-        # A recording fake with the EXACT four-positional signature: it captures
-        # (trigger_name, trigger_id, user_id, payload) verbatim, so a call that
-        # nulls, drops, or reorders any argument is caught — either the recorded
-        # tuple differs, or (a dropped arg) the call raises before it records.
+        # Exact four-positional signature: captures (trigger_name, trigger_id,
+        # user_id, payload) verbatim, so a nulled, dropped, or reordered
+        # argument either changes the recorded tuple or raises before recording.
         calls: list[_ArgTuple] = []
         payload = {"event": "gmail.new", "id": "evt_9"}
 

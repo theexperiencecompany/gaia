@@ -12,12 +12,9 @@ from langchain_core.outputs import LLMResult
 
 from .providers import ProviderConfig
 
-#: Which case the LLM call being metered belongs to.
-#:
-#: A context variable rather than an attribute because one tracker serves a whole
-#: run, including runs that execute several cases at once. An asyncio task copies
-#: the context when it is created, so each concurrent case sees only its own value
-#: and callbacks fired deep inside the agent graph still land in the right bucket.
+#: Which case the LLM call being metered belongs to. A context variable, not
+#: an attribute, since one tracker serves a whole run with concurrent cases;
+#: asyncio copies context per task, so callbacks land in the right bucket.
 _CURRENT_CASE: ContextVar[str | None] = ContextVar("eval_current_case", default=None)
 
 
@@ -41,11 +38,9 @@ class EvalCostTracker(BaseCallbackHandler):
         self.exceeded_budget: set[str] = set()
         self.total_exceeded = False
         self._provider: str | None = None
-        # Metering runs on the event loop in a sequential run, but concurrent
-        # runs fan cases out across tasks and some transports fire LLM
-        # callbacks from worker threads — the read-modify-write on the meters
-        # below must not lose updates between threads. Reentrant because
-        # total_cost_usd sums per-provider cost_usd under the same lock.
+        # Concurrent runs fire LLM callbacks from worker threads, so the
+        # read-modify-write below must not lose updates. Reentrant since
+        # total_cost_usd sums per-provider cost under the same lock.
         self._lock = threading.RLock()
 
     def set_provider(self, provider: str) -> None:
@@ -53,7 +48,7 @@ class EvalCostTracker(BaseCallbackHandler):
 
     @contextmanager
     def case_scope(self, case_id: str) -> Iterator[None]:
-        """Meter everything spent inside this block against ``case_id``."""
+        """Meter everything spent inside this block against case_id."""
         token = _CURRENT_CASE.set(case_id)
         try:
             yield
@@ -65,7 +60,7 @@ class EvalCostTracker(BaseCallbackHandler):
             return self.case_input.get(case_id, 0), self.case_output.get(case_id, 0)
 
     def _credit(self, provider: str, input_tokens: int, output_tokens: int) -> None:
-        """The one place spend is recorded, so every meter sees the same event."""
+        """Record spend in the one place every meter reads from, so all agree."""
         with self._lock:
             self.input_tokens[provider] = self.input_tokens.get(provider, 0) + input_tokens
             self.output_tokens[provider] = self.output_tokens.get(provider, 0) + output_tokens
@@ -130,8 +125,11 @@ class EvalCostTracker(BaseCallbackHandler):
             self.total_exceeded = True
 
     def add_manual(self, provider: str, input_tokens: int, output_tokens: int) -> None:
-        """Record spend a transport measured itself — an HTTP suite reading the
-        API's own usage frames, which no in-process callback can see."""
+        """Record spend a transport measured itself.
+
+        For an HTTP suite reading the API's own usage frames, which no
+        in-process callback can see.
+        """
         self._credit(provider, input_tokens, output_tokens)
         self._check_budgets()
 

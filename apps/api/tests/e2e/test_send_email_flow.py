@@ -1,19 +1,4 @@
-"""E2E test: sending an email through the real GAIA Gmail send path.
-
-Starts from the API call the web mail composer actually makes
-(``POST /api/v1/gmail/send-json`` and ``POST /api/v1/gmail/send``) and asserts
-on the response the user sees. Everything between is real production code:
-
-- ``app.api.v1.endpoints.mail.send_email_json`` / ``send_email_route``
-- ``app.services.mail.mail_service.send_email`` (tool selection, parameter build)
-- ``app.services.mail.mail_service.invoke_gmail_tool``
-- ``app.services.composio.langchain_composio_service.LangchainProvider`` — the
-  real Composio→LangChain tool wrapper, including its pydantic argument schema
-
-The only fake is Composio's remote execution call (``execute_tool``), which is
-where the request would leave the process for Gmail. It returns recorded
-``ToolExecutionResponse`` payloads (``{"data", "error", "successful"}``).
-"""
+"""Drive the real Gmail send path from the API call the web composer makes, faking only Composio's remote execute_tool call."""
 
 from typing import Any
 
@@ -91,7 +76,7 @@ class FakeGmail:
     """Stands in for Composio's remote tool execution — the network boundary.
 
     Records every outbound call so tests can assert what would have been sent to
-    Gmail, and replays a caller-supplied ``ToolExecutionResponse``.
+    Gmail, and replays a caller-supplied ToolExecutionResponse.
     """
 
     def __init__(self, response: dict[str, Any] | None, known_tools: set[str] | None = None):
@@ -145,11 +130,7 @@ class TestSendEmailFlow:
     async def test_send_returns_gmail_message_id_and_addresses_all_recipients(
         self, client, gmail_boundary
     ):
-        """A successful send returns Gmail's message id and mails every recipient.
-
-        ``to[0]`` becomes ``recipient_email`` and the remainder ``extra_recipients``
-        (route logic); the id lives under the Composio response envelope's ``data``.
-        """
+        """A successful send returns Gmail's message id (from the Composio response envelope's data), addressing to[0] as recipient_email and the rest as extra_recipients."""
         fake = gmail_boundary(
             {
                 "data": {"id": "gmail-msg-9001", "threadId": "gmail-thread-42"},
@@ -159,12 +140,12 @@ class TestSendEmailFlow:
         )
 
         response = await client.post(
-            f"{MAIL_BASE}/gmail/send-json",
-            json={
-                "to": ["alice@example.com", "bob@example.com"],
+            f"{MAIL_BASE}/gmail/send",
+            data={
+                "to": "alice@example.com, bob@example.com",
                 "subject": "Q3 numbers",
                 "body": "Attached below.",
-                "cc": ["carol@example.com"],
+                "cc": "carol@example.com",
             },
         )
 
@@ -172,6 +153,7 @@ class TestSendEmailFlow:
         assert response.json() == {
             "message_id": "gmail-msg-9001",
             "status": "Email sent successfully",
+            "attachments_count": 0,
         }
 
         slug, params = fake.calls[0]
@@ -182,35 +164,6 @@ class TestSendEmailFlow:
         assert params["subject"] == "Q3 numbers"
         assert params["body"] == "Attached below."
 
-    async def test_send_reports_failure_instead_of_claiming_success(self, client, gmail_boundary):
-        """A Gmail rejection must NOT come back as "Email sent successfully".
-
-        Composio signals failure with ``successful: False`` and an ``error``. If
-        the route ignores that, the composer tells the user the mail went out
-        when nothing was delivered.
-        """
-        gmail_boundary(
-            {
-                "data": {},
-                "error": "Request had insufficient authentication scopes.",
-                "successful": False,
-            }
-        )
-
-        response = await client.post(
-            f"{MAIL_BASE}/gmail/send-json",
-            json={"to": ["alice@example.com"], "subject": "Q3 numbers", "body": "Attached."},
-        )
-
-        assert response.status_code == 500, response.text
-        body = response.json()
-        assert "successfully" not in str(body).lower(), (
-            f"Gmail rejected the send but the API reported success: {body}"
-        )
-        assert "insufficient authentication scopes" in str(body), (
-            f"The Gmail error must reach the user, got: {body}"
-        )
-
     async def test_send_reports_failure_when_gmail_tool_is_unavailable(
         self, client, gmail_boundary
     ):
@@ -218,8 +171,8 @@ class TestSendEmailFlow:
         gmail_boundary(None, known_tools=set())
 
         response = await client.post(
-            f"{MAIL_BASE}/gmail/send-json",
-            json={"to": ["alice@example.com"], "subject": "Hi", "body": "There."},
+            f"{MAIL_BASE}/gmail/send",
+            data={"to": "alice@example.com", "subject": "Hi", "body": "There."},
         )
 
         assert response.status_code == 500, response.text
@@ -229,7 +182,7 @@ class TestSendEmailFlow:
     async def test_form_send_route_reports_failure_instead_of_claiming_success(
         self, client, gmail_boundary
     ):
-        """The multipart send route (attachments path) must fail loud too."""
+        """A Gmail rejection must not come back as "Email sent successfully"; the composer would tell the user mail went out."""
         gmail_boundary(
             {"data": {}, "error": "Recipient address rejected", "successful": False},
         )

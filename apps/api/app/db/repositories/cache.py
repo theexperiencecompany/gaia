@@ -1,7 +1,7 @@
 """Generation-based cache policy for the repository layer.
 
-Each cache-enabled repository declares a ``CachePolicy``. Three key families per
-scope (``user_id`` for user-scoped repos, else ``"global"``):
+Each cache-enabled repository declares a CachePolicy. Three key families per
+scope (user_id for user-scoped repos, else "global"):
 
     {prefix}:{scope}:{id}            entity cache
     {prefix}:{scope}:gen             generation counter (Redis INCR)
@@ -9,9 +9,9 @@ scope (``user_id`` for user-scoped repos, else ``"global"``):
 
 Every write bumps the generation, which orphans all query caches for that scope
 at once — they still carry the old generation in their key. No pattern scans, no
-manual invalidation. Redis being down degrades to "skip the cache" (a ``None``
-generation), never "serve stale". Serialization rides the existing ``model=``
-TypeAdapter path in ``app/db/redis.py`` — no second serializer.
+manual invalidation. Redis being down degrades to "skip the cache" (a None
+generation), never "serve stale". Serialization rides the existing model=
+TypeAdapter path in app/db/redis.py — no second serializer.
 """
 
 from __future__ import annotations
@@ -51,11 +51,10 @@ def query_arg_hash(arguments: dict[str, object]) -> str:
 
 
 async def read_generation(policy: CachePolicy, scope: str) -> int | None:
-    """Current generation for a scope.
+    """Return the current generation for a scope.
 
-    ``None`` means Redis is unavailable — skip the query cache, never serve stale.
-    A missing key is generation ``0`` (Redis is up, just no writes yet), distinct
-    from ``None`` so a never-written scope still caches instead of skipping forever.
+    None means Redis is unavailable (skip the query cache); a missing key is generation 0,
+    distinct from None so a never-written scope still caches instead of skipping forever.
     """
     client = redis_cache.redis
     if client is None:

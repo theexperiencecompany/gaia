@@ -120,10 +120,7 @@ class TestWorkflowExecutionsRepository:
         assert await repo.find_recent_with_trace(_uid("missing"), owner, limit=1) == []
 
     async def test_find_recent_with_trace_returns_a_failed_run_that_ran_steps(self, repo):
-        """A fire that ran steps (with side effects) and then failed carries its
-        trace on a FAILED record. Hiding it showed the next run the fire before,
-        and the agent repeated the side effect. A run still in flight is not
-        history yet and stays hidden."""
+        """Regression: hiding a FAILED run that ran steps showed the next run the fire before, so the agent repeated the side effect."""
         wf = _uid("wf")
         owner = _uid("owner")
         call = [RecordedCall(tool_name="GMAIL_SEND", result_digest="sent")]

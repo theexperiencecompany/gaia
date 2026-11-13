@@ -1,24 +1,11 @@
 import type { ImageLoaderProps } from "next/image";
 
 /**
- * Cloudflare Image Resizing loader for next/image.
- *
- * Routes optimization for SAME-ORIGIN images to Cloudflare's image CDN via the
- * `/cdn-cgi/image/` endpoint instead of Next.js' default optimizer (which, on
- * OpenNext/Workers, runs uncached in the worker and is slow). Cloudflare
- * transforms on the fly at the edge and caches each (source, params, format)
- * variant, so repeat hits are free CDN cache hits and never touch the worker.
- *
- * Remote images (favicons, external logos) are returned untouched so the
- * browser loads them straight from their own CDN. This zone does not enable
- * "resize images from any origin", so `/cdn-cgi/image/` answers 403 for any
- * off-origin source; routing remote URLs through it is what broke them. It also
- * would not help even if enabled — sources like Google's `s2/favicons`
- * 301-redirect to gstatic, and the resizer does not follow redirects. These
- * favicons are already tiny and CDN-cached at the source, so there is nothing
- * to gain from edge-resizing them.
- *
- * Requires "Transformations" (Image Resizing) enabled on the zone.
+ * Cloudflare Image Resizing loader for next/image: same-origin images route
+ * through `/cdn-cgi/image/` (edge-cached; Next's default optimizer runs uncached
+ * on OpenNext/Workers). Remote images pass through untouched — this zone 403s
+ * off-origin resizing, and Google's s2/favicons redirects (unfollowed) anyway.
+ * Requires "Transformations" enabled on the zone.
  */
 const normalizeSrc = (src: string) =>
   src.startsWith("/") ? src.slice(1) : src;

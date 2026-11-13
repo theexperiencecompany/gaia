@@ -35,11 +35,9 @@ export const SAMPLE_EMAIL_COMPOSE: EmailComposeData = {
   is_html: false,
 };
 
-// ---------------------------------------------------------------------------
-// HTML → plain text fallback. Web uses DOMPurify to render sanitized HTML
-// inline; on mobile we render through MarkdownRenderer, which expects plain
-// text/markdown — so we strip tags first when `is_html` is true.
-// ---------------------------------------------------------------------------
+// HTML → plain text fallback: web renders sanitized HTML via DOMPurify; mobile
+// renders through MarkdownRenderer (expects plain text/markdown), so strip tags
+// first when `is_html` is true.
 
 const HTML_ENTITIES: Record<string, string> = {
   "&amp;": "&",
@@ -85,12 +83,9 @@ function EditIconButton({ onPress }: { onPress?: () => void }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main card — mirrors apps/web EmailComposeCard layout:
-// rounded-3xl bg-zinc-800 → header (Gmail icon + label + optional Reply chip)
-// → To row → separator → Subject row → separator → Body (scrollable, max-h-46
-// = 184px, edit button absolute top-right) → footer (rounded-full Send CTA).
-// ---------------------------------------------------------------------------
+// Mirrors apps/web EmailComposeCard layout: rounded-3xl bg-zinc-800 → header →
+// To row → separator → Subject row → separator → Body (scrollable, max-h-46 =
+// 184px) → footer (rounded-full Send CTA).
 
 export function EmailComposeCard({
   data = SAMPLE_EMAIL_COMPOSE,
@@ -119,10 +114,9 @@ export function EmailComposeCard({
   };
 
   return (
-    // Use inline styles for layout-critical parts so the card renders
-    // identically regardless of NativeWind class processing. Header icon and
-    // footer Send button were both invisible on device when expressed via
-    // utility classes — they now use explicit gap/padding/min-height.
+    // Inline styles for layout-critical parts so the card renders identically
+    // regardless of NativeWind class processing — header icon and footer Send
+    // button were invisible on device via utility classes.
     <View
       style={{
         marginHorizontal: 16,

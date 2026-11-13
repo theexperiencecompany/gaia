@@ -1,13 +1,13 @@
-"""Postgres → VFS glue for ``/workspace/memory/``.
+"""Postgres → VFS glue for /workspace/memory/.
 
 The Postgres side: core documents, the last 30 days of journal episodes,
-and live facts grouped by category folder (see ``app.memory.pg_store``).
+and live facts grouped by category folder (see app.memory.pg_store).
 
-The VFS side: :mod:`app.memory.projection`.
+The VFS side: :mod:app.memory.projection.
 
 The shared orchestration (mount check, hash gate, fire-and-forget
 scheduler, structured logging) lives in
-:mod:`app.services._vfs_scheduler`.
+:mod:app.services._vfs_scheduler.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ from app.services.storage.metrics import FsOps
 async def sync_user_memory_fs(user_id: str) -> int:
     """Materialize the user's memory projection to JuiceFS.
 
-    Returns the number of file bodies rewritten. ``0`` means either the
+    Returns the number of file bodies rewritten. 0 means either the
     mount is missing (native dev) or the on-disk catalog signature
     already matched Postgres — both are no-ops from the caller's POV.
     """

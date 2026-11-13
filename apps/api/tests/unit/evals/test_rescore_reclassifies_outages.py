@@ -1,10 +1,10 @@
 """Re-grading history must correct an outage, not re-affirm it.
 
-``rescore`` exists to fix published numbers from the journal alone. Pointed at
+rescore exists to fix published numbers from the journal alone. Pointed at
 the contaminated LongMemEval run it did the opposite of its job: the 64 cases
 that never ran carry an empty transcript, so it either re-scored the blank as a
 miss or filed them under "re-run these" — and either way they stayed in the
-denominator as ``failed``, which is the fabricated 0/64 still being reported.
+denominator as failed, which is the fabricated 0/64 still being reported.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ POSTGRES_DOWN = "RuntimeError: PostgreSQL engine not available"
 
 
 def _never_ran(case_id: str) -> dict[str, Any]:
-    """A record exactly as the outage wrote it: a verdict with no evidence."""
+    """Return a record exactly as the outage wrote it: a verdict with no evidence."""
     return {
         "case_id": case_id,
         "category": "single-session-user",
@@ -162,9 +162,7 @@ def test_the_correction_is_written_beside_the_journal_not_over_it(
 def test_history_is_correctable_without_the_suite_or_its_dataset(
     contaminated_run: Path,
 ) -> None:
-    """Most contaminated runs predate their current cases, and LongMemEval needs a
-    dataset file that may not be on the machine doing the correcting. Whether a
-    case ran is a property of the record, so the correction must never need them."""
+    """Whether a case ran is a property of the record, so correction must never need the suite or its dataset file."""
     assert "longmemeval" not in SUITE_REGISTRY or True  # correction must not consult it
     results = reclassify_all(contaminated_run)
 

@@ -1,0 +1,75 @@
+"""Every harness test runs against a CPU-slot pool and a verdict dir of its own.
+
+The scripts under test are the real lane scripts, and they reach for the job's
+shared state through the environment:
+
+* `lib/cpu-slots.sh` — `mutation.py shard` and `pytest.sh slice` take their
+  host tokens before their first real step. Run on the self-hosted box with
+  the pool inherited, each sandboxed shard in this suite queued behind the
+  real mutation shards for the semaphore's full 600 s fail-open wait, and the
+  harness lane died at its cap with the last tests never reached (job
+  103243166187) — invisible locally, where the governor is a no-op.
+* `verdict.py emit` — resolves `$GAIA_VERDICT_DIR > $RUNNER_TEMP/verdicts`, and
+  a runner always sets RUNNER_TEMP. A sandboxed shard that inherits it writes
+  a verdict for a lane the harness job does not own into the job's real upload
+  directory, and the ownership check fails the job (run 34595547568).
+
+A private pool with room for any request keeps the semaphore code path live,
+and a private verdict dir is the top rung so the real resolution still runs;
+tests that prove the lower rungs strip it themselves.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from pathlib import Path
+import shutil
+import sys
+
+# The scripts import `lib.*` from their own directory; tests import them the same way.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from github_fake import FakeGitHub, serve
+import pytest
+
+# More than any lane requests (a mutation shard takes nproc/2 on the 16-thread
+# box), so a test only waits when it deliberately makes a smaller pool of its
+# own. A test that proves the DEFAULT pool size must pass an empty
+# GAIA_CPU_TOKENS rather than drop the key, which would inherit this one.
+PRIVATE_POOL_TOKENS = "64"
+
+
+@pytest.fixture(autouse=True)
+def _private_job_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("GAIA_CPU_SLOTS_DIR", str(tmp_path / "cpu-slots"))
+    monkeypatch.setenv("GAIA_CPU_TOKENS", PRIVATE_POOL_TOKENS)
+    monkeypatch.setenv("GAIA_VERDICT_DIR", str(tmp_path / "verdicts"))
+    # Off Linux there is no tmpfs, and mutation.py would stage inside apps/api,
+    # under the tree other tests are walking.
+    monkeypatch.setenv("MUTMUT_WORKDIR_BASE", str(tmp_path / "mutation-work"))
+
+
+@pytest.fixture
+def github() -> Iterator[FakeGitHub]:
+    """Serve a local api.github.com that runner.py reaches over real HTTP (see github_fake.py)."""
+    with serve() as fake:
+        yield fake
+
+
+@pytest.fixture
+def api(github: FakeGitHub, monkeypatch: pytest.MonkeyPatch) -> FakeGitHub:
+    """Point an in-process lib/github.py client at the fake GitHub, never at a real token."""
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    for key, value in github.env().items():
+        if key.startswith("GITHUB_"):
+            monkeypatch.setenv(key, value)
+    return github
+
+
+@pytest.fixture
+def flock() -> str:
+    """Skip unless flock exists — absent on stock macOS, where acquire fails open before the pool."""
+    path = shutil.which("flock")
+    if path is None:
+        pytest.skip("flock absent (governor is Linux-box-only)")
+    return path

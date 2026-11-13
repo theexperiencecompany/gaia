@@ -56,7 +56,7 @@ export default function SprintReportCard() {
         </span>
       </div>
       <p className="text-[11px] text-zinc-500 mt-0.5">
-        Sprint 24 · Mar 3 – Mar 14 · 10 days
+        Sprint 24 · Mar 3 to Mar 14 · 10 days
       </p>
 
       <div className="grid grid-cols-2 gap-2 my-3">

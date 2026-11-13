@@ -3,7 +3,7 @@
 The execution record and the playbook come from Mongo; the playbook
 lifecycle's own account of the fire (mode, reason, for_each counts, a discard)
 comes from the worker's wide events, which the worker writes as JSON lines. A
-scenario asserts on this ``Observation`` and nothing else: never on prose.
+scenario asserts on this Observation and nothing else: never on prose.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from collections.abc import Iterator
 from datetime import datetime
 import json
 from pathlib import Path
+import re
 import time
 from typing import Any, cast
 
@@ -27,6 +28,8 @@ from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
 from .client import EXECUTION_WAIT_SECONDS, SETTLE_SECONDS, Execution, GaiaClient
 
 FINISHED = frozenset({"success", "failed", "skipped"})
+PLAYBOOK_DECISION_TOOLS = frozenset({"write_playbook", "decline_playbook", "disable_playbook"})
+ERROR_CODE = re.compile(r'"error":\s*"(\w+)"')
 #: How long to wait for the previous fire's executor to let go of the conversation.
 LOCK_WAIT_SECONDS = 180
 
@@ -39,13 +42,11 @@ class PlaybookState(BaseModel):
     heal_attempts: int
     tools: list[str]
     has_for_each: bool
-    has_handoff: bool
 
 
 class WorkflowState(BaseModel):
     activated: bool
     deactivated_reason: str | None
-    playbook_declines: int
     blocked_on_integrations: list[str]
     last_discard_reason: str | None
 
@@ -66,11 +67,10 @@ class Observation(BaseModel):
     reasons: list[str] = Field(default_factory=list)
     discards: list[str] = Field(default_factory=list)
     for_each: list[ForEachCount] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
-    errors: list[str] = Field(default_factory=list)
-
-    def warned(self, needle: str) -> bool:
-        return any(needle in line for line in self.warnings + self.errors)
+    #: Each playbook decision this fire made, as "<tool>:<ok | error code>".
+    decisions: list[str] = Field(default_factory=list)
+    #: What each refused write_playbook told the model, from the fire's trace.
+    refusals: list[str] = Field(default_factory=list)
 
 
 class WorkerLog:
@@ -97,8 +97,7 @@ class WorkerLog:
 
 
 class Store:
-    """Direct reads of the collections a fire writes. Reads only; the drive
-    changes state through the API."""
+    """Direct reads of the collections a fire writes; the drive changes state through the API."""
 
     def __init__(self) -> None:
         client: MongoClient[dict[str, Any]] = MongoClient(settings.MONGO_DB)
@@ -151,8 +150,7 @@ class Store:
             suspect_streak=raw.get("suspect_streak", 0),
             heal_attempts=raw.get("heal_attempts", 0),
             tools=_tools(steps),
-            has_for_each=any(_has_key(steps, "for_each")),
-            has_handoff=any(_has_key(steps, "handoff")),
+            has_for_each=any(step.get("for_each") is not None for step in steps),
         )
 
     def workflow(self, workflow_id: str) -> WorkflowState:
@@ -163,10 +161,34 @@ class Store:
         return WorkflowState(
             activated=bool(raw.get("activated")),
             deactivated_reason=raw.get("deactivated_reason"),
-            playbook_declines=raw.get("playbook_declines") or 0,
             blocked_on_integrations=list(raw.get("blocked_on_integrations") or []),
             last_discard_reason=discard.get("reason"),
         )
+
+    def decisions(self, execution_id: str) -> list[str]:
+        """Each playbook decision in the fire's trace, as "<tool>:<ok | error code>"."""
+        row = self.db["workflow_executions"].find_one({"execution_id": execution_id}) or {}
+        found: list[str] = []
+        for call in row.get("trace") or []:
+            name = str(call.get("tool_name"))
+            if name in PLAYBOOK_DECISION_TOOLS:
+                error = ERROR_CODE.search(str(call.get("result_digest")))
+                found.append(f"{name}:{error.group(1) if error else 'ok'}")
+        return found
+
+    def refusals(self, execution_id: str) -> list[str]:
+        """What each refused write_playbook in the fire's trace answered.
+
+        Read from the trace, written with the execution, rather than the worker's
+        log: the executor's wide event can land seconds after the fire settles.
+        """
+        row = self.db["workflow_executions"].find_one({"execution_id": execution_id}) or {}
+        return [
+            str(call.get("result_digest"))
+            for call in row.get("trace") or []
+            if call.get("tool_name") == "write_playbook"
+            and ERROR_CODE.search(str(call.get("result_digest")))
+        ]
 
     def executions(self, workflow_id: str) -> list[Execution]:
         rows = self.db["workflow_executions"].find({"workflow_id": workflow_id})
@@ -196,8 +218,7 @@ class Store:
         )
 
     def edit_workflow_prompt(self, workflow_id: str, prompt: str) -> None:
-        """The one write: an edit behind the API's back, so the stale-hash discard
-        is exercised without regenerating the steps."""
+        """Edit the prompt behind the API's back, so the stale-hash discard is exercised without regenerating the steps."""
         self.db["workflows"].update_one({"_id": workflow_id}, {"$set": {"prompt": prompt}})
 
 
@@ -227,16 +248,16 @@ def _observe(
         execution=execution,
         playbook=store.playbook(workflow_id),
         workflow=store.workflow(workflow_id),
+        decisions=store.decisions(execution.execution_id),
+        refusals=store.refusals(execution.execution_id),
     )
     for event in log.events_since(position, workflow_id):
         _read_playbook_event(observation, event)
-        observation.warnings.extend(_message(w) for w in event.get("warnings") or [])
-        observation.errors.extend(_message(e) for e in event.get("errors") or [])
     return observation
 
 
 def _read_playbook_event(observation: Observation, event: dict[str, Any]) -> None:
-    """What the playbook lifecycle said in one wide event, onto the observation."""
+    """Fold what the playbook lifecycle said in one wide event onto the observation."""
     playbook = event.get("playbook")
     if isinstance(playbook, dict):
         if mode := playbook.get("mode"):
@@ -249,21 +270,5 @@ def _read_playbook_event(observation: Observation, event: dict[str, Any]) -> Non
         observation.discards.append(str(event.get("reason")))
 
 
-def _message(entry: object) -> str:
-    return str(entry.get("msg", "")) if isinstance(entry, dict) else str(entry)
-
-
 def _tools(steps: list[dict[str, Any]]) -> list[str]:
-    names: list[str] = []
-    for step in steps:
-        if step.get("handoff"):
-            names.extend(_tools(step.get("steps") or []))
-        elif step.get("tool"):
-            names.append(str(step["tool"]))
-    return names
-
-
-def _has_key(steps: list[dict[str, Any]], key: str) -> Iterator[bool]:
-    for step in steps:
-        yield step.get(key) is not None
-        yield from _has_key(step.get("steps") or [], key)
+    return [str(step["tool"]) for step in steps if step.get("tool")]

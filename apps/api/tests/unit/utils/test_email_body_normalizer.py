@@ -255,7 +255,7 @@ class TestHtmlToText:
 class TestQuotedRepliesAreKept:
     """Explicit guardrail: the normalizer must NOT strip quoted replies.
 
-    Lines starting with `>` and the `On <date>, <sender> wrote:` attribution
+    Lines starting with > and the On <date>, <sender> wrote: attribution
     line give the agent context into the older conversation. Anyone adding a
     "strip quoted replies" rule will break this test.
     """

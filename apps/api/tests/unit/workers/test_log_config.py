@@ -1,9 +1,9 @@
 """Unit tests for the ARQ CLI custom-log-dict config.
 
-``ARQ_LOG_CONFIG`` is a plain dict handed to arq's ``--custom-log-dict``, which
-runs ``logging.config.dictConfig`` on it. The tests pin the contract that
+ARQ_LOG_CONFIG is a plain dict handed to arq's --custom-log-dict, which
+runs logging.config.dictConfig on it. The tests pin the contract that
 fixes the double-emitted arq lines: version 1, existing loggers survive, and
-the ``arq`` logger ends up with no handlers of its own and propagation to the
+the arq logger ends up with no handlers of its own and propagation to the
 root interceptor at LOG_LEVEL.
 """
 

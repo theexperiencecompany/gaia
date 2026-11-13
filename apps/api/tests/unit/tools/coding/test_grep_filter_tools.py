@@ -1,7 +1,7 @@
-"""grep tool + shared `_filter` subprocess execution: behavior + hardening.
+"""grep tool + shared _filter subprocess execution: behavior + hardening.
 
-Exercises the real subprocess path (`python` as a generic vehicle, `grep` for
-grep-specifics) and mocks only the JuiceFS boundary (`resolve_user_file`). The
+Exercises the real subprocess path (python as a generic vehicle, grep for
+grep-specifics) and mocks only the JuiceFS boundary (resolve_user_file). The
 hardening tests encode real risks: env exfil, output-cap runaway, child rlimits,
 the stderr-pipe deadlock, and flag injection.
 """
@@ -14,6 +14,7 @@ import shutil
 import sys
 from unittest.mock import AsyncMock, patch
 
+from langchain_core.runnables import RunnableConfig
 import pytest
 
 from app.agents.tools.coding import _filter
@@ -24,7 +25,7 @@ from app.services.storage import JuiceFSUnavailable
 
 PY = sys.executable
 GREP = shutil.which("grep") or "grep"
-CONFIG = {"configurable": {"user_id": "u1", "conversation_id": "c1"}}
+CONFIG: RunnableConfig = {"configurable": {"user_id": "u1", "conversation_id": "c1"}}
 
 
 def _mock_resolve(path: Path):
@@ -122,15 +123,7 @@ async def test_security_output_cap_truncates(tmp_path: Path) -> None:
 async def test_output_cap_kill_does_not_hang_on_a_paused_stdout_pipe(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Regression: the overrun kill used to reap the child from inside the drain.
-
-    asyncio pauses a pipe transport once its buffer passes the high-water mark and
-    completes ``wait()`` only when every pipe has seen EOF — so reaping there, with
-    stdout paused and nobody reading it, hung until the wall-clock timeout. It
-    reproduced roughly half the time on CI, depending on how full the buffer was
-    when the cap tripped. Reading a byte at a time pins the buffer full so the
-    condition is deterministic rather than a coin flip.
-    """
+    """Regression: reaping the child from inside the drain hung on a paused, full stdout pipe; byte-at-a-time reads make it deterministic."""
     monkeypatch.setattr(_filter, "FILTER_TIMEOUT_SECONDS", 3)
     monkeypatch.setattr(_filter, "_READ_CHUNK", 1)
     monkeypatch.setattr(_filter, "_MAX_OUTPUT_BYTES", 4)
@@ -144,12 +137,7 @@ async def test_output_cap_kill_does_not_hang_on_a_paused_stdout_pipe(
 async def test_timeout_reaps_a_child_whose_stdout_is_still_buffered(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The timeout path had the same defect, and nothing bounds it from above.
-
-    A slow reader leaves stdout paused when the wall clock runs out; reaping there
-    waited on a pipe no one was draining, so the call hung forever rather than
-    returning the timeout message.
-    """
+    """Regression: the timeout path hangs the same way on a paused stdout pipe, with no upper bound."""
     monkeypatch.setattr(_filter, "FILTER_TIMEOUT_SECONDS", 1)
     monkeypatch.setattr(_filter, "_READ_CHUNK", 1)  # fall behind the child
     monkeypatch.setattr(_filter, "_MAX_OUTPUT_BYTES", 100_000_000)  # never cap
@@ -294,8 +282,7 @@ async def test_run_file_filter_happy_path(tmp_path: Path) -> None:
 
 
 async def test_run_file_filter_resolves_relative_paths_against_the_session_dir() -> None:
-    """A relative path must join the caller's session root, not /workspace —
-    otherwise every tool reads the wrong file (or another session's)."""
+    """A relative path must join the caller's session root, not /workspace, or every tool reads the wrong file."""
     mock_resolve = AsyncMock(return_value=Path("/tmp/ignored"))
     with patch.object(_filter, "resolve_user_file", mock_resolve):
         await run_file_filter(
@@ -332,3 +319,33 @@ async def test_grep_tool_pattern_dash_is_literal_not_flag(tmp_path: Path) -> Non
     with _mock_resolve(f):
         out = await grep.ainvoke({"pattern": "-i", "path": "log.txt"}, config=CONFIG)
     assert "value -i is here" in out  # -e keeps a flag-looking pattern literal
+
+
+@pytest.mark.regression
+async def test_grep_tool_alternation_matches_any_branch(tmp_path: Path) -> None:
+    # Regression: the tool ran basic regex, where `|` is a literal character, so
+    # `job|recruit|hiring` matched nothing in a mailbox full of job alerts.
+    f = tmp_path / "mail.jsonl"
+    f.write_text(
+        '{"subject": "New job: Full Stack Engineer"}\n'
+        '{"subject": "Weekly error digest"}\n'
+        '{"subject": "We are Hiring founders"}\n'
+    )
+    with _mock_resolve(f):
+        out = await grep.ainvoke(
+            {"pattern": "job|recruit|hiring", "path": "mail.jsonl", "ignore_case": True},
+            config=CONFIG,
+        )
+    assert out.splitlines() == [
+        '1:{"subject": "New job: Full Stack Engineer"}',
+        '3:{"subject": "We are Hiring founders"}',
+    ]
+
+
+@pytest.mark.regression
+async def test_grep_tool_alternation_also_works_case_sensitively(tmp_path: Path) -> None:
+    f = tmp_path / "mail.jsonl"
+    f.write_text('{"subject": "New job"}\n{"subject": "digest"}\n{"subject": "recruit now"}\n')
+    with _mock_resolve(f):
+        out = await grep.ainvoke({"pattern": "job|recruit", "path": "mail.jsonl"}, config=CONFIG)
+    assert out.splitlines() == ['1:{"subject": "New job"}', '3:{"subject": "recruit now"}']

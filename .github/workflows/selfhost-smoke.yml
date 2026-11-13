@@ -1,0 +1,262 @@
+name: Self-host smoke
+
+# Two lanes. `selfhost-smoke` proves ENV=selfhost hasn't regressed without
+# booting anything: the selfhost profile boots and the setup-API contract suite,
+# which drives the router over fakes, still passes (under 2 minutes).
+# `selfhost-e2e` is the real thing: `gaia up --code-sandbox` from this
+# checkout's CLI build on a GitHub-hosted runner, the scripted LLM stub as the
+# `custom` provider, and a Playwright journey through setup, chat, tools,
+# uploads, invites, roles, readiness and the code sandbox
+# (scripts/ci/selfhost.sh + apps/web/e2e/selfhost). Both run in the merge
+# queue (the e2e only when the group touches what a self-hoster runs, nx task
+# ci:selfhost-e2e), on master and on dispatch: a PR push pays for neither.
+on:
+  merge_group:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Pull gaia + gaia-web at this tag (e.g. a master commit sha) instead of building them"
+        required: false
+        default: ""
+
+concurrency:
+  group: selfhost-smoke-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # --- Change detection (mirrors ci.yml#detect) ---
+  # What nx says this change reaches (changes.sh affected), the same answer
+  # ci.yml's detect gets: the smoke runs when api:test does, the end-to-end
+  # lane when ci:selfhost-e2e (tools/ci/project.json) does.
+  changes:
+    name: Ask nx which checks this change reaches
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      tasks: ${{ steps.affected.outputs.tasks }}
+      selfhost_e2e: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'merge_group' && contains(fromJSON(steps.affected.outputs.tasks), 'ci:selfhost-e2e')) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
+        with:
+          main-branch-name: master
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      # The commit the merge group was built on, like ci.yml#detect.
+      - name: Resolve the merge group base
+        id: base
+        if: github.event_name == 'merge_group'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: bash scripts/ci/changes.sh base
+
+      - name: Ask nx which checks this change reaches
+        id: affected
+        env:
+          GAIA_PR_BASE: ${{ steps.base.outputs.base_ref }}
+        run: bash scripts/ci/changes.sh affected
+
+  # --- Self-host smoke: ENV=selfhost boots, setup contract holds -------------
+  # The two suites it runs are API tests, so it runs when api:test would.
+  # No Docker, no live services — the setup-API tests drive the router over
+  # in-memory fakes and already pin ENV=selfhost via conftest; the extra
+  # `settings` assertion proves the profile itself boots without a full env.
+  selfhost-smoke:
+    name: Self-host smoke (ENV=selfhost)
+    needs: [changes]
+    if: contains(fromJSON(needs.changes.outputs.tasks), 'api:test')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-uv
+
+      - name: Sync Python deps
+        run: uv sync --frozen --package gaia --group backend --group dev
+
+      - name: ENV=selfhost boots without crash
+        id: boot
+        working-directory: apps/api
+        shell: python3 ../../scripts/ci/verdict.py check --path-prefix apps/api/ -- bash -e {0}
+        env:
+          ENV: selfhost
+          AUTH_MODE: local
+          # Minimal infra dummies so SelfHostSettings bootstraps (see
+          # _SELFHOST_INFRA_FIELDS in test_prod_isolation.py). Real services
+          # aren't needed — the setup suite drives the router over fakes.
+          MONGO_DB: mongodb://localhost/gaia
+          REDIS_URL: redis://localhost:6379/0
+          CHROMADB_HOST: localhost
+          CHROMADB_PORT: "8000"
+          POSTGRES_URL: postgresql://gaia:gaia@localhost/gaia
+          RABBITMQ_URL: amqp://guest:guest@localhost/
+          AGENT_SECRET: ci-selfhost-smoke
+          BOT_SESSION_TOKEN_SECRET: ci-selfhost-smoke
+          EMAIL_UNSUBSCRIBE_SECRET: ci-selfhost-smoke
+        run: |
+          uv run --frozen --no-sync python -c "
+          from app.config.settings import get_settings
+          get_settings.cache_clear()
+          s = get_settings()
+          assert s.ENV == 'selfhost', s.ENV
+          assert s.AUTH_MODE == 'local', s.AUTH_MODE
+          assert s.deployment.bills is False, 'billing must be off under selfhost'
+          print(f'boot OK: ENV={s.ENV} AUTH_MODE={s.AUTH_MODE} bills={s.deployment.bills}')
+          "
+
+      - name: Setup-API contract under ENV=selfhost
+        id: setup-contract
+        working-directory: apps/api
+        shell: python3 ../../scripts/ci/verdict.py check --path-prefix apps/api/ -- bash -e {0}
+        env:
+          ENV: selfhost
+          AUTH_MODE: local
+          MONGO_DB: mongodb://localhost/gaia
+          REDIS_URL: redis://localhost:6379/0
+          CHROMADB_HOST: localhost
+          CHROMADB_PORT: "8000"
+          POSTGRES_URL: postgresql://gaia:gaia@localhost/gaia
+          RABBITMQ_URL: amqp://guest:guest@localhost/
+          AGENT_SECRET: ci-selfhost-smoke
+          BOT_SESSION_TOKEN_SECRET: ci-selfhost-smoke
+          EMAIL_UNSUBSCRIBE_SECRET: ci-selfhost-smoke
+        run: |
+          echo "::group::pytest setup contract"
+          uv run --frozen --no-sync pytest tests/integration/endpoints/test_setup_api.py -q --tb=short --override-ini=addopts="--strict-markers --timeout=30"
+          echo "::endgroup::"
+          echo "### Self-host smoke — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "ENV=selfhost boot + setup contract: OK"
+
+      - name: Self-host isolation + infra contract (prod_isolation -k selfhost)
+        id: prod-isolation
+        # Lightweight second probe: SelfHostSettings requires only infra secrets,
+        # local auth doesn't need WorkOS, etc. Keeps the lane honest when someone
+        # sneaks a required SaaS key back into the selfhost profile.
+        working-directory: apps/api
+        shell: python3 ../../scripts/ci/verdict.py check --path-prefix apps/api/ -- bash -e {0}
+        env:
+          ENV: selfhost
+          AUTH_MODE: local
+          MONGO_DB: mongodb://localhost/gaia
+          REDIS_URL: redis://localhost:6379/0
+          CHROMADB_HOST: localhost
+          CHROMADB_PORT: "8000"
+          POSTGRES_URL: postgresql://gaia:gaia@localhost/gaia
+          RABBITMQ_URL: amqp://guest:guest@localhost/
+          AGENT_SECRET: ci-selfhost-smoke
+          BOT_SESSION_TOKEN_SECRET: ci-selfhost-smoke
+          EMAIL_UNSUBSCRIBE_SECRET: ci-selfhost-smoke
+        run: |
+          echo "::group::pytest prod_isolation (selfhost)"
+          uv run --frozen --no-sync pytest tests/unit/config/test_prod_isolation.py -q -k selfhost --tb=short --override-ini=addopts="--strict-markers --timeout=30"
+          echo "::endgroup::"
+          echo "prod_isolation (selfhost): OK"
+
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: selfhost-smoke
+
+  # --- Self-host end to end: gaia up + Playwright on a GitHub-hosted runner ---
+  # PRs build both images from the checkout (`gaia up --build`); a dispatch can
+  # pull a published tag instead. The stub runs on the runner's private address.
+  selfhost-e2e:
+    name: Self-host end to end (gaia up + Playwright)
+    needs: [changes]
+    if: needs.changes.outputs.selfhost_e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      E2E_OUT: ${{ github.workspace }}/selfhost-e2e
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - uses: ./.github/actions/setup-uv
+
+      - name: Prepare the runner and record this checkout as the install
+        id: prepare
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
+        run: bash scripts/ci/selfhost.sh prepare
+
+      - name: Start the scripted LLM stub
+        id: stub
+        env:
+          OUT_DIR: ${{ env.E2E_OUT }}
+        run: bash scripts/ci/selfhost.sh stub
+
+      - name: gaia up --yes --code-sandbox
+        id: up
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: bash scripts/ci/selfhost.sh up
+
+      - name: Install Chromium for Playwright
+        run: pnpm --filter ./apps/web exec playwright install --with-deps chromium
+
+      - name: Drive the self-host journey
+        id: journey
+        working-directory: apps/web
+        shell: python3 ../../scripts/ci/verdict.py check --path-prefix apps/web/ -- bash -e {0}
+        env:
+          CI: "true"
+          GAIA_REPO_ROOT: ${{ github.workspace }}
+          LLM_STUB_BASE_URL: ${{ steps.stub.outputs.base_url }}
+        run: pnpm exec playwright test -c playwright.selfhost.config.ts
+      # Before the log collection below: the failing tests are readable now.
+      - name: Upload the verdict so far (a step above failed)
+        if: always() && env.GAIA_VERDICT_PENDING == '1'
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: selfhost-e2e
+          partial: "true"
+
+      - name: Collect the stack's logs
+        if: always()
+        env:
+          OUT_DIR: ${{ env.E2E_OUT }}/logs
+        run: bash scripts/ci/selfhost.sh logs
+
+      - name: Upload screenshots, traces and logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: selfhost-e2e
+          path: |
+            apps/web/test-results/selfhost
+            apps/web/playwright-report/selfhost
+            ${{ env.E2E_OUT }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: selfhost-e2e

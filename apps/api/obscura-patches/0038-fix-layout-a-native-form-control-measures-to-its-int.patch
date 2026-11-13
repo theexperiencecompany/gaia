@@ -1,0 +1,217 @@
+From aaa0a4e6460d56d1c412473f95cd204e84a66f2f Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 04:23:45 +0530
+Subject: [PATCH] fix(layout): a native form control measures to its intrinsic
+ size instead of flooring min-height
+
+Patch 0004 kept a stretched grid-item control from collapsing to 0px by
+overwriting its min-height with its rows/size intrinsic height. That
+replaced the author's min-height (min-height:0 included) and outgrew a fixed
+track the control should have been stretched to: a rows=3 textarea in a 10px
+row laid out 60px tall instead of 10px.
+
+A native control (input, select, textarea) is now a layout leaf that
+measures to its intrinsic content size, with no aspect ratio, so an auto axis
+that alignment stretches contributes that size to an auto track the way
+taffy's grid algorithm handles any content, and the author's min and max
+sizes apply as written. Its descendants (options, a textarea's text) are its
+value and were never boxes in its layout.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-render/src/dom.rs    | 58 +++++++++++++----------------
+ crates/obscura-render/src/inline.rs | 25 +++++++++++++
+ crates/obscura-render/src/lib.rs    |  9 +++++
+ 3 files changed, 60 insertions(+), 32 deletions(-)
+
+diff --git a/crates/obscura-render/src/dom.rs b/crates/obscura-render/src/dom.rs
+index 73ffc33..ac74c90 100644
+--- a/crates/obscura-render/src/dom.rs
++++ b/crates/obscura-render/src/dom.rs
+@@ -12598,40 +12598,18 @@ fn assign_native_control_size(
+     vertical_edges: f32,
+ ) {
+     let (stretch_inline, stretch_block) = stretched_grid_item;
++    let content_width = (intrinsic_width - horizontal_edges).max(0.0);
++    let content_height = (intrinsic_height - vertical_edges).max(0.0);
++    // The control lays out as a leaf measuring to its intrinsic content
++    // size, so a stretched auto axis still contributes it to its track,
++    // while the author's min and max sizes apply as written.
++    style.native_control_content_size = Some((content_width, content_height));
+     let content_box = style.box_sizing == crate::BoxSizing::ContentBox;
+     if style.width == crate::Dimension::Auto && !stretch_inline {
+-        let declared = if content_box {
+-            (intrinsic_width - horizontal_edges).max(0.0)
+-        } else {
+-            intrinsic_width
+-        };
+-        style.width = crate::Dimension::Px(declared);
++        style.width = crate::Dimension::Px(if content_box { content_width } else { intrinsic_width });
+     }
+-    if style.height == crate::Dimension::Auto {
+-        let declared = if content_box {
+-            (intrinsic_height - vertical_edges).max(0.0)
+-        } else {
+-            intrinsic_height
+-        };
+-        if !stretch_block {
+-            style.height = crate::Dimension::Px(declared);
+-        } else if let crate::Dimension::Auto | crate::Dimension::Px(_) = style.min_height {
+-            // A stretched grid item keeps its auto height so it can fill the
+-            // track, but it still contributes its intrinsic block size to
+-            // that track (capped by max-height). An empty control has no
+-            // content to supply it, so without this floor an auto row
+-            // collapsed to 0 and took the control with it (Bing's
+-            // `height:100%` search textarea).
+-            let capped = match style.max_height {
+-                crate::Dimension::Px(max) => declared.min(max),
+-                _ => declared,
+-            };
+-            let floor = match style.min_height {
+-                crate::Dimension::Px(min) => min.max(capped),
+-                _ => capped,
+-            };
+-            style.min_height = crate::Dimension::Px(floor);
+-        }
++    if style.height == crate::Dimension::Auto && !stretch_block {
++        style.height = crate::Dimension::Px(if content_box { content_height } else { intrinsic_height });
+     }
+ }
+ 
+@@ -13305,6 +13283,16 @@ fn build(
+         }
+     }
+ 
++    // A native form control is a leaf with an intrinsic content size; its
++    // descendants (a select's options, a textarea's text) are its value, not
++    // boxes in its layout.
++    if let Some((width, height)) = style.native_control_content_size {
++        let context = engine.register_intrinsic_box(width, height);
++        let leaf = taffy_tree.new_leaf_with_context(taffy_style, context).ok()?;
++        id_map.insert(leaf, id);
++        return Some(leaf);
++    }
++
+     // Outside a foldable inline run, BR is a zero-inline-size line
+     // participant. The mixed-inline fallback adds a separate anonymous
+     // full-width breaker after this mapped marker; keeping that control box
+@@ -21817,7 +21805,9 @@ mod tests {
+             <div class="ic"><textarea id="capped" rows="3" style="max-height: 22px"></textarea></div>
+             <div class="ic"><textarea id="floored" rows="1" style="min-height: 50px"></textarea></div>
+             <div class="ic"><textarea id="fixed" rows="3" style="height: 40px"></textarea></div>
+-            <div class="blk"><textarea id="block1" rows="1"></textarea></div>"#,
++            <div class="blk"><textarea id="block1" rows="1"></textarea></div>
++            <div class="ic" style="grid-template-rows: 10px"><textarea id="tight" rows="3"></textarea></div>
++            <div class="ic"><textarea id="unfloored" rows="3" style="min-height: 0; max-height: 30px"></textarea></div>"#,
+         );
+         let laid = layout_dom(&tree, (1280.0, 720.0));
+         let rect = |id: &str| laid.rects[&tree.get_element_by_id(id).unwrap()];
+@@ -21830,6 +21820,10 @@ mod tests {
+         assert!((rect("floored").height - 50.0).abs() < 0.5, "{:?}", rect("floored"));
+         assert!((rect("fixed").height - 40.0).abs() < 0.5, "{:?}", rect("fixed"));
+         assert!((rect("block1").height - 20.0).abs() < 0.5, "{:?}", rect("block1"));
++        // A fixed track stretches the control to it: the intrinsic size is a
++        // contribution to auto tracks, not a floor over the author's sizes.
++        assert!((rect("tight").height - 10.0).abs() < 0.5, "{:?}", rect("tight"));
++        assert!((rect("unfloored").height - 30.0).abs() < 0.5, "{:?}", rect("unfloored"));
+     }
+ 
+     #[test]
+diff --git a/crates/obscura-render/src/inline.rs b/crates/obscura-render/src/inline.rs
+index 3b4757c..38aae81 100644
+--- a/crates/obscura-render/src/inline.rs
++++ b/crates/obscura-render/src/inline.rs
+@@ -874,6 +874,7 @@ pub struct TextEngine {
+     variable_swash: VariableSwashCache,
+     items: Vec<InlineItem>,
+     replaced: Vec<ReplacedItem>,
++    intrinsic_boxes: Vec<(f32, f32)>,
+ }
+ 
+ #[derive(Clone, Debug, Eq, Hash, PartialEq)]
+@@ -1052,6 +1053,9 @@ impl VariableSwashCache {
+ }
+ 
+ const REPLACED_CONTEXT_BIT: usize = 1usize << (usize::BITS - 1);
++/// Marks a measure context naming an intrinsic box: a leaf with an intrinsic
++/// content size on each axis and no aspect ratio (a native form control).
++const INTRINSIC_BOX_CONTEXT_BIT: usize = 1usize << (usize::BITS - 2);
+ 
+ #[derive(Clone, Copy)]
+ struct ReplacedItem {
+@@ -1303,6 +1307,7 @@ impl TextEngine {
+             variable_swash: VariableSwashCache::new(),
+             items: Vec::new(),
+             replaced: Vec::new(),
++            intrinsic_boxes: Vec::new(),
+         }
+     }
+ 
+@@ -1770,6 +1775,10 @@ impl TextEngine {
+     /// None for max-content), returning its shaped (width, height). Called by
+     /// taffy's measure function during layout.
+     pub fn measure(&mut self, idx: usize, width: Option<f32>) -> (f32, f32) {
++        if idx & INTRINSIC_BOX_CONTEXT_BIT != 0 {
++            let (intrinsic_width, height) = self.intrinsic_boxes[idx & !INTRINSIC_BOX_CONTEXT_BIT];
++            return (width.unwrap_or(intrinsic_width), height);
++        }
+         if idx & REPLACED_CONTEXT_BIT != 0 {
+             let size = self.replaced[idx & !REPLACED_CONTEXT_BIT].size(taffy::Size {
+                 width,
+@@ -1868,6 +1877,15 @@ impl TextEngine {
+         REPLACED_CONTEXT_BIT | index
+     }
+ 
++    /// Register a leaf whose content box has an intrinsic size on each axis
++    /// but no aspect ratio: a definite axis is used as given, an auto one
++    /// takes the intrinsic size.
++    pub(crate) fn register_intrinsic_box(&mut self, width: f32, height: f32) -> usize {
++        let index = self.intrinsic_boxes.len();
++        self.intrinsic_boxes.push((width.max(0.0), height.max(0.0)));
++        INTRINSIC_BOX_CONTEXT_BIT | index
++    }
++
+     /// Measure either a shaped text context or an intrinsic replaced element.
+     /// Replaced boxes transfer a definite axis through their intrinsic ratio;
+     /// with neither axis definite they contribute their natural size.
+@@ -1877,6 +1895,13 @@ impl TextEngine {
+         known: taffy::Size<Option<f32>>,
+         available: taffy::Size<taffy::AvailableSpace>,
+     ) -> taffy::Size<f32> {
++        if idx & INTRINSIC_BOX_CONTEXT_BIT != 0 {
++            let (width, height) = self.intrinsic_boxes[idx & !INTRINSIC_BOX_CONTEXT_BIT];
++            return taffy::Size {
++                width: known.width.unwrap_or(width),
++                height: known.height.unwrap_or(height),
++            };
++        }
+         if idx & REPLACED_CONTEXT_BIT != 0 {
+             let replaced = self.replaced[idx & !REPLACED_CONTEXT_BIT];
+             let stretch_width = (replaced.ratio_only
+diff --git a/crates/obscura-render/src/lib.rs b/crates/obscura-render/src/lib.rs
+index a6d635e..f771d0b 100644
+--- a/crates/obscura-render/src/lib.rs
++++ b/crates/obscura-render/src/lib.rs
+@@ -189,6 +189,10 @@ pub mod inline {
+         ) -> usize {
+             0
+         }
++
++        pub(crate) fn register_intrinsic_box(&mut self, _width: f32, _height: f32) -> usize {
++            0
++        }
+         /// Layout-only builds have no shaper, so no container is ever treated
+         /// as a cosmic-text inline formatting context: the word-split path
+         /// handles text geometry for `getBoundingClientRect`.
+@@ -1061,6 +1065,11 @@ pub struct LayoutStyle {
+     /// SVG can expose only one dimension or a `viewBox` ratio, distinctions
+     /// that the stable public `intrinsic_size` tuple cannot represent.
+     pub(crate) replaced_intrinsic: Option<ReplacedIntrinsic>,
++    /// A native form control's content-box intrinsic size (rows/cols, size,
++    /// label text), set during the cascade. The control lays out as a leaf
++    /// measuring to it, so an auto axis that alignment stretches still
++    /// contributes this size to its track.
++    pub(crate) native_control_content_size: Option<(f32, f32)>,
+     /// Definite content-box width available to an auto/auto ratio-only
+     /// replaced element in ordinary block flow. Taffy's flex-row stand-in for
+     /// an inline formatting context asks atomic children for max-content first,

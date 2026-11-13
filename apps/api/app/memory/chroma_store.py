@@ -1,13 +1,14 @@
 """ChromaDB vector store for the memory engine.
 
-Owns the two memory collections (``gaia_memories`` for atomic facts,
-``gaia_memory_episodes`` for daily-journal summaries). Embeddings are always
-computed by ``app.memory.embeddings`` and passed explicitly — ChromaDB never
+Owns the two memory collections (gaia_memories for atomic facts,
+gaia_memory_episodes for daily-journal summaries). Embeddings are always
+computed by app.memory.embeddings and passed explicitly — ChromaDB never
 embeds anything itself.
 """
 
 import asyncio
 from collections.abc import Mapping, Sequence
+import threading
 from typing import Any, TypedDict, cast
 
 from chromadb.api.models.AsyncCollection import AsyncCollection
@@ -21,21 +22,28 @@ from app.constants.memory import (
 from app.db.chroma.chromadb import ChromaClient
 from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
 
-# Collections are cached per event loop: an asyncio.Lock (and Chroma's async
-# client) binds to the loop that first uses it, so sharing one cache/lock
-# across loops raises "bound to a different event loop" in any context that
-# runs multiple loops (test workers, scripts, background runners).
-_loop_collections: dict[int, dict[str, AsyncCollection]] = {}
-_loop_locks: dict[int, asyncio.Lock] = {}
+# Collections are cached per event loop: an asyncio.Lock and Chroma's async
+# client bind to the loop that first uses them. The owning loop is stored so
+# closed loops are evicted on access, under one lock shared with get-or-create.
+_loop_states: dict[
+    int, tuple[dict[str, AsyncCollection], asyncio.Lock, asyncio.AbstractEventLoop]
+] = {}
+_loop_states_lock = threading.Lock()
 
 
 def _loop_state() -> tuple[dict[str, AsyncCollection], asyncio.Lock]:
-    """The collection cache + creation lock for the running event loop."""
-    loop_id = id(asyncio.get_running_loop())
-    if loop_id not in _loop_locks:
-        _loop_locks[loop_id] = asyncio.Lock()
-        _loop_collections[loop_id] = {}
-    return _loop_collections[loop_id], _loop_locks[loop_id]
+    """Return the collection cache and creation lock for the running event loop."""
+    loop = asyncio.get_running_loop()
+    with _loop_states_lock:
+        for key, (_, _, owner) in list(_loop_states.items()):
+            if owner.is_closed():
+                del _loop_states[key]
+        loop_id = id(loop)
+        entry = _loop_states.get(loop_id)
+        if entry is None:
+            entry = ({}, asyncio.Lock(), loop)
+            _loop_states[loop_id] = entry
+        return entry[0], entry[1]
 
 
 class MemoryVectorMetadata(TypedDict):
@@ -93,7 +101,7 @@ def _as_metadata(metadata: Mapping[str, object]) -> Metadata:
     """Convert a metadata TypedDict to Chroma's Metadata mapping.
 
     The cast is safe — both TypedDicts only contain str/bool values — but
-    mypy cannot prove it because TypedDict values widen to ``object``.
+    mypy cannot prove it because TypedDict values widen to object.
     """
     return cast(Metadata, dict(metadata))
 
@@ -110,10 +118,8 @@ async def _get_collection(name: str) -> AsyncCollection:
 
         client = await ChromaClient.get_client()
         try:
-            # Atomic server-side get-or-create. A check-then-create (list then
-            # create) races when several processes share one Chroma server —
-            # the shared test collections under xdist, and cold-start
-            # concurrency in production — and the loser gets "already exists".
+            # Atomic server-side get-or-create: a check-then-create races when
+            # several processes share one Chroma server (xdist, cold-start).
             collection = await client.get_or_create_collection(
                 name=name,
                 metadata={"hnsw:space": "cosine"},
@@ -132,7 +138,7 @@ async def _get_collection(name: str) -> AsyncCollection:
 async def _clamp_n_results(collection: AsyncCollection, n: int) -> int:
     """Clamp a requested result count to what the collection actually holds.
 
-    ChromaDB raises when ``n_results`` exceeds the number of stored vectors —
+    ChromaDB raises when n_results exceeds the number of stored vectors —
     the common case for a brand-new user whose collection has fewer than the
     requested candidate count. Clamping (and returning 0 for an empty
     collection) keeps recall and reconciliation working from the first turn.
@@ -161,9 +167,9 @@ async def query_similar(
     n: int,
     only_latest: bool = True,
 ) -> list[tuple[str, float]]:
-    """Return up to ``n`` (memory_id, cosine_similarity) for a user, best first.
+    """Return up to n (memory_id, cosine_similarity) for a user, best first.
 
-    Forgotten memories are always excluded; ``only_latest`` additionally
+    Forgotten memories are always excluded; only_latest additionally
     restricts to the head of each supersession chain.
     """
     collection = await _get_collection(CHROMA_MEMORIES_COLLECTION)
@@ -234,15 +240,10 @@ async def delete_user(user_id: str) -> None:
 
 
 async def delete_conversation_chunks(user_id: str, source_id: str) -> None:
-    """Hard-delete the verbatim chunks of one conversation.
+    """Hard-delete the verbatim chunks of one conversation, by id prefix {user_id}:{source_id}.
 
-    Chunk metadata carries only ``{user_id, date}``, so the conversation is
-    identified by the id prefix ``{user_id}:{source_id}:`` that ingestion
-    stamps on every chunk. Called when a memory sourced from that conversation
-    is forgotten: forgetting a fact deliberately forfeits verbatim recall of
-    the conversation that produced it — the privacy-safe direction, since the
-    original sentence would otherwise stay quotable via conversation search
-    forever.
+    Called when a memory sourced from that conversation is forgotten, so the
+    original sentence doesn't stay quotable via conversation search forever.
     """
     collection = await _get_collection(CHROMA_CONVERSATION_CHUNKS_COLLECTION)
     result = await collection.get(where={"user_id": user_id}, include=[])
@@ -271,7 +272,7 @@ async def query_conversation_chunks(
     embedding: list[float],
     n: int,
 ) -> list[tuple[str, str, float]]:
-    """Return up to ``n`` (date, chunk_text, similarity) for a user, best first."""
+    """Return up to n (date, chunk_text, similarity) for a user, best first."""
     collection = await _get_collection(CHROMA_CONVERSATION_CHUNKS_COLLECTION)
     n_results = await _clamp_n_results(collection, n)
     if n_results == 0:
@@ -309,7 +310,7 @@ async def query_episodes(
     embedding: list[float],
     n: int,
 ) -> list[tuple[str, float]]:
-    """Return up to ``n`` (episode_id, cosine_similarity) for a user, best first."""
+    """Return up to n (episode_id, cosine_similarity) for a user, best first."""
     collection = await _get_collection(CHROMA_MEMORY_EPISODES_COLLECTION)
     n_results = await _clamp_n_results(collection, n)
     if n_results == 0:

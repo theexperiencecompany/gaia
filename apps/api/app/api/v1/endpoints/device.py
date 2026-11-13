@@ -35,7 +35,7 @@ from app.schemas.device.responses import (
     SelfPairResponse,
     StartPairingResponse,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import capture
 from app.services.device.bridge import online_device_ids
 from app.services.device.device_auth import create_device_token, verify_device_token
 from app.services.device.device_service import (
@@ -53,6 +53,8 @@ from app.services.device.device_service import (
     self_pair_device,
     start_pairing,
 )
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.devices import DeviceApproved, DeviceRevoked, DeviceSelfPaired
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/device", tags=["Device Bridge"])
@@ -66,7 +68,7 @@ async def _current_device(authorization: str = Header(default="")) -> DeviceToke
     server integrations the revoke just deleted, up to the token TTL.
     """
     token = authorization[7:] if authorization.startswith("Bearer ") else None
-    info = verify_device_token(token) if token else None
+    info: DeviceTokenClaims | None = verify_device_token(token) if token else None
     if not info:
         raise HTTPException(status_code=401, detail="Invalid or missing device token")
     device = await get_active_device(info["device_id"])
@@ -106,12 +108,9 @@ async def pair_poll(payload: PollPairingRequest) -> PollPairingResponse:
     log.set(device={"operation": "pair_poll"})
     result = await poll_pairing(payload.device_code)
     log.set_ns("device", pairing_status=result.status)
-    # Audited on the terminal transition only. `approved` is where the pairing is
-    # consumed and the refresh credential is handed over, exactly once; the other
-    # statuses are the daemon's PAIRING_POLL_INTERVAL_SECONDS heartbeat, up to
-    # ~180 of them per pairing. Auditing those would bury the one real credential
-    # issuance under no-ops — every poll already emits its own wide event
-    # carrying device.pairing_status, so the polling itself stays queryable.
+    # Audited on the terminal transition only: `approved` hands over the
+    # refresh credential exactly once, vs up to ~180 heartbeat polls per
+    # pairing that would bury it — polling stays queryable via the wide event.
     if result.status == "approved":
         log.audit(
             "device credential issued",
@@ -141,6 +140,7 @@ async def pair_approve(
         )
         raise HTTPException(status_code=400, detail=str(e)) from e
     log.audit("device pairing approved", actor=user_id, resource=device_id)
+    capture(UserId(user_id), DeviceApproved())
     return DevicePairApproveResponse(device_id=device_id, name=name)
 
 
@@ -160,11 +160,7 @@ async def self_pair(
     )
     log.set_ns("device", device_id=device_id)
     log.audit("device credential issued", actor=user_id, resource=device_id, flow="self_pair")
-    capture_event(
-        user_id,
-        AnalyticsEvents.DEVICE_SELF_PAIRED,
-        {"client": payload.client, "platform": payload.platform},
-    )
+    capture(UserId(user_id), DeviceSelfPaired(client=payload.client, platform=payload.platform))
     return SelfPairResponse(device_id=device_id, refresh_token=refresh_token, name=payload.name)
 
 
@@ -292,4 +288,5 @@ async def revoke(device_id: str, user_id: str = Depends(get_user_id)) -> DeviceR
     log.set(device={"operation": "revoke", "device_id": device_id}, user={"id": user_id})
     if not await revoke_device(user_id, device_id):
         raise HTTPException(status_code=404, detail="Device not found")
+    capture(UserId(user_id), DeviceRevoked())
     return DeviceRevokeResponse(device_id=device_id, status="revoked")

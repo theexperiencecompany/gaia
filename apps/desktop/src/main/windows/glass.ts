@@ -36,10 +36,9 @@ interface LiquidGlassModule {
   unstable_setScrim: (id: number, scrim: number) => void;
 }
 
-// `electron-liquid-glass` is an optional native enhancement — the app must
-// boot (with the vibrancy fallback) when it isn't installed, so it is
-// loaded lazily instead of via a static import. `undefined` = not yet
-// attempted, `null` = unavailable.
+// `electron-liquid-glass` is optional; the app must boot with a vibrancy fallback
+// when it isn't installed, so it's loaded lazily instead of statically imported.
+// `undefined` = not yet attempted, `null` = unavailable.
 let liquidGlassModule: LiquidGlassModule | null | undefined;
 
 function loadLiquidGlass(): LiquidGlassModule | null {

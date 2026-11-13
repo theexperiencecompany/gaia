@@ -1,35 +1,18 @@
 """Where each message sits in the request the model receives.
 
-The order below is the whole cache contract in one place. Before this module it
-was an emergent property: emitters stamped marker strings and hoped, and
-``manage_system_prompts_node`` re-derived the ordering from a hand-rolled scan
-that nothing else could see. Adding a slot meant editing a scan, an assignment
-block and an append sequence, in agreement, from memory.
-
-Two constraints fix the order, and neither is negotiable:
-
-* ``langchain-google-genai`` promotes a ``SystemMessage`` to ``system_instruction``
-  only while the system block is leading and CONTIGUOUS. The first non-system
-  message ends the block and every later ``SystemMessage`` is silently dropped —
-  so everything system-ish sorts ahead of the conversation.
-* Implicit prompt caching matches on longest common prefix. So within the system
-  block, byte-stable slots come first and per-turn churn sorts to the tail, and
-  the clock — which ticks every minute — lives at the very end of contents where
-  it can never move the boundary.
-
-The first constraint is Gemini's alone. Every OpenAI-wire provider accepts a
-system message anywhere in the list, which buys a strictly better layout: the
-per-turn slots move BEHIND the conversation, so the cacheable prefix covers the
-history instead of stopping at the stable block. ``request_slot_order`` is where
-that choice is made, and the enum below is the Gemini-safe order it starts from.
+Every provider's prompt cache reuses the longest prefix an earlier request
+shared, and OpenAI only a whole earlier request. So each call must begin with
+the previous call on its thread, byte for byte: the request is the thread,
+append-only. Only LEADING_SLOTS — text that changes when the user edits a
+setting, never per turn — are lifted to the front, latest copy only. Every
+other message, the per-turn recall and clock included, is sent where the turn
+wrote it and is never pruned or reordered (docs/llm-cache-measurements.md).
 """
 
 from enum import IntEnum
-from typing import TypeVar
+from typing import TypedDict, TypeVar, cast
 
 from langchain_core.messages import AnyMessage, BaseMessage
-
-from app.agents.llm.types import LLMProviderName
 
 #: ``mark`` returns the message it was given, so it must preserve the concrete
 #: type — a caller stamping a ``SystemMessage`` gets a ``SystemMessage`` back,
@@ -40,10 +23,13 @@ M = TypeVar("M", bound=BaseMessage)
 #: it does not rely on where an emitter happened to put it.
 DYNAMIC_CONTEXT_MARKER = "dynamic_context"
 MEMORY_RECALL_MARKER = "memory_recall"
-TODO_CONTEXT_MARKER = "todo_context"
-EXECUTOR_STATUS_MARKER = "executor_status"
 TIME_CONTEXT_MARKER = "time_context"
+#: Written only by the retired onboarding prompt; replayed checkpoints still carry it.
 ONBOARDING_MARKER = "onboarding_context"
+
+#: Stamped on the surface-change note GAIA writes into the thread. The note
+#: stays in the CONVERSATION slot (inline, never pruned) but is not the user's words.
+PRESENCE_NOTE_MARKER = "presence_note"
 
 #: Pre-split threads carried one combined dynamic message marked with both
 #: ``dynamic_context`` and this. Checkpoints written then are still replayed, so
@@ -54,95 +40,46 @@ LEGACY_DYNAMIC_MARKER = "memory_message"
 #: the comms narrator builds it with no graph-state context to stamp one.
 BACKGROUND_EXECUTOR_NAME = "background_executor"
 
+#: ``additional_kwargs["lc_source"]`` LangChain stamps on the summary it writes.
+#: The summary rides the thread as a HumanMessage but is GAIA-authored.
+SUMMARY_SOURCE = "summarization"
+
+
+class MessageMetadata(TypedDict, total=False):
+    """The additional_kwargs keys GAIA reads back off a checkpointed message."""
+
+    lc_source: str
+
+
+def is_conversation_summary(message: BaseMessage) -> bool:
+    """Whether message is a summarization digest rather than something the user said."""
+    metadata: MessageMetadata = cast("MessageMetadata", message.additional_kwargs)
+    return metadata.get("lc_source") == SUMMARY_SOURCE
+
 
 class PromptSlot(IntEnum):
-    """Canonical position of a message. Declaration order IS request order."""
+    """What a message is. Declaration order is the order the leading slots are sent in."""
 
     STATIC = 0
     DYNAMIC_STABLE = 1
     ONBOARDING = 2
-    TODO_CONTEXT = 3
-    BACKGROUND_EXECUTOR = 4
-    EXECUTOR_STATUS = 5
-    MEMORY_RECALL = 6
-    CONVERSATION = 7
-    TIME = 8
+    MEMORY_RECALL = 3
+    CONVERSATION = 4
+    TIME = 5
 
 
-#: Slots holding exactly one message: a later copy replaces the earlier one, so a
-#: ten-turn thread does not stack ten dynamic-context blocks and shatter the
-#: cache prefix. ``CONVERSATION`` is the only slot that accumulates — it IS the
-#: history, and its internal order is preserved.
-SINGLETON_SLOTS = frozenset(slot for slot in PromptSlot if slot is not PromptSlot.CONVERSATION)
-
-#: Slots whose text is retrieved against THIS turn, so their bytes change on
-#: every request. On a provider that allows it they sort behind the conversation
-#: (see :func:`request_slot_order`); ahead of it they would move the cache
-#: boundary every turn and the whole history would re-send uncached.
-TAIL_VOLATILE_SLOTS: frozenset[PromptSlot] = frozenset(
-    {
-        PromptSlot.TODO_CONTEXT,
-        PromptSlot.BACKGROUND_EXECUTOR,
-        PromptSlot.EXECUTOR_STATUS,
-        PromptSlot.MEMORY_RECALL,
-    }
+#: Lifted to the front of every request, latest copy only, stale copies pruned
+#: from the thread. They change only on a settings edit, which costs one cold call.
+LEADING_SLOTS: frozenset[PromptSlot] = frozenset(
+    {PromptSlot.STATIC, PromptSlot.DYNAMIC_STABLE, PromptSlot.ONBOARDING}
 )
-
-#: Providers on the OpenAI wire format. They apply every system message wherever
-#: it appears (DeepSeek included — the earliest wins on a directive conflict,
-#: which keeps the static prompt's authority), so the tail layout is safe on
-#: them.
-#:
-#: Gemini stays off this list, but NOT for the reason recorded here before:
-#: that comment said ``langchain-google-genai`` "silently DROPS" system
-#: messages after the first run, and on 4.2.0 it does not — ``_parse_chat_history``
-#: collects every SystemMessage into ``system_instruction`` whatever its
-#: position (verified: a trailing memory block arrives intact). Content loss is
-#: not the risk.
-#:
-#: The real reason is caching, and it points the same way. Because every system
-#: message merges into ``system_instruction``, moving the volatile slots behind
-#: the conversation would fold per-turn bytes into the one block Gemini caches
-#: rather than out of it — the opposite of what the tail layout achieves on the
-#: OpenAI wire, where the volatile slots leave the prefix entirely.
-TAIL_VOLATILE_PROVIDERS: frozenset[LLMProviderName] = frozenset(
-    {LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM}
-)
-
-
-def request_slot_order(provider: str | None) -> tuple[PromptSlot, ...]:
-    """The slot order a request bound for ``provider`` is emitted in.
-
-    Gemini gets the declaration order — everything system-ish ahead of the
-    conversation, because anything after it is dropped on the floor — and its
-    cache can therefore only ever cover ``[static, dynamic_stable]``.
-
-    On the OpenAI wire the per-turn slots move after the conversation, making the
-    stable prefix ``[static, dynamic_stable, ...conversation]``, because the
-    conversation then joins the cached prefix instead of re-sending in full every
-    turn. The A/B against the leading-block layout measured 35.2% -> 94.9% on the
-    isolated harness and ~45% -> 80-85% steady-state end to end; methodology and
-    charts are in ``docs/llm-cache-measurements.md``.
-    """
-    if provider not in TAIL_VOLATILE_PROVIDERS:
-        return tuple(PromptSlot)
-    return (
-        *(
-            slot
-            for slot in PromptSlot
-            if slot < PromptSlot.CONVERSATION and slot not in TAIL_VOLATILE_SLOTS
-        ),
-        PromptSlot.CONVERSATION,
-        *(slot for slot in PromptSlot if slot in TAIL_VOLATILE_SLOTS),
-        *(slot for slot in PromptSlot if slot > PromptSlot.CONVERSATION),
-    )
 
 
 def has_marker(message: AnyMessage, name: str) -> bool:
-    """Whether ``message`` carries marker ``name``.
+    """Whether message carries marker name.
 
-    Checks ``additional_kwargs`` (where LangChain persists custom kwargs) and
-    falls back to ``model_extra``, because a marker passed as a bare constructor
+    Checks additional_kwargs (where LangChain persists custom kwargs) and
+    falls back to model_extra, because a marker passed as a bare constructor
     kwarg lands there — and checkpoints written before the markers moved still
     replay through here.
     """
@@ -152,35 +89,49 @@ def has_marker(message: AnyMessage, name: str) -> bool:
     return bool(isinstance(model_extra, dict) and model_extra.get(name))
 
 
+def is_gaia_authored_note(message: AnyMessage) -> bool:
+    """Whether message is a note GAIA wrote into a turn rather than something the user said.
+
+    The presence note, the per-turn recall block and the clock: true for the turn
+    that wrote them, so they stay inline with it and fold away with it, never
+    restated as summary text that would read as current.
+    """
+    return has_marker(message, PRESENCE_NOTE_MARKER) or slot_of(message) in (
+        PromptSlot.MEMORY_RECALL,
+        PromptSlot.TIME,
+    )
+
+
 def mark(message: M, *names: str) -> M:
-    """Stamp slot markers on ``message`` so its slot survives checkpointing."""
+    """Stamp slot markers on message so its slot survives checkpointing."""
     for name in names:
         message.additional_kwargs[name] = True
     return message
 
 
-def slot_of(message: AnyMessage) -> PromptSlot:
-    """Which slot ``message`` belongs in.
+#: A system message's slot by the first marker it carries, in this order.
+_SLOT_BY_MARKER: tuple[tuple[str, PromptSlot], ...] = (
+    (MEMORY_RECALL_MARKER, PromptSlot.MEMORY_RECALL),
+    (ONBOARDING_MARKER, PromptSlot.ONBOARDING),
+    (DYNAMIC_CONTEXT_MARKER, PromptSlot.DYNAMIC_STABLE),
+    (LEGACY_DYNAMIC_MARKER, PromptSlot.DYNAMIC_STABLE),
+)
 
-    Order of the checks is load-bearing where markers overlap: the legacy
-    combined message carries ``dynamic_context`` *and* ``memory_message``, and a
-    volatile block must be read as ``MEMORY_RECALL`` even if a future emitter
-    also stamps it dynamic.
+
+def slot_of(message: AnyMessage) -> PromptSlot:
+    """Which slot message belongs in.
+
+    Check order is load-bearing: a block marked both volatile and dynamic is
+    MEMORY_RECALL, and a background report older code wrote as a system message
+    is conversation, never the static prompt.
     """
     if message.type != "system":
         return (
             PromptSlot.TIME if has_marker(message, TIME_CONTEXT_MARKER) else PromptSlot.CONVERSATION
         )
     if message.name == BACKGROUND_EXECUTOR_NAME:
-        return PromptSlot.BACKGROUND_EXECUTOR
-    if has_marker(message, EXECUTOR_STATUS_MARKER):
-        return PromptSlot.EXECUTOR_STATUS
-    if has_marker(message, MEMORY_RECALL_MARKER):
-        return PromptSlot.MEMORY_RECALL
-    if has_marker(message, TODO_CONTEXT_MARKER):
-        return PromptSlot.TODO_CONTEXT
-    if has_marker(message, ONBOARDING_MARKER):
-        return PromptSlot.ONBOARDING
-    if has_marker(message, DYNAMIC_CONTEXT_MARKER) or has_marker(message, LEGACY_DYNAMIC_MARKER):
-        return PromptSlot.DYNAMIC_STABLE
-    return PromptSlot.STATIC
+        return PromptSlot.CONVERSATION
+    return next(
+        (slot for marker, slot in _SLOT_BY_MARKER if has_marker(message, marker)),
+        PromptSlot.STATIC,
+    )

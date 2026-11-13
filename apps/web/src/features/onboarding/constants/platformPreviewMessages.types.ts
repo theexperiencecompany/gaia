@@ -5,15 +5,8 @@ import type {
 
 export type PlatformPreviewPlatform = Extract<
   ChatPlatform,
-  "telegram" | "whatsapp" | "slack" | "discord"
+  "telegram" | "whatsapp" | "imessage"
 >;
-
-export type ProfessionArchetype =
-  | "builder"
-  | "operator"
-  | "founder"
-  | "scholar"
-  | "default";
 
 export interface PlatformScript {
   title: string;
@@ -22,6 +15,6 @@ export interface PlatformScript {
 }
 
 export interface UserIdentity {
-  name: string | undefined;
-  avatar: string | undefined;
+  /** Given name for GAIA's lines; absent for an email-only account. */
+  firstName: string | undefined;
 }

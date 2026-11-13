@@ -1,6 +1,7 @@
 """CRUD for the episodic journal: one row per (user, local date)."""
 
 from datetime import date as date_type
+from typing import TypedDict, cast as typing_cast
 
 from sqlalchemy import cast, or_, select
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
@@ -9,7 +10,22 @@ from sqlalchemy.sql import func
 from app.memory.pg_store._session import LIKE_ESCAPE_CHAR, escape_like, memory_session
 from app.models.memory_db_models import MemoryEpisode
 
-EpisodeEntry = dict[str, str]  # {time, text, source}
+
+class EpisodeEntry(TypedDict, total=False):
+    """One journal line under a day's episode: time, text and source.
+
+    total=False because old rows can store only a text; readers must .get.
+    """
+
+    time: str
+    text: str
+    source: str
+
+
+def entry_text(entry: EpisodeEntry) -> str:
+    """Return the journal line of an entry row; empty when the key is absent."""
+    return entry.get("text", "")
+
 
 _APOSTROPHES = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"'})
 
@@ -37,8 +53,12 @@ async def append_episode_entries(
         return
     existing = await get_episode(user_id, date)
     if existing is not None:
-        seen = {_entry_key(entry.get("text", "")) for entry in existing.entries}
-        entries = [entry for entry in entries if _entry_key(entry.get("text", "")) not in seen]
+        seen = set()
+        for raw_entry in existing.entries:
+            # JSONB comes back as untyped dicts; the shape is this module's.
+            entry: EpisodeEntry = typing_cast(EpisodeEntry, raw_entry)
+            seen.add(_entry_key(entry_text(entry)))
+        entries = [entry for entry in entries if _entry_key(entry_text(entry)) not in seen]
         if not entries:
             return
     statement = pg_insert(MemoryEpisode).values(user_id=user_id, date=date, entries=entries)
@@ -104,14 +124,11 @@ async def search_episode_entries(
     since: date_type,
     limit: int,
 ) -> list[tuple[date_type, EpisodeEntry]]:
-    """Journal entries since ``since`` matching ANY query token, newest day first.
+    """Return journal entries since since matching ANY query token, newest day first.
 
-    Entries are JSONB lines inside one row per day, so FTS over them would
-    need a derived index; instead each row's entries are expanded with
-    ``jsonb_array_elements`` and matched with ILIKE. This is indexed-sane
-    because the (indexed) ``user_id`` + ``date >= since`` filter bounds the
-    expansion to at most one row per day in the window (~14 rows) before any
-    ILIKE runs — a JSONB GIN index would buy nothing here.
+    Each row's JSONB entries are expanded with jsonb_array_elements and
+    matched with ILIKE; the indexed user_id + date filter bounds this to one
+    row per day in the window, so a JSONB GIN index would buy nothing here.
     """
     if not tokens:
         return []

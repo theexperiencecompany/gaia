@@ -11,27 +11,21 @@
  * @module deep-link
  */
 
+import { WOS_SESSION_COOKIE } from "@gaia/shared/utils/sessionCookies";
 import { type BrowserWindow, session } from "electron";
 import { IPC } from "../ipc-channels";
 import { getApiOrigin, isApiOriginSecure } from "./api-origin";
 import { getServerUrl } from "./server";
+import { getDesktopSettings } from "./settings";
 
 /** Pause after storing the session cookie so the renderer's redirect
  * spinner paints before the main window navigates away. */
 const AUTH_SPINNER_DELAY_MS = 1200;
 
 /**
- * Handle an incoming `gaia://` deep-link URL.
- *
- * Parses the URL, extracts either a session `token` or an `error`
- * query parameter, and takes the appropriate action:
- *
- * - **Error** — navigates the main window to `/login?error=…`
- * - **Token** — stores a `wos_session` cookie on the API origin
- *   and navigates the main window to `/c` (the main chat view).
- *
- * @param url - The full `gaia://…` URL received from the OS.
- * @param mainWindow - The main BrowserWindow to navigate.
+ * Handle an incoming `gaia://` deep-link URL. On an `error` query param,
+ * navigates to `/login?error=…`; on a `token`, stores a `wos_session` cookie on
+ * the API origin and navigates to `/c`.
  */
 export async function handleDeepLink(
   url: string,
@@ -44,6 +38,14 @@ export async function handleDeepLink(
 
     if (urlObj.hostname !== "auth" || urlObj.pathname !== "/callback") return;
     if (!mainWindow || mainWindow.isDestroyed()) return;
+    // The browser handoff is GAIA Cloud's WorkOS sign-in; a self-hosted server
+    // signs in inside the window, so a stray callback must not touch its session.
+    if (getDesktopSettings().selfHostOrigin) {
+      console.log(
+        "[Main] Ignoring GAIA Cloud auth callback on a self-host server",
+      );
+      return;
+    }
 
     const token = urlObj.searchParams.get("token");
     const error = urlObj.searchParams.get("error");
@@ -80,7 +82,7 @@ async function storeSessionAndRedirect(
   const secure = isApiOriginSecure();
   await session.defaultSession.cookies.set({
     url: apiOrigin,
-    name: "wos_session",
+    name: WOS_SESSION_COOKIE,
     value: token,
     httpOnly: true,
     // SameSite=None requires Secure; over http (localhost dev) the

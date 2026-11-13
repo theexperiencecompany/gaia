@@ -1,13 +1,13 @@
 ---
 name: notion-search-content
-description: Smart Notion search — query pages and databases, apply filters, traverse content, synthesize findings
+description: "Smart Notion search: query pages and databases, apply filters, traverse content, synthesize findings"
 target: notion_agent
 ---
 
 # Notion: Search & Find Content
 
 ## When to Activate
-User is looking for information in Notion — pages, databases, specific content, or trying to find something they remember vaguely.
+User is looking for information in Notion: pages, databases, specific content, or trying to find something they remember vaguely.
 
 ## Step 1: Choose Search Strategy
 
@@ -70,7 +70,7 @@ NOTION_FETCH_DATABASE(database_id="<uuid>") → properties, column types
 
 ## Step 5: Synthesize Results
 
-Don't just dump results — organize them:
+Don't just dump results, organize them:
 
 ```
 Found 5 results for "product roadmap":
@@ -96,33 +96,23 @@ Found 5 results for "product roadmap":
 - Returning raw API response (always synthesize)
 - Searching with very long queries (Notion search is basic title matching)
 
-## Using spawn_subagent for Multiple Pages
+## Many pages: one spawn per batch of pages
 
-When you need to read content from multiple Notion pages, the **parent agent** drives the loop — it spawns one subagent per page (or per batch of pages) to keep the main context clean. Subagents cannot spawn further subagents.
+One or two pages are direct calls: read them yourself. When many long pages must be
+read, and you can spawn subagents, find the page ids first, then split them into
+batches and give each batch its own spawn, all in the same turn, so the page text
+never lands in your context. When and how to brief one is in spawn_subagent's
+description.
 
 ```
-# Parent finds page IDs via search
-results = NOTION_FETCH_DATA(fetch_type="pages", query="product roadmap", page_size=50)
+NOTION_FETCH_DATA(fetch_type="pages", query="product roadmap", page_size=50)   # page ids
 
-# Parent spawns one subagent per page (in parallel where possible)
-digest_1 = spawn_subagent(
-  task="""
-    Fetch and fully process page <page_id_1>:
-    NOTION_FETCH_PAGE_AS_MARKDOWN(page_id="<page_id_1>")
-    Extract: main goals, timeline, key decisions, action items, open questions.
-    Return a structured digest.
-  """
+spawn_subagent(
+  task="Read Notion pages <page_id_1>, <page_id_2> and <page_id_3> as markdown. For each return its title and id, its goals, timeline, key decisions, action items and open questions, plus any page you could not read.",
+  integration_ids=["notion"],
 )
-digest_2 = spawn_subagent(
-  task="""
-    Fetch and fully process page <page_id_2>:
-    NOTION_FETCH_PAGE_AS_MARKDOWN(page_id="<page_id_2>")
-    Extract: blockers, decisions, recent updates.
-    Return a structured digest.
-  """
+spawn_subagent(
+  task="Same digest for pages <page_id_4>, <page_id_5> and <page_id_6>.",
+  integration_ids=["notion"],
 )
-
-# Parent waits for all digests, then synthesizes
 ```
-
-This allows parallel reading of multiple pages while keeping the main context clean.

@@ -14,6 +14,10 @@ on:
           # Rehearsal: resolves the private gaia-infra checkout and renders the
           # stack against the prod context without touching a service.
           - verify
+          # Sends one test message through deploy.sh notify to Discord and
+          # Slack, so the webhook wiring can be proven without a deploy — and
+          # renders every message state first, so a bad template fails here.
+          - notify-test
       rollback_mode:
         description: "Rollback mode (rollback only)"
         required: false
@@ -76,6 +80,10 @@ concurrency:
   group: swarm-prod-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  # Public origin whose /health (and /bots/<name>/health) the deploy checks.
+  PROD_ORIGIN: https://api.heygaia.io
+
 jobs:
   deploy:
     if: inputs.action == 'deploy' || inputs.action == 'verify'
@@ -110,11 +118,18 @@ jobs:
           ssh_user: ${{ secrets.PROD_VM_SSH_USER }}
 
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Scopes the success message's change list; a prod too broken to answer
+      # is exactly when a fix must still deploy, so this only warns.
+      - name: Record the commit prod serves now
+        if: inputs.action == 'deploy'
+        id: before
+        run: bash scripts/ci/deploy.sh served-commit
 
       - name: ${{ inputs.action == 'verify' && 'Render the stack (verify only)' || 'Deploy stack' }}
         env:
@@ -151,7 +166,18 @@ jobs:
           # Timeout scales with the fleet: `parallelism: 1` rolls one task at a
           # time and worker boot alone is ~130-160s, so N replicas need N x that.
           # The old flat 5 minutes could not have held three API replicas.
+          echo "services=${SERVICES// /, }" >> "$GITHUB_OUTPUT"
           DEPLOY_CONVERGE_TIMEOUT=900 bash scripts/ci/wait-swarm-convergence.sh $SERVICES
+
+      # Converged only proves the tasks are Running; this proves they run the
+      # image this deploy meant to ship, before :latest is moved onto it.
+      - name: Verify prod serves the deployed commit
+        if: inputs.action == 'deploy'
+        id: verify
+        env:
+          APPS_IMAGE_TAG: ${{ inputs.apps_image_tag }}
+          BOTS_IMAGE_TAG: ${{ inputs.bots_image_tag }}
+        run: bash scripts/ci/deploy.sh verify-commit
 
       # Only after convergence proved the deploy healthy does :latest move —
       # this is what makes :latest "what prod runs" instead of "what was last
@@ -182,65 +208,101 @@ jobs:
             -H "Content-Type: application/json" \
             -d "$PAYLOAD"
 
-      # All Discord sends go through scripts/ci/deploy.sh notify (appleboy's
-      # action 400s on long messages and fragments comma-containing ones —
-      # see the script header). continue-on-error on the send steps only: the
-      # message is fully logged by the script either way, and a dropped
-      # webhook must not repaint an otherwise-decided run.
-      - name: Notify Discord — deploy succeeded
+      # Feeds the success message only; continue-on-error like the sends, so a
+      # GitHub API hiccup cannot fail a deploy that already verified.
+      - name: List the deployed changes
+        if: success() && inputs.action == 'deploy'
+        id: changelog
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ steps.verify.outputs.commit }}
+          PREVIOUS: ${{ steps.before.outputs.previous }}
+        run: bash scripts/ci/deploy.sh changelog
+
+      # All sends go through scripts/ci/deploy.sh notify, which posts to both
+      # Discord and the Slack channel Grafana alerts use. continue-on-error on
+      # the send steps only: the message is fully logged by the script either
+      # way, and a dropped webhook must not repaint an otherwise-decided run.
+      - name: Notify — deploy succeeded
         if: success() && inputs.action == 'deploy'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          COLOR: "#48f442"
-          MESSAGE: |
-            **Backend Deploy Succeeded**
-            **Commit:** `${{ github.sha }}`
-            **Branch:** ${{ github.ref_name }}
-            **Actor:** ${{ github.actor }}
-            **Images:** apps `${{ inputs.apps_image_tag || 'latest' }}` / bots `${{ inputs.bots_image_tag || 'latest' }}` / grafana `${{ inputs.grafana_image_tag || 'latest' }}`
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          STATE: deploy_succeeded
+          COMMIT: ${{ steps.verify.outputs.commit }}
+          CHANGES: ${{ steps.changelog.outputs.changes }}
+        run: |
+          set -euo pipefail
+          short="${COMMIT:0:8}"
+          # Two lines at most: notify's budget is the whole message's, and the
+          # changelog can carry fifteen.
+          cause=$(printf '%s\n' "$CHANGES" | head -n 2)
+          [[ -n "$cause" ]] || cause=$(git log -1 --format=%s)
+          STATE=deploy_succeeded \
+          SUBJECT="$short" \
+          IMPACT="$short is live; every service converged and /health confirms it." \
+          CAUSE="$cause" \
+          ACTION="nothing." \
+            bash scripts/ci/deploy.sh notify
+
+      - name: Notify — prod serves the wrong commit
+        if: failure() && steps.verify.outcome == 'failure'
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          STATE: deploy_failed
+          SUBJECT: prod serves the wrong commit
+          IMPACT: unknown — swarm converged, but /health reports a commit other than the deployed image's.
+          CAUSE: the new image did not take over the running replicas
+          ACTION: read the run log for the endpoint and both commits.
+          CLEARS_WHEN: a deploy that verifies the commit prod serves
         run: bash scripts/ci/deploy.sh notify
 
-      - name: Notify Discord — Swarm auto-rollback
+      - name: Notify — Swarm auto-rollback
         if: failure() && steps.converge.outputs.rolled_back == 'true'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          COLOR: "#ffa500"
-          MESSAGE: |
-            **Backend Deploy Failed — Swarm Auto-Rolled Back**
-            The new image failed health checks and Swarm reverted to the previous revision. This deploy did not re-point `:latest`.
-            **Commit:** `${{ github.sha }}`
-            **Branch:** ${{ github.ref_name }}
-            **Actor:** ${{ github.actor }}
-        run: bash scripts/ci/deploy.sh notify
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          STATE: deploy_failed
+          SUBJECT: swarm reverted to the previous revision
+          IMPACT: back on the previous revision; the new image never passed its health checks.
+          ACTION: fix the failing health check before merging again.
+          CLEARS_WHEN: a later build passes convergence
+        run: |
+          set -euo pipefail
+          CAUSE="${GITHUB_SHA:0:8} failed its health check after convergence" \
+            bash scripts/ci/deploy.sh notify
 
-      - name: Notify Discord — convergence timeout
+      - name: Notify — convergence timeout
         if: failure() && steps.converge.outputs.timed_out == 'true'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          COLOR: "#ff6b6b"
-          MESSAGE: |
-            **Backend Deploy Failed — Convergence Timeout**
-            gaia-backend, arq_worker, and voice-agent-worker did not all reach Running state within 5 minutes. Check `docker service ps gaia-prod_<service>` on the VM. This deploy did not re-point `:latest`.
-            **Commit:** `${{ github.sha }}`
-            **Branch:** ${{ github.ref_name }}
-            **Actor:** ${{ github.actor }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          STATE: deploy_failed
+          SUBJECT: services did not converge in 15 minutes
+          IMPACT: partially updated — not every service reached Running.
+          CAUSE: still not Running after 15 minutes — ${{ steps.converge.outputs.services }}
+          ACTION: run `docker service ps gaia-prod_<service>` on the VM; it names the failing task.
+          CLEARS_WHEN: a later deploy converges every service
         run: bash scripts/ci/deploy.sh notify
 
-      - name: Notify Discord — deploy failed
-        if: failure() && inputs.action == 'deploy' && steps.converge.outputs.rolled_back != 'true' && steps.converge.outputs.timed_out != 'true'
+      - name: Notify — deploy failed
+        if: failure() && inputs.action == 'deploy' && steps.converge.outputs.rolled_back != 'true' && steps.converge.outputs.timed_out != 'true' && steps.verify.outcome != 'failure'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          COLOR: "#ff6b6b"
-          MESSAGE: |
-            **Backend Deploy Failed**
-            The deploy step failed before Swarm could start convergence (image pull, auth, or config error). This deploy did not re-point `:latest`.
-            **Commit:** `${{ github.sha }}`
-            **Branch:** ${{ github.ref_name }}
-            **Actor:** ${{ github.actor }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          STATE: deploy_failed
+          SUBJECT: a step failed outside convergence
+          IMPACT: unchanged — the failure came before or after the rollout.
+          CAUSE: image pull, auth or config failed; the run log names the step
+          ACTION: read the failed step in this run.
+          CLEARS_WHEN: a green master run deploys
         run: bash scripts/ci/deploy.sh notify
 
   rollback:
@@ -266,20 +328,25 @@ jobs:
           ssh_user: ${{ secrets.PROD_VM_SSH_USER }}
 
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Roll back app stack
+        id: rollback
         env:
           ROLLBACK_MODE: ${{ inputs.rollback_mode }}
           IMAGE_DIGEST: ${{ inputs.image_digest }}
+        shell: bash
         run: |
+          # An assignment, not `for svc in $(…)`: a failed docker call (or no
+          # matching service) then fails the step instead of rolling back nothing.
           if [ "$ROLLBACK_MODE" = "last" ]; then
-            for svc in $(docker --context prod stack services gaia-prod --format '{{.Name}}' \
-              | grep -E 'gaia-backend|arq_worker|embedding-sidecar|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot'); do
+            services="$(docker --context prod stack services gaia-prod --format '{{.Name}}' \
+              | grep -E 'gaia-backend|arq_worker|embedding-sidecar|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot')"
+            for svc in $services; do
               echo "Rolling back $svc..."
               docker --context prod service rollback "$svc"
             done
@@ -287,31 +354,29 @@ jobs:
             [ -z "$IMAGE_DIGEST" ] && echo "image_digest required for digest mode" && exit 1
             # Every service running the gaia image — a partial pin would leave
             # the remainder on a different build than the :latest alias claims.
-            docker --context prod service update --image "$IMAGE_DIGEST" gaia-prod_gaia-backend
-            docker --context prod service update --image "$IMAGE_DIGEST" gaia-prod_arq_worker
-            docker --context prod service update --image "$IMAGE_DIGEST" gaia-prod_embedding-sidecar
+            services="gaia-prod_gaia-backend gaia-prod_arq_worker gaia-prod_embedding-sidecar"
+            for svc in $services; do
+              docker --context prod service update --image "$IMAGE_DIGEST" "$svc"
+            done
           fi
+          echo "services=${services//$'\n'/ }" >> "$GITHUB_OUTPUT"
 
       - name: Wait for rollback convergence
         id: converge
         env:
-          ROLLBACK_MODE: ${{ inputs.rollback_mode }}
+          SERVICES: ${{ steps.rollback.outputs.services }}
+        shell: bash
         run: |
-          if [ "$ROLLBACK_MODE" = "last" ]; then
-            SERVICES=$(docker --context prod stack services gaia-prod --format '{{.Name}}' \
-              | grep -E 'gaia-backend|arq_worker|embedding-sidecar|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot')
-          else
-            SERVICES="gaia-prod_gaia-backend gaia-prod_arq_worker gaia-prod_embedding-sidecar"
-          fi
           echo "Waiting for services to stabilise (up to 3 minutes): $SERVICES"
           DEADLINE=$(( $(date +%s) + 180 ))
           while true; do
             pending=()
             for svc in $SERVICES; do
+              # awk counts 0 without failing; a docker error still fails the step.
               running=$(docker --context prod service ps "$svc" \
                 --filter desired-state=running \
-                --format '{{.CurrentState}}' 2>/dev/null | grep -c "^Running" || true)
-              [ "${running:-0}" -lt 1 ] && pending+=("$svc")
+                --format '{{.CurrentState}}' | awk '/^Running/ {n++} END {print n+0}')
+              [ "$running" -lt 1 ] && pending+=("$svc")
             done
             if [ "${#pending[@]}" -eq 0 ]; then
               echo "All services are running"
@@ -363,29 +428,90 @@ jobs:
 
       # Same notify convention as the deploy job: script send, logged either
       # way, and a dropped webhook never repaints the run.
-      - name: Notify Discord — rollback succeeded
+      - name: Notify — rollback succeeded
         if: success()
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          COLOR: "#ffa500"
-          MESSAGE: |
-            **Backend Rollback Succeeded**
-            **Mode:** ${{ inputs.rollback_mode }}${{ inputs.image_digest && format(' (`{0}`)', inputs.image_digest) || '' }}
-            **Actor:** ${{ github.actor }}
-            `:latest` now points at the rolled-back images.
-            ${{ steps.converge.outputs.timed_out == 'true' && '⚠️ Note: not all services stabilised within 3 minutes — verify manually.' || '' }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          STATE: recovered
+          SUBJECT: prod is back on the rolled-back images
+          IMPACT: ${{ steps.converge.outputs.timed_out == 'true' && 'serving the previous build again, but not every service stabilised within 3 minutes — verify manually.' || 'serving the previous build again; the bad deploy is not live.' }}
+          CAUSE: ${{ inputs.rollback_mode }} rollback${{ inputs.image_digest && format(' of `{0}`', inputs.image_digest) || '' }}
+          ACTION: fix the failure before merging again.
         run: bash scripts/ci/deploy.sh notify
 
-      - name: Notify Discord — rollback failed
+      - name: Notify — rollback failed
         if: failure()
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          COLOR: "#ff6b6b"
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          STATE: deploy_failed
+          SUBJECT: rollback did not complete
+          IMPACT: unknown — the rollback job failed before it finished.
+          CAUSE: the rollback command or a follow-up step failed on ${{ inputs.rollback_mode }}
+          ACTION: check the VM now; the run log names the failing step.
+          CLEARS_WHEN: prod is confirmed serving a known-good build
+        run: bash scripts/ci/deploy.sh notify
+
+  notify-test:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'notify-test'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Every state renders here before the real send: a template that drifted,
+      # lost a field or outgrew its line budget fails this job rather than
+      # reaching Slack on the day it matters. DRY_RUN renders and length-guards
+      # without delivering.
+      - name: Render every message state
+        env:
+          DRY_RUN: "true"
+        run: |
+          set -euo pipefail
+          render() {
+            STATE="$1" SUBJECT="$2" IMPACT="$3" CAUSE="$4" ACTION="$5" \
+              CLEARS_WHEN="${6:-}" bash scripts/ci/deploy.sh notify
+          }
+          render deploy_blocked \
+            "prod is 3 commits behind master" \
+            "fine, serving fc67d3d8. Nothing is broken; new work isn't live." \
+            $'ci / security / pip-audit failed on d980793b\n→ https://github.com/theexperiencecompany/gaia/actions/runs/1' \
+            "fix pyasn1 — #1564 is queued." \
+            "master's quality-gate goes green."
+          render deploy_failed \
+            "swarm reverted to the previous revision" \
+            "back on the previous revision; the new image never passed its health checks." \
+            "d980793b failed its health check after convergence" \
+            "fix the failing health check before merging again." \
+            "a later build passes convergence."
+          render deploy_succeeded \
+            "fc67d3d8" \
+            "fc67d3d8 is live; every service converged and /health reports it." \
+            $'- feat: a change (#1)\n- fix: another change (#2)' \
+            "nothing."
+          render recovered \
+            "prod is back on the rolled-back images" \
+            "serving the previous build again; the bad deploy is not live." \
+            "last rollback" \
+            "fix the failure before merging again."
+
+      # No continue-on-error: proving delivery is this job's whole purpose. The
+      # legacy MESSAGE path on purpose — it still has callers, so it stays in the
+      # only job that exercises it.
+      - name: Notify — test message
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          COLOR: "#5865f2"
           MESSAGE: |
-            **Backend Rollback Failed**
-            **Mode:** ${{ inputs.rollback_mode }}
-            **Actor:** ${{ github.actor }}
-            The rollback job failed — the run log shows whether the rollback command itself or a follow-up step (`:latest` retag / Loki annotation) broke. Check the VM immediately.
+            **Deploy Notification Test**
+            Both channels delivered; every message state rendered above.
         run: bash scripts/ci/deploy.sh notify

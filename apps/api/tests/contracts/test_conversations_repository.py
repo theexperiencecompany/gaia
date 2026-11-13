@@ -1,8 +1,8 @@
 """Contract tests for ConversationRepository.
 
-Business-key identity (``conversation_id`` scoped to ``user_id``), an embedded
-``messages`` array, legacy camelCase timestamps, and no cache policy — so this is
-a bespoke suite (not the inherited ``UserScopedRepositoryContract``) asserting on
+Business-key identity (conversation_id scoped to user_id), an embedded
+messages array, legacy camelCase timestamps, and no cache policy — so this is
+a bespoke suite (not the inherited UserScopedRepositoryContract) asserting on
 concrete values against real Mongo.
 """
 
@@ -13,9 +13,18 @@ import uuid
 
 import pytest
 
+from app.constants import chat as chat_constants
+from app.db.mongodb import indexes
+from app.db.repositories import conversations as conversations_module
+from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversations import ConversationRepository
-from app.models.chat_models import ConversationSource, MessageModel, SystemPurpose
-from app.models.conversation_models import ConversationDocument
+from app.models.chat_models import (
+    ConversationSource,
+    MessageModel,
+    SavedSubagentGroup,
+    SystemPurpose,
+)
+from app.models.conversation_models import ConversationDocument, ConversationSearchResults
 
 
 def _uid() -> str:
@@ -35,6 +44,35 @@ def _doc(**overrides: object) -> ConversationDocument:
     }
     data.update(overrides)
     return ConversationDocument.model_validate(data)
+
+
+def _subagent_group(subagent_id: str) -> dict[str, object]:
+    return {
+        "tool_name": "subagent_group",
+        "data": {
+            "subagent_id": subagent_id,
+            "tool_calls": [{"tool_call_id": f"{subagent_id}-before"}],
+            "completed_at": None,
+            "duration_ms": None,
+        },
+    }
+
+
+async def _seed_subagent_group(repo: ConversationRepository, doc: ConversationDocument) -> str:
+    await repo.create(doc)
+    ids = await repo.append_messages(
+        doc.conversation_id,
+        user_id=doc.user_id,
+        messages=[MessageModel(type="bot", response="r")],
+    )
+    assert ids is not None
+    assert await repo.append_message_tool_data(
+        doc.conversation_id,
+        user_id=doc.user_id,
+        message_id=ids[0],
+        entries=[_subagent_group("row-1")],
+    )
+    return ids[0]
 
 
 @pytest.fixture
@@ -75,6 +113,15 @@ class TestConversationCrud:
         assert await repo.exists(doc.conversation_id, user_id=doc.user_id) is True
         assert await repo.exists(doc.conversation_id, user_id="other") is False
         assert await repo.exists(_cid(), user_id=doc.user_id) is False
+
+    async def test_owner_ids_spans_users_and_ignores_other_conversations(self, repo):
+        shared, other = _cid(), _cid()
+        await repo.create(_doc(user_id="first", conversation_id=shared))
+        await repo.create(_doc(user_id="second", conversation_id=shared))
+        await repo.create(_doc(user_id="third", conversation_id=other))
+
+        assert await repo.owner_ids(shared) == {"first", "second"}
+        assert await repo.owner_ids(_cid()) == set()
 
     async def test_delete_then_gone(self, repo):
         doc = _doc()
@@ -140,12 +187,7 @@ class TestListSummaries:
         assert await repo.count_active(user) == 3
 
     async def test_both_summary_lists_are_newest_first(self, repo):
-        """createdAt descending, for the starred and active lists alike.
-
-        ``createdAt`` is an ISO string, so this is Mongo's lexicographic order —
-        chronological only because every writer emits the same UTC ISO-8601
-        shape. Seeded oldest-first so an unsorted read would fail here.
-        """
+        """The createdAt ISO string sorts lexicographically, chronological only because every writer emits the same UTC ISO-8601 shape."""
         user = _uid()
         base = datetime(2026, 1, 1, tzinfo=UTC)
         ids: dict[str, str] = {}
@@ -175,6 +217,191 @@ class TestListSummaries:
         ]
 
 
+class TestLiveApprovalFlag:
+    async def test_marking_a_sourceless_run_stamps_background_and_the_flag(self, repo):
+        doc = _doc()
+        await repo.create(doc)
+
+        assert await repo.mark_background_with_live_approval(
+            doc.conversation_id, user_id=doc.user_id
+        )
+
+        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert fetched is not None
+        assert fetched.has_live_approval is True
+        assert fetched.source == ConversationSource.BACKGROUND
+
+    async def test_marking_never_overwrites_a_real_channel(self, repo):
+        doc = _doc(source=ConversationSource.WEB)
+        await repo.create(doc)
+
+        await repo.mark_background_with_live_approval(doc.conversation_id, user_id=doc.user_id)
+
+        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert fetched is not None
+        assert fetched.source == ConversationSource.WEB
+        assert fetched.has_live_approval is True
+
+    async def test_marked_background_run_surfaces_in_the_sidebar(self, repo):
+        doc = _doc()
+        await repo.create(doc)
+
+        await repo.mark_background_with_live_approval(doc.conversation_id, user_id=doc.user_id)
+
+        active = await repo.list_active_summaries(doc.user_id, skip=0, limit=10)
+        assert [s.conversation_id for s in active] == [doc.conversation_id]
+
+    async def test_marking_touches_only_the_named_conversation(self, repo):
+        user = _uid()
+        target, sibling = _doc(user_id=user), _doc(user_id=user)
+        await repo.create(target)
+        await repo.create(sibling)
+
+        await repo.mark_background_with_live_approval(target.conversation_id, user_id=user)
+
+        untouched = await repo.get(sibling.conversation_id, user_id=user)
+        assert untouched is not None
+        assert untouched.has_live_approval is False
+        assert untouched.source is None
+
+    async def test_marking_is_refused_for_another_user(self, repo):
+        doc = _doc()
+        await repo.create(doc)
+
+        marked = await repo.mark_background_with_live_approval(
+            doc.conversation_id, user_id="attacker"
+        )
+
+        assert marked is False
+        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert fetched is not None
+        assert fetched.has_live_approval is False
+        assert fetched.source is None
+
+    async def test_marking_stamps_only_the_callers_row_of_a_shared_id(self, repo):
+        shared = _cid()
+        mine, theirs = _doc(conversation_id=shared), _doc(conversation_id=shared)
+        await repo.create(theirs)
+        await repo.create(mine)
+
+        await repo.mark_background_with_live_approval(shared, user_id=mine.user_id)
+        await repo.refresh_live_approval_flag(shared, user_id=mine.user_id, live=False)
+
+        other = await repo.get(shared, user_id=theirs.user_id)
+        assert other is not None
+        assert other.source is None
+        assert other.has_live_approval is False
+
+    async def test_marking_a_missing_conversation_reports_false(self, repo):
+        assert await repo.mark_background_with_live_approval(_cid(), user_id=_uid()) is False
+
+    async def test_refresh_rewrites_the_flag_both_ways(self, repo):
+        doc = _doc()
+        await repo.create(doc)
+
+        assert await repo.refresh_live_approval_flag(
+            doc.conversation_id, user_id=doc.user_id, live=True
+        )
+        raised = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert await repo.refresh_live_approval_flag(
+            doc.conversation_id, user_id=doc.user_id, live=False
+        )
+        lowered = await repo.get(doc.conversation_id, user_id=doc.user_id)
+
+        assert raised is not None and raised.has_live_approval is True
+        assert lowered is not None and lowered.has_live_approval is False
+
+    async def test_refresh_touches_only_the_named_conversation(self, repo):
+        user = _uid()
+        target, sibling = _doc(user_id=user), _doc(user_id=user)
+        await repo.create(target)
+        await repo.create(sibling)
+
+        await repo.refresh_live_approval_flag(target.conversation_id, user_id=user, live=True)
+
+        untouched = await repo.get(sibling.conversation_id, user_id=user)
+        assert untouched is not None and untouched.has_live_approval is False
+
+    async def test_refresh_is_refused_for_another_user(self, repo):
+        doc = _doc()
+        await repo.create(doc)
+
+        refreshed = await repo.refresh_live_approval_flag(
+            doc.conversation_id, user_id="attacker", live=True
+        )
+
+        assert refreshed is False
+        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert fetched is not None and fetched.has_live_approval is False
+
+    async def test_refresh_of_a_missing_conversation_reports_false(self, repo):
+        assert await repo.refresh_live_approval_flag(_cid(), user_id=_uid(), live=True) is False
+
+
+class _CachedConversationRepository(ConversationRepository):
+    cache_policy = CachePolicy(prefix="contract:conversations")
+
+
+class TestInPlaceWritesUnderACachePolicy:
+    """The module promises a cache policy can be switched on with no call-site changes; these writes must then evict what get() cached."""
+
+    @pytest.fixture
+    def cached_repo(self, raw_collection) -> _CachedConversationRepository:
+        return _CachedConversationRepository()
+
+    async def test_marking_evicts_the_cached_conversation(self, cached_repo):
+        # A real channel skips the source stamp, so the flag write's eviction stands alone.
+        doc = _doc(source=ConversationSource.WEB)
+        await cached_repo.create(doc)
+        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is not None
+
+        await cached_repo.mark_background_with_live_approval(
+            doc.conversation_id, user_id=doc.user_id
+        )
+
+        fetched = await cached_repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert fetched is not None
+        assert fetched.has_live_approval is True
+
+    async def test_refreshing_evicts_the_cached_conversation(self, cached_repo):
+        doc = _doc()
+        await cached_repo.create(doc)
+        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is not None
+
+        await cached_repo.refresh_live_approval_flag(
+            doc.conversation_id, user_id=doc.user_id, live=True
+        )
+
+        fetched = await cached_repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert fetched is not None
+        assert fetched.has_live_approval is True
+
+    async def test_extending_a_subagent_group_evicts_the_cached_conversation(self, cached_repo):
+        doc = _doc()
+        mid = await _seed_subagent_group(cached_repo, doc)
+        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is not None
+
+        await cached_repo.extend_subagent_group(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            message_id=mid,
+            group=SavedSubagentGroup(subagent_id="row-1", duration_ms=1200),
+        )
+
+        fetched = await cached_repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert fetched is not None and fetched.messages[0].tool_data is not None
+        assert fetched.messages[0].tool_data[0]["data"]["duration_ms"] == 1200
+
+    async def test_deleting_a_todos_chats_evicts_the_cached_chat(self, cached_repo):
+        doc = _doc(todo_id="todo-1")
+        await cached_repo.create(doc)
+        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is not None
+
+        await cached_repo.delete_for_todos(doc.user_id, ["todo-1"])
+
+        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is None
+
+
 class TestMessages:
     async def test_append_returns_ids_and_persists(self, repo):
         doc = _doc()
@@ -192,6 +419,22 @@ class TestMessages:
         assert fetched is not None
         assert [m.response for m in fetched.messages] == ["hi", "hello"]
         assert [m.message_id for m in fetched.messages] == ids
+
+    async def test_a_tool_data_entry_holding_a_model_is_stored_as_its_dump(self, repo):
+        doc = _doc()
+        await repo.create(doc)
+        group = SavedSubagentGroup.model_validate(_subagent_group("row-1")["data"])
+        message = MessageModel(
+            type="bot", response="x", tool_data=[{"tool_name": "subagent_group", "data": group}]
+        )
+        [mid] = (
+            await repo.append_messages(doc.conversation_id, user_id=doc.user_id, messages=[message])
+            or []
+        )
+
+        saved = await repo.get_message(doc.conversation_id, mid, user_id=doc.user_id)
+        assert saved is not None and saved.tool_data is not None
+        assert saved.tool_data[0]["data"] == group.model_dump()
 
     async def test_append_missing_conversation_returns_none(self, repo):
         assert (
@@ -260,16 +503,90 @@ class TestMessages:
         assert msg.tool_data is not None and msg.tool_data[0]["tool_name"] == "weather"
         assert msg.follow_up_actions == ["do x"]
 
-    async def test_append_preserves_every_key_emitters_stamp_on_tool_data(self, repo):
-        """A persisted tool_data entry keeps the keys the emitters actually set.
+    async def test_a_resumed_subagent_extends_its_saved_row_in_place(self, repo):
+        """Array-filtered: the one group gets the calls, a sibling group and other cards are untouched."""
+        doc = _doc()
+        await repo.create(doc)
+        ids = await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="bot", response="r")],
+        )
+        assert ids is not None
+        mid = ids[0]
+        assert await repo.append_message_tool_data(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            message_id=mid,
+            entries=[
+                _subagent_group("row-1"),
+                _subagent_group("row-2"),
+                {"tool_name": "weather", "data": {}},
+            ],
+        )
 
-        ``append_messages`` writes through ``MessageModel.model_dump()``, which
-        drops any key ``ToolDataEntry`` does not declare. ``format_tool_call_entry``
-        stamps ``tool_category``/``mcp_ui``/``mcp_server_url`` and the subagent
-        path stamps ``subagent_id``; losing them on write is invisible live (the
-        SSE frame carries them) and only shows on reload — a tool card rendering
-        with the wrong icon and an MCP App that never comes back.
-        """
+        assert await repo.extend_subagent_group(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            message_id=mid,
+            group=SavedSubagentGroup(
+                subagent_id="row-1",
+                tool_calls=[{"tool_call_id": "row-1-after"}],
+                completed_at="2026-09-23T10:05:00Z",
+                duration_ms=1200,
+            ),
+        )
+
+        msg = await repo.get_message(doc.conversation_id, mid, user_id=doc.user_id)
+        assert msg is not None and msg.tool_data is not None
+        groups = {
+            e["data"]["subagent_id"]: e["data"] for e in msg.tool_data if "subagent_id" in e["data"]
+        }
+        assert [c["tool_call_id"] for c in groups["row-1"]["tool_calls"]] == [
+            "row-1-before",
+            "row-1-after",
+        ]
+        assert groups["row-1"]["completed_at"] == "2026-09-23T10:05:00Z"
+        assert groups["row-1"]["duration_ms"] == 1200
+        assert [c["tool_call_id"] for c in groups["row-2"]["tool_calls"]] == ["row-2-before"]
+        assert groups["row-2"]["completed_at"] is None
+        assert len(msg.tool_data) == 3
+
+    async def test_extending_a_row_the_message_does_not_hold_matches_nothing(self, repo):
+        doc = _doc()
+        await repo.create(doc)
+        ids = await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="bot", response="r")],
+        )
+        assert ids is not None
+
+        assert not await repo.extend_subagent_group(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            message_id=ids[0],
+            group=SavedSubagentGroup(subagent_id="missing"),
+        )
+
+    async def test_extending_is_refused_for_another_user(self, repo):
+        doc = _doc()
+        mid = await _seed_subagent_group(repo, doc)
+
+        extended = await repo.extend_subagent_group(
+            doc.conversation_id,
+            user_id="attacker",
+            message_id=mid,
+            group=SavedSubagentGroup(subagent_id="row-1", tool_calls=[{"tool_call_id": "pwned"}]),
+        )
+
+        assert extended is False
+        msg = await repo.get_message(doc.conversation_id, mid, user_id=doc.user_id)
+        assert msg is not None and msg.tool_data is not None
+        assert msg.tool_data[0]["data"]["tool_calls"] == [{"tool_call_id": "row-1-before"}]
+
+    async def test_append_preserves_every_key_emitters_stamp_on_tool_data(self, repo):
+        """append_messages must not drop tool_category/mcp_ui/mcp_server_url/subagent_id, invisible live but breaking on reload."""
         doc = _doc()
         await repo.create(doc)
         message = MessageModel(type="bot", response="r")
@@ -312,17 +629,15 @@ class TestMessages:
 
 
 class TestMessageSettlementWrites:
-    """``set_message_response`` / ``set_message_tool_data`` /
-    ``set_message_approval_status`` — the in-place writes background delivery and
-    the HIL bridge use to settle a turn that has already been persisted."""
+    """set_message_response / set_message_tool_data / set_message_approval_status — in-place writes that settle an already-persisted turn."""
 
     @staticmethod
     async def _seed(repo) -> tuple[ConversationDocument, str, str]:
-        """A conversation with a tool_data-less user message and a bot message.
+        """Build a conversation with a tool_data-less user message and a bot message.
 
-        The leading user message is load-bearing for the approval-status filter:
-        it has no ``tool_data`` at all, which is exactly the shape a
-        ``messages.$[]`` positional filter chokes on.
+        The leading user message is load-bearing for the approval-status
+        filter: it has no tool_data at all, the shape a messages.$[]
+        positional filter chokes on.
         """
         doc = _doc()
         await repo.create(doc)
@@ -371,8 +686,7 @@ class TestMessageSettlementWrites:
         assert stored is not None and stored.response == ""
 
     async def test_set_tool_data_replaces_rather_than_appends(self, repo):
-        """The distinction from ``append_message_tool_data``: delivery re-persists
-        the whole frame list, so a stale entry must not survive the write."""
+        """Distinguished from append_message_tool_data: delivery re-persists the whole frame list, so a stale entry must not survive the write."""
         doc, _user_mid, bot_mid = await self._seed(repo)
         assert await repo.append_message_tool_data(
             doc.conversation_id,
@@ -418,8 +732,7 @@ class TestMessageSettlementWrites:
         assert not stored.tool_data
 
     async def test_approval_status_settles_only_the_named_frame(self, repo):
-        """Two approval cards on one message: settling ``a1`` must not touch ``a2``,
-        and the tool_data-less user message ahead of them must not block the write."""
+        """Two approval cards on one message: settling a1 must not touch a2."""
         doc, _user_mid, bot_mid = await self._seed(repo)
         assert await repo.set_message_tool_data(
             doc.conversation_id,
@@ -453,11 +766,7 @@ class TestMessageSettlementWrites:
 
     @pytest.mark.regression
     async def test_approval_status_for_an_unknown_id_reports_failure(self, repo):
-        """Returning True for an approval that is not in the document reports work
-        that did not happen. The sibling writes filter on ``messages.message_id``,
-        so their ``matched > 0`` means "the row was there"; this one filtered on the
-        conversation alone, so it meant "the conversation exists" — true for every
-        stale or already-reconciled approval_id a caller might pass."""
+        """Regression: filtering on the conversation alone made matched > 0 mean "conversation exists", true even for a stale approval_id."""
         doc, _user_mid, bot_mid = await self._seed(repo)
         assert await repo.set_message_tool_data(
             doc.conversation_id,
@@ -536,8 +845,7 @@ class TestMessageSettlementWrites:
         assert stored.tool_data[0]["data"]["status"] == "pending"
 
     async def test_settlement_writes_never_advance_updated_at(self, repo):
-        """All three settle a turn the client already sees; bumping ``updatedAt``
-        would reshuffle the sidebar's recency ordering behind the user's back."""
+        """Bumping updatedAt here would reshuffle the sidebar's recency ordering behind the user's back."""
         doc, _user_mid, bot_mid = await self._seed(repo)
         assert await repo.set_starred(doc.conversation_id, user_id=doc.user_id, starred=True)
         before = await repo.get(doc.conversation_id, user_id=doc.user_id)
@@ -596,6 +904,114 @@ class TestLegacyReadTolerance:
         assert "old" in tool_names and "weather_data" in tool_names  # legacy field folded in
 
 
+class TestTrackedTodoChats:
+    """A tracked todo's chat: one per todo, reached only from it, never listed anywhere."""
+
+    @pytest.fixture(autouse=True)
+    async def _shipped_index(self, raw_collection) -> None:
+        await raw_collection.create_index(
+            indexes.CONVERSATION_TODO_BINDING_KEYS, **indexes.CONVERSATION_TODO_BINDING_OPTIONS
+        )
+
+    async def test_a_todos_chat_is_never_listed_starred_counted_or_searched(self, repo):
+        user = _uid()
+        chat = _doc(user_id=user, source=ConversationSource.WEB, description="normal")
+        todo_chat = _doc(user_id=user, todo_id="todo-1", description="Watch the deploy")
+        # Starring or an approval card must not pull it into the sidebar either.
+        starred_todo_chat = _doc(user_id=user, todo_id="todo-2", starred=True)
+        approval_todo_chat = _doc(
+            user_id=user,
+            todo_id="todo-3",
+            source=ConversationSource.BACKGROUND,
+            has_live_approval=True,
+        )
+        for doc in (chat, todo_chat, starred_todo_chat, approval_todo_chat):
+            await repo.create(doc)
+        await repo.append_messages(
+            todo_chat.conversation_id,
+            user_id=user,
+            messages=[MessageModel(type="bot", response="the deploy is green")],
+        )
+
+        active = await repo.list_active_summaries(user, skip=0, limit=10)
+        assert [s.conversation_id for s in active] == [chat.conversation_id]
+        assert await repo.count_active(user) == 1
+        assert await repo.list_starred_summaries(user) == []
+        assert await repo.search(user, pattern="deploy") == ConversationSearchResults()
+
+    async def test_the_chat_is_found_by_its_todo_and_the_todo_by_its_chat(self, repo):
+        user = _uid()
+        todo_chat = _doc(user_id=user, todo_id="todo-1")
+        chat = _doc(user_id=user)
+        await repo.create(todo_chat)
+        await repo.create(chat)
+
+        assert await repo.find_todo_conversation_id(user, "todo-1") == todo_chat.conversation_id
+        assert await repo.find_todo_conversation_id(user, "todo-2") is None
+        # Another user's todo of the same id is not theirs.
+        assert await repo.find_todo_conversation_id(_uid(), "todo-1") is None
+        assert await repo.get_todo_id(todo_chat.conversation_id, user_id=user) == "todo-1"
+        assert await repo.get_todo_id(chat.conversation_id, user_id=user) is None
+        assert await repo.get_todo_id(todo_chat.conversation_id, user_id=_uid()) is None
+
+    async def test_a_second_chat_for_the_same_todo_loses_the_create(self, repo):
+        user = _uid()
+        assert await repo.try_create(_doc(user_id=user, todo_id="todo-1")) is True
+        assert await repo.try_create(_doc(user_id=user, todo_id="todo-1")) is False
+        # Unbound chats and another user's chat for that todo id never collide.
+        assert await repo.try_create(_doc(user_id=user)) is True
+        assert await repo.try_create(_doc(user_id=user)) is True
+        assert await repo.try_create(_doc(user_id=_uid(), todo_id="todo-1")) is True
+
+    async def test_a_lookup_by_todo_is_served_by_the_binding_index(self, raw_collection):
+        query = {"user_id": "u1", **conversations_module._todo_binding("todo-1")}
+
+        plan = (await raw_collection.find(query).explain())["queryPlanner"]["winningPlan"]
+
+        assert indexes.CONVERSATION_TODO_BINDING_OPTIONS["name"] in str(plan)
+
+    async def test_deleting_todos_deletes_only_their_chats(self, repo):
+        user = _uid()
+        first = _doc(user_id=user, todo_id="todo-1")
+        second = _doc(user_id=user, todo_id="todo-2")
+        kept = _doc(user_id=user, todo_id="todo-3")
+        chat = _doc(user_id=user)
+        foreign = _doc(user_id=_uid(), todo_id="todo-1")
+        for doc in (first, second, kept, chat, foreign):
+            await repo.create(doc)
+
+        deleted = await repo.delete_for_todos(user, ["todo-1", "todo-2"])
+
+        assert sorted(deleted) == sorted([first.conversation_id, second.conversation_id])
+        assert await repo.exists(kept.conversation_id, user_id=user)
+        assert await repo.exists(chat.conversation_id, user_id=user)
+        assert await repo.exists(foreign.conversation_id, user_id=foreign.user_id)
+        assert await repo.delete_for_todos(user, ["todo-9"]) == []
+
+    async def test_retitling_todos_retitles_only_their_chats_and_marks_them_for_sync(self, repo):
+        user = _uid()
+        bound = _doc(user_id=user, todo_id="todo-1", description="Watch staging")
+        other = _doc(user_id=user, todo_id="todo-2", description="Watch canary")
+        chat = _doc(user_id=user, description="Watch staging")
+        foreign = _doc(user_id=_uid(), todo_id="todo-1", description="Watch staging")
+        for doc in (bound, other, chat, foreign):
+            await repo.create(doc)
+        before = await repo.get(bound.conversation_id, user_id=user)
+
+        await repo.retitle_todo_chats(user, ["todo-1"], "Watch production")
+
+        retitled = await repo.get(bound.conversation_id, user_id=user)
+        assert retitled is not None and before is not None
+        assert retitled.description == "Watch production"
+        # A client syncs a chat by updatedAt, so the new title must move it.
+        assert retitled.updatedAt is not None and retitled.updatedAt != before.updatedAt
+        for untouched in (other, chat):
+            kept = await repo.get(untouched.conversation_id, user_id=user)
+            assert kept is not None and kept.description == untouched.description
+        kept_foreign = await repo.get(foreign.conversation_id, user_id=foreign.user_id)
+        assert kept_foreign is not None and kept_foreign.description == "Watch staging"
+
+
 class TestWorkflowAndOnboarding:
     async def test_find_and_bind_workflow_conversation(self, repo):
         doc = _doc(
@@ -640,19 +1056,6 @@ class TestWorkflowAndOnboarding:
             {"user_id": uid, "conversation_id": cid, "source": "legacy_garbage"}
         )
         assert await repo.get_source(cid, user_id=uid) is None
-
-    async def test_mark_and_probe_onboarding(self, repo):
-        doc = _doc()
-        await repo.create(doc)
-        await repo.append_messages(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            messages=[MessageModel(type="user", response="hey")],
-        )
-        assert await repo.mark_onboarding_conversation(doc.conversation_id, user_id=doc.user_id)
-        probe = await repo.get_onboarding_probe(doc.conversation_id)
-        assert probe is not None
-        assert probe.is_onboarding_conversation is True and probe.message_count == 1
 
 
 class TestSearchAndSweeps:
@@ -742,16 +1145,14 @@ class TestSearchAndSweeps:
 
 
 class TestActivitySignal:
-    """`has_activity_since` — the dormancy sweep's transport-agnostic usage signal.
+    """has_activity_since — the dormancy sweep's transport-agnostic usage signal.
 
     Against real Mongo specifically: the bug this pins is a BSON type mismatch,
     which every mocked collection in the unit tier happily reports as a match.
     """
 
     async def test_a_conversation_created_since_the_cutoff_counts(self, repo):
-        """`createdAt` is an ISO STRING (see the module's timestamp contract), so a
-        date `$gte` against it matches nothing at all — silently, reading as "this
-        user has no activity" and making the sweep pause a live user's workflows."""
+        """The createdAt ISO string must still match a date $gte comparison, not silently read as no activity."""
         doc = _doc()
         await repo.create(doc)
 
@@ -777,10 +1178,23 @@ class TestActivitySignal:
         cutoff = datetime.now(UTC) - timedelta(days=1)
         assert await repo.has_activity_since(doc.user_id, cutoff) is False
 
+    async def test_a_tracked_todos_chat_does_not_count(self, repo):
+        """Regression: every run of a tracked todo saves its report in the todo's chat, so a user whose todos ran never went dormant."""
+        doc = _doc(todo_id="todo-1")
+        await repo.create(doc)
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="bot", response="the deploy is green")],
+        )
+
+        cutoff = datetime.now(UTC) - timedelta(days=1)
+        assert await repo.has_activity_since(doc.user_id, cutoff) is False
+        # Nor is it a chat the user had: nurture's "used chat" and the new-user guidance read this.
+        assert await repo.count_non_onboarding(doc.user_id) == 0
+
     async def test_a_system_generated_conversation_does_not_count(self, repo):
-        """A workflow execution appends to its system conversation and stamps
-        updatedAt — counting that let a user's own automation vouch for them as
-        "active" forever, so the dormancy sweep could never pause it."""
+        """A system-generated conversation's own updatedAt must not count, or a user's automation vouches for them as active forever."""
         doc = _doc()
         doc.is_system_generated = True
         await repo.create(doc)
@@ -796,3 +1210,148 @@ class TestActivitySignal:
 
         cutoff = datetime.now(UTC) - timedelta(days=1)
         assert await repo.has_activity_since(mine.user_id, cutoff) is False
+
+
+async def test_owners_of_maps_each_existing_conversation_to_its_owner(repo):
+    alice, bob = _uid(), _uid()
+    a_conv, b_conv = _doc(user_id=alice), _doc(user_id=bob)
+    await repo.create(a_conv)
+    await repo.create(b_conv)
+    await repo.create(_doc(user_id=alice))
+
+    owners = await repo.owners_of([a_conv.conversation_id, b_conv.conversation_id, _cid()])
+
+    assert owners == {a_conv.conversation_id: alice, b_conv.conversation_id: bob}
+
+
+class TestHistoryTrimming:
+    """A conversation is one Mongo document, so history is trimmed — never silently losing what the user kept."""
+
+    async def _seed(
+        self, repo: ConversationRepository, count: int
+    ) -> tuple[ConversationDocument, list[str]]:
+        doc = _doc()
+        await repo.create(doc)
+        ids: list[str] = []
+        for index in range(count):
+            added = await repo.append_messages(
+                doc.conversation_id,
+                user_id=doc.user_id,
+                messages=[MessageModel(type="user", response=f"m{index}")],
+            )
+            assert added is not None
+            ids.extend(added)
+        return doc, ids
+
+    async def test_trimming_keeps_the_newest_messages(self, repo):
+        doc, _ids = await self._seed(repo, 5)
+
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="user", response="m5")],
+            max_messages=3,
+        )
+
+        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert stored is not None
+        assert [message.response for message in stored.messages] == ["m3", "m4", "m5"]
+
+    @pytest.mark.regression
+    async def test_trimming_keeps_a_pinned_message_outside_the_window(self, repo):
+        # Read off the module, not imported: a module-level import of a constant this
+        # PR adds cannot collect on base, and a collection ERROR is not the red to prove.
+        doc, ids = await self._seed(repo, 5)
+        await repo.set_message_pinned(
+            doc.conversation_id, user_id=doc.user_id, message_id=ids[0], pinned=True
+        )
+
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="user", response="m5")],
+            max_messages=3,
+        )
+
+        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert stored is not None
+        assert [message.response for message in stored.messages] == ["m0", "m3", "m4", "m5"]
+        assert stored.messages[0].pinned is True
+
+    async def test_a_cap_above_a_short_history_drops_nothing(self, repo):
+        doc, _ids = await self._seed(repo, 4)
+
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="user", response="m4")],
+            max_messages=10,
+        )
+
+        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert stored is not None
+        assert [message.response for message in stored.messages] == [
+            "m0",
+            "m1",
+            "m2",
+            "m3",
+            "m4",
+        ]
+
+    async def test_a_pinned_message_is_not_duplicated_when_no_trimming_is_needed(self, repo):
+        doc, ids = await self._seed(repo, 3)
+        await repo.set_message_pinned(
+            doc.conversation_id, user_id=doc.user_id, message_id=ids[0], pinned=True
+        )
+
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="user", response="m3")],
+            max_messages=10,
+        )
+
+        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert stored is not None
+        assert [message.response for message in stored.messages] == ["m0", "m1", "m2", "m3"]
+
+    async def test_pins_retained_across_many_trims_stay_bounded(self, repo):
+        """Pins outlive the window, so the pin count needs its own ceiling."""
+        doc = _doc()
+        await repo.create(doc)
+        kept = chat_constants.CONVERSATION_MAX_RETAINED_PINS + 10
+        pinned_ids: list[str] = []
+        for index in range(kept):
+            added = await repo.append_messages(
+                doc.conversation_id,
+                user_id=doc.user_id,
+                messages=[MessageModel(type="user", response=f"p{index}")],
+            )
+            assert added is not None
+            pinned_ids.extend(added)
+
+        for message_id in pinned_ids:
+            await repo.set_message_pinned(
+                doc.conversation_id, user_id=doc.user_id, message_id=message_id, pinned=True
+            )
+
+        # Each append trims to the window, so every pin here lives outside it.
+        for index in range(3):
+            await repo.append_messages(
+                doc.conversation_id,
+                user_id=doc.user_id,
+                messages=[MessageModel(type="user", response=f"tail{index}")],
+                max_messages=3,
+            )
+
+        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert stored is not None
+        pinned = [message.response for message in stored.messages if message.pinned]
+        assert len(pinned) == chat_constants.CONVERSATION_MAX_RETAINED_PINS
+        # The newest pins survive; the oldest fall out with the messages carrying them.
+        assert pinned[0] == f"p{kept - chat_constants.CONVERSATION_MAX_RETAINED_PINS}"
+        assert [message.response for message in stored.messages][-3:] == [
+            "tail0",
+            "tail1",
+            "tail2",
+        ]

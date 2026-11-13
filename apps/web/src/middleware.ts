@@ -1,35 +1,27 @@
-import type { NextRequest } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import createMiddleware from "next-intl/middleware";
 
+import { selfhostHomeRedirect } from "./features/auth/api/selfhostHomeRedirect";
+import { stripLocalePrefix } from "./i18n/config";
 import { routing } from "./i18n/routing";
+import { isTranslatedPath } from "./i18n/translatedRoutes";
 
-// Renamed from `proxy.ts` → `middleware.ts` so we can deploy on Cloudflare via
-// `@opennextjs/cloudflare`. Next 16's new `proxy.ts` convention is hard-coded
-// to Node runtime; OpenNext-CF only accepts edge middleware (tracking issue:
-// https://github.com/opennextjs/opennextjs-cloudflare/issues/972). Next 16
-// still accepts `middleware.ts` with only a deprecation warning, and the
-// classic `middleware.ts` defaults to edge runtime — exactly what the CF
-// adapter requires. Keep this file name until OpenNext ships native proxy
-// support.
-//
-// `next-llms-txt`'s middleware-side path matching was dropped because it
-// calls `process.cwd()` at module load and reads files off disk, which
-// breaks on edge. The /llms.txt URL is still served by the route handler at
-// `src/app/llms.txt/route.ts`.
+// Renamed from proxy.ts to middleware.ts: Next 16's proxy.ts convention is hard-coded to Node
+// runtime, but OpenNext-CF only accepts edge middleware (opennextjs-cloudflare#972); classic
+// middleware.ts still works (deprecation warning only) and defaults to edge, which CF requires.
 
-const translatedPrefixes = [
-  "/learn",
-  "/automate",
-  "/compare",
-  "/alternative-to",
-  "/for",
-];
+// next-llms-txt's middleware path matching was dropped: it calls process.cwd() at module load,
+// which breaks on edge. /llms.txt is served instead by src/app/llms.txt/route.ts.
 
 function isTranslatedRoute(pathname: string): boolean {
-  const stripped = pathname.replace(/^\/(de|es|fr|ja|ko|pt-BR)(\/|$)/, "/");
-  return translatedPrefixes.some(
-    (prefix) => stripped === prefix || stripped.startsWith(`${prefix}/`),
-  );
+  return isTranslatedPath(stripLocalePrefix(pathname));
+}
+
+/** Only the production hosts are indexable; any other host the Worker is reached on (previews, aliases) is not. */
+const INDEXABLE_HOSTS = new Set(["heygaia.io", "www.heygaia.io"]);
+
+function isIndexableHost(host: string | null): boolean {
+  return host !== null && INDEXABLE_HOSTS.has(host.split(":")[0].toLowerCase());
 }
 
 const intlMiddleware = createMiddleware(routing);
@@ -40,27 +32,63 @@ const intlMiddlewareDefaultOnly = createMiddleware({
   localeDetection: false,
 });
 
-export default function middleware(request: NextRequest) {
+/** next-intl's CookieAttributes type omits HttpOnly, so harden its Set-Cookie here. */
+function hardenLocaleCookie(response: NextResponse): NextResponse {
+  const cookies = response.headers.getSetCookie();
+  if (!cookies.some((cookie) => cookie.startsWith("NEXT_LOCALE="))) {
+    return response;
+  }
+  response.headers.delete("set-cookie");
+  for (const cookie of cookies) {
+    response.headers.append(
+      "set-cookie",
+      cookie.startsWith("NEXT_LOCALE=") ? `${cookie}; HttpOnly` : cookie,
+    );
+  }
+  return response;
+}
+
+function localeResponse(request: NextRequest): NextResponse {
   if (isTranslatedRoute(request.nextUrl.pathname)) {
-    return intlMiddleware(request);
+    return hardenLocaleCookie(intlMiddleware(request));
   }
   // For non-translated routes: still run middleware (needed for [locale]
   // routing) but force default locale — no locale prefix in URL.
   const response = intlMiddlewareDefaultOnly(request);
-  // These routes are locale-invariant (no detection, no prefix), so the
-  // NEXT_LOCALE cookie next-intl writes here is inert — it can never change
-  // what locale is served. Dropping the Set-Cookie lets Cloudflare's edge
-  // cache store the ISR HTML for these public pages (CF bypasses the cache on
-  // any response carrying Set-Cookie), removing the Worker — and its cold
-  // start — from the critical path. Translated routes above keep the cookie,
-  // since their locale genuinely varies and must not be edge-cached.
+  // These routes have an invariant locale, so next-intl's NEXT_LOCALE cookie here is inert.
+  // Dropping it lets Cloudflare edge-cache the ISR HTML (CF bypasses cache on any Set-Cookie),
+  // skipping the Worker's cold start; translated routes above keep the cookie since locale varies.
   response.headers.delete("set-cookie");
   return response;
 }
 
+export default async function middleware(request: NextRequest) {
+  // Next's config redirects match case-insensitively, so /pt-BR cannot be
+  // distinguished from the canonical /pt-br there. Handle the legacy mixed-case
+  // prefix here, where the comparison is case-sensitive.
+  const { pathname } = request.nextUrl;
+  if (pathname === "/pt-BR" || pathname.startsWith("/pt-BR/")) {
+    const url = request.nextUrl.clone();
+    url.pathname = `/pt-br${pathname.slice("/pt-BR".length)}`;
+    return NextResponse.redirect(url, 301);
+  }
+  // A self-hosted instance has no landing page: "/" goes into the product.
+  if (request.nextUrl.pathname === "/") {
+    const selfhostHome = await selfhostHomeRedirect(request);
+    if (selfhostHome) return selfhostHome;
+  }
+  const response = localeResponse(request);
+  if (!isIndexableHost(request.headers.get("host"))) {
+    response.headers.set("X-Robots-Tag", "noindex, nofollow");
+  }
+  return response;
+}
+
 export const config = {
-  // `connect` is the locale-invariant connect-link redirect route handler
-  // (src/app/connect/[code]/route.ts) — exclude it like `api` so next-intl
-  // doesn't rewrite it into the [locale] tree.
-  matcher: ["/((?!api|connect|_next|_vercel|sitemap|ingest|.*\\..*).*)", "/"],
+  // `connect` and `feed` are route handlers outside [locale]; next-intl must
+  // not rewrite them (feed.xml 301s to /feed, which must resolve).
+  matcher: [
+    "/((?!api|connect|feed|_next|_vercel|sitemap|ingest|.*\\..*).*)",
+    "/",
+  ],
 };

@@ -35,7 +35,7 @@ const RecentConversationsView = memo(() => {
 
   const handleConversationClick = useCallback(
     (conversationId: string) => {
-      router.push(`/chat/${conversationId}`);
+      router.push(`/c/${conversationId}`);
     },
     [router],
   );
@@ -60,7 +60,7 @@ const RecentConversationsView = memo(() => {
         description: "Identify conversations that ended with open action items",
         onPress: () =>
           appendToInput(
-            "Go through my recent conversations and identify any that ended without a clear resolution — things where there were open action items, unanswered questions, or follow-ups I still need to do.",
+            "Go through my recent conversations and identify any that ended without a clear resolution: things where there were open action items, unanswered questions, or follow-ups I still need to do.",
           ),
       },
       {
@@ -112,9 +112,9 @@ const RecentConversationsView = memo(() => {
             <div className="min-w-0 flex-1 flex justify-between">
               <div>
                 <div className="flex items-start justify-between gap-2">
-                  <h4 className="text-base font-medium text-white line-clamp-1">
+                  <h3 className="text-base font-medium text-white line-clamp-1">
                     {conversation.title}
-                  </h4>
+                  </h3>
                   {conversation.starred && (
                     <span className="flex-shrink-0 text-yellow-500">★</span>
                   )}

@@ -1,38 +1,34 @@
-import type { FeatureUsage, UsageActivity, UsageSummary } from "@shared/types";
-import { apiauth } from "@/lib/api/client";
+import type { UsageHistoryEntry } from "@shared/api/generated";
 
-export interface UsageHistoryEntry {
-  date: string;
-  plan_type: string;
-  features: Record<string, Pick<FeatureUsage, "title" | "periods">>;
-}
+export type { UsageHistoryEntry } from "@shared/api/generated";
 
-class UsageApiService {
-  async getUsageSummary(): Promise<UsageSummary> {
-    const response = await apiauth.get("/usage/summary");
-    return response.data;
-  }
+import type { UsageActivity } from "@shared/types";
+import { api } from "@/lib/api/typed";
 
-  async getUsageHistory(
+export const usageApi = {
+  getUsageSummary: () => api.get("/api/v1/usage/summary"),
+
+  getUsageHistory: async (
     days: number = 30,
     featureKey?: string,
-  ): Promise<UsageHistoryEntry[]> {
-    const params = new URLSearchParams({ days: days.toString() });
-    if (featureKey) {
-      params.append("feature_key", featureKey);
-    }
-
-    const response = await apiauth.get(`/usage/history?${params}`);
+  ): Promise<UsageHistoryEntry[]> => {
+    const history = await api.get("/api/v1/usage/history", {
+      query: { days, feature_key: featureKey },
+    });
     // Backend returns newest-first; charts consume chronological order.
-    return response.data.sort((a: UsageHistoryEntry, b: UsageHistoryEntry) =>
-      a.date.localeCompare(b.date),
-    );
-  }
+    return [...history].sort((a, b) => a.date.localeCompare(b.date));
+  },
 
-  async getUsageActivity(days: number = 365): Promise<UsageActivity> {
-    const response = await apiauth.get(`/usage/activity?days=${days}`);
-    return response.data;
-  }
-}
-
-export const usageApi = new UsageApiService();
+  /**
+   * The activity grid and the user's standing.
+   *
+   * `tier` is a plain `str` on the API model, so the generated type widens the
+   * four badge names to `string`; the UI indexes its TIERS table by them. The
+   * narrowing belongs on the API side (a StrEnum) — until then it is stated
+   * here, once, instead of at every read.
+   */
+  getUsageActivity: async (days: number = 365): Promise<UsageActivity> =>
+    (await api.get("/api/v1/usage/activity", {
+      query: { days },
+    })) as UsageActivity,
+};

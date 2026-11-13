@@ -1,8 +1,7 @@
-"""Baseline comparison.
+"""The baseline files existed and nothing read them for a verdict, so a regression shipped silently.
 
-The baseline files existed and nothing read them for a verdict, so a regression
-shipped silently. These pin that a drop is now caught, and — just as important —
-that ordinary noise is not.
+These pin that a drop is now caught, and — just as important — that ordinary
+noise is not.
 """
 
 from __future__ import annotations
@@ -117,7 +116,7 @@ def _run_on_disk(
 
 
 def test_a_run_is_judged_against_the_baseline_from_its_journal_alone(tmp_path: Path) -> None:
-    """The offline `compare` command and the live run loop take this one path."""
+    """The offline compare command and the live run loop take this one path."""
     baseline.write("demo", _records(18, 2), "run-a", "v1")
     journal = _run_on_disk(tmp_path, "run-b", _records(10, 10))
     result = baseline.for_run(journal)
@@ -149,10 +148,7 @@ def test_an_unfinished_run_can_never_become_the_baseline(tmp_path: Path) -> None
 
 
 def test_a_provisional_baseline_says_so_at_every_comparison(tmp_path: Path) -> None:
-    """A baseline is only as good as the stack the run was made against. Every
-    baseline on disk came from an API with no JuiceFS mount, so the agent had no
-    file ops — a later run on a working stack would read as an improvement it
-    did not earn."""
+    """Every baseline on disk came from an API with no JuiceFS mount, so a later run on a working stack would look like an unearned gain."""
     journal = _run_on_disk(tmp_path, "run-a", _records(18, 2))
     baseline.for_run(journal, rebaseline=True, provisional="no JuiceFS mount: no file ops")
     later = baseline.compare("demo", _records(17, 3))

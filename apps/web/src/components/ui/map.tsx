@@ -1,6 +1,8 @@
 "use client";
 
-import MapLibreGL, { type MarkerOptions, type PopupOptions } from "maplibre-gl";
+// maplibre-gl 6 dropped the default export; the namespace import is the same
+// object under both, and every use below is namespaced (types and constructors).
+import * as MapLibreGL from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Cancel01Icon } from "@icons";
 import {
@@ -25,12 +27,9 @@ const defaultStyles = {
   light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
 };
 
-// A tile-less, dependency-free style with a transparent background. Use it for
-// data visualizations (choropleths, world arcs, dot maps) where you draw your
-// own layers and don't need a street basemap. The easiest way to opt in is the
-// `blank` prop:
-//   <MapView blank>...</MapView>
-// The transparent background lets the themed container show through.
+// Tile-less, dependency-free transparent style for data viz that draws its
+// own layers (choropleths, arcs, dot maps) — opt in via the `blank` prop
+// (<MapView blank>), which lets the themed container show through.
 const blankMapStyle: MapLibreGL.StyleSpecification = {
   version: 8,
   sources: {},
@@ -454,7 +453,7 @@ type MapMarkerProps = {
   onDrag?: (lngLat: { lng: number; lat: number }) => void;
   /** Callback when marker drag ends (requires draggable: true) */
   onDragEnd?: (lngLat: { lng: number; lat: number }) => void;
-} & Omit<MarkerOptions, "element">;
+} & Omit<MapLibreGL.MarkerOptions, "element">;
 
 function MapMarker({
   longitude,
@@ -643,10 +642,9 @@ function PopupCloseButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-// Detached <div> that backs MapLibre's DOM-content popups/tooltips. Created in
-// a lazy initializer (guarded for SSR) rather than a mount effect, so it
-// exists before the first paint and the portal never flashes in late. Returns
-// null on the server, where portals are never rendered.
+// Detached <div> backing MapLibre's DOM-content popups/tooltips. Created
+// in a lazy initializer (SSR-guarded), not a mount effect, so it exists
+// before first paint and the portal never flashes in late; null on the server.
 function usePopupContainer(): HTMLDivElement | null {
   const [container] = useState<HTMLDivElement | null>(() =>
     typeof document === "undefined" ? null : document.createElement("div"),
@@ -661,7 +659,7 @@ type MarkerPopupProps = {
   className?: string;
   /** Show a close button in the popup (default: false) */
   closeButton?: boolean;
-} & Omit<PopupOptions, "className" | "closeButton">;
+} & Omit<MapLibreGL.PopupOptions, "className" | "closeButton">;
 
 function MarkerPopup({
   children,
@@ -728,7 +726,7 @@ type MarkerTooltipProps = {
   children: ReactNode;
   /** Additional CSS classes for the tooltip container */
   className?: string;
-} & Omit<PopupOptions, "className" | "closeButton" | "closeOnClick">;
+} & Omit<MapLibreGL.PopupOptions, "className" | "closeButton" | "closeOnClick">;
 
 function MarkerTooltip({
   children,
@@ -853,7 +851,7 @@ type MapPopupProps = {
   className?: string;
   /** Show a close button in the popup (default: false) */
   closeButton?: boolean;
-} & Omit<PopupOptions, "className" | "closeButton">;
+} & Omit<MapLibreGL.PopupOptions, "className" | "closeButton">;
 
 function MapPopup({
   longitude,
@@ -1164,10 +1162,9 @@ type MapGeoJSONProps<
   beforeId?: string;
 };
 
-// Theme-aware monochrome defaults so MapGeoJSON reads
-// clearly on the light/dark surface out of the box: a visible neutral-gray fill
-// with page-background separators between shapes. Override either via
-// `fillPaint` / `linePaint`.
+// Theme-aware monochrome defaults so MapGeoJSON reads clearly out of the
+// box: a visible neutral-gray fill with page-background separators between
+// shapes. Override via `fillPaint` / `linePaint`.
 const GEOJSON_DEFAULT_COLORS = {
   light: { fill: "#d4d4d4", line: "#fafafa" },
   dark: { fill: "#404040", line: "#0a0a0a" },
@@ -1175,13 +1172,18 @@ const GEOJSON_DEFAULT_COLORS = {
 
 // Apply every entry of a paint spec to a layer. Fill and line layers share this
 // loop, so it lives here rather than being duplicated inside the sync effect.
+type PaintPropertyName = Parameters<MapLibreGL.Map["setPaintProperty"]>[1];
+
 function applyPaintProperties(
   map: MapLibreGL.Map,
   layerId: string,
   paint: MapFillPaint | MapLinePaint,
 ): void {
   for (const [key, value] of Object.entries(paint)) {
-    map.setPaintProperty(layerId, key, value as never);
+    // `Object.entries` widens the key to `string`, which maplibre-gl 6 no longer
+    // accepts here. Every key of a fill/line paint spec is a paint property name
+    // by construction, so the narrowing is sound rather than a claim about data.
+    map.setPaintProperty(layerId, key as PaintPropertyName, value as never);
   }
 }
 
@@ -1500,11 +1502,9 @@ function buildArcCoordinates(
 ): [number, number][] {
   const [x0, y0] = from;
   const [xTo, y2] = to;
-  // Unwrap the destination longitude so |dx| <= 180. This makes arcs that
-  // straddle the antimeridian (e.g. Tokyo -> San Francisco) bow the short way
-  // across the Pacific instead of the long way around the globe. Resulting
-  // longitudes may fall outside [-180, 180]; MapLibre renders them correctly
-  // on the globe projection, and on mercator when world copies are enabled.
+  // Unwrap destination longitude so |dx| <= 180, so antimeridian-straddling
+  // arcs (e.g. Tokyo -> SF) bow the short way. Result may fall outside
+  // [-180, 180]; MapLibre renders that correctly on globe/mercator-with-world-copies.
   const rawDx = xTo - x0;
   const x2 = rawDx > 180 ? xTo - 360 : rawDx < -180 ? xTo + 360 : xTo;
   const dx = x2 - x0;

@@ -95,7 +95,7 @@ export function unsupportedMediaMessage(kind: string): string {
     richlink: "link previews",
   };
   const label = labels[kind] ?? `${kind} messages`;
-  return `I can't process ${label} yet — please send your message as text, an image, a document, or a voice note. Type /help for available commands.`;
+  return `I can't process ${label} yet. Please send your message as text, an image, a document, or a voice note. Type /help for available commands.`;
 }
 
 /**
@@ -110,7 +110,7 @@ export function unfetchableMediaMessage(
   isVoiceNote: boolean,
 ): string {
   if (isVoiceNote) {
-    return "Voice notes aren't supported here yet — please type your message instead.";
+    return "Voice notes aren't supported here yet. Please type your message instead.";
   }
   return `That ${kind} arrived without its file, so there's nothing for me to open. Please try sending it again.`;
 }
@@ -142,7 +142,7 @@ export function friendlyMediaError(
     return `That ${kind} took too long to download. Please try sending it again.`;
   }
 
-  const code = (err as { status?: number })?.status ?? getHttpStatus(err);
+  const code = getHttpStatus(err);
 
   if (code === 401 || code === 403) {
     return "I need you to link your GAIA account first before I can read attachments. Send /auth to get started.";
@@ -240,24 +240,13 @@ function rejectOversizeMedia(
 }
 
 /**
- * Turns an inbound media message into the next action for the adapter:
- * transcribe audio into a chat turn, upload an image/document and attach it,
- * reject an unsupported kind, or reject an oversize payload.
+ * Turns an inbound media message into the next action: transcribe audio, upload an image/document,
+ * or reject an unsupported/oversize payload.
  *
- * `downloadBytes` is a thunk so unsupported kinds (video, sticker) never incur
- * a download, and a platform that declares `sizeBytes` skips it for an
- * oversize payload too. It receives the largest number of bytes still worth
- * fetching — one past the cap, the fewest that prove it was exceeded — and an
- * adapter whose transport can stream must stop there rather than buffer an
- * untrusted attachment whole. The only side effects are the GAIA
- * upload/transcribe network calls, injected via {@link GaiaClient}; everything
- * else is pure, which keeps the routing logic testable with a fake client and
- * no platform SDK.
- *
- * Every exit records why it took the branch it did under the event's `media`
- * namespace (`BaseBotAdapter.resolveIncomingMedia` opens the boundary), so a
- * user whose attachment "did nothing" is answerable from the log instead of
- * from a guess.
+ * `downloadBytes` is a thunk so unsupported/oversize kinds never incur a download; it receives one
+ * byte past the cap (fewest that prove it was exceeded), so a streaming adapter can stop there
+ * instead of buffering an untrusted attachment whole. Every exit records why under the event's
+ * `media` namespace, so a "did nothing" attachment is answerable from the log, not a guess.
  */
 export async function processBotMedia(
   gaia: GaiaClient,

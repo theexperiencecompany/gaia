@@ -1,6 +1,7 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
 import { SparklesIcon } from "@icons";
+import type { PromptTriggerHint } from "@shared/api/generated";
 import { useMemo, useState } from "react";
 import {
   type Control,
@@ -19,6 +20,21 @@ import { workflowApi } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 import { mentionableIntegrations } from "../../utils/integrationMentions";
 import WorkflowSection from "./WorkflowSection";
+
+/** The trigger facts the prompt generator can use; the draft carries more. */
+const toPromptTriggerHint = (
+  draft: WorkflowFormData["trigger_config"] | undefined,
+): PromptTriggerHint | undefined =>
+  draft
+    ? {
+        type: draft.type,
+        cron_expression:
+          typeof draft.cron_expression === "string"
+            ? draft.cron_expression
+            : undefined,
+        trigger_name: draft.trigger_data?.trigger_name,
+      }
+    : undefined;
 
 interface WorkflowDescriptionFieldProps {
   control: Control<WorkflowFormData>;
@@ -83,7 +99,7 @@ export default function WorkflowDescriptionField({
       const result = await workflowApi.generatePrompt({
         title: title?.trim() || undefined,
         description: description ?? undefined,
-        trigger_config: triggerConfig as Record<string, unknown>,
+        trigger_config: toPromptTriggerHint(triggerConfig),
         existing_prompt: hasExistingPrompt ? currentPrompt : undefined,
         integration_ids:
           selectedIntegrationSlugs.length > 0

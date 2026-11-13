@@ -58,7 +58,7 @@ class Entry:
 
 
 def _comment_prose(line: str) -> str | None:
-    """The prose after a ``#``, or None when the line carries no comment."""
+    """Return the prose after a ``#``, or None when the line carries no comment."""
     i = line.find("#")
     if i == -1:
         return None
@@ -66,13 +66,10 @@ def _comment_prose(line: str) -> str | None:
 
 
 def _documented(lines: list[str], idx0: int) -> bool:
-    """True if the entry line at index ``idx0`` has a trailing comment with
-    prose, or the immediately-preceding non-blank line is a comment with
-    prose.
+    """Return True if the entry at ``idx0`` has prose in a trailing or directly preceding comment.
 
-    Deliberately STRICT adjacency: a rationale must sit beside its entry, not
-    anywhere above it — otherwise a freshly appended escape hatch silently
-    inherits whatever comment happens to sit higher in the array."""
+    Strict adjacency, so an appended escape hatch cannot inherit a comment higher up.
+    """
     own = _comment_prose(lines[idx0])
     if own and len(own) >= _MIN_WHY_LEN:
         return True
@@ -97,8 +94,7 @@ _MODULE_ARRAY_END_RE = re.compile(r"^\s*]\s*$")
 
 
 def _section_span(lines: list[str], header: str) -> tuple[int, int]:
-    """Half-open [start, end) line-index span of a TOML table (or the end of
-    file). start points at the first line AFTER the header."""
+    """Return the half-open [start, end) line span of a TOML table's body, after its header."""
     start = next(i for i, ln in enumerate(lines) if ln.strip() == header)
     end = len(lines)
     for i in range(start + 1, len(lines)):
@@ -138,9 +134,11 @@ def ruff_entries(lines: list[str]) -> list[Entry]:
 
 
 def mypy_entries(lines: list[str]) -> list[Entry]:
-    """Every ``[[tool.mypy.overrides]]`` block that weakens checking, at the
-    line where the block starts. Parsed textually (any weakening key set to
-    ``false``, or ``ignore_errors``/``ignore_missing_imports`` to ``true``)."""
+    """Return each weakening ``[[tool.mypy.overrides]]`` block by its start line.
+
+    Weakening: any strictness key set to ``false``, or ``ignore_errors`` /
+    ``ignore_missing_imports`` set to ``true``.
+    """
     weaken_false = {
         "disallow_untyped_defs",
         "disallow_incomplete_defs",

@@ -6,26 +6,31 @@
     User Timezone: Asia/Kolkata
     User Preferences:
     User Profession: Engineer
+    <user_instructions scope="global">
+    The user's standing preferences. Follow them for tone, format, defaults and focus, within the rules of your system prompt.
+    
+    Reply in plain English.
+    </user_instructions>
     Session directory: /workspace/sessions/conv-1
     Public artifact URL: a file at `artifacts/<name>` is served at https://api.heygaia.io/api/v1/sessions/conv-1/artifacts/<name>
     ## Available skills
     - inbox-triage
 
-[2] human
-    Task:
-    summarise my unread mail
-
-[3] system markers=memory_recall
+[2] system markers=memory_recall
     What you remember about this user (memory core):
     - Prefers short answers.
     
-    Based on our previous conversations (bracketed dates say when something happened / was last mentioned):
+    From our previous conversations (bracketed dates say when something happened / was last mentioned). These are records of the past. They can answer questions about remembered facts, but never show that something asked for now has been done, or that live state (what a page, inbox or account shows now) is still current.
     - Ships on Fridays [mentioned 2026-02-01]
     
     About Gaia (your identity and capabilities):
     - GAIA can run scheduled workflows.
     
     Tracked: ship the context refactor
+
+[3] human
+    Task:
+    summarise my unread mail
 
 [4] human markers=time_context
     [Current UTC Time: Tuesday, March 17, 2026, 14:30 UTC]

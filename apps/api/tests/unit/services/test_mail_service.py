@@ -9,48 +9,20 @@ from langchain_core.tools import StructuredTool
 import pytest
 
 from app.constants.log_tags import LogTag
-
-# ---------------------------------------------------------------------------
-# All public symbols imported directly from the module under test.
-# Deleting mail_service.py will break every test in this file.
-# ---------------------------------------------------------------------------
 from app.models.mail_models import (
-    GmailDraftsResponse,
     GmailMessagesResponse,
+    GmailMessageSummary,
     GmailToolResult,
 )
 from app.services.mail.mail_service import (
     EmailContent,
-    LabelChanges,
     MessageFetchOptions,
     _process_attachments,
-    apply_labels,
-    archive_messages,
-    create_draft,
-    create_label,
-    delete_draft,
-    delete_label,
-    fetch_thread,
-    get_draft,
-    get_email_by_id,
     get_gmail_tool,
     invoke_gmail_tool,
-    list_drafts,
-    list_labels,
-    mark_messages_as_read,
-    mark_messages_as_unread,
-    modify_message_labels,
-    move_to_inbox,
-    remove_labels,
     search_messages,
     send_draft,
     send_email,
-    star_messages,
-    trash_messages,
-    unstar_messages,
-    untrash_messages,
-    update_draft,
-    update_label,
 )
 from app.utils.composio_hooks.registry import master_schema_modifier
 from shared.py.wide_events import MailContext
@@ -80,10 +52,10 @@ def mock_invoke_gmail_tool():
 
 @pytest.fixture
 def mock_transform():
-    """Patch transform_gmail_message to return its input unchanged."""
+    """Patch transform_gmail_message to wrap its input unchanged."""
     with patch(
         "app.services.mail.mail_service.transform_gmail_message",
-        side_effect=lambda m: m,
+        side_effect=lambda m: GmailMessageSummary.model_validate({"id": "", **m}),
     ) as mock_fn:
         yield mock_fn
 
@@ -135,8 +107,11 @@ class TestInvokeGmailTool:
 
         result = await invoke_gmail_tool(USER_ID, "GMAIL_SEND_EMAIL", {"subject": "Hi"})
 
-        assert result.as_payload() == {"successful": True, "id": "msg1"}
-        fake_tool.ainvoke.assert_awaited_once_with({"subject": "Hi"})
+        assert result.model_dump(exclude_unset=True, by_alias=True) == {
+            "successful": True,
+            "id": "msg1",
+        }
+        fake_tool.ainvoke.assert_awaited_once_with({"subject": "Hi"}, config=None)
         # The tool is fetched for this user, by name, with the agent-facing
         # schema — a wrong value here silently sends the call to another
         # mailbox or strips arguments off it.
@@ -265,7 +240,10 @@ class TestSendEmail:
             content=EmailContent(subject="Hello", body="Test body"),
         )
 
-        assert result.as_payload() == {"successful": True, "messageId": "abc"}
+        assert result.model_dump(exclude_unset=True, by_alias=True) == {
+            "successful": True,
+            "messageId": "abc",
+        }
         args, _ = mock_invoke_gmail_tool.call_args
         assert args[1] == "GMAIL_SEND_EMAIL"
         params = args[2]
@@ -340,10 +318,8 @@ class TestSendEmail:
         upload.content_type = "application/pdf"
         upload.file = io.BytesIO(b"data")
 
-        # Mock the Composio upload one layer down so the REAL shaping runs: the
-        # bug this guards is the parameter Composio actually receives. Composio's
-        # Gmail tools take a singular ``attachment`` of ``{name, mimetype, s3key}``
-        # (a pre-uploaded file), NOT a plural ``attachments`` of raw bytes.
+        # Composio's Gmail tools take a singular attachment of {name, mimetype,
+        # s3key} (a pre-uploaded file), not a plural attachments of raw bytes.
         with patch(
             "app.services.mail.mail_service.upload_bytes_sync",
             return_value={"name": "doc.pdf", "mimetype": "application/pdf", "s3key": "k/1"},
@@ -395,12 +371,12 @@ class TestSendEmail:
 
 
 class TestAttachmentsSurviveArgumentValidation:
-    """``attachment`` is Gmail's own param, and only the tool's own schema has it.
+    """attachment is Gmail's own param, and only the tool's own schema has it.
 
     Shaping the parameter correctly is not enough: LangChain validates the call
     against the schema the tool was bound with and silently drops anything that
     schema does not declare. Under the agent-facing schema — where the modifier
-    has replaced ``attachment`` with the reference-based ``attachments`` — the
+    has replaced attachment with the reference-based attachments — the
     file is dropped between here and Composio and the mail sends without it.
     """
 
@@ -430,7 +406,7 @@ class TestAttachmentsSurviveArgumentValidation:
         )
 
     def _args_reaching_the_tool(self, schema: SimpleNamespace, call: dict) -> dict:
-        """What Composio's executor receives, through the real LangChain plumbing."""
+        """Return what Composio's executor receives, through the real LangChain plumbing."""
         received: dict = {}
 
         def _execute(**kwargs: object) -> str:
@@ -503,273 +479,6 @@ class TestAttachmentsSurviveArgumentValidation:
 
 
 # ---------------------------------------------------------------------------
-# fetch_detailed_messages
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# modify_message_labels
-# ---------------------------------------------------------------------------
-
-
-class TestModifyMessageLabels:
-    async def test_returns_empty_list_when_no_labels_given(self, mock_invoke_gmail_tool):
-        result = await modify_message_labels(USER_ID, ["msg1"])
-        assert result == []
-        mock_invoke_gmail_tool.assert_not_called()
-
-    async def test_adds_labels_via_correct_tool(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {
-                "successful": True,
-                "messages": [{"id": "msg1"}],
-            }
-        )
-
-        result = await modify_message_labels(USER_ID, ["msg1"], add_labels=["IMPORTANT"])
-
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_ADD_LABEL_TO_EMAIL"
-        assert args[2]["label_ids"] == ["IMPORTANT"]
-        assert [msg.id for msg in result] == ["msg1"]
-
-    async def test_removes_labels_via_correct_tool(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {
-                "successful": True,
-                "messages": [{"id": "msg1"}],
-            }
-        )
-
-        result = await modify_message_labels(USER_ID, ["msg1"], remove_labels=["UNREAD"])
-
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_REMOVE_LABEL"
-        assert args[2]["label_ids"] == ["UNREAD"]
-        assert [msg.id for msg in result] == ["msg1"]
-
-    async def test_both_add_and_remove_labels(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {
-                "successful": True,
-                "messages": [{"id": "msg1"}],
-            }
-        )
-
-        await modify_message_labels(
-            USER_ID, ["msg1"], add_labels=["STARRED"], remove_labels=["UNREAD"]
-        )
-
-        # Should have been called twice: once for add, once for remove
-        assert mock_invoke_gmail_tool.call_count == 2
-
-        add_call, remove_call = mock_invoke_gmail_tool.call_args_list
-
-        # First call must be the add-labels operation
-        assert add_call[0][1] == "GMAIL_ADD_LABEL_TO_EMAIL"
-        assert add_call[0][2]["label_ids"] == ["STARRED"]
-        assert add_call[0][2]["message_ids"] == ["msg1"]
-
-        # Second call must be the remove-labels operation
-        assert remove_call[0][1] == "GMAIL_REMOVE_LABEL"
-        assert remove_call[0][2]["label_ids"] == ["UNREAD"]
-        assert remove_call[0][2]["message_ids"] == ["msg1"]
-
-    async def test_gracefully_handles_tool_exception(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.side_effect = Exception("transient error")
-
-        # Should not propagate - returns empty list
-        result = await modify_message_labels(USER_ID, ["msg1"], add_labels=["STARRED"])
-
-        assert result == []
-
-
-# ---------------------------------------------------------------------------
-# mark_messages_as_read / mark_messages_as_unread
-# ---------------------------------------------------------------------------
-
-
-class TestMarkReadUnread:
-    async def test_mark_as_read_removes_unread_label(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {"successful": True, "messages": []}
-        )
-
-        await mark_messages_as_read(USER_ID, ["msg1", "msg2"])
-
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_REMOVE_LABEL"
-        assert "UNREAD" in args[2]["label_ids"]
-
-    async def test_mark_as_unread_adds_unread_label(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {"successful": True, "messages": []}
-        )
-
-        await mark_messages_as_unread(USER_ID, ["msg1"])
-
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_ADD_LABEL_TO_EMAIL"
-        assert "UNREAD" in args[2]["label_ids"]
-
-
-# ---------------------------------------------------------------------------
-# star_messages / unstar_messages
-# ---------------------------------------------------------------------------
-
-
-class TestStarUnstar:
-    async def test_star_adds_starred_label(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {"successful": True, "messages": []}
-        )
-
-        await star_messages(USER_ID, ["msg1"])
-
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_ADD_LABEL_TO_EMAIL"
-        assert "STARRED" in args[2]["label_ids"]
-
-    async def test_unstar_removes_starred_label(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {"successful": True, "messages": []}
-        )
-
-        await unstar_messages(USER_ID, ["msg1"])
-
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_REMOVE_LABEL"
-        assert "STARRED" in args[2]["label_ids"]
-
-
-# ---------------------------------------------------------------------------
-# trash_messages / untrash_messages
-# ---------------------------------------------------------------------------
-
-
-class TestTrashUntrash:
-    async def test_trash_calls_gmail_trash_per_message(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
-
-        await trash_messages(USER_ID, ["msg1", "msg2"])
-
-        assert mock_invoke_gmail_tool.call_count == 2
-        tool_names = [c[0][1] for c in mock_invoke_gmail_tool.call_args_list]
-        assert all(n == "GMAIL_TRASH_MESSAGE" for n in tool_names)
-
-    async def test_trash_excludes_failed_messages_from_result(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {"successful": False, "error": "403"}
-        )
-
-        result = await trash_messages(USER_ID, ["msg1"])
-
-        assert result == []
-
-    async def test_untrash_calls_gmail_untrash_per_message(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
-
-        await untrash_messages(USER_ID, ["msg1", "msg2"])
-
-        assert mock_invoke_gmail_tool.call_count == 2
-        tool_names = [c[0][1] for c in mock_invoke_gmail_tool.call_args_list]
-        assert all(n == "GMAIL_UNTRASH_MESSAGE" for n in tool_names)
-
-    async def test_trash_handles_exception_per_message(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.side_effect = Exception("server error")
-
-        # Should not raise; failed messages are simply skipped
-        result = await trash_messages(USER_ID, ["msg1"])
-
-        assert result == []
-
-
-# ---------------------------------------------------------------------------
-# archive_messages / move_to_inbox
-# ---------------------------------------------------------------------------
-
-
-class TestArchiveMoveToInbox:
-    async def test_archive_removes_inbox_label(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {"successful": True, "messages": []}
-        )
-
-        await archive_messages(USER_ID, ["msg1"])
-
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_REMOVE_LABEL"
-        assert "INBOX" in args[2]["label_ids"]
-
-    async def test_move_to_inbox_adds_inbox_label(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {"successful": True, "messages": []}
-        )
-
-        await move_to_inbox(USER_ID, ["msg1"])
-
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_ADD_LABEL_TO_EMAIL"
-        assert "INBOX" in args[2]["label_ids"]
-
-
-# ---------------------------------------------------------------------------
-# fetch_thread
-# ---------------------------------------------------------------------------
-
-
-class TestFetchThread:
-    async def test_returns_thread_with_transformed_messages(
-        self, mock_invoke_gmail_tool, mock_transform
-    ):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {
-                "successful": True,
-                "messages": [
-                    {"internalDate": "2000", "subject": "Hi"},
-                    {"internalDate": "1000", "subject": "Hey"},
-                ],
-            }
-        )
-
-        result = await fetch_thread(USER_ID, "thread_abc")
-
-        # transform_gmail_message should have been called for each message
-        assert mock_transform.call_count == 2
-        # Messages should be sorted oldest first
-        assert result.messages is not None
-        assert result.messages[0]["internalDate"] == "1000"
-        assert result.messages[1]["internalDate"] == "2000"
-
-    async def test_returns_empty_messages_on_failure(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {"successful": False, "error": "404"}
-        )
-
-        result = await fetch_thread(USER_ID, "thread_abc")
-
-        assert result.messages == []
-
-    async def test_returns_empty_messages_on_exception(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.side_effect = Exception("network error")
-
-        result = await fetch_thread(USER_ID, "thread_abc")
-
-        assert result.messages == []
-
-    async def test_calls_correct_tool_with_thread_id(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {"successful": True, "messages": []}
-        )
-
-        await fetch_thread(USER_ID, "thread_xyz")
-
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"
-        assert args[2]["thread_id"] == "thread_xyz"
-
-
-# ---------------------------------------------------------------------------
 # search_messages
 # ---------------------------------------------------------------------------
 
@@ -793,6 +502,45 @@ class TestSearchMessages:
         assert len(result.messages) == 2
         assert result.next_page_token == "tok123"
         assert mock_transform.call_count == 2
+
+    async def test_last_page_empty_token_means_no_next_page(self, mock_invoke_gmail_tool):
+        """Regression: Composio's "" end-of-results token made the dashboard refetch page 1 (2 unread shown as 8)."""
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
+            {
+                "successful": True,
+                "error": None,
+                "data": {
+                    "messages": [
+                        {
+                            "messageId": "1a0ce452407833e5",
+                            "threadId": "1a0ce452407833e5",
+                            "sender": "Aryan from GAIA <aryan@heygaia.io>",
+                            "subject": "Welcome to GAIA Pro!",
+                            "messageTimestamp": "2026-09-23T12:37:12Z",
+                            "labelIds": ["UNREAD", "CATEGORY_PERSONAL", "INBOX"],
+                            "preview": {"subject": "Welcome to GAIA Pro!", "body": "Thanks for"},
+                        },
+                        {
+                            "messageId": "1a0ce3bab478825b",
+                            "threadId": "1a0ce3bab478825b",
+                            "sender": "Google <noreply-accounts@google.com>",
+                            "subject": "You shared some Google Account data with Hey GAIA",
+                            "messageTimestamp": "2026-09-23T12:26:51Z",
+                            "labelIds": ["UNREAD", "CATEGORY_UPDATES", "INBOX"],
+                            "preview": {"subject": "You shared some", "body": "Hey GAIA"},
+                        },
+                    ],
+                    "nextPageToken": "",
+                    "resultSizeEstimate": 2,
+                },
+            }
+        )
+
+        result = await search_messages(USER_ID, query="is:unread", max_results=10)
+
+        assert [m.id for m in result.messages] == ["1a0ce452407833e5", "1a0ce3bab478825b"]
+        assert result.next_page_token is None
+        assert json.loads(result.model_dump_json(by_alias=True))["nextPageToken"] is None
 
     async def test_includes_page_token_when_provided(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
@@ -836,12 +584,7 @@ class TestSearchMessages:
         assert params["query"] == ""
 
     async def test_forwards_message_format_to_gmail(self, mock_invoke_gmail_tool):
-        """output_format="metadata" must land on the Gmail tool as format="metadata".
-
-        This is the documented lightweight-fetch path (skips body decode, bypasses
-        GMAIL_FULL_FETCH_HARD_LIMIT); a typoed key or a dropped condition would
-        silently fall back to the expensive full fetch.
-        """
+        """output_format="metadata" must reach the Gmail tool as format="metadata", or it silently full-fetches."""
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
             {
                 "successful": True,
@@ -864,372 +607,6 @@ class TestSearchMessages:
 
 
 # ---------------------------------------------------------------------------
-# create_label
-# ---------------------------------------------------------------------------
-
-
-class TestCreateLabel:
-    async def test_creates_label_with_required_fields(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {"successful": True, "id": "label1"}
-        )
-
-        result = await create_label(USER_ID, name="Work")
-
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_CREATE_LABEL"
-        assert args[2]["name"] == "Work"
-        assert result.as_payload() == {"successful": True, "id": "label1"}
-
-    async def test_includes_color_as_json_string_when_provided(self, mock_invoke_gmail_tool):
-        import json
-
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
-
-        await create_label(USER_ID, name="Work", background_color="#ff0000", text_color="#ffffff")
-
-        params = mock_invoke_gmail_tool.call_args[0][2]
-        assert "color" in params
-        color = json.loads(params["color"])
-        assert color["background_color"] == "#ff0000"
-        assert color["text_color"] == "#ffffff"
-
-    async def test_omits_color_when_not_provided(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
-
-        await create_label(USER_ID, name="Personal")
-
-        params = mock_invoke_gmail_tool.call_args[0][2]
-        assert "color" not in params
-
-    async def test_returns_error_dict_on_exception(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.side_effect = Exception("label exists")
-
-        result = await create_label(USER_ID, name="Work")
-
-        assert result.successful is False
-        assert result.error is not None
-        assert "label exists" in result.error
-
-
-# ---------------------------------------------------------------------------
-# update_label
-# ---------------------------------------------------------------------------
-
-
-class TestUpdateLabel:
-    async def test_updates_label_with_provided_fields(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
-
-        await update_label(USER_ID, label_id="lbl1", changes=LabelChanges(name="Updated Name"))
-
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_PATCH_LABEL"
-        params = args[2]
-        assert params["label_id"] == "lbl1"
-        assert params["name"] == "Updated Name"
-
-    async def test_omits_optional_fields_not_provided(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
-
-        await update_label(USER_ID, label_id="lbl1", changes=LabelChanges())
-
-        params = mock_invoke_gmail_tool.call_args[0][2]
-        assert "name" not in params
-        assert "color" not in params
-
-    async def test_returns_error_dict_on_exception(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.side_effect = Exception("label not found")
-
-        result = await update_label(USER_ID, label_id="lbl1", changes=LabelChanges())
-
-        assert result.successful is False
-
-
-# ---------------------------------------------------------------------------
-# delete_label
-# ---------------------------------------------------------------------------
-
-
-class TestDeleteLabel:
-    async def test_returns_true_on_success(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
-
-        result = await delete_label(USER_ID, "lbl1")
-
-        assert result is True
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_DELETE_LABEL"
-        assert args[2]["label_id"] == "lbl1"
-
-    async def test_returns_false_on_exception(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.side_effect = Exception("permission denied")
-
-        result = await delete_label(USER_ID, "lbl1")
-
-        assert result is False
-
-
-# ---------------------------------------------------------------------------
-# apply_labels / remove_labels
-# ---------------------------------------------------------------------------
-
-
-class TestApplyRemoveLabels:
-    async def test_apply_labels_delegates_to_add(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {"successful": True, "messages": []}
-        )
-
-        await apply_labels(USER_ID, ["msg1"], ["IMPORTANT", "WORK"])
-
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_ADD_LABEL_TO_EMAIL"
-        assert set(args[2]["label_ids"]) == {"IMPORTANT", "WORK"}
-
-    async def test_remove_labels_delegates_to_remove(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {"successful": True, "messages": []}
-        )
-
-        await remove_labels(USER_ID, ["msg1"], ["INBOX"])
-
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_REMOVE_LABEL"
-        assert "INBOX" in args[2]["label_ids"]
-
-
-# ---------------------------------------------------------------------------
-# create_draft
-# ---------------------------------------------------------------------------
-
-
-class TestCreateDraft:
-    async def test_creates_draft_with_required_fields(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {"successful": True, "id": "draft1"}
-        )
-
-        result = await create_draft(
-            user_id=USER_ID,
-            to_list=["bob@example.com"],
-            subject="Draft subject",
-            body="Draft body",
-        )
-
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_CREATE_EMAIL_DRAFT"
-        params = args[2]
-        assert params["to"] == ["bob@example.com"]
-        assert params["subject"] == "Draft subject"
-        assert result.as_payload() == {"successful": True, "id": "draft1"}
-
-    async def test_includes_cc_bcc_when_provided(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
-
-        await create_draft(
-            user_id=USER_ID,
-            to_list=["bob@example.com"],
-            subject="Hi",
-            body="Body",
-            cc_list=["cc@example.com"],
-            bcc_list=["bcc@example.com"],
-        )
-
-        params = mock_invoke_gmail_tool.call_args[0][2]
-        assert params["cc"] == ["cc@example.com"]
-        assert params["bcc"] == ["bcc@example.com"]
-
-    async def test_passes_body_through_without_html_flag(self, mock_invoke_gmail_tool):
-        """``is_html`` no longer exists on the service — bodies are converted
-        to HTML by the Composio before-hook, so the service just forwards
-        whatever body it was given and never sets an html param itself."""
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
-
-        await create_draft(
-            user_id=USER_ID,
-            to_list=["bob@example.com"],
-            subject="Hi",
-            body="<b>HTML</b>",
-        )
-
-        params = mock_invoke_gmail_tool.call_args[0][2]
-        assert params["body"] == "<b>HTML</b>"
-        assert "html" not in params
-        assert "is_html" not in params
-
-    async def test_returns_error_dict_on_exception(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.side_effect = Exception("quota exceeded")
-
-        result = await create_draft(
-            user_id=USER_ID,
-            to_list=["bob@example.com"],
-            subject="Hi",
-            body="Body",
-        )
-
-        assert result.successful is False
-
-
-# ---------------------------------------------------------------------------
-# list_drafts
-# ---------------------------------------------------------------------------
-
-
-class TestListDrafts:
-    async def test_returns_drafts_with_transformed_messages(
-        self, mock_invoke_gmail_tool, mock_transform
-    ):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {
-                "successful": True,
-                "drafts": [
-                    {"id": "d1", "message": {"id": "m1", "subject": "Test"}},
-                ],
-                "nextPageToken": "tok",
-            }
-        )
-
-        result = await list_drafts(USER_ID, max_results=5)
-
-        assert len(result.drafts) == 1
-        assert result.next_page_token == "tok"
-        mock_transform.assert_called_once()
-
-    async def test_includes_page_token_when_provided(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {
-                "successful": True,
-                "drafts": [],
-                "nextPageToken": None,
-            }
-        )
-
-        await list_drafts(USER_ID, page_token="prev_tok")
-
-        params = mock_invoke_gmail_tool.call_args[0][2]
-        assert params["page_token"] == "prev_tok"
-
-    async def test_returns_empty_on_failure(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {"successful": False, "error": "auth"}
-        )
-
-        result = await list_drafts(USER_ID)
-
-        assert result == GmailDraftsResponse(drafts=[])
-
-    async def test_returns_empty_on_exception(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.side_effect = Exception("timeout")
-
-        result = await list_drafts(USER_ID)
-
-        assert result == GmailDraftsResponse(drafts=[])
-
-
-# ---------------------------------------------------------------------------
-# get_draft
-# ---------------------------------------------------------------------------
-
-
-class TestGetDraft:
-    async def test_returns_draft_with_transformed_message(
-        self, mock_invoke_gmail_tool, mock_transform
-    ):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {
-                "successful": True,
-                "id": "draft1",
-                "message": {"id": "m1"},
-            }
-        )
-
-        result = await get_draft(USER_ID, "draft1")
-
-        mock_transform.assert_called_once()
-        assert result.message is not None
-
-    async def test_returns_error_on_failure(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {
-                "successful": False,
-                "error": "not found",
-            }
-        )
-
-        result = await get_draft(USER_ID, "draft1")
-
-        assert result.successful is False
-
-    async def test_returns_error_on_exception(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.side_effect = Exception("server error")
-
-        result = await get_draft(USER_ID, "draft1")
-
-        assert result.successful is False
-
-
-# ---------------------------------------------------------------------------
-# update_draft
-# ---------------------------------------------------------------------------
-
-
-class TestUpdateDraft:
-    async def test_updates_draft_with_correct_params(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
-
-        await update_draft(
-            user_id=USER_ID,
-            draft_id="draft1",
-            to_list=["bob@example.com"],
-            content=EmailContent(subject="Updated Subject", body="Updated body"),
-        )
-
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_UPDATE_DRAFT"
-        params = args[2]
-        assert params["draft_id"] == "draft1"
-        assert params["subject"] == "Updated Subject"
-
-    async def test_returns_error_on_failure(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {"successful": False, "error": "locked"}
-        )
-
-        result = await update_draft(
-            user_id=USER_ID,
-            draft_id="draft1",
-            to_list=["bob@example.com"],
-            content=EmailContent(subject="Hi", body="Body"),
-        )
-
-        assert result.successful is False
-
-
-# ---------------------------------------------------------------------------
-# delete_draft
-# ---------------------------------------------------------------------------
-
-
-class TestDeleteDraft:
-    async def test_returns_true_on_success(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
-
-        result = await delete_draft(USER_ID, "draft1")
-
-        assert result is True
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_DELETE_DRAFT"
-
-    async def test_returns_false_on_exception(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.side_effect = Exception("not found")
-
-        result = await delete_draft(USER_ID, "draft1")
-
-        assert result is False
-
-
-# ---------------------------------------------------------------------------
 # send_draft
 # ---------------------------------------------------------------------------
 
@@ -1245,7 +622,10 @@ class TestSendDraft:
         args, _ = mock_invoke_gmail_tool.call_args
         assert args[1] == "GMAIL_SEND_DRAFT"
         assert args[2]["draft_id"] == "draft1"
-        assert result.as_payload() == {"successful": True, "messageId": "msg1"}
+        assert result.model_dump(exclude_unset=True, by_alias=True) == {
+            "successful": True,
+            "messageId": "msg1",
+        }
 
     async def test_returns_error_on_failure(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
@@ -1265,115 +645,6 @@ class TestSendDraft:
         result = await send_draft(USER_ID, "draft1")
 
         assert result.successful is False
-
-
-# ---------------------------------------------------------------------------
-# list_labels
-# ---------------------------------------------------------------------------
-
-
-class TestListLabels:
-    async def test_returns_labels_with_count(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {
-                "successful": True,
-                "labels": [
-                    {"id": "INBOX", "name": "INBOX"},
-                    {"id": "lbl1", "name": "Work"},
-                ],
-            }
-        )
-
-        result = await list_labels(USER_ID)
-
-        assert result.success is True
-        assert result.count == 2
-        assert len(result.labels) == 2
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_LIST_LABELS"
-
-    async def test_returns_failure_on_tool_error(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {
-                "successful": False,
-                "error": "auth error",
-            }
-        )
-
-        result = await list_labels(USER_ID)
-
-        assert result.success is False
-        assert result.error == "auth error"
-        assert result.labels == []
-
-    async def test_returns_failure_on_exception(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.side_effect = Exception("service unavailable")
-
-        result = await list_labels(USER_ID)
-
-        assert result.success is False
-        assert result.error == "service unavailable"
-        assert result.labels == []
-
-
-# ---------------------------------------------------------------------------
-# get_email_by_id
-# ---------------------------------------------------------------------------
-
-
-class TestGetEmailById:
-    async def test_returns_transformed_message_on_success(
-        self, mock_invoke_gmail_tool, mock_transform
-    ):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {
-                "successful": True,
-                "id": "msg1",
-                "subject": "Hello",
-            }
-        )
-
-        result = await get_email_by_id(USER_ID, "msg1")
-
-        assert result.success is True
-        assert result.message is not None
-        mock_transform.assert_called_once()
-        args, _ = mock_invoke_gmail_tool.call_args
-        assert args[1] == "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"
-        assert args[2]["message_id"] == "msg1"
-
-    async def test_returns_failure_on_tool_error(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {
-                "successful": False,
-                "error": "not found",
-            }
-        )
-
-        result = await get_email_by_id(USER_ID, "msg1")
-
-        assert result.success is False
-        assert result.message is None
-        assert result.error == "not found"
-
-    async def test_returns_failure_on_exception(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.side_effect = Exception("network failure")
-
-        result = await get_email_by_id(USER_ID, "msg1")
-
-        assert result.success is False
-        assert result.message is None
-
-
-# ---------------------------------------------------------------------------
-# get_contact_list
-# ---------------------------------------------------------------------------
-
-
-# ===========================================================================
-# Exact-parameter pins: every literal, dict write, and branch in the compose
-# and fetch helpers is pinned so a single-operator mutation fails a test.
-# ===========================================================================
 
 
 class TestSendEmailParamPins:
@@ -1522,104 +793,3 @@ class TestSearchMessagesParamPins:
             with pytest.raises(RuntimeError, match="down"):
                 await search_messages(USER_ID, query="q")
         log.set_ns.assert_called_once_with("mail", success=False)
-
-
-class TestUpdateLabelParamPins:
-    async def test_name_only_writes_name_key(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
-        await update_label(USER_ID, "lbl1", LabelChanges(name="New"))
-        args, _ = mock_invoke_gmail_tool.await_args
-        assert args[1] == "GMAIL_PATCH_LABEL"
-        assert args[2] == {"label_id": "lbl1", "name": "New"}
-
-    async def test_visibilities_are_written(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
-        await update_label(
-            USER_ID,
-            "lbl1",
-            LabelChanges(label_list_visibility="labelHide", message_list_visibility="hide"),
-        )
-        params = mock_invoke_gmail_tool.await_args.args[2]
-        assert params["label_list_visibility"] == "labelHide"
-        assert params["message_list_visibility"] == "hide"
-        assert "name" not in params
-        assert "color" not in params
-
-    async def test_background_color_only_writes_color_json(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
-        await update_label(USER_ID, "lbl1", LabelChanges(background_color="#fb4c2f"))
-        color = json.loads(mock_invoke_gmail_tool.await_args.args[2]["color"])
-        assert color == {"background_color": "#fb4c2f"}
-
-    async def test_text_color_only_writes_color_json(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
-        await update_label(USER_ID, "lbl1", LabelChanges(text_color="#000000"))
-        color = json.loads(mock_invoke_gmail_tool.await_args.args[2]["color"])
-        assert color == {"text_color": "#000000"}
-
-    async def test_both_colors_write_color_json(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
-        await update_label(
-            USER_ID, "lbl1", LabelChanges(background_color="#111111", text_color="#222222")
-        )
-        color = json.loads(mock_invoke_gmail_tool.await_args.args[2]["color"])
-        assert color == {"background_color": "#111111", "text_color": "#222222"}
-
-    async def test_failure_returns_error_result(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {"successful": False, "error": "nope"}
-        )
-        result = await update_label(USER_ID, "lbl1", LabelChanges(name="X"))
-        assert result.successful is False
-
-    async def test_exception_returns_error_result_with_message(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.side_effect = RuntimeError("boom")
-        result = await update_label(USER_ID, "lbl1", LabelChanges(name="X"))
-        assert result.successful is False
-        assert result.error == "boom"
-
-
-class TestUpdateDraftParamPins:
-    async def test_parameters_are_exact_without_cc_bcc(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
-        await update_draft(
-            USER_ID, "draft1", ["bob@example.com"], EmailContent(subject="S", body="B")
-        )
-        args, _ = mock_invoke_gmail_tool.await_args
-        assert args[1] == "GMAIL_UPDATE_DRAFT"
-        assert args[2] == {
-            "draft_id": "draft1",
-            "to": ["bob@example.com"],
-            "subject": "S",
-            "body": "B",
-        }
-
-    async def test_cc_and_bcc_are_written_when_present(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
-        await update_draft(
-            USER_ID,
-            "draft1",
-            ["bob@example.com"],
-            EmailContent(subject="S", body="B", cc_list=["c@x.com"], bcc_list=["b@x.com"]),
-        )
-        params = mock_invoke_gmail_tool.await_args.args[2]
-        assert params["cc"] == ["c@x.com"]
-        assert params["bcc"] == ["b@x.com"]
-
-    async def test_unsuccessful_result_is_returned_as_error(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
-            {"successful": False, "error": "locked"}
-        )
-        result = await update_draft(
-            USER_ID, "draft1", ["bob@example.com"], EmailContent(subject="S", body="B")
-        )
-        assert result.successful is False
-        assert result.error == "locked"
-
-    async def test_exception_returns_error_result_with_message(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.side_effect = RuntimeError("gone")
-        result = await update_draft(
-            USER_ID, "draft1", ["bob@example.com"], EmailContent(subject="S", body="B")
-        )
-        assert result.successful is False
-        assert result.error == "gone"

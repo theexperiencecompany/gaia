@@ -1,44 +1,44 @@
 """The prompt-cache guarantee the whole slot ordering exists to protect.
 
-Every ordering decision in ``PromptSlot`` — the clock at the tail of contents,
-volatile sections after stable ones, one message per slot — exists to keep the
-request prefix byte-identical across turns so the provider's implicit cache can
-match it. Nothing asserted that it actually did.
+Every ordering decision in PromptSlot exists to keep the request prefix
+byte-identical across turns so the provider's implicit cache can match it, and
+nothing previously asserted that it actually did.
 
-**The floor is the exact stable-block boundary, not a byte count or a ratio.**
-Both of those were considered and both are insensitive here. The static prompt
-is ~36 KB and a volatile block is a few hundred bytes, so folding the volatile
-block back into the cacheable region — the precise defect this change fixed —
-moves the shared prefix by well under 1%. A ratio high enough to catch it
-(0.999+) is indistinguishable from noise under any prompt edit, and a fixed byte
-count stops meaning anything the moment a prompt grows. The boundary itself has
-neither problem: it says exactly what the design requires — *no byte at or
-before the end of the stable block may move between turns* — and it stays true
-through any prompt edit, at any size.
+The floor is the exact stable-block boundary, not a byte count or a ratio: the
+static prompt is ~36 KB and a volatile block a few hundred bytes, so the defect
+this change fixed moves the shared prefix by well under 1% — invisible to a
+0.999+ ratio and to any fixed byte count once the prompt grows. The boundary
+says exactly what the design requires: no byte at or before the end of the
+stable block may move between turns.
 """
 
+from datetime import timedelta
+
+from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 import pytest
 from tests._harness.context_chain import (
     FIXED_NOW,
     ContextSeed,
     HarnessUser,
+    bound_for,
     common_prefix_len,
     effective_context,
     request_bytes,
+    seed_only,
     text_of,
 )
 from tests._harness.context_sources import ContextSources, memory
 
 from app.agents.context.slots import PromptSlot, slot_of
 from app.agents.context.tiers import AgentTier
+from app.constants.llm import LLMProviderName
 
 SOURCES = ContextSources(
     core_memory="- Prefers short answers.",
     memories=[memory("Ships on Fridays", mentioned="2026-02-01")],
     skills="## Available skills\n- inbox-triage",
     connected_integrations=[{"id": "gmail", "name": "Gmail"}],
-    provider_metadata={"email": "ada@example.com"},
-    custom_instructions="Always archive newsletters.",
+    global_instructions="Reply in plain English.",
     tracked_todos="Tracked: ship the context refactor",
     workflow_integrations_hint="# Connected integrations\nGmail (`gmail`)",
 )
@@ -81,8 +81,7 @@ class TestPrefixSurvivesAClockTick:
 
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_only_the_clock_differs_across_a_tick(self, tier: AgentTier) -> None:
-        """Stated separately from the floor: a prefix can clear the boundary
-        while something else still moved behind it."""
+        """Stated separately from the floor: a prefix can clear the boundary while something else still moved behind it."""
         user = HarnessUser()
         first = await effective_context(
             tier, ContextSeed(user=user, sources=SOURCES, now=FIXED_NOW)
@@ -100,9 +99,7 @@ class TestPrefixSurvivesAClockTick:
 class TestPrefixSurvivesANewQuery:
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_a_new_query_leaves_the_cacheable_block_intact(self, tier: AgentTier) -> None:
-        """The defect this change fixed: with volatile content mis-slotted into
-        the stable block, a new query moved the cache boundary up into the
-        prompt and every subagent turn paid full price."""
+        """The defect this change fixed: volatile content mis-slotted into the stable block moved the cache boundary on every query."""
         user = HarnessUser()
         first = await effective_context(
             tier,
@@ -138,10 +135,7 @@ class TestPrefixSurvivesANewQuery:
 
 @pytest.mark.unit
 class TestTheFloorCanFail:
-    """A floor no realistic regression can breach is decoration. This pins that
-    the measurement responds to the exact defect it guards against — and it is
-    why the floor is a boundary rather than the ratio originally proposed, which
-    this same check showed to be insensitive at the real prompt sizes."""
+    """A floor no realistic regression can breach is decoration — this pins that the measurement responds to the exact defect it guards against."""
 
     async def test_volatile_content_in_the_stable_block_breaches_the_floor(self) -> None:
         user = HarnessUser()
@@ -178,4 +172,79 @@ class TestTheFloorCanFail:
         assert shared < stable_block_end(first), (
             "the floor did not notice volatile content sitting in the cacheable "
             "prefix — it cannot fail, so it is not guarding anything"
+        )
+
+
+#: One tool turn of a run: what the checkpoint holds after the first model call acted.
+TOOL_TURN: list[AnyMessage] = [
+    AIMessage(content="", tool_calls=[{"name": "list_tracked_todos", "args": {}, "id": "call-1"}]),
+    ToolMessage(content="No tracked todos.", tool_call_id="call-1"),
+]
+
+
+#: Every lane the request layout could once have depended on.
+PROVIDERS = [LLMProviderName.OPENAI, LLMProviderName.OPENROUTER, LLMProviderName.GEMINI]
+
+
+@pytest.mark.unit
+class TestAModelCallExtendsThePreviousOne:
+    """Every call begins with the previous call on its thread, on every provider.
+
+    OpenAI reuses an earlier request only whole. Measured on gpt-5.6-luna: a call
+    that began with the entire previous request read it all from cache (36,062 of
+    36,065 tokens), while one where anything trailed the conversation fell back to
+    the tools and first system message (23,814 tokens) on every step of a run.
+    """
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("provider", PROVIDERS)
+    @pytest.mark.parametrize("tier", list(AgentTier))
+    async def test_the_next_call_begins_with_the_whole_previous_request(
+        self, tier: AgentTier, provider: LLMProviderName
+    ) -> None:
+        lane = bound_for(provider)
+        first = await effective_context(
+            tier, ContextSeed(sources=SOURCES, configurable_overrides=lane)
+        )
+        next_call = await effective_context(
+            tier,
+            ContextSeed(sources=SOURCES, configurable_overrides=lane, run_messages=TOOL_TURN),
+        )
+
+        assert request_bytes(next_call).startswith(request_bytes(first)), (
+            f"{tier.value}/{provider.value}: the next call diverges at byte "
+            f"{common_prefix_len(request_bytes(first), request_bytes(next_call))} of "
+            f"{len(request_bytes(first))}, so the provider caches none of the run's own history"
+        )
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("provider", PROVIDERS)
+    @pytest.mark.parametrize("tier", list(AgentTier))
+    async def test_the_next_turn_begins_with_the_whole_previous_request(
+        self, tier: AgentTier, provider: LLMProviderName
+    ) -> None:
+        """A new turn's recall and clock extend the thread; leading, they re-billed the history."""
+        lane = bound_for(provider)
+        first = await effective_context(
+            tier, ContextSeed(sources=SOURCES, configurable_overrides=lane)
+        )
+        turn_one = [
+            *await seed_only(tier, sources=SOURCES, configurable_overrides=lane),
+            AIMessage(content="Nothing pressing today."),
+        ]
+        next_turn = await effective_context(
+            tier,
+            ContextSeed(
+                sources=SOURCES,
+                configurable_overrides=lane,
+                query="and tomorrow?",
+                now=FIXED_NOW + timedelta(hours=2),
+                prior_messages=turn_one,
+            ),
+        )
+
+        assert request_bytes(next_turn).startswith(request_bytes(first)), (
+            f"{tier.value}/{provider.value}: the next turn diverges at byte "
+            f"{common_prefix_len(request_bytes(first), request_bytes(next_turn))} of "
+            f"{len(request_bytes(first))}, so the provider re-bills the whole history"
         )

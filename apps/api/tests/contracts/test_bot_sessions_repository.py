@@ -1,6 +1,6 @@
 """Contract tests for BotSessionsRepository (global, atomic session claim).
 
-The unique ``session_key`` index is what makes the claim atomic, so the fixture
+The unique session_key index is what makes the claim atomic, so the fixture
 mirrors it on the throwaway collection before asserting get-or-create semantics.
 """
 
@@ -30,7 +30,7 @@ class TestBotSessionsRepository:
         candidate = str(uuid.uuid4())
 
         session = await repo.claim_session(
-            session_key=key,
+            session_key=key,  # gitleaks:allow — uuid4 test fixture, not a credential
             platform="discord",
             platform_user_id="u1",
             channel_id=None,
@@ -45,7 +45,7 @@ class TestBotSessionsRepository:
     async def test_second_claim_reuses_conversation_id(self, repo):
         key = f"slack:{uuid.uuid4().hex}:c1"
         first = await repo.claim_session(
-            session_key=key,
+            session_key=key,  # gitleaks:allow — uuid4 test fixture, not a credential
             platform="slack",
             platform_user_id="u1",
             channel_id="c1",
@@ -56,7 +56,7 @@ class TestBotSessionsRepository:
         # A racing second claim gets the SAME conversation_id — its candidate is
         # discarded (this is the anti-fork guarantee).
         second = await repo.claim_session(
-            session_key=key,
+            session_key=key,  # gitleaks:allow — uuid4 test fixture, not a credential
             platform="slack",
             platform_user_id="u1",
             channel_id="c1",
@@ -69,7 +69,7 @@ class TestBotSessionsRepository:
         key = f"telegram:{uuid.uuid4().hex}:dm"
         ts = _now()
         await repo.claim_session(
-            session_key=key,
+            session_key=key,  # gitleaks:allow — uuid4 test fixture, not a credential
             platform="telegram",
             platform_user_id="u1",
             channel_id=None,
@@ -85,7 +85,7 @@ class TestBotSessionsRepository:
     async def test_delete_by_session_key(self, repo, raw_collection):
         key = f"discord:{uuid.uuid4().hex}:dm"
         await repo.claim_session(
-            session_key=key,
+            session_key=key,  # gitleaks:allow — uuid4 test fixture, not a credential
             platform="discord",
             platform_user_id="u1",
             channel_id=None,
@@ -99,9 +99,7 @@ class TestBotSessionsRepository:
         assert await repo.delete_by_session_key(f"discord:{uuid.uuid4().hex}:dm") == 0
 
     async def test_get_by_session_key_reads_without_minting(self, repo, raw_collection):
-        """Unlike ``claim_session``, a miss must stay a miss — the migration asks
-        whether the canonical key is taken, and an upsert there would create the
-        very row it is checking for."""
+        """Unlike claim_session, a miss must stay a miss — this must never upsert the row it is checking for."""
         key = f"telegram:{uuid.uuid4().hex}:dm"
         assert await repo.get_by_session_key(key) is None
         assert await raw_collection.find_one({"session_key": key}) is None
@@ -120,8 +118,7 @@ class TestBotSessionsRepository:
 
 
 class TestLegacyDmSessionRepair:
-    """The finders and mutators ``app.scripts.merge_legacy_dm_bot_sessions`` runs
-    against real rows."""
+    """The finders and mutators app.scripts.merge_legacy_dm_bot_sessions runs against real rows."""
 
     async def _claim(self, repo, key: str, platform: str = "telegram") -> str:
         conversation_id = str(uuid.uuid4())
@@ -147,8 +144,7 @@ class TestLegacyDmSessionRepair:
         assert [s.session_key for s in found if s.platform_user_id == user] == [legacy]
 
     async def test_the_recency_stamps_survive_the_typed_boundary(self, repo):
-        """The migration picks a winner by recency; the ISO strings have to come
-        back as strings, not be dropped as unmodelled extras."""
+        """ISO timestamp strings must survive the typed boundary as strings, not be dropped as unmodelled extras."""
         key = f"telegram:{uuid.uuid4().hex}:dm"
         await self._claim(repo, key)
 
@@ -209,3 +205,59 @@ class TestLegacyDmSessionRepair:
             session_key=f"telegram:{uuid.uuid4().hex}:{uuid.uuid4().hex}",
             conversation_id=str(uuid.uuid4()),
         )
+
+
+class TestDeleteForPlatformUser:
+    """Unlinking a platform account ends every one of its sessions, and only its own."""
+
+    async def _claim(self, repo, platform: str, platform_user_id: str, channel_id: str | None):
+        await repo.claim_session(
+            session_key=f"{platform}:{platform_user_id}:{channel_id or platform_user_id}",
+            platform=platform,
+            platform_user_id=platform_user_id,
+            channel_id=channel_id,
+            candidate_conversation_id=str(uuid.uuid4()),
+            timestamp=_now(),
+        )
+
+    async def test_it_deletes_the_dm_and_channel_sessions_of_that_account_only(
+        self, repo, raw_collection
+    ):
+        user, other = uuid.uuid4().hex, uuid.uuid4().hex
+        await self._claim(repo, "telegram", user, None)
+        await self._claim(repo, "telegram", user, "-100group")
+        await self._claim(repo, "telegram", other, None)
+        # The same id on another platform is a different account.
+        await self._claim(repo, "discord", user, None)
+
+        deleted = await repo.delete_for_platform_user(platform="telegram", platform_user_id=user)
+
+        assert deleted == 2
+        left = {
+            (row["platform"], row["platform_user_id"])
+            async for row in raw_collection.find({}, {"platform": 1, "platform_user_id": 1})
+        }
+        assert left == {("telegram", other), ("discord", user)}
+
+    async def test_an_account_with_no_sessions_deletes_nothing(self, repo):
+        assert await repo.delete_for_platform_user(platform="slack", platform_user_id="nobody") == 0
+
+
+class TestListSessions:
+    async def test_it_lists_every_session_or_one_platforms(self, repo):
+        user = uuid.uuid4().hex
+        for platform in ("telegram", "slack"):
+            await repo.claim_session(
+                session_key=f"{platform}:{user}:{user}",
+                platform=platform,
+                platform_user_id=user,
+                channel_id=None,
+                candidate_conversation_id=str(uuid.uuid4()),
+                timestamp=_now(),
+            )
+
+        everything = {s.platform for s in await repo.list_sessions()}
+        slack_only = {s.platform for s in await repo.list_sessions(platform="slack")}
+
+        assert everything == {"telegram", "slack"}
+        assert slack_only == {"slack"}

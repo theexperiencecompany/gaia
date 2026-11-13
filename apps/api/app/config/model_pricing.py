@@ -1,16 +1,17 @@
 """Model pricing for token cost calculation — the rate card ships in code.
 
-Pricing previously lived in the ``ai_models`` Mongo collection, synced by hand
-via ``scripts/seed_models.py``. Nothing enforced the sync, so prod drifted: the
+Pricing previously lived in the ai_models Mongo collection, synced by hand
+via scripts/seed_models.py. Nothing enforced the sync, so prod drifted: the
 vision/memory model's row went missing and every one of its calls was priced at
 DEFAULT_PRICING (~10x its real input rate) with only an error log to show for
-it. Models are constants in ``constants/llm.py``; their prices now live beside
+it. Models are constants in constants/llm.py; their prices now live beside
 them, so a rate changes in the same reviewed deploy as the model id, and the
 unit suite fails if a runtime-referenced model has no rate.
 """
 
 from typing import NamedTuple
 
+from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
@@ -33,19 +34,39 @@ DEFAULT_PRICING = ModelPricing(
     cached_input_cost_per_1k=0.001 * DEFAULT_CACHED_INPUT_FRACTION,
 )
 
-# Per-1k USD rates by model id, from each provider's published listing
-# (https://openrouter.ai/api/v1/models for the OpenRouter-served ids). Keys are
-# the ids the runtime actually passes to get_model_pricing — the constants in
-# constants/llm.py plus the aux routing alias. Nothing reconciles these against
-# the live listings: re-check the rates by hand whenever a model id here is
-# added or re-pointed, and keep tests/unit/config/test_model_pricing.py's
-# runtime-coverage test green so a referenced-but-unpriced model cannot ship.
+# Per-1k USD rates by model id: the price only where the provider reports no
+# per-call cost (direct OpenAI comms, direct Gemini); elsewhere the provider's
+# figure is booked. Rows track list prices by hand; re-check when an id moves.
 MODEL_PRICING: dict[str, ModelPricing] = {
-    # DEFAULT_MODEL_NAME / PAID_MODEL_NAME — the graph lane on every tier.
+    # DEFAULT_MODEL_NAME / PAID_MODEL_NAME. UNUSED AS A PRICE: OpenRouter reports
+    # every call's cost; this only keeps a cost-less reply off DEFAULT_PRICING.
+    # OpenRouter list price 2026-11-03: $0.10/$0.50/$0.01 per 1M.
+    "openai/gpt-6-luna": ModelPricing(
+        input_cost_per_1k=0.0001,
+        output_cost_per_1k=0.0005,
+        cached_input_cost_per_1k=0.00001,
+    ),
+    # DEFAULT_MODEL_NAME until 2026-11-03: historical llm_call events still meter at the
+    # rate actually served. DeepSeek's first-party list price: $0.15/$0.60/$0.003 per 1M.
+    "deepseek/deepseek-v4.1-flash-1017": ModelPricing(
+        input_cost_per_1k=0.00015,
+        output_cost_per_1k=0.0006,
+        cached_input_cost_per_1k=0.000003,
+    ),
+    # BROWSER_AGENT_MODEL / BROWSER_USE_JEV_TEXT_MODEL, and DEFAULT_MODEL_NAME until
+    # 2026-11-02: historical llm_call events still meter at the rate actually served.
     "deepseek/deepseek-v4-flash-0731": ModelPricing(
-        input_cost_per_1k=0.00014,
-        output_cost_per_1k=0.00028,
-        cached_input_cost_per_1k=0.000028,
+        input_cost_per_1k=0.00004,
+        output_cost_per_1k=0.00008,
+        cached_input_cost_per_1k=0.000016,
+    ),
+    # HIL_JUDGE_MODEL_NAME — the approval gate's judge (+ eval winner 42/50) —
+    # and BROWSER_USE_JEV_TEXT_MODEL, the text helper that writes typed values
+    # for Jev's decisions. Live 2026-09-20: $0.30/$2.50/$0.03 per 1M in/out/cached.
+    "google/gemini-3.5-flash-lite": ModelPricing(
+        input_cost_per_1k=0.0003,
+        output_cost_per_1k=0.0025,
+        cached_input_cost_per_1k=0.00003,
     ),
     # MEMORY_MODEL_NAME / VISION_MODEL_NAME — deliberately a different provider
     # than the graph lane (see constants/llm.py for the cache-collision reason).
@@ -54,16 +75,28 @@ MODEL_PRICING: dict[str, ModelPricing] = {
         output_cost_per_1k=0.0004,
         cached_input_cost_per_1k=0.000025,
     ),
-    # "DeepSeek V4 Flash 0423" (Apr 2026). No lane produces this id any more —
-    # AUX_MODEL_NAME now resolves to the 0731 revision, because this id's
-    # provider pool cannot cache or hold session affinity for tool-carrying
-    # requests (measured; see constants/llm.py). The row stays so historical
-    # llm_call events and any straggler mid-deploy calls still meter at the
-    # rate they were actually served at, not at DEFAULT_PRICING's.
+    # "DeepSeek V4 Flash 0423" (Apr 2026): deprecated because its provider pool
+    # can't cache or hold session affinity for tool-carrying requests. Row stays
+    # so historical llm_call events still meter at the rate actually served.
     "deepseek/deepseek-v4-flash": ModelPricing(
         input_cost_per_1k=0.00006426,
         output_cost_per_1k=0.00012852,
         cached_input_cost_per_1k=0.000012852,
+    ),
+    # BROWSER_USE_JEV_MODEL, TypeSafe's decision model, served by OpenRouter.
+    # $0.042 per 1M input tokens, nothing for output (a decision returns choices,
+    # not generated tokens). Confirmed billed 1.722e-05 for 410 in / 38 out tokens.
+    "~typesafe/jev-latest": ModelPricing(
+        input_cost_per_1k=0.000042,
+        output_cost_per_1k=0.0,
+        cached_input_cost_per_1k=0.0,
+    ),
+    # COMMS_MODEL_NAME, the comms lane direct on OpenAI. List price 2026-09-26:
+    # $0.20/$1.20 per 1M in/out, $0.02 cached (developers.openai.com/api/docs/pricing).
+    "gpt-5.6-luna": ModelPricing(
+        input_cost_per_1k=0.0002,
+        output_cost_per_1k=0.0012,
+        cached_input_cost_per_1k=0.00002,
     ),
     # LOCAL DEV TESTING ONLY (DEV_LLM_MODEL=gpt-4.1-mini over the OpenAI custom
     # lane) - do not ship. OpenAI list price: $0.40/$1.60 per 1M in/out, $0.10 cached.
@@ -76,11 +109,20 @@ MODEL_PRICING: dict[str, ModelPricing] = {
 
 
 def get_model_pricing(model_name: str) -> ModelPricing:
-    """The rate card for ``model_name``, or DEFAULT_PRICING — loudly — when the
-    id was never registered above."""
+    """Return the rate card for model_name, or DEFAULT_PRICING (logged) if unregistered."""
     pricing = MODEL_PRICING.get(model_name)
     if pricing is not None:
         return pricing
+    # OpenRouter routing variants ("model:nitro" sorts providers by throughput,
+    # ":floor" by price) name the same model; its rate card is the base id's.
+    # No rate-card id holds a colon, so partition would split the same.
+    base, _, variant = model_name.rpartition(":")  # pragma: no mutate
+    if variant and base in MODEL_PRICING:
+        return MODEL_PRICING[base]
+    if _is_dev_custom_model(model_name):
+        # Any id a developer points DEV_LLM_MODEL at: unpriced by design, and the
+        # ledger still marks it cost_source="table". An error per call was noise.
+        return DEFAULT_PRICING
     # A model id missing from the table is priced at DEFAULT_PRICING, which is
     # not its real rate — so it must never pass quietly.
     log.error(
@@ -88,6 +130,11 @@ def get_model_pricing(model_name: str) -> ModelPricing:
         model_name=model_name,
     )
     return DEFAULT_PRICING
+
+
+def _is_dev_custom_model(model_name: str) -> bool:
+    """Whether model_name is the development-only custom endpoint's model (DEV_LLM_MODEL)."""
+    return settings.deployment.dev_tools and model_name == settings.DEV_LLM_MODEL
 
 
 def calculate_token_cost(
@@ -98,10 +145,10 @@ def calculate_token_cost(
 ) -> dict[str, float]:
     """Calculate the cost in USD for token usage.
 
-    ``input_tokens`` is the total prompt size; ``cached_tokens`` is the
+    input_tokens is the total prompt size; cached_tokens is the
     subset that hit the provider's prompt cache (billed at the discounted
-    rate). Returns ``input_cost`` (uncached portion only),
-    ``cached_input_cost``, ``output_cost`` and ``total_cost``.
+    rate). Returns input_cost (uncached portion only),
+    cached_input_cost, output_cost and total_cost.
     """
     pricing = get_model_pricing(model_name)
 

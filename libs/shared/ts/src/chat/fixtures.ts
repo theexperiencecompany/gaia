@@ -8,7 +8,6 @@ import type {
   CalendarEditOptions,
   CalendarFetchData,
   CalendarListFetchData,
-  CalendarOptions,
   CodeData,
   ContactData,
   DeepResearchResults,
@@ -353,36 +352,6 @@ const peopleSearchFixture: PeopleSearchData[] = [
 
 // ---------------------------------------------------------------------------
 // Calendar
-// ---------------------------------------------------------------------------
-
-const calendarOptionsFixture: CalendarOptions[] = [
-  {
-    summary: "Design review — mobile chat",
-    description:
-      "Walk through the tool gallery and identify remaining visual gaps vs web.",
-    start: "2026-04-18T14:00:00-07:00",
-    end: "2026-04-18T14:45:00-07:00",
-    calendar_id: "primary",
-    calendar_name: "Work",
-    background_color: "#00bbff",
-    location: "Google Meet",
-    is_all_day: false,
-    attendees: ["sarah@linear.app", "dhruv@heygaia.io"],
-    create_meeting_room: true,
-  },
-  {
-    summary: "Sync with design system team",
-    description: "Consolidate shared primitives across web and mobile.",
-    start: "2026-04-19T10:00:00-07:00",
-    end: "2026-04-19T10:30:00-07:00",
-    calendar_id: "primary",
-    calendar_name: "Work",
-    background_color: "#f59e0b",
-    is_all_day: false,
-    attendees: ["priya@anthropic.com"],
-  },
-];
-
 const calendarDeleteFixture: CalendarDeleteOptions[] = [
   {
     action: "delete",
@@ -1002,12 +971,6 @@ export const TOOL_FIXTURES: readonly ToolFixture[] = [
     label: "People search",
     description: "Enriched person profiles with org and role.",
     data: peopleSearchFixture,
-  },
-  {
-    toolName: "calendar_options",
-    label: "Calendar create",
-    description: "Proposed calendar event(s) awaiting confirmation.",
-    data: calendarOptionsFixture,
   },
   {
     toolName: "calendar_delete_options",

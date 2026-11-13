@@ -108,10 +108,9 @@ describe("streamChat — the rate-limit notice", () => {
   });
 
   it("survives the message it arrived inside being discarded", async () => {
-    // The bug: the notice used to ride the stream as a plain {"text"} frame, so
-    // it joined whatever assistant message was in flight — and a discarded
-    // message (a handoff preamble, a rewritten draft) took the notice down with
-    // it. The user hit a limit and was told nothing.
+    // Bug: notice used to ride the stream as a plain {"text"} frame, joining whatever
+    // message was in flight — a discarded message (handoff preamble, rewritten draft)
+    // took the notice down with it, telling the user nothing.
     const { onNotice, onDone } = await drive(
       frames(
         { text: "let me get that set up" },
@@ -130,10 +129,9 @@ describe("streamChat — the rate-limit notice", () => {
 
 describe("streamChat — the 401 session-token retry", () => {
   it("keeps every handler on the retried attempt", async () => {
-    // The retry re-invoked the streamer with `onApprovalUpdate` and the
-    // boundary handler but not `onNotice`, so a stale session token — routine,
-    // the token lives 12 minutes — silently cost that turn its rate-limit
-    // notice. Nothing failed; the user just hit a wall and was told nothing.
+    // Bug: retry re-invoked the streamer with `onApprovalUpdate` and the boundary
+    // handler but not `onNotice`, so a routine stale session token (12min TTL)
+    // silently dropped that turn's rate-limit notice with no failure signal.
     const body = frames(
       { notice: { text: NOTICE } },
       { text: "all set." },
@@ -173,11 +171,9 @@ describe("streamChat — the 401 session-token retry", () => {
 
 describe("streamChat — a chunk carrying several frames", () => {
   it("applies every frame in it, even when the stream ends immediately", async () => {
-    // SSE frames coalesce into one TCP chunk all the time, and a short reply
-    // arrives in a single chunk followed straight away by `end`. Applying a
-    // chunk is async — every handler may await — so `end` used to fire mid-loop
-    // and flip the done flag, and every frame after the first `await` was
-    // dropped on the floor: the notice, the boundary, and the rest of the text.
+    // SSE frames coalesce into one TCP chunk; applying a chunk is async (handlers
+    // may await), so `end` used to fire mid-loop and flip the done flag, dropping
+    // every frame after the first await — notice, boundary, and remaining text.
     const { onChunk, onNotice, onBoundary, onDone } = await drive(
       frames(
         { text: "one" },

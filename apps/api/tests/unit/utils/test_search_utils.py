@@ -1,19 +1,22 @@
 """Unit tests for app.utils.search — multi-provider search waterfall.
 
-The flat ``app.utils.search_utils`` module was replaced by the
-``app.utils.search`` package (engine, models, providers, budget).
+The flat app.utils.search_utils module was replaced by the
+app.utils.search package (engine, models, providers, budget).
 
-These tests cover the public surface exported from ``app.utils.search``:
-  - ``perform_search``        — cached entry point; returns a WebSearchResult
-  - ``search_for_research``   — cached entry point; returns {"results": [...]}
+These tests cover the public surface exported from app.utils.search:
+  - perform_search        — cached entry point; returns a WebSearchResult
+  - search_for_research   — cached entry point; returns a ResearchSearchResult
 
-Provider-level unit tests live in ``tests/unit/utils/search/``.
+Provider-level unit tests live in tests/unit/utils/search/.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.utils.search import perform_search, search_for_research
+from app.config.settings import settings
+from app.services.providers.provider_credentials_service import resolve
+from app.utils.search import ResearchSearchResult, perform_search, search_for_research
 from app.utils.search.models import SearchResponse, SearchResultItem
+from tests.helpers import InMemoryCredentialStore
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -145,9 +148,10 @@ class TestSearchForResearch:
         fn = search_for_research.__wrapped__  # type: ignore[attr-defined]  # reaching the unwrapped original under functools.wraps
         result = await fn(query="deep", count=5)
 
-        assert "results" in result
-        assert len(result["results"]) == 1
-        assert result["results"][0]["url"] == "https://r.com"
+        assert len(result.results) == 1
+        assert result.results[0].url == "https://r.com"
+        # The dumped wire shape is exactly what the research tool reads.
+        assert result.model_dump() == {"results": [response.results[0].model_dump()]}
 
     @patch("app.utils.search.SearchEngine")
     async def test_empty_response_returns_empty_results(self, mock_engine_cls: MagicMock) -> None:
@@ -156,7 +160,8 @@ class TestSearchForResearch:
         fn = search_for_research.__wrapped__  # type: ignore[attr-defined]  # reaching the unwrapped original under functools.wraps
         result = await fn(query="nothing", count=5)
 
-        assert result == {"results": []}
+        assert result == ResearchSearchResult(results=[])
+        assert result.model_dump() == {"results": []}
 
     @patch("app.utils.search.SearchEngine")
     async def test_does_not_include_answer_or_images(self, mock_engine_cls: MagicMock) -> None:
@@ -171,7 +176,7 @@ class TestSearchForResearch:
         fn = search_for_research.__wrapped__  # type: ignore[attr-defined]  # reaching the unwrapped original under functools.wraps
         result = await fn(query="x", count=1)
 
-        assert set(result.keys()) == {"results"}
+        assert set(result.model_dump().keys()) == {"results"}
 
     @patch("app.utils.search.SearchEngine")
     async def test_default_count_is_five(self, mock_engine_cls: MagicMock) -> None:
@@ -195,16 +200,25 @@ class TestTavilyProvider:
     def test_is_configured_true_when_key_present(self) -> None:
         from app.utils.search.providers.tavily import TavilyProvider
 
-        with patch("app.utils.search.providers.tavily.settings") as mock_settings:
-            mock_settings.TAVILY_API_KEY = "tvly-key"  # pragma: allowlist secret
+        with patch.object(settings, "TAVILY_API_KEY", "tvly-key"):  # pragma: allowlist secret
             assert TavilyProvider().is_configured() is True
 
     def test_is_configured_false_when_key_empty(self) -> None:
         from app.utils.search.providers.tavily import TavilyProvider
 
-        with patch("app.utils.search.providers.tavily.settings") as mock_settings:
-            mock_settings.TAVILY_API_KEY = ""
+        with patch.object(settings, "TAVILY_API_KEY", ""):
             assert TavilyProvider().is_configured() is False
+
+    async def test_is_configured_true_via_a_stored_credential(
+        self, selfhost_credential_store: InMemoryCredentialStore
+    ) -> None:
+        """Env key absent but a Settings-saved credential exists → configured."""
+        from app.utils.search.providers.tavily import TavilyProvider
+
+        selfhost_credential_store.save("tavily", api_key="stored-key")  # pragma: allowlist secret
+        with patch.object(settings, "TAVILY_API_KEY", ""):
+            await resolve("tavily")
+            assert TavilyProvider().is_configured() is True
 
     async def test_search_maps_payload_to_search_response(self) -> None:
         from app.utils.search.providers.tavily import TavilyProvider
@@ -228,18 +242,49 @@ class TestTavilyProvider:
             patch(
                 "app.utils.search.providers.tavily.asyncio.to_thread", new_callable=AsyncMock
             ) as mock_thread,
-            patch("app.utils.search.providers.tavily.settings") as mock_settings,
+            patch.object(settings, "TAVILY_API_KEY", "tvly-key"),  # pragma: allowlist secret
+            patch("app.utils.search.providers.tavily.TavilyClient") as mock_client_cls,
         ):
-            mock_settings.TAVILY_API_KEY = "tvly-key"  # pragma: allowlist secret
             mock_thread.return_value = payload
             result = await provider.search("test query", 5)
 
+        # One general-topic search asking for images and favicons, sized to the caller's count.
+        mock_client_cls.assert_called_once_with(api_key="tvly-key")  # pragma: allowlist secret
+        mock_thread.assert_awaited_once_with(
+            mock_client_cls.return_value.search,
+            query="test query",
+            max_results=5,
+            topic="general",
+            include_images=True,
+            include_favicon=True,
+        )
         assert result.provider == "tavily"
         assert result.answer == "The answer"
         assert result.images == ["https://img.example.com/1.png"]
         assert len(result.results) == 1
         assert result.results[0].url == "https://example.com"
+        assert result.results[0].title == "Example"
+        assert result.results[0].content == "Some content"
+        assert result.results[0].favicon == "https://example.com/fav.ico"
         assert result.results[0].score == 0.9
+
+    async def test_a_sparse_result_falls_back_to_neutral_defaults(self) -> None:
+        from app.utils.search.providers.tavily import TavilyProvider
+
+        payload = {"results": [{"url": "https://bare.com"}], "answer": None}
+        with (
+            patch(
+                "app.utils.search.providers.tavily.asyncio.to_thread", new_callable=AsyncMock
+            ) as mock_thread,
+            patch.object(settings, "TAVILY_API_KEY", "tvly-key"),  # pragma: allowlist secret
+        ):
+            mock_thread.return_value = payload
+            result = await TavilyProvider().search("q", 3)
+
+        item = result.results[0]
+        assert (item.title, item.content, item.favicon, item.score) == ("", "", "", 0.5)
+        assert result.answer == ""
+        assert result.images == []
 
     async def test_search_filters_items_without_url(self) -> None:
         from app.utils.search.providers.tavily import TavilyProvider
@@ -257,9 +302,8 @@ class TestTavilyProvider:
             patch(
                 "app.utils.search.providers.tavily.asyncio.to_thread", new_callable=AsyncMock
             ) as mock_thread,
-            patch("app.utils.search.providers.tavily.settings") as mock_settings,
+            patch.object(settings, "TAVILY_API_KEY", "tvly-key"),  # pragma: allowlist secret
         ):
-            mock_settings.TAVILY_API_KEY = "tvly-key"  # pragma: allowlist secret
             mock_thread.return_value = payload
             result = await TavilyProvider().search("q", 3)
 

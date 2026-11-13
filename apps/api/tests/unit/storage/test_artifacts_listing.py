@@ -1,6 +1,6 @@
 """Layer 2 — artifact listing: the os.scandir walk + stat_artifact.
 
-`_list_files` is pure (takes a Path) so it runs against a real tmpdir — this is
+_list_files is pure (takes a Path) so it runs against a real tmpdir — this is
 filesystem logic, the filesystem is the boundary, not something to mock. The
 stat_artifact tests patch the JuiceFS mount root to a tmpdir, including a
 SYMLINKED root to lock in the resolve-anchor fix.
@@ -115,10 +115,9 @@ async def test_stat_artifact_returns_none_for_directory(mount: Path) -> None:
 async def test_stat_artifact_path_is_clean_when_mount_root_is_symlinked(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Regression for the resolve-asymmetry: _contained resolves `target`
-    # (follows the symlinked root), so the returned path must be anchored on the
-    # RESOLVED base — else os.path.relpath emits a '../'-laden path that breaks
-    # the artifact-event key vs the watcher's live events.
+    # Regression: _contained resolves `target` (follows the symlinked root), so
+    # the path must anchor on the RESOLVED base — else relpath emits a
+    # '../'-laden path that breaks the artifact-event key vs the watcher.
     real = tmp_path / "real_mount"
     real.mkdir()
     link = tmp_path / "link_mount"

@@ -9,28 +9,17 @@ import {
   Mail01Icon,
   ZapIcon,
 } from "@icons";
-import {
-  CONNECT_ACTION_LABEL,
-  getSimpleTimeGreeting,
-  integrationConnectionState,
-} from "@shared/utils";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useUser } from "@/features/auth/hooks/useUser";
-import { useCalendarsQuery } from "@/features/calendar/hooks/useCalendarsQuery";
-import { useUpcomingEventsQuery } from "@/features/calendar/hooks/useUpcomingEventsQuery";
 import { GridSection } from "@/features/chat/components/interface/sections/GridSection";
-import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import DummyComposer from "@/features/landing/components/demo/DummyComposer";
-import { useUnreadEmailsQuery } from "@/features/mail/hooks/useUnreadEmailsQuery";
-import { useTodoData } from "@/features/todo/hooks/useTodoData";
-import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
+import { useHomePage } from "@/hooks/useHomePage";
 
 function DashboardComposer() {
   const router = useRouter();
 
   return (
-    <div className="relative w-1/2 mb-10">
+    <div className="relative mb-10 w-full px-4 sm:w-1/2 sm:px-0">
       {/* Visual-only — inert so nothing is interactive */}
       <div
         className="pointer-events-none [&_.searchbar_container]:pt-0 px-4"
@@ -175,81 +164,29 @@ function DashboardSummary({
 }
 
 export default function HomePage() {
-  const user = useUser();
-  const { counts: todoCounts, loading: todosLoading } = useTodoData();
-  const { getIntegrationStatus } = useIntegrations();
-
-  // Check integrations. The state (not just the boolean) drives the CTA verb, so
-  // an integration whose grant died offers Reconnect instead of a first-time Connect.
-  const calendarState = integrationConnectionState(
-    getIntegrationStatus("googlecalendar")?.status,
-  );
-  const gmailState = integrationConnectionState(
-    getIntegrationStatus("gmail")?.status,
-  );
-  const isCalendarConnected = calendarState === "connected";
-  const isGmailConnected = gmailState === "connected";
-
-  const { data: events, isLoading: eventsLoading } = useUpcomingEventsQuery(
-    50,
-    {
-      enabled: isCalendarConnected,
-    },
-  );
-  const { data: calendars, isLoading: calendarsLoading } = useCalendarsQuery({
-    enabled: isCalendarConnected,
-  });
   const {
-    data: unreadEmailsData,
-    isLoading: emailsLoading,
-    fetchNextPage: fetchMoreEmails,
-    hasNextPage: hasMoreEmails,
-    isFetchingNextPage: emailsFetchingMore,
-  } = useUnreadEmailsQuery(10, { enabled: isGmailConnected });
-  const unreadEmails = unreadEmailsData?.pages.flatMap((p) => p.messages) ?? [];
-  const { workflows, isLoading: workflowsLoading } = useWorkflows(true);
-
-  // Calculate today's data
-  const today = new Date().toDateString();
-  const todaysMeetings =
-    events?.filter((e) => {
-      const startDate = e.start.dateTime || e.start.date;
-      if (!startDate) return false;
-      const eventDate = new Date(startDate);
-      return eventDate.toDateString() === today;
-    }).length || 0;
-
-  // Filter active workflows and calculate counts
-  const activeWorkflows =
-    workflows?.filter((w) => w.activated === true).length || 0;
-  const tasksDue = todoCounts?.today || 0;
-  const overdueTodosCount = todoCounts?.overdue || 0;
-  const unreadEmailsCount = unreadEmails?.length || 0;
-
-  const simpleGreeting = getSimpleTimeGreeting();
-  const isLoading =
-    todosLoading ||
-    eventsLoading ||
-    calendarsLoading ||
-    workflowsLoading ||
-    emailsLoading;
-
-  // Only show "today" if there are actual time-bound items (meetings or tasks due today)
-  const hasTodayItems = todaysMeetings > 0 || tasksDue > 0;
-  const hasData =
-    hasTodayItems ||
-    overdueTodosCount > 0 ||
-    unreadEmailsCount > 0 ||
-    activeWorkflows > 0;
+    user,
+    simpleGreeting,
+    isLoading,
+    hasData,
+    hasTodayItems,
+    counts,
+    events,
+    calendars,
+    unreadEmails,
+    workflows,
+    isCalendarConnected,
+    isGmailConnected,
+    calendarConnectLabel,
+    gmailConnectLabel,
+    emailsLoading,
+    fetchMoreEmails,
+    hasMoreEmails,
+    emailsFetchingMore,
+  } = useHomePage();
 
   // Build sections array for display
-  const sections = buildDashboardSections({
-    todaysMeetings,
-    tasksDue,
-    overdueTodosCount,
-    unreadEmailsCount,
-    activeWorkflows,
-  });
+  const sections = buildDashboardSections(counts);
 
   return (
     <div className="flex flex-col p-6 pt-0 min-h-screen h-fit overflow-y-scroll outline-none">
@@ -283,7 +220,7 @@ export default function HomePage() {
           <DashboardSummary sections={sections} hasTodayItems={hasTodayItems} />
         ) : (
           <p className="text-lg text-zinc-400">
-            Your day is clear — time to plan ahead!
+            Your day is clear. Time to plan ahead!
           </p>
         )}
       </div>
@@ -297,8 +234,8 @@ export default function HomePage() {
         workflows={workflows}
         isCalendarConnected={isCalendarConnected}
         isGmailConnected={isGmailConnected}
-        calendarConnectLabel={CONNECT_ACTION_LABEL[calendarState]}
-        gmailConnectLabel={CONNECT_ACTION_LABEL[gmailState]}
+        calendarConnectLabel={calendarConnectLabel}
+        gmailConnectLabel={gmailConnectLabel}
         emailsLoading={emailsLoading}
         onLoadMoreEmails={fetchMoreEmails}
         hasMoreEmails={hasMoreEmails}

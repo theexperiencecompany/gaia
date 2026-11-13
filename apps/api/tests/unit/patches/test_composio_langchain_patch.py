@@ -1,14 +1,10 @@
 """Tests for the Composio/LangChain integration patch.
 
-Two independent fixes, both applied at import time:
-
-1. ``composio.utils.shared.json_schema_to_pydantic_type``: anyOf options are
-   re-evaluated individually and combined into a plain union, instead of
-   letting the library collapse them — the library's single-combiner path
-   yields ``dict`` for bare object options (useless to Pydantic tooling),
-   while the patch yields the generated model class.
-2. ``langchain_core.tools.base._handle_validation_error``: a ``True`` flag
-   surfaces the actual validation error text instead of swallowing it.
+composio.utils.shared.json_schema_to_pydantic_type is patched at import time:
+anyOf options are re-evaluated individually and combined into a plain union,
+instead of letting the library collapse them — the library's single-combiner
+path yields dict for bare object options (useless to Pydantic tooling), while
+the patch yields the generated model class.
 """
 
 from __future__ import annotations
@@ -16,9 +12,8 @@ from __future__ import annotations
 import typing as t
 
 from composio.utils import shared
-from langchain_core.tools import base as lc_base
 
-# Importing the patch module triggers both monkey-patches at import time.
+# Importing the patch module applies the monkey-patch at import time.
 import app.patches.composio_langchain_patch as patch_module  # noqa: F401  # ratchet-allow -- import for the apply() side effect
 
 
@@ -60,44 +55,8 @@ class TestAnyOfFlattening:
         assert shared.json_schema_to_pydantic_type(False) is None
 
 
-class TestHandleValidationError:
-    _ERROR = ValueError("boom")
-
-    def test_string_flag_is_returned_verbatim(self) -> None:
-        assert lc_base._handle_validation_error(self._ERROR, flag="custom message") == (
-            "custom message"
-        )
-
-    def test_callable_flag_receives_the_error(self) -> None:
-        assert lc_base._handle_validation_error(self._ERROR, flag=lambda e: f"wrapped:{e}") == (
-            "wrapped:boom"
-        )
-
-    def test_true_flag_surfaces_the_actual_error(self) -> None:
-        # The original returns the bare "Tool input validation error"; the
-        # patch appends the error text so it reaches the model instead of
-        # being swallowed.
-        result = lc_base._handle_validation_error(self._ERROR, flag=True)
-        assert result.startswith("Tool input validation error")
-        assert "boom" in result
-
-    def test_false_flag_also_surfaces_the_actual_error(self) -> None:
-        result = lc_base._handle_validation_error(self._ERROR, flag=False)
-        assert result.startswith("Tool input validation error")
-        assert "boom" in result
-
-    def test_unexpected_flag_type_returns_fallback_instead_of_raising(self) -> None:
-        # The original raises ValueError for a flag outside its union.
-        result = lc_base._handle_validation_error(self._ERROR, flag=42)
-        assert result.startswith("Tool input validation error")
-        assert "boom" in result
-
-
 class TestPatchInstalled:
     def test_json_schema_converter_is_rebound(self) -> None:
         assert shared.json_schema_to_pydantic_type.__name__ == (
             "patched_json_schema_to_pydantic_type"
         )
-
-    def test_handle_validation_error_is_rebound(self) -> None:
-        assert lc_base._handle_validation_error.__name__ == "patched_handle_validation_error"

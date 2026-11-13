@@ -20,7 +20,8 @@ export const DEFAULT_SIMILARITY_CONFIG: SimilarityConfig = {
  */
 function weightedRandomSelect<T>(items: T[], weights: number[]): T {
   const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
-  let random = Math.random() * totalWeight;
+  // picks a cosmetic loading message; nothing security-relevant
+  let random = Math.random() * totalWeight; // NOSONAR typescript:S2245
 
   for (let i = 0; i < items.length; i++) {
     random -= weights[i];
@@ -44,7 +45,8 @@ export function getRelevantLoadingMessage(
 ): string {
   if (!userMessage?.trim()) {
     // Return random message if no user message
-    return loadingMessages[Math.floor(Math.random() * loadingMessages.length)];
+    // picks a cosmetic loading message; nothing security-relevant
+    return loadingMessages[Math.floor(Math.random() * loadingMessages.length)]; // NOSONAR typescript:S2245
   }
 
   // Use string-similarity's findBestMatch to get all similarity ratings
@@ -57,7 +59,8 @@ export function getRelevantLoadingMessage(
 
   // If no relevant results, fall back to random selection
   if (relevantResults.length === 0) {
-    return loadingMessages[Math.floor(Math.random() * loadingMessages.length)];
+    // picks a cosmetic loading message; nothing security-relevant
+    return loadingMessages[Math.floor(Math.random() * loadingMessages.length)]; // NOSONAR typescript:S2245
   }
 
   // Create weights - higher ratings get exponentially higher weights

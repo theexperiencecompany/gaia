@@ -1,15 +1,17 @@
 """Constants for the workspace-offload + file-mining flow.
 
-When a tool's output is offloaded to a workspace file (by the compaction
-middleware, or by a tool that self-offloads), the message carries a structured
-marker and the agent mines the file with `query_json` (structured JSON/JSONL
-querying) or `grep` (free text) instead of reading the whole thing back.
+When the compaction middleware offloads a tool's output to a workspace file,
+the message carries a structured marker and the agent mines the file with
+query_json (structured JSON/JSONL querying) or grep (free text) instead of
+reading the whole thing back.
 """
 
-# Marker keys: OFFLOAD_KEY on a ToolMessage's `additional_kwargs`; OFFLOAD_RESULT_KEY
-# on a self-offloading tool's dict result (lifted into the marker by the tool node).
+# Marker key on a ToolMessage's `additional_kwargs`.
 OFFLOAD_KEY = "offload"
-OFFLOAD_RESULT_KEY = "__offload__"
+
+# Above this many messages a Gmail fetch is offloaded however small it is, so a
+# large metadata-only scan stays out of the context window.
+OFFLOAD_MIN_MESSAGES = 50
 
 # Mining tools surfaced when an offload occurs, chosen by the offload's `fmt`.
 # query_json for structured records, grep for free text.
