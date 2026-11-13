@@ -29,19 +29,25 @@ function useIsHydrating(): boolean {
   );
 }
 
+/** A promise React's `use` reads synchronously once its status says fulfilled. */
+type TrackedPromise = Promise<void> & {
+  status?: "fulfilled";
+  value?: undefined;
+};
+
 interface Gate {
-  promise: Promise<void>;
+  promise: TrackedPromise;
   open: () => void;
 }
 
-/** Marked fulfilled so `use` reads it synchronously instead of suspending for a microtask. */
-const OPEN_GATE: Gate = {
-  promise: Object.assign(Promise.resolve(), {
-    status: "fulfilled",
-    value: undefined,
-  }),
-  open: () => undefined,
-};
+/** Mark a promise fulfilled so `use` reads it synchronously instead of suspending for a microtask. */
+function markFulfilled(promise: TrackedPromise): void {
+  promise.status = "fulfilled";
+  promise.value = undefined;
+}
+
+const OPEN_GATE: Gate = { promise: Promise.resolve(), open: () => undefined };
+markFulfilled(OPEN_GATE.promise);
 
 /** Opening marks the promise fulfilled first, so a hydration React runs synchronously inside an event reads it. */
 function createClosedGate(): Gate {
@@ -49,7 +55,7 @@ function createClosedGate(): Gate {
   return {
     promise,
     open: () => {
-      Object.assign(promise, { status: "fulfilled", value: undefined });
+      markFulfilled(promise);
       resolve();
     },
   };
@@ -66,21 +72,24 @@ function GatedChildren({
   return children;
 }
 
-/** Memoized: handed new props behind a closed gate, a dehydrated boundary drops its HTML (or stalls a transition). */
-const DeferredBoundary = memo(function DeferredBoundary({
-  gate,
-  children,
-}: {
+interface DeferredBoundaryProps {
   gate: Promise<void>;
+  isOpen: boolean;
   children: ReactNode;
-}) {
-  // While hydrating, a suspended boundary keeps its server HTML and shows no fallback.
-  return (
-    <Suspense fallback={null}>
-      <GatedChildren gate={gate}>{children}</GatedChildren>
-    </Suspense>
-  );
-});
+}
+
+/** Skips every re-render while the gate is closed: handed new props then, a dehydrated boundary drops its HTML (or stalls a transition). */
+const DeferredBoundary = memo(
+  function DeferredBoundary({ gate, children }: DeferredBoundaryProps) {
+    // While hydrating, a suspended boundary keeps its server HTML and shows no fallback.
+    return (
+      <Suspense fallback={null}>
+        <GatedChildren gate={gate}>{children}</GatedChildren>
+      </Suspense>
+    );
+  },
+  (previous, next) => !previous.isOpen && !next.isOpen,
+);
 
 /**
  * Leave a below-the-fold section's server HTML dehydrated until it nears the
@@ -101,8 +110,6 @@ export function HydrateOnVisible({ children }: { children: ReactNode }) {
         : createClosedGate(),
   );
   const [isOpen, setIsOpen] = useState(gate === OPEN_GATE);
-  // Until the gate opens the boundary keeps the children it was server-rendered with, so no parent re-render reaches it.
-  const [serverChildren] = useState(children);
 
   useEffect(() => {
     const node = ref.current;
@@ -138,8 +145,8 @@ export function HydrateOnVisible({ children }: { children: ReactNode }) {
 
   return (
     <div ref={ref}>
-      <DeferredBoundary gate={gate.promise}>
-        {isOpen ? children : serverChildren}
+      <DeferredBoundary gate={gate.promise} isOpen={isOpen}>
+        {children}
       </DeferredBoundary>
     </div>
   );
