@@ -81,8 +81,7 @@ _APPEND_HEAD_FIELDS: dict[str, object] = {
     RUNNER_FIELD: 1,
     RUNNER_EPOCH_FIELD: 1,
 }
-CONTENT_HASH_FIELD = "content_hash"
-_EXISTING_FIELDS: dict[str, object] = {"_id": 0, "id": 1, "seq": 1, CONTENT_HASH_FIELD: 1}
+_EXISTING_FIELDS: dict[str, object] = {"_id": 0, "id": 1, "seq": 1}
 _HEAD_OF_ENTRY = "_head"
 #: Each outbox entry of a head, one document apiece.
 _OUTBOX_AS_ENTRIES: list[dict[str, object]] = [
@@ -126,11 +125,6 @@ class Head:
         """Every entry id this head's reads saw, outbox and collection both, by seq."""
         stored = {row.id: row.seq for row in self.document.existing}
         return {**stored, **{entry.id: seq for seq, entry in self.outbox.items()}}
-
-    def known_content(self) -> dict[str, str | None]:
-        """Return the committed-content hash of every entry id this head's reads saw."""
-        stored = {row.id: row.content_hash for row in self.document.existing}
-        return {**stored, **{entry.id: entry.content_hash for entry in self.outbox.values()}}
 
 
 def newest(stored: StoredEntry | None, staged: StoredEntry) -> StoredEntry:
