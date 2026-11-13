@@ -48,6 +48,16 @@ def _quiet_log():
         yield
 
 
+@pytest.fixture(autouse=True)
+def logged_approvals() -> Any:
+    """Stand in for the conversation log: no live work waits on these approvals unless a test says so."""
+    with (
+        patch(f"{MODULE}.approval_is_logged", new=AsyncMock(return_value=False)) as logged,
+        patch(f"{MODULE}.record_approval_decided", new=AsyncMock()) as recorded,
+    ):
+        yield MagicMock(logged=logged, recorded=recorded)
+
+
 @pytest.fixture
 def resume() -> Any:
     """Mock the run-dispatch boundary; the resolution logic itself runs for real."""
@@ -332,6 +342,23 @@ class TestUnresumableRecords:
         assert resume.runner.call_count == 0
         assert resume.mark_resumed.await_count == 0
         assert resume.release.await_count == 0  # never touch a slot we don't hold
+
+
+class TestDecisionsReachTheLog:
+    async def test_an_expired_approval_with_no_run_to_resume_still_releases_its_logged_work(
+        self, resume: Any, logged_approvals: Any
+    ) -> None:
+        record = make_record(resume_item=None)
+        logged_approvals.logged.return_value = True
+        with (
+            patch(f"{MODULE}.list_expired_pending", new=AsyncMock(return_value=[record])),
+            patch(f"{MODULE}.list_decided_unresumed", new=AsyncMock(return_value=[])),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)),
+        ):
+            await resolution.sweep_approvals()
+        logged_approvals.recorded.assert_awaited_once_with(
+            CONVERSATION_ID, record.user_id, record.approval_id, "timeout"
+        )
 
 
 class TestDecisionSemantics:

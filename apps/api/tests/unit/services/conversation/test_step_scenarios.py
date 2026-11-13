@@ -1,6 +1,7 @@
 """advance, one named scenario per row: the exact log, frames and runner calls each one produces."""
 
 import asyncio
+from dataclasses import dataclass
 from typing import cast
 
 from langgraph.errors import GraphRecursionError
@@ -11,6 +12,8 @@ from app.constants.hil import HIL_ACK_APPROVED
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import (
     EntryFrame,
+    OutputFrame,
+    ReplyDeltaFrame,
     ResponseEvent,
     RetractFrame,
     ToolDataEvent,
@@ -33,6 +36,7 @@ from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.log import accept
 from app.services.conversation.ports import (
     CancelReason,
+    EntryRejected,
     Finished,
     ModelOutput,
     Reacted,
@@ -61,6 +65,7 @@ from tests.unit.services.conversation.runtime_doubles import (
     EffectCall,
     Fail,
     Pause,
+    RecordingFrames,
     Runtime,
     Started,
 )
@@ -261,6 +266,36 @@ class StepScenarios:
         assert (await settles(rt))[0].through == 3
         await assert_quiet(rt)
 
+    async def test_a_message_arriving_with_a_tool_only_output_joins_instead_of_restarting(
+        self, rt: Runtime
+    ) -> None:
+        # The tool call is already checkpointed when its event arrives: a restart would leave it unanswered.
+        rt.runner.script(
+            [Do(arrive(rt, user("u2"))), ModelOutput(True), Finished(Replied("both"))],
+            [Finished(Replied("restarted"))],
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        assert rt.runner.calls == [Started(batch=(1,), context=()), Absorbed((2,))]
+        assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u1", "u2"))]
+        await assert_quiet(rt)
+
+    async def test_a_dead_attempt_that_started_work_unseen_is_not_redone_silently(
+        self, rt: Runtime
+    ) -> None:
+        async def die() -> None:
+            await rt.lapse()
+
+        work = WorkStarted(id="w", task_id="t1", cause_through=1, answers=("u1",))
+        rt.runner.script(
+            [Do(arrive(rt, work)), ModelOutput(True), Pause((die,))],
+            [Finished(Replied("sorry, I was restarted; the work is running"))],
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        await run(rt)
+        assert [s.failure for s in await settles(rt)] == [FailureReason.SERVER_RESTART, None]
+
     async def test_a_message_after_the_restart_window_does_not_restart(self, rt: Runtime) -> None:
         async def late() -> None:
             rt.clock.advance(21)
@@ -402,6 +437,24 @@ class StepScenarios:
         assert [item.pending_approvals for item in state.work] == [frozenset()]
         await assert_quiet(rt)
 
+    async def test_a_mixed_typed_answer_logs_each_approval_once_with_its_own_decision(
+        self, rt: Runtime
+    ) -> None:
+        await start_work(rt)
+        await send(rt, asked("ask1", "t1", "ap1"), asked("ask2", "t1", "ap2"))
+        rt.approvals.decision = "approve"
+        rt.approvals.each = {"ap2": "deny"}
+        await send(rt, bot_user("u6"))
+        await run(rt)
+        decided = [
+            item.entry for item in await rt.entries() if isinstance(item.entry, ApprovalDecided)
+        ]
+        assert sorted((item.approval_id, item.decision) for item in decided) == [
+            ("ap1", "approve"),
+            ("ap2", "deny"),
+        ]
+        await assert_quiet(rt)
+
     async def test_a_buttonless_message_that_is_not_an_approval_answer_runs_normally(
         self, rt: Runtime
     ) -> None:
@@ -485,6 +538,26 @@ class StepScenarios:
         assert (await settles(rt))[0].through == 2
         await assert_quiet(rt)
 
+    async def test_a_store_error_mid_attempt_settles_it_failed_and_releases(
+        self, rt: Runtime
+    ) -> None:
+        rt.frames = _FlakyFrames()
+        rt.runner.script([text("hel"), text("lo"), Finished(Replied("hello"))])
+        await send(rt, user("u1"))
+        await run(rt)
+        assert await answered(rt) == [(ReplyOutcome.FAILED, ("u1",))]
+        await assert_quiet(rt)
+
+    async def test_a_message_stopped_before_any_run_saw_it_never_reaches_the_next(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script([Finished(Replied("hello"))])
+        await send(rt, user("u1"), stop("s"), user("u3"))
+        await run(rt)
+        # The Stop's marker, never the stopped message.
+        assert rt.runner.calls == [Started(batch=(3,), context=(2,))]
+        assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u3",))]
+
     async def test_stop_then_a_new_message_answers_the_new_message_normally(
         self, rt: Runtime
     ) -> None:
@@ -497,7 +570,7 @@ class StepScenarios:
         assert rt.runner.calls == [
             Started(batch=(1,), context=()),
             STOP,
-            Started(batch=(3,), context=(1, 2)),
+            Started(batch=(3,), context=(2,)),
         ]
         assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u3",))]
         await assert_quiet(rt)
@@ -609,21 +682,17 @@ class StepScenarios:
         await run(rt)
         assert [s.failure for s in await settles(rt)] == [FailureReason.STEP_LIMIT]
 
-    async def test_two_workflow_fires_are_answered_one_at_a_time(self, rt: Runtime) -> None:
-        rt.runner.script(
-            [Do(arrive(rt, fired("wf2", "ex_2"))), Finished(Replied("first run"))],
-            [Finished(Replied("second run"))],
-        )
+    async def test_a_second_fire_while_the_first_is_unanswered_is_refused(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script([Finished(Replied("first run"))])
         await send(rt, fired("wf1"))
+        with pytest.raises(EntryRejected):
+            await send(rt, fired("wf2", "ex_2"))
         await run(rt)
-        assert [call for call in rt.runner.calls if isinstance(call, Started)] == [
-            Started(batch=(1,), context=()),
-            Started(batch=(2,), context=(3, 4)),
-        ]
-        assert await answered(rt) == [
-            (ReplyOutcome.ANSWERED, ("wf1",)),
-            (ReplyOutcome.ANSWERED, ("wf2",)),
-        ]
+        assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("wf1",))]
+        await send(rt, fired("wf3", "ex_3"))
+        assert (await rt.log.state(CONVERSATION, USER)).unsettled_waking == (4,)
 
     async def test_a_silent_run_for_a_user_still_answers_with_the_fallback(
         self, rt: Runtime
@@ -876,6 +945,19 @@ class StepScenarios:
             (ReplyOutcome.FAILED, ("u1",)),
         ]
         assert turn_ends(posthog_events) == []
+
+
+@dataclass
+class _FlakyFrames(RecordingFrames):
+    """Fails the first reply delta once, as a Redis blip mid-reply would."""
+
+    failed: bool = False
+
+    async def publish(self, conversation_id: str, frame: OutputFrame) -> None:
+        if isinstance(frame, ReplyDeltaFrame) and not self.failed:
+            self.failed = True
+            raise ConnectionError("redis down")
+        await super().publish(conversation_id, frame)
 
 
 class TestStepScenariosInMemory(StepScenarios):

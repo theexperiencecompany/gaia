@@ -40,7 +40,6 @@ def _next_entry(data: st.DataObject, state: ConversationState, seq: int) -> Entr
         st.booleans().map(lambda voice: user(entry_id, voice=voice)),
         (st.none() | st.integers(0, seq - 1)).map(lambda covers: stop(entry_id, covers)),
         st.just(barge(entry_id, "r1")),
-        st.just(fired(entry_id)),
         st.just(todo_woke(entry_id)),
         st.just(notice(entry_id)),
         st.sampled_from([*pending, "ap_gone"]).map(lambda approval: decided(entry_id, approval)),
@@ -48,6 +47,8 @@ def _next_entry(data: st.DataObject, state: ConversationState, seq: int) -> Entr
             lambda pair: finished(entry_id, *pair)
         ),
     ]
+    if not state.unsettled_fires and not state.work:
+        options.append(st.just(fired(entry_id)))
     if state.stopped_through + 1 <= seq - 1:
         causes = st.integers(state.stopped_through + 1, seq - 1)
         options.append(causes.map(lambda cause: started(entry_id, f"t{seq}", cause)))
@@ -72,6 +73,7 @@ def _assert_invariants(state: ConversationState) -> None:
     waking = state.unsettled_waking
     assert all(a < b for a, b in pairwise(waking))
     assert all(seq > max(state.settled_through, state.stopped_through) for seq in waking)
+    assert set(state.unsettled_fires) <= set(waking)
     assert state.comms is not CommsPhase.THINKING
     assert (state.comms is CommsPhase.ANSWERING) == (state.open_reply is not None)
 

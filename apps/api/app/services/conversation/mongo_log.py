@@ -316,7 +316,11 @@ def _hint_key(conversation_id: str, user_id: str) -> str:
 async def _publish_hint(
     conversation_id: str, user_id: str, logged: LoggedEntry, state: ConversationState
 ) -> None:
-    """Raise the hint to the committed head; it is advisory, so a Redis failure is logged, never raised."""
+    """Raise the hint to the committed head; when that write fails, drop the hint so readers rebuild it from the head.
+
+    A stale hint is never left behind: a running step trusts it to learn of a Stop. If even the
+    drop fails, the error propagates, as the step's own hint read would fail the same way.
+    """
     fields: dict[str, object] = {
         HintField.STOP: state.stopped_through,
         HintField.OPEN: state.open_reply or "",
@@ -327,12 +331,13 @@ async def _publish_hint(
         await _raise_hint(conversation_id, user_id, HintField.HEAD, logged.seq, fields)
     except RedisError as exc:
         log.error(
-            f"{LogTag.STORAGE} Could not raise a conversation's preempt hint",
+            f"{LogTag.STORAGE} Could not raise a conversation's preempt hint; dropping it",
             conversation_id=conversation_id,
             seq=logged.seq,
             error_type=type(exc).__name__,
             error=str(exc),
         )
+        await redis_cache.client.delete(_hint_key(conversation_id, user_id))
 
 
 async def _raise_hint(

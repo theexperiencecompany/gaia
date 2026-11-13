@@ -262,6 +262,8 @@ async def create_user_indexes() -> None:
 # One chat per tracked todo: the atomic backstop that makes a racing second create
 # (a run and an "Open chat" tap at once) fail, so the loser reads the winner's chat.
 # Only chats bound to a todo are in the filter. Shared with the contract suite.
+CONVERSATION_ID_UNIQUE_KEYS: IndexKeys = [("conversation_id", 1)]
+CONVERSATION_ID_UNIQUE_OPTIONS: IndexOptions = {"unique": True, "name": "conversation_id_unique"}
 CONVERSATION_TODO_BINDING_KEYS: IndexKeys = [("user_id", 1), ("todo_id", 1)]
 CONVERSATION_TODO_BINDING_OPTIONS: IndexOptions = {
     "unique": True,
@@ -270,8 +272,8 @@ CONVERSATION_TODO_BINDING_OPTIONS: IndexOptions = {
 }
 
 
-# The sweeper's scan: only heads it has something to finish on, a few among every conversation.
-CONVERSATION_SWEEP_KEYS: IndexKeys = [("updatedAt", -1)]
+# The sweeper's scan, paged by _id: only heads it has something to finish on, a few among every conversation.
+CONVERSATION_SWEEP_KEYS: IndexKeys = [("_id", 1), ("conversation_id", 1)]
 CONVERSATION_SWEEP_OPTIONS: IndexOptions = {
     "name": SWEEP_INDEX_NAME,
     "partialFilterExpression": SWEEP_DUE_FILTER,
@@ -317,6 +319,10 @@ async def create_conversation_indexes() -> None:
             conversations_collection.create_index([("user_id", 1), ("createdAt", -1)]),
             # For specific conversation lookups (extremely critical for performance)
             conversations_collection.create_index([("user_id", 1), ("conversation_id", 1)]),
+            # One conversation per id across every user: the thread, events stream and locks key on it.
+            conversations_collection.create_index(
+                CONVERSATION_ID_UNIQUE_KEYS, **CONVERSATION_ID_UNIQUE_OPTIONS
+            ),
             # For starred conversations queries
             conversations_collection.create_index(
                 [("user_id", 1), ("starred", 1), ("createdAt", -1)]

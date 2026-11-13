@@ -122,13 +122,7 @@ async def create_conversation_service(
         createdAt=created_at,
     )
 
-    try:
-        await conversation_repository.create(document)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create conversation: {e!s}",
-        ) from e
+    await conversation_repository.create(document)
 
     # Runs from the conversations endpoint, the chat stream's background init,
     # bot message handling, and seeding — always with an explicit user_id.

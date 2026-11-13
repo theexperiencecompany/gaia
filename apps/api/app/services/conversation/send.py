@@ -31,6 +31,7 @@ from app.services.conversation.title import title_conversation
 from app.services.conversation_service import create_conversation_service
 from app.services.files import FileService
 from app.utils.background_tasks import spawn_background_task
+from app.utils.errors import ConversationAlreadyExistsError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from shared.py.analytics.context import bound_analytics_context
@@ -57,9 +58,13 @@ async def open_conversation(
     """
     if await conversation_repository.exists(conversation_id, user_id=user.user_id):
         return False
-    await create_conversation_service(
-        ConversationModel(conversation_id=conversation_id, source=source), user
-    )
+    try:
+        await create_conversation_service(
+            ConversationModel(conversation_id=conversation_id, source=source), user
+        )
+    except ConversationAlreadyExistsError:
+        # A concurrent first send of this user's created it: one head, and this send joins it.
+        return False
     return True
 
 

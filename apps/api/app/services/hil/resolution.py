@@ -36,7 +36,7 @@ from app.constants.log_tags import LogTag
 from app.models.agent_models import ExecutorRunItem
 from app.models.hil_models import ApprovalScope, HILApprovalRecord, HILApprovalStatus
 from app.schemas.hil_schemas import BatchDecisionOutcome
-from app.services.conversation.work_log import record_approval_decided
+from app.services.conversation.work_log import approval_is_logged, record_approval_decided
 from app.services.hil.approvals_store import (
     clear_resume_item,
     get_approval,
@@ -268,6 +268,7 @@ async def _resolve_or_close(
         )
         # Closed with no run to resume, but still a decision the user served.
         _observe_hil_user_wait(record.model_copy(update={"decided_at": decided_at}))
+        await _log_decision(record, user_id, kind)
         return
     await _resolve_record(record, user_id=user_id, kind=kind, feedback=feedback)
 
@@ -340,8 +341,7 @@ async def _resolve_record(
         }
     )
     _observe_hil_user_wait(record)
-    if _dispatched_by_step(record):
-        await record_approval_decided(record.conversation_id, user_id, record.approval_id, kind)
+    await _log_decision(record, user_id, kind)
 
     log.set(hil={"approval_id": record.approval_id, "decision": kind, "tool": record.tool_name})
     if record.resume_item is None and record.subagent_resume is None:
@@ -355,9 +355,10 @@ async def _resolve_record(
     return record
 
 
-def _dispatched_by_step(record: HILApprovalRecord) -> bool:
-    """Return whether the paused run was work on the conversation's log, which logged its approval."""
-    return bool((record.resume_item or {}).get("task_id"))
+async def _log_decision(record: HILApprovalRecord, user_id: str, kind: ApprovalResolution) -> None:
+    """Log the decision wherever the conversation's live work waits on this approval, however it was decided."""
+    if await approval_is_logged(record.conversation_id, user_id, record.approval_id):
+        await record_approval_decided(record.conversation_id, user_id, record.approval_id, kind)
 
 
 async def _dispatch_decided(record: HILApprovalRecord) -> None:

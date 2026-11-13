@@ -1,4 +1,4 @@
-"""The approval reply port: approve or deny, otherwise None, and a failing classifier never raises."""
+"""The approval reply port: approve or deny, otherwise None, and a failing resolver propagates."""
 
 from unittest.mock import AsyncMock, patch
 
@@ -22,10 +22,13 @@ async def test_only_an_approve_or_deny_is_a_decision(
     action: str | None, decision: str | None
 ) -> None:
     with patch(_RESOLVE, AsyncMock(return_value=action)) as resolve:
-        assert await HilApprovalReplies().classify("c1", "u1", "yes", _HISTORY) == decision
+        assert await HilApprovalReplies().resolve("c1", "u1", "yes", _HISTORY) == decision
     resolve.assert_awaited_once_with("c1", "u1", "yes", _HISTORY[-HIL_CLASSIFIER_HISTORY_TURNS:])
 
 
-async def test_a_classifier_failure_reads_as_no_decision() -> None:
-    with patch(_RESOLVE, AsyncMock(side_effect=RuntimeError("classifier down"))):
-        assert await HilApprovalReplies().classify("c1", "u1", "yes", []) is None
+async def test_a_resolver_failure_propagates_instead_of_reading_as_no_decision() -> None:
+    with (
+        patch(_RESOLVE, AsyncMock(side_effect=RuntimeError("classifier down"))),
+        pytest.raises(RuntimeError, match="classifier down"),
+    ):
+        await HilApprovalReplies().resolve("c1", "u1", "yes", [])

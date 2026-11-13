@@ -45,7 +45,7 @@ def _apply(state: ConversationState, seq: int, entry: Entry) -> Transition | Rej
     result: Transition | Rejected
     match entry:
         case UserMessage() | WorkflowFired() | IntegrationConnected():
-            result = Transition(state=_wake(state, seq), effects=_wake_effects(entry))
+            result = _wake_input(state, seq, entry)
         case BargeIn(reply_id=reply_id):
             result = Transition(state=state, effects=_barge_effects(state, reply_id))
         case StopRequested():
@@ -86,6 +86,18 @@ def _barge_effects(state: ConversationState, reply_id: str) -> tuple[Effect, ...
     if reply_id == state.open_reply:
         return (Preempt(barge_reply_id=reply_id), KickStep())
     return (KickStep(),)
+
+
+def _wake_input(
+    state: ConversationState, seq: int, entry: UserMessage | WorkflowFired | IntegrationConnected
+) -> Transition | Rejected:
+    """Wake for an input; a fire is refused while the previous fire is unanswered or work still runs here."""
+    if not isinstance(entry, WorkflowFired):
+        return Transition(state=_wake(state, seq), effects=_wake_effects(entry))
+    if state.unsettled_fires or state.work:
+        return Rejected(reason=RejectReason.FIRE_OVERLAPS)
+    woken = _wake(state, seq).model_copy(update={"unsettled_fires": (*state.unsettled_fires, seq)})
+    return Transition(state=woken, effects=_wake_effects(entry))
 
 
 def _wake(state: ConversationState, seq: int) -> ConversationState:
@@ -199,6 +211,7 @@ def _drop_waking_through(state: ConversationState, seq: int) -> ConversationStat
     return state.model_copy(
         update={
             "unsettled_waking": tuple(waking for waking in state.unsettled_waking if waking > seq),
+            "unsettled_fires": tuple(fire for fire in state.unsettled_fires if fire > seq),
             "finished_work": tuple(item for item in state.finished_work if item.seq > seq),
         }
     )

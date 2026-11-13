@@ -532,6 +532,7 @@ class TestCancelledRunIsNotResurrectedByItsApproval:
             patch(f"{RESOLUTION}.claim_resume_dispatch", new=AsyncMock(return_value=True)),
             patch(f"{RESOLUTION}.release_resume_dispatch", new=AsyncMock()),
             patch(f"{RESOLUTION}.mark_resumed", new=AsyncMock()),
+            patch(f"{RESOLUTION}.approval_is_logged", new=AsyncMock(return_value=False)),
         )
 
     async def test_approving_afterwards_does_not_run_the_cancelled_action(self) -> None:

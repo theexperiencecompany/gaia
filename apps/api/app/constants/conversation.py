@@ -13,6 +13,8 @@ RESTART_WINDOW = timedelta(seconds=RESTART_WINDOW_SECONDS)
 RUNNER_ALIVE_KEY_PREFIX = "conv:alive:"
 # A holder that cannot renew its key for this long is dead, and its claim can be taken over.
 RUNNER_ALIVE_TTL_SECONDS = 10
+# The holder renews its key this many times per TTL, from its own task for the whole claim.
+RUNNER_ALIVE_BEATS_PER_TTL = 4
 #: conv:hint:{user_id}:{conversation_id}, the advisory preempt view a running step polls.
 HINT_KEY_PREFIX = "conv:hint:"
 # A lapsed hint is rebuilt from the head, so it only needs to outlive an active conversation.
@@ -70,6 +72,8 @@ SERVER_RESTART_NOTE = (
 
 #: conv:events:{conversation_id}, the one Redis Stream of a conversation's output frames.
 EVENTS_KEY_PREFIX = "conv:events:"
+#: conv:events-open:{conversation_id} exists while a reply is open; its stream is not trimmed meanwhile.
+EVENTS_OPEN_REPLY_KEY_PREFIX = "conv:events-open:"
 # A reply streams a few hundred deltas; older frames are replayed from the log instead.
 EVENTS_STREAM_MAXLEN = 2000
 # An idle conversation's frames are all in the log, so the stream only needs to outlive a session.

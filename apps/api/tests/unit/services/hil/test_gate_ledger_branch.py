@@ -859,13 +859,15 @@ class TestLedgerAutoMode:
 
 @pytest.mark.unit
 class TestTheGateBeforeAnyPolicy:
-    async def test_an_identity_less_call_is_reported_as_skipped(
+    async def test_an_identity_less_call_is_refused_and_reported(
         self, gate_seams: GateSeams
     ) -> None:
         request = make_request(name=GATED_TOOL, args=GATED_ARGS, configurable={})
 
-        assert await gate.decide_tool_call(request) is None
-        gate_seams.log.warning.assert_called_once()
-        assert "Gate skipped: no run identity" in gate_seams.log.warning.call_args.args[0]
-        assert gate_seams.log.warning.call_args.kwargs == {"tool_name": GATED_TOOL}
+        refused = await gate.decide_tool_call(request)
+        assert refused is not None
+        assert refused.additional_kwargs[HIL_STATUS_KWARG] == "error"
+        gate_seams.log.error.assert_called_once()
+        assert "no run identity" in gate_seams.log.error.call_args.args[0]
+        assert gate_seams.log.error.call_args.kwargs == {"tool_name": GATED_TOOL}
         gate_seams.policy.assert_not_awaited()

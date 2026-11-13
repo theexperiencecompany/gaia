@@ -5,11 +5,16 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 import contextlib
 from dataclasses import dataclass, replace
 import itertools
+from typing import cast
 
 from langgraph.errors import GraphRecursionError
 
 from app.constants.chat import BOT_CONVERSATION_SOURCES, EMPTY_RESPONSE_FALLBACK
-from app.constants.conversation import CLASSIFIER_LOOKBACK_SEQS
+from app.constants.conversation import (
+    CLASSIFIER_LOOKBACK_SEQS,
+    RUNNER_ALIVE_BEATS_PER_TTL,
+    RUNNER_ALIVE_TTL_SECONDS,
+)
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import (
@@ -23,7 +28,6 @@ from app.models.conversation_frame_models import (
     ToolDataEvent,
 )
 from app.models.conversation_log_models import (
-    ApprovalDecided,
     BargeIn,
     Batch,
     CommitReason,
@@ -68,6 +72,7 @@ from app.services.conversation.reply_analytics import capture_reply_ended
 from app.services.conversation.reply_files import reply_files
 from app.services.conversation.todo_wake import nothing_to_report
 from app.services.conversation.verdict import merge_group, quote_target, verdict
+from app.utils.liveness import keep_proving
 from shared.py.wide_events import log
 
 
@@ -165,10 +170,42 @@ async def advance(ports: RuntimePorts, conversation_id: str, user_id: str) -> No
     if claim is None:
         return
     with contextlib.suppress(ClaimLost):
+        await _hold(ports, claim)
+
+
+async def _hold(ports: RuntimePorts, claim: StepClaim) -> None:
+    """Serve batches until caught up, proving the claim alive from its own task the whole time."""
+    beating = _keep_claim_alive(ports, claim)
+    try:
         await _recover(ports, claim)
         for number in itertools.count(1):
             if await _serve(ports, claim, f"{claim.epoch}.{number}"):
+                continue
+            # Stopped first: a beat after the release deleted the key would cancel this step.
+            beating.cancel()
+            if await ports.log.release_if_caught_up(claim):
                 return
+            beating = _keep_claim_alive(ports, claim)
+    except asyncio.CancelledError:
+        if not beating.done() or beating.cancelled():
+            raise
+        # The beat cancelled this step: it could not prove its claim, so another may hold it now.
+        cast("asyncio.Task[object]", asyncio.current_task()).uncancel()
+        raise ClaimLost from None
+    finally:
+        beating.cancel()
+
+
+def _keep_claim_alive(ports: RuntimePorts, claim: StepClaim) -> asyncio.Task[None]:
+    every = RUNNER_ALIVE_TTL_SECONDS / RUNNER_ALIVE_BEATS_PER_TTL
+    return keep_proving(
+        lambda: ports.log.beat(claim),
+        every=every,
+        give_up_after=RUNNER_ALIVE_TTL_SECONDS - every,
+        name="conversation_step_alive",
+        what="conversation step",
+        context={"conversation_id": claim.conversation_id, "epoch": str(claim.epoch)},
+    )
 
 
 async def _recover(ports: RuntimePorts, claim: StepClaim) -> None:
@@ -179,11 +216,18 @@ async def _recover(ports: RuntimePorts, claim: StepClaim) -> None:
         await ports.frames.publish(
             conversation_id, EntryFrame(seq=logged.seq, at=logged.at, entry=logged.entry)
         )
-    if state.open_reply is not None:
+    reply_id = state.open_reply
+    if reply_id is None and _started_work_unseen(state):
+        # Committed work is never redone silently: the dead attempt gets a failed reply too.
+        attempt_id = f"{claim.epoch}.0"
+        reply_id = f"r{attempt_id}"
+        opened = Reply(id=f"{attempt_id}:reply", reply_id=reply_id, attempt_id=attempt_id)
+        await _append(ports, claim, opened)
+    if reply_id is not None:
         # Its inputs stay unsettled, so the next run answers them with this failure in its context.
         recovered = ReplySettled(
-            id=f"{state.open_reply}:recovered:{claim.epoch}",
-            reply_id=state.open_reply,
+            id=f"{reply_id}:recovered:{claim.epoch}",
+            reply_id=reply_id,
             outcome=ReplyOutcome.FAILED,
             answers=(),
             through=state.settled_through,
@@ -195,17 +239,26 @@ async def _recover(ports: RuntimePorts, claim: StepClaim) -> None:
         await _set_comms(ports, claim, CommsPhase.IDLE)
 
 
+def _started_work_unseen(state: ConversationState) -> bool:
+    """Return whether a dead attempt dispatched work for inputs no reply has answered yet."""
+    return state.comms is not CommsPhase.IDLE and any(
+        item.cause_through > state.settled_through for item in state.work
+    )
+
+
 async def _serve(ports: RuntimePorts, claim: StepClaim, attempt_id: str) -> bool:
-    """Answer the oldest waking batch; return True once released with nothing left."""
+    """Answer the oldest waking batch; return False when nothing waking is left."""
     conversation_id = claim.conversation_id
     state = await ports.log.state(conversation_id, claim.user_id)
-    entries = await ports.log.read_after(conversation_id, claim.user_id, state.settled_through)
+    # Nothing a Stop covered reaches a run, even what no run ever saw.
+    since = max(state.settled_through, state.stopped_through)
+    entries = await ports.log.read_after(conversation_id, claim.user_id, since)
     entries = await _cut_spoken_over(ports, claim, entries)
     pending = [logged for logged in entries if logged.seq in state.unsettled_waking]
     if not pending:
-        return await ports.log.release_if_caught_up(claim)
-    if await _answered_as_approval(ports, claim, state, pending[0], attempt_id):
         return False
+    if await _answered_as_approval(ports, claim, state, pending[0], attempt_id):
+        return True
     batch = _batch(pending)
     reply_id = _reply_id(batch, entries, attempt_id)
     attempt = _Attempt(
@@ -221,7 +274,10 @@ async def _serve(ports: RuntimePorts, claim: StepClaim, attempt_id: str) -> bool
         # The run said so itself, and its todo lets it: nothing is shown, its report stays on its WorkFinished.
         unshown = _empty_reply(attempt).model_copy(update={"tool_data": ()})
         await _conclude(ports, attempt, unshown, ReplyOutcome.SILENT)
-        return False
+        return True
+    if isinstance(batch.waking[0].entry, WorkflowFired) and not state.work:
+        # Under this claim no comms run writes the threads, and no live work runs on the executor's.
+        await ports.effects.reset_workflow_threads(conversation_id)
     # Everything since the last settled input that no batch carries: notes, stops, a dead attempt.
     context = [
         logged
@@ -229,7 +285,7 @@ async def _serve(ports: RuntimePorts, claim: StepClaim, attempt_id: str) -> bool
         if logged not in batch.waking and logged.seq not in state.unsettled_waking
     ]
     await _run_attempt(ports, attempt, context)
-    return False
+    return True
 
 
 def _batch(pending: Sequence[LoggedEntry]) -> Batch:
@@ -307,16 +363,12 @@ async def _answered_as_approval(
     ):
         return False
     history = await _turns_before(ports, claim, first.seq)
-    decision = await ports.approvals.classify(
+    # The resolver logs each approval's own decision; the step only acknowledges the reply.
+    decision = await ports.approvals.resolve(
         claim.conversation_id, claim.user_id, message.text, history
     )
     if decision is None:
         return False
-    for approval_id in awaiting:
-        decided = ApprovalDecided(
-            id=f"{message.id}:decided:{approval_id}", approval_id=approval_id, decision=decision
-        )
-        await _append(ports, claim, decided)
     text = HIL_ACK_APPROVED if decision == "approve" else HIL_ACK_DENIED
     ack = Reply(
         id=f"{attempt_id}:reply", reply_id=f"r{attempt_id}", attempt_id=attempt_id, text=text
@@ -352,10 +404,19 @@ async def _run_attempt(
         if attempt.progress is None:
             await _retract(ports, attempt)
         raise
+    except Exception as error:  # a store or stream failure mid-attempt fails it, under the claim
+        await run.cancel(CancelReason.LOST)
+        await _fail(ports, attempt, error)
+        return
     except BaseException:
         await run.cancel(CancelReason.LOST)
         raise
-    await _end(ports, attempt, run, ending)
+    try:
+        await _end(ports, attempt, run, ending)
+    except ClaimLost:
+        raise
+    except Exception as error:  # settling failed part-way: its idempotent ids let _fail finish it
+        await _fail(ports, attempt, error)
 
 
 async def _watch(ports: RuntimePorts, attempt: _Attempt, run: CommsRun) -> _Ending:
@@ -364,8 +425,9 @@ async def _watch(ports: RuntimePorts, attempt: _Attempt, run: CommsRun) -> _Endi
     try:
         while True:
             signal = await _next_signal(pump, ports.tick)
-            if isinstance(signal, _Tick) and not await ports.log.beat(attempt.claim):
-                return Verdict.LOST
+            if isinstance(signal, ModelOutput | Summarized):
+                # Already checkpointed when its event arrives: this event can never be restarted.
+                _commit_quietly(attempt)
             decision = await _decide(ports, attempt)
             if decision is not Verdict.CONTINUE:
                 return decision

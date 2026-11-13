@@ -15,7 +15,6 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-import time
 from typing import Any, cast
 from uuid import uuid4
 
@@ -50,8 +49,8 @@ from app.models.agent_models import (
     ExecutorRunItem,
 )
 from app.models.executor_activity_models import ExecutorActivity, ExecutorActivitySnapshot
-from app.utils.background_tasks import spawn_background_task
 from app.utils.general_utils import is_json_safe
+from app.utils.liveness import keep_proving
 from shared.py.wide_events import current_workflow_execution_id, log
 
 # Cosmetic prefix for queued stream ids — kept for log greppability only.
@@ -202,7 +201,9 @@ async def get_lock_holder(conversation_id: str) -> str | None:
 
 
 def _alive_key(conversation_id: str, lock_value: str) -> str:
-    return f"{EXECUTOR_ALIVE_PREFIX}{conversation_id}:{lock_value}"
+    """Key a holder's liveness by its task id, so whoever knows only the task can ask whether it runs."""
+    task_id = parse_lock_value(lock_value)[1]
+    return f"{EXECUTOR_ALIVE_PREFIX}{conversation_id}:{task_id or lock_value}"
 
 
 async def hold_run_alive(
@@ -219,49 +220,31 @@ async def hold_run_alive(
 
 
 async def keep_alive(conversation_id: str, lock_value: str) -> asyncio.Task[None]:
-    """Hold lock_value's liveness now and renew it until the returned task is cancelled.
+    """Hold lock_value's liveness now and renew it until the returned task is cancelled or the holder ends.
 
-    The one liveness contract: whatever holds the busy lock keeps this running for
-    as long as it holds it, so a holder whose process died stops renewing. The
-    calling task is the holder: if its liveness cannot be written in time, it is
-    cancelled before the key can lapse and another run take the conversation.
+    The one liveness contract: whatever holds the busy lock keeps this running for as long
+    as it holds it, so a holder whose process died stops renewing. The calling task is the
+    holder: if its liveness cannot be written in time, it is cancelled before the key can
+    lapse and another run take the conversation.
     """
-    # Always set: a coroutine awaited on the loop runs inside a task.
-    holder = cast("asyncio.Task[object]", asyncio.current_task())
     await hold_run_alive(conversation_id, lock_value)
-    return spawn_background_task(
-        _renew_alive(conversation_id, lock_value, holder), name=EXECUTOR_ALIVE_TASK_NAME
+
+    async def renew() -> bool:
+        await hold_run_alive(conversation_id, lock_value)
+        # The lock's own TTL is only the crash net: a run past it would read as ended and a
+        # second run could take the thread. Dead detection stays sound, since a holder's
+        # liveness lapses EXECUTOR_ALIVE_TTL after its last beat.
+        await extend_lock_held_by(conversation_id, lock_value, EXECUTOR_BUSY_TTL)
+        return True
+
+    return keep_proving(
+        renew,
+        every=EXECUTOR_ALIVE_BEAT_SECONDS,
+        give_up_after=EXECUTOR_ALIVE_GIVE_UP_SECONDS,
+        name=EXECUTOR_ALIVE_TASK_NAME,
+        what="executor",
+        context={"conversation_id": conversation_id, "holder": lock_value},
     )
-
-
-async def _renew_alive(conversation_id: str, lock_value: str, holder: asyncio.Task[object]) -> None:
-    proven_at = time.monotonic()
-    while True:
-        await asyncio.sleep(EXECUTOR_ALIVE_BEAT_SECONDS)
-        try:
-            await hold_run_alive(conversation_id, lock_value)
-            # The lock's own TTL is only the crash net: a run past it would read as ended
-            # and a second run could take the thread. Dead detection stays sound, since a
-            # holder's liveness lapses EXECUTOR_ALIVE_TTL after its last beat.
-            await extend_lock_held_by(conversation_id, lock_value, EXECUTOR_BUSY_TTL)
-            proven_at = time.monotonic()
-        except Exception as e:  # one failed write must not end the renewal of a live holder
-            unproven = time.monotonic() - proven_at
-            # Its key could lapse before the next write lands: stop rather than run beside
-            # whoever reclaims the lock.
-            stopping = unproven >= EXECUTOR_ALIVE_GIVE_UP_SECONDS
-            log.error(
-                f"{LogTag.AGENT} Could not renew an executor lock holder's liveness",
-                conversation_id=conversation_id,
-                holder=lock_value,
-                unproven_seconds=round(unproven, 1),
-                stopping_holder=stopping,
-                error_type=type(e).__name__,
-                error=str(e),
-            )
-            if stopping:
-                holder.cancel("executor liveness lost")
-                return
 
 
 async def _holder_is_dead(conversation_id: str, holder: str) -> bool:
@@ -496,12 +479,15 @@ async def prepare_run_from_item(
 
 
 async def run_is_lost(conversation_id: str, task_id: str) -> bool:
-    """Return whether no live process runs task_id, a run dispatched with no stream id.
+    """Return whether no live process runs task_id, whatever stream id its run carries.
 
     A run's liveness outlasts its finalize, so a run that just ended is never lost.
     """
-    lock_value = build_lock_value(None, task_id)
-    if await redis_cache.client.exists(_alive_key(conversation_id, lock_value)):
+    if await redis_cache.client.exists(
+        _alive_key(conversation_id, build_lock_value(None, task_id))
+    ):
         return False
     holder = await get_lock_holder(conversation_id)
-    return holder != lock_value or await _holder_is_dead(conversation_id, holder)
+    if holder is None or parse_lock_value(holder)[1] != task_id:
+        return True
+    return await _holder_is_dead(conversation_id, holder)

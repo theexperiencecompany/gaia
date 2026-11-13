@@ -10,6 +10,7 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 
 from app.agents.core.background.work_cancel import cancel_named_work
+from app.config.settings import settings
 from app.constants.conversation import STEP_DRAIN_GRACE_SECONDS, STEP_TICK_SECONDS
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
@@ -32,6 +33,7 @@ from app.services.conversation.reply_files import ReplyFile
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.step import advance
 from app.services.outbound_delivery import publish_outbound_file
+from app.services.workflow.thread_reset import reset_workflow_threads
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
@@ -109,6 +111,11 @@ class RuntimeEffects:
                 file.path.rsplit("/", 1)[-1],
                 content_type=file.content_type,
             )
+
+    async def reset_workflow_threads(self, conversation_id: str) -> None:
+        """Clear the fire's threads when resets are on; the previous run reaches it as its recorded trace."""
+        if settings.WORKFLOW_THREAD_RESET_ENABLED:
+            await reset_workflow_threads(conversation_id)
 
     async def _react(self, conversation_id: str, user_id: str, message_id: str) -> None:
         state = await self._log.state(conversation_id, user_id)

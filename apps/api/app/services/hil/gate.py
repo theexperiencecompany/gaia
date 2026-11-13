@@ -188,14 +188,12 @@ async def _verdict(request: ToolCallRequest) -> ToolMessage | _Pending | None:
 
     context = read_gate_context(request)
     if context is None:
-        # AUDIT HOLE (instrumented 2026-09-19): an identity-less call runs with no
-        # gate, no record, no message, so its tool calls are invisible to HIL.
-        # Keep until read_gate_context can fail closed without breaking system flows.
-        log.warning(
-            f"{LogTag.HIL} Gate skipped: no run identity on the call",
+        # Fail closed: with no user there is no policy to resolve, so a gated call never runs.
+        log.error(
+            f"{LogTag.HIL} Gate refused a call with no run identity",
             tool_name=call.name,
         )
-        return None
+        return _gate_error_message(call)
 
     try:
         policy = await resolve_policy(request, context.user_id, call.name)

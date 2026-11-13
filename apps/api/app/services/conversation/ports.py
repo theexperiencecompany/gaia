@@ -214,11 +214,15 @@ class Effects(Protocol):
         """Send the files a settled reply carries where the reply cannot show them: a bot's platform."""
         ...
 
+    async def reset_workflow_threads(self, conversation_id: str) -> None:
+        """Start a workflow fire's run from clean threads; called by the step under its claim."""
+        ...
+
 
 class ApprovalReplies(Protocol):
     """Reads a typed reply on a button-less surface as an answer to pending approvals."""
 
-    async def classify(
+    async def resolve(
         self, conversation_id: str, user_id: str, message_text: str, history: list[MessageDict]
     ) -> ApprovalDecision | None:
         """Return the decision the message gives, read against the turns before it; None when it is not an answer."""

@@ -13,6 +13,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
+from bson import ObjectId
 from pydantic import TypeAdapter
 from pymongo import ReturnDocument
 
@@ -52,7 +53,8 @@ SWEEP_DUE_FILTER: dict[str, object] = {
         {f"{STATE_FIELD}.work.0": {"$exists": True}},
     ]
 }
-SWEEP_INDEX_NAME = "conversation_sweep_due"
+SWEEP_INDEX_NAME = "conversation_sweep_due_by_id"
+_SWEEP_PROJECTION = {"_id": 1, "conversation_id": 1, "user_id": 1, OUTBOX_FIELD: 1, STATE_FIELD: 1}
 #: The fold of a log with no entries yet: what a head that stores no state holds.
 EMPTY_LOG_STATE = ConversationState(
     head=0,
@@ -68,8 +70,9 @@ _EMPTY_STATE: dict[str, object] = EMPTY_LOG_STATE.model_dump(mode="json")
 
 @dataclass(frozen=True)
 class SweepHead:
-    """A step-run head as the sweeper reads it."""
+    """A step-run head as the sweeper reads it; cursor is its _id, where the next page starts."""
 
+    cursor: str
     conversation_id: str
     user_id: str
     has_outbox: bool
@@ -213,32 +216,24 @@ class ConversationLogRepository(ConversationRepository):
         self._spawn_flush(conversation_id, user_id)
         return True
 
-    async def list_heads_to_sweep(self, limit: int) -> list[SweepHead]:
-        """Return the heads with unflushed entries, unsettled inputs or live work."""
+    async def list_heads_to_sweep(self, limit: int, after: str | None) -> list[SweepHead]:
+        """Return up to limit heads with unflushed entries, unsettled inputs or live work, in _id order past after."""
+        query = (
+            SWEEP_DUE_FILTER
+            if after is None
+            else {"_id": {"$gt": ObjectId(after)}, **SWEEP_DUE_FILTER}
+        )
         with store_errors("log sweep"):  # pragma: no mutate — error label
             cursor = self._raw_collection().find(
-                SWEEP_DUE_FILTER,
+                query,
                 # Equivalent under mutation: any truthy flag projects the field.
-                {
-                    "_id": 0,
-                    "conversation_id": 1,
-                    "user_id": 1,
-                    OUTBOX_FIELD: 1,
-                    STATE_FIELD: 1,
-                },  # pragma: no mutate
+                _SWEEP_PROJECTION,  # pragma: no mutate
+                sort=[("_id", 1)],
                 limit=limit,
                 hint=SWEEP_INDEX_NAME,
             )
             rows = [row async for row in cursor]
-        return [
-            SweepHead(
-                conversation_id=str(row["conversation_id"]),
-                user_id=str(row["user_id"]),
-                has_outbox=bool(row.get(OUTBOX_FIELD)),
-                state=_state(row),
-            )
-            for row in rows
-        ]
+        return [_sweep_head(row) for row in rows]
 
     async def list_live_heads(self, source: str, limit: int) -> list[SweepHead]:
         """Return the source's heads with live work or unanswered inputs (an open reply has its inputs unsettled)."""
@@ -246,26 +241,12 @@ class ConversationLogRepository(ConversationRepository):
             cursor = self._raw_collection().find(
                 {"source": source, **SWEEP_DUE_FILTER},
                 # Equivalent under mutation: any truthy flag projects the field.
-                {
-                    "_id": 0,
-                    "conversation_id": 1,
-                    "user_id": 1,
-                    OUTBOX_FIELD: 1,
-                    STATE_FIELD: 1,
-                },  # pragma: no mutate
+                _SWEEP_PROJECTION,  # pragma: no mutate
                 limit=limit,
                 hint=SWEEP_INDEX_NAME,
             )
             rows = [row async for row in cursor]
-        heads = [
-            SweepHead(
-                conversation_id=str(row["conversation_id"]),
-                user_id=str(row["user_id"]),
-                has_outbox=bool(row.get(OUTBOX_FIELD)),
-                state=_state(row),
-            )
-            for row in rows
-        ]
+        heads = [_sweep_head(row) for row in rows]
         return [head for head in heads if head.state.work or head.state.unsettled_waking]
 
     async def list_integration_entries(
@@ -392,3 +373,16 @@ def _logged(stored: StoredEntry) -> LoggedEntry:
 
 
 conversation_log_repository = ConversationLogRepository()
+
+
+def _sweep_head(row: Mapping[str, object]) -> SweepHead:
+    cursor = row["_id"]
+    if not isinstance(cursor, ObjectId):
+        raise TypeError(f"conversation head _id is a {type(cursor).__name__}, not an ObjectId")
+    return SweepHead(
+        cursor=str(cursor),
+        conversation_id=str(row["conversation_id"]),
+        user_id=str(row["user_id"]),
+        has_outbox=bool(row.get(OUTBOX_FIELD)),
+        state=_state(row),
+    )

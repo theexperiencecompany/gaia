@@ -54,11 +54,11 @@ from app.constants.cache import (
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
 )
 from app.constants.llm import LLMProviderName
-from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, ExecutorRunItem
 from app.models.executor_activity_models import ExecutorActivity, ExecutorActivitySnapshot
 from app.models.user_models import AuthenticatedUser
+from app.utils import liveness
 from shared.py.analytics import Dedupe
 from tests.helpers import captured_wide_event
 
@@ -698,7 +698,7 @@ class TestReclaimDeadLock:
     async def test_a_parked_runs_liveness_lasts_its_park(self, redis) -> None:
         await hold_run_alive(CONVERSATION, "s1:t1", 9000)
 
-        assert 8990 < await redis.ttl(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:s1:t1") <= 9000
+        assert 8990 < await redis.ttl(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:t1") <= 9000
 
     async def test_a_holder_kept_alive_keeps_its_lock_until_it_lets_go(self, redis) -> None:
         """Every holder, a run or a workflow's reservation, stays live only while it renews."""
@@ -707,7 +707,7 @@ class TestReclaimDeadLock:
         with patch.object(eq, "EXECUTOR_ALIVE_BEAT_SECONDS", 0):
             alive = await keep_alive(CONVERSATION, "s1:t1")
             assert alive.get_name() == "executor_alive_beat"
-            await redis.delete(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:s1:t1")
+            await redis.delete(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:t1")
             for _ in range(20):
                 await asyncio.sleep(0)
             assert await reclaim_dead_lock(CONVERSATION) is False
@@ -717,7 +717,7 @@ class TestReclaimDeadLock:
         # Its liveness lapses EXECUTOR_ALIVE_TTL after the last beat, and the lock that
         # beat renewed has aged as long by then.
         await redis.expire(BUSY_KEY, EXECUTOR_BUSY_TTL - EXECUTOR_ALIVE_TTL)
-        await redis.delete(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:s1:t1")
+        await redis.delete(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:t1")
         assert await reclaim_dead_lock(CONVERSATION) is True
 
 
@@ -834,7 +834,7 @@ class TestLivenessRenewal:
         with (
             patch.object(eq, "EXECUTOR_ALIVE_BEAT_SECONDS", 0),
             patch.object(eq, "hold_run_alive", _hold),
-            patch.object(eq, "time", SimpleNamespace(monotonic=lambda: next(clock))),
+            patch.object(liveness, "time", SimpleNamespace(monotonic=lambda: next(clock))),
         ):
             async with captured_wide_event() as event:
                 holder = asyncio.create_task(_holder())
@@ -847,9 +847,8 @@ class TestLivenessRenewal:
             (12.3, False),
             (float(EXECUTOR_ALIVE_GIVE_UP_SECONDS), True),
         ]
-        assert failures[0]["msg"] == (
-            f"{LogTag.AGENT} Could not renew an executor lock holder's liveness"
-        )
+        assert failures[0]["msg"] == "Could not renew a holder's liveness"
+        assert failures[0]["what"] == "executor"
         assert {
             (e["conversation_id"], e["holder"], e["error_type"], e["error"]) for e in failures
         } == {(CONVERSATION, "s1:t1", "ConnectionError", "redis down")}

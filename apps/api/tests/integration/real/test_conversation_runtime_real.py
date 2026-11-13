@@ -10,14 +10,24 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Protocol, TypeVar, cast
+from typing import Any, Protocol, TypeVar, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from bson import ObjectId
+from langchain_core.callbacks import AsyncCallbackManagerForLLMRun
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+)
+from langchain_core.outputs import ChatGenerationChunk
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 from redis.asyncio import Redis
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.agents.context.slots import TIME_CONTEXT_MARKER, PromptSlot, mark, slot_of
 from app.agents.core.background import (
@@ -29,6 +39,7 @@ from app.agents.core.background import (
 from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_lock_value,
+    keep_alive,
     try_acquire_lock,
 )
 from app.agents.core.background.executor_runner import deliver_to_executor
@@ -40,19 +51,28 @@ from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManag
 from app.agents.core.graph_manager import GraphManager
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.run_record import append_call
+from app.config.settings import settings
 from app.constants.browser import HandoffDecision, HandoffStatus
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
+from app.constants.conversation import EVENTS_STREAM_MAXLEN, STEP_TICK_SECONDS
 from app.constants.graphs import GraphName
 from app.constants.todos import TodoWakeKind
 from app.core.lazy_loader import providers
+from app.db.mongodb.indexes import CONVERSATION_ID_UNIQUE_KEYS, CONVERSATION_ID_UNIQUE_OPTIONS
 from app.db.redis import redis_cache
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
 from app.models.agent_config import AgentConfigurable, StepTurnRef
 from app.models.agent_models import AgentRunnableConfig
-from app.models.conversation_frame_models import EntryFrame, ToolDataEvent, WorkDeltaFrame
+from app.models.conversation_frame_models import (
+    EntryFrame,
+    ReplyDeltaFrame,
+    ResponseEvent,
+    ToolDataEvent,
+    WorkDeltaFrame,
+)
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
@@ -88,7 +108,8 @@ from app.schemas.browser import NewHandoff
 from app.services import analytics_service
 from app.services.browser.handoff import create_pending_handoff
 from app.services.browser.handoff_buttons import decide_handoff_by_button
-from app.services.conversation import reply_analytics
+from app.services.checkpoint_thread_reset import ThreadReset
+from app.services.conversation import mongo_log, reply_analytics, step as step_module, sweeper
 from app.services.conversation.bot_followers import list_active_bot_conversations
 from app.services.conversation.comms_runner import (
     CommsGraphRunner,
@@ -127,8 +148,10 @@ from app.services.conversation.work_log import (
     running_step_task,
 )
 from app.services.delivery.chat_channel import ChatChannel
+from app.services.workflow import thread_reset
 from app.services.workflow.conversation_service import log_playbook_run
 from app.services.workflow.execution_service import WorkflowFireOverlapped, WorkflowTurnFailed
+from app.utils.errors import ConversationIdTakenError
 from app.workers.tasks import workflow_tasks
 from app.workers.tasks.workflow_tasks import (
     _Fire,
@@ -156,11 +179,14 @@ from tests.integration.real.test_comms_runner_real import (
     humans,
     patched_graph,
 )
+from tests.unit.services.conversation.log_helpers import workflow_run
 from tests.unit.services.conversation.runtime_doubles import ScriptedApprovals
 
 EntryT = TypeVar("EntryT")
 _SETTLE_SECONDS = 30.0
 _CONFIRM_SECONDS = 0.05
+_SHORT_TTL_SECONDS = 1
+_TRICKLE_SECONDS = 0.02
 
 
 class _Effects(RuntimeEffects):
@@ -242,6 +268,7 @@ class RigFactory(Protocol):
         model: GatedModel,
         history: Sequence[dict[str, str]] = (),
         build_turn: CommsTurnBuilder | None = None,
+        tick: Callable[[], Awaitable[None]] = ...,
     ) -> Awaitable[Rig]: ...
 
 
@@ -299,12 +326,17 @@ async def rig_for(
     real_redis: Redis,
 ) -> AsyncIterator[RigFactory]:
     """Build a step-run conversation whose comms graph answers with model."""
+    # The identity the runtime keys threads, streams and locks on, as production declares it.
+    await conversation_repository._raw_collection().create_index(
+        CONVERSATION_ID_UNIQUE_KEYS, **CONVERSATION_ID_UNIQUE_OPTIONS
+    )
     async with AsyncExitStack() as stack:
 
         async def build(
             model: GatedModel,
             history: Sequence[dict[str, str]] = (),
             build_turn: CommsTurnBuilder | None = None,
+            tick: Callable[[], Awaitable[None]] = _quick_tick,
         ) -> Rig:
             conversation_id = f"convrt-{uuid4().hex[:10]}"
             await make_conversation(user_id, conversation_id, messages=list(history))
@@ -323,7 +355,7 @@ async def rig_for(
                 effects=effects,
                 approvals=ScriptedApprovals(),
                 clock=_now,
-                tick=_quick_tick,
+                tick=tick,
             )
             holder.append(ports)
             install_runtime_ports(ports)
@@ -1506,3 +1538,295 @@ async def test_a_reply_to_the_users_own_message_leaves_the_conversation_read(
     await rig.settle()
     assert await rig.answered() == [(ReplyOutcome.ANSWERED, ("m1",))]
     assert await _unread(rig) is False
+
+
+class _TrickleModel(GatedModel):
+    """Streams its reply a character every _TRICKLE_SECONDS, faster than the step's tick."""
+
+    async def _astream(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: AsyncCallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[ChatGenerationChunk]:
+        self._prompts.append(list(messages))
+        for char in str(self._replies[len(self._prompts) - 1].content):
+            await asyncio.sleep(_TRICKLE_SECONDS)
+            chunk = ChatGenerationChunk(message=AIMessageChunk(content=char))
+            if run_manager is not None:
+                await run_manager.on_llm_new_token(char, chunk=chunk)
+            yield chunk
+
+
+async def _production_tick() -> None:
+    await asyncio.sleep(STEP_TICK_SECONDS)
+
+
+@pytest.mark.service
+async def test_a_reply_streaming_longer_than_the_claims_ttl_is_answered_once(
+    rig_for: RigFactory,
+) -> None:
+    text = "x" * int(3 * _SHORT_TTL_SECONDS / _TRICKLE_SECONDS)
+    model = _TrickleModel(
+        responses=[AIMessage(content="unused")], profile={"max_input_tokens": 10**6}
+    )
+    model._replies = [AIMessage(content=text)]
+    rig = await rig_for(model, tick=_production_tick)
+    with (
+        patch.object(mongo_log, "RUNNER_ALIVE_TTL_SECONDS", _SHORT_TTL_SECONDS),
+        patch.object(step_module, "RUNNER_ALIVE_TTL_SECONDS", _SHORT_TTL_SECONDS),
+    ):
+        await rig.send("m1", "tell me a long story")
+        # Mid-stream, well past the TTL, the sweep looks for a dead holder.
+        await asyncio.sleep(2 * _SHORT_TTL_SECONDS)
+        await sweep_conversations()
+        await rig.settle()
+    assert await rig.answered() == [(ReplyOutcome.ANSWERED, ("m1",))]
+    assert [reply.text for reply in await rig.of(Reply)] == [text]
+    assert len(model.prompts) == 1
+
+
+@pytest.mark.service
+async def test_a_sweep_leaves_live_chat_work_alone_and_its_result_is_narrated(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("working on it", "your inbox is clean")
+    rig = await rig_for(model)
+    _during(model, 0, lambda: rig.start_work("t9"))
+    await rig.send("m1", "clean my inbox")
+    await rig.settle()
+    # The executor call_executor spawned from a chat turn: its lock carries the turn's stream id.
+    lock_value = build_lock_value("stream-1", "t9")
+    assert await try_acquire_lock(f"{EXECUTOR_BUSY_PREFIX}{rig.conversation_id}", lock_value)
+    alive = await keep_alive(rig.conversation_id, lock_value)
+    try:
+        await sweep_conversations()
+        await rig.settle()
+        assert await rig.of(WorkFinished) == []
+        await record_work_finished(
+            rig.conversation_id, rig.user_id, "t9", WorkOutcome.DONE, WorkReport("done")
+        )
+        await rig.settle()
+    finally:
+        alive.cancel()
+    assert [(f.task_id, f.outcome) for f in await rig.of(WorkFinished)] == [
+        ("t9", WorkOutcome.DONE)
+    ]
+    assert (await rig.of(Reply))[-1].text == "your inbox is clean"
+
+
+@pytest.mark.service
+async def test_one_failing_conversation_never_stops_the_sweep_reaching_every_due_one(
+    rig_for: RigFactory,
+) -> None:
+    first = await rig_for(gated("unused"))
+    first.effects.hold_kicks = True
+    await first.send("m1", "hello")
+    second = await rig_for(gated("unused"))
+    second.effects.hold_kicks = True
+    await second.send("m2", "hello again")
+    kicked: list[str] = []
+
+    async def kick(conversation_id: str, user_id: str) -> None:
+        kicked.append(conversation_id)
+        if len(kicked) == 1:
+            raise ConnectionError("redis down")
+
+    # One head a page: the second is reached only by paging past the first.
+    with (
+        patch.object(sweeper, "SWEEP_BATCH", 1),
+        patch.object(second.effects, "kick", kick),
+    ):
+        report = await sweep_conversations()
+    assert {first.conversation_id, second.conversation_id} <= set(kicked)
+    assert report.failed == 1
+
+
+def _submit(conversation_id: str, user_id: str, message_id: str) -> Awaitable[object]:
+    return submit_message(
+        conversation_id,
+        AuthenticatedUser(user_id=user_id),
+        SendMessageRequest(message_id=message_id, text="hello"),
+        ConversationSource.WEB,
+    )
+
+
+@pytest.mark.service
+async def test_two_concurrent_first_sends_make_one_conversation_holding_both(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated("hi", "hi again"))
+    rig.effects.hold_kicks = True
+    fresh = f"convrt-{uuid4().hex[:10]}"
+    with (
+        patch("app.services.conversation.send.enforce_cost_budget", new_callable=AsyncMock),
+        patch("app.services.conversation.send.capture"),
+    ):
+        await asyncio.gather(*(_submit(fresh, rig.user_id, f"m{n}") for n in range(4)))
+    heads = await conversation_repository._raw_collection().count_documents(
+        {"conversation_id": fresh}
+    )
+    entries = await rig.ports.log.read_after(fresh, rig.user_id, 0)
+    assert heads == 1
+    assert sorted(logged.entry.id for logged in entries) == ["m0", "m1", "m2", "m3"]
+
+
+@pytest.mark.service
+async def test_another_users_conversation_id_is_refused(rig_for: RigFactory) -> None:
+    rig = await rig_for(gated("hi"))
+    rig.effects.hold_kicks = True
+    with (
+        patch("app.services.conversation.send.enforce_cost_budget", new_callable=AsyncMock),
+        patch("app.services.conversation.send.capture"),
+        pytest.raises(ConversationIdTakenError),
+    ):
+        await _submit(rig.conversation_id, str(ObjectId()), "x1")
+    heads = await conversation_repository._raw_collection().count_documents(
+        {"conversation_id": rig.conversation_id}
+    )
+    assert heads == 1
+
+
+@pytest.mark.service
+async def test_a_fire_resets_its_threads_inside_the_step_that_answers_it(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("brief sent")
+    turns = _Turns()
+    held_while_reset: list[bool] = []
+
+    async def reset(conversation_id: str, **_: bool) -> ThreadReset:
+        # Another claimer is refused only while the answering step holds the conversation.
+        probe = await rig.ports.log.claim(conversation_id, rig.user_id)
+        held_while_reset.append(probe is None)
+        if probe is not None:
+            await rig.ports.log.release_if_caught_up(probe)
+        return ThreadReset(reset=2, skipped_inflight=0)
+
+    async with _fire_rig(rig_for, model, turns) as (rig, _notified):
+        with (
+            patch.object(settings, "WORKFLOW_THREAD_RESET_ENABLED", True),
+            patch.object(
+                conversation_repository, "is_workflow_execution", AsyncMock(return_value=True)
+            ),
+            patch.object(thread_reset, "reset_conversation_threads", reset),
+        ):
+            await execute_workflow_as_chat(
+                _workflow(rig.user_id),
+                AuthenticatedUser(user_id=rig.user_id),
+                {},
+                reservation=":fire-r",
+                execution_id="exec_r",
+            )
+            await rig.settle()
+    assert held_while_reset == [True]
+
+
+@pytest.mark.service
+async def test_a_fire_that_timed_out_is_never_answered_later(rig_for: RigFactory) -> None:
+    model = gated("too late", hold=[0])
+    turns = _Turns()
+    async with _fire_rig(rig_for, model, turns) as (rig, _notified):
+        with (
+            patch.object(workflow_tasks, "BACKGROUND_EXECUTOR_WAIT_TIMEOUT", 0.5),
+            pytest.raises(TimeoutError),
+        ):
+            await execute_workflow_as_chat(
+                _workflow(rig.user_id),
+                AuthenticatedUser(user_id=rig.user_id),
+                {},
+                reservation=":fire-t",
+                execution_id="exec_t",
+            )
+        state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+        assert state.unsettled_waking == ()
+        await rig.settle()
+    assert [outcome for outcome, _answers in await rig.answered()] != [ReplyOutcome.ANSWERED]
+
+
+@pytest.mark.service
+async def test_a_stop_whose_hint_write_failed_is_still_what_the_step_reads(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated("unused"))
+    rig.effects.hold_kicks = True
+    await rig.send("m1", "write me an essay")
+    # The step answering m1 holds the conversation, so the hint is complete.
+    assert await rig.ports.log.claim(rig.conversation_id, rig.user_id) is not None
+
+    async def redis_down(*_: object) -> None:
+        raise RedisConnectionError("redis down")
+
+    with patch.object(mongo_log, "_raise_hint", redis_down):
+        await record_user_stop(rig.conversation_id, rig.user_id, "s1")
+    # A running attempt decides on this read: a stale hint would let its reply settle answered.
+    hint = await rig.ports.log.hint(rig.conversation_id, rig.user_id)
+    assert (hint.head, hint.stop_through) == (2, 1)
+
+
+def _fire_entry(rig: Rig) -> Entry:
+    del rig
+    return WorkflowFired(id="workflow:exec_id", run=workflow_run("exec_id"))
+
+
+def _chat_entry(rig: Rig) -> Entry:
+    del rig
+    return UserMessage(id="m1", text="hi", surface=ConversationSource.WEB)
+
+
+@pytest.mark.service
+@pytest.mark.parametrize("entry_for", [_chat_entry, _fire_entry], ids=["chat", "workflow"])
+async def test_every_comms_run_carries_the_identity_the_approval_gate_needs(
+    rig_for: RigFactory, entry_for: Callable[[Rig], Entry]
+) -> None:
+    built: list[CommsTurn] = []
+
+    async def recording(claim: StepClaim, batch: Batch) -> CommsTurn:
+        turn = await build_comms_turn(claim, batch)
+        built.append(turn)
+        return turn
+
+    rig = await rig_for(gated("ok"), build_turn=recording)
+    await accept(rig.ports, rig.conversation_id, rig.user_id, entry_for(rig))
+    await rig.settle()
+    configurable = built[0].config["configurable"]
+    # The gate refuses a gated call when any of these is missing.
+    assert configurable.get("stream_id")
+    assert configurable.get("user_id") == rig.user_id
+    assert configurable.get("conversation_id") == rig.conversation_id
+
+
+async def _read_all(conversation_id: str) -> list[StreamedFrame]:
+    return await read_frames(conversation_id, "0-0", block_ms=0)
+
+
+@pytest.mark.service
+async def test_a_reload_mid_reply_longer_than_the_streams_retention_sees_all_its_text(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated("unused"))
+    frames = RedisStreamFrames()
+    opened = Reply(id="a:reply", reply_id="r1", attempt_id="a")
+    await frames.publish(rig.conversation_id, EntryFrame(seq=2, at=_now(), entry=opened))
+    for index in range(3 * EVENTS_STREAM_MAXLEN):
+        delta = ReplyDeltaFrame(
+            attempt_id="a", reply_id="r1", index=index, payload=ResponseEvent(response="x")
+        )
+        await frames.publish(rig.conversation_id, delta)
+    # What a client reloading now reads: every delta since the reply opened.
+    shown = await _read_all(rig.conversation_id)
+    settled = ReplySettled(
+        id="a:settled",
+        reply_id="r1",
+        outcome=ReplyOutcome.ANSWERED,
+        answers=("m1",),
+        through=1,
+        quote_target=None,
+    )
+    await frames.publish(rig.conversation_id, EntryFrame(seq=3, at=_now(), entry=settled))
+    after = await _read_all(rig.conversation_id)
+    deltas = [item for item in shown if isinstance(item.frame, ReplyDeltaFrame)]
+    assert len(deltas) == 3 * EVENTS_STREAM_MAXLEN
+    # Once nothing is open, retention applies again.
+    assert len(after) < 3 * EVENTS_STREAM_MAXLEN

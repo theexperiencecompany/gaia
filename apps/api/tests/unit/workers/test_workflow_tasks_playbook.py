@@ -2848,7 +2848,6 @@ def _step_seams(on_fire: Callable[..., Awaitable[object]]) -> Iterator[None]:
     )
     with (
         patch(f"{MODULE}.get_or_create_workflow_conversation", AsyncMock(return_value="c1")),
-        patch(f"{MODULE}.reset_workflow_threads", AsyncMock()),
         patch(f"{MODULE}.runtime_ports"),
         patch(f"{MODULE}.accept", AsyncMock(side_effect=on_fire)),
         patch(f"{MODULE}.await_outcome", AsyncMock(return_value=answered)),

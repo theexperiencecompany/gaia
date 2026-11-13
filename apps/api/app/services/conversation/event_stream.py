@@ -14,12 +14,14 @@ from pydantic import TypeAdapter
 from app.constants.conversation import (
     EVENTS_BLOCK_MS,
     EVENTS_KEY_PREFIX,
+    EVENTS_OPEN_REPLY_KEY_PREFIX,
     EVENTS_STREAM_MAXLEN,
     EVENTS_STREAM_START,
     EVENTS_STREAM_TTL_SECONDS,
 )
 from app.db.redis import redis_cache
 from app.models.conversation_frame_models import EntryFrame, OutputFrame
+from app.models.conversation_log_models import Reply, ReplySettled
 from app.models.conversation_send_models import ConversationEvent
 from app.services.conversation.log import state_frame
 from app.services.conversation.ports import ConversationLog
@@ -48,16 +50,51 @@ def _key(conversation_id: str) -> str:
     return f"{EVENTS_KEY_PREFIX}{conversation_id}"
 
 
+# Trims to the retention only while no reply is open, so a reload mid-reply replays every delta it showed.
+_PUBLISH = """
+if ARGV[4] == 'open' then
+  redis.call('SET', KEYS[2], '1', 'EX', ARGV[3])
+elseif ARGV[4] == 'settle' then
+  redis.call('DEL', KEYS[2])
+end
+if redis.call('EXISTS', KEYS[2]) == 1 then
+  redis.call('XADD', KEYS[1], '*', 'frame', ARGV[1])
+else
+  redis.call('XADD', KEYS[1], 'MAXLEN', '~', ARGV[2], '*', 'frame', ARGV[1])
+end
+redis.call('EXPIRE', KEYS[1], ARGV[3])
+return 1
+"""
+
+
+def _open_key(conversation_id: str) -> str:
+    return f"{EVENTS_OPEN_REPLY_KEY_PREFIX}{conversation_id}"
+
+
+def _reply_mark(frame: OutputFrame) -> str:
+    """Return open when frame opens a reply, settle when it settles one, else empty."""
+    if isinstance(frame, EntryFrame) and isinstance(frame.entry, Reply):
+        return "open"
+    if isinstance(frame, EntryFrame) and isinstance(frame.entry, ReplySettled):
+        return "settle"
+    return ""
+
+
 class RedisStreamFrames:
     """The Frames port on the conversation's Redis Stream."""
 
     async def publish(self, conversation_id: str, frame: OutputFrame) -> None:
-        """Append frame to the conversation's stream and keep the stream alive."""
-        key = _key(conversation_id)
-        await redis_cache.client.xadd(
-            key, {"frame": frame.model_dump_json()}, maxlen=EVENTS_STREAM_MAXLEN
+        """Append frame and keep the stream alive; it is trimmed only up to the reply still open."""
+        await redis_cache.client.eval(
+            _PUBLISH,
+            2,
+            _key(conversation_id),
+            _open_key(conversation_id),
+            frame.model_dump_json(),
+            str(EVENTS_STREAM_MAXLEN),
+            str(EVENTS_STREAM_TTL_SECONDS),
+            _reply_mark(frame),
         )
-        await redis_cache.client.expire(key, EVENTS_STREAM_TTL_SECONDS)
 
 
 async def read_frames(
