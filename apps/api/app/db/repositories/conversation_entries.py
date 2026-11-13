@@ -222,8 +222,12 @@ def stored_entries_matching(
                 "foreignField": "conversation_id",
                 "pipeline": [
                     {"$match": {"user_id": user_id, **_counted_heads(excluding)}},
-                    {"$project": {"_id": 1}},
-                    {"$limit": 1},
+                    {
+                        "$project": {"_id": 1}
+                    },  # pragma: no mutate — trims the joined head; only its presence is read
+                    {
+                        "$limit": 1
+                    },  # pragma: no mutate — one joined head proves liveness; more only cost bytes
                 ],
                 "as": _HEAD_OF_ENTRY,
             }

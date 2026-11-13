@@ -7,6 +7,7 @@ from collections.abc import Coroutine, Iterator
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import Mock, call
 import uuid
 
 from pymongo.errors import ServerSelectionTimeoutError
@@ -429,7 +430,10 @@ async def test_cross_conversation_reads_see_flushed_and_outbox_entries(
 
 
 async def test_search_skips_a_todos_chat_and_an_unmigrated_chat_never_blocks_the_others(
-    repo: ConversationRepository, held: _HeldFlushes, raw_collection: Any
+    repo: ConversationRepository,
+    held: _HeldFlushes,
+    raw_collection: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     uid = f"u-{uuid.uuid4().hex}"
     todo_chat = await _chat(repo, uid, todo_id="todo-1", description="needle todo")
@@ -449,9 +453,25 @@ async def test_search_skips_a_todos_chat_and_an_unmigrated_chat_never_blocks_the
             "messages": [{"type": "user", "response": "needle", "message_id": "o1"}],
         }
     )
+    await raw_collection.insert_one(
+        {
+            "conversation_id": "elsewhere",
+            "user_id": f"other-{uid}",
+            "messages": [{"type": "user", "response": "needle", "message_id": "e1"}],
+        }
+    )
     await repo.append(described, user_id=uid, entries=[_message("d1", "needle")])
     await held.run_all()
+    warned = Mock()
+    monkeypatch.setattr(conversations_module.log, "warning", warned)
     found = await repo.search(uid, pattern="needle")
+    assert warned.call_args_list == [
+        call(
+            "[conversations] cross-conversation read left out unmigrated conversations",
+            user_id=uid,
+            conversation_ids=["old"],
+        )
+    ]
     assert [(h.conversation_id, h.message.message_id) for h in found.messages] == [
         (described, "d1")
     ]
@@ -871,8 +891,8 @@ async def test_whole_conversation_reads_return_only_the_newest_window(
     )
     windows = {d.conversation_id: [m.message_id for m in d.messages] for d in synced}
     assert windows == {cid: ["m3", "m4", "m5"], other: ["o1"]}
-    [recent, _] = await repo.recent_for_user(uid, limit=2)
-    assert len(recent.messages) <= 3
+    recent = await repo.recent_for_user(uid, limit=2)
+    assert {d.conversation_id: [m.message_id for m in d.messages] for d in recent} == windows
 
 
 @pytest.mark.parametrize("flushed", [False, True])
@@ -888,8 +908,14 @@ async def test_a_retried_append_of_a_known_id_with_other_content_fails_instead_o
         await held.run_all()
 
     assert await repo.append(cid, user_id=uid, entries=[_message("r1", "")]) == [1]
-    with pytest.raises(ConversationStoreError, match="r1"):
+    with pytest.raises(ConversationStoreError) as refused:
         await repo.append(cid, user_id=uid, entries=[_message("r1", "the full reply")])
+
+    assert (refused.value.message, refused.value.why, refused.value.meta) == (
+        "entry r1 is already committed with other content",
+        "an append is idempotent only for the same message; fill or edit the entry instead",
+        {"conversation_id": cid, "entry_id": "r1"},
+    )
 
     kept = await repo.get_message(cid, "r1", user_id=uid)
     assert kept is not None and kept.response == ""
