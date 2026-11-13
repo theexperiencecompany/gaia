@@ -28,7 +28,12 @@ const html = await res.text();
 // 1. The worker must have served the HTML, not a static asset pass-through of a
 //    pre-rendered file with no headers.
 const via = res.headers.get("x-opennext") ?? res.headers.get("server");
-if (!res.headers.get("content-security-policy")) {
+// CSP_MODE decides which of the two the worker sends.
+const csp =
+  res.headers.get("content-security-policy") ??
+  res.headers.get("content-security-policy-report-only") ??
+  "";
+if (!csp) {
   fail(
     "no Content-Security-Policy header — inline-worker-css.mjs did not run, so " +
       "this is `next start`, not the worker",
@@ -47,7 +52,6 @@ if (!inlineStyle && styleLinks > 0) {
 }
 
 // 3. A nonce that never appears in the markup means the policy is decorative.
-const csp = res.headers.get("content-security-policy") ?? "";
 const nonceHeader = csp.match(/'nonce-([^']+)'/)?.[1];
 if (nonceHeader) {
   if (!html.includes(nonceHeader)) {

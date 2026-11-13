@@ -8,6 +8,7 @@
 
 // Type-only import — zero runtime cost.
 import type * as SentryNs from "@sentry/nextjs";
+import { config as configureZod } from "zod/v4/core";
 import { DODO_RETURN_IDENTIFYING_PARAMS } from "@/features/pricing/lib/dodoReturnUrl";
 import {
   EXTENSION_URL_PATTERNS,
@@ -15,6 +16,9 @@ import {
   filterSentryEvent,
   IGNORED_EXCEPTION_MESSAGES,
 } from "@/lib/observability/exception-filter";
+
+// The CSP allows no eval, so zod skips its new Function() probe instead of tripping a violation on every app page.
+configureZod({ jitless: true });
 
 // Holds the real Sentry function once the module loads at idle time.
 let _captureRouterTransitionStart:

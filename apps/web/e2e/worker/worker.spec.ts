@@ -12,7 +12,7 @@ function isStaticAsset(url: string): boolean {
   return new URL(url).pathname.startsWith(STATIC_ASSETS);
 }
 
-/** Collect every uncaught error and every static asset that did not load. */
+/** Collect every uncaught error, every static asset that did not load, and every CSP violation. */
 async function watchForBreakage(page: Page): Promise<string[]> {
   const problems: string[] = [];
   const { baseURL } = test.info().project.use;
@@ -24,6 +24,17 @@ async function watchForBreakage(page: Page): Promise<string[]> {
     (route) => route.abort(),
   );
   page.on("pageerror", (error) => problems.push(`uncaught: ${error.message}`));
+  // Report-only violations fire this event too, so the worker's CSP is proven before it enforces.
+  await page.exposeFunction("reportCspViolation", (violation: string) =>
+    problems.push(`csp: ${violation}`),
+  );
+  await page.addInitScript(() => {
+    document.addEventListener("securitypolicyviolation", (event) => {
+      (
+        window as unknown as { reportCspViolation: (v: string) => void }
+      ).reportCspViolation(`${event.effectiveDirective} ${event.blockedURI}`);
+    });
+  });
   page.on("requestfailed", (request) => {
     if (isStaticAsset(request.url())) {
       problems.push(`failed: ${request.url()} ${request.failure()?.errorText}`);

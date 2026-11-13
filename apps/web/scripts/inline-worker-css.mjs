@@ -57,19 +57,37 @@ function randomNonce() {
   return btoa(s);
 }
 
-async function nonceCsp(html, headers) {
-  const existing = headers.get("content-security-policy") || "";
-  if (existing.includes("nonce-")) return html;
-  const nonce = randomNonce();
-  html = html.replace(/<script(?![^>]*\ssrc=)([^>]*)>/g, (m, attrs) =>
-    attrs.includes("nonce=") ? m : "<script" + attrs + " nonce=\\\"" + nonce + "\\\">");
-  const csp = headers.get("content-security-policy");
-  if (csp) {
-    let next = csp.replace(/(script-src[^;]*?)'unsafe-inline'/, "$1'unsafe-hashes'");
-    next = next.replace(/(script-src[^;]*)/, "$1 'nonce-" + nonce + "'");
-    headers.set("content-security-policy", next);
+const ENFORCED_CSP = "content-security-policy";
+const REPORT_ONLY_CSP = "content-security-policy-report-only";
+let reportedBadCspMode = false;
+
+/** CSP_MODE (wrangler var) picks enforce or report-only; an unknown value stays report-only, the side that cannot break pages. */
+function cspHeaderName(env) {
+  if (env.CSP_MODE === "enforce") return ENFORCED_CSP;
+  if (env.CSP_MODE !== "report-only" && !reportedBadCspMode) {
+    reportedBadCspMode = true;
+    console.error("inline-worker-css: CSP_MODE must be enforce or report-only, got " + env.CSP_MODE + "; serving report-only");
   }
-  return html;
+  return REPORT_ONLY_CSP;
+}
+
+/** Nonce every script in this response (cached HTML included) and add the nonce to script-src, so 'unsafe-inline' no longer applies. */
+function withScriptNonce(html, init, env) {
+  const { headers } = init;
+  const policy = headers.get(REPORT_ONLY_CSP) ?? headers.get(ENFORCED_CSP);
+  // A response from WORKER_SELF_REFERENCE already passed through this wrapper and carries its nonce.
+  if (!policy || policy.includes("'nonce-")) return new Response(html, init);
+  const nonce = randomNonce();
+  const noncedPolicy = policy
+    .split(";")
+    .map((directive) => (directive.trim().startsWith("script-src ") ? directive + " 'nonce-" + nonce + "'" : directive))
+    .join(";");
+  headers.delete(REPORT_ONLY_CSP);
+  headers.delete(ENFORCED_CSP);
+  headers.set(cspHeaderName(env), noncedPolicy);
+  return new HTMLRewriter()
+    .on("script", { element: (script) => script.setAttribute("nonce", nonce) })
+    .transform(new Response(html, init));
 }
 
 async function inlineHtml(response, request, env) {
@@ -84,13 +102,12 @@ async function inlineHtml(response, request, env) {
   }
   html = repairAria(html);
   const headers = new Headers(response.headers);
-  html = await nonceCsp(html, headers);
   const cc = headers.get("cache-control") || "";
   if (/s-maxage/i.test(cc) && !/max-age/i.test(cc) && !/no-store|private/i.test(cc)) {
-    headers.set("cache-control", "public, max-age=60, " + cc.replace(/^public,\s*/i, ""));
+    headers.set("cache-control", "public, max-age=60, " + cc.replace(/^public,\\s*/i, ""));
   }
   headers.delete("content-length");
-  return new Response(html, { status: response.status, headers });
+  return withScriptNonce(html, { status: response.status, headers }, env);
 }
 
 export default {
