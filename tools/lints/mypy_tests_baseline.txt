@@ -71,7 +71,6 @@ apps/api/tests/integration/db/test_chroma_store.py	attr-defined
 apps/api/tests/integration/endpoints/conftest.py	arg-type
 apps/api/tests/integration/endpoints/conftest.py	misc
 apps/api/tests/integration/endpoints/test_members_api.py	attr-defined
-apps/api/tests/integration/endpoints/test_setup_api.py	arg-type
 apps/api/tests/integration/endpoints/test_setup_composio_api.py	attr-defined
 apps/api/tests/integration/endpoints/test_setup_composio_toolkits_api.py	arg-type
 apps/api/tests/integration/endpoints/test_setup_composio_toolkits_api.py	attr-defined
@@ -85,7 +84,6 @@ apps/api/tests/integration/real/test_sandbox_lock_real.py	attr-defined
 apps/api/tests/integration/real/test_websocket_broadcast_real.py	unused-ignore
 apps/api/tests/integration/test_lazy_provider_init.py	arg-type
 apps/api/tests/integration/test_lazy_provider_init.py	var-annotated
-apps/api/tests/integration/test_llm_fallback_chain.py	arg-type
 apps/api/tests/integration/test_websocket_lifecycle.py	assignment
 apps/api/tests/integration/test_websocket_lifecycle.py	method-assign
 apps/api/tests/integration/test_websocket_lifecycle.py	misc

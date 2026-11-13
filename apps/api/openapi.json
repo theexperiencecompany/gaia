@@ -4861,6 +4861,7 @@
       "CredentialProviderName": {
         "description": "A provider the credential store can hold, in display order.",
         "enum": [
+          "cloudflare",
           "openrouter",
           "gemini",
           "ollama",

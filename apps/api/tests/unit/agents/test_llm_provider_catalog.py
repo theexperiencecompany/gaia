@@ -23,6 +23,7 @@ from app.agents.llm.client import (
     _build_openai_wire_one_shot,
     _get_ordered_providers,
     chat_model,
+    init_cloudflare_llm,
     init_custom_llm,
     init_gemini_llm,
     init_llm,
@@ -47,6 +48,8 @@ from app.constants.llm import (
 )
 from app.constants.providers import LLM_MODEL_PROFILES, CredentialProviderName
 from app.core.lazy_loader import LazyLoader
+from app.models.payment_models import PlanType
+from app.services.payments.payment_service import payment_service
 from app.services.providers.provider_credentials_service import ProviderConfig, resolved_configs
 
 _LLM_REGISTRY_KEYS = {
@@ -55,6 +58,7 @@ _LLM_REGISTRY_KEYS = {
     LLMProviderName.OPENAI: "openai_llm",
     LLMProviderName.OLLAMA: "ollama_llm",
     LLMProviderName.CUSTOM: "custom_llm",
+    LLMProviderName.CLOUDFLARE: "cloudflare_llm",
 }
 
 
@@ -224,6 +228,128 @@ class TestProductionRoutingIsPinned:
         assert one_shot_route(ModelUse.MEMORY) is None
         with pytest.raises(LLMNotConfiguredError, match="memory"):
             resolve_model(ModelUse.MEMORY)
+
+
+_CLOUDFLARE_MODEL = "@cf/deepseek-ai/deepseek-v4.1-flash-1017"
+_CLOUDFLARE_URL = "https://api.cloudflare.com/client/v4/accounts/acct-1/ai/v1"
+
+
+class TestCloudflareOverridesProduction:
+    """Workers AI configured: every role on DeepSeek, every chat failover to direct OpenAI."""
+
+    @pytest.fixture(autouse=True)
+    def _hosted_with_cloudflare(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+        monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "sk-or")
+        monkeypatch.setattr(settings, "OPENROUTER_BASE_URL", None)
+        monkeypatch.setattr(settings, "GOOGLE_API_KEY", "g-key")
+        monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-openai")
+        monkeypatch.setattr(settings, "CLOUDFLARE_AI_ACCOUNT_ID", "acct-1")
+        monkeypatch.setattr(settings, "CLOUDFLARE_AI_API_TOKEN", "cf-token")
+
+    @pytest.mark.parametrize("role", [AgentRole.COMMS, AgentRole.EXECUTOR, AgentRole.SUBAGENT])
+    async def test_every_agent_tier_runs_on_cloudflare(self, role: AgentRole) -> None:
+        lane, _ = await resolve_lane(None, role)
+
+        assert (lane.provider, lane.model, lane.reasoning) == (
+            "cloudflare",
+            _CLOUDFLARE_MODEL,
+            None,
+        )
+
+    @pytest.mark.parametrize("plan", [PlanType.FREE, PlanType.PRO])
+    async def test_every_plan_runs_on_cloudflare(
+        self, plan: PlanType, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _plan(_user_id: str) -> PlanType:
+            return plan
+
+        monkeypatch.setattr(payment_service, "get_cached_plan_type", _plan)
+
+        lane, resolved_plan = await resolve_lane("u1", AgentRole.EXECUTOR)
+
+        assert (lane.provider, lane.model) == ("cloudflare", _CLOUDFLARE_MODEL)
+        assert resolved_plan == plan
+
+    @pytest.mark.parametrize("role", [AgentRole.COMMS, AgentRole.EXECUTOR])
+    async def test_a_failed_cloudflare_lane_falls_back_to_openai(self, role: AgentRole) -> None:
+        lane, _ = await resolve_lane(None, role)
+        fallback = lane.fallback()
+
+        assert fallback is not None
+        assert (fallback.provider, fallback.model) == ("openai", "gpt-5.6-luna")
+
+    async def test_without_openai_the_fallback_walks_the_priority_order(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "OPENAI_API_KEY", None)
+        lane, _ = await resolve_lane(None, AgentRole.EXECUTOR)
+        fallback = lane.fallback()
+
+        assert fallback is not None
+        assert (fallback.provider, fallback.model) == ("openrouter", "openai/gpt-6-luna")
+
+    def test_openai_is_registered_as_the_alternative_the_fallback_selects(self) -> None:
+        available = {
+            LLMProviderName(name): cast(ProviderLLM, object())
+            for name in ("openai", "gemini", "openrouter", "cloudflare")
+        }
+
+        ordered = _get_ordered_providers(available, None, True)
+
+        assert [p.name for p in ordered] == ["cloudflare", "openrouter", "gemini", "openai"]
+
+    @pytest.mark.parametrize("use", list(ModelUse))
+    def test_every_one_shot_role_runs_on_cloudflare(self, use: ModelUse) -> None:
+        assert one_shot_route(use) == ("cloudflare", _CLOUDFLARE_MODEL)
+
+    def test_a_one_shot_talks_to_the_account_endpoint_with_reasoning_off(self) -> None:
+        model = resolve_model(ModelUse.HELPER)
+
+        assert isinstance(model, ChatOpenAI)
+        assert model.openai_api_base == _CLOUDFLARE_URL
+        assert model.model_name == _CLOUDFLARE_MODEL
+        assert model.reasoning_effort == "none"
+        assert model.max_tokens == HELPER_MAX_OUTPUT_TOKENS
+
+    def test_a_light_reasoning_one_shot_asks_for_low(self) -> None:
+        model = resolve_model(ModelUse.HELPER, reasoning=ReasoningLevel.LIGHT)
+
+        assert isinstance(model, ChatOpenAI)
+        assert model.reasoning_effort == "low"
+
+    def test_the_chat_client_streams_from_the_account_endpoint(self) -> None:
+        chat = _default_client(init_cloudflare_llm(), ChatOpenAI)
+
+        assert chat.openai_api_base == _CLOUDFLARE_URL
+        assert chat.model_name == _CLOUDFLARE_MODEL
+        assert isinstance(chat.openai_api_key, SecretStr)
+        assert chat.openai_api_key.get_secret_value() == "cf-token"
+        assert chat.reasoning_effort == "low"
+        assert chat.streaming
+        assert chat.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
+
+    @pytest.mark.parametrize("missing", ["CLOUDFLARE_AI_ACCOUNT_ID", "CLOUDFLARE_AI_API_TOKEN"])
+    async def test_half_a_credential_leaves_production_routing_alone(
+        self, missing: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, missing, None)
+
+        comms, _ = await resolve_lane(None, AgentRole.COMMS)
+        executor, _ = await resolve_lane(None, AgentRole.EXECUTOR)
+
+        assert (comms.provider, executor.provider) == ("openai", "openrouter")
+        assert one_shot_route(ModelUse.MEMORY) == ("gemini", "gemini-3.1-flash-lite")
+
+    async def test_sim_mode_does_not_switch_the_override_on(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "CLOUDFLARE_AI_ACCOUNT_ID", None)
+        monkeypatch.setattr(settings, "GAIA_SIM_MODE", True)
+
+        assert not provider_configured(LLMProviderName.CLOUDFLARE)
+        assert provider_configured(LLMProviderName.OPENROUTER)
 
 
 class TestOpenAIOnly:
