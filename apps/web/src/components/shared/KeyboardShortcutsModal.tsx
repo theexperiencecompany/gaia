@@ -57,7 +57,7 @@ export default function KeyboardShortcutsModal({
 
   return (
     <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
-      <Modal.Backdrop>
+      <Modal.Backdrop variant="blur">
         <Modal.Container>
           <Modal.Dialog
             className={modalVariants({

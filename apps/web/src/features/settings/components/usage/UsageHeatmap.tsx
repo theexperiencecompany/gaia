@@ -219,7 +219,7 @@ export function ActivityBadge({
       </GaiaButton>
 
       <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
-        <Modal.Backdrop>
+        <Modal.Backdrop variant="blur">
           <Modal.Container placement="center" size="sm">
             <Modal.Dialog>
               <Modal.CloseTrigger aria-label="Close" />

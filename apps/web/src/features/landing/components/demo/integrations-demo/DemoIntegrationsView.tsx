@@ -13,7 +13,10 @@ import {
   ZapIcon,
 } from "@icons";
 import { useEffect, useMemo, useState } from "react";
-import { inputVariants } from "@/components/shared/controlVariants";
+import {
+  chipVariants,
+  inputVariants,
+} from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import { toneVariants } from "@/components/shared/tone";
@@ -54,7 +57,12 @@ function DemoIntegrationRow({
           <div className="flex items-center gap-2">
             <span className="font-medium">{integration.name}</span>
             {isPublic && (
-              <Chip size="sm" variant="soft" color="accent">
+              <Chip
+                size="sm"
+                variant="soft"
+                color="accent"
+                className={chipVariants({ hue: "secondary" })}
+              >
                 Community
               </Chip>
             )}

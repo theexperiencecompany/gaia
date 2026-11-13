@@ -6,13 +6,17 @@ export const SOFT_TINT_CLASSES = {
   light: "gaia-tint-light",
 } as const;
 
-/** A selected chip lifts on a shadow tinted by its own fill (v2's Chip variant="shadow"); gaia-chip-selected in base.css. */
+/**
+ * A selected chip lifts on a shadow tinted by its own fill (v2's Chip variant="shadow");
+ * hue secondary repaints an accent chip as v2's purple secondary, a colour v3 dropped.
+ */
 export const chipVariants = tv({
   variants: {
     isSelected: { true: "gaia-chip-selected", false: "" },
     tint: SOFT_TINT_CLASSES,
+    hue: { default: "", secondary: "gaia-hue-secondary" },
   },
-  defaultVariants: { isSelected: false, tint: "default" },
+  defaultVariants: { isSelected: false, tint: "default", hue: "default" },
 });
 
 /** v2's Avatar isBordered: a 2px zinc-700 ring outside a 2px background gap; gaia-avatar-bordered in base.css. */

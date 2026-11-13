@@ -80,7 +80,7 @@ apps/web/src/features/chat/components/bubbles/bot/TodoProgressSection.tsx:Accord
 apps/web/src/features/chat/components/code-block/CustomAnchor.tsx:Tooltip.Content:p-3
 apps/web/src/features/chat/components/code-block/MermaidTabs.tsx:Tabs.Tab:p-0!
 apps/web/src/features/chat/components/composer/ComposerInput.tsx:TextArea:px-3
-apps/web/src/features/chat/components/composer/ComposerInput.tsx:TextArea:py-3
+apps/web/src/features/chat/components/composer/ComposerInput.tsx:TextArea:py-2
 apps/web/src/features/chat/components/composer/SendStopButton.tsx:GaiaButton:px-3
 apps/web/src/features/chat/components/interface/BaseCardView.tsx:Header:py-1
 apps/web/src/features/chat/components/interface/founder-letter/FounderLetter.tsx:Modal.Container:p-3

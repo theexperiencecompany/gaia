@@ -6,12 +6,12 @@ import {
   CheckmarkCircle02Icon,
   CommandLineIcon,
   ComputerIcon,
-  Copy01Icon,
 } from "@icons";
 import { type ReactNode, useState } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import CopyButton from "@/components/ui/CopyButton";
 import { devicesApi } from "@/features/devices/api/devicesApi";
 import { PAIRING_CODE_LENGTH } from "@/features/devices/constants";
 import { useBridge } from "@/features/devices/hooks/useBridge";
@@ -25,7 +25,6 @@ import {
   normalizePairingCode,
   toApiPairingCode,
 } from "@/features/devices/utils";
-import { copyText } from "@/lib/clipboard";
 
 const PACKAGE_MANAGERS = ["npm", "pnpm", "bun"] as const;
 type PackageManager = (typeof PACKAGE_MANAGERS)[number];
@@ -57,34 +56,10 @@ function StepCard({
 }
 
 function CommandSnippet({ command }: { command: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      await copyText(command);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard access can be blocked; the command stays selectable.
-    }
-  };
-
   return (
     <div className="flex w-full items-center justify-between gap-2 rounded-md bg-zinc-800 px-3 py-1.5 text-zinc-200">
       <span className="truncate font-mono text-xs">{command}</span>
-      <GaiaButton
-        isIconOnly
-        size="sm"
-        variant="ghost"
-        aria-label="Copy command"
-        onPress={handleCopy}
-      >
-        {copied ? (
-          <CheckmarkCircle02Icon width={14} height={14} />
-        ) : (
-          <Copy01Icon width={14} height={14} />
-        )}
-      </GaiaButton>
+      <CopyButton textToCopy={command} variant="ghost" />
     </div>
   );
 }

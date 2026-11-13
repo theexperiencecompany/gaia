@@ -142,7 +142,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
         if (!nextOpen && !loading) handleClose();
       }}
     >
-      <Modal.Backdrop isDismissable={!loading}>
+      <Modal.Backdrop variant="blur" isDismissable={!loading}>
         <Modal.Container placement="center" size="lg">
           <Modal.Dialog className="shadow-none">
             <Modal.CloseTrigger aria-label="Close" />
