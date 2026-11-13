@@ -996,11 +996,11 @@ class _FlakyFrames(RecordingFrames):
 
     failed: bool = False
 
-    async def publish(self, conversation_id: str, frame: OutputFrame) -> None:
-        if isinstance(frame, ReplyDeltaFrame) and not self.failed:
+    async def publish(self, conversation_id: str, *frames: OutputFrame) -> None:
+        if any(isinstance(frame, ReplyDeltaFrame) for frame in frames) and not self.failed:
             self.failed = True
             raise ConnectionError("redis down")
-        await super().publish(conversation_id, frame)
+        await super().publish(conversation_id, *frames)
 
 
 class TestStepScenariosInMemory(StepScenarios):

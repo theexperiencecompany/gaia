@@ -60,12 +60,12 @@ async def accept(ports: RuntimePorts, conversation_id: str, user_id: str, entry:
 async def publish_appended(frames: Frames, conversation_id: str, appended: Appended) -> None:
     """Publish an appended entry, then the state when what a client shows changed."""
     logged = appended.logged
-    await frames.publish(
-        conversation_id, EntryFrame(seq=logged.seq, at=logged.at, entry=logged.entry)
-    )
+    entry = EntryFrame(seq=logged.seq, at=logged.at, entry=logged.entry)
     before, after = state_frame(appended.previous), state_frame(appended.state)
     if (before.display, before.work) != (after.display, after.work):
-        await frames.publish(conversation_id, after)
+        await frames.publish(conversation_id, entry, after)
+    else:
+        await frames.publish(conversation_id, entry)
 
 
 async def _run(

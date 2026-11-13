@@ -207,8 +207,8 @@ class CommsRunner(Protocol):
 class Frames(Protocol):
     """The conversation's output stream to clients."""
 
-    async def publish(self, conversation_id: str, frame: OutputFrame) -> None:
-        """Publish one frame."""
+    async def publish(self, conversation_id: str, *frames: OutputFrame) -> None:
+        """Publish frames in order, in one round trip."""
         ...
 
 

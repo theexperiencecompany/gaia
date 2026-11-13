@@ -94,18 +94,21 @@ def _reply_mark(frame: OutputFrame) -> str:
 class RedisStreamFrames:
     """The Frames port on the conversation's Redis Stream."""
 
-    async def publish(self, conversation_id: str, frame: OutputFrame) -> None:
-        """Append frame and keep the stream alive; it is trimmed only up to the reply still open."""
-        await redis_cache.client.eval(
-            _PUBLISH,
-            2,
-            _key(conversation_id),
-            _open_key(conversation_id),
-            frame.model_dump_json(),
-            str(EVENTS_STREAM_MAXLEN),
-            str(EVENTS_STREAM_TTL_SECONDS),
-            _reply_mark(frame),
-        )
+    async def publish(self, conversation_id: str, *frames: OutputFrame) -> None:
+        """Append frames in order and keep the stream alive; it is trimmed only up to the reply still open."""
+        pipeline = redis_cache.client.pipeline(transaction=False)
+        for frame in frames:
+            pipeline.eval(
+                _PUBLISH,
+                2,
+                _key(conversation_id),
+                _open_key(conversation_id),
+                frame.model_dump_json(),
+                str(EVENTS_STREAM_MAXLEN),
+                str(EVENTS_STREAM_TTL_SECONDS),
+                _reply_mark(frame),
+            )
+        await pipeline.execute()
 
 
 def _streamed(stream_id: str, fields: object) -> StreamedFrame:
