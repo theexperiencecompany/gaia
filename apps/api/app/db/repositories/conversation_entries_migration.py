@@ -219,6 +219,9 @@ class _Plan:
         self, ref: HeadRef, logged: LoggedEntry, prior: StoredEntry | None, *, in_place: int | None
     ) -> None:
         """Place one entry: update what a pass wrote before, rewrite a message-shaped entry, or insert."""
+        # Mongo keeps milliseconds: hash what a later read returns.
+        at = logged.at.replace(microsecond=logged.at.microsecond // 1000 * 1000)
+        logged = logged.model_copy(update={"at": at})
         self.log[logged.seq] = logged
         document = log_document(ref.conversation_id, ref.user_id, logged)
         document = {**document, MIGRATION_FIELDS_FIELD: field_hashes(document)}
@@ -268,13 +271,6 @@ def entry_at(date: object) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
-def _parsed(element: _Element) -> ConversationEntry:
-    try:
-        return ConversationEntry.model_validate({**element.fields, "seq": 0})
-    except ValidationError as exc:
-        raise MigrationRefused(f"message {element.id} does not parse: {exc}") from exc
-
-
 def _ack_target(element: _Element, users: set[str]) -> tuple[str, str] | None:
     """Return (target id, emoji) of an emoji_ack whose emoji and target both exist."""
     if element.fields.get("kind") != _ACK_KIND:
@@ -306,20 +302,34 @@ def _planned(
     planned: list[_Planned] = []
     last_user: str | None = None
     for element in elements:
-        message = _parsed(element)
-        at = entry_at(element.fields.get("date"))
-        if element.is_user:
-            planned.append(_Planned(_user_message(message, surface, reactions), element.seq, at))
-            last_user = element.id
-            continue
-        folded_ack = _ack_target(element, users) is not None
-        if folded_ack and not message.tool_data:
-            continue
-        reply = _reply(message, users, blank=folded_ack)
-        planned.append(_Planned(reply, element.seq, at))
-        if not message.in_progress:
-            planned.append(_Planned(_settle(message, reply, last_user), None, at, last_user))
+        try:
+            planned += _element_entries(element, surface, users, reactions, last_user)
+        except ValidationError as exc:
+            raise MigrationRefused(f"message {element.id} cannot be a log entry: {exc}") from exc
+        last_user = element.id if element.is_user else last_user
     return planned, len(reactions)
+
+
+def _element_entries(
+    element: _Element,
+    surface: ConversationSource,
+    users: set[str],
+    reactions: Mapping[str, str],
+    last_user: str | None,
+) -> list[_Planned]:
+    """Return the entries one old message becomes: none for a folded ack, a reply's settle after it."""
+    message = ConversationEntry.model_validate({**element.fields, "seq": 0})
+    at = entry_at(element.fields.get("date"))
+    if element.is_user:
+        return [_Planned(_user_message(message, surface, reactions), element.seq, at)]
+    folded_ack = _ack_target(element, users) is not None
+    if folded_ack and not message.tool_data:
+        return []
+    reply = _reply(message, users, blank=folded_ack)
+    if message.in_progress:
+        return [_Planned(reply, element.seq, at)]
+    settle = _Planned(_settle(message, reply, last_user), None, at, last_user)
+    return [_Planned(reply, element.seq, at), settle]
 
 
 def _user_message(
