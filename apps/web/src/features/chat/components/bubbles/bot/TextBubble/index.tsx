@@ -6,12 +6,12 @@ import {
   type ApprovalRequestData,
 } from "@shared/chat";
 import { REPLY_CUT_SHORT } from "@shared/conversation";
+import { useApprovalSettlementStore } from "@shared/conversation/live";
 import { parseOpenUISegments, splitMessageByBreaks } from "@shared/utils";
 import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
-import { useApprovalSettlementStore } from "@/features/chat/stores/approvalSettlementStore";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
   DEFAULT_PART_CHOREOGRAPHY,

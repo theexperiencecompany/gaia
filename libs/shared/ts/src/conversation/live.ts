@@ -1,4 +1,9 @@
 /** The client half of the conversation runtime (web, mobile): a store and a follower. Needs zustand. */
+export type { ApprovalVerdicts } from "./approvalSettlements";
+export {
+  useApprovalSettlementStore,
+  withVerdicts,
+} from "./approvalSettlements";
 export type {
   ConversationFollower,
   ConversationFollowPorts,

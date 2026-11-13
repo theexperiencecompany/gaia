@@ -7,7 +7,7 @@ import {
   type UserMessage,
   visibleBubbles,
 } from "@shared/conversation";
-import { type ApprovalSettlement, settleApprovalToolData } from "@shared/utils";
+import { type ApprovalVerdicts, withVerdicts } from "@shared/conversation/live";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { LocalSend } from "./liveConversationStore";
@@ -65,33 +65,12 @@ function settlement(view: ConversationView, replyId: string | null) {
   return settled?.kind === ENTRY_KIND.REPLY_SETTLED ? settled : null;
 }
 
-type Settlements = Readonly<
-  Record<string, Omit<ApprovalSettlement, "conversation_id">>
->;
-
-/** The cards with each verdict this device learned outside the log laid over them. */
-function settledCards(
-  cards: readonly TypedToolDataEntry[],
-  settled: Settlements,
-): TypedToolDataEntry[] {
-  let shown = [...cards];
-  for (const card of cards) {
-    const approvalId = (card.data as { approval_id?: unknown } | null)
-      ?.approval_id;
-    const settlement =
-      typeof approvalId === "string" ? settled[approvalId] : undefined;
-    if (settlement)
-      shown = settleApprovalToolData(shown, settlement).entries ?? shown;
-  }
-  return shown;
-}
-
 interface RowContext {
   view: ConversationView;
   sends: Readonly<Record<string, LocalSend>>;
   userMessages: ReadonlyMap<string, UserMessage>;
   dates: ReadonlyMap<number, string>;
-  verdicts: Settlements;
+  verdicts: ApprovalVerdicts;
 }
 
 function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
@@ -164,7 +143,7 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
           seq: bubble.seq ?? undefined,
           date: bubble.seq === null ? undefined : dates.get(bubble.seq),
           // The bubble's registry narrows tool entries by name at render.
-          tool_data: settledCards(
+          tool_data: withVerdicts(
             bubble.toolData as TypedToolDataEntry[],
             verdicts,
           ),
@@ -191,7 +170,7 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
           response: "",
           message_id: bubble.messageId,
           seq: bubble.seq ?? undefined,
-          tool_data: settledCards(
+          tool_data: withVerdicts(
             bubble.toolData as TypedToolDataEntry[],
             verdicts,
           ),
@@ -211,7 +190,7 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
           message_id: bubble.messageId,
           seq: bubble.seq,
           date: dates.get(bubble.seq),
-          tool_data: settledCards(
+          tool_data: withVerdicts(
             bubble.toolData as TypedToolDataEntry[],
             verdicts,
           ),
@@ -247,7 +226,7 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
 export function liveMessages(
   view: ConversationView,
   sends: Readonly<Record<string, LocalSend>>,
-  verdicts: Settlements = {},
+  verdicts: ApprovalVerdicts = {},
 ): MessageType[] {
   const userMessages = new Map<string, UserMessage>();
   const dates = new Map<number, string>();

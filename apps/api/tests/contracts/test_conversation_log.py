@@ -18,7 +18,7 @@ from app.db.repositories import conversations as conversations_module
 from app.db.repositories.conversation_log import ConversationLogRepository
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import ConversationSyncItem, MessageModel
-from app.models.conversation_frame_models import state_frame
+from app.models.conversation_frame_models import EntryFrame, state_frame
 from app.models.conversation_log_models import (
     CommsPhase,
     ConversationState,
@@ -520,7 +520,10 @@ async def test_a_load_a_sync_and_recent_reads_are_the_entries_the_events_stream_
 ) -> None:
     repo = ConversationRepository()
     user_id, conversation_id = await _mixed_chat(log)
-    logged = await log.read_after(conversation_id, user_id, 0)
+    logged = [
+        EntryFrame(seq=entry.seq, at=entry.at, entry=entry.entry)
+        for entry in await log.read_after(conversation_id, user_id, 0)
+    ]
     state = state_frame(await log.state(conversation_id, user_id))
 
     doc = await repo.get(conversation_id, user_id=user_id)

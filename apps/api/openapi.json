@@ -3909,7 +3909,7 @@
         "type": "object"
       },
       "ConversationEntriesPage": {
-        "description": "A run of the log's entries, oldest first, as the event stream's entry frames carry them.\n\nA page never starts inside an open span: it reaches back to the Reply, WorkStarted or\nApprovalRequested of every settle, finish, join or decision it holds. state is the head's,\nso a page alone shows the loading row, live work and approvals; cursor is the seq an\nolder page is read before, set exactly when has_older.",
+        "description": "A run of the log's entries, oldest first: the event stream's own entry frames.\n\nA page never starts inside an open span: it reaches back to the Reply, WorkStarted or\nApprovalRequested of every settle, finish, join or decision it holds. state is the head's,\nso a page alone shows the loading row, live work and approvals; cursor is the seq an\nolder page is read before, set exactly when has_older.",
         "properties": {
           "cursor": {
             "anyOf": [
@@ -3924,7 +3924,7 @@
           },
           "entries": {
             "items": {
-              "$ref": "#/components/schemas/LoggedEntry"
+              "$ref": "#/components/schemas/EntryFrame"
             },
             "title": "Entries",
             "type": "array"
@@ -4686,7 +4686,7 @@
           },
           "entries": {
             "items": {
-              "$ref": "#/components/schemas/LoggedEntry"
+              "$ref": "#/components/schemas/EntryFrame"
             },
             "title": "Entries",
             "type": "array"
@@ -10001,7 +10001,7 @@
           },
           "entries": {
             "items": {
-              "$ref": "#/components/schemas/LoggedEntry"
+              "$ref": "#/components/schemas/EntryFrame"
             },
             "title": "Entries",
             "type": "array"
@@ -10128,95 +10128,6 @@
           "updatedAt"
         ],
         "title": "LoadedConversation",
-        "type": "object"
-      },
-      "LoggedEntry": {
-        "additionalProperties": false,
-        "description": "An entry at its position in the conversation's order.",
-        "properties": {
-          "at": {
-            "format": "date-time",
-            "title": "At",
-            "type": "string"
-          },
-          "entry": {
-            "discriminator": {
-              "mapping": {
-                "approval_decided": "#/components/schemas/ApprovalDecided",
-                "approval_requested": "#/components/schemas/ApprovalRequested",
-                "barge_in": "#/components/schemas/BargeIn",
-                "integration_connected": "#/components/schemas/IntegrationConnected",
-                "integration_needed": "#/components/schemas/IntegrationNeeded",
-                "notice": "#/components/schemas/Notice",
-                "reply": "#/components/schemas/Reply",
-                "reply_settled": "#/components/schemas/ReplySettled",
-                "stop_requested": "#/components/schemas/StopRequested",
-                "todo_woke": "#/components/schemas/TodoWoke",
-                "user_message": "#/components/schemas/UserMessage",
-                "work_finished": "#/components/schemas/WorkFinished",
-                "work_started": "#/components/schemas/WorkStarted",
-                "workflow_fired": "#/components/schemas/WorkflowFired"
-              },
-              "propertyName": "kind"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/UserMessage"
-              },
-              {
-                "$ref": "#/components/schemas/StopRequested"
-              },
-              {
-                "$ref": "#/components/schemas/BargeIn"
-              },
-              {
-                "$ref": "#/components/schemas/WorkflowFired"
-              },
-              {
-                "$ref": "#/components/schemas/TodoWoke"
-              },
-              {
-                "$ref": "#/components/schemas/Notice"
-              },
-              {
-                "$ref": "#/components/schemas/WorkStarted"
-              },
-              {
-                "$ref": "#/components/schemas/ApprovalRequested"
-              },
-              {
-                "$ref": "#/components/schemas/ApprovalDecided"
-              },
-              {
-                "$ref": "#/components/schemas/WorkFinished"
-              },
-              {
-                "$ref": "#/components/schemas/Reply"
-              },
-              {
-                "$ref": "#/components/schemas/ReplySettled"
-              },
-              {
-                "$ref": "#/components/schemas/IntegrationNeeded"
-              },
-              {
-                "$ref": "#/components/schemas/IntegrationConnected"
-              }
-            ],
-            "title": "Entry"
-          },
-          "seq": {
-            "minimum": 1.0,
-            "title": "Seq",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "seq",
-          "at",
-          "entry"
-        ],
-        "title": "LoggedEntry",
         "type": "object"
       },
       "LoginRequest": {

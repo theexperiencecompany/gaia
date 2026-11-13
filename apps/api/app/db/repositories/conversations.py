@@ -70,7 +70,7 @@ from app.models.chat_models import (
     ConversationSyncItem,
     SystemPurpose,
 )
-from app.models.conversation_frame_models import state_frame
+from app.models.conversation_frame_models import EntryFrame, state_frame
 from app.models.conversation_log_models import EntryKind, LoggedEntry
 from app.models.conversation_models import (
     ConversationDescriptionHit,
@@ -709,7 +709,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         page = await self._with_openers(head, [logged_of(entry) for entry in stored])
         older = bool(page) and await self._holds_before(head, page[0].seq)
         return ConversationEntriesPage(
-            entries=page,
+            entries=[
+                EntryFrame(seq=logged.seq, at=logged.at, entry=logged.entry) for logged in page
+            ],
             state=state_frame(current_state(head.document)),
             has_older=older,
             cursor=page[0].seq if older else None,

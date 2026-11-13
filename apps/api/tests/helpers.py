@@ -379,7 +379,7 @@ async def stored_conversation(
 
 def shown_messages(doc: ConversationEntriesPage) -> list[ConversationEntry]:
     """Project a loaded page of entries into messages, as search and pins show a message."""
-    return project(doc.entries)
+    return project([LoggedEntry(seq=f.seq, at=f.at, entry=f.entry) for f in doc.entries])
 
 
 def worker_mongo_db_name(base_name: str | None = None) -> str:

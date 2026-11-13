@@ -6,8 +6,8 @@ import {
   type DisplayState,
   sendingLoadingRow,
 } from "@shared/conversation";
+import { useApprovalSettlementStore } from "@shared/conversation/live";
 import { useEffect, useMemo } from "react";
-import { useApprovalSettlementStore } from "@/features/chat/stores/approvalSettlementStore";
 import { readToolDataLoadingHints } from "@/features/chat/utils/loadingHints";
 import {
   type ActiveToolInfo,

@@ -1,22 +1,15 @@
 import { z } from "zod";
 import type { ConversationEntriesPage } from "../api/generated";
-import { EntrySchema } from "./entries";
-import { FRAME_KIND, StateFrameSchema } from "./frames";
+import { EntryFrameSchema, StateFrameSchema } from "./frames";
 import type { ConversationFrame, ConversationView } from "./types";
 import { applyFrame } from "./view";
 
 /** Entries asked for per page when a reader scrolls past the oldest one loaded. */
 export const HISTORY_PAGE_SIZE = 50;
 
-const LoggedEntrySchema = z.object({
-  seq: z.number().int().min(1),
-  at: z.iso.datetime({ offset: true }),
-  entry: EntrySchema,
-});
-
 /** A page of the log as a load, a sync or a page back returns it: the stream's own entries and the head's state. */
 export const ConversationPageSchema = z.object({
-  entries: z.array(LoggedEntrySchema),
+  entries: z.array(EntryFrameSchema),
   state: StateFrameSchema,
   has_older: z.boolean(),
   cursor: z.number().int().min(1).nullable(),
@@ -25,19 +18,14 @@ export const ConversationPageSchema = z.object({
 export type ConversationPage = z.infer<typeof ConversationPageSchema>;
 
 /**
- * Fold a page into the view through the reducer, as the stream would have: each entry
- * as its entry frame (a held seq changes only to a newer revision), then the state.
+ * Fold a page into the view through the reducer, as the stream would have: its entry
+ * frames (a held seq changes only to a newer revision), then the state.
  */
 export function hydrate(
   view: ConversationView,
   page: ConversationPage,
 ): ConversationView {
-  const frames: ConversationFrame[] = [
-    ...page.entries.map(
-      (logged): ConversationFrame => ({ kind: FRAME_KIND.ENTRY, ...logged }),
-    ),
-    page.state,
-  ];
+  const frames: ConversationFrame[] = [...page.entries, page.state];
   return frames.reduce((current, frame) => {
     const outcome = applyFrame(current, frame);
     // Entry and state frames always apply; only deltas and in-place updates can gap.

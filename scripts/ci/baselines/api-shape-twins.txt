@@ -19,11 +19,8 @@ apps/mobile/src/components/EmptyState.tsx:EmptyStateProps=CreateWorkflowRequest
 apps/mobile/src/config/openui/components/content.tsx:CarouselItem=NotificationContentView
 apps/mobile/src/features/auth/api/auth-api.ts:UserInfoResponse=AuthenticatedUserResponse
 apps/mobile/src/features/auth/types/index.ts:UserInfo=AuthenticatedUserResponse
-apps/mobile/src/features/chat/api/chat-api.ts:ApiConversationDetail=ConversationDocument
-apps/mobile/src/features/chat/api/chat-api.ts:ApiMessage=ConversationEntry
-apps/mobile/src/features/chat/api/chat-api.ts:ConversationDetail=ConversationDocument
 apps/mobile/src/features/chat/api/chat-api.ts:FileUploadResponse=FileDeletedResponse
-apps/mobile/src/features/chat/api/queries.ts:ApiConversation=ConversationDocument
+apps/mobile/src/features/chat/api/queries.ts:ApiConversation=ConversationSummary
 apps/mobile/src/features/chat/api/queries.ts:ConversationsResponse=ConversationListResponse
 apps/mobile/src/features/chat/components/chat/email-accordion.tsx:EmailAccordionItem=GmailMessageSummary
 apps/mobile/src/features/chat/components/chat/email-compose-card.tsx:EmailComposeData=SendEmailForm
@@ -39,7 +36,7 @@ apps/mobile/src/features/chat/tool-data/cards/integration-list-card.tsx:Suggeste
 apps/mobile/src/features/chat/tool-data/cards/notification-card.tsx:NotificationActionItem=NotificationAction
 apps/mobile/src/features/chat/tool-data/cards/support-ticket-card.tsx:SupportResponse=SupportRequestSubmissionResponse
 apps/mobile/src/features/chat/tool-data/cards/support-ticket-card.tsx:SupportTicketData=SupportRequestCreate
-apps/mobile/src/features/dashboard/api/dashboard-api.ts:ApiConversation=ConversationDocument
+apps/mobile/src/features/dashboard/api/dashboard-api.ts:ApiConversation=ConversationSummary
 apps/mobile/src/features/dashboard/api/dashboard-api.ts:ConversationsResponse=ConversationListResponse
 apps/mobile/src/features/integrations/api/integrations-api.ts:ConnectionTestResult=CustomIntegrationConnectionResult
 apps/mobile/src/features/integrations/api/integrations-api.ts:CreateCustomIntegrationParams=CreateCustomIntegrationRequest
@@ -123,7 +120,7 @@ apps/web/src/features/workflows/triggers/handlers/SlackSettings.tsx:SlackTrigger
 apps/web/src/features/workflows/utils/creator.ts:ResolvableCreator=AuthorDetails
 # Owned by the concurrent lib/api migration, which deletes ErrorBody outright.
 apps/web/src/lib/blog.types.ts:Author=AuthorDetails
-apps/web/src/lib/db/chatDb.ts:IConversation=ConversationDocument
+apps/web/src/lib/db/chatDb.ts:IConversation=ConversationSummary
 apps/web/src/lib/seo.ts:PageMetadataOptions=SupportRequestCreate
 apps/web/src/stores/chatStore.ts:OptimisticMessage=ReplyToMessageData
 apps/web/src/types/api/aboutApiTypes.ts:Author=AuthorDetails

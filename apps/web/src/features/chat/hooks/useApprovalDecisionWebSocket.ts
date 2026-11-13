@@ -1,6 +1,6 @@
+import { useApprovalSettlementStore } from "@shared/conversation/live";
 import { parseApprovalDecidedEvent } from "@shared/utils";
 import { useCallback, useEffect } from "react";
-import { useApprovalSettlementStore } from "@/features/chat/stores/approvalSettlementStore";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 
 /**

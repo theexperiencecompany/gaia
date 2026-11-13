@@ -14,12 +14,8 @@
 
 apps/mobile/src/features/auth/api/auth-api.ts:LoginUrlResponse
 apps/mobile/src/features/auth/api/auth-api.ts:UserInfoResponse
-apps/mobile/src/features/chat/api/chat-api.ts:ApiConversationDetail
 apps/mobile/src/features/chat/api/chat-api.ts:ApiFileData
-apps/mobile/src/features/chat/api/chat-api.ts:ApiMessage
-apps/mobile/src/features/chat/api/chat-api.ts:ConversationDetail
 apps/mobile/src/features/chat/api/chat-api.ts:FileUploadResponse
-apps/mobile/src/features/chat/api/chat-api.ts:MemoryData
 apps/mobile/src/features/chat/api/chat-api.ts:Message
 apps/mobile/src/features/chat/api/chat-api.ts:UploadFileInput
 apps/mobile/src/features/chat/api/models-api.ts:ModelInfo

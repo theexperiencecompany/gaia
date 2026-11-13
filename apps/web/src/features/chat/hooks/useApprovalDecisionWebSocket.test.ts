@@ -6,12 +6,12 @@ import {
   EMPTY_CONVERSATION_VIEW,
   type Entry,
 } from "@shared/conversation";
+import { useApprovalSettlementStore } from "@shared/conversation/live";
 import { entryFrame, reply } from "@shared/conversation/testing";
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useApprovalDecisionWebSocket } from "@/features/chat/hooks/useApprovalDecisionWebSocket";
 import { liveMessages } from "@/features/chat/live/liveMessages";
-import { useApprovalSettlementStore } from "@/features/chat/stores/approvalSettlementStore";
 
 type WsHandler = (message: unknown) => void;
 

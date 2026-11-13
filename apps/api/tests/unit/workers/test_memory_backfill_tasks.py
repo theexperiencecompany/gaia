@@ -21,8 +21,8 @@ from app.constants.memory import (
     MEMORY_BACKFILL_MAX_USERS_PER_RUN,
     MemorySourceType,
 )
-from app.models.conversation_frame_models import StateFrame
-from app.models.conversation_log_models import Entry, LoggedEntry, Notice, Reply, UserMessage
+from app.models.conversation_frame_models import EntryFrame, StateFrame
+from app.models.conversation_log_models import Entry, Notice, Reply, UserMessage
 from app.models.conversation_models import LoadedConversation
 from app.models.user_models import UserDocument
 from app.workers.tasks.memory_backfill_tasks import (
@@ -64,7 +64,7 @@ def _conversation(
         conversation_id=conversation_id,
         createdAt=created_at,
         entries=[
-            LoggedEntry(seq=n, at=datetime(2026, 1, 1, tzinfo=UTC), entry=entry)
+            EntryFrame(seq=n, at=datetime(2026, 1, 1, tzinfo=UTC), entry=entry)
             for n, entry in enumerate(logged, 1)
         ],
         state=StateFrame(head=len(logged), display="idle", work=()),

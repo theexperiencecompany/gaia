@@ -7692,7 +7692,7 @@ export interface components {
         };
         /**
          * ConversationEntriesPage
-         * @description A run of the log's entries, oldest first, as the event stream's entry frames carry them.
+         * @description A run of the log's entries, oldest first: the event stream's own entry frames.
          *
          *     A page never starts inside an open span: it reaches back to the Reply, WorkStarted or
          *     ApprovalRequested of every settle, finish, join or decision it holds. state is the head's,
@@ -7703,7 +7703,7 @@ export interface components {
             /** Cursor */
             cursor: number | null;
             /** Entries */
-            entries: components["schemas"]["LoggedEntry"][];
+            entries: components["schemas"]["EntryFrame"][];
             /**
              * Has Older
              * @default false
@@ -7925,7 +7925,7 @@ export interface components {
             /** Description */
             description: string;
             /** Entries */
-            entries: components["schemas"]["LoggedEntry"][];
+            entries: components["schemas"]["EntryFrame"][];
             /**
              * Has Older
              * @default false
@@ -10517,7 +10517,7 @@ export interface components {
              */
             description: string;
             /** Entries */
-            entries: components["schemas"]["LoggedEntry"][];
+            entries: components["schemas"]["EntryFrame"][];
             /**
              * Has Older
              * @default false
@@ -10556,21 +10556,6 @@ export interface components {
             user_id: string;
         } & {
             [key: string]: unknown;
-        };
-        /**
-         * LoggedEntry
-         * @description An entry at its position in the conversation's order.
-         */
-        LoggedEntry: {
-            /**
-             * At
-             * Format: date-time
-             */
-            at: string;
-            /** Entry */
-            entry: components["schemas"]["UserMessage"] | components["schemas"]["StopRequested"] | components["schemas"]["BargeIn"] | components["schemas"]["WorkflowFired"] | components["schemas"]["TodoWoke"] | components["schemas"]["Notice"] | components["schemas"]["WorkStarted"] | components["schemas"]["ApprovalRequested"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["WorkFinished"] | components["schemas"]["Reply"] | components["schemas"]["ReplySettled"] | components["schemas"]["IntegrationNeeded"] | components["schemas"]["IntegrationConnected"];
-            /** Seq */
-            seq: number;
         };
         /**
          * LoginRequest
@@ -17703,7 +17688,6 @@ export type LinkTokenInfoResponse = components['schemas']['LinkTokenInfoResponse
 export type LiveTask = components['schemas']['LiveTask'];
 export type LiveViewTokenResponse = components['schemas']['LiveViewTokenResponse'];
 export type LoadedConversation = components['schemas']['LoadedConversation'];
-export type LoggedEntry = components['schemas']['LoggedEntry'];
 export type LoginRequest = components['schemas']['LoginRequest'];
 export type LogoutResponse = components['schemas']['LogoutResponse'];
 export type ManagedAt = components['schemas']['ManagedAt'];

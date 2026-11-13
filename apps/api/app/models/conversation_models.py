@@ -33,8 +33,8 @@ from app.models.chat_models import (
     MessageModel,
     SystemPurpose,
 )
-from app.models.conversation_frame_models import StateFrame
-from app.models.conversation_log_models import ConversationState, LoggedEntry
+from app.models.conversation_frame_models import EntryFrame, StateFrame
+from app.models.conversation_log_models import ConversationState
 from app.models.document_models import UserScopedDocument
 from app.schemas.common import ResponseModel
 from app.utils.tool_data_utils import convert_legacy_tool_data
@@ -329,7 +329,7 @@ class ConversationListResponse(ResponseModel):
 
 
 class ConversationEntriesPage(ResponseModel):
-    """A run of the log's entries, oldest first, as the event stream's entry frames carry them.
+    """A run of the log's entries, oldest first: the event stream's own entry frames.
 
     A page never starts inside an open span: it reaches back to the Reply, WorkStarted or
     ApprovalRequested of every settle, finish, join or decision it holds. state is the head's,
@@ -337,7 +337,7 @@ class ConversationEntriesPage(ResponseModel):
     older page is read before, set exactly when has_older.
     """
 
-    entries: list[LoggedEntry] = Field(default_factory=list)
+    entries: list[EntryFrame] = Field(default_factory=list)
     state: StateFrame
     has_older: bool = False
     cursor: int | None = None

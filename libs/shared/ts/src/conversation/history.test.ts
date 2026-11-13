@@ -25,7 +25,6 @@ import type {
   ConversationFrame,
   ConversationView,
   Entry,
-  LoggedEntry,
   StateFrame,
 } from "./types";
 import { applyFrame, EMPTY_CONVERSATION_VIEW } from "./view";
@@ -45,11 +44,16 @@ const rendered = (view: ConversationView) => ({
   loading: loadingRow(view),
 });
 
-const logged = (entries: Entry[], from = 1): LoggedEntry[] =>
-  entries.map((entry, at) => ({ seq: from + at, at: AT, entry }));
+const logged = (entries: Entry[], from = 1) =>
+  entries.map((entry, at) => ({
+    kind: "entry" as const,
+    seq: from + at,
+    at: AT,
+    entry,
+  }));
 
 const page = (
-  entries: LoggedEntry[],
+  entries: ConversationPage["entries"],
   state: StateFrame,
   cursor: number | null = null,
 ): ConversationPage => ({
@@ -70,7 +74,7 @@ function pageAt(frames: readonly ConversationFrame[], cut: number) {
   const log = fold(before.filter(isLogFrame));
   const state = before.findLast((frame) => frame.kind === "state");
   return page(
-    [...log.entries],
+    log.entries.map((held) => ({ kind: "entry" as const, ...held })),
     state?.kind === "state" ? state : { ...IDLE, head: log.head },
   );
 }

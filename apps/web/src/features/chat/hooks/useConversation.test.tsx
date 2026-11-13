@@ -74,11 +74,7 @@ const HEAD = LOG.length;
 const LOADED_STATE = stateFrame(HEAD, "thinking");
 
 const page = (frames: ConversationFrame[]): ConversationPage => ({
-  entries: frames.flatMap((frame) =>
-    frame.kind === "entry"
-      ? [{ seq: frame.seq, at: frame.at, entry: frame.entry }]
-      : [],
-  ),
+  entries: frames.flatMap((frame) => (frame.kind === "entry" ? [frame] : [])),
   state: { kind: "state", head: HEAD, display: "thinking", work: [] },
   has_older: false,
   cursor: null,

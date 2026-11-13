@@ -156,7 +156,7 @@ export const LiveTaskSchema = z.object({
   awaiting_approval: z.boolean(),
 }) satisfies z.ZodType<LiveTask>;
 
-const EntryFrameSchema = z.object({
+export const EntryFrameSchema = z.object({
   kind: z.literal(FRAME_KIND.ENTRY),
   seq,
   at: z.iso.datetime({ offset: true }),
