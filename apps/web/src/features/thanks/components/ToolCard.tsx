@@ -90,7 +90,7 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
           href={tool.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="group flex items-center gap-3 rounded-2xl bg-zinc-900 px-4 py-3 transition-colors duration-200 hover:border-primary/50 hover:bg-zinc-800/50"
+          className="group flex items-center gap-3 rounded-2xl bg-zinc-900 px-4 py-3 transition-colors duration-200 hover:border-accent/50 hover:bg-zinc-800/50"
         >
           <div
             className={`relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg ${favicon ? "" : "bg-zinc-800"}`}
@@ -167,7 +167,7 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
               href={tool.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-1 truncate text-xs text-primary hover:underline"
+              className="mt-1 truncate text-xs text-accent hover:underline"
             >
               {tool.url.replace("https://", "").replace("http://", "")}
             </a>

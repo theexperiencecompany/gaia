@@ -35,7 +35,7 @@ export function AppIconPicker({
               // HeroUI's fixed icon-button size to fill the grid cell.
               "h-auto w-full min-w-0 aspect-square overflow-hidden rounded-[24%] p-1 transition-all",
               isSelected
-                ? "ring-2 ring-primary"
+                ? "ring-2 ring-accent"
                 : "ring-2 ring-transparent hover:scale-105",
             )}
           >

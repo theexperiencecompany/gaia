@@ -137,7 +137,7 @@ function VoiceCell({
               <p className="truncate text-sm text-white">{voice.name}</p>
               {inlineGender && <GenderIcon gender={voice.gender} />}
               {voice.isSelected && (
-                <CheckmarkCircle02Icon className="h-4 w-4 shrink-0 text-primary" />
+                <CheckmarkCircle02Icon className="h-4 w-4 shrink-0 text-accent" />
               )}
             </div>
             <p

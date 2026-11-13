@@ -325,7 +325,7 @@ function SupportRequestModal({
                 />
                 <button
                   type="button"
-                  className={`w-full cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center transition-all duration-200 ${dragActive ? "scale-[1.02] border-primary bg-blue-50 shadow-lg" : "hover:bg-zinc-700 border-zinc-700 bg-zinc-800 hover:border-primary"}`}
+                  className={`w-full cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center transition-all duration-200 ${dragActive ? "scale-[1.02] border-accent bg-blue-50 shadow-lg" : "hover:bg-zinc-700 border-zinc-700 bg-zinc-800 hover:border-accent"}`}
                   onDragEnter={handleDrag}
                   onDragLeave={handleDrag}
                   onDragOver={handleDrag}

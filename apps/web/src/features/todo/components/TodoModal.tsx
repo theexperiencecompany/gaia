@@ -333,7 +333,7 @@ export default function TodoModal({
   todo,
   initialProjectId,
   buttonText = "Add Task",
-  buttonClassName = "w-full justify-start text-sm text-primary",
+  buttonClassName = "w-full justify-start text-sm text-accent",
 }: TodoModalProps) {
   const user = useCurrentUser();
   const { isMac, modifierKeyName } = usePlatform();

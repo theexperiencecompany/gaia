@@ -126,7 +126,7 @@ export function UpgradeModalOffer({
                 key={feature}
                 className="flex items-start gap-2 text-sm font-light"
               >
-                <span className="mt-1.5 size-1 shrink-0 rounded-full bg-primary" />
+                <span className="mt-1.5 size-1 shrink-0 rounded-full bg-accent" />
                 <PlanFeature feature={feature} />
               </div>
             ))}

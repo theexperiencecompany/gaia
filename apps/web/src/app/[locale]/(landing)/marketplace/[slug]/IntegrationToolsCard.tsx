@@ -9,9 +9,9 @@ function EmptyTools() {
       <PackageOpenIcon
         width={48}
         height={48}
-        className="text-foreground-300 mb-4"
+        className="text-zinc-600 mb-4"
       />
-      <p className="text-foreground-400 max-w-md text-sm">
+      <p className="text-zinc-500 max-w-md text-sm">
         This integration might not have tools available yet because no one has
         connected to it, or the tools haven&apos;t been synced. Try refreshing
         the page.

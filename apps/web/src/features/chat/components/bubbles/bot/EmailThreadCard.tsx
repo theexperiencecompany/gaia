@@ -120,14 +120,14 @@ export default function EmailThreadCard({
                                 From
                               </Chip>
                             </div>
-                            <span className="text-sm text-foreground-600">
+                            <span className="text-sm text-zinc-300">
                               {senderName}
                             </span>
-                            <span className="text-xs font-light text-foreground-400">
+                            <span className="text-xs font-light text-zinc-500">
                               {senderEmail}
                             </span>
                           </div>
-                          <span className="text-xs text-foreground-500">
+                          <span className="text-xs text-zinc-400">
                             {formatTime(message.time)}
                           </span>
                         </div>
@@ -137,7 +137,7 @@ export default function EmailThreadCard({
                               Subject
                             </Chip>
                           </div>
-                          <div className="text-sm font-medium text-foreground-600">
+                          <div className="text-sm font-medium text-zinc-300">
                             {message.subject}
                           </div>
                         </div>

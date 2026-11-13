@@ -53,7 +53,7 @@ function WorkflowCategoryIcons({ categories }: { categories: string[] }) {
         ) : null;
       })}
       {categories.length > 3 && (
-        <div className="z-0 flex size-[28px] min-h-[28px] min-w-[28px] items-center justify-center rounded-lg bg-zinc-700/60 text-xs text-foreground-500">
+        <div className="z-0 flex size-[28px] min-h-[28px] min-w-[28px] items-center justify-center rounded-lg bg-zinc-700/60 text-xs text-zinc-400">
           +{categories.length - 3}
         </div>
       )}

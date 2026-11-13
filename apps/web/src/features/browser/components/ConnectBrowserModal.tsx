@@ -57,7 +57,7 @@ function Surface({
 function CommandBlock({ command }: { command: string }) {
   return (
     <div className="flex items-center gap-2 rounded-xl bg-zinc-900 py-2 pr-2 pl-3">
-      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap text-primary text-xs">
+      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap text-accent text-xs">
         {command}
       </code>
       <CopyButton textToCopy={command} />

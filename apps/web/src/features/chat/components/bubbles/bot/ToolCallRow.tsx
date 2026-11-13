@@ -211,7 +211,7 @@ export function ToolCallRow({
         <div className="min-h-8 min-w-8 flex items-center justify-center shrink-0">
           <ToolCallIcon call={call} isSkill={!!display.skillLabel} />
         </div>
-        {!isLast && <div className="w-px flex-1 bg-default-200 min-h-4" />}
+        {!isLast && <div className="w-px flex-1 bg-zinc-700 min-h-4" />}
       </div>
 
       <div className="flex-1 min-w-0">

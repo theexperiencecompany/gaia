@@ -48,8 +48,8 @@ export const IntegrationInstructionsEditor = ({
         onClick={onOpen}
         className="group flex w-full cursor-pointer items-center gap-3 rounded-2xl bg-zinc-800/40 p-3 text-left transition-colors hover:bg-zinc-800/60"
       >
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/15">
-          <NoteEditIcon className="size-5 text-primary" />
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent/15">
+          <NoteEditIcon className="size-5 text-accent" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-zinc-100">

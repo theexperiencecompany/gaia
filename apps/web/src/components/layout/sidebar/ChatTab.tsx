@@ -101,7 +101,7 @@ export const ChatTab: FC<ChatTabProps> = ({
               the blue "actively streaming" pulse. */}
           {isBusy && (
             <div
-              className={`size-2 shrink-0 rounded-full animate-pulse ${showApprovalDot ? "bg-warning" : "bg-primary"}`}
+              className={`size-2 shrink-0 rounded-full animate-pulse ${showApprovalDot ? "bg-warning" : "bg-accent"}`}
               title={
                 showApprovalDot ? "Waiting for your approval" : "Streaming..."
               }
@@ -109,7 +109,7 @@ export const ChatTab: FC<ChatTabProps> = ({
           )}
           {/* Unread indicator */}
           {!isBusy && isUnread && (
-            <div className="size-2.5 shrink-0 rounded-full bg-primary" />
+            <div className="size-2.5 shrink-0 rounded-full bg-accent" />
           )}
           {/* min-w-0 + truncate so a long title shrinks/ellipsizes instead of
               squeezing the fixed-size indicator dot out of view. */}

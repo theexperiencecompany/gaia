@@ -31,7 +31,7 @@ import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 import { NeedsSetupChip } from "../shared/WorkflowCardComponents";
 import WorkflowIconPicker from "./WorkflowIconPicker";
 
-const iconClasses = "size-5 text-default-500 pointer-events-none shrink-0";
+const iconClasses = "size-5 text-zinc-400 pointer-events-none shrink-0";
 
 interface WorkflowHeaderProps {
   mode: "create" | "edit" | "preview";

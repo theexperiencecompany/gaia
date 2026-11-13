@@ -42,7 +42,7 @@ const DummyIntegrationsCard: React.FC = () => {
               <div className="flex items-center gap-3 px-1 pt-1">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-normal text-foreground-500">
+                    <span className="text-xs font-normal text-zinc-400">
                       Integrations
                     </span>
                     <span className="text-xs font-light text-zinc-400">
@@ -652,7 +652,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-sm text-foreground-600">
+                          <span className="truncate text-sm text-zinc-300">
                             {formatToolName(tool.name)}
                           </span>
                           <div className="flex items-center gap-2">

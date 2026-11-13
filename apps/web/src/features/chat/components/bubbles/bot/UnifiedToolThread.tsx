@@ -88,7 +88,7 @@ function StackedIcons({
         );
       })}
       {icons.length > SHOW_ICONS && (
-        <div className="z-0 flex size-7 min-h-7 min-w-7 items-center justify-center rounded-lg bg-zinc-700/60 text-xs text-foreground-500 font-normal">
+        <div className="z-0 flex size-7 min-h-7 min-w-7 items-center justify-center rounded-lg bg-zinc-700/60 text-xs text-zinc-400 font-normal">
           +{icons.length - SHOW_ICONS}
         </div>
       )}

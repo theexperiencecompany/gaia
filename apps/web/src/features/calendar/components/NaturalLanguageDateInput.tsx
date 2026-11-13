@@ -162,7 +162,7 @@ export const NaturalLanguageDateInput: React.FC<
                         className={cn(
                           "w-full rounded-lg px-3 py-1.5 text-sm transition-colors",
                           h === selectedHour
-                            ? "bg-primary text-primary-foreground"
+                            ? "bg-accent text-accent-foreground"
                             : "text-zinc-300 hover:bg-zinc-700",
                         )}
                       >
@@ -181,7 +181,7 @@ export const NaturalLanguageDateInput: React.FC<
                         className={cn(
                           "w-full rounded-lg px-3 py-1.5 text-sm transition-colors",
                           m === selectedMinute
-                            ? "bg-primary text-primary-foreground"
+                            ? "bg-accent text-accent-foreground"
                             : "text-zinc-300 hover:bg-zinc-700",
                         )}
                       >
@@ -195,7 +195,7 @@ export const NaturalLanguageDateInput: React.FC<
                 <button
                   type="button"
                   onClick={handleTimeConfirm}
-                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                  className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90"
                 >
                   Done
                 </button>

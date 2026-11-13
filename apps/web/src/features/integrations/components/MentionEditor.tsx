@@ -138,7 +138,7 @@ export const MentionEditor = ({
       {value.trim() === "" && (
         <div
           aria-hidden="true"
-          className={`pointer-events-none absolute inset-0 whitespace-pre-wrap text-default-500 ${textClass}`}
+          className={`pointer-events-none absolute inset-0 whitespace-pre-wrap text-zinc-400 ${textClass}`}
         >
           {placeholder}
         </div>

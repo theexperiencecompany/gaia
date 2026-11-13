@@ -94,7 +94,7 @@ export function BlogFilters({ blogs, onFilterChange }: BlogFiltersProps) {
         </Description>
         <InputGroup>
           <InputGroup.Prefix>
-            <SearchIcon className="size-5 text-default-400" />
+            <SearchIcon className="size-5 text-zinc-500" />
           </InputGroup.Prefix>
           <InputGroup.Input
             type="text"

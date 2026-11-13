@@ -60,7 +60,7 @@ const LazyContributors = lazy(() =>
           ))}
         </AvatarGroup>
         {totalCount > 8 && (
-          <p className="ms-2 text-small font-medium text-foreground text-nowrap">
+          <p className="ms-2 text-sm font-medium text-foreground text-nowrap">
             +{totalCount - 8} others
           </p>
         )}

@@ -19,7 +19,7 @@ export default function FAQPageClient({ faqs }: FAQPageClientProps) {
           <h1 className="font-serif text-7xl font-medium tracking-tight">
             Frequently Asked Questions
           </h1>
-          <p className="text-xl text-foreground-500">
+          <p className="text-xl text-zinc-400">
             Everything you need to know about GAIA and how it works.
           </p>
         </div>

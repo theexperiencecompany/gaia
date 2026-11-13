@@ -58,7 +58,7 @@ export function PromoBanner({
     <div className="relative overflow-hidden rounded-3xl bg-zinc-800/50">
       <div className="relative z-10 flex flex-wrap items-center justify-between gap-4 p-4">
         <div className="flex min-w-72 flex-1 items-center gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/20">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent/20">
             {icon}
           </div>
           <div>

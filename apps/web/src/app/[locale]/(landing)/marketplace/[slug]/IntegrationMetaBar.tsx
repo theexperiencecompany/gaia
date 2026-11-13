@@ -63,7 +63,7 @@ function NativeCreatorCard() {
           <CheckmarkBadge01Icon
             width={15}
             height={15}
-            className="text-primary"
+            className="text-accent"
           />
         </div>
       </div>

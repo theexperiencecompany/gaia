@@ -155,7 +155,7 @@ export function LinearSettings({
             <button
               type="button"
               onClick={() => setUseManualInput(true)}
-              className="text-xs text-primary hover:underline"
+              className="text-xs text-accent hover:underline"
             >
               Or enter manually
             </button>
@@ -173,7 +173,7 @@ export function LinearSettings({
               <button
                 type="button"
                 onClick={() => setUseManualInput(false)}
-                className="text-xs text-primary hover:underline"
+                className="text-xs text-accent hover:underline"
               >
                 Or select from list
               </button>

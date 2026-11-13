@@ -65,7 +65,7 @@ export default function CalendarSelector({
             />
           ))
       ) : (
-        <div className="p-3 text-sm text-foreground-500">
+        <div className="p-3 text-sm text-zinc-400">
           You have no Calendars
         </div>
       )}

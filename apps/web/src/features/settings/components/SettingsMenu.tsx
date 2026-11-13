@@ -329,7 +329,7 @@ export default function SettingsMenu({
                   }),
                 icon: CircleArrowUp02Icon,
                 iconColor: "#00bbff",
-                customClassNames: { title: "text-primary font-medium" },
+                customClassNames: { title: "text-accent font-medium" },
               },
             ],
           },
@@ -374,7 +374,7 @@ export default function SettingsMenu({
                 hasSubmenu: true,
                 badge:
                   unseenReleases.length > 0 ? (
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-accent" />
                   ) : undefined,
               },
             ]),

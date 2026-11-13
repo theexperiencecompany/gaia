@@ -62,7 +62,7 @@ export const EventCard = ({
       <div className="min-w-0 flex-1">
         {label && (
           <div
-            className={`mb-1 text-xs font-medium ${isDotted ? "text-primary" : "text-zinc-500"}`}
+            className={`mb-1 text-xs font-medium ${isDotted ? "text-accent" : "text-zinc-500"}`}
           >
             {label}
           </div>

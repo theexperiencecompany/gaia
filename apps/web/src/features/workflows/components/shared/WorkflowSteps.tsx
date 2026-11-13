@@ -22,7 +22,7 @@ export default function WorkflowSteps({
   return (
     <div className="relative pb-5">
       <div
-        className={`absolute ${timelineTopPosition} bottom-8 ${timelineLeftPosition} w-px bg-linear-to-b from-primary via-primary/80 to-transparent`}
+        className={`absolute ${timelineTopPosition} bottom-8 ${timelineLeftPosition} w-px bg-linear-to-b from-accent via-accent/80 to-transparent`}
       />
 
       <div className="space-y-6">

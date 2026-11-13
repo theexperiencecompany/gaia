@@ -12,10 +12,10 @@ import { isAppLink } from "@/lib/url-safety";
 import { cn } from "@/lib/utils";
 
 // Link chip styling: the bot bubble is dark (bg-zinc-800), where brand-blue
-// `text-primary` reads fine. The user bubble is `#00bbff` (same as
+// `text-accent` reads fine. The user bubble is `#00bbff` (same as
 // --color-primary), so we switch to a black-text/translucent-black chip there.
 const DARK_BUBBLE_LINK =
-  "bg-primary/20 text-primary hover:text-white hover:underline";
+  "bg-accent/20 text-accent hover:text-white hover:underline";
 const LIGHT_BUBBLE_LINK = "bg-black/10 text-black underline hover:bg-black/20";
 
 // Global set to track failed image URLs across all instances
@@ -230,7 +230,7 @@ function WebsitePreview({
 
       {/* URL Link */}
       <a
-        className="truncate text-xs text-primary hover:underline"
+        className="truncate text-xs text-accent hover:underline"
         href={href}
         rel="noopener noreferrer"
         target={target}

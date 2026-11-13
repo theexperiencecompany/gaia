@@ -42,7 +42,7 @@ export const IntegrationConnectCard: React.FC<IntegrationConnectCardProps> = ({
           {title}
         </p>
         <p
-          className={`${small ? "text-xs" : "text-sm"} text-sm text-foreground-400`}
+          className={`${small ? "text-xs" : "text-sm"} text-sm text-zinc-500`}
         >
           {description}
         </p>

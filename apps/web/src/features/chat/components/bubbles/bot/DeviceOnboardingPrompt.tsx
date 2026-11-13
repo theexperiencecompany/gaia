@@ -114,7 +114,7 @@ function DesktopEnableCard({ platform }: { platform: NodeJS.Platform | null }) {
   return (
     <div className="flex flex-col gap-2 rounded-2xl bg-zinc-900 p-3">
       <div className="flex items-center gap-2">
-        <ComputerIcon width={18} height={18} className="text-primary" />
+        <ComputerIcon width={18} height={18} className="text-accent" />
         <p className="text-sm font-medium text-zinc-100">Connect {noun}</p>
       </div>
       <p className="text-xs font-light text-zinc-400">
@@ -272,7 +272,7 @@ export function DeviceOnboardingPrompt({
               <CommandLineIcon
                 width={22}
                 height={22}
-                className="text-primary"
+                className="text-accent"
               />
             </div>
             <div className="flex min-w-0 flex-1 flex-col gap-1">

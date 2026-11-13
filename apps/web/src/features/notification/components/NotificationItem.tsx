@@ -40,7 +40,7 @@ export const NotificationItem = ({
               {content.title}
             </h4>
             {isUnread && (
-              <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
             )}
           </div>
           <p className="my-1 line-clamp-2 text-left text-sm font-light wrap-break-word text-zinc-400">

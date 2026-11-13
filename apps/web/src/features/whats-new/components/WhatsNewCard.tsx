@@ -88,7 +88,7 @@ export function WhatsNewCard() {
       <div className="p-3">
         <div className="mb-1 flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
             <span className="text-xs text-zinc-400 transition group-hover:text-zinc-300">
               What&apos;s new
             </span>

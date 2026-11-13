@@ -90,12 +90,12 @@ export function TimezoneAutocomplete({
                 <div className="flex min-w-0 flex-col">
                   <span className="truncate">{city}</span>
                   {region ? (
-                    <span className="truncate text-xs text-default-500">
+                    <span className="truncate text-xs text-zinc-400">
                       {region}
                     </span>
                   ) : null}
                 </div>
-                <span className="ml-auto shrink-0 pl-4 text-xs tabular-nums text-default-500">
+                <span className="ml-auto shrink-0 pl-4 text-xs tabular-nums text-zinc-400">
                   {tz.offset}
                 </span>
               </GaiaListBoxItem>

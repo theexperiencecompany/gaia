@@ -42,7 +42,7 @@ export default function WorkflowStep({
   return (
     <div className="relative flex items-start gap-5">
       <div
-        className={`relative z-10 mt-0.5 flex ${dotSize} shrink-0 items-center justify-center rounded-full bg-primary`}
+        className={`relative z-10 mt-0.5 flex ${dotSize} shrink-0 items-center justify-center rounded-full bg-accent`}
       >
         <span className={`${dotTextSize} font-semibold text-black`}>
           {index + 1}

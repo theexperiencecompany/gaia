@@ -145,7 +145,7 @@ function SidebarSection({
             <Spinner />
           </div>
         ) : (
-          <div className="text-center text-xs text-foreground-400 italic">
+          <div className="text-center text-xs text-zinc-500 italic">
             {emptyState.message}
           </div>
         )
@@ -271,7 +271,7 @@ export default function TodoSidebar() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             startContent={
-              <SearchIcon className="h-4 w-4 text-foreground-400" />
+              <SearchIcon className="h-4 w-4 text-zinc-500" />
             }
             size="sm"
             radius="sm"

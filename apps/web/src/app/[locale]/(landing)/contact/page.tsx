@@ -67,7 +67,7 @@ export default async function ContactPage({
           <h1 className="font-serif text-4xl sm:text-6xl lg:text-8xl font-light tracking-tight text-balance">
             Contact us
           </h1>
-          <p className="mt-3 text-foreground-500">
+          <p className="mt-3 text-zinc-400">
             Get in touch with our team for support, feature requests, or general
             inquiries.
           </p>

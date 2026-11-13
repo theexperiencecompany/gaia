@@ -47,7 +47,7 @@ function TwitterUserCard({
   };
 
   return (
-    <div className="group relative flex w-full flex-col gap-3 rounded-xl border border-default-200 bg-content1/50 p-4 backdrop-blur-sm transition-colors hover:border-default-300 hover:bg-content1/70">
+    <div className="group relative flex w-full flex-col gap-3 rounded-xl border border-zinc-700 bg-zinc-900/50 p-4 backdrop-blur-sm transition-colors hover:border-zinc-600 hover:bg-zinc-900/70">
       {/* Card-level action as a stretched overlay button: the card contains a
           nested Follow button, so the card itself cannot be a <button>. The
           overlay covers everything; ONLY the Follow button is raised above it,
@@ -69,7 +69,7 @@ function TwitterUserCard({
               alt={user.name}
               className="h-full w-full object-cover"
             />
-            <AvatarFallback className="flex h-full w-full items-center justify-center bg-primary/10 text-primary text-lg font-semibold">
+            <AvatarFallback className="flex h-full w-full items-center justify-center bg-accent/10 text-accent text-lg font-semibold">
               {user.name?.[0]?.toUpperCase() || "?"}
             </AvatarFallback>
           </Avatar>
@@ -83,7 +83,7 @@ function TwitterUserCard({
                 <CheckmarkBadge02Icon className="h-4 w-4 text-[#1d9bf0] shrink-0" />
               )}
             </div>
-            <span className="text-xs text-default-500">@{user.username}</span>
+            <span className="text-xs text-zinc-400">@{user.username}</span>
           </div>
         </div>
 
@@ -106,7 +106,7 @@ function TwitterUserCard({
       )}
 
       {/* Meta Info */}
-      <div className="flex flex-wrap items-center gap-3 text-xs text-default-500">
+      <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-400">
         {user.location && (
           <div className="flex items-center gap-1">
             <MapsIcon className="h-3.5 w-3.5" />
@@ -135,13 +135,13 @@ function TwitterUserCard({
           <span className="font-bold text-foreground">
             {formatNumber(metrics.following_count)}
           </span>
-          <span className="text-default-500">Following</span>
+          <span className="text-zinc-400">Following</span>
         </div>
         <div className="flex items-center gap-1">
           <span className="font-bold text-foreground">
             {formatNumber(metrics.followers_count)}
           </span>
-          <span className="text-default-500">Followers</span>
+          <span className="text-zinc-400">Followers</span>
         </div>
       </div>
     </div>
@@ -169,7 +169,7 @@ export default function TwitterUserSection({
 }) {
   if (!twitter_user_data || twitter_user_data.length === 0) {
     return (
-      <div className="mt-3 p-4 text-center text-default-500">
+      <div className="mt-3 p-4 text-center text-zinc-400">
         No users found.
       </div>
     );

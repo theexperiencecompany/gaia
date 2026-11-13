@@ -91,7 +91,7 @@ export const DateStrip: React.FC<DateStripProps> = ({
                   {dayLabel}
                 </div>
                 <div
-                  className={`rounded-lg text-sm font-medium ${isToday ? "bg-primary p-1 px-2 text-black" : ""}`}
+                  className={`rounded-lg text-sm font-medium ${isToday ? "bg-accent p-1 px-2 text-black" : ""}`}
                 >
                   {dayNumber}
                 </div>

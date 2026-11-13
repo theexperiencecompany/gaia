@@ -157,7 +157,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
               <div className="flex items-center gap-3 pt-1">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-normal text-foreground-500">
+                    <span className="text-xs font-normal text-zinc-400">
                       Integrations
                     </span>
                     <span className="text-xs font-light text-zinc-400">

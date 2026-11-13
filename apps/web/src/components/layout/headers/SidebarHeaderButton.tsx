@@ -29,7 +29,7 @@ export const SidebarHeaderButton = ({
       size="icon"
       variant="ghost"
       className={cn(
-        "group/btn group rounded-xl p-1! hover:bg-primary/20 hover:text-primary",
+        "group/btn group rounded-xl p-1! hover:bg-accent/20 hover:text-accent",
         className,
       )}
       onClick={onClick}

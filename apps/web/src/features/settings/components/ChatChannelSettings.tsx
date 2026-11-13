@@ -81,7 +81,7 @@ export function ChatChannelSettings({
         <SettingsRow label="Linked Accounts">
           <Link
             href="/settings/linked-accounts"
-            className="text-sm text-primary"
+            className="text-sm text-accent"
           >
             Connect a platform
           </Link>

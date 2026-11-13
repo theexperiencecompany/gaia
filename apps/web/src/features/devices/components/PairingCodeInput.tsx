@@ -29,7 +29,7 @@ const FIRST_GROUP = SLOT_INDEXES.slice(0, PAIRING_CODE_GROUP_LENGTH);
 const SECOND_GROUP = SLOT_INDEXES.slice(PAIRING_CODE_GROUP_LENGTH);
 
 const SLOT_CLASSNAME =
-  "size-11 rounded-xl border-0 bg-zinc-900 font-mono text-base font-medium text-zinc-100 shadow-none transition-[background-color,box-shadow] first:rounded-xl first:border-l-0 last:rounded-xl data-[active=true]:bg-zinc-800 data-[active=true]:ring-2 data-[active=true]:ring-primary/70";
+  "size-11 rounded-xl border-0 bg-zinc-900 font-mono text-base font-medium text-zinc-100 shadow-none transition-[background-color,box-shadow] first:rounded-xl first:border-l-0 last:rounded-xl data-[active=true]:bg-zinc-800 data-[active=true]:ring-2 data-[active=true]:ring-accent/70";
 
 export function PairingCodeInput({
   value,

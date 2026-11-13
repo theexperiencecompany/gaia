@@ -69,7 +69,7 @@ function OnboardingProgressImpl({
             }}
           >
             <m.div
-              className="absolute inset-0 origin-left rounded-full bg-primary"
+              className="absolute inset-0 origin-left rounded-full bg-accent"
               initial={{ scaleX: 0 }}
               animate={{ scaleX: scaleXValue }}
               transition={{ duration: 0.4, ease: "easeInOut" }}

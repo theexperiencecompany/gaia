@@ -50,7 +50,7 @@ export default function WorkflowCreatedCard({
           label: cronLabel,
           icon: <Clock01Icon className="size-3.5" />,
           color: "accent" as const,
-          bgColor: "bg-primary/15",
+          bgColor: "bg-accent/15",
         };
       }
       case "integration":

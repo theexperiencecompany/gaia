@@ -44,7 +44,7 @@ const STATUS_ICON_MAP: Record<
 
 const STATUS_COLOR: Record<TodoProgressItem["status"], string> = {
   completed: "text-emerald-400",
-  in_progress: "text-primary",
+  in_progress: "text-accent",
   pending: "text-zinc-600",
   cancelled: "text-zinc-600",
 };

@@ -20,7 +20,7 @@ function WorkflowCard() {
   return (
     <div className="w-full max-w-sm rounded-2xl bg-zinc-900 p-4">
       <div className="mb-3 flex items-center gap-2">
-        <ZapIcon width={16} height={16} className="text-primary" />
+        <ZapIcon width={16} height={16} className="text-accent" />
         <span className="text-sm font-medium text-zinc-200">
           Workflow: Daily Standup
         </span>
@@ -306,7 +306,7 @@ function MorningBriefingCard() {
               key={em.subject}
               className="flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors hover:bg-zinc-700/30"
             >
-              <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-medium text-zinc-200">{em.from}</p>
                 <p className="mt-0.5 truncate text-[11px] text-zinc-500">

@@ -46,7 +46,7 @@ function TwitterCard({ tweet }: { tweet: TwitterTweetData }) {
   return (
     <button
       type="button"
-      className="group relative flex w-full cursor-pointer flex-col gap-2 rounded-xl border border-default-200 bg-content1/50 p-4 text-left backdrop-blur-sm transition-colors hover:border-default-300 hover:bg-content1/70"
+      className="group relative flex w-full cursor-pointer flex-col gap-2 rounded-xl border border-zinc-700 bg-zinc-900/50 p-4 text-left backdrop-blur-sm transition-colors hover:border-zinc-600 hover:bg-zinc-900/70"
       onClick={handleOpenTweet}
     >
       {/* Author Row */}
@@ -57,7 +57,7 @@ function TwitterCard({ tweet }: { tweet: TwitterTweetData }) {
             alt={author.name}
             className="h-full w-full object-cover"
           />
-          <AvatarFallback className="flex h-full w-full items-center justify-center bg-primary/10 text-primary text-sm font-semibold">
+          <AvatarFallback className="flex h-full w-full items-center justify-center bg-accent/10 text-accent text-sm font-semibold">
             {author.name?.[0]?.toUpperCase() || "?"}
           </AvatarFallback>
         </Avatar>
@@ -71,7 +71,7 @@ function TwitterCard({ tweet }: { tweet: TwitterTweetData }) {
               <CheckmarkBadge02Icon className="h-4 w-4 text-[#1d9bf0] shrink-0" />
             )}
           </div>
-          <div className="flex items-center gap-1 text-xs text-default-500">
+          <div className="flex items-center gap-1 text-xs text-zinc-400">
             <span>@{author.username}</span>
             {tweet.created_at && (
               <>
@@ -82,14 +82,14 @@ function TwitterCard({ tweet }: { tweet: TwitterTweetData }) {
           </div>
         </div>
 
-        <Link01Icon className="h-4 w-4 text-default-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+        <Link01Icon className="h-4 w-4 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
       </div>
 
       <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
         {tweet.text}
       </p>
 
-      <div className="flex items-center gap-6 pt-2 text-default-500">
+      <div className="flex items-center gap-6 pt-2 text-zinc-400">
         <div className="flex items-center gap-1.5 text-xs hover:text-pink-500 transition-colors">
           <FavouriteIcon className="h-4 w-4" />
           <span>{formatNumber(metrics.like_count)}</span>
@@ -127,7 +127,7 @@ export default function TwitterSearchSection({
 
   if (!tweets || tweets.length === 0) {
     return (
-      <div className="mt-3 p-4 text-center text-default-500">
+      <div className="mt-3 p-4 text-center text-zinc-400">
         No tweets found.
       </div>
     );
@@ -136,7 +136,7 @@ export default function TwitterSearchSection({
   return (
     <div className="mt-3 flex w-full flex-col gap-3">
       {result_count != null && result_count > 0 && (
-        <p className="text-xs text-default-500 px-1">
+        <p className="text-xs text-zinc-400 px-1">
           Found {result_count} tweet{result_count !== 1 ? "s" : ""}
         </p>
       )}

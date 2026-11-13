@@ -42,7 +42,7 @@ export default function DemoChatHeader({
     <button
       type="button"
       onClick={onToggleSidebar}
-      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-400 transition-colors hover:text-primary"
+      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-400 transition-colors hover:text-accent"
       aria-label="Toggle sidebar"
     >
       {sidebarOpen ? (
@@ -58,10 +58,10 @@ export default function DemoChatHeader({
       type="button"
       aria-label="Notifications"
       onClick={onNotificationsClick}
-      className="relative flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:text-primary"
+      className="relative flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:text-accent"
     >
       <NotificationIcon className="h-5 w-5" />
-      <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
+      <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent" />
     </button>
   );
 
@@ -94,7 +94,7 @@ export default function DemoChatHeader({
             key={label}
             type="button"
             aria-label={label}
-            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-400 transition-colors hover:text-primary"
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-400 transition-colors hover:text-accent"
           >
             <Icon className="h-5 w-5" />
           </button>

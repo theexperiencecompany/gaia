@@ -308,7 +308,7 @@ async function RelatedRoles({
             href={`/for/${role.slug}`}
             className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
           >
-            <h3 className="text-lg font-medium text-white transition-colors group-hover:text-primary">
+            <h3 className="text-lg font-medium text-white transition-colors group-hover:text-accent">
               {t("ai_assistant_for", { role: role.role })}
             </h3>
           </SiteLink>
@@ -518,7 +518,7 @@ export default async function PersonaPage({ params }: PageProps) {
               href="/compare"
               className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
-              <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+              <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-accent">
                 {t("personas.see_how_compares")}
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
@@ -529,7 +529,7 @@ export default async function PersonaPage({ params }: PageProps) {
               href="/learn"
               className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
-              <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+              <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-accent">
                 {t("personas.learn_ai_concepts")}
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">

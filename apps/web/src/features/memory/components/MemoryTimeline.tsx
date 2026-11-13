@@ -97,7 +97,7 @@ export function MemoryTimeline() {
                       {format(date, "EEEE, MMM d")}
                     </span>
                     {isToday(date) && (
-                      <span className="text-xs text-primary">Today</span>
+                      <span className="text-xs text-accent">Today</span>
                     )}
                   </div>
                   <Accordion.Indicator

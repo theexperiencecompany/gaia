@@ -43,7 +43,7 @@ function CodeBlock({ code }: { code: string }) {
             onClick={handleCopy}
             className="w-full cursor-pointer text-left"
           >
-            <code className="text-sm text-primary">{code}</code>
+            <code className="text-sm text-accent">{code}</code>
           </button>
         </Tooltip.Trigger>
         <Tooltip.Content>

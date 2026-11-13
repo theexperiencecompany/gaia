@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { getContrastColor, getLuminance, parseColor } from "@/utils/colorUtils";
 
 const raisedButtonVariants = cva(
-  "inline-flex items-center justify-center overflow-hidden dark:bg-zinc-500 dark:text-white whitespace-nowrap  text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 relative bg-primary text-primary-foreground hover:bg-primary/90 border border-primary/50 shadow-md before:absolute before:inset-0 before:border-t before:border-white/40 before:bg-gradient-to-b before:from-white/20 before:to-transparent cursor-pointer transition-transform duration-200 active:scale-[0.96] subpixel-antialiased gap-2",
+  "inline-flex items-center justify-center overflow-hidden dark:bg-zinc-500 dark:text-white whitespace-nowrap  text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 relative bg-accent text-accent-foreground hover:bg-accent/90 border border-accent/50 shadow-md before:absolute before:inset-0 before:border-t before:border-white/40 before:bg-gradient-to-b before:from-white/20 before:to-transparent cursor-pointer transition-transform duration-200 active:scale-[0.96] subpixel-antialiased gap-2",
   {
     variants: {
       variant: {
@@ -50,7 +50,7 @@ const getFlatMode = (color: string | undefined): FlatMode => {
 };
 
 // Inline-style overrides for black/white flat modes — used instead of
-// Tailwind classes so the existing glossy treatment (bg-primary,
+// Tailwind classes so the existing glossy treatment (bg-accent,
 // dark:bg-zinc-500, ::before, shadow-md) is neutralised without fighting cva specificity.
 const FLAT_BLACK_STYLE: React.CSSProperties = {
   background: "linear-gradient(to bottom, #444, #000)",

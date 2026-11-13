@@ -202,7 +202,7 @@ export default async function ComparisonPage({ params }: PageProps) {
               {
                 key: "gaia",
                 label: t("comparisons.gaia_column"),
-                headerClassName: "text-primary",
+                headerClassName: "text-accent",
                 cellClassName: "text-emerald-400",
               },
               {
@@ -275,7 +275,7 @@ export default async function ComparisonPage({ params }: PageProps) {
             </p>
             <SiteLink
               href={marketplacePath}
-              className="inline-flex items-center rounded-full bg-primary px-6 py-3 text-sm font-medium text-black transition-opacity hover:opacity-90"
+              className="inline-flex items-center rounded-full bg-accent px-6 py-3 text-sm font-medium text-black transition-opacity hover:opacity-90"
             >
               Connect {data.name}
             </SiteLink>

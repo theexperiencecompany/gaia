@@ -3,9 +3,8 @@
    the HeroUI theme in the theme layer. DESIGN.md lists every value. */
 
 /* HeroUI v3 token bridge.
-   v3 renamed the --heroui-* namespace to bare tokens (--accent/--focus), which
-   collide with the legacy shadcn HSL triplets above. The shadcn ones have no
-   --color-* mapping, so v3 wins. `.dark` must be listed explicitly: it is a
+   v3 renamed the --heroui-* namespace to bare tokens (--accent/--focus) whose
+   theme defaults are not GAIA's. `.dark` must be listed explicitly: it is a
    class selector and outranks `:root` on specificity, which silently reset the
    brand blue back to the theme default. */
 :root,
@@ -16,17 +15,9 @@
   --focus: #00bbff;
 }
 
-/* v3 also renamed the theme's structural colours: `--heroui-background`,
-   `--heroui-content1` and `--heroui-divider` became `--background`, `--surface`
-   and `--separator`. Those bare names collide with the legacy shadcn HSL
-   triplets in the `base` layer above — and unlike `--accent` they DO have a
-   `--color-*` mapping (`--color-border: var(--border)`), so `--border` resolved
-   to the string `216 34% 17%` (not a colour), every `border-border`/`bg-border`
-   fell back to `currentColor` and drew a white hairline on the dark theme.
-   Re-declare them as real colours using the v2 values, and paint the canvas:
-   v2's HeroUI theme shipped `:root { background-color: hsl(var(--heroui-background)) }`,
-   which is where the site's black page background came from — v3 only declares
-   the token, so the marketing pages lost their black backdrop. */
+/* GAIA's structural colours under v3's names (v2's --heroui-background, -content1
+   and -divider became --background, --surface and --separator), at v2's values.
+   html paints --background as v2's theme did; v3 only declares the token. */
 :root {
   --background: #ffffff;
   --surface: #ffffff;

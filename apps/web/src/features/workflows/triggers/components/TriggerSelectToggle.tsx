@@ -105,7 +105,7 @@ export function TriggerSelectToggle({
               <button
                 type="button"
                 onClick={() => setUseManualInput(true)}
-                className="text-xs text-primary hover:underline cursor-pointer"
+                className="text-xs text-accent hover:underline cursor-pointer"
               >
                 Or enter manually
               </button>
@@ -128,7 +128,7 @@ export function TriggerSelectToggle({
         <button
           type="button"
           onClick={() => setUseManualInput(false)}
-          className="text-primary/90 hover:text-primary font-medium hover:underline cursor-pointer transition-colors"
+          className="text-accent/90 hover:text-accent font-medium hover:underline cursor-pointer transition-colors"
         >
           Back to list
         </button>

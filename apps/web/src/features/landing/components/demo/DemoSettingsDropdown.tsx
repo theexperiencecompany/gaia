@@ -100,7 +100,7 @@ export default function DemoSettingsDropdown({
             <Dropdown.Section>
               <Dropdown.Item id="upgrade" textValue="Subscribe to GAIA Pro">
                 <CircleArrowUp02Icon className={ic} color="#00bbff" />
-                <span className="text-primary font-medium">
+                <span className="text-accent font-medium">
                   Subscribe to GAIA Pro
                 </span>
               </Dropdown.Item>

@@ -63,7 +63,7 @@ export function WhatsNewTimelineMenu({ onClose }: WhatsNewTimelineMenuProps) {
                     className={[
                       "z-10 mt-1 size-3 shrink-0 rounded-full border transition-transform group-hover:scale-125",
                       idx === 0
-                        ? "border-primary bg-primary"
+                        ? "border-accent bg-accent"
                         : "border-zinc-600 bg-zinc-600",
                     ].join(" ")}
                   />
@@ -77,7 +77,7 @@ export function WhatsNewTimelineMenu({ onClose }: WhatsNewTimelineMenuProps) {
                       {release.title}
                     </span>
                     {isUnseen && (
-                      <span className="inline-block size-1.5 shrink-0 rounded-full bg-primary" />
+                      <span className="inline-block size-1.5 shrink-0 rounded-full bg-accent" />
                     )}
                   </span>
                   <span className="text-[10px] tabular-nums text-zinc-500 transition-colors group-hover:text-zinc-400">

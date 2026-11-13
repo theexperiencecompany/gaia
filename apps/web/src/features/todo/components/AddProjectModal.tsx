@@ -110,7 +110,7 @@ export default function AddProjectModal({
                 {/* Color */}
                 <div>
                   <label
-                    className="mb-2 block text-sm font-medium text-foreground-600"
+                    className="mb-2 block text-sm font-medium text-zinc-300"
                     htmlFor="radiogroupcolorpicker"
                   >
                     Project Color

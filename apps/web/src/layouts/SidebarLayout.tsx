@@ -57,9 +57,9 @@ export const CustomSidebarTrigger = ({
       }
     >
       {open ? (
-        <SidebarLeft01Icon className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-500 transition group-hover/btn:text-primary" />
+        <SidebarLeft01Icon className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-500 transition group-hover/btn:text-accent" />
       ) : (
-        <SidebarRight01Icon className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-500 transition group-hover/btn:text-primary" />
+        <SidebarRight01Icon className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-500 transition group-hover/btn:text-accent" />
       )}
     </SidebarHeaderButton>
   );

@@ -202,7 +202,7 @@ export function GitHubSettings({
               <button
                 type="button"
                 onClick={() => setUseManualInput(true)}
-                className="text-xs text-primary hover:underline cursor-pointer"
+                className="text-xs text-accent hover:underline cursor-pointer"
               >
                 Or enter manually
               </button>
@@ -231,7 +231,7 @@ export function GitHubSettings({
               <button
                 type="button"
                 onClick={() => setUseManualInput(false)}
-                className="cursor-pointer font-medium text-primary hover:underline"
+                className="cursor-pointer font-medium text-accent hover:underline"
               >
                 Back to list
               </button>

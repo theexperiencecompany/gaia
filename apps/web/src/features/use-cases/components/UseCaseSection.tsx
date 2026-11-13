@@ -491,8 +491,8 @@ function UseCaseEmptyStates({
         workflowsLength === 0 && (
           <div className="flex h-48 items-center justify-center">
             <div className="text-center space-y-1">
-              <p className="text-lg text-foreground-600">No workflows found</p>
-              <p className="text-sm text-foreground-400 mb-5">
+              <p className="text-lg text-zinc-300">No workflows found</p>
+              <p className="text-sm text-zinc-500 mb-5">
                 Create your first workflow to get started
               </p>
               <Link href={"/workflows"}>
@@ -505,7 +505,7 @@ function UseCaseEmptyStates({
       {selectedCategory === "workflows" && isLoadingWorkflows && (
         <div className="flex h-48 items-center justify-center">
           <div className="text-center">
-            <p className="text-lg text-foreground-500">Loading workflows...</p>
+            <p className="text-lg text-zinc-400">Loading workflows...</p>
           </div>
         </div>
       )}

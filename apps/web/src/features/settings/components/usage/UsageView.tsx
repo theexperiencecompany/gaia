@@ -885,8 +885,8 @@ function UpgradeBanner({
 }) {
   return (
     <div className={cn(CARD, "flex items-center gap-3.5 px-4 py-3.5")}>
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-        <SparklesIcon className="text-primary" size={18} />
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent/10">
+        <SparklesIcon className="text-accent" size={18} />
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-white">

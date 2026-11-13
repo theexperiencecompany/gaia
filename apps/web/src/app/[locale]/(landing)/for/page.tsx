@@ -108,17 +108,17 @@ export default async function PersonasHubPage({ params }: PageProps) {
           {heroPersona && (
             <SiteLink
               href="/for/startup-founders"
-              className="group mb-4 flex flex-col gap-3 rounded-3xl bg-primary/10 p-6 transition-colors hover:bg-primary/15"
+              className="group mb-4 flex flex-col gap-3 rounded-3xl bg-accent/10 p-6 transition-colors hover:bg-accent/15"
             >
               <div className="flex items-center gap-3">
-                <h2 className="text-2xl font-semibold text-primary">
+                <h2 className="text-2xl font-semibold text-accent">
                   {heroPersona.role}
                 </h2>
               </div>
               <p className="max-w-2xl text-sm leading-relaxed text-zinc-300">
                 {heroPersona.metaDescription}
               </p>
-              <span className="flex items-center gap-1.5 text-sm font-medium text-primary">
+              <span className="flex items-center gap-1.5 text-sm font-medium text-accent">
                 {t("see_full_experience")}
                 <CircleArrowRight02Icon width={17} height={17} />
               </span>
@@ -131,15 +131,15 @@ export default async function PersonasHubPage({ params }: PageProps) {
               <SiteLink
                 key={persona.slug}
                 href={`/for/${persona.slug}`}
-                className="group flex flex-col gap-2 rounded-3xl bg-primary/10 p-5 transition-colors hover:bg-primary/15"
+                className="group flex flex-col gap-2 rounded-3xl bg-accent/10 p-5 transition-colors hover:bg-accent/15"
               >
-                <h2 className="text-xl font-semibold text-primary transition-colors">
+                <h2 className="text-xl font-semibold text-accent transition-colors">
                   {persona.role}
                 </h2>
                 <p className="flex-1 text-sm leading-relaxed text-zinc-300">
                   {persona.metaDescription}
                 </p>
-                <span className="mt-1 flex items-center gap-1.5 text-sm font-medium text-primary">
+                <span className="mt-1 flex items-center gap-1.5 text-sm font-medium text-accent">
                   {t("see_full_experience")}
                   <CircleArrowRight02Icon width={17} height={17} />
                 </span>
@@ -161,7 +161,7 @@ export default async function PersonasHubPage({ params }: PageProps) {
                   href={`/for/${persona.slug}`}
                   className="group flex flex-col gap-2 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
                 >
-                  <h2 className="text-base font-semibold text-white transition-colors group-hover:text-primary">
+                  <h2 className="text-base font-semibold text-white transition-colors group-hover:text-accent">
                     {persona.role}
                   </h2>
                   <p className="flex-1 text-sm leading-relaxed text-zinc-400">

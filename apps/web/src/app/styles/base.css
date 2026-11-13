@@ -63,7 +63,7 @@
   /* biome-ignore lint/complexity/noImportantStyles: need to override */
   --info-border: #173945 !important;
   /* biome-ignore lint/complexity/noImportantStyles: need to override */
-  --info-text: var(--color-primary) !important;
+  --info-text: var(--color-accent) !important;
 }
 
 /* Toast action button colors */
@@ -421,52 +421,12 @@
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
+  /* shadcn's focus ring (components/ui), read through --color-ring in theme.css. */
   :root {
-    /* HeroUI theme variables */
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 47.4% 11.2%;
-
-    --input: 214.3 31.8% 91.4%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 47.4% 11.2%;
-
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-
-    --destructive: 0 100% 50%;
-    --destructive-foreground: 210 40% 98%;
-
     --ring: 215 20.2% 65.1%;
-
   }
-
   .dark {
-    /* HeroUI theme variables */
-
-    --popover: 224 71% 4%;
-    --popover-foreground: 215 20.2% 65.1%;
-
-    --input: 216 34% 17%;
-
-    --card: 224 71% 4%;
-    --card-foreground: 213 31% 91%;
-
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 1.2%;
-
-    --secondary: 222.2 47.4% 11.2%;
-    --secondary-foreground: 210 40% 98%;
-
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 210 40% 98%;
-
     --ring: 216 34% 17%;
-
   }
 
   /* --- Critical global styles (from globals.css) --- */
@@ -852,7 +812,7 @@
   }
 
   .tiptap:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
 
@@ -864,7 +824,7 @@
   /* Restore the keyboard focus ring inside OpenUI document cards so keyboard
      users keep a visible focus indicator. */
   .openui-document .tiptap:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
 
@@ -1079,11 +1039,11 @@
 
 /* Links outside h2 */
 .whats-new-content a {
-  color: var(--color-primary, #3b82f6);
+  color: var(--color-accent, #3b82f6);
   text-decoration: underline;
   text-decoration-color: color-mix(
     in srgb,
-    var(--color-primary, #3b82f6) 35%,
+    var(--color-accent, #3b82f6) 35%,
     transparent
   );
   text-underline-offset: 3px;
@@ -1091,7 +1051,7 @@
 }
 /* biome-ignore lint/style/noDescendingSpecificity: hover for non-h2 links, intentionally less specific than .whats-new-content h2 a:hover above */
 .whats-new-content a:hover {
-  text-decoration-color: var(--color-primary, #3b82f6);
+  text-decoration-color: var(--color-accent, #3b82f6);
 }
 
 /* Inline code */

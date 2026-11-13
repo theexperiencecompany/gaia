@@ -84,7 +84,7 @@ export default function IntegrationsSidebar() {
 
             <div className="flex items-center gap-2">
               {isPublic && (
-                <InternetIcon width={14} height={14} className="text-primary" />
+                <InternetIcon width={14} height={14} className="text-accent" />
               )}
               {isConnected && (
                 <span className="h-1.5 w-1.5 rounded-full bg-success" />
