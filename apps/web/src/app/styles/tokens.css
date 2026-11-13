@@ -164,6 +164,10 @@ html {
   --gaia-field-inside-padding-bottom: 0.5rem;
   --gaia-field-inside-padding-x: 0.75rem;
   --gaia-field-inside-content-gap: 0.375rem;
+  --gaia-field-inside-sm-height: 3rem;
+  --gaia-field-inside-sm-label-top: 0.375rem;
+  --gaia-field-inside-sm-padding-top: 1.25rem;
+  --gaia-field-inside-sm-textarea-padding-top: 1.75rem;
   --gaia-field-inside-textarea-padding-top: 1.875rem;
   --gaia-field-inside-textarea-padding-bottom: 0.625rem;
   --gaia-field-label-inside-color: var(--color-zinc-300);

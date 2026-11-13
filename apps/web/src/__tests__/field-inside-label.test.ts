@@ -50,6 +50,25 @@ describe("inside-label fields", () => {
     );
   });
 
+  // v2's sm inside field (the email edit modal) was 48px with the value 20px
+  // down; inputVariants' sm alone pinned it to a 32px outside field.
+  it("takes v2's sm geometry when combined with inputVariants sm", () => {
+    const smTokens = new Map<string, string>();
+    postcss.parse(GAIA_CSS).walkRules((rule) => {
+      if (!rule.selectors.includes(`${VISIBLE_LABEL_GATE}.gaia-input-sm`))
+        return;
+      rule.walkDecls((decl) => {
+        smTokens.set(decl.prop, decl.value);
+      });
+    });
+    expect(smTokens.get("--gaia-field-inside-height")).toBe(
+      "var(--gaia-field-inside-sm-height)",
+    );
+    expect(smTokens.get("--gaia-field-inside-padding-top")).toBe(
+      "var(--gaia-field-inside-sm-padding-top)",
+    );
+  });
+
   it("is opted into through fieldVariants alone", () => {
     expect(fieldVariants({ labelPlacement: "inside" })).toBe(
       "gaia-field-inside",

@@ -464,6 +464,19 @@
     padding-top: var(--gaia-field-inside-textarea-padding-top);
     padding-bottom: var(--gaia-field-inside-textarea-padding-bottom);
   }
+  /* With inputVariants({ size: "sm" }), v2's sm inside field: 48px, the label 6px
+     down, the value 20px down, a textarea's text 28px down. */
+  .gaia-field-inside:has(> .label:not(.sr-only)).gaia-input-sm {
+    --gaia-field-inside-height: var(--gaia-field-inside-sm-height);
+    --gaia-field-inside-label-top: var(--gaia-field-inside-sm-label-top);
+    --gaia-field-inside-padding-top: var(--gaia-field-inside-sm-padding-top);
+    --gaia-field-inside-textarea-padding-top: var(
+      --gaia-field-inside-sm-textarea-padding-top
+    );
+    --gaia-field-inside-textarea-padding-bottom: var(
+      --gaia-field-inside-padding-bottom
+    );
+  }
   /* v2's startContent and endContent sat on the value's row under the label, at
      the field's 12px inset with a 6px gap to the value, not centred on the field. */
   .gaia-field-inside:has(> .label:not(.sr-only)) .input-group__prefix,

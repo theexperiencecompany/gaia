@@ -10,10 +10,9 @@ import {
 } from "@heroui/react";
 import { OPENUI_SAMPLES } from "@shared/utils";
 import { useCallback, useEffect, useState } from "react";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
-
 import { BASE_MESSAGE_SCHEMA } from "@/config/registries/baseMessageRegistry";
-
 import TextBubble from "@/features/chat/components/bubbles/bot/TextBubble";
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
@@ -323,11 +322,19 @@ export default function DemoBody() {
 
       {/* Editable content */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <TextField value={userText} onChange={setUserText}>
+        <TextField
+          className={fieldVariants({ labelPlacement: "inside" })}
+          value={userText}
+          onChange={setUserText}
+        >
           <Label>User message (markdown)</Label>
           <TextArea rows={2} />
         </TextField>
-        <TextField value={botText} onChange={setBotText}>
+        <TextField
+          className={fieldVariants({ labelPlacement: "inside" })}
+          value={botText}
+          onChange={setBotText}
+        >
           <Label>Bot message (markdown)</Label>
           <TextArea rows={2} />
         </TextField>
