@@ -2,6 +2,8 @@
 
 from collections.abc import Sequence
 
+import pytest
+
 from app.models.conversation_log_models import (
     Entry,
     LoggedEntry,
@@ -10,15 +12,22 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
-from app.services.conversation.outcome import STOPPED, EntryOutcome, entry_outcome
+from app.services.conversation.outcome import STOPPED, EntryOutcome, await_outcome, entry_outcome
 from tests.unit.services.conversation.log_helpers import (
     finished,
     fired,
     fold,
     logged,
+    opened,
     settled,
     stop,
     user,
+)
+from tests.unit.services.conversation.runtime_doubles import (
+    CONVERSATION,
+    USER,
+    FakeClock,
+    InMemoryConversationLog,
 )
 
 
@@ -118,3 +127,23 @@ def test_a_reply_to_another_input_does_not_finish_the_entry() -> None:
     state, _ = fold(entries)
     log = [logged(seq, entry) for seq, entry in enumerate(entries, start=1)]
     assert entry_outcome("wf", 2, log, state) is None
+
+
+@pytest.mark.usefixtures("fake_redis")
+async def test_an_outcome_read_while_the_reply_settles_still_sees_the_settle() -> None:
+    log = InMemoryConversationLog(FakeClock())
+    first = await log.append(CONVERSATION, USER, user("u1"))
+    claim = await log.claim(CONVERSATION, USER)
+    assert claim is not None
+    await log.append_fenced(claim, opened("o1"))
+    settling = [settled("s1", ["u1"], 1)]
+
+    async def settle_mid_read(point: str) -> None:
+        if point == "state" and settling:
+            await log.append_fenced(claim, settling.pop())
+
+    log.pause = settle_mid_read
+    outcome = await await_outcome(log, CONVERSATION, USER, first.logged, timeout=1)
+
+    assert outcome.settled is not None
+    assert outcome.settled.outcome is ReplyOutcome.ANSWERED

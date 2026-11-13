@@ -544,9 +544,17 @@ async def test_work_started_after_a_stop_in_its_own_attempt_is_refused(
         await record_user_stop(rig.conversation_id, rig.user_id, "s1")
         started.append(await rig.start_work("t2"))
 
-    _during(model, 0, stop_then_dispatch)
+    dispatching: list[asyncio.Future[None]] = []
+
+    async def a_tool_call_the_stop_lands_on() -> None:
+        # The Stop cancels the run; the tool call already under way still reaches its dispatch.
+        dispatching.append(asyncio.ensure_future(stop_then_dispatch()))
+        await asyncio.shield(dispatching[0])
+
+    _during(model, 0, a_tool_call_the_stop_lands_on)
     await rig.send("m1", "send the report")
     await rig.settle()
+    await asyncio.gather(*dispatching)
     state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
     assert started == [False]
     assert state.work == ()
