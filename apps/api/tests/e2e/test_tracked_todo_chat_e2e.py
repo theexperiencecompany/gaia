@@ -1046,7 +1046,12 @@ class TestAnApprovalTheRunWaitsOnStaysInTheTodosChat:
         assert decided.json()["status"] == "denied"
         ledger = await mongo_db["approval_ledger"].find_one({"approval_id": row["approval_id"]})
         assert ledger is not None and ledger["state"] == "denied"
-        assert await worker_pool.queued_jobs() == []
+        assert await _queued_resumes(worker_pool) == []
+        # Each ask the todo's runs raised was filed as an outbox report; nothing else is queued.
+        asked = {r["approval_id"] async for r in mongo_db["approval_ledger"].find({})}
+        queued = await worker_pool.queued_jobs()
+        assert {j.function for j in queued} == {"outbox_intake"}
+        assert {j.args[0]["report_id"] for j in queued} == {f"hil:{a}:pending" for a in asked}
         # The run the verdict started left its cards in the chat; what it skipped is the outbox's to tell.
         chat = await _chat_of(mongo_db, todo_id)
         assert [m["response"] for m in _reports(chat["messages"])] == [WAITING, ""]

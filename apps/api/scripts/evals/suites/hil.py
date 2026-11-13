@@ -20,8 +20,7 @@ plain HTTP, with nothing simulated:
 4. answer it (POST /api/v1/approvals/{approval_id}/decision), which resumes
    the run on a NEW queued_* stream;
 5. re-read GET /api/v1/conversations/{id} until the card settles, and read the
-   REAL effect back from the domain API (GET /api/v1/todos,
-   GET /api/v1/notifications).
+   REAL effect back from the domain API (GET /api/v1/todos).
 
 Which tools are gated is not invented either. The code-reviewed destructive
 built-ins (agents/tools/core/registry.py) are gated by mode: always_ask alone.
@@ -448,24 +447,6 @@ class HilTransport:
                 resp = await client.get(_url("/todos"), headers=headers)
                 rows = resp.json().get("data") or [] if resp.status_code == 200 else []
                 projected[key] = sum(1 for row in rows if term in str(row.get("title", "")).lower())
-            elif key == "notifications":
-                resp = await client.get(_url("/notifications"), headers=headers)
-                rows = resp.json().get("notifications") or [] if resp.status_code == 200 else []
-                projected[key] = len(rows)
-            elif key == "notifications_containing":
-                # Count alone is satisfied by the agent's own notifications
-                # (observed: a "Confirm notification channel" question), so
-                # match the body/title to prove the APPROVED action happened.
-                term = str(verify["notifications_containing"]).lower()
-                resp = await client.get(_url("/notifications"), headers=headers)
-                rows = resp.json().get("notifications") or [] if resp.status_code == 200 else []
-                projected[key] = sum(
-                    1
-                    for row in rows
-                    if term
-                    in f"{(row.get('content') or {}).get('title', '')} "
-                    f"{(row.get('content') or {}).get('body', '')}".lower()
-                )
             elif key == "answer_contains":
                 term = str(wanted[key]).lower()
                 joined = " ".join(texts).lower()

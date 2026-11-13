@@ -235,7 +235,10 @@ def executor_failed(observation: Observation, ctx: Context) -> bool:
     return (
         observation.execution.status == "failed"
         and bool(observation.execution.error_message)
-        and ctx.store.count_notifications(ctx.user_id, ctx.marks["started"], "X1 an executor") == 1
+        and ctx.store.count_failed_workflow_reports(
+            ctx.user_id, ctx.marks["started"], "X1 an executor"
+        )
+        == 1
     )
 
 
@@ -416,7 +419,7 @@ SCENARIOS: list[Scenario] = [
         before=mark_start,
         fires=[
             Fire(
-                "recorded failed, one notification",
+                "recorded failed, one report",
                 executor_failed,
                 "status failed, error carried, told once",
             )

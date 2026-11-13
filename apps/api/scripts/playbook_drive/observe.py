@@ -22,8 +22,11 @@ from pymongo.database import Database
 import redis
 
 from app.config.settings import settings
+from app.constants.agents import OutcomeState
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, RATE_LIMIT_KEY_PREFIX
+from app.constants.outbox import ITEMS_COLLECTION
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
+from app.services.outbox.models import SubjectKind
 
 from .client import EXECUTION_WAIT_SECONDS, SETTLE_SECONDS, Execution, GaiaClient
 
@@ -208,12 +211,14 @@ class Store:
             {"user_id": user_id, "title": {"$regex": title_regex}}
         )
 
-    def count_notifications(self, user_id: str, since: datetime, title_regex: str) -> int:
-        return self.db["notifications"].count_documents(
+    def count_failed_workflow_reports(self, user_id: str, since: datetime, title_regex: str) -> int:
+        return self.db[ITEMS_COLLECTION].count_documents(
             {
                 "user_id": user_id,
-                "created_at": {"$gte": since},
-                "original_request.content.title": {"$regex": title_regex},
+                "report.occurred_at": {"$gte": since},
+                "report.subject.kind": SubjectKind.WORKFLOW_RUN.value,
+                "report.subject.label": {"$regex": title_regex},
+                "report.report.outcome": OutcomeState.FAILED.value,
             }
         )
 

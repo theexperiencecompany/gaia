@@ -178,7 +178,9 @@ class TestListSummaries:
         starred_list = await repo.list_starred_summaries(user)
         assert {s.conversation_id for s in starred_list} == {starred.conversation_id}
 
-    async def test_the_latest_app_conversation_is_the_last_touched_one_starred_or_not(self, repo):
+    async def test_the_latest_app_conversation_is_the_last_touched_one_starred_or_not(
+        self, repo, raw_collection
+    ):
         user = _uid()
         base = datetime(2026, 1, 1, tzinfo=UTC)
         docs = {
@@ -202,8 +204,11 @@ class TestListSummaries:
         }
         for doc in docs.values():
             await repo.create(doc)
-        await repo.set_unread(docs["old"].conversation_id, user_id=user, unread=False)
-        await repo.set_unread(docs["touched"].conversation_id, user_id=user, unread=False)
+        touched_at = datetime.now(UTC)
+        for name, touched in (("old", touched_at - timedelta(days=1)), ("touched", touched_at)):
+            await raw_collection.update_one(
+                {"conversation_id": docs[name].conversation_id}, {"$set": {"updatedAt": touched}}
+            )
 
         assert await repo.latest_app_conversation_id(user) == docs["touched"].conversation_id
 
@@ -521,7 +526,7 @@ class TestMessages:
             (doc.conversation_id, mid)
         ]
 
-    async def test_tool_data_and_follow_up_writes(self, repo):
+    async def test_tool_data_append_is_readable(self, repo):
         doc = _doc()
         await repo.create(doc)
         ids = await repo.append_messages(
@@ -537,13 +542,9 @@ class TestMessages:
             message_id=mid,
             entries=[{"tool_name": "weather", "data": {"t": 1}, "timestamp": "2026-01-01"}],
         )
-        assert await repo.set_message_follow_up_actions(
-            doc.conversation_id, user_id=doc.user_id, message_id=mid, actions=["do x"]
-        )
         msg = await repo.get_message(doc.conversation_id, mid, user_id=doc.user_id)
         assert msg is not None
         assert msg.tool_data is not None and msg.tool_data[0]["tool_name"] == "weather"
-        assert msg.follow_up_actions == ["do x"]
 
     async def test_a_resumed_subagent_extends_its_saved_row_in_place(self, repo):
         """Array-filtered: the one group gets the calls, a sibling group and other cards are untouched."""
@@ -671,7 +672,7 @@ class TestMessages:
 
 
 class TestMessageSettlementWrites:
-    """set_message_response / set_message_tool_data / set_message_approval_status — in-place writes that settle an already-persisted turn."""
+    """set_message_tool_data / set_message_approval_status — in-place writes that settle an already-persisted turn."""
 
     @staticmethod
     async def _seed(repo) -> tuple[ConversationDocument, str, str]:
@@ -693,39 +694,6 @@ class TestMessageSettlementWrites:
         )
         assert ids is not None and len(ids) == 2
         return doc, ids[0], ids[1]
-
-    async def test_set_response_writes_only_the_named_message(self, repo):
-        doc, user_mid, bot_mid = await self._seed(repo)
-
-        assert await repo.set_message_response(
-            doc.conversation_id, user_id=doc.user_id, message_id=bot_mid, response="the answer"
-        )
-
-        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert fetched is not None
-        assert [m.response for m in fetched.messages] == ["do the thing", "the answer"]
-        assert [m.message_id for m in fetched.messages] == [user_mid, bot_mid]
-
-    async def test_set_response_on_an_unknown_message_returns_false(self, repo):
-        doc, _user_mid, _bot_mid = await self._seed(repo)
-        assert (
-            await repo.set_message_response(
-                doc.conversation_id, user_id=doc.user_id, message_id="no-such", response="x"
-            )
-            is False
-        )
-
-    async def test_set_response_is_refused_for_another_user(self, repo):
-        doc, _user_mid, bot_mid = await self._seed(repo)
-
-        assert (
-            await repo.set_message_response(
-                doc.conversation_id, user_id="attacker", message_id=bot_mid, response="pwned"
-            )
-            is False
-        )
-        stored = await repo.get_message(doc.conversation_id, bot_mid, user_id=doc.user_id)
-        assert stored is not None and stored.response == ""
 
     async def test_set_tool_data_replaces_rather_than_appends(self, repo):
         """Distinguished from append_message_tool_data: delivery re-persists the whole frame list, so a stale entry must not survive the write."""
@@ -893,9 +861,6 @@ class TestMessageSettlementWrites:
         before = await repo.get(doc.conversation_id, user_id=doc.user_id)
         assert before is not None and before.updatedAt is not None
 
-        assert await repo.set_message_response(
-            doc.conversation_id, user_id=doc.user_id, message_id=bot_mid, response="answer"
-        )
         assert await repo.set_message_tool_data(
             doc.conversation_id,
             user_id=doc.user_id,

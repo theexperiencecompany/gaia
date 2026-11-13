@@ -15,10 +15,10 @@ import pytest
 
 from app.constants.log_tags import LogTag
 from app.models.payment_models import PlanType
-from app.models.user_models import UserDocument
 from app.models.workflow_models import TriggerConfig, TriggerType
 from app.services.outbox.models import NoticeOutcome
 from app.services.system_workflows.provisioner import reset_system_workflow_to_default
+from app.utils.timezone import Timezone
 
 MODULE = "app.services.system_workflows.provisioner"
 
@@ -198,36 +198,31 @@ class TestProvisionSystemWorkflows:
 
 
 @pytest.mark.parametrize(
-    ("profile", "expected_timezone"),
-    [
-        (UserDocument(timezone="Asia/Kolkata"), "Asia/Kolkata"),
-        (UserDocument(), "UTC"),
-        (UserDocument(timezone="   "), "UTC"),
-        (None, "UTC"),
-    ],
-    ids=["profile-timezone", "unset", "blank", "no-user"],
+    ("profile_timezone", "expected_timezone"),
+    [(Timezone.parse("Asia/Kolkata"), "Asia/Kolkata"), (Timezone.utc(), "UTC")],
+    ids=["profile-timezone", "utc"],
 )
 @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
 @patch(f"{MODULE}._activate_for_paying_user", new_callable=AsyncMock)
 @patch(f"{MODULE}.ensure_trigger_config_object")
-@patch("app.services.user_service.get_user_by_id", new_callable=AsyncMock)
+@patch(f"{MODULE}.get_profile_timezone", new_callable=AsyncMock)
 @patch(f"{MODULE}.WorkflowService")
 @patch(f"{MODULE}.workflow_repository")
 async def test_provisioning_stamps_the_profile_timezone_on_schedule_workflows(
     mock_repo: MagicMock,
     mock_service: MagicMock,
-    mock_get_user: AsyncMock,
+    mock_profile_timezone: AsyncMock,
     mock_ensure: MagicMock,
     _activate: AsyncMock,
     _notify: AsyncMock,
-    profile: UserDocument | None,
+    profile_timezone: Timezone,
     expected_timezone: str,
 ) -> None:
     from app.services.system_workflows.provisioner import provision_system_workflows
 
     mock_repo.find_system_workflow = AsyncMock(return_value=None)
     mock_service.create_workflow = AsyncMock(return_value=MagicMock(id="wf-created"))
-    mock_get_user.return_value = profile
+    mock_profile_timezone.return_value = profile_timezone
     trigger_config = MagicMock(type=TriggerType.SCHEDULE, timezone=None)
     mock_ensure.return_value = trigger_config
     request = _make_workflow_request()
@@ -237,7 +232,7 @@ async def test_provisioning_stamps_the_profile_timezone_on_schedule_workflows(
     ):
         await provision_system_workflows("user-1", "gmail", "Gmail", notify=False)
 
-    mock_get_user.assert_awaited_once_with("user-1")
+    mock_profile_timezone.assert_awaited_once_with("user-1")
     assert request.trigger_config is trigger_config
     assert trigger_config.timezone == expected_timezone
     mock_service.create_workflow.assert_awaited_once_with(request, "user-1")
@@ -779,7 +774,7 @@ class TestResetSystemWorkflowToDefault:
         return trigger_config
 
     @pytest.mark.asyncio
-    @patch("app.services.user_service.get_user_by_id")
+    @patch(f"{MODULE}.get_profile_timezone")
     @patch(f"{MODULE}.workflow_scheduler")
     @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.ensure_trigger_config_object")
@@ -788,14 +783,14 @@ class TestResetSystemWorkflowToDefault:
         mock_ensure: MagicMock,
         mock_repo: MagicMock,
         mock_scheduler: MagicMock,
-        mock_get_user: MagicMock,
+        mock_profile_timezone: MagicMock,
     ) -> None:
         """Schedule definitions carry no timezone; reset must stamp the profile timezone and recompute next_run from the cron."""
         existing = _existing_wf(key="sched_wf", composio_trigger_ids=None, trigger_name=None)
         existing.activated = False
         mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
         mock_repo.reset_system_workflow = AsyncMock()
-        mock_get_user.return_value = UserDocument(timezone="Asia/Kolkata")
+        mock_profile_timezone.return_value = Timezone.parse("Asia/Kolkata")
         mock_scheduler.schedule_workflow_execution = AsyncMock(return_value=True)
 
         trigger_config = self._schedule_trigger_config()
@@ -812,49 +807,11 @@ class TestResetSystemWorkflowToDefault:
 
         assert result is True
         assert trigger_config.timezone == "Asia/Kolkata"
-        mock_get_user.assert_awaited_once_with("user-1")
+        mock_profile_timezone.assert_awaited_once_with("user-1")
         trigger_config.update_next_run.assert_called_once_with(user_timezone="Asia/Kolkata")
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("profile", [UserDocument(), UserDocument(timezone="   ")])
-    @patch("app.services.user_service.get_user_by_id")
-    @patch(f"{MODULE}.workflow_scheduler")
-    @patch(f"{MODULE}.workflow_repository")
-    @patch(f"{MODULE}.ensure_trigger_config_object")
-    async def test_reset_timezone_falls_back_to_utc(
-        self,
-        mock_ensure: MagicMock,
-        mock_repo: MagicMock,
-        mock_scheduler: MagicMock,
-        mock_get_user: MagicMock,
-        profile: UserDocument,
-    ) -> None:
-        """A profile with a blank/missing timezone falls back to exactly UTC."""
-        existing = _existing_wf(key="sched_wf", composio_trigger_ids=None, trigger_name=None)
-        existing.activated = False
-        mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
-        mock_repo.reset_system_workflow = AsyncMock()
-        mock_get_user.return_value = profile
-        mock_scheduler.schedule_workflow_execution = AsyncMock(return_value=True)
-
-        trigger_config = self._schedule_trigger_config()
-        mock_ensure.return_value = trigger_config
-
-        factory = MagicMock(return_value=_make_workflow_request())
-
-        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"sched_wf": factory}):
-            from app.services.system_workflows.provisioner import (
-                reset_system_workflow_to_default,
-            )
-
-            result = await reset_system_workflow_to_default("wf-1", "user-1")
-
-        assert result is True
-        assert trigger_config.timezone == "UTC"
-        trigger_config.update_next_run.assert_called_once_with(user_timezone="UTC")
-
-    @pytest.mark.asyncio
-    @patch("app.services.user_service.get_user_by_id")
+    @patch(f"{MODULE}.get_profile_timezone")
     @patch(f"{MODULE}.workflow_scheduler")
     @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.ensure_trigger_config_object")
@@ -863,14 +820,14 @@ class TestResetSystemWorkflowToDefault:
         mock_ensure: MagicMock,
         mock_repo: MagicMock,
         mock_scheduler: MagicMock,
-        mock_get_user: MagicMock,
+        mock_profile_timezone: MagicMock,
     ) -> None:
         """An activated workflow whose reset yields a schedule trigger must get a queued fire, or it sits with no future run."""
         existing = _existing_wf(key="sched_wf", composio_trigger_ids=None, trigger_name=None)
         existing.activated = True
         mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
         mock_repo.reset_system_workflow = AsyncMock()
-        mock_get_user.return_value = UserDocument(timezone="UTC")
+        mock_profile_timezone.return_value = Timezone.parse("UTC")
         mock_scheduler.schedule_workflow_execution = AsyncMock(return_value=True)
 
         trigger_config = self._schedule_trigger_config()
@@ -893,7 +850,7 @@ class TestResetSystemWorkflowToDefault:
         )
 
     @pytest.mark.asyncio
-    @patch("app.services.user_service.get_user_by_id")
+    @patch(f"{MODULE}.get_profile_timezone")
     @patch(f"{MODULE}.workflow_scheduler")
     @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.ensure_trigger_config_object")
@@ -902,7 +859,7 @@ class TestResetSystemWorkflowToDefault:
         mock_ensure: MagicMock,
         mock_repo: MagicMock,
         mock_scheduler: MagicMock,
-        mock_get_user: MagicMock,
+        mock_profile_timezone: MagicMock,
         _patch_log: MagicMock,
     ) -> None:
         """A reset whose re-arm could not queue a fire must not report success — the workflow would look reset but never run."""
@@ -910,7 +867,7 @@ class TestResetSystemWorkflowToDefault:
         existing.activated = True
         mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
         mock_repo.reset_system_workflow = AsyncMock()
-        mock_get_user.return_value = UserDocument(timezone="UTC")
+        mock_profile_timezone.return_value = Timezone.parse("UTC")
         mock_scheduler.schedule_workflow_execution = AsyncMock(return_value=False)
 
         trigger_config = self._schedule_trigger_config()
@@ -935,7 +892,7 @@ class TestResetSystemWorkflowToDefault:
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.install_recipe", new_callable=AsyncMock)
-    @patch("app.services.user_service.get_user_by_id")
+    @patch(f"{MODULE}.get_profile_timezone")
     @patch(f"{MODULE}.workflow_scheduler")
     @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.ensure_trigger_config_object")
@@ -944,7 +901,7 @@ class TestResetSystemWorkflowToDefault:
         mock_ensure: MagicMock,
         mock_repo: MagicMock,
         mock_scheduler: MagicMock,
-        mock_get_user: MagicMock,
+        mock_profile_timezone: MagicMock,
         install: AsyncMock,
     ) -> None:
         """The recipe is only a shortcut: its failure surfaces, but the reset workflow still has its next fire queued."""
@@ -952,7 +909,7 @@ class TestResetSystemWorkflowToDefault:
         existing.activated = True
         mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
         mock_repo.reset_system_workflow = AsyncMock()
-        mock_get_user.return_value = UserDocument(timezone="UTC")
+        mock_profile_timezone.return_value = Timezone.parse("UTC")
         mock_scheduler.schedule_workflow_execution = AsyncMock(return_value=True)
         install.side_effect = RuntimeError("recipe store down")
         trigger_config = self._schedule_trigger_config()
@@ -968,7 +925,7 @@ class TestResetSystemWorkflowToDefault:
         )
 
     @pytest.mark.asyncio
-    @patch("app.services.user_service.get_user_by_id")
+    @patch(f"{MODULE}.get_profile_timezone")
     @patch(f"{MODULE}.workflow_scheduler")
     @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.ensure_trigger_config_object")
@@ -977,14 +934,14 @@ class TestResetSystemWorkflowToDefault:
         mock_ensure: MagicMock,
         mock_repo: MagicMock,
         mock_scheduler: MagicMock,
-        mock_get_user: MagicMock,
+        mock_profile_timezone: MagicMock,
     ) -> None:
         """Reset preserves liveness: a deactivated workflow must not gain a fire."""
         existing = _existing_wf(key="sched_wf", composio_trigger_ids=None, trigger_name=None)
         existing.activated = False
         mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
         mock_repo.reset_system_workflow = AsyncMock()
-        mock_get_user.return_value = UserDocument(timezone="UTC")
+        mock_profile_timezone.return_value = Timezone.parse("UTC")
         mock_scheduler.schedule_workflow_execution = AsyncMock(return_value=True)
 
         trigger_config = self._schedule_trigger_config()

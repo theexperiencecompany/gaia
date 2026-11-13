@@ -108,7 +108,7 @@ class TestAttachExecutorToolData:
             )
 
     async def test_a_write_that_matched_no_message_is_reported(self) -> None:
-        """A silently-unmatched write must be logged (see result_delivery._persist_follow_up_actions)."""
+        """A silently-unmatched tool_data write must be logged."""
         _ready_session_with_cards("s1")
         body = MagicMock()
         body.voice_mode = False
