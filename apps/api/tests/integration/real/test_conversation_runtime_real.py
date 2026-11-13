@@ -800,6 +800,51 @@ async def test_an_approval_holds_the_work_until_the_user_decides(
     ]
 
 
+@pytest.mark.service
+async def test_work_that_ended_on_a_pending_approval_waits_for_it_and_a_stop_closes_it(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    """Regression (live test): the proposing task finished at once, so its question landed after the decision and Stop missed the approval."""
+    model = gated("on it", "unused")
+    rig = await rig_for(model)
+    _during(model, 0, lambda: rig.start_work("t1"))
+    await rig.send("m1", "add a todo")
+    await rig.settle()
+    approval_id = await approval_ledger_repository.register(
+        ApprovalProposal(
+            conversation_id=rig.conversation_id,
+            user_id=rig.user_id,
+            fingerprint=f"fp-{uuid4().hex}",
+            tool_name="CREATE_TODO",
+            summary="Create the todo",
+            owner_agent="executor",
+            task_id="t1",
+        )
+    )
+    await record_approval_requested(
+        rig.conversation_id, rig.user_id, "t1", approval_id, summary="Create it", expires_at=None
+    )
+    await record_work_finished(
+        rig.conversation_id, rig.user_id, "t1", WorkOutcome.DONE, WorkReport("Approve it?")
+    )
+    await rig.settle()
+    waiting = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+    assert waiting.display is DisplayState.AWAITING_APPROVAL
+    assert "t1" not in [reply.reply_id for reply in await rig.of(Reply)]
+
+    stopped = await record_user_stop(rig.conversation_id, rig.user_id, "s1")
+    late = await ledger_decide.decide_ledger(
+        approval_id, user_id=rig.user_id, kind="approve", via="card"
+    )
+
+    row = await approval_ledger_repository.get_by_approval_id(approval_id)
+    assert stopped.approval_ids == [approval_id]
+    assert row is not None and row.outcome is ApprovalOutcome.CANCELLED
+    assert (late.committed, late.outcome) == (False, ApprovalOutcome.CANCELLED)
+    assert (await rig.ports.log.state(rig.conversation_id, rig.user_id)).work == ()
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
+
+
 async def _legacy_turn(rig: Rig, said: str) -> None:
     """Run one turn the way the legacy stream path did: the comms graph straight on the conversation's thread."""
     graph = await GraphManager.get_graph(GraphName.COMMS)

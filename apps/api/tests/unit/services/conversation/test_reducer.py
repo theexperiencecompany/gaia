@@ -4,6 +4,7 @@ import pytest
 
 from app.models.chat_models import ReactionBy
 from app.models.conversation_log_models import (
+    ApprovalDecided,
     CancelWork,
     CommsPhase,
     ConversationState,
@@ -26,6 +27,7 @@ from app.models.conversation_log_models import (
     WorkStarted,
 )
 from app.services.conversation.reducer import reduce
+from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
 from tests.unit.services.conversation.log_helpers import (
     asked,
     barge,
@@ -774,3 +776,58 @@ def test_an_imported_reply_may_answer_nothing_but_a_live_one_may_not() -> None:
     )
     with pytest.raises(ValueError, match="answers at least one entry"):
         ReplySettled.model_validate({**lone, "through": 0, "quote_target": None})
+
+
+# ---- work whose run ended while it waits on an approval ----
+
+
+def _before_park() -> ConversationState:
+    state, _ = fold(
+        [user("u1"), started("w", "t1", 1), asked("a", "t1", "ap1"), *replied("r", ["u1"], 1)]
+    )
+    return state
+
+
+def _parked() -> ConversationState:
+    return _accept(_before_park(), 6, finished("f", "t1")).state
+
+
+def test_work_done_while_its_approval_is_pending_stays_live_and_narrates_nothing() -> None:
+    result = _accept(_before_park(), 6, finished("f", "t1"))
+    assert [(item.task_id, item.pending_approvals) for item in result.state.work] == [
+        ("t1", frozenset({"ap1"}))
+    ]
+    assert result.state.display is DisplayState.AWAITING_APPROVAL
+    assert result.state.unsettled_waking == ()
+    assert result.state.finished_work == ()
+    assert result.effects == ()
+
+
+@pytest.mark.parametrize("outcome", [ApprovalOutcome.APPROVED, ApprovalOutcome.DENIED])
+def test_the_users_decision_ends_work_parked_on_it_for_the_work_it_starts(
+    outcome: ApprovalOutcome,
+) -> None:
+    entry = ApprovalDecided(
+        id="d", approval_id="ap1", outcome=outcome, decider=ApprovalDecider.USER
+    )
+    result = _accept(_parked(), 7, entry)
+    assert result.state.work == ()
+    assert result.state.unsettled_waking == ()
+    assert result.effects == ()
+
+
+def test_an_approval_nobody_decided_leaves_parked_work_for_its_finish_to_report() -> None:
+    entry = ApprovalDecided(
+        id="d", approval_id="ap1", outcome=ApprovalOutcome.EXPIRED, decider=None
+    )
+    state = _accept(_parked(), 7, entry).state
+    assert [(item.task_id, item.pending_approvals) for item in state.work] == [("t1", frozenset())]
+    result = _accept(state, 8, finished("f2", "t1", WorkOutcome.FAILED))
+    assert result.state.work == ()
+    assert result.effects == (KickStep(),)
+
+
+def test_a_stop_cancels_parked_work_and_the_approval_it_waits_on() -> None:
+    result = _accept(_parked(), 7, stop("s"))
+    assert result.state.work == ()
+    assert CancelWork(task_ids=("t1",), approval_ids=("ap1",)) in result.effects

@@ -31,6 +31,10 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
+from shared.py.analytics.catalog.hil import ApprovalOutcome
+
+#: Decisions the user made: the decision path starts the work that carries them out or reports the skip.
+USER_DECISIONS = frozenset({ApprovalOutcome.APPROVED, ApprovalOutcome.DENIED})
 
 
 def reduce(state: ConversationState, logged: LoggedEntry) -> Transition | Rejected:
@@ -63,14 +67,8 @@ def _apply(state: ConversationState, seq: int, entry: Entry) -> Transition | Rej
             result = _start_work(state, seq, entry)
         case ApprovalRequested():
             result = _request_approval(state, entry)
-        case ApprovalDecided(approval_id=approval_id):
-            work = tuple(
-                item.model_copy(
-                    update={"pending_approvals": item.pending_approvals - {approval_id}}
-                )
-                for item in state.work
-            )
-            result = Transition(state=state.model_copy(update={"work": work}), effects=())
+        case ApprovalDecided():
+            result = _decide_approval(state, entry)
         case WorkFinished():
             result = _finish_work(state, seq, entry)
         case Reply():
@@ -189,10 +187,25 @@ def _request_approval(state: ConversationState, entry: ApprovalRequested) -> Tra
     return Transition(state=state.model_copy(update={"work": work}), effects=())
 
 
+def _decide_approval(state: ConversationState, entry: ApprovalDecided) -> Transition:
+    """Release the approval; parked work the user decided ends, as the work the decision starts continues it."""
+    released = (
+        item.model_copy(update={"pending_approvals": item.pending_approvals - {entry.approval_id}})
+        for item in state.work
+    )
+    continued = entry.outcome in USER_DECISIONS
+    work = tuple(
+        item for item in released if not (item.ended and continued and not item.pending_approvals)
+    )
+    return Transition(state=state.model_copy(update={"work": work}), effects=())
+
+
 def _finish_work(state: ConversationState, seq: int, entry: WorkFinished) -> Transition:
     live = _live(state, entry.task_id)
     if live is None:
         return Transition(state=state, effects=())
+    if live.pending_approvals and entry.outcome is WorkOutcome.DONE:
+        return Transition(state=_park(state, live), effects=())
     remaining = state.model_copy(
         update={"work": tuple(item for item in state.work if item.task_id != entry.task_id)}
     )
@@ -247,6 +260,15 @@ def _drop_waking_through(state: ConversationState, seq: int) -> ConversationStat
             "finished_work": tuple(item for item in state.finished_work if item.seq > seq),
         }
     )
+
+
+def _park(state: ConversationState, parked: LiveWork) -> ConversationState:
+    """Keep work whose run ended while it waits on an approval live, so nothing narrates it as finished."""
+    work = tuple(
+        item.model_copy(update={"ended": True}) if item.task_id == parked.task_id else item
+        for item in state.work
+    )
+    return state.model_copy(update={"work": work})
 
 
 def _live(state: ConversationState, task_id: str) -> LiveWork | None:

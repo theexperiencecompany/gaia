@@ -400,6 +400,8 @@ class LiveWork(BaseModel):
     joined: tuple[str, ...] = ()
     detached: bool = False
     exclusive: bool = False
+    # Its run ended while it waited on an approval: the decision continues it, never a narration.
+    ended: bool = False
 
 
 class FinishedWork(BaseModel):
