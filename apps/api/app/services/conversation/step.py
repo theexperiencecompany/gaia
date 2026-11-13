@@ -237,7 +237,9 @@ async def _serve(ports: RuntimePorts, claim: StepClaim, attempt_id: str) -> bool
     """Answer the oldest waking batch; return False when nothing waking is left."""
     conversation_id = claim.conversation_id
     state = await ports.log.state(conversation_id, claim.user_id)
-    entries = await ports.log.read_after(conversation_id, claim.user_id, state.settled_through)
+    # Nothing a Stop covered reaches a run, even what no run ever saw.
+    since = max(state.settled_through, state.stopped_through)
+    entries = await ports.log.read_after(conversation_id, claim.user_id, since)
     entries = await _cut_spoken_over(ports, claim, entries)
     pending = [logged for logged in entries if logged.seq in state.unsettled_waking]
     if not pending:

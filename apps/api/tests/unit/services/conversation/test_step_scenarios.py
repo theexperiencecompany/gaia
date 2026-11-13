@@ -486,6 +486,16 @@ class StepScenarios:
         assert (await settles(rt))[0].through == 2
         await assert_quiet(rt)
 
+    async def test_a_message_stopped_before_any_run_saw_it_never_reaches_the_next(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script([Finished(Replied("hello"))])
+        await send(rt, user("u1"), stop("s"), user("u3"))
+        await run(rt)
+        # The Stop's marker, never the stopped message.
+        assert rt.runner.calls == [Started(batch=(3,), context=(2,))]
+        assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u3",))]
+
     async def test_stop_then_a_new_message_answers_the_new_message_normally(
         self, rt: Runtime
     ) -> None:
@@ -498,7 +508,7 @@ class StepScenarios:
         assert rt.runner.calls == [
             Started(batch=(1,), context=()),
             STOP,
-            Started(batch=(3,), context=(1, 2)),
+            Started(batch=(3,), context=(2,)),
         ]
         assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u3",))]
         await assert_quiet(rt)

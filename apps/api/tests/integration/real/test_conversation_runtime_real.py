@@ -27,6 +27,7 @@ from langchain_core.outputs import ChatGenerationChunk
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 from redis.asyncio import Redis
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.agents.context.slots import TIME_CONTEXT_MARKER, PromptSlot, mark, slot_of
 from app.agents.core.background import (
@@ -1735,3 +1736,23 @@ async def test_a_fire_that_timed_out_is_never_answered_later(rig_for: RigFactory
         assert state.unsettled_waking == ()
         await rig.settle()
     assert [outcome for outcome, _answers in await rig.answered()] != [ReplyOutcome.ANSWERED]
+
+
+@pytest.mark.service
+async def test_a_stop_whose_hint_write_failed_is_still_what_the_step_reads(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated("unused"))
+    rig.effects.hold_kicks = True
+    await rig.send("m1", "write me an essay")
+    # The step answering m1 holds the conversation, so the hint is complete.
+    assert await rig.ports.log.claim(rig.conversation_id, rig.user_id) is not None
+
+    async def redis_down(*_: object) -> None:
+        raise RedisConnectionError("redis down")
+
+    with patch.object(mongo_log, "_raise_hint", redis_down):
+        await record_user_stop(rig.conversation_id, rig.user_id, "s1")
+    # A running attempt decides on this read: a stale hint would let its reply settle answered.
+    hint = await rig.ports.log.hint(rig.conversation_id, rig.user_id)
+    assert (hint.head, hint.stop_through) == (2, 1)
