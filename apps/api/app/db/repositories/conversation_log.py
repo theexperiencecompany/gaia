@@ -85,6 +85,8 @@ class LogHead:
     holder: int | None
     runner_epoch: int
     known: Mapping[str, int]
+    # What the outbox held when read: the next commit's flush carries it with its own entry.
+    unflushed: tuple[StoredEntry, ...]
 
 
 class ConversationLogRepository(ConversationRepository):
@@ -141,7 +143,11 @@ class ConversationLogRepository(ConversationRepository):
             )
         if not result.matched_count:
             return False
-        self._spawn_flush(head.conversation_id, head.user_id)
+        self._spawn_flush(
+            head.conversation_id,
+            head.user_id,
+            [*head.unflushed, StoredEntry.model_validate(document)],
+        )
         return True
 
     async def read_log(
@@ -170,6 +176,7 @@ class ConversationLogRepository(ConversationRepository):
 
         The one write of an amendment is this head update, so the epoch fence and the write are atomic.
         """
+        document = log_document(conversation_id, user_id, amended)
         with store_errors("log amend"):  # pragma: no mutate — error label
             result = await self._raw_collection().update_one(
                 {
@@ -177,17 +184,11 @@ class ConversationLogRepository(ConversationRepository):
                     "user_id": user_id,
                     f"{RUNNER_FIELD}.epoch": epoch,
                 },
-                {
-                    "$set": {
-                        f"{OUTBOX_FIELD}.{amended.seq}": log_document(
-                            conversation_id, user_id, amended
-                        )
-                    }
-                },
+                {"$set": {f"{OUTBOX_FIELD}.{amended.seq}": document}},
             )
         if not result.matched_count:
             return False
-        self._spawn_flush(conversation_id, user_id)
+        self._spawn_flush(conversation_id, user_id, [StoredEntry.model_validate(document)])
         return True
 
     async def stage_unfenced_amend(
@@ -205,6 +206,7 @@ class ConversationLogRepository(ConversationRepository):
         advances_sync bumps updatedAt, so batch sync carries the edit to the user's other devices.
         """
         staged = f"{OUTBOX_FIELD}.{amended.seq}"
+        document = log_document(conversation_id, user_id, amended)
         with store_errors("log reaction"):  # pragma: no mutate — error label
             result = await self._raw_collection().update_one(
                 {
@@ -216,13 +218,13 @@ class ConversationLogRepository(ConversationRepository):
                     ],
                 },
                 {
-                    "$set": {staged: log_document(conversation_id, user_id, amended)},
+                    "$set": {staged: document},
                     **({"$currentDate": {"updatedAt": True}} if advances_sync else {}),
                 },
             )
         if not result.matched_count:
             return False
-        self._spawn_flush(conversation_id, user_id)
+        self._spawn_flush(conversation_id, user_id, [StoredEntry.model_validate(document)])
         return True
 
     async def set_pinned(
@@ -386,6 +388,7 @@ def _log_head(head: Head) -> LogHead:
         holder=None if document.runner is None else document.runner.epoch,
         runner_epoch=document.runner_epoch,
         known=head.known_seqs(),
+        unflushed=tuple(document.outbox.values()),
     )
 
 

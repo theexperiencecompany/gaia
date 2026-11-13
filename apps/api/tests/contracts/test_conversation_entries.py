@@ -534,13 +534,13 @@ async def test_a_flush_of_a_conversation_deleted_under_it_takes_back_what_it_ins
     other = await _chat(repo, uid)
     await _append(other, uid, [_message("kept")])
     await held.run_all()
-    insert = repo._insert_entries
+    insert = repo._write_entries
 
     async def insert_then_delete(entries: Any) -> None:
         await insert(entries)
         await raw_collection.delete_one({"conversation_id": cid})
 
-    monkeypatch.setattr(repo, "_insert_entries", insert_then_delete)
+    monkeypatch.setattr(repo, "_write_entries", insert_then_delete)
 
     await repo.flush_outbox(cid, user_id=uid)
 

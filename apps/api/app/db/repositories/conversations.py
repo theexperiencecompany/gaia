@@ -20,7 +20,8 @@ from datetime import datetime
 import random
 from typing import ClassVar
 
-from pymongo.errors import DuplicateKeyError
+from pymongo import ReplaceOne, UpdateOne
+from pymongo.errors import BulkWriteError, DuplicateKeyError
 
 from app.constants.chat import (
     CONVERSATION_APPEND_JITTER_SECONDS,
@@ -103,6 +104,7 @@ _BOT_SOURCE_VALUES: list[str] = [s.value for s in BOT_CONVERSATION_SOURCES]
 _NEWEST_FIRST: list[tuple[str, int]] = [("seq", -1)]
 _OUTBOX_FIELDS: dict[str, object] = {"conversation_id": 1, "user_id": 1, OUTBOX_FIELD: 1}
 _ENTRY_KEY_FIELDS: dict[str, object] = {"_id": 0, "id": 1, "seq": 1}
+_DUPLICATE_KEY_CODE = 11000
 _SUMMARY_PROJECTION: dict[str, object] = {
     "_id": 0,
     "conversation_id": 1,
@@ -289,40 +291,33 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
     async def flush_outbox(self, conversation_id: str, *, user_id: str) -> None:
         """Copy every outbox entry into conversation_entries, then drop it from the head: insert first, always."""
-        # Reads only the outbox: what is committed is flushed whatever the embedded array holds.
         head = {"conversation_id": conversation_id, "user_id": user_id}
         with store_errors("flush"):  # pragma: no mutate — error label only
             # The projection only trims the read: the head model ignores every other field.
             raw = await self._raw_collection().find_one(head, _OUTBOX_FIELDS)  # pragma: no mutate
         outbox = ConversationHead.model_validate(raw).outbox if raw else {}
-        if not outbox:
+        await self._flush(conversation_id, user_id, list(outbox.values()))
+
+    async def _flush(
+        self, conversation_id: str, user_id: str, staged: Sequence[StoredEntry]
+    ) -> None:
+        """Write staged into conversation_entries in one bulk write, then drop what it wrote from the outbox in one update.
+
+        An entry staged again at a newer revision meanwhile stays for the next flush.
+        """
+        if not staged:
             return
-        once = {seq: entry for seq, entry in outbox.items() if entry.revision is None}
-        # pragma: no mutate start — $unset ignores the value
-        drained = {f"{OUTBOX_FIELD}.{seq}": "" for seq in once}
-        # pragma: no mutate end
+        head = {"conversation_id": conversation_id, "user_id": user_id}
         with store_errors("flush"):  # pragma: no mutate — error label only
-            await self._insert_entries(list(once.values()))
-            for seq, entry in outbox.items():
-                if entry.revision is not None:
-                    await self._place_revision(entry)
-                    # An amend staged after this read keeps its newer revision for the next flush.
-                    await self._raw_collection().update_one(
-                        {**head, f"{OUTBOX_FIELD}.{seq}.{REVISION_FIELD}": entry.revision},
-                        {"$unset": {f"{OUTBOX_FIELD}.{seq}": ""}},  # pragma: no mutate
-                    )
-            if drained:
-                unset = await self._raw_collection().update_one(head, {"$unset": drained})
-                gone = not unset.matched_count
-            else:
-                gone = not await self._count(head)
-            if gone:
+            await self._write_entries(staged)
+            dropped = await self._raw_collection().update_one(head, [_drop_flushed(staged)])
+            if not dropped.matched_count:
                 # The conversation was deleted while this flush ran: take back what it inserted.
                 await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(
                     {
                         "user_id": user_id,
                         "conversation_id": conversation_id,
-                        "seq": {"$in": list(outbox)},
+                        "seq": {"$in": [entry.seq for entry in staged]},
                     }
                 )
 
@@ -625,10 +620,13 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     def _to_model(self, raw: Mapping[str, object]) -> ConversationDocument:
         return super()._to_model(head_fields(raw))
 
-    def _spawn_flush(self, conversation_id: str, user_id: str) -> None:
+    def _spawn_flush(
+        self, conversation_id: str, user_id: str, staged: Sequence[StoredEntry]
+    ) -> None:
+        """Flush what the caller staged and read still unflushed: the hot path never reads the outbox back."""
         spawn_logged_task(
             "conversation_flush",
-            self.flush_outbox(conversation_id, user_id=user_id),
+            self._flush(conversation_id, user_id, staged),
             conversation_id=conversation_id,
         )
 
@@ -664,40 +662,26 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             raws = await self._raw_collection().aggregate(pipeline).to_list(length=None)
         return head_from_raw(raws[0]) if raws else None
 
-    async def _insert_entries(self, entries: Sequence[StoredEntry]) -> None:
-        """Insert each outbox entry; one already stored at its seq was flushed before, any other conflict is a bug."""
+    async def _write_entries(self, entries: Sequence[StoredEntry]) -> None:
+        """Insert each entry, or replace its older revision; a seq already holding another entry is a bug."""
         collection = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
-        for entry in entries:
-            try:
-                await collection.insert_one(entry.document())
-            except DuplicateKeyError as exc:
-                at_seq = at_its_seq(entry)
+        try:
+            await collection.bulk_write([_entry_write(entry) for entry in entries], ordered=False)
+        except BulkWriteError as exc:
+            for error in exc.details.get("writeErrors", []):
+                entry = entries[error["index"]]
+                if error.get("code") != _DUPLICATE_KEY_CODE:
+                    raise
+                # The upsert found this seq taken: by this entry (flushed before, or newer), or a conflict.
                 # The projection only trims the read: the key model ignores every other field.
-                stored = await collection.find_one(at_seq, _ENTRY_KEY_FIELDS)  # pragma: no mutate
+                stored = await collection.find_one(
+                    at_its_seq(entry), _ENTRY_KEY_FIELDS
+                )  # pragma: no mutate
                 if not is_same_entry(stored, entry):
                     raise ConversationStoreError(
                         message="an outbox entry conflicts with a stored entry",
-                        why=str(exc),
+                        why=str(error.get("errmsg")),
                     ) from exc
-
-    async def _place_revision(self, entry: StoredEntry) -> None:
-        """Write an amendable entry's document, unless the collection already holds this revision or a newer one."""
-        collection = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
-        try:
-            await collection.insert_one(entry.document())
-        except DuplicateKeyError as exc:
-            # Only this entry's own older revision is replaced: another entry at its seq is a conflict.
-            older = {**at_its_seq(entry), "id": entry.id, REVISION_FIELD: {"$lt": entry.revision}}
-            if (await collection.replace_one(older, entry.document())).matched_count:
-                return
-            # The projection only trims the read: the key model ignores every other field.
-            stored = await collection.find_one(
-                at_its_seq(entry), _ENTRY_KEY_FIELDS
-            )  # pragma: no mutate
-            if not is_same_entry(stored, entry):
-                raise ConversationStoreError(
-                    message="an outbox entry conflicts with a stored entry", why=str(exc)
-                ) from exc
 
     async def _page(
         self, head: Head, *, before_seq: int | None, limit: int
@@ -964,6 +948,39 @@ async def _read_beside(
         asked |= {*ids, *reply_ids}
         related += await lookup(ids, reply_ids)
     return related
+
+
+def _entry_write(
+    entry: StoredEntry,
+) -> UpdateOne | ReplaceOne[dict[str, object]]:
+    """Upsert entry at its seq: once-only entries never overwrite, an amendable one replaces only its older revision."""
+    if entry.revision is None:
+        return UpdateOne(
+            {**at_its_seq(entry), "id": entry.id}, {"$setOnInsert": entry.document()}, upsert=True
+        )
+    older = {**at_its_seq(entry), "id": entry.id, REVISION_FIELD: {"$lt": entry.revision}}
+    return ReplaceOne(older, entry.document(), upsert=True)
+
+
+def _drop_flushed(staged: Sequence[StoredEntry]) -> dict[str, object]:
+    """Return the head update stage removing each staged entry from the outbox, unless restaged at another revision."""
+    flushed = [_staged_as(entry) for entry in staged]
+    kept = {
+        "$filter": {
+            "input": {"$objectToArray": {"$ifNull": [f"${OUTBOX_FIELD}", {}]}},
+            "as": "staged",
+            "cond": {"$not": [{"$or": flushed}]},
+        }
+    }
+    return {"$set": {OUTBOX_FIELD: {"$arrayToObject": kept}}}
+
+
+def _staged_as(entry: StoredEntry) -> dict[str, object]:
+    """Match the outbox slot still holding entry as flushed: its seq, and for an amendable entry its revision."""
+    at_seq: dict[str, object] = {"$eq": ["$$staged.k", str(entry.seq)]}
+    if entry.revision is None:
+        return at_seq
+    return {"$and": [at_seq, {"$eq": [f"$$staged.v.{REVISION_FIELD}", entry.revision]}]}
 
 
 def _backoff() -> float:
