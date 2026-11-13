@@ -28,3 +28,24 @@ it("tooltips open and close on v2's timing", async () => {
   expect(await unlayeredValue("--tooltip-delay")).toBe("0ms");
   expect(await unlayeredValue("--tooltip-close-delay")).toBe("500ms");
 });
+
+// v3's tooltip body is 12px text in an 8px inset, broken mid-word; v2's was 14px in 4px by 10px, wrapped between words.
+it("a tooltip body takes v2's type and inset", async () => {
+  expect(await unlayeredValue("--gaia-tooltip-font-size")).toBe("0.875rem");
+  const gaia = postcss.parse(
+    readFileSync(path.resolve(__dirname, "../app/styles/gaia.css"), "utf8"),
+  );
+  const tooltipProps = new Set<string>();
+  gaia.walkRules(".tooltip", (rule) => {
+    rule.walkDecls((decl) => {
+      tooltipProps.add(`${decl.prop}: ${decl.value}`);
+    });
+  });
+  expect([...tooltipProps]).toEqual(
+    expect.arrayContaining([
+      "font-size: var(--gaia-tooltip-font-size)",
+      "word-break: normal",
+      "padding: var(--gaia-tooltip-padding-y) var(--gaia-tooltip-padding-x)",
+    ]),
+  );
+});

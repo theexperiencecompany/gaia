@@ -198,6 +198,10 @@ html {
   --gaia-chip-lg-padding-x: 0.875rem;
   --gaia-chip-start-inset: 0.25rem;
   --gaia-chip-lg-start-inset: 0.5rem;
+  --gaia-tooltip-padding-y: 0.25rem;
+  --gaia-tooltip-padding-x: 0.625rem;
+  --gaia-tooltip-font-size: 0.875rem;
+  --gaia-tooltip-line-height: 1.25rem;
   --gaia-field-height: 2.5rem;
   --gaia-field-font-size: 0.875rem;
   --gaia-field-line-height: 1.25rem;

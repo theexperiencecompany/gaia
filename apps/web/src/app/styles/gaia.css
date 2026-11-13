@@ -645,8 +645,16 @@
   .modal__dialog--full {
     border-radius: 0;
   }
+  /* v2's tooltip body: 14px on 20px lines, 4px by 10px, foreground text (v3: 12px, 8px, white). */
   .tooltip {
     border-radius: var(--gaia-radius-md);
+    padding: var(--gaia-tooltip-padding-y) var(--gaia-tooltip-padding-x);
+    font-size: var(--gaia-tooltip-font-size);
+    line-height: var(--gaia-tooltip-line-height);
+    color: var(--foreground);
+    /* v3 breaks tooltip text mid-word (break-all); v2 wrapped between words */
+    word-break: normal;
+    overflow-wrap: break-word;
   }
 
   /* List and menu items: v2's 32px row on an 8px radius (v3 is 36px on 16px);
