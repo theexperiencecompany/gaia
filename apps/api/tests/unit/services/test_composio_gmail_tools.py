@@ -444,6 +444,10 @@ class TestFetchInputsModelsSend:
         )
         assert request.fields == ["id", "threadId", "from", "subject", "time", "labels"]
 
+    def test_the_old_has_attachment_field_means_the_attachment_list(self):
+        request = FetchMessagesInput.model_validate({"fields": ["subject", "hasAttachment"]})
+        assert request.fields == ["subject", "attachments"]
+
     @pytest.mark.regression
     def test_internal_date_spellings_mean_the_message_time(self):
         thread = FetchThreadInput.model_validate(
@@ -867,7 +871,7 @@ class TestTheDesksSweep:
 
         mock_proxy.side_effect = gmail
         _register_and_get_tools()["FETCH_MESSAGES"](
-            request=FetchMessagesInput(query="after:1790000000", per_page=100, fields=["from"]),
+            request=FetchMessagesInput(query="after:1790000000", per_page=100),
             execute_request=MagicMock(),
             auth_credentials=AUTH_CREDS,
         )
@@ -1468,7 +1472,6 @@ class TestTheThreadRead:
             (["subject"], "none", "metadata"),
             (["body"], "raw", "full"),
             (["attachments"], "none", "full"),
-            (["hasAttachment"], "none", "full"),
             ([], "none", "full"),
         )
         for fields, processing, expected in cases:
@@ -1609,8 +1612,8 @@ class TestAMessageReadForMetadataStaysAMetadataRead:
 
     @pytest.mark.parametrize(
         "fields",
-        [["hasAttachment"], ["attachments"], []],
-        ids=["has-attachment", "attachments", "all-fields"],
+        [["attachments"], []],
+        ids=["attachments", "all-fields"],
     )
     def test_an_attachment_field_is_read_from_the_full_message(
         self, mock_proxy: MagicMock, fields: list[MessageFieldLiteral]

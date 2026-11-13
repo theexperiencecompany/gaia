@@ -117,9 +117,6 @@ class GmailThreadMessageView(BaseModel):
     snippet: str | None = ""
     time: str | None = ""
     is_read: bool = Field(default=False, validation_alias="isRead", serialization_alias="isRead")
-    has_attachment: bool = Field(
-        default=False, validation_alias="hasAttachment", serialization_alias="hasAttachment"
-    )
     body: str | None = ""
     labels: list[str] = Field(default_factory=list)
     content: GmailMessageContent | None = Field(

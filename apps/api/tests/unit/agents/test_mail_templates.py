@@ -26,7 +26,7 @@ from app.models.composio_schemas.gmail import (
     GmailMessagePart,
     GmailMessageView,
 )
-from app.models.integrations.gmail import GmailThreadData
+from app.models.integrations.gmail import GmailDraftView, GmailThreadData
 from app.models.integrations.gmail_messages import RelayedGmailMessage
 from shared.py.wide_events import log
 
@@ -464,13 +464,12 @@ class TestMinimalMessageTemplate:
         assert "Plain" in result.content["text"]
         assert "HTML" in result.content["html"]
 
-    def test_is_read_and_has_attachment(self):
+    def test_an_unread_message_is_not_read(self):
         raw = _make_raw_email()
-        msg = _make_gmail_message(raw=raw, payload=_attachment_payload(), label_ids=["UNREAD"])
+        msg = _make_gmail_message(raw=raw, label_ids=["UNREAD"])
 
         result = minimal_message_template(RelayedGmailMessage.model_validate(msg))
         assert result.is_read is False
-        assert result.has_attachment is True
 
     def test_fallback_fields(self):
         """When parser returns empty, fallback to email_data fields."""
@@ -500,12 +499,7 @@ class TestMinimalMessageTemplate:
             date="Tue, 02 Jan 2025 09:30:00 +0000",
             body_text="The body",
         )
-        msg = _make_gmail_message(
-            raw=raw,
-            payload=_attachment_payload(),
-            label_ids=["INBOX", "UNREAD"],
-            snippet="The snippet",
-        )
+        msg = _make_gmail_message(raw=raw, label_ids=["INBOX", "UNREAD"], snippet="The snippet")
 
         result = minimal_message_template(RelayedGmailMessage.model_validate(msg))
 
@@ -517,7 +511,6 @@ class TestMinimalMessageTemplate:
         assert result.snippet == "The snippet"
         assert "02 Jan 2025 09:30:00" in result.time
         assert result.is_read is False
-        assert result.has_attachment is True
         assert result.labels == ["INBOX", "UNREAD"]
         assert result.body.strip() == "The body"
 
@@ -556,7 +549,6 @@ class TestFetchedMessageView:
             "snippet",
             "time",
             "isRead",
-            "hasAttachment",
             "attachments",
             "labels",
             "cc",
@@ -589,7 +581,6 @@ class TestFetchedMessageView:
         assert view.snippet == "Sign here today"
         assert "03 Jan 2025 11:00:00" in view.time
         assert view.is_read is False
-        assert view.has_attachment is False
         assert view.labels == ["INBOX", "UNREAD"]
 
     def test_the_dual_text_and_html_blob_never_reaches_the_agent(self) -> None:
@@ -652,7 +643,7 @@ class TestThreadTemplate:
 # ---------------------------------------------------------------------------
 
 
-def _listed_draft(draft: dict) -> dict:
+def _listed_draft(draft: dict[str, object]) -> GmailDraftView:
     return process_list_drafts_response({"drafts": [draft]})["drafts"][0]
 
 
@@ -1061,18 +1052,17 @@ class TestTheFetchedViewReadsThePayload:
                 "attachmentId": "att-1",
             }
         ]
-        assert view.has_attachment is True
 
-    def test_a_has_attachment_label_without_an_attached_part_is_no_attachment(self) -> None:
-        """Gmail sets no such label; the flag comes from the parts, whatever the labels say."""
+    def test_no_view_claims_a_message_has_no_attachment(self) -> None:
+        """Gmail sets no HAS_ATTACHMENT label, so a flag read from labels was always false."""
         message = RelayedGmailMessage.model_validate(
             _make_gmail_message(
-                payload={"mimeType": "text/plain", "body": {"size": 12}},
-                label_ids=["INBOX", "HAS_ATTACHMENT"],
+                raw=_make_raw_email(), payload=_attachment_payload(), label_ids=["INBOX"]
             )
         )
 
-        assert build_message_view(message, "raw").has_attachment is False
+        assert "hasAttachment" not in project_message_view(build_message_view(message, "raw"), None)
+        assert "hasAttachment" not in minimal_message_template(message).model_dump(by_alias=True)
 
     def test_a_relay_with_no_ids_and_no_snippet_reports_them_empty(self) -> None:
         """A metadata-format message carries no id, thread or snippet of its own."""

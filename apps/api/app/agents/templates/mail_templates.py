@@ -11,7 +11,7 @@ from typing import cast
 
 from bs4 import BeautifulSoup
 
-from app.constants.email import ATTACHMENT_FIELDS, MessageFieldLiteral
+from app.constants.email import MessageFieldLiteral
 from app.models.composio_schemas.gmail import (
     BodyProcessingLiteral,
     GmailAttachmentMetadata,
@@ -367,7 +367,6 @@ def minimal_message_template(
         snippet=message.snippet or "",
         time=parser.date or message.message_timestamp or "",
         is_read="UNREAD" not in labels,
-        has_attachment=bool(_attachment_metadata(message.payload)),
         body=body_content[:100] if short_body else body_content,
         labels=labels,
         content=content,
@@ -384,7 +383,6 @@ def _message_view(message: RelayedGmailMessage, *, include_body: bool) -> GmailM
     parser.parse()
 
     labels = parser.labels
-    attachments = _attachment_metadata(message.payload)
 
     view = GmailMessageView(
         id=message.message_id or message.id or "",
@@ -396,8 +394,7 @@ def _message_view(message: RelayedGmailMessage, *, include_body: bool) -> GmailM
         snippet=message.snippet or "",
         time=parser.date,
         is_read="UNREAD" not in labels,
-        has_attachment=bool(attachments),
-        attachments=attachments,
+        attachments=_attachment_metadata(message.payload),
         labels=labels,
         cc=parser.cc,
         headers=message.payload.headers if message.payload is not None else [],
@@ -464,14 +461,10 @@ def message_view_needs_full(
 ) -> bool:
     """Whether a projected message view must be built from a format=full fetch.
 
-    The body and the attachment fields both come from the MIME parts, which
+    The body and the attachment list both come from the MIME parts, which
     format=metadata leaves out.
     """
-    return (
-        message_view_needs_body(fields, body_processing)
-        or not fields
-        or not ATTACHMENT_FIELDS.isdisjoint(fields)
-    )
+    return message_view_needs_body(fields, body_processing) or not fields or "attachments" in fields
 
 
 def project_message_view(
