@@ -1,11 +1,4 @@
-/**
- * What became of one native emoji reaction, and the analytics it reports.
- *
- * Shared by the live-turn hook and the outbound consumer so both report the
- * same `bot:reaction_delivered` shape; only ATTACHED means the reaction landed.
- */
-
-import type { EventProperties } from "../../analytics";
+/** What became of one native emoji reaction; only ATTACHED means it landed. */
 
 export const REACTION_OUTCOME = {
   /** The platform accepted the reaction. */
@@ -32,32 +25,3 @@ export type ReactionHandler = (
   emoji: string,
   replaces: string | null,
 ) => Promise<ReactionOutcome>;
-
-/** Which path delivered the reaction: a reply to a live turn, or an outbound envelope. */
-export const REACTION_SURFACE = {
-  LIVE: "live",
-  OUTBOUND: "outbound",
-} as const;
-
-type ReactionSurface = (typeof REACTION_SURFACE)[keyof typeof REACTION_SURFACE];
-
-const REACTION_DELIVERY = {
-  NATIVE: "native",
-  FALLBACK_TEXT: "fallback_text",
-} as const;
-
-/** The `bot:reaction_delivered` properties for one reaction attempt. */
-export function reactionDeliveredProperties(
-  outcome: ReactionOutcome,
-  surface: ReactionSurface,
-): EventProperties["bot:reaction_delivered"] {
-  if (outcome === REACTION_OUTCOME.ATTACHED) {
-    return { success: true, surface, delivery: REACTION_DELIVERY.NATIVE };
-  }
-  return {
-    success: true,
-    surface,
-    delivery: REACTION_DELIVERY.FALLBACK_TEXT,
-    reason: outcome,
-  };
-}

@@ -472,32 +472,4 @@ describe("HarnessAdapter — reactions", () => {
       );
     },
   );
-
-  it("records an outbound reaction natively rather than as text", async () => {
-    const recorder = new TranscriptRecorder("telegram");
-    const adapter = new HarnessAdapter(resolveEmulation("telegram"), recorder);
-
-    await (
-      adapter as unknown as {
-        deliverOutboundReaction: (
-          id: string,
-          reaction: { target_platform_message_id: string; emoji: string },
-          isChannel: boolean,
-        ) => Promise<void>;
-      }
-    ).deliverOutboundReaction(
-      "dev-telegram-42",
-      { target_platform_message_id: "in7", emoji: "👍" },
-      false,
-    );
-
-    expect(recorder.getEvents()).toEqual([
-      expect.objectContaining({
-        type: "reaction",
-        destinationId: "dev-telegram-42",
-        targetMessageId: "in7",
-        emoji: "👍",
-      }),
-    ]);
-  });
 });

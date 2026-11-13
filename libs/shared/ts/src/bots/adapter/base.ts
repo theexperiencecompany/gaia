@@ -43,10 +43,7 @@ import {
 import type { ActiveBotConversation } from "../../api/generated";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
-import type {
-  OutboundAttachment,
-  OutboundReaction,
-} from "../consumer/envelope";
+import type { OutboundAttachment } from "../consumer/envelope";
 import { OutboundConsumer } from "../consumer/outbound-consumer";
 import { STREAMING_DEFAULTS } from "../conversation/delivery-options";
 import type { ConversationSurface } from "../conversation/follower.types";
@@ -92,9 +89,7 @@ import {
 } from "../utils/media";
 import {
   REACTION_OUTCOME,
-  REACTION_SURFACE,
   type ReactionOutcome,
-  reactionDeliveredProperties,
 } from "../utils/reaction-outcome";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import { ArrivalOrder } from "./arrival-order";
@@ -319,8 +314,6 @@ export abstract class BaseBotAdapter {
         this.deliverOutboundFile(id, attachment, isChannel),
       this.config.gaiaApiUrl,
       this.reportDeliveryFailure,
-      (id, reaction, isChannel) =>
-        this.deliverOutboundReaction(id, reaction, isChannel),
       this.outboundNotifications,
     );
     void this._outboundConsumer.start();
@@ -487,8 +480,8 @@ export abstract class BaseBotAdapter {
 
   /**
    * Attaches `emoji` natively to an existing platform message in place of
-   * `replaces`, GAIA's earlier reaction there — the one reaction primitive, used
-   * by live turns and the outbound consumer alike. Where a platform keeps one
+   * `replaces`, GAIA's earlier reaction there; the conversation follower reacts
+   * through it. Where a platform keeps one
    * reaction per sender, setting one replaces the other; where reactions add up,
    * the adapter removes `replaces` first. This default is for platforms with no
    * reaction API.
@@ -501,36 +494,6 @@ export abstract class BaseBotAdapter {
     _replaces: string | null,
   ): Promise<ReactionOutcome> {
     return Promise.resolve(REACTION_OUTCOME.PLATFORM_UNSUPPORTED);
-  }
-
-  /**
-   * Delivers an outbound envelope's `reaction`: attached natively when the
-   * platform allows it, otherwise sent as a text bubble so the ack is never lost.
-   */
-  private async deliverOutboundReaction(
-    destinationId: string,
-    reaction: OutboundReaction,
-    isChannel: boolean,
-  ): Promise<void> {
-    const outcome = await this.reactToMessage(
-      destinationId,
-      reaction.target_platform_message_id,
-      reaction.emoji,
-      isChannel,
-      reaction.replaces_emoji ?? null,
-    );
-    if (outcome !== REACTION_OUTCOME.ATTACHED) {
-      wideLog.warning("outbound_reaction_fallback_text", {
-        target_platform_message_id: reaction.target_platform_message_id,
-        reason: outcome,
-      });
-      await this.deliverOutbound(destinationId, reaction.emoji, isChannel);
-    }
-    this.analytics.capture(
-      await this.resolveDistinctId(destinationId),
-      "bot:reaction_delivered",
-      reactionDeliveredProperties(outcome, REACTION_SURFACE.OUTBOUND),
-    );
   }
 
   // ---------------------------------------------------------------------------

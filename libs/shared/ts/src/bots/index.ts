@@ -39,12 +39,10 @@ export { injectInfisicalSecrets, loadConfig } from "./config";
 export type {
   OutboundAttachment,
   OutboundMessageEnvelope,
-  OutboundReaction,
 } from "./consumer/envelope";
 export {
   outboundAttachmentSchemaFor,
   outboundMessageEnvelopeSchemaFor,
-  outboundReactionSchema,
 } from "./consumer/envelope";
 export type {
   ConversationEventSource,

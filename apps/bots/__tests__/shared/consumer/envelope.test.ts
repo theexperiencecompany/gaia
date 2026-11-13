@@ -130,22 +130,12 @@ describe("outboundMessageEnvelopeSchemaFor", () => {
     expect(schema.safeParse(withNeither).success).toBe(false);
   });
 
-  it("accepts a reaction-only envelope (no text body)", () => {
+  it("rejects an envelope whose only content is a reaction", () => {
     const { text: _text, ...noText } = valid;
     expect(
       schema.safeParse({
         ...noText,
         reaction: { target_platform_message_id: "wamid.123", emoji: "👍" },
-      }).success,
-    ).toBe(true);
-  });
-
-  it("rejects a reaction without a target", () => {
-    const { text: _text, ...noText } = valid;
-    expect(
-      schema.safeParse({
-        ...noText,
-        reaction: { target_platform_message_id: "", emoji: "👍" },
       }).success,
     ).toBe(false);
   });
