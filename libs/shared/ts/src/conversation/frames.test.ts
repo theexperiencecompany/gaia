@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseConversationEvent } from "./frames";
+import { todoWoke, workflowFired } from "./testing";
 
 const AT = "2026-11-12T10:00:00+00:00";
 
@@ -117,20 +118,9 @@ describe("parseConversationEvent", () => {
   it("parses every entry kind the server can append", () => {
     const entries = [
       { kind: "stop_requested", id: "s", by: "user", covers_through: null },
-      { kind: "barge_in", id: "b", reply_id: "r", heard_text: "he" },
-      {
-        kind: "workflow_fired",
-        id: "w",
-        workflow_id: "wf",
-        execution_id: "ex",
-        context: { a: 1 },
-      },
-      {
-        kind: "todo_woke",
-        id: "t",
-        todo_id: "td",
-        wake: { kind: "schedule", trigger_names: [], approval_summary: null },
-      },
+      { kind: "barge_in", id: "b", reply_id: "r", heard_through: 2 },
+      workflowFired("w"),
+      todoWoke("t"),
       { kind: "notice", id: "n", text: "hello", origin: "reminder" },
       {
         kind: "work_started",

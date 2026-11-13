@@ -134,11 +134,72 @@ export const stopRequested = (
   covers_through: coversThrough,
 });
 
-export const notice = (id: string, text = `notice ${id}`): Entry => ({
+export const notice = (
+  id: string,
+  text = `notice ${id}`,
+  toolData: ToolDataEntry[] = [],
+): Entry => ({
   kind: "notice",
   id,
   text,
   origin: "reminder",
+  tool_data: toolData,
+});
+
+const WORKER_ATTRIBUTION = {
+  actor: "agent",
+  surface: "worker",
+  trigger: "schedule",
+} as const;
+
+export const workflowFired = (id: string, title = `workflow ${id}`): Entry => ({
+  kind: "workflow_fired",
+  id,
+  run: {
+    workflow: { id: `wf-${id}`, title, description: "", steps: [] },
+    execution_id: `exec-${id}`,
+    reservation: `res-${id}`,
+    timezone: "UTC",
+    trigger: { type: "schedule" },
+    attribution: WORKER_ATTRIBUTION,
+  },
+});
+
+export const todoWoke = (id: string, todoId = `todo-${id}`): Entry => ({
+  kind: "todo_woke",
+  id,
+  run: {
+    todo_id: todoId,
+    run_id: `run-${id}`,
+    title: `todo ${todoId}`,
+    trigger_type: "scheduled_todo",
+    runs_once: false,
+    wake: { kind: "schedule", trigger_names: [], approval_summary: null },
+    report_form: "write_up",
+    attribution: WORKER_ATTRIBUTION,
+  },
+});
+
+export const integrationNeeded = (
+  id: string,
+  integrationId: string,
+): Entry => ({
+  kind: "integration_needed",
+  id,
+  integration_id: integrationId,
+  integration_name: integrationId,
+});
+
+export const integrationConnected = (
+  id: string,
+  neededId: string,
+  integrationId: string,
+): Entry => ({
+  kind: "integration_connected",
+  id,
+  integration_id: integrationId,
+  integration_name: integrationId,
+  needed_id: neededId,
 });
 
 export const entryFrame = (seq: number, entry: Entry): ConversationFrame => ({

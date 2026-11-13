@@ -10,6 +10,8 @@ import {
   approvalRequested,
   entryFrame,
   entryUpdatedFrame,
+  integrationConnected,
+  integrationNeeded,
   liveTask,
   notice,
   reply,
@@ -17,9 +19,11 @@ import {
   replySettled,
   stateFrame,
   stopRequested,
+  todoWoke,
   userMessage,
   workCardDelta,
   workFinished,
+  workflowFired,
   workStarted,
 } from "./testing";
 import type { ConversationFrame, ConversationView } from "./types";
@@ -58,6 +62,61 @@ describe("visibleBubbles", () => {
       entryFrame(9, notice("n1")),
     ]);
     expect(shape(view)).toEqual(["user:m1", 'reply:k1 "done"', "notice:n1"]);
+  });
+
+  it("shows a workflow run as its workflow card, then the reply that answers it", () => {
+    const view = fold([
+      entryFrame(1, workflowFired("f1", "Morning brief")),
+      entryFrame(2, reply("r1", "a1", "Here is your brief")),
+      entryFrame(3, replySettled("r1", ["f1"], 1)),
+    ]);
+    expect(shape(view)).toEqual([
+      "workflow:f1",
+      'reply:r1 "Here is your brief"',
+    ]);
+    expect(visibleBubbles(view)[0]).toMatchObject({
+      kind: "workflow_fired",
+      seq: 1,
+      workflow: { id: "wf-f1", title: "Morning brief" },
+    });
+  });
+
+  it("shows a todo run as what woke it, then its write-up reply", () => {
+    const view = fold([
+      entryFrame(1, todoWoke("w1")),
+      entryFrame(2, workStarted("k1", 1)),
+      entryFrame(3, workFinished("k1")),
+      entryFrame(4, reply("k1", "a1", "Wrote it up")),
+      entryFrame(5, replySettled("k1", ["w1"], 3)),
+    ]);
+    expect(shape(view)).toEqual(["todo:w1", 'reply:k1 "Wrote it up"']);
+    expect(visibleBubbles(view)[0]).toMatchObject({
+      kind: "todo_woke",
+      wake: { kind: "schedule" },
+    });
+  });
+
+  it("shows a notice with the cards it was delivered with", () => {
+    const card = { tool_name: "weather_data", data: { city: "Pune" } };
+    const view = fold([entryFrame(1, notice("n1", "Rain at 5", [card]))]);
+    expect(visibleBubbles(view)).toEqual([
+      {
+        kind: "notice",
+        key: "notice:n1",
+        seq: 1,
+        text: "Rain at 5",
+        toolData: [card],
+      },
+    ]);
+  });
+
+  it("adds no row for an integration's need or connect: the work's connect card shows both", () => {
+    const view = fold([
+      entryFrame(1, userMessage("m1")),
+      entryFrame(2, integrationNeeded("i1", "gmail")),
+      entryFrame(3, integrationConnected("i1:c", "i1", "gmail")),
+    ]);
+    expect(shape(view)).toEqual(["user:m1"]);
   });
 
   it("carries the user message and the reaction filled in on it", () => {

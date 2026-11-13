@@ -1,4 +1,9 @@
-import type { ToolDataEntry, WorkOutcome } from "../api/generated";
+import type {
+  SelectedWorkflowDataOutput,
+  TodoRunWake,
+  ToolDataEntry,
+  WorkOutcome,
+} from "../api/generated";
 import { extractToolProgressMessage } from "../chat/streaming";
 import type { TurnAccumulator } from "../chat/turnAccumulator";
 import { ENTRY_KIND } from "./entries";
@@ -36,7 +41,22 @@ export type LiveBubble =
       followUpActions: readonly string[];
       streaming: boolean;
     }
-  | { kind: "notice"; key: string; seq: number; text: string }
+  | {
+      kind: "notice";
+      key: string;
+      seq: number;
+      text: string;
+      toolData: readonly ToolDataEntry[];
+    }
+  /** The workflow card that started a run; the run's reply is its own row. */
+  | {
+      kind: "workflow_fired";
+      key: string;
+      seq: number;
+      workflow: SelectedWorkflowDataOutput;
+    }
+  /** What woke a tracked todo's run; its write-up reply is its own row. */
+  | { kind: "todo_woke"; key: string; seq: number; wake: TodoRunWake }
   | {
       kind: "work";
       key: string;
@@ -115,7 +135,23 @@ function entryBubble(
         key: `notice:${entry.id}`,
         seq,
         text: entry.text,
+        toolData: entry.tool_data,
       };
+    case ENTRY_KIND.WORKFLOW_FIRED:
+      return {
+        kind: "workflow_fired",
+        key: `workflow:${entry.id}`,
+        seq,
+        workflow: entry.run.workflow,
+      };
+    case ENTRY_KIND.TODO_WOKE:
+      return {
+        kind: "todo_woke",
+        key: `todo:${entry.id}`,
+        seq,
+        wake: entry.run.wake,
+      };
+    // An integration's need and connect add no row: the work's connect card shows both.
     default:
       return null;
   }
