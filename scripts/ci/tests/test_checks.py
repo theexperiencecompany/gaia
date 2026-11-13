@@ -1125,6 +1125,12 @@ V2_VARIANT_NAMES = [
             "<Switch />: render its Switch.Control",
         ),
         (_hero_component("<Checkbox />", "Checkbox"), "<Checkbox />: render its Checkbox.Control"),
+        (
+            _hero_component(
+                '<Table.Header><Table.Column id="a">A</Table.Column></Table.Header>', "Table"
+            ),
+            "<Table.Column>: mark one column isRowHeader",
+        ),
         (_hero_component("<B />", "Button as B"), "<Button>: use GaiaButton"),
         (
             _hero_component(

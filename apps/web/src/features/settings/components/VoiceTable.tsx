@@ -364,6 +364,7 @@ export function VoiceTable({
             <Table.Column
               key={column.key}
               id={column.key}
+              isRowHeader={column.key === "voice"}
               className={column.align === "end" ? "text-right" : undefined}
             >
               {column.label}

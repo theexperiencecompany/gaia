@@ -400,11 +400,19 @@ export function heroUsageIn(file, src) {
     }
   }
   const ownWrapper = (wrapper) => file === `${HEROUI_WRAPPER_DIR}${wrapper}.tsx`;
+  let firstColumnLine = null;
+  let hasRowHeader = false;
   traverse.default(module.ast, {
     JSXOpeningElement(nodePath) {
       const tag = heroTag(nodePath.node.name, module, new Map());
       if (!tag) return;
       const line = nodePath.node.loc.start.line;
+      if (tag === "Table.Column") {
+        firstColumnLine ??= line;
+        hasRowHeader ||= nodePath.node.attributes.some(
+          (a) => a.type === "JSXAttribute" && a.name.name === "isRowHeader",
+        );
+      }
       const wrapper = REQUIRED_WRAPPERS.get(tag);
       if (wrapper && !ownWrapper(wrapper)) {
         found.push({ line, message: `<${tag}>: use ${wrapper} (components/shared/${wrapper}.tsx)` });
@@ -436,5 +444,11 @@ export function heroUsageIn(file, src) {
       }
     },
   });
+  if (firstColumnLine !== null && !hasRowHeader) {
+    found.push({
+      line: firstColumnLine,
+      message: "<Table.Column>: mark one column isRowHeader, or the table throws at render",
+    });
+  }
   return found;
 }
