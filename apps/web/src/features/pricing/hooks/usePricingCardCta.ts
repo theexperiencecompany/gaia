@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
+import { signupCtaHref } from "@/features/auth/utils/signupCta";
 import { toast } from "@/lib/toast";
 import type { CheckoutSource } from "../api/pricingApi";
 import { writePendingCheckout } from "../lib/pendingCheckout";
@@ -57,7 +58,7 @@ export function usePricingCardCta({
   const onGetStarted = async () => {
     if (price === 0) {
       if (user.userId) router.push("/c");
-      else router.push("/signup");
+      else window.location.assign(signupCtaHref());
       return;
     }
 

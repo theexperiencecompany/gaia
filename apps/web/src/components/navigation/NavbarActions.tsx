@@ -5,6 +5,10 @@ import NumberFlow from "@number-flow/react";
 import Link from "next/link";
 import { Github, StarFilledIcon } from "@/components/shared/icons";
 import { Button } from "@/components/ui/button";
+import {
+  signupCtaDestination,
+  signupCtaHref,
+} from "@/features/auth/utils/signupCta";
 import { track } from "@/lib/analytics";
 import { RaisedButton } from "../ui/raised-button";
 
@@ -53,7 +57,7 @@ export function NavbarActions({
           </div>
         </Button>
       </a>
-      <Link href={isAuthenticated ? "/c" : "/signup"}>
+      <Link href={isAuthenticated ? "/c" : signupCtaHref()}>
         <RaisedButton
           size={"sm"}
           className="rounded-xl"
@@ -61,7 +65,7 @@ export function NavbarActions({
           onClick={() => {
             track("navigation:cta_clicked", {
               is_logged_in: isAuthenticated,
-              destination: isAuthenticated ? "/c" : "/signup",
+              destination: isAuthenticated ? "/c" : signupCtaDestination(),
             });
           }}
         >

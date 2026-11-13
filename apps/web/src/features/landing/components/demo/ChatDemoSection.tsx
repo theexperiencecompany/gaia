@@ -30,6 +30,7 @@ import { ChevronRight } from "@/components/shared/icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { appConfig } from "@/config/appConfig";
+import { signupCtaHref } from "@/features/auth/utils/signupCta";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import DummyComposer from "@/features/landing/components/demo/DummyComposer";
 import { track } from "@/lib/analytics";
@@ -611,7 +612,7 @@ function ChatDemoWindow() {
 
                             {/* Buttons below bubble */}
                             <div className="flex gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300 delay-500">
-                              <Link href="/signup">
+                              <Link href={signupCtaHref()}>
                                 <RaisedButton
                                   color={"#00bbff"}
                                   onClick={() => {
