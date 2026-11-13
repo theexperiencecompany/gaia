@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import Any, TypeAlias
+from typing import TypeAlias
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
@@ -21,8 +21,8 @@ USER = "6812f0b3c9a14e2b7d5a91cc"
 OTHER = "6812f0b3c9a14e2b7d5a91cd"
 CONNECTED = WaitCondition.INTEGRATION_CONNECTED
 CONFIGURED = WaitCondition.WORKFLOW_TRIGGER_CONFIGURED
-# The repository's own raw handle type (WaitsRepository._raw_collection).
-WaitsCollection: TypeAlias = "AsyncIOMotorCollection[dict[str, Any]]"
+# A raw handle on the waits collection; documents are read only through the repository.
+WaitsCollection: TypeAlias = "AsyncIOMotorCollection[dict[str, object]]"
 
 
 @pytest.fixture
