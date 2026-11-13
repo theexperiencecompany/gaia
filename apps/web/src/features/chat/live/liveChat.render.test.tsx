@@ -4,13 +4,17 @@ import {
   entryFrame,
   entryUpdatedFrame,
   liveTask,
+  notice,
   reply,
   replyDelta,
   replySettled,
   stateFrame,
+  todoWoke,
+  toolCallCard,
   userMessage,
   workCardDelta,
   workFinished,
+  workflowFired,
   workStarted,
 } from "@shared/conversation/testing";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -291,5 +295,51 @@ describe("the chat rendered from the conversation's events", () => {
     expect(screen.getAllByTestId("row")).toHaveLength(2);
     expect(screen.getByText("Stopped")).toBeDefined();
     expect(loadingRowShown()).toBe(false);
+  });
+
+  it("shows a workflow run as its workflow card, then its reply", async () => {
+    renderChat();
+    await feed(
+      entryFrame(1, workflowFired("f1", "Morning brief")),
+      entryFrame(2, reply("r1", "a1", "Three meetings today.")),
+      entryFrame(3, replySettled("r1", ["f1"], 1)),
+    );
+
+    const rows = screen.getAllByTestId("row").map((row) => row.textContent);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toContain("Morning brief");
+    expect(rows[1]).toContain("Three meetings today.");
+  });
+
+  it("shows a todo run as what woke it, then its write-up", async () => {
+    renderChat();
+    await feed(
+      entryFrame(1, todoWoke("w1")),
+      entryFrame(2, workStarted("t1", 1)),
+      entryFrame(3, workFinished("t1")),
+      entryFrame(4, reply("t1", "a1", "The invoice was paid.")),
+      entryFrame(5, replySettled("t1", ["w1"], 3)),
+    );
+
+    const rows = screen.getAllByTestId("row").map((row) => row.textContent);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toContain("Scheduled run");
+    expect(rows[1]).toContain("The invoice was paid.");
+  });
+
+  it("shows a notice as GAIA's message with the cards it was delivered with", async () => {
+    renderChat();
+    await feed(
+      entryFrame(
+        1,
+        notice("n1", "Your reminder: call the bank", [
+          toolCallCard("c1", "Checked the calendar"),
+        ]),
+      ),
+    );
+
+    const [row] = screen.getAllByTestId("row");
+    expect(row.textContent).toContain("Your reminder: call the bank");
+    expect(row.textContent).toContain("Used 1 tool");
   });
 });

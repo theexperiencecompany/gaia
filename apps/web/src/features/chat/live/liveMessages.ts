@@ -164,12 +164,32 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
         stopped: STOPPED_WORK.has(bubble.status),
       }));
     case "notice":
-      return stableRow(bubble.key, [bubble.text], () => ({
+      return stableRow(bubble.key, [bubble.text, bubble.toolData], () => ({
         type: "bot",
         response: bubble.text,
         message_id: bubble.key,
         seq: bubble.seq,
         date: dates.get(bubble.seq),
+        tool_data: bubble.toolData as TypedToolDataEntry[],
+      }));
+    // The run's side of the chat: its card alone, as a message with no text.
+    case "workflow_fired":
+      return stableRow(bubble.key, [bubble.workflow], () => ({
+        type: "user",
+        response: "",
+        message_id: bubble.key,
+        seq: bubble.seq,
+        date: dates.get(bubble.seq),
+        selectedWorkflow: bubble.workflow,
+      }));
+    case "todo_woke":
+      return stableRow(bubble.key, [bubble.wake], () => ({
+        type: "user",
+        response: "",
+        message_id: bubble.key,
+        seq: bubble.seq,
+        date: dates.get(bubble.seq),
+        todo_run_wake: bubble.wake,
       }));
     default: {
       const unhandled: never = bubble;

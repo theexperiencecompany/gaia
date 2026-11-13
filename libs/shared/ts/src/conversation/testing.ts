@@ -231,6 +231,14 @@ export const replyDelta = (
   payload: { type: "response", chunk },
 });
 
+/** A tool-call progress card, as work streams it and as logged entries carry it. */
+export const toolCallCard = (callId: string, message: string) => ({
+  tool_name: "tool_calls_data",
+  tool_category: "gmail",
+  data: { tool_name: "send", tool_call_id: callId, message },
+  timestamp: AT,
+});
+
 export const workCardDelta = (
   taskId: string,
   index: number,
@@ -241,12 +249,7 @@ export const workCardDelta = (
   index,
   payload: {
     type: "tool_data",
-    entry: {
-      tool_name: "tool_calls_data",
-      tool_category: "gmail",
-      data: { tool_name: "send", tool_call_id: `${taskId}-${index}`, message },
-      timestamp: AT,
-    },
+    entry: toolCallCard(`${taskId}-${index}`, message),
   },
 });
 
