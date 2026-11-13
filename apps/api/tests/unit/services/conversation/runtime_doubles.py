@@ -25,6 +25,7 @@ from app.models.conversation_log_models import (
 )
 from app.models.message_models import MessageDict
 from app.models.work_cancel_models import WorkCancelled
+from app.services.conversation.log import accept
 from app.services.conversation.ports import (
     Appended,
     CancelReason,
@@ -505,33 +506,33 @@ class RecordingEffects:
 
 @dataclass
 class ScriptedApprovals:
-    """Resolves typed replies as the HIL resolver does: each approval its own decision, logged once."""
+    """Resolves typed replies as the HIL resolver does: each approval its own decision, accepted once."""
 
     decision: ApprovalDecision | None = None
     # Per-approval decisions; an approval not named here takes decision.
     each: dict[str, ApprovalDecision] = field(default_factory=dict)
     asked: list[str] = field(default_factory=list)
     histories: list[list[MessageDict]] = field(default_factory=list)
-    log: ConversationLog | None = None
+    ports: RuntimePorts | None = None
 
     async def resolve(
         self, conversation_id: str, user_id: str, message_text: str, history: list[MessageDict]
     ) -> ApprovalDecision | None:
         self.asked.append(message_text)
         self.histories.append(history)
-        if self.decision is None or self.log is None:
+        if self.decision is None or self.ports is None:
             return self.decision
-        state = await self.log.state(conversation_id, user_id)
+        state = await self.ports.log.state(conversation_id, user_id)
         pending = sorted(approval for item in state.work for approval in item.pending_approvals)
         decisions = [self.each.get(approval, self.decision) for approval in pending]
         for approval_id, decision in zip(pending, decisions, strict=True):
             entry = ApprovalDecided(
-                id=f"decided:{approval_id}",
+                id=f"approval:{approval_id}:decided",
                 approval_id=approval_id,
                 outcome=DECISION_OUTCOME[decision],
                 decider=ApprovalDecider.USER,
             )
-            await self.log.append(conversation_id, user_id, entry)
+            await accept(self.ports, conversation_id, user_id, entry)
         return "approve" if "approve" in decisions else "deny"
 
 
@@ -580,7 +581,7 @@ class Runtime:
         under_test = self.make_log(self.clock)
         self.log, self._lapse = under_test.log, under_test.lapse
         self.runner = ScriptedRunner(self.ticks)
-        self.approvals.log = self.log
+        self.approvals.ports = self.ports
 
     async def lapse(self) -> None:
         await self._lapse()

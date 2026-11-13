@@ -456,6 +456,23 @@ class StepScenarios:
         ]
         await assert_quiet(rt)
 
+    async def test_a_typed_approval_answer_publishes_each_decision_it_logs(
+        self, rt: Runtime
+    ) -> None:
+        await start_work(rt)
+        await send(rt, asked("ask", "t1", "ap1"))
+        rt.approvals.decision = "approve"
+        await send(rt, bot_user("u6"))
+        await run(rt)
+        decided = [item for item in await rt.entries() if isinstance(item.entry, ApprovalDecided)]
+        published = [
+            (frame.seq, frame.entry)
+            for frame in rt.frames.published
+            if isinstance(frame, EntryFrame) and isinstance(frame.entry, ApprovalDecided)
+        ]
+        assert published == [(item.seq, item.entry) for item in decided]
+        assert len(published) == 1
+
     async def test_a_buttonless_message_that_is_not_an_approval_answer_runs_normally(
         self, rt: Runtime
     ) -> None:
