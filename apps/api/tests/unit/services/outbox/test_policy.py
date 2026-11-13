@@ -5,11 +5,10 @@ from datetime import UTC, datetime
 import pytest
 
 from app.constants.agents import OutcomeState
+from app.models.ownership_models import DeliveryPolicy, DeliveryTiming
 from app.models.task_report_models import TaskReport
 from app.services.outbox.models import (
     ComposeMode,
-    DeliveryPolicy,
-    DeliveryTiming,
     DropReason,
     Initiative,
     NoticeOutcome,
@@ -118,6 +117,60 @@ def test_a_user_set_time_that_may_not_wake_is_not_an_interrupt() -> None:
 def test_a_run_report_must_declare_its_outcome() -> None:
     with pytest.raises(ValueError, match="declares its outcome"):
         _run(None)
+
+
+def _muted_run(outcome: OutcomeState) -> RunReport:
+    return _run(outcome).model_copy(update={"delivery_policy": DeliveryPolicy(notify=False)})
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        OutcomeState.DONE,
+        OutcomeState.NO_ACTION_NEEDED,
+        OutcomeState.SCHEDULE,
+        OutcomeState.SUBSCRIBE,
+    ],
+)
+def test_a_muted_producers_result_is_recorded_and_never_alerted(outcome: OutcomeState) -> None:
+    decision = decide(_muted_run(outcome))
+
+    assert decision.kind is DecisionKind.RECORD_ONLY
+    assert decision.drop_reason is DropReason.USER_MUTED
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        OutcomeState.NEEDS_YOU,
+        OutcomeState.FAILED,
+        OutcomeState.PARTIAL,
+        OutcomeState.BLOCKED,
+        OutcomeState.UNVERIFIED,
+    ],
+)
+def test_a_muted_producer_still_tells_what_needs_the_user(outcome: OutcomeState) -> None:
+    decision = decide(_muted_run(outcome))
+
+    assert decision.kind is DecisionKind.SEND_NOW
+    assert decision.urgency is UrgencyClass.TIMELY
+
+
+def test_nothing_new_keeps_its_own_reason_under_a_mute() -> None:
+    assert decide(_muted_run(OutcomeState.NOTHING_NEW)).drop_reason is DropReason.NOTHING_NEW
+
+
+def test_a_muted_notice_that_needs_the_user_is_sent() -> None:
+    muted = DeliveryPolicy(notify=False)
+
+    assert (
+        decide(_notice(delivery_policy=muted, outcome=NoticeOutcome.FAILED)).kind
+        is DecisionKind.SEND_NOW
+    )
+    assert (
+        decide(_notice(delivery_policy=muted, outcome=NoticeOutcome.INFO)).drop_reason
+        is DropReason.USER_MUTED
+    )
 
 
 def test_progress_nobody_is_watching_is_recorded_and_never_alerted() -> None:

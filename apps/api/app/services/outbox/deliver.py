@@ -310,8 +310,7 @@ async def _flush(user: AuthenticatedUser, subject_id: str) -> None:
             items,
             user_id=user.user_id,
             mode=_mode_of(items),
-            target=destination.target,
-            conversation_id=destination.alert_conversation_id,
+            destination=destination,
             locale=_locale_of(user),
         )
         if composed.skipped:

@@ -19,7 +19,6 @@ export type ServerEventName =
   | "calendar:event_deleted"
   | "calendar:event_updated"
   | "calendar:preferences_updated"
-  | "chat:background_update_resolved"
   | "chat:conversation_created"
   | "chat:conversation_deleted"
   | "chat:conversation_renamed"
@@ -128,7 +127,6 @@ export type ServerEventName =
   | "todos:inbox_desk_provisioned"
   | "todos:open_state_repaired"
   | "todos:ref_reopened"
-  | "todos:run_result_delivered"
   | "todos:subscription_failed"
   | "todos:subscription_registered"
   | "todos:toggled"
@@ -149,7 +147,6 @@ export type ServerEventName =
   | "workflow:deleted"
   | "workflow:executed"
   | "workflow:published"
-  | "workflow:result_delivered"
   | "workflow:steps_regenerated"
   | "workflow:unpublished"
   | "workflow:updated";
@@ -460,14 +457,6 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "chat:background_update_resolved": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "outcome": string;
-    "emoji"?: string;
-    "delivery"?: "message" | "reaction" | "badge" | "fallback_text";
   };
   "chat:composer_plus_menu_clicked": {
     "item_id": "upload_file";
@@ -1408,18 +1397,6 @@ export interface EventProperties {
     "todo_id": string;
     "ref_source": string;
   };
-  "todos:run_result_delivered": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "outcome": string;
-    "delivered": boolean;
-    "trigger_type": string;
-    "recurring": boolean;
-    "platform"?: string;
-    "destination"?: "chat_app" | "in_app";
-    "destination_basis"?: "recent_activity" | "priority" | "owner_chat" | "requested_channel" | "active_in_app" | "no_chat_app";
-  };
   "todos:subscription_failed": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -1638,16 +1615,6 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "workflow:result_delivered": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "workflow_id"?: string;
-    "outcome": "delivered" | "undelivered" | "lookup_failed";
-    "destination"?: "chat_app" | "in_app";
-    "destination_basis"?: "recent_activity" | "priority" | "owner_chat" | "requested_channel" | "active_in_app" | "no_chat_app";
-    "platform"?: string;
   };
   "workflow:steps_regenerated": {
     "actor": "user" | "agent";

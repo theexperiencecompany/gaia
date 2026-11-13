@@ -9,10 +9,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.models.ownership_models import DeliveryTiming
 from app.models.reminder_models import AgentType, ReminderModel, StaticReminderPayload
 from app.models.scheduler_models import TaskOutcome
 from app.services.outbox.models import (
-    DeliveryTiming,
     Initiative,
     NoticeOutcome,
     NoticeReport,

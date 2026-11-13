@@ -17,16 +17,14 @@ OUTBOX_DIR = "apps/api/app/services/outbox/"
 #: Producers that still speak to the user without the outbox, and why. Remove a line when its
 #: caller moves behind the outbox; adding one is a design decision, not a convenience.
 KNOWN_SPEAKERS: dict[str, str] = {
-    "apps/api/app/agents/core/background/result_delivery.py": "executor and tracked-todo results pushed to an open chat",
+    "apps/api/app/agents/core/background/run_cards.py": "tool cards and a tracked todo's own record of its run pushed to an open chat",
     "apps/api/app/utils/notification/orchestrator.py": "notification record pushed to the in-app list",
     "apps/api/app/services/hil/notify.py": "approval prompt pushed to a backgrounded mobile app",
-    "apps/api/app/agents/core/background/workflow_platform_delivery.py": "workflow run results sent to the user's chat platform",
     "apps/api/app/utils/notification/channels/external.py": "notification channel adapter for external chat platforms",
-    "apps/api/app/services/platform_message_service.py": "proactive messages and reactions to a bot platform",
 }
 
 #: The ceiling for len(KNOWN_SPEAKERS). Lower it as callers move behind the outbox; never raise it.
-KNOWN_SPEAKERS_CEILING = 6
+KNOWN_SPEAKERS_CEILING = 4
 
 
 def _repo_root() -> Path:

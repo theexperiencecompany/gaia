@@ -14,9 +14,9 @@ from app.db.mongodb.indexes import create_outbox_indexes
 from app.db.repositories.outbox_items import OutboxItemsRepository
 from app.db.repositories.outbox_messages import OutboxMessagesRepository
 from app.models.outbox_models import OutboxMessageDocument
+from app.models.ownership_models import DeliveryPolicy
 from app.services.outbox.models import (
     ComposeMode,
-    DeliveryPolicy,
     DropReason,
     Initiative,
     ItemState,
@@ -114,8 +114,8 @@ async def test_two_flushers_claiming_one_queued_item_get_it_once(repos) -> None:
     )
 
     assert sorted(len(claimed) for claimed in won) == [0] * 7 + [1]
-    [item] = await items.list_for_subject(USER, "s1")
-    assert item.state is ItemState.COMPOSING
+    item = await items.get_by_report(USER, "a")
+    assert item is not None and item.state is ItemState.COMPOSING
 
 
 async def test_two_inserts_of_one_compose_attempt_have_one_winner(repos) -> None:
@@ -135,7 +135,8 @@ async def test_a_replace_supersedes_older_unsent_reports_and_yields_to_a_newer_o
     assert await items.apply_replace(_report("new", minutes=5)) is True
     assert await items.apply_replace(_report("late", minutes=-5)) is False
 
-    states = {i.report_id: i.state for i in await items.list_for_subject(USER, "s1")}
+    stored = [await items.get_by_report(USER, report_id) for report_id in ("late", "old", "new")]
+    states = {i.report_id: i.state for i in stored if i is not None}
     assert states == {
         "late": ItemState.SUPERSEDED,
         "old": ItemState.SUPERSEDED,
@@ -191,3 +192,68 @@ async def test_a_message_settles_once_and_recent_sent_lists_newest_first(repos) 
     recent = await messages.recent_sent(USER, limit=5)
 
     assert [m.compose_attempt_id for m in recent] == ["two", "one"]
+
+
+def _of_series(report_id: str, series: str | None, *, minutes: int) -> NoticeReport:
+    report = _report(report_id, subject=report_id, minutes=minutes)
+    subject = report.subject.model_copy(update={"series": series})
+    return report.model_copy(update={"subject": subject})
+
+
+async def _settle(items: OutboxItemsRepository, report: NoticeReport, state: ItemState) -> None:
+    if state is ItemState.DROPPED:
+        await items.insert_if_new(report, expires_at=EXPIRES)
+        assert await items.drop(USER, report.report_id, DropReason.NOTHING_NEW) is not None
+        return
+    await _queued(items, report)
+    attempt = f"attempt-{report.report_id}"
+    claimed = await items.claim_queued_for_subject(USER, report.subject.id, attempt)
+    assert len(claimed) == 1
+    await items.begin_send(USER, attempt)
+    await items.finish_send(USER, attempt, ItemState.SENT)
+
+
+async def test_the_last_told_or_quiet_items_of_a_series_come_newest_first_before_an_instant(
+    repos,
+) -> None:
+    items, _ = repos
+    await _settle(items, _of_series("old", "todo:t1", minutes=0), ItemState.SENT)
+    await _settle(items, _of_series("quiet", "todo:t1", minutes=10), ItemState.DROPPED)
+    await _settle(items, _of_series("sent", "todo:t1", minutes=20), ItemState.SENT)
+    await _settle(items, _of_series("later", "todo:t1", minutes=40), ItemState.SENT)
+
+    found = await items.list_settled_of_series(
+        USER, "todo:t1", before=T0 + timedelta(minutes=30), limit=2
+    )
+
+    assert [item.report_id for item in found] == ["sent", "quiet"]
+
+
+async def test_a_series_reads_only_its_own_settled_items(repos) -> None:
+    items, _ = repos
+    await _settle(items, _of_series("mine", "todo:t1", minutes=0), ItemState.SENT)
+    await _settle(items, _of_series("theirs", "todo:t2", minutes=1), ItemState.SENT)
+    await _settle(items, _of_series("alone", None, minutes=2), ItemState.SENT)
+    await _queued(items, _of_series("untold", "todo:t1", minutes=3))
+
+    found = await items.list_settled_of_series(
+        USER, "todo:t1", before=T0 + timedelta(hours=1), limit=10
+    )
+
+    assert [item.report_id for item in found] == ["mine"]
+
+
+async def test_the_series_read_is_served_by_its_index(repos) -> None:
+    items, _ = repos
+    await _settle(items, _of_series("a", "todo:t1", minutes=0), ItemState.SENT)
+    collection = items._raw_collection()
+
+    plan = await collection.find(
+        {
+            "user_id": USER,
+            "report.subject.series": "todo:t1",
+            "report.occurred_at": {"$lt": T0},
+        }
+    ).explain()
+
+    assert "COLLSCAN" not in str(plan["queryPlanner"]["winningPlan"])

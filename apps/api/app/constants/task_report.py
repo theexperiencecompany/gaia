@@ -65,6 +65,8 @@ class FailureReason(StrEnum):
     ACCESS_DENIED = "access_denied"
     NOT_FOUND = "not_found"
     INTEGRATION_DISCONNECTED = "integration_disconnected"
+    #: The run ended with nothing that confirms what it did, so it is not known to have worked.
+    UNCONFIRMED = "unconfirmed"
 
 
 class FailureRecovery(StrEnum):

@@ -14,19 +14,15 @@ import asyncio
 from pathlib import Path
 from types import CoroutineType, FrameType
 
-from pydantic import BaseModel, ConfigDict
-
 from app.agents.core.background.session import (
     RunKind,
     create_session,
     get_session,
     teardown_session,
 )
-from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT
-from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
 from app.constants.log_tags import LogTag
-from app.models.chat_models import ToolDataEntry, tool_fields
+from app.models.chat_models import ToolDataEntry
 from app.services.chat.chunks import normalize_custom_event
 from app.utils.stream_utils import (
     ToolDataEnvelope,
@@ -149,86 +145,6 @@ def drain_executor_tool_data(stream_id: str) -> list[ToolDataEntry]:
     apply_outputs_to_tool_data(entries, outputs, only_tool_name="tool_calls_data")
     reconstruct_subagent_groups(accumulated)
     return ToolDataEnvelope.model_validate(accumulated).tool_data
-
-
-class _SubagentGroupProducer(BaseModel):
-    """A subagent_group entry's data, read for the id and name it credits cards to."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    subagent_id: str | None = None
-    subagent_name: str | None = None
-
-
-def build_returned_to_frontend_note(stream_id: str) -> str:
-    """Build a note telling comms which native cards already rendered this turn.
-
-    States what was RETURNED to the frontend, not a claim about DOM
-    rendering. Each row names the producing subagent (once missing, an
-    executor summary credited the wrong product: "8 tasks created (Todoist)"
-    for GAIA todos). MUST be called before the session is torn down.
-    """
-    entries: list[ToolDataEntry] = drain_executor_tool_data(stream_id)
-    subagent_names: dict[str, str] = {}
-    for entry in entries:
-        group = entry.get("data")
-        if entry.get("tool_name") != SUBAGENT_GROUP_TOOL_NAME or not isinstance(group, dict):
-            continue
-        credited = _SubagentGroupProducer.model_validate(group)
-        subagent_names[str(credited.subagent_id)] = credited.subagent_name or ""
-
-    # (field name, producer) -> item count. Eight separate one-item todo cards
-    # from one subagent are one fact, not eight lines of noise.
-    counts: dict[tuple[str, str], int] = {}
-    for entry in entries:
-        name = entry.get("tool_name")
-        if name not in tool_fields:
-            continue  # excludes tool_calls_data / subagent_group (loading rows)
-        data = entry.get("data")
-        producer = subagent_names.get(str(entry.get("subagent_id")), "")
-        key = (str(name), producer)
-        counts[key] = counts.get(key, 0) + (len(data) if isinstance(data, list) else 1)
-
-    summary: list[str] = []
-    for (name, producer), count in counts.items():
-        # Derive a readable label from the field name so it never drifts from
-        # the tool_fields source of truth (e.g. "email_fetch_data" -> "email fetch").
-        noun = name.removesuffix("_data").replace("_", " ") or "items"
-        via = f", via subagent:{producer}" if producer else ""
-        summary.append(f"  - {name} ({count} {noun}{via})")
-
-    if not summary:
-        return ""
-
-    body = "\n".join(summary)
-    return wrap_agent_payload(
-        AgentTag.RETURNED_TO_FRONTEND,
-        "These native cards are already on the user's screen this turn:\n"
-        f"{body}\n"
-        "They visually render the RAW items, so don't re-type those items "
-        "row-by-row and don't re-emit them as OpenUI. That literal duplication "
-        "is the ONLY thing to avoid here.\n"
-        "The cards are visual aids, NOT your reply. You still owe the user the "
-        "ANSWER in your own voice, the substance the executor produced: what it "
-        "found, grouped and counted, the few items that actually matter (and "
-        'why), and the natural next step. This synthesis is never "card '
-        'contents"; suppressing it because a card exists is the worst failure '
-        "you can have.\n"
-        "Match the depth to the work: a quick outcome gets a line or two; a "
-        "large, comprehensive result (a full triage, a multi-item analysis) gets "
-        "a real structured rundown, never a one-liner. Replying just \"here's "
-        'the list 👇" with no substance, when the executor did real work, fails '
-        "the user. Point them to the card for the granular rows AFTER you've "
-        "actually delivered the gist.\n"
-        "CRITICAL EXCEPTION (LONG-FORM DELIVERABLE): if the executor's result is "
-        "itself a finished written piece (a research report, an article, an "
-        "analysis, a document), that is the ANSWER, not raw card rows. The cards "
-        "above were just the research/loading steps along the way. Deliver the "
-        "deliverable IN FULL per the long-form rule: every section, point, and "
-        "citation, and do NOT compress it to a 'here's the breakdown' summary. "
-        "This note never authorizes shrinking a report; it only stops you "
-        "re-typing rows a card already lists.",
-    )
 
 
 def teardown_executor_capture(stream_id: str) -> None:

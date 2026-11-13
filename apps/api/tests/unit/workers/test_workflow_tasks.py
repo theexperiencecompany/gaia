@@ -16,13 +16,8 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 from app.config.rate_limits import RateLimitPeriod
 from app.constants.agents import WORKFLOW_LOCK_CONTEXT_KEY
 from app.constants.log_tags import LogTag
-from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.constants.vfs import SYSTEM_USER_ID
 from app.models.agent_models import SilentRunResult
-from app.models.notification.notification_models import (
-    ActionType,
-    NotificationSourceEnum,
-)
 from app.models.playbook_models import PlaybookRunStatus
 from app.models.scheduler_models import DeactivationReason
 from app.models.user_models import AuthenticatedUser, UserDocument
@@ -30,10 +25,6 @@ from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import TriggerType, WorkflowStep
 from app.services.workflow.conversation_service import build_selected_workflow_data
 from app.services.workflow.execution_service import WorkflowFireTimedOut
-from app.services.workflow.notifications import (
-    send_workflow_completion_notification,
-    send_workflow_failure_notification,
-)
 from app.utils import auth_utils
 from app.utils.errors import AppError
 from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
@@ -1304,65 +1295,6 @@ class TestExecuteWorkflowAsChat:
             "error_type": "ConnectionError",
             "exc_info": True,
         }
-
-
-# ---------------------------------------------------------------------------
-# workflow notification senders (app.services.workflow.notifications)
-# ---------------------------------------------------------------------------
-
-
-class TestWorkflowNotificationSenders:
-    """Tests for the workflow completion/failure notification senders."""
-
-    async def test_completion_notification_is_inapp_with_view_results_link(
-        self,
-    ) -> None:
-        """Send_workflow_completion_notification fires a human, in-app-only badge."""
-        with patch(
-            "app.services.workflow.notifications.notification_service",
-        ) as mock_notif:
-            mock_notif.create_notification = AsyncMock()
-            await send_workflow_completion_notification(
-                workflow_id="wf_1",
-                workflow_title="Morning Briefing",
-                conversation_id="conv_xyz",
-                user_id=USER_ID,
-            )
-
-        mock_notif.create_notification.assert_awaited_once()
-        notif_req = mock_notif.create_notification.call_args[0][0]
-        # Human copy: phrasing rotates, but the workflow name is woven into the
-        # title and there is a casual body.
-        assert "Morning Briefing" in notif_req.content.title
-        assert notif_req.content.body
-        # Scoped to in-app only (no external chrome push) and no result payload.
-        assert [c.channel_type for c in notif_req.channels] == [CHANNEL_TYPE_INAPP]
-        assert notif_req.content.rich_content is None
-        # Exactly one "View Results" redirect to the run's conversation.
-        actions = notif_req.content.actions
-        assert len(actions) == 1
-        assert actions[0].type == ActionType.REDIRECT
-        assert actions[0].config.redirect.url == "/c/conv_xyz"
-        assert notif_req.metadata == {
-            "workflow_id": "wf_1",
-            "conversation_id": "conv_xyz",
-        }
-
-    async def test_failure_notification_sent_with_workflow_failed_source(self):
-        """send_workflow_failure_notification sends a WORKFLOW_FAILED notification."""
-        with patch(
-            "app.services.workflow.notifications.notification_service",
-        ) as mock_notif:
-            mock_notif.create_notification = AsyncMock()
-            await send_workflow_failure_notification(
-                workflow_id="wf_1",
-                workflow_title="Morning Briefing",
-                user_id=USER_ID,
-            )
-
-        mock_notif.create_notification.assert_awaited_once()
-        notif_req = mock_notif.create_notification.call_args[0][0]
-        assert notif_req.source == NotificationSourceEnum.WORKFLOW_FAILED
 
 
 # ---------------------------------------------------------------------------

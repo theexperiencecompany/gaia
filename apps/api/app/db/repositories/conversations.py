@@ -528,19 +528,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return matched > 0
 
-    async def set_message_response(
-        self, conversation_id: str, *, user_id: str, message_id: str, response: str
-    ) -> bool:
-        """Set a message's response text in place; does not advance updatedAt."""
-        matched = await self._apply_raw_update_unfetched(
-            {"conversation_id": conversation_id, "messages.message_id": message_id},
-            {"$set": {"messages.$.response": response}},
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
-        )
-        return matched > 0
-
     async def set_message_tool_data(
         self, conversation_id: str, *, user_id: str, message_id: str, entries: list[ToolDataEntry]
     ) -> bool:
@@ -580,19 +567,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 {"msg.tool_data": {"$elemMatch": {"data.approval_id": approval_id}}},
                 {"entry.data.approval_id": approval_id},
             ],
-        )
-        return matched > 0
-
-    async def set_message_follow_up_actions(
-        self, conversation_id: str, *, user_id: str, message_id: str, actions: list[str]
-    ) -> bool:
-        """Set a message's follow-up actions; does not advance updatedAt."""
-        matched = await self._apply_raw_update_unfetched(
-            {"conversation_id": conversation_id, "messages.message_id": message_id},
-            {"$set": {"messages.$.follow_up_actions": actions}},
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
         )
         return matched > 0
 

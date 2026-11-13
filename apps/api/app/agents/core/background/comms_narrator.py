@@ -1,109 +1,33 @@
-"""Silent comms invocation for background-executor results.
+"""Silent writes of what happened outside a comms turn into the comms thread.
 
-The executor's terminal text is never shown to the user directly — it is
-handed to the comms agent as internal context (a HumanMessage framed in an
-<executor_result>/<executor_error> tag) and comms re-voices it in GAIA's
-persona. This module owns that single invocation.
+No model call: a background run's report, a cancellation, or an exchange answered
+without the agent is appended to the conversation's checkpoint, so the chat's next
+turn knows it. What GAIA tells the user of a run is written by the outbox.
 """
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME
-from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
+from app.agents.core.graph_manager import GraphManager
 from app.agents.core.thread_lock import comms_thread_lock
 from app.agents.core.thread_writes import with_message_ids
-from app.agents.llm.lane import AgentRole
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.log_tags import LogTag
-from app.helpers.agent_helpers import (
-    AgentIdentity,
-    AgentLane,
-    AgentTurn,
-    build_agent_config,
-    execute_graph_silent,
-)
-from app.models.agent_models import AgentRunnableConfig, agent_user_context
-from app.models.user_models import AuthenticatedUser
-from app.utils.agent_utils import strip_internal_agent_tags
-from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.wide_events import log
 
 
-async def narrate_executor_result(
-    result_text: str,
-    msg_type: str,
-    conversation_id: str,
-    user: AuthenticatedUser,
-    preamble: str,
-) -> str:
-    """Invoke the comms graph silently with the executor result as internal context.
+async def record_executor_report(conversation_id: str, result_text: str, msg_type: str) -> None:
+    """Append a tracked todo run's report to its chat's comms thread.
 
-    Injected as a HumanMessage framed in a stable tag so comms treats it as
-    ground-truth and re-voices it in its own persona; preamble is the delivery
-    instructions for where the reply goes. Returns the comms-generated text,
-    or an empty string on failure.
+    The chat shows the report on screen, so its next turn must know it, whether or not anyone is told.
     """
-    try:
-        comms_graph = await GraphManager.get_graph("comms_agent")
-    except GraphUnavailableError as e:
-        # Degrade contract: background narration must never crash the executor
-        # flow — drop the narration but log the real cause loudly.
-        log.error(
-            f"{LogTag.AGENT} narrate_executor_result: comms_agent graph unavailable, dropping narration",
-            error=str(e),
-            conversation_id=conversation_id,
-            msg_type=msg_type,
-        )
-        return ""
-    try:
-        user_preferences, writing_style = onboarding_preferences(user.onboarding)
-        # A fresh background task with no parent configurable to inherit from, so
-        # build_agent_config resolves its own comms lane and stamps plan_type —
-        # matching the interactive comms path and keeping the budget wall enforced.
-        config: AgentRunnableConfig = await build_agent_config(
-            identity=AgentIdentity(
-                conversation_id=conversation_id,
-                user=agent_user_context(user),
-                agent_name="comms_agent",
-            ),
-            lane=AgentLane(role=AgentRole.COMMS),
-            turn=AgentTurn(
-                user_preferences=user_preferences,
-                writing_style=writing_style,
-            ),
-        )
-        # This turn's only job is to re-voice result_text. Stamp it so
-        # call_executor refuses to dispatch from it.
-        config["configurable"]["is_result_narration"] = True
-        initial_state = {
-            "messages": [
-                _executor_report(result_text, msg_type, preamble),
-            ],
-        }
-        async with comms_thread_lock(conversation_id):
-            notification_text, _ = await execute_graph_silent(comms_graph, initial_state, config)
-        return strip_internal_agent_tags(notification_text)
-    except Exception as e:
-        log.error(f"{LogTag.AGENT} narrate_executor_result: failed", error=str(e))
-        return ""
-
-
-def _executor_report(result_text: str, msg_type: str, preamble: str = "") -> HumanMessage:
     # MUST be a HumanMessage: a SystemMessage evicts COMMS_AGENT_PROMPT; an
     # AIMessage makes Gemini return empty.
     tag = AgentTag.EXECUTOR_ERROR if msg_type == "error" else AgentTag.EXECUTOR_RESULT
-    return HumanMessage(
-        content=f"{preamble}{wrap_agent_payload(tag, result_text)}", name=BACKGROUND_EXECUTOR_NAME
+    report = HumanMessage(
+        content=wrap_agent_payload(tag, result_text), name=BACKGROUND_EXECUTOR_NAME
     )
-
-
-async def record_executor_report(conversation_id: str, result_text: str, msg_type: str) -> None:
-    """Append a background run's report to the comms thread, for a run comms never narrated.
-
-    A narrated report reaches the thread through narration; one nobody is told
-    of must still be known to the chat's next turn, which sees it on screen.
-    """
-    await _append_to_thread(conversation_id, [_executor_report(result_text, msg_type)])
+    await _append_to_thread(conversation_id, [report])
 
 
 async def record_executor_cancellation(
@@ -147,17 +71,6 @@ async def record_executor_cancellation(
                 task_id=task_id,
                 error=str(e),
             )
-
-
-async def record_platform_delivery(conversation_id: str, text: str) -> None:
-    """Append a message delivered straight to a platform chat to that conversation's checkpoint.
-
-    Bot-delivered workflow results bypass the graph, but the next bot turn
-    reads history from the checkpoint; without this write GAIA has no memory
-    of results it just delivered. Best-effort: the message is already sent.
-    """
-    if text.strip():
-        await _append_to_thread(conversation_id, [AIMessage(content=text)])
 
 
 async def record_exchange_in_thread(conversation_id: str, user_message: str, reply: str) -> None:

@@ -54,9 +54,8 @@ from app.services.hil.resolution import (
 from app.utils.general_utils import clip_text
 from shared.py.wide_events import log
 
-# Ground truth for a settled ledger row in the bot reply's words. Lives here, not
-# result_delivery (which only knows barrier statuses), so the bot path can narrate
-# executed/failed/unknown/revoked without depending on that module.
+# Ground truth for a settled ledger row in the bot reply's words, so the bot path can narrate
+# executed/failed/unknown/revoked.
 LEDGER_OUTCOME_TEXT: dict[LedgerState, str] = {
     LedgerState.APPROVED: "approved by the user; the agent runs it from the ticket",
     LedgerState.DENIED: "denied by the user; the action did NOT run",

@@ -7,7 +7,6 @@ import pytest
 
 from app.constants.todos import NoReplyPlan, TodoActivityEvent, WaitingOn
 from app.models.todo_models import TodoUpdate, TodoUpdateRequest
-from app.services import todo_activity
 from app.services.todo_activity import (
     activity_line,
     record_activity,
@@ -113,33 +112,6 @@ class TestRecordFieldChanges:
 
     async def test_fields_the_update_did_not_set_record_nothing(self) -> None:
         assert await self._recorded(TodoUpdateRequest(title="renamed", priority=None)) == []
-
-
-class TestRecentRunOutcomes:
-    """What GAIA itself recorded about each run's message: the narrator's ground truth."""
-
-    LOG = (
-        "- 2026-11-06T05:30:00+00:00 [run_started] scheduled run (conversation c1)\n"
-        "- 2026-11-06T05:31:00+00:00 [reminder_issued] Reminder delivered to Dhruv.\n"
-        "- 2026-11-06T05:32:00+00:00 [run_finished] run r1: kept quiet: routine check\n"
-        "- 2026-11-06T06:32:00+00:00 [run_finished] run r2: result sent on telegram\n"
-        "- 2026-11-06T07:32:00+00:00 [run_finished] run r3: result sent on telegram\n"
-    )
-
-    def test_only_gaias_finish_entries_count_never_a_runs_own_claim(self) -> None:
-        outcomes = todo_activity.recent_run_outcomes(self.LOG, limit=5)
-
-        assert len(outcomes) == 3
-        assert not any("reminder_issued" in line for line in outcomes)
-
-    def test_the_newest_come_last_and_the_limit_holds(self) -> None:
-        outcomes = todo_activity.recent_run_outcomes(self.LOG, limit=2)
-
-        assert [line.split(" run ", 1)[1][:2] for line in outcomes] == ["r2", "r3"]
-
-    @pytest.mark.parametrize("log", [None, "", "- 2026-11-06T05:30:00+00:00 [run_started] x\n"])
-    def test_a_todo_with_no_finished_run_has_none(self, log: str | None) -> None:
-        assert todo_activity.recent_run_outcomes(log, limit=3) == []
 
 
 class TestWaitingChangeLine:

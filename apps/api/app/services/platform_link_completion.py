@@ -16,13 +16,13 @@ from collections.abc import Mapping
 
 from app.constants.outbound import OUTBOUND_QUEUES
 from app.models.chat_models import ConversationSource
+from app.models.ownership_models import DeliveryPolicy
 from app.models.platform_models import PlatformLinkCompletion
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import capture
 from app.services.onboarding.onboarding_service import complete_onboarding_on_platform_link
 from app.services.outbox.intake import submit
 from app.services.outbox.models import (
-    DeliveryPolicy,
     Initiative,
     NoticeOutcome,
     NoticeReport,

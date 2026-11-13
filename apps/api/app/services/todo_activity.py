@@ -45,14 +45,6 @@ async def record_activity(
         return False
 
 
-def recent_run_outcomes(activity: str | None, limit: int) -> list[str]:
-    """Return the last limit finish entries GAIA wrote to a todo's log, oldest first."""
-    tag = f"[{TodoActivityEvent.RUN_FINISHED.value}]"
-    lines = (activity or "").splitlines()  # pragma: no mutate — no fallback holds the tag
-    finished = [line for line in lines if tag in line]
-    return finished[-limit:]
-
-
 def run_finished_marker(run_id: str) -> str:
     """Name one run's finish entry: written once, and found by it afterwards."""
     return f"[{TodoActivityEvent.RUN_FINISHED.value}] run {run_id}:"

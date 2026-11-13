@@ -5,6 +5,8 @@ its handoff to the comms agent. Centralized so the executor runner, capture,
 and any future consumers reference a single source of truth.
 """
 
+from app.constants.task_report import FailureReason
+
 # SSE frame key carrying the executor's narrated answer for voice-mode TTS.
 # Must match VOICE_TTS_KEY in apps/voice-agent/src/constants.py — the voice
 # agent matches on this exact string to decide what to speak.
@@ -48,14 +50,12 @@ EXECUTOR_ERROR_APPROVAL_LOST = "approval_lost"
 #: The run ended with no answer at all; it is delivered as EXECUTOR_CRASH_MESSAGE.
 EXECUTOR_ERROR_NO_ANSWER = "no_answer"
 
-# When comms narration fails. Never the executor's own text (internal, maybe a raw
-# exception), and never a claim of done: a "final" report can itself describe a failure.
-EXECUTOR_NARRATION_FAILED_MESSAGE = (
-    "I couldn't write up how that went, so I can't confirm it's done. Ask me and I'll check."
-)
-EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE = (
-    "That task didn't finish, and I couldn't write up what went wrong. Please try again."
-)
+#: Why a run that ended in an error is reported as failed, by the error_type it ended with;
+#: every other error type is a crash.
+EXECUTOR_FAILURE_REASONS: dict[str, FailureReason] = {
+    EXECUTOR_ERROR_APPROVAL_LOST: FailureReason.APPROVAL_LOST,
+    "GraphRecursionError": FailureReason.STEP_LIMIT,
+}
 
 # Seed task for a run started for inbox work no live run will absorb (late work, a
 # subagent landing on a rested executor). The entries arrive through the drain hook;

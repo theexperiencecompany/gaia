@@ -4,7 +4,7 @@ Comms has no work tools, so a comms hop in front of a background todo run only
 paraphrased the brief and wrote a pre-work acknowledgement that was then
 delivered as if it were the result. The executor does the work here, in the
 todo's own chat: the run streams into it live, and its terminal outcome goes
-through result_delivery, which keeps the report there, to todo_run_delivery.
+through run_cards, which keeps the report there, to todo_run_delivery.
 
 The chat is reused across runs, but each new run starts from an empty executor
 thread: what it needs of earlier runs comes from the todo's canvas and activity,
@@ -32,7 +32,7 @@ from app.agents.core.background.executor_queue import (
     try_acquire_lock,
 )
 from app.agents.core.background.executor_runner import run_executor_background
-from app.agents.core.background.result_delivery import record_todo_run_wake
+from app.agents.core.background.run_cards import record_todo_run_wake
 from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,

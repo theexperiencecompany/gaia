@@ -10,7 +10,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.agents.tools.core.registry import UNKNOWN_TOOL_CATEGORY, ToolRegistry, get_tool_registry
 from app.agents.tools.execute.unwrap import ExecuteCallArgs, unwrap_execute_call
 from app.config.oauth_config import get_integration_by_id, get_integration_by_tool_slug
-from app.constants.agents import INTERNAL_AGENT_TAG_PATTERN
 from app.constants.browser import BROWSER_TOOL_CATEGORY
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.log_tags import LogTag
@@ -91,14 +90,6 @@ class _McpToolMetadata(BaseModel):
     #: Forwarded to the client verbatim — whatever keys the adapter stamped.
     mcp_ui: dict[str, object] | None = None
     mcp_server_url: str | None = None
-
-
-def strip_internal_agent_tags(text: str) -> str:
-    """Remove internal channel tags (e.g. <executor_result>) an agent may echo into user text.
-
-    Tags frame payloads for comms re-voicing and are never part of the user-facing reply; strip them as a hard backstop against a model parroting them, keeping only the framed text.
-    """
-    return INTERNAL_AGENT_TAG_PATTERN.sub("", text).strip()
 
 
 @dataclass(slots=True, frozen=True)

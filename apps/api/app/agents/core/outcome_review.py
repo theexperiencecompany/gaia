@@ -7,7 +7,7 @@ exists to catch, so the evidence is what ran, never what the run says.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol, cast
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolCall, ToolMessage
@@ -147,6 +147,8 @@ class OutcomeReview:
 
     declared: OutcomeState | None
     problem: str | None
+    #: The report the run filed; None exactly when it filed none that matches its schema.
+    report: FinishTaskArgs | None = field(default=None, compare=False)
 
     @property
     def verified(self) -> bool:
@@ -187,23 +189,27 @@ def review_outcome(delegation: Sequence[AnyMessage], is_write: WriteClassifier) 
     if declared is None:
         return OutcomeReview(None, asleep or NO_REPORT_PROBLEM)
     if asleep:
-        return OutcomeReview(declared, asleep)
+        return OutcomeReview(declared, asleep, report)
     calls = _successful_calls(delegation)
     if declared is OutcomeState.DONE and not calls:
-        return OutcomeReview(declared, "done was declared but no work call succeeded")
+        return OutcomeReview(declared, "done was declared but no work call succeeded", report)
     if (
         declared is OutcomeState.SCHEDULE
         and not _briefed_with(delegation, TODO_WAKES_AGAIN_TAG)
         and not any(_wakes_later(c) for c in calls)
     ):
         return OutcomeReview(
-            declared, "schedule was declared but no tracked todo was scheduled to wake GAIA"
+            declared,
+            "schedule was declared but no tracked todo was scheduled to wake GAIA",
+            report,
         )
     if declared is OutcomeState.SUBSCRIBE and not any(
         _effective_call(c)[0] == OUTCOME_SUBSCRIBE_TOOL for c in calls
     ):
-        return OutcomeReview(declared, "subscribe was declared but no trigger watch was set")
-    return OutcomeReview(declared, report_problem(report, _run_calls(delegation, is_write)))
+        return OutcomeReview(
+            declared, "subscribe was declared but no trigger watch was set", report
+        )
+    return OutcomeReview(declared, report_problem(report, _run_calls(delegation, is_write)), report)
 
 
 def outcome_problem(state: State) -> str | None:

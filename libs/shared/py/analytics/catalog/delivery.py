@@ -1,7 +1,7 @@
 """Delivery events: where GAIA's own messages go, and the messages the outbox sent.
 
-A message GAIA sends on its own (a fired reminder, a workflow result, a tracked
-todo's result, an unnamed agent notification) goes to one place. The destination
+A message GAIA sends on its own (a fired reminder, an executor, workflow or tracked
+todo result) goes to one place. The destination
 types name that place and the rule that chose it, so routing is measurable on each
 event.
 """
@@ -39,7 +39,12 @@ class DeliveryMessageSent(ServerEvent):
     """The outbox sent one message to a user: a chat app took it, or it was recorded in the GAIA app."""
 
     event: ClassVar[str] = "delivery:message_sent"
-    previous_names: ClassVar[tuple[str, ...]] = ("reminder:completed",)
+    previous_names: ClassVar[tuple[str, ...]] = (
+        "reminder:completed",
+        "workflow:result_delivered",
+        "todos:run_result_delivered",
+        "chat:background_update_resolved",
+    )
     budget_per_user_day: ClassVar[int] = 500
 
     producer: Literal["executor", "workflow", "todo", "reminder", "browser", "artifact", "account"]

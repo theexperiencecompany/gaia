@@ -165,17 +165,6 @@ class TodoRunFinishFailure(StrEnum):
     NOT_RECORDED = "todo_run_result_not_recorded"
 
 
-class TodoRunDeliveryOutcome(StrEnum):
-    """What happened to a tracked todo run's result, for activity.md and analytics."""
-
-    DELIVERED = "delivered"
-    UNDELIVERED = "undelivered"
-    SILENCED = "silenced"
-    NOTIFY_OFF = "notify_off"
-    NARRATION_FAILED = "narration_failed"
-    INVALID_DIRECTIVE = "invalid_directive"
-
-
 class TodoWakeKind(StrEnum):
     """What woke a tracked todo's run: its schedule, a watched event, or an approval it waited on."""
 
@@ -286,8 +275,6 @@ OBSERVATIONS_MAX_CHARS: Final[int] = 12_000
 OBSERVATIONS_PROMPT_MAX_CHARS: Final[int] = 6_000
 # Most of a todo's Key Details its delivery decision reads.
 DELIVERY_KEY_DETAILS_MAX_CHARS: Final[int] = 1500
-# Earlier runs' delivery outcomes shown to comms when it decides whether to message.
-DELIVERY_RUN_HISTORY_LINES: Final[int] = 3
 
 # How many referenced todos a run reads Learnings from.
 REFERENCED_TODOS_PROMPT_LIMIT: Final[int] = 5

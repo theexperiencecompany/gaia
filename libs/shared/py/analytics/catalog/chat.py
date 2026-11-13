@@ -6,7 +6,6 @@ from shared.py.analytics.catalog.base import ServerEvent, WebEvent
 from shared.py.analytics.catalog.properties import Emoji, Identifier
 
 __all__ = [
-    "ChatBackgroundUpdateResolved",
     "ChatComposerPlusMenuClicked",
     "ChatConversationCreated",
     "ChatConversationDeleted",
@@ -95,17 +94,6 @@ class ChatMessageCancelled(_ChatTurnEnded):
 
     event: ClassVar[str] = "chat:message_cancelled"
     budget_per_user_day: ClassVar[int] = 10
-
-
-class ChatBackgroundUpdateResolved(ServerEvent):
-    """Comms resolved a background executor update as a message, a one-emoji react, or silence."""
-
-    event: ClassVar[str] = "chat:background_update_resolved"
-    budget_per_user_day: ClassVar[int] = 100
-
-    outcome: Identifier
-    emoji: Emoji | None = None
-    delivery: Literal["message", "reaction", "badge", "fallback_text"] | None = None
 
 
 class ChatTurnReacted(ServerEvent):

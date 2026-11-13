@@ -9,9 +9,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from app.constants.agents import OutcomeState
+from app.models.ownership_models import DeliveryTiming
 from app.services.outbox.models import (
     ComposeMode,
-    DeliveryTiming,
     DropReason,
     Initiative,
     NoticeOutcome,
@@ -117,4 +117,6 @@ def decide(report: OutboxReport, *, watched_live: bool = False) -> Decision:
             return Decision(
                 DecisionKind.RECORD_ONLY, urgency, mode, drop_reason=_RECORD_ONLY_OUTCOMES[outcome]
             )
+    if not report.delivery_policy.notify and not _requires_user_action(report):
+        return Decision(DecisionKind.RECORD_ONLY, urgency, mode, drop_reason=DropReason.USER_MUTED)
     return Decision(DecisionKind.SEND_NOW, urgency, mode)

@@ -1,49 +1,47 @@
-"""record_platform_delivery must actually land in a REAL comms thread.
+"""record_in_thread must actually land in a REAL comms thread.
 
-The unit tests for platform delivery mock the graph, so they never ran the real aupdate_state
+The unit tests for the outbox mock the graph, so they never ran the real aupdate_state
 write -- which is exactly how the bug shipped. The write used as_node="agent", whose
 should_continue branch needs a store that aupdate_state cannot inject, so every checkpoint write
 raised "Missing required config key 'store'" and was swallowed as best-effort. Workflow AND
 reminder results were delivered to platforms but never recorded, so GAIA had no memory of them on
 the next turn -- the very thing the feature exists to fix.
 
-This drives record_platform_delivery against the real compiled comms graph and asserts the frame
+This drives record_in_thread against the real compiled comms graph and asserts the frame
 is present in the thread the next turn reads. It goes red if the write reverts to as_node="agent".
 """
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage
 import pytest
 
-from app.agents.core.background.comms_narrator import record_platform_delivery
+from app.services.outbox.compose import record_in_thread
 from tests.e2e._harness.graph_run import comms_graph
 
 pytestmark = pytest.mark.e2e
 
-_FRAME = (
-    '[Delivered to the user on Telegram — result of reminder "Standup" (id rem-1)]: '
-    "**Standup**\nJoin now"
-)
+_FRAME = "**Standup**\nJoin now"
 
 
-async def _thread_messages(graph: object, thread_id: str) -> list[object]:
+async def _thread_messages(graph: Any, thread_id: str) -> list[object]:
     state = await graph.aget_state({"configurable": {"thread_id": thread_id}})
     return state.values.get("messages", [])
 
 
 @pytest.mark.regression
-async def test_record_platform_delivery_lands_in_the_real_thread() -> None:
+async def test_record_in_thread_lands_in_the_real_thread() -> None:
     thread_id = f"conv-{uuid4()}"
     async with comms_graph(["ok"]) as graph:
         with patch(
-            "app.agents.core.background.comms_narrator.GraphManager.get_graph",
+            "app.services.outbox.compose.GraphManager.get_graph",
             new=AsyncMock(return_value=graph),
         ):
-            await record_platform_delivery(thread_id, _FRAME)
+            await record_in_thread(thread_id, _FRAME)
 
         messages = await _thread_messages(graph, thread_id)
 

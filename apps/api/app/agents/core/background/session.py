@@ -16,8 +16,10 @@ from enum import StrEnum
 from typing import Any
 
 from app.constants.log_tags import LogTag
+from app.constants.outbox import SUBJECT_LABEL_MAX_CHARS
 from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import SourceCategory
+from app.models.ownership_models import DeliveryPolicy
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from shared.py.analytics import Dedupe
@@ -151,6 +153,10 @@ class ExecutorRun:
     workflow_execution_id: str | None = None
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
+    #: How the user asked to be told what this run produced; the defaults when they said nothing.
+    delivery_policy: DeliveryPolicy = field(default_factory=DeliveryPolicy)
+    #: What the user wrote that started the run, bounded: what its result is called to them.
+    request_excerpt: str = ""
     active_todo_id: str | None = None
     #: Set only on a tracked todo's own scheduled/triggered run: it executes in its
     #: todo's chat, which keeps its report, and its result goes through todo delivery.
@@ -194,6 +200,8 @@ class ExecutorRun:
             workflow_execution_id=workflow_execution_id or current_workflow_execution_id(),
             workflow_title=view.workflow_title,
             workflow_notify_on_completion=view.workflow_notify_on_completion,
+            delivery_policy=view.delivery_policy,
+            request_excerpt=(view.user_request or "")[:SUBJECT_LABEL_MAX_CHARS],
             active_todo_id=view.active_todo_id,
             source_category=SourceCategory(view.source_category or SourceCategory.BG.value),
             t_dispatch_perf=identity.t_dispatch_perf,
@@ -239,17 +247,6 @@ class ExecutorRun:
     def render_message_id(self) -> str | None:
         """The chat message this run's frames render into: the live turn's, a resumed turn's, or its own placeholder."""
         return self.bot_message_id or (self.task_id if self.owns_stream else None)
-
-    @property
-    def renders_native_cards(self) -> bool:
-        """Whether this run's items reach the user as cards rather than as words.
-
-        Only first-party clients render tool cards. A bot conversation gets plain
-        text over its platform API and a scheduled workflow gets a notification,
-        so telling comms "these items are already on the user's screen" there
-        suppresses the only copy of the data the user would ever see.
-        """
-        return self.source_category is SourceCategory.UI
 
     @property
     def executor_owns_tool_data(self) -> bool:

@@ -35,6 +35,7 @@ from app.agents.core.graph_builder import build_graph as build_graph_module
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.agents.core.subagents import spawn_agent
+from app.constants.agents import OutcomeState
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME, HIL_DECIDED_UNRESUMED_GRACE_SECONDS
 from app.constants.memory import ReconcileOutcome
@@ -47,7 +48,6 @@ from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.hil import hil_approval_repository
 from app.db.repositories.users import user_repository
 from app.memory.ingestion import RetainedMemory
-from app.models.chat_models import ToolDataEntry
 from app.models.hil_models import (
     ApprovalScope,
     HILApprovalRecord,
@@ -62,6 +62,7 @@ from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
 from app.services.hil import resolution
+from app.services.outbox.models import RunReport
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
 from tests.e2e._harness.background import drain_background_runs, drain_publishes
 from tests.e2e._harness.graph_run import call
@@ -453,17 +454,9 @@ async def hil_world(
         elif payload.get("type") == WS_EVENT_EXECUTOR_CANCELLED:
             world.cancelled_broadcasts.append(payload)
 
-    async def _deliver(
-        _run: Any,
-        text: str,
-        result_type: str,
-        _note: str,
-        *,
-        tool_data: list[ToolDataEntry] | None,
-        outcome_note: str = "",
-    ) -> tuple[str, str]:
-        world.delivered.append((text, result_type))
-        return text, "executor-message-1"
+    async def _submit(report: RunReport) -> None:
+        failed = report.report.outcome is OutcomeState.FAILED
+        world.delivered.append((report.result, "error" if failed else "final"))
 
     memory = MagicMock()
     memory.retain_single = AsyncMock(
@@ -540,7 +533,8 @@ async def hil_world(
             "extend_subagent_group",
             new=world.saved.extend_subagent_group,
         ),
-        patch("app.agents.core.background.executor_runner.deliver_result", new=_deliver),
+        patch("app.agents.core.background.executor_runner.submit", new=_submit),
+        patch("app.agents.core.background.executor_runner.persist_run_cards", new=AsyncMock()),
         patch(
             "app.services.files.FileService.list_conversation_files",
             new=AsyncMock(return_value=[]),
@@ -1130,7 +1124,7 @@ class TestTwoGatedCallsInOneTurn:
             )
 
     async def test_the_turn_does_not_die_with_an_executor_error(self) -> None:
-        """_execute_executor catches the LangGraph exception and returns result_type == "error", which deliver_result sends on as the turn's outcome."""
+        """_execute_executor catches the LangGraph exception and returns result_type == "error", which the outbox is told as the turn's outcome."""
         async with two_gate_world() as (world, _calls):
             await run_turn(world, "check the weather and draw me a flowchart")
 

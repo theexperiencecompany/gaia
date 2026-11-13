@@ -31,7 +31,6 @@ from app.utils.agent_utils import (
     format_sse_response,
     format_tool_call_entry,
     process_custom_event_for_tools,
-    strip_internal_agent_tags,
 )
 from app.utils.stream_publishers import ExtractedToolData, publish_tool_output
 
@@ -801,34 +800,3 @@ class TestWrapAgentPayload:
             "<returned_to_frontend>\na card is up\n</returned_to_frontend>\n"
             "<executor_result>\n3 unread\n</executor_result>\n"
         )
-
-
-class TestStripInternalAgentTags:
-    def test_a_parroted_block_keeps_its_words_and_loses_the_frame(self) -> None:
-        text = wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "you have 3 unread")
-
-        assert strip_internal_agent_tags(text) == "you have 3 unread"
-
-    def test_a_lone_closing_tag_is_stripped(self) -> None:
-        """Covers the common half-leak: the model writes its reply then closes the handed block."""
-        assert strip_internal_agent_tags("3 unread</executor_result>") == "3 unread"
-
-    def test_an_attributed_tag_is_stripped(self) -> None:
-        assert (
-            strip_internal_agent_tags('<subagent_result agent="gmail">\nsent\n</subagent_result>')
-            == "sent"
-        )
-
-    def test_case_is_ignored(self) -> None:
-        assert strip_internal_agent_tags("<Executor_Result> done") == "done"
-
-    def test_ordinary_markup_in_a_reply_survives(self) -> None:
-        """A reply with legitimate angle brackets (code, HTML, comparisons) must pass through untouched."""
-        reply = "use `<div>` for that, and 3 < 5 is true"
-
-        assert strip_internal_agent_tags(reply) == reply
-
-    @pytest.mark.parametrize("tag", list(AgentTag))
-    def test_every_declared_tag_is_covered_by_the_strip(self, tag: AgentTag) -> None:
-        """Drift guard: a new AgentTag member extends the backstop for free, unlike a hand-listed pattern."""
-        assert strip_internal_agent_tags(wrap_agent_payload(tag, "payload")) == "payload"

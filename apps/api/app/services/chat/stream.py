@@ -88,7 +88,6 @@ from app.services.latency_metrics import (
     observe_chat_ttft,
     observe_chat_turn_total,
 )
-from app.services.platform_message_service import is_bot_platform
 from app.services.storage import flush_fs_metrics
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
@@ -509,7 +508,7 @@ async def _resolve_pending_approval_turn(
     guessing risks misreading a destructive action. Returns True only when a bot reply
     resolved it — the turn is then fully handled here and the caller must not run the agent.
     """
-    if not is_bot_platform(source):
+    if SourceCategory.from_source(source) is not SourceCategory.BOT:
         # UI clients (web/mobile/desktop) and background/workflow runs never
         # LLM-classify an approval — the UI has deterministic Approve/Deny
         # buttons, so the pending approval waits for a click or the sweep.

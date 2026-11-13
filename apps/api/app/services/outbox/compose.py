@@ -18,16 +18,19 @@ from app.agents.core.graph_manager import GraphManager
 from app.agents.core.thread_lock import comms_thread_lock
 from app.agents.core.thread_writes import with_message_ids
 from app.agents.llm.client import ainvoke_structured
-from app.agents.prompts.compose_prompts import COMPOSE_RULES
+from app.agents.prompts.compose_prompts import COMPOSE_RULES, OUTCOME_REPLY_SHAPES
 from app.agents.templates.agent_template import get_comms_static_prompt
 from app.constants.log_tags import LogTag
 from app.constants.outbound import OUTBOUND_TTL_SECONDS_DEFAULT, OUTBOUND_TTL_SECONDS_GREETING
 from app.constants.outbox import (
+    COMPOSE_EARLIER_RUN_CHARS,
+    COMPOSE_EARLIER_RUNS,
     COMPOSE_LEDGER_MESSAGES,
     COMPOSE_MAX_ATTEMPTS,
     COMPOSE_THREAD_SNAPSHOT_MESSAGES,
     OUTBOX_COMPOSE_LABEL,
 )
+from app.db.repositories.outbox_items import outbox_items_repository
 from app.db.repositories.outbox_messages import outbox_messages_repository
 from app.models.chat_models import ConversationSource
 from app.models.outbox_models import OutboxItemDocument
@@ -37,6 +40,7 @@ from app.services.outbox.models import (
     ComposeMode,
     ComposeResult,
     Disposition,
+    ItemState,
     NoticeOutcome,
     NoticeReport,
     OutboxReport,
@@ -49,7 +53,7 @@ from app.services.outbox.prerendered import (
     prerendered_parts,
     prerendered_text,
 )
-from app.services.outbox.router import ChatChannel, ProactiveTarget
+from app.services.outbox.router import ChatChannel, ProactiveTarget, Route
 from shared.py.wide_events import log
 
 
@@ -97,10 +101,61 @@ def _item_view(item: OutboxItemDocument) -> dict[str, object]:
     match report:
         case RunReport():
             view["report"] = report.report.model_dump(mode="json", exclude_none=True)
+            view["result"] = report.result
+            view["how_to_say"] = _how_to_say(report)
+            if report.review_problem is not None:
+                view["review_problem"] = report.review_problem
+            if report.guidance is not None:
+                view["guidance"] = report.guidance.model_dump(mode="json", exclude_none=True)
         case NoticeReport():
             view["outcome"] = report.outcome.value
             view["facts"] = report.facts
     return view
+
+
+def _how_to_say(report: RunReport) -> str:
+    outcome = report.report.outcome
+    if outcome is None:
+        raise ValueError(f"run report {report.report_id} reached compose without an outcome")
+    return OUTCOME_REPLY_SHAPES[outcome]
+
+
+def _is_verbatim(item: OutboxItemDocument) -> bool:
+    report = item.report
+    return (
+        isinstance(report, RunReport) and report.guidance is not None and report.guidance.verbatim
+    )
+
+
+def _squashed(text: str) -> str:
+    return " ".join(text.split())
+
+
+async def _earlier_run_line(past: OutboxItemDocument) -> str:
+    when = past.report.occurred_at.isoformat(timespec="minutes")
+    if past.state is ItemState.DROPPED:
+        reason = past.drop_reason.value if past.drop_reason is not None else "dropped"
+        return f"{when}: kept quiet ({reason})"
+    if past.compose_attempt_id is None:
+        raise ValueError(f"sent outbox item {past.report_id} names no message")
+    message = await outbox_messages_repository.get_by_attempt(past.user_id, past.compose_attempt_id)
+    if message is None:
+        raise ValueError(f"sent outbox item {past.report_id} has no ledger message")
+    return f"{when}: told them: {' '.join(message.parts)[:COMPOSE_EARLIER_RUN_CHARS]}"
+
+
+async def _earlier_runs(items: list[OutboxItemDocument]) -> dict[str, list[str]]:
+    """Return, per item of a recurring producer, what GAIA did with its last runs, oldest first."""
+    earlier: dict[str, list[str]] = {}
+    for item in items:
+        series = item.report.subject.series
+        if series is None:
+            continue
+        past = await outbox_items_repository.list_settled_of_series(
+            item.user_id, series, before=item.report.occurred_at, limit=COMPOSE_EARLIER_RUNS
+        )
+        earlier[item.report_id] = [await _earlier_run_line(p) for p in reversed(past)]
+    return earlier
 
 
 def _is_conversational(message: BaseMessage) -> bool:
@@ -136,6 +191,14 @@ def _validate(result: ComposeResult, items: list[OutboxItemDocument]) -> str | N
     for item_id, item in by_id.items():
         if _must_say(item) and chosen[item_id] is not Disposition.INCLUDE:
             return f"item {item_id} must be said and cannot be skipped"
+    told = _squashed(" ".join(result.parts))
+    for item_id, item in by_id.items():
+        if (
+            chosen[item_id] is Disposition.INCLUDE
+            and _is_verbatim(item)
+            and _squashed(cast(RunReport, item.report).result) not in told
+        ):
+            return f"item {item_id} must be told exactly as its result is written"
     includes = any(action is Disposition.INCLUDE for action in chosen.values())
     spoken = [part for part in result.parts if part.strip()]
     if includes and not spoken:
@@ -148,8 +211,14 @@ def _validate(result: ComposeResult, items: list[OutboxItemDocument]) -> str | N
 def _degraded_parts(items: list[OutboxItemDocument], locale: str) -> list[str]:
     lines = [prerendered_text(PrerenderedKind.COMPOSE_DEGRADED, locale)]
     for item in items:
-        if _must_say(item):
-            lines.append(f"{item.report.subject.label}: " + "; ".join(_facts_of(item.report)))
+        if not _must_say(item):
+            continue
+        facts = (
+            cast(RunReport, item.report).result
+            if _is_verbatim(item)
+            else "; ".join(_facts_of(item.report))
+        )
+        lines.append(f"{item.report.subject.label}: {facts}")
     return ["\n".join(lines)]
 
 
@@ -176,8 +245,7 @@ async def compose(
     *,
     user_id: str,
     mode: ComposeMode,
-    target: ProactiveTarget,
-    conversation_id: str,
+    destination: Route,
     locale: str,
 ) -> Composed:
     """Say items as one message: the producers' own words as they wrote them, the rest worded as comms would."""
@@ -207,8 +275,7 @@ async def compose(
         to_word,
         user_id=user_id,
         mode=mode,
-        target=target,
-        conversation_id=conversation_id,
+        destination=destination,
         locale=locale,
     )
     return replace(
@@ -225,22 +292,25 @@ async def _word(
     *,
     user_id: str,
     mode: ComposeMode,
-    target: ProactiveTarget,
-    conversation_id: str,
+    destination: Route,
     locale: str,
 ) -> Composed:
-    source = _destination_source(target)
+    source = _destination_source(destination.target)
     recent_sent = await outbox_messages_repository.recent_sent(
         user_id, limit=COMPOSE_LEDGER_MESSAGES
     )
-    context = {
+    context: dict[str, object] = {
         "mode": mode.value,
         "locale": locale,
         "destination": source.value,
         "items": [_item_view(item) for item in items],
-        "recent_thread": await _thread_snapshot(conversation_id),
+        "recent_thread": await _thread_snapshot(destination.alert_conversation_id),
         "already_sent": [part for message in recent_sent for part in message.parts],
     }
+    if destination.requested_unavailable is not None:
+        context["requested_channel_unavailable"] = destination.requested_unavailable.value
+    if earlier_runs := await _earlier_runs(items):
+        context["earlier_runs"] = earlier_runs
     messages: list[BaseMessage] = [
         SystemMessage(content=get_comms_static_prompt(source.value) + COMPOSE_RULES),
         HumanMessage(content=json.dumps(context, ensure_ascii=False)),

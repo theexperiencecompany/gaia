@@ -15,8 +15,10 @@ from app.agents.core.background.executor_queue import (
     release_lock_if_owned,
     try_acquire_lock,
 )
-from app.agents.core.background.workflow_platform_delivery import (
-    deliver_workflow_result,
+from app.agents.core.background.run_report import (
+    RunOutcome,
+    WorkflowRunRef,
+    workflow_run_report,
 )
 from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_FALLBACK_TEMPLATE,
@@ -38,6 +40,7 @@ from app.constants.agents import (
     PLAYBOOK_FALLBACK_CONTEXT_KEY,
     WORKFLOW_LOCK_CONTEXT_KEY,
     AgentTag,
+    OutcomeState,
     wrap_agent_payload,
 )
 from app.constants.cache import (
@@ -68,6 +71,7 @@ from app.models.notification.notification_models import (
 from app.models.payment_models import PlanType
 from app.models.playbook_models import PlaybookDocument, PlaybookRunOutcome, PlaybookRunStatus
 from app.models.scheduler_models import DeactivationReason
+from app.models.task_report_models import TaskReport
 from app.models.trigger_gate_models import QuietHoursBypass, QuietHoursHold, QuietHoursStamp
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import RecordedCall
@@ -84,6 +88,7 @@ from app.services.analytics_service import capture
 from app.services.cost_budget import format_reset_date
 from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.notification_service import notification_service
+from app.services.outbox.intake import submit
 from app.services.triggers.batching import (
     coalesce_window_seconds,
     drain_trigger_batch,
@@ -109,7 +114,6 @@ from app.services.workflow.execution_service import (
     record_skipped_execution,
 )
 from app.services.workflow.integration_pause import pause_workflow_before_fire
-from app.services.workflow.notifications import send_workflow_completion_notification
 from app.services.workflow.playbook.check import distrust_fresh_playbook
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.lifecycle import (
@@ -142,7 +146,7 @@ from shared.py.analytics.context import (
     current_analytics_context,
     worker_context,
 )
-from shared.py.wide_events import WorkflowContext, log
+from shared.py.wide_events import WorkflowContext, current_workflow_execution_id, log
 
 # How far a fire may drift from its scheduled time before it is worth a warning.
 _DRIFT_WARN_SECONDS = 300
@@ -682,6 +686,8 @@ def _fallback_note(result: PlaybookRunResult) -> str:
 AGENT_RUN_SUMMARY = "Ran the full workflow"
 HEAL_RUN_SUMMARY = "Ran the full workflow and repaired its saved shortcut"
 REPLAY_SUMMARY = "Ran from the saved shortcut"
+#: Names a replay's report among the runs of one execution.
+REPLAY_RUN_KEY = "replay"
 #: Same run, minus the sentence describing it: the steps all ran, so the record
 #: must not read like a failure, and it must not read like a normal replay either.
 REPLAY_NARRATION_FAILED_SUMMARY = "Ran from the saved shortcut; the summary could not be written"
@@ -902,43 +908,31 @@ async def _run_workflow(fire: _Fire) -> tuple[str, list[RecordedCall], str]:
         ) from exc
 
 
-async def _notify_replay_finished(
+async def _file_replay_report(
     workflow: Workflow, user: AuthenticatedUser, conversation_id: str, text: str
 ) -> None:
-    """Deliver a finished replay the same way the executor path delivers an agent run.
+    """File a finished replay's result with the outbox, the same way the agent path files its run.
 
-    Into the user's linked platforms, then the in-app heads-up; gated on
-    notify_on_completion and best-effort, like that path.
+    The replay's calls already happened, so a report that cannot be filed raises: the fire is
+    recorded as failed with their trace, never silently told to nobody.
     """
-    if not workflow.notify_on_completion:
-        log.info(
-            f"{LogTag.WORKER} Replay completion notification skipped (workflow is silent)",
-            workflow_id=workflow.id,
-        )
-        return
-    try:
-        # The in-app badge does not depend on where the chat message goes.
-        await asyncio.gather(
-            deliver_workflow_result(
-                user=user,
+    execution_id = current_workflow_execution_id()
+    if execution_id is None or workflow.id is None:
+        raise ValueError("a replay's report needs the workflow execution it belongs to")
+    await submit(
+        workflow_run_report(
+            WorkflowRunRef(
                 workflow_id=workflow.id,
-                notification_text=text,
-                origin=f'workflow "{workflow.title}" (id {workflow.id})',
-            ),
-            send_workflow_completion_notification(
-                workflow_id=workflow.id or "",
-                workflow_title=workflow.title,
+                title=workflow.title,
+                execution_id=execution_id,
+                user_id=user.user_id,
                 conversation_id=conversation_id,
-                user_id=workflow.user_id,
+                notify=workflow.notify_on_completion,
             ),
+            run_key=REPLAY_RUN_KEY,
+            outcome=RunOutcome(report=TaskReport(outcome=OutcomeState.DONE), result=text),
         )
-    except Exception as e:
-        log.warning(
-            f"{LogTag.WORKER} Replay completion notification failed",
-            workflow_id=workflow.id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
+    )
 
 
 async def _deliver_replay(
@@ -982,7 +976,7 @@ async def _deliver_replay(
         trace=result.trace,
         playbook=playbook,
     )
-    await _notify_replay_finished(workflow, user, conversation_id, text)
+    await _file_replay_report(workflow, user, conversation_id, text)
     summary = REPLAY_SUMMARY if result.narration_failed is None else REPLAY_NARRATION_FAILED_SUMMARY
     return conversation_id, result.trace, summary
 

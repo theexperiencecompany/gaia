@@ -978,19 +978,18 @@ async def _resume_holding_lock(
 
 
 async def finish_tracked_todo_run(ctx: ArqJobContext, undone: FinishedTodoRun) -> str:
-    """Finish the delivery a tracked todo run's own attempt could not: send, then record.
+    """Finish the delivery a tracked todo run's own attempt could not: file its report, then record.
 
     The todo is never run again for it. Each try picks up only what is still
-    undone, so a message already sent is not sent twice.
+    undone, so a report already filed is not filed twice.
     """
     # The envelope already puts the job id (the run's) and job_try on the event.
     log.set(todo_id=undone.todo_id)
-    user, _ = await _load_user_with_tz(undone.user_id)
-    left = await finish_todo_run(undone, user)
+    left = await finish_todo_run(undone)
     if left is None:
         return f"finished:{undone.todo_id}"
     if left.finish_entry != undone.finish_entry:
-        # Sent on this try, entry not written: a replay of this job would send again.
+        # Filed on this try, entry not written: a replay of this job would file again.
         await hand_unfinished_run_to_job(left)
         return f"sent:{undone.todo_id} (entry handed on)"
     job_try = ctx["job_try"]

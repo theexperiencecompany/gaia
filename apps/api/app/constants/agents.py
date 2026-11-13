@@ -9,8 +9,7 @@ model must infer where the payload ends, while an open/close pair states it —
 and a tag reads as machine framing rather than text worth copying, which is
 exactly how [EXECUTOR_RESULT] kept surfacing in user-facing replies.
 
-This module owns the vocabulary AND the framing, so the site that writes a tag
-and the site that strips one (strip_internal_agent_tags) can never disagree.
+This module owns the vocabulary AND the framing, so every site that writes or reads a tag agrees.
 """
 
 from enum import StrEnum
@@ -69,14 +68,6 @@ def wrap_agent_payload(tag: AgentTag, body: str, agent: str | None = None) -> st
     attribution = f' agent="{agent}"' if agent else ""
     return f"<{tag}{attribution}>\n{body.strip()}\n</{tag}>\n"
 
-
-# Every internal tag, open or close, with or without attributes. Stripped
-# deterministically before delivery (see ``strip_internal_agent_tags``) as the
-# hard backstop for a weak model echoing its context into the reply.
-INTERNAL_AGENT_TAG_PATTERN = re.compile(
-    rf"</?(?:{'|'.join(tag.value for tag in AgentTag)})(?:\s[^>]*)?>",
-    flags=re.IGNORECASE,
-)
 
 #: Tags that frame someone actually asking for something. Every other internal
 #: tag frames a result, instruction or status the graph wrote, so it must never

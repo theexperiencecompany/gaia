@@ -19,7 +19,7 @@ from app.db.rabbitmq import RabbitMQPublisher, get_rabbitmq_publisher
 from app.models.chat_models import ConversationSource
 from app.models.platform_models import PlatformLinkEntry
 from app.schemas.delivery_failures import DeliveryFailure
-from app.schemas.outbound import OutboundAttachment, OutboundMessageEnvelope, OutboundReaction
+from app.schemas.outbound import OutboundAttachment, OutboundMessageEnvelope
 from app.services.delivery_alerts.reporting import report_delivery_failure
 from app.services.platform_link_service import PlatformLinkService
 from app.utils.log_identifiers import hash_platform_user_id
@@ -145,66 +145,6 @@ async def _prepare(
         return OutboundResult.FAILED
 
     return queue_name, str(destination_id), publisher
-
-
-async def publish_outbound_reaction(
-    platform: ConversationSource,
-    user_id: str,
-    target_platform_message_id: str,
-    emoji: str,
-    *,
-    destination_override: str | None = None,
-    is_channel: bool = False,
-) -> OutboundResult:
-    """Enqueue a native emoji reaction to an existing platform message.
-
-    Same destination resolution as publish_outbound_message: the reaction
-    goes to the user DM, or back into the group channel named by
-    destination_override and is_channel. Falls back to a one-emoji text
-    bubble when the platform cannot attach it.
-    """
-    prep = await _prepare(
-        platform, user_id, "publish_outbound_reaction", destination_override, is_channel=is_channel
-    )
-    if isinstance(prep, OutboundResult):
-        return prep
-    queue_name, destination_id, publisher = prep
-
-    envelope = OutboundMessageEnvelope(
-        platform=platform.value,
-        destination_id=destination_id,
-        reaction=OutboundReaction(
-            target_platform_message_id=target_platform_message_id,
-            emoji=emoji,
-        ),
-        is_channel=is_channel,
-    )
-
-    try:
-        await publisher.publish_outbound(queue_name, envelope.model_dump_json().encode())
-    except Exception as e:
-        log.error(
-            "publish_outbound_reaction: publish failed",
-            platform=platform.value,
-            error=str(e),
-        )
-        await _report_enqueue_failure(
-            platform,
-            user_id,
-            "publish_failed",
-            e,
-            destination_id=destination_id,
-            is_channel=is_channel,
-            envelope_id=envelope.id,
-        )
-        return OutboundResult.FAILED
-
-    log.info(
-        "outbound_reaction_published",
-        platform=platform.value,
-        queue=queue_name,
-    )
-    return OutboundResult.PUBLISHED
 
 
 async def publish_outbound_message(

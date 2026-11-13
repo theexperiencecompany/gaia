@@ -4,11 +4,8 @@ Comms agent handles user interaction with human-like responses.
 Executor agent handles task execution with full tool access.
 """
 
-from collections.abc import Sequence
-
 from app.agents.prompts.capability_prompts import CAPABILITY_BLOCK
 from app.agents.prompts.user_instructions_prompts import INSTRUCTION_PRECEDENCE_RULES
-from app.constants.agents import NO_REPORT_PROBLEM, AgentTag, OutcomeState, wrap_agent_payload
 from app.constants.comms import EMOJI_DIRECTIVE, SILENCE_DIRECTIVE
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.todos import PING_WITH_FOLLOW_THROUGH_RULE
@@ -83,7 +80,7 @@ When work comes back, the same register:
 Each turn, pick one:
 - REPLY: a normal message.
 - REACT: the message deserves a tap-back and no words ("thanks", "ok cool", "haha", "perfect", a sign-off, a funny one-liner that needs no answer). Reply with exactly {EMOJI_DIRECTIVE}, the emoji between the tags. It shows as a reaction on their message, or as the bare emoji where the platform has no reactions. Lean toward reacting: when a tap-back says everything a short reply would, react instead of typing, since fewer words usually land better. This is the one place an emoji is always welcome. Never react in place of an answer: a question you answer yourself, or a result that just arrived, gets words. Work you hand off is the exception: a reaction is its acknowledgment (see Actions).
-- SILENCE (right after a hand-off, or a background update; never in place of an answer to the user's message): the hand-off itself (see Actions), or a background result with nothing new for them: a routine check, a no-op, or a repeat check that found nothing since your last message (even on something they asked you to watch). Reply with exactly {SILENCE_DIRECTIVE}. Never for the first result of something they asked for, never for a run that hit errors, and never for anything that created, sent, deleted, booked or changed their data.
+- SILENCE (right after a hand-off; never in place of an answer to the user's message): the hand-off itself (see Actions). Reply with exactly {SILENCE_DIRECTIVE}.
 The tag is the whole reply, with nothing before or after it. A message and a tag never go together: decide first, then write one or the other. If something is worth saying, say it with no tag; if nothing is, send the tag alone, with no recap or reminder beside it. The reason inside the SILENCE tag is for the logs, never a summary for the user. A bare emoji sent as a message is wrong: a reaction always goes in the tag.
 
 ## Bubbles
@@ -146,12 +143,13 @@ OWN IT TO THE END. A request is a responsibility: what they asked, what they act
    - Silence: {SILENCE_DIRECTIVE} when even a reaction adds nothing (they are mid-flow, or this is another quick ask in a row).
    - A few words, only when they need to know something now: what did not happen while you get them reconnected (see Errors), or that it is a long job ("pulling three months of invoices, takes a bit"). One short line.
    Never "got it, I'll do it", "on it" or a restatement of what they asked. Nothing has happened yet, so never claim a result, preview the outcome or what it will need (a connection, an approval), paste a link, or mention a task id. The result says all of that.
-3. When the <executor_result> or <executor_error> arrives: deliver the outcome (see Delivering results). It says something new; never repeat the acknowledgment. A result turn reports and never re-runs the work: no call_executor to retry or "do it properly", since the user asked for nothing new and a retry runs the whole job again behind their back. Getting them a reconnect card is not a retry (see Errors).
+3. The result is told to the user in its own message when it is ready, composed from what the run reported. It never comes back into this conversation as a turn for you to answer, so there is nothing to wait for, repeat or retry.
 
 Writing the task, since the executor knows only what you write:
 - Every detail: names, dates, times, the intent, constraints, and IDs, emails and URLs copied character for character. If they picked a tool, say "Use the <tool> tool from <category>".
 - acceptance_criteria: the user-visible outcomes that mean done, one item each, even for a one-step ask. Never internal mechanics (approvals, tools, retries).
 - desired_outcome: what they actually want in the end, in one line, beyond the literal words ("lands the flights to Lisbon before prices rise", not "a reminder"). time_horizon: one_shot, deadline or ongoing. defaults_assumed: every L1 default you picked, so the result names it.
+- Where and when they want to hear: delivery_channel only when they name a chat app ("tell me on WhatsApp when it's done"), delivery_timing the_moment when they want it the instant it happens, may_wake only when they asked to be pinged even if away or late. Omit all three otherwise; where they are active decides.
 - A follow-up on data already in the thread: say the data is in the thread and must not be re-fetched.
 - Hand off only what you are not doing yourself: a question you answered in this turn stays out of the task.
 - It could land in more than one place (which Notion database, Trello list, calendar or account) and they have not said: add "if more than one matches, do not pick: return the options". When the options come back, ask them once, naming each.
@@ -160,7 +158,7 @@ Writing the task, since the executor knows only what you write:
 Tasks in flight. How background work behaves:
 - One executor works per chat at a time, and it remembers everything it has done in this conversation. It messages you when it is done: its result arrives here on its own, so you never need to chase it. A call while it runs reaches that run, and after it finishes it reaches an executor that knows everything that run completed, so it does not redo finished work.
 - The background-work status note in your context says what is running right now. The history only shows what was dispatched, not whether it is still going.
-- A hand-off with no result in the history while nothing is running has ended without its result reaching you. To say what it did, ask the executor with call_executor; never guess or say you are checking without calling it.
+- A hand-off whose result is not in the history while nothing is running has ended without telling the user. To say what it did, ask the executor with call_executor; never guess or say you are checking without calling it.
 - Never cancel a finished task.
 - A new request while one runs joins it. Acknowledge it like any hand-off: a reaction, or a few words ("folding that in").
 - Redirect ("no, do gmail instead", "wrong one"): cancel_executor([the in-flight id], message=<what they want instead, with every detail>). The stop and the new instruction travel together; no separate call_executor.
@@ -537,206 +535,3 @@ OUTPUT CONTRACT
   what and why; don't paper over it.
 - No chain-of-thought, no commentary, no empty responses.
 """
-
-
-# Prepended to an interactive background result: a repeat check that found
-# nothing new is noise even on something the user asked GAIA to watch.
-SILENCE_NOTE = wrap_agent_payload(
-    AgentTag.DELIVERY_INSTRUCTIONS,
-    "If this background update has nothing new for the user (a routine check, a no-op, "
-    "or a repeat check that found nothing since your last message, even on something "
-    "they asked you to watch), reply with exactly one line and nothing else: "
-    f"{SILENCE_DIRECTIVE}. Never write a message and the tag together: no summary or "
-    "reminder before or after it. NEVER use it for the first result of something they asked "
-    "for, for a run that hit errors (say what did not work), or for anything that created, "
-    "sent, deleted, booked, or changed their data: report those in full. When unsure, reply "
-    "normally.",
-)
-
-
-PLATFORM_DELIVERY_NOTE = wrap_agent_payload(
-    AgentTag.PLATFORM_DELIVERY,
-    "This is an automated WORKFLOW result. It ran on its own in the background, so "
-    "the user has NOT seen any of it, and it's delivered as plain chat messages "
-    "(Telegram, WhatsApp, web) with NO cards, NO UI, NO screen, only your words. "
-    "That makes every result critical: surface EVERYTHING the workflow found, in "
-    "full. Actually list the concrete items: each headline with its link, each "
-    "email's sender and subject, each event's title and time, every id and figure "
-    "the user needs. Never compress it to a vague 'done', 'saved to your list', or "
-    "'here's your summary 👇', and never point at anything 'on screen', because "
-    "there is no screen.\n"
-    f"Split your reply into a few separate bubbles with {NEW_MESSAGE_BREAKER}: open "
-    "with a short, warm lead-in line, then break the results into readable chunks "
-    "(group related items together, don't cram everything into one giant bubble, "
-    "and don't over-split into one line each). Write it like you personally sorted "
-    "this for them and are handing it over, in GAIA's normal voice.",
-)
-
-
-#: A todo that repeats or watches events reports on its own; most runs find nothing new.
-_RUNS_ON_ITS_OWN = (
-    "Nobody asked for it just now: it ran on its schedule or on an event it watches, "
-    "and its full record is already kept in the todo. "
-)
-#: A todo that runs once exists to answer what the user asked when it was set up.
-_ONE_RUN_ANSWERS = (
-    "This todo runs once, to answer what the user asked when they set it up, so its "
-    "result is that answer and they are waiting for it: always send it, even when the "
-    "answer is no or nothing to worry about. "
-)
-_WHEN_TO_MESSAGE = (
-    "Message the user when the report shows something new they need to know or act on, "
-    "a decision or blocker only they can settle that they have not already been asked "
-    "about, a result they asked to hear every time (always send that one), or the nudge "
-    "or reminder this todo exists to give, even when it repeats the last one. Anything "
-    "else is not worth a message: a routine check, a no-op, nothing new, a question they "
-    "already have, open items you already raised that are still open (a reply they owe, an "
-    "approval they have not given), a run that only kept notes. A report that says only that "
-    "nothing is new is that too: a mail-woken run with nothing to escalate, or a run held for "
-    "quiet hours, says exactly that, and the next briefing carries the rest. Then reply "
-    "with exactly one line and "
-    f"nothing else: {SILENCE_DIRECTIVE}. Decide first and write only one of the two: a "
-    "message with no tag, or the tag alone, never a recap of open items beside it. "
-)
-#: The run reports to comms and never reaches the user itself; GAIA's own record says what did.
-_RUN_CANNOT_MESSAGE = (
-    "The run cannot message the user: only you reach them, so nothing in its report is "
-    "something they have seen. "
-)
-
-
-def _run_record(run_history: Sequence[str]) -> str:
-    if not run_history:
-        return "Nothing from this todo has reached them yet. "
-    lines = "\n".join(run_history)
-    return f"GAIA's own record of what this todo's last runs did with their message:\n{lines}\n"
-
-
-#: A reaction is not a delivery for a todo run: it is dropped and nothing is sent.
-_NO_REACTION = "There is no message of theirs to react to, so never answer with a reaction. "
-_HOW_IT_READS = (
-    "it reaches their chat app as plain text with no cards: lead with what "
-    "changed or what they must decide, give the concrete details they need, keep it "
-    "short, never mention runs, schedules or internal ids, and never promise to follow "
-    f"up later. Split with {NEW_MESSAGE_BREAKER} only when there is more than one beat.\n"
-)
-
-
-def tracked_todo_delivery_note(
-    todo_title: str,
-    standing_rules: str | None,
-    key_details: str | None,
-    *,
-    runs_once: bool,
-    run_history: Sequence[str],
-) -> str:
-    """Build the delivery instructions for a tracked todo's own background run.
-
-    A one-time todo's result is the answer the user awaits and is always sent; a
-    repeating or watching todo's result is sent only when it is worth a message.
-    The todo's own rules come last and bind: a desk briefing with content was silenced
-    as routine while its rule said deliver every one.
-    """
-    when_to_send = (
-        f"{_ONE_RUN_ANSWERS}{_NO_REACTION}Write it up: "
-        if runs_once
-        else f"{_RUNS_ON_ITS_OWN}{_WHEN_TO_MESSAGE}{_NO_REACTION}When you do write, "
-    )
-    rules = (
-        "Its Standing rules, the user's own instructions for this todo. They bind this "
-        "decision above every default here and in your instructions, the SILENCE rule "
-        "included: when one asks to hear this todo's results, a report with content is "
-        "sent whole, as a long-form deliverable: its headings and line items as written, "
-        "in its order, with at most one line of your own before it, never retold as prose "
-        "and never shortened. SILENCE is only for a report with nothing in it.\n"
-        f"{standing_rules}\n"
-        if standing_rules
-        else ""
-    )
-    if key_details:
-        rules += f"Its Key Details, which can also hold a request of theirs:\n{key_details}\n"
-    return wrap_agent_payload(
-        AgentTag.DELIVERY_INSTRUCTIONS,
-        f'This is the result of a background run of the user\'s tracked todo "{todo_title}". '
-        f"{_RUN_CANNOT_MESSAGE}{_run_record(run_history)}{when_to_send}{_HOW_IT_READS}{rules}",
-    )
-
-
-# Prepended to an interactive executor result so the delivery rules sit right
-# next to the write; the same rules only in the distant system prompt proved
-# probabilistic (components and bubble splits were skipped).
-INTERACTIVE_DELIVERY_NOTE = wrap_agent_payload(
-    AgentTag.DELIVERY_INSTRUCTIONS,
-    "When you reply, follow Delivering results and this channel's output rules: what "
-    "matters first, the data in its best form for this channel (a component where the "
-    f"channel renders them), conversational beats split with {NEW_MESSAGE_BREAKER}, any "
-    "list, steps, table or component whole in one bubble, and nothing after the answer "
-    "except, when it fits, one concrete offer of a next step you can take. "
-    "Text it like a person who just handled it (see TEXT IT LIKE A PERSON): the point "
-    "first, plain words, no report formatting, and never a word about the screen or a "
-    "card on it. Call it done only where the result shows it happened; anything it does not show "
-    "is not done, so say what is unconfirmed. Say what they get, never how: no tracked "
-    "todos, triggers, subscriptions, runs, tasks, agents, tools or ids unless they used "
-    "that word first, and never which app, channel or notification it reaches them "
-    "through unless they asked for one.",
-)
-
-
-# The reply shape for each verified outcome. Appended to the executor result
-# (beside the approval note) so the shape sits next to the facts it shapes.
-_OUTCOME_REPLY_SHAPES: dict[OutcomeState, str] = {
-    OutcomeState.DONE: (
-        "done, verified. Confirm it in one line with the one or two specifics that matter, "
-        "plus any default it assumed. No question unless they must decide something."
-    ),
-    OutcomeState.PARTIAL: (
-        "partly done. Say what happened and what did not, each from its fact, and the one "
-        "thing needed to finish the rest."
-    ),
-    OutcomeState.FAILED: (
-        "it failed. Say plainly that nothing they asked for happened, why, and what they can "
-        "do about it, from the failure."
-    ),
-    OutcomeState.NEEDS_YOU: (
-        "it needs their decision. Ask exactly the one question the report names and nothing "
-        "else; nothing has happened yet."
-    ),
-    OutcomeState.BLOCKED: (
-        "blocked. Say plainly what did not happen and the smallest thing needed from them."
-    ),
-    OutcomeState.SCHEDULE: (
-        "a follow-up is set and will wake on its own. One line: what happens next and when."
-    ),
-    OutcomeState.SUBSCRIBE: (
-        "a watch is set. One line: what you are watching for and what you will do when it fires."
-    ),
-    OutcomeState.NOTHING_NEW: (
-        "a check found nothing worth telling. Say so in one line with what was covered, "
-        "and any gap in it."
-    ),
-    OutcomeState.NO_ACTION_NEEDED: (
-        "nothing needed doing because the condition did not hold. One line: why."
-    ),
-    OutcomeState.UNVERIFIED: (
-        "the run could not tell whether it happened. Say what is confirmed, what is not, and "
-        "never call it done."
-    ),
-    OutcomeState.CANCELLED: (
-        "they stopped it. Say what already happened and what did not, from the facts."
-    ),
-}
-
-
-def outcome_delivery_note(declared: OutcomeState | None, problem: str | None) -> str:
-    """Return the outcome line comms narrates a finished executor result under.
-
-    A run without a verified report is delivered as not verified, never as done.
-    """
-    if declared is not None and problem is None:
-        body = _OUTCOME_REPLY_SHAPES[declared]
-    else:
-        body = (
-            f"NOT verified ({problem or NO_REPORT_PROBLEM}). Report only what the result shows "
-            "actually happened, name what did not, and never call it done."
-        )
-    return f"\n\n{wrap_agent_payload(AgentTag.DELIVERY_INSTRUCTIONS, f'Outcome: {body}')}"

@@ -1617,57 +1617,6 @@
       }
     },
     {
-      "event": "chat:background_update_resolved",
-      "class": "ChatBackgroundUpdateResolved",
-      "owner": "server",
-      "domain": "chat",
-      "description": "Comms resolved a background executor update as a message, a one-emoji react, or silence.",
-      "previous_names": [],
-      "budget_per_user_day": 100,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "Comms resolved a background executor update as a message, a one-emoji react, or silence.",
-        "properties": {
-          "outcome": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Outcome",
-            "type": "string"
-          },
-          "emoji": {
-            "anyOf": [
-              {
-                "pattern": "^(?:[0-9#*]\ufe0f?\u20e3|[^\\x00-\\x7F]{1,16})$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Emoji"
-          },
-          "delivery": {
-            "anyOf": [
-              {
-                "enum": ["message", "reaction", "badge", "fallback_text"],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Delivery"
-          }
-        },
-        "required": ["outcome"],
-        "title": "ChatBackgroundUpdateResolved",
-        "type": "object"
-      }
-    },
-    {
       "event": "chat:composer_plus_menu_clicked",
       "class": "ChatComposerPlusMenuClicked",
       "owner": "web",
@@ -2595,7 +2544,12 @@
       "owner": "server",
       "domain": "delivery",
       "description": "The outbox sent one message to a user: a chat app took it, or it was recorded in the GAIA app.",
-      "previous_names": ["reminder:completed"],
+      "previous_names": [
+        "reminder:completed",
+        "workflow:result_delivered",
+        "todos:run_result_delivered",
+        "chat:background_update_resolved"
+      ],
       "budget_per_user_day": 500,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -7068,90 +7022,6 @@
       }
     },
     {
-      "event": "todos:run_result_delivered",
-      "class": "TodosRunResultDelivered",
-      "owner": "server",
-      "domain": "todos",
-      "description": "A tracked todo's run result reached, or failed to reach, the user; destination is where it was routed.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A tracked todo's run result reached, or failed to reach, the user; destination is where it was routed.",
-        "properties": {
-          "outcome": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Outcome",
-            "type": "string"
-          },
-          "delivered": {
-            "title": "Delivered",
-            "type": "boolean"
-          },
-          "trigger_type": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Trigger Type",
-            "type": "string"
-          },
-          "recurring": {
-            "title": "Recurring",
-            "type": "boolean"
-          },
-          "platform": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Platform"
-          },
-          "destination": {
-            "anyOf": [
-              {
-                "enum": ["chat_app", "in_app"],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Destination"
-          },
-          "destination_basis": {
-            "anyOf": [
-              {
-                "enum": [
-                  "recent_activity",
-                  "priority",
-                  "owner_chat",
-                  "requested_channel",
-                  "active_in_app",
-                  "no_chat_app"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Destination Basis"
-          }
-        },
-        "required": ["outcome", "delivered", "trigger_type", "recurring"],
-        "title": "TodosRunResultDelivered",
-        "type": "object"
-      }
-    },
-    {
       "event": "todos:subscription_failed",
       "class": "TodosSubscriptionFailed",
       "owner": "server",
@@ -8611,90 +8481,6 @@
         "description": "A user published a workflow to the community.",
         "properties": {},
         "title": "WorkflowPublished",
-        "type": "object"
-      }
-    },
-    {
-      "event": "workflow:result_delivered",
-      "class": "WorkflowResultDelivered",
-      "owner": "server",
-      "domain": "workflow",
-      "description": "A workflow run's result was routed to the user's one proactive place; platform is the chat app that got it.",
-      "previous_names": [],
-      "budget_per_user_day": 200,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A workflow run's result was routed to the user's one proactive place; platform is the chat app that got it.",
-        "properties": {
-          "workflow_id": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Workflow Id"
-          },
-          "outcome": {
-            "enum": ["delivered", "undelivered", "lookup_failed"],
-            "title": "Outcome",
-            "type": "string"
-          },
-          "destination": {
-            "anyOf": [
-              {
-                "enum": ["chat_app", "in_app"],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Destination"
-          },
-          "destination_basis": {
-            "anyOf": [
-              {
-                "enum": [
-                  "recent_activity",
-                  "priority",
-                  "owner_chat",
-                  "requested_channel",
-                  "active_in_app",
-                  "no_chat_app"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Destination Basis"
-          },
-          "platform": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Platform"
-          }
-        },
-        "required": ["outcome"],
-        "title": "WorkflowResultDelivered",
         "type": "object"
       }
     },

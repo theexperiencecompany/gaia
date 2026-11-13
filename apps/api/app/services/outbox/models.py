@@ -11,7 +11,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models.chat_models import ConversationSource
+from app.models.ownership_models import DeliveryPolicy
 from app.models.task_report_models import TaskReport
 from app.schemas.outbound import OutboundAttachment
 from app.services.outbox.prerendered import PrerenderedMessage
@@ -55,14 +55,6 @@ class Initiative(StrEnum):
     ASKED = "asked"
     USER_SCHEDULED = "user_scheduled"
     SELF_INITIATED = "self_initiated"
-
-
-class DeliveryTiming(StrEnum):
-    """When the person who created the producer wants to hear about it."""
-
-    THE_MOMENT = "the_moment"
-    AT_TIME = "at_time"
-    WHEN_DONE = "when_done"
 
 
 class UrgencyClass(IntEnum):
@@ -120,6 +112,8 @@ class DropReason(StrEnum):
     NOT_WATCHING = "not_watching"
     #: Its `valid_until` passed before it could be told.
     EXPIRED = "expired"
+    #: The user turned this producer's updates off, and the report needs nothing from them.
+    USER_MUTED = "user_muted"
 
 
 class ItemFailure(StrEnum):
@@ -151,17 +145,8 @@ class Subject(BaseModel):
     )
     label: str = Field(min_length=1, description="What the user calls it.")
     merge: SubjectMerge = SubjectMerge.REPLACE
-
-
-class DeliveryPolicy(BaseModel):
-    """When the creator of a producer wants to hear, set at creation."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    timing: DeliveryTiming = DeliveryTiming.WHEN_DONE
-    may_wake: bool = False
-    #: A chat app the message must go to when it is linked and enabled, whatever the user is doing.
-    channel: ConversationSource | None = None
+    #: The recurring producer an occurrence belongs to; what GAIA did with its earlier occurrences is read by it.
+    series: str | None = None
 
 
 class _ReportBase(BaseModel):
@@ -176,11 +161,30 @@ class _ReportBase(BaseModel):
     delivery_policy: DeliveryPolicy = Field(default_factory=DeliveryPolicy)
 
 
+class ProducerGuidance(BaseModel):
+    """What the user wrote down about a producer, which binds whether and how its results are told."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    title: str = Field(min_length=1)
+    standing_rules: str | None = None
+    key_details: str | None = None
+    #: A producer that runs once exists to answer what the user asked: it is always told.
+    runs_once: bool = False
+    #: An outside owner sets the report's form: the result is told exactly as written.
+    verbatim: bool = False
+
+
 class RunReport(_ReportBase):
     """The report of an executor run: the finish_task report, plus what the code knows of the run."""
 
     kind: Literal["run"] = "run"
     report: TaskReport
+    #: The deliverable the run handed back, which the message is worded from beside the facts.
+    result: str = ""
+    #: How the run's own calls disagreed with its report; set exactly when the outcome was downgraded.
+    review_problem: str | None = None
+    guidance: ProducerGuidance | None = None
 
     @model_validator(mode="after")
     def _outcome_declared(self) -> Self:

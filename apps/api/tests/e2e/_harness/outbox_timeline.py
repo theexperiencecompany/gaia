@@ -153,6 +153,8 @@ class World:
     user_id: str
     linked: dict[str, str] = field(default_factory=dict)
     priority: list[str] | None = None
+    #: platform -> whether the user left it enabled in their notification settings.
+    notification_channel_prefs: dict[str, bool] = field(default_factory=dict)
     #: conversation_id -> its source value; None is a chat in the GAIA app.
     conversations: dict[str, str | None] = field(default_factory=dict)
     #: conversation_id -> (platform, platform_user_id, channel_id)
@@ -179,7 +181,7 @@ class World:
                     platform: {"id": account, "username": "u", "display_name": "U"}
                     for platform, account in self.linked.items()
                 },
-                "notification_channel_prefs": {},
+                "notification_channel_prefs": self.notification_channel_prefs,
             }
         )
 

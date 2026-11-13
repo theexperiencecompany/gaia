@@ -74,11 +74,19 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
         """Return the item stored for a report, or None."""
         return await self._find_one({"user_id": user_id, "report_id": report_id})
 
-    async def list_for_subject(self, user_id: str, subject_id: str) -> list[OutboxItemDocument]:
-        """Return every item of a subject, oldest first."""
+    async def list_settled_of_series(
+        self, user_id: str, series: str, *, before: datetime, limit: int
+    ) -> list[OutboxItemDocument]:
+        """Return the last items of a series that were told or kept quiet before an instant, newest first."""
         return await self._find(
-            {"user_id": user_id, "report.subject.id": subject_id},
-            sort=[("report.occurred_at", 1)],
+            {
+                "user_id": user_id,
+                "report.subject.series": series,
+                "report.occurred_at": {"$lt": before},
+                "state": {"$in": [ItemState.SENT.value, ItemState.DROPPED.value]},
+            },
+            sort=[("report.occurred_at", -1)],
+            limit=limit,
         )
 
     async def apply_replace(self, report: OutboxReport) -> bool:

@@ -1644,8 +1644,8 @@ async def create_outbox_indexes() -> None:
     """Create indexes for the outbox: items and the message ledger.
 
     The unique pairs are the idempotency gates: one item per report and one message per
-    compose attempt. The partial hold index and the sent-at order serve the later flush
-    and ledger reads. Both collections expire on expires_at.
+    compose attempt. The series index serves what earlier runs of one producer were told;
+    the sent-at order serves the later flush and ledger reads. Both collections expire on expires_at.
     """
     items = get_async_collection(ITEMS_COLLECTION)
     messages = get_async_collection(MESSAGES_COLLECTION)
@@ -1656,6 +1656,10 @@ async def create_outbox_indexes() -> None:
             items.create_index(
                 [("user_id", 1), ("compose_attempt_id", 1)],
                 partialFilterExpression={"compose_attempt_id": {"$type": "string"}},
+            ),
+            items.create_index(
+                [("user_id", 1), ("report.subject.series", 1), ("report.occurred_at", -1)],
+                partialFilterExpression={"report.subject.series": {"$type": "string"}},
             ),
             items.create_index("expires_at", expireAfterSeconds=0),
             messages.create_index([("user_id", 1), ("compose_attempt_id", 1)], unique=True),

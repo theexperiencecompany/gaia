@@ -1,8 +1,8 @@
-"""A retired integration's leftovers must not stop the comms graph re-voicing an executor result.
+"""A retired integration's leftovers must not stop a comms turn from answering.
 
-The narration path runs the real comms graph, whose end-of-graph hook reads the
-user's connected integrations. A connected row whose integration was removed from
-the catalog (browserbase, PR #876) resolves to a tools-only stub, which raised out
+A comms run goes through the real graph, whose end-of-graph hook reads the user's
+connected integrations. A connected row whose integration was removed from the
+catalog (browserbase, PR #876) resolves to a tools-only stub, which raised out
 of the hook and made the user see "I couldn't write up the result".
 """
 
@@ -12,12 +12,9 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 from bson import ObjectId
-from langchain_core.messages import HumanMessage
 import pytest
 
-from app.agents.core.background.comms_narrator import BACKGROUND_EXECUTOR_NAME
 from app.agents.core.integration_capabilities import get_user_integration_capabilities
-from app.constants.agents import AgentTag, wrap_agent_payload
 from tests.e2e._harness.graph_run import comms_graph, run_graph
 
 pytestmark = pytest.mark.e2e
@@ -35,18 +32,7 @@ class _StubOnlyIntegrations:
 
 
 @pytest.mark.regression
-async def test_the_executor_result_is_revoiced_despite_an_unresolvable_connected_integration() -> (
-    None
-):
-    narration_turn = {
-        "messages": [
-            HumanMessage(
-                content=wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "Report downloaded."),
-                name=BACKGROUND_EXECUTOR_NAME,
-            )
-        ],
-        "todos": [],
-    }
+async def test_a_comms_turn_answers_despite_an_unresolvable_connected_integration() -> None:
     async with comms_graph([REVOICED]) as graph:
         with (
             patch(
@@ -62,7 +48,7 @@ async def test_the_executor_result_is_revoiced_despite_an_unresolvable_connected
                 return_value=_StubOnlyIntegrations(),
             ),
         ):
-            run = await run_graph(graph, "", state=narration_turn, is_result_narration=True)
+            run = await run_graph(graph, "is my report ready?")
 
     assert REVOICED in run.final_text()
     assert "end_graph_hooks" in run.visited

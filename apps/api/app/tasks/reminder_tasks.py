@@ -1,6 +1,7 @@
 """Reminder task handlers for static reminders only."""
 
 from app.decorators.entitlements import capture_paywall_block, is_paid
+from app.models.ownership_models import DeliveryPolicy, DeliveryTiming
 from app.models.reminder_models import (
     AgentType,
     ReminderModel,
@@ -9,8 +10,6 @@ from app.models.reminder_models import (
 from app.models.scheduler_models import TaskOutcome
 from app.services.outbox.intake import submit
 from app.services.outbox.models import (
-    DeliveryPolicy,
-    DeliveryTiming,
     Initiative,
     NoticeOutcome,
     NoticeReport,

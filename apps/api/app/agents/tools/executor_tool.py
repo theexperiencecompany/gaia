@@ -8,7 +8,7 @@ run_executor_background.
 
 import asyncio
 import time
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
@@ -45,7 +45,7 @@ from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, agent_configurable
-from app.models.ownership_models import ExecutorIntent
+from app.models.ownership_models import DeliveryPolicy, DeliveryTiming, ExecutorIntent
 from app.services.browser.chat_task import stop_report
 from app.services.browser.job_stop import requester_chat, stop_chat_jobs
 from app.services.hil.ledger_decide import cancel_ledger_approvals
@@ -132,6 +132,20 @@ async def call_executor(
         "bulk change, send or post this task performs. False makes the executor "
         "prepare it and ask.",
     ] = False,
+    delivery_channel: Annotated[
+        ConversationSource | None,
+        "The chat app (telegram, whatsapp, discord or slack) the user asked to be told on "
+        "when it is done, in their own words. Omit unless they named one.",
+    ] = None,
+    delivery_timing: Annotated[
+        Literal[DeliveryTiming.THE_MOMENT, DeliveryTiming.WHEN_DONE],
+        "the_moment when they asked to hear the instant it happens, otherwise when_done.",
+    ] = DeliveryTiming.WHEN_DONE,
+    may_wake: Annotated[
+        bool,
+        "True only when the user asked to be pinged the moment it is done even if they are "
+        "away or it is late.",
+    ] = False,
     active_todo_id: Annotated[
         str | None,
         "Optional tracked-todo ID to BIND this executor run to. When set, "
@@ -163,20 +177,6 @@ async def call_executor(
     if not conversation_id:
         log.error(f"{LogTag.TOOL} call_executor: missing thread_id in configurable")
         return "Internal error: conversation context unavailable. Please try again."
-    if base_configurable.get("is_result_narration"):
-        # A result-narration turn must not start work: the run it narrates still
-        # holds the busy lock, so a dispatch here queues a duplicate of the task
-        # that just finished (one user message, two browser runs).
-        log.info(
-            f"{LogTag.TOOL} call_executor refused during result narration",
-            conversation_id=conversation_id,
-        )
-        return (
-            "Not dispatched. This turn only reports a result that already came back; it "
-            "cannot start new work. Report what happened, including the failure and its "
-            "reason if it failed, and ask the user whether they want it retried."
-        )
-
     task_id = str(uuid4())
     # Read off the configurable, never a tool argument: asking the comms model to
     # re-transcribe the request corrupted 3 of 4 recipient addresses on a pasted
@@ -202,18 +202,23 @@ async def call_executor(
 
     # Every dispatch spends a pending ask: only the very next turn can be its answer.
     answers_gaias_question = await spend_confirmation(conversation_id)
+    intent = ExecutorIntent(
+        desired_outcome=desired_outcome,
+        time_horizon=time_horizon,
+        defaults_assumed=tuple(defaults_assumed or ()),
+        irreversible_approved=irreversible_approved and answers_gaias_question,
+        delivery=DeliveryPolicy(
+            timing=delivery_timing, may_wake=may_wake, channel=delivery_channel
+        ),
+    )
+    configurable["delivery_policy"] = intent.delivery.model_dump(mode="json")
     composed_task = compose_executor_brief(
         task,
         acceptance_criteria,
         verbatim_request=base_configurable.get("user_request"),
         last_run=last_run,
         playbook_check=playbook_check,
-        intent=ExecutorIntent(
-            desired_outcome=desired_outcome,
-            time_horizon=time_horizon,
-            defaults_assumed=tuple(defaults_assumed or ()),
-            irreversible_approved=irreversible_approved and answers_gaias_question,
-        ),
+        intent=intent,
     )
 
     try:

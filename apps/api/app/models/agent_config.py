@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict
 from typing_extensions import TypedDict
 
 from app.constants.llm import LaneConfig, OpenRouterModelKwargs, OpenRouterReasoning
+from app.models.ownership_models import DeliveryPolicy
 from app.models.presence_models import PresenceSnapshot
 from shared.py.analytics.catalog.attribution import Actor
 from shared.py.analytics.context import AnalyticsContext, current_analytics_context
@@ -143,9 +144,6 @@ class AgentConfigurable(TypedDict, total=False):
     # --- run scope ----------------------------------------------------------
     selected_tool: str | None
     tool_category: str | None
-    #: True only for comms_narrator re-voicing a finished executor result. It never
-    #: dispatches: call_executor refuses, since the narrated run still holds the busy lock.
-    is_result_narration: bool
     subagent_id: str | None
     #: Shared VFS session, held constant across the executor and the
     #: subagents it spawns so all resolve paths against one workspace.
@@ -170,6 +168,9 @@ class AgentConfigurable(TypedDict, total=False):
     workflow_id: str
     workflow_title: str
     workflow_notify_on_completion: bool
+    #: How the user wants the result of a run told, as a DeliveryPolicy dump; survives queueing
+    #: and a HIL resume. Absent means the defaults.
+    delivery_policy: dict[str, object]
     #: A playbook replay stopped partway and the agent is finishing it: the
     #: replay's own record of what already ran, carried verbatim to the
     #: executor since comms can't be trusted to transcribe it into its task.
@@ -261,6 +262,7 @@ class AgentConfigurableView(BaseModel):
     workflow_id: str | None = None
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
+    delivery_policy: DeliveryPolicy = DeliveryPolicy()
     langfuse_trace_id: str | None = None
     langfuse_tags: list[str] | None = None
 

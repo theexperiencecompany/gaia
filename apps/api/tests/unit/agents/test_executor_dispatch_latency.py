@@ -23,7 +23,11 @@ from app.agents.core.background import (
     executor_runner as er,
     session as sess,
 )
-from app.agents.core.background.executor_runner import _ExecutorResult, run_executor_background
+from app.agents.core.background.executor_runner import (
+    RunEnd,
+    _ExecutorResult,
+    run_executor_background,
+)
 from app.agents.core.background.session import ExecutorRun, RunKind, get_session, teardown_session
 from app.agents.tools import executor_tool as et
 from app.constants.executor import EXECUTOR_PAUSED
@@ -563,7 +567,7 @@ class TestBackgroundRunExactWiring:
             await run_executor_background(run=run, task="the task", configurable={})
             finalize = cast(AsyncMock, er._finalize_executor_run)
 
-        assert finalize.await_args.kwargs == {"stopped": stopped}
+        assert finalize.await_args.kwargs == {"end": RunEnd(stopped=stopped)}
 
     async def test_execute_executor_receives_the_run_arguments(self) -> None:
         run = _run("exec-args")

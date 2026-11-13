@@ -22,16 +22,15 @@ import pytest
 from app.agents.core import thread_lock
 from app.agents.core.agent import call_agent
 from app.agents.core.background.comms_narrator import (
-    narrate_executor_result,
     record_exchange_in_thread,
     record_executor_cancellation,
     record_executor_report,
-    record_platform_delivery,
 )
 from app.agents.core.thread_lock import CommsThreadLockTimeout, comms_thread_lock
 from app.constants.log_tags import LogTag
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
+from app.services.outbox.compose import record_in_thread
 from tests.helpers import captured_wide_event
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("in_process_redis")]
@@ -39,7 +38,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("in_process_redis")]
 CONVERSATION_ID = "conv-lock-1"
 NARRATOR = "app.agents.core.background.comms_narrator"
 REPLY = "the report is ready"
-DELIVERED = "[Delivered to the user]: the invoice is paid"
+DELIVERED = "the invoice is paid"
 USER = AuthenticatedUser(user_id="6812f0b3c9a14e2b7d5a91cc", email="u@gaia.local")
 THREAD: RunnableConfig = {"configurable": {"thread_id": CONVERSATION_ID}}
 SETTLE_SECONDS = 0.05
@@ -85,114 +84,104 @@ def comms_thread() -> Iterator[_CommsThread]:
         yield thread
 
 
-async def _narration_run_started(comms_thread: _CommsThread) -> asyncio.Task[str]:
-    """Start a narration run (a real comms graph run) and wait until its model call is in flight."""
-    run = asyncio.create_task(
-        narrate_executor_result("done", "result", CONVERSATION_ID, USER, preamble="")
+def _interactive_turn_request() -> tuple[dict[str, Any], dict[str, Any], MessageRequestWithHistory]:
+    config: dict[str, Any] = {
+        "agent_name": "comms_agent",
+        "configurable": {"thread_id": CONVERSATION_ID, "user_id": USER.user_id},
+    }
+    initial_state = {"messages": [HumanMessage(content="hello")]}
+    request = MessageRequestWithHistory.model_validate(
+        {"message": "hello", "messages": [{"role": "user", "content": "hello"}]}
     )
+    return config, initial_state, request
+
+
+async def _interactive_turn_started(comms_thread: _CommsThread) -> asyncio.Task[list[str]]:
+    """Start an interactive turn (a real comms graph run) and wait until its model call is in flight."""
+    config, initial_state, request = _interactive_turn_request()
+
+    async def _turn() -> list[str]:
+        with patch(
+            "app.agents.core.agent._core_agent_logic",
+            AsyncMock(return_value=(comms_thread.graph, initial_state, config)),
+        ):
+            return [frame async for frame in call_agent(request, CONVERSATION_ID, USER)]
+
+    turn = asyncio.create_task(_turn())
     await asyncio.wait_for(comms_thread.model_call_started.wait(), timeout=5)
-    return run
+    return turn
 
 
 async def _finish_with_write_in_flight(
-    comms_thread: _CommsThread, run: asyncio.Task[str], write: asyncio.Task[None]
+    comms_thread: _CommsThread, turn: asyncio.Task[list[str]], write: asyncio.Task[None]
 ) -> None:
-    """Let the write try to land while the run is mid-flight, then let the run finish."""
+    """Let the write try to land while the turn is mid-flight, then let the turn finish."""
     await asyncio.sleep(SETTLE_SECONDS)
     comms_thread.finish_model_call.set()
-    await asyncio.gather(run, write)
+    await asyncio.gather(turn, write)
 
 
 class TestNoWriteIsLostToAConcurrentRun:
-    async def test_a_platform_delivery_record_during_a_narration_run_survives(
+    async def test_a_message_the_outbox_records_during_an_interactive_turn_survives(
         self, comms_thread: _CommsThread
     ) -> None:
-        run = await _narration_run_started(comms_thread)
-        write = asyncio.create_task(record_platform_delivery(CONVERSATION_ID, DELIVERED))
+        turn = await _interactive_turn_started(comms_thread)
+        write = asyncio.create_task(record_in_thread(CONVERSATION_ID, DELIVERED))
 
-        await _finish_with_write_in_flight(comms_thread, run, write)
+        await _finish_with_write_in_flight(comms_thread, turn, write)
 
         assert DELIVERED in await comms_thread.contents()
         assert REPLY in await comms_thread.contents()
 
-    async def test_an_executor_report_record_during_a_narration_run_survives(
+    async def test_an_executor_report_record_during_an_interactive_turn_survives(
         self, comms_thread: _CommsThread
     ) -> None:
-        run = await _narration_run_started(comms_thread)
+        turn = await _interactive_turn_started(comms_thread)
         write = asyncio.create_task(
             record_executor_report(CONVERSATION_ID, "found 3 files", "result")
         )
 
-        await _finish_with_write_in_flight(comms_thread, run, write)
+        await _finish_with_write_in_flight(comms_thread, turn, write)
 
         assert any("found 3 files" in content for content in await comms_thread.contents())
 
-    async def test_a_cancellation_record_during_a_narration_run_survives(
+    async def test_a_cancellation_record_during_an_interactive_turn_survives(
         self, comms_thread: _CommsThread
     ) -> None:
-        run = await _narration_run_started(comms_thread)
+        turn = await _interactive_turn_started(comms_thread)
         write = asyncio.create_task(
             record_executor_cancellation(CONVERSATION_ID, "task-9", "send the report")
         )
 
-        await _finish_with_write_in_flight(comms_thread, run, write)
+        await _finish_with_write_in_flight(comms_thread, turn, write)
 
         assert any("send the report" in content for content in await comms_thread.contents())
 
-    async def test_an_exchange_record_during_a_narration_run_survives(
+    async def test_an_exchange_record_during_an_interactive_turn_survives(
         self, comms_thread: _CommsThread
     ) -> None:
-        run = await _narration_run_started(comms_thread)
+        turn = await _interactive_turn_started(comms_thread)
         write = asyncio.create_task(
             record_exchange_in_thread(CONVERSATION_ID, "cancel it", "Cancelled.")
         )
 
-        await _finish_with_write_in_flight(comms_thread, run, write)
+        await _finish_with_write_in_flight(comms_thread, turn, write)
 
         contents = await comms_thread.contents()
         assert "cancel it" in contents
         assert "Cancelled." in contents
 
-    async def test_a_write_during_an_interactive_turn_survives(
-        self, comms_thread: _CommsThread
-    ) -> None:
-        config: dict[str, Any] = {
-            "agent_name": "comms_agent",
-            "configurable": {"thread_id": CONVERSATION_ID, "user_id": USER.user_id},
-        }
-        initial_state = {"messages": [HumanMessage(content="hello")]}
-        request = MessageRequestWithHistory.model_validate(
-            {"message": "hello", "messages": [{"role": "user", "content": "hello"}]}
-        )
-
-        async def _turn() -> list[str]:
-            with patch(
-                "app.agents.core.agent._core_agent_logic",
-                AsyncMock(return_value=(comms_thread.graph, initial_state, config)),
-            ):
-                return [frame async for frame in call_agent(request, CONVERSATION_ID, USER)]
-
-        turn = asyncio.create_task(_turn())
-        await asyncio.wait_for(comms_thread.model_call_started.wait(), timeout=5)
-        write = asyncio.create_task(record_platform_delivery(CONVERSATION_ID, DELIVERED))
-        await asyncio.sleep(SETTLE_SECONDS)
-        comms_thread.finish_model_call.set()
-        await asyncio.gather(turn, write)
-
-        assert DELIVERED in await comms_thread.contents()
-        assert REPLY in await comms_thread.contents()
-
 
 class TestTheLockIsPerConversation:
-    async def test_a_write_to_another_conversation_does_not_wait_for_the_run(
+    async def test_a_write_to_another_conversation_does_not_wait_for_the_turn(
         self, comms_thread: _CommsThread
     ) -> None:
-        run = await _narration_run_started(comms_thread)
+        turn = await _interactive_turn_started(comms_thread)
 
-        await asyncio.wait_for(record_platform_delivery("conv-other", DELIVERED), timeout=1)
+        await asyncio.wait_for(record_in_thread("conv-other", DELIVERED), timeout=1)
 
         comms_thread.finish_model_call.set()
-        await run
+        await turn
 
 
 class TestAWriterThatCannotGetTheLockFailsLoud:
@@ -212,7 +201,7 @@ class TestAWriterThatCannotGetTheLockFailsLoud:
     ) -> None:
         async with captured_wide_event() as event:
             with pytest.raises(CommsThreadLockTimeout):
-                await record_platform_delivery(CONVERSATION_ID, DELIVERED)
+                await record_in_thread(CONVERSATION_ID, DELIVERED)
 
         (error,) = event["errors"]
         assert error["msg"] == f"{LogTag.LOCK} Comms thread lock not acquired"

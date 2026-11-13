@@ -42,6 +42,7 @@ from app.constants.cache import (
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
     EXECUTOR_INBOX_PREFIX,
 )
+from app.constants.chat import ConversationSource
 from app.constants.hil import EXECUTOR_INBOX_TTL
 from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import StreamManager
@@ -49,7 +50,7 @@ from app.core.websocket_manager import websocket_manager
 from app.db.redis import AsyncRedisCommands, redis_cache
 from app.db.repositories.playbooks import playbook_repository
 from app.models.agent_models import InboxEntry, RunningSubagent
-from app.models.ownership_models import ExecutorIntent
+from app.models.ownership_models import DeliveryPolicy, DeliveryTiming, ExecutorIntent
 from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, ToolStep
 from app.schemas.browser import BrowserResultSnapshot
 from app.schemas.browser_job import BrowserJobFinished, BrowserJobState, BrowserJobStatus
@@ -322,6 +323,49 @@ class TestCallExecutorDispatch:
         assert run.kind.value == "live"
         session = get_session("stream-1")
         assert session is not None and session.executor_spawned is True
+
+    async def test_how_the_user_asked_to_be_told_reaches_the_run(
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        policy = DeliveryPolicy(
+            timing=DeliveryTiming.THE_MOMENT, may_wake=True, channel=ConversationSource.SLACK
+        )
+
+        await call_executor_with(
+            config=config_for(),
+            task="check my calendar",
+            delivery_channel=policy.channel,
+            delivery_timing=policy.timing,
+            may_wake=policy.may_wake,
+        )
+        await drain_background_tasks()
+
+        [dispatched] = spawned_runs
+        assert dispatched["run"].delivery_policy == policy
+        # In the configurable too: that is what a queued or resumed run is rebuilt from.
+        assert dispatched["configurable"]["delivery_policy"] == policy.model_dump(mode="json")
+
+    async def test_a_dispatch_that_says_nothing_about_delivery_gets_the_defaults(
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        await call_executor_with(config=config_for(), task="check my calendar")
+        await drain_background_tasks()
+
+        assert spawned_runs[0]["run"].delivery_policy == DeliveryPolicy()
+
+    async def test_a_channel_that_cannot_be_messaged_starts_nothing(
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        with pytest.raises(ValueError, match="not a chat app"):
+            await call_executor_with(
+                config=config_for(),
+                task="check my calendar",
+                delivery_channel=ConversationSource.WEB,
+            )
+
+        await drain_background_tasks()
+        assert spawned_runs == []
+        assert await fake_redis.get(LOCK_KEY) is None
 
     async def test_a_dispatch_with_no_stream_carries_an_empty_stream_id(
         self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
@@ -1464,32 +1508,6 @@ class TestDispatchAcknowledgement:
             f"Handed to the executor (task_id: {task_id}). If a step needs the user's approval, "
             "it has not run yet and their decision releases it or skips it."
         )
-
-
-class TestAResultNarrationTurnStartsNoWork:
-    """Comms re-voicing a finished result must not dispatch again.
-
-    The run being narrated still holds the busy lock, so a dispatch here queued a duplicate
-    of the task that just finished: one user message, two browser runs. The refusal is what
-    comms reads instead of an acknowledgement, so its wording is the behaviour: it must say
-    nothing started, and steer comms to report the outcome and offer a retry itself.
-    """
-
-    async def test_the_call_is_refused_and_nothing_is_spawned_or_locked(
-        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
-    ) -> None:
-        response = await call_executor_with(
-            config=config_for(is_result_narration=True), task="try the booking again"
-        )
-
-        assert response == (
-            "Not dispatched. This turn only reports a result that already came back; it "
-            "cannot start new work. Report what happened, including the failure and its "
-            "reason if it failed, and ask the user whether they want it retried."
-        )
-        await drain_background_tasks()
-        assert spawned_runs == []
-        assert await fake_redis.get(f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION_ID}") is None
 
 
 class TestSparedRunHearsNoInterruption:

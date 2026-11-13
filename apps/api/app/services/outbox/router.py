@@ -4,7 +4,8 @@ Record is not alert. A result is recorded where it belongs (its owner conversati
 whatever happens to the alert, and the alert goes to exactly one place: where the user
 is active now (a chat app or the GAIA app), else, for an answer, back to the direct
 message that asked, else the first chat app in their priority order that is linked and
-left enabled in notification settings, else the GAIA app.
+left enabled in notification settings, else the GAIA app. A chat app the user asked to be
+told on outranks all of that, when it is linked and enabled.
 """
 
 import asyncio
@@ -78,6 +79,8 @@ class Route:
     #: Every conversation the message is recorded in, the alert's first.
     recorded_in: tuple[str, ...]
     target: ProactiveTarget
+    #: The chat app the user asked to be told on that could not be used, so the message says so.
+    requested_unavailable: ConversationSource | None = None
 
 
 def is_active_place(target: ProactiveTarget) -> bool:
@@ -238,10 +241,10 @@ async def route(user: AuthenticatedUser, items: list[OutboxItemDocument]) -> Rou
     Raises NoDestinationError when the alert stays in the app and the user has no conversation there.
     """
     owner = await _find_owner(user.user_id, items[0].report.subject.owner_conversation_id)
-    target = await _requested_chat_channel(
-        user.user_id, items[0].report.delivery_policy.channel
-    ) or await resolve_proactive_target(user.user_id)
-    if owner is not None and not is_active_place(target):
+    requested = items[0].report.delivery_policy.channel
+    requested_target = await _requested_chat_channel(user.user_id, requested)
+    target: ProactiveTarget = requested_target or await resolve_proactive_target(user.user_id)
+    if requested_target is None and owner is not None and not is_active_place(target):
         if any(is_answer(item.report) for item in items):
             target = await _owner_dm_channel(owner) or target
 
@@ -264,4 +267,11 @@ async def route(user: AuthenticatedUser, items: list[OutboxItemDocument]) -> Rou
     recorded_in = [alert_id]
     if owner is not None and owner.in_app and owner.conversation_id != alert_id:
         recorded_in.append(owner.conversation_id)
-    return Route(alert_conversation_id=alert_id, recorded_in=tuple(recorded_in), target=target)
+    return Route(
+        alert_conversation_id=alert_id,
+        recorded_in=tuple(recorded_in),
+        target=target,
+        requested_unavailable=requested
+        if requested is not None and requested_target is None
+        else None,
+    )

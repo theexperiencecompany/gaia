@@ -21,10 +21,10 @@ import pytest
 from app.agents.core.background.comms_narrator import (
     record_exchange_in_thread,
     record_executor_cancellation,
-    record_platform_delivery,
 )
 from app.agents.core.interruption import record_interruption
 from app.override.langgraph_bigtool.utils import State
+from app.services.outbox.compose import record_in_thread
 
 THREAD = "thread-ids"
 CONFIG: RunnableConfig = {"configurable": {"thread_id": THREAD}}
@@ -53,6 +53,7 @@ async def _ids(graph: CompiledStateGraph) -> list[str | None]:
 
 
 @pytest.mark.integration
+@pytest.mark.usefixtures("in_process_redis")
 class TestOutOfBandThreadWritesCarryIds:
     async def test_interruption_record(self, thread_graph: CompiledStateGraph) -> None:
         await _seed(thread_graph, HumanMessage("do a thing"))
@@ -73,7 +74,7 @@ class TestOutOfBandThreadWritesCarryIds:
         builder.add_edge("tools", END)
         graph = builder.compile(checkpointer=InMemorySaver(), interrupt_after=["model"])
 
-        await graph.ainvoke({"messages": [HumanMessage("do a thing")]}, CONFIG)
+        await graph.ainvoke(State(messages=[HumanMessage("do a thing")]), CONFIG)
         assert (await graph.aget_state(CONFIG)).next == ("tools",)
 
         await record_interruption(graph, CONFIG)
@@ -90,10 +91,10 @@ class TestOutOfBandThreadWritesCarryIds:
         ids = await _ids(thread_graph)
         assert len(ids) == 2 and None not in ids
 
-    async def test_platform_delivery_and_exchange(self, thread_graph: CompiledStateGraph) -> None:
+    async def test_outbox_message_and_exchange(self, thread_graph: CompiledStateGraph) -> None:
         await _seed(thread_graph, HumanMessage("start"), AIMessage("ok"))
 
-        await record_platform_delivery(THREAD, "your report is ready")
+        await record_in_thread(THREAD, "your report is ready")
         await record_exchange_in_thread(THREAD, "approve", "approved")
 
         ids = await _ids(thread_graph)

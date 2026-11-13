@@ -7,9 +7,9 @@ two are pinned together here.
 from enum import StrEnum
 from typing import get_args
 
+from app.models.ownership_models import DeliveryTiming
 from app.services.outbox.models import (
     ComposeMode,
-    DeliveryTiming,
     Disposition,
     DropReason,
     Initiative,
@@ -67,6 +67,7 @@ def test_the_closed_vocabularies_are_exactly_these() -> None:
         "nothing_new",
         "cancelled",
         "compose_skipped",
+        "user_muted",
         "not_watching",
         "expired",
     }

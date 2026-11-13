@@ -38,12 +38,14 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import PrivateAttr
 import pytest
 
+from app.agents.core.background import executor_runner as er, todo_run_delivery as trd
 from app.agents.core.background.todo_run import TodoRunFailedError
 from app.agents.core.graph_builder import build_graph as build_graph_module
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.constants.agents import OutcomeState
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.memory import ReconcileOutcome
@@ -80,6 +82,7 @@ from app.services.conversation_service import (
     create_conversation_service,
     get_or_create_todo_conversation,
 )
+from app.services.outbox.models import Initiative, ProducerKind, RunReport
 from app.services.tracked_todo_service import TrackedTodoService
 from app.utils.occurrence import occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
@@ -130,6 +133,8 @@ class Stack:
     comms_model: StreamingScriptedModel
     #: Every WebSocket event a client of the user would have received, in order.
     pushed: list[dict[str, Any]] = field(default_factory=list)
+    #: Every report the runs filed with the outbox, in order.
+    submitted: list[RunReport] = field(default_factory=list)
 
     def pushed_of(self, kind: str) -> list[dict[str, Any]]:
         return [event for event in self.pushed if event.get("type") == kind]
@@ -251,6 +256,9 @@ def open_stack(
         async def record_push(_user_id: str, event: dict[str, Any]) -> None:
             built.pushed.append(event)
 
+        async def record_submit(report: RunReport) -> None:
+            built.submitted.append(report)
+
         memory = MagicMock()
         memory.retain_single = AsyncMock(
             return_value=RetainedMemory(
@@ -281,6 +289,8 @@ def open_stack(
                 patch("app.agents.tools.memory_tools.memory_engine", memory),
                 patch("app.agents.core.nodes.memory_node.memory_engine", memory),
                 patch.object(websocket_manager, "broadcast_to_user", new=record_push),
+                patch.object(trd, "submit", new=record_submit),
+                patch.object(er, "submit", new=record_submit),
             ):
                 stack.enter_context(patcher)
             graphs = {
@@ -383,7 +393,7 @@ class TestARunLandsInTheTodosOwnChat:
     ) -> None:
         todo_id = await _new_tracked_todo(owner)
 
-        async with open_stack(executor=executor_run(REPORT), comms=[NARRATED]) as stack:
+        async with open_stack(executor=executor_run(REPORT), comms=[]) as stack:
             await _run(todo_id, owner)
 
         chat = await _chat_of(mongo_db, todo_id)
@@ -428,14 +438,19 @@ class TestARunLandsInTheTodosOwnChat:
         assert landed["message"]["task_id"] == started["task_id"]
         assert landed["message"]["response"] == REPORT
 
-        # What reaches the user is comms' write-up, in the app since no chat app is linked.
-        note = await mongo_db["notifications"].find_one({"user_id": owner.user_id})
-        assert note is not None
-        assert NARRATED in str(note)
+        # What reaches the user is the outbox's to word: the run filed its report there. The
+        # scripted executor files no finish_task, so its outcome is not known to have worked.
+        (filed,) = stack.submitted
+        assert (filed.producer, filed.report.outcome) == (
+            ProducerKind.TODO,
+            OutcomeState.UNVERIFIED,
+        )
+        assert filed.result == REPORT
+        assert filed.guidance is not None and filed.guidance.title == TITLE
         todo = await todo_repository.get_by_id(todo_id)
         assert todo is not None and todo.activity_content is not None
         assert f"(conversation {conversation_id[:8]})" in todo.activity_content
-        assert "result sent as an in-app notification" in todo.activity_content
+        assert "reported to the outbox: unverified" in todo.activity_content
 
     async def test_every_run_reuses_the_chat_on_a_fresh_execution_thread(
         self, open_stack: OpenStack, owner: AuthenticatedUser, mongo_db: AsyncIOMotorDatabase
@@ -444,7 +459,7 @@ class TestARunLandsInTheTodosOwnChat:
 
         async with open_stack(
             executor=[*executor_run(REPORT), *executor_run(SECOND_REPORT)],
-            comms=[NARRATED, NARRATED],
+            comms=[],
         ) as stack:
             await _run(todo_id, owner)
             conversation_id = (await _chat_of(mongo_db, todo_id))["conversation_id"]
@@ -499,7 +514,7 @@ class TestTheChatIsHiddenButOpensFromItsTodo:
         client: AsyncClient,
     ) -> None:
         todo_id = await _new_tracked_todo(owner)
-        async with open_stack(executor=executor_run(REPORT), comms=[NARRATED]):
+        async with open_stack(executor=executor_run(REPORT), comms=[]):
             await _run(todo_id, owner)
         conversation_id = (await _chat_of(mongo_db, todo_id))["conversation_id"]
 
@@ -533,7 +548,7 @@ class TestTheChatIsHiddenButOpensFromItsTodo:
 
         first = (await client.post(f"/api/v1/todos/{todo_id}/conversation")).json()
         again = (await client.post(f"/api/v1/todos/{todo_id}/conversation")).json()
-        async with open_stack(executor=executor_run(REPORT), comms=[NARRATED]):
+        async with open_stack(executor=executor_run(REPORT), comms=[]):
             await _run(todo_id, owner)
 
         assert first == again
@@ -594,9 +609,7 @@ class TestWhatTheUserSeesOutlivesTheExecutionState:
         client: AsyncClient,
     ) -> None:
         todo_id = await _new_tracked_todo(owner)
-        async with open_stack(
-            executor=executor_run(REPORT), comms=[NARRATED, FOLLOW_UP_REPLY]
-        ) as stack:
+        async with open_stack(executor=executor_run(REPORT), comms=[FOLLOW_UP_REPLY]) as stack:
             await _run(todo_id, owner)
             conversation_id = (await _chat_of(mongo_db, todo_id))["conversation_id"]
 
@@ -693,7 +706,7 @@ class TestAThreadTodoThatResolvesItself:
             RESOLVED_REPORT,
         ]
 
-        async with open_stack(executor=executor, comms=[RESOLVED_REPORT]) as stack:
+        async with open_stack(executor=executor, comms=[]) as stack:
             await _execute_on_executor(doc, user_tz=Timezone.utc(), user_data=owner, origin=reply)
 
         # The run closed the todo and, with it, its watch: what delivery reads afterwards.
@@ -702,10 +715,10 @@ class TestAThreadTodoThatResolvesItself:
         assert closed.trigger_subscriptions == []
         assert closed.activity_content is not None
         assert "stopped watching gmail_new_message (completed)" in closed.activity_content
-        # Comms decided under the watcher's rule, which lets it keep quiet.
-        delivery = " ".join(str(m.content) for m in stack.comms_model.chat_messages_log[-1])
-        assert "Nobody asked for it just now" in delivery
-        assert "This todo runs once" not in delivery
+        # The report names the todo as a watcher's, so compose may keep it quiet.
+        (filed,) = stack.submitted
+        assert filed.initiative is Initiative.SELF_INITIATED
+        assert filed.guidance is not None and filed.guidance.runs_once is False
 
 
 @pytest.mark.usefixtures("mongo_db")
@@ -724,7 +737,7 @@ class TestAFollowUpKnowsTheRunsAboveIt:
                 owner.user_id, TITLE, notify_on_run=notify_on_run, schedule=_daily_watch()
             )
         ).todo.id
-        comms = [NARRATED, FOLLOW_UP_REPLY] if notify_on_run else [FOLLOW_UP_REPLY]
+        comms = [FOLLOW_UP_REPLY]
 
         async with open_stack(executor=executor_run(REPORT), comms=comms) as stack:
             await _run(todo_id, owner)
@@ -761,7 +774,7 @@ class TestDeletingTheTodoDeletesItsChat:
         client: AsyncClient,
     ) -> None:
         todo_id = await _new_tracked_todo(owner)
-        async with open_stack(executor=executor_run(REPORT), comms=[NARRATED]) as stack:
+        async with open_stack(executor=executor_run(REPORT), comms=[]) as stack:
             await _run(todo_id, owner)
             conversation_id = (await _chat_of(mongo_db, todo_id))["conversation_id"]
             assert await stack.threads_of(conversation_id) != {}
@@ -947,7 +960,7 @@ class TestAnApprovalTheRunWaitsOnStaysInTheTodosChat:
         todo_id = await _new_tracked_todo(owner)
         executor = gated_run([redeem(), DRAWN, RESUMED, NOTHING_PENDING])
 
-        async with open_stack(executor=executor, comms=[NARRATED] * 3) as stack:
+        async with open_stack(executor=executor, comms=[]) as stack:
             await _run(todo_id, owner)
             conversation_id = (await _chat_of(mongo_db, todo_id))["conversation_id"]
             row = await _only_approval(mongo_db)
@@ -994,7 +1007,9 @@ class TestAnApprovalTheRunWaitsOnStaysInTheTodosChat:
         ]
         assert [m["response"] for m in _reports(chat["messages"])] == [
             WAITING,
-            NARRATED,
+            # The ticket run's cards, on a message of their own: the words that tell its
+            # outcome come through the outbox.
+            "",
             # Two model messages, so two bubbles (HeldReplies, app/agents/core/held_replies.py).
             f"{RESUMED}{NEW_MESSAGE_BREAKER}{NOTHING_PENDING}",
         ]
@@ -1019,7 +1034,7 @@ class TestAnApprovalTheRunWaitsOnStaysInTheTodosChat:
         await _ask_before(mongo_db, "create_flowchart")
         todo_id = await _new_tracked_todo(owner)
 
-        async with open_stack(executor=gated_run([SKIPPED]), comms=[NARRATED] * 2):
+        async with open_stack(executor=gated_run([SKIPPED]), comms=[]):
             await _run(todo_id, owner)
             row = await _only_approval(mongo_db)
             decided = await client.post(
@@ -1032,9 +1047,9 @@ class TestAnApprovalTheRunWaitsOnStaysInTheTodosChat:
         ledger = await mongo_db["approval_ledger"].find_one({"approval_id": row["approval_id"]})
         assert ledger is not None and ledger["state"] == "denied"
         assert await worker_pool.queued_jobs() == []
-        # The run the verdict started told the chat what was skipped.
+        # The run the verdict started left its cards in the chat; what it skipped is the outbox's to tell.
         chat = await _chat_of(mongo_db, todo_id)
-        assert [m["response"] for m in _reports(chat["messages"])] == [WAITING, NARRATED]
+        assert [m["response"] for m in _reports(chat["messages"])] == [WAITING, ""]
         assert (
             f"[{TodoActivityEvent.APPROVAL_DENIED.value}] {row['approval_id']} ('not this week'): "
             f"skipped {row['summary']}"
@@ -1060,7 +1075,7 @@ class TestARunThatFindsItsChatBusyWaits:
         ]
         # Twice: the recheck does no tool work, so the completion nudge asks once more.
         executor = prompt_reading([RECHECKED, RECHECKED])
-        comms = [call("call_executor", {"task": RECHECK}, call_id="tc_exec"), "On it.", NARRATED]
+        comms = [call("call_executor", {"task": RECHECK}, call_id="tc_exec"), "On it."]
 
         async with open_stack(executor=executor, comms=comms):
             follow_up = executor.hold_calls_seeing(RECHECK)
@@ -1088,8 +1103,7 @@ class TestARunThatFindsItsChatBusyWaits:
         assert f"[{TodoActivityEvent.RETRY_SCHEDULED.value}]" not in activity
         # The follow-up the user was having still answered them, in its chat.
         messages = (await _chat_of(mongo_db, todo_id))["messages"]
-        assert [m["type"] for m in messages] == ["user", "bot", "bot"]
-        assert messages[-1]["response"] == NARRATED
+        assert [m["type"] for m in messages] == ["user", "bot"]
 
 
 @pytest.mark.usefixtures("mongo_db")
@@ -1115,7 +1129,7 @@ class TestStoppingARunFromItsChat:
         )
         executor = prompt_reading(executor_run(REPORT))
 
-        async with open_stack(executor=executor, comms=[NARRATED]) as stack:
+        async with open_stack(executor=executor, comms=[]) as stack:
             # The call after the card: its prompt is the first to hold the flowchart's output.
             after_the_card = executor.hold_calls_seeing(f"direction: {FLOWCHART['direction']}")
             with _paid():
@@ -1160,7 +1174,7 @@ class TestTheChatKeepsOnlyItsNewestMessages:
             {"conversation_id": conversation_id}, {"$set": {"messages": seeded}}
         )
 
-        async with open_stack(executor=executor_run(REPORT), comms=[NARRATED]):
+        async with open_stack(executor=executor_run(REPORT), comms=[]):
             await _run(todo_id, owner)
 
         messages = (await _chat_of(mongo_db, todo_id))["messages"]
@@ -1200,7 +1214,7 @@ class TestTheChatFollowsItsTodo:
         client: AsyncClient,
     ) -> None:
         todo_id = await _new_tracked_todo(owner)
-        async with open_stack(executor=executor_run(REPORT), comms=[NARRATED]):
+        async with open_stack(executor=executor_run(REPORT), comms=[]):
             await _run(todo_id, owner)
         conversation_id = (await _chat_of(mongo_db, todo_id))["conversation_id"]
 
@@ -1236,29 +1250,29 @@ class TestTheChatFollowsItsTodo:
             owner.user_id, TITLE, notify_on_run=False, schedule=_daily_watch()
         )
 
-        async with open_stack(executor=executor_run(REPORT), comms=[NARRATED]):
+        async with open_stack(executor=executor_run(REPORT), comms=[]):
             await _run(created.todo.id, owner)
 
         assert [
             m["response"] for m in _reports((await _chat_of(mongo_db, created.todo.id))["messages"])
         ] == [REPORT]
-        assert await mongo_db["notifications"].count_documents({"user_id": owner.user_id}) == 0
 
-    async def test_a_run_comms_keeps_quiet_about_still_keeps_its_report_in_the_chat(
+    async def test_a_run_the_user_is_not_told_of_files_its_mute_with_its_report(
         self, open_stack: OpenStack, owner: AuthenticatedUser, mongo_db: AsyncIOMotorDatabase
     ) -> None:
-        todo_id = await _new_tracked_todo(owner)
+        created = await TrackedTodoService.create_tracked_todo(
+            owner.user_id, TITLE, notify_on_run=False, schedule=_daily_watch()
+        )
 
-        async with open_stack(
-            executor=executor_run(REPORT), comms=["<SILENCE>nothing changed</SILENCE>"]
-        ):
-            await _run(todo_id, owner)
+        async with open_stack(executor=executor_run(REPORT), comms=[]) as stack:
+            await _run(created.todo.id, owner)
 
+        (filed,) = stack.submitted
+        assert filed.delivery_policy.notify is False
+        # The chat keeps the report whatever the outbox does with it.
         assert [
-            m["response"] for m in _reports((await _chat_of(mongo_db, todo_id))["messages"])
+            m["response"] for m in _reports((await _chat_of(mongo_db, created.todo.id))["messages"])
         ] == [REPORT]
-        assert await mongo_db["notifications"].count_documents({"user_id": owner.user_id}) == 0
-        assert "kept quiet: nothing changed" in await _activity(todo_id)
 
 
 @pytest.mark.usefixtures("mongo_db")
@@ -1294,7 +1308,7 @@ class TestNoChatOutlivesItsTodo:
         todo_id = await _new_tracked_todo(owner)
         executor = prompt_reading(executor_run(REPORT))
 
-        async with open_stack(executor=executor, comms=[NARRATED]):
+        async with open_stack(executor=executor, comms=[]):
             mid_run = executor.hold_calls_seeing("Bound 1 tools")
             running = asyncio.create_task(_run(todo_id, owner))
             await mid_run.reached.wait()

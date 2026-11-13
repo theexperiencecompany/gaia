@@ -70,26 +70,3 @@ PRESENCE_RETENTION_SECONDS = 30 * 24 * 60 * 60
 # In-app route a notification action redirects to. Shared so the memory-backfill
 # and Gmail-personalization notifications can't drift onto different pages.
 MEMORY_SETTINGS_URL = "/settings/memory"
-
-# Workflow-completion copy: first-person and casual. Each entry is (title, body);
-# {title} is the workflow name, one pair picked per run. In-app (web) heads-up
-# with a "View Results" button, so bodies never claim a place like "in your chat".
-WORKFLOW_DONE_COPY: tuple[tuple[str, str], ...] = (
-    ("sorted {title} for you", "it's all ready whenever you are 🙌"),
-    ("{title} is done", "had a proper look, everything's ready for you"),
-    ("just wrapped up {title}", "pulled it all together, take a peek"),
-    ("handled {title} for you", "all done end to end, give it a look"),
-    ("finished {title}", "got everything ready for you to check out"),
-    ("{title}: all set", "took care of it, here's what I found"),
-)
-
-
-def pick_workflow_done_copy(workflow_id: str, title: str, salt: str) -> tuple[str, str]:
-    """Pick one human completion title/body, rotating per run, no RNG.
-
-    salt (a per-run value such as a timestamp) only seeds the rotation so the
-    same workflow doesn't always read identically; it is never shown to the user.
-    """
-    seed = sum(ord(c) for c in f"{workflow_id}{salt}")
-    title_tmpl, body = WORKFLOW_DONE_COPY[seed % len(WORKFLOW_DONE_COPY)]
-    return title_tmpl.format(title=title), body

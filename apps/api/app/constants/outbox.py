@@ -38,3 +38,17 @@ LIVE_WATCH_WINDOW_SECONDS: Final = 5 * 60
 
 #: What the compose model call is named in traces and metering.
 OUTBOX_COMPOSE_LABEL: Final = "outbox_compose"
+
+#: A report's id names the fact: its producer, the thing it is about, and the run that made it.
+ASK_REPORT_PREFIX: Final = "ask:"
+WORKFLOW_REPORT_PREFIX: Final = "wf:"
+TODO_REPORT_PREFIX: Final = "todo:"
+
+#: What a subject is called to the user when the producer has no name for it: an ask is the request.
+ASK_LABEL_FALLBACK: Final = "Your request"
+WORKFLOW_LABEL_FALLBACK: Final = "Your workflow"
+SUBJECT_LABEL_MAX_CHARS: Final = 120
+
+#: Earlier occurrences of one producer that compose is told what GAIA did with, and how much of each message.
+COMPOSE_EARLIER_RUNS: Final = 3
+COMPOSE_EARLIER_RUN_CHARS: Final = 200

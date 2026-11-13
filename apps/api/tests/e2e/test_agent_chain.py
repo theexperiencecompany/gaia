@@ -32,8 +32,8 @@ from app.agents.core.graph_manager import GraphManager
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.agents.core.subagents import spawn_agent
 from app.agents.prompts.spawn_subagent_prompts import SPAWN_SUBAGENT_SYSTEM_PROMPT
+from app.constants.agents import OutcomeState
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
-from app.constants.executor import EXECUTOR_CRASH_MESSAGE
 from app.constants.memory import ReconcileOutcome
 from app.core.stream_manager import stream_manager
 from app.core.websocket_manager import websocket_manager
@@ -41,13 +41,13 @@ from app.db.redis import redis_cache
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.todos import todo_repository
 from app.memory.ingestion import RetainedMemory
-from app.models.chat_models import ToolDataEntry
 from app.models.integration_models import UserIntegrationCapabilities
 from app.models.memory_models import MemoryEntry
 from app.models.message_models import MessageRequestWithHistory
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
+from app.services.outbox.models import RunReport
 from app.services.outbox.router import InApp
 from tests.e2e._harness.background import drain_background_runs
 from tests.e2e._harness.graph_run import RecordingFakeModel, call, scripted_model
@@ -196,7 +196,7 @@ async def run_chain(
 
     comms/executor/spawn are scripted_model scripts, one entry per model call (spawn: what a
     subagent the executor spawns replays). Doubled, all off the chain: tools store +
-    checkpointer, Mongo writes and reads (recorded; assertion targets), deliver_result, the
+    checkpointer, Mongo writes and reads (recorded; assertion targets), the outbox submit, the
     memory engine and follow-up generator.
     """
     conversation_id = str(uuid4())
@@ -230,17 +230,9 @@ async def run_chain(
         if payload.get("type") == "executor.stream_started":
             run.announced.append(payload)
 
-    async def _deliver(
-        _run: Any,
-        text: str,
-        result_type: str,
-        _note: str,
-        *,
-        tool_data: list[ToolDataEntry] | None,
-        outcome_note: str = "",
-    ) -> tuple[str, str]:
-        run.delivered.append((text, result_type))
-        return text, "executor-message-1"
+    async def _submit(report: RunReport) -> None:
+        failed = report.report.outcome is OutcomeState.FAILED
+        run.delivered.append((report.result, "error" if failed else "final"))
 
     patches = [
         patch.object(
@@ -268,7 +260,7 @@ async def run_chain(
             "extend_subagent_group",
             new=saved.extend_subagent_group,
         ),
-        patch("app.agents.core.background.executor_runner.deliver_result", new=_deliver),
+        patch("app.agents.core.background.executor_runner.submit", new=_submit),
         patch.object(websocket_manager, "broadcast_to_user", new=_broadcast),
         patch(
             "app.services.files.FileService.list_conversation_files",
@@ -487,7 +479,7 @@ class TestCommsToExecutor:
         assert run.transcript.final_text() == "On it."
 
     @pytest.mark.regression
-    async def test_an_executor_that_reports_nothing_is_delivered_as_a_failure(self) -> None:
+    async def test_an_executor_that_reports_nothing_is_reported_as_a_failure(self) -> None:
         """An empty finish once reached comms as the literal "Task completed", read back as done."""
         run = await run_chain(
             "draw me a flowchart",
@@ -495,7 +487,7 @@ class TestCommsToExecutor:
             executor=[*executor_flowchart_script()[:2], call("finish_task", {}, call_id="f1")],
         )
 
-        assert run.delivered == [(EXECUTOR_CRASH_MESSAGE, "error")]
+        assert run.delivered == [("", "error")]
 
     async def test_only_the_comms_tier_speaks_in_the_response_frames(self) -> None:
         """Both tiers share one graph driver; without this gate the executor's prose would interleave into the user's reply."""

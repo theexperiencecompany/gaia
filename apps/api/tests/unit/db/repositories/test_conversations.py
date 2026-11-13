@@ -62,61 +62,6 @@ def _count_filter(collection: MagicMock) -> dict[str, Any]:
     return collection.count_documents.await_args.args[0]
 
 
-class TestSetMessageResponse:
-    """set_message_response — background delivery settling a message's text."""
-
-    async def test_targets_the_named_message_of_the_owning_user(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        await repo.set_message_response(
-            CONVERSATION_ID, user_id=USER_ID, message_id=MESSAGE_ID, response="the answer"
-        )
-
-        filter_, update, kwargs = _update_call(collection)
-        assert filter_ == {
-            "conversation_id": CONVERSATION_ID,
-            "messages.message_id": MESSAGE_ID,
-            "user_id": USER_ID,
-        }
-        assert update == {"$set": {"messages.$.response": "the answer"}}
-        assert kwargs["array_filters"] is None
-        assert collection.get_collection.call_args.args == ("conversations",)
-
-    async def test_does_not_advance_the_sync_clock(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        """Documented invariant: this write leaves updatedAt alone."""
-        await repo.set_message_response(
-            CONVERSATION_ID, user_id=USER_ID, message_id=MESSAGE_ID, response="the answer"
-        )
-
-        _filter, update, _kwargs = _update_call(collection)
-        assert set(update) == {"$set"}
-        assert set(update["$set"]) == {"messages.$.response"}
-
-    async def test_reports_true_when_a_message_matched(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        assert (
-            await repo.set_message_response(
-                CONVERSATION_ID, user_id=USER_ID, message_id=MESSAGE_ID, response="x"
-            )
-            is True
-        )
-
-    async def test_reports_false_when_nothing_matched(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        _matched(collection, 0)
-
-        assert (
-            await repo.set_message_response(
-                CONVERSATION_ID, user_id=USER_ID, message_id=MESSAGE_ID, response="x"
-            )
-            is False
-        )
-
-
 class TestSetMessageToolData:
     """set_message_tool_data — delivery re-persisting a message's whole frame list."""
 
@@ -240,12 +185,6 @@ class TestSetMessageApprovalStatus:
         )
 
 
-async def _write_response(repo: ConversationRepository) -> None:
-    await repo.set_message_response(
-        CONVERSATION_ID, user_id=USER_ID, message_id=MESSAGE_ID, response="the answer"
-    )
-
-
 async def _write_tool_data(repo: ConversationRepository) -> None:
     await repo.set_message_tool_data(
         CONVERSATION_ID,
@@ -281,8 +220,8 @@ class TestSettlementWritesRefreshTheCache:
 
     @pytest.mark.parametrize(
         "write",
-        [_write_response, _write_tool_data, _write_approval_status],
-        ids=["set_message_response", "set_message_tool_data", "set_message_approval_status"],
+        [_write_tool_data, _write_approval_status],
+        ids=["set_message_tool_data", "set_message_approval_status"],
     )
     async def test_evicts_the_conversation_and_bumps_the_user_generation(
         self,
@@ -300,8 +239,8 @@ class TestSettlementWritesRefreshTheCache:
 
     @pytest.mark.parametrize(
         "write",
-        [_write_response, _write_tool_data, _write_approval_status],
-        ids=["set_message_response", "set_message_tool_data", "set_message_approval_status"],
+        [_write_tool_data, _write_approval_status],
+        ids=["set_message_tool_data", "set_message_approval_status"],
     )
     async def test_leaves_the_cache_alone_when_nothing_matched(
         self,

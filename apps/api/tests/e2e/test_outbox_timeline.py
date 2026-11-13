@@ -1,7 +1,8 @@
 """The outbox as a user lives it: events on a clock, asserted on the ledger rows they leave.
 
-Scenarios from the outbound-layer catalogue that need no holds: B3, B4, B8, B9, B16, B18, B19,
-H1, H2 (browser), I1 and the record-is-not-alert and one-destination rules. Needs USE_REAL_SERVICES=1 (real Mongo for the
+Scenarios from the outbound-layer catalogue that need no holds: B3, B4, B8, B9, B16 and the
+record-is-not-alert and one-destination rules, then the executor, workflow and tracked-todo
+producers run through their real report builders (A1, A2, A8-A11, A13, B1, B15-B17, B21). Needs USE_REAL_SERVICES=1 (real Mongo for the
 two outbox collections); the model, transports, thread and clock are doubled (see the harness).
 """
 
@@ -11,22 +12,43 @@ import asyncio
 from collections.abc import AsyncIterator
 from datetime import timedelta
 import json
-from unittest.mock import AsyncMock, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.agents.core.background import todo_run_delivery as trd
+from app.agents.core.background.run_report import (
+    RunOutcome,
+    failed_outcome,
+    finished_outcome,
+    run_report,
+)
+from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
+from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
+from app.agents.core.outcome_review import OutcomeReview
+from app.agents.prompts.compose_prompts import OUTCOME_REPLY_SHAPES
 from app.constants.agents import OutcomeState
 from app.constants.outbound import OUTBOUND_TTL_SECONDS_DEFAULT, OUTBOUND_TTL_SECONDS_GREETING
 from app.constants.outbox import LIVE_WATCH_WINDOW_SECONDS
+from app.constants.task_report import FactKind, NeedsYouKind
 from app.models.chat_models import ConversationSource
+from app.models.ownership_models import DeliveryPolicy, DeliveryTiming
 from app.models.platform_models import PlatformLinkResult
-from app.models.task_report_models import TaskReport
+from app.models.task_report_models import (
+    FinishTaskArgs,
+    ReportFact,
+    ReportNeedsYou,
+    ReportScope,
+    TaskReport,
+)
+from app.models.todo_models import TodoDocument
+from app.models.user_models import AuthenticatedUser
+from app.models.workflow_models import TriggerType
 from app.schemas.outbound import OutboundAttachment
 from app.services.outbox.deliver import flush_subject
 from app.services.outbox.models import (
     ComposeResult,
-    DeliveryPolicy,
-    DeliveryTiming,
     DropReason,
     Initiative,
     ItemState,
@@ -634,3 +656,413 @@ async def _park_queued(tl: OutboxTimeline, report: NoticeReport | RunReport) -> 
     await outbox_items_repository.queue(
         USER, report.report_id, urgency=decision.urgency, mode=decision.mode
     )
+
+
+# ---------------------------------------------------------------------------
+# Executor, workflow and tracked-todo results, reported by the real run builders
+# ---------------------------------------------------------------------------
+
+
+def _executor_run(
+    owner: str = "web-1", *, task_id: str = "task-1", stream_id: str = "s1", **fields: Any
+) -> ExecutorRun:
+    return ExecutorRun(
+        stream_id=stream_id,
+        conversation_id=owner,
+        user=AuthenticatedUser(user_id=USER),
+        kind=RunKind.LIVE,
+        task_id=task_id,
+        user_message_id=None,
+        request_excerpt="send priya the invoice",
+        **fields,
+    )
+
+
+def _workflow_run(
+    owner: str = "wf-chat", *, stream_id: str = "w1", notify: bool = True
+) -> ExecutorRun:
+    return _executor_run(
+        owner,
+        task_id=None,
+        stream_id=stream_id,
+        workflow_id="wf-1",
+        workflow_title="Morning briefing",
+        workflow_execution_id="exec-1",
+        workflow_notify_on_completion=notify,
+    )
+
+
+def _filed(outcome: OutcomeState, *, result: str = "Invoice 42 went to Priya.", **fields: Any):
+    return OutcomeReview(
+        outcome,
+        None,
+        FinishTaskArgs(
+            result=result,
+            outcome=outcome,
+            facts=[ReportFact(text="Sent the invoice", kind=FactKind.DID, source_call_ids=["c1"])],
+            **fields,
+        ),
+    )
+
+
+async def _report(tl: OutboxTimeline, run: ExecutorRun, outcome: RunOutcome) -> RunReport:
+    report = run_report(run, outcome)
+    await tl.submit(report)
+    await tl.drain()
+    return report
+
+
+def _told(tl: OutboxTimeline) -> dict[str, Any]:
+    """Return the one item the composer was shown last, as the model saw it."""
+    [item] = tl.compose.context["items"]
+    return item
+
+
+async def test_a1_a_quick_task_on_web_is_one_message_in_the_conversation_it_was_asked_in(
+    tl: OutboxTimeline,
+) -> None:
+    await tl.active_on(ConversationSource.WEB)
+
+    await _report(tl, _executor_run("web-1"), finished_outcome(_filed(OutcomeState.DONE), "x"))
+
+    [message] = await tl.ledger()
+    assert (message.destination, message.destination_basis) == ("in_app", "active_in_app")
+    assert (message.conversation_id, message.recorded_in) == ("web-1", ["web-1"])
+    assert (message.mode.value, message.max_class) == ("answer", UrgencyClass.ROUTINE)
+    assert [c for c, _ in tl.sinks.ws] == ["web-1"] and tl.sinks.bot == []
+    assert _told(tl)["result"] == "Invoice 42 went to Priya."
+    assert _told(tl)["subject"] == "send priya the invoice"
+
+
+async def test_a2_the_same_on_whatsapp_is_one_message_in_that_chat(tl: OutboxTimeline) -> None:
+    await tl.active_on(ConversationSource.WHATSAPP)
+
+    await _report(tl, _executor_run("wa-dm"), finished_outcome(_filed(OutcomeState.DONE), "x"))
+
+    [message] = await tl.ledger()
+    assert (message.destination, message.recorded_in) == ("chat_app", ["wa-dm"])
+    assert [source for source, _ in tl.sinks.bot] == ["whatsapp"] and tl.sinks.ws == []
+
+
+async def test_a8_an_executor_that_files_no_report_is_unverified_never_done(
+    tl: OutboxTimeline,
+) -> None:
+    problem = "the run ended without a finish_task report that declares an outcome"
+    await tl.active_on(ConversationSource.WEB)
+
+    await _report(
+        tl, _executor_run(), finished_outcome(OutcomeReview(None, problem), "I think it worked")
+    )
+
+    told = _told(tl)
+    assert told["report"]["outcome"] == "unverified"
+    assert told["review_problem"] == problem
+    assert told["how_to_say"] == OUTCOME_REPLY_SHAPES[OutcomeState.UNVERIFIED]
+    assert told["must_say"] is True
+    [message] = await tl.ledger()
+    assert message.max_class is UrgencyClass.TIMELY
+
+
+async def test_a9_a_sent_email_with_no_write_behind_it_is_unverified(tl: OutboxTimeline) -> None:
+    problem = "done was declared but no work call succeeded"
+    review = OutcomeReview(OutcomeState.DONE, problem, _filed(OutcomeState.DONE).report)
+    await tl.active_on(ConversationSource.WEB)
+
+    await _report(tl, _executor_run(), finished_outcome(review, "x"))
+
+    told = _told(tl)
+    assert (told["report"]["outcome"], told["review_problem"]) == ("unverified", problem)
+    assert told["report"]["facts"][0]["text"] == "Sent the invoice"
+
+
+async def test_a10_a_conditional_task_with_nothing_to_do_is_still_told_to_the_user_who_asked(
+    tl: OutboxTimeline,
+) -> None:
+    await tl.active_on(ConversationSource.WEB)
+    review = _filed(OutcomeState.NO_ACTION_NEEDED, result="Nothing urgent in your inbox.")
+
+    await _report(tl, _executor_run(), finished_outcome(review, "x"))
+
+    assert _told(tl)["must_say"] is True
+    assert _told(tl)["how_to_say"] == OUTCOME_REPLY_SHAPES[OutcomeState.NO_ACTION_NEEDED]
+    [message] = await tl.ledger()
+    assert message.state is MessageState.SENT
+
+
+async def test_a11_two_of_three_emails_sent_is_partial_and_timely(tl: OutboxTimeline) -> None:
+    await tl.active_on(ConversationSource.WEB)
+    review = _filed(OutcomeState.PARTIAL)
+    partial = review.report.model_copy(
+        update={
+            "facts": [
+                *review.report.facts,
+                ReportFact(text="The email to Sam bounced", kind=FactKind.NOT_DONE),
+            ]
+        }
+    )
+
+    await _report(
+        tl,
+        _executor_run(),
+        finished_outcome(OutcomeReview(OutcomeState.PARTIAL, None, partial), "x"),
+    )
+
+    assert [f["kind"] for f in _told(tl)["report"]["facts"]] == ["did", "not_done"]
+    [message] = await tl.ledger()
+    assert message.max_class is UrgencyClass.TIMELY
+
+
+async def test_a_failed_run_is_told_with_its_reason_and_never_its_raw_error(
+    tl: OutboxTimeline,
+) -> None:
+    await tl.active_on(ConversationSource.WEB)
+
+    await _report(tl, _executor_run(), failed_outcome("RuntimeError"))
+
+    told = _told(tl)
+    assert told["report"]["failure"] == {"reason": "crash", "recovery": "user_can_rerun"}
+    assert told["result"] == ""
+    assert "RuntimeError" not in json.dumps(tl.compose.context)
+
+
+async def test_a13_tell_me_on_slack_when_done_asked_on_web_alerts_slack_only(
+    tl: OutboxTimeline,
+) -> None:
+    tl.world.link("slack", "sl-1")
+    tl.world.dm("slack", "sl-dm")
+    await tl.active_on(ConversationSource.WEB)
+    run = _executor_run(delivery_policy=DeliveryPolicy(channel=ConversationSource.SLACK))
+
+    await _report(tl, run, finished_outcome(_filed(OutcomeState.DONE), "x"))
+
+    [message] = await tl.ledger()
+    assert (message.destination, message.destination_basis) == ("chat_app", "requested_channel")
+    assert (message.conversation_id, message.recorded_in) == ("sl-dm", ["sl-dm", "web-1"])
+    assert [source for source, _ in tl.sinks.bot] == ["slack"]
+    assert tl.sinks.ws == []
+    assert tl.world.unread == {"web-1"}
+    assert "requested_channel_unavailable" not in tl.compose.context
+
+
+async def test_a13_a_requested_chat_app_the_user_has_not_linked_is_said_so_and_the_user_is_told_where_they_are(
+    tl: OutboxTimeline,
+) -> None:
+    await tl.active_on(ConversationSource.WEB)
+    run = _executor_run(delivery_policy=DeliveryPolicy(channel=ConversationSource.DISCORD))
+
+    await _report(tl, run, finished_outcome(_filed(OutcomeState.DONE), "x"))
+
+    [message] = await tl.ledger()
+    assert (message.destination, message.destination_basis) == ("in_app", "active_in_app")
+    assert tl.compose.context["requested_channel_unavailable"] == "discord"
+
+
+async def test_a_requested_chat_app_the_user_switched_off_is_not_used(tl: OutboxTimeline) -> None:
+    tl.world.notification_channel_prefs = {"whatsapp": False}
+    await tl.active_on(ConversationSource.WEB)
+    run = _executor_run(delivery_policy=DeliveryPolicy(channel=ConversationSource.WHATSAPP))
+
+    await _report(tl, run, finished_outcome(_filed(OutcomeState.DONE), "x"))
+
+    assert tl.sinks.bot == []
+    assert tl.compose.context["requested_channel_unavailable"] == "whatsapp"
+
+
+async def test_b1_a_workflow_result_is_the_users_own_schedule_told_whole_where_they_are(
+    tl: OutboxTimeline,
+) -> None:
+    tl.world.app_chat("wf-chat")
+    await tl.active_on(ConversationSource.TELEGRAM)
+    briefing = "Needs you\n- Priya: pitch deck, by Fri"
+
+    await _report(
+        tl,
+        _workflow_run(),
+        finished_outcome(_filed(OutcomeState.DONE, result=briefing), "x"),
+    )
+
+    [message] = await tl.ledger()
+    assert (message.conversation_id, message.recorded_in) == ("tg-dm", ["tg-dm", "wf-chat"])
+    assert tl.world.unread == {"wf-chat"}
+    assert (_told(tl)["result"], _told(tl)["must_say"]) == (briefing, True)
+    assert (message.mode.value, tl.sinks.analytics[0].producer) == ("answer", "workflow")
+
+
+async def test_b15_a_morning_briefing_is_one_message_with_everything_in_it(
+    tl: OutboxTimeline,
+) -> None:
+    tl.world.app_chat("wf-chat")
+    tl.clock.current = T0.replace(hour=8)
+    briefing = "Today: standup 9:30; dentist 3pm; invoice 42 due Friday."
+
+    await _report(
+        tl, _workflow_run(), finished_outcome(_filed(OutcomeState.DONE, result=briefing), "x")
+    )
+
+    assert len(await tl.ledger()) == 1
+    assert _told(tl)["result"] == briefing
+
+
+async def test_b16_a_run_reported_twice_is_one_message(tl: OutboxTimeline) -> None:
+    tl.world.linked.clear()
+    run = _executor_run()
+    outcome = finished_outcome(_filed(OutcomeState.DONE), "x")
+
+    await _report(tl, run, outcome)
+    await _report(tl, run, outcome)
+
+    assert len(await tl.ledger()) == 1
+    assert len(await tl.items()) == 1
+    assert len(tl.compose.calls) == 1
+
+
+async def test_b17_a_muted_workflow_that_succeeds_is_recorded_and_not_told(
+    tl: OutboxTimeline,
+) -> None:
+    tl.world.app_chat("wf-chat")
+
+    await _report(tl, _workflow_run(notify=False), finished_outcome(_filed(OutcomeState.DONE), "x"))
+
+    [item] = await tl.items()
+    assert (item.state, item.drop_reason) == (ItemState.DROPPED, DropReason.USER_MUTED)
+    assert await tl.ledger() == []
+    assert tl.sinks.bot == [] and tl.sinks.ws == []
+
+
+async def test_b17_a_muted_workflow_that_needs_the_user_is_told(tl: OutboxTimeline) -> None:
+    tl.world.app_chat("wf-chat")
+    await tl.active_on(ConversationSource.TELEGRAM)
+    needs = _filed(OutcomeState.NEEDS_YOU)
+    needs_you = needs.report.model_copy(
+        update={
+            "needs_you": ReportNeedsYou(kind=NeedsYouKind.CHOOSE, ask="Which invoice?", options=[])
+        }
+    )
+
+    await _report(
+        tl,
+        _workflow_run(notify=False),
+        finished_outcome(OutcomeReview(OutcomeState.NEEDS_YOU, None, needs_you), "x"),
+    )
+
+    [message] = await tl.ledger()
+    assert message.max_class is UrgencyClass.TIMELY
+    assert [source for source, _ in tl.sinks.bot] == ["telegram"]
+    assert _told(tl)["report"]["needs_you"]["ask"] == "Which invoice?"
+
+
+class TestATrackedTodoRunsReportsThroughTheOutbox:
+    """The todo producer runs for real: its own attempts, its report, then the outbox."""
+
+    TODO_ID = "6ab51f1ba7a1fcf0f00ab49a"
+
+    def _todo(self) -> TodoDocument:
+        return TodoDocument(
+            id=self.TODO_ID,
+            user_id=USER,
+            title="Watch the staging deploy",
+            recurrence="every_1h",
+            labels=["gaia-tracked"],
+        )
+
+    async def _attempt(self, run_id: str, outcome: RunOutcome, result_type: str) -> None:
+        run = ExecutorRun(
+            stream_id=run_id,
+            conversation_id="todo-chat",
+            user=AuthenticatedUser(user_id=USER),
+            kind=RunKind.LIVE,
+            task_id=f"task-{run_id}",
+            user_message_id=None,
+        )
+        repo = MagicMock(get_by_id=AsyncMock(return_value=self._todo()))
+        with (
+            patch.object(trd, "todo_repository", repo),
+            patch.object(trd, "record_run_finished", AsyncMock()),
+            patch.object(trd, "record_executor_report", AsyncMock()),
+        ):
+            await deliver_todo_run_result(
+                run,
+                TodoRun(
+                    todo_id=self.TODO_ID, trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True
+                ),
+                outcome,
+                outcome.result,
+                result_type,
+            )
+
+    def _done(self, result: str) -> RunOutcome:
+        return finished_outcome(_filed(OutcomeState.DONE, result=result), result)
+
+    async def test_b21_an_attempt_that_fails_and_is_retried_tells_the_user_only_the_success(
+        self, tl: OutboxTimeline
+    ) -> None:
+        await tl.active_on(ConversationSource.TELEGRAM)
+
+        await self._attempt("run-1", failed_outcome("RuntimeError"), "error")
+        await tl.drain()
+        assert tl.arq.jobs == {} and await tl.items() == []
+
+        await self._attempt("run-2", self._done("Deploy is green."), "final")
+        await tl.drain()
+
+        [message] = await tl.ledger()
+        assert message.report_ids == [f"todo:{self.TODO_ID}:run-2"]
+        assert _told(tl)["report"]["outcome"] == "done"
+
+    async def test_b4_a_check_with_nothing_new_is_recorded_and_never_alerted(
+        self, tl: OutboxTimeline
+    ) -> None:
+        nothing = finished_outcome(
+            _filed(
+                OutcomeState.NOTHING_NEW, scope=ReportScope(covered="inbox", complete=True, gaps=[])
+            ),
+            "x",
+        )
+
+        await self._attempt("run-1", nothing, "final")
+        await tl.drain()
+
+        [item] = await tl.items()
+        assert (item.state, item.drop_reason) == (ItemState.DROPPED, DropReason.NOTHING_NEW)
+        assert await tl.ledger() == []
+
+    async def test_what_earlier_runs_of_one_todo_were_told_comes_from_the_ledger(
+        self, tl: OutboxTimeline
+    ) -> None:
+        await tl.active_on(ConversationSource.TELEGRAM)
+        nothing = finished_outcome(
+            _filed(
+                OutcomeState.NOTHING_NEW, scope=ReportScope(covered="inbox", complete=True, gaps=[])
+            ),
+            "x",
+        )
+        await tl.at(0)
+        await self._attempt("run-1", self._done("Deploy failed on migration 42."), "final")
+        await tl.drain()
+        await tl.at(60)
+        await self._attempt("run-2", nothing, "final")
+        await tl.drain()
+
+        await tl.at(120)
+        await self._attempt("run-3", self._done("Deploy is green."), "final")
+        await tl.drain()
+
+        earlier = tl.compose.context["earlier_runs"][f"todo:{self.TODO_ID}:run-3"]
+        assert [line.split(": ", 1)[1] for line in earlier] == [
+            "told them: Watch the staging deploy: said",
+            "kept quiet (nothing_new)",
+        ]
+
+
+async def test_a_requested_chat_app_outranks_the_dm_the_answer_would_go_back_to(
+    tl: OutboxTimeline,
+) -> None:
+    tl.world.link("slack", "sl-1")
+    tl.world.dm("slack", "sl-dm")
+    run = _executor_run("wa-dm", delivery_policy=DeliveryPolicy(channel=ConversationSource.SLACK))
+
+    await _report(tl, run, finished_outcome(_filed(OutcomeState.DONE), "x"))
+
+    [message] = await tl.ledger()
+    assert (message.destination_basis, message.conversation_id) == ("requested_channel", "sl-dm")
+    assert [source for source, _ in tl.sinks.bot] == ["slack"]
