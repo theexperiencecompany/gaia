@@ -2,6 +2,7 @@ import { Chip } from "@heroui/react";
 import Image from "next/image";
 import Link from "next/link";
 
+import { chipVariants } from "@/components/shared/controlVariants";
 import { GrainOverlay } from "@/components/ui/GrainOverlay";
 import type { BlogPostMeta } from "@/lib/blog";
 import { getImageDimensions } from "@/lib/imageDimensions";
@@ -41,7 +42,10 @@ export function BlogCard({ blog, variant = "large", titleAs }: BlogCardProps) {
                 variant="soft"
                 color="accent"
                 size="sm"
-                className="absolute top-3 right-3"
+                className={chipVariants({
+                  hue: "brand",
+                  className: "absolute top-3 right-3",
+                })}
               >
                 Featured
               </Chip>

@@ -377,6 +377,10 @@
   }
 
   /* hue secondary (chipVariants): v2's dark secondary, #9353d3 at 20% behind its #ae7ede text. */
+  /* hue brand (chipVariants): v2's flat primary chip whose label was text-primary, the brand #00bbff. */
+  .gaia-hue-brand {
+    --accent-soft-foreground: var(--accent);
+  }
   .gaia-hue-secondary {
     --accent-soft: color-mix(in oklab, #9353d3 20%, transparent);
     --accent-soft-foreground: #ae7ede;

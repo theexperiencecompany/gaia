@@ -71,6 +71,7 @@ export default function SettingsSidebar() {
               onPress={navigate}
               size="sm"
               variant="accent-soft"
+              tone="accent"
               className="group flex w-full justify-start"
             >
               {label}

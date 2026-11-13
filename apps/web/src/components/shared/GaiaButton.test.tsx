@@ -74,6 +74,23 @@ describe("GAIA button variants", () => {
   });
 });
 
+// v2's flat primary text was #66aaf9 unless the site added text-primary; tone
+// accent is how those sites (the sidebar New buttons) keep #00bbff.
+describe("an accent-soft button with the accent tone", () => {
+  it("paints its text in the brand accent, not the soft foreground", () => {
+    render(
+      <GaiaButton variant="accent-soft" tone="accent">
+        New Chat
+      </GaiaButton>,
+    );
+    const classes = screen
+      .getByRole("button", { name: "New Chat" })
+      .className.split(/\s+/);
+    expect(classes).toContain("text-accent");
+    expect(classes).not.toContain("text-accent-soft-foreground");
+  });
+});
+
 // v3's Tooltip opens only for a child that takes React Aria's trigger props; a
 // bare Next.js link never did, so every tooltip around a LinkButton stayed shut.
 describe("a tooltip around a link button", () => {
