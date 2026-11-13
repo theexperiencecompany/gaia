@@ -25,6 +25,12 @@ import type { SkillPreview } from "./SkillPreviewModal";
 import { SkillPreviewModal } from "./SkillPreviewModal";
 import { SkillsList } from "./SkillsList";
 
+const pageTabs = tabsVariants({
+  variant: "solid",
+  color: "accent",
+  shape: "pill",
+});
+
 export default function SkillsManagement() {
   const { skills, targets, loading, refetch, setEnabled, removeSkill } =
     useSkills();
@@ -94,7 +100,7 @@ export default function SkillsManagement() {
       {/* Tabs, search, and New skill share one row. */}
       <div className="flex items-center gap-3">
         <Tabs
-          className={tabsVariants({ color: "accent" }).base({
+          className={pageTabs.base({
             className: shapeVariants({ shape: "pill", className: "shrink-0" }),
           })}
           variant="primary"
@@ -102,14 +108,14 @@ export default function SkillsManagement() {
           onSelectionChange={(key) => setTab(key as string)}
         >
           <Tabs.ListContainer>
-            <Tabs.List aria-label="Skills">
-              <Tabs.Tab id="yours">
+            <Tabs.List aria-label="Skills" className={pageTabs.tabList()}>
+              <Tabs.Tab id="yours" className={pageTabs.tab()}>
                 <TabTitle icon={PuzzleIcon} label="Your Skills" />
-                <Tabs.Indicator />
+                <Tabs.Indicator className={pageTabs.tabIndicator()} />
               </Tabs.Tab>
-              <Tabs.Tab id="builtin">
+              <Tabs.Tab id="builtin" className={pageTabs.tab()}>
                 <TabTitle icon={FolderLibraryIcon} label="Built-in" />
-                <Tabs.Indicator />
+                <Tabs.Indicator className={pageTabs.tabIndicator()} />
               </Tabs.Tab>
             </Tabs.List>
           </Tabs.ListContainer>
