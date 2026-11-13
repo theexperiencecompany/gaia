@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Description, Input, Label, TextField } from "@heroui/react";
+import { Description, Input, Label, TextField } from "@heroui/react";
 import { CloudIcon } from "@icons";
 import { type FormEvent, useState } from "react";
 import { FormError } from "@/components/shared/FormError";
@@ -68,14 +68,14 @@ export function SelfHostServerForm({
 
         {error && <FormError>{error}</FormError>}
 
-        <Button
+        <GaiaButton
           type="submit"
           variant="primary"
           isPending={isConnecting}
           className="w-full"
         >
           Connect
-        </Button>
+        </GaiaButton>
       </form>
 
       {currentOrigin && (

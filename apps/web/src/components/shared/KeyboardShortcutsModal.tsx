@@ -57,8 +57,8 @@ export default function KeyboardShortcutsModal({
 
   return (
     <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
-      <Modal.Backdrop>
-        <Modal.Container size="lg">
+      <Modal.Backdrop variant="blur">
+        <Modal.Container>
           <Modal.Dialog
             className={modalVariants({
               size: "4xl",

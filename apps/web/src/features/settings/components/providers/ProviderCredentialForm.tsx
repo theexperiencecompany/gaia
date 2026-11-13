@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Description, Input, Label, TextField } from "@heroui/react";
+import { Description, Input, Label, TextField } from "@heroui/react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -204,7 +204,7 @@ function ProviderFormActions({
   return (
     <div className="flex items-center justify-end gap-2">
       {canRemove && (
-        <Button
+        <GaiaButton
           variant="danger-soft"
           size="sm"
           className="mr-auto"
@@ -214,7 +214,7 @@ function ProviderFormActions({
           }}
         >
           Remove
-        </Button>
+        </GaiaButton>
       )}
       {testable && (
         <GaiaButton

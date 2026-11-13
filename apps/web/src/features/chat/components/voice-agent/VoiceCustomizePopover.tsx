@@ -45,6 +45,7 @@ export function VoiceCustomizePopover() {
       <GaiaButton
         shape="pill"
         variant="default-soft"
+        tone="bright"
         className="bg-zinc-900/80 shadow-lg backdrop-blur-md hover:bg-zinc-800"
       >
         <EditIcon className="h-4 w-4" />
@@ -63,10 +64,8 @@ export function VoiceCustomizePopover() {
             inlineGender
             wrapText
             onSelect={applyLiveVoice}
-            classNames={{
-              base: "max-h-[60vh] overflow-y-auto overflow-x-hidden",
-              wrapper: "p-0 shadow-none bg-transparent",
-            }}
+            surface="plain"
+            className="max-h-[60vh] overflow-y-auto overflow-x-hidden"
           />
         </div>
       </Popover.Content>

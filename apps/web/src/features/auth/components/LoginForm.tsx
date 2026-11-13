@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Input, Label, Link, Modal, TextField } from "@heroui/react";
+import { Input, Label, Link, Modal, TextField } from "@heroui/react";
 import { ArrowRight02Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
@@ -97,14 +97,14 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
 
       {error && <FormError>{error}</FormError>}
 
-      <Button
+      <GaiaButton
         type="submit"
         variant="primary"
         isPending={isSubmitting}
         className="w-full"
       >
         Sign in
-      </Button>
+      </GaiaButton>
 
       {/* This form only renders on self-host instances (local auth), where a
           signup page exists — mirror the signup page's sign-in link. */}

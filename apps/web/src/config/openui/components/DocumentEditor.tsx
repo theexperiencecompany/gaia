@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Dropdown,
   DropdownItem,
   DropdownMenu,
@@ -92,7 +91,7 @@ interface ToolbarButtonProps {
 
 function ToolbarButton({ active, onClick, children }: ToolbarButtonProps) {
   return (
-    <Button
+    <GaiaButton
       variant="ghost"
       size="sm"
       onPress={() => onClick()}
@@ -105,7 +104,7 @@ function ToolbarButton({ active, onClick, children }: ToolbarButtonProps) {
       ].join(" ")}
     >
       {children}
-    </Button>
+    </GaiaButton>
   );
 }
 
@@ -333,7 +332,7 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
           "[&_.ProseMirror_p]:text-sm [&_.ProseMirror_p]:leading-relaxed [&_.ProseMirror_p]:text-zinc-300 [&_.ProseMirror_p+p]:mt-2.5",
           "[&_.ProseMirror_strong]:font-semibold [&_.ProseMirror_strong]:text-zinc-100",
           "[&_.ProseMirror_em]:italic [&_.ProseMirror_s]:line-through [&_.ProseMirror_s]:text-zinc-400",
-          "[&_.ProseMirror_a]:font-medium [&_.ProseMirror_a]:text-primary [&_.ProseMirror_a]:underline [&_.ProseMirror_a]:decoration-primary/40 [&_.ProseMirror_a]:underline-offset-2 [&_.ProseMirror_a]:transition-colors hover:[&_.ProseMirror_a]:decoration-primary",
+          "[&_.ProseMirror_a]:font-medium [&_.ProseMirror_a]:text-accent [&_.ProseMirror_a]:underline [&_.ProseMirror_a]:decoration-accent/40 [&_.ProseMirror_a]:underline-offset-2 [&_.ProseMirror_a]:transition-colors hover:[&_.ProseMirror_a]:decoration-accent",
           "[&_.ProseMirror_ul]:my-2 [&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:pl-5",
           "[&_.ProseMirror_ol]:my-2 [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:pl-5",
           "[&_.ProseMirror_li]:my-0.5 [&_.ProseMirror_li]:text-sm [&_.ProseMirror_li]:leading-relaxed [&_.ProseMirror_li]:text-zinc-300 [&_.ProseMirror_li]:marker:text-zinc-500",

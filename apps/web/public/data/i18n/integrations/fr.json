@@ -472,7 +472,7 @@
     "toolB": "GitHub",
     "tagline": "Recevez les notifications GitHub dans Slack et gérez les PR depuis le chat",
     "metaTitle": "Intégration Slack + GitHub : révisions de PR et alertes CI",
-    "metaDescription": "Recevez les demandes de révision de PR pertinentes, les alertes d'échec CI/CD et les annonces de fusion dans Slack.",
+    "metaDescription": "Recevez dans Slack les demandes de révision de PR, les alertes d'échec CI/CD et les annonces de fusion. GAIA envoie chaque événement GitHub dans le bon salon.",
     "keywords": [
       "intégration Slack GitHub",
       "notifications GitHub dans Slack",
@@ -537,7 +537,7 @@
     "toolB": "Asana",
     "tagline": "Créez des tâches Asana depuis Slack et suivez l'avancement dans le chat",
     "metaTitle": "Intégration Slack + Asana : des tâches Asana depuis Slack",
-    "metaDescription": "Transformez les demandes Slack en travail suivi. GAIA crée des tâches Asana depuis les messages Slack et envoie un récapitulatif quotidien de standup dans le salon.",
+    "metaDescription": "Transformez les demandes Slack en travail suivi : GAIA crée des tâches Asana depuis vos messages et publie un récapitulatif de standup quotidien dans le salon.",
     "keywords": [
       "intégration Slack Asana",
       "créer une tâche Asana depuis Slack",
@@ -1134,7 +1134,7 @@
     "toolB": "Todoist",
     "tagline": "Transformez les événements d'agenda en tâches et todos de préparation automatiquement",
     "metaTitle": "Google Calendar + Todoist : des tâches de réunion",
-    "metaDescription": "Transformez les événements en tâches de préparation, tâches d'échéances et suivis post-réunion dans Todoist.",
+    "metaDescription": "Transformez vos événements en tâches de préparation, d'échéance et de suivi post-réunion dans Todoist. GAIA bâtit votre liste à partir de votre planning.",
     "keywords": [
       "intégration Google Calendar Todoist",
       "automatisation agenda Todoist",
@@ -1785,7 +1785,7 @@
     "toolB": "ClickUp",
     "tagline": "Convertissez les e-mails en tâches ClickUp sans quitter votre boîte",
     "metaTitle": "Gmail + ClickUp : des e-mails vers vos tâches ClickUp",
-    "metaDescription": "Transformez les e-mails de demandes clients en tâches et sous-tâches ClickUp, étiquetées depuis vos libellés Gmail. GAIA classe chaque demande dans la bonne liste.",
+    "metaDescription": "Transformez les e-mails de demandes clients en tâches et sous-tâches ClickUp, étiquetées selon vos libellés Gmail. GAIA range chaque demande au bon endroit.",
     "keywords": [
       "intégration Gmail ClickUp",
       "e-mail vers tâche ClickUp",
@@ -1851,7 +1851,7 @@
     "toolB": "Jira",
     "tagline": "Créez des tickets Jira depuis les e-mails et bouclez la boucle client-ingénierie",
     "metaTitle": "Gmail + Jira : des e-mails de bugs vers vos tickets Jira",
-    "metaDescription": "Transformez les e-mails de bugs en tickets Jira, détectez les doublons, et notifiez les clients à la résolution. GAIA gère le tri. Voir les étapes de configuration.",
+    "metaDescription": "Transformez les e-mails de bugs en tickets Jira, repérez les doublons et prévenez les clients à la résolution. GAIA s'occupe du tri à votre place.",
     "keywords": [
       "intégration Gmail Jira",
       "e-mail vers ticket Jira",
@@ -1983,7 +1983,7 @@
     "toolB": "ClickUp",
     "tagline": "Gérez les tâches ClickUp et recevez les mises à jour directement dans Slack",
     "metaTitle": "Intégration Slack + ClickUp : des tâches par réactions emoji",
-    "metaDescription": "Réagissez à un message Slack pour créer une tâche ClickUp, recevez les mises à jour dans Slack, et un récapitulatif ClickUp quotidien. GAIA tient vos listes à jour.",
+    "metaDescription": "Réagissez à un message Slack pour créer une tâche ClickUp, suivez ses mises à jour dans Slack et recevez un récap quotidien. GAIA garde vos listes à jour.",
     "keywords": [
       "intégration Slack ClickUp",
       "créer une tâche ClickUp depuis Slack",
@@ -2049,7 +2049,7 @@
     "toolB": "Google Calendar",
     "tagline": "Synchronisez automatiquement les dates et échéances de projets Notion avec Google Agenda",
     "metaTitle": "Notion + Google Calendar : synchronisez les dates projet",
-    "metaDescription": "Placez les dates de projets Notion et les plages de tâches sur Google Agenda avec les plages de début et fin intactes.",
+    "metaDescription": "Placez les dates de projets Notion et les plages de tâches dans Google Agenda, début et fin intacts. GAIA relie aussi vos notes de réunion aux événements.",
     "keywords": [
       "intégration Notion Google Agenda",
       "synchronisation agenda Notion",
@@ -2907,7 +2907,7 @@
     "toolB": "Trello",
     "tagline": "Convertissez les e-mails en cartes Trello et tenez vos tableaux à jour depuis votre boîte",
     "metaTitle": "Gmail + Trello : des e-mails clients vers vos cartes Trello",
-    "metaDescription": "Transformez les e-mails de demandes clients en cartes Trello et déplacez les cartes à l'arrivée des réponses. GAIA écrit aux clients quand les cartes sont terminées.",
+    "metaDescription": "Transformez les e-mails clients en cartes Trello et déplacez-les à chaque réponse reçue. GAIA prévient vos clients par e-mail dès qu'une carte est terminée.",
     "keywords": [
       "intégration Gmail Trello",
       "e-mail vers carte Trello",
@@ -3051,7 +3051,7 @@
     "toolB": "Google Drive",
     "tagline": "Enregistrez automatiquement les pièces jointes et contenus d'e-mails dans Google Drive",
     "metaTitle": "Gmail + Google Drive : enregistrez les pièces jointes dans",
-    "metaDescription": "Enregistrez les factures jointes dans le bon dossier Drive, archivez les contrats, et collectez les ressources projet depuis Gmail. GAIA classe chaque pièce jointe.",
+    "metaDescription": "Enregistrez les factures jointes dans le bon dossier Drive, archivez les contrats et réunissez les ressources projet de Gmail. GAIA classe chaque pièce jointe.",
     "keywords": [
       "intégration Gmail Google Drive",
       "enregistrer les pièces jointes dans Drive",
@@ -3381,7 +3381,7 @@
     "toolB": "Zoom",
     "tagline": "Créez des réunions Zoom depuis les invitations par e-mail et envoyez les liens automatiquement",
     "metaTitle": "Gmail + Zoom : des réunions Zoom depuis vos fils d'e-mails",
-    "metaDescription": "Créez des réunions Zoom une fois l'horaire confirmé par e-mail, ou en un clic depuis un fil. GAIA programme les réunions récurrentes depuis les chaînes d'e-mails.",
+    "metaDescription": "Créez une réunion Zoom dès qu'un horaire est confirmé par e-mail, ou en un clic depuis un fil. GAIA planifie aussi les réunions récurrentes de vos échanges.",
     "keywords": [
       "intégration Gmail Zoom",
       "e-mail vers réunion Zoom",
@@ -4066,7 +4066,7 @@
     "toolB": "Figma",
     "tagline": "Reliez les boucles de retours design entre Gmail et Figma pour que rien ne se perde dans la traduction",
     "metaTitle": "Gmail + Figma : des retours par e-mail vers vos commentaires",
-    "metaDescription": "Transformez les e-mails de retours design en commentaires Figma, notifiez les parties prenantes quand les designs changent et envoyez les demandes de validation.",
+    "metaDescription": "Transformez les retours design par e-mail en commentaires Figma, alertez les parties prenantes des modifications et lancez les validations. GAIA gère la boucle.",
     "keywords": [
       "intégration Gmail Figma",
       "retour design par e-mail vers Figma",
@@ -4416,7 +4416,7 @@
     "toolB": "Loom",
     "tagline": "Faites des vidéos Loom une partie de premier ordre de votre workflow Slack avec résumés et acheminement automatiques",
     "metaTitle": "Intégration Slack + Loom : des liens Loom résumés dans Slack",
-    "metaDescription": "Résumez les liens Loom partagés dans Slack, acheminez les nouveaux enregistrements vers les salons, et extrayez les actions des vidéos. GAIA s'occupe du visionnage.",
+    "metaDescription": "Résumez les liens Loom partagés dans Slack, envoyez les nouveaux enregistrements aux bons salons et extrayez les actions. GAIA regarde les vidéos pour vous.",
     "keywords": [
       "intégration Slack Loom",
       "automatisation vidéo Loom dans Slack",
@@ -4552,7 +4552,7 @@
     "toolB": "ClickUp",
     "tagline": "Reliez les PR GitHub aux tâches ClickUp et mettez à jour le statut à la fusion",
     "metaTitle": "GitHub + ClickUp : des tâches ClickUp qui suivent vos PR",
-    "metaDescription": "Déplacez les tâches ClickUp à l’ouverture des PR, terminez-les à la fusion. GAIA tient code et tâches synchronisés.",
+    "metaDescription": "Déplacez les tâches ClickUp à l’ouverture des PR, terminez-les à la fusion et faites des commentaires de revue des sous-tâches. GAIA synchronise code et tâches.",
     "keywords": [
       "intégration GitHub ClickUp",
       "automatisation GitHub ClickUp",
@@ -4890,7 +4890,7 @@
     "toolB": "Google Drive",
     "tagline": "Sauvegardez les docs des dépôts dans Google Drive et reliez les ressources design aux dépôts de code",
     "metaTitle": "GitHub + Google Drive : sauvegardez docs et ressources",
-    "metaDescription": "Gardez les docs des dépôts en sécurité et faciles à partager hors GitHub. GAIA les sauvegarde dans Google Drive et enregistre les notes de version à chaque version.",
+    "metaDescription": "Gardez les docs de vos dépôts à l'abri et faciles à partager hors GitHub. GAIA les sauvegarde dans Google Drive et archive les notes de chaque version.",
     "keywords": [
       "intégration GitHub Google Drive",
       "automatisation GitHub Google Drive",
@@ -5834,7 +5834,7 @@
     "toolB": "Salesforce",
     "tagline": "Reliez les versions GitHub aux opportunités Salesforce pour que les commerciaux sachent toujours ce que l'ingénierie vient de livrer",
     "metaTitle": "GitHub + Salesforce : des versions dans Salesforce",
-    "metaDescription": "Annoncez aux responsables de comptes dès qu'une fonctionnalité promise est livrée. GAIA consigne chaque version GitHub sur l'opportunité Salesforce correspondante.",
+    "metaDescription": "Prévenez vos responsables de comptes dès qu'une fonctionnalité promise est livrée. GAIA consigne chaque version GitHub sur l'opportunité Salesforce liée.",
     "keywords": [
       "intégration GitHub Salesforce",
       "automatisation GitHub Salesforce",
@@ -6044,7 +6044,7 @@
     "toolB": "Airtable",
     "tagline": "Synchronisez les tickets et PR GitHub vers Airtable pour une base projet reflétant toujours la réalité de votre code",
     "metaTitle": "GitHub + Airtable : des tickets vers une feuille de route",
-    "metaDescription": "Synchronisez les tickets GitHub vers une base de feuille de route Airtable, suivez le temps de cycle des PR et mettez à jour le suivi des versions à chaque version.",
+    "metaDescription": "Synchronisez les tickets GitHub avec une feuille de route Airtable, suivez le temps de cycle des PR et le suivi des versions. GAIA construit le reporting.",
     "keywords": [
       "intégration GitHub Airtable",
       "automatisation GitHub Airtable",
@@ -6254,7 +6254,7 @@
     "toolB": "Salesforce",
     "tagline": "Synchronisez les données de comptes Salesforce vers les wikis Notion pour un contexte client toujours actuel",
     "metaTitle": "Notion + Salesforce : des wikis clients depuis vos affaires",
-    "metaDescription": "Générez des wikis clients Notion depuis les affaires gagnées et consignez les notes de réunions dans Salesforce. GAIA tient les données de comptes synchronisées.",
+    "metaDescription": "Générez des wikis clients Notion à partir des affaires gagnées et renvoyez les notes de réunion dans Salesforce. GAIA synchronise vos données de comptes.",
     "keywords": [
       "intégration Notion Salesforce",
       "automatisation Notion Salesforce",
@@ -7738,7 +7738,7 @@
     "toolB": "Zoom",
     "tagline": "Transformez automatiquement les résultats de réunions Zoom en tâches Todoist",
     "metaTitle": "Intégration Todoist + Zoom : des actions Zoom vers Todoist",
-    "metaDescription": "Extrayez les actions des transcriptions Zoom vers Todoist et recevez un briefing de tâches avant les appels. GAIA gère le suivi. Voir les étapes de configuration.",
+    "metaDescription": "Extrayez les actions des transcriptions Zoom vers Todoist et recevez un point sur vos tâches avant chaque appel. GAIA s'occupe du suivi à votre place.",
     "keywords": [
       "intégration Todoist Zoom",
       "automatisation Todoist Zoom",
@@ -7948,7 +7948,7 @@
     "toolB": "Stripe",
     "tagline": "Transformez automatiquement les événements de paiement Stripe en tâches actionnables",
     "metaTitle": "Todoist + Stripe : des événements de paiement en tâches",
-    "metaDescription": "Créez des tâches Todoist pour les échecs, les reconquêtes après résiliations, et l'onboarding des nouveaux abonnés. GAIA transforme les événements Stripe en suivis.",
+    "metaDescription": "Créez des tâches Todoist pour les paiements échoués, la reconquête après résiliation et l'onboarding des abonnés. GAIA transforme Stripe en suivis concrets.",
     "keywords": [
       "intégration Todoist Stripe",
       "automatisation Todoist Stripe",
@@ -8569,7 +8569,7 @@
     "toolB": "Todoist",
     "tagline": "Transformez automatiquement les tickets Linear assignés en tâches personnelles Todoist",
     "metaTitle": "Linear + Todoist : vos assignations Linear dans Todoist",
-    "metaDescription": "Transformez les assignations Linear en tâches Todoist et synchronisez les terminaisons vers Linear. GAIA tient votre liste à jour. Voir les étapes de configuration.",
+    "metaDescription": "Transformez vos assignations Linear en tâches Todoist et renvoyez les tâches terminées vers Linear. GAIA garde votre liste personnelle toujours à jour.",
     "keywords": [
       "intégration Linear Todoist",
       "synchronisation Linear Todoist",
@@ -8703,7 +8703,7 @@
     "toolB": "Figma",
     "tagline": "Utilisez l'intégration Figma de Linear pour les aperçus, et GAIA pour le travail dans Linear, GitHub et Slack autour du transfert",
     "metaTitle": "Intégration Linear Figma : joignez les designs aux tickets",
-    "metaDescription": "L’intégration Figma de Linear prévisualise les designs dans les tickets. GAIA gère le côté Linear, GitHub et Slack.",
+    "metaDescription": "L’intégration Figma de Linear prévisualise les designs dans les tickets, et son plugin crée des tickets depuis un cadre. GAIA gère Linear, GitHub et Slack.",
     "keywords": [
       "intégration Linear Figma",
       "synchronisation Linear Figma",
@@ -9318,7 +9318,7 @@
     "toolB": "ClickUp",
     "tagline": "Reliez le suivi de développement Jira à la planification produit ClickUp",
     "metaTitle": "Jira + ClickUp : synchro bidirectionnelle des stories et",
-    "metaDescription": "Synchronisez le statut des stories Jira vers les tâches ClickUp et créez des stories depuis les fonctionnalités ClickUp. GAIA gère la hiérarchie et les priorités.",
+    "metaDescription": "Synchronisez le statut des stories Jira avec les tâches ClickUp et créez des stories depuis les fonctionnalités ClickUp. GAIA aligne hiérarchie et priorités.",
     "keywords": [
       "intégration Jira ClickUp",
       "synchronisation Jira ClickUp",
@@ -9385,7 +9385,7 @@
     "toolB": "Trello",
     "tagline": "Synchronisez automatiquement les bugs Jira vers un tableau Trello de suivi",
     "metaTitle": "Jira + Trello : des bugs Jira sur un tableau Trello",
-    "metaDescription": "Répliquez les bugs Jira vers un tableau Trello de suivi et déplacez les cartes quand le statut change. GAIA tient les deux alignés. Voir les étapes de configuration.",
+    "metaDescription": "Répliquez les bugs Jira sur un tableau Trello de suivi et déplacez les cartes à chaque changement de statut. GAIA garde les deux outils parfaitement alignés.",
     "keywords": [
       "intégration Jira Trello",
       "synchronisation Jira Trello",
@@ -9939,7 +9939,7 @@
     "toolB": "Microsoft Teams",
     "tagline": "Affichez les mises à jour de tickets Linear et l'avancement des sprints dans Microsoft Teams",
     "metaTitle": "Linear + Microsoft Teams : des mises à jour de sprint",
-    "metaDescription": "Publiez l'avancement des sprints, les assignations de tickets et les annonces de versions de Linear vers vos salons Teams. GAIA tient toute l'entreprise informée.",
+    "metaDescription": "Publiez l'avancement des sprints, les assignations et les annonces de versions Linear dans vos salons Teams. GAIA tient toute l'entreprise informée.",
     "keywords": [
       "intégration Linear Microsoft Teams",
       "notifications Linear Teams",
@@ -10767,7 +10767,7 @@
     "toolB": "Figma",
     "tagline": "Reliez les livrables design Figma directement aux tâches projet dans Asana",
     "metaTitle": "Asana + Figma : des fichiers Figma sur vos tâches Asana",
-    "metaDescription": "Joignez les fichiers Figma aux tâches Asana et soyez notifié quand les designs sont prêts. GAIA suit le statut des validations. Voir les étapes de configuration.",
+    "metaDescription": "Joignez les fichiers Figma aux tâches Asana et soyez prévenu dès qu'un design est prêt. GAIA suit le statut de validation de chaque design pour vous.",
     "keywords": [
       "intégration Asana Figma",
       "automatisation Asana Figma",
@@ -12429,7 +12429,7 @@
     "toolB": "Slack",
     "tagline": "Reliez automatiquement votre communauté Discord et vos salons de travail Slack",
     "metaTitle": "Intégration Slack Discord : reliez communauté et équipe",
-    "metaDescription": "Répliquez les annonces Discord vers Slack et escaladez les bugs de la communauté vers l'ingénierie. GAIA filtre ce qui traverse. Voir les étapes de configuration.",
+    "metaDescription": "Répliquez les annonces Discord dans Slack et remontez les bugs signalés par la communauté à l'ingénierie. GAIA filtre ce qui passe d'un côté à l'autre.",
     "keywords": [
       "intégration Discord Slack",
       "connecter Discord et Slack",
@@ -12685,7 +12685,7 @@
     "toolB": "Jira",
     "tagline": "Affichez les mises à jour des tickets Jira dans vos salons Discord d'ingénierie",
     "metaTitle": "Discord + Jira : des alertes de tickets",
-    "metaDescription": "Publiez les changements de statut Jira et les bugs critiques dans les bons salons Discord, et créez des tickets depuis les messages. Voir comment GAIA s'y prend.",
+    "metaDescription": "Publiez les changements de statut Jira et les bugs critiques dans les bons salons Discord, et créez des tickets depuis les messages. GAIA s'en charge pour vous.",
     "keywords": [
       "intégration Discord Jira",
       "connecter Discord et Jira",
@@ -12929,7 +12929,7 @@
     "toolB": "Microsoft Teams",
     "tagline": "Reliez Zoom et Microsoft Teams pour les organisations bi-plateformes",
     "metaTitle": "Intégration Zoom + Microsoft Teams : des résumés dans Teams",
-    "metaDescription": "Publiez les résumés de réunions Zoom et les liens d'enregistrements dans vos salons Teams, et envoyez des rappels avant les appels. GAIA relie les deux plateformes.",
+    "metaDescription": "Publiez les résumés Zoom et les liens d'enregistrement dans vos salons Teams, avec des rappels avant chaque appel. GAIA relie les deux plateformes pour vous.",
     "keywords": [
       "intégration Zoom Microsoft Teams",
       "connecter Zoom et Microsoft Teams",
@@ -12990,7 +12990,7 @@
     "toolB": "Google Drive",
     "tagline": "Enregistrez automatiquement les réunions Zoom et notes dans des dossiers Google Drive organisés",
     "metaTitle": "Zoom + Google Drive : des enregistrements sauvegardés dans",
-    "metaDescription": "Téléversez les enregistrements Zoom vers Google Drive, classez-les par projet ou équipe, et enregistrez les transcriptions en docs. GAIA tient vos archives en ordre.",
+    "metaDescription": "Téléversez les enregistrements Zoom dans Google Drive, classés par projet ou équipe, avec les transcriptions en docs. GAIA garde vos archives en ordre.",
     "keywords": [
       "intégration Zoom Google Drive",
       "connecter Zoom et Google Drive",
@@ -13844,7 +13844,7 @@
     "toolB": "Notion",
     "tagline": "Intégrez les designs Figma dans vos pages Notion et synchronisez les statuts",
     "metaTitle": "Figma + Notion : des designs en direct dans vos docs",
-    "metaDescription": "Gardez les pages projet Notion affichant le design actuel. GAIA intègre les cadres Figma en direct et synchronise le statut de chaque design vers votre base Notion.",
+    "metaDescription": "Affichez toujours le design actuel dans vos pages projet Notion. GAIA intègre les cadres Figma en direct et synchronise leur statut dans votre base Notion.",
     "keywords": [
       "intégration Figma Notion",
       "connecter Figma et Notion",
@@ -14088,7 +14088,7 @@
     "toolB": "Slack",
     "tagline": "Envoyez des alertes et des récapitulatifs d'enregistrements Airtable dans Slack, et enregistrez des messages Slack dans Airtable",
     "metaTitle": "Airtable + Slack : des alertes d'enregistrements et des",
-    "metaDescription": "Recevez des alertes Slack quand les enregistrements Airtable changent, filtrées sur les vues qui vous importent.",
+    "metaDescription": "Recevez des alertes Slack quand des enregistrements Airtable changent, filtrées sur vos vues clés. GAIA crée même des enregistrements depuis vos messages Slack.",
     "keywords": [
       "intégration Airtable Slack",
       "connecter Airtable et Slack",

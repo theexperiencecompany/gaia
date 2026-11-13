@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, ButtonGroup, Chip, InputGroup } from "@heroui/react";
+import { ButtonGroup, Chip, InputGroup } from "@heroui/react";
 import {
   ArrowRight02Icon,
   Cancel01Icon,
@@ -13,7 +13,10 @@ import {
   ZapIcon,
 } from "@icons";
 import { useEffect, useMemo, useState } from "react";
-import { inputVariants } from "@/components/shared/controlVariants";
+import {
+  chipVariants,
+  inputVariants,
+} from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import { toneVariants } from "@/components/shared/tone";
@@ -54,7 +57,12 @@ function DemoIntegrationRow({
           <div className="flex items-center gap-2">
             <span className="font-medium">{integration.name}</span>
             {isPublic && (
-              <Chip size="sm" variant="soft" color="accent">
+              <Chip
+                size="sm"
+                variant="soft"
+                color="accent"
+                className={chipVariants({ hue: "secondary" })}
+              >
                 Community
               </Chip>
             )}
@@ -106,7 +114,7 @@ function DemoIntegrationSidebar({
     >
       {/* Close button */}
       <div className="flex w-full items-end justify-end px-6 pt-4 pb-0">
-        <Button
+        <GaiaButton
           onPress={onClose}
           variant="ghost"
           isIconOnly
@@ -114,7 +122,7 @@ function DemoIntegrationSidebar({
           aria-label="Close"
         >
           <Cancel01Icon className="size-4" />
-        </Button>
+        </GaiaButton>
       </div>
 
       <div className="flex-1 overflow-y-auto px-5">
@@ -132,12 +140,22 @@ function DemoIntegrationSidebar({
           {/* Status chips */}
           <div className="flex items-center gap-2">
             {isConnected && (
-              <Chip size="sm" variant="soft" color="success">
+              <Chip
+                className={shapeVariants({ shape: "sm" })}
+                size="sm"
+                variant="soft"
+                color="success"
+              >
                 Connected
               </Chip>
             )}
             {!isConnected && (
-              <Chip size="sm" variant="soft" color="default">
+              <Chip
+                className={shapeVariants({ shape: "sm" })}
+                size="sm"
+                variant="soft"
+                color="default"
+              >
                 Not Connected
               </Chip>
             )}
@@ -145,9 +163,12 @@ function DemoIntegrationSidebar({
               <Chip
                 size="sm"
                 variant="soft"
-                className={toneVariants({
-                  tone: "muted",
-                  className: "text-xs font-light",
+                className={shapeVariants({
+                  shape: "sm",
+                  className: toneVariants({
+                    tone: "muted",
+                    className: "text-xs font-light",
+                  }),
                 })}
               >
                 Custom
@@ -167,12 +188,16 @@ function DemoIntegrationSidebar({
 
           {/* Action buttons */}
           {!isConnected ? (
-            <Button className="w-full font-medium" size="md" variant="primary">
+            <GaiaButton
+              className="w-full font-medium"
+              size="md"
+              variant="primary"
+            >
               Connect
-            </Button>
+            </GaiaButton>
           ) : (
             <ButtonGroup variant="secondary" className="w-full" fullWidth>
-              <Button
+              <GaiaButton
                 isIconOnly={useIconOnly}
                 className="w-full"
                 aria-label="Disconnect"
@@ -180,9 +205,9 @@ function DemoIntegrationSidebar({
               >
                 <Unlink04Icon width={18} height={18} />
                 {!useIconOnly && "Disconnect"}
-              </Button>
+              </GaiaButton>
               {isPublic && (
-                <Button
+                <GaiaButton
                   isIconOnly={useIconOnly}
                   className="w-full"
                   aria-label="View on Marketplace"
@@ -190,10 +215,10 @@ function DemoIntegrationSidebar({
                 >
                   <InternetIcon width={18} height={18} />
                   {!useIconOnly && "View"}
-                </Button>
+                </GaiaButton>
               )}
               {isCustom && !isPublic && (
-                <Button
+                <GaiaButton
                   isIconOnly={useIconOnly}
                   className="w-full"
                   aria-label="Publish"
@@ -201,7 +226,7 @@ function DemoIntegrationSidebar({
                 >
                   <GlobalIcon width={18} height={18} />
                   {!useIconOnly && "Publish"}
-                </Button>
+                </GaiaButton>
               )}
               {isPublic && (
                 <GaiaButton
@@ -231,7 +256,10 @@ function DemoIntegrationSidebar({
                     size="sm"
                     className={shapeVariants({
                       shape: "pill",
-                      className: "font-light text-zinc-300",
+                      className: toneVariants({
+                        tone: "dim",
+                        className: "font-light",
+                      }),
                     })}
                   >
                     {tool}
@@ -328,8 +356,8 @@ export default function DemoIntegrationsView({
           <div className="relative overflow-hidden rounded-3xl bg-zinc-800/50">
             <div className="relative z-10 flex items-center justify-between gap-6 p-4">
               <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/20">
-                  <ConnectIcon className="h-6 w-6 text-primary" />
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent/20">
+                  <ConnectIcon className="h-6 w-6 text-accent" />
                 </div>
                 <div>
                   <h3 className="text-lg font-medium text-white">
@@ -346,10 +374,10 @@ export default function DemoIntegrationsView({
                   Browse Marketplace
                   <ArrowRight02Icon className="h-4 w-4" />
                 </GaiaButton>
-                <Button size="sm" variant="primary">
+                <GaiaButton size="sm" variant="primary">
                   <ZapIcon className="h-4 w-4" />
                   Create Custom
-                </Button>
+                </GaiaButton>
               </div>
             </div>
           </div>

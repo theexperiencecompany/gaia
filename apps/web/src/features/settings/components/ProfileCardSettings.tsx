@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, ButtonGroup, Skeleton, Tooltip } from "@heroui/react";
+import { ButtonGroup, Skeleton, Tooltip } from "@heroui/react";
 import { Copy01Icon, LinkSquare02Icon } from "@icons";
 import {
   CONNECT_ACTION_LABEL,
@@ -141,10 +141,10 @@ export default function ProfileCardSettings() {
                 displayData.user_bio.startsWith("Processing")) &&
               // Only show button if Gmail is not connected
               gmailState !== "connected" && (
-                <Button onPress={handleConnectGmail} variant="primary">
+                <GaiaButton onPress={handleConnectGmail} variant="primary">
                   {CONNECT_ACTION_LABEL[gmailState]} Gmail for a more
                   personalized bio
-                </Button>
+                </GaiaButton>
               )}
           </div>
         ) : null}

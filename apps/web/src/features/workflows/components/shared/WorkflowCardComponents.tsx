@@ -13,6 +13,7 @@ import Image from "next/image";
 import { useState } from "react";
 import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { shapeVariants } from "@/components/shared/shape";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import {
@@ -91,7 +92,11 @@ export function TriggerDisplay({
 }: TriggerDisplayProps) {
   if (triggerLabel === "Manual Trigger" || !triggerLabel) {
     return (
-      <Chip size="sm" variant="soft" className="text-xs">
+      <Chip
+        size="sm"
+        variant="soft"
+        className={shapeVariants({ shape: "sm", className: "text-xs" })}
+      >
         Manual
       </Chip>
     );
@@ -130,7 +135,12 @@ export function ActivationStatus({
   const label = activated ? "Activated" : "Deactivated";
 
   return (
-    <Chip color={color} variant="soft" size={size}>
+    <Chip
+      className={shapeVariants({ shape: "sm" })}
+      color={color}
+      variant="soft"
+      size={size}
+    >
       {label}
     </Chip>
   );
@@ -243,7 +253,12 @@ interface MissingIntegrationsWarningProps {
  */
 export function NeedsSetupChip({ size = "sm" }: { size?: "sm" | "md" | "lg" }) {
   return (
-    <Chip color="warning" variant="soft" size={size} className="cursor-default">
+    <Chip
+      color="warning"
+      variant="soft"
+      size={size}
+      className={shapeVariants({ shape: "sm", className: "cursor-default" })}
+    >
       <Alert01Icon width={13} height={13} />
       <Chip.Label>Needs setup</Chip.Label>
     </Chip>

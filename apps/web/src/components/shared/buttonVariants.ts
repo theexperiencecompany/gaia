@@ -1,6 +1,7 @@
 import { buttonVariants as heroButtonVariants } from "@heroui/react";
 import { tv, type VariantProps } from "tailwind-variants";
 
+import { SOFT_TINT_CLASSES } from "./controlVariants";
 import { SHAPE_CLASSES } from "./shape";
 import { TEXT_TONE_CLASSES, type TextTone } from "./tone";
 
@@ -8,6 +9,9 @@ import { TEXT_TONE_CLASSES, type TextTone } from "./tone";
 export const BUTTON_HOVER_TONE_CLASSES = {
   none: "",
   foreground: "hover:text-foreground",
+  white: "hover:text-white",
+  strong: "hover:text-zinc-100",
+  bright: "hover:text-zinc-200",
   dim: "hover:text-zinc-300",
   muted: "hover:text-zinc-400",
   accent: "hover:text-accent",
@@ -31,6 +35,7 @@ const GAIA_DIMENSIONS = {
   tone: TEXT_TONE_CLASSES,
   hoverTone: BUTTON_HOVER_TONE_CLASSES,
   inset: BUTTON_INSET_CLASSES,
+  tint: SOFT_TINT_CLASSES,
 };
 
 const GAIA_DEFAULTS = {
@@ -38,6 +43,7 @@ const GAIA_DEFAULTS = {
   tone: "default",
   hoverTone: "none",
   inset: "default",
+  tint: "default",
 } as const;
 
 /** Shape, tone, hover tone and inset: the GAIA dimensions layered on any HeroUI button variant. */
@@ -47,29 +53,35 @@ export const buttonOverlayVariants = tv({
 });
 
 /**
- * HeroUI's button variants plus GAIA's v2 looks: default-solid (bare default,
- * zinc-700), default-soft (default flat), accent-soft (primary flat),
- * success-soft and warning-soft (their flat buttons; danger flat is HeroUI's
- * danger-soft), and text (the small inline text action, 4px by 8px, no fill).
+ * GAIA's v2 looks HeroUI's Button lacks: default-solid (bare default, zinc-700),
+ * default-soft (default flat), accent-soft (primary flat), success-soft and
+ * warning-soft (their flat buttons; danger flat is HeroUI's danger-soft), and
+ * text (the small inline text action, 4px by 8px, no fill).
  */
+export const GAIA_BUTTON_FILLS = {
+  "default-solid":
+    "bg-zinc-700 text-foreground hover:bg-zinc-600 active:bg-zinc-600",
+  "default-soft":
+    "bg-default-soft text-default-soft-foreground hover:bg-default-soft-hover active:bg-default-soft-hover",
+  "success-soft":
+    "bg-success-soft text-success-soft-foreground hover:bg-success-soft-hover active:bg-success-soft-hover",
+  "warning-soft":
+    "bg-warning-soft text-warning-soft-foreground hover:bg-warning-soft-hover active:bg-warning-soft-hover",
+  "accent-soft":
+    "bg-accent-soft text-accent-soft-foreground hover:bg-accent-soft-hover active:bg-accent-soft-hover",
+  text: "h-auto min-h-0 min-w-0 bg-transparent px-2 py-1 hover:bg-transparent active:bg-transparent",
+} as const;
+
+export type GaiaButtonFill = keyof typeof GAIA_BUTTON_FILLS;
+
+export function isGaiaButtonFill(variant: string): variant is GaiaButtonFill {
+  return Object.hasOwn(GAIA_BUTTON_FILLS, variant);
+}
+
+/** HeroUI's button variants plus GAIA's fills and dimensions, extended the way HeroUI documents. */
 export const buttonVariants = tv({
   extend: heroButtonVariants,
-  variants: {
-    variant: {
-      "default-solid":
-        "bg-zinc-700 text-foreground hover:bg-zinc-600 active:bg-zinc-600",
-      "default-soft":
-        "bg-default-soft text-foreground hover:bg-default-soft-hover active:bg-default-soft-hover",
-      "success-soft":
-        "bg-success-soft text-success-soft-foreground hover:bg-success-soft-hover active:bg-success-soft-hover",
-      "warning-soft":
-        "bg-warning-soft text-warning-soft-foreground hover:bg-warning-soft-hover active:bg-warning-soft-hover",
-      "accent-soft":
-        "bg-accent-soft text-accent-soft-foreground hover:bg-accent-soft-hover active:bg-accent-soft-hover",
-      text: "h-auto min-h-0 min-w-0 bg-transparent px-2 py-1 hover:bg-transparent active:bg-transparent",
-    },
-    ...GAIA_DIMENSIONS,
-  },
+  variants: { variant: GAIA_BUTTON_FILLS, ...GAIA_DIMENSIONS },
   defaultVariants: GAIA_DEFAULTS,
 });
 

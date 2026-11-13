@@ -1,11 +1,13 @@
 "use client";
 
-import { Button, Kbd, Modal, Tabs } from "@heroui/react";
+import { Kbd, Modal, Tabs } from "@heroui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // The renderer takes streamdown's Components, not react-markdown's: the two are
 // structurally incompatible, and react-markdown's is not assignable to it.
 import type { Components } from "streamdown";
 import { modalVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import {
@@ -151,7 +153,7 @@ export const IntegrationInstructionsModal = ({
       }}
     >
       <Modal.Backdrop variant="blur">
-        <Modal.Container placement="center" size="lg">
+        <Modal.Container placement="center">
           <Modal.Dialog
             className={modalVariants({
               size: "2xl",
@@ -170,7 +172,12 @@ export const IntegrationInstructionsModal = ({
                 />
               </div>
               <div className="flex min-w-0 flex-col gap-0.5">
-                <Modal.Heading className="text-lg font-semibold">
+                <Modal.Heading
+                  className={toneVariants({
+                    tone: "strong",
+                    className: "text-lg font-semibold",
+                  })}
+                >
                   Custom instructions for {integration.name}
                 </Modal.Heading>
                 <span className="text-sm font-light text-zinc-400">
@@ -253,7 +260,7 @@ export const IntegrationInstructionsModal = ({
             </Modal.Body>
 
             <Modal.Footer>
-              <Button
+              <GaiaButton
                 variant="ghost"
                 onPress={handleClose}
                 isDisabled={isSaving}
@@ -262,8 +269,8 @@ export const IntegrationInstructionsModal = ({
                 <Kbd>
                   <Kbd.Abbr keyValue="escape" />
                 </Kbd>
-              </Button>
-              <Button
+              </GaiaButton>
+              <GaiaButton
                 onPress={handleSave}
                 isPending={isSaving}
                 isDisabled={!canSave}
@@ -276,7 +283,7 @@ export const IntegrationInstructionsModal = ({
                     <Kbd.Abbr keyValue="enter" />
                   </Kbd>
                 )}
-              </Button>
+              </GaiaButton>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

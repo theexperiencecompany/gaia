@@ -60,8 +60,8 @@ function renderTriggerSections(
               showBackground: false,
             })}
             <div className="flex flex-col">
-              <span className="text-small">{schema.name}</span>
-              <span className="text-tiny text-zinc-500 group-data-[hover=true]:text-zinc-300">
+              <span className="text-sm">{schema.name}</span>
+              <span className="text-xs text-zinc-500 group-data-[hover=true]:text-zinc-300">
                 {schema.description}
               </span>
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Spinner, Tabs } from "@heroui/react";
+import { Spinner, Tabs } from "@heroui/react";
 import {
   Cancel01Icon,
   CodeIcon,
@@ -11,18 +11,15 @@ import {
 import { formatFileSize } from "@shared/utils";
 import Image from "next/image";
 import { useCallback, useEffect, useState, type WheelEvent } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { tabsVariants } from "@/components/shared/tabsVariants";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useArtifactText } from "@/features/chat/hooks/useArtifactText";
 import { copyWithFeedback } from "@/lib/clipboard";
-import {
-  TABS_INDICATOR,
-  TABS_LIST,
-  TABS_ROOT,
-  TABS_SELECTED,
-  TABS_TAB_SM,
-} from "@/lib/heroui/tabsParity";
 import { useCloseRightSidebar } from "@/stores/layoutStore";
+
+const tabsStyles = tabsVariants({ variant: "solid", size: "sm" });
 
 interface FileViewerPanelProps {
   conversationId: string;
@@ -347,28 +344,22 @@ export default function FileViewerPanel({
           <Tabs
             selectedKey={viewMode}
             onSelectionChange={(key) => setViewMode(key as ViewMode)}
-            className={TABS_ROOT}
+            className={tabsStyles.base()}
           >
-            <Tabs.List aria-label="View mode" className={TABS_LIST}>
-              <Tabs.Tab
-                id="preview"
-                className={`${TABS_TAB_SM} ${TABS_SELECTED}`}
-              >
+            <Tabs.List aria-label="View mode" className={tabsStyles.tabList()}>
+              <Tabs.Tab id="preview" className={tabsStyles.tab()}>
                 <div className="flex items-center gap-1.5">
                   <File01Icon size={14} />
                   <span>Preview</span>
                 </div>
-                <Tabs.Indicator className={TABS_INDICATOR} />
+                <Tabs.Indicator className={tabsStyles.tabIndicator()} />
               </Tabs.Tab>
-              <Tabs.Tab
-                id="source"
-                className={`${TABS_TAB_SM} ${TABS_SELECTED}`}
-              >
+              <Tabs.Tab id="source" className={tabsStyles.tab()}>
                 <div className="flex items-center gap-1.5">
                   <CodeIcon size={14} />
                   <span>Code</span>
                 </div>
-                <Tabs.Indicator className={TABS_INDICATOR} />
+                <Tabs.Indicator className={tabsStyles.tabIndicator()} />
               </Tabs.Tab>
             </Tabs.List>
           </Tabs>
@@ -384,7 +375,7 @@ export default function FileViewerPanel({
         ) : null}
 
         <div className="flex items-center gap-0.5">
-          <Button
+          <GaiaButton
             isIconOnly
             size="sm"
             variant="ghost"
@@ -393,8 +384,8 @@ export default function FileViewerPanel({
             isDisabled={content === null}
           >
             <Copy01Icon size={16} />
-          </Button>
-          <Button
+          </GaiaButton>
+          <GaiaButton
             isIconOnly
             size="sm"
             variant="ghost"
@@ -403,8 +394,8 @@ export default function FileViewerPanel({
             isDisabled={!isImage && !isPdf && content === null}
           >
             <Download01Icon size={16} />
-          </Button>
-          <Button
+          </GaiaButton>
+          <GaiaButton
             isIconOnly
             size="sm"
             variant="ghost"
@@ -412,7 +403,7 @@ export default function FileViewerPanel({
             aria-label="Close preview"
           >
             <Cancel01Icon size={16} />
-          </Button>
+          </GaiaButton>
         </div>
       </div>
 

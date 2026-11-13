@@ -2,7 +2,7 @@ export function BrandGuidelines() {
   return (
     <div className="mx-auto max-w-3xl">
       <h2 className="mb-8 text-3xl font-medium">Naming</h2>
-      <div className="space-y-3 text-foreground-600 dark:text-foreground-400">
+      <div className="space-y-3 text-zinc-300 dark:text-zinc-500">
         <p>
           <strong>The Experience Company</strong> is our parent company name,
           building products that create exceptional user experiences. Always use

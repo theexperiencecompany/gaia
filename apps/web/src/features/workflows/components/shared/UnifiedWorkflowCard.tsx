@@ -401,7 +401,7 @@ function getButtonConfig(
   action: WorkflowCardAction,
   customLabel?: string,
   propActionType?: "prompt" | "workflow",
-): { label: string; variant: "primary" | "secondary" } {
+): { label: string; variant: "primary" | "accent-soft" } {
   if (customLabel) {
     return { label: customLabel, variant: "primary" };
   }
@@ -413,13 +413,13 @@ function getButtonConfig(
 
   switch (action) {
     case "run":
-      return { label: "Run", variant: "secondary" };
+      return { label: "Run", variant: "accent-soft" };
     case "create":
       return { label: "Create", variant: "primary" };
     case "insert-prompt":
       return { label: "Insert Prompt", variant: "primary" };
     case "navigate":
-      return { label: "View", variant: "secondary" };
+      return { label: "View", variant: "accent-soft" };
     default:
       return { label: "Try", variant: "primary" };
   }
@@ -430,7 +430,7 @@ interface WorkflowActionButtonProps {
   label: string;
   isPending: boolean;
   onPress: (e: React.MouseEvent) => void;
-  variant?: "primary" | "secondary";
+  variant?: "primary" | "accent-soft";
   size?: "sm" | "md";
 }
 
@@ -444,9 +444,9 @@ function WorkflowActionButton({
   return (
     <GaiaButton
       size={size}
+      shape="md"
       variant={variant}
-      tone={variant === "secondary" ? "accent" : "default"}
-      className="rounded-xl font-medium"
+      className="font-medium"
       isPending={isPending}
       onPress={(e) => onPress(e as unknown as React.MouseEvent)}
     >

@@ -4,6 +4,7 @@ import { Accordion, AccordionItem, Chip, Separator } from "@heroui/react";
 import { AiWebBrowsingIcon, Alert01Icon, CheckmarkCircle02Icon } from "@icons";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 import { separatorVariants } from "@/components/shared/controlVariants";
 import { toneVariants } from "@/components/shared/tone";
 import { BrowserStatusChip } from "@/features/browser/components/BrowserStatusChip";
@@ -12,10 +13,6 @@ import { useBrowserPanel } from "@/features/browser/stores/browserPanelStore";
 import type { LiveSurface } from "@/features/browser/types";
 import { browserCardPhase, foldBrowserTask } from "@/features/browser/utils";
 import { useIsMobile } from "@/hooks/ui/useMobile";
-import {
-  ACCORDION_INDICATOR,
-  ACCORDION_TRIGGER_COMPACT,
-} from "@/lib/heroui/accordionParity";
 import { useLayoutSidebar } from "@/stores/layoutStore";
 import type {
   BrowserResultSnapshot,
@@ -28,6 +25,8 @@ import { LivePreview } from "./LivePreview";
 import { RecapViewer } from "./RecapViewer";
 import { ShimmerText } from "./ShimmerText";
 import { StepRow } from "./StepRow";
+
+const accordionStyles = accordionVariants({ density: "compact" });
 
 interface BrowserTaskSectionProps {
   data: BrowserTaskSnapshot | BrowserTaskSnapshot[];
@@ -110,7 +109,7 @@ function StepsAccordion({
     <Accordion>
       <AccordionItem key="steps" id="steps">
         <Accordion.Heading>
-          <Accordion.Trigger className={ACCORDION_TRIGGER_COMPACT}>
+          <Accordion.Trigger className={accordionStyles.trigger()}>
             <div className="flex min-w-0 items-center gap-2">
               <span className="shrink-0 text-sm font-medium text-zinc-300">
                 Steps
@@ -131,13 +130,15 @@ function StepsAccordion({
                 </span>
               )}
             </div>
-            <Accordion.Indicator className={ACCORDION_INDICATOR} />
+            <Accordion.Indicator className={accordionStyles.indicator()} />
           </Accordion.Trigger>
         </Accordion.Heading>
-        <Accordion.Panel className="space-y-2 pt-1 pb-2">
-          {steps.map((step) => (
-            <StepRow key={`browser-step-${step.index}`} step={step} />
-          ))}
+        <Accordion.Panel>
+          <div className="space-y-2 pt-1 pb-2">
+            {steps.map((step) => (
+              <StepRow key={`browser-step-${step.index}`} step={step} />
+            ))}
+          </div>
         </Accordion.Panel>
       </AccordionItem>
     </Accordion>
@@ -148,7 +149,7 @@ function ResultFooter({ result }: { result: BrowserResultSnapshot }) {
   return (
     <>
       <Separator
-        className={separatorVariants({ tone: "subtle", className: "my-3" })}
+        className={separatorVariants({ surface: "raised", className: "my-3" })}
       />
       <div className="flex items-start gap-2.5">
         {result.success ? (

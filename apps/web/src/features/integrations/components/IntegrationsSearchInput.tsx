@@ -1,7 +1,6 @@
 import { InputGroup, TextField } from "@heroui/react";
 import { SearchIcon } from "@icons";
 import { forwardRef, type KeyboardEvent } from "react";
-import { inputVariants } from "@/components/shared/controlVariants";
 
 interface IntegrationsSearchInputProps {
   value: string;
@@ -24,11 +23,7 @@ export const IntegrationsSearchInput = forwardRef<
   };
 
   return (
-    <TextField
-      value={value}
-      onChange={onChange}
-      className={inputVariants({ size: "sm", className: "max-w-lg" })}
-    >
+    <TextField value={value} onChange={onChange} className="max-w-lg">
       <InputGroup>
         <InputGroup.Prefix>
           <SearchIcon width={16} height={16} />

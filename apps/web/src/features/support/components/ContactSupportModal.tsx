@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Input,
   Label,
   ListBox,
@@ -15,6 +14,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { modalVariants } from "@/components/shared/controlVariants";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
@@ -126,9 +126,9 @@ function SelfHostedSupportModal({
               <SelfHostedSupportNotice />
             </Modal.Body>
             <Modal.Footer>
-              <Button variant="ghost" onPress={onOpenChange}>
+              <GaiaButton variant="ghost" onPress={onOpenChange}>
                 Close
-              </Button>
+              </GaiaButton>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>
@@ -222,7 +222,7 @@ function SupportRequestModal({
       }}
     >
       <Modal.Backdrop isDismissable={false}>
-        <Modal.Container size="lg">
+        <Modal.Container>
           <Modal.Dialog
             className={modalVariants({ size: "2xl", className: "max-w-2xl" })}
           >
@@ -325,7 +325,7 @@ function SupportRequestModal({
                 />
                 <button
                   type="button"
-                  className={`w-full cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center transition-all duration-200 ${dragActive ? "scale-[1.02] border-primary bg-blue-50 shadow-lg" : "hover:bg-zinc-700 border-zinc-700 bg-zinc-800 hover:border-primary"}`}
+                  className={`w-full cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center transition-all duration-200 ${dragActive ? "scale-[1.02] border-accent bg-blue-50 shadow-lg" : "hover:bg-zinc-700 border-zinc-700 bg-zinc-800 hover:border-accent"}`}
                   onDragEnter={handleDrag}
                   onDragLeave={handleDrag}
                   onDragOver={handleDrag}
@@ -415,17 +415,17 @@ function SupportRequestModal({
               </div>
             </Modal.Body>
             <Modal.Footer>
-              <Button variant="ghost" onPress={handleClose}>
+              <GaiaButton variant="ghost" onPress={handleClose}>
                 Cancel
-              </Button>
-              <Button
+              </GaiaButton>
+              <GaiaButton
                 onPress={handleSubmit}
                 isPending={isSubmitting}
                 isDisabled={!isFormValid}
                 variant="primary"
               >
                 Submit Request
-              </Button>
+              </GaiaButton>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

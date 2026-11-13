@@ -26,6 +26,7 @@ import {
   ConfirmActionDialog,
 } from "@/components/shared/ConfirmActionDialog";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { ChevronRight, Github } from "@/components/shared/icons";
 import { toneVariants } from "@/components/shared/tone";
 import { getLinkByLabel } from "@/config/appConfig";
@@ -329,7 +330,7 @@ export default function SettingsMenu({
                   }),
                 icon: CircleArrowUp02Icon,
                 iconColor: "#00bbff",
-                customClassNames: { title: "text-primary font-medium" },
+                customClassNames: { title: "text-accent font-medium" },
               },
             ],
           },
@@ -374,7 +375,7 @@ export default function SettingsMenu({
                 hasSubmenu: true,
                 badge:
                   unseenReleases.length > 0 ? (
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-accent" />
                   ) : undefined,
               },
             ]),
@@ -433,7 +434,10 @@ export default function SettingsMenu({
         <Dropdown.Popover
           placement="right"
           offset={21}
-          className="dark shadow-xl"
+          className={overlayVariants({
+            surface: "secondary",
+            className: "dark shadow-xl",
+          })}
         >
           <Dropdown.Menu aria-label="Settings Menu">
             {menuSections.map((section) => (

@@ -6,7 +6,10 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useHotkeys } from "react-hotkeys-hook";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { modalVariants } from "@/components/shared/controlVariants";
+import {
+  modalVariants,
+  overlayVariants,
+} from "@/components/shared/controlVariants";
 import {
   initialWorkflowModalUiState,
   workflowModalUiReducer,
@@ -311,16 +314,17 @@ export default function WorkflowModal({
     <>
       <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
         <Modal.Backdrop variant="blur">
-          <Modal.Container size="lg">
+          <Modal.Container>
             {/* Two-column mode uses a definite height so the side panel's
                 flex/overflow chain (h-full → min-h-0 → overflow-y-auto) resolves
                 and the Steps panel doesn't clip. */}
             <Modal.Dialog
-              className={
-                isTwoColumn
+              className={overlayVariants({
+                surface: "secondary",
+                className: isTwoColumn
                   ? "h-[85vh] max-h-208 max-w-6xl"
-                  : `${modalVariants({ size: "4xl" })} max-h-[90vh]`
-              }
+                  : `${modalVariants({ size: "4xl" })} max-h-[90vh]`,
+              })}
             >
               <Modal.Body className="flex min-h-0 flex-col gap-0 p-0">
                 {ui.creationPhase === "form" ? (

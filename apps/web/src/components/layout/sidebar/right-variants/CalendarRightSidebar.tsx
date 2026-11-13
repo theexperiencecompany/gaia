@@ -1,18 +1,12 @@
 "use client";
 
-import {
-  Button,
-  Input,
-  Label,
-  ListBox,
-  Select,
-  Switch,
-  TextArea,
-} from "@heroui/react";
+import { Input, Label, ListBox, Select, Switch, TextArea } from "@heroui/react";
 import { Delete02Icon, RepeatIcon, UserCircleIcon } from "@icons";
 import React, { useEffectEvent } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { toneVariants } from "@/components/shared/tone";
@@ -89,7 +83,14 @@ const EventTitleFields: React.FC<EventTitleFieldsProps> = ({
       value={summary}
       onChange={(e) => onSummaryChange(e.target.value)}
       placeholder="Event title"
-      className="border-b border-zinc-700 bg-transparent px-0 text-2xl shadow-none placeholder:text-zinc-700 hover:bg-transparent focus:bg-transparent"
+      className={inputVariants({
+        variant: "transparent",
+        placeholder: "ghost",
+        className: toneVariants({
+          tone: "strong",
+          className: "border-b border-zinc-700 px-0 text-2xl shadow-none",
+        }),
+      })}
       autoFocus={isCreating}
     />
 
@@ -98,7 +99,11 @@ const EventTitleFields: React.FC<EventTitleFieldsProps> = ({
       onChange={(e) => onDescriptionChange(e.target.value)}
       placeholder="Add description"
       rows={6}
-      className="bg-zinc-800/30 placeholder:text-zinc-700 hover:bg-zinc-800/50"
+      className={inputVariants({
+        variant: "subtle",
+        placeholder: "ghost",
+        className: toneVariants({ tone: "bright" }),
+      })}
     />
   </div>
 );
@@ -182,7 +187,12 @@ const RecurrenceSelector: React.FC<RecurrenceSelectorProps> = ({
       }}
     >
       <Label className={toneVariants({ tone: "muted" })}>Repeat</Label>
-      <Select.Trigger className="bg-zinc-800/30 shadow-none hover:bg-zinc-800/50">
+      <Select.Trigger
+        className={inputVariants({
+          variant: "subtle",
+          className: "shadow-none",
+        })}
+      >
         <RepeatIcon className="size-4 text-zinc-500" />
         <GaiaSelectValue />
         <Select.Indicator />
@@ -260,7 +270,12 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({
       isRequired
     >
       <Label className={toneVariants({ tone: "muted" })}>Calendar</Label>
-      <Select.Trigger className="bg-zinc-800/30 shadow-none hover:bg-zinc-800/50">
+      <Select.Trigger
+        className={inputVariants({
+          variant: "subtle",
+          className: "shadow-none",
+        })}
+      >
         {selectedCalendarId && (
           <div
             className="size-3 rounded-full"
@@ -531,7 +546,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
         {/* Create/Delete Actions */}
         <div className="flex items-center gap-3">
           {isCreating ? (
-            <Button
+            <GaiaButton
               onPress={onCreate}
               isDisabled={isSaving || !summary.trim()}
               fullWidth
@@ -539,7 +554,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
               variant="primary"
             >
               {isSaving ? "Creating..." : "Create Event"}
-            </Button>
+            </GaiaButton>
           ) : (
             <>
               <div className="flex-1 text-center text-sm text-zinc-500">

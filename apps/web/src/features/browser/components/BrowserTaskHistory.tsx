@@ -182,7 +182,7 @@ function TaskRow({
       {hasRecap && (
         <Modal isOpen={recapOpen} onOpenChange={setRecapOpen}>
           <Modal.Backdrop>
-            <Modal.Container size="lg">
+            <Modal.Container>
               <Modal.Dialog
                 className={modalVariants({
                   size: "2xl",

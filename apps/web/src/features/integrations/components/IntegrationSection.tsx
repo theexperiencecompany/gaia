@@ -1,4 +1,4 @@
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import { RedoIcon } from "@icons";
 import {
   CONNECT_ACTION_LABEL,
@@ -6,6 +6,7 @@ import {
   integrationConnectionState,
 } from "@shared/utils";
 import type React from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { InstanceSetupNotice } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import type { Integration } from "../types";
@@ -76,8 +77,8 @@ const IntegrationRow: React.FC<{
         {(isAvailable || needsAttention) &&
           !isConnected &&
           !integration.instanceSetupRequired && (
-            <Button
-              variant="secondary"
+            <GaiaButton
+              variant={needsAttention ? "warning-soft" : "accent-soft"}
               size="sm"
               onPress={() => {
                 onConnect(integration.id);
@@ -85,7 +86,7 @@ const IntegrationRow: React.FC<{
             >
               {needsAttention ? <RedoIcon width={16} height={16} /> : undefined}
               {CONNECT_ACTION_LABEL[state]}
-            </Button>
+            </GaiaButton>
           )}
       </div>
     </div>

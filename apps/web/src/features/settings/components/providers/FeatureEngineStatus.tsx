@@ -1,5 +1,5 @@
-import { Button } from "@heroui/react";
 import { ArrowDown01Icon, CheckmarkCircle02Icon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { ProviderCatalog } from "@/features/settings/api/providersApi";
 import { featureEngineLabel } from "@/features/settings/utils/providerCatalog";
 import { cn } from "@/lib/utils";
@@ -32,7 +32,7 @@ export function BuiltInWorking({
         </div>
       </div>
       {group.rows.length > 0 && (
-        <Button
+        <GaiaButton
           size="sm"
           variant="secondary"
           aria-expanded={isOpen}
@@ -43,7 +43,7 @@ export function BuiltInWorking({
             size={16}
             className={cn("transition-transform", isOpen && "rotate-180")}
           />
-        </Button>
+        </GaiaButton>
       )}
     </div>
   );

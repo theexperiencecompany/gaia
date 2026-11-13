@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Chip,
   Dropdown,
   Popover,
@@ -185,7 +184,7 @@ function LoginRow({
           </p>
         )}
       </div>
-      <Button
+      <GaiaButton
         size="sm"
         variant="ghost"
         className={`h-8 shrink-0 transition-opacity ${isForgetting ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
@@ -194,7 +193,7 @@ function LoginRow({
       >
         {!isForgetting && <Delete02Icon className="size-4" />}
         Forget
-      </Button>
+      </GaiaButton>
     </div>
   );
 }
@@ -275,14 +274,14 @@ export function SavedLogins() {
             </SearchField>
           )}
           <Dropdown>
-            <Button
+            <GaiaButton
               isIconOnly
               aria-label="Saved sites actions"
               size="sm"
               variant="ghost"
             >
               <MoreVerticalIcon className="size-4" />
-            </Button>
+            </GaiaButton>
             <Dropdown.Popover placement="bottom end">
               <Dropdown.Menu
                 aria-label="Saved sites actions"
@@ -346,13 +345,13 @@ export function SavedLogins() {
           <p className="truncate text-xs text-zinc-500">
             Import logins from your computer's browser to get started.
           </p>
-          <Button
+          <GaiaButton
             size="sm"
             onPress={() => setConnectOpen(true)}
             variant="primary"
           >
             Import
-          </Button>
+          </GaiaButton>
         </div>
       ) : (
         <ScrollShadow className="max-h-[540px]">

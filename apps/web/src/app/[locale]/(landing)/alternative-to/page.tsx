@@ -100,7 +100,7 @@ function AlternativeCard({
           />
         </div>
       </div>
-      <h3 className="text-lg font-medium text-white transition-colors group-hover:text-primary">
+      <h3 className="text-lg font-medium text-white transition-colors group-hover:text-accent">
         {alt.name}
       </h3>
       <p className="text-sm text-zinc-500">{alt.tagline}</p>
@@ -207,7 +207,7 @@ export default async function AlternativesHubPage({ params }: PageProps) {
           </p>
           <SiteLink
             href="/compare"
-            className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-medium text-black transition-opacity hover:opacity-90"
+            className="inline-flex items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-medium text-black transition-opacity hover:opacity-90"
           >
             {tCommon("view_comparisons")}
           </SiteLink>

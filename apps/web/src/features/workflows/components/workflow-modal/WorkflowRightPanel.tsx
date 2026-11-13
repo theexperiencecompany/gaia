@@ -1,7 +1,8 @@
 import { Tabs } from "@heroui/react";
 import { Clock04Icon } from "@icons";
-import { tabsVariants } from "@/components/shared/controlVariants";
 import { shapeVariants } from "@/components/shared/shape";
+import { tabsVariants } from "@/components/shared/tabsVariants";
+import { toneVariants } from "@/components/shared/tone";
 import type { Workflow } from "../../api/workflowApi";
 import WorkflowExecutionHistory from "../WorkflowExecutionHistory";
 import WorkflowStepsPanel from "./WorkflowStepsPanel";
@@ -40,11 +41,10 @@ export default function WorkflowRightPanel({
     <div className={STEPS_CARD_SURFACE}>
       <Tabs
         defaultSelectedKey="steps"
-        className={tabsVariants({
-          color: "accent",
+        className={tabsVariants({ color: "accent" }).base({
           className: shapeVariants({
             shape: "pill",
-            className: "flex w-full shrink-0 flex-col",
+            className: "flex w-full shrink-0 flex-col gap-0",
           }),
         })}
       >
@@ -54,14 +54,20 @@ export default function WorkflowRightPanel({
         >
           <Tabs.Tab
             id="steps"
-            className="font-medium text-zinc-400 data-[selected]:text-black"
+            className={toneVariants({
+              tone: "muted",
+              className: "font-medium data-[selected]:text-black",
+            })}
           >
             Steps
             <Tabs.Indicator className="shadow-sm" />
           </Tabs.Tab>
           <Tabs.Tab
             id="history"
-            className="font-medium text-zinc-400 data-[selected]:text-black"
+            className={toneVariants({
+              tone: "muted",
+              className: "font-medium data-[selected]:text-black",
+            })}
           >
             <div className="flex items-center gap-2">
               <Clock04Icon className="h-4 w-4" />

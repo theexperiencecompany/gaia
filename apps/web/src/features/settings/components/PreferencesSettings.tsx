@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, ListBox, Select } from "@heroui/react";
+import { ListBox, Select } from "@heroui/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { type Key, useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -10,6 +10,7 @@ import {
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
+import { toneVariants } from "@/components/shared/tone";
 import { authApi } from "@/features/auth/api/authApi";
 import {
   patchCurrentUser,
@@ -115,10 +116,10 @@ function IdentitySettingsSection({
           <Select.Trigger
             className={inputVariants({
               variant: "translucent",
-              className: "cursor-pointer min-h-[36px]",
+              className: "cursor-pointer",
             })}
           >
-            <GaiaSelectValue />
+            <GaiaSelectValue className={toneVariants({ tone: "white" })} />
             <Select.Indicator />
           </Select.Trigger>
           <Select.Popover
@@ -171,10 +172,10 @@ function IdentitySettingsSection({
             <Select.Trigger
               className={inputVariants({
                 variant: "translucent",
-                className: "cursor-pointer min-h-[36px]",
+                className: "cursor-pointer",
               })}
             >
-              <GaiaSelectValue />
+              <GaiaSelectValue className={toneVariants({ tone: "white" })} />
               <Select.Indicator />
             </Select.Trigger>
             <Select.Popover
@@ -383,10 +384,10 @@ export default function PreferencesSettings({
             <Select.Trigger
               className={inputVariants({
                 variant: "translucent",
-                className: "cursor-pointer min-h-[36px]",
+                className: "cursor-pointer",
               })}
             >
-              <GaiaSelectValue />
+              <GaiaSelectValue className={toneVariants({ tone: "white" })} />
               <Select.Indicator />
             </Select.Trigger>
             <Select.Popover
@@ -439,12 +440,12 @@ export default function PreferencesSettings({
           description="Permanently delete all your conversations and chat history"
           variant="danger"
         >
-          <Button
+          <GaiaButton
             variant="danger-soft"
             onPress={() => setModalAction("clear_chats")}
           >
             Clear All
-          </Button>
+          </GaiaButton>
         </SettingsRow>
       </SettingsSection>
 

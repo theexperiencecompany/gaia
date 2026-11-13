@@ -207,8 +207,9 @@ export function ActivityBadge({
     <>
       <GaiaButton
         variant="default-solid"
+        shape="xl"
         onPress={onOpen}
-        className="flex h-auto w-44 shrink-0 flex-col items-center justify-start gap-1 rounded-2xl bg-zinc-900/60 p-4 text-center transition-colors data-[hover=true]:bg-zinc-800/70"
+        className="flex h-auto w-44 shrink-0 flex-col items-center justify-start gap-1 bg-zinc-900/60 p-4 text-center transition-colors data-[hover=true]:bg-zinc-800/70"
       >
         <Medal tier={tier} className="size-28" />
         <p className="mt-1 text-lg font-semibold text-white">{t.label}</p>
@@ -218,7 +219,7 @@ export function ActivityBadge({
       </GaiaButton>
 
       <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
-        <Modal.Backdrop>
+        <Modal.Backdrop variant="blur">
           <Modal.Container placement="center" size="sm">
             <Modal.Dialog>
               <Modal.CloseTrigger aria-label="Close" />
@@ -352,7 +353,7 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
           size="sm"
           variant="ghost"
           tone="muted"
-          hoverTone="foreground"
+          hoverTone="strong"
           className="shrink-0"
           aria-label="Share on X"
           onPress={() => void shareActivity(activity)}

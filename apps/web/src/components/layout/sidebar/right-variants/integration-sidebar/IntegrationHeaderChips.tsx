@@ -2,6 +2,7 @@
 
 import { Avatar, Chip } from "@heroui/react";
 import { UserCircle02Icon } from "@icons";
+import { shapeVariants } from "@/components/shared/shape";
 import { toneVariants } from "@/components/shared/tone";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import type { Integration } from "@/features/integrations/types";
@@ -37,7 +38,12 @@ export function IntegrationHeaderChips({
   return (
     <div className="flex items-center gap-2 flex-row mb-2">
       {isConnected && (
-        <Chip size="sm" variant="soft" color="success">
+        <Chip
+          className={shapeVariants({ shape: "sm" })}
+          size="sm"
+          variant="soft"
+          color="success"
+        >
           Connected
         </Chip>
       )}
@@ -47,9 +53,12 @@ export function IntegrationHeaderChips({
             <Chip
               size="sm"
               variant="soft"
-              className={toneVariants({
-                tone: "muted",
-                className: "text-xs font-light relative",
+              className={shapeVariants({
+                shape: "sm",
+                className: toneVariants({
+                  tone: "muted",
+                  className: "text-xs font-light relative",
+                }),
               })}
             >
               {integration.creator.picture ? (
@@ -76,9 +85,12 @@ export function IntegrationHeaderChips({
               size="sm"
               variant="soft"
               color="default"
-              className={toneVariants({
-                tone: "muted",
-                className: "text-xs font-light relative right-1",
+              className={shapeVariants({
+                shape: "sm",
+                className: toneVariants({
+                  tone: "muted",
+                  className: "text-xs font-light relative right-1",
+                }),
               })}
             >
               <Avatar size="sm" className="h-4 w-4">

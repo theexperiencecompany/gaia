@@ -8,6 +8,7 @@ import {
   ZapIcon,
 } from "@icons";
 import type React from "react";
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { IntegrationConnectCard } from "@/components/shared/IntegrationConnectCard";
 import { toneVariants } from "@/components/shared/tone";
@@ -110,7 +111,10 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
               Ask GAIA
               <ArrowUpRight01Icon className="h-3.5 w-3.5" />
             </GaiaButton>
-            <Dropdown.Popover placement="bottom end">
+            <Dropdown.Popover
+              placement="bottom end"
+              className={overlayVariants({ backdrop: "opaque" })}
+            >
               <Dropdown.Menu aria-label={`${title} actions`} className="w-100">
                 {hasActions ? (
                   <Dropdown.Section id="ask-gaia">
@@ -130,7 +134,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                         onAction={action.onPress}
                       >
                         {action.icon ?? (
-                          <ZapIcon className="size-4 text-default-500" />
+                          <ZapIcon className="size-4 text-zinc-400" />
                         )}
                         <div className="flex flex-col">
                           <span>{action.label}</span>
@@ -163,7 +167,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                       href={path}
                       textValue="View All"
                     >
-                      <SquareArrowUpRight02Icon className="size-4 text-primary" />
+                      <SquareArrowUpRight02Icon className="size-4 text-accent" />
                       <div className="flex flex-col">
                         <span>View All</span>
                         <span className="whitespace-normal text-xs text-zinc-500">

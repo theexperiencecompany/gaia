@@ -22,7 +22,10 @@ import {
   ToggleOnIcon,
 } from "@icons";
 import { type Control, Controller, type FieldErrors } from "react-hook-form";
-import { inputVariants } from "@/components/shared/controlVariants";
+import {
+  chipVariants,
+  inputVariants,
+} from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toneVariants } from "@/components/shared/tone";
 import { cn } from "@/lib/utils";
@@ -31,7 +34,7 @@ import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 import { NeedsSetupChip } from "../shared/WorkflowCardComponents";
 import WorkflowIconPicker from "./WorkflowIconPicker";
 
-const iconClasses = "size-5 text-default-500 pointer-events-none shrink-0";
+const iconClasses = "size-5 text-zinc-400 pointer-events-none shrink-0";
 
 interface WorkflowHeaderProps {
   mode: "create" | "edit" | "preview";
@@ -97,7 +100,11 @@ export default function WorkflowHeader({
                 }
                 className={inputVariants({
                   variant: "bare",
-                  className: "h-auto min-h-0 text-2xl font-semibold",
+                  placeholder: "subtle",
+                  className: toneVariants({
+                    tone: "white",
+                    className: "h-auto min-h-0 text-2xl font-semibold",
+                  }),
                 })}
               />
               <FieldError>{errors.title?.message}</FieldError>
@@ -114,6 +121,9 @@ export default function WorkflowHeader({
                 size="sm"
                 variant={isActivated ? "soft" : "secondary"}
                 color={isActivated ? "success" : "default"}
+                className={chipVariants({
+                  tint: isActivated ? "light" : "default",
+                })}
               >
                 <Chip.Label className="text-xs font-medium">
                   {isActivated ? "Active" : "Paused"}

@@ -97,7 +97,7 @@ export function StepCategoryIcons({
       })}
       {categories.length > maxIcons && (
         <div
-          className="z-0 flex items-center justify-center rounded-lg bg-zinc-700/60 text-foreground-500"
+          className="z-0 flex items-center justify-center rounded-lg bg-zinc-700/60 text-zinc-400"
           style={{
             width: `${iconSize + 7}px`,
             height: `${iconSize + 7}px`,

@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Input,
   Kbd,
   Modal,
@@ -14,6 +13,7 @@ import { format } from "date-fns";
 import { useEffect, useMemo } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
@@ -305,7 +305,11 @@ function TodoTextInputFields({
         placeholder="Title"
         className={inputVariants({
           variant: "underlined",
-          className: "text-2xl font-semibold",
+          placeholder: "faint",
+          className: toneVariants({
+            tone: "strong",
+            className: "text-2xl font-semibold",
+          }),
         })}
         value={title}
         onChange={(e) => onTitleChange(e.target.value)}
@@ -321,7 +325,11 @@ function TodoTextInputFields({
         rows={1}
         className={inputVariants({
           variant: "underlined",
-          className: "max-h-40 min-h-9 resize-none field-sizing-content",
+          placeholder: "faint",
+          className: toneVariants({
+            tone: "bright",
+            className: "max-h-40 min-h-9 resize-none field-sizing-content",
+          }),
         })}
       />
     </div>
@@ -334,7 +342,7 @@ export default function TodoModal({
   todo,
   initialProjectId,
   buttonText = "Add Task",
-  buttonClassName = "w-full justify-start text-sm text-primary",
+  buttonClassName = "w-full justify-start text-sm text-accent",
 }: TodoModalProps) {
   const user = useCurrentUser();
   const { isMac, modifierKeyName } = usePlatform();
@@ -462,10 +470,10 @@ export default function TodoModal({
               </Modal.Body>
 
               <Modal.Footer>
-                <Button variant="ghost" onPress={() => onOpenChange(false)}>
+                <GaiaButton variant="ghost" onPress={() => onOpenChange(false)}>
                   Cancel
-                </Button>
-                <Button
+                </GaiaButton>
+                <GaiaButton
                   onPress={handleSubmit}
                   isDisabled={loading}
                   isPending={loading}
@@ -478,7 +486,7 @@ export default function TodoModal({
                       <Kbd.Abbr keyValue="enter" />
                     </Kbd>
                   )}
-                </Button>
+                </GaiaButton>
               </Modal.Footer>
             </Modal.Dialog>
           </Modal.Container>

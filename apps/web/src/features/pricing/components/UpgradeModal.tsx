@@ -81,6 +81,7 @@ export function UpgradeModal() {
       }}
     >
       <Modal.Backdrop
+        variant="blur"
         isDismissable={dismissible}
         isKeyboardDismissDisabled={!dismissible}
       >

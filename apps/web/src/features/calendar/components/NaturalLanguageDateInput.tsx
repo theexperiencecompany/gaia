@@ -4,6 +4,8 @@ import { InputGroup } from "@heroui/react";
 import { CalendarIcon } from "@icons";
 import { parseDate } from "chrono-node";
 import React, { useId } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { toneVariants } from "@/components/shared/tone";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
@@ -119,13 +121,21 @@ export const NaturalLanguageDateInput: React.FC<
       </label>
       <Popover open={isPickerOpen} onOpenChange={setIsPickerOpen}>
         <div className="relative">
-          <InputGroup className="bg-zinc-800/30 hover:bg-zinc-800/50 shadow-none">
+          <InputGroup
+            className={inputVariants({
+              variant: "subtle",
+              className: "shadow-none",
+            })}
+          >
             <InputGroup.Input
               id={baseId}
               value={inputValue}
               onChange={(e) => handleInputChange(e.target.value)}
               placeholder={placeholder}
-              className="pr-10"
+              className={inputVariants({
+                placeholder: "subtle",
+                className: toneVariants({ tone: "bright", className: "pr-10" }),
+              })}
             />
             <InputGroup.Suffix>
               <PopoverTrigger asChild>
@@ -162,7 +172,7 @@ export const NaturalLanguageDateInput: React.FC<
                         className={cn(
                           "w-full rounded-lg px-3 py-1.5 text-sm transition-colors",
                           h === selectedHour
-                            ? "bg-primary text-primary-foreground"
+                            ? "bg-accent text-accent-foreground"
                             : "text-zinc-300 hover:bg-zinc-700",
                         )}
                       >
@@ -181,7 +191,7 @@ export const NaturalLanguageDateInput: React.FC<
                         className={cn(
                           "w-full rounded-lg px-3 py-1.5 text-sm transition-colors",
                           m === selectedMinute
-                            ? "bg-primary text-primary-foreground"
+                            ? "bg-accent text-accent-foreground"
                             : "text-zinc-300 hover:bg-zinc-700",
                         )}
                       >
@@ -195,7 +205,7 @@ export const NaturalLanguageDateInput: React.FC<
                 <button
                   type="button"
                   onClick={handleTimeConfirm}
-                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                  className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90"
                 >
                   Done
                 </button>
@@ -296,13 +306,21 @@ export const NaturalLanguageDateRangeInput: React.FC<
       </label>
       <Popover open={isPickerOpen} onOpenChange={setIsPickerOpen}>
         <div className="relative">
-          <InputGroup className="bg-zinc-800/30 hover:bg-zinc-800/50 shadow-none">
+          <InputGroup
+            className={inputVariants({
+              variant: "subtle",
+              className: "shadow-none",
+            })}
+          >
             <InputGroup.Input
               id={baseId}
               value={inputValue}
               onChange={(e) => handleInputChange(e.target.value)}
               placeholder={placeholder}
-              className="pr-10"
+              className={inputVariants({
+                placeholder: "subtle",
+                className: toneVariants({ tone: "bright", className: "pr-10" }),
+              })}
             />
             <InputGroup.Suffix>
               <PopoverTrigger asChild>

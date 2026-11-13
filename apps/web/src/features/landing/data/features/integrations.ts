@@ -102,7 +102,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
     tagline: "Discover and install community-built integrations",
     headline: "Thousands of integrations, not just fifty.",
     subheadline:
-      "Browse and install community-built integrations from the GAIA marketplace, or publish your own for others to use.",
+      "Browse and install community-built integrations from the GAIA marketplace, or publish your own so others can add it to their GAIA too.",
     benefits: [
       {
         icon: "UserGroupIcon",

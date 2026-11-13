@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Description,
   Input,
   Label,
@@ -190,17 +189,17 @@ export function AddServerModal({ onAdd, isBusy }: AddServerModalProps) {
                 )}
               </Modal.Body>
               <Modal.Footer>
-                <Button variant="ghost" onPress={close}>
+                <GaiaButton variant="ghost" onPress={close}>
                   Cancel
-                </Button>
-                <Button
+                </GaiaButton>
+                <GaiaButton
                   onPress={submit}
                   isPending={isBusy}
                   isDisabled={name.trim().length === 0}
                   variant="primary"
                 >
                   Add
-                </Button>
+                </GaiaButton>
               </Modal.Footer>
             </Modal.Dialog>
           </Modal.Container>

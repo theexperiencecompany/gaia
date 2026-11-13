@@ -8,14 +8,16 @@ import {
   Loading03Icon,
 } from "@icons";
 import { useEffect, useMemo, useRef } from "react";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 import { toneVariants } from "@/components/shared/tone";
 import { toTitleCase } from "@/features/chat/utils/chatUtils";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
-import { ACCORDION_TRIGGER_COMPACT } from "@/lib/heroui/accordionParity";
 import type {
   TodoProgressData,
   TodoProgressItem,
 } from "@/types/features/todoProgressTypes";
+
+const accordionStyles = accordionVariants({ density: "compact" });
 
 /** Resolver mapping a todo_progress source to its display label. */
 type SourceLabel = (source: string) => string;
@@ -42,7 +44,7 @@ const STATUS_ICON_MAP: Record<
 
 const STATUS_COLOR: Record<TodoProgressItem["status"], string> = {
   completed: "text-emerald-400",
-  in_progress: "text-primary",
+  in_progress: "text-accent",
   pending: "text-zinc-600",
   cancelled: "text-zinc-600",
 };
@@ -224,7 +226,7 @@ function MultiSourceAccordion({
           return (
             <AccordionItem key={source} id={source} className="px-2">
               <Accordion.Heading>
-                <Accordion.Trigger className={ACCORDION_TRIGGER_COMPACT}>
+                <Accordion.Trigger className={accordionStyles.trigger()}>
                   <div className="flex items-center gap-2 w-full pr-1">
                     <span className="text-xs font-medium text-zinc-400 min-w-0 flex-1 truncate">
                       {getSourceLabel(source)}

@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   FieldError,
   InputGroup,
   Kbd,
@@ -11,6 +10,7 @@ import {
 } from "@heroui/react";
 import { KeyIcon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 
 interface BearerTokenModalProps {
@@ -90,6 +90,7 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
       }}
     >
       <Modal.Backdrop
+        variant="blur"
         isDismissable={!isLoading}
         isKeyboardDismissDisabled={isLoading}
       >
@@ -129,14 +130,14 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
             </Modal.Body>
 
             <Modal.Footer>
-              <Button
+              <GaiaButton
                 variant="ghost"
                 onPress={handleClose}
                 isDisabled={isLoading}
               >
                 Cancel
-              </Button>
-              <Button
+              </GaiaButton>
+              <GaiaButton
                 onPress={handleSubmit}
                 isPending={isLoading}
                 isDisabled={!bearerToken.trim() || isLoading}
@@ -149,7 +150,7 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
                     <Kbd.Abbr keyValue="enter" />
                   </Kbd>
                 )}
-              </Button>
+              </GaiaButton>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

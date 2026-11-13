@@ -82,7 +82,7 @@ export default function SettingsSidebar() {
               size="sm"
               variant="ghost"
               tone="muted"
-              hoverTone="foreground"
+              hoverTone="white"
               className="group flex w-full justify-start"
             >
               {label}

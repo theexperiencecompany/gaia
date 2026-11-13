@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 interface ConnectBrowserBannerProps {
   onConnect: () => void;
@@ -14,14 +14,14 @@ export function ConnectBrowserBanner({ onConnect }: ConnectBrowserBannerProps) {
       <p className="truncate text-sm text-zinc-300">
         Import logins from your computer's browser.
       </p>
-      <Button
+      <GaiaButton
         size="sm"
         className="shrink-0"
         onPress={onConnect}
         variant="primary"
       >
         Import
-      </Button>
+      </GaiaButton>
     </div>
   );
 }

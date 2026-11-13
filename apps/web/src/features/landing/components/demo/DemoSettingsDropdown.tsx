@@ -26,6 +26,7 @@ import {
   WhatsappIcon,
 } from "@icons";
 import type React from "react";
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { toneVariants } from "@/components/shared/tone";
 import { NestedMenuTooltip } from "@/features/settings/components/NestedMenuTooltip";
 import { useNestedMenu } from "@/features/settings/hooks/useNestedMenu";
@@ -94,13 +95,16 @@ export default function DemoSettingsDropdown({
         <Dropdown.Popover
           placement="right bottom"
           offset={21}
-          className="dark shadow-xl"
+          className={overlayVariants({
+            surface: "secondary",
+            className: "dark shadow-xl",
+          })}
         >
           <Dropdown.Menu aria-label="Settings">
             <Dropdown.Section>
               <Dropdown.Item id="upgrade" textValue="Subscribe to GAIA Pro">
                 <CircleArrowUp02Icon className={ic} color="#00bbff" />
-                <span className="text-primary font-medium">
+                <span className="text-accent font-medium">
                   Subscribe to GAIA Pro
                 </span>
               </Dropdown.Item>

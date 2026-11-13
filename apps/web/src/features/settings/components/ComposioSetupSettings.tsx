@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Link, Spinner } from "@heroui/react";
+import { Link, Spinner } from "@heroui/react";
 import { Search01Icon, SquareArrowUpRight02Icon } from "@icons";
 import { useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -129,7 +129,7 @@ export function ComposioSetupSettings() {
           How to set up Composio
           <SquareArrowUpRight02Icon className="ml-1 size-3.5" />
         </Link>
-        <Button
+        <GaiaButton
           variant="primary"
           size="sm"
           isDisabled={!composio.isDirty}
@@ -137,7 +137,7 @@ export function ComposioSetupSettings() {
           onPress={composio.save}
         >
           Save
-        </Button>
+        </GaiaButton>
       </div>
       <ComposioCatalogModal
         key={catalogSlug ?? "catalog"}

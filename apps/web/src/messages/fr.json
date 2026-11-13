@@ -79,7 +79,15 @@
     "category_page_title": "Comparatifs {category}",
     "category_page_subtitle": "Comment GAIA se compare à {count} outils {category}, face à face, pour voir où chacun trouve sa place.",
     "category_meta_title": "Comparatifs {category} : GAIA face à {count} outils",
-    "category_meta_description": "GAIA face à {count} outils {category} : fonctionnalités, tarifs et usages de chacun, pour choisir le bon outil en connaissance de cause."
+    "category_meta_description": "GAIA face à {count} outils {category} : fonctionnalités, tarifs et usages de chacun, pour choisir le bon outil en connaissance de cause.",
+    "category_ai_assistants": "Assistants IA",
+    "category_automation": "Automatisation",
+    "category_task_management": "Gestion des tâches",
+    "category_project_management": "Gestion de projet",
+    "category_calendar_scheduling": "Calendrier et agenda",
+    "category_email": "E-mail",
+    "category_notes_knowledge": "Notes et connaissances",
+    "category_other": "Autres catégories"
   },
   "automate": {
     "breadcrumb": "Automatiser",
@@ -108,7 +116,7 @@
     "app_page_title": "Automatisations {app}",
     "app_page_subtitle": "Toutes les façons dont GAIA relie {app} à vos autres outils, et le travail qu'il fait pour vous entre eux.",
     "app_meta_title": "Automatisations {app} : {count, plural, one {# workflow} other {# workflows}} avec GAIA",
-    "app_meta_description": "Toutes les façons dont GAIA relie {app} à vos autres outils : {count, plural, one {# automatisation} other {# automatisations}}, sans écrire de code."
+    "app_meta_description": "Toutes les façons dont GAIA relie {app} à vos autres outils : {count, plural, one {# automatisation} other {# automatisations}}, chacune prête à travailler pour vous, sans code."
   },
   "glossary": {
     "breadcrumb": "Glossaire",

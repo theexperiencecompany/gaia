@@ -1,8 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { Subscription } from "@/features/pricing/api/pricingApi";
 import { pricingApi } from "@/features/pricing/api/pricingApi";
 import { useConfirmation } from "@/hooks/useConfirmation";
@@ -47,7 +47,7 @@ export function CancelSubscriptionAction({
   return (
     <>
       {subscription.status === "active" && !cancellationScheduled && (
-        <Button
+        <GaiaButton
           variant="ghost"
           size="sm"
           className="w-full"
@@ -55,7 +55,7 @@ export function CancelSubscriptionAction({
           onPress={handleCancelSubscription}
         >
           Cancel subscription
-        </Button>
+        </GaiaButton>
       )}
       <ConfirmationDialog {...confirmationProps} />
     </>

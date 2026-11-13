@@ -244,7 +244,7 @@ export default function ComparisonGrid() {
                   <th
                     key={c.name}
                     className={`px-5 py-3 text-center align-middle ${
-                      c.slug === null ? "bg-primary/5" : ""
+                      c.slug === null ? "bg-accent/5" : ""
                     }`}
                   >
                     <Tooltip>
@@ -288,7 +288,7 @@ export default function ComparisonGrid() {
                     <td
                       key={COMPETITORS[j]?.name ?? `cell-${j}`}
                       className={`p-5 text-center align-middle ${
-                        COMPETITORS[j]?.slug === null ? "bg-primary/5" : ""
+                        COMPETITORS[j]?.slug === null ? "bg-accent/5" : ""
                       }`}
                     >
                       <Cell value={value} />

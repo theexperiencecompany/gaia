@@ -1,16 +1,10 @@
 "use client";
 
-import {
-  Button,
-  InputGroup,
-  ListBox,
-  Modal,
-  Select,
-  Skeleton,
-} from "@heroui/react";
+import { InputGroup, ListBox, Modal, Select, Skeleton } from "@heroui/react";
 import { Search01Icon } from "@icons";
 import { useDeferredValue, useState } from "react";
 import { modalVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { COMPOSIO_APP_COUNT } from "@/features/settings/api/composioSetupApi";
@@ -49,7 +43,7 @@ export function ComposioCatalogModal({
   return (
     <Modal isOpen={isOpen} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <Modal.Backdrop variant="blur">
-        <Modal.Container placement="center" scroll="inside" size="lg">
+        <Modal.Container placement="center" scroll="inside">
           <Modal.Dialog
             className={modalVariants({
               size: "4xl",
@@ -145,14 +139,14 @@ export function ComposioCatalogModal({
                         />
                       ))}
                       {catalog.hasNextPage && (
-                        <Button
+                        <GaiaButton
                           size="sm"
                           variant="secondary"
                           isPending={catalog.isFetchingNextPage}
                           onPress={() => void catalog.fetchNextPage()}
                         >
                           Show more ({total - entries.length} left)
-                        </Button>
+                        </GaiaButton>
                       )}
                     </div>
 

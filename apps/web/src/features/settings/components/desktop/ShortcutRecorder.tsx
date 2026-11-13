@@ -186,7 +186,7 @@ export function ShortcutRecorder({
     content = <ShortcutKbd accelerator={heldPreview} />;
   } else {
     content = (
-      <span className="text-xs text-primary">Type shortcut, Esc to cancel</span>
+      <span className="text-xs text-accent">Type shortcut, Esc to cancel</span>
     );
   }
 

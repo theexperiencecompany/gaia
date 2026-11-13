@@ -1,16 +1,17 @@
 "use client";
 
-import { Button, Input, Link } from "@heroui/react";
+import { Input, Link } from "@heroui/react";
 import {
   BookOpen01Icon,
   CheckmarkCircle02Icon,
   CommandLineIcon,
   ComputerIcon,
-  Copy01Icon,
 } from "@icons";
 import { type ReactNode, useState } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import CopyButton from "@/components/ui/CopyButton";
 import { devicesApi } from "@/features/devices/api/devicesApi";
 import { PAIRING_CODE_LENGTH } from "@/features/devices/constants";
 import { useBridge } from "@/features/devices/hooks/useBridge";
@@ -24,7 +25,6 @@ import {
   normalizePairingCode,
   toApiPairingCode,
 } from "@/features/devices/utils";
-import { copyText } from "@/lib/clipboard";
 
 const PACKAGE_MANAGERS = ["npm", "pnpm", "bun"] as const;
 type PackageManager = (typeof PACKAGE_MANAGERS)[number];
@@ -56,34 +56,10 @@ function StepCard({
 }
 
 function CommandSnippet({ command }: { command: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    try {
-      await copyText(command);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard access can be blocked; the command stays selectable.
-    }
-  };
-
   return (
     <div className="flex w-full items-center justify-between gap-2 rounded-md bg-zinc-800 px-3 py-1.5 text-zinc-200">
       <span className="truncate font-mono text-xs">{command}</span>
-      <Button
-        isIconOnly
-        size="sm"
-        variant="ghost"
-        aria-label="Copy command"
-        onPress={handleCopy}
-      >
-        {copied ? (
-          <CheckmarkCircle02Icon width={14} height={14} />
-        ) : (
-          <Copy01Icon width={14} height={14} />
-        )}
-      </Button>
+      <CopyButton textToCopy={command} variant="ghost" />
     </div>
   );
 }
@@ -113,14 +89,14 @@ function DesktopEnableCard({ platform }: { platform: NodeJS.Platform | null }) {
   return (
     <div className="flex flex-col gap-2 rounded-2xl bg-zinc-900 p-3">
       <div className="flex items-center gap-2">
-        <ComputerIcon width={18} height={18} className="text-primary" />
+        <ComputerIcon width={18} height={18} className="text-accent" />
         <p className="text-sm font-medium text-zinc-100">Connect {noun}</p>
       </div>
       <p className="text-xs font-light text-zinc-400">
         Connect the machine you&apos;re on right now — one click, runs inside
         this app.
       </p>
-      <Button
+      <GaiaButton
         size="sm"
         className="w-fit"
         isPending={busy === "pair"}
@@ -128,7 +104,7 @@ function DesktopEnableCard({ platform }: { platform: NodeJS.Platform | null }) {
         variant="primary"
       >
         Enable on {noun}
-      </Button>
+      </GaiaButton>
     </div>
   );
 }
@@ -170,14 +146,14 @@ function CliOnboardingSteps({
       <StepCard index={startIndex} title="Install the GAIA CLI">
         <div className="flex flex-wrap items-center gap-1.5">
           {PACKAGE_MANAGERS.map((pm) => (
-            <Button
+            <GaiaButton
               key={pm}
               size="sm"
               variant={pm === packageManager ? "primary" : "tertiary"}
               onPress={() => setPackageManager(pm)}
             >
               {pm}
-            </Button>
+            </GaiaButton>
           ))}
         </div>
         <CommandSnippet command={install_commands[packageManager]} />
@@ -227,14 +203,14 @@ function CliOnboardingSteps({
                 onChange={(e) => setCode(e.target.value)}
                 aria-label="Pairing code"
               />
-              <Button
+              <GaiaButton
                 isPending={isApproving}
                 isDisabled={!canApprove}
                 onPress={approve}
                 variant="primary"
               >
                 Approve device
-              </Button>
+              </GaiaButton>
             </div>
           </>
         )}
@@ -268,11 +244,7 @@ export function DeviceOnboardingPrompt({
         <div className="flex flex-col gap-3">
           <div className="flex items-start gap-3">
             <div className="shrink-0 pt-0.5">
-              <CommandLineIcon
-                width={22}
-                height={22}
-                className="text-primary"
-              />
+              <CommandLineIcon width={22} height={22} className="text-accent" />
             </div>
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <span className="text-sm font-medium">Connect a device</span>

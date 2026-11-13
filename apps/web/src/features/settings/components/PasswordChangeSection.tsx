@@ -1,9 +1,10 @@
 "use client";
 
-import { Button, Input, Label, TextField } from "@heroui/react";
+import { Input, Label, TextField } from "@heroui/react";
 import { type FormEvent, useState } from "react";
 import { FormError } from "@/components/shared/FormError";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { SecretInput } from "@/components/shared/SecretInput";
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
 import { MIN_PASSWORD_LENGTH } from "@/features/auth/constants";
@@ -118,14 +119,14 @@ export function PasswordChangeSection() {
         {error && <FormError>{error}</FormError>}
 
         <div>
-          <Button
+          <GaiaButton
             type="submit"
             variant="primary"
             size="sm"
             isPending={isSubmitting}
           >
             Update password
-          </Button>
+          </GaiaButton>
         </div>
       </form>
     </SettingsSection>

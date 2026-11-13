@@ -25,10 +25,11 @@ export default function ComparisonTable({ columns, rows, ariaLabel }: Props) {
         className="min-w-full"
       >
         <Table.Header className="[&>tr]:border-b [&>tr]:border-zinc-700">
-          {columns.map((col) => (
+          {columns.map((col, index) => (
             <Table.Column
               key={col.key}
               id={col.key}
+              isRowHeader={index === 0}
               className={`bg-zinc-800 text-sm font-medium ${col.headerClassName ?? ""}`}
             >
               {col.label}

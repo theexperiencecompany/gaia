@@ -71,13 +71,14 @@ export function Payment() {
           className="flex w-full flex-col items-center gap-4 lg:[zoom:0.85]"
           {...MOTION_FADE_UP}
         >
-          <BillingPeriodTabs isYearly={isYearly} onChange={setIsYearly} />
-          <PricingCards
-            durationIsMonth={!isYearly}
-            hideEnterprise
-            checkoutSource="onboarding"
-            hideHeader
-          />
+          <BillingPeriodTabs isYearly={isYearly} onChange={setIsYearly}>
+            <PricingCards
+              durationIsMonth={!isYearly}
+              hideEnterprise
+              checkoutSource="onboarding"
+              hideHeader
+            />
+          </BillingPeriodTabs>
         </m.div>
       ) : null}
     </m.div>

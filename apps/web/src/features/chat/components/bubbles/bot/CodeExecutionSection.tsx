@@ -2,16 +2,14 @@ import { Accordion, Skeleton } from "@heroui/react";
 import dynamic from "next/dynamic";
 import type React from "react";
 import { useState } from "react";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 
 import { ChatCodeBlock } from "@/features/chat/components/code-block/ChatCodeBlock";
 import { copyWithFeedback } from "@/lib/clipboard";
-import {
-  ACCORDION_INDICATOR,
-  ACCORDION_ROOT_SHADOW,
-  ACCORDION_TRIGGER,
-} from "@/lib/heroui/accordionParity";
 import type { CodeData } from "@/types/features/toolDataTypes";
 import CodeExecutionOutput from "./CodeExecutionOutput";
+
+const accordionStyles = accordionVariants({ variant: "shadow" });
 
 // recharts (~100 KB gz) is only needed when a code-execution result actually
 // contains charts, which is rare. Lazy-load it so it stays out of the chat
@@ -59,15 +57,15 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
       <Accordion
         allowsMultipleExpanded
         defaultExpandedKeys={["output", "charts"]}
-        className={`w-full ${ACCORDION_ROOT_SHADOW}`}
+        className={accordionStyles.base({ className: "w-full" })}
       >
         <Accordion.Item id="code">
           <Accordion.Heading>
             <Accordion.Trigger
-              className={`${ACCORDION_TRIGGER} ${TRIGGER_CLASS}`}
+              className={`${accordionStyles.trigger()} ${TRIGGER_CLASS}`}
             >
               Executed Code
-              <Accordion.Indicator className={ACCORDION_INDICATOR} />
+              <Accordion.Indicator className={accordionStyles.indicator()} />
             </Accordion.Trigger>
           </Accordion.Heading>
           <Accordion.Panel>
@@ -85,10 +83,10 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
         <Accordion.Item id="output">
           <Accordion.Heading>
             <Accordion.Trigger
-              className={`${ACCORDION_TRIGGER} ${TRIGGER_CLASS}`}
+              className={`${accordionStyles.trigger()} ${TRIGGER_CLASS}`}
             >
               Output
-              <Accordion.Indicator className={ACCORDION_INDICATOR} />
+              <Accordion.Indicator className={accordionStyles.indicator()} />
             </Accordion.Trigger>
           </Accordion.Heading>
           <Accordion.Panel>
@@ -109,10 +107,10 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
           <Accordion.Item id="charts">
             <Accordion.Heading>
               <Accordion.Trigger
-                className={`${ACCORDION_TRIGGER} ${TRIGGER_CLASS}`}
+                className={`${accordionStyles.trigger()} ${TRIGGER_CLASS}`}
               >
                 Charts
-                <Accordion.Indicator className={ACCORDION_INDICATOR} />
+                <Accordion.Indicator className={accordionStyles.indicator()} />
               </Accordion.Trigger>
             </Accordion.Heading>
             <Accordion.Panel>

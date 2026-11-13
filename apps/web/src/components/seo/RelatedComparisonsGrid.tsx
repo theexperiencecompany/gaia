@@ -36,7 +36,7 @@ export async function RelatedComparisonsGrid({
             href={href}
             className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
           >
-            <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
+            <h3 className="mb-1 text-base font-medium text-white group-hover:text-accent">
               {t("gaia_vs", { name: comparison.name })}
             </h3>
             <p className="text-xs text-zinc-400">{comparison.tagline}</p>

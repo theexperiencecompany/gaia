@@ -1,7 +1,8 @@
 "use client";
 
-import { Button, ButtonGroup, Spinner } from "@heroui/react";
+import { ButtonGroup, Spinner } from "@heroui/react";
 import { ConnectIcon, RedoIcon, RemoveCircleIcon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 import { RaisedButton } from "@/components/ui/raised-button";
 
@@ -73,7 +74,7 @@ export function NotConnectedActions({
 
   return (
     <ButtonGroup variant="tertiary" className="w-full" fullWidth>
-      <Button
+      <GaiaButton
         className="w-full"
         onPress={connect.onConnect}
         isPending={connect.isPending}
@@ -82,9 +83,9 @@ export function NotConnectedActions({
       >
         {!connect.isPending && <RedoIcon width={18} height={18} />}
         Retry
-      </Button>
+      </GaiaButton>
       {remove.kind === "delete" ? (
-        <Button
+        <GaiaButton
           className="w-full"
           onPress={remove.onDelete}
           isPending={remove.isDeletePending}
@@ -93,9 +94,9 @@ export function NotConnectedActions({
         >
           <RemoveCircleIcon width={18} height={18} className="outline-0!" />
           {remove.deleteText}
-        </Button>
+        </GaiaButton>
       ) : (
-        <Button
+        <GaiaButton
           className="w-full"
           onPress={remove.onDisconnect}
           isPending={remove.isDisconnectPending}
@@ -104,7 +105,7 @@ export function NotConnectedActions({
         >
           <RemoveCircleIcon width={18} height={18} className="outline-0!" />
           {remove.labelText}
-        </Button>
+        </GaiaButton>
       )}
     </ButtonGroup>
   );

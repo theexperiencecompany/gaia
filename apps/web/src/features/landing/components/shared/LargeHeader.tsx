@@ -31,7 +31,7 @@ export default function LargeHeader({
         className={`flex w-full gap-1 ${centered ? "items-center justify-center" : "items-start justify-start"}`}
       >
         {chipText && (
-          <div className="text-primary uppercase mb-2">{chipText}</div>
+          <div className="text-accent uppercase mb-2">{chipText}</div>
         )}
 
         {chipText2 && (

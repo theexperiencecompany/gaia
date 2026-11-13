@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Kbd, ListBox, Select } from "@heroui/react";
+import { Kbd, ListBox, Select } from "@heroui/react";
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
@@ -109,18 +109,23 @@ export default function CalendarHeader() {
 
       <div className="relative flex items-center gap-2">
         <div className="flex items-center">
-          <Button
+          <GaiaButton
             isIconOnly
             size="sm"
             variant="ghost"
             onPress={goToPreviousDay}
           >
             <ArrowLeft01Icon className="h-5 w-5 text-zinc-400" />
-          </Button>
+          </GaiaButton>
 
-          <Button isIconOnly size="sm" variant="ghost" onPress={goToNextDay}>
+          <GaiaButton
+            isIconOnly
+            size="sm"
+            variant="ghost"
+            onPress={goToNextDay}
+          >
             <ArrowRight01Icon className="h-5 w-5 text-zinc-400" />
-          </Button>
+          </GaiaButton>
           <GaiaButton
             variant="default-soft"
             onPress={goToToday}
@@ -137,7 +142,7 @@ export default function CalendarHeader() {
             tooltip="Create new calendar event"
             onClick={createEventAction}
           >
-            <CalendarAdd01Icon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-primary" />
+            <CalendarAdd01Icon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-accent" />
           </SidebarHeaderButton>
         )}
       </div>

@@ -40,7 +40,7 @@ export const NotificationItem = ({
               {content.title}
             </h4>
             {isUnread && (
-              <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
             )}
           </div>
           <p className="my-1 line-clamp-2 text-left text-sm font-light wrap-break-word text-zinc-400">
@@ -91,7 +91,8 @@ export const NotificationItem = ({
                   key={action.id}
                   variant="tertiary"
                   size="sm"
-                  className={`h-7 text-xs ${isExecuted ? "cursor-not-allowed opacity-50" : ""}`}
+                  tone="bright"
+                  className={`h-7 bg-zinc-800/50 text-xs hover:bg-zinc-800/70 ${isExecuted ? "cursor-not-allowed opacity-50" : ""}`}
                   isDisabled={isDisabled}
                   onPress={() => executeAction(notification.id, action)}
                 >

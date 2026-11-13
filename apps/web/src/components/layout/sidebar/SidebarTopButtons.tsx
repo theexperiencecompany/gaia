@@ -127,7 +127,7 @@ export default function SidebarTopButtons() {
                 <LinkButton
                   href={route}
                   size="sm"
-                  variant={isRouteActive(route) ? "secondary" : "ghost"}
+                  variant={isRouteActive(route) ? "default-soft" : "ghost"}
                   tone={isRouteActive(route) ? "dim" : "muted"}
                   hoverTone={isRouteActive(route) ? "none" : "dim"}
                   className="group-topbtns focus-visible:outline-none w-full justify-start text-sm"

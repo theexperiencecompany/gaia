@@ -56,7 +56,7 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
         </Chip>
       </div>
 
-      <Separator className={separatorVariants({ tone: "subtle" })} />
+      <Separator className={separatorVariants({ surface: "raised" })} />
 
       {/* Body */}
       <div className="flex flex-col gap-3 p-4">
@@ -78,15 +78,16 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
 
       {showFooter && (
         <>
-          <Separator className={separatorVariants({ tone: "subtle" })} />
+          <Separator className={separatorVariants({ surface: "raised" })} />
 
           {/* Footer CTA */}
           <div className="p-3">
             <GaiaButton
               size="sm"
+              shape="md"
               variant={isUpgradeRequired ? "primary" : "accent-soft"}
               onPress={openPlans}
-              className="w-full rounded-xl font-medium"
+              className="w-full font-medium"
             >
               {isUpgradeRequired ? `Upgrade to ${planName}` : "View Plans"}
             </GaiaButton>

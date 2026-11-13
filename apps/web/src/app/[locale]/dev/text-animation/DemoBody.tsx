@@ -3,7 +3,6 @@ import "@/features/chat/components/interface/markdown.css";
 ("use client");
 
 import {
-  Button,
   Chip,
   Label,
   Slider,
@@ -13,6 +12,7 @@ import {
 } from "@heroui/react";
 import { OPENUI_SAMPLES } from "@shared/utils";
 import { useCallback, useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 import { BASE_MESSAGE_SCHEMA } from "@/config/registries/baseMessageRegistry";
 
@@ -317,9 +317,9 @@ export default function DemoBody() {
           </Switch>
         </div>
         <div className="flex items-center justify-end">
-          <Button onPress={replay} variant="primary">
+          <GaiaButton onPress={replay} variant="primary">
             Replay
-          </Button>
+          </GaiaButton>
         </div>
       </div>
 

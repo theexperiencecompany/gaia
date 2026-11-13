@@ -2,14 +2,9 @@ import { Tabs } from "@heroui/react";
 import dynamic from "next/dynamic";
 import type React from "react";
 import type { CSSProperties } from "react";
-import {
-  TABS_INDICATOR_UNDERLINED,
-  TABS_LIST_LIGHT,
-  TABS_PANEL,
-  TABS_ROOT,
-  TABS_SELECTED,
-  TABS_TAB,
-} from "@/lib/heroui/tabsParity";
+import { tabsVariants } from "@/components/shared/tabsVariants";
+
+const tabsStyles = tabsVariants({ variant: "underlined" });
 
 // Dynamic imports for Mermaid-related components
 const FlowchartPreview = dynamic(() => import("./FlowchartPreview"), {
@@ -58,31 +53,34 @@ const MermaidTabs: React.FC<MermaidTabsProps> = ({
 }) => {
   return (
     <Tabs
-      className={TABS_ROOT}
+      className={tabsStyles.base()}
       disabledKeys={isLoading ? ["editor"] : []}
       selectedKey={activeTab}
       onSelectionChange={(key) => onTabChange(String(key))}
     >
-      <Tabs.List aria-label="Diagram" className={`ms-3 ${TABS_LIST_LIGHT}`}>
+      <Tabs.List
+        aria-label="Diagram"
+        className={tabsStyles.tabList({ className: "ms-3" })}
+      >
         <Tabs.Tab
           id="preview"
-          className={`font-sans ${TABS_TAB} ${TABS_SELECTED} p-0!`}
+          className={tabsStyles.tab({ className: "font-sans p-0!" })}
         >
           Flowchart
-          <Tabs.Indicator className={TABS_INDICATOR_UNDERLINED} />
+          <Tabs.Indicator className={tabsStyles.tabIndicator()} />
         </Tabs.Tab>
         <Tabs.Tab
           id="code"
-          className={`font-sans ${TABS_TAB} ${TABS_SELECTED}`}
+          className={tabsStyles.tab({ className: "font-sans" })}
         >
           Code
-          <Tabs.Indicator className={TABS_INDICATOR_UNDERLINED} />
+          <Tabs.Indicator className={tabsStyles.tabIndicator()} />
         </Tabs.Tab>
       </Tabs.List>
-      <Tabs.Panel id="preview" className={TABS_PANEL}>
+      <Tabs.Panel id="preview" className={tabsStyles.tabPanel()}>
         <FlowchartPreview>{children}</FlowchartPreview>
       </Tabs.Panel>
-      <Tabs.Panel id="code" className={TABS_PANEL}>
+      <Tabs.Panel id="code" className={tabsStyles.tabPanel()}>
         <MermaidCode syntaxHighlighterProps={syntaxHighlighterProps}>
           {children}
         </MermaidCode>

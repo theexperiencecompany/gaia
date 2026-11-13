@@ -192,6 +192,7 @@ export function HandoffDecision({
       {primary}
       <GaiaButton
         variant={primary ? "tertiary" : "primary"}
+        tone={primary ? "strong" : "default"}
         className="flex-1 font-semibold"
         onPress={() => decide("continue")}
       >
