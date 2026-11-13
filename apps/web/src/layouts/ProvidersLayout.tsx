@@ -7,7 +7,6 @@ import { ElectronRouteGuard } from "@/components/electron/ElectronRouteGuard";
 import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
 import { Toaster } from "@/components/ui/Toaster";
 import { useApprovalDecisionWebSocket } from "@/features/chat/hooks/useApprovalDecisionWebSocket";
-import { useBgMessageWebSocket } from "@/features/chat/hooks/useBgMessageWebSocket";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
@@ -41,10 +40,6 @@ function PaidSessionEffects() {
 
   // Subscribe to notification events — writes the shared query cache
   useNotificationWebSocket();
-
-  // Messages saved into conversations the server still runs outside the event
-  // stream (workflow and todo runs) arrive over the WebSocket.
-  useBgMessageWebSocket();
 
   // Subscribe to ledger approval decisions — settles open cards (and raises
   // revoke tombstones) decided anywhere but this tab, with no reload

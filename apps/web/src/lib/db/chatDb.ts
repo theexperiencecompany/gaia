@@ -325,21 +325,6 @@ class ChatDexie extends Dexie {
     return messages.map((message) => message.id);
   }
 
-  public async replaceMessage(
-    temporaryId: string,
-    message: IMessage,
-  ): Promise<void> {
-    await this.run(undefined, () =>
-      messageQueue.enqueue(() =>
-        (this as Dexie).transaction("rw", this.messages, async () => {
-          await this.messages.delete(temporaryId);
-          await this.messages.put(message);
-        }),
-      ),
-    );
-    dbEventEmitter.emitMessageUpserted(message);
-  }
-
   public async deleteConversationAndMessages(
     conversationId: string,
   ): Promise<void> {
