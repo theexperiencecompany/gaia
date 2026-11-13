@@ -4,12 +4,8 @@ import { useMemo } from "react";
 
 import { ChevronRight } from "@/components/shared/icons";
 import { useFittingIconCount } from "@/features/chat/hooks/useFittingIconCount";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-
-interface Integration {
-  id: string;
-  name: string;
-}
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
+import type { Integration } from "@/features/integrations/types";
 
 interface IntegrationsBannerProps {
   integrations: Integration[];
@@ -60,13 +56,12 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
               className="shrink-0 opacity-60 transition duration-200 hover:scale-150 hover:rotate-6 hover:opacity-100"
               title={integration.name}
             >
-              {getToolCategoryIcon(integration.id, {
-                size: 14,
-                width: 14,
-                height: 14,
-                showBackground: false,
-                className: "h-[14px] w-[14px] object-contain",
-              })}
+              <IntegrationIcon
+                integrationId={integration.id}
+                iconUrl={integration.iconUrl}
+                category={integration.category}
+                size={14}
+              />
             </div>
           ))}
           {overflowCount > 0 && visibleCount > 0 && (

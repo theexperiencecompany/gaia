@@ -13,11 +13,9 @@ interface IntegrationIconProps {
 }
 
 /**
- * Integration logo with a guaranteed fallback. Resolves a known category icon
- * or the integration's own `iconUrl`; when neither exists it renders a fallback
- * glyph — the computer icon for a device MCP server (category="device"), else a
- * generic package. (getToolCategoryIcon returns null for the no-icon case by
- * design — the tool dropdown depends on that — so the fallback lives here.)
+ * The one icon for a tool category or integration, used by the slash menu, tool-call
+ * rows, the integrations surfaces and settings. Falls back to a glyph (computer for a
+ * device server, else a package) when there is no known icon and no iconUrl.
  */
 export function IntegrationIcon({
   integrationId,

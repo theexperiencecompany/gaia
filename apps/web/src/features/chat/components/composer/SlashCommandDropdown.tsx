@@ -1,11 +1,19 @@
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Cancel01Icon, SearchIcon } from "@icons";
+import { getToolDisplayName } from "@shared/icons";
 import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { createPortal } from "react-dom";
 import {
   buildCategories,
   handleSlashCommandKey,
@@ -16,7 +24,7 @@ import {
 } from "@/features/chat/hooks/useSlashCommandItems";
 import type { SlashCommandMatch } from "@/features/chat/hooks/useSlashCommands";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { IntegrationsCard } from "@/features/integrations/components/IntegrationsCard";
 import { usePathname } from "@/i18n/navigation";
 import { track } from "@/lib/analytics";
@@ -26,6 +34,8 @@ import { CategoryTabs } from "./CategoryTabs";
 import { LockedCategorySection } from "./LockedCategorySection";
 import { LockedToolItem } from "./LockedToolItem";
 import type { VirtualItemType } from "./virtualItemTypes";
+
+const subscribeToNothing = () => () => undefined;
 
 // Component to render each virtualized item
 interface VirtualizedItemProps {
@@ -104,11 +114,12 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
             {/* Icon */}
             <div className="shrink-0">
               {/* Same shape as the tool-call thread: tinted background, 21px glyph. */}
-              {getToolCategoryIcon(
-                match.tool.category,
-                { width: 21, height: 21 },
-                categoryDisplayMap[match.tool.category]?.iconUrl,
-              )}
+              <IntegrationIcon
+                integrationId={match.tool.category}
+                iconUrl={categoryDisplayMap[match.tool.category]?.iconUrl}
+                size={21}
+                showBackground
+              />
             </div>
 
             {/* Content */}
@@ -119,10 +130,8 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
                 </span>
                 {selectedCategory === "all" && (
                   <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 outline-1 outline-zinc-700">
-                    {formatToolName(
-                      categoryDisplayMap[match.tool.category]?.displayName ||
-                        match.tool.category,
-                    )}
+                    {categoryDisplayMap[match.tool.category]?.displayName ??
+                      getToolDisplayName(match.tool.category)}
                   </span>
                 )}
               </div>
@@ -330,7 +339,16 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
     scrollToIndex: rowVirtualizer.scrollToIndex,
   });
 
-  return (
+  // Portaled to <body>: inside the composer it sat in the searchbar's z-2
+  // stacking context, so message-area overlays (HeroUI popovers, z-50) covered it.
+  const isClient = useSyncExternalStore(
+    subscribeToNothing,
+    () => true,
+    () => false,
+  );
+  if (!isClient) return null;
+
+  return createPortal(
     <AnimatePresence>
       {isVisible && matches.length > 0 && (
         <m.div
@@ -433,7 +451,8 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
           </div>
         </m.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 };
 
