@@ -137,7 +137,6 @@ apps/web/src/components/seo/ComparisonTable.tsx:Table:rounded-3xl
 apps/web/src/config/keyboardShortcuts.tsx:Kbd:rounded-sm
 apps/web/src/features/chat/components/bubbles/actions/ChatBubble_Actions.tsx:GaiaButton:rounded-md
 apps/web/src/features/integrations/components/PermissionModeDecision.tsx:Radio:rounded-xl
-apps/web/src/features/settings/components/CustomResponseStyleInput.tsx:Input:rounded-lg
 apps/web/src/features/settings/components/desktop/AppIconPicker.tsx:GaiaButton:rounded-[24%]
 apps/web/src/features/settings/components/providers/ProviderFeatureList.tsx:Accordion:rounded-2xl
 apps/web/src/features/workflows/components/shared/UnifiedWorkflowCard.tsx:Tooltip.Content:rounded-3xl

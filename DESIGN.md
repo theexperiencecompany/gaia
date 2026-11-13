@@ -506,7 +506,7 @@ On any HeroUI component or GAIA wrapper you may use layout utilities: `w-*`, `h-
 | `size` | dimensions | `sm`, `md`, `lg`; Modal `xl`–`5xl` | the component's `size=`, `inputVariants`, `modalVariants` |
 | `shape` | corners | `default` (the size's radius), `sharp` 2px, `sm` 8px, `md` 12px, `xl` 16px, `pill` | `GaiaButton shape=`, `shapeVariants` |
 | `tone` | text colour | `white`, `strong` zinc-100, `bright` 200, `dim` 300, `muted` 400, `faint` 500, `subtle` 600, `ghost` 700, `accent` | `GaiaButton tone=`, `toneVariants` |
-| `hoverTone` | text colour on hover | `none`, `foreground`, `white`, `strong`, `bright`, `dim`, `muted`, `accent` | `GaiaButton hoverTone=`; `toneVariants({ interactive: true })` brightens to the foreground |
+| `hoverTone` | text colour on hover | `none`, `foreground`, `white`, `strong`, `bright`, `dim`, `muted`, `accent` | `GaiaButton hoverTone=`; `toneVariants({ interactive: true })` brightens to white |
 | `placeholder` | field placeholder colour | the tone scale, `dim` to `ghost` | `inputVariants` |
 | `tint` | strength of a soft fill | `default` (20%), `light` (15%) | `GaiaButton tint=`, `chipVariants` |
 | `inset` | a button's horizontal padding | `default`, `tight` (8px), `none` | `GaiaButton inset=` |

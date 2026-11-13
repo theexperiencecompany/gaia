@@ -499,9 +499,9 @@
   }
 
   /* shape="pill" (components/shared/shape.ts): v2's radius="full", one class for
-     every control. Field controls round through their own --radius-field. */
+     every control. Field controls round through their own --field-radius. */
   .gaia-pill {
-    --radius-field: var(--gaia-radius-pill);
+    --field-radius: var(--gaia-radius-pill);
   }
   .button.gaia-pill,
   .chip.gaia-pill,
@@ -515,16 +515,16 @@
   }
   /* shape sharp/sm/md/xl: a fixed radius whatever the control's size (v2's radius prop). */
   .gaia-sharp {
-    --radius-field: var(--gaia-radius-xs);
+    --field-radius: var(--gaia-radius-xs);
   }
   .gaia-radius-sm {
-    --radius-field: var(--gaia-radius-sm);
+    --field-radius: var(--gaia-radius-sm);
   }
   .gaia-radius-md {
-    --radius-field: var(--gaia-radius-md);
+    --field-radius: var(--gaia-radius-md);
   }
   .gaia-radius-xl {
-    --radius-field: var(--gaia-radius-xl);
+    --field-radius: var(--gaia-radius-xl);
   }
   .button.gaia-sharp,
   .chip.gaia-sharp,
