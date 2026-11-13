@@ -26,6 +26,7 @@ from app.utils.errors import (
     ConversationStoreError,
     UnmigratedConversationError,
 )
+from shared.py.wide_events import log
 
 # Every test here writes entries, so each needs the collection with its unique indexes.
 pytestmark = pytest.mark.usefixtures("entries_collection")
@@ -466,7 +467,7 @@ async def test_search_skips_a_todos_chat_and_an_unmigrated_chat_never_blocks_the
     await repo.append(described, user_id=uid, entries=[_message("d1", "needle")])
     await held.run_all()
     warned = Mock()
-    monkeypatch.setattr(conversations_module.log, "warning", warned)
+    monkeypatch.setattr(log, "warning", warned)
     found = await repo.search(uid, pattern="needle")
     assert warned.call_args_list == [
         call(

@@ -357,7 +357,9 @@ async def test_the_chat_models_reaction_is_announced_only_once_it_is_stored(
         assert _frames(published) == []
         assert await react_as_chat_model(target("msg-a"), "\U0001f44d") is True
 
-    assert [f["reaction"]["message_id"] for f in _frames(published)] == ["msg-a"]
+    assert _frames(published) == [
+        {"reaction": {"message_id": "msg-a", "emoji": "\U0001f44d", "by": "chat_model"}}
+    ]
 
 
 async def test_a_second_sweep_changes_nothing(real_redis, mongo_db, make_conversation) -> None:

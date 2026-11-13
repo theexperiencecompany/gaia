@@ -97,7 +97,7 @@ class TestReactInstantly:
 
 class TestReactAsChatModel:
     async def test_the_chat_models_pick_replaces_whatever_is_there(self, io: _Io) -> None:
-        await react_as_chat_model(_TARGET, "👍")
+        assert await react_as_chat_model(_TARGET, "👍") is True
 
         io.write.assert_awaited_once_with(
             "conv-1",
@@ -108,3 +108,11 @@ class TestReactAsChatModel:
         assert io.frames() == [
             {"reaction": {"message_id": "umsg-1", "emoji": "👍", "by": "chat_model"}}
         ]
+
+    async def test_a_message_that_is_gone_is_not_reacted_to_and_nothing_is_published(
+        self, io: _Io
+    ) -> None:
+        io.write.return_value = False
+
+        assert await react_as_chat_model(_TARGET, "👍") is False
+        io.publish.assert_not_awaited()

@@ -977,15 +977,17 @@ async def test_verify_fails_while_an_ack_is_still_a_message(
     assert any("m2" in mismatch for mismatch in report.mismatches)
 
 
-async def _new_build_chat(raw_collection: Any, entries_collection: Any) -> HeadRef:
+async def _new_build_chat(
+    raw_collection: Any, entries_collection: Any, *, pending: bool = True
+) -> HeadRef:
     """Insert a chat only the entries build wrote: no embedded array, one ack stored, one in the outbox."""
     conversation_id = f"c-{uuid.uuid4().hex}"
     long_ago = datetime(2026, 1, 1, tzinfo=UTC)
     entry = {"conversation_id": conversation_id, "user_id": USER, "at": long_ago}
     ack = {**entry, **_ack(2, "m1"), "seq": 2, "id": "m2"}
     ack.pop("message_id")
-    pending = {**entry, **_ack(4, "m3"), "seq": 4, "id": "m4"}
-    pending.pop("message_id")
+    pending_ack = {**entry, **_ack(4, "m3"), "seq": 4, "id": "m4"}
+    pending_ack.pop("message_id")
     result = await raw_collection.insert_one(
         {
             "conversation_id": conversation_id,
@@ -993,7 +995,7 @@ async def _new_build_chat(raw_collection: Any, entries_collection: Any) -> HeadR
             "createdAt": long_ago.isoformat(),
             "updatedAt": long_ago,
             "log_head": 4,
-            "outbox": {"4": pending},
+            "outbox": {"4": pending_ack} if pending else {},
         }
     )
     await entries_collection.insert_many(
@@ -1152,7 +1154,9 @@ async def test_the_summary_counts_every_id_it_mints_across_conversations(
     code, out = await _cli(capsys, "--apply")
 
     assert code == 0
-    assert "Summary: 2 copied; 2 entries; 2 elements given an id" in out
+    assert out[-1] == (
+        "Summary: 2 copied; 2 entries; 2 elements given an id; 0 emoji_ack messages folded into reactions"
+    )
 
 
 async def test_the_summary_lists_each_action_once_sorted(
@@ -1166,7 +1170,9 @@ async def test_the_summary_lists_each_action_once_sorted(
     code, out = await _cli(capsys, "--apply")
 
     assert code == 0
-    assert "Summary: 1 copied, 1 merged; 2 entries; 0 elements given an id" in out
+    assert out[-1] == (
+        "Summary: 1 copied, 1 merged; 2 entries; 0 elements given an id; 0 emoji_ack messages folded into reactions"
+    )
 
 
 async def test_verify_counts_every_failing_conversation(
@@ -1210,3 +1216,92 @@ async def test_drop_counts_every_refused_conversation(
 
 def test_the_parser_keeps_the_raw_description_layout() -> None:
     assert script._parser().formatter_class is argparse.RawDescriptionHelpFormatter
+
+
+async def test_heads_with_acks_finds_each_stored_ack_its_owner_wrote_after_the_given_head(
+    migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
+) -> None:
+    skipped = await _new_build_chat(raw_collection, entries_collection, pending=False)
+    no_ack = await _legacy(raw_collection, [_message(1), _message(2, "bot")])
+    await migration.migrate(no_ack, apply=True)
+    foreign = await _legacy(raw_collection, [_message(1)])
+    await migration.migrate(foreign, apply=True)
+    await entries_collection.insert_one(
+        {
+            "conversation_id": foreign.conversation_id,
+            "user_id": "someone-else",
+            **_ack(2, "m1"),
+            "seq": 2,
+            "id": "m2",
+        }
+    )
+    stored = await _new_build_chat(raw_collection, entries_collection, pending=False)
+
+    assert await migration.heads_with_acks(after_head_id=None, batch=10) == [skipped, stored]
+    assert await migration.heads_with_acks(after_head_id=skipped.head_id, batch=10) == [stored]
+
+
+async def test_a_head_deleted_after_the_scan_folds_nothing(
+    migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
+) -> None:
+    ref = await _new_build_chat(raw_collection, entries_collection, pending=False)
+    await raw_collection.delete_one(_head(ref))
+
+    gone = await migration.migrate(ref, apply=True)
+
+    assert (gone.action, gone.reason, gone.folded) == (
+        MigrationAction.UNCHANGED,
+        "deleted since the scan",
+        0,
+    )
+    assert (
+        await entries_collection.count_documents(
+            {"conversation_id": ref.conversation_id, "kind": "emoji_ack"}
+        )
+        == 1
+    )
+
+
+async def test_a_dry_run_after_a_fold_counts_only_the_elements_never_copied(
+    migration: ConversationEntriesMigration, raw_collection: Any
+) -> None:
+    ref = await _legacy(raw_collection, [_message(1), _ack(2, "m1")])
+    await migration.migrate(ref, apply=True)
+    await raw_collection.update_one(
+        _head(ref),
+        {
+            "$set": {
+                "messages": [_message(1), _ack(2, "m1"), _message(3), _message(4)],
+                "updatedAt": datetime.now(UTC),
+            }
+        },
+    )
+
+    dry = await migration.migrate(ref, apply=False)
+
+    assert (dry.action, dry.copied, dry.rewritten) == (MigrationAction.MERGED, 2, 0)
+
+
+async def test_the_script_folds_and_counts_the_acks_of_every_batch(
+    monkeypatch: pytest.MonkeyPatch,
+    raw_collection: Any,
+    entries_collection: Any,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(script, "_BATCH", 1)
+    one = await _new_build_chat(raw_collection, entries_collection)
+    two = await _new_build_chat(raw_collection, entries_collection)
+    scanned_after: list[str | None] = []
+    scan = conversation_entries_migration.heads_with_acks
+
+    async def recording_scan(*, after_head_id: str | None, batch: int) -> list[HeadRef]:
+        scanned_after.append(after_head_id)
+        return await scan(after_head_id=after_head_id, batch=batch)
+
+    monkeypatch.setattr(conversation_entries_migration, "heads_with_acks", recording_scan)
+
+    code, lines = await _cli(capsys, "--apply")
+
+    assert code == 0
+    assert lines[-1] == "Summary: nothing to migrate; 4 emoji_ack messages folded into reactions"
+    assert scanned_after == [None, one.head_id, two.head_id]

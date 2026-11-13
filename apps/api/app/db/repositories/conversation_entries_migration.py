@@ -260,8 +260,10 @@ class ConversationEntriesMigration(ConversationRepository):
                                 "$expr": {"$eq": ["$user_id", "$$owner"]},
                             }
                         },
+                        # pragma: no mutate start — only whether one exists is read
                         {"$limit": 1},
                         {"$project": {"_id": 1}},
+                        # pragma: no mutate end
                     ],
                     "as": _ACKS_FOUND,
                 }
@@ -283,7 +285,10 @@ class ConversationEntriesMigration(ConversationRepository):
                 await self._fold_ack(ref, ack)
             with store_errors("fold reactions"):  # pragma: no mutate — error label only
                 await self._raw_collection().update_one(
-                    {"_id": ObjectId(ref.head_id)}, {"$currentDate": {"updatedAt": True}}
+                    {"_id": ObjectId(ref.head_id)},
+                    # pragma: no mutate start — Mongo stamps a date for either boolean
+                    {"$currentDate": {"updatedAt": True}},
+                    # pragma: no mutate end
                 )
         return len(acks)
 
@@ -294,9 +299,6 @@ class ConversationEntriesMigration(ConversationRepository):
             return outcome
         if apply:
             outcome.folded = await self.fold_reaction_acks(ref, apply=True)
-        else:
-            read = await self._embedded_head(ref)
-            outcome.folded = sum(_is_ack(e) for e in read.head.messages) if read else 0
         return outcome
 
     async def _migrate(self, ref: HeadRef, *, apply: bool) -> MigrationOutcome:
@@ -431,9 +433,13 @@ class ConversationEntriesMigration(ConversationRepository):
 
     async def _plan(self, ref: HeadRef, head: ConversationHead) -> MigrationOutcome:
         """Report what a pass would do, writing nothing."""
+        acks = sum(_is_ack(e) for e in head.messages)
         if head.log_head is None:
             return MigrationOutcome(
-                ref.conversation_id, MigrationAction.COPIED, copied=len(head.messages)
+                ref.conversation_id,
+                MigrationAction.COPIED,
+                copied=len(head.messages),
+                folded=acks,
             )
         by_id = {entry.id: entry for entry in await self._stored(ref)}
         folded = set(head.migration_folded_acks)
@@ -447,7 +453,11 @@ class ConversationEntriesMigration(ConversationRepository):
             and by_id[e.message_id].migration_fields != field_hashes(e.stored())
         ]
         return MigrationOutcome(
-            ref.conversation_id, MigrationAction.MERGED, copied=len(fresh), rewritten=len(changed)
+            ref.conversation_id,
+            MigrationAction.MERGED,
+            copied=len(fresh),
+            rewritten=len(changed),
+            folded=acks,
         )
 
     async def _apply(self, ref: HeadRef, read: _EmbeddedHead) -> MigrationOutcome:
