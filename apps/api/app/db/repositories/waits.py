@@ -26,15 +26,11 @@ class WaitsRepository(UserScopedRepository[WaitDocument, WaitUpdate]):
         Two first asks can both miss and insert; the unique index rejects the loser,
         and its retry overwrites the winner.
         """
-        write = {"$set": {**update.model_dump(mode="json"), "created_at": datetime.now(UTC)}}
+        write = {"$set": {**update.model_dump(), "created_at": datetime.now(UTC)}}
         try:
-            await self._apply_raw_update(
-                key.model_dump(mode="json"), write, scope=None, upsert=True
-            )
+            await self._apply_raw_update(key.model_dump(), write, scope=None, upsert=True)
         except DuplicateKeyError:
-            await self._apply_raw_update(
-                key.model_dump(mode="json"), write, scope=None, upsert=True
-            )
+            await self._apply_raw_update(key.model_dump(), write, scope=None, upsert=True)
 
     async def find_met(
         self, user_id: str, condition: WaitCondition, subject_id: str
@@ -74,13 +70,11 @@ class WaitsRepository(UserScopedRepository[WaitDocument, WaitUpdate]):
             waiter_id=wait.waiter_id,
         )
         on_insert = {
-            **WaitUpdate(subject_name=wait.subject_name, stream_id=wait.stream_id).model_dump(
-                mode="json"
-            ),
+            **WaitUpdate(subject_name=wait.subject_name, stream_id=wait.stream_id).model_dump(),
             "created_at": wait.created_at,
         }
         await self._apply_raw_update(
-            key.model_dump(mode="json"), {"$setOnInsert": on_insert}, scope=None, upsert=True
+            key.model_dump(), {"$setOnInsert": on_insert}, scope=None, upsert=True
         )
 
 
