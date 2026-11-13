@@ -713,6 +713,7 @@ DECK_ATTACHMENT = {
 class TestNativeReadbacks:
     """Regression for the Vee draft: GAIA's reshaped readback dropped attachmentList, so an attached PDF read back as missing."""
 
+    @pytest.mark.regression
     @pytest.mark.parametrize(
         ("tool", "data"),
         [

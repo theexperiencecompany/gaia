@@ -314,20 +314,21 @@ def _get_text_from_html(html_content: str | None) -> str:
 def _attachment_metadata(payload: GmailMessagePart | None) -> list[GmailAttachmentMetadata]:
     """Extract attachment metadata (no bytes) from a full-format Gmail payload.
 
-    Walks the MIME parts tree, returning one entry per part with a filename
-    and attachmentId. Returns [] for a metadata-format message (no parts).
+    Walks the MIME parts tree, returning one entry per part with a filename. A
+    small attachment's bytes sit inline in body.data, so its attachmentId is None.
+    Returns [] for a metadata-format message (no parts).
     """
     out: list[GmailAttachmentMetadata] = []
 
     def walk(part: GmailMessagePart) -> None:
         body = part.body
-        if part.filename and body and body.attachment_id:
+        if part.filename:
             out.append(
                 {
                     "filename": part.filename,
                     "mimeType": part.mime_type,
-                    "size": body.size,
-                    "attachmentId": body.attachment_id,
+                    "size": body.size if body else None,
+                    "attachmentId": body.attachment_id if body else None,
                 }
             )
         for sub in part.parts:

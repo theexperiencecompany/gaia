@@ -1474,6 +1474,8 @@ class TestTheThreadRead:
             (["attachments"], "none", "full"),
             ([], "none", "full"),
             (["subject", "body"], "none", "metadata"),
+            # A thread past the offload limit comes back whole, body included.
+            (["id"], "normalize", "full"),
         )
         for fields, processing, expected in cases:
             mock_proxy.reset_mock()

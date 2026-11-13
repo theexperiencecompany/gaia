@@ -1053,6 +1053,25 @@ class TestTheFetchedViewReadsThePayload:
             }
         ]
 
+    def test_an_attachment_carried_inline_without_an_id_is_still_listed(self) -> None:
+        """Gmail puts a small attachment's bytes in body.data and gives it no attachmentId."""
+        payload = {
+            "mimeType": "multipart/mixed",
+            "parts": [
+                {"mimeType": "text/plain", "filename": "", "body": {"size": 2, "data": "aGk="}},
+                {
+                    "mimeType": "text/plain",
+                    "filename": "note.txt",
+                    "body": {"size": 3, "data": "YWJj"},
+                },
+            ],
+        }
+        message = RelayedGmailMessage.model_validate(_make_gmail_message(payload=payload))
+
+        assert build_message_view(message, "raw").attachments == [
+            {"filename": "note.txt", "mimeType": "text/plain", "size": 3, "attachmentId": None}
+        ]
+
     def test_no_view_claims_a_message_has_no_attachment(self) -> None:
         """Gmail sets no HAS_ATTACHMENT label, so a flag read from labels was always false."""
         message = RelayedGmailMessage.model_validate(

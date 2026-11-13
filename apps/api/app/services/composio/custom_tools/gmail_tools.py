@@ -558,7 +558,10 @@ def _aggregate_threads(user_id: str, request: FetchThreadInput) -> _ThreadBatch:
     A thread Gmail no longer has is listed as missing and the rest still come back.
     Raises _PartialResultError on any other mid-fetch error once anything succeeded.
     """
-    needs_full = message_view_needs_full(request.fields, request.body_processing)
+    # Any body processing means full: a thread past the offload limit returns whole, body included.
+    needs_full = request.body_processing != "none" or message_view_needs_full(
+        request.fields, request.body_processing
+    )
     cap = min(request.max_messages or MAX_ABSOLUTE_MESSAGES, MAX_ABSOLUTE_MESSAGES)
     threads: list[tuple[str, list[GmailMessageView]]] = []
     flat_views: list[GmailMessageView] = []
