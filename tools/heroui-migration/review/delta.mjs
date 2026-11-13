@@ -22,7 +22,8 @@ const newer = rowsOf(newerPath);
 const worse = {};
 for (const [id, n] of newer) {
   const o = older.get(id);
-  if (!o || n.removed) continue;
+  // A shot the older build could not take has no baseline to be worse than.
+  if (!o || n.removed || o.afterIssue) continue;
   const lostRender = !o.afterIssue && n.afterIssue;
   const rise = (n.changedPct ?? 0) - (o.changedPct ?? 0);
   if (!lostRender && !(rise > MIN)) continue;
