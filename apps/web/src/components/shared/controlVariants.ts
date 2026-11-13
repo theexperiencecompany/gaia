@@ -79,7 +79,11 @@ export const separatorVariants = tv({
   defaultVariants: { surface: "default" },
 });
 
-/** An overlay's surface on Popover.Content, Tooltip.Content or Select.Popover: raised is v2's zinc-800 off a zinc-900 page, secondary the #1a1a1a sidebar surface. */
+/**
+ * An overlay's surface on Popover.Content, Tooltip.Content, Select.Popover or
+ * Dropdown.Popover: raised is v2's zinc-800 off a zinc-900 page, secondary the
+ * #1a1a1a sidebar surface. backdrop opaque dims the page behind it (v2's backdrop="opaque").
+ */
 export const overlayVariants = tv({
   variants: {
     surface: {
@@ -87,6 +91,7 @@ export const overlayVariants = tv({
       raised: "gaia-overlay-raised",
       secondary: "gaia-overlay-secondary",
     },
+    backdrop: { none: "", opaque: "gaia-overlay-opaque" },
   },
-  defaultVariants: { surface: "default" },
+  defaultVariants: { surface: "default", backdrop: "none" },
 });

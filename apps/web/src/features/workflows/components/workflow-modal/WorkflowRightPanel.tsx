@@ -44,7 +44,7 @@ export default function WorkflowRightPanel({
         className={tabsVariants({ color: "accent" }).base({
           className: shapeVariants({
             shape: "pill",
-            className: "flex w-full shrink-0 flex-col",
+            className: "flex w-full shrink-0 flex-col gap-0",
           }),
         })}
       >

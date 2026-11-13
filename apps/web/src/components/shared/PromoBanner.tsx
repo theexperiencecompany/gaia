@@ -9,8 +9,6 @@ export interface PromoBannerAction {
   icon?: ReactNode;
   href?: string;
   onPress?: () => void;
-  variant?: "flat" | "solid";
-  color?: "default" | "primary";
 }
 
 export interface PromoBannerProps {
@@ -22,12 +20,9 @@ export interface PromoBannerProps {
   secondaryActions?: PromoBannerAction[];
 }
 
-/** Renders a promo action as a link button when it has an href, else a press button. */
+/** Renders a promo action as a link button when it has an href, else a press button; a secondary action is v2's flat default. */
 function renderAction(action: PromoBannerAction, isPrimary: boolean) {
-  const variant: "primary" | "secondary" =
-    action.variant === "flat" || (action.variant === undefined && !isPrimary)
-      ? "secondary"
-      : "primary";
+  const variant = isPrimary ? "primary" : "default-soft";
   const href = action.href;
 
   if (href) {

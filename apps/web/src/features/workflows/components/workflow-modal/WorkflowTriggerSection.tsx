@@ -1,7 +1,7 @@
 import { Tabs } from "@heroui/react";
 import { Clock01Icon, Cursor02Icon, FlashIcon } from "@icons";
 import { PanelRowGroup } from "@/components/shared/PanelRowGroup";
-import { toneVariants } from "@/components/shared/tone";
+import { tabsVariants } from "@/components/shared/tabsVariants";
 import { getUserHomeTimezone } from "@/lib/timezone";
 import type { Workflow } from "../../api/workflowApi";
 import { MAIL_TRIGGER_NAMES } from "../../constants/gates";
@@ -12,6 +12,8 @@ import { isIntegrationTrigger } from "../../triggers/types";
 import { ScheduleBuilder } from "../ScheduleBuilder";
 import { TriggerConfigForm } from "../TriggerConfigForm";
 import WorkflowSection from "./WorkflowSection";
+
+const tabsStyles = tabsVariants({ variant: "solid" });
 
 interface WorkflowTriggerSectionProps {
   activeTab: WorkflowFormData["activeTab"];
@@ -161,7 +163,7 @@ export default function WorkflowTriggerSection({
         onSelectionChange={(key) =>
           handleTabChange(key as "manual" | "schedule" | "trigger")
         }
-        className="w-full"
+        className={tabsStyles.base({ className: "w-full" })}
       >
         <Tabs.List
           aria-label="Trigger type"
@@ -171,8 +173,7 @@ export default function WorkflowTriggerSection({
             <Tabs.Tab
               key={tab.key}
               id={tab.key}
-              className={toneVariants({
-                tone: "muted",
+              className={tabsStyles.tab({
                 className: "h-9 font-medium data-[selected=true]:text-zinc-100",
               })}
             >
@@ -180,11 +181,16 @@ export default function WorkflowTriggerSection({
                 <tab.icon className="h-4 w-4" />
                 {tab.label}
               </span>
+              <Tabs.Indicator className={tabsStyles.tabIndicator()} />
             </Tabs.Tab>
           ))}
         </Tabs.List>
         {visibleTabs.map((tab) => (
-          <Tabs.Panel key={tab.key} id={tab.key}>
+          <Tabs.Panel
+            key={tab.key}
+            id={tab.key}
+            className={tabsStyles.tabPanel()}
+          >
             <div className="pt-1.5">{renderTabBody(tab.key)}</div>
           </Tabs.Panel>
         ))}

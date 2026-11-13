@@ -12,6 +12,7 @@ import {
 import { useRouter } from "next/navigation";
 import { memo, useCallback, useMemo } from "react";
 import { DiscordIcon } from "@/components/shared/icons";
+import { shapeVariants } from "@/components/shared/shape";
 import { toneVariants } from "@/components/shared/tone";
 import type { CardAction } from "@/features/chat/components/interface/BaseCardView";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
@@ -129,7 +130,10 @@ const RecentConversationsView = memo(() => {
                 <Chip
                   size="sm"
                   variant="soft"
-                  className={toneVariants({ tone: "muted" })}
+                  className={shapeVariants({
+                    shape: "sm",
+                    className: toneVariants({ tone: "muted" }),
+                  })}
                 >
                   <MessageMultiple02Icon
                     width={15}
@@ -145,7 +149,10 @@ const RecentConversationsView = memo(() => {
                 <Chip
                   size="sm"
                   variant="soft"
-                  className={toneVariants({ tone: "muted" })}
+                  className={shapeVariants({
+                    shape: "sm",
+                    className: toneVariants({ tone: "muted" }),
+                  })}
                 >
                   <Calendar03Icon width={15} height={15} className="mx-1" />
                   <Chip.Label>
@@ -164,7 +171,10 @@ const RecentConversationsView = memo(() => {
                       <Chip
                         size="sm"
                         variant="soft"
-                        className={toneVariants({ tone: "muted" })}
+                        className={shapeVariants({
+                          shape: "sm",
+                          className: toneVariants({ tone: "muted" }),
+                        })}
                       >
                         <DiscordIcon width={13} height={13} color="#5865f2" />
                       </Chip>

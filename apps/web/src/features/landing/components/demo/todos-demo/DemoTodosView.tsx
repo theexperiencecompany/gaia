@@ -15,6 +15,7 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { useMemo, useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { shapeVariants } from "@/components/shared/shape";
 import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
@@ -117,9 +118,12 @@ function DemoTodoItem({
           <div className="mt-2 flex flex-wrap items-center gap-1">
             {todo.due_date && (
               <Chip
-                className={toneVariants({
-                  tone: "muted",
-                  className: "flex items-center",
+                className={shapeVariants({
+                  shape: "sm",
+                  className: toneVariants({
+                    tone: "muted",
+                    className: "flex items-center",
+                  }),
                 })}
                 size="sm"
                 color={
@@ -144,7 +148,10 @@ function DemoTodoItem({
               <Chip
                 size="sm"
                 variant="soft"
-                className={`px-2 ${priorityChipClassNames[todo.priority]}`}
+                className={shapeVariants({
+                  shape: "sm",
+                  className: `px-2 ${priorityChipClassNames[todo.priority]}`,
+                })}
               >
                 <Flag02Icon width={15} height={15} className="mx-1" />
                 <Chip.Label>
@@ -155,7 +162,12 @@ function DemoTodoItem({
             )}
 
             {project && (
-              <Chip size="sm" variant="soft" style={{ color: project.color }}>
+              <Chip
+                className={shapeVariants({ shape: "sm" })}
+                size="sm"
+                variant="soft"
+                style={{ color: project.color }}
+              >
                 <Folder02Icon width={15} height={15} className="mx-1" />
                 <Chip.Label>{project.name}</Chip.Label>
               </Chip>
@@ -166,9 +178,12 @@ function DemoTodoItem({
                 key={label}
                 size="sm"
                 variant="soft"
-                className={toneVariants({
-                  tone: "muted",
-                  className: "flex items-center",
+                className={shapeVariants({
+                  shape: "sm",
+                  className: toneVariants({
+                    tone: "muted",
+                    className: "flex items-center",
+                  }),
                 })}
               >
                 <Tag01Icon width={17} height={17} className="mx-1" />
@@ -182,7 +197,10 @@ function DemoTodoItem({
               <Chip
                 size="sm"
                 variant="soft"
-                className={toneVariants({ tone: "muted" })}
+                className={shapeVariants({
+                  shape: "sm",
+                  className: toneVariants({ tone: "muted" }),
+                })}
               >
                 <CheckmarkCircle02Icon
                   width={15}

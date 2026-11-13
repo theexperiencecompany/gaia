@@ -132,12 +132,22 @@ function DemoIntegrationSidebar({
           {/* Status chips */}
           <div className="flex items-center gap-2">
             {isConnected && (
-              <Chip size="sm" variant="soft" color="success">
+              <Chip
+                className={shapeVariants({ shape: "sm" })}
+                size="sm"
+                variant="soft"
+                color="success"
+              >
                 Connected
               </Chip>
             )}
             {!isConnected && (
-              <Chip size="sm" variant="soft" color="default">
+              <Chip
+                className={shapeVariants({ shape: "sm" })}
+                size="sm"
+                variant="soft"
+                color="default"
+              >
                 Not Connected
               </Chip>
             )}
@@ -145,9 +155,12 @@ function DemoIntegrationSidebar({
               <Chip
                 size="sm"
                 variant="soft"
-                className={toneVariants({
-                  tone: "muted",
-                  className: "text-xs font-light",
+                className={shapeVariants({
+                  shape: "sm",
+                  className: toneVariants({
+                    tone: "muted",
+                    className: "text-xs font-light",
+                  }),
                 })}
               >
                 Custom

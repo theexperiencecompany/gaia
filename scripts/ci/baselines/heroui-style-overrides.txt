@@ -240,3 +240,4 @@ apps/web/src/features/workflows/triggers/components/IntervalPicker.tsx:Tabs.List
 apps/web/src/lib/toast.tsx:GaiaButton:bg-white/5
 apps/web/src/lib/toast.tsx:GaiaButton:data-[hover=true]:bg-white/10
 apps/web/src/lib/toast.tsx:GaiaButton:text-white/70
+apps/web/src/features/integrations/components/MCPIntegrationModal.tsx:Modal.Dialog:rounded-2xl
