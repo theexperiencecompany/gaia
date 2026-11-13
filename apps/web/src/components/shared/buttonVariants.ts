@@ -62,7 +62,7 @@ export const GAIA_BUTTON_FILLS = {
   "default-solid":
     "bg-zinc-700 text-foreground hover:bg-zinc-600 active:bg-zinc-600",
   "default-soft":
-    "bg-default-soft text-foreground hover:bg-default-soft-hover active:bg-default-soft-hover",
+    "bg-default-soft text-default-soft-foreground hover:bg-default-soft-hover active:bg-default-soft-hover",
   "success-soft":
     "bg-success-soft text-success-soft-foreground hover:bg-success-soft-hover active:bg-success-soft-hover",
   "warning-soft":

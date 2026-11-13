@@ -10,6 +10,7 @@ import {
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
+import { toneVariants } from "@/components/shared/tone";
 import { authApi } from "@/features/auth/api/authApi";
 import {
   patchCurrentUser,
@@ -115,10 +116,10 @@ function IdentitySettingsSection({
           <Select.Trigger
             className={inputVariants({
               variant: "translucent",
-              className: "cursor-pointer min-h-[36px]",
+              className: "cursor-pointer",
             })}
           >
-            <GaiaSelectValue />
+            <GaiaSelectValue className={toneVariants({ tone: "white" })} />
             <Select.Indicator />
           </Select.Trigger>
           <Select.Popover
@@ -171,10 +172,10 @@ function IdentitySettingsSection({
             <Select.Trigger
               className={inputVariants({
                 variant: "translucent",
-                className: "cursor-pointer min-h-[36px]",
+                className: "cursor-pointer",
               })}
             >
-              <GaiaSelectValue />
+              <GaiaSelectValue className={toneVariants({ tone: "white" })} />
               <Select.Indicator />
             </Select.Trigger>
             <Select.Popover
@@ -383,10 +384,10 @@ export default function PreferencesSettings({
             <Select.Trigger
               className={inputVariants({
                 variant: "translucent",
-                className: "cursor-pointer min-h-[36px]",
+                className: "cursor-pointer",
               })}
             >
-              <GaiaSelectValue />
+              <GaiaSelectValue className={toneVariants({ tone: "white" })} />
               <Select.Indicator />
             </Select.Trigger>
             <Select.Popover

@@ -109,7 +109,11 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
 
     return (
       <>
-        <form onSubmit={handleFormSubmit}>
+        {/* v2's 48px field: one line centres, more lines grow inside an 8px inset */}
+        <form
+          className="flex min-h-12 items-center"
+          onSubmit={handleFormSubmit}
+        >
           <TextArea
             ref={inputRef}
             autoFocus
@@ -117,7 +121,7 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
               variant: "bare",
               placeholder: "muted",
               className:
-                "max-h-84 min-h-12 w-full resize-none px-3 py-3 text-base leading-6 font-light shadow-none focus:ring-0",
+                "max-h-82 w-full resize-none px-3 py-2 text-base leading-6 font-light shadow-none focus:ring-0",
             })}
             rows={1}
             placeholder="What can I do for you today? (Type '/' for tools)"

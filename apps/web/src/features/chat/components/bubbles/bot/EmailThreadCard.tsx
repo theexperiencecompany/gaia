@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { accordionVariants } from "@/components/shared/accordionVariants";
 
 import { Gmail } from "@/components/shared/icons";
+import { shapeVariants } from "@/components/shared/shape";
 import { sanitizeEmailHtml } from "@/features/mail/utils/sanitizeEmailHtml";
 import type { EmailThreadData } from "@/types/features/mailTypes";
 import { parseEmail } from "../../../../mail/utils/mailUtils";
@@ -117,7 +118,11 @@ export default function EmailThreadCard({
                           <div className="flex w-full flex-row items-center justify-between">
                             <div className="flex flex-row items-center gap-2">
                               <div className="w-15">
-                                <Chip variant="soft" size="sm">
+                                <Chip
+                                  className={shapeVariants({ shape: "sm" })}
+                                  variant="soft"
+                                  size="sm"
+                                >
                                   From
                                 </Chip>
                               </div>
@@ -134,7 +139,11 @@ export default function EmailThreadCard({
                           </div>
                           <div className="flex flex-row items-center gap-2">
                             <div className="w-15">
-                              <Chip variant="soft" size="sm">
+                              <Chip
+                                className={shapeVariants({ shape: "sm" })}
+                                variant="soft"
+                                size="sm"
+                              >
                                 Subject
                               </Chip>
                             </div>

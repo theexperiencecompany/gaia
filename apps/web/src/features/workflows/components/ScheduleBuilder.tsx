@@ -92,7 +92,7 @@ const initializeCustomCron = (cronExpression?: string): string => {
 // narrow trigger width (truncates "Custom", "Month", "Wednesday", …).
 const SELECT_POPOVER_CLASSNAME = "min-w-fit";
 
-/** A compact single-select used by the schedule presets. */
+/** A compact single-select used by the schedule presets: v2's small (32px) select. */
 function CompactSelect({
   ariaLabel,
   value,
@@ -115,7 +115,7 @@ function CompactSelect({
       onChange={(key) => {
         if (key != null) onChange(String(key));
       }}
-      className={className}
+      className={inputVariants({ size: "sm", className })}
       placeholder={placeholder}
     >
       <Select.Trigger>

@@ -12,6 +12,7 @@ import { useLocale } from "next-intl";
 import { useMemo } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronRight } from "@/components/shared/icons";
+import { shapeVariants } from "@/components/shared/shape";
 import { useWorkflowExecutions } from "../hooks/useWorkflowExecutions";
 import type { WorkflowExecution } from "../types/workflowExecutionTypes";
 import PanelHeader from "./workflow-modal/PanelHeader";
@@ -56,27 +57,47 @@ function ExecutionStatusBadge({
   switch (status) {
     case "success":
       return (
-        <Chip size="sm" color="success" variant="soft">
+        <Chip
+          className={shapeVariants({ shape: "sm" })}
+          size="sm"
+          color="success"
+          variant="soft"
+        >
           <CheckmarkCircle02Icon className="h-3 w-3" />
           <Chip.Label>Success</Chip.Label>
         </Chip>
       );
     case "failed":
       return (
-        <Chip size="sm" color="danger" variant="soft">
+        <Chip
+          className={shapeVariants({ shape: "sm" })}
+          size="sm"
+          color="danger"
+          variant="soft"
+        >
           <AlertCircleIcon className="h-3 w-3" />
           <Chip.Label>Failed</Chip.Label>
         </Chip>
       );
     case "skipped":
       return (
-        <Chip size="sm" color="default" variant="soft">
+        <Chip
+          className={shapeVariants({ shape: "sm" })}
+          size="sm"
+          color="default"
+          variant="soft"
+        >
           <Chip.Label>Skipped</Chip.Label>
         </Chip>
       );
     case "running":
       return (
-        <Chip size="sm" color="accent" variant="soft">
+        <Chip
+          className={shapeVariants({ shape: "sm" })}
+          size="sm"
+          color="accent"
+          variant="soft"
+        >
           <div className="animate-spin">
             <Loading03Icon className="h-3 w-3" />
           </div>

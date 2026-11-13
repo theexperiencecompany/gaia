@@ -88,7 +88,7 @@ export const ChatTab: FC<ChatTabProps> = ({
         inset="tight"
         tone={isUnread ? "white" : isActive ? "dim" : "muted"}
         hoverTone={isUnread || isActive ? "none" : "dim"}
-        variant={isActive ? "secondary" : "ghost"}
+        variant={isActive ? "default-soft" : "ghost"}
         onClick={() => setButtonHovered(false)}
       >
         {getIcon() &&

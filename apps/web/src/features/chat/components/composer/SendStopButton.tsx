@@ -111,7 +111,8 @@ export default function SendStopButton({
       shape={showQueue ? "default" : "pill"}
       isIconOnly={!showQueue}
       aria-label={MODE_ARIA_LABEL[mode]}
-      className={`transition-all duration-300 ${contentColor} ${shapeClass}`}
+      // The muted icon colour already reads as not-ready; v2 never dimmed it further.
+      className={`transition-all duration-300 disabled:opacity-100 ${contentColor} ${shapeClass}`}
       // Stop (abort the stream) is always pressable; send/queue is gated on
       // readiness — there must be content AND no in-flight upload, otherwise the
       // submit is dropped by the composer's uploading guard.

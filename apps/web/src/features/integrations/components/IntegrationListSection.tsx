@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { accordionVariants } from "@/components/shared/accordionVariants";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { chipVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toneVariants } from "@/components/shared/tone";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
@@ -220,7 +221,12 @@ function IntegrationListSection({
               <span className="text-sm font-medium text-white">
                 {suggestion.name}
               </span>
-              <Chip size="sm" variant="soft" color="accent">
+              <Chip
+                size="sm"
+                variant="soft"
+                color="accent"
+                className={chipVariants({ hue: "secondary" })}
+              >
                 Community
               </Chip>
             </div>

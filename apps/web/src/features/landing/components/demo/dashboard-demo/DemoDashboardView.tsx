@@ -17,6 +17,7 @@ import {
 import { useInView } from "motion/react";
 import * as m from "motion/react-m";
 import { useRef } from "react";
+import { shapeVariants } from "@/components/shared/shape";
 import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
@@ -205,7 +206,10 @@ function DemoTodosCard() {
                 <Chip
                   size="sm"
                   variant="soft"
-                  className={toneVariants({ tone: "muted" })}
+                  className={shapeVariants({
+                    shape: "sm",
+                    className: toneVariants({ tone: "muted" }),
+                  })}
                 >
                   {todo.priority}
                 </Chip>
@@ -213,7 +217,10 @@ function DemoTodosCard() {
                   <Chip
                     size="sm"
                     variant="soft"
-                    className={toneVariants({ tone: "muted" })}
+                    className={shapeVariants({
+                      shape: "sm",
+                      className: toneVariants({ tone: "muted" }),
+                    })}
                   >
                     {new Date(todo.due_date).toDateString() ===
                     new Date().toDateString()
@@ -352,7 +359,10 @@ function DemoGoalsCard() {
                     <Chip
                       size="sm"
                       variant="soft"
-                      className={toneVariants({ tone: "muted" })}
+                      className={shapeVariants({
+                        shape: "sm",
+                        className: toneVariants({ tone: "muted" }),
+                      })}
                     >
                       <CheckmarkCircle02Icon
                         width={15}
@@ -410,7 +420,10 @@ function DemoConversationsCard() {
                 <Chip
                   size="sm"
                   variant="soft"
-                  className={toneVariants({ tone: "muted" })}
+                  className={shapeVariants({
+                    shape: "sm",
+                    className: toneVariants({ tone: "muted" }),
+                  })}
                 >
                   <MessageMultiple02Icon
                     width={15}
@@ -425,7 +438,10 @@ function DemoConversationsCard() {
                 <Chip
                   size="sm"
                   variant="soft"
-                  className={toneVariants({ tone: "muted" })}
+                  className={shapeVariants({
+                    shape: "sm",
+                    className: toneVariants({ tone: "muted" }),
+                  })}
                 >
                   <Calendar03Icon width={15} height={15} className="mx-1" />
                   <Chip.Label>

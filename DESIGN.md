@@ -470,7 +470,8 @@ The shape language is **soft and rounded**. Cards default to `rounded-2xl` (16px
 | Dark cards — outer | `rounded-2xl` (16px) |
 | Dark cards — inner items | `rounded-2xl` or `rounded-xl` (12px) |
 | Images | `rounded-3xl` (24px) |
-| HeroUI buttons, fields, chips | no class: the size's radius; `shape` (`sm`, `md`, `xl`, `pill`, `sharp`) to fix it |
+| HeroUI buttons and fields | no class: the size's radius; `shape` (`sm`, `md`, `lg`, `xl`, `pill`, `sharp`) to fix it |
+| HeroUI chips | no class: a pill at weight 400, v2's chip default; `shape` (`sm`, `md`, `lg`) where v2 set `radius` |
 | Badges, pills | `rounded-full` |
 | Context menus | `rounded-xl` (12px) |
 
@@ -669,7 +670,7 @@ v2's sizes on v3's components: each value is a `--gaia-*` token in `apps/web/src
 | Icon-only button | 32px square, 8px radius | 40px square | 48px square |
 | Chip min-height | 24px | 28px | 32px |
 | Chip text | 12px | 14px | 16px |
-| Chip radius | 8px | 8px | 8px |
+| Chip radius | full | full | full |
 | Field height | 32px (`inputVariants({ size: "sm" })`) | 40px; 56px with the label inside | |
 | Checkbox control | 20px, 8px gap to its label | | |
 

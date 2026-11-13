@@ -5,6 +5,7 @@ import { Clock01Icon, Tag01Icon } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { shapeVariants } from "@/components/shared/shape";
 import { useSubTodos } from "@/features/todo/hooks/useSubTodos";
 
 interface SubTodosSectionProps {
@@ -49,18 +50,33 @@ export function SubTodosSection({
             </Link>
             <div className="mt-1 flex flex-wrap items-center gap-1">
               {subTodo.completed && (
-                <Chip size="sm" variant="soft" color="success">
+                <Chip
+                  className={shapeVariants({ shape: "sm" })}
+                  size="sm"
+                  variant="soft"
+                  color="success"
+                >
                   Completed
                 </Chip>
               )}
               {subTodo.labels.map((label) => (
-                <Chip key={label} size="sm" variant="soft">
+                <Chip
+                  className={shapeVariants({ shape: "sm" })}
+                  key={label}
+                  size="sm"
+                  variant="soft"
+                >
                   <Tag01Icon width={14} height={14} className="mx-1" />
                   <Chip.Label>{label}</Chip.Label>
                 </Chip>
               ))}
               {subTodo.scheduled_at && (
-                <Chip size="sm" variant="soft" color="accent">
+                <Chip
+                  className={shapeVariants({ shape: "sm" })}
+                  size="sm"
+                  variant="soft"
+                  color="accent"
+                >
                   <Clock01Icon width={14} height={14} className="mx-1" />
                   <Chip.Label>
                     {formatDistanceToNow(new Date(subTodo.scheduled_at), {
