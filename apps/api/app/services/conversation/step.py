@@ -215,15 +215,15 @@ def _keep_claim_alive(ports: RuntimePorts, claim: StepClaim) -> asyncio.Task[Non
 
 async def _recover(ports: RuntimePorts, claim: StepClaim) -> None:
     """Republish what a dead holder may not have, then close the attempt it left open."""
+    if not claim.took_over:
+        # The last holder released cleanly: it published everything and left nothing open.
+        return
     conversation_id = claim.conversation_id
     state = await ports.log.state(conversation_id, claim.user_id)
-    if claim.took_over:
-        for logged in await ports.log.read_after(
-            conversation_id, claim.user_id, state.settled_through
-        ):
-            await ports.frames.publish(
-                conversation_id, EntryFrame(seq=logged.seq, at=logged.at, entry=logged.entry)
-            )
+    for logged in await ports.log.read_after(conversation_id, claim.user_id, state.settled_through):
+        await ports.frames.publish(
+            conversation_id, EntryFrame(seq=logged.seq, at=logged.at, entry=logged.entry)
+        )
     reply_id = state.open_reply
     if reply_id is None and _started_work_unseen(state):
         # Committed work is never redone silently: the dead attempt gets a failed reply too.
@@ -563,6 +563,9 @@ async def _show(ports: RuntimePorts, attempt: _Attempt, payload: StreamPayload) 
         reply = await _opening_reply(ports, attempt, _empty_reply(attempt))
         opened = await _append(ports, attempt.claim, reply)
         attempt.progress = _Showing(reply=reply, seq=opened.seq)
+        if opened.seq == attempt.seen + 1:
+            # Its own entry: no need to read the log for joiners the next verdict.
+            attempt.seen = opened.seq
     shown = attempt.progress
     attempt.progress = replace(shown, reply=_fold(shown.reply, payload))
     delta = ReplyDeltaFrame(
@@ -796,10 +799,14 @@ def _settled(
 
 
 async def _answers_and_quote(
-    ports: RuntimePorts, attempt: _Attempt, reply_seq: int
+    ports: RuntimePorts,
+    attempt: _Attempt,
+    reply_seq: int,
+    state: ConversationState | None = None,
 ) -> tuple[tuple[str, ...], str | None]:
     """Answer every covered input, plus the user messages that caused covered finished work."""
-    state = await ports.log.state(attempt.claim.conversation_id, attempt.claim.user_id)
+    if state is None:
+        state = await ports.log.state(attempt.claim.conversation_id, attempt.claim.user_id)
     covered = {logged.seq for logged in attempt.covers}
     work = [item for item in state.finished_work if item.seq in covered]
     ids = [logged.entry.id for logged in attempt.covers]
@@ -861,7 +868,7 @@ async def _put_reply(ports: RuntimePorts, attempt: _Attempt, reply: Reply) -> Lo
 async def _opening_reply(ports: RuntimePorts, attempt: _Attempt, reply: Reply) -> Reply:
     """Stamp the reply about to open with the message it quotes, as if it took the next seq."""
     state = await ports.log.state(attempt.claim.conversation_id, attempt.claim.user_id)
-    _, quote = await _answers_and_quote(ports, attempt, state.head + 1)
+    _, quote = await _answers_and_quote(ports, attempt, state.head + 1, state)
     return reply.model_copy(update={"quote_target": quote})
 
 

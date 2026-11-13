@@ -696,6 +696,64 @@ async def test_one_append_streams_one_entry_frame_and_at_most_one_state_frame(
     assert len(states) <= len(entry_seqs)
 
 
+# Measured on the step's own path (no HTTP, auth or billing): 56 and 23 before the live-test
+# fixes. A turn appends 4 entries at 4 ops each (head write, outbox read, insert, outbox drop);
+# the rest are the claim, the comms phase, head reads and the reply's amend. ~123 ms each in prod.
+PLAIN_TURN_MONGO_OPS = 49
+FIRST_DELTA_MONGO_OPS = 20
+
+
+@dataclass(frozen=True)
+class _MongoOp:
+    collection: str
+    op: str
+    at: datetime
+
+
+async def _profiled(
+    mongo_db: AsyncIOMotorDatabase[dict[str, object]], turn: Callable[[], Awaitable[None]]
+) -> list[_MongoOp]:
+    """Run turn with Mongo's profiler recording every operation, and return them in order."""
+    await mongo_db.command("profile", 0)
+    await mongo_db["system.profile"].drop()
+    await mongo_db.command("profile", 2)
+    try:
+        await turn()
+    finally:
+        await mongo_db.command("profile", 0)
+    ops = []
+    async for doc in mongo_db["system.profile"].find({}).sort("ts", 1):
+        collection = str(doc.get("ns", "")).split(".", 1)[-1]
+        if collection.startswith("system.") or collection == "$cmd":
+            continue
+        command = doc.get("command")
+        name = next(iter(command)) if isinstance(command, dict) and command else doc.get("op")
+        ops.append(_MongoOp(collection, str(name), cast(datetime, doc["ts"])))
+    return ops
+
+
+@pytest.mark.service
+async def test_a_plain_turn_stays_within_its_mongo_budget(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    rig = await rig_for(gated("first answer", "second answer"))
+    await rig.send("m1", "hi")
+    await rig.settle()
+
+    async def turn() -> None:
+        await rig.send("m2", "and again")
+        await rig.settle()
+
+    ops = await _profiled(mongo_db, turn)
+
+    opened = next(
+        logged for logged in reversed(await rig.entries()) if isinstance(logged.entry, Reply)
+    )
+    before_first_delta = [op for op in ops if op.at <= opened.at]
+    assert len(ops) <= PLAIN_TURN_MONGO_OPS, ops
+    assert len(before_first_delta) <= FIRST_DELTA_MONGO_OPS, before_first_delta
+
+
 @pytest.mark.service
 async def test_a_reply_settles_before_its_follow_up_suggestions_are_made(
     rig_for: RigFactory,
