@@ -8,6 +8,7 @@
 
 import { DODO_RETURN_IDENTIFYING_PARAMS } from "@/features/pricing/lib/dodoReturnUrl";
 import { onFirstInteraction } from "@/lib/firstInteraction";
+import { whenIdle } from "@/lib/idle";
 import {
   EXTENSION_URL_PATTERNS,
   filterExceptionBeforeSend,
@@ -121,11 +122,7 @@ if (typeof window !== "undefined") {
     }
   };
 
-  if ("requestIdleCallback" in window) {
-    requestIdleCallback(loadObservability, { timeout: 4000 });
-  } else {
-    setTimeout(loadObservability, 3000);
-  }
+  whenIdle(loadObservability, { timeoutMs: 4000, fallbackDelayMs: 3000 });
 }
 
 // Next.js calls this hook at the start of every client-side navigation.

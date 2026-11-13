@@ -82,6 +82,7 @@
 @source "../../../lib/environment.ts";
 @source "../../../lib/firstInteraction.ts";
 @source "../../../lib/hubPagination.ts";
+@source "../../../lib/idle.ts";
 @source "../../../lib/imageDimensions.ts";
 @source "../../../lib/privateBlob.ts";
 @source "../../../lib/queryClient.ts";

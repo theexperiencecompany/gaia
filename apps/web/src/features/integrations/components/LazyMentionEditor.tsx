@@ -1,14 +1,20 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { whenIdle } from "@/lib/idle";
 
 const loadMentionEditor = () =>
   import("./MentionEditor").then((module) => module.MentionEditor);
 
-// tiptap + prosemirror (~90 KB gzip) stay out of the route's initial JS; the
-// chunk is fetched at idle so a modal that opens later finds it ready.
+/** Fetch the editor chunk this long after load at the latest, so a modal opened later finds it ready. */
+const PREFETCH_TIMEOUT_MS = 4000;
+
+// tiptap + prosemirror (~90 KB gzip) stay out of the route's initial JS.
 if (typeof window !== "undefined") {
-  requestIdleCallback(() => void loadMentionEditor());
+  whenIdle(loadMentionEditor, {
+    timeoutMs: PREFETCH_TIMEOUT_MS,
+    fallbackDelayMs: PREFETCH_TIMEOUT_MS,
+  });
 }
 
 /** MentionEditor, loaded off the critical path; only modals render it. */
