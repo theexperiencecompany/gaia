@@ -129,9 +129,7 @@ function CompactSelect({
               key={option.value}
               id={option.value}
               textValue={option.label}
-            >
-              {option.label}
-            </GaiaListBoxItem>
+            />
           ))}
         </ListBox>
       </Select.Popover>

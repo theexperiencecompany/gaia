@@ -117,9 +117,7 @@ export function VoiceFilters({
         </Select.Trigger>
         <Select.Popover>
           <ListBox>
-            <GaiaListBoxItem id={ALL_FILTER} textValue="All genders">
-              All genders
-            </GaiaListBoxItem>
+            <GaiaListBoxItem id={ALL_FILTER} textValue="All genders" />
             {genderOptions.map((g) => (
               <GaiaListBoxItem key={g} id={g} textValue={g}>
                 <GenderIcon gender={g} />

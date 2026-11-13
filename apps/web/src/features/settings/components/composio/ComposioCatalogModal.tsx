@@ -99,9 +99,7 @@ export function ComposioCatalogModal({
                               key={name}
                               id={name}
                               textValue={name}
-                            >
-                              {name}
-                            </GaiaListBoxItem>
+                            />
                           ))}
                         </ListBox>
                       </Select.Popover>

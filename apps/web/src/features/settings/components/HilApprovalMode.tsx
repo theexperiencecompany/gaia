@@ -73,9 +73,7 @@ export function HilApprovalMode() {
           <Select.Popover>
             <ListBox>
               {MODES.map((m) => (
-                <GaiaListBoxItem key={m.key} id={m.key} textValue={m.label}>
-                  {m.label}
-                </GaiaListBoxItem>
+                <GaiaListBoxItem key={m.key} id={m.key} textValue={m.label} />
               ))}
             </ListBox>
           </Select.Popover>

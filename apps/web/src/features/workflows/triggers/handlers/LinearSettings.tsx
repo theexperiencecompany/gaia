@@ -108,9 +108,7 @@ export function LinearSettings({
                   key="loading"
                   id="loading"
                   textValue="Loading..."
-                >
-                  Loading...
-                </GaiaListBoxItem>
+                />
               </ListBox>
             </Select.Popover>
           </Select>
@@ -145,9 +143,7 @@ export function LinearSettings({
                       key={option.value}
                       id={option.value}
                       textValue={option.label}
-                    >
-                      {option.label}
-                    </GaiaListBoxItem>
+                    />
                   ))}
                 </ListBox>
               </Select.Popover>
