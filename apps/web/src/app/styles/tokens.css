@@ -68,13 +68,14 @@
   --color-field-border-invalid: var(--danger);
 }
 
-:root,
-.dark {
-  /* v2 placeholder: zinc-500 */
+:root {
+  /* v2 placeholder: foreground-500, zinc-500 in light */
   --field-placeholder: #71717a;
 }
 
 .dark {
+  /* v2 placeholder: foreground-500, zinc-400 in dark */
+  --field-placeholder: #a1a1aa;
   /* v2 flat field: default-100 (zinc-800) */
   --field-background: var(--gaia-field-background);
 }
@@ -155,7 +156,9 @@ html {
   --gaia-field-inside-padding-top: 1.5rem;
   --gaia-field-inside-padding-bottom: 0.5rem;
   --gaia-field-inside-padding-x: 0.75rem;
-  --gaia-field-label-inside-color: var(--color-zinc-400);
+  --gaia-field-inside-textarea-padding-top: 1.875rem;
+  --gaia-field-inside-textarea-padding-bottom: 0.625rem;
+  --gaia-field-label-inside-color: var(--color-zinc-300);
   --gaia-avatar-ring-gap: 2px;
   --gaia-avatar-ring-width: 2px;
   --gaia-avatar-ring-color: var(--color-zinc-700);
@@ -170,6 +173,9 @@ html {
   --gaia-modal-padding-x: 1.5rem;
   --gaia-modal-header-padding-y: 1rem;
   --gaia-modal-body-padding-y: 0.5rem;
+  --gaia-modal-close-size: 2rem;
+  --gaia-modal-close-inset: 0.25rem;
+  --gaia-modal-close-padding: 0.5rem;
   --gaia-modal-body-gap: 0.75rem;
   --gaia-modal-footer-padding-y: 1rem;
   --gaia-input-sm-height: 2rem;
@@ -182,8 +188,11 @@ html {
   --gaia-chip-sm-padding-x: 0.375rem;
   --gaia-chip-md-padding-x: 0.625rem;
   --gaia-chip-lg-padding-x: 0.875rem;
+  --gaia-chip-start-inset: 0.25rem;
+  --gaia-chip-lg-start-inset: 0.5rem;
   --gaia-field-height: 2.5rem;
   --gaia-field-font-size: 0.875rem;
+  --gaia-field-line-height: 1.25rem;
   --gaia-field-background: var(--color-zinc-800);
   --gaia-switch-track-off: var(--color-zinc-700);
   --gaia-switch-padding: 0.25rem;

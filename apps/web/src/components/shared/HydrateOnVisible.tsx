@@ -10,6 +10,8 @@ import {
 
 /** Start rendering a deferred section this far before it scrolls into view. */
 const HYDRATE_AHEAD_MARGIN = "100% 0px";
+/** Stop holding the server height after this long even if the content never reaches it. */
+const HOLD_HEIGHT_MAX_MS = 3000;
 
 const unsubscribeNothing = () => undefined;
 // The hydration state never changes under a mounted component, so nothing to subscribe to.
@@ -37,6 +39,10 @@ export function HydrateOnVisible({ children }: { children: ReactNode }) {
   const [active, setActive] = useState(
     () => typeof window === "undefined" || !isHydrating,
   );
+  // The server markup's height, held while the client render swaps in: a lazy
+  // section shows its loading fallback for a moment, and a shorter page would
+  // shift everything below it and jump the scroll position.
+  const [heldHeight, setHeldHeight] = useState<number | null>(null);
 
   useEffect(() => {
     const node = ref.current;
@@ -45,6 +51,7 @@ export function HydrateOnVisible({ children }: { children: ReactNode }) {
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
           observer.disconnect();
+          setHeldHeight(node.offsetHeight);
           setActive(true);
         }
       },
@@ -54,7 +61,34 @@ export function HydrateOnVisible({ children }: { children: ReactNode }) {
     return () => observer.disconnect();
   }, [active]);
 
-  if (active) return <div ref={ref}>{children}</div>;
+  useEffect(() => {
+    const node = ref.current;
+    if (heldHeight === null || !node) return;
+    const startedAt = performance.now();
+    let frame = requestAnimationFrame(function release() {
+      const contentHeight =
+        node.firstElementChild?.getBoundingClientRect().height;
+      const settled =
+        contentHeight !== undefined && contentHeight >= heldHeight - 1;
+      if (settled || performance.now() - startedAt > HOLD_HEIGHT_MAX_MS) {
+        setHeldHeight(null);
+        return;
+      }
+      frame = requestAnimationFrame(release);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [heldHeight]);
+
+  if (active) {
+    return (
+      <div
+        ref={ref}
+        style={heldHeight === null ? undefined : { minHeight: heldHeight }}
+      >
+        {children}
+      </div>
+    );
+  }
   // React does not touch an element's existing DOM when it hydrates with
   // dangerouslySetInnerHTML, so the server-rendered section stays as it is.
   return (

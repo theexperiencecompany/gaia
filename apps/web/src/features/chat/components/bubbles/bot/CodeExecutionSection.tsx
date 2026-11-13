@@ -35,6 +35,8 @@ const createCopyHandler = (
 };
 
 const TRIGGER_CLASS = "text-sm font-medium text-gray-300 hover:text-white";
+// v2 sized this chevron to the trigger's 14px text, not its heading's 24px
+const INDICATOR_CLASS = accordionStyles.indicator({ className: "size-[1em]" });
 
 const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
   code_data,
@@ -65,7 +67,7 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
               className={`${accordionStyles.trigger()} ${TRIGGER_CLASS}`}
             >
               Executed Code
-              <Accordion.Indicator className={accordionStyles.indicator()} />
+              <Accordion.Indicator className={INDICATOR_CLASS} />
             </Accordion.Trigger>
           </Accordion.Heading>
           <Accordion.Panel>
@@ -86,7 +88,7 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
               className={`${accordionStyles.trigger()} ${TRIGGER_CLASS}`}
             >
               Output
-              <Accordion.Indicator className={accordionStyles.indicator()} />
+              <Accordion.Indicator className={INDICATOR_CLASS} />
             </Accordion.Trigger>
           </Accordion.Heading>
           <Accordion.Panel>
@@ -110,7 +112,7 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
                 className={`${accordionStyles.trigger()} ${TRIGGER_CLASS}`}
               >
                 Charts
-                <Accordion.Indicator className={accordionStyles.indicator()} />
+                <Accordion.Indicator className={INDICATOR_CLASS} />
               </Accordion.Trigger>
             </Accordion.Heading>
             <Accordion.Panel>

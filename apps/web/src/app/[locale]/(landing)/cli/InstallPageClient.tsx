@@ -105,26 +105,35 @@ const installMethods = [
   },
 ];
 
+const installTabsStyles = tabsVariants({
+  variant: "underlined",
+  color: "accent",
+});
+
 function InstallMethodTabs() {
   return (
-    <Tabs
-      variant="secondary"
-      className={tabsVariants({ color: "accent" }).base({
-        className: "mb-0 pb-0",
-      })}
-    >
-      <Tabs.ListContainer>
-        <Tabs.List aria-label="Install methods">
-          {installMethods.map((method) => (
-            <Tabs.Tab key={method.key} id={method.key}>
-              {method.title}
-              <Tabs.Indicator />
-            </Tabs.Tab>
-          ))}
-        </Tabs.List>
-      </Tabs.ListContainer>
+    <Tabs className={installTabsStyles.base()}>
+      <Tabs.List
+        aria-label="Install methods"
+        className={installTabsStyles.tabList()}
+      >
+        {installMethods.map((method) => (
+          <Tabs.Tab
+            key={method.key}
+            id={method.key}
+            className={installTabsStyles.tab()}
+          >
+            {method.title}
+            <Tabs.Indicator className={installTabsStyles.tabIndicator()} />
+          </Tabs.Tab>
+        ))}
+      </Tabs.List>
       {installMethods.map((method) => (
-        <Tabs.Panel key={method.key} id={method.key} className="pt-3">
+        <Tabs.Panel
+          key={method.key}
+          id={method.key}
+          className={installTabsStyles.tabPanel()}
+        >
           <InstallTab code={method.code} hint={method.hint} />
         </Tabs.Panel>
       ))}

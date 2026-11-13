@@ -3,12 +3,15 @@
 import type { ButtonProps } from "@heroui/react";
 import { CheckmarkCircle01Icon, Copy01Icon } from "@icons";
 import { useState } from "react";
-import { GaiaButton } from "@/components/shared/GaiaButton";
+import {
+  GaiaButton,
+  type GaiaButtonVariant,
+} from "@/components/shared/GaiaButton";
 import { copyWithFeedback } from "@/lib/clipboard";
 
 interface CopyButtonProps {
   textToCopy: string;
-  variant?: ButtonProps["variant"];
+  variant?: GaiaButtonVariant;
   size?: ButtonProps["size"];
   className?: string;
   copied?: boolean; // Optional external copied state
@@ -17,7 +20,7 @@ interface CopyButtonProps {
 
 export default function CopyButton({
   textToCopy,
-  variant = "secondary",
+  variant = "default-soft",
   size = "sm",
   className = "",
   copied: externalCopied,

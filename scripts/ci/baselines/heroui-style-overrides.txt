@@ -52,8 +52,6 @@ apps/web/src/features/settings/components/usage/UsageHeatmap.tsx:Chip:bg-orange-
 apps/web/src/features/todo/components/fields/ScheduledFieldChip.tsx:GaiaButton:text-red-400
 
 # padding: a one-off inset no shared size or inset step reproduces
-apps/web/src/app/[locale]/(landing)/cli/InstallPageClient.tsx:Tabs.Panel:pt-3
-apps/web/src/app/[locale]/(landing)/cli/InstallPageClient.tsx:Tabs:pb-0
 apps/web/src/components/common/MarkdownViewerModal.tsx:Modal.Body:py-4
 apps/web/src/components/common/MarkdownViewerModal.tsx:Modal.Header:pb-3
 apps/web/src/components/layout/sidebar/ChatOptionsDropdown.tsx:Modal.Header:pb-0

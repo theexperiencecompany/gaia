@@ -1,6 +1,7 @@
 import { Chip } from "@heroui/react";
 
 import { SiteLink } from "@/components/seo/SiteLink";
+import { chipVariants } from "@/components/shared/controlVariants";
 import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
@@ -17,7 +18,10 @@ export function IntegrationChipLink({ integration }: IntegrationChipLinkProps) {
       <Chip
         variant="secondary"
         size="md"
-        className={toneVariants({ tone: "dim" })}
+        className={chipVariants({
+          hasStartContent: true,
+          className: toneVariants({ tone: "dim" }),
+        })}
       >
         {getToolCategoryIcon(
           integration.integrationId,

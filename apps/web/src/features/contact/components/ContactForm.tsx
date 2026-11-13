@@ -157,7 +157,7 @@ function ContactRequestForm({
         <TextArea
           placeholder="Please provide detailed information about your request..."
           maxLength={2000}
-          className="field-sizing-content min-h-[4lh] max-h-[10lh]"
+          className="field-sizing-content min-h-[calc(4lh+2.5rem)] max-h-[calc(10lh+2.5rem)]"
         />
       </TextField>
 
