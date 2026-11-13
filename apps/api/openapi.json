@@ -410,8 +410,18 @@
       },
       "ApprovalDecided": {
         "additionalProperties": false,
-        "description": "A pending approval ended; decider names who approved or denied it (None when nobody did).",
+        "description": "A pending approval ended; decider names who approved or denied it (None when nobody did).\n\nAn approved action's end is logged as the same decision restated with action set; the latest\none for an approval is its card's state.",
         "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActionResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "approval_id": {
             "title": "Approval Id",
             "type": "string"

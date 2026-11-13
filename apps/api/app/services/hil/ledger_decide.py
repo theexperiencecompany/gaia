@@ -42,7 +42,10 @@ from app.schemas.hil_schemas import (
     BatchDecisionOutcome,
 )
 from app.services.analytics_service import capture
-from app.services.conversation.work_log import record_approval_decided
+from app.services.conversation.work_log import (
+    record_approval_decided,
+    record_approved_action_ended,
+)
 from app.services.hil.bridge import (
     CardEnd,
     SettledApprovalCard,
@@ -500,6 +503,11 @@ async def _settle_terminal(row: ApprovalLedgerDocument, action: ActionResult) ->
     end = CardEnd(ApprovalOutcome.APPROVED, decider=ApprovalDecider.USER, action=action)
     if row.proposing_run_id:
         settle_session_approval_frame(row.proposing_run_id, row.approval_id, end)
+    # Logged only where the decision was: an approval on the log is one its work holds.
+    if row.task_id is not None:
+        await record_approved_action_ended(
+            row.conversation_id, row.user_id, row.approval_id, action
+        )
     await _broadcast_decision(row, end)
 
 

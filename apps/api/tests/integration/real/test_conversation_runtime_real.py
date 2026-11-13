@@ -66,10 +66,12 @@ from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
 from app.constants.conversation import EVENTS_STREAM_MAXLEN, STEP_TICK_SECONDS
 from app.constants.graphs import GraphName
+from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.todos import TodoWakeKind
 from app.core.lazy_loader import providers
 from app.db.mongodb.indexes import CONVERSATION_ID_UNIQUE_KEYS, CONVERSATION_ID_UNIQUE_OPTIONS
 from app.db.redis import redis_cache
+from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
@@ -108,7 +110,7 @@ from app.models.conversation_log_models import (
     WorkStarted,
 )
 from app.models.conversation_send_models import SendMessageRequest
-from app.models.hil_models import HILApprovalRecord
+from app.models.hil_models import ApprovalProposal, HILApprovalRecord
 from app.models.message_models import ReplyToMessageData
 from app.models.playbook_models import PlaybookDocument, ToolStep
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
@@ -163,7 +165,7 @@ from app.services.conversation.work_log import (
 )
 from app.services.conversation_stop_service import press_stop
 from app.services.delivery.chat_channel import ChatChannel
-from app.services.hil import resolution
+from app.services.hil import ledger_decide, resolution
 from app.services.hil.gate import GateContext, read_gate_context
 from app.services.workflow import thread_reset
 from app.services.workflow.conversation_service import log_playbook_run
@@ -184,7 +186,7 @@ from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.chat import ChatMessageCancelled, ChatMessageCompleted
-from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
+from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider, ApprovalOutcome
 from shared.py.analytics.catalog.workflows import WorkflowExecuted
 from shared.py.analytics.context import (
     AnalyticsContext,
@@ -908,6 +910,79 @@ async def test_an_image_the_work_generated_rides_its_reply_and_survives_a_reload
     assert reloaded is not None
     assert (task_reply.text, task_reply.image) == ("Here is your fox", image)
     assert [m.image_data for m in reloaded.messages if m.message_id == "t1"] == [image]
+
+
+@pytest.mark.service
+async def test_an_approved_action_that_failed_still_says_so_on_its_card_after_a_reload(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    """Regression: after a reload an approval card said only "Approved"; the action's result was never logged."""
+    model = gated("on it", "The email did not go through")
+    rig = await rig_for(model)
+    _during(model, 0, lambda: rig.start_work("t1"))
+    await rig.send("m1", "send the invoice")
+    await rig.settle()
+    approval_id = await approval_ledger_repository.register(
+        ApprovalProposal(
+            conversation_id=rig.conversation_id,
+            user_id=rig.user_id,
+            fingerprint=f"fp-{uuid4().hex}",
+            tool_name="GMAIL_SEND_EMAIL",
+            summary="Send the invoice",
+            owner_agent="gmail_agent",
+            task_id="t1",
+        )
+    )
+    await record_approval_requested(
+        rig.conversation_id,
+        rig.user_id,
+        "t1",
+        approval_id,
+        summary="Send the invoice",
+        expires_at=None,
+    )
+    failed = MagicMock(ok=False, output=None, error=None)
+    with (
+        patch.object(ledger_decide, "websocket_manager", MagicMock(broadcast_to_user=AsyncMock())),
+        patch.object(ledger_decide, "_deliver_ticket", AsyncMock()),
+        patch.object(ledger_decide, "_wake_agent", AsyncMock()),
+        patch.object(ledger_decide, "resume_owner_after_approval", AsyncMock()),
+        patch.object(ledger_decide, "dispatch_tool", AsyncMock(return_value=failed)),
+        patch.object(ledger_decide, "dispatch_config_for", return_value={}),
+    ):
+        await ledger_decide.decide_ledger(
+            approval_id, user_id=rig.user_id, kind="approve", via="card"
+        )
+        await ledger_decide.redeem_approved(
+            approval_id,
+            user_id=rig.user_id,
+            conversation_id=rig.conversation_id,
+            caller="gmail_agent",
+            run_config={},
+        )
+    card = {
+        "tool_name": APPROVAL_REQUEST_TOOL_NAME,
+        "data": {"approval_id": approval_id, "summary": "Send the invoice"},
+        "timestamp": _now().isoformat(),
+    }
+    await record_work_finished(
+        rig.conversation_id,
+        rig.user_id,
+        "t1",
+        WorkOutcome.FAILED,
+        WorkReport("the send failed", [cast(ToolDataEntry, card)]),
+    )
+    await rig.settle()
+    reloaded = await conversation_repository.get(rig.conversation_id, user_id=rig.user_id)
+    assert reloaded is not None
+    [shown] = [
+        entry["data"]
+        for message in reloaded.messages
+        if message.message_id == "t1"
+        for entry in message.tool_data or []
+    ]
+    assert (shown["outcome"], shown["action"]) == (ApprovalOutcome.APPROVED, ActionResult.FAILED)
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
 
 
 @pytest.mark.service

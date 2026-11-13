@@ -18,7 +18,7 @@ from app.models.tool_data_models import ToolDataEntry
 from app.models.workflow_models import TriggerType
 from app.models.workflow_trigger_models import WorkflowTriggerContext
 from shared.py.analytics.catalog.attribution import Attribution
-from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
+from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider, ApprovalOutcome
 from shared.py.analytics.catalog.properties import Identifier
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
@@ -241,12 +241,17 @@ class ApprovalRequested(_Entry):
 
 
 class ApprovalDecided(_Entry):
-    """A pending approval ended; decider names who approved or denied it (None when nobody did)."""
+    """A pending approval ended; decider names who approved or denied it (None when nobody did).
+
+    An approved action's end is logged as the same decision restated with action set; the latest
+    one for an approval is its card's state.
+    """
 
     kind: Literal[EntryKind.APPROVAL_DECIDED] = EntryKind.APPROVAL_DECIDED
     approval_id: str
     outcome: ApprovalOutcome
     decider: ApprovalDecider | None = None
+    action: ActionResult | None = None
 
 
 class WorkFinished(_Entry):

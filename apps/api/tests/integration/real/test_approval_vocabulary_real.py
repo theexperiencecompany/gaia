@@ -36,6 +36,7 @@ class Edges:
     logged: AsyncMock
     events: MagicMock
     dispatch: AsyncMock
+    acted: AsyncMock
 
 
 @pytest.fixture
@@ -45,6 +46,7 @@ async def edges(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[Edges]:
     with (
         patch.object(ledger_decide, "websocket_manager", new=websocket),
         patch.object(ledger_decide, "record_approval_decided", new=AsyncMock()) as logged,
+        patch.object(ledger_decide, "record_approved_action_ended", new=AsyncMock()) as acted,
         patch.object(ledger_decide, "capture") as events,
         patch.object(ledger_decide, "_publish_entry", new=AsyncMock()),
         patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
@@ -55,7 +57,7 @@ async def edges(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[Edges]:
         patch.object(ledger_decide, "dispatch_tool", new=AsyncMock()) as dispatch,
         patch.object(ledger_decide, "dispatch_config_for", return_value={}),
     ):
-        yield Edges(websocket.broadcast_to_user, logged, events, dispatch)
+        yield Edges(websocket.broadcast_to_user, logged, events, dispatch, acted)
     await mongo_db["approval_ledger"].delete_many({})
 
 
@@ -165,6 +167,7 @@ async def test_an_approved_action_that_fails_says_so_beside_the_approval(
     row = await mongo_db["approval_ledger"].find_one({"approval_id": approval_id})
     assert row is not None and (row["outcome"], row["action"]) == ("approved", "failed")
     assert (_frame(edges)["outcome"], _frame(edges)["action"]) == ("approved", "failed")
+    edges.acted.assert_awaited_once_with(CONVERSATION_ID, USER_ID, approval_id, "failed")
 
 
 async def test_only_one_open_row_per_call_even_with_explicit_nulls(

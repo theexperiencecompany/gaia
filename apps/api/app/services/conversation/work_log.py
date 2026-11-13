@@ -26,7 +26,7 @@ from app.services.conversation.log import accept, publish_appended
 from app.services.conversation.ports import ClaimLost, EntryRejected
 from app.services.conversation.reply_analytics import capture_unanswered_stop, stopped_waking
 from app.services.conversation.runtime import runtime_ports
-from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
+from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider, ApprovalOutcome
 from shared.py.wide_events import log
 
 
@@ -169,6 +169,20 @@ async def record_approval_decided(
         approval_id=approval_id,
         outcome=outcome,
         decider=decider,
+    )
+    await accept(runtime_ports(), conversation_id, user_id, entry)
+
+
+async def record_approved_action_ended(
+    conversation_id: str, user_id: str, approval_id: str, action: ActionResult
+) -> None:
+    """Restate the user's approval with what its action came to, so the card keeps it after a reload."""
+    entry = ApprovalDecided(
+        id=f"approval:{approval_id}:acted",
+        approval_id=approval_id,
+        outcome=ApprovalOutcome.APPROVED,
+        decider=ApprovalDecider.USER,
+        action=action,
     )
     await accept(runtime_ports(), conversation_id, user_id, entry)
 

@@ -6083,8 +6083,12 @@ export interface components {
         /**
          * ApprovalDecided
          * @description A pending approval ended; decider names who approved or denied it (None when nobody did).
+         *
+         *     An approved action's end is logged as the same decision restated with action set; the latest
+         *     one for an approval is its card's state.
          */
         ApprovalDecided: {
+            action?: components["schemas"]["ActionResult"] | null;
             /** Approval Id */
             approval_id: string;
             decider?: components["schemas"]["ApprovalDecider"] | null;
