@@ -5,6 +5,8 @@ import {
   type BotCommand,
   type BotFileData,
   buildAuthLinkMessage,
+  type Card,
+  type CardTarget,
   consumeInboundLinkCode,
   createBotLogger,
   extractSubcommandArgs,
@@ -20,12 +22,10 @@ import {
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
-  type RichMessage,
-  type RichMessageTarget,
   readBodyBytesBounded,
   readStreamBytesCapped,
+  renderCardText,
   renderForPlatform,
-  richMessageToMarkdown,
   type SentMessage,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
@@ -672,10 +672,7 @@ export class ImessageAdapter extends BaseBotAdapter {
     }
   }
 
-  private createImessageTarget(
-    handle: string,
-    space: Space,
-  ): RichMessageTarget {
+  private createImessageTarget(handle: string, space: Space): CardTarget {
     return {
       platform: "imessage",
       userId: handle,
@@ -696,12 +693,11 @@ export class ImessageAdapter extends BaseBotAdapter {
         );
       },
 
-      sendRich: async (richMsg: RichMessage): Promise<SentMessage> => {
-        const rendered = renderForPlatform(
-          richMessageToMarkdown(richMsg),
-          "imessage",
+      sendCard: async (card: Card): Promise<SentMessage> => {
+        return this.sendImessageText(
+          space,
+          renderForPlatform(renderCardText(card), "imessage"),
         );
-        return this.sendImessageText(space, rendered);
       },
 
       startTyping: async () => {

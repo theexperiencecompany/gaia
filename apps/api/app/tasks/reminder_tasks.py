@@ -126,7 +126,6 @@ async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> ProactiveTa
 
         await deliver_result_to_platforms(
             user=user,
-            user_id=reminder.user_id,
             notification_text=text,
             origin=origin,
             target=target,

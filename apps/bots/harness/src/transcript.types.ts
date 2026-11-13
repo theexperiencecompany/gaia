@@ -79,11 +79,11 @@ export interface EphemeralEvent extends TranscriptEventBase {
   text: string;
 }
 
-/** A structured rich message (Discord embed / markdown fallback on others). */
-export interface RichEvent extends TranscriptEventBase {
-  type: "rich";
-  title: string;
-  /** Rendered representation of the rich payload for the emulated platform. */
+/** A card (`/help`, a connect prompt, an approval), as text for the emulated platform. */
+export interface CardEvent extends TranscriptEventBase {
+  type: "card";
+  title?: string;
+  /** The card's text rendering, converted for the emulated platform. */
   text: string;
 }
 
@@ -147,7 +147,7 @@ export type TranscriptEvent =
   | EditEvent
   | TypingEvent
   | EphemeralEvent
-  | RichEvent
+  | CardEvent
   | SplitEvent
   | OutboundDeliveryEvent
   | OutboundAttachmentEvent
@@ -160,7 +160,7 @@ export type TranscriptEventInput =
   | Omit<EditEvent, keyof TranscriptEventBase>
   | Omit<TypingEvent, keyof TranscriptEventBase>
   | Omit<EphemeralEvent, keyof TranscriptEventBase>
-  | Omit<RichEvent, keyof TranscriptEventBase>
+  | Omit<CardEvent, keyof TranscriptEventBase>
   | Omit<SplitEvent, keyof TranscriptEventBase>
   | Omit<OutboundDeliveryEvent, keyof TranscriptEventBase>
   | Omit<OutboundAttachmentEvent, keyof TranscriptEventBase>

@@ -24,6 +24,7 @@ const { connection, channel, connect } = vi.hoisted(() => {
 
 vi.mock("amqplib", () => ({ connect }));
 
+import type { Card } from "../../../../../libs/shared/ts/src/bots/cards/types";
 import type {
   OutboundAttachment,
   OutboundReaction,
@@ -37,6 +38,14 @@ type Handler = (msg: unknown) => unknown;
 
 /** Every alert the consumer raises for a message it dead-letters. */
 const reportFailure = vi.fn();
+
+/** The platform's card sender and the card report, as the adapter wires them. */
+const cardDelivery = {
+  deliver: vi.fn<(id: string, card: Card, isChannel: boolean) => Promise<void>>(
+    async () => undefined,
+  ),
+  report: vi.fn(),
+};
 
 /** A fake amqplib message carrying ``payload`` (string sent verbatim). */
 function msgFor(payload: unknown, redelivered = false) {
@@ -71,6 +80,7 @@ async function startAndCaptureHandler(
     deliverFile,
     gaiaApiUrl,
     reportFailure,
+    cardDelivery,
     deliverReaction,
     notifications,
   );
@@ -89,6 +99,8 @@ async function deliverMessage(handle: Handler, msg: unknown): Promise<void> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  cardDelivery.deliver.mockReset();
+  cardDelivery.deliver.mockResolvedValue(undefined);
   connection.createChannel.mockResolvedValue(channel);
   channel.consume.mockResolvedValue(undefined);
 });
@@ -854,6 +866,173 @@ describe("OutboundConsumer message handling", () => {
   });
 });
 
+describe("OutboundConsumer tool cards", () => {
+  const CONNECT_URL = "https://gaia.test/connect/abc123";
+  const connectEntry = {
+    tool_name: "integration_connection_required",
+    data: {
+      integration_id: "posthog",
+      integration_name: "PostHog",
+      message:
+        "Your PostHog connection expired. Sign in again to keep using it.",
+      expired: true,
+      connect_url: CONNECT_URL,
+      connect_url_valid_minutes: 60,
+    },
+  };
+  const cardEnvelope = (overrides: object = {}) => ({
+    id: "env-cards",
+    platform: "telegram",
+    destination_id: "777",
+    text: "I need PostHog to finish the fundraising brief.",
+    tool_data: [connectEntry],
+    conversation_id: "conv-1",
+    platform_user_id: "777",
+    enqueued_at: "2026-01-01T00:00:00Z",
+    ...overrides,
+  });
+
+  it("sends the text, then the card, then reports the card as shown", async () => {
+    const order: string[] = [];
+    const deliver = vi.fn(async () => {
+      order.push("text");
+    });
+    cardDelivery.deliver.mockImplementation(async () => {
+      order.push("card");
+    });
+    const handle = await startAndCaptureHandler("telegram", deliver);
+    const msg = msgFor(cardEnvelope());
+
+    await deliverMessage(handle, msg);
+
+    expect(order).toEqual(["text", "card"]);
+    expect(cardDelivery.deliver).toHaveBeenCalledWith(
+      "777",
+      expect.objectContaining({
+        actions: [
+          { kind: "link", label: "Reconnect PostHog", url: CONNECT_URL },
+        ],
+      }),
+      false,
+    );
+    expect(channel.ack).toHaveBeenCalledWith(msg);
+    expect(cardDelivery.report).toHaveBeenCalledWith("777", "conv-1", [
+      expect.objectContaining({
+        tool_name: "integration_connection_required",
+        delivered: true,
+        text: expect.stringContaining(CONNECT_URL),
+      }),
+    ]);
+  });
+
+  it("delivers an envelope that carries only cards", async () => {
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    const handle = await startAndCaptureHandler("telegram", deliver);
+    const msg = msgFor(cardEnvelope({ text: undefined }));
+
+    await deliverMessage(handle, msg);
+
+    expect(deliver).not.toHaveBeenCalled();
+    expect(cardDelivery.deliver).toHaveBeenCalledTimes(1);
+    expect(channel.ack).toHaveBeenCalledWith(msg);
+  });
+
+  it("reports a refused card as not shown once the envelope is dead-lettered", async () => {
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    cardDelivery.deliver.mockRejectedValue(
+      new Error("Bad Request: chat not found"),
+    );
+    const handle = await startAndCaptureHandler("telegram", deliver);
+
+    await deliverMessage(handle, msgFor(cardEnvelope()));
+
+    expect(cardDelivery.report).toHaveBeenCalledWith("777", "conv-1", [
+      expect.objectContaining({ delivered: false }),
+    ]);
+  });
+
+  it("skips tool_data with no bot card and reports nothing", async () => {
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    const handle = await startAndCaptureHandler("telegram", deliver);
+    const msg = msgFor(
+      cardEnvelope({ tool_data: [{ tool_name: "weather_data", data: {} }] }),
+    );
+
+    await deliverMessage(handle, msg);
+
+    expect(cardDelivery.deliver).not.toHaveBeenCalled();
+    expect(cardDelivery.report).not.toHaveBeenCalled();
+    expect(channel.ack).toHaveBeenCalledWith(msg);
+  });
+
+  it("reports a group channel's cards under the account that owns the session", async () => {
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    const handle = await startAndCaptureHandler("telegram", deliver);
+    const msg = msgFor(
+      cardEnvelope({
+        destination_id: "-100200300",
+        is_channel: true,
+        platform_user_id: "777",
+      }),
+    );
+
+    await deliverMessage(handle, msg);
+
+    expect(cardDelivery.deliver).toHaveBeenCalledWith(
+      "-100200300",
+      expect.anything(),
+      true,
+    );
+    expect(cardDelivery.report).toHaveBeenCalledWith("777", "conv-1", [
+      expect.objectContaining({ delivered: true }),
+    ]);
+  });
+
+  it("does not report when the envelope names no account", async () => {
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    const handle = await startAndCaptureHandler("telegram", deliver);
+
+    await deliverMessage(
+      handle,
+      msgFor(cardEnvelope({ platform_user_id: null })),
+    );
+
+    expect(cardDelivery.deliver).toHaveBeenCalledTimes(1);
+    expect(cardDelivery.report).not.toHaveBeenCalled();
+  });
+
+  it("does not report when the envelope names no conversation", async () => {
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    const handle = await startAndCaptureHandler("telegram", deliver);
+
+    await deliverMessage(
+      handle,
+      msgFor(cardEnvelope({ conversation_id: null })),
+    );
+
+    expect(cardDelivery.deliver).toHaveBeenCalledTimes(1);
+    expect(cardDelivery.report).not.toHaveBeenCalled();
+  });
+
+  it("dead-letters an envelope with no text and no showable card", async () => {
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    const handle = await startAndCaptureHandler("telegram", deliver);
+    const msg = msgFor(
+      cardEnvelope({
+        text: undefined,
+        tool_data: [{ tool_name: "weather_data", data: {} }],
+      }),
+    );
+
+    await deliverMessage(handle, msg);
+
+    expect(channel.ack).not.toHaveBeenCalled();
+    expect(reportFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "envelope_empty" }),
+    );
+  });
+});
+
 describe("OutboundConsumer outside a platform's messaging window", () => {
   const twoBubbles = {
     id: "env-n",
@@ -956,6 +1135,7 @@ describe("OutboundConsumer lifecycle", () => {
       async () => undefined,
       "https://api.gaia.test",
       reportFailure,
+      cardDelivery,
     );
 
     const starting = consumer.start();

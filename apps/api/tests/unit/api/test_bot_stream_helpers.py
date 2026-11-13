@@ -19,7 +19,7 @@ from app.api.v1.endpoints.bot import (
     _bot_stream_control_frame,
     _bot_stream_entitlement_gate,
     _bot_stream_failure_logger,
-    _bot_stream_payload_frame,
+    _bot_stream_payload_frames,
     _notice_only_stream,
     _paywall_notice,
     _refusal_stream,
@@ -27,6 +27,7 @@ from app.api.v1.endpoints.bot import (
 from app.models.bot_models import BotChatRequest, BotWebStreamPayload
 from app.models.message_models import FileData
 from app.models.payment_models import PlanType
+from app.services.bot.cards import BotCardContext
 from app.services.bot.stream_frames import sse_frame
 from app.services.bot_service import build_bot_message_request
 from app.services.cost_budget import REQUEST_CEILING_STOP_PRO
@@ -107,103 +108,134 @@ class TestBotStreamControlFrame:
         )
 
 
-class TestBotStreamPayloadFrame:
-    """_bot_stream_payload_frame — translates one parsed web SSE payload."""
+def _card_ctx(upgrade_url: AsyncMock | None = None) -> BotCardContext:
+    """Card context whose upgrade resolver fails the test unless a stream actually needs it."""
+    return BotCardContext(
+        user_id="user-1",
+        conversation_id="conv-1",
+        upgrade_url=upgrade_url or AsyncMock(side_effect=AssertionError("upgrade URL resolved")),
+    )
+
+
+def _decode(frame: str) -> dict[str, object]:
+    return json.loads(frame[len("data: ") : -2])
+
+
+def _rate_limit_card(**data: object) -> dict[str, object]:
+    return {"tool_name": "rate_limit_data", "data": data}
+
+
+class TestBotStreamPayloadFrames:
+    """_bot_stream_payload_frames — translates one parsed web SSE payload."""
 
     async def test_keepalive_forwards_a_keepalive_frame(self):
-        frame, stop = await _bot_stream_payload_frame(
-            BotWebStreamPayload.model_validate({"keepalive": True}), "user-1"
+        frames, stop = await _bot_stream_payload_frames(
+            BotWebStreamPayload.model_validate({"keepalive": True}), _card_ctx()
         )
-        assert frame == 'data: {"keepalive": true}\n\n'
+        assert frames == ['data: {"keepalive": true}\n\n']
         assert stop is False
 
-    async def test_rate_limit_card_becomes_a_notice_frame_for_pro_users(self):
-        data = {
-            "tool_data": {
-                "tool_name": "rate_limit_data",
-                "data": {"feature": "chat_messages", "current_plan": "pro"},
-            }
-        }
-        frame, stop = await _bot_stream_payload_frame(
-            BotWebStreamPayload.model_validate(data), "user-1"
+    async def test_rate_limit_card_for_pro_users_carries_a_null_upgrade_url(self):
+        card = _rate_limit_card(feature="chat_messages", current_plan="pro")
+        upgrade_url = AsyncMock(return_value="https://pay.example/checkout")
+        frames, stop = await _bot_stream_payload_frames(
+            BotWebStreamPayload.model_validate({"tool_data": card}), _card_ctx(upgrade_url)
         )
-        assert frame is not None
-        payload = json.loads(frame[len("data: ") : -2])
-        assert payload == {
-            "notice": {
-                "text": "⏳ You've reached your chat messages limit. Please try again later."
+        assert [_decode(f) for f in frames] == [
+            {
+                "tool_data": {
+                    "tool_name": "rate_limit_data",
+                    "data": {
+                        "feature": "chat_messages",
+                        "current_plan": "pro",
+                        "upgrade_url": None,
+                    },
+                }
             }
-        }
+        ]
+        upgrade_url.assert_not_awaited()
         assert stop is False
-
-    async def test_a_rate_limit_card_without_a_feature_names_this_feature(self):
-        data = {"tool_data": {"tool_name": "rate_limit_data", "data": {"current_plan": "pro"}}}
-        frame, _ = await _bot_stream_payload_frame(BotWebStreamPayload.model_validate(data), "u")
-        payload = json.loads(frame[len("data: ") : -2])
-        assert payload["notice"]["text"] == (
-            "⏳ You've reached your this feature limit. Please try again later."
-        )
 
     @pytest.mark.regression
-    async def test_a_rate_limit_card_with_a_message_relays_that_message(self):
+    async def test_a_rate_limit_card_keeps_its_message_for_the_bot_client(self):
         """Regression: the per-run ceiling's card reached Telegram as "your chat messages limit"."""
-        data = {
-            "tool_data": {
-                "tool_name": "rate_limit_data",
-                "data": {
-                    "feature": "task_size",
-                    "current_plan": "pro",
-                    "message": REQUEST_CEILING_STOP_PRO,
-                },
-            }
-        }
-        frame, _ = await _bot_stream_payload_frame(
-            BotWebStreamPayload.model_validate(data), AsyncMock()
+        card = _rate_limit_card(
+            feature="task_size", current_plan="pro", message=REQUEST_CEILING_STOP_PRO
         )
-        payload = json.loads(frame[len("data: ") : -2])
-        assert payload["notice"]["text"] == f"⏳ {REQUEST_CEILING_STOP_PRO}"
-
-    async def test_rate_limit_card_appends_an_upgrade_link_for_non_pro_users(self):
-        data = {
-            "tool_data": {
-                "tool_name": "rate_limit_data",
-                "data": {"feature": "chat_messages", "current_plan": "free"},
+        frames, _ = await _bot_stream_payload_frames(
+            BotWebStreamPayload.model_validate({"tool_data": card}), _card_ctx()
+        )
+        assert [_decode(f) for f in frames] == [
+            {
+                "tool_data": {
+                    "tool_name": "rate_limit_data",
+                    "data": {
+                        "feature": "task_size",
+                        "current_plan": "pro",
+                        "message": REQUEST_CEILING_STOP_PRO,
+                        "upgrade_url": None,
+                    },
+                }
             }
-        }
-        # The stream resolves the upgrade URL once and hands the frames a
-        # resolver; the card is what asks for it.
+        ]
+
+    async def test_rate_limit_card_for_non_pro_users_carries_the_resolved_upgrade_url_once(self):
+        card = _rate_limit_card(feature="chat_messages", current_plan="free")
+        # The stream hands the frames a resolver; the card is what asks for it.
         upgrade_url = AsyncMock(return_value="https://pay.example/checkout")
-        frame, stop = await _bot_stream_payload_frame(
-            BotWebStreamPayload.model_validate(data), upgrade_url
+        frames, stop = await _bot_stream_payload_frames(
+            BotWebStreamPayload.model_validate({"tool_data": card}), _card_ctx(upgrade_url)
         )
         upgrade_url.assert_awaited_once_with()
-        payload = json.loads(frame[len("data: ") : -2])
-        assert payload["notice"]["text"].endswith(
-            "[Upgrade to Pro](https://pay.example/checkout) for higher limits."
-        )
+        assert [_decode(f) for f in frames] == [
+            {
+                "tool_data": {
+                    "tool_name": "rate_limit_data",
+                    "data": {
+                        "feature": "chat_messages",
+                        "current_plan": "free",
+                        "upgrade_url": "https://pay.example/checkout",
+                    },
+                }
+            }
+        ]
         assert stop is False
 
-    async def test_approval_card_becomes_an_approval_frame(self):
-        data = {
-            "tool_data": {
-                "tool_name": "approval_request",
-                "data": {"tool": "send_email", "id": "req-1"},
-            }
-        }
-        frame, stop = await _bot_stream_payload_frame(
-            BotWebStreamPayload.model_validate(data), "user-1"
+    async def test_approval_card_is_forwarded_verbatim_as_a_tool_data_frame(self):
+        card = {"tool_name": "approval_request", "data": {"tool": "send_email", "id": "req-1"}}
+        frames, stop = await _bot_stream_payload_frames(
+            BotWebStreamPayload.model_validate({"tool_data": card}), _card_ctx()
         )
-        payload = json.loads(frame[len("data: ") : -2])
-        assert payload == {"approval": {"tool": "send_email", "id": "req-1"}}
+        assert [_decode(f) for f in frames] == [{"tool_data": card}]
+        assert stop is False
+
+    async def test_a_list_of_cards_yields_one_frame_per_renderable_entry_in_order(self):
+        approval = {"tool_name": "approval_request", "data": {"id": "req-1"}}
+        memory = {"tool_name": "memory_data", "data": {"memories": []}}
+        loading = {"tool_name": "tool_calls_data", "data": {"tool_name": "x"}}
+        frames, stop = await _bot_stream_payload_frames(
+            BotWebStreamPayload.model_validate({"tool_data": [approval, loading, memory]}),
+            _card_ctx(),
+        )
+        assert [_decode(f) for f in frames] == [{"tool_data": approval}, {"tool_data": memory}]
+        assert stop is False
+
+    async def test_a_payload_of_loading_rows_only_yields_no_frames(self):
+        loading = {"tool_name": "tool_calls_data", "data": {"tool_name": "search"}}
+        frames, stop = await _bot_stream_payload_frames(
+            BotWebStreamPayload.model_validate({"tool_data": loading}), _card_ctx()
+        )
+        assert frames == []
         assert stop is False
 
     async def test_message_boundary_is_forwarded_verbatim(self):
         data = {"message_boundary": {"discarded": True, "message_id": "m1"}}
-        frame, stop = await _bot_stream_payload_frame(
-            BotWebStreamPayload.model_validate(data), "user-1"
+        frames, stop = await _bot_stream_payload_frames(
+            BotWebStreamPayload.model_validate(data), _card_ctx()
         )
-        payload = json.loads(frame[len("data: ") : -2])
-        assert payload == {"message_boundary": {"discarded": True, "message_id": "m1"}}
+        assert [_decode(f) for f in frames] == [
+            {"message_boundary": {"discarded": True, "message_id": "m1"}}
+        ]
         assert stop is False
 
     @pytest.mark.parametrize(
@@ -219,10 +251,10 @@ class TestBotStreamPayloadFrame:
         ],
     )
     async def test_web_only_fields_yield_no_frame(self, key: str):
-        frame, stop = await _bot_stream_payload_frame(
-            BotWebStreamPayload.model_validate({key: "irrelevant"}), AsyncMock()
+        frames, stop = await _bot_stream_payload_frames(
+            BotWebStreamPayload.model_validate({key: "irrelevant"}), _card_ctx()
         )
-        assert frame is None
+        assert frames == []
         assert stop is False
 
     @pytest.mark.parametrize(
@@ -239,18 +271,17 @@ class TestBotStreamPayloadFrame:
     )
     async def test_each_web_only_field_takes_priority_over_a_response_field(self, key: str):
         """A payload carrying both a web-only field and response is dropped since the web-only check runs first; parametrized per key so a mutation to any single entry still shows a different result."""
-        frame, stop = await _bot_stream_payload_frame(
-            BotWebStreamPayload.model_validate({"response": "hello", key: "x"}), AsyncMock()
+        frames, stop = await _bot_stream_payload_frames(
+            BotWebStreamPayload.model_validate({"response": "hello", key: "x"}), _card_ctx()
         )
-        assert frame is None
+        assert frames == []
         assert stop is False
 
     async def test_response_field_is_translated_to_text(self):
-        frame, stop = await _bot_stream_payload_frame(
-            BotWebStreamPayload.model_validate({"response": "hello there"}), "user-1"
+        frames, stop = await _bot_stream_payload_frames(
+            BotWebStreamPayload.model_validate({"response": "hello there"}), _card_ctx()
         )
-        payload = json.loads(frame[len("data: ") : -2])
-        assert payload == {"text": "hello there"}
+        assert [_decode(f) for f in frames] == [{"text": "hello there"}]
         assert stop is False
 
     async def test_emoji_ack_is_forwarded_so_bots_take_back_the_directive(self):
@@ -258,34 +289,33 @@ class TestBotStreamPayloadFrame:
         # BotWebStreamPayload, which had no emoji_ack field, so the ack was dropped
         # (extra="ignore") and bots showed the raw REACT: <emoji> text.
         data = {"emoji_ack": {"emoji": "😎", "reacts_to_message_id": "umsg-1"}}
-        frame, stop = await _bot_stream_payload_frame(
-            BotWebStreamPayload.model_validate(data), "user-1"
+        frames, stop = await _bot_stream_payload_frames(
+            BotWebStreamPayload.model_validate(data), _card_ctx()
         )
-        payload = json.loads(frame[len("data: ") : -2])
-        assert payload == {"emoji_ack": {"emoji": "😎", "reacts_to_message_id": "umsg-1"}}
+        assert [_decode(f) for f in frames] == [
+            {"emoji_ack": {"emoji": "😎", "reacts_to_message_id": "umsg-1"}}
+        ]
         assert stop is False
 
     async def test_an_explicit_null_emoji_ack_still_delivers_the_response_text(self):
-        frame, stop = await _bot_stream_payload_frame(
-            BotWebStreamPayload.model_validate({"emoji_ack": None, "response": "hi"}), "user-1"
+        frames, stop = await _bot_stream_payload_frames(
+            BotWebStreamPayload.model_validate({"emoji_ack": None, "response": "hi"}), _card_ctx()
         )
-        payload = json.loads(frame[len("data: ") : -2])
-        assert payload == {"text": "hi"}
+        assert [_decode(f) for f in frames] == [{"text": "hi"}]
         assert stop is False
 
     async def test_error_field_is_translated_and_stops_the_stream(self):
-        frame, stop = await _bot_stream_payload_frame(
-            BotWebStreamPayload.model_validate({"error": "boom"}), "user-1"
+        frames, stop = await _bot_stream_payload_frames(
+            BotWebStreamPayload.model_validate({"error": "boom"}), _card_ctx()
         )
-        payload = json.loads(frame[len("data: ") : -2])
-        assert payload == {"error": "boom"}
+        assert [_decode(f) for f in frames] == [{"error": "boom"}]
         assert stop is True
 
     async def test_unrecognized_shape_yields_no_frame(self):
-        frame, stop = await _bot_stream_payload_frame(
-            BotWebStreamPayload.model_validate({"some_other_field": 1}), "user-1"
+        frames, stop = await _bot_stream_payload_frames(
+            BotWebStreamPayload.model_validate({"some_other_field": 1}), _card_ctx()
         )
-        assert frame is None
+        assert frames == []
         assert stop is False
 
 
@@ -497,7 +527,7 @@ class TestBotStreamEntitlementGate:
                 return_value=False,
             ) as mock_sub_active,
             patch(
-                "app.api.v1.endpoints.bot._bot_upgrade_url",
+                "app.api.v1.endpoints.bot.bot_upgrade_url",
                 new_callable=AsyncMock,
                 return_value="https://pay.example/checkout",
             ) as mock_upgrade_url,

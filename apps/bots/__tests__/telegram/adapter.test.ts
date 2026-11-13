@@ -13,7 +13,7 @@
  * 1. platform property returns "telegram"
  * 2. group @mention path strips @botUsername and streams the cleaned content
  * 3. createCtxTarget.send — sends HTML text to the correct chat_id
- * 4. createCtxTarget.sendRich — formats rich message via richMessageToMarkdown
+ * 4. createCtxTarget.sendCard — a widget where it can draw the card, else a rich message
  * 5. handleTelegramStreaming — sends "Thinking..." then delegates to handleStreamingChat
  * 6. HTML fallback — edits/sends retry as plain text when Telegram rejects HTML
  * 7. registerCommands — a slash command dispatches with the parsed subcommand args
@@ -42,9 +42,12 @@ const mockGetFile = vi
   .mockResolvedValue({ file_path: "photos/file_1.jpg" });
 
 const mockSetMessageReaction = vi.fn().mockResolvedValue(true);
+const mockSendRichMessage = vi.fn().mockResolvedValue({ message_id: 301 });
+const mockSendWidget = vi.fn().mockResolvedValue({ message_id: 300 });
 
 const mockBotInstance = {
   on: mockBotOn,
+  use: vi.fn(),
   command: mockBotCommand,
   catch: mockBotCatch,
   start: mockBotStart,
@@ -57,11 +60,17 @@ const mockBotInstance = {
     sendMessage: vi.fn().mockResolvedValue({ message_id: 99 }),
     sendChatAction: vi.fn().mockResolvedValue({}),
     setMessageReaction: mockSetMessageReaction,
+    sendRichMessage: mockSendRichMessage,
+    // Bot API 10.4 widget methods go through `api.raw` (no grammY typings yet).
+    raw: { sendWidget: mockSendWidget },
   },
 };
 
-vi.mock("grammy", () => ({
+vi.mock("grammy", async () => ({
   Bot: vi.fn().mockImplementation(() => mockBotInstance),
+  // The real keyboard builder: a card's buttons are asserted on its output.
+  InlineKeyboard: (await vi.importActual<Record<string, unknown>>("grammy"))
+    .InlineKeyboard,
   GrammyError: class GrammyError extends Error {
     constructor(
       message: string,
@@ -91,7 +100,7 @@ vi.mock("@gaia/shared/bots", async () => {
         platform: "telegram",
       },
     },
-    defaultRichMarkdown: "**GAIA Settings**\nYour settings",
+    defaultCardText: "**GAIA Settings**\nYour settings",
     converters: {
       // renderForPlatform is the shared non-streaming chokepoint; identity here
       // so the adapter's wiring (chat_id, parse_mode) is what we assert. The
@@ -136,14 +145,15 @@ vi.mock("@gaia/shared/bots", async () => {
 // ---------------------------------------------------------------------------
 
 import {
+  type Card,
   fetchBytesCapped,
   handleStreamingChat,
   MEDIA_READ_TIMEOUT_MS,
   type ReactionOutcome,
   renderForPlatform,
-  richMessageToMarkdown,
 } from "@gaia/shared/bots";
 import type { Message } from "@grammyjs/types";
+import { GrammyError } from "grammy";
 // From source, not the mocked barrel: GaiaApiError is the error class the real
 // link-code path branches on, and the mock does not re-export it.
 import { GaiaApiError } from "../../../../libs/shared/ts/src/bots/api";
@@ -294,6 +304,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
       }),
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
+      expect.any(Function), // sendCard
     );
   });
 
@@ -353,6 +364,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
       }),
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
+      expect.any(Function), // sendCard
     );
   });
 
@@ -472,47 +484,85 @@ describe("TelegramAdapter - createCtxTarget.send", () => {
 });
 
 // ---------------------------------------------------------------------------
-// createCtxTarget.sendRich — formats message via richMessageToMarkdown
+// createCtxTarget.sendCard — a widget where it can draw the card, else a rich message
 // ---------------------------------------------------------------------------
 
-describe("TelegramAdapter - createCtxTarget.sendRich", () => {
-  it("renders rich message to markdown and sends it via api.sendMessage", async () => {
-    vi.clearAllMocks();
+describe("TelegramAdapter - createCtxTarget.sendCard", () => {
+  const makeTarget = () => {
     const adapter = makeAdapter();
-
-    const sendMessageFn = vi.fn().mockResolvedValue({ message_id: 200 });
-    const ctx = makeCtx({ chatId: 555, chatType: "private", sendMessageFn });
-
-    const target = (
+    const ctx = makeCtx({ chatId: 555, chatType: "private" });
+    return (
       adapter as unknown as {
         createCtxTarget: (
-          ctx: typeof ctx,
+          ctx: unknown,
           userId: string,
         ) => {
-          sendRich: (msg: object) => Promise<{ id: string }>;
+          sendCard: (card: Card) => Promise<{ id: string }>;
         };
       }
     ).createCtxTarget(ctx, "1234");
+  };
 
-    const richMsg = {
-      type: "embed" as const,
-      title: "GAIA Settings",
-      description: "Your preferences",
-      fields: [{ name: "Theme", value: "Dark", inline: false }],
-    };
+  const linkCard = (url: string): Card => ({
+    title: "PostHog",
+    blocks: [{ kind: "text", markdown: "Your PostHog connection expired." }],
+    actions: [{ kind: "link", label: "Reconnect PostHog", url }],
+  });
 
-    const sent = await target.sendRich(richMsg);
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
-    expect(richMessageToMarkdown).toHaveBeenCalledWith(richMsg);
-    // richMessageToMarkdown is mocked to return "**GAIA Settings**\nYour settings";
-    // renderForPlatform is identity in this mock, so the text is forwarded as-is
-    // but with parse_mode: "HTML".
-    expect(sendMessageFn).toHaveBeenCalledWith(
-      555,
-      "**GAIA Settings**\nYour settings",
-      { parse_mode: "HTML" },
+  it("sends a card the widget can draw as a tappable widget", async () => {
+    const sent = await makeTarget().sendCard(
+      linkCard("https://gaia.test/connect/abc"),
     );
-    expect(sent.id).toBe("200");
+
+    expect(mockSendWidget).toHaveBeenCalledWith({
+      chat_id: 555,
+      html: expect.stringContaining('data-u="https://gaia.test/connect/abc"'),
+      allow_queries: true,
+    });
+    expect(mockSendRichMessage).not.toHaveBeenCalled();
+    expect(sent.id).toBe("300");
+  });
+
+  it("sends a card with a link the widget cannot open as a rich message", async () => {
+    const sent = await makeTarget().sendCard(linkCard("http://localhost:3000"));
+
+    expect(mockSendWidget).not.toHaveBeenCalled();
+    expect(mockSendRichMessage).toHaveBeenCalledWith(555, {
+      html: expect.stringContaining("Reconnect PostHog"),
+    });
+    expect(sent.id).toBe("301");
+  });
+
+  it("sends the card as a rich message when Telegram refuses the widget", async () => {
+    mockSendWidget.mockRejectedValueOnce(
+      new GrammyError(
+        "Call to 'sendWidget' failed!",
+        400,
+        "Bad Request: WIDGET_HTML_INVALID",
+      ),
+    );
+
+    const sent = await makeTarget().sendCard(
+      linkCard("https://gaia.test/connect/abc"),
+    );
+
+    expect(mockSendRichMessage).toHaveBeenCalledWith(555, {
+      html: expect.stringContaining("Reconnect PostHog"),
+    });
+    expect(sent.id).toBe("301");
+  });
+
+  it("does not hide a widget failure that is not a refusal", async () => {
+    mockSendWidget.mockRejectedValueOnce(new Error("socket hang up"));
+
+    await expect(
+      makeTarget().sendCard(linkCard("https://gaia.test/connect/abc")),
+    ).rejects.toThrow("socket hang up");
+    expect(mockSendRichMessage).not.toHaveBeenCalled();
   });
 });
 
@@ -578,6 +628,7 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
       }),
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
+      expect.any(Function), // sendCard
     );
   });
 
@@ -986,7 +1037,7 @@ describe("TelegramAdapter - dispatchCommand error recovery", () => {
       channelId: "123456",
       send: vi.fn(),
       sendEphemeral: sendEphemeralFn,
-      sendRich: vi.fn(),
+      sendCard: vi.fn(),
       startTyping: vi.fn(),
     };
 
@@ -1025,7 +1076,7 @@ describe("TelegramAdapter - dispatchCommand error recovery", () => {
       channelId: "123456",
       send: vi.fn(),
       sendEphemeral: sendEphemeralFn,
-      sendRich: vi.fn(),
+      sendCard: vi.fn(),
       startTyping: vi.fn(),
     };
 
@@ -1120,6 +1171,7 @@ describe("TelegramAdapter - /gaia command", () => {
       }),
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
+      expect.any(Function), // sendCard
     );
   });
 });
@@ -1516,6 +1568,7 @@ describe("TelegramAdapter - media message routing", () => {
       }),
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
+      expect.any(Function), // sendCard
     );
   });
 

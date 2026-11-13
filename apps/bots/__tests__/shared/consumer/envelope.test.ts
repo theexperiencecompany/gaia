@@ -130,6 +130,40 @@ describe("outboundMessageEnvelopeSchemaFor", () => {
     expect(schema.safeParse(withNeither).success).toBe(false);
   });
 
+  it("accepts a tool-card-only envelope, as Python sends it", () => {
+    const { text: _text, ...noText } = valid;
+    const parsed = schema.safeParse({
+      ...noText,
+      tool_data: [
+        {
+          tool_name: "integration_connection_required",
+          tool_category: "integration",
+          data: { integration_id: "posthog", message: "Connect PostHog." },
+          timestamp: null,
+        },
+      ],
+      conversation_id: "conv-1",
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("defaults tool_data to none and conversation_id to absent", () => {
+    const parsed = schema.parse(valid);
+    expect(parsed.tool_data).toEqual([]);
+    expect(parsed.conversation_id).toBeUndefined();
+  });
+
+  it("rejects an envelope whose only content is an empty tool_data list", () => {
+    const { text: _text, ...noText } = valid;
+    expect(schema.safeParse({ ...noText, tool_data: [] }).success).toBe(false);
+  });
+
+  it("rejects a tool_data entry with no tool_name", () => {
+    expect(
+      schema.safeParse({ ...valid, tool_data: [{ data: {} }] }).success,
+    ).toBe(false);
+  });
+
   it("accepts a reaction-only envelope (no text body)", () => {
     const { text: _text, ...noText } = valid;
     expect(

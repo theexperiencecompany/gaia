@@ -68,6 +68,14 @@ export interface IntegrationConnectionData {
   connected_accounts?: string[];
   // The expired account the card signs back in, in place of adding a new one.
   reconnect_account?: { id: string; name: string } | null;
+  // Set only on bot deliveries, which have no in-app connect flow: the link that
+  // connects the integration. With a lifetime it is login-free and expires;
+  // without one it is the integrations page, which needs a GAIA sign-in.
+  connect_url?: string | null;
+  connect_url_valid_minutes?: number | null;
+  // The integration authenticates with an API key rather than a sign-in, so the
+  // key is entered in GAIA (never in chat). Absent on messages streamed before it.
+  needs_api_key?: boolean;
 }
 
 export type IntegrationAuthType = "oauth" | "bearer" | "none";

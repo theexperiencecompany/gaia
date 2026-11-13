@@ -390,7 +390,6 @@ class TestWorkflowResultReachesThePlatformDelivery:
         deliver.assert_awaited_once()
         kwargs = deliver.await_args.kwargs
         assert kwargs["user"] == AuthenticatedUser(user_id=USER_ID)
-        assert kwargs["user_id"] == USER_ID
         assert kwargs["origin"] == ('workflow "Morning digest" (id wf-1), tracked todo (id todo-9)')
         assert kwargs["target"] is NO_CHAT_APP
         notify.assert_awaited_once()  # the in-app badge still fires alongside
@@ -2925,7 +2924,7 @@ class TestAPlatformReaction:
 
         delivered.reaction.assert_not_awaited()
         delivered.platform.assert_awaited_once_with(
-            ConversationSource.WHATSAPP, USER_ID, "👍", conversation_id="conv-1"
+            ConversationSource.WHATSAPP, USER_ID, "👍", conversation_id="conv-1", tool_data=None
         )
         assert delivered.event["platform_reaction"] == "fallback_text"
 

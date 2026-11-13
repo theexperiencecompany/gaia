@@ -11,6 +11,15 @@ import re
 #: SUBAGENT_GROUP_TOOL_NAME in @gaia/shared/chat).
 SUBAGENT_GROUP_TOOL_NAME = "subagent_group"
 
+#: The tool_data card asking the user to (re)connect an integration (integration_checker).
+INTEGRATION_CONNECTION_TOOL_NAME = "integration_connection_required"
+
+#: The tool_data card showing email drafts to send (gmail compose hook).
+EMAIL_COMPOSE_TOOL_NAME = "email_compose_data"
+
+#: The tool_data card a rate, budget or plan limit renders as (build_rate_limit_card).
+RATE_LIMIT_TOOL_NAME = "rate_limit_data"
+
 
 class ConversationSource(str, Enum):
     """Client or channel a conversation originated from."""

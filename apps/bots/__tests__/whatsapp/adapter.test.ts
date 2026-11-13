@@ -16,7 +16,7 @@
  * 6.  createWaTarget — platform/userId/channelId identity
  * 7.  createWaTarget.send — delegates to sendWhatsAppText
  * 8.  createWaTarget.sendEphemeral — identical to send (no ephemeral concept)
- * 9.  createWaTarget.sendRich — renders via richMessageToMarkdown (platform-aware) and sends directly
+ * 9.  createWaTarget.sendCard — renders the card's text for WhatsApp and sends it directly
  * 10. createWaTarget.startTyping — returns a callable no-op
  * 11. handleIncomingMessage — /gaia <text> routes to handleStreamingMessage
  * 12. handleIncomingMessage — /gaia (no text) sends usage hint, no streaming
@@ -119,7 +119,7 @@ vi.mock("@gaia/shared/bots", async () => {
       friendlyMediaError: vi.fn(real.friendlyMediaError),
       unsupportedMediaMessage: vi.fn(real.unsupportedMediaMessage),
     },
-    defaultRichMarkdown: "*GAIA Help*\nUse /gaia to chat",
+    defaultCardText: "*GAIA Help*\nUse /gaia to chat",
   });
 });
 
@@ -130,7 +130,7 @@ vi.mock("@gaia/shared/bots", async () => {
 import {
   handleStreamingChat,
   type ReactionOutcome,
-  richMessageToMarkdown,
+  renderCardText,
 } from "@gaia/shared/bots";
 // From source, not the mocked barrel: GaiaApiError is the error class the real
 // redeemLinkCode branches on, so a stub would prove nothing about the failure path.
@@ -180,8 +180,8 @@ type PrivateAdapter = {
     sendEphemeral: (
       text: string,
     ) => Promise<{ id: string; edit: (t: string) => Promise<void> }>;
-    sendRich: (
-      richMsg: unknown,
+    sendCard: (
+      card: unknown,
     ) => Promise<{ id: string; edit: (t: string) => Promise<void> }>;
     startTyping: () => Promise<() => void>;
   };
@@ -340,20 +340,18 @@ describe("WhatsAppAdapter - createWaTarget", () => {
     expect(sent.id).toBe("wa-msg-123");
   });
 
-  it("target.sendRich renders via richMessageToMarkdown (already platform-aware) and sends it directly", async () => {
+  it("target.sendCard renders the card's text and sends it directly", async () => {
     const target = priv.createWaTarget("15551234567");
-    const richMsg = { title: "GAIA Help", sections: [] };
+    const card = { title: "GAIA Help", blocks: [], actions: [] };
 
-    // richMessageToMarkdown emits platform-agnostic CommonMark (mocked here);
-    // the target converts it for WhatsApp via the shared renderForPlatform
+    // renderCardText emits platform-agnostic CommonMark (mocked here); the
+    // target converts it for WhatsApp via the shared renderForPlatform
     // chokepoint before sending.
-    vi.mocked(richMessageToMarkdown).mockReturnValueOnce(
-      "*GAIA Help*\n*Name:* Aryan",
-    );
+    vi.mocked(renderCardText).mockReturnValueOnce("*GAIA Help*\n*Name:* Aryan");
 
-    await target.sendRich(richMsg);
+    await target.sendCard(card);
 
-    expect(richMessageToMarkdown).toHaveBeenCalledWith(richMsg);
+    expect(renderCardText).toHaveBeenCalledWith(card);
     expect(mockSendText).toHaveBeenCalledWith(
       expect.objectContaining({ body: "*GAIA Help*\n*Name:* Aryan" }),
     );

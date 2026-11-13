@@ -111,6 +111,9 @@ CACHE_CALL_ALLOWLIST: frozenset[str] = frozenset(
         # repository. GETDEL is the single-use guarantee, so the raw helper is
         # the mechanism, not a hand-rolled cache of a stored document.
         "services/platform_link_code_service.py",
+        # Bot card buttons: an opaque id per button and the card it sits on, kept
+        # for the button's TTL and deleted when spent. Tokens, not entities.
+        "services/bot/card_action_store.py",
         "services/mcp/mcp_token_store.py",
         # per-user / derived aggregate caches + their imperative invalidations
         "api/v1/endpoints/todos.py",

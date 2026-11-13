@@ -1,24 +1,24 @@
 """Surfacing an integration the user has to (re)connect, and the agent copy for it.
 
-The card and the copy are one operation, never two: the UI wording promises a
-connect button "has been shown to the user", so anything that produces it must
-also produce the card.
+The card and the copy are one operation, never two: the copy tells the agent
+exactly what the user was sent, so anything that produces it must also produce
+the card.
 
-The wording depends on the client: UI clients render a connect card, so the
-agent text points at it; bots need a link inline. An OAuth-capable MCP
-integration also gets its standalone provider authorization URL, so the user
-can (re)connect even when the card is not visible. A token-only MCP server
-says plainly that no such URL exists. A background run has no user present, so
-it is told to record the gap and carry on.
+A UI client renders the card with its own connect flow. Everywhere else the card
+carries the link itself (a single-use connect link, an MCP provider's
+authorization URL, or the integrations page when neither exists) and the bot or
+the result delivery sends it as a button, so no link depends on the model
+copying it. The agent is told the link either way: it must know what the user
+can see. A background run has nobody present to act, so its card is delivered
+with the run's result and the agent records the gap and carries on.
 """
 
 from typing import Literal, NamedTuple
 
-from langgraph.config import get_config
-
 from app.agents.tools.run_record import block_integration
-from app.config.settings import settings
+from app.constants.auth import CONNECT_LINK_TTL_MINUTES
 from app.constants.cache import OAUTH_STATE_TTL
+from app.constants.chat import INTEGRATION_CONNECTION_TOOL_NAME
 from app.constants.integrations import (
     ACCOUNT_NEEDS_RECONNECT_HINT,
     MANAGED_BY_MCP,
@@ -28,29 +28,17 @@ from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
 from app.models.agent_models import (
     AgentConfigurableView,
+    current_run_config,
     current_stream_writer,
     read_agent_configurable,
 )
 from app.models.chat_models import SourceCategory
 from app.models.integration_models import IntegrationAccount
-from app.services.connect_link_service import build_connect_link_url
+from app.services.connect_link_service import build_connect_link_url, integrations_page_url
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.mcp.mcp_oauth import build_oauth_auth_url
 from shared.py.wide_events import log
-
-
-def _current_run() -> AgentConfigurableView | None:
-    """Read the active graph run's configurable (source category, execution mode).
-
-    Uses LangGraph's ambient config (same mechanism as get_stream_writer), so
-    no config threading is needed. Returns None outside a runnable context.
-    """
-    try:
-        config = get_config()
-    except RuntimeError:
-        return None
-    return read_agent_configurable(config)
 
 
 class _StandaloneAuth(NamedTuple):
@@ -165,6 +153,19 @@ async def _connected_account_names(user_id: str, integration_id: str) -> list[st
     return [a.display_name for a in ordered]
 
 
+class _Link(NamedTuple):
+    """The link a non-UI user is sent, and how long it works (None: the permanent integrations page)."""
+
+    url: str
+    valid_minutes: int | None
+
+    def described(self) -> str:
+        """Say the link as the agent is told it: the URL and, when it expires, when."""
+        if self.valid_minutes is None:
+            return f"{self.url} (the integrations page; they must be signed in to GAIA)"
+        return f"{self.url} (single use, valid for {self.valid_minutes} minutes)"
+
+
 class _Prompt(NamedTuple):
     """The facts every channel-specific instruction needs."""
 
@@ -177,43 +178,86 @@ class _Prompt(NamedTuple):
     integrations_url: str
 
 
-def _background_message(prompt: _Prompt) -> str:
-    """Record the gap and carry on: a background run has nobody to act."""
-    ask = prompt.ask
+def _stop(prompt: _Prompt) -> str:
+    """End the integration's part of the run: the user's tap starts a new turn."""
+    return (
+        f"Nothing more can be done with {prompt.integration_name} until they do, so do not "
+        f"call any {prompt.integration_name} tool again this run; finish the rest of the task "
+        "and say what is waiting on them."
+    )
+
+
+async def _user_link(prompt: _Prompt) -> _Link:
+    """Mint the link a non-UI user (re)connects with.
+
+    An OAuth MCP integration's provider URL when one was built; the integrations
+    page for an API-key server, a provider whose discovery failed, or when no
+    link can be minted (Redis down); otherwise a single-use connect link.
+    """
+    integrations_page = _Link(prompt.integrations_url, None)
+    if prompt.auth.kind == "oauth" and prompt.auth.url:
+        return _Link(prompt.auth.url, OAUTH_STATE_TTL // 60)
+    if prompt.auth.kind in ("token_only", "unavailable"):
+        return integrations_page
+    connect_url = await build_connect_link_url(
+        prompt.user_id, prompt.integration_id, prompt.account.id if prompt.account else None
+    )
+    return _Link(connect_url, CONNECT_LINK_TTL_MINUTES) if connect_url else integrations_page
+
+
+def _what_to_do_there(prompt: _Prompt) -> str:
+    """Say what the user does on the page the link opens."""
+    if prompt.auth.kind == "token_only":
+        return f"enter the API key there to {prompt.ask.verb} {prompt.integration_name}"
+    return f"{prompt.ask.verb} {prompt.integration_name} there"
+
+
+def _auth_note(prompt: _Prompt) -> str:
+    """Why the link is the integrations page, when the integration has no sign-in link."""
     if prompt.auth.kind == "token_only":
         return (
-            f"{ask.lead} This integration authenticates with an API key, so no standalone "
-            "authorization URL exists. This is a background run and no user is present to "
-            f"enter it, so retrying {prompt.integration_name} this run cannot succeed. Record in "
-            f"your result that {ask.gap} and that the user must enter the API key at "
-            f"{prompt.integrations_url}, then carry on with the rest of the task."
+            "This integration authenticates with an API key, so no standalone authorization "
+            "URL exists. "
         )
     if prompt.auth.kind == "unavailable":
-        return (
-            f"{ask.lead} No standalone authorization URL is available for this integration. "
-            "This is a background run and no user is present, so retrying "
-            f"{prompt.integration_name} this run cannot succeed. Record in your result that "
-            f"{ask.gap} (the user can {ask.verb} it at {prompt.integrations_url}), then carry on "
-            "with the rest of the task."
-        )
+        return "No standalone authorization URL is available for this integration right now. "
+    return ""
+
+
+def _background_link(prompt: _Prompt) -> _Link | None:
+    """Return the link a background card carries; None when one is minted as the result is sent.
+
+    A single-use link dies within the hour and a background result is read later,
+    so it is minted at delivery (app.services.bot.cards), never here. Only the
+    permanent integrations page is fixed now, for integrations with no sign-in link.
+    """
+    if prompt.auth.kind in ("token_only", "unavailable"):
+        return _Link(prompt.integrations_url, None)
+    return None
+
+
+def _background_message(prompt: _Prompt, link: _Link | None) -> str:
+    """Record the gap and carry on: nobody is present, so the card travels with the result."""
+    ask = prompt.ask
+    target = (
+        f"linking to {link.described()}"
+        if link is not None
+        else "whose single-use sign-in link is minted fresh when the result is sent (if it has "
+        f"expired by the time they open it, they can {ask.verb} it at {prompt.integrations_url})"
+    )
     return (
-        f"{ask.lead} This is a background run and no user is present to {ask.verb} it, so "
-        f"retrying {prompt.integration_name} this run cannot succeed. Record in your result that "
-        f"{ask.gap} (the user can {ask.verb} it at {prompt.integrations_url}), then carry on with "
-        "the rest of the task."
+        f"{ask.lead} {_auth_note(prompt)}This is a background run and no user is present to "
+        f"{ask.verb} it now, so retrying {prompt.integration_name} this run cannot succeed. A "
+        f"{ask.button} {target} is attached to this run's result and is delivered to the user "
+        f"with it; they {_what_to_do_there(prompt)}. Record in your result that {ask.gap} and "
+        "that the button is attached, then carry on with the rest of the task."
     )
 
 
 def _ui_message(prompt: _Prompt) -> str:
     """Point at the card a UI client renders, relaying any standalone URL, and end the integration's part of the run."""
     ask = prompt.ask
-    # The run that showed the card cannot succeed with this integration: the
-    # user's click starts a new turn, so retrying here only stacks failures.
-    stop = (
-        f"Nothing more can be done with {prompt.integration_name} until they do, so do not "
-        f"call any {prompt.integration_name} tool again this run; finish the rest of the task "
-        "and say what is waiting on them."
-    )
+    stop = _stop(prompt)
     if prompt.auth.kind == "oauth" and prompt.auth.url:
         return (
             f"{ask.lead} A {ask.button} has been shown to the user, and a standalone "
@@ -237,51 +281,33 @@ def _ui_message(prompt: _Prompt) -> str:
     )
 
 
-async def _text_only_message(prompt: _Prompt) -> str:
-    """Inline what a bot user needs: a standalone URL or the integrations page."""
+def _messaging_app_message(prompt: _Prompt, link: _Link) -> str:
+    """Tell the agent the button the user was sent on a messaging app, link included."""
     ask = prompt.ask
-    if prompt.auth.kind == "oauth" and prompt.auth.url:
-        return (
-            f"{ask.lead} The user is on a text-only platform (no UI). Include this standalone "
-            "authorization URL verbatim in your result so the comms agent can relay it to the "
-            "user, and tell them to open it soon because it expires after about "
-            f"{OAUTH_STATE_TTL // 60} minutes: {prompt.auth.url}"
-        )
-    if prompt.auth.kind == "token_only":
-        return (
-            f"{ask.lead} This integration authenticates with an API key, so no standalone "
-            "authorization URL exists. The user is on a text-only platform (no UI); ask them "
-            f"to open {prompt.integrations_url} and enter the API key to connect "
-            f"{prompt.integration_name} there."
-        )
-    if prompt.auth.kind == "unavailable":
-        return (
-            f"{ask.lead} No standalone authorization URL is available for this integration. "
-            f"The user is on a text-only platform (no UI); ask them to open "
-            f"{prompt.integrations_url} and {ask.verb} {prompt.integration_name} there."
-        )
-    connect_url = await build_connect_link_url(
-        prompt.user_id, prompt.integration_id, prompt.account.id if prompt.account else None
-    )
-    if not connect_url:
-        return (
-            f"{ask.lead} The user is on a text-only platform (no UI). Ask them to open "
-            f"{prompt.integrations_url} and {ask.verb} {prompt.integration_name} there."
-        )
     return (
-        f"{ask.lead} The user is on a text-only platform (no UI). "
-        f"Include this URL verbatim in your result so the comms agent can relay it to the user, "
-        f"and tell them it is valid for 1 hour: {connect_url}"
+        f"{ask.lead} {_auth_note(prompt)}The user is on a messaging app. The system has sent "
+        f"them a {ask.button} "
+        f"as its own message, linking to {link.described()}; they {_what_to_do_there(prompt)}. "
+        f"They see it directly, so refer to it in your reply; repeating the link is optional. "
+        f"{_stop(prompt)}"
     )
 
 
-async def _block_for_run(run: AgentConfigurableView | None, integration_id: str) -> bool:
+def _already_sent_message(prompt: _Prompt) -> str:
+    """Answer a repeat ask in the same run: the card went out on the first ask only."""
+    return (
+        f"{prompt.ask.lead} The {prompt.ask.button} was already sent to the user earlier in "
+        f"this run. {_stop(prompt)}"
+    )
+
+
+async def _block_for_run(run: AgentConfigurableView, integration_id: str) -> bool:
     """Block the integration for the rest of the run; False when the run already asked once.
 
     invoke_tool refuses a blocked integration's calls, so the stop the agent is told
     about does not depend on the model obeying it.
     """
-    if run is None or not run.stream_id:
+    if not run.stream_id:
         return True
     return await block_integration(run.stream_id, integration_id)
 
@@ -305,10 +331,33 @@ async def request_integration_connection(
     # fall through to the never-connected wording without needing a special case.
     expired = await user_integration_repository.is_expired(user_id, integration_id)
     ask = _ask(mode, expired, integration_name, account.display_name if account else None)
-    run = _current_run()
-    source_category = run.source_category if run is not None else None
+    run = read_agent_configurable(current_run_config())
+    source_category = run.source_category
     adding = mode is ConnectMode.ADD_ACCOUNT
     first_ask = await _block_for_run(run, integration_id) if not adding else True
+    background = run.execution_mode == "background"
+    on_ui = source_category == SourceCategory.UI.value
+
+    # Login-required but permanent: the fallback when no single-use link applies.
+    integrations_url = integrations_page_url()
+    # A background run delivers its result after this, past an MCP OAuth state's
+    # lifetime, so it never pays for building one.
+    auth = await _standalone_mcp_auth(user_id, integration_id, build_url=not background)
+    prompt = _Prompt(
+        ask=ask,
+        integration_id=integration_id,
+        integration_name=integration_name,
+        user_id=user_id,
+        account=account,
+        auth=auth,
+        integrations_url=integrations_url,
+    )
+
+    if not first_ask and not on_ui:
+        return _already_sent_message(prompt)
+    # The UI card runs its own connect flow; everywhere else the card carries the link.
+    messaging_link = None if on_ui or background else await _user_link(prompt)
+    link = _background_link(prompt) if background else messaging_link
 
     # None means no runnable context at all (e.g. the dev direct-invocation
     # endpoints), so there is no stream for a card to travel on. A run shows
@@ -316,7 +365,7 @@ async def request_integration_connection(
     if source_category is not None and first_ask:
         current_stream_writer()(
             {
-                "integration_connection_required": {
+                INTEGRATION_CONNECTION_TOOL_NAME: {
                     "integration_id": integration_id,
                     "integration_name": integration_name,
                     "expired": not adding
@@ -329,26 +378,17 @@ async def request_integration_connection(
                     "reconnect_account": (
                         {"id": account.id, "name": account.display_name} if account else None
                     ),
+                    # An API-key server is connected by pasting a secret; a bot card
+                    # must send the user to GAIA for that, never ask in chat.
+                    "needs_api_key": auth.kind == "token_only",
+                    "connect_url": link.url if link else None,
+                    "connect_url_valid_minutes": link.valid_minutes if link else None,
                 }
             }
         )
 
-    # Login-required but permanent: the fallback when no single-use link applies.
-    integrations_url = f"{settings.FRONTEND_URL.rstrip('/')}/integrations"
-    background = run is not None and run.execution_mode == "background"
-    auth = await _standalone_mcp_auth(user_id, integration_id, build_url=not background)
-    prompt = _Prompt(
-        ask=ask,
-        integration_id=integration_id,
-        integration_name=integration_name,
-        user_id=user_id,
-        account=account,
-        auth=auth,
-        integrations_url=integrations_url,
-    )
-
+    if messaging_link is not None:
+        return _messaging_app_message(prompt, messaging_link)
     if background:
-        return _background_message(prompt)
-    if source_category == SourceCategory.UI.value:
-        return _ui_message(prompt)
-    return await _text_only_message(prompt)
+        return _background_message(prompt, link)
+    return _ui_message(prompt)

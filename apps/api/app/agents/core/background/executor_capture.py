@@ -160,13 +160,14 @@ class _SubagentGroupProducer(BaseModel):
     subagent_name: str | None = None
 
 
-def build_returned_to_frontend_note(stream_id: str) -> str:
-    """Build a note telling comms which native cards already rendered this turn.
+def build_returned_to_frontend_note(
+    stream_id: str, shown_tools: frozenset[str] | None = None
+) -> str:
+    """Build a note telling comms which native cards were returned to the client this turn.
 
-    States what was RETURNED to the frontend, not a claim about DOM
-    rendering. Each row names the producing subagent (once missing, an
-    executor summary credited the wrong product: "8 tasks created (Todoist)"
-    for GAIA todos). MUST be called before the session is torn down.
+    Each row names its producing subagent, so a summary credits the right product.
+    shown_tools limits it to the cards a bot renders natively; None is a
+    first-party client, which renders every card. Call before session teardown.
     """
     entries: list[ToolDataEntry] = drain_executor_tool_data(stream_id)
     subagent_names: dict[str, str] = {}
@@ -184,6 +185,8 @@ def build_returned_to_frontend_note(stream_id: str) -> str:
         name = entry.get("tool_name")
         if name not in tool_fields:
             continue  # excludes tool_calls_data / subagent_group (loading rows)
+        if shown_tools is not None and name not in shown_tools:
+            continue  # the bot shows this one as text, so comms must say it
         data = entry.get("data")
         producer = subagent_names.get(str(entry.get("subagent_id")), "")
         key = (str(name), producer)

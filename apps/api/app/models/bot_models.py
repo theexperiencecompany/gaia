@@ -283,30 +283,6 @@ class BotSessionUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class BotStreamToolCard(BaseModel):
-    """A web stream payload's ``tool_data`` card, as far as bot translation reads it.
-
-    ``data`` stays free-form JSON: an approval card's ``data`` is forwarded to
-    the bot verbatim, and only a rate-limit card's is read further
-    (``BotRateLimitCardData``).
-    """
-
-    model_config = ConfigDict(extra="ignore")
-
-    tool_name: JsonValue = None
-    data: JsonValue = None
-
-
-class BotRateLimitCardData(BaseModel):
-    """The ``data`` of a ``rate_limit_data`` card (``build_rate_limit_card``) a bot notice reads."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    feature: JsonValue = None
-    current_plan: JsonValue = None
-    message: str | None = None
-
-
 class BotWebStreamPayload(BaseModel):
     """One parsed web SSE ``data:`` payload, as the bot stream translates it.
 

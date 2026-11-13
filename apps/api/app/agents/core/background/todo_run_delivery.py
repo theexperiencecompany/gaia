@@ -10,7 +10,7 @@ finished by a durable job, keyed by the run, never by running the todo again.
 import asyncio
 from typing import NamedTuple
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from pymongo.errors import PyMongoError
 from redis.exceptions import RedisError
 
@@ -39,7 +39,7 @@ from app.constants.todos import (
 )
 from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
 from app.db.repositories.todos import todo_repository
-from app.models.chat_models import ConversationSource
+from app.models.chat_models import ConversationSource, ToolDataEntry
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -105,12 +105,19 @@ class FinishedTodoRun(BaseModel):
     trigger_type: TriggerType
     runs_once: bool
     result_text: str
+    #: The run's cards, sent with the result: a connect button the run hit is how
+    #: the user fixes what it could not do.
+    tool_data: list[ToolDataEntry] = Field(default_factory=list)
     #: Set once the message step is done; only the finish entry is left then.
     finish_entry: str | None = None
 
 
 async def deliver_todo_run_result(
-    run: ExecutorRun, todo_run: TodoRun, result_text: str, result_type: str
+    run: ExecutorRun,
+    todo_run: TodoRun,
+    result_text: str,
+    result_type: str,
+    tool_data: list[ToolDataEntry] | None,
 ) -> None:
     """Decide, deliver and record what a finished tracked-todo run tells the user.
 
@@ -131,6 +138,7 @@ async def deliver_todo_run_result(
         trigger_type=todo_run.trigger_type,
         runs_once=todo_run.runs_once,
         result_text=result_text,
+        tool_data=tool_data or [],
     )
     if (undone := await finish_todo_run(finished, run.user)) is not None:
         await hand_unfinished_run_to_job(undone)
@@ -332,10 +340,10 @@ async def _narrate_and_send(
     platform = (
         await deliver_result_to_platforms(
             user=user,
-            user_id=todo.user_id,
             notification_text=message,
             origin=f'tracked todo "{todo.title}" (id {todo.id})',
             target=target,
+            tool_data=finished.tool_data,
         )
         if target is not None
         else None

@@ -20,7 +20,7 @@ from app.constants.outbound import (
     OUTBOUND_TTL_SECONDS_GREETING,
 )
 from app.db.rabbitmq import RabbitMQPublisher, get_rabbitmq_publisher
-from app.models.chat_models import ConversationSource
+from app.models.chat_models import ConversationSource, ToolDataEntry
 from app.models.platform_models import PlatformLinkEntry
 from app.schemas.delivery_failures import DeliveryFailure
 from app.schemas.outbound import OutboundAttachment, OutboundMessageEnvelope, OutboundReaction
@@ -219,8 +219,11 @@ async def publish_outbound_message(
     destination_override: str | None = None,
     is_channel: bool = False,
     ttl_seconds: int = OUTBOUND_TTL_SECONDS_DEFAULT,
+    tool_data: list[ToolDataEntry] | None = None,
+    conversation_id: str | None = None,
+    channel_owner_platform_user_id: str | None = None,
 ) -> OutboundResult:
-    """Enqueue text_parts as a single ordered envelope for user_id on platform.
+    """Enqueue text_parts, then any bot cards, as a single ordered envelope for user_id on platform.
 
     One envelope (not one-per-part) stops a concurrent consumer reordering bubbles; each part
     also splits on the bubble-break sentinel. destination_override + is_channel target a
@@ -228,7 +231,8 @@ async def publish_outbound_message(
     PUBLISHED, SKIPPED (unsupported/unlinked/empty) or FAILED; never raises into the caller.
     """
     parts = [bubble for part in text_parts for bubble in split_message_bubbles(part)]
-    if not parts:
+    cards = tool_data or []
+    if not parts and not cards:
         return OutboundResult.SKIPPED
 
     prep = await _prepare(
@@ -241,20 +245,17 @@ async def publish_outbound_message(
     # A single part is sent as a plain ``text`` envelope (the common executor-reply
     # case); multiple parts travel together in ``text_parts`` so ordering is the
     # consumer's responsibility within one message, not the broker's across many.
-    if len(parts) == 1:
-        envelope = OutboundMessageEnvelope(
-            platform=platform.value,
-            destination_id=destination_id,
-            text=parts[0],
-            is_channel=is_channel,
-        )
-    else:
-        envelope = OutboundMessageEnvelope(
-            platform=platform.value,
-            destination_id=destination_id,
-            text_parts=parts,
-            is_channel=is_channel,
-        )
+    envelope = OutboundMessageEnvelope(
+        platform=platform.value,
+        destination_id=destination_id,
+        text=parts[0] if len(parts) == 1 else None,
+        text_parts=parts if len(parts) > 1 else None,
+        is_channel=is_channel,
+        tool_data=cards,
+        conversation_id=conversation_id,
+        # A DM's destination is the user; a channel's is not, so its owner is named.
+        platform_user_id=channel_owner_platform_user_id if is_channel else destination_id,
+    )
 
     try:
         await publisher.publish_outbound(
@@ -284,6 +285,7 @@ async def publish_outbound_message(
         **_envelope_fields(envelope, user_id),
         queue=queue_name,
         parts=len(parts),
+        cards=len(cards),
     )
     return OutboundResult.PUBLISHED
 

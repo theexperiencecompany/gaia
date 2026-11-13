@@ -10,7 +10,7 @@
  *
  * Covered behaviors:
  * - platform property value
- * - createCommandTarget — send, sendEphemeral, sendRich, startTyping
+ * - createCommandTarget — send, sendEphemeral, sendCard, startTyping
  * - registerGaiaCommand / handleSlackStreaming:
  *     - posts "Thinking..." before streaming starts
  *     - falls back to ephemeral when postMessage returns no ts
@@ -30,6 +30,7 @@ const mockApp = {
   command: vi.fn(),
   event: vi.fn(),
   message: vi.fn(),
+  action: vi.fn(),
   start: vi.fn().mockResolvedValue(undefined),
   stop: vi.fn().mockResolvedValue(undefined),
 };
@@ -54,7 +55,7 @@ vi.mock("@gaia/shared/bots", async () => {
     streamingDefaults: {
       slack: { editIntervalMs: 1500, streaming: true, platform: "slack" },
     },
-    defaultRichMarkdown: "## Rich Title\nBody text",
+    defaultCardText: "## Rich Title\nBody text",
   });
   // The Slack adapter lifts the first token of subcommand-style commands
   // into args.subcommand; every other command gets `{}`.
@@ -149,7 +150,7 @@ describe("SlackAdapter - createCommandTarget.send", () => {
             t: string,
           ) => Promise<{ id: string; edit: (t: string) => Promise<void> }>;
           sendEphemeral: (t: string) => Promise<{ id: string }>;
-          sendRich: (m: unknown) => Promise<{ id: string }>;
+          sendCard: (m: unknown) => Promise<{ id: string }>;
           startTyping: () => Promise<() => void>;
           platform: string;
           userId: string;
@@ -258,11 +259,11 @@ describe("SlackAdapter - createCommandTarget.sendEphemeral", () => {
 });
 
 // ---------------------------------------------------------------------------
-// createCommandTarget — sendRich
+// createCommandTarget — sendCard
 // ---------------------------------------------------------------------------
 
-describe("SlackAdapter - createCommandTarget.sendRich", () => {
-  it("calls respond with ephemeral markdown-rendered content", async () => {
+describe("SlackAdapter - createCommandTarget.sendCard", () => {
+  it("responds ephemerally with Block Kit and a link button per action", async () => {
     const adapter = new SlackAdapter();
     const client = makeSlackClient();
     const respond = makeRespondFn();
@@ -272,23 +273,40 @@ describe("SlackAdapter - createCommandTarget.sendRich", () => {
         createCommandTarget: (
           u: string,
           c: string,
-          cl: typeof client,
-          r: typeof respond,
-        ) => { sendRich: (m: unknown) => Promise<{ id: string }> };
+          cl: unknown,
+          r: unknown,
+        ) => { sendCard: (m: unknown) => Promise<{ id: string }> };
       }
     ).createCommandTarget("U123", "C456", client, respond);
 
-    const richMsg = {
-      type: "embed" as const,
+    const sent = await target.sendCard({
       title: "Settings",
-      description: "Your settings",
-      fields: [],
-    };
-
-    const sent = await target.sendRich(richMsg);
+      blocks: [{ kind: "text", markdown: "Your settings" }],
+      actions: [
+        { kind: "link", label: "Manage", url: "https://gaia.test/settings" },
+      ],
+    });
 
     expect(respond).toHaveBeenCalledWith({
-      text: "## Rich Title\nBody text", // richMessageToMarkdown mock return value
+      text: "## Rich Title\nBody text", // renderCardText mock return value
+      blocks: [
+        { type: "header", text: { type: "plain_text", text: "Settings" } },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: "Your settings" },
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Manage" },
+              url: "https://gaia.test/settings",
+              action_id: "gaia_card:0",
+            },
+          ],
+        },
+      ],
       response_type: "ephemeral",
     });
     expect(sent.id).toBe("ephemeral");
@@ -390,6 +408,7 @@ describe("SlackAdapter - handleSlackStreaming", () => {
       }),
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
+      expect.any(Function), // sendCard
     );
   });
 
@@ -659,7 +678,12 @@ async function bootSlackWithEvents() {
   // boot() is not called in tests; inject a mock gaia so this.gaia !== undefined
   (adapter as unknown as { gaia: object }).gaia = {};
 
-  const appMock = { ...mockApp, event: vi.fn(), message: vi.fn() };
+  const appMock = {
+    ...mockApp,
+    event: vi.fn(),
+    message: vi.fn(),
+    action: vi.fn(),
+  };
   (adapter as unknown as { app: typeof appMock }).app = appMock;
 
   await (
@@ -668,6 +692,27 @@ async function bootSlackWithEvents() {
 
   return { adapter, appMock };
 }
+
+describe("SlackAdapter - card link clicks", () => {
+  it("acknowledges a card's link button click so Slack shows no warning", async () => {
+    const { appMock } = await bootSlackWithEvents();
+    const [matcher, handler] = appMock.action.mock.calls[0] as [
+      RegExp,
+      (args: {
+        ack: () => Promise<void>;
+        body: { user: { id: string } };
+        action: { value?: string };
+      }) => Promise<void>,
+    ];
+    const ack = vi.fn().mockResolvedValue(undefined);
+
+    await handler({ ack, body: { user: { id: "U1" } }, action: {} });
+
+    expect(matcher.test("gaia_card:0")).toBe(true);
+    expect(matcher.test("todo_complete")).toBe(false);
+    expect(ack).toHaveBeenCalledOnce();
+  });
+});
 
 describe("SlackAdapter - app_mention event handling", () => {
   let mentionHandler: (args: {
@@ -714,6 +759,7 @@ describe("SlackAdapter - app_mention event handling", () => {
       }),
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
+      expect.any(Function), // sendCard
     );
   });
 
@@ -803,6 +849,7 @@ describe("SlackAdapter - DM message event handling", () => {
       }),
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
+      expect.any(Function), // sendCard
     );
   });
 
@@ -867,7 +914,7 @@ describe("SlackAdapter - dispatchCommand unknown command", () => {
       sendEphemeral: vi
         .fn()
         .mockResolvedValue({ id: "ephemeral", edit: vi.fn() }),
-      sendRich: vi.fn(),
+      sendCard: vi.fn(),
       startTyping: vi.fn(),
     };
 

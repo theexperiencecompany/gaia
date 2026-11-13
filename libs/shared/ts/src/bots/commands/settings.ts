@@ -2,13 +2,14 @@
  * Unified `/settings` command — displays the user's GAIA account settings.
  *
  * Shows account info, selected AI model, and connected integrations
- * using a {@link RichMessage}. If the user isn't authenticated, shows
+ * as a {@link Card}. If the user isn't authenticated, shows
  * an auth link instead.
  *
  * @module
  */
 
-import type { BotCommand, CommandExecuteParams, RichMessage } from "../types";
+import type { Card } from "../cards/types";
+import type { BotCommand, CommandExecuteParams } from "../types";
 import { reportCommandFailure } from "../utils/commands";
 import { recordBotFailure } from "../utils/failure-reasons";
 
@@ -85,33 +86,42 @@ export const settingsCommand: BotCommand = {
         frontendUrl,
       );
 
-      const richMsg: RichMessage = {
-        type: "embed",
+      const card: Card = {
         title: "Your GAIA settings",
-        color: 0x7c3aed,
-        fields: [
+        accent: "brand",
+        blocks: [
           {
-            name: "Account",
-            value: [
-              `**Name:** ${settings.userName || "Not set"}`,
-              `**Member since:** ${accountAge}`,
-            ].join("\n"),
-          },
-          {
-            name: "Connected apps",
-            value: integrationsText,
+            kind: "fields",
+            fields: [
+              {
+                label: "Account",
+                value: [
+                  `**Name:** ${settings.userName || "Not set"}`,
+                  `**Member since:** ${accountAge}`,
+                ].join("\n"),
+              },
+              { label: "Connected apps", value: integrationsText },
+            ],
           },
         ],
-        links: [{ label: "Manage settings", url: `${frontendUrl}/settings` }],
+        actions: [
+          {
+            kind: "link",
+            label: "Manage settings",
+            url: `${frontendUrl}/settings`,
+          },
+        ],
         timestamp: true,
         thumbnailUrl: profileImageUrl ?? undefined,
-        authorName: profileImageUrl
-          ? settings.userName || "GAIA User"
+        author: profileImageUrl
+          ? {
+              name: settings.userName || "GAIA User",
+              iconUrl: profileImageUrl,
+            }
           : undefined,
-        authorIconUrl: profileImageUrl ?? undefined,
       };
 
-      await target.sendRich(richMsg);
+      await target.sendCard(card);
     } catch (error) {
       await target.sendEphemeral(
         reportCommandFailure("get_settings", error, ctx),

@@ -107,6 +107,11 @@ const SHARED_ENTRY_POINTS = [
     name: "handleStreamingChat",
     kind: "dispatch",
   },
+  {
+    file: "libs/shared/ts/src/bots/cards/tap.ts",
+    name: "handleCardTap",
+    kind: "dispatch",
+  },
 ];
 
 /** SDK registration methods → entry-point kind. */

@@ -8,6 +8,7 @@ from shared.py.analytics.catalog.properties import Identifier
 __all__ = [
     "BotAudioTranscribed",
     "BotAuthInitiated",
+    "BotCardShown",
     "BotChatOpened",
     "BotCommandExecuted",
     "BotError",
@@ -125,3 +126,14 @@ class BotAudioTranscribed(ServerEvent):
 
     audio_bytes: int
     transcript_length: int
+
+
+class BotCardShown(ServerEvent):
+    """A bot reported a card (connect button, approval, limit) it showed or failed to show."""
+
+    event: ClassVar[str] = "bot:card_shown"
+    budget_per_user_day: ClassVar[int] = 50
+
+    platform: Identifier
+    tool_name: Identifier
+    delivered: bool

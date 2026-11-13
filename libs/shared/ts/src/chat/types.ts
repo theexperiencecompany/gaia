@@ -193,6 +193,8 @@ export interface EmailComposeData {
   bcc?: string[];
   cc?: string[];
   is_html?: boolean;
+  /** Set on a bot card's draft once a Send tap has sent it. */
+  sent?: boolean;
 }
 
 export interface EmailSentData {
@@ -695,6 +697,8 @@ export interface RateLimitData {
   /** Backend-provided explanation; overrides the card's generic copy (used
    *  when a feature is capped rather than plan-gated, e.g. the memory cap). */
   message?: string;
+  /** Set only on bot deliveries: the checkout link for a user below Pro. */
+  upgrade_url?: string | null;
 }
 
 // ---------------------------------------------------------------------------

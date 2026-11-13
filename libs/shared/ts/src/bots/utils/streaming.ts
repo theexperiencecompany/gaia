@@ -19,10 +19,17 @@
  *     STREAMING_DEFAULTS.discord);
  */
 import type { AnalyticsContext } from "../../analytics";
-import type { ApprovalRequestData } from "../../chat";
-import { formatApprovalAge } from "../../chat/approvals";
+import type { ReportedBotCard } from "../../api/generated";
 import type { GaiaClient } from "../api";
-import { BOT_STREAM_ERROR, type ReactionHandler } from "../api/chat-stream";
+import {
+  BOT_STREAM_ERROR,
+  type ReactionHandler,
+  type ToolDataHandler,
+} from "../api/chat-stream";
+import { deliveryEntry, toolCardsFor } from "../cards/registry";
+import { renderCardText } from "../cards/render-text";
+import { createCardDeliveryReporter } from "../cards/report";
+import type { Card, CardSender } from "../cards/types";
 import {
   createDeliveryFailureReporter,
   DELIVERY_FAILURE_KIND,
@@ -53,26 +60,6 @@ import { chunkResponse, PLATFORM_LIMITS } from "./text";
 import { wideLog, withWideEvent } from "./wide-events";
 
 const logger = createBotLogger("shared", "streaming");
-
-/** The approval window is hours, so "360 minutes" is not a usable way to say it. */
-function formatExpiry(seconds: number): string {
-  const minutes = Math.max(1, Math.round(seconds / 60));
-  if (minutes < 60) return minutes === 1 ? "1 minute" : `${minutes} minutes`;
-  const hours = Math.round(minutes / 60);
-  return hours === 1 ? "1 hour" : `${hours} hours`;
-}
-
-/** Render a PENDING HIL approval as a yes/no prompt for a bot message. Only
- * pending approvals are surfaced out-of-band (see handleApprovalUpdate); settled
- * ones are narrated by the agent's streamed reply. */
-function formatApprovalPrompt(data: ApprovalRequestData): string {
-  const age =
-    data.age_seconds != null ? ` (${formatApprovalAge(data.age_seconds)})` : "";
-  return (
-    `**Approval needed:** ${data.summary}${age}\n` +
-    `Reply **yes** to approve or **no** to decline. This expires in ${formatExpiry(data.timeout_seconds)}.`
-  );
-}
 
 export interface StreamingOptions {
   editIntervalMs: number;
@@ -122,6 +109,7 @@ async function _handleStream(
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
     onError: (error: Error) => void | Promise<void>,
     deliverOutOfBand: (text: string) => Promise<void>,
+    deliverCardOutOfBand: CardSender,
     onMessageBoundary: (discarded: boolean) => Promise<void>,
     onReaction: ReactionHandler,
   ) => Promise<string>,
@@ -134,6 +122,7 @@ async function _handleStream(
   options: StreamingOptions,
   onReaction: ReactionHandler | undefined,
   onNoReply: NoReplyHandler | undefined,
+  sendCard: CardSender | undefined,
 ): Promise<void> {
   const { editIntervalMs, streaming, platform } = options;
 
@@ -331,8 +320,8 @@ async function _handleStream(
   const discardCurrentMessage = (): void => {
     if (!pending && !shownText) return;
     pending = "";
-    // A SEALED bubble holds something that isn't the retracted text — an approval prompt or
-    // rate-limit notice, posted out of band. Reopening it would hand the replacement reply
+    // A SEALED bubble holds something that isn't the retracted text — a card (such as an
+    // approval prompt) or a notice, posted out of band. Reopening it would hand the replacement reply
     // that message to overwrite, disappearing a question the user still has to answer.
     if (bubbleSealed) {
       logger.info("bubble_discarded", { chars: 0, sealed: true });
@@ -363,8 +352,8 @@ async function _handleStream(
   };
 
   /**
-   * Posts a message outside the streamed reply — currently the HIL approval prompt the user
-   * must answer while the agent is paused. Adapters point "the current message" at the prompt
+   * Posts a message outside the streamed reply — a notice, or a card such as the HIL approval
+   * prompt the user must answer while the agent is paused. Adapters point "the current message" at the prompt
    * the moment it's sent, so whatever has streamed so far is delivered and sealed first, then
    * the bubble is sealed again after so the rest of the reply opens a fresh message.
    *
@@ -377,6 +366,32 @@ async function _handleStream(
       await wrappedSendNewMessage(text);
       bubbleSealed = true;
     });
+  };
+
+  /**
+   * {@link deliverOutOfBand} for a card: rendered natively by the adapter, or as text on a
+   * platform without a native card. Rejects when the platform refuses it, so the caller can
+   * record that the user never saw it. The refusal is caught inside the queued op: a rejected
+   * op would stay in the queue and fail the turn's final delivery, which awaits it.
+   */
+  const deliverCardOutOfBand = async (card: Card): Promise<void> => {
+    const outcome: { refused: boolean; error?: unknown } = { refused: false };
+    await enqueue(async () => {
+      await flushMessage();
+      try {
+        if (sendCard) {
+          await sendCard(card);
+        } else {
+          await wrappedSendNewMessage(renderCardText(card));
+        }
+      } catch (error) {
+        outcome.refused = true;
+        outcome.error = error;
+        return;
+      }
+      bubbleSealed = true;
+    });
+    if (outcome.refused) throw outcome.error;
   };
 
   /**
@@ -490,6 +505,7 @@ async function _handleStream(
         }
       },
       deliverOutOfBand,
+      deliverCardOutOfBand,
       handleMessageBoundary,
       reactToTurn,
     );
@@ -528,6 +544,7 @@ export async function handleStreamingChat(
   analytics?: AnalyticsContext,
   onReaction?: ReactionHandler,
   onNoReply?: NoReplyHandler,
+  sendCard?: CardSender,
 ): Promise<void> {
   // Latency + high-cardinality observability for the chat pipeline. user_hash
   // is the HMAC-hashed id (no PII). ttfb_ms = time to first streamed chunk.
@@ -560,6 +577,7 @@ export async function handleStreamingChat(
         userHash,
         onReaction,
         onNoReply,
+        sendCard,
       ),
   );
 }
@@ -577,6 +595,7 @@ async function runStreamingChat(
   userHash: string | undefined,
   onReaction: ReactionHandler | undefined,
   onNoReply: NoReplyHandler | undefined,
+  sendCard: CardSender | undefined,
 ): Promise<void> {
   const startMs = Date.now();
   let responseLength = 0;
@@ -584,6 +603,8 @@ async function runStreamingChat(
   let chunkCount = 0;
   let discardedMessages = 0;
   let notices = 0;
+  /** Every card this turn tried to show, reported once the conversation id is known. */
+  const cardsShown: ReportedBotCard[] = [];
   let conversationId = "";
   let reactionDelivered:
     | ReturnType<typeof reactionDeliveredProperties>
@@ -640,10 +661,28 @@ async function runStreamingChat(
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
     onError: (error: Error) => void | Promise<void>,
     deliverOutOfBand: (text: string) => Promise<void>,
+    deliverCardOutOfBand: CardSender,
     onMessageBoundary: (discarded: boolean) => Promise<void>,
     reactToTurn: ReactionHandler,
-  ) =>
-    gaia.chatStream(
+  ) => {
+    // Cards go out as their own message so a non-streaming platform (Discord/WhatsApp, which
+    // shows nothing until the stream ends) still surfaces a question the paused agent waits on,
+    // and so a retracted assistant message can never take one down with it.
+    const showToolCards: ToolDataHandler = async (entry) => {
+      for (const toolCard of toolCardsFor(entry)) {
+        try {
+          await deliverCardOutOfBand(toolCard.card);
+          cardsShown.push(deliveryEntry(toolCard, true));
+        } catch (error) {
+          wideLog.warning("card_delivery_failed", {
+            ...sanitizeErrorForLog(error),
+            tool_name: toolCard.tool_name,
+          });
+          cardsShown.push(deliveryEntry(toolCard, false));
+        }
+      }
+    };
+    return gaia.chatStream(
       request,
       (text) => {
         chunkCount++;
@@ -658,17 +697,7 @@ async function runStreamingChat(
         await onDone(fullText, convId);
       },
       onError,
-      // HIL approval prompts go out as their own message so a non-streaming platform
-      // (Discord/WhatsApp, which shows nothing until the stream ends) still surfaces the
-      // question while the agent is paused waiting.
-
-      // Only the PENDING question needs one — a bot has no buttons, so the user answers in
-      // chat. Settled frames (auto-approved, or a resumed decision) arrive mid-stream and are
-      // already narrated by the agent's streamed reply, so posting them would fragment it.
-      async (data: ApprovalRequestData) => {
-        if (data.status !== "pending") return;
-        await deliverOutOfBand(formatApprovalPrompt(data));
-      },
+      showToolCards,
       // One assistant message ended. A kept one is segmented and delivered here
       // and nowhere earlier; a discarded one (a handoff preamble, or a draft the
       // style guard rewrote) is taken back off the screen.
@@ -676,9 +705,8 @@ async function runStreamingChat(
         if (discarded) discardedMessages += 1;
         await onMessageBoundary(discarded);
       },
-      // A rate-limit notice is about the turn, not part of it — out-of-band for the same
-      // reason as the approval prompt: it must survive the assistant message it arrived during
-      // being retracted, and still reach a non-streaming platform that renders nothing until the stream ends.
+      // A notice is about the turn, not part of it — out-of-band for the same reason as a
+      // card: it must survive the assistant message it arrived during being retracted.
       async (text: string) => {
         notices += 1;
         await deliverOutOfBand(text);
@@ -697,6 +725,7 @@ async function runStreamingChat(
         return outcome;
       },
     );
+  };
 
   try {
     await _handleStream(
@@ -710,13 +739,24 @@ async function runStreamingChat(
       options,
       onReaction,
       onNoReply,
+      sendCard,
     );
   } finally {
+    // Only a finished turn names its conversation; without it there is nowhere to record.
+    if (conversationId) {
+      createCardDeliveryReporter(gaia, request.platform)(
+        request.platformUserId,
+        conversationId,
+        cardsShown,
+      );
+    }
     wideLog.set({
       ttfb_ms: firstChunkMs ?? undefined,
       chunk_count: chunkCount,
       discarded_messages: discardedMessages,
       notices_delivered: notices,
+      cards_shown: cardsShown.filter((card) => card.delivered).length,
+      cards_failed: cardsShown.filter((card) => !card.delivered).length,
       response_length: responseLength,
       conversation_id: conversationId || undefined,
       reaction_delivery: reactionDelivered?.delivery,

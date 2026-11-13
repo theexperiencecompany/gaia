@@ -25,6 +25,12 @@ from app.db.redis import get_and_delete_cache, set_cache
 from shared.py.wide_events import log
 
 CONNECT_LINK_FRONTEND_PATH = "/connect"
+INTEGRATIONS_FRONTEND_PATH = "/integrations"
+
+
+def integrations_page_url() -> str:
+    """Return the integrations page: the permanent, login-required fallback to a connect link."""
+    return f"{settings.FRONTEND_URL.rstrip('/')}{INTEGRATIONS_FRONTEND_PATH}"
 
 
 def _code_key(code: str) -> str:

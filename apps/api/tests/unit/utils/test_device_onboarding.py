@@ -20,6 +20,14 @@ from app.utils import device_onboarding as mod
 _UI = SourceCategory.UI.value
 
 
+def _run_in(source_category: str | None):
+    """Run inside a graph run of source_category; None is no runnable context (an empty config)."""
+    config = (
+        {} if source_category is None else {"configurable": {"source_category": source_category}}
+    )
+    return patch.object(mod, "current_run_config", return_value=config)
+
+
 def _capture():
     captured: dict = {}
     return captured, lambda payload: captured.update(payload)
@@ -29,7 +37,7 @@ def _capture():
 def test_onboarding_streams_card_and_stays_url_free_on_ui():
     captured, writer = _capture()
     with (
-        patch.object(mod, "_current_source_category", return_value=_UI),
+        _run_in(_UI),
         patch.object(mod, "current_stream_writer", return_value=writer),
     ):
         ret = mod.request_device_onboarding()
@@ -56,7 +64,7 @@ def test_onboarding_streams_card_and_stays_url_free_on_ui():
 
 @pytest.mark.unit
 def test_onboarding_text_copy_inlines_command_and_docs_off_ui():
-    with patch.object(mod, "_current_source_category", return_value=None):
+    with _run_in(None):
         ret = mod.request_device_onboarding()
     assert ret == (
         f"Ask the user to install the GAIA CLI with `{CLI_INSTALL_COMMANDS['npm']}` "
@@ -70,7 +78,7 @@ def test_onboarding_text_copy_inlines_command_and_docs_off_ui():
 def test_approval_streams_link_and_normalizes_code_on_ui():
     captured, writer = _capture()
     with (
-        patch.object(mod, "_current_source_category", return_value=_UI),
+        _run_in(_UI),
         patch.object(mod, "current_stream_writer", return_value=writer),
     ):
         ret = mod.request_device_approval("ns2v-yc5s")
@@ -91,7 +99,7 @@ def test_approval_streams_link_and_normalizes_code_on_ui():
 
 @pytest.mark.unit
 def test_approval_text_copy_inlines_the_url_off_ui():
-    with patch.object(mod, "_current_source_category", return_value=None):
+    with _run_in(None):
         ret = mod.request_device_approval("ns2v-yc5s")
     approve_url = mod.build_device_approve_url("NS2V-YC5S")
     assert ret == (
@@ -105,7 +113,7 @@ def test_no_stream_when_outside_a_runnable_context():
     """Dev direct-invocation paths have no stream; the util must not try to write."""
     captured, writer = _capture()
     with (
-        patch.object(mod, "_current_source_category", return_value=None),
+        _run_in(None),
         patch.object(mod, "current_stream_writer", return_value=writer) as gsw,
     ):
         mod.request_device_onboarding()

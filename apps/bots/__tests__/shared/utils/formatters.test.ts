@@ -501,6 +501,23 @@ describe("convertToImessageText", () => {
   it("does not let a bare bullet marker swallow the next line", () => {
     expect(convertToImessageText("- item\n-\nnext")).toBe("• item\n-\nnext");
   });
+
+  it("strips _italic_ and *italic* markers", () => {
+    expect(convertToImessageText("_Link works for 15 minutes_")).toBe(
+      "Link works for 15 minutes",
+    );
+    expect(convertToImessageText("due *today*, high")).toBe("due today, high");
+  });
+
+  it("keeps underscores and asterisks that are not emphasis", () => {
+    expect(convertToImessageText("rename user_id to owner_id")).toBe(
+      "rename user_id to owner_id",
+    );
+    expect(convertToImessageText("https://x.com/a_b_c/d")).toBe(
+      "https://x.com/a_b_c/d",
+    );
+    expect(convertToImessageText("2 * 3 * 4")).toBe("2 * 3 * 4");
+  });
 });
 
 // ---------------------------------------------------------------------------

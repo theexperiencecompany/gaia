@@ -79,7 +79,7 @@ vi.mock("@gaia/shared/bots", async () => {
       // materialises more than the cap it was handed.
       readResponseBytesCapped: vi.fn(real.readResponseBytesCapped),
     },
-    defaultRichMarkdown: "*GAIA Help*\nUse /gaia to chat",
+    defaultCardText: "*GAIA Help*\nUse /gaia to chat",
   });
 });
 

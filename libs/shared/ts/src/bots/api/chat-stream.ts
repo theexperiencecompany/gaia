@@ -9,8 +9,8 @@
  * @module
  */
 import type { Readable } from "node:stream";
-import type { ApprovalRequestData } from "../../chat";
 import { NEW_MESSAGE_BREAK_TOKEN } from "../../utils/messageBreakUtils";
+import type { CardSourceEntry } from "../cards/registry";
 import type { ChatRequest } from "../types";
 import { getHttpStatus } from "../utils/logger";
 import {
@@ -19,19 +19,19 @@ import {
 } from "../utils/reaction-outcome";
 import { wideLog } from "../utils/wide-events";
 import type {
-  ApprovalUpdateHandler,
   ChatStreamClient,
   MessageBoundary,
   MessageBoundaryHandler,
   NoticeHandler,
+  ToolDataHandler,
 } from "./chat-stream.types";
 
 export type { ReactionHandler } from "../utils/reaction-outcome";
 export type {
-  ApprovalUpdateHandler,
   ChatStreamClient,
   MessageBoundaryHandler,
   NoticeHandler,
+  ToolDataHandler,
 } from "./chat-stream.types";
 
 /** Exponential-backoff base delay and ceiling for stream retries. */
@@ -60,7 +60,7 @@ export async function streamChat(
   onDone: (fullText: string, conversationId: string) => void | Promise<void>,
   onError: (error: Error) => void | Promise<void>,
   endpoint: string,
-  onApprovalUpdate?: ApprovalUpdateHandler,
+  onToolData?: ToolDataHandler,
   onMessageBoundary?: MessageBoundaryHandler,
   onNotice?: NoticeHandler,
   onReaction?: ReactionHandler,
@@ -79,7 +79,7 @@ export async function streamChat(
         onError,
         attempt > 0,
         endpoint,
-        onApprovalUpdate,
+        onToolData,
         onMessageBoundary,
         onNotice,
         onReaction,
@@ -130,7 +130,7 @@ interface SseFrame {
   keepalive?: boolean;
   error?: string;
   session_token?: string;
-  approval?: ApprovalRequestData;
+  tool_data?: CardSourceEntry;
   notice?: { text: string };
   text?: string;
   message_boundary?: MessageBoundary;
@@ -162,7 +162,7 @@ async function streamChatOnce(
   onError: (error: Error) => void | Promise<void>,
   retried: boolean,
   endpoint: string,
-  onApprovalUpdate?: ApprovalUpdateHandler,
+  onToolData?: ToolDataHandler,
   onMessageBoundary?: MessageBoundaryHandler,
   onNotice?: NoticeHandler,
   onReaction?: ReactionHandler,
@@ -294,8 +294,8 @@ async function streamChatOnce(
         if (frame.session_token) {
           deps.storeSessionToken(ctx, frame.session_token);
         }
-        if (frame.approval) {
-          await onApprovalUpdate?.(frame.approval);
+        if (frame.tool_data) {
+          await onToolData?.(frame.tool_data);
         }
         if (frame.notice) {
           await onNotice?.(frame.notice.text);
@@ -486,7 +486,7 @@ async function streamChatOnce(
         onError,
         true,
         endpoint,
-        onApprovalUpdate,
+        onToolData,
         onMessageBoundary,
         // Dropped here until now: a stale session token cost the retried
         // attempt every rate-limit notice it produced.

@@ -21,10 +21,12 @@ from app.constants.log_tags import LogTag
 from app.models.chat_models import (
     ConversationSource,
     MessageModel,
+    ToolDataEntry,
     UpdateMessagesRequest,
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
+from app.services.bot.cards import BotCardContext, resolve_bot_cards
 from app.services.bot_service import BotService
 from app.services.conversation_service import update_messages
 from app.services.delivery.chat_channel import (
@@ -44,11 +46,11 @@ from shared.py.wide_events import log
 async def deliver_result_to_platforms(
     *,
     user: AuthenticatedUser,
-    user_id: str,
     notification_text: str,
     origin: str,
     target: ProactiveTarget,
     exclude_source: ConversationSource | None = None,
+    tool_data: list[ToolDataEntry] | None = None,
 ) -> ConversationSource | None:
     """Deliver a proactive result to the chat app the caller's resolved target names.
 
@@ -66,15 +68,20 @@ async def deliver_result_to_platforms(
 
     return await _post_workflow_message(
         user=user,
-        user_id=user_id,
         channel=target,
         response=notification_text,
         origin=origin,
+        tool_data=tool_data,
     )
 
 
 async def deliver_workflow_result(
-    *, user: AuthenticatedUser, workflow_id: str | None, notification_text: str, origin: str
+    *,
+    user: AuthenticatedUser,
+    workflow_id: str | None,
+    notification_text: str,
+    origin: str,
+    tool_data: list[ToolDataEntry] | None = None,
 ) -> None:
     """Send a workflow run's result to the user's one proactive place and record where it went.
 
@@ -97,10 +104,10 @@ async def deliver_workflow_result(
         return
     platform = await deliver_result_to_platforms(
         user=user,
-        user_id=user.user_id,
         notification_text=notification_text,
         origin=origin,
         target=target,
+        tool_data=tool_data,
     )
     # In the GAIA app the saved result is the delivery; a chat app must have taken the send.
     delivered = isinstance(target, InApp) or platform is not None
@@ -118,18 +125,19 @@ async def deliver_workflow_result(
 async def _post_workflow_message(
     *,
     user: AuthenticatedUser,
-    user_id: str,
     channel: ChatChannel,
     response: str,
     origin: str,
+    tool_data: list[ToolDataEntry] | None,
 ) -> ConversationSource | None:
-    """Persist the result into the platform's session conversation and deliver it.
+    """Persist the result and its cards into the platform's session conversation and deliver them.
 
     Sent as ordered bubbles, then recorded in that conversation's langgraph
     thread. Best-effort: logs and swallows a failure. Returns the platform that
     received the message, or None when it was skipped or failed.
     """
     source, platform_user_id = channel.source, channel.platform_user_id
+    user_id = user.user_id
     # Comms splits its reply into bubbles with the break sentinel; the outbound
     # publish and the provenance record below both need the split, not the raw
     # text with its control tokens.
@@ -149,6 +157,8 @@ async def _post_workflow_message(
             type="bot",
             response=response,
             date=datetime.now(UTC).isoformat(),
+            # An empty list is "no cards": None keeps a plain result from storing [].
+            tool_data=tool_data or None,
         )
         bot_message.message_id = str(uuid4())
         await update_messages(
@@ -158,7 +168,14 @@ async def _post_workflow_message(
         # The channel already carries the account id; a second read of the user
         # document to recompute it is what destination_override exists to skip.
         result = await publish_outbound_message(
-            source, user_id, bubbles, destination_override=platform_user_id
+            source,
+            user_id,
+            bubbles,
+            destination_override=platform_user_id,
+            tool_data=await resolve_bot_cards(
+                tool_data, BotCardContext.for_user(user_id, conversation_id)
+            ),
+            conversation_id=conversation_id,
         )
         if result is OutboundResult.FAILED:
             log.error(

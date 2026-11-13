@@ -197,7 +197,6 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
         seams.send.assert_awaited_once()
         sent = seams.send.await_args.kwargs
         assert sent["notification_text"] == NARRATED
-        assert sent["user_id"] == USER.user_id
         assert (sent["user"].user_id, sent["user"].email) == (USER.user_id, USER.email)
         assert sent["origin"] == f'tracked todo "Watch the staging deploy" (id {TODO_ID})'
         assert sent["target"] is TELEGRAM

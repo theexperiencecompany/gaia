@@ -4,13 +4,14 @@
  * @module
  */
 import type { AxiosInstance } from "axios";
-import type { ApprovalRequestData } from "../../chat";
+import type { CardSourceEntry } from "../cards/registry";
 import type { BotUserContext } from "../types";
 
-/** Fired when a HIL approval frame arrives (bots render it out-of-band). */
-export type ApprovalUpdateHandler = (
-  data: ApprovalRequestData,
-) => void | Promise<void>;
+/**
+ * Fired for each `tool_data` frame: a card the web would render, forwarded so
+ * the bot can show it (the connect prompt, the HIL approval, a rate limit).
+ */
+export type ToolDataHandler = (entry: CardSourceEntry) => void | Promise<void>;
 
 /**
  * Fired when one assistant message ends.
@@ -26,8 +27,8 @@ export type MessageBoundaryHandler = (
 ) => void | Promise<void>;
 
 /**
- * Fired when the backend has something to tell the user outside the assistant's reply —
- * currently the rate-limit notice (rendered as a card on web, dropped by bots).
+ * Fired when the backend has something to tell the user outside the assistant's reply,
+ * as plain text rather than a card.
  *
  * It gets its own frame instead of riding the stream as text: text belongs to whichever
  * assistant message is in flight, and a discarded message (handoff preamble, rewritten draft)

@@ -24,6 +24,7 @@ from app.config.rate_limits import (
     get_reset_time,
 )
 from app.config.settings import settings
+from app.constants.chat import RATE_LIMIT_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.core.request_context import resolve_caller
 from app.models.agent_config import read_run_metadata
@@ -141,7 +142,7 @@ def build_rate_limit_card(
         data["message"] = message
     return {
         "tool_data": {
-            "tool_name": "rate_limit_data",
+            "tool_name": RATE_LIMIT_TOOL_NAME,
             "tool_category": "system",
             "data": data,
             "timestamp": datetime.now(UTC).isoformat(),

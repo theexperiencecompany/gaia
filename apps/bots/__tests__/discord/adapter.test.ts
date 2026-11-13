@@ -7,9 +7,9 @@
  * 1. platform property value
  * 2. Mention-stripping regex used in handleMentionMessage
  * 3. ROTATING_STATUSES array shape (exported indirectly through the module)
- * 4. richMessageToEmbed logic (via the adapter's sendRich path, tested
+ * 4. card rendering (via the adapter's sendCard path, tested
  *    using a minimal interaction mock so we never call client.login())
- * 5. createInteractionTarget – deferral, send, sendEphemeral, sendRich
+ * 5. createInteractionTarget – deferral, send, sendEphemeral, sendCard
  * 6. extractInteractionArgs – subcommand + typed option extraction
  * 7. handleInteraction routing (gaia vs. generic command)
  * 8. Error handling in dispatchCommand when command is unknown
@@ -226,7 +226,6 @@ vi.mock("@gaia/shared/bots", async () => {
     STREAMING_DEFAULTS: {
       discord: { editIntervalMs: 1200, streaming: false, platform: "discord" },
     },
-    richMessageToMarkdown: vi.fn().mockReturnValue("mocked markdown"),
     // renderForPlatform is mocked as identity — conversion is exercised in the
     // shared formatters tests, not at the adapter level (which mocks @gaia/shared).
     renderForPlatform: vi.fn((t: string) => t),
@@ -444,6 +443,9 @@ describe("DiscordAdapter - createInteractionTarget via handleInteraction", () =>
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      undefined, // onReaction
+      undefined, // onNoReply
+      expect.any(Function), // sendCard
     );
   });
 
@@ -675,6 +677,8 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
         distinctId: expect.any(String),
       }),
       expect.any(Function), // onReaction
+      undefined, // onNoReply
+      expect.any(Function), // sendCard
     );
   });
 
@@ -705,6 +709,8 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
         distinctId: expect.any(String),
       }),
       expect.any(Function), // onReaction
+      undefined, // onNoReply
+      expect.any(Function), // sendCard
     );
   });
 
@@ -754,6 +760,8 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
         distinctId: expect.any(String),
       }),
       expect.any(Function), // onReaction
+      undefined, // onNoReply
+      expect.any(Function), // sendCard
     );
   });
 });
@@ -869,6 +877,8 @@ describe("DiscordAdapter - DM welcome flow", () => {
         distinctId: expect.any(String),
       }),
       expect.any(Function), // onReaction
+      undefined, // onNoReply
+      expect.any(Function), // sendCard
     );
   });
 
@@ -985,6 +995,9 @@ describe("DiscordAdapter - context menu interaction", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      undefined, // onReaction
+      undefined, // onNoReply
+      expect.any(Function), // sendCard
     );
   });
 
@@ -1035,6 +1048,9 @@ describe("DiscordAdapter - context menu interaction", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      undefined, // onReaction
+      undefined, // onNoReply
+      expect.any(Function), // sendCard
     );
   });
 });
@@ -1068,7 +1084,7 @@ describe("DiscordAdapter - dispatchCommand unknown command", () => {
       channelId: "channel-abc",
       send: vi.fn(),
       sendEphemeral: vi.fn().mockResolvedValue({ id: "x", edit: vi.fn() }),
-      sendRich: vi.fn(),
+      sendCard: vi.fn(),
       startTyping: vi.fn(),
     };
 
@@ -1113,7 +1129,7 @@ describe("DiscordAdapter - dispatchCommand args forwarding", () => {
       channelId: "channel-xyz",
       send: vi.fn(),
       sendEphemeral: vi.fn().mockResolvedValue({ id: "x", edit: vi.fn() }),
-      sendRich: vi.fn(),
+      sendCard: vi.fn(),
       startTyping: vi.fn(),
     };
 
@@ -1164,7 +1180,7 @@ describe("DiscordAdapter - dispatchCommand error propagation", () => {
       channelId: "channel-abc",
       send: vi.fn(),
       sendEphemeral: vi.fn().mockResolvedValue({ id: "x", edit: vi.fn() }),
-      sendRich: vi.fn(),
+      sendCard: vi.fn(),
       startTyping: vi.fn(),
     };
 

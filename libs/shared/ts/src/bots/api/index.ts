@@ -1,5 +1,14 @@
 import axios, { type AxiosInstance } from "axios";
-import type { DeliveryFailureReport } from "../../api/generated";
+import type {
+  BotCardActionRequest,
+  BotCardActionResult,
+  BotCardCapabilities,
+  BotCardCapabilitiesRegistered,
+  BotCardsRecorded,
+  BotCardsReport,
+  DeliveryFailureReport,
+  ReportedBotCard,
+} from "../../api/generated";
 import type {
   AuthStatus,
   BotConversation,
@@ -14,6 +23,7 @@ import type {
   BotWorkflowExecutionResponse,
   BotWorkflowListResponse,
   ChatRequest,
+  PlatformName,
   RedeemedLinkCode,
   SettingsResponse,
 } from "../types";
@@ -21,11 +31,11 @@ import { getErrorReason, getHttpStatus } from "../utils/logger";
 import { isOwnApiUrl } from "../utils/own-api";
 import { wideLog } from "../utils/wide-events";
 import {
-  type ApprovalUpdateHandler,
   type MessageBoundaryHandler,
   type NoticeHandler,
   type ReactionHandler,
   streamChat,
+  type ToolDataHandler,
 } from "./chat-stream";
 import {
   downloadApiBinaryRequest,
@@ -193,7 +203,7 @@ export class GaiaClient {
     onChunk: (text: string) => void | Promise<void>,
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
     onError: (error: Error) => void | Promise<void>,
-    onApprovalUpdate?: ApprovalUpdateHandler,
+    onToolData?: ToolDataHandler,
     onMessageBoundary?: MessageBoundaryHandler,
     onNotice?: NoticeHandler,
     onReaction?: ReactionHandler,
@@ -210,7 +220,7 @@ export class GaiaClient {
       onDone,
       onError,
       "/api/v1/bot/chat-stream",
-      onApprovalUpdate,
+      onToolData,
       onMessageBoundary,
       onNotice,
       onReaction,
@@ -670,15 +680,95 @@ export class GaiaClient {
    */
   async reportDeliveryFailure(report: DeliveryFailureReport): Promise<void> {
     await this.request(async () => {
-      const headers: Record<string, string> = {
-        "X-Bot-API-Key": this.apiKey,
-        "X-Bot-Platform": report.platform,
-      };
-      const traceId = wideLog.getTraceId();
-      if (traceId) headers["x-trace-id"] = traceId;
       await this.client.post("/api/v1/bot/delivery-failures", report, {
-        headers,
+        headers: this.platformHeaders(report.platform),
       });
+    });
+  }
+
+  /**
+   * Headers for a request the bot makes as itself, on no particular user's
+   * behalf: the bot key and its platform.
+   */
+  private platformHeaders(platform: string): Record<string, string> {
+    const headers: Record<string, string> = {
+      "X-Bot-API-Key": this.apiKey,
+      "X-Bot-Platform": platform,
+    };
+    const traceId = wideLog.getTraceId();
+    if (traceId) headers["x-trace-id"] = traceId;
+    return headers;
+  }
+
+  /**
+   * Tells the API which tool cards this platform renders natively, so the agent
+   * replying there knows what the user will see. Called once at startup.
+   */
+  async registerCardCapabilities(
+    platform: PlatformName,
+    cardTools: readonly string[],
+  ): Promise<BotCardCapabilitiesRegistered> {
+    const body: BotCardCapabilities = { platform, card_tools: [...cardTools] };
+    return this.request(async () => {
+      const { data } = await this.client.post<BotCardCapabilitiesRegistered>(
+        "/api/v1/bot/capabilities",
+        body,
+        { headers: this.platformHeaders(platform) },
+      );
+      return data;
+    });
+  }
+
+  /**
+   * Performs the operation behind a tapped card button. The API checks the
+   * action belongs to this user, runs it once, records the tap in the
+   * conversation, and returns the outcome with a user-facing message.
+   */
+  async performCardAction(
+    platform: PlatformName,
+    platformUserId: string,
+    actionId: string,
+  ): Promise<BotCardActionResult> {
+    const ctx: BotUserContext = { platform, platformUserId };
+    const body: BotCardActionRequest = {
+      platform,
+      platform_user_id: platformUserId,
+      action_id: actionId,
+    };
+    return this.requestWithAuth(async () => {
+      const { data } = await this.client.post<BotCardActionResult>(
+        "/api/v1/bot/card-action",
+        body,
+        { headers: this.userHeaders(ctx) },
+      );
+      return data;
+    }, ctx);
+  }
+
+  /**
+   * Tells the API which tool cards the user was shown (or failed to be shown) in
+   * `conversationId`, so the agent's record of the conversation matches what is
+   * on the user's screen. Prefer `createCardDeliveryReporter`, which never
+   * throws into a delivery path.
+   */
+  async reportCardsDelivered(
+    ctx: BotUserContext,
+    conversationId: string,
+    cards: ReportedBotCard[],
+  ): Promise<BotCardsRecorded> {
+    const report: BotCardsReport = {
+      platform: ctx.platform,
+      platform_user_id: ctx.platformUserId,
+      conversation_id: conversationId,
+      cards,
+    };
+    return this.request(async () => {
+      const { data } = await this.client.post<BotCardsRecorded>(
+        "/api/v1/bot/cards-delivered",
+        report,
+        { headers: this.userHeaders(ctx) },
+      );
+      return data;
     });
   }
 

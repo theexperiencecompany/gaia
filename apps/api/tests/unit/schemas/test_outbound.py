@@ -13,7 +13,7 @@ from app.schemas.outbound import OutboundAttachment, OutboundMessageEnvelope
 
 _ONE_SOURCE = "attachment requires exactly one of `url` or (`conversation_id` + `path`)"
 _HTTPS_ONLY = "attachment `url` must be an https URL"
-_NEEDS_BODY = "envelope requires text, text_parts, attachment, or reaction"
+_NEEDS_BODY = "envelope requires text, text_parts, attachment, reaction, or tool_data"
 
 
 def _rejection(build: Callable[[], BaseModel]) -> str:
@@ -144,3 +144,20 @@ class TestEnvelopeBody:
             for _ in range(2)
         ]
         assert made[0].id != made[1].id
+
+
+class TestEnvelopeCards:
+    def test_a_cards_only_envelope_is_valid_and_names_its_conversation(self) -> None:
+        envelope = OutboundMessageEnvelope(
+            platform="telegram",
+            destination_id="4242",
+            tool_data=[{"tool_name": "rate_limit_data", "data": {"feature": "chat"}}],
+            conversation_id="conv-1",
+        )
+        assert envelope.tool_data[0]["tool_name"] == "rate_limit_data"
+        assert envelope.conversation_id == "conv-1"
+
+    def test_a_text_envelope_carries_no_cards_by_default(self) -> None:
+        envelope = OutboundMessageEnvelope(platform="telegram", destination_id="4242", text="hi")
+        assert envelope.tool_data == []
+        assert envelope.conversation_id is None

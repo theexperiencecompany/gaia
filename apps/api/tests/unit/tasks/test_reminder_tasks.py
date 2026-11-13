@@ -29,9 +29,9 @@ from shared.py.analytics.catalog.reminders import ReminderCompleted
 from shared.py.wide_events import log
 
 
-def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:
+def _user_context(email: str | None = None) -> Callable[[str], AuthenticatedUser]:
     """Fake load_user_context: answer for whichever user id it is asked for."""
-    return lambda user_id: AuthenticatedUser(user_id=user_id, **fields)
+    return lambda user_id: AuthenticatedUser(user_id=user_id, email=email)
 
 
 MODULE = "app.tasks.reminder_tasks"
@@ -59,14 +59,15 @@ def target() -> Iterator[AsyncMock]:
         yield resolve
 
 
-def _reminder(**overrides) -> ReminderModel:
-    payload = overrides.pop("payload", StaticReminderPayload(title="Water the plants", body="Now"))
-    return ReminderModel(
-        id=REMINDER_ID,
-        user_id=USER_ID,
-        agent="static",
-        payload=payload,
-        **overrides,
+def _reminder(**overrides: object) -> ReminderModel:
+    return ReminderModel.model_validate(
+        {
+            "_id": REMINDER_ID,
+            "user_id": USER_ID,
+            "agent": AgentType.STATIC,
+            "payload": StaticReminderPayload(title="Water the plants", body="Now"),
+            **overrides,
+        }
     )
 
 
@@ -253,7 +254,7 @@ class TestReminderReachesChatPlatforms:
 
         deliver.assert_awaited_once()
         kwargs = deliver.await_args.kwargs
-        assert kwargs["user_id"] == USER_ID
+        assert kwargs["user"].user_id == USER_ID
         # The origin names the reminder (title + machine id) so the langgraph
         # record it produces can be backtracked to this reminder.
         assert kwargs["origin"] == f'reminder "Water the plants" (id {REMINDER_ID})'
@@ -350,7 +351,6 @@ class TestDeliverReminderToPlatforms:
         deliver.assert_awaited_once()
         kwargs = deliver.await_args.kwargs
         assert kwargs["user"].user_id == USER_ID
-        assert kwargs["user_id"] == USER_ID
         assert kwargs["origin"] == f'reminder "Water the plants" (id {REMINDER_ID})'
         assert kwargs["notification_text"] == "**Water the plants**\nNow"
         assert kwargs["target"] is TELEGRAM_BY_ORDER

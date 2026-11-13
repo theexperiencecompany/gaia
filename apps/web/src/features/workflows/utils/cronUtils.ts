@@ -1,7 +1,5 @@
 // Comprehensive cron expression builder and parser
 
-import cronstrue from "cronstrue";
-
 export interface CronSchedule {
   type: "daily" | "weekly" | "monthly" | "yearly" | "custom";
   minute?: number;
@@ -177,21 +175,5 @@ export const getScheduleDescription = (cron: string): string => {
 
     default:
       return cron;
-  }
-};
-
-// A plain-English description of a cron expression, or undefined when cronstrue
-// cannot read it. Description only: whether the schedule is acceptable is the
-// server's call (useCronValidation).
-export const describeCron = (cron: string): string | undefined => {
-  const expression = cron.trim();
-  if (!expression) return undefined;
-  try {
-    return cronstrue.toString(expression, {
-      throwExceptionOnParseError: true,
-      verbose: false,
-    });
-  } catch {
-    return undefined;
   }
 };

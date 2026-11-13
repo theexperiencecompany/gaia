@@ -12,6 +12,8 @@
  * - Domain types: BotWorkflow, BotTodo, BotConversation (match backend API schemas)
  */
 
+import type { Card } from "../cards/types";
+
 /**
  * Metadata for a file previously uploaded via {@link GaiaClient.uploadFile}.
  *
@@ -274,7 +276,7 @@ export interface SentMessage {
 /**
  * Platform-agnostic message target that unified commands write to.
  *
- * Each bot adapter creates a `MessageTarget` (or {@link RichMessageTarget})
+ * Each bot adapter creates a `MessageTarget` (or {@link CardTarget})
  * from its native context object (Discord `Interaction`, Slack `respond`, Telegram `ctx`)
  * so that command handlers never touch platform APIs directly.
  */
@@ -306,50 +308,12 @@ export interface MessageTarget {
 }
 
 /**
- * Extended {@link MessageTarget} that can send rich / structured content.
- *
- * Adapters for platforms with native rich content (e.g. Discord embeds) implement
- * `sendRich` to convert {@link RichMessage} into the platform's native format.
- * For platforms without native support (Slack, Telegram), `sendRich` falls back
- * to rendering the rich message as formatted markdown via `richMessageToMarkdown`.
+ * A {@link MessageTarget} that can also send a {@link Card}, rendered in the
+ * platform's native format (Discord embed, Slack Block Kit, Telegram inline
+ * keyboard) or as text where the platform has none.
  */
-export interface RichMessageTarget extends MessageTarget {
-  /** Sends a structured rich message, rendered using the platform's native format. */
-  sendRich: (message: RichMessage) => Promise<SentMessage>;
-}
-
-/**
- * Platform-agnostic rich content payload.
- *
- * Adapters convert this into their platform's native format:
- * - Discord → `EmbedBuilder`
- * - Slack / Telegram → Markdown string (via `richMessageToMarkdown`)
- *
- * Used by commands like `/help` and `/settings` that need structured layouts.
- */
-export interface RichMessage {
-  /** The content type. Currently only `"embed"` is supported. */
-  type: "embed";
-  /** Bold title displayed at the top. */
-  title: string;
-  /** Optional description paragraph below the title. */
-  description?: string;
-  /** Sidebar color as a 24-bit integer (e.g. `0x7c3aed`). */
-  color?: number;
-  /** Structured key-value fields displayed in the body. */
-  fields: Array<{ name: string; value: string; inline?: boolean }>;
-  /** Small text displayed at the bottom. */
-  footer?: string;
-  /** URL for a thumbnail image displayed alongside the content. */
-  thumbnailUrl?: string;
-  /** Display name shown in the author line. */
-  authorName?: string;
-  /** Small icon URL displayed next to the author name. */
-  authorIconUrl?: string;
-  /** Whether to display a timestamp (current time) at the footer. */
-  timestamp?: boolean;
-  /** Clickable links displayed at the bottom of the message. */
-  links?: Array<{ label: string; url: string }>;
+export interface CardTarget extends MessageTarget {
+  sendCard: (card: Card) => Promise<SentMessage>;
 }
 
 /**
@@ -394,7 +358,7 @@ export interface CommandExecuteParams {
   /** The GAIA API client instance. */
   gaia: GaiaClient;
   /** The message target to send replies to. */
-  target: RichMessageTarget;
+  target: CardTarget;
   /** User identity and channel context. */
   ctx: CommandContext;
   /** Parsed command arguments keyed by option name. */
@@ -427,7 +391,7 @@ export interface BotCommand {
    *
    * Receives platform-agnostic params so the same function works on
    * Discord, Slack, and Telegram. Replies are sent via `target.send` /
-   * `target.sendRich`.
+   * `target.sendCard`.
    */
   execute: (params: CommandExecuteParams) => Promise<void>;
 }

@@ -28,8 +28,8 @@ from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.core.background.workflow_platform_delivery"
 
-USER: dict = {"user_id": "user-1", "email": "u@gaia.local"}
 USER_ID = "user-1"
+USER = AuthenticatedUser(user_id=USER_ID, email="u@gaia.local")
 TEXT = f"Report is ready.{NEW_MESSAGE_BREAKER}It has 3 pages."
 
 TELEGRAM = ChatChannel(
@@ -145,7 +145,6 @@ class TestDeliverWorkflowResultToPlatforms:
         with patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock()) as session:
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text="   ",
                 origin=self.ORIGIN,
                 target=TELEGRAM,
@@ -163,7 +162,6 @@ class TestDeliverWorkflowResultToPlatforms:
         ):
             delivered = await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 target=InApp(reason=reason),
@@ -186,7 +184,6 @@ class TestDeliverWorkflowResultToPlatforms:
         ):
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 target=TELEGRAM,
@@ -214,7 +211,11 @@ class TestDeliverWorkflowResultToPlatforms:
         )
         # The channel already resolved the account id; the publisher must not
         # read the user document again to recompute it.
-        assert publish.await_args.kwargs == {"destination_override": "tg-123"}
+        assert publish.await_args.kwargs == {
+            "destination_override": "tg-123",
+            "tool_data": [],
+            "conversation_id": "tg-conv",
+        }
 
     async def test_it_reports_which_platform_received_the_result(self) -> None:
         """A wrong verdict makes a skipped delivery look delivered in the metrics."""
@@ -229,7 +230,6 @@ class TestDeliverWorkflowResultToPlatforms:
         ):
             delivered = await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 target=TELEGRAM,
@@ -248,7 +248,6 @@ class TestDeliverWorkflowResultToPlatforms:
         ):
             delivered = await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 target=TELEGRAM,
@@ -267,7 +266,6 @@ class TestDeliverWorkflowResultToPlatforms:
         ):
             delivered = await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 target=TELEGRAM,
@@ -279,7 +277,6 @@ class TestDeliverWorkflowResultToPlatforms:
         assert (
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text="   ",
                 origin=self.ORIGIN,
                 target=TELEGRAM,
@@ -300,7 +297,6 @@ class TestDeliverWorkflowResultToPlatforms:
             async with captured_wide_event() as event:
                 await deliver_result_to_platforms(
                     user=USER,
-                    user_id=USER_ID,
                     notification_text=TEXT,
                     origin=self.ORIGIN,
                     target=TELEGRAM,
@@ -321,7 +317,6 @@ class TestDeliverWorkflowResultToPlatforms:
         ):
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 exclude_source=ConversationSource.TELEGRAM,
@@ -344,7 +339,6 @@ class TestDeliverWorkflowResultToPlatforms:
         ):
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 exclude_source=ConversationSource.SLACK,
@@ -363,7 +357,6 @@ class TestDeliverWorkflowResultToPlatforms:
         ):
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 target=TELEGRAM,
@@ -392,7 +385,6 @@ class TestDeliveredResultsReachTheSessionThread:
         ):
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=TEXT,
                 origin=self.ORIGIN,
                 target=TELEGRAM,
@@ -432,7 +424,6 @@ class TestDeliveredResultsReachTheSessionThread:
         ):
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text="hello",
                 origin=self.ORIGIN,
                 target=WHATSAPP,
@@ -455,7 +446,6 @@ class TestDeliveredResultsReachTheSessionThread:
         ):
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text="hello",
                 origin=self.ORIGIN,
                 target=IMESSAGE,
@@ -486,7 +476,6 @@ class TestVariantBreakTokens:
         ):
             await deliver_result_to_platforms(
                 user=USER,
-                user_id=USER_ID,
                 notification_text=text,
                 origin='workflow "Morning digest" (id wf-1)',
                 target=TELEGRAM,

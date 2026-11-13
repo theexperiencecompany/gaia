@@ -20,6 +20,8 @@ import {
   type BotFileData,
   type BotLogger,
   buildAuthLinkMessage,
+  type Card,
+  type CardTarget,
   createBotLogger,
   extractSubcommandArgs,
   handleStreamingChat,
@@ -27,9 +29,7 @@ import {
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
-  type RichMessage,
-  type RichMessageTarget,
-  richMessageToMarkdown,
+  renderCardText,
   type SentMessage,
 } from "@gaia/shared/bots";
 import type { PlatformEmulation } from "./emulation";
@@ -352,6 +352,11 @@ export class HarnessAdapter extends BaseBotAdapter {
       await this.analyticsFor(userId),
       (emoji: string) =>
         this.reactToMessage(channelId, inboundMessageId, emoji),
+      undefined,
+      (card: Card) => {
+        this.recordCard(card);
+        return Promise.resolve();
+      },
     );
 
     this.transcript.record({ type: "typing", state: "stop" });
@@ -366,13 +371,22 @@ export class HarnessAdapter extends BaseBotAdapter {
     }
   }
 
+  /** Records a card as the text the emulated platform would show. */
+  private recordCard(card: Card): void {
+    this.transcript.record({
+      type: "card",
+      title: card.title,
+      text: this.emulation.render(renderCardText(card)),
+    });
+  }
+
   /**
-   * Builds a {@link RichMessageTarget} for the unified command path (`/todo`,
+   * Builds a {@link CardTarget} for the unified command path (`/todo`,
    * `/help`, `/auth`, …). Non-streaming sends are rendered here through the
    * platform converter, mirroring every real adapter's `renderForPlatform`
    * chokepoint.
    */
-  private createTarget(userId: string, channelId: string): RichMessageTarget {
+  private createTarget(userId: string, channelId: string): CardTarget {
     const makeSent = (id: string): SentMessage => ({
       id,
       edit: (t: string) => {
@@ -409,13 +423,8 @@ export class HarnessAdapter extends BaseBotAdapter {
         return Promise.resolve(makeSent(`e${this.nextMessageId++}`));
       },
 
-      sendRich: (message: RichMessage): Promise<SentMessage> => {
-        const rendered = this.emulation.render(richMessageToMarkdown(message));
-        this.transcript.record({
-          type: "rich",
-          title: message.title,
-          text: rendered,
-        });
+      sendCard: (card: Card): Promise<SentMessage> => {
+        this.recordCard(card);
         return Promise.resolve(makeSent(`r${this.nextMessageId++}`));
       },
 

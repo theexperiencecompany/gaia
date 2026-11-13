@@ -22,9 +22,15 @@ import {
   type BotCommand,
   type BotFileData,
   buildAuthLinkMessage,
+  CARD_REPLY_PROMPTS,
+  type Card,
+  type CardTarget,
   createBotLogger,
+  decodeCardActionData,
+  decodeCardReplyData,
   formatBotError,
   friendlyMediaError,
+  handleCardTap,
   handleStreamingChat,
   hashLogIdentifier,
   type IncomingMedia,
@@ -33,8 +39,6 @@ import {
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
-  type RichMessage,
-  type RichMessageTarget,
   recordBotFailure,
   renderForPlatform,
   type SentMessage,
@@ -45,6 +49,7 @@ import {
 } from "@gaia/shared/bots";
 import {
   ActionRowBuilder,
+  type BaseMessageOptions,
   ButtonBuilder,
   ButtonStyle,
   type ChatInputCommandInteraction,
@@ -59,6 +64,11 @@ import {
   type SendableChannels,
   type User,
 } from "discord.js";
+import { renderDiscordCard } from "./card";
+
+/** Sends text or a rendered card to wherever this Discord turn replies. */
+type DiscordSend = (payload: string | BaseMessageOptions) => Promise<Message>;
+
 import { downloadDiscordAttachment, extractDiscordMedia } from "./media";
 import { ROTATING_STATUSES, STATUS_ROTATION_INTERVAL_MS } from "./statuses";
 
@@ -117,7 +127,7 @@ export class DiscordAdapter extends BaseBotAdapter {
   /**
    * Registers Discord event listeners:
    * - `ClientReady` — sets rotating presence, logs the bot's tag
-   * - `InteractionCreate` — dispatches slash and context menu commands
+   * - `InteractionCreate` — dispatches slash and context menu commands, and card button taps
    * - `MessageCreate` — handles DMs and @mentions
    */
   protected async registerEvents(): Promise<void> {
@@ -158,6 +168,39 @@ export class DiscordAdapter extends BaseBotAdapter {
       }
       if (interaction.isMessageContextMenuCommand()) {
         await this.handleContextMenuInteraction(interaction);
+        return;
+      }
+      if (interaction.isButton()) {
+        // "Suggest changes": ask; the answer is an ordinary message in this chat.
+        const prompt = decodeCardReplyData(interaction.customId);
+        if (prompt) {
+          await interaction.reply({
+            content: CARD_REPLY_PROMPTS[prompt],
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        const actionId = decodeCardActionData(interaction.customId);
+        if (!actionId) return;
+        // A card's invoke button: perform it, then re-render the card.
+        await handleCardTap({
+          gaia: this.gaia,
+          platform: this.platform,
+          platformUserId: interaction.user.id,
+          actionId,
+          acknowledge: async () => {
+            await interaction.deferUpdate();
+          },
+          show: async (result) => {
+            if (result.card) {
+              await interaction.editReply(renderDiscordCard(result.card));
+            }
+            await interaction.followUp({
+              content: result.message,
+              flags: MessageFlags.Ephemeral,
+            });
+          },
+        });
       }
     });
 
@@ -234,6 +277,15 @@ export class DiscordAdapter extends BaseBotAdapter {
   ): Promise<void> {
     const target = await this.resolveOutboundTarget(destinationId, isChannel);
     await target.send(text);
+  }
+
+  protected override async deliverOutboundCard(
+    destinationId: string,
+    card: Card,
+    isChannel: boolean,
+  ): Promise<void> {
+    const target = await this.resolveOutboundTarget(destinationId, isChannel);
+    await target.send(renderDiscordCard(card));
   }
 
   /**
@@ -435,6 +487,11 @@ export class DiscordAdapter extends BaseBotAdapter {
       },
       STREAMING_DEFAULTS.discord,
       await this.analyticsFor(userId),
+      undefined,
+      undefined,
+      async (card: Card) => {
+        await interaction.followUp(renderDiscordCard(card));
+      },
     );
   }
 
@@ -559,6 +616,12 @@ export class DiscordAdapter extends BaseBotAdapter {
       },
       STREAMING_DEFAULTS.discord,
       await this.analyticsFor(userId),
+      undefined,
+      undefined,
+      async (card: Card) => {
+        replied = true;
+        await interaction.followUp(renderDiscordCard(card));
+      },
     );
   }
 
@@ -619,8 +682,8 @@ export class DiscordAdapter extends BaseBotAdapter {
       await this.sendDMWelcome(message);
     }
 
-    const send = (text: string) =>
-      (message.channel as { send: (t: string) => Promise<Message> }).send(text);
+    const send: DiscordSend = (payload) =>
+      (message.channel as { send: DiscordSend }).send(payload);
 
     const caption = message.content.trim();
     const media = await this.resolveDiscordMedia(message, caption, userId);
@@ -707,6 +770,11 @@ export class DiscordAdapter extends BaseBotAdapter {
         await this.analyticsFor(userId),
         (emoji: string) =>
           this.reactToMessage(userId, message.id, emoji, false),
+        undefined,
+        async (card: Card) => {
+          stopTyping();
+          await send(renderDiscordCard(card));
+        },
       );
 
       stopTyping();
@@ -836,16 +904,11 @@ export class DiscordAdapter extends BaseBotAdapter {
    * Builds the reply sender for a mention: DMs send to the channel directly,
    * guild channels reply to the triggering message.
    */
-  private createMentionSender(
-    message: Message,
-  ): (text: string) => Promise<Message> {
+  private createMentionSender(message: Message): DiscordSend {
     const isDM = !message.guild;
     return isDM
-      ? (text: string) =>
-          (message.channel as { send: (t: string) => Promise<Message> }).send(
-            text,
-          )
-      : (text: string) => message.reply(text);
+      ? (payload) => (message.channel as { send: DiscordSend }).send(payload)
+      : (payload) => message.reply(payload);
   }
 
   /**
@@ -870,7 +933,7 @@ export class DiscordAdapter extends BaseBotAdapter {
    */
   private async sendMentionAuthPrompt(
     message: Message,
-    send: (text: string) => Promise<Message>,
+    send: DiscordSend,
     authUrl: string,
   ): Promise<void> {
     let dmSent = false;
@@ -896,7 +959,7 @@ export class DiscordAdapter extends BaseBotAdapter {
    */
   private async streamMentionReply(
     message: Message,
-    send: (text: string) => Promise<Message>,
+    send: DiscordSend,
     content: string,
     attachments: BotFileData[],
   ): Promise<void> {
@@ -951,6 +1014,11 @@ export class DiscordAdapter extends BaseBotAdapter {
           message.guild
             ? this.reactToMessage(message.channelId, message.id, emoji, true)
             : this.reactToMessage(message.author.id, message.id, emoji, false),
+        undefined,
+        async (card: Card) => {
+          stopTyping();
+          await send(renderDiscordCard(card));
+        },
       );
 
       stopTyping();
@@ -972,18 +1040,18 @@ export class DiscordAdapter extends BaseBotAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Creates a {@link RichMessageTarget} from a Discord slash command interaction.
+   * Creates a {@link CardTarget} from a Discord slash command interaction.
    *
    * Auto-defers the interaction on the first send to avoid the 3-second deadline.
-   * Supports ephemeral replies and Discord-native embeds via `sendRich`.
+   * Supports ephemeral replies and cards as Discord-native embeds via `sendCard`.
    */
   private createInteractionTarget(
     interaction: ChatInputCommandInteraction,
-  ): RichMessageTarget {
+  ): CardTarget {
     let deferred = false;
 
-    // Defer with the correct visibility on the first send/sendEphemeral/sendRich call.
-    // send() → public reply; sendEphemeral()/sendRich() → ephemeral reply.
+    // Defer with the correct visibility on the first send/sendEphemeral/sendCard call.
+    // send()/sendCard() → public reply; sendEphemeral() → ephemeral reply.
     const deferIfNeeded = async (ephemeral: boolean) => {
       if (!deferred && !interaction.replied && !interaction.deferred) {
         await interaction.deferReply({
@@ -1033,16 +1101,16 @@ export class DiscordAdapter extends BaseBotAdapter {
         };
       },
 
-      sendRich: async (msg: RichMessage): Promise<SentMessage> => {
+      sendCard: async (card: Card): Promise<SentMessage> => {
         await deferIfNeeded(false);
-        const embed = richMessageToEmbed(msg);
-        await interaction.editReply({ embeds: [embed] });
+        await interaction.editReply(renderDiscordCard(card));
         return {
           id: interaction.id,
           edit: async (t: string) => {
             await interaction.editReply({
               content: renderForPlatform(t, "discord"),
               embeds: [],
+              components: [],
             });
           },
         };
@@ -1105,48 +1173,4 @@ export class DiscordAdapter extends BaseBotAdapter {
 
     return args;
   }
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Converts a {@link RichMessage} to a Discord `EmbedBuilder`.
- *
- * Used by the Discord adapter's `sendRich` method to render structured
- * content using Discord's native embed format.
- *
- * @param msg - The platform-agnostic rich message.
- * @returns A Discord `EmbedBuilder` ready to be sent.
- */
-export function richMessageToEmbed(msg: RichMessage): EmbedBuilder {
-  const embed = new EmbedBuilder().setTitle(msg.title);
-
-  if (msg.description) embed.setDescription(msg.description);
-  if (msg.color !== undefined) embed.setColor(msg.color);
-  if (msg.footer) embed.setFooter({ text: msg.footer });
-  if (msg.timestamp) embed.setTimestamp();
-  if (msg.thumbnailUrl) embed.setThumbnail(msg.thumbnailUrl);
-  if (msg.authorName) {
-    embed.setAuthor({
-      name: msg.authorName,
-      iconURL: msg.authorIconUrl ?? undefined,
-    });
-  }
-
-  for (const field of msg.fields) {
-    embed.addFields({
-      name: field.name,
-      value: field.value,
-      inline: field.inline ?? false,
-    });
-  }
-
-  if (msg.links && msg.links.length > 0) {
-    const linkText = msg.links.map((l) => `[${l.label}](${l.url})`).join(" | ");
-    embed.addFields({ name: "🔗 Useful Links", value: linkText });
-  }
-
-  return embed;
 }

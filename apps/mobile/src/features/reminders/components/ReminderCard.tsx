@@ -1,3 +1,4 @@
+import { describeCron } from "@gaia/shared/utils";
 import * as Haptics from "expo-haptics";
 import { useCallback, useRef } from "react";
 import { Alert, type Animated, Pressable, View } from "react-native";
@@ -13,16 +14,6 @@ import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import type { Reminder } from "../api/reminders-api";
 
-const DAYS = [
-  "Sunday",
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-];
-
 const SHORT_MONTHS = [
   "Jan",
   "Feb",
@@ -37,76 +28,6 @@ const SHORT_MONTHS = [
   "Nov",
   "Dec",
 ];
-
-function formatTime(hour: number, minute: number): string {
-  const period = hour >= 12 ? "PM" : "AM";
-  const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-  return `${displayHour}:${String(minute).padStart(2, "0")} ${period}`;
-}
-
-function ordinalSuffix(day: number): string {
-  if (day === 1 || day === 21 || day === 31) return "st";
-  if (day === 2 || day === 22) return "nd";
-  if (day === 3 || day === 23) return "rd";
-  return "th";
-}
-
-export function parseCronToHuman(cron: string): string {
-  const parts = cron.trim().split(/\s+/);
-  if (parts.length !== 5) return cron;
-
-  const [minuteStr, hourStr, domStr, , dowStr] = parts;
-
-  const minute = minuteStr === "*" ? 0 : Number.parseInt(minuteStr, 10);
-  const hour = hourStr === "*" ? 0 : Number.parseInt(hourStr, 10);
-
-  // Every hour: "0 * * * *"
-  if (hourStr === "*" && domStr === "*" && dowStr === "*") {
-    return "Every hour";
-  }
-
-  // Every day at time: "M H * * *"
-  if (
-    domStr === "*" &&
-    dowStr === "*" &&
-    hourStr !== "*" &&
-    minuteStr !== "*"
-  ) {
-    return `Every day at ${formatTime(hour, minute)}`;
-  }
-
-  // Every weekday: "M H * * 1-5"
-  if (domStr === "*" && dowStr === "1-5") {
-    return `Weekdays at ${formatTime(hour, minute)}`;
-  }
-
-  // Weekly on a specific day: "M H * * D"
-  if (
-    domStr === "*" &&
-    dowStr !== "*" &&
-    !dowStr.includes(",") &&
-    !dowStr.includes("-") &&
-    !dowStr.includes("/")
-  ) {
-    const dayIndex = Number.parseInt(dowStr, 10);
-    if (dayIndex >= 0 && dayIndex <= 6) {
-      return `Every ${DAYS[dayIndex]} at ${formatTime(hour, minute)}`;
-    }
-  }
-
-  // Monthly on a day: "M H D * *"
-  if (
-    domStr !== "*" &&
-    !domStr.includes(",") &&
-    !domStr.includes("-") &&
-    dowStr === "*"
-  ) {
-    const dom = Number.parseInt(domStr, 10);
-    return `Monthly on the ${dom}${ordinalSuffix(dom)} at ${formatTime(hour, minute)}`;
-  }
-
-  return cron;
-}
 
 function formatNextRun(nextRun?: string): string {
   if (!nextRun) return "Not scheduled";
@@ -196,7 +117,8 @@ export function ReminderCard({
     [handleDelete, spacing.sm],
   );
 
-  const scheduleText = parseCronToHuman(reminder.cron_expression);
+  const scheduleText =
+    describeCron(reminder.cron_expression) ?? reminder.cron_expression;
   const nextRunText = formatNextRun(reminder.next_run);
 
   return (

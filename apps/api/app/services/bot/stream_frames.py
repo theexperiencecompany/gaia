@@ -47,13 +47,13 @@ def text_frame(text: str) -> str:
 
 
 def notice_frame(notice_text: str) -> str:
-    """Free-form out-of-band text (paywall, rate limit) the client delivers itself."""
+    """Free-form out-of-band text (paywall, refusals) the client delivers itself."""
     return sse_frame({"notice": {"text": notice_text}})
 
 
-def approval_frame(approval_payload: Mapping[str, object]) -> str:
-    """Return a HIL approval card, rendered by the bot client as an out-of-band prompt."""
-    return sse_frame({"approval": approval_payload})
+def tool_data_frame(entry: Mapping[str, object]) -> str:
+    """Return one tool_data card for the bot client to render out of band."""
+    return sse_frame({"tool_data": entry})
 
 
 def message_boundary_frame(boundary: object) -> str:

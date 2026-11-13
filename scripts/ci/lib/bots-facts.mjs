@@ -25,6 +25,12 @@ import traverse from "@babel/traverse";
 const LOGGING_CALL_NAMES = new Set(["error", "warn", "warning"]);
 /** `wideLog` methods that put the caught error on the wide event. */
 const WIDE_EVENT_RECORDERS = new Set(["set", "setNs", "audit"]);
+/**
+ * Shared helpers called bare that record the caught error on the wide event:
+ * `recordBotFailure` (bots/utils/failure-reasons.ts) is `wideLog.fail` +
+ * `wideLog.error`.
+ */
+const FAILURE_RECORDERS = new Set(["recordBotFailure"]);
 
 // ---------------------------------------------------------------------------
 // Parsing + generic walking
@@ -177,6 +183,14 @@ function catchClauseHandled(clause, sourceText) {
         handled = true;
         return;
       }
+    }
+    if (
+      child.type === "CallExpression" &&
+      child.callee.type === "Identifier" &&
+      FAILURE_RECORDERS.has(child.callee.name)
+    ) {
+      handled = true;
+      return;
     }
     if (child.type === "CallExpression" && child.callee.type === "MemberExpression") {
       const method = child.callee.property.type === "Identifier"

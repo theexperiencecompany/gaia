@@ -84,6 +84,18 @@ export const outboundReactionSchema = z.object({
   emoji: z.string().min(1),
 });
 
+/**
+ * One `tool_data` entry the bot renders as a card after the text — the same
+ * entries the web renders. `data` is validated by the card builder for its
+ * `tool_name`; entries with no bot card are skipped.
+ */
+const outboundToolDataSchema = z.object({
+  tool_name: z.string().min(1),
+  tool_category: z.string().optional(),
+  data: z.unknown(),
+  timestamp: z.string().nullish(),
+});
+
 /** Shape of a bot-facing message on the delivery bus, bound to this bot's API origin. */
 export function outboundMessageEnvelopeSchemaFor(
   ownApiOrigin: string | undefined,
@@ -117,6 +129,18 @@ export function outboundMessageEnvelopeSchemaFor(
       attachment: outboundAttachmentSchemaFor(ownApiOrigin).nullish(),
       /** A native emoji reaction to an existing platform message — optional. */
       reaction: outboundReactionSchema.nullish(),
+      /** Tool cards to show after the text, in order. */
+      tool_data: z.array(outboundToolDataSchema).default([]),
+      /**
+       * The GAIA conversation this message belongs to. When set, the cards the
+       * bot showed are reported back so the agent's record matches the screen.
+       */
+      conversation_id: z.string().min(1).nullish(),
+      /**
+       * The platform account the message is for — the DM target, or for a
+       * channel the user whose group session it is. Cards are reported under it.
+       */
+      platform_user_id: z.string().min(1).nullish(),
       /** ISO-8601 enqueue timestamp. */
       enqueued_at: z.string(),
     })
@@ -125,9 +149,11 @@ export function outboundMessageEnvelopeSchemaFor(
         Boolean(e.text) ||
         Boolean(e.text_parts?.length) ||
         Boolean(e.attachment) ||
-        Boolean(e.reaction),
+        Boolean(e.reaction) ||
+        e.tool_data.length > 0,
       {
-        message: "envelope requires text, text_parts, attachment, or reaction",
+        message:
+          "envelope requires text, text_parts, attachment, reaction, or tool_data",
       },
     );
 }

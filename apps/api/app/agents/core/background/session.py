@@ -17,7 +17,7 @@ from typing import Any
 
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, AgentConfigurableView
-from app.models.chat_models import SourceCategory
+from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from shared.py.analytics import Dedupe
@@ -159,6 +159,9 @@ class ExecutorRun:
     #: work, matching ``build_agent_config``: the only callers that leave the
     #: source unset are the silent background paths.
     source_category: SourceCategory = SourceCategory.BG
+    #: The specific channel the turn came from (web, telegram, ...); a bot
+    #: conversation's channel says which bot renders this run's cards.
+    conversation_source: ConversationSource | None = None
     #: Dispatch stamp carried from ``RunIdentity`` — see its field comment.
     t_dispatch_perf: float | None = None
     #: Busy-lock queue origin, carried from ``RunIdentity`` — see its comment.
@@ -196,6 +199,7 @@ class ExecutorRun:
             workflow_notify_on_completion=view.workflow_notify_on_completion,
             active_todo_id=view.active_todo_id,
             source_category=SourceCategory(view.source_category or SourceCategory.BG.value),
+            conversation_source=ConversationSource.coerce(view.conversation_source),
             t_dispatch_perf=identity.t_dispatch_perf,
             queued=identity.queued,
             dispatched_at=identity.dispatched_at,
@@ -242,14 +246,20 @@ class ExecutorRun:
 
     @property
     def renders_native_cards(self) -> bool:
-        """Whether this run's items reach the user as cards rather than as words.
+        """Whether every one of this run's cards reaches the user as a card.
 
-        Only first-party clients render tool cards. A bot conversation gets plain
-        text over its platform API and a scheduled workflow gets a notification,
-        so telling comms "these items are already on the user's screen" there
-        suppresses the only copy of the data the user would ever see.
+        Only a first-party client renders every card; a bot renders the ones its
+        platform registered and a workflow gets a notification. Claiming a card
+        was shown when it was not hides the only copy of that data.
         """
         return self.source_category is SourceCategory.UI
+
+    @property
+    def bot_card_platform(self) -> ConversationSource | None:
+        """The bot platform rendering this live run's cards, if it is a bot conversation."""
+        if self.source_category is not SourceCategory.BOT:
+            return None
+        return self.conversation_source
 
     @property
     def executor_owns_tool_data(self) -> bool:

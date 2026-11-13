@@ -2,6 +2,7 @@
 // Each entry in `TOOL_FIXTURES` is the exact shape the production chat
 // TOOL_RENDERERS receive. Changing a fixture here changes both gallery sides.
 
+import type { IntegrationConnectionData } from "../types/integrations";
 import type {
   ArtifactData,
   CalendarDeleteOptions,
@@ -714,13 +715,15 @@ const redditFixture: RedditData = {
 // Integrations
 // ---------------------------------------------------------------------------
 
-const integrationConnectionFixture: Record<string, unknown> = {
+const integrationConnectionFixture: IntegrationConnectionData = {
   integration_id: "gcal",
   integration_name: "Google Calendar",
-  message: "Connect Google Calendar to let GAIA schedule events for you.",
-  icon_url:
-    "https://www.google.com/calendar/images/ext/calendar_ext_favicon.png",
-  connect_url: "/integrations/connect/gcal",
+  message:
+    "To use Google Calendar features, please connect your account first.",
+  expired: false,
+  // Bot deliveries only: the login-free link and how long it lasts.
+  connect_url: "https://heygaia.io/connect/7f3c9a",
+  connect_url_valid_minutes: 60,
 };
 
 const integrationListFixture: Record<string, unknown> = {

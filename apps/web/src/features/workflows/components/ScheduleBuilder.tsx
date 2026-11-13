@@ -1,3 +1,4 @@
+import { describeCron } from "@gaia/shared/utils";
 import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
 import { Clock01Icon, InformationCircleIcon } from "@icons";
@@ -8,7 +9,6 @@ import { useCronValidation } from "../hooks/useCronValidation";
 import {
   buildCronExpression,
   type CronSchedule,
-  describeCron,
   parseCronExpression,
 } from "../utils/cronUtils";
 import type { TimezoneAutocompleteProps } from "./TimezoneAutocomplete";

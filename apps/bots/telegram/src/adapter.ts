@@ -26,10 +26,16 @@ import {
   type BotCommand,
   type BotFileData,
   buildAuthLinkMessage,
+  CARD_REPLY_PROMPTS,
+  type Card,
+  type CardTarget,
   createBotLogger,
+  decodeCardActionData,
+  decodeCardReplyData,
   extractSubcommandArgs,
   fetchBytesCapped,
   friendlyMediaError,
+  handleCardTap,
   handleStreamingChat,
   hashLogIdentifier,
   htmlToPlainText,
@@ -40,12 +46,10 @@ import {
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
-  type RichMessage,
-  type RichMessageTarget,
   recordBotFailure,
   redeemLinkCode,
+  renderCardText,
   renderForPlatform,
-  richMessageToMarkdown,
   type SentMessage,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
@@ -53,6 +57,28 @@ import {
 } from "@gaia/shared/bots";
 import type { Message, ReactionType } from "@grammyjs/types";
 import { Bot, type Context, GrammyError, InputFile } from "grammy";
+import { renderTelegramCard } from "./card";
+import {
+  renderCardWidget,
+  widgetAnswer,
+  widgetState,
+} from "./widgets/card-widget";
+import {
+  type WidgetQuery,
+  widgetApi,
+  widgetQueryOf,
+} from "./widgets/widget-api";
+
+/** Options every HTML send passes. */
+interface HtmlSendOptions {
+  parse_mode?: "HTML";
+}
+
+/** One Telegram send primitive (`sendMessage` / `reply`) bound to its chat. */
+type HtmlSend = (
+  text: string,
+  opts?: HtmlSendOptions,
+) => Promise<Message.TextMessage>;
 
 /** Telegram's sendPhoto byte cap; larger images are sent as documents. */
 const TELEGRAM_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
@@ -314,6 +340,7 @@ export class TelegramAdapter extends BaseBotAdapter {
    *
    * - Private chat messages → authenticated streaming chat (DMs)
    * - Group messages mentioning `@botUsername` → unauthenticated mention chat
+   * - Card invoke-button taps (`callback_query`) → the shared card-action path
    */
   protected async registerEvents(): Promise<void> {
     this.bot.on("message:text", async (ctx) => {
@@ -364,6 +391,105 @@ export class TelegramAdapter extends BaseBotAdapter {
       ],
       (ctx) => this.handleTelegramMediaMessage(ctx),
     );
+
+    // A card's reply button ("Suggest changes"): ask, and the answer is an
+    // ordinary chat message the agent and the approval resolver already read.
+    this.bot.on("callback_query:data", async (ctx, next) => {
+      const prompt = decodeCardReplyData(ctx.callbackQuery.data);
+      if (!prompt) return next();
+      await withWideEvent(
+        "card_reply_prompt",
+        {
+          platform: this.platform,
+          component: "adapter",
+          user_hash: hashLogIdentifier(ctx.from.id),
+          channel_hash: hashLogIdentifier(ctx.chat?.id),
+        },
+        async () => {
+          await ctx.answerCallbackQuery();
+          await ctx.reply(CARD_REPLY_PROMPTS[prompt], {
+            reply_markup: { force_reply: true },
+          });
+        },
+      );
+    });
+
+    // A card's invoke button: perform it, then re-render the card.
+    this.bot.on("callback_query:data", async (ctx) => {
+      const actionId = decodeCardActionData(ctx.callbackQuery.data);
+      if (!actionId) return;
+      await handleCardTap({
+        gaia: this.gaia,
+        platform: this.platform,
+        platformUserId: ctx.from.id.toString(),
+        actionId,
+        show: async (result) => {
+          await ctx.answerCallbackQuery({ text: result.message });
+          const message = ctx.callbackQuery.message;
+          // No message: an inline-mode button, not a card this bot sent.
+          if (!result.card || !message) return;
+          await ctx.editMessageText(renderTelegramCard(result.card));
+        },
+      });
+    });
+
+    // A tap inside a card widget (Bot API 10.4 `widget_query`).
+    this.bot.use(async (ctx, next) => {
+      const query = widgetQueryOf(ctx);
+      if (!query) return next();
+      await this.handleWidgetTap(query);
+    });
+  }
+
+  /**
+   * Handles a button tapped inside a card widget, answering within Telegram's
+   * 15 s window. A reply button asks its question in chat, as the inline button
+   * does. An invoke button runs through the shared card-action path; once it
+   * lands, the settled badge is written into the widget's chat state, so the
+   * widget redraws on `chatDataChanged` and after a restart.
+   */
+  private async handleWidgetTap(query: WidgetQuery): Promise<void> {
+    const widgets = widgetApi(this.bot.api);
+    const prompt = decodeCardReplyData(query.data);
+    if (prompt) {
+      await widgets.answerWidgetQuery({ widget_query_id: query.id });
+      if (query.chat) {
+        await this.bot.api.sendMessage(
+          query.chat.id,
+          CARD_REPLY_PROMPTS[prompt],
+          {
+            reply_markup: { force_reply: true },
+          },
+        );
+      }
+      return;
+    }
+    const actionId = decodeCardActionData(query.data);
+    if (!actionId) {
+      // Not ours: answer anyway, or the widget waits out its TIMEOUT.
+      await widgets.answerWidgetQuery({ widget_query_id: query.id });
+      return;
+    }
+    await handleCardTap({
+      gaia: this.gaia,
+      platform: this.platform,
+      platformUserId: query.from.id.toString(),
+      actionId,
+      show: async (result) => {
+        const settled = result.outcome === "done" ? result.card : null;
+        await widgets.answerWidgetQuery({
+          widget_query_id: query.id,
+          data: widgetAnswer(result.message, settled),
+        });
+        const state = widgetState(settled);
+        if (!state || !query.chat || query.message_id === undefined) return;
+        await widgets.editMessageWidgetData({
+          chat_id: query.chat.id,
+          message_id: query.message_id,
+          chat_data: state,
+        });
+      },
+    });
   }
 
   /** Starts long polling, retrying after 35 s on 409 Conflict. */
@@ -384,6 +510,10 @@ export class TelegramAdapter extends BaseBotAdapter {
         await new Promise<void>((r) => setTimeout(r, retryDelayMs));
       }
       await this.bot.start({
+        // Empty = Telegram's default set (all but chat_member and reactions),
+        // which includes widget_query. Explicit, because an omitted list keeps
+        // whatever this bot token was last configured with.
+        allowed_updates: [],
         onStart: () => this.adapterLogger.info("long_polling_started"),
       });
     };
@@ -431,10 +561,7 @@ export class TelegramAdapter extends BaseBotAdapter {
    * happen). Returns the sent message so callers can capture its id.
    */
   private async sendHtml(
-    send: (
-      text: string,
-      opts?: { parse_mode: "HTML" },
-    ) => Promise<Message.TextMessage>,
+    send: HtmlSend,
     html: string,
   ): Promise<Message.TextMessage> {
     try {
@@ -454,6 +581,61 @@ export class TelegramAdapter extends BaseBotAdapter {
     }
   }
 
+  /**
+   * Sends a card to a chat. In a private chat (widgets work only there in
+   * production) a card the widget can draw goes out as a GAIA-themed widget;
+   * everything else, and a widget Telegram refuses (a 400), as a rich message.
+   * Anything else (network, rate limit) re-throws to the normal failure path.
+   */
+  private async deliverCardTo(
+    chatId: number | string,
+    card: Card,
+    privateChat: boolean,
+  ): Promise<Pick<Message, "message_id">> {
+    const widget = privateChat ? renderCardWidget(card) : null;
+    if (!widget) return this.sendCard(chatId, card);
+    try {
+      return await widgetApi(this.bot.api).sendWidget({
+        chat_id: chatId,
+        ...widget,
+        allow_queries: true,
+      });
+    } catch (error) {
+      if (!(error instanceof GrammyError) || error.error_code !== 400)
+        throw error;
+      this.adapterLogger.warn("widget_send_failed", sanitizeErrorForLog(error));
+      return this.sendCard(chatId, card);
+    }
+  }
+
+  /**
+   * Sends a card as a rich message. Telegram refusing the content (a 400) falls
+   * back to the card's text, so the user still gets it; anything else (network,
+   * rate limit) re-throws to the normal failure path.
+   */
+  private async sendCard(
+    chatId: number | string,
+    card: Card,
+  ): Promise<Pick<Message, "message_id">> {
+    try {
+      return await this.bot.api.sendRichMessage(
+        chatId,
+        renderTelegramCard(card),
+      );
+    } catch (error) {
+      if (!(error instanceof GrammyError) || error.error_code !== 400)
+        throw error;
+      this.adapterLogger.warn(
+        "telegram_rich_card_fallback",
+        sanitizeErrorForLog(error),
+      );
+      return this.sendHtml(
+        (t, opts) => this.bot.api.sendMessage(chatId, t, opts),
+        renderForPlatform(renderCardText(card), "telegram"),
+      );
+    }
+  }
+
   protected async deliverOutbound(
     destinationId: string,
     text: string,
@@ -466,6 +648,15 @@ export class TelegramAdapter extends BaseBotAdapter {
       (t, opts) => this.bot.api.sendMessage(destinationId, t, opts),
       text,
     );
+  }
+
+  protected override async deliverOutboundCard(
+    destinationId: string,
+    card: Card,
+    isChannel: boolean,
+  ): Promise<void> {
+    // A Telegram DM's chat id is the user's id, so a non-channel delivery is a private chat.
+    await this.deliverCardTo(destinationId, card, !isChannel);
   }
 
   protected override async reactToMessage(
@@ -775,6 +966,9 @@ export class TelegramAdapter extends BaseBotAdapter {
           return outcome;
         },
         removePlaceholder,
+        async (card: Card) => {
+          await this.deliverCardTo(chatId, card, ctx.chat?.type === "private");
+        },
       );
     } finally {
       clearTyping();
@@ -901,7 +1095,7 @@ export class TelegramAdapter extends BaseBotAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Creates a {@link RichMessageTarget} from a Telegram context.
+   * Creates a {@link CardTarget} from a Telegram context.
    *
    * Captures the chat ID and API reference as plain values so the target
    * remains valid after the grammY context's lifecycle ends.
@@ -909,7 +1103,7 @@ export class TelegramAdapter extends BaseBotAdapter {
    * @param ctx - The grammY context.
    * @param userId - The Telegram user ID as a string.
    */
-  private createCtxTarget(ctx: Context, userId: string): RichMessageTarget {
+  private createCtxTarget(ctx: Context, userId: string): CardTarget {
     const chatId = ctx.chat?.id;
     const api = ctx.api;
     const isGroup = ctx.chat?.type !== "private";
@@ -922,7 +1116,7 @@ export class TelegramAdapter extends BaseBotAdapter {
         ? { username: ctx.from?.username, displayName }
         : undefined;
 
-    // Builds the SentMessage handle returned by send/sendEphemeral/sendRich:
+    // Builds the SentMessage handle returned by send/sendEphemeral/sendCard:
     // the message id plus an HTML-aware edit closure bound to the chat it
     // landed in. Shared so the three senders don't each repeat it.
     const buildSent = (targetChat: number, messageId: number): SentMessage => ({
@@ -974,20 +1168,12 @@ export class TelegramAdapter extends BaseBotAdapter {
         return buildSent(targetChat, msg.message_id);
       },
 
-      sendRich: async (richMsg: RichMessage): Promise<SentMessage> => {
+      sendCard: async (card: Card): Promise<SentMessage> => {
         if (!chatId) throw new Error("No chat ID");
-        // richMessageToMarkdown renders Telegram-flavoured CommonMark; convert
-        // it to HTML through the same chokepoint as every other outbound send.
-        const html = renderForPlatform(
-          richMessageToMarkdown(richMsg),
-          "telegram",
-        );
-        // In groups, DM rich content for privacy; in private chats, send normally
+        // In groups, DM the card for privacy; in private chats, send normally
         const targetChat = isGroup ? Number(userId) : chatId;
-        const msg = await this.sendHtml(
-          (t, opts) => api.sendMessage(targetChat, t, opts),
-          html,
-        );
+        // A group's card goes to the user's DM, so it is always a private chat.
+        const msg = await this.deliverCardTo(targetChat, card, true);
         if (isGroup) {
           await api.sendMessage(chatId, "I sent you a DM with the details.");
         }

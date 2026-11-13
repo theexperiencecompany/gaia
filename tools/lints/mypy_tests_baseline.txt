@@ -134,7 +134,6 @@ apps/api/tests/unit/agents/test_subagent_landing_wake.py	attr-defined
 apps/api/tests/unit/agents/test_subagent_landing_wake.py	typeddict-item
 apps/api/tests/unit/agents/test_vision_describe.py	arg-type
 apps/api/tests/unit/agents/test_vision_describe.py	attr-defined
-apps/api/tests/unit/agents/test_workflow_platform_delivery.py	arg-type
 apps/api/tests/unit/agents/tools/coding/test_edit_tool.py	arg-type
 apps/api/tests/unit/agents/tools/coding/test_edit_tool.py	misc
 apps/api/tests/unit/agents/tools/coding/test_edit_tool.py	return-value
@@ -372,10 +371,7 @@ apps/api/tests/unit/services/test_marketplace_service.py	call-arg
 apps/api/tests/unit/services/test_mcp_tool_result.py	arg-type
 apps/api/tests/unit/services/test_mcp_tool_result.py	index
 apps/api/tests/unit/services/test_nurture_service.py	arg-type
-apps/api/tests/unit/services/test_outbound_delivery.py	arg-type
-apps/api/tests/unit/services/test_outbound_delivery.py	attr-defined
 apps/api/tests/unit/services/test_payment_service_dodo_reconciliation.py	attr-defined
-apps/api/tests/unit/services/test_platform_message_service.py	attr-defined
 apps/api/tests/unit/services/test_provider_credentials_service.py	arg-type
 apps/api/tests/unit/services/test_provider_credentials_service.py	assignment
 apps/api/tests/unit/services/test_provider_credentials_service.py	index
@@ -408,8 +404,6 @@ apps/api/tests/unit/storage/test_user_todos_vfs.py	typeddict-item
 apps/api/tests/unit/storage/test_vfs_common.py	arg-type
 apps/api/tests/unit/storage/test_vfs_common.py	typeddict-item
 apps/api/tests/unit/storage/test_vfs_common.py	typeddict-unknown-key
-apps/api/tests/unit/tasks/test_reminder_tasks.py	arg-type
-apps/api/tests/unit/tasks/test_reminder_tasks.py	call-arg
 apps/api/tests/unit/tasks/test_reminder_tasks_paid_only_gate.py	arg-type
 apps/api/tests/unit/tasks/test_reminder_tasks_paid_only_gate.py	call-arg
 apps/api/tests/unit/test_wide_event_isolation.py	attr-defined

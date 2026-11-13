@@ -17,6 +17,12 @@ export const DEV_MODEL_OPTIONS: DevModelOption[] = [
     logo: "/images/icons/zai.png",
   },
   {
+    id: "gpt-5.6-luna",
+    name: "GPT-5.6 Luna (OpenAI direct)",
+    provider: "OpenAI",
+    logo: "/images/icons/chatgpt.webp",
+  },
+  {
     id: "minimax-m3",
     name: "MiniMax M3",
     provider: "MiniMax",

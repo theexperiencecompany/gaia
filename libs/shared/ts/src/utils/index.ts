@@ -11,6 +11,7 @@ export { flattenArgsPreview } from "./argsPreview";
 export type { JwtPayload, TokenStorage } from "./auth";
 export { isTokenExpired, parseJwt, shouldRefreshToken } from "./auth";
 export { discordInviteUrl, telegramBotUrl } from "./botLinks";
+export { describeCron } from "./cron";
 export type { DueChipTone } from "./dateUtils";
 export {
   formatDate,
@@ -19,7 +20,6 @@ export {
   formatRelativeTime,
   getDueChipTone,
   isOverdue,
-  parseCronToHuman,
   parseRelativeDateLabel,
 } from "./dateUtils";
 export {

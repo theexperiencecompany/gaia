@@ -39,11 +39,7 @@ export interface paths {
         put?: never;
         /**
          * Post Approval Decision
-         * @description Apply a button decision and resume the paused run.
-         *
-         *     ``resolve_approval`` raises :class:`ApprovalRequestNotFoundError` (410) or
-         *     :class:`ApprovalRequestForbiddenError` (403) — both ``AppError`` subclasses — so
-         *     late/duplicate or cross-user deliveries can't double-resolve a request.
+         * @description Apply a button decision and resume the paused run (see decide_approval_tap).
          */
         post: operations["approvals_post_approval_decision"];
         delete?: never;
@@ -313,6 +309,66 @@ export interface paths {
         get: operations["bot_check_auth_status"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bot/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register Card Capabilities
+         * @description Register the card tools a bot renders natively on its platform.
+         */
+        post: operations["bot_register_bot_capabilities"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bot/card-action": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Perform Card Action
+         * @description Perform the operation a tapped bot card button stands for.
+         */
+        post: operations["bot_perform_bot_card_action"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bot/cards-delivered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Cards Shown
+         * @description Record the cards a bot showed (or failed to show) in a conversation.
+         */
+        post: operations["bot_report_bot_cards"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6549,6 +6605,71 @@ export interface components {
              * @description Stable GAIA user id when linked, else null. Bots key PostHog on this so their events land on the same profile as web and API events.
              */
             user_id?: string | null;
+        };
+        /**
+         * BotCardActionOutcome
+         * @description How a tap ended, so the bot can tell the user and update the card.
+         * @enum {string}
+         */
+        BotCardActionOutcome: "done" | "already_done" | "expired" | "failed";
+        /**
+         * BotCardActionRequest
+         * @description A user tapped a button on a bot card; the button carried action_id.
+         */
+        BotCardActionRequest: {
+            /** Action Id */
+            action_id: string;
+            platform: components["schemas"]["ConversationSource"];
+            /** Platform User Id */
+            platform_user_id: string;
+        };
+        /**
+         * BotCardActionResult
+         * @description What the bot shows after a tap: the outcome, a short user-facing line, and the card to redraw.
+         */
+        BotCardActionResult: {
+            card?: components["schemas"]["ToolDataEntry"] | null;
+            /** Message */
+            message: string;
+            outcome: components["schemas"]["BotCardActionOutcome"];
+        };
+        /**
+         * BotCardCapabilities
+         * @description The card tools a bot renders natively, registered when it starts.
+         */
+        BotCardCapabilities: {
+            /** Card Tools */
+            card_tools: string[];
+            platform: components["schemas"]["ConversationSource"];
+        };
+        /**
+         * BotCardCapabilitiesRegistered
+         * @description How many card tools the platform now has registered.
+         */
+        BotCardCapabilitiesRegistered: {
+            /** Registered */
+            registered: number;
+        };
+        /**
+         * BotCardsRecorded
+         * @description How many reported cards were written into the conversation record.
+         */
+        BotCardsRecorded: {
+            /** Recorded */
+            recorded: number;
+        };
+        /**
+         * BotCardsReport
+         * @description The cards a bot showed (or failed to show) in one conversation.
+         */
+        BotCardsReport: {
+            /** Cards */
+            cards: components["schemas"]["ReportedBotCard"][];
+            /** Conversation Id */
+            conversation_id: string;
+            platform: components["schemas"]["ConversationSource"];
+            /** Platform User Id */
+            platform_user_id: string;
         };
         /**
          * BotChatRequest
@@ -13151,6 +13272,21 @@ export interface components {
             role: "user" | "assistant";
         };
         /**
+         * ReportedBotCard
+         * @description One card a bot tried to show: what it said, and whether the platform took it.
+         */
+        ReportedBotCard: {
+            /** Delivered */
+            delivered: boolean;
+            /**
+             * Text
+             * @description The card's text rendering, exactly what a text-only platform would show.
+             */
+            text: string;
+            /** Tool Name */
+            tool_name: string;
+        };
+        /**
          * ResetSessionRequest
          * @description Request model for resetting a bot session (starting a new conversation).
          */
@@ -16471,6 +16607,13 @@ export type Body_user_update_me = components['schemas']['Body_user_update_me'];
 export type Body_user_update_user_name = components['schemas']['Body_user_update_user_name'];
 export type Body_user_update_user_timezone = components['schemas']['Body_user_update_user_timezone'];
 export type BotAuthStatusResponse = components['schemas']['BotAuthStatusResponse'];
+export type BotCardActionOutcome = components['schemas']['BotCardActionOutcome'];
+export type BotCardActionRequest = components['schemas']['BotCardActionRequest'];
+export type BotCardActionResult = components['schemas']['BotCardActionResult'];
+export type BotCardCapabilities = components['schemas']['BotCardCapabilities'];
+export type BotCardCapabilitiesRegistered = components['schemas']['BotCardCapabilitiesRegistered'];
+export type BotCardsRecorded = components['schemas']['BotCardsRecorded'];
+export type BotCardsReport = components['schemas']['BotCardsReport'];
 export type BotChatRequest = components['schemas']['BotChatRequest'];
 export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
 export type BrowserImportRequest = components['schemas']['BrowserImportRequest'];
@@ -16823,6 +16966,7 @@ export type RegistrationPolicyRequest = components['schemas']['RegistrationPolic
 export type RegistrationPolicyResponse = components['schemas']['RegistrationPolicyResponse'];
 export type ReminderResponse = components['schemas']['ReminderResponse'];
 export type ReplyToMessageData = components['schemas']['ReplyToMessageData'];
+export type ReportedBotCard = components['schemas']['ReportedBotCard'];
 export type ResetSessionRequest = components['schemas']['ResetSessionRequest'];
 export type ResetSessionResponse = components['schemas']['ResetSessionResponse'];
 export type ResetWorkflowResponse = components['schemas']['ResetWorkflowResponse'];
@@ -17730,6 +17874,159 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BotAuthStatusResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    bot_register_bot_capabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotCardCapabilities"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotCardCapabilitiesRegistered"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    bot_perform_bot_card_action: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotCardActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotCardActionResult"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    bot_report_bot_cards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotCardsReport"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotCardsRecorded"];
                 };
             };
             /** @description Unprocessable Entity */

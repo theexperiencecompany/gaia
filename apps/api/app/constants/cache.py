@@ -202,6 +202,19 @@ WORKFLOW_LIMIT_NOTICE_TTL = ONE_DAY_TTL
 BOT_UPGRADE_LINK_PREFIX = "bot:upgrade-link:"
 BOT_UPGRADE_LINK_TTL = ONE_HOUR_TTL
 
+# What a button on a bot card does, stored under the opaque id the button
+# carries (app.services.bot.card_actions). A card is acted on within days, not
+# months; past this the button answers that it expired.
+BOT_CARD_ACTION_PREFIX = "bot:card-action:"
+BOT_CARD_ACTION_TTL = 7 * ONE_DAY_TTL
+# The card those buttons sit on, as it stands after each tap, so the bot redraws
+# it; kept as long as its buttons.
+BOT_CARD_PREFIX = "bot:card:"
+
+# The card tools each bot platform renders natively, as the bot registered them
+# on startup (app.services.bot.capabilities). No TTL: every bot start rewrites it.
+BOT_CARD_TOOLS_PREFIX = "bot:card-tools:"
+
 # Every tool call one run made, in order, keyed by the run's stream id. Outlives
 # the longest run (a parked approval) so the trace and a playbook write read it whole.
 RUN_RECORD_PREFIX = "run_record:"

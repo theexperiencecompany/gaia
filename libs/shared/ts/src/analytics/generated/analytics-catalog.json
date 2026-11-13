@@ -829,6 +829,40 @@
       }
     },
     {
+      "event": "bot:card_shown",
+      "class": "BotCardShown",
+      "owner": "server",
+      "domain": "bot",
+      "description": "A bot reported a card (connect button, approval, limit) it showed or failed to show.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A bot reported a card (connect button, approval, limit) it showed or failed to show.",
+        "properties": {
+          "platform": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Platform",
+            "type": "string"
+          },
+          "tool_name": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Tool Name",
+            "type": "string"
+          },
+          "delivered": {
+            "title": "Delivered",
+            "type": "boolean"
+          }
+        },
+        "required": ["platform", "tool_name", "delivered"],
+        "title": "BotCardShown",
+        "type": "object"
+      }
+    },
+    {
       "event": "bot:chat_opened",
       "class": "BotChatOpened",
       "owner": "server",

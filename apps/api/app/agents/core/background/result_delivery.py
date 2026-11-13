@@ -126,7 +126,7 @@ async def deliver_result(
     try:
         if run.todo_run is not None:
             await _record_todo_run_report(run, result_text, result_type, tool_data)
-            await deliver_todo_run_result(run, run.todo_run, result_text, result_type)
+            await deliver_todo_run_result(run, run.todo_run, result_text, result_type, tool_data)
             return None, None
         return await _narrate_and_deliver(
             run, result_text + outcome_note, result_type, tool_data, returned_note
@@ -302,7 +302,7 @@ async def deliver_message_to_conversation(
     )
     if is_bot_platform(source):
         delivered = await deliver_message_to_platform(
-            source, user_id, text, conversation_id=conversation_id
+            source, user_id, text, conversation_id=conversation_id, tool_data=cards
         )
         transport = "platform"
     else:
@@ -423,6 +423,7 @@ async def _narrate_and_deliver(
             message_id=bot_message.message_id,
             notification_text=notification_text,
             result_type=result_type,
+            tool_data=tool_data,
         )
         _capture_resolution(run, directive, "fallback_text" if is_react else "message")
         return None if is_react else notification_text, bot_message.message_id
@@ -432,7 +433,7 @@ async def _narrate_and_deliver(
     # web list excludes bot sources, so a WebSocket push there would be dropped).
     if is_bot_platform(conversation_source):
         delivered, transport = await _deliver_to_platform(
-            run, conversation_source, notification_text, is_react=is_react
+            run, conversation_source, notification_text, is_react=is_react, tool_data=tool_data
         )
     else:
         await _broadcast_and_defer_follow_ups(
@@ -489,6 +490,7 @@ async def _deliver_workflow_result(
     message_id: str,
     notification_text: str,
     result_type: str,
+    tool_data: list[ToolDataEntry] | None,
 ) -> None:
     """Route a workflow run's result: platform messages plus the in-app badge.
 
@@ -518,6 +520,7 @@ async def _deliver_workflow_result(
             workflow_id=run.workflow_id,
             notification_text=notification_text,
             origin=_delivery_origin(run),
+            tool_data=tool_data,
         ),
         in_app,
     )
@@ -529,8 +532,13 @@ async def _deliver_to_platform(
     notification_text: str,
     *,
     is_react: bool,
+    tool_data: list[ToolDataEntry] | None,
 ) -> tuple[bool, str]:
-    """Send the update over the conversation's bot platform; returns (delivered, transport)."""
+    """Send the update, then its cards, over the conversation's bot platform.
+
+    Returns (delivered, transport). A live run's tool_data is None: its cards
+    already reached the bot on the chat stream.
+    """
     user_id = run.user.user_id
     # None takes the same branches: every falsy path reassigns it before the return.
     delivered = False  # pragma: no mutate
@@ -561,6 +569,7 @@ async def _deliver_to_platform(
             user_id,
             notification_text,
             conversation_id=run.conversation_id,
+            tool_data=tool_data,
         )
     return delivered, transport
 

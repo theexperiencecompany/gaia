@@ -6,7 +6,7 @@
  * is the `GaiaClient` stream source and the platform send/edit callbacks, which
  * stand in for the platform SDK exactly as each adapter wires them.
  */
-import type { ApprovalRequestData } from "@gaia/shared";
+import type { ApprovalRequestData, ToolDataEntry } from "@gaia/shared";
 import {
   type GaiaClient,
   handleStreamingChat,
@@ -47,6 +47,8 @@ type StreamStep =
 const DISCARDED = { boundary: { discarded: true } } as const;
 const KEPT = { boundary: { discarded: false } } as const;
 
+const APPROVAL_SUMMARY = "Delete the production database";
+
 function streamingGaia(
   chunks: StreamStep[],
   approvalAfter?: number,
@@ -61,7 +63,7 @@ function streamingGaia(
         conversationId: string,
       ) => void | Promise<void>,
       _onError: unknown,
-      onApproval?: (data: ApprovalRequestData) => void | Promise<void>,
+      onToolData?: (entry: ToolDataEntry) => void | Promise<void>,
       onBoundary?: (discarded: boolean) => void | Promise<void>,
       onNotice?: (text: string) => void | Promise<void>,
     ) => {
@@ -91,19 +93,23 @@ function streamingGaia(
         }
         pendingText += step;
         await onChunk(step);
-        if (approvalAfter === i && onApproval) {
-          await onApproval({
-            approval_id: "a1",
-            tool_call_id: "t1",
-            gated_tool_name: "delete_everything",
-            integration_name: null,
-            summary: "Delete the production database",
-            args_preview: {},
-            status: "pending",
-            feedback: null,
-            timeout_seconds: 3600,
-            ...approval,
-          } as ApprovalRequestData);
+        if (approvalAfter === i && onToolData) {
+          await onToolData({
+            tool_name: "approval_request",
+            tool_category: "hil",
+            data: {
+              approval_id: "a1",
+              tool_call_id: "t1",
+              gated_tool_name: "delete_everything",
+              integration_name: null,
+              summary: APPROVAL_SUMMARY,
+              args_preview: {},
+              status: "pending",
+              feedback: null,
+              timeout_seconds: 3600,
+              ...approval,
+            } satisfies ApprovalRequestData,
+          });
         }
       }
       keepPendingText();
@@ -111,6 +117,7 @@ function streamingGaia(
       return full;
     },
     createLinkToken: async () => ({ authUrl: "https://gaia.test/link" }),
+    reportCardsDelivered: async () => undefined,
   } as unknown as GaiaClient;
 }
 
@@ -338,21 +345,20 @@ describe("handleStreamingChat delivery", () => {
   });
 
   it("does not overwrite an out-of-band approval prompt", async () => {
-    // The approval prompt posts via the adapter's `sendNewMessage`, moving that
-    // adapter's live-edit cursor onto the prompt on editing platforms; if the
-    // streamer kept editing "the current message" it'd overwrite the question.
+    // Without a native card sender the approval posts as text via `sendNewMessage`,
+    // moving the live-edit cursor onto it; editing "the current message" would overwrite it.
     const { bubbles } = await deliver(
       "telegram",
       ["Checking that first. ", "Now the rest of the answer."],
       { approvalAfter: 0 },
     );
 
-    const prompt = bubbles.find((b) => b.includes("Approval needed"));
+    const prompt = bubbles.find((b) => b.includes(APPROVAL_SUMMARY));
     expect(prompt).toBeDefined();
-    expect(prompt).toContain("Delete the production database");
+    expect(prompt).toContain("to approve");
     // Whatever streamed after the prompt must land in its own message.
     expect(bubbles.at(-1)).toContain("Now the rest of the answer");
-    expect(bubbles.at(-1)).not.toContain("Approval needed");
+    expect(bubbles.at(-1)).not.toContain(APPROVAL_SUMMARY);
   });
 
   it("shows how long ago the approval was asked", async () => {
@@ -363,7 +369,7 @@ describe("handleStreamingChat delivery", () => {
       approval: { age_seconds: 3700 },
     });
 
-    const prompt = bubbles.find((b) => b.includes("Approval needed"));
+    const prompt = bubbles.find((b) => b.includes(APPROVAL_SUMMARY));
     expect(prompt).toBeDefined();
     expect(prompt).toContain("asked 1h ago");
   });

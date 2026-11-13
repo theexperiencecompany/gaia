@@ -175,7 +175,6 @@ libs/shared/ts/src/bots/types/index.ts:BotIntegrationInfo=IntegrationInfo
 libs/shared/ts/src/bots/types/index.ts:BotTodo=TodoModel
 libs/shared/ts/src/bots/types/index.ts:ChatRequest=BotChatRequest
 libs/shared/ts/src/bots/types/index.ts:RedeemedLinkCode=RedeemLinkCodeResponse
-libs/shared/ts/src/bots/types/index.ts:RichMessage=SupportRequestCreate
 libs/shared/ts/src/chat/approvals.types.ts:ApprovalDecisionPayload=ApprovalDecisionRequest
 libs/shared/ts/src/chat/types.ts:ApiToolData=ToolDataEntry
 libs/shared/ts/src/chat/types.ts:CalendarDeleteOptions=EventDeleteRequest

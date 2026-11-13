@@ -1719,6 +1719,156 @@
         "title": "BotAuthStatusResponse",
         "type": "object"
       },
+      "BotCardActionOutcome": {
+        "description": "How a tap ended, so the bot can tell the user and update the card.",
+        "enum": [
+          "done",
+          "already_done",
+          "expired",
+          "failed"
+        ],
+        "title": "BotCardActionOutcome",
+        "type": "string"
+      },
+      "BotCardActionRequest": {
+        "description": "A user tapped a button on a bot card; the button carried action_id.",
+        "properties": {
+          "action_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Action Id",
+            "type": "string"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/ConversationSource"
+          },
+          "platform_user_id": {
+            "minLength": 1,
+            "title": "Platform User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "platform_user_id",
+          "action_id"
+        ],
+        "title": "BotCardActionRequest",
+        "type": "object"
+      },
+      "BotCardActionResult": {
+        "description": "What the bot shows after a tap: the outcome, a short user-facing line, and the card to redraw.",
+        "properties": {
+          "card": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ToolDataEntry"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/BotCardActionOutcome"
+          }
+        },
+        "required": [
+          "outcome",
+          "message"
+        ],
+        "title": "BotCardActionResult",
+        "type": "object"
+      },
+      "BotCardCapabilities": {
+        "description": "The card tools a bot renders natively, registered when it starts.",
+        "properties": {
+          "card_tools": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Card Tools",
+            "type": "array"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/ConversationSource"
+          }
+        },
+        "required": [
+          "platform",
+          "card_tools"
+        ],
+        "title": "BotCardCapabilities",
+        "type": "object"
+      },
+      "BotCardCapabilitiesRegistered": {
+        "description": "How many card tools the platform now has registered.",
+        "properties": {
+          "registered": {
+            "title": "Registered",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "registered"
+        ],
+        "title": "BotCardCapabilitiesRegistered",
+        "type": "object"
+      },
+      "BotCardsRecorded": {
+        "description": "How many reported cards were written into the conversation record.",
+        "properties": {
+          "recorded": {
+            "title": "Recorded",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "recorded"
+        ],
+        "title": "BotCardsRecorded",
+        "type": "object"
+      },
+      "BotCardsReport": {
+        "description": "The cards a bot showed (or failed to show) in one conversation.",
+        "properties": {
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/ReportedBotCard"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Cards",
+            "type": "array"
+          },
+          "conversation_id": {
+            "minLength": 1,
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/ConversationSource"
+          },
+          "platform_user_id": {
+            "minLength": 1,
+            "title": "Platform User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "platform_user_id",
+          "conversation_id",
+          "cards"
+        ],
+        "title": "BotCardsReport",
+        "type": "object"
+      },
       "BotChatRequest": {
         "description": "Request model for bot chat messages.",
         "properties": {
@@ -15579,6 +15729,35 @@
         "title": "ReplyToMessageData",
         "type": "object"
       },
+      "ReportedBotCard": {
+        "description": "One card a bot tried to show: what it said, and whether the platform took it.",
+        "properties": {
+          "delivered": {
+            "title": "Delivered",
+            "type": "boolean"
+          },
+          "text": {
+            "description": "The card's text rendering, exactly what a text-only platform would show.",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "tool_name": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Tool Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_name",
+          "text",
+          "delivered"
+        ],
+        "title": "ReportedBotCard",
+        "type": "object"
+      },
       "ResetSessionRequest": {
         "description": "Request model for resetting a bot session (starting a new conversation).",
         "properties": {
@@ -22462,7 +22641,7 @@
     },
     "/api/v1/approvals/{approval_id}/decision": {
       "post": {
-        "description": "Apply a button decision and resume the paused run.\n\n``resolve_approval`` raises :class:`ApprovalRequestNotFoundError` (410) or\n:class:`ApprovalRequestForbiddenError` (403) \u2014 both ``AppError`` subclasses \u2014 so\nlate/duplicate or cross-user deliveries can't double-resolve a request.",
+        "description": "Apply a button decision and resume the paused run (see decide_approval_tap).",
         "operationId": "approvals_post_approval_decision",
         "parameters": [
           {
@@ -23076,6 +23255,192 @@
           }
         },
         "summary": "Check Auth Status",
+        "tags": [
+          "Bot"
+        ]
+      }
+    },
+    "/api/v1/bot/capabilities": {
+      "post": {
+        "description": "Register the card tools a bot renders natively on its platform.",
+        "operationId": "bot_register_bot_capabilities",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BotCardCapabilities"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BotCardCapabilitiesRegistered"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Register Card Capabilities",
+        "tags": [
+          "Bot"
+        ]
+      }
+    },
+    "/api/v1/bot/card-action": {
+      "post": {
+        "description": "Perform the operation a tapped bot card button stands for.",
+        "operationId": "bot_perform_bot_card_action",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BotCardActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BotCardActionResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Perform Card Action",
+        "tags": [
+          "Bot"
+        ]
+      }
+    },
+    "/api/v1/bot/cards-delivered": {
+      "post": {
+        "description": "Record the cards a bot showed (or failed to show) in a conversation.",
+        "operationId": "bot_report_bot_cards",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BotCardsReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BotCardsRecorded"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Report Cards Shown",
         "tags": [
           "Bot"
         ]

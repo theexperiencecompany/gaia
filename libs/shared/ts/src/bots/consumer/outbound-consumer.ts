@@ -11,6 +11,10 @@
  */
 
 import { type Channel, type ConsumeMessage, connect } from "amqplib";
+import type { ReportedBotCard } from "../../api/generated";
+import { deliveryEntry, type ToolCard, toolCardsFor } from "../cards/registry";
+import type { ReportCardDeliveries } from "../cards/report";
+import type { Card } from "../cards/types";
 import {
   DELIVERY_FAILURE_KIND,
   type DeliveryFailure,
@@ -76,6 +80,22 @@ type DeliverFileFn = (
 ) => Promise<void>;
 
 /**
+ * Sends one card to a platform destination, addressed like {@link DeliverFn}.
+ * The adapter renders it in the platform's native card format, or as text.
+ */
+type DeliverCardFn = (
+  destinationId: string,
+  card: Card,
+  isChannel: boolean,
+) => Promise<void>;
+
+/** How this consumer shows an envelope's tool cards and reports what was shown. */
+export interface OutboundCardDelivery {
+  deliver: DeliverCardFn;
+  report: ReportCardDeliveries;
+}
+
+/**
  * Attaches an emoji reaction to an existing platform message. `isChannel`
  * tells the adapter whether `destinationId` is a channel/group id or a user
  * id, same as the text path.
@@ -113,6 +133,7 @@ export class OutboundConsumer {
     private readonly deliverFile: DeliverFileFn,
     gaiaApiUrl: string | undefined,
     private readonly reportFailure: ReportDeliveryFailure,
+    private readonly cards: OutboundCardDelivery,
     deliverReaction?: DeliverReactionFn,
     private readonly notifications?: OutboundNotifications,
   ) {
@@ -307,6 +328,7 @@ export class OutboundConsumer {
           destination_hash: hashLogIdentifier(env.destination_id),
           has_attachment: Boolean(env.attachment),
           has_reaction: Boolean(env.reaction),
+          tool_data_count: env.tool_data.length,
         });
 
         if (env.reaction) {
@@ -333,15 +355,7 @@ export class OutboundConsumer {
           return;
         }
 
-        await this.handleText(
-          channel,
-          msg,
-          env.id,
-          env.destination_id,
-          env.text,
-          env.text_parts,
-          env.is_channel,
-        );
+        await this.handleText(channel, msg, env);
       },
     );
   }
@@ -484,22 +498,20 @@ export class OutboundConsumer {
   }
 
   /**
-   * Text path. The schema's refine guarantees text, text_parts, attachment, or
-   * reaction; a multi-bubble notification arrives as ordered `text_parts`
-   * (one logical message) and its bubbles MUST be sent in order, so they are
-   * delivered sequentially within this single handle.
+   * Text and card path. The schema's refine guarantees text, text_parts, attachment, reaction,
+   * or tool_data; a multi-bubble notification arrives as ordered `text_parts` (one logical
+   * message) and its bubbles MUST be sent in order, so they are delivered sequentially within
+   * this single handle, followed by the envelope's cards.
    */
   private async handleText(
     channel: Channel,
     msg: ConsumeMessage,
-    id: string,
-    destinationId: string,
-    text: string | null | undefined,
-    textParts: string[] | null | undefined,
-    isChannel: boolean,
+    env: OutboundMessageEnvelope,
   ): Promise<void> {
-    const sources = resolveSources(text, textParts);
-    if (sources.length === 0) {
+    const { id, destination_id: destinationId, is_channel: isChannel } = env;
+    const sources = resolveSources(env.text, env.text_parts);
+    const toolCards = env.tool_data.flatMap(toolCardsFor);
+    if (sources.length === 0 && toolCards.length === 0) {
       wideLog.warning("outbound_envelope_empty", { envelope_id: id });
       wideLog.fail(BOT_FAILURE_REASON.ENVELOPE_REJECTED);
       this.deadLetter(channel, msg, {
@@ -515,21 +527,38 @@ export class OutboundConsumer {
     // Track delivered count by reference so a throw mid-send still exposes how
     // many chunks already went out — a partial send must NOT requeue.
     const progress = { delivered: 0 };
+    const shown: ReportedBotCard[] = [];
     try {
       if (
         this.notifications &&
         (await this.notifications.windowClosed(destinationId, isChannel))
       ) {
+        // A template carries text only, so the cards ride it as text.
         await this.deliverAsNotification(
           this.notifications,
           destinationId,
-          sources,
+          [...sources, ...toolCards.map((toolCard) => toolCard.text)],
           progress,
         );
+        if (progress.delivered > 0) {
+          shown.push(
+            ...toolCards.map((toolCard) => deliveryEntry(toolCard, true)),
+          );
+        }
       } else {
         await this.deliverSources(destinationId, sources, progress, isChannel);
+        await this.deliverCards(
+          destinationId,
+          toolCards,
+          shown,
+          progress,
+          isChannel,
+        );
       }
-      wideLog.set({ delivered_count: progress.delivered });
+      wideLog.set({
+        delivered_count: progress.delivered,
+        cards_shown: shown.length,
+      });
       // `redelivered` only ever appeared on the error branches, so a duplicate
       // that succeeded — the exact case the at-least-once queue produces — was
       // indistinguishable from a first delivery in Loki.
@@ -550,6 +579,7 @@ export class OutboundConsumer {
         return;
       }
       this.settle(channel, () => channel.ack(msg));
+      this.reportShownCards(env, shown);
     } catch (err) {
       wideLog.set({ delivered_count: progress.delivered });
       const reason = recordBotFailure("outbound_delivery_failed", err, {
@@ -566,6 +596,7 @@ export class OutboundConsumer {
         !msg.fields.redelivered;
       wideLog.set({ requeued: requeue });
       if (requeue) {
+        // The retry reports this envelope's cards; reporting now would record them twice.
         this.settle(channel, () => channel.nack(msg, false, true));
         return;
       }
@@ -577,7 +608,53 @@ export class OutboundConsumer {
         is_channel: isChannel,
         envelope_id: id,
       });
+      this.reportShownCards(env, [
+        ...shown,
+        ...toolCards
+          .slice(shown.length)
+          .map((toolCard) => deliveryEntry(toolCard, false)),
+      ]);
     }
+  }
+
+  /**
+   * Sends each card after the text, in order, recording each one the platform accepted.
+   * A refused card throws into the text path's failure handling, like a refused chunk.
+   */
+  private async deliverCards(
+    destinationId: string,
+    toolCards: ToolCard[],
+    shown: ReportedBotCard[],
+    progress: { delivered: number },
+    isChannel: boolean,
+  ): Promise<void> {
+    for (const toolCard of toolCards) {
+      await sendHonouringRateLimit(() =>
+        this.cards.deliver(destinationId, toolCard.card, isChannel),
+      );
+      progress.delivered += 1;
+      shown.push(deliveryEntry(toolCard, true));
+    }
+  }
+
+  /**
+   * Reports the envelope's final card outcomes so the agent's record of the conversation
+   * matches the user's screen, under the account the API named for the message (a
+   * channel id names no user, so the envelope carries one).
+   */
+  private reportShownCards(
+    env: OutboundMessageEnvelope,
+    shown: ReportedBotCard[],
+  ): void {
+    if (!env.conversation_id || shown.length === 0) return;
+    if (!env.platform_user_id) {
+      wideLog.warning("card_report_skipped_no_user", {
+        envelope_id: env.id,
+        card_count: shown.length,
+      });
+      return;
+    }
+    this.cards.report(env.platform_user_id, env.conversation_id, shown);
   }
 
   /**

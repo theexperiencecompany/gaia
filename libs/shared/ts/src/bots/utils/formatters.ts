@@ -392,6 +392,9 @@ export function convertToImessageText(text: string): string {
       .replaceAll(/`([^`\n]+)`/g, "$1")
       .replaceAll(/\[([^\]]{1,500})\]\(([^)]{1,2048})\)/g, "$1 ($2)")
       .replaceAll(/^([ \t]*)[*\-+][ \t]+/gm, "$1• ")
+      // Italics only where they are emphasis: never snake_case, a URL's `_`, or `2 * 3`.
+      .replaceAll(/(^|[^\w*])\*(?!\s)([^*\n]+?)(?<!\s)\*(?![\w*])/gm, "$1$2")
+      .replaceAll(/(^|\W)_(?!\s)([^_\n]+?)(?<!\s)_(?!\w)/gm, "$1$2")
       .replaceAll(/^>[ \t]*/gm, ""),
   );
 }
@@ -431,7 +434,7 @@ export const PLATFORM_MARKDOWN: Record<PlatformName, (text: string) => string> =
 /**
  * Renders outbound text into the target platform's Markdown dialect.
  *
- * The single chokepoint used by adapter non-streaming sends (RichMessageTarget
+ * The single chokepoint used by adapter non-streaming sends (CardTarget
  * ``send``/``sendEphemeral``/``edit``, context-menu and command replies). Keeps
  * conversion out of the adapters: they call this one shared helper instead of
  * their platform-specific ``convertTo<Platform>Markdown``.

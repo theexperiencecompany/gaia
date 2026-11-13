@@ -12,7 +12,7 @@
  *     return makeGaiaSharedMock("whatsapp", {
  *       streamingDefaults: { whatsapp: { editIntervalMs: 2000, streaming: false, platform: "whatsapp" } },
  *       converters: { convertToWhatsAppMarkdown: vi.fn((t: string) => t) },
- *       defaultRichMarkdown: "*GAIA Help*\nUse /gaia to chat",
+ *       defaultCardText: "*GAIA Help*\nUse /gaia to chat",
  *     });
  *   });
  */
@@ -22,10 +22,20 @@ import {
   type AnalyticsId,
   platformIdentity,
 } from "../../../../../libs/shared/ts/src/analytics";
+import * as cardInvoke from "../../../../../libs/shared/ts/src/bots/cards/invoke";
+import {
+  codeMarkdown,
+  listMarkdown,
+  quoteMarkdown,
+} from "../../../../../libs/shared/ts/src/bots/cards/render-text";
 import {
   consumeInboundLinkCode,
   redeemLinkCode,
 } from "../../../../../libs/shared/ts/src/bots/link-codes";
+import {
+  escapeHtml,
+  escapeHtmlAttr,
+} from "../../../../../libs/shared/ts/src/bots/utils/formatters";
 import { REACTION_OUTCOME } from "../../../../../libs/shared/ts/src/bots/utils/reaction-outcome";
 
 interface GaiaSharedMockOptions {
@@ -33,8 +43,8 @@ interface GaiaSharedMockOptions {
   streamingDefaults: Record<string, unknown>;
   /** Platform-specific converter mocks to merge into the returned object */
   converters?: Record<string, ReturnType<typeof vi.fn>>;
-  /** Return value of the richMessageToMarkdown mock */
-  defaultRichMarkdown?: string;
+  /** Return value of the renderCardText mock */
+  defaultCardText?: string;
 }
 
 /**
@@ -48,7 +58,7 @@ export function makeGaiaSharedMock(
   const {
     streamingDefaults,
     converters = {},
-    defaultRichMarkdown = "**GAIA**\nHello",
+    defaultCardText = "**GAIA**\nHello",
   } = options;
 
   const formatBotErrorImpl = (err: unknown): string =>
@@ -188,7 +198,7 @@ export function makeGaiaSharedMock(
     // Shared non-streaming chokepoint; mocked as identity here (returns raw text) —
     // real conversion is covered by the shared formatters tests.
     renderForPlatform: vi.fn((text: string) => text),
-    richMessageToMarkdown: vi.fn().mockReturnValue(defaultRichMarkdown),
+    renderCardText: vi.fn().mockReturnValue(defaultCardText),
     parseTextArgs: vi.fn((text: string) => ({
       subcommand: text.split(" ")[0] || undefined,
     })),
@@ -226,6 +236,14 @@ export function makeGaiaSharedMock(
         ? { subcommand: (raw ?? "").trim().split(/\s+/)[0] || "list" }
         : {},
     ),
+    // The real card helpers: pure functions that decide which buttons a native
+    // renderer draws and how a tap's wire id reads, so card assertions are production's.
+    ...cardInvoke,
+    codeMarkdown,
+    listMarkdown,
+    quoteMarkdown,
+    escapeHtml,
+    escapeHtmlAttr,
     ...converters,
   };
 }

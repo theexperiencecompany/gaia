@@ -80,6 +80,7 @@ def _graph_run(
     expired: bool = False,
     execution_mode: str | None = None,
     frontend: str = _FAKE_FRONTEND,
+    stream_id: str | None = None,
 ) -> Iterator[MagicMock]:
     """Run the prompt inside a graph run of category, yielding its stream writer.
 
@@ -95,16 +96,12 @@ def _graph_run(
     configurable = {"source_category": category}
     if execution_mode is not None:
         configurable["execution_mode"] = execution_mode
-    config_patch = (
-        patch(
-            "app.utils.integration_checker.get_config",
-            side_effect=RuntimeError("no runnable context"),
-        )
-        if category is None
-        else patch(
-            "app.utils.integration_checker.get_config",
-            return_value={"configurable": configurable},
-        )
+    if stream_id is not None:
+        configurable["stream_id"] = stream_id
+    # No runnable context reads as an empty config, exactly as current_run_config returns it.
+    config_patch = patch(
+        "app.utils.integration_checker.current_run_config",
+        return_value={} if category is None else {"configurable": configurable},
     )
     with (
         config_patch,
@@ -114,7 +111,7 @@ def _graph_run(
             AsyncMock(return_value=connect_url),
         ),
         _mcp_oauth(_known_auth_url()),
-        patch("app.utils.integration_checker.settings") as mock_settings,
+        patch("app.services.connect_link_service.settings") as mock_settings,
         patch.object(user_integration_repository, "is_expired", AsyncMock(side_effect=_is_expired)),
         patch.object(user_integration_repository, "get_for_user", AsyncMock(return_value=None)),
     ):
@@ -296,8 +293,8 @@ class TestStandaloneMcpAuthorization:
             )
 
         assert _MCP_AUTH_URL in bot_message
-        assert "expires after about 10 minutes" in bot_message
-        assert "1 hour" not in bot_message
+        assert "valid for 10 minutes" in bot_message
+        assert "60 minutes" not in bot_message
         assert _MAGIC_LINK not in bot_message
 
     async def test_token_only_mcp_says_so_and_never_mints_a_connect_link(self) -> None:
@@ -370,10 +367,12 @@ class TestExactCopyPerBranch:
             "The user's PostHog connection needs fresh authorization; they need to reconnect "
             "to refresh access. This integration authenticates with an API key, so no "
             "standalone authorization URL exists. This is a background run and no user is "
-            "present to enter it, so retrying PostHog this run cannot succeed. Record in your "
-            "result that the PostHog connection needs a refresh and that the user must enter "
-            f"the API key at {_FAKE_FRONTEND}/integrations, then carry on with the rest of the "
-            "task."
+            "present to reconnect it now, so retrying PostHog this run cannot succeed. A "
+            f"reconnect button linking to {_FAKE_FRONTEND}/integrations (the integrations page; "
+            "they must be signed in to GAIA) is attached to this run's result and is delivered "
+            "to the user with it; they enter the API key there to reconnect PostHog. Record in "
+            "your result that the PostHog connection needs a refresh and that the button is "
+            "attached, then carry on with the rest of the task."
         )
 
     async def test_background_classification_failure(self) -> None:
@@ -390,10 +389,13 @@ class TestExactCopyPerBranch:
         assert msg == (
             "The user's PostHog connection needs fresh authorization; they need to reconnect "
             "to refresh access. No standalone authorization URL is available for this "
-            "integration. This is a background run and no user is present, so retrying PostHog "
-            "this run cannot succeed. Record in your result that the PostHog connection needs "
-            f"a refresh (the user can reconnect it at {_FAKE_FRONTEND}/integrations), then "
-            "carry on with the rest of the task."
+            "integration right now. This is a background run and no user is present to "
+            "reconnect it now, so retrying PostHog this run cannot succeed. A reconnect button "
+            f"linking to {_FAKE_FRONTEND}/integrations (the integrations page; they must be "
+            "signed in to GAIA) is attached to this run's result and is delivered to the user "
+            "with it; they reconnect PostHog there. Record in your result that the PostHog "
+            "connection needs a refresh and that the button is attached, then carry on with the "
+            "rest of the task."
         )
 
     async def test_ui_oauth(self) -> None:
@@ -454,10 +456,12 @@ class TestExactCopyPerBranch:
             )
         assert msg == (
             "The user's PostHog connection needs fresh authorization; they need to reconnect "
-            "to refresh access. The user is on a text-only platform (no UI). Include this "
-            "standalone authorization URL verbatim in your result so the comms agent can relay "
-            "it to the user, and tell them to open it soon because it expires after about 10 "
-            f"minutes: {_MCP_AUTH_URL}"
+            "to refresh access. The user is on a messaging app. The system has sent them a "
+            f"reconnect button as its own message, linking to {_MCP_AUTH_URL} (single use, "
+            "valid for 10 minutes); they reconnect PostHog there. They see it directly, so refer "
+            "to it in your reply; repeating the link is optional. Nothing more can be done with "
+            "PostHog until they do, so do not call any PostHog tool again this run; finish the "
+            "rest of the task and say what is waiting on them."
         )
 
     async def test_bot_token_only(self) -> None:
@@ -474,9 +478,13 @@ class TestExactCopyPerBranch:
         assert msg == (
             "The user's PostHog connection needs fresh authorization; they need to reconnect "
             "to refresh access. This integration authenticates with an API key, so no "
-            "standalone authorization URL exists. The user is on a text-only platform (no UI); "
-            f"ask them to open {_FAKE_FRONTEND}/integrations and enter the API key to connect "
-            "PostHog there."
+            "standalone authorization URL exists. The user is on a messaging app. The system has "
+            "sent them a reconnect button as its own message, linking to "
+            f"{_FAKE_FRONTEND}/integrations (the integrations page; they must be signed in to "
+            "GAIA); they enter the API key there to reconnect PostHog. They see it directly, so "
+            "refer to it in your reply; repeating the link is optional. Nothing more can be done "
+            "with PostHog until they do, so do not call any PostHog tool again this run; finish "
+            "the rest of the task and say what is waiting on them."
         )
 
     async def test_bot_unavailable(self) -> None:
@@ -490,8 +498,12 @@ class TestExactCopyPerBranch:
         assert msg == (
             "The user's PostHog connection needs fresh authorization; they need to reconnect "
             "to refresh access. No standalone authorization URL is available for this "
-            "integration. The user is on a text-only platform (no UI); ask them to open "
-            f"{_FAKE_FRONTEND}/integrations and reconnect PostHog there."
+            "integration right now. The user is on a messaging app. The system has sent them a "
+            f"reconnect button as its own message, linking to {_FAKE_FRONTEND}/integrations (the "
+            "integrations page; they must be signed in to GAIA); they reconnect PostHog there. "
+            "They see it directly, so refer to it in your reply; repeating the link is optional. "
+            "Nothing more can be done with PostHog until they do, so do not call any PostHog "
+            "tool again this run; finish the rest of the task and say what is waiting on them."
         )
 
     async def test_bot_falls_back_to_a_connect_link_when_oauth_url_is_missing(self) -> None:
@@ -501,9 +513,12 @@ class TestExactCopyPerBranch:
             )
         assert msg == (
             "The user's PostHog connection needs fresh authorization; they need to reconnect "
-            "to refresh access. The user is on a text-only platform (no UI). Include this URL "
-            "verbatim in your result so the comms agent can relay it to the user, and tell "
-            f"them it is valid for 1 hour: {_MAGIC_LINK}"
+            "to refresh access. The user is on a messaging app. The system has sent them a "
+            f"reconnect button as its own message, linking to {_MAGIC_LINK} (single use, valid "
+            "for 60 minutes); they reconnect PostHog there. They see it directly, so refer to it "
+            "in your reply; repeating the link is optional. Nothing more can be done with "
+            "PostHog until they do, so do not call any PostHog tool again this run; finish the "
+            "rest of the task and say what is waiting on them."
         )
 
     async def test_ui_treats_a_missing_oauth_url_as_no_url(self) -> None:
@@ -643,6 +658,10 @@ class TestAddAccountPrompt:
             # The primary first, so the card reads the way the user thinks of them.
             "connected_accounts": ["Work", "me@gmail.com"],
             "reconnect_account": None,
+            "needs_api_key": False,
+            # The UI card runs its own connect flow, so it carries no link.
+            "connect_url": None,
+            "connect_url_valid_minutes": None,
         }
         lookup.assert_awaited_once_with(_USER, _INTEGRATION_ID)
         assert msg == (
@@ -660,7 +679,11 @@ class TestAddAccountPrompt:
             )
 
         assert msg.startswith("The user wants to add another Gmail account;")
-        assert msg.endswith(f"valid for 1 hour: {_MAGIC_LINK}")
+        assert (
+            "The system has sent them a button to add the account as its own message, linking "
+            f"to {_MAGIC_LINK} (single use, valid for 60 minutes); they add another account to "
+            "Gmail there."
+        ) in msg
 
     async def test_a_bot_without_a_link_is_sent_to_the_integrations_page(self) -> None:
         with _graph_run("bot", connect_url=None):
@@ -668,9 +691,10 @@ class TestAddAccountPrompt:
                 "gmail", "Gmail", "user1", mode=ConnectMode.ADD_ACCOUNT
             )
 
-        assert msg.endswith(
-            f"Ask them to open {_FAKE_FRONTEND}/integrations and add another account to Gmail there."
-        )
+        assert (
+            f"linking to {_FAKE_FRONTEND}/integrations (the integrations page; they must be "
+            "signed in to GAIA); they add another account to Gmail there."
+        ) in msg
 
     async def test_other_modes_stream_no_add_account_flag(self) -> None:
         with _graph_run("ui") as writer:
@@ -706,6 +730,9 @@ class TestAccountReconnectPrompt:
             "work@acme.com again to keep using it.",
             "connected_accounts": [],
             "reconnect_account": {"id": "ca_work", "name": "work@acme.com"},
+            "needs_api_key": False,
+            "connect_url": None,
+            "connect_url_valid_minutes": None,
         }
         assert msg == (
             "The user's Gmail account work@acme.com lost its connection and must be signed in "
@@ -725,10 +752,13 @@ class TestAccountReconnectPrompt:
         assert msg == (
             "The user's Gmail account work@acme.com lost its connection and must be signed in "
             f"again. {ACCOUNT_NEEDS_RECONNECT_HINT} This is a background run and no user is "
-            "present to reconnect it, so retrying Gmail this run cannot succeed. Record in your "
-            "result that the Gmail account work@acme.com lost its connection (the user can "
-            f"reconnect it at {_FAKE_FRONTEND}/integrations), then carry on with the rest of "
-            "the task."
+            "present to reconnect it now, so retrying Gmail this run cannot succeed. A reconnect "
+            "button whose single-use sign-in link is minted fresh when the result is sent (if it "
+            "has expired by the time they open it, they can reconnect it at "
+            f"{_FAKE_FRONTEND}/integrations) is attached to this run's result and is delivered "
+            "to the user with it; they reconnect Gmail there. Record in your result that the "
+            "Gmail account work@acme.com lost its connection and that the button is attached, "
+            "then carry on with the rest of the task."
         )
 
     async def test_a_bot_link_signs_that_account_back_in(self) -> None:
@@ -742,7 +772,7 @@ class TestAccountReconnectPrompt:
             )
 
         mint.assert_awaited_once_with("user1", "gmail", "ca_work")
-        assert msg.endswith(f"valid for 1 hour: {_MAGIC_LINK}")
+        assert f"linking to {_MAGIC_LINK} (single use, valid for 60 minutes)" in msg
 
 
 class TestExactCopyPerMode:
@@ -778,9 +808,12 @@ class TestExactCopyPerMode:
         assert msg == (
             "The user's PostHog connection needs fresh authorization; they need to reconnect "
             "to refresh access. This is a background run and no user is present to reconnect "
-            "it, so retrying PostHog this run cannot succeed. Record in your result that the "
-            "PostHog connection needs a refresh (the user can reconnect it at "
-            f"{_FAKE_FRONTEND}/integrations), then carry on with the rest of the task."
+            "it now, so retrying PostHog this run cannot succeed. A reconnect button whose "
+            "single-use sign-in link is minted fresh when the result is sent (if it has expired "
+            f"by the time they open it, they can reconnect it at {_FAKE_FRONTEND}/integrations) "
+            "is attached to this run's result and is delivered to the user with it; they "
+            "reconnect PostHog there. Record in your result that the PostHog connection needs a "
+            "refresh and that the button is attached, then carry on with the rest of the task."
         )
 
     async def test_adding_an_account_in_the_background(self) -> None:
@@ -791,9 +824,13 @@ class TestExactCopyPerMode:
         assert msg == (
             "The user wants to add another Gmail account; their current accounts stay "
             "connected. This is a background run and no user is present to add another "
-            "account to it, so retrying Gmail this run cannot succeed. Record in your result "
-            "that another Gmail account was not added (the user can add another account to it "
-            f"at {_FAKE_FRONTEND}/integrations), then carry on with the rest of the task."
+            "account to it now, so retrying Gmail this run cannot succeed. A button to add the "
+            "account whose single-use sign-in link is minted fresh when the result is sent (if "
+            "it has expired by the time they open it, they can add another account to it at "
+            f"{_FAKE_FRONTEND}/integrations) is attached to this run's result and is delivered "
+            "to the user with it; they add another account to Gmail there. Record in your "
+            "result that another Gmail account was not added and that the button is attached, "
+            "then carry on with the rest of the task."
         )
 
 
@@ -828,9 +865,12 @@ class TestBackgroundRunPrompt:
 
         assert msg == (
             "Gmail needs to be connected. This is a background run and no user is present to "
-            "connect it, so retrying Gmail this run cannot succeed. Record in your result that "
-            "Gmail is not connected (the user can connect it at "
-            "https://GAIA.BOX/integrations), then carry on with the rest of the task."
+            "connect it now, so retrying Gmail this run cannot succeed. A connect button whose "
+            "single-use sign-in link is minted fresh when the result is sent (if it has expired "
+            "by the time they open it, they can connect it at https://GAIA.BOX/integrations) is "
+            "attached to this run's result and is delivered to the user with it; they connect "
+            "Gmail there. Record in your result that Gmail is not connected and that the button "
+            "is attached, then carry on with the rest of the task."
         )
 
     async def test_background_copy_for_an_expired_grant_names_the_expired_connection(
@@ -840,8 +880,85 @@ class TestBackgroundRunPrompt:
             msg = await request_integration_connection("gmail", "Gmail", "user1")
 
         assert msg.endswith(
-            "This is a background run and no user is present to reconnect it, so retrying "
-            "Gmail this run cannot succeed. Record in your result that the Gmail connection "
-            "expired (the user can reconnect it at https://app.example.com/integrations), then "
-            "carry on with the rest of the task."
+            "Record in your result that the Gmail connection expired and that the button is "
+            "attached, then carry on with the rest of the task."
         )
+        assert "reconnect it at https://app.example.com/integrations" in msg
+
+
+class TestTheModelKnowsWhatTheUserWasSent:
+    """The card a bot renders and the copy the agent reads name the same link.
+
+    Regression: the link used to reach a bot user only as model-copied text, so a
+    paraphrasing hop dropped it ("use the links above" with nothing above) and the
+    card itself never left the API.
+    """
+
+    @staticmethod
+    def _card(writer: MagicMock) -> dict[str, object]:
+        payload = writer.call_args.args[0]["integration_connection_required"]
+        assert isinstance(payload, dict)
+        return payload
+
+    @pytest.mark.regression
+    async def test_a_bot_card_carries_the_exact_link_the_agent_is_told_about(self) -> None:
+        with _graph_run("bot") as writer:
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+
+        card = self._card(writer)
+        assert card["connect_url"] == _MAGIC_LINK
+        assert card["connect_url_valid_minutes"] == 60
+        assert f"linking to {_MAGIC_LINK} (single use, valid for 60 minutes)" in msg
+        assert "The system has sent them a connect button as its own message" in msg
+        # The model no longer has to carry the link for it to arrive.
+        assert "verbatim" not in msg
+
+    async def test_a_bot_card_without_a_mintable_link_carries_the_integrations_page(self) -> None:
+        with _graph_run("bot", connect_url=None) as writer:
+            await request_integration_connection("gmail", "Gmail", "user1")
+
+        card = self._card(writer)
+        assert card["connect_url"] == f"{_FAKE_FRONTEND}/integrations"
+        assert card["connect_url_valid_minutes"] is None
+
+    async def test_a_background_card_leaves_the_link_to_be_minted_at_delivery(self) -> None:
+        mint = AsyncMock(return_value=_MAGIC_LINK)
+        with (
+            _graph_run("bg", execution_mode="background") as writer,
+            patch("app.utils.integration_checker.build_connect_link_url", mint),
+        ):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+
+        mint.assert_not_awaited()
+        card = self._card(writer)
+        assert card["connect_url"] is None
+        assert "minted fresh when the result is sent" in msg
+
+    async def test_a_background_token_only_card_carries_the_integrations_page(self) -> None:
+        with (
+            _graph_run("bg", execution_mode="background") as writer,
+            patch(
+                "app.utils.integration_checker.IntegrationResolver.resolve",
+                AsyncMock(return_value=_resolved_mcp("bearer")),
+            ),
+        ):
+            await request_integration_connection("posthog", "PostHog", "user1")
+
+        assert self._card(writer)["connect_url"] == f"{_FAKE_FRONTEND}/integrations"
+
+    async def test_a_repeat_ask_in_the_same_run_sends_and_mints_nothing(self) -> None:
+        mint = AsyncMock(return_value=_MAGIC_LINK)
+        with (
+            _graph_run("bot", stream_id="run-1") as writer,
+            patch("app.utils.integration_checker.build_connect_link_url", mint),
+            patch(
+                "app.utils.integration_checker.block_integration",
+                AsyncMock(return_value=False),
+            ),
+        ):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+
+        writer.assert_not_called()
+        mint.assert_not_awaited()
+        assert "was already sent to the user earlier in this run" in msg
+        assert "do not call any Gmail tool again this run" in msg

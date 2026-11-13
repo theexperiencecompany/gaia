@@ -83,6 +83,7 @@ async def _delivered_request() -> HumanMessage:
             TodoRun(todo_id=DESK.id, trigger_type=TriggerType.SCHEDULED_TODO, runs_once=False),
             BRIEFING,
             "final",
+            None,
         )
     (message,) = graph_run.await_args.args[1]["messages"]
     return message

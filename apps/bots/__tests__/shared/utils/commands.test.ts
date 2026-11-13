@@ -14,6 +14,8 @@
 
 import type { CommandContext, GaiaClient } from "@gaia/shared/bots";
 import {
+  type Card,
+  type CardTarget,
   dispatchTodoSubcommand,
   dispatchWorkflowSubcommand,
   GaiaApiError,
@@ -29,8 +31,7 @@ import {
   handleWorkflowGet,
   handleWorkflowList,
   helpCommand,
-  type RichMessage,
-  type RichMessageTarget,
+  linkActions,
   withWideEvent,
 } from "@gaia/shared/bots";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -399,18 +400,15 @@ describe("helpCommand", () => {
   it("links to the instance the bot serves, not heygaia.io", async () => {
     const gaia = makeGaia();
     vi.mocked(gaia.getFrontendUrl).mockReturnValue("https://gaia.example.com");
-    const sendRich = vi.fn().mockResolvedValue({});
-    const target = { sendRich } as unknown as RichMessageTarget;
+    const sendCard = vi.fn().mockResolvedValue({});
+    const target = { sendCard } as unknown as CardTarget;
 
     await helpCommand.execute({ gaia, target, ctx, args: {} });
 
-    const message = sendRich.mock.calls[0]?.[0] as RichMessage;
-    expect(message.links?.map((link) => link.url)).toContain(
-      "https://gaia.example.com",
-    );
-    expect(message.links?.map((link) => link.url)).not.toContain(
-      "https://heygaia.io",
-    );
+    const card = sendCard.mock.calls[0]?.[0] as Card;
+    const urls = linkActions(card).map((link) => link.url);
+    expect(urls).toContain("https://gaia.example.com");
+    expect(urls).not.toContain("https://heygaia.io");
   });
 });
 

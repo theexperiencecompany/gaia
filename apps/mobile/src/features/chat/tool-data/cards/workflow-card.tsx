@@ -1,4 +1,5 @@
 import type { WorkflowCreatedData, WorkflowDraftData } from "@gaia/shared";
+import { describeCron } from "@gaia/shared/utils";
 import { useRouter } from "expo-router";
 import { Button, Chip } from "heroui-native";
 import { useCallback } from "react";
@@ -13,7 +14,6 @@ import {
   PencilEdit01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { cronToHumanReadable } from "@/features/workflows/utils/cronUtils";
 
 // Trigger display mirrors web's getTriggerDisplay() in WorkflowDraftCard /
 // WorkflowCreatedCard — same color tokens, same icon mapping.
@@ -54,7 +54,7 @@ function getTriggerDisplay(
       };
     case "scheduled":
       return {
-        label: cron ? cronToHumanReadable(cron) : "Scheduled",
+        label: cron ? (describeCron(cron) ?? cron) : "Scheduled",
         icon: <AppIcon icon={Clock01Icon} size={12} color="#00bbff" />,
         textColor: "#00bbff",
         bgClass: "bg-[#00bbff]/15",

@@ -86,6 +86,7 @@ from app.models.agent_models import (
 from app.models.chat_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
+from app.services.bot.capabilities import card_tools_for
 from app.services.browser.job_stop import stop_browser_job
 from app.services.hil.approvals_store import set_resume_item
 from app.services.hil.resume_slot import release_resume_dispatch
@@ -500,11 +501,9 @@ async def _finalize_executor_run(
         bool(run.stream_id) and not finished and await StreamManager.is_cancelled(run.stream_id)
     )
 
-    # Snapshot returned-cards BEFORE signalling done: live streams tear down the
-    # session in parallel once done_event fires, so reading after would race it.
-    # Only meaningful where cards render — a bot/workflow delivery has no card to fall back on.
-    build_note = not was_cancelled and run.renders_native_cards
-    returned_note = build_returned_to_frontend_note(run.stream_id) if build_note else ""
+    # Snapshot returned cards BEFORE signalling done: live streams tear the
+    # session down once done_event fires. Only cards the client renders count.
+    returned_note = "" if was_cancelled else await _returned_cards_note(run)
 
     # Snapshot cards delivery will persist, same reason: every comms consumer
     # tears the session down the moment done_event fires, so a read from inside
@@ -690,6 +689,15 @@ class TerminalOutcome:
     returned_note: str
     tool_data: list[ToolDataEntry] | None
     outcome_note: str = ""
+
+
+async def _returned_cards_note(run: ExecutorRun) -> str:
+    """Tell comms which of this run's cards the user already sees as cards."""
+    if run.renders_native_cards:
+        return build_returned_to_frontend_note(run.stream_id)
+    if (platform := run.bot_card_platform) is not None:
+        return build_returned_to_frontend_note(run.stream_id, await card_tools_for(platform))
+    return ""
 
 
 async def _deliver_terminal_outcome(

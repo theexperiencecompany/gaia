@@ -9,7 +9,7 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -19,16 +19,10 @@ from prometheus_client import REGISTRY
 import pytest
 
 from app.api.v1.endpoints import bot as bot_module
-from app.api.v1.endpoints.bot import (
-    _bot_rate_limit_notice,
-    _bot_upgrade_url,
-    _bot_upgrade_url_once,
-    bot_chat_stream,
-)
-from app.constants.cache import BOT_UPGRADE_LINK_TTL
+from app.api.v1.endpoints.bot import bot_chat_stream
 from app.core.stream_manager import with_heartbeat
 from app.db.redis import redis_cache
-from app.models.bot_models import BotChatRequest, BotWebStreamPayload
+from app.models.bot_models import BotChatRequest
 from app.models.payment_models import (
     CreateSubscriptionResponse,
     PlanDuration,
@@ -39,6 +33,7 @@ from app.models.payment_models import (
 )
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.audio_transcription_service import AudioTooLargeError
+from app.services.bot.cards import BotCardContext
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.bots import BotAudioTranscribed, BotSessionReset
 from shared.py.analytics.catalog.chat import ChatMessageRefused, ChatMessageSubmitted
@@ -54,6 +49,11 @@ LOOKUP_USER_ID = "6812f0b3c9a14e2b7d5a91ce"
 async def _never_upgrade() -> str:
     """Fail if called: a stream with no rate-limit card must never resolve an upgrade URL."""
     raise AssertionError("the upgrade URL was resolved for a stream with no rate-limit card")
+
+
+NO_UPGRADE_CARD_CTX = BotCardContext(
+    user_id=USER_ID, conversation_id="conv-1", upgrade_url=_never_upgrade
+)
 
 
 PLAN_PATCH = "app.services.platform_link_service.payment_service.get_cached_plan_type"
@@ -1213,10 +1213,10 @@ class TestBotChatStreamBody:
         assert '"done": true' in body
         assert '"conversation_id": "conv-1"' in body
 
-    async def test_a_rate_limit_card_reaches_the_bot_as_a_notice_for_this_user(
+    async def test_a_rate_limit_card_reaches_the_bot_as_a_card_for_this_user(
         self, client: AsyncClient
     ):
-        """The web-only rate-limit card converts to a typed notice frame, never reply text, and is minted for the resolved user so its checkout link attributes correctly."""
+        """The rate-limit card is forwarded as a tool_data frame, never reply text, carrying an upgrade link minted for the resolved user so its checkout attributes correctly."""
 
         async def walled() -> AsyncGenerator[str, None]:
             yield (
@@ -1226,7 +1226,7 @@ class TestBotChatStreamBody:
             yield "data: [DONE]\n\n"
 
         mint = AsyncMock(return_value="https://pay.example/checkout")
-        with patch("app.api.v1.endpoints.bot._bot_upgrade_url", mint):
+        with patch("app.services.bot.upgrade_link.bot_upgrade_url", mint):
             body = await self._collect(client, walled())
 
         # The checkout is minted for the user the request resolved to — a wrong
@@ -1238,27 +1238,49 @@ class TestBotChatStreamBody:
             if line.startswith("data: ")
         ]
         assert {
-            "notice": {
-                "text": "\u23f3 You've reached your chat messages limit. Please try again "
-                "later. [Upgrade to Pro](https://pay.example/checkout) for higher limits."
+            "tool_data": {
+                "tool_name": "rate_limit_data",
+                "data": {
+                    "feature": "chat_messages",
+                    "current_plan": "free",
+                    "upgrade_url": "https://pay.example/checkout",
+                },
             }
         } in frames
         assert 'data: {"text"' not in body
+        assert '"notice"' not in body
 
-    async def test_a_non_rate_limit_card_yields_no_notice_frame(self, client: AsyncClient):
-        async def other_card() -> AsyncGenerator[str, None]:
-            yield 'data: {"tool_data": {"tool_name": "memory_data", "data": {}}}\n\n'
+    async def test_an_approval_card_reaches_the_bot_as_a_tool_data_frame(self, client: AsyncClient):
+        async def approval() -> AsyncGenerator[str, None]:
+            yield (
+                'data: {"tool_data": {"tool_name": "approval_request",'
+                ' "data": {"tool": "send_email", "id": "req-1"}}}\n\n'
+            )
             yield "data: [DONE]\n\n"
 
-        mint = AsyncMock(return_value=None)
-        with patch("app.api.v1.endpoints.bot._bot_rate_limit_notice", mint):
-            body = await self._collect(client, other_card())
+        body = await self._collect(client, approval())
 
-        card, upgrade_url = mint.await_args.args
-        assert card == BotWebStreamPayload.model_validate(
-            {"tool_data": {"tool_name": "memory_data", "data": {}}}
-        )
-        assert callable(upgrade_url)
+        frames = [
+            json.loads(line[len("data: ") :])
+            for line in body.splitlines()
+            if line.startswith("data: ")
+        ]
+        assert {
+            "tool_data": {
+                "tool_name": "approval_request",
+                "data": {"tool": "send_email", "id": "req-1"},
+            }
+        } in frames
+        assert '"approval"' not in body
+
+    async def test_a_loading_row_yields_no_tool_data_or_notice_frame(self, client: AsyncClient):
+        async def loading() -> AsyncGenerator[str, None]:
+            yield 'data: {"tool_data": {"tool_name": "tool_calls_data", "data": {}}}\n\n'
+            yield "data: [DONE]\n\n"
+
+        body = await self._collect(client, loading())
+
+        assert '"tool_data"' not in body
         assert '"notice"' not in body
 
     async def test_a_message_boundary_reaches_the_bot_intact(self, client: AsyncClient):
@@ -2030,12 +2052,12 @@ class TestBotChatStreamMetering:
 def upgrade_link_window_open():
     """Open the once-per-window mint gate, so link tests are about the link.
 
-    _bot_upgrade_url mints once per user per window via a Redis SET NX EX;
+    bot_upgrade_url mints once per user per window via a Redis SET NX EX;
     without this, a repeat user id falls through to the pricing-page branch
     and passes for the wrong reason.
     """
     with patch(
-        "app.api.v1.endpoints.bot._may_mint_bot_upgrade_link",
+        "app.services.bot.upgrade_link._may_mint_bot_upgrade_link",
         new_callable=AsyncMock,
         return_value=True,
     ):
@@ -2096,7 +2118,7 @@ class TestBotChatStreamSubscriptionGate:
             ),
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE),
             patch(
-                "app.api.v1.endpoints.bot.payment_service.create_pro_checkout",
+                "app.services.bot.upgrade_link.payment_service.create_pro_checkout",
                 self._pro_checkout("https://checkout.dodopayments.com/s/cs_1"),
             ),
         ):
@@ -2131,7 +2153,7 @@ class TestBotChatStreamSubscriptionGate:
             ),
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE),
             patch(
-                "app.api.v1.endpoints.bot.payment_service.create_pro_checkout",
+                "app.services.bot.upgrade_link.payment_service.create_pro_checkout",
                 self._pro_checkout(None),
             ),
             patch("app.api.v1.endpoints.bot.settings.PAYWALL_DISCOUNT_CODE", "SAVE20"),
@@ -2160,7 +2182,7 @@ class TestBotChatStreamSubscriptionGate:
             ),
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE),
             patch(
-                "app.api.v1.endpoints.bot.payment_service.create_pro_checkout",
+                "app.services.bot.upgrade_link.payment_service.create_pro_checkout",
                 self._pro_checkout(None),
             ),
         ):
@@ -2171,245 +2193,6 @@ class TestBotChatStreamSubscriptionGate:
         mock_capture.assert_called_once_with(
             UserId(USER_ID), ChatMessageRefused(platform="telegram", reason="subscription_required")
         )
-
-
-@pytest.mark.usefixtures("upgrade_link_window_open")
-class TestBotRateLimitNotice:
-    """Rate limits reach bots as text, so the upgrade path has to be a link.
-
-    Bots drop tool_data, so the web's RateLimitCard (and its pricing-modal CTA)
-    never renders for them. A checkout link is the only one-tap route a WhatsApp
-    or Telegram user has.
-    """
-
-    @staticmethod
-    def _card(current_plan: str = PlanType.FREE.value) -> BotWebStreamPayload:
-        return BotWebStreamPayload.model_validate(
-            {
-                "tool_data": {
-                    "tool_name": "rate_limit_data",
-                    "data": {"feature": "chat_messages", "current_plan": current_plan},
-                }
-            }
-        )
-
-    async def test_free_user_gets_a_real_checkout_link(self) -> None:
-        checkout = AsyncMock(
-            return_value=ProCheckout(
-                plan=PlanResponse(
-                    id="plan_pro",
-                    dodo_product_id="prod_pro",
-                    name="Pro",
-                    plan_type=PlanTier.PRO,
-                    description=None,
-                    amount=3000,
-                    currency="USD",
-                    duration=PlanDuration.MONTHLY,
-                    max_users=None,
-                    is_active=True,
-                    created_at=datetime(2026, 1, 1, tzinfo=UTC),
-                    updated_at=datetime(2026, 1, 1, tzinfo=UTC),
-                ),
-                checkout=CreateSubscriptionResponse(
-                    subscription_id="cs_1",
-                    payment_link="https://checkout.dodopayments.com/s/cs_1",
-                    status="payment_link_created",
-                ),
-            )
-        )
-        with patch("app.api.v1.endpoints.bot.payment_service.create_pro_checkout", checkout):
-            notice = await _bot_rate_limit_notice(self._card(), _bot_upgrade_url_once("user_1"))
-
-        assert notice is not None
-        assert "chat messages limit" in notice
-        assert "[Upgrade to Pro](https://checkout.dodopayments.com/s/cs_1)" in notice
-        checkout.assert_awaited_once_with("user_1")
-
-    async def test_dodo_failure_degrades_to_the_pricing_page(self) -> None:
-        """A marketing link must never cost the user their reply."""
-        log.reset()
-        with patch(
-            "app.api.v1.endpoints.bot.payment_service.create_pro_checkout",
-            AsyncMock(side_effect=RuntimeError("dodo down")),
-        ):
-            notice = await _bot_rate_limit_notice(self._card(), _bot_upgrade_url_once("user_1"))
-
-        assert notice is not None
-        assert "/pricing)" in notice
-        # The fallback is loud: the wide event carries a bounded operation and
-        # failure reason (never provider error text), not a silent degrade.
-        assert log.get()["warnings"] == [
-            {
-                "msg": "[PAYMENT] Could not mint bot upgrade link, falling back to pricing page",
-                "user": {"id": "user_1"},
-                "payment": {"operation": "bot_upgrade_link"},
-                "failure_reason": "checkout_unavailable",
-                "error_type": "RuntimeError",
-            }
-        ]
-
-    async def test_pro_user_gets_no_pitch_and_no_session(self) -> None:
-        checkout = AsyncMock()
-        with patch("app.api.v1.endpoints.bot.payment_service.create_pro_checkout", checkout):
-            notice = await _bot_rate_limit_notice(
-                self._card(PlanType.PRO.value), _bot_upgrade_url_once("user_1")
-            )
-
-        assert notice is not None
-        assert "Upgrade" not in notice
-        checkout.assert_not_awaited()
-
-    async def test_other_tool_cards_are_left_alone(self) -> None:
-        chunk = BotWebStreamPayload.model_validate(
-            {"tool_data": {"tool_name": "memory_data", "data": {}}}
-        )
-        assert await _bot_rate_limit_notice(chunk, _bot_upgrade_url_once("user_1")) is None
-
-
-class TestBotUpgradeLinkWindow:
-    """A bot turn mints at most one Dodo session per user per window.
-
-    Both bot walls — the paid-only gate and the rate-limit notice — repeat for
-    every message until the user acts on them, and each mint is a get_plans
-    call, a Dodo round-trip and a checkout_sessions insert. Unbounded, a
-    lapsed user who keeps typing leaves a trail of throwaway sessions, and the
-    newest of them is what checkout_session_repository.get_latest_for_user
-    finds when the webhook-race recovery goes looking for the session they
-    actually paid on.
-
-    What is gated is the MINT, never the message: a bot has no modal and no
-    banner, so going quiet on a blocked turn would read as a broken bot.
-    """
-
-    @staticmethod
-    def _redis(*set_results: object) -> MagicMock:
-        cache = MagicMock()
-        cache.client.set = AsyncMock(side_effect=list(set_results))
-        return cache
-
-    @staticmethod
-    def _checkout(payment_link: str) -> AsyncMock:
-        return AsyncMock(
-            return_value=ProCheckout(
-                plan=PlanResponse(
-                    id="plan_pro",
-                    dodo_product_id="prod_pro",
-                    name="Pro",
-                    plan_type=PlanTier.PRO,
-                    description=None,
-                    amount=3000,
-                    currency="USD",
-                    duration=PlanDuration.MONTHLY,
-                    max_users=None,
-                    is_active=True,
-                    created_at=datetime(2026, 1, 1, tzinfo=UTC),
-                    updated_at=datetime(2026, 1, 1, tzinfo=UTC),
-                ),
-                checkout=CreateSubscriptionResponse(
-                    subscription_id="cs_1",
-                    payment_link=payment_link,
-                    status="payment_link_created",
-                ),
-            )
-        )
-
-    async def test_a_burst_of_blocked_turns_mints_exactly_one_session(self) -> None:
-        """SET NX returns None once the key is there — that is the whole gate."""
-        checkout = self._checkout("https://checkout.dodopayments.com/s/cs_1")
-        # First turn claims the window; the next two find it held.
-        with (
-            patch("app.api.v1.endpoints.bot.redis_cache", self._redis(True, None, None)),
-            patch("app.api.v1.endpoints.bot.payment_service.create_pro_checkout", checkout),
-        ):
-            urls = [await _bot_upgrade_url("user_1") for _ in range(3)]
-
-        assert checkout.await_count == 1, (
-            f"three blocked turns minted {checkout.await_count} Dodo session(s); one is the cap"
-        )
-        assert urls[0] == "https://checkout.dodopayments.com/s/cs_1"
-
-    async def test_a_turn_outside_the_window_still_gets_a_working_url(self) -> None:
-        """The user is never left without a way to pay — only without one tap."""
-        checkout = self._checkout("https://checkout.dodopayments.com/s/cs_1")
-        with (
-            patch("app.api.v1.endpoints.bot.redis_cache", self._redis(None)),
-            patch("app.api.v1.endpoints.bot.payment_service.create_pro_checkout", checkout),
-        ):
-            url = await _bot_upgrade_url("user_1")
-
-        assert url.endswith("/pricing")
-        checkout.assert_not_awaited()
-
-    async def test_a_blocked_turn_outside_the_window_still_answers_the_user(self) -> None:
-        """A bot has no modal fallback so the notice still goes out, with the pricing page in place of the personalised link when only the mint is gated."""
-        checkout = self._checkout("https://checkout.dodopayments.com/s/cs_1")
-        with (
-            patch("app.api.v1.endpoints.bot.redis_cache", self._redis(None)),
-            patch("app.api.v1.endpoints.bot.payment_service.create_pro_checkout", checkout),
-        ):
-            notice = await _bot_rate_limit_notice(
-                BotWebStreamPayload.model_validate(
-                    {
-                        "tool_data": {
-                            "tool_name": "rate_limit_data",
-                            "data": {
-                                "feature": "chat_messages",
-                                "current_plan": PlanType.FREE.value,
-                            },
-                        }
-                    }
-                ),
-                _bot_upgrade_url_once("user_1"),
-            )
-
-        assert notice is not None
-        assert "chat messages limit" in notice
-        assert "/pricing)" in notice
-
-    async def test_the_window_is_per_user(self) -> None:
-        """A shared key would let one lapsed user mute everyone else's link."""
-        checkout = self._checkout("https://checkout.dodopayments.com/s/cs_1")
-        cache = self._redis(True, True)
-        with (
-            patch("app.api.v1.endpoints.bot.redis_cache", cache),
-            patch("app.api.v1.endpoints.bot.payment_service.create_pro_checkout", checkout),
-        ):
-            await _bot_upgrade_url("user_1")
-            await _bot_upgrade_url("user_2")
-
-        # SET key value NX EX ttl: without NX every turn re-mints, without EX
-        # the first turn locks the user out forever. Both survived as mutants
-        # under a key-only assertion.
-        assert cache.client.set.await_args_list == [
-            call("bot:upgrade-link:user_1", "1", nx=True, ex=BOT_UPGRADE_LINK_TTL),
-            call("bot:upgrade-link:user_2", "1", nx=True, ex=BOT_UPGRADE_LINK_TTL),
-        ]
-
-    async def test_an_unavailable_window_skips_the_mint_and_says_so(self) -> None:
-        """Fails CLOSED, unlike the workflow limit-notice gate it copies — a degraded link costs orphan sessions, cheaper than silently burying a real payment."""
-        log.reset()
-        cache = MagicMock()
-        cache.client.set = AsyncMock(side_effect=ConnectionError("redis down"))
-        checkout = self._checkout("https://checkout.dodopayments.com/s/cs_1")
-        with (
-            patch("app.api.v1.endpoints.bot.redis_cache", cache),
-            patch("app.api.v1.endpoints.bot.payment_service.create_pro_checkout", checkout),
-        ):
-            url = await _bot_upgrade_url("user_1")
-
-        assert url.endswith("/pricing")
-        checkout.assert_not_awaited()
-        assert log.get()["warnings"] == [
-            {
-                "msg": (
-                    "[PAYMENT] Bot upgrade-link window unavailable, falling back to pricing page"
-                ),
-                "user": {"id": "user_1"},
-                "payment": {"operation": "bot_upgrade_link_window"},
-                "failure_reason": "window_unavailable",
-                "error_type": "ConnectionError",
-            }
-        ]
 
 
 class TestForwarderWiring:
@@ -2462,7 +2245,9 @@ class TestForwarderWiring:
 
         started_stream_id = sm.start_stream.await_args.args[0]
         kwargs = dict(forwarder.call_args.kwargs)
-        assert callable(kwargs.pop("upgrade_url"))
+        card_ctx = kwargs.pop("card_ctx")
+        assert isinstance(card_ctx, BotCardContext)
+        assert (card_ctx.user_id, card_ctx.conversation_id) == (USER_ID, "conv-1")
         assert kwargs == {
             "stream_id": started_stream_id,
             "conversation_id": "conv-1",
@@ -2494,7 +2279,7 @@ class TestBotStreamDeliveryMetrics:
             request,
             stream_id="s1",
             conversation_id="conv-1",
-            upgrade_url=_never_upgrade,
+            card_ctx=NO_UPGRADE_CARD_CTX,
             session_token="tok",
             platform="discord",
         )
@@ -2616,7 +2401,7 @@ class TestBotStreamFromRedis:
                     self._request(),
                     stream_id="s1",
                     conversation_id="conv-1",
-                    upgrade_url=_never_upgrade,
+                    card_ctx=NO_UPGRADE_CARD_CTX,
                     session_token="tok",
                     platform="discord",
                 )
@@ -2635,7 +2420,7 @@ class TestBotStreamFromRedis:
                     self._request(),
                     stream_id="s1",
                     conversation_id="conv-1",
-                    upgrade_url=_never_upgrade,
+                    card_ctx=NO_UPGRADE_CARD_CTX,
                     session_token="tok",
                     platform="discord",
                 )
@@ -2654,7 +2439,7 @@ class TestBotStreamFromRedis:
                     self._request(disconnected=True),
                     stream_id="s1",
                     conversation_id="conv-1",
-                    upgrade_url=_never_upgrade,
+                    card_ctx=NO_UPGRADE_CARD_CTX,
                     session_token="tok",
                     platform="discord",
                 )
@@ -2678,7 +2463,7 @@ class TestBotStreamFromRedis:
                     self._request(),
                     stream_id="s1",
                     conversation_id="conv-1",
-                    upgrade_url=_never_upgrade,
+                    card_ctx=NO_UPGRADE_CARD_CTX,
                     session_token="tok",
                     platform="discord",
                 )
@@ -2707,7 +2492,7 @@ class TestBotStreamFromRedis:
                 self._request(),
                 stream_id="s1",
                 conversation_id="conv-1",
-                upgrade_url=_never_upgrade,
+                card_ctx=NO_UPGRADE_CARD_CTX,
                 session_token="tok",
                 platform="discord",
             )
@@ -2726,7 +2511,7 @@ class TestBotStreamFromRedis:
                     self._request(),
                     stream_id="s1",
                     conversation_id="conv-1",
-                    upgrade_url=_never_upgrade,
+                    card_ctx=NO_UPGRADE_CARD_CTX,
                     session_token="tok",
                     platform="discord",
                 )
@@ -2750,7 +2535,7 @@ class TestBotStreamFromRedis:
                     self._request(),
                     stream_id="s1",
                     conversation_id="conv-1",
-                    upgrade_url=_never_upgrade,
+                    card_ctx=NO_UPGRADE_CARD_CTX,
                     session_token="tok",
                     platform="discord",
                 )

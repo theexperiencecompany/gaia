@@ -15,6 +15,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field, model_validator
 
 from app.config.settings import settings
+from app.models.chat_models import ToolDataEntry
 
 
 def _is_own_api(url: str) -> bool:
@@ -85,6 +86,16 @@ class OutboundMessageEnvelope(BaseModel):
     text_parts: list[str] | None = None
     attachment: OutboundAttachment | None = None
     reaction: OutboundReaction | None = None
+    # Cards the bot renders after the text, natively where its platform can
+    # (buttons, blocks) and as text where it cannot. Only bot-renderable
+    # entries travel here (app.services.bot.cards).
+    tool_data: list[ToolDataEntry] = Field(default_factory=list)
+    # The conversation the message belongs to, set when it carries cards: the
+    # bot reports each card it showed back into that conversation's record.
+    conversation_id: str | None = None
+    # The platform account the message is for: the DM target, or for a channel
+    # the user whose group session it is. The bot reports cards under it.
+    platform_user_id: str | None = None
     enqueued_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @model_validator(mode="after")
@@ -94,6 +105,9 @@ class OutboundMessageEnvelope(BaseModel):
             and not self.text_parts
             and self.attachment is None
             and self.reaction is None
+            and not self.tool_data
         ):
-            raise ValueError("envelope requires text, text_parts, attachment, or reaction")
+            raise ValueError(
+                "envelope requires text, text_parts, attachment, reaction, or tool_data"
+            )
         return self

@@ -9,7 +9,6 @@ key is a production break that no route test would notice.
 import json
 
 from app.services.bot.stream_frames import (
-    approval_frame,
     comment_keepalive_frame,
     done_frame,
     emoji_ack_frame,
@@ -21,6 +20,7 @@ from app.services.bot.stream_frames import (
     sse_frame,
     stream_error_frame,
     text_frame,
+    tool_data_frame,
 )
 
 
@@ -54,11 +54,9 @@ class TestByteIdentityWithTheOldLiterals:
         payload = json.dumps({"notice": {"text": rate_limit_notice}})
         assert notice_frame(rate_limit_notice) == f"data: {payload}\n\n"
 
-    def test_approval_frame(self):
-        approval_payload = {"tool": "send_email", "args": {"to": "a@b.c"}}
-        assert approval_frame(approval_payload) == (
-            f"data: {json.dumps({'approval': approval_payload})}\n\n"
-        )
+    def test_tool_data_frame(self):
+        entry = {"tool_name": "approval_request", "data": {"approval_id": "ap_1"}}
+        assert tool_data_frame(entry) == f"data: {json.dumps({'tool_data': entry})}\n\n"
 
     def test_message_boundary_frame(self):
         data = {"message_boundary": {"discarded": True}}

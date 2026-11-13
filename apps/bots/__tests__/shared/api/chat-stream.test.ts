@@ -38,7 +38,7 @@ async function drive(sseBody: string) {
   const onChunk = vi.fn();
   const onDone = vi.fn();
   const onError = vi.fn();
-  const onApproval = vi.fn();
+  const onToolData = vi.fn();
   const onBoundary = vi.fn();
   const onNotice = vi.fn();
   await streamChat(
@@ -48,11 +48,11 @@ async function drive(sseBody: string) {
     onDone,
     onError,
     "/api/v1/bot/chat-stream",
-    onApproval,
+    onToolData,
     onBoundary,
     onNotice,
   );
-  return { onChunk, onDone, onError, onBoundary, onNotice };
+  return { onChunk, onDone, onError, onBoundary, onNotice, onToolData };
 }
 
 function frames(...payloads: object[]): string {
@@ -75,6 +75,32 @@ async function driveRefusal(code: string) {
   );
   return { onChunk, onDone, onError };
 }
+
+describe("streamChat — tool_data frames", () => {
+  it("hands each tool_data frame to the card handler, in stream order", async () => {
+    const connect = {
+      tool_name: "integration_connection_required",
+      data: { integration_id: "posthog", message: "Connect PostHog." },
+    };
+    const approval = {
+      tool_name: "approval_request",
+      data: { approval_id: "a1", status: "pending" },
+    };
+    const { onToolData, onChunk, onDone } = await drive(
+      frames(
+        { text: "One moment." },
+        { tool_data: connect },
+        { tool_data: approval },
+        { done: true, conversation_id: "conv-1" },
+      ),
+    );
+
+    expect(onToolData.mock.calls).toEqual([[connect], [approval]]);
+    // A card frame is not reply text: it never reaches the chunk stream.
+    expect(onChunk).toHaveBeenCalledTimes(1);
+    expect(onDone).toHaveBeenCalledWith("One moment.", "conv-1");
+  });
+});
 
 describe("streamChat — SSE refusal frames", () => {
   it.each(["not_authenticated", "plan_required"])(

@@ -24,25 +24,34 @@ import {
   BaseBotAdapter,
   type BotCommand,
   buildAuthLinkMessage,
+  CARD_REPLY_PROMPTS,
+  type Card,
+  type CardTarget,
   createBotLogger,
+  decodeCardReplyData,
   extractSubcommandArgs,
+  handleCardTap,
   handleStreamingChat,
   hashLogIdentifier,
   type OutboundFile,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
-  type RichMessage,
-  type RichMessageTarget,
   recordBotFailure,
   renderForPlatform,
-  richMessageToMarkdown,
   type SentMessage,
+  SLACK_CARD_ACTION_PATTERN,
   STREAMING_DEFAULTS,
   withWideEvent,
 } from "@gaia/shared/bots";
-import { App, type CodedError, type Context } from "@slack/bolt";
+import {
+  App,
+  type BlockButtonAction,
+  type CodedError,
+  type Context,
+} from "@slack/bolt";
 import { which } from "node-emoji";
+import { renderSlackCard } from "./card";
 
 /** Bolt's respond function for slash command responses. */
 type SlackRespondFn = (
@@ -149,7 +158,7 @@ export class SlackAdapter extends BaseBotAdapter {
    * Each command's handler:
    * 1. Calls `ack()` immediately (Slack's 3-second requirement)
    * 2. Special-cases `/gaia` to use streaming via `handleStreamingChat`
-   * 3. All others create a {@link RichMessageTarget} and dispatch to the unified command
+   * 3. All others create a {@link CardTarget} and dispatch to the unified command
    */
   protected async registerCommands(commands: BotCommand[]): Promise<void> {
     for (const cmd of commands) {
@@ -220,6 +229,64 @@ export class SlackAdapter extends BaseBotAdapter {
         event.ts,
       );
     });
+
+    // Every card button. A link button opens its URL in the browser and carries no
+    // value, but Slack still posts the click: unacknowledged, it shows a warning icon.
+    // An invoke button carries its action id: perform it, then re-render the card.
+    this.app.action<BlockButtonAction>(
+      SLACK_CARD_ACTION_PATTERN,
+      async ({ ack, body, action, client, respond }) => {
+        const actionId = action.value;
+        if (!actionId) {
+          await withWideEvent(
+            "card_link_click",
+            {
+              platform: this.platform,
+              component: "adapter",
+              user_hash: hashLogIdentifier(body.user.id),
+            },
+            async () => {
+              await ack();
+            },
+          );
+          return;
+        }
+        // "Suggest changes": ask; the answer is an ordinary message in this chat.
+        const prompt = decodeCardReplyData(actionId);
+        if (prompt) {
+          await ack();
+          await respond({
+            text: CARD_REPLY_PROMPTS[prompt],
+            response_type: "ephemeral",
+            replace_original: false,
+          });
+          return;
+        }
+        await handleCardTap({
+          gaia: this.gaia,
+          platform: this.platform,
+          platformUserId: body.user.id,
+          actionId,
+          acknowledge: () => ack(),
+          show: async (result) => {
+            await respond({
+              text: result.message,
+              response_type: "ephemeral",
+              replace_original: false,
+            });
+            const message = body.message;
+            const channel = body.channel?.id;
+            // An ephemeral card has no message to update.
+            if (!result.card || !message || !channel) return;
+            await client.chat.update({
+              channel,
+              ts: message.ts,
+              ...renderSlackCard(result.card),
+            });
+          },
+        });
+      },
+    );
 
     // DM messages
     this.app.message(async ({ message, client }) => {
@@ -306,6 +373,17 @@ export class SlackAdapter extends BaseBotAdapter {
   ): Promise<void> {
     await this.sendToConversation(destinationId, isChannel, (channel) =>
       this.app.client.chat.postMessage({ channel, text }),
+    );
+  }
+
+  protected override async deliverOutboundCard(
+    destinationId: string,
+    card: Card,
+    isChannel: boolean,
+  ): Promise<void> {
+    const { text, blocks } = renderSlackCard(card);
+    await this.sendToConversation(destinationId, isChannel, (channel) =>
+      this.app.client.chat.postMessage({ channel, text, blocks }),
     );
   }
 
@@ -543,6 +621,12 @@ export class SlackAdapter extends BaseBotAdapter {
         return outcome;
       },
       removePlaceholder,
+      async (card: Card) => {
+        await client.chat.postMessage({
+          channel: channelId,
+          ...renderSlackCard(card),
+        });
+      },
     );
   }
 
@@ -551,10 +635,10 @@ export class SlackAdapter extends BaseBotAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Create a {@link RichMessageTarget} for Slack slash command responses.
+   * Create a {@link CardTarget} for Slack slash command responses.
    *
    * Uses Bolt's `respond` for ephemeral replies and the Web API `client` for
-   * public messages; rich messages render as markdown (Slack has no embeds).
+   * public messages; cards render as Block Kit.
    */
   private createCommandTarget(
     userId: string,
@@ -562,7 +646,7 @@ export class SlackAdapter extends BaseBotAdapter {
     client: SlackWebClient,
     respond: SlackRespondFn,
     userName?: string,
-  ): RichMessageTarget {
+  ): CardTarget {
     return {
       platform: "slack",
       userId,
@@ -601,9 +685,8 @@ export class SlackAdapter extends BaseBotAdapter {
         };
       },
 
-      sendRich: async (msg: RichMessage): Promise<SentMessage> => {
-        const markdown = renderForPlatform(richMessageToMarkdown(msg), "slack");
-        await respond({ text: markdown, response_type: "ephemeral" });
+      sendCard: async (card: Card): Promise<SentMessage> => {
+        await respond({ ...renderSlackCard(card), response_type: "ephemeral" });
         return {
           id: "ephemeral",
           edit: async (_t: string) => {

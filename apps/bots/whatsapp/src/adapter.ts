@@ -22,6 +22,8 @@ import {
   type BotCommand,
   type BotFileData,
   buildAuthLinkMessage,
+  type Card,
+  type CardTarget,
   consumeInboundLinkCode,
   createBotLogger,
   DELIVERY_FAILURE_KIND,
@@ -37,12 +39,10 @@ import {
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
-  type RichMessage,
-  type RichMessageTarget,
   readBodyBounded,
   readResponseBytesCapped,
+  renderCardText,
   renderForPlatform,
-  richMessageToMarkdown,
   type SentMessage,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
@@ -923,14 +923,14 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Creates a {@link RichMessageTarget} for sending messages to a WhatsApp user.
+   * Creates a {@link CardTarget} for sending messages to a WhatsApp user.
    *
    * - `send` / `sendEphemeral` send a text message (no ephemeral concept in WhatsApp)
-   * - `sendRich` renders {@link RichMessage} as WhatsApp markdown
+   * - `sendCard` renders a {@link Card} as WhatsApp markdown
    * - `edit` sends a NEW message (WhatsApp does not support editing)
    * - `startTyping` is a no-op — typing is already managed by `handleIncomingMessage`
    */
-  private createWaTarget(waId: string, _messageId: string): RichMessageTarget {
+  private createWaTarget(waId: string, _messageId: string): CardTarget {
     return {
       platform: "whatsapp",
       userId: waId,
@@ -946,15 +946,13 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         return this.sendWhatsAppText(waId, renderForPlatform(text, "whatsapp"));
       },
 
-      sendRich: async (richMsg: RichMessage): Promise<SentMessage> => {
-        // richMessageToMarkdown emits platform-agnostic CommonMark; convert it
-        // to WhatsApp formatting through the single shared chokepoint so field
-        // values that contain markdown render correctly.
-        const markdown = renderForPlatform(
-          richMessageToMarkdown(richMsg),
-          "whatsapp",
+      sendCard: async (card: Card): Promise<SentMessage> => {
+        // A card renders as CommonMark; convert it to WhatsApp formatting
+        // through the single shared chokepoint like every other send.
+        return this.sendWhatsAppText(
+          waId,
+          renderForPlatform(renderCardText(card), "whatsapp"),
         );
-        return this.sendWhatsAppText(waId, markdown);
       },
 
       startTyping: async () => {

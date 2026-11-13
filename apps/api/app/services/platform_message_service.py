@@ -14,7 +14,8 @@ from dataclasses import dataclass
 
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.db.repositories.bot_sessions import bot_session_repository
-from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
+from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource, ToolDataEntry
+from app.services.bot.cards import BotCardContext, resolve_bot_cards
 from app.services.outbound_delivery import (
     OutboundResult,
     publish_outbound_message,
@@ -32,6 +33,9 @@ class _ChannelTarget:
     """The exact channel a proactive message must land in (a group/channel id)."""
 
     destination_id: str
+    #: The platform account the group session belongs to: the identity the bot
+    #: reports the message's cards under, since a channel id names no user.
+    platform_user_id: str
     is_channel: bool = True
 
 
@@ -47,7 +51,9 @@ async def _resolve_channel_target(conversation_id: str | None) -> _ChannelTarget
     session = await bot_session_repository.get_by_conversation_id(conversation_id)
     if session is None or session.channel_id is None:
         return None
-    return _ChannelTarget(destination_id=session.channel_id)
+    return _ChannelTarget(
+        destination_id=session.channel_id, platform_user_id=session.platform_user_id
+    )
 
 
 async def deliver_message_to_platform(
@@ -56,8 +62,9 @@ async def deliver_message_to_platform(
     text: str,
     *,
     conversation_id: str | None = None,
+    tool_data: list[ToolDataEntry] | None = None,
 ) -> bool:
-    """Deliver text to user_id on source via the platform's outbound queue.
+    """Deliver text, then its bot-renderable cards, to user_id on source via the outbound queue.
 
     conversation_id naming a group/channel conversation delivers there instead
     of the user's DM. Returns True if enqueued; non-bot sources, unlinked
@@ -75,12 +82,16 @@ async def deliver_message_to_platform(
     if not parts:
         return False
     target = await _resolve_channel_target(conversation_id)
+    cards = await resolve_bot_cards(tool_data, BotCardContext.for_user(user_id, conversation_id))
     result = await publish_outbound_message(
         platform,
         user_id,
         parts,
         destination_override=target.destination_id if target else None,
         is_channel=target.is_channel if target else False,
+        tool_data=cards,
+        conversation_id=conversation_id,
+        channel_owner_platform_user_id=target.platform_user_id if target else None,
     )
     return result is OutboundResult.PUBLISHED
 

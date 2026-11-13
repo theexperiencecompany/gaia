@@ -449,6 +449,13 @@ DEV_MODEL_OPTIONS: dict[str, DevModelOption] = {
         model="minimax/minimax-m3",
         reasoning=True,
     ),
+    # OpenAI direct, on the key the openai provider already holds for comms: runs
+    # the executor and every other lane there too, with no OpenRouter in the path.
+    "gpt-5.6-luna": DevModelOption(
+        provider=LLMProviderName.OPENAI,
+        model=COMMS_MODEL_NAME,
+        reasoning=True,
+    ),
     "glm-5.2": DevModelOption(
         provider=LLMProviderName.OPENROUTER,
         model="z-ai/glm-5.2",

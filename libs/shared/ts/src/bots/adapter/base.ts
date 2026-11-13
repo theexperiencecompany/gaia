@@ -41,6 +41,10 @@ import {
   platformIdentity,
 } from "../../analytics";
 import { GaiaClient } from "../api";
+import { CARD_TOOL_NAMES } from "../cards/registry";
+import { renderCardText } from "../cards/render-text";
+import { createCardDeliveryReporter } from "../cards/report";
+import type { Card } from "../cards/types";
 import { loadConfig } from "../config";
 import type {
   OutboundAttachment,
@@ -58,10 +62,10 @@ import type {
   AuthStatus,
   BotCommand,
   BotConfig,
+  CardTarget,
   CommandContext,
   OutboundNotifications,
   PlatformName,
-  RichMessageTarget,
 } from "../types";
 import { BOT_FAILURE_REASON, recordBotFailure } from "../utils/failure-reasons";
 import { formatBotError, renderForPlatform } from "../utils/formatters";
@@ -227,6 +231,7 @@ export abstract class BaseBotAdapter {
           // Consume backend-originated outbound messages (executor replies,
           // reminders) and deliver them via this platform's send primitive.
           this.startOutboundConsumer();
+          this.registerCardCapabilities();
 
           // Start the server after registerEvents() so all routes are mounted.
           await this._botServer.start();
@@ -296,11 +301,34 @@ export abstract class BaseBotAdapter {
         this.deliverOutboundFile(id, attachment, isChannel),
       this.config.gaiaApiUrl,
       this.reportDeliveryFailure,
+      {
+        deliver: (id, card, isChannel) =>
+          this.deliverOutboundCard(id, card, isChannel),
+        report: createCardDeliveryReporter(this.gaia, this.platform),
+      },
       (id, reaction, isChannel) =>
         this.deliverOutboundReaction(id, reaction, isChannel),
       this.outboundNotifications,
     );
     void this._outboundConsumer.start();
+  }
+
+  /**
+   * Tells the API which tool cards this platform shows, so the agent replying here
+   * knows what the user will see. Fire-and-forget like the outbound consumer: an
+   * unreachable API must not stop the bot serving, and until a platform registers
+   * the API treats it as text-only.
+   */
+  private registerCardCapabilities(): void {
+    this.gaia
+      .registerCardCapabilities(this.platform, CARD_TOOL_NAMES)
+      .catch((error: unknown) => {
+        this.logger.error(
+          "card_capabilities_register_failed",
+          { card_tools: CARD_TOOL_NAMES.join(",") },
+          error,
+        );
+      });
   }
 
   // ---------------------------------------------------------------------------
@@ -360,6 +388,22 @@ export abstract class BaseBotAdapter {
     text: string,
     isChannel: boolean,
   ): Promise<void>;
+
+  /**
+   * Sends one card to `destinationId`, addressed by `isChannel` like {@link deliverOutbound}.
+   * This default sends the card as text; a platform with a native card format overrides it.
+   */
+  protected async deliverOutboundCard(
+    destinationId: string,
+    card: Card,
+    isChannel: boolean,
+  ): Promise<void> {
+    await this.deliverOutbound(
+      destinationId,
+      renderForPlatform(renderCardText(card), this.platform),
+      isChannel,
+    );
+  }
 
   /**
    * Delivers a file artifact to `destinationId`, addressed by `isChannel` like
@@ -512,7 +556,7 @@ export abstract class BaseBotAdapter {
    */
   protected async dispatchCommand(
     name: string,
-    target: RichMessageTarget,
+    target: CardTarget,
     args: Record<string, string | number | boolean | undefined> = {},
     rawText?: string,
   ): Promise<void> {
