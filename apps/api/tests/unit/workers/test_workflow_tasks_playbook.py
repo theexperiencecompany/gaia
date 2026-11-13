@@ -330,7 +330,12 @@ async def test_a_fire_carrying_a_wait_met_note_runs_on_the_agent_that_reads_it()
 
     harness.playbook_run.assert_not_awaited()
     harness.chat.assert_awaited_once()
-    assert harness.chat.await_args.args[2]["wait_met"] == "The user just connected Gmail."
+    ran_workflow, ran_user, context = harness.chat.await_args.args
+    assert ran_workflow.id == workflow.id
+    assert ran_user.user_id == USER_ID
+    assert context["wait_met"] == "The user just connected Gmail."
+    assert harness.chat.await_args.kwargs["reservation"]
+    harness.log.set_ns.assert_any_call("playbook", mode="agent", reason="wait_met", llm_calls=0)
 
 
 @pytest.mark.parametrize("status", [PlaybookRunStatus.SUSPECT, PlaybookRunStatus.FAILED])

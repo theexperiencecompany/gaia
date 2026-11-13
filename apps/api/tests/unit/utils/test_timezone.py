@@ -9,6 +9,7 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pytest
+import time_machine
 
 from app.utils import timezone as timezone_module
 from app.utils.timezone import (
@@ -400,6 +401,5 @@ class TestAgeSince:
     )
     def test_whole_hours_and_minutes_rounded_down(self, ago: timedelta, age: str) -> None:
         now = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
-        with patch.object(timezone_module, "datetime", wraps=datetime) as clock:
-            clock.now.return_value = now
+        with time_machine.travel(now, tick=False):
             assert timezone_module.age_since(now - ago) == age
