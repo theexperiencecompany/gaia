@@ -688,7 +688,8 @@ def cmd_local(args: list[str]) -> int:
 
     def run_one(work: ModuleWork) -> tuple[ModuleWork, str]:
         slug = work.module.replace("/", "_")
-        with (LOCAL_LOG_DIR / f"{slug}.out").open("w") as out:
+        output = LOCAL_LOG_DIR / f"{slug}.out"
+        with output.open("w") as out:
             rc = subprocess.run(
                 [sys.executable, str(Path(__file__).resolve()), "shard"],
                 env={
@@ -706,8 +707,12 @@ def cmd_local(args: list[str]) -> int:
         line = {
             "pass": f"  pass      {work.module}",
             "survivors": f"  SURVIVORS {work.module}  ({log})",
-            "error": f"  ERROR     {work.module}  (run produced no result; {log})",
+            # A refused shard never writes its log; the reason is in its output.
+            "error": f"  ERROR     {work.module}  (run produced no result; {output})",
         }[status]
+        if status == "error":
+            reasons = [r for r in output.read_text().splitlines() if r.startswith("::error::")]
+            line = "\n".join([line, *(f"            {reason}" for reason in reasons)])
         print(line, flush=True)
         return work, status
 

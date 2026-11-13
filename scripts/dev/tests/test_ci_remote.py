@@ -915,6 +915,17 @@ def wire_shard_3(wire) -> FakeGh:
     )
 
 
+def test_compact_json_never_brings_back_a_rollup_its_shard_already_claimed(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The findings-less shard rollup is spoken for; only the file:line verdict is the answer."""
+    wire_shard_3(wire)
+    assert run_cli(monkeypatch, ["--json", "--compact", "--no-stack"]) == 1
+    report = json.loads(capsys.readouterr().out)
+
+    assert [v["lane"] for v in report["verdicts"]] == [CONVERSATION_SERVICE_VERDICT["lane"]]
+
+
 def test_a_shards_verdicts_are_attributed_to_it_by_matrix_index(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

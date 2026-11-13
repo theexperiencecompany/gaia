@@ -1388,8 +1388,12 @@ def compact_report(report: dict) -> dict:
     """
     red = [c for c in report["checks"] if c["status"] in FAILING]
     explained = red + early_failures(report)
-    # The failing verdicts no check claims are printed by render_failures too.
-    orphans = [v for v in report["verdicts"] if v.get("status") in VERDICT_BAD]
+    # A verdict a check claims is that check's to show (rollups dropped); only
+    # the unclaimed failures are added, as render_failures prints them.
+    claimed = {id(v) for c in explained for v in matching_failing_verdicts(c, report["verdicts"])}
+    orphans = [
+        v for v in report["verdicts"] if v.get("status") in VERDICT_BAD and id(v) not in claimed
+    ]
     verdicts: list[dict] = []
     seen: set[tuple[str, str]] = set()
     candidates = [v for c in explained for v in explaining_verdicts(c, report["verdicts"])]
