@@ -2737,7 +2737,10 @@ class TestAnAgentFireOverlapsToo:
         await _fire(harness)
 
         create.assert_awaited_once_with(
-            workflow_id="wf_1", user_id=USER_ID, trigger_type=TriggerType.MANUAL.value
+            workflow_id="wf_1",
+            user_id=USER_ID,
+            trigger_type=TriggerType.MANUAL.value,
+            execution_id=None,
         )
         assert harness.complete_execution.await_args.kwargs["execution_id"] == "exec_1"
 
