@@ -102,59 +102,61 @@ export default function EmailThreadCard({
               <Accordion.Indicator className={accordionStyles.indicator()} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className={accordionStyles.panel()}>
-            <ScrollShadow className="max-h-[50vh]">
-              <div className="space-y-3">
-                {emailThreadData.messages.map((message) => {
-                  const { name: senderName, email: senderEmail } = parseEmail(
-                    message.from,
-                  );
+          <Accordion.Panel>
+            <div className={accordionStyles.content()}>
+              <ScrollShadow className="max-h-[50vh]">
+                <div className="space-y-3">
+                  {emailThreadData.messages.map((message) => {
+                    const { name: senderName, email: senderEmail } = parseEmail(
+                      message.from,
+                    );
 
-                  return (
-                    <div key={message.id} className="pt-0 pb-2">
-                      <div className="mb-4 flex w-full flex-col items-start justify-start gap-1">
-                        <div className="flex w-full flex-row items-center justify-between">
+                    return (
+                      <div key={message.id} className="pt-0 pb-2">
+                        <div className="mb-4 flex w-full flex-col items-start justify-start gap-1">
+                          <div className="flex w-full flex-row items-center justify-between">
+                            <div className="flex flex-row items-center gap-2">
+                              <div className="w-15">
+                                <Chip variant="soft" size="sm">
+                                  From
+                                </Chip>
+                              </div>
+                              <span className="text-sm text-zinc-300">
+                                {senderName}
+                              </span>
+                              <span className="text-xs font-light text-zinc-500">
+                                {senderEmail}
+                              </span>
+                            </div>
+                            <span className="text-xs text-zinc-400">
+                              {formatTime(message.time)}
+                            </span>
+                          </div>
                           <div className="flex flex-row items-center gap-2">
                             <div className="w-15">
                               <Chip variant="soft" size="sm">
-                                From
+                                Subject
                               </Chip>
                             </div>
-                            <span className="text-sm text-zinc-300">
-                              {senderName}
-                            </span>
-                            <span className="text-xs font-light text-zinc-500">
-                              {senderEmail}
-                            </span>
-                          </div>
-                          <span className="text-xs text-zinc-400">
-                            {formatTime(message.time)}
-                          </span>
-                        </div>
-                        <div className="flex flex-row items-center gap-2">
-                          <div className="w-15">
-                            <Chip variant="soft" size="sm">
-                              Subject
-                            </Chip>
-                          </div>
-                          <div className="text-sm font-medium text-zinc-300">
-                            {message.subject}
+                            <div className="text-sm font-medium text-zinc-300">
+                              {message.subject}
+                            </div>
                           </div>
                         </div>
+                        {message.body && (
+                          <div className="mt-3">
+                            <EmailBodyRenderer
+                              body={message.body}
+                              content={message.content}
+                            />
+                          </div>
+                        )}
                       </div>
-                      {message.body && (
-                        <div className="mt-3">
-                          <EmailBodyRenderer
-                            body={message.body}
-                            content={message.content}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </ScrollShadow>
+                    );
+                  })}
+                </div>
+              </ScrollShadow>
+            </div>
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>

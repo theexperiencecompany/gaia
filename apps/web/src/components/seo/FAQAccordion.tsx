@@ -30,15 +30,17 @@ export default function FAQAccordion({ faqs }: { faqs: FAQ[] }) {
               <Accordion.Indicator className={accordionStyles.indicator()} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel
-            className={toneVariants({
-              tone: "muted",
-              className: accordionStyles.panel({
-                className: "text-base font-light",
-              }),
-            })}
-          >
-            <div className="pb-2">{faq.answer}</div>
+          <Accordion.Panel>
+            <div
+              className={toneVariants({
+                tone: "muted",
+                className: accordionStyles.content({
+                  className: "text-base font-light",
+                }),
+              })}
+            >
+              <div className="pb-2">{faq.answer}</div>
+            </div>
           </Accordion.Panel>
         </Accordion.Item>
       ))}

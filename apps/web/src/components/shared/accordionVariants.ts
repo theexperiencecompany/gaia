@@ -3,15 +3,16 @@ import { tv } from "tailwind-variants";
 /**
  * v2's accordion on v3's Accordion parts, slot names as in HeroUI's own
  * accordionVariants: no trigger inset or hover fill, a right chevron turning
- * down when open, and a padded panel. density compact is v2's isCompact;
- * flush drops the trigger's vertical padding for a row that sets its own.
+ * down when open, and padded content. The content slot goes on an element inside
+ * Accordion.Panel, never on the panel: the panel keeps its padding when collapsed.
+ * density compact is v2's isCompact; flush drops the trigger's vertical padding.
  */
 export const accordionVariants = tv({
   slots: {
     base: "",
     trigger: "gap-3 px-0 hover:bg-transparent",
     indicator: "rotate-90 text-zinc-500 data-[expanded=true]:rotate-0",
-    panel: "",
+    content: "",
   },
   variants: {
     variant: {
@@ -21,9 +22,9 @@ export const accordionVariants = tv({
       },
     },
     density: {
-      default: { trigger: "py-4", panel: "py-2" },
-      compact: { trigger: "py-2", panel: "py-1" },
-      flush: { trigger: "py-0", panel: "py-1" },
+      default: { trigger: "py-4", content: "py-2" },
+      compact: { trigger: "py-2", content: "py-1" },
+      flush: { trigger: "py-0", content: "py-1" },
     },
   },
   defaultVariants: { density: "default" },

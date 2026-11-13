@@ -472,6 +472,20 @@
     margin-top: var(--gaia-slider-marks-gap);
   }
 
+  /* Modal inset: v2 kept 4px between dialog and viewport on mobile and 64px by
+     24px from sm up (v3 pads its container 16px, then 40px). */
+  .modal__container {
+    padding: var(--gaia-modal-inset);
+  }
+  @media (width >= 40rem) {
+    .modal__container {
+      padding: var(--gaia-modal-inset-sm-y) var(--gaia-modal-inset-sm-x);
+    }
+  }
+  .modal__container--full {
+    padding: 0;
+  }
+
   /* Modal: v2's section rhythm. The dialog has no padding of its own; the
      header, body and footer carry it, and the body is a column of 12px gaps in
      the dialog's own text colour (v3 mutes and shrinks it). */

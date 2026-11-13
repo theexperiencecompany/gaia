@@ -169,49 +169,51 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
               <Accordion.Indicator />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className="pb-1">
-            <Accordion.Body>
-              <div className="grid grid-cols-2 gap-2 pl-1">
-                {myIntegrations
-                  .toSorted((a, b) => {
-                    // Needs-attention first, then connected, then alphabetically
-                    const aOrder =
-                      INTEGRATION_STATE_ORDER[
-                        integrationConnectionState(a.status)
-                      ];
-                    const bOrder =
-                      INTEGRATION_STATE_ORDER[
-                        integrationConnectionState(b.status)
-                      ];
-                    if (aOrder !== bOrder) return aOrder - bOrder;
-                    return a.name.localeCompare(b.name);
-                  })
-                  .map((integration) => (
-                    <IntegrationItem
-                      key={integration.id}
-                      integration={integration}
-                      onConnect={handleConnect}
-                      size={size}
-                      onClick={(id) => onIntegrationClick?.(id)}
-                    />
-                  ))}
-              </div>
+          <Accordion.Panel>
+            <div className="pb-1">
+              <Accordion.Body>
+                <div className="grid grid-cols-2 gap-2 pl-1">
+                  {myIntegrations
+                    .toSorted((a, b) => {
+                      // Needs-attention first, then connected, then alphabetically
+                      const aOrder =
+                        INTEGRATION_STATE_ORDER[
+                          integrationConnectionState(a.status)
+                        ];
+                      const bOrder =
+                        INTEGRATION_STATE_ORDER[
+                          integrationConnectionState(b.status)
+                        ];
+                      if (aOrder !== bOrder) return aOrder - bOrder;
+                      return a.name.localeCompare(b.name);
+                    })
+                    .map((integration) => (
+                      <IntegrationItem
+                        key={integration.id}
+                        integration={integration}
+                        onConnect={handleConnect}
+                        size={size}
+                        onClick={(id) => onIntegrationClick?.(id)}
+                      />
+                    ))}
+                </div>
 
-              <GaiaButton
-                fullWidth
-                size="sm"
-                variant="default-soft"
-                tone="muted"
-                className="mt-2 text-xs"
-                onPress={() => {
-                  router.push("/integrations");
-                  onClose?.();
-                }}
-              >
-                <Add01Icon width={15} height={15} />
-                Connect more integrations
-              </GaiaButton>
-            </Accordion.Body>
+                <GaiaButton
+                  fullWidth
+                  size="sm"
+                  variant="default-soft"
+                  tone="muted"
+                  className="mt-2 text-xs"
+                  onPress={() => {
+                    router.push("/integrations");
+                    onClose?.();
+                  }}
+                >
+                  <Add01Icon width={15} height={15} />
+                  Connect more integrations
+                </GaiaButton>
+              </Accordion.Body>
+            </div>
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>

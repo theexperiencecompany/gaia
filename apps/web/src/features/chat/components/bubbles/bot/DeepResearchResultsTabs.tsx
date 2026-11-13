@@ -50,63 +50,65 @@ export default function DeepResearchResultsTabs({
               <Accordion.Indicator className={accordionStyles.indicator()} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className={accordionStyles.panel()}>
-            <Tabs className={tabsStyles.base({ className: "p-0" })}>
-              <Tabs.List
-                aria-label="Deep Research Results"
-                className={tabsStyles.tabList()}
-              >
+          <Accordion.Panel>
+            <div className={accordionStyles.content()}>
+              <Tabs className={tabsStyles.base({ className: "p-0" })}>
+                <Tabs.List
+                  aria-label="Deep Research Results"
+                  className={tabsStyles.tabList()}
+                >
+                  {enhanced_results && enhanced_results.length > 0 && (
+                    <Tabs.Tab id="enhanced" className={tabsStyles.tab()}>
+                      <div className="flex items-center space-x-2">
+                        {/* <DocumentTextIcon className="h-4 w-4" /> */}
+                        <span>Enhanced Results</span>
+                      </div>
+                      <Tabs.Indicator className={tabsStyles.tabIndicator()} />
+                    </Tabs.Tab>
+                  )}
+
+                  {original_search && (
+                    <Tabs.Tab id="original" className={tabsStyles.tab()}>
+                      <div className="flex items-center space-x-2">
+                        <SearchIcon className="h-4 w-4" />
+                        <span>Original Search</span>
+                      </div>
+                      <Tabs.Indicator className={tabsStyles.tabIndicator()} />
+                    </Tabs.Tab>
+                  )}
+
+                  {metadata && (
+                    <Tabs.Tab id="metadata" className={tabsStyles.tab()}>
+                      <div className="flex items-center space-x-2">
+                        <InternetIcon />
+                        <span>Search Info</span>
+                      </div>
+                      <Tabs.Indicator className={tabsStyles.tabIndicator()} />
+                    </Tabs.Tab>
+                  )}
+                </Tabs.List>
+
                 {enhanced_results && enhanced_results.length > 0 && (
-                  <Tabs.Tab id="enhanced" className={tabsStyles.tab()}>
-                    <div className="flex items-center space-x-2">
-                      {/* <DocumentTextIcon className="h-4 w-4" /> */}
-                      <span>Enhanced Results</span>
-                    </div>
-                    <Tabs.Indicator className={tabsStyles.tabIndicator()} />
-                  </Tabs.Tab>
+                  <Tabs.Panel id="enhanced" className={tabsStyles.tabPanel()}>
+                    <EnhancedWebResults results={enhanced_results} />
+                  </Tabs.Panel>
                 )}
 
                 {original_search && (
-                  <Tabs.Tab id="original" className={tabsStyles.tab()}>
-                    <div className="flex items-center space-x-2">
-                      <SearchIcon className="h-4 w-4" />
-                      <span>Original Search</span>
-                    </div>
-                    <Tabs.Indicator className={tabsStyles.tabIndicator()} />
-                  </Tabs.Tab>
+                  <Tabs.Panel id="original" className={tabsStyles.tabPanel()}>
+                    {original_search && (
+                      <SearchResultsTabs search_results={original_search} />
+                    )}
+                  </Tabs.Panel>
                 )}
 
                 {metadata && (
-                  <Tabs.Tab id="metadata" className={tabsStyles.tab()}>
-                    <div className="flex items-center space-x-2">
-                      <InternetIcon />
-                      <span>Search Info</span>
-                    </div>
-                    <Tabs.Indicator className={tabsStyles.tabIndicator()} />
-                  </Tabs.Tab>
+                  <Tabs.Panel id="metadata" className={tabsStyles.tabPanel()}>
+                    <SearchMetadata metadata={metadata} />
+                  </Tabs.Panel>
                 )}
-              </Tabs.List>
-
-              {enhanced_results && enhanced_results.length > 0 && (
-                <Tabs.Panel id="enhanced" className={tabsStyles.tabPanel()}>
-                  <EnhancedWebResults results={enhanced_results} />
-                </Tabs.Panel>
-              )}
-
-              {original_search && (
-                <Tabs.Panel id="original" className={tabsStyles.tabPanel()}>
-                  {original_search && (
-                    <SearchResultsTabs search_results={original_search} />
-                  )}
-                </Tabs.Panel>
-              )}
-
-              {metadata && (
-                <Tabs.Panel id="metadata" className={tabsStyles.tabPanel()}>
-                  <SearchMetadata metadata={metadata} />
-                </Tabs.Panel>
-              )}
-            </Tabs>
+              </Tabs>
+            </div>
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>

@@ -69,8 +69,6 @@ apps/web/src/config/openui/components/CopyableContentView.tsx:GaiaButton:py-1.5
 apps/web/src/features/calendar/components/NaturalLanguageDateInput.tsx:InputGroup.Input:pr-10
 apps/web/src/features/chat/components/bubbles/actions/ChatBubble_Actions_Image.tsx:GaiaButton:px-3
 apps/web/src/features/chat/components/bubbles/actions/ChatBubble_Actions_Image.tsx:GaiaButton:py-2
-apps/web/src/features/chat/components/bubbles/bot/BrowserTaskSection.tsx:Accordion.Panel:pb-2
-apps/web/src/features/chat/components/bubbles/bot/BrowserTaskSection.tsx:Accordion.Panel:pt-1
 apps/web/src/features/chat/components/bubbles/bot/BrowserTaskSection.tsx:Chip.Label:px-1.5
 apps/web/src/features/chat/components/bubbles/bot/DeepResearchResultsTabs.tsx:Tabs:p-0
 apps/web/src/features/chat/components/bubbles/bot/FileArtifactSection.tsx:Card.Content:p-3.5
@@ -95,7 +93,6 @@ apps/web/src/features/integrations/components/IntegrationInstructionsModal.tsx:T
 apps/web/src/features/integrations/components/IntegrationInstructionsModal.tsx:Tabs.Panel:px-0
 apps/web/src/features/integrations/components/IntegrationPermissionsModal.tsx:Modal.Body:pb-6
 apps/web/src/features/integrations/components/IntegrationPermissionsModal.tsx:Modal.Header:pb-3
-apps/web/src/features/integrations/components/IntegrationsCard.tsx:Accordion.Panel:pb-1
 apps/web/src/features/integrations/components/PermissionModeDecision.tsx:Radio:p-2.5
 apps/web/src/features/landing/components/demo/DummySlashCommandDropdown.tsx:Accordion.Item:pb-1
 apps/web/src/features/landing/components/demo/MemoryGraphDemo.tsx:Card.Content:p-2

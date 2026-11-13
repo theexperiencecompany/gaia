@@ -1,7 +1,7 @@
 "use client";
 
 import { Chip, Tabs } from "@heroui/react";
-import { shapeVariants } from "@/components/shared/shape";
+import { tabsVariants } from "@/components/shared/tabsVariants";
 import type { Plan } from "../api/pricingApi";
 import {
   type AnnualSavings,
@@ -17,6 +17,12 @@ interface BillingPeriodTabsProps {
 
 /** "2 months free" reads as a gift; "Save 17%" reads as a sum. Falls back to
  * the percentage only when the discount is too small to be a whole month. */
+const tabsStyles = tabsVariants({
+  variant: "solid",
+  size: "lg",
+  shape: "pill",
+});
+
 function annualSavingsLabel({ percent, monthsFree }: AnnualSavings): string {
   if (monthsFree < 1) return `Save ${percent}%`;
   return monthsFree === 1 ? "1 month free" : `${monthsFree} months free`;
@@ -35,19 +41,18 @@ export function BillingPeriodTabs({
 
   return (
     <Tabs
-      className={shapeVariants({ shape: "pill" })}
-      variant="primary"
+      className={tabsStyles.base()}
       selectedKey={isYearly ? "yearly" : "monthly"}
       onSelectionChange={(key) => onChange(key === "yearly")}
       aria-label="Billing period"
     >
       <Tabs.ListContainer>
-        <Tabs.List>
-          <Tabs.Tab id="monthly">
+        <Tabs.List className={tabsStyles.tabList()}>
+          <Tabs.Tab id="monthly" className={tabsStyles.tab()}>
             Monthly
-            <Tabs.Indicator />
+            <Tabs.Indicator className={tabsStyles.tabIndicator()} />
           </Tabs.Tab>
-          <Tabs.Tab id="yearly">
+          <Tabs.Tab id="yearly" className={tabsStyles.tab()}>
             <div className="flex items-center gap-2">
               Yearly
               {savings !== null && (
@@ -56,7 +61,7 @@ export function BillingPeriodTabs({
                 </Chip>
               )}
             </div>
-            <Tabs.Indicator />
+            <Tabs.Indicator className={tabsStyles.tabIndicator()} />
           </Tabs.Tab>
         </Tabs.List>
       </Tabs.ListContainer>

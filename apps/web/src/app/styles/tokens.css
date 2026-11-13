@@ -141,6 +141,9 @@ html {
   --gaia-modal-3xl: 48rem;
   --gaia-modal-4xl: 56rem;
   --gaia-modal-5xl: 64rem;
+  --gaia-modal-inset: 0.25rem;
+  --gaia-modal-inset-sm-y: 4rem;
+  --gaia-modal-inset-sm-x: 1.5rem;
   --gaia-modal-padding-x: 1.5rem;
   --gaia-modal-header-padding-y: 1rem;
   --gaia-modal-body-padding-y: 0.5rem;

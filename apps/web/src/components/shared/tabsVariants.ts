@@ -3,7 +3,8 @@ import { tv } from "tailwind-variants";
 /**
  * v2's tabs on v3's Tabs parts, slot names as in HeroUI's own tabsVariants.
  * variant styles the list, indicator and panel (solid fills the list; light and
- * underlined do not); size styles each tab; color accent puts the selected tab on the accent.
+ * underlined do not); size styles each tab; shape pill rounds list, tabs and
+ * indicator fully; color accent puts the selected tab on the accent.
  */
 export const tabsVariants = tv({
   slots: { base: "", tabList: "", tab: "", tabIndicator: "", tabPanel: "" },
@@ -38,6 +39,11 @@ export const tabsVariants = tv({
       md: {
         tab: "h-8 w-full rounded-lg px-3 py-1 text-sm font-normal text-zinc-400",
       },
+      lg: {
+        tabList: "rounded-2xl",
+        tab: "h-9 w-full rounded-xl px-3 py-1 text-base font-normal text-zinc-400",
+        tabIndicator: "rounded-xl",
+      },
     },
     color: {
       default: { tab: "data-[selected=true]:text-foreground" },
@@ -47,6 +53,14 @@ export const tabsVariants = tv({
         tabIndicator: "rounded-lg bg-accent shadow-none",
       },
     },
+    shape: {
+      default: {},
+      pill: {
+        tabList: "rounded-full",
+        tab: "rounded-full",
+        tabIndicator: "rounded-full",
+      },
+    },
   },
-  defaultVariants: { size: "md", color: "default" },
+  defaultVariants: { size: "md", shape: "default", color: "default" },
 });

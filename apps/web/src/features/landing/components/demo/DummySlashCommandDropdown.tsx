@@ -54,41 +54,43 @@ const DummyIntegrationsCard: React.FC = () => {
               <Accordion.Indicator className={accordionStyles.indicator()} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className={accordionStyles.panel()}>
-            <div>
-              <div className="grid grid-cols-2 gap-2">
-                {dummyIntegrations.map((integration) => (
-                  <div
-                    key={integration.id}
-                    className="flex items-center gap-2 rounded-lg p-2 px-3"
-                  >
-                    {/* Icon */}
-                    <div className="flex-shrink-0">
-                      <div className="flex items-center justify-center rounded-lg">
-                        {getToolCategoryIcon(integration.id, {
-                          size: 25,
-                          width: 25,
-                          height: 25,
-                          showBackground: false,
-                        })}
+          <Accordion.Panel>
+            <div className={accordionStyles.content()}>
+              <div>
+                <div className="grid grid-cols-2 gap-2">
+                  {dummyIntegrations.map((integration) => (
+                    <div
+                      key={integration.id}
+                      className="flex items-center gap-2 rounded-lg p-2 px-3"
+                    >
+                      {/* Icon */}
+                      <div className="flex-shrink-0">
+                        <div className="flex items-center justify-center rounded-lg">
+                          {getToolCategoryIcon(integration.id, {
+                            size: 25,
+                            width: 25,
+                            height: 25,
+                            showBackground: false,
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Name */}
+                      <div className="min-w-0 flex-1">
+                        <span className="block truncate text-xs text-zinc-300">
+                          {integration.name}
+                        </span>
+                      </div>
+
+                      {/* Status */}
+                      <div className="flex-shrink-0">
+                        <Chip size="sm" variant="soft" color="success">
+                          Connected
+                        </Chip>
                       </div>
                     </div>
-
-                    {/* Name */}
-                    <div className="min-w-0 flex-1">
-                      <span className="block truncate text-xs text-zinc-300">
-                        {integration.name}
-                      </span>
-                    </div>
-
-                    {/* Status */}
-                    <div className="flex-shrink-0">
-                      <Chip size="sm" variant="soft" color="success">
-                        Connected
-                      </Chip>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           </Accordion.Panel>

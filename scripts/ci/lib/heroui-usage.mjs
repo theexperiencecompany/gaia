@@ -44,6 +44,10 @@ const REQUIRED_WRAPPERS = new Map([
   ["ListBox.Item", "GaiaListBoxItem"],
 ]);
 
+// A collapsing part keeps its own padding and margin when closed, so its spacing goes on the content inside.
+const COLLAPSING_PARTS = new Set(["Accordion.Panel", "Disclosure.Panel"]);
+const BOX_SPACING = /^-?(p|m)[xytrblse]?-|^space-[xy]-/;
+
 // v3 renders only the parts a Switch or Checkbox is given: self-closing, it renders an empty div.
 const PART_CONTROLS = new Set(["Switch", "Checkbox"]);
 
@@ -411,6 +415,17 @@ export function heroUsageIn(file, src) {
       for (const attr of nodePath.node.attributes) {
         if (attr.type !== "JSXAttribute") continue;
         const name = attr.name.name;
+        if (COLLAPSING_PARTS.has(tag) && name === "className") {
+          const spacing = classStrings(module, attr.value, [])
+            .flatMap((c) => c.split(/\s+/))
+            .filter((token) => BOX_SPACING.test(utilityOf(token)));
+          if (spacing.length > 0) {
+            found.push({
+              line,
+              message: `<${tag} className="${spacing.join(" ")}">: it keeps this when collapsed; put it on an element inside the panel`,
+            });
+          }
+        }
         if ((tag === "Button" && V2_BUTTON_PROPS.has(name)) || V2_ANY_PROPS.has(name)) {
           found.push({ line, message: `<${tag} ${name}>: a v2 prop v3 does not read` });
         }

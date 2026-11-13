@@ -112,15 +112,17 @@ export default function NotificationListSection({
                 <Accordion.Indicator className={accordionStyles.indicator()} />
               </Accordion.Trigger>
             </Accordion.Heading>
-            <Accordion.Panel className={accordionStyles.panel()}>
-              <div className="flex flex-col items-center justify-center p-8 text-center">
-                <NotificationIcon className="mb-4 h-10 w-10 text-zinc-600" />
-                <p className="font-medium text-zinc-300">
-                  No notifications found
-                </p>
-                <p className="mt-1 text-sm text-zinc-400">
-                  You're all caught up! New notifications will appear here.
-                </p>
+            <Accordion.Panel>
+              <div className={accordionStyles.content()}>
+                <div className="flex flex-col items-center justify-center p-8 text-center">
+                  <NotificationIcon className="mb-4 h-10 w-10 text-zinc-600" />
+                  <p className="font-medium text-zinc-300">
+                    No notifications found
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    You're all caught up! New notifications will appear here.
+                  </p>
+                </div>
               </div>
             </Accordion.Panel>
           </AccordionItem>
@@ -165,45 +167,47 @@ export default function NotificationListSection({
               <Accordion.Indicator className={accordionStyles.indicator()} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className={accordionStyles.panel()}>
-            <div className="flex flex-col gap-3">
-              {/* Mark All Read Button */}
-              {unreadNotifications.length > 0 && (
-                <div className="flex justify-end">
-                  <GaiaButton
-                    size="sm"
-                    variant="default-soft"
-                    onPress={handleMarkAllAsRead}
-                    isPending={isMarkingAllRead}
-                    tone="dim"
-                  >
-                    Mark all read
-                  </GaiaButton>
-                </div>
-              )}
-
-              {/* Notifications List */}
-              <ScrollShadow className="max-h-[60vh]">
-                <div className="space-y-2">
-                  {localNotifications.map((notification) => (
-                    <NotificationItem
-                      key={notification.id}
-                      notification={notification}
-                      onMarkAsRead={handleMarkAsRead}
-                    />
-                  ))}
-                </div>
-              </ScrollShadow>
-
-              {/* Footer */}
-              {unreadNotifications.length > 0 && (
-                <div className="border-t border-zinc-700 pt-3">
-                  <div className="text-sm text-zinc-400">
-                    {unreadNotifications.length} unread notification
-                    {unreadNotifications.length !== 1 ? "s" : ""}
+          <Accordion.Panel>
+            <div className={accordionStyles.content()}>
+              <div className="flex flex-col gap-3">
+                {/* Mark All Read Button */}
+                {unreadNotifications.length > 0 && (
+                  <div className="flex justify-end">
+                    <GaiaButton
+                      size="sm"
+                      variant="default-soft"
+                      onPress={handleMarkAllAsRead}
+                      isPending={isMarkingAllRead}
+                      tone="dim"
+                    >
+                      Mark all read
+                    </GaiaButton>
                   </div>
-                </div>
-              )}
+                )}
+
+                {/* Notifications List */}
+                <ScrollShadow className="max-h-[60vh]">
+                  <div className="space-y-2">
+                    {localNotifications.map((notification) => (
+                      <NotificationItem
+                        key={notification.id}
+                        notification={notification}
+                        onMarkAsRead={handleMarkAsRead}
+                      />
+                    ))}
+                  </div>
+                </ScrollShadow>
+
+                {/* Footer */}
+                {unreadNotifications.length > 0 && (
+                  <div className="border-t border-zinc-700 pt-3">
+                    <div className="text-sm text-zinc-400">
+                      {unreadNotifications.length} unread notification
+                      {unreadNotifications.length !== 1 ? "s" : ""}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </Accordion.Panel>
         </AccordionItem>

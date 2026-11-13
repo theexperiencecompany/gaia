@@ -133,10 +133,12 @@ function StepsAccordion({
             <Accordion.Indicator className={accordionStyles.indicator()} />
           </Accordion.Trigger>
         </Accordion.Heading>
-        <Accordion.Panel className="space-y-2 pt-1 pb-2">
-          {steps.map((step) => (
-            <StepRow key={`browser-step-${step.index}`} step={step} />
-          ))}
+        <Accordion.Panel>
+          <div className="space-y-2 pt-1 pb-2">
+            {steps.map((step) => (
+              <StepRow key={`browser-step-${step.index}`} step={step} />
+            ))}
+          </div>
         </Accordion.Panel>
       </AccordionItem>
     </Accordion>

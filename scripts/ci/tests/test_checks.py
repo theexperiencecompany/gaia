@@ -1089,7 +1089,16 @@ def test_a_baselined_heroui_override_passes_and_a_stale_line_is_only_reported(
 # heroui-usage: v3 APIs only, controls with their parts, GAIA wrappers over bare HeroUI
 # ---------------------------------------------------------------------------
 
-V2_VARIANT_NAMES = ["flat", "light", "bordered", "faded", "solid", "shadow", "underlined", "splitted"]
+V2_VARIANT_NAMES = [
+    "flat",
+    "light",
+    "bordered",
+    "faded",
+    "solid",
+    "shadow",
+    "underlined",
+    "splitted",
+]
 
 
 @pytest.mark.parametrize(
@@ -1101,13 +1110,28 @@ V2_VARIANT_NAMES = ["flat", "light", "bordered", "faded", "solid", "shadow", "un
         ('import { HeroUIProvider } from "@heroui/system";\n', "HeroUIProvider from @heroui"),
         (_hero_component("<Chip classNames={{ base: 'x' }}>x</Chip>"), "<Chip classNames>"),
         (_hero_component('<Chip labelPlacement="outside">x</Chip>'), "<Chip labelPlacement>"),
-        (_hero_component('<Modal.Dialog variant={open ? "underlined" : "primary"} />'), 'variant="underlined"'),
+        (
+            _hero_component('<Modal.Dialog variant={open ? "underlined" : "primary"} />'),
+            'variant="underlined"',
+        ),
         (_hero_component("<Button>x</Button>"), "<Button>: use GaiaButton"),
         (_hero_component("<Select.Value />", "Select"), "<Select.Value>: use GaiaSelectValue"),
-        (_hero_component('<ListBox.Item id="a">a</ListBox.Item>', "ListBox"), "<ListBox.Item>: use GaiaListBoxItem"),
-        (_hero_component("<Switch isSelected />", "Switch"), "<Switch />: render its Switch.Control"),
+        (
+            _hero_component('<ListBox.Item id="a">a</ListBox.Item>', "ListBox"),
+            "<ListBox.Item>: use GaiaListBoxItem",
+        ),
+        (
+            _hero_component("<Switch isSelected />", "Switch"),
+            "<Switch />: render its Switch.Control",
+        ),
         (_hero_component("<Checkbox />", "Checkbox"), "<Checkbox />: render its Checkbox.Control"),
         (_hero_component("<B />", "Button as B"), "<Button>: use GaiaButton"),
+        (
+            _hero_component(
+                '<Accordion.Panel className="py-2 text-sm">x</Accordion.Panel>', "Accordion"
+            ),
+            '<Accordion.Panel className="py-2">: it keeps this when collapsed',
+        ),
         *[
             (_hero_component(f'<Chip variant="{v}">x</Chip>'), f'<Chip variant="{v}">')
             for v in V2_VARIANT_NAMES
@@ -1126,7 +1150,14 @@ def test_a_heroui_usage_error_fails(tmp_path: Path, source: str, message: str) -
 
 @pytest.mark.parametrize(
     "button_prop",
-    ["isLoading", "onClick={go}", "startContent={<i />}", "endContent={<i />}", 'radius="full"', 'color="primary"'],
+    [
+        "isLoading",
+        "onClick={go}",
+        "startContent={<i />}",
+        "endContent={<i />}",
+        'radius="full"',
+        'color="primary"',
+    ],
 )
 def test_a_v2_button_prop_fails_even_inside_gaia_button(tmp_path: Path, button_prop: str) -> None:
     repo = _repo(tmp_path)
@@ -1148,13 +1179,14 @@ def test_v3_usage_and_each_wrapper_in_its_own_file_pass(tmp_path: Path) -> None:
     _add_text(
         repo,
         HERO_FILE,
-        'import { Chip, Switch } from "@heroui/react";\n'
+        'import { Accordion, Chip, Switch } from "@heroui/react";\n'
         'import { buttonVariants } from "@heroui/styles";\n'
         'import { GaiaButton } from "@/components/shared/GaiaButton";\n'
         "export const A = () => (\n"
         '  <GaiaButton variant="primary" isPending onPress={go}>x</GaiaButton>\n'
         '  <Chip variant="soft" color="accent">x</Chip>\n'
         "  <Switch><Switch.Control><Switch.Thumb /></Switch.Control></Switch>\n"
+        '  <Accordion.Panel className="text-sm"><div className="py-2">x</div></Accordion.Panel>\n'
         '  <button onClick={go} color="red" type="button" />\n'
         ");\n",
     )

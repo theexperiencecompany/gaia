@@ -62,8 +62,8 @@ export default function CollapsibleListWrapper({
               <Accordion.Indicator className={accordionStyles.indicator()} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className={accordionStyles.panel()}>
-            {children}
+          <Accordion.Panel>
+            <div className={accordionStyles.content()}>{children}</div>
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>

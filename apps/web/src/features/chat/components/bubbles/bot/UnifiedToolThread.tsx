@@ -198,34 +198,38 @@ export default function UnifiedToolThread({
               </div>
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className={accordionStyles.panel()}>
-            <div className="py-2">
-              {timeline.map((item, idx) => {
-                const isLast = idx === timeline.length - 1;
+          <Accordion.Panel>
+            <div className={accordionStyles.content()}>
+              <div className="py-2">
+                {timeline.map((item, idx) => {
+                  const isLast = idx === timeline.length - 1;
 
-                if (item.kind === "tool") {
+                  if (item.kind === "tool") {
+                    return (
+                      <StepRow
+                        key={itemKeys[idx]}
+                        call={item.data}
+                        isLast={isLast}
+                        pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+                        approvalOutcomeByToolCallId={
+                          approvalOutcomeByToolCallId
+                        }
+                      />
+                    );
+                  }
+
                   return (
-                    <StepRow
+                    <SubagentRow
                       key={itemKeys[idx]}
-                      call={item.data}
+                      group={item.data}
                       isLast={isLast}
+                      isStreaming={isStreaming}
                       pendingApprovalToolCallIds={pendingApprovalToolCallIds}
                       approvalOutcomeByToolCallId={approvalOutcomeByToolCallId}
                     />
                   );
-                }
-
-                return (
-                  <SubagentRow
-                    key={itemKeys[idx]}
-                    group={item.data}
-                    isLast={isLast}
-                    isStreaming={isStreaming}
-                    pendingApprovalToolCallIds={pendingApprovalToolCallIds}
-                    approvalOutcomeByToolCallId={approvalOutcomeByToolCallId}
-                  />
-                );
-              })}
+                })}
+              </div>
             </div>
           </Accordion.Panel>
         </AccordionItem>

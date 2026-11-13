@@ -357,16 +357,18 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
                 />
               </Accordion.Trigger>
             </Accordion.Heading>
-            <Accordion.Panel className={accordionStyles.panel()}>
-              <div className="space-y-2 pb-2">
-                {weatherData.forecast.map((day) => (
-                  <WeeklyForecastRow
-                    key={`${day.temp_max}-${day.temp_min}`}
-                    day={day}
-                    useFahrenheit={useFahrenheit}
-                    weatherTheme={weatherTheme}
-                  />
-                ))}
+            <Accordion.Panel>
+              <div className={accordionStyles.content()}>
+                <div className="space-y-2 pb-2">
+                  {weatherData.forecast.map((day) => (
+                    <WeeklyForecastRow
+                      key={`${day.temp_max}-${day.temp_min}`}
+                      day={day}
+                      useFahrenheit={useFahrenheit}
+                      weatherTheme={weatherTheme}
+                    />
+                  ))}
+                </div>
               </div>
             </Accordion.Panel>
           </Accordion.Item>
@@ -391,13 +393,15 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
               />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className={accordionStyles.panel()}>
-            <WeatherDetailsGrid
-              weatherData={weatherData}
-              weatherTheme={weatherTheme}
-              sunriseTime={sunriseTime}
-              sunsetTime={sunsetTime}
-            />
+          <Accordion.Panel>
+            <div className={accordionStyles.content()}>
+              <WeatherDetailsGrid
+                weatherData={weatherData}
+                weatherTheme={weatherTheme}
+                sunriseTime={sunriseTime}
+                sunsetTime={sunsetTime}
+              />
+            </div>
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>

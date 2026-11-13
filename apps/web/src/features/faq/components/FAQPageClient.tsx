@@ -35,7 +35,7 @@ export default function FAQPageClient({ faqs }: FAQPageClientProps) {
               <Accordion.Heading className="font-normal">
                 <Accordion.Trigger
                   className={accordionStyles.trigger({
-                    className: "cursor-pointer text-2xl",
+                    className: "cursor-pointer text-2xl font-normal",
                   })}
                 >
                   {item.question}
@@ -44,15 +44,17 @@ export default function FAQPageClient({ faqs }: FAQPageClientProps) {
                   />
                 </Accordion.Trigger>
               </Accordion.Heading>
-              <Accordion.Panel
-                className={toneVariants({
-                  tone: "muted",
-                  className: accordionStyles.panel({
-                    className: "mb-6 max-w-[90%] text-xl font-light",
-                  }),
-                })}
-              >
-                <span className="select-text">{item.answer}</span>
+              <Accordion.Panel>
+                <div
+                  className={toneVariants({
+                    tone: "muted",
+                    className: accordionStyles.content({
+                      className: "mb-6 max-w-[90%] text-xl font-light",
+                    }),
+                  })}
+                >
+                  <span className="select-text">{item.answer}</span>
+                </div>
               </Accordion.Panel>
             </Accordion.Item>
           ))}

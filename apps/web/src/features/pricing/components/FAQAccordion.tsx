@@ -52,7 +52,7 @@ export function FAQAccordion({ faqs }: { faqs?: FAQItem[] }) {
               <Accordion.Heading className="font-normal">
                 <Accordion.Trigger
                   className={accordionStyles.trigger({
-                    className: "cursor-pointer text-lg sm:text-2xl",
+                    className: "cursor-pointer text-lg font-normal sm:text-2xl",
                   })}
                 >
                   {item.question}
@@ -61,16 +61,18 @@ export function FAQAccordion({ faqs }: { faqs?: FAQItem[] }) {
                   />
                 </Accordion.Trigger>
               </Accordion.Heading>
-              <Accordion.Panel
-                className={toneVariants({
-                  tone: "muted",
-                  className: accordionStyles.panel({
-                    className:
-                      "mb-6 max-w-full text-base font-light sm:max-w-[60%] sm:text-xl",
-                  }),
-                })}
-              >
-                <span className="select-text">{item.answer}</span>
+              <Accordion.Panel>
+                <div
+                  className={toneVariants({
+                    tone: "muted",
+                    className: accordionStyles.content({
+                      className:
+                        "mb-6 max-w-full text-base font-light sm:max-w-[60%] sm:text-xl",
+                    }),
+                  })}
+                >
+                  <span className="select-text">{item.answer}</span>
+                </div>
               </Accordion.Panel>
             </Accordion.Item>
           ))}
