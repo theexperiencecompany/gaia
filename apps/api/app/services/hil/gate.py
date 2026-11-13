@@ -36,7 +36,6 @@ from app.constants.hil import (
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.approval_ledger import approval_ledger_repository
-from app.models.agent_config import work_is_logged
 from app.models.agent_models import AgentConfigurable, SubagentResumeItem
 from app.models.execute_models import DispatchError
 from app.models.hil_models import (
@@ -274,11 +273,7 @@ async def _decide_ledger(
         # later turn of the same worker can revoke what it proposed.
         configurable: AgentConfigurable = configurable_of(request)
         owner = configurable.get("thread_id") or "unknown"
-        task_id = (
-            await running_step_task(context.conversation_id, context.user_id)
-            if work_is_logged(configurable)
-            else None
-        )
+        task_id = await running_step_task(context.conversation_id, context.user_id)
         # blocked_by arrives with ordering chains (Phase 3): the chain joins the
         # fingerprint there, so identical calls on different chains never share
         # an envelope.

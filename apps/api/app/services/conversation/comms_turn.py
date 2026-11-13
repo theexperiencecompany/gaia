@@ -1,6 +1,7 @@
 """The production turn of a comms attempt: its run config and the system prompt, context and clock around its inputs."""
 
 from typing import Literal, cast
+from uuid import uuid4
 
 from langchain_core.messages import AnyMessage, HumanMessage
 from langgraph.constants import CONF
@@ -102,6 +103,10 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
     configurable["conversation_step"] = step_turn_ref(claim, batch)
     if fired is not None:
         _stamp_workflow_run(configurable, fired)
+    else:
+        # The attempt's run identity: the HIL gate files approvals under it, and the work
+        # it dispatches collects its cards and takes its Stop under it.
+        configurable["stream_id"] = str(uuid4())
     return CommsTurn(
         config=config,
         opening=[*context.chain, *(m for m in (context.presence,) if m is not None)],
