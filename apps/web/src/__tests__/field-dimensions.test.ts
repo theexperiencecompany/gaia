@@ -82,3 +82,13 @@ describe("a shape class", () => {
     expect(leaking).toEqual([]);
   });
 });
+
+// The New skill modal's source switch drew its grey track across the whole
+// modal: v3's ListContainer is a block that fills a column; v2's track hugged its tabs.
+describe("a tab track", () => {
+  it("hugs its tabs", () => {
+    expect(valuesFor(".tabs__list-container", "width")).toContain(
+      "fit-content",
+    );
+  });
+});

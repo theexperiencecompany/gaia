@@ -517,6 +517,12 @@
       0 0 0 calc(var(--gaia-avatar-ring-gap) + var(--gaia-avatar-ring-width))
         var(--gaia-avatar-ring-color);
   }
+  /* v3's optional ListContainer paints the track and is a block, so in a column
+     (a modal body) the track spans the row; v2's track hugged its tabs. */
+  .tabs__list-container {
+    width: fit-content;
+    max-width: 100%;
+  }
   .gaia-tabs-accent .tabs__list {
     background-color: var(--default);
   }
