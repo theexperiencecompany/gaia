@@ -79,7 +79,15 @@
     "category_page_title": "Comparativos de {category}",
     "category_page_subtitle": "Como o GAIA se compara a {count} ferramentas de {category}, lado a lado, para você ver onde cada uma se encaixa.",
     "category_meta_title": "{category}: GAIA contra {count} ferramentas",
-    "category_meta_description": "O GAIA lado a lado com {count} ferramentas de {category}: recursos, preços e onde cada uma se encaixa, para você escolher a ferramenta certa."
+    "category_meta_description": "O GAIA lado a lado com {count} ferramentas de {category}: recursos, preços e onde cada uma se encaixa, para você escolher a ferramenta certa.",
+    "category_ai_assistants": "Assistentes de IA",
+    "category_automation": "Automação",
+    "category_task_management": "Gestão de tarefas",
+    "category_project_management": "Gestão de projetos",
+    "category_calendar_scheduling": "Calendário e agendamento",
+    "category_email": "E-mail",
+    "category_notes_knowledge": "Notas e conhecimento",
+    "category_other": "Outras categorias"
   },
   "automate": {
     "breadcrumb": "Automatizar",

@@ -79,7 +79,15 @@
     "category_page_title": "{category} im Vergleich",
     "category_page_subtitle": "So schneidet GAIA gegen {count} Tools aus {category} ab, direkt verglichen, damit Sie sehen, wo jedes passt.",
     "category_meta_title": "{category} im Vergleich: GAIA gegen {count} Tools",
-    "category_meta_description": "GAIA im direkten Vergleich mit {count} Tools aus {category}: Funktionen, Preise und Einsatzgebiete, damit Sie das richtige Tool für sich wählen."
+    "category_meta_description": "GAIA im direkten Vergleich mit {count} Tools aus {category}: Funktionen, Preise und Einsatzgebiete, damit Sie das richtige Tool für sich wählen.",
+    "category_ai_assistants": "KI-Assistenten",
+    "category_automation": "Automatisierung",
+    "category_task_management": "Aufgabenverwaltung",
+    "category_project_management": "Projektmanagement",
+    "category_calendar_scheduling": "Kalender & Terminplanung",
+    "category_email": "E-Mail",
+    "category_notes_knowledge": "Notizen & Wissen",
+    "category_other": "Sonstige"
   },
   "automate": {
     "breadcrumb": "Automatisieren",

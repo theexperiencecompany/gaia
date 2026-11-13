@@ -257,7 +257,8 @@ async function getComparisonPages(
       changeFrequency: "monthly" as const,
       priority: 0.8,
     })),
-    ...comparisonCategoryGroups(comparisons).map((category) => ({
+    // Category labels do not decide which categories exist, so the message key stands in for them.
+    ...comparisonCategoryGroups(comparisons, (key) => key).map((category) => ({
       url: `${baseUrl}${comparisonCategoryPath(category.slug)}`,
       changeFrequency: "weekly" as const,
       priority: 0.7,
