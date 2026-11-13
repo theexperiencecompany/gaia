@@ -100,7 +100,6 @@ class TestOutboundEnvelopeRoundTrip:
             "text",
             "text_parts",
             "attachment",
-            "reaction",
             "enqueued_at",
         }
         assert payload["text"] == envelope.text
