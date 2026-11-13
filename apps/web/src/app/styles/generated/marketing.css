@@ -224,6 +224,7 @@
 @source "../../../features/auth/hooks/useCurrentUser.ts";
 @source "../../../features/auth/hooks/useFetchUser.ts";
 @source "../../../features/auth/hooks/useLoginModal.ts";
+@source "../../../features/auth/utils/signupCta.ts";
 @source "../../../features/auth/utils/signupMode.ts";
 @source "../../../features/auth/utils/toCurrentUser.ts";
 @source "../../../features/blog/components/AuthorTooltip.tsx";
