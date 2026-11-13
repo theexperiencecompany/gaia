@@ -715,10 +715,19 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         collection = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
         try:
             await collection.insert_one(entry.document())
-        except DuplicateKeyError:
-            await collection.replace_one(
-                {**at_its_seq(entry), REVISION_FIELD: {"$lt": entry.revision}}, entry.document()
-            )
+        except DuplicateKeyError as exc:
+            # Only this entry's own older revision is replaced: another entry at its seq is a conflict.
+            older = {**at_its_seq(entry), "id": entry.id, REVISION_FIELD: {"$lt": entry.revision}}
+            if (await collection.replace_one(older, entry.document())).matched_count:
+                return
+            # The projection only trims the read: the key model ignores every other field.
+            stored = await collection.find_one(
+                at_its_seq(entry), _ENTRY_KEY_FIELDS
+            )  # pragma: no mutate
+            if not is_same_entry(stored, entry):
+                raise ConversationStoreError(
+                    message="an outbox entry conflicts with a stored entry", why=str(exc)
+                ) from exc
 
     async def _histories(
         self, heads: Sequence[Head], window: EntryWindow, *, limit: int | None = None

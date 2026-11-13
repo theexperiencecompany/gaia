@@ -193,11 +193,18 @@ class ConversationLogRepository(ConversationRepository):
         return True
 
     async def stage_unfenced_amend(
-        self, conversation_id: str, *, user_id: str, amended: LoggedEntry, after_revision: int
+        self,
+        conversation_id: str,
+        *,
+        user_id: str,
+        amended: LoggedEntry,
+        after_revision: int,
+        advances_sync: bool = False,
     ) -> bool:
         """Stage amended unfenced, only while the stored entry is still at after_revision; the flush carries it.
 
         A staged amendment newer than after_revision (a fill, a reaction, a pin) makes this a no-op.
+        advances_sync bumps updatedAt, so batch sync carries the edit to the user's other devices.
         """
         staged = f"{OUTBOX_FIELD}.{amended.seq}"
         with store_errors("log reaction"):  # pragma: no mutate — error label
@@ -210,7 +217,10 @@ class ConversationLogRepository(ConversationRepository):
                         {f"{staged}.revision": after_revision},
                     ],
                 },
-                {"$set": {staged: log_document(conversation_id, user_id, amended)}},
+                {
+                    "$set": {staged: log_document(conversation_id, user_id, amended)},
+                    **({"$currentDate": {"updatedAt": True}} if advances_sync else {}),
+                },
             )
         if not result.matched_count:
             return False
@@ -239,6 +249,7 @@ class ConversationLogRepository(ConversationRepository):
                 user_id=user_id,
                 amended=target.model_copy(update={"entry": revised}),
                 after_revision=entry.revision,
+                advances_sync=True,
             ):
                 return True
         raise ConversationStoreError(
