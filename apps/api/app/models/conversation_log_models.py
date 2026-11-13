@@ -21,7 +21,10 @@ from shared.py.analytics.catalog.attribution import Attribution
 from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider, ApprovalOutcome
 from shared.py.analytics.catalog.properties import Identifier
 
-_FROZEN = ConfigDict(frozen=True, extra="forbid")
+# A defaulted field is always serialized, so the generated client type marks it required.
+WIRE_CONFIG = ConfigDict(
+    frozen=True, extra="forbid", json_schema_serialization_defaults_required=True
+)
 
 
 class EntryKind(StrEnum):
@@ -87,14 +90,14 @@ _MAY_ANSWER_NOTHING = frozenset({ReplyOutcome.STOPPED, ReplyOutcome.FAILED})
 class Reaction(BaseModel):
     """An emoji on a user message; a field updated in place, never a state change."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = WIRE_CONFIG
 
     emoji: str = Field(min_length=1)
     by: ReactionBy
 
 
 class _Entry(BaseModel):
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     id: str = Field(min_length=1, description="Producer-minted idempotency key")
 
@@ -153,7 +156,7 @@ class BargeIn(_Entry):
 class WorkflowRun(BaseModel):
     """What a workflow's turn runs: the workflow, the trigger that fired it, and the fire's bookkeeping."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     workflow: SelectedWorkflowData
     # The execution record this run closes; its tool calls are recorded under this id.
@@ -183,7 +186,7 @@ class TodoReportForm(StrEnum):
 class TodoRun(BaseModel):
     """One run of a tracked todo: the todo, the run, what woke it and the report it owes."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     todo_id: str = Field(min_length=1)
     # The run's own id: its finish entry and its durable finish job are keyed by it.
@@ -360,7 +363,7 @@ WakingEntry = UserMessage | WorkflowFired | WorkFinished | IntegrationConnected
 class LoggedEntry(BaseModel):
     """An entry at its position in the conversation's order."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     seq: int = Field(ge=1)
     at: AwareDatetime
@@ -387,7 +390,7 @@ class DisplayState(StrEnum):
 class LiveWork(BaseModel):
     """Background work that has started and not finished or been stopped."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     task_id: str
     cause_through: int
@@ -402,7 +405,7 @@ class LiveWork(BaseModel):
 class FinishedWork(BaseModel):
     """A finished task's waking result and the user messages that caused it, until a reply answers it."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     seq: int = Field(ge=1)
     task_id: str
@@ -413,7 +416,7 @@ class FinishedWork(BaseModel):
 class ConversationState(BaseModel):
     """The fold of a conversation's log; only reduce changes it."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     head: int = Field(ge=0)
     settled_through: int = Field(ge=0)
@@ -445,13 +448,13 @@ class ConversationState(BaseModel):
 class KickStep(BaseModel):
     """Run advance for this conversation."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
 
 class Preempt(BaseModel):
     """Raise the running step's preempt hint."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     stop_through: int | None = None
     barge_reply_id: str | None = None
@@ -460,7 +463,7 @@ class Preempt(BaseModel):
 class CancelWork(BaseModel):
     """Cancel exactly these tasks, and close the approvals they wait on."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     task_ids: tuple[str, ...] = Field(min_length=1)
     approval_ids: tuple[str, ...] = ()
@@ -469,7 +472,7 @@ class CancelWork(BaseModel):
 class StartAck(BaseModel):
     """React to a user message the moment it is accepted."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     message_id: str
 
@@ -480,7 +483,7 @@ Effect = KickStep | Preempt | CancelWork | StartAck
 class Transition(BaseModel):
     """An accepted entry's next state and the effects the append must run."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     state: ConversationState
     effects: tuple[Effect, ...]
@@ -504,7 +507,7 @@ class RejectReason(StrEnum):
 class Rejected(BaseModel):
     """An entry reduce refused."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     reason: RejectReason
 
@@ -537,7 +540,7 @@ class MergeGroup(StrEnum):
 class Batch(BaseModel):
     """The waking entries one comms attempt was given, seqs start through end."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     start: int = Field(ge=1)
     end: int = Field(ge=1)
@@ -548,7 +551,7 @@ class Batch(BaseModel):
 class PreemptHint(BaseModel):
     """The advisory head a running step races its model call against."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     head: int = Field(ge=0)
     stop_through: int = Field(ge=0)
@@ -559,7 +562,7 @@ class PreemptHint(BaseModel):
 class VisibleEntry(BaseModel):
     """An entry the user can see in the conversation: a user message or a reply."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     seq: int = Field(ge=1)
     id: str
@@ -569,7 +572,7 @@ class VisibleEntry(BaseModel):
 class StepClaim(BaseModel):
     """A step's exclusive claim on a conversation, fenced by epoch."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     conversation_id: str
     user_id: str

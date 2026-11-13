@@ -12,11 +12,14 @@ import type {
   FrameOutcome,
   LoggedEntry,
   PendingSend,
-  ReplyDeltaFrame,
-  StateFrame,
   StreamDraft,
-  WorkDeltaFrame,
 } from "./types";
+
+// The parsed frame, whose payload is the stream event the accumulator folds.
+type DeltaFrame = Extract<
+  ConversationFrame,
+  { kind: "reply_delta" | "work_delta" }
+>;
 
 export const EMPTY_CONVERSATION_VIEW: ConversationView = {
   entries: [],
@@ -144,13 +147,12 @@ function applyEntryUpdated(
   return applied(upgradeEntry(view, index, entry));
 }
 
-const sameStream =
-  (frame: ReplyDeltaFrame | WorkDeltaFrame) => (draft: StreamDraft) =>
-    frame.kind === FRAME_KIND.REPLY_DELTA
-      ? draft.source === "reply" && draft.attemptId === frame.attempt_id
-      : draft.source === "work" && draft.taskId === frame.task_id;
+const sameStream = (frame: DeltaFrame) => (draft: StreamDraft) =>
+  frame.kind === FRAME_KIND.REPLY_DELTA
+    ? draft.source === "reply" && draft.attemptId === frame.attempt_id
+    : draft.source === "work" && draft.taskId === frame.task_id;
 
-function newDraft(frame: ReplyDeltaFrame | WorkDeltaFrame): StreamDraft {
+function newDraft(frame: DeltaFrame): StreamDraft {
   const fresh = { nextIndex: 0, content: createTurnAccumulator() };
   return frame.kind === FRAME_KIND.REPLY_DELTA
     ? {
@@ -162,10 +164,7 @@ function newDraft(frame: ReplyDeltaFrame | WorkDeltaFrame): StreamDraft {
     : { source: "work", taskId: frame.task_id, ...fresh };
 }
 
-function applyDelta(
-  view: ConversationView,
-  frame: ReplyDeltaFrame | WorkDeltaFrame,
-): FrameOutcome {
+function applyDelta(view: ConversationView, frame: DeltaFrame): FrameOutcome {
   const closed =
     frame.kind === FRAME_KIND.REPLY_DELTA
       ? view.closedAttempts[frame.attempt_id]
@@ -204,7 +203,7 @@ function retract(view: ConversationView, attemptId: string): ConversationView {
 
 function applyState(
   view: ConversationView,
-  frame: StateFrame,
+  frame: Extract<ConversationFrame, { kind: "state" }>,
 ): ConversationView {
   if (frame.head < view.head) return view;
   return {

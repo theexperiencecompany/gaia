@@ -1,25 +1,24 @@
 import type { z } from "zod";
+import type { DisplayState, EntryFrame, LiveTask } from "../api/generated";
 import type { ApprovalEnd } from "../chat/approvals";
 import type { TurnAccumulator } from "../chat/turnAccumulator";
-import type {
-  EntrySchema,
-  ReactionSchema,
-  ReplySchema,
-  UserMessageSchema,
-} from "./entries";
-import type { ConversationFrameSchema, LiveTaskSchema } from "./frames";
+import type { ConversationFrameSchema } from "./frames";
 
-export type Entry = z.infer<typeof EntrySchema>;
-export type UserMessage = z.infer<typeof UserMessageSchema>;
-export type Reaction = z.infer<typeof ReactionSchema>;
-export type Reply = z.infer<typeof ReplySchema>;
+export type {
+  DisplayState,
+  LiveTask,
+  Reaction,
+  Reply,
+  ReplyDeltaFrame,
+  StateFrame,
+  UserMessage,
+  WorkDeltaFrame,
+} from "../api/generated";
+
+export type Entry = EntryFrame["entry"];
 
 /** An entry at its position in the log, as an entry frame delivers it. */
-export interface LoggedEntry {
-  seq: number;
-  at: string;
-  entry: Entry;
-}
+export type LoggedEntry = Omit<EntryFrame, "kind">;
 
 export type ConversationFrame = z.infer<typeof ConversationFrameSchema>;
 /** One event of the stream: the frame, and the stream id to resume after (null when replayed from the log). */
@@ -27,15 +26,6 @@ export interface ConversationStreamEvent {
   streamId: string | null;
   frame: ConversationFrame;
 }
-type FrameOf<K extends ConversationFrame["kind"]> = Extract<
-  ConversationFrame,
-  { kind: K }
->;
-export type ReplyDeltaFrame = FrameOf<"reply_delta">;
-export type WorkDeltaFrame = FrameOf<"work_delta">;
-export type StateFrame = FrameOf<"state">;
-export type DisplayState = StateFrame["display"];
-export type LiveTask = z.infer<typeof LiveTaskSchema>;
 
 /** What one reply attempt or one task has streamed and the log has not saved yet. */
 export type StreamDraft =

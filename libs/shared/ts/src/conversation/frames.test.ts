@@ -57,7 +57,10 @@ describe("parseConversationEvent", () => {
         voice: false,
         reaction: null,
         todo_run_wake: null,
+        posthog_session_id: null,
+        first_contact: false,
         pinned: false,
+        imported: false,
         revision: 0,
       },
     });

@@ -2,9 +2,22 @@
 
 from typing import Any, NotRequired
 
+from pydantic import ConfigDict, with_config
+from pydantic.config import JsonDict
 from typing_extensions import TypedDict
 
 
+def _required_keys_only(schema: JsonDict) -> None:
+    """List only the keys the TypedDict requires: an absent NotRequired key is never serialized.
+
+    Pydantic 2.12 marks every key required under a parent's json_schema_serialization_defaults_required.
+    """
+    schema["required"] = [
+        key for key in ToolDataEntry.__annotations__ if key in ToolDataEntry.__required_keys__
+    ]
+
+
+@with_config(ConfigDict(json_schema_extra=_required_keys_only))
 class ToolDataEntry(TypedDict):
     """Unified structure for tool execution data.
 

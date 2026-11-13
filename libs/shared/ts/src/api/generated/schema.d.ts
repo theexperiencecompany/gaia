@@ -6104,10 +6104,10 @@ export interface components {
          *     one for an approval is its card's state.
          */
         ApprovalDecided: {
-            action?: components["schemas"]["ActionResult"] | null;
+            action: components["schemas"]["ActionResult"] | null;
             /** Approval Id */
             approval_id: string;
-            decider?: components["schemas"]["ApprovalDecider"] | null;
+            decider: components["schemas"]["ApprovalDecider"] | null;
             /**
              * Id
              * @description Producer-minted idempotency key
@@ -6173,7 +6173,7 @@ export interface components {
             /** Approval Id */
             approval_id: string;
             /** Expires At */
-            expires_at?: string | null;
+            expires_at: string | null;
             /**
              * Id
              * @description Producer-minted idempotency key
@@ -6188,7 +6188,7 @@ export interface components {
              * Summary
              * @default
              */
-            summary?: string;
+            summary: string;
             /** Task Id */
             task_id: string;
         };
@@ -11638,7 +11638,7 @@ export interface components {
              * Follow Up Actions
              * @default []
              */
-            follow_up_actions?: string[];
+            follow_up_actions: string[];
             /**
              * Id
              * @description Producer-minted idempotency key
@@ -11657,7 +11657,7 @@ export interface components {
              * Tool Data
              * @default []
              */
-            tool_data?: components["schemas"]["ToolDataEntry"][];
+            tool_data: components["schemas"]["ToolDataEntry"][];
         };
         /**
          * NotificationAction
@@ -13550,20 +13550,20 @@ export interface components {
              * Follow Up Actions
              * @default []
              */
-            follow_up_actions?: string[];
+            follow_up_actions: string[];
             /** Heard Through */
-            heard_through?: number | null;
+            heard_through: number | null;
             /**
              * Id
              * @description Producer-minted idempotency key
              */
             id: string;
-            image?: components["schemas"]["ImageData"] | null;
+            image: components["schemas"]["ImageData"] | null;
             /**
              * Imported
              * @default false
              */
-            imported?: boolean;
+            imported: boolean;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -13573,26 +13573,26 @@ export interface components {
              * Pinned
              * @default false
              */
-            pinned?: boolean;
+            pinned: boolean;
             /** Quote Target */
-            quote_target?: string | null;
+            quote_target: string | null;
             /** Reply Id */
             reply_id: string;
             /**
              * Revision
              * @default 0
              */
-            revision?: number;
+            revision: number;
             /**
              * Text
              * @default
              */
-            text?: string;
+            text: string;
             /**
              * Tool Data
              * @default []
              */
-            tool_data?: components["schemas"]["ToolDataEntry"][];
+            tool_data: components["schemas"]["ToolDataEntry"][];
         };
         /**
          * ReplyDeltaFrame
@@ -13626,7 +13626,7 @@ export interface components {
         ReplySettled: {
             /** Answers */
             answers: string[];
-            failure?: components["schemas"]["FailureReason"] | null;
+            failure: components["schemas"]["FailureReason"] | null;
             /**
              * Id
              * @description Producer-minted idempotency key
@@ -13636,7 +13636,7 @@ export interface components {
              * Imported
              * @default false
              */
-            imported?: boolean;
+            imported: boolean;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -14545,7 +14545,7 @@ export interface components {
         StopRequested: {
             by: components["schemas"]["StopBy"];
             /** Covers Through */
-            covers_through?: number | null;
+            covers_through: number | null;
             /**
              * Id
              * @description Producer-minted idempotency key
@@ -16392,17 +16392,17 @@ export interface components {
              * File Ids
              * @default []
              */
-            file_ids?: string[];
+            file_ids: string[];
             /**
              * Files
              * @default []
              */
-            files?: components["schemas"]["FileData"][];
+            files: components["schemas"]["FileData"][];
             /**
              * First Contact
              * @default false
              */
-            first_contact?: boolean;
+            first_contact: boolean;
             /**
              * Id
              * @description Producer-minted idempotency key
@@ -16412,7 +16412,7 @@ export interface components {
              * Imported
              * @default false
              */
-            imported?: boolean;
+            imported: boolean;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -16422,37 +16422,37 @@ export interface components {
              * Pinned
              * @default false
              */
-            pinned?: boolean;
+            pinned: boolean;
             /** Platform Message Id */
-            platform_message_id?: string | null;
+            platform_message_id: string | null;
             /** Posthog Session Id */
-            posthog_session_id?: string | null;
-            reaction?: components["schemas"]["Reaction"] | null;
+            posthog_session_id: string | null;
+            reaction: components["schemas"]["Reaction"] | null;
             /** Reply To */
-            reply_to?: string | null;
-            reply_to_message?: components["schemas"]["ReplyToMessageData"] | null;
+            reply_to: string | null;
+            reply_to_message: components["schemas"]["ReplyToMessageData"] | null;
             /** Retry Of */
-            retry_of?: string | null;
+            retry_of: string | null;
             /**
              * Revision
              * @default 0
              */
-            revision?: number;
-            selected_calendar_event?: components["schemas"]["SelectedCalendarEventData"] | null;
+            revision: number;
+            selected_calendar_event: components["schemas"]["SelectedCalendarEventData"] | null;
             /** Selected Tool */
-            selected_tool?: string | null;
-            selected_workflow?: components["schemas"]["SelectedWorkflowDataOutput"] | null;
+            selected_tool: string | null;
+            selected_workflow: components["schemas"]["SelectedWorkflowDataOutput"] | null;
             surface: components["schemas"]["ConversationSource"];
             /** Text */
             text: string;
-            todo_run_wake?: components["schemas"]["TodoRunWake"] | null;
+            todo_run_wake: components["schemas"]["TodoRunWake"] | null;
             /** Tool Category */
-            tool_category?: string | null;
+            tool_category: string | null;
             /**
              * Voice
              * @default false
              */
-            voice?: boolean;
+            voice: boolean;
         };
         /**
          * UserSubscriptionStatus
@@ -16776,7 +16776,7 @@ export interface components {
              * @description Producer-minted idempotency key
              */
             id: string;
-            image?: components["schemas"]["ImageData"] | null;
+            image: components["schemas"]["ImageData"] | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -16786,12 +16786,12 @@ export interface components {
              * Note
              * @default
              */
-            note?: string;
+            note: string;
             /**
              * Nothing For User
              * @default false
              */
-            nothing_for_user?: boolean;
+            nothing_for_user: boolean;
             outcome: components["schemas"]["WorkOutcome"];
             /** Report */
             report: string;
@@ -16801,7 +16801,7 @@ export interface components {
              * Tool Data
              * @default []
              */
-            tool_data?: components["schemas"]["ToolDataEntry"][];
+            tool_data: components["schemas"]["ToolDataEntry"][];
         };
         /**
          * WorkflowCreator
@@ -17365,26 +17365,26 @@ export interface components {
              * Answers
              * @default []
              */
-            answers?: string[];
+            answers: string[];
             /** Cause Through */
             cause_through: number;
             /**
              * Detached
              * @default false
              */
-            detached?: boolean;
+            detached: boolean;
             /**
              * Exclusive
              * @default false
              */
-            exclusive?: boolean;
+            exclusive: boolean;
             /**
              * Id
              * @description Producer-minted idempotency key
              */
             id: string;
             /** Joins */
-            joins?: string | null;
+            joins: string | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}

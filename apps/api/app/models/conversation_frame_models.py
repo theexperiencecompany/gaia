@@ -3,9 +3,14 @@
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
-from app.models.conversation_log_models import ConversationState, DisplayState, Entry
+from app.models.conversation_log_models import (
+    WIRE_CONFIG,
+    ConversationState,
+    DisplayState,
+    Entry,
+)
 from app.models.stream_events import (
     FollowUpActionsFrame,
     MessageBoundaryPayload,
@@ -17,8 +22,6 @@ from app.models.stream_events import (
     ToolOutputPayload,
 )
 from app.models.tool_data_models import ToolDataEntry
-
-_FROZEN = ConfigDict(frozen=True, extra="forbid")
 
 
 class FrameKind(StrEnum):
@@ -50,7 +53,7 @@ class StreamPayloadType(StrEnum):
 class ResponseEvent(ResponseFrame):
     """A chat stream response event, tagged."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     type: Literal[StreamPayloadType.RESPONSE] = StreamPayloadType.RESPONSE
 
@@ -58,7 +61,7 @@ class ResponseEvent(ResponseFrame):
 class FollowUpActionsEvent(FollowUpActionsFrame):
     """A chat stream follow_up_actions event, tagged."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     type: Literal[StreamPayloadType.FOLLOW_UP_ACTIONS] = StreamPayloadType.FOLLOW_UP_ACTIONS
 
@@ -66,7 +69,7 @@ class FollowUpActionsEvent(FollowUpActionsFrame):
 class TodoProgressEvent(TodoProgressFrame):
     """A chat stream todo_progress event, tagged."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     type: Literal[StreamPayloadType.TODO_PROGRESS] = StreamPayloadType.TODO_PROGRESS
 
@@ -74,7 +77,7 @@ class TodoProgressEvent(TodoProgressFrame):
 class ReasoningEvent(BaseModel):
     """A chat stream reasoning event, tagged."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     type: Literal[StreamPayloadType.REASONING] = StreamPayloadType.REASONING
     reasoning: ReasoningPayload
@@ -83,7 +86,7 @@ class ReasoningEvent(BaseModel):
 class ToolDataEvent(BaseModel):
     """A chat stream tool_data event (a tool card), tagged."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     type: Literal[StreamPayloadType.TOOL_DATA] = StreamPayloadType.TOOL_DATA
     tool_data: ToolDataEntry
@@ -92,7 +95,7 @@ class ToolDataEvent(BaseModel):
 class ToolOutputEvent(BaseModel):
     """A chat stream tool_output event, tagged."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     type: Literal[StreamPayloadType.TOOL_OUTPUT] = StreamPayloadType.TOOL_OUTPUT
     tool_output: ToolOutputPayload
@@ -101,7 +104,7 @@ class ToolOutputEvent(BaseModel):
 class MessageBoundaryEvent(BaseModel):
     """A chat stream message_boundary event, tagged."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     type: Literal[StreamPayloadType.MESSAGE_BOUNDARY] = StreamPayloadType.MESSAGE_BOUNDARY
     message_boundary: MessageBoundaryPayload
@@ -110,7 +113,7 @@ class MessageBoundaryEvent(BaseModel):
 class SubagentStartEvent(BaseModel):
     """A chat stream subagent_start event, tagged."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     type: Literal[StreamPayloadType.SUBAGENT_START] = StreamPayloadType.SUBAGENT_START
     subagent_start: SubagentStartPayload
@@ -119,7 +122,7 @@ class SubagentStartEvent(BaseModel):
 class SubagentEndEvent(BaseModel):
     """A chat stream subagent_end event, tagged."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     type: Literal[StreamPayloadType.SUBAGENT_END] = StreamPayloadType.SUBAGENT_END
     subagent_end: SubagentEndPayload
@@ -142,7 +145,7 @@ StreamPayload = Annotated[
 class EntryFrame(BaseModel):
     """A newly appended entry."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     kind: Literal[FrameKind.ENTRY] = FrameKind.ENTRY
     seq: int = Field(ge=1)
@@ -153,7 +156,7 @@ class EntryFrame(BaseModel):
 class EntryUpdatedFrame(BaseModel):
     """An entry changed in place; a client applies it only when entry.revision is newer than its own."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     kind: Literal[FrameKind.ENTRY_UPDATED] = FrameKind.ENTRY_UPDATED
     seq: int = Field(ge=1)
@@ -163,7 +166,7 @@ class EntryUpdatedFrame(BaseModel):
 class ReplyDeltaFrame(BaseModel):
     """Streamed content of one comms attempt; reply_id is None until its reply entry exists."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     kind: Literal[FrameKind.REPLY_DELTA] = FrameKind.REPLY_DELTA
     attempt_id: str
@@ -176,7 +179,7 @@ class ReplyDeltaFrame(BaseModel):
 class WorkDeltaFrame(BaseModel):
     """Streamed content of one background task."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     kind: Literal[FrameKind.WORK_DELTA] = FrameKind.WORK_DELTA
     task_id: str
@@ -188,7 +191,7 @@ class WorkDeltaFrame(BaseModel):
 class RetractFrame(BaseModel):
     """Everything an uncommitted reply attempt streamed is withdrawn; work is never retracted."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     kind: Literal[FrameKind.RETRACT] = FrameKind.RETRACT
     attempt_id: str
@@ -197,7 +200,7 @@ class RetractFrame(BaseModel):
 class LiveTask(BaseModel):
     """One live background task, shown as one work bubble."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     task_id: str
     awaiting_approval: bool
@@ -206,7 +209,7 @@ class LiveTask(BaseModel):
 class StateFrame(BaseModel):
     """The conversation's display state after an append."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     kind: Literal[FrameKind.STATE] = FrameKind.STATE
     head: int = Field(ge=0)
@@ -226,7 +229,7 @@ def state_frame(state: ConversationState) -> StateFrame:
 class ConversationUpdatedFrame(BaseModel):
     """The conversation's own metadata changed: its title, once generated from the first message."""
 
-    model_config = _FROZEN
+    model_config = WIRE_CONFIG
 
     kind: Literal[FrameKind.CONVERSATION_UPDATED] = FrameKind.CONVERSATION_UPDATED
     description: str

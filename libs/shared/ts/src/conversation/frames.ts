@@ -1,6 +1,5 @@
 import { z } from "zod";
 import type {
-  ConversationEvent,
   ConversationUpdatedFrame,
   EntryFrame,
   EntryUpdatedFrame,
@@ -218,7 +217,7 @@ export const ConversationFrameSchema = z.discriminatedUnion("kind", [
 const ConversationEventSchema = z.object({
   stream_id: z.string().nullable(),
   frame: ConversationFrameSchema,
-}) satisfies z.ZodType<unknown, ConversationEvent>;
+});
 
 export type FrameParseError =
   | { kind: "invalid_json"; raw: string }

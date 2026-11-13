@@ -40,7 +40,10 @@ export const userMessage = (
   voice: false,
   reaction,
   todo_run_wake: null,
+  posthog_session_id: null,
+  first_contact: false,
   pinned: false,
+  imported: false,
   revision,
 });
 
@@ -62,6 +65,7 @@ export const reply = (
   quote_target: quoteTarget,
   image: null,
   pinned: false,
+  imported: false,
   revision,
 });
 
@@ -83,6 +87,7 @@ export const replySettled = (
   through,
   quote_target: quoteTarget,
   failure,
+  imported: false,
 });
 
 export const workStarted = (
@@ -96,6 +101,8 @@ export const workStarted = (
   cause_through: causeThrough,
   answers: [],
   joins,
+  detached: false,
+  exclusive: false,
 });
 
 export const workFinished = (
@@ -109,6 +116,9 @@ export const workFinished = (
   outcome,
   report: "report",
   tool_data: toolData,
+  note: "",
+  nothing_for_user: false,
+  image: null,
 });
 
 export const approvalRequested = (
@@ -157,6 +167,7 @@ export const notice = (
   text,
   origin: "reminder",
   tool_data: toolData,
+  follow_up_actions: [],
 });
 
 const WORKER_ATTRIBUTION = {
@@ -171,7 +182,6 @@ export const workflowFired = (id: string, title = `workflow ${id}`): Entry => ({
   run: {
     workflow: { id: `wf-${id}`, title, description: "", steps: [] },
     execution_id: `exec-${id}`,
-    reservation: `res-${id}`,
     timezone: "UTC",
     trigger: { type: "schedule" },
     attribution: WORKER_ATTRIBUTION,

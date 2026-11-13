@@ -52,6 +52,7 @@ export const ENTRY_KIND = {
 const REPLY_OUTCOME = {
   ANSWERED: "answered",
   STOPPED: "stopped",
+  TRUNCATED: "truncated",
   FAILED: "failed",
   SILENT: "silent",
 } as const;
@@ -171,7 +172,10 @@ export const UserMessageSchema = z.object({
   voice: z.boolean().default(false),
   reaction: ReactionSchema.nullable().default(null),
   todo_run_wake: TodoRunWakeSchema.nullable().default(null),
+  posthog_session_id: nullableString,
+  first_contact: z.boolean().default(false),
   pinned: z.boolean().default(false),
+  imported: z.boolean().default(false),
   revision,
 }) satisfies z.ZodType<UserMessage>;
 
@@ -229,7 +233,6 @@ const WorkflowTriggerSchema = z
 const WorkflowRunSchema = z.object({
   workflow: SelectedWorkflowSchema,
   execution_id: z.string(),
-  reservation: z.string(),
   timezone: z.string(),
   trigger: WorkflowTriggerSchema,
   attribution: AttributionSchema,
@@ -270,6 +273,7 @@ const NoticeSchema = z.object({
   text: z.string(),
   origin: z.string(),
   tool_data: z.array(ToolDataEntrySchema).default([]),
+  follow_up_actions: z.array(z.string()).default([]),
 }) satisfies z.ZodType<Notice>;
 
 const WorkStartedSchema = z.object({
@@ -279,6 +283,8 @@ const WorkStartedSchema = z.object({
   cause_through: z.number().int().min(1),
   answers: z.array(z.string()).default([]),
   joins: nullableString,
+  detached: z.boolean().default(false),
+  exclusive: z.boolean().default(false),
 }) satisfies z.ZodType<WorkStarted>;
 
 const ApprovalRequestedSchema = z.object({
@@ -309,6 +315,9 @@ const WorkFinishedSchema = z.object({
   outcome: z.enum(["done", "failed", "cancelled", "lost"]),
   report: z.string(),
   tool_data: z.array(ToolDataEntrySchema).default([]),
+  note: z.string().default(""),
+  nothing_for_user: z.boolean().default(false),
+  image: ImageDataSchema.nullable().default(null),
 }) satisfies z.ZodType<WorkFinished>;
 
 export const ReplySchema = z.object({
@@ -323,6 +332,7 @@ export const ReplySchema = z.object({
   quote_target: nullableString,
   image: ImageDataSchema.nullable().default(null),
   pinned: z.boolean().default(false),
+  imported: z.boolean().default(false),
   revision,
 }) satisfies z.ZodType<Reply>;
 
@@ -334,6 +344,7 @@ const ReplySettledSchema = z
     outcome: z.enum([
       REPLY_OUTCOME.ANSWERED,
       REPLY_OUTCOME.STOPPED,
+      REPLY_OUTCOME.TRUNCATED,
       REPLY_OUTCOME.FAILED,
       REPLY_OUTCOME.SILENT,
     ]),
@@ -348,6 +359,7 @@ const ReplySettledSchema = z
       ])
       .nullable()
       .default(null),
+    imported: z.boolean().default(false),
   })
   .refine(
     (entry) =>
@@ -356,7 +368,9 @@ const ReplySettledSchema = z
   )
   .refine(
     (entry) =>
-      entry.answers.length > 0 || MAY_ANSWER_NOTHING.has(entry.outcome),
+      entry.answers.length > 0 ||
+      MAY_ANSWER_NOTHING.has(entry.outcome) ||
+      entry.imported,
     { message: "an answered or silent reply answers at least one entry" },
   ) satisfies z.ZodType<ReplySettled>;
 
