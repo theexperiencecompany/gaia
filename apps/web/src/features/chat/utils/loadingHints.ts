@@ -1,7 +1,5 @@
-// Loading-indicator hints carried by a `tool_data` event's payload. Shared by
-// text chat (the live conversation's loading row) and voice
-// mode (useVoiceMessages) so both surface the same per-tool labelled loading
-// line from the same data.
+// Loading-indicator hints carried by a `tool_data` event's payload, read by the
+// live conversation's loading row.
 
 export interface ToolDataLoadingHints {
   message: string;
