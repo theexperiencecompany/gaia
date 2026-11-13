@@ -1235,7 +1235,6 @@ class TestRevokeSettlesSessionFrame:
                 )
             row = _row(proposing_run_id=stream_id, state=LedgerState.REVOKED)
             with (
-                patch.object(ledger_decide, "_persist_decision_status", new=AsyncMock()),
                 patch.object(ledger_decide, "_broadcast_decision", new=AsyncMock()),
             ):
                 await ledger_decide.publish_ledger_revocation(row)
@@ -1262,7 +1261,6 @@ class TestRedeemSettlesTerminalFrame:
         with (
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
             patch.object(ledger_decide, "dispatch_tool", new=AsyncMock(return_value=ok_result)),
-            patch.object(ledger_decide, "_persist_decision_status", new=AsyncMock()) as persist,
             patch.object(ledger_decide, "_broadcast_decision", new=AsyncMock()) as broadcast,
         ):
             result = await redeem_approved(
@@ -1275,8 +1273,6 @@ class TestRedeemSettlesTerminalFrame:
 
         assert result.ok is True
         assert result.state == LedgerState.EXECUTED
-        persist.assert_awaited_once()
-        assert persist.await_args.args[1] == "executed"
         broadcast.assert_awaited_once()
         assert broadcast.await_args.args[1] == "executed"
 
@@ -1295,7 +1291,6 @@ class TestRedeemSettlesTerminalFrame:
         with (
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
             patch.object(ledger_decide, "dispatch_tool", new=AsyncMock(return_value=failed)),
-            patch.object(ledger_decide, "_persist_decision_status", new=AsyncMock()) as persist,
             patch.object(ledger_decide, "_broadcast_decision", new=AsyncMock()) as broadcast,
         ):
             result = await redeem_approved(
@@ -1307,8 +1302,6 @@ class TestRedeemSettlesTerminalFrame:
             )
 
         assert result.ok is False
-        persist.assert_awaited_once()
-        assert persist.await_args.args[1] == "failed"
         broadcast.assert_awaited_once()
         assert broadcast.await_args.args[1] == "failed"
 
@@ -1339,7 +1332,6 @@ class LedgerSeams:
     log: MagicMock
     publish_entry: AsyncMock
     settle_frame: MagicMock
-    persist: AsyncMock
     broadcast: AsyncMock
     inbox: MagicMock
     redis: MagicMock
@@ -1365,8 +1357,6 @@ def seams() -> Iterator[LedgerSeams]:
     inbox = MagicMock()
     inbox.return_value.append = AsyncMock()
     redis = MagicMock()
-    conversations = MagicMock()
-    conversations.set_message_approval_status = AsyncMock()
     websocket = MagicMock()
     websocket.broadcast_to_user = AsyncMock()
     with (
@@ -1375,7 +1365,6 @@ def seams() -> Iterator[LedgerSeams]:
         patch(f"{MODULE}.log") as log,
         patch(f"{MODULE}._publish_entry", new=AsyncMock()) as publish_entry,
         patch(f"{MODULE}.settle_session_approval_frame") as settle_frame,
-        patch(f"{MODULE}.conversation_repository", new=conversations),
         patch(f"{MODULE}.websocket_manager", new=websocket),
         patch(f"{MODULE}.ExecutorInbox", new=inbox),
         patch(f"{MODULE}.redis_cache", new=redis),
@@ -1392,7 +1381,6 @@ def seams() -> Iterator[LedgerSeams]:
             log=log,
             publish_entry=publish_entry,
             settle_frame=settle_frame,
-            persist=conversations.set_message_approval_status,
             broadcast=websocket.broadcast_to_user,
             inbox=inbox,
             redis=redis,
@@ -1562,9 +1550,6 @@ class TestDecideLedgerOutcomes:
         )
         seams.record_deny.assert_awaited_once_with(row, "nope")
         seams.settle_frame.assert_called_once_with("stream-1", "ap_1", "denied", "nope")
-        seams.persist.assert_awaited_once_with(
-            "conv-1", user_id=USER_ID, approval_id="ap_1", status="denied"
-        )
 
     async def test_a_bare_deny_carries_no_preview(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc()
@@ -1622,7 +1607,7 @@ class TestDecideLedgerOutcomes:
 
 @pytest.mark.unit
 class TestPublishLedgerDecision:
-    """A committed decision settles the card on the proposing stream, the saved turn, and every client."""
+    """A committed decision settles the card on the proposing stream and every client; history derives it from the log."""
 
     @pytest.mark.parametrize(
         ("state", "status"),
@@ -1646,9 +1631,6 @@ class TestPublishLedgerDecision:
         assert entry.data.integration_name is None
         assert entry.data.feedback == "stored words"
         seams.settle_frame.assert_called_once_with("stream-1", "ap_1", status, "stored words")
-        seams.persist.assert_awaited_once_with(
-            "conv-1", user_id=USER_ID, approval_id="ap_1", status=status
-        )
         seams.broadcast.assert_awaited_once_with(
             user_id=USER_ID,
             message={
@@ -1675,7 +1657,6 @@ class TestPublishLedgerDecision:
 
         seams.publish_entry.assert_not_awaited()
         seams.settle_frame.assert_not_called()
-        seams.persist.assert_awaited_once()
 
     async def test_a_missed_stream_is_reported_and_the_rest_still_settles(
         self, seams: LedgerSeams
@@ -1693,19 +1674,12 @@ class TestPublishLedgerDecision:
         seams.settle_frame.assert_called_once()
         seams.broadcast.assert_awaited_once()
 
-    async def test_persist_and_broadcast_failures_are_reported_not_raised(
-        self, seams: LedgerSeams
-    ) -> None:
-        seams.persist.side_effect = RuntimeError("mongo down")
+    async def test_a_broadcast_failure_is_reported_not_raised(self, seams: LedgerSeams) -> None:
         seams.broadcast.side_effect = ConnectionError("ws down")
 
         await publish_ledger_decision(_doc(), LedgerState.APPROVED)
 
         assert _warned(seams.log.warning) == {
-            f"{LogTag.HIL} Ledger decision persist missed; live delivery already attempted": {
-                "approval_id": "ap_1",
-                "error_type": "RuntimeError",
-            },
             f"{LogTag.HIL} Ledger decision broadcast missed": {
                 "approval_id": "ap_1",
                 "error_type": "ConnectionError",
@@ -1717,9 +1691,6 @@ class TestPublishLedgerDecision:
 
         seams.settle_frame.assert_called_once_with(
             "stream-1", "ap_1", "revoked", drop_if_unpublished=True
-        )
-        seams.persist.assert_awaited_once_with(
-            "conv-1", user_id=USER_ID, approval_id="ap_1", status="revoked"
         )
         message = seams.broadcast.await_args.kwargs["message"]
         assert (message["data"]["status"], message["data"]["feedback"]) == ("revoked", None)
