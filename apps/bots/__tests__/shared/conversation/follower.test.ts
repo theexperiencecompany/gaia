@@ -23,6 +23,7 @@ import {
   entryFrame,
   entryUpdatedFrame,
   liveTask,
+  notice,
   replyDelta,
   reply as replyEntry,
   replySettled,
@@ -495,6 +496,29 @@ describe("an approval the work waits on", () => {
 
     expect(sent(calls)).toEqual([]);
   });
+});
+
+describe("a notice the outbound queue already delivered", () => {
+  it.each([
+    ["editing", EDITING],
+    ["non-editing", NON_EDITING],
+  ])(
+    "sends no second platform message on a %s platform",
+    async (_family, options) => {
+      const { surface, calls } = recorder();
+      const follower = new ConversationFollower(0, options, surface);
+      follower.expect(1);
+      await feed(follower, [
+        entryFrame(1, inbound("u1", "11")),
+        ...answer(2, "r1", "Noted.", ["u1"], 1),
+        entryFrame(4, notice("n1", "Your reminder: call the bank")),
+        stateFrame(4, "idle"),
+      ]);
+
+      expect(sent(calls)).toHaveLength(1);
+      expect(screen(calls)).toEqual(["Noted."]);
+    },
+  );
 });
 
 describe("history the follow started after", () => {

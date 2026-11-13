@@ -175,6 +175,7 @@ export class ConversationFollower {
       case ENTRY_KIND.APPROVAL_REQUESTED:
         await this.askApproval();
         return;
+      // A notice was sent on the outbound queue when it was logged.
       default:
         return;
     }
