@@ -8,7 +8,8 @@
     min-width: var(--gaia-button-md-min-width);
     padding-inline: var(--gaia-button-md-padding);
     font-size: var(--gaia-button-md-font-size);
-    border-radius: var(--gaia-radius-md);
+    --gaia-button-radius: var(--gaia-radius-md);
+    border-radius: var(--gaia-button-radius);
     /* v2 clipped every button; it also drops an inline button's baseline gap (32px row, not 34) */
     overflow: hidden;
     /* v2 set no width, so a button stretched in a column or grid cell (v3 pins w-fit) */
@@ -24,14 +25,14 @@
     min-width: var(--gaia-button-sm-min-width);
     padding-inline: var(--gaia-button-sm-padding);
     font-size: var(--gaia-button-sm-font-size);
-    border-radius: var(--gaia-radius-sm);
+    --gaia-button-radius: var(--gaia-radius-sm);
   }
   .button--lg {
     height: var(--gaia-button-lg-height);
     min-width: var(--gaia-button-lg-min-width);
     padding-inline: var(--gaia-button-lg-padding);
     font-size: var(--gaia-button-lg-font-size);
-    border-radius: var(--gaia-radius-lg);
+    --gaia-button-radius: var(--gaia-radius-lg);
   }
   /* v3 sizes every button icon to 16px; v2 left an icon's own width/height alone.
      width:auto hands an svg back its width/height attributes. */
@@ -49,7 +50,7 @@
     min-width: var(--gaia-button-md-height);
     width: var(--gaia-button-md-height);
     padding-inline: 0;
-    border-radius: var(--gaia-radius-sm);
+    --gaia-button-radius: var(--gaia-radius-sm);
   }
   .button--icon-only.button--sm {
     min-width: var(--gaia-button-sm-height);
@@ -58,6 +59,36 @@
   .button--icon-only.button--lg {
     min-width: var(--gaia-button-lg-height);
     width: var(--gaia-button-lg-height);
+  }
+  /* The rules below restate HeroUI's own compound rules, which the .button rules
+     above would otherwise squash from this higher layer. */
+  .button--full-width {
+    width: 100%;
+  }
+  /* ButtonGroup: the buttons inside are square and the group's ends take the
+     button's own radius, as v2's group did (HeroUI rounds the ends at 24px). */
+  .button-group .button {
+    border-radius: 0;
+  }
+  .button-group--horizontal .button:first-child {
+    border-start-start-radius: var(--gaia-button-radius);
+    border-end-start-radius: var(--gaia-button-radius);
+  }
+  .button-group--horizontal .button:last-child {
+    border-start-end-radius: var(--gaia-button-radius);
+    border-end-end-radius: var(--gaia-button-radius);
+  }
+  .button-group--vertical .button:first-child {
+    border-start-start-radius: var(--gaia-button-radius);
+    border-start-end-radius: var(--gaia-button-radius);
+  }
+  .button-group--vertical .button:last-child {
+    border-end-start-radius: var(--gaia-button-radius);
+    border-end-end-radius: var(--gaia-button-radius);
+  }
+  .button-group--horizontal .button:first-child:last-child,
+  .button-group--vertical .button:first-child:last-child {
+    border-radius: var(--gaia-button-radius);
   }
   /* Chip: v2's full radius (its radius="sm" chips take shape sm), heights, 8/12/16px
      text inset (with the label's 2px), weight 400 and 12/14/16px type scale.
@@ -222,6 +253,10 @@
   }
   .combo-box__trigger {
     padding-inline-end: var(--gaia-combo-trigger-end);
+    color: var(--foreground);
+  }
+  .combo-box__trigger:hover,
+  .combo-box__trigger[data-hovered="true"] {
     color: var(--foreground);
   }
 
@@ -496,7 +531,10 @@
         var(--gaia-switch-lg-thumb)
     );
   }
-  .switch[data-selected="true"] .switch__thumb {
+  /* v2's thumb stayed white when on or disabled; HeroUI paints it accent-foreground. */
+  .switch[data-selected="true"] .switch__thumb,
+  .switch[aria-checked="true"] .switch__thumb,
+  .switch[data-disabled="true"] .switch__thumb {
     background-color: #ffffff;
   }
 
@@ -561,6 +599,9 @@
   .modal__dialog {
     border-radius: var(--gaia-radius-lg);
   }
+  .modal__dialog--full {
+    border-radius: 0;
+  }
   .tooltip {
     border-radius: var(--gaia-radius-md);
   }
@@ -623,11 +664,19 @@
   .table__row {
     border-bottom-width: 0;
   }
+  /* v2 tinted only a row that reacts to the pointer (RAC's data-hovered, below), not any row under it. */
+  .table__row:hover .table__cell {
+    background-color: transparent;
+  }
   .table__row[data-selected="true"] .table__cell {
     background-color: var(--gaia-table-row-selected);
   }
   .table__row[data-hovered="true"]:not([data-selected="true"]) .table__cell {
     background-color: var(--gaia-table-row-hover);
+  }
+  .table__cell:focus-visible,
+  .table__cell[data-focus-visible="true"] {
+    border-radius: var(--gaia-radius-sm);
   }
   .table__row .table__cell:first-child {
     border-start-start-radius: var(--gaia-radius-sm);
