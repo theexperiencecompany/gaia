@@ -100,8 +100,33 @@ class TestFormatToolCallEntry:
         assert result is not None
         # "integrations" is the frontend icon-config key carrying ConnectIcon.
         assert result["data"]["tool_category"] == "integrations"
-        assert result["data"]["message"] == "Opening your app"
+        assert result["data"]["message"] == "Connecting to your app"
         assert result["data"]["show_category"] is False
+
+    @pytest.mark.asyncio
+    async def test_activate_integration_names_the_app_it_connects_to(self) -> None:
+        tool_call = {
+            "name": "activate_integration",
+            "args": {"integration_id": "int_weather"},
+            "id": "tc3b",
+        }
+        with (
+            patch(
+                "app.utils.agent_utils.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=_FakeRegistry({}),
+            ),
+            patch(
+                "app.utils.agent_utils._integration_display",
+                new_callable=AsyncMock,
+                return_value=(None, "Bundle Weather"),
+            ),
+        ):
+            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
+
+        assert result is not None
+        assert result["data"]["message"] == "Connecting to Bundle Weather"
+        assert result["data"]["integration_name"] == "Bundle Weather"
 
     @pytest.mark.asyncio
     async def test_regular_tool_with_integration_id(self) -> None:
