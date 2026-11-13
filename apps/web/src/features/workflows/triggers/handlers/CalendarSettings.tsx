@@ -163,9 +163,7 @@ export function CalendarSettings({
                   key={item.id}
                   id={item.id}
                   textValue={item.name}
-                >
-                  {item.name}
-                </GaiaListBoxItem>
+                />
               ))}
             </ListBox>
           </Select.Popover>

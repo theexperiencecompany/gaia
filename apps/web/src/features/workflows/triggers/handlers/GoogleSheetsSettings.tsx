@@ -276,9 +276,7 @@ export function GoogleSheetsSettings({
                               key={option.value}
                               id={option.value}
                               textValue={option.label}
-                            >
-                              {option.label}
-                            </GaiaListBoxItem>
+                            />
                           ))}
                         </ListBox.Section>
                       );
@@ -288,9 +286,7 @@ export function GoogleSheetsSettings({
                         key={option.value}
                         id={option.value}
                         textValue={option.label}
-                      >
-                        {option.label}
-                      </GaiaListBoxItem>
+                      />
                     ))}
               </ListBox>
             </Select.Popover>

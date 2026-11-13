@@ -123,9 +123,7 @@ export function AddServerModal({ onAdd, isBusy }: AddServerModalProps) {
                           key={option.key}
                           id={option.key}
                           textValue={option.label}
-                        >
-                          {option.label}
-                        </GaiaListBoxItem>
+                        />
                       ))}
                     </ListBox>
                   </Select.Popover>

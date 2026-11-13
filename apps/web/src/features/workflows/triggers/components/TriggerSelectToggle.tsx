@@ -81,18 +81,18 @@ export function TriggerSelectToggle({
           <Select.Popover>
             <ListBox>
               {isLoading && options.length === 0 ? (
-                <GaiaListBoxItem id="loading" isDisabled textValue="Loading...">
-                  Loading...
-                </GaiaListBoxItem>
+                <GaiaListBoxItem
+                  id="loading"
+                  isDisabled
+                  textValue="Loading..."
+                />
               ) : (
                 options.map((option) => (
                   <GaiaListBoxItem
                     key={option.value}
                     id={option.value}
                     textValue={option.label}
-                  >
-                    {option.label}
-                  </GaiaListBoxItem>
+                  />
                 ))
               )}
             </ListBox>

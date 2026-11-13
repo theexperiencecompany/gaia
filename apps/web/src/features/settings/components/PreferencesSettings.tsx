@@ -134,9 +134,7 @@ function IdentitySettingsSection({
                   key={profession.value}
                   id={profession.value}
                   textValue={profession.label}
-                >
-                  {profession.label}
-                </GaiaListBoxItem>
+                />
               ))}
             </ListBox>
           </Select.Popover>
@@ -190,9 +188,7 @@ function IdentitySettingsSection({
                     key={timezone.value}
                     id={timezone.value}
                     textValue={timezone.label}
-                  >
-                    {timezone.label}
-                  </GaiaListBoxItem>
+                  />
                 ))}
               </ListBox>
             </Select.Popover>

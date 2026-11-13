@@ -119,17 +119,13 @@ function ContactRequestForm({
               textValue={
                 SUPPORT_REQUEST_TYPE_LABELS[SUPPORT_REQUEST_TYPES.SUPPORT]
               }
-            >
-              {SUPPORT_REQUEST_TYPE_LABELS[SUPPORT_REQUEST_TYPES.SUPPORT]}
-            </GaiaListBoxItem>
+            />
             <GaiaListBoxItem
               id={SUPPORT_REQUEST_TYPES.FEATURE}
               textValue={
                 SUPPORT_REQUEST_TYPE_LABELS[SUPPORT_REQUEST_TYPES.FEATURE]
               }
-            >
-              {SUPPORT_REQUEST_TYPE_LABELS[SUPPORT_REQUEST_TYPES.FEATURE]}
-            </GaiaListBoxItem>
+            />
           </ListBox>
         </Select.Popover>
       </Select>
