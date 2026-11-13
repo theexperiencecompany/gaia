@@ -9,7 +9,6 @@ import {
 } from "@icons";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { Focusable } from "react-aria-components";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { BrowserStatusChip } from "@/features/browser/components/BrowserStatusChip";
@@ -205,22 +204,20 @@ function Omnibox({
       </div>
       {pageUrl && (
         <Tooltip delay={400}>
-          <Focusable>
-            <LinkButton
-              shape="pill"
-              href={pageUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              variant="ghost"
-              size="sm"
-              isIconOnly
-              tone="muted"
-              className="shrink-0"
-              aria-label="Open the live browser in a new tab"
-            >
-              <SquareArrowUpRight02Icon className="size-4" />
-            </LinkButton>
-          </Focusable>
+          <LinkButton
+            shape="pill"
+            href={pageUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="ghost"
+            size="sm"
+            isIconOnly
+            tone="muted"
+            className="shrink-0"
+            aria-label="Open the live browser in a new tab"
+          >
+            <SquareArrowUpRight02Icon className="size-4" />
+          </LinkButton>
           <Tooltip.Content>Open in a new tab</Tooltip.Content>
         </Tooltip>
       )}

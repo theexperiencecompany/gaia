@@ -148,6 +148,7 @@ function DemoWorkflowCard({
                 size="sm"
                 shape="md"
                 variant="accent-soft"
+                tone="accent"
                 className="font-medium"
               >
                 Run

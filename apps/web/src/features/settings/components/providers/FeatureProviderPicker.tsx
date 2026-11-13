@@ -10,6 +10,8 @@ import {
 } from "@heroui/react";
 import { SquareArrowUpRight02Icon } from "@icons";
 import { useMemo, useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { LinkButton } from "@/components/shared/LinkButton";
@@ -91,6 +93,10 @@ export function FeatureProviderPicker({
         <>
           {group.rows.length > 1 ? (
             <Select
+              className={fieldVariants({
+                labelPlacement: "inside",
+                className: inputVariants({ size: "sm" }),
+              })}
               selectedKey={picked ? picked.key : null}
               onSelectionChange={(key) => {
                 const row = group.rows.find((r) => r.key === key);
@@ -98,7 +104,7 @@ export function FeatureProviderPicker({
               }}
             >
               <Label>Provider</Label>
-              <Select.Trigger className="min-h-8">
+              <Select.Trigger>
                 <GaiaSelectValue>
                   {picked && (
                     <span className="flex items-center gap-2">
