@@ -867,7 +867,7 @@ class TestTheDesksSweep:
 
         mock_proxy.side_effect = gmail
         _register_and_get_tools()["FETCH_MESSAGES"](
-            request=FetchMessagesInput(query="after:1790000000", per_page=100),
+            request=FetchMessagesInput(query="after:1790000000", per_page=100, fields=["from"]),
             execute_request=MagicMock(),
             auth_credentials=AUTH_CREDS,
         )
@@ -1468,6 +1468,8 @@ class TestTheThreadRead:
             (["subject"], "none", "metadata"),
             (["body"], "raw", "full"),
             (["attachments"], "none", "full"),
+            (["hasAttachment"], "none", "full"),
+            ([], "none", "full"),
         )
         for fields, processing, expected in cases:
             mock_proxy.reset_mock()
@@ -1604,6 +1606,35 @@ class TestAMessageReadForMetadataStaysAMetadataRead:
         )
 
         assert formats and set(formats) == {"metadata"}
+
+    @pytest.mark.parametrize(
+        "fields",
+        [["hasAttachment"], ["attachments"], []],
+        ids=["has-attachment", "attachments", "all-fields"],
+    )
+    def test_an_attachment_field_is_read_from_the_full_message(
+        self, mock_proxy: MagicMock, fields: list[MessageFieldLiteral]
+    ) -> None:
+        """Only format=full carries the MIME parts an attachment is found in."""
+        formats: list[str] = []
+        mailbox = _one_message_mailbox()
+
+        def _serve(request: ProxyRequest) -> dict[str, Any]:
+            if "/users/me/messages/" in request.endpoint and (request.query or {}).get("format"):
+                formats.append(request.query["format"])
+            return mailbox(request)
+
+        mock_proxy.side_effect = _serve
+
+        _register_and_get_tools()["FETCH_MESSAGES"](
+            request=FetchMessagesInput(
+                query="after:1790000000", per_page=5, fields=fields, body_processing="none"
+            ),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert formats and set(formats) == {"full"}
 
 
 class TestTheThreadCapStopsTheWalk:

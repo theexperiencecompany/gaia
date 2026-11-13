@@ -466,7 +466,7 @@ class TestMinimalMessageTemplate:
 
     def test_is_read_and_has_attachment(self):
         raw = _make_raw_email()
-        msg = _make_gmail_message(raw=raw, label_ids=["UNREAD", "HAS_ATTACHMENT"])
+        msg = _make_gmail_message(raw=raw, payload=_attachment_payload(), label_ids=["UNREAD"])
 
         result = minimal_message_template(RelayedGmailMessage.model_validate(msg))
         assert result.is_read is False
@@ -501,7 +501,10 @@ class TestMinimalMessageTemplate:
             body_text="The body",
         )
         msg = _make_gmail_message(
-            raw=raw, label_ids=["INBOX", "UNREAD", "HAS_ATTACHMENT"], snippet="The snippet"
+            raw=raw,
+            payload=_attachment_payload(),
+            label_ids=["INBOX", "UNREAD"],
+            snippet="The snippet",
         )
 
         result = minimal_message_template(RelayedGmailMessage.model_validate(msg))
@@ -515,7 +518,7 @@ class TestMinimalMessageTemplate:
         assert "02 Jan 2025 09:30:00" in result.time
         assert result.is_read is False
         assert result.has_attachment is True
-        assert result.labels == ["INBOX", "UNREAD", "HAS_ATTACHMENT"]
+        assert result.labels == ["INBOX", "UNREAD"]
         assert result.body.strip() == "The body"
 
     def test_a_message_with_no_id_at_all_carries_no_id_rather_than_one_of_its_neighbours(
@@ -675,6 +678,20 @@ class TestListedDraftView:
         assert result["message"]["snippet"] == "Draft snip"
         assert result["message"]["body"].strip() == "Draft body"
         assert "content" in result["message"]
+
+    def test_a_listed_draft_carries_its_attachments(self):
+        result = _listed_draft(
+            {"id": "d_att", "message": _make_gmail_message(payload=_attachment_payload())}
+        )
+
+        assert result["message"]["attachments"] == [
+            {
+                "filename": "invoice.pdf",
+                "mimeType": "application/pdf",
+                "size": 2048,
+                "attachmentId": "att-1",
+            }
+        ]
 
     def test_a_listed_draft_with_an_empty_message_keeps_its_id(self):
         draft_data = {"id": "d_empty", "message": {}}
@@ -1044,17 +1061,18 @@ class TestTheFetchedViewReadsThePayload:
                 "attachmentId": "att-1",
             }
         ]
-        assert view.has_attachment is False
+        assert view.has_attachment is True
 
-    def test_the_has_attachment_label_is_the_one_gmail_sends(self) -> None:
-        """The flag reads the label Gmail actually sets, spelled exactly."""
+    def test_a_has_attachment_label_without_an_attached_part_is_no_attachment(self) -> None:
+        """Gmail sets no such label; the flag comes from the parts, whatever the labels say."""
         message = RelayedGmailMessage.model_validate(
             _make_gmail_message(
-                payload=_attachment_payload(), label_ids=["INBOX", "HAS_ATTACHMENT"]
+                payload={"mimeType": "text/plain", "body": {"size": 12}},
+                label_ids=["INBOX", "HAS_ATTACHMENT"],
             )
         )
 
-        assert build_message_view(message, "raw").has_attachment is True
+        assert build_message_view(message, "raw").has_attachment is False
 
     def test_a_relay_with_no_ids_and_no_snippet_reports_them_empty(self) -> None:
         """A metadata-format message carries no id, thread or snippet of its own."""

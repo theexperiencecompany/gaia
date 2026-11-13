@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from app.agents.templates.mail_templates import (
     build_message_view,
     message_view_needs_body,
+    message_view_needs_full,
     project_message_view,
 )
 from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY
@@ -266,17 +267,13 @@ def _fetch_message_view(
 ) -> GmailMessageView | None:
     """Fetch one message and build its full (unprojected) view.
 
-    Requests format=metadata unless fields will carry a body; force_body
+    Requests format=metadata unless fields carry a body or an attachment; force_body
     overrides this for the offload path (an explicit body_processing="none"
     still wins). Returns None on a non-dict proxy response; other exceptions
     propagate for the aggregator to attach partial-state context.
     """
     needs_body = force_body or message_view_needs_body(fields, body_processing)
-    # The attachment list lives in the MIME ``parts`` tree, which only
-    # ``format=full`` returns — request it when ``attachments`` is selected,
-    # even if no body is wanted.
-    wants_attachments = bool(fields) and "attachments" in fields
-    needs_full = needs_body or wants_attachments
+    needs_full = needs_body or message_view_needs_full(fields, body_processing)
     full = _gmail_proxy(
         user_id,
         endpoint=f"{GMAIL_API_BASE}/users/me/messages/{message_id}",
@@ -516,17 +513,6 @@ def _file_bound_views(views: list[GmailMessageView]) -> list[dict[str, object]]:
 # =============================================================================
 
 
-def _thread_needs_full(request: FetchThreadInput) -> bool:
-    """Whether the thread fetch must request format=full.
-
-    The thread endpoint returns every message inline, so unlike the per-message
-    read there is no N+1 cost to full — one call per thread regardless. Full is
-    needed for the body (any non-none processing) or the attachment list.
-    """
-    wants_attachments = bool(request.fields) and "attachments" in request.fields
-    return request.body_processing != "none" or wants_attachments
-
-
 def _fetch_one_thread(
     user_id: str, thread_id: str, *, needs_full: bool, body_processing: BodyProcessingLiteral
 ) -> list[GmailMessageView] | None:
@@ -572,7 +558,7 @@ def _aggregate_threads(user_id: str, request: FetchThreadInput) -> _ThreadBatch:
     A thread Gmail no longer has is listed as missing and the rest still come back.
     Raises _PartialResultError on any other mid-fetch error once anything succeeded.
     """
-    needs_full = _thread_needs_full(request)
+    needs_full = message_view_needs_full(request.fields, request.body_processing)
     cap = min(request.max_messages or MAX_ABSOLUTE_MESSAGES, MAX_ABSOLUTE_MESSAGES)
     threads: list[tuple[str, list[GmailMessageView]]] = []
     flat_views: list[GmailMessageView] = []

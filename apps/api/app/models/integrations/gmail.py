@@ -12,7 +12,7 @@ from typing import NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.composio_schemas.gmail import GmailMessageContent
+from app.models.composio_schemas.gmail import GmailAttachmentMetadata, GmailMessageContent
 from app.models.composio_schemas.google_people import (
     GoogleContactsResponseData,
     GooglePeopleSearchResponseData,
@@ -147,6 +147,7 @@ class GmailDraftMessageView(TypedDict):
     snippet: str
     body: str
     content: GmailMessageContent
+    attachments: list[GmailAttachmentMetadata]
 
 
 class GmailDraftView(TypedDict):
