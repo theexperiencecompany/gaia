@@ -203,6 +203,7 @@ class CustomLLM(LLM):
         follow-ups), speak what's a bot message (each voice_tts answer, in
         order, as its own utterance via session.say).
         """
+        apologised = False
         try:
             async for raw in resp.content:
                 data = _parse_sse_line(raw)
@@ -211,18 +212,32 @@ class CustomLLM(LLM):
                 if data == DONE_SENTINEL:
                     await self.forward_stream_event_to_frontend(data)
                     break
-                await self._handle_drain_event(data)
+                apologised = await self._handle_drain_event(data, apologised=apologised)
         except Exception as e:
             log.warning(f"{LogTag.LLM} Voice stream drain failed", error=str(e))
         finally:
             await resp.release()
 
-    async def _handle_drain_event(self, data: str) -> None:
-        """Speak a voice_tts answer, or forward a plumbing event to the screen."""
+    async def _handle_drain_event(self, data: str, *, apologised: bool) -> bool:
+        """Speak a voice_tts answer or an error, or forward a plumbing event to the screen.
+
+        Returns whether this drain has spoken its error apology, so a repeated error frame is not.
+        """
         try:
             event = json.loads(data)
         except json.JSONDecodeError:
-            return
+            return apologised
+        error = event.get(ERROR_KEY)
+        if isinstance(error, str) and error:
+            await self.forward_stream_event_to_frontend(data)
+            if not apologised and self.session is not None:
+                self.session.say(VOICE_ERROR_REPLY)
+            log.error(
+                f"{LogTag.LLM} backend stream error after the reply",
+                phase="drain_error",
+                error=error,
+            )
+            return True
         voice_tts = event.get(VOICE_TTS_KEY)
         if isinstance(voice_tts, str) and voice_tts:
             spoken = sanitize_for_tts(voice_tts)
@@ -245,13 +260,14 @@ class CustomLLM(LLM):
                 log.warning(
                     f"{LogTag.LLM} Voice TTS frame missing message_id; skipping immediate bubble"
                 )
-                return
+                return apologised
             await self.forward_stream_event_to_frontend(
                 json.dumps({RESPONSE_KEY: voice_tts, MESSAGE_ID_KEY: message_id})
             )
-            return
+            return apologised
         if event.keys() & PLUMBING_EVENT_KEYS:
             await self.forward_stream_event_to_frontend(data)
+        return apologised
 
     def chat(
         self,

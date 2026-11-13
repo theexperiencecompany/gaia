@@ -22,7 +22,6 @@ from app.schemas.voice_schemas import VoiceListResponse, VoiceOption
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.settings import SettingsPreferencesChanged
-from shared.py.voice import DEVELOPMENT_VOICE_AGENT_NAME, PRODUCTION_VOICE_AGENT_NAME
 from tests.helpers import read_jwt
 
 VOICE_BASE = "/api/v1"
@@ -151,8 +150,8 @@ class TestGetVoiceToken:
     @pytest.mark.parametrize(
         ("env", "agent_name"),
         [
-            ("development", DEVELOPMENT_VOICE_AGENT_NAME),
-            ("production", PRODUCTION_VOICE_AGENT_NAME),
+            ("development", "gaia-voice-dev"),
+            ("production", "gaia-voice"),
         ],
     )
     async def test_token_dispatches_only_its_environments_agent(
