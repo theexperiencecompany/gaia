@@ -127,9 +127,7 @@ export default function TwitterSearchSection({
 
   if (!tweets || tweets.length === 0) {
     return (
-      <div className="mt-3 p-4 text-center text-zinc-400">
-        No tweets found.
-      </div>
+      <div className="mt-3 p-4 text-center text-zinc-400">No tweets found.</div>
     );
   }
 

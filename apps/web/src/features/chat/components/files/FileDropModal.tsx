@@ -52,9 +52,7 @@ export function FileDropModal({
                 Drop files here
               </h3>
 
-              <p className="text-zinc-400 mb-4">
-                Release to upload your files
-              </p>
+              <p className="text-zinc-400 mb-4">Release to upload your files</p>
 
               <div className="text-zinc-400 mt-2 flex flex-wrap items-center justify-center gap-2 text-xs">
                 <div className="flex items-center rounded-full bg-zinc-800 px-3 py-1">

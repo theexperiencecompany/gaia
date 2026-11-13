@@ -6,11 +6,7 @@ import { ToolCard } from "./ToolCard";
 function EmptyTools() {
   return (
     <div className="flex flex-col items-center justify-center py-8 text-center">
-      <PackageOpenIcon
-        width={48}
-        height={48}
-        className="text-zinc-600 mb-4"
-      />
+      <PackageOpenIcon width={48} height={48} className="text-zinc-600 mb-4" />
       <p className="text-zinc-500 max-w-md text-sm">
         This integration might not have tools available yet because no one has
         connected to it, or the tools haven&apos;t been synced. Try refreshing

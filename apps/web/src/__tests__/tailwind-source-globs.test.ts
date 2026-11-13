@@ -115,8 +115,14 @@ async function emittedWithDeepFile(order: "first" | "last"): Promise<string> {
   const dir = mkdtempSync(path.join(tmpdir(), "tw-source-order-"));
   try {
     mkdirSync(path.join(dir, "a/b"), { recursive: true });
-    writeFileSync(path.join(dir, "a/b/deep.tsx"), '<i className="text-red-500" />');
-    writeFileSync(path.join(dir, "a/shallow.tsx"), '<i className="text-blue-500" />');
+    writeFileSync(
+      path.join(dir, "a/b/deep.tsx"),
+      '<i className="text-red-500" />',
+    );
+    writeFileSync(
+      path.join(dir, "a/shallow.tsx"),
+      '<i className="text-blue-500" />',
+    );
     const sources = ['@source "./a/b/deep.tsx";', '@source "./a/shallow.tsx";'];
     if (order === "last") sources.reverse();
     const css = [
@@ -125,7 +131,8 @@ async function emittedWithDeepFile(order: "first" | "last"): Promise<string> {
       ...sources,
     ].join("\n");
     const from = path.join(dir, "entry.css");
-    return (await postcss([tailwind({ base: dir })]).process(css, { from })).css;
+    return (await postcss([tailwind({ base: dir })]).process(css, { from }))
+      .css;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

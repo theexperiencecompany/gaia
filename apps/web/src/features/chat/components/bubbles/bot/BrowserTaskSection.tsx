@@ -1,10 +1,10 @@
 "use client";
 
-import { accordionVariants } from "@/components/shared/accordionVariants";
 import { Accordion, AccordionItem, Chip, Separator } from "@heroui/react";
 import { AiWebBrowsingIcon, Alert01Icon, CheckmarkCircle02Icon } from "@icons";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 import { separatorVariants } from "@/components/shared/controlVariants";
 import { toneVariants } from "@/components/shared/tone";
 import { BrowserStatusChip } from "@/features/browser/components/BrowserStatusChip";

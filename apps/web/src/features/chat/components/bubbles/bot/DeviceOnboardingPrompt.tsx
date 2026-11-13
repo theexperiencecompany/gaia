@@ -269,11 +269,7 @@ export function DeviceOnboardingPrompt({
         <div className="flex flex-col gap-3">
           <div className="flex items-start gap-3">
             <div className="shrink-0 pt-0.5">
-              <CommandLineIcon
-                width={22}
-                height={22}
-                className="text-accent"
-              />
+              <CommandLineIcon width={22} height={22} className="text-accent" />
             </div>
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <span className="text-sm font-medium">Connect a device</span>

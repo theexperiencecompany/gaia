@@ -169,9 +169,7 @@ export default function TwitterUserSection({
 }) {
   if (!twitter_user_data || twitter_user_data.length === 0) {
     return (
-      <div className="mt-3 p-4 text-center text-zinc-400">
-        No users found.
-      </div>
+      <div className="mt-3 p-4 text-center text-zinc-400">No users found.</div>
     );
   }
 
