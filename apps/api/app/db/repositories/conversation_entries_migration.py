@@ -236,7 +236,8 @@ class ConversationEntriesMigration(ConversationRepository):
             report.mismatches.append("written by the old build since its last pass: run --apply")
         seqs: list[int] = []
         for element in elements:
-            entry = by_id.get(element.message_id or "")
+            key = element.message_id or ""  # pragma: no mutate — a None id is never an entry id
+            entry = by_id.get(key)
             if entry is None:
                 report.mismatches.append(f"{element.message_id} has no entry")
                 continue

@@ -11,12 +11,15 @@ once and then lose it — silently, and only in production.
 """
 
 import asyncio
-from collections.abc import Iterator
-from unittest.mock import ANY, patch
+from collections.abc import AsyncIterator, Iterator
+from typing import cast
+from unittest.mock import ANY, AsyncMock, patch
 
 import fakeredis.aioredis
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
 import pytest
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.agents.core.background import executor_channel as channel
 from app.agents.core.background.executor_channel import (
@@ -27,37 +30,54 @@ from app.agents.core.background.executor_channel import (
 )
 from app.constants.agents import AgentTag
 from app.constants.executor import INBOX_ENTRY_ID
+from app.constants.llm import PRO_PER_REQUEST_TOKEN_CEILING
 from app.constants.log_tags import LogTag
+from app.db.redis import AsyncRedisCommands, redis_cache
+from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.models.agent_models import InboxEntry
 from app.override.langgraph_bigtool.utils import (
     INJECTED_MESSAGES_KEY,
+    State,
     pop_injected_messages,
 )
+from app.services import cost_budget
+from app.services.cost_budget import get_request_tokens, record_model_call_usage
 from app.utils.agent_utils import strip_internal_agent_tags
 from tests.helpers import captured_wide_event
 
 CONVERSATION = "conv-1"
+FIRST_TURN_REQUEST = "root-req-first-turn"
 #: A real executor run carries the WRAPPED thread id and the conversation id
 #: separately. Keying the drain on thread_id silently misses the inbox.
-CONFIG = {
+CONFIG: RunnableConfig = {
     "configurable": {
         "thread_id": f"executor_{CONVERSATION}",
         "conversation_id": CONVERSATION,
     }
 }
+#: The same run as CONFIG, carrying the id of the user turn that started it.
+RUN_CONFIG: RunnableConfig = {
+    "configurable": {**CONFIG["configurable"], "root_request_id": FIRST_TURN_REQUEST}
+}
+
+
+def _state(*messages: AnyMessage) -> State:
+    """Build a graph state holding just these messages, the only key the drain reads."""
+    return cast(State, {"messages": list(messages)})
 
 
 @pytest.fixture
-async def redis() -> fakeredis.aioredis.FakeRedis:
+async def redis() -> AsyncIterator[AsyncRedisCommands]:
     client = fakeredis.aioredis.FakeRedis(decode_responses=True)
     with patch.object(channel, "redis_cache") as cache:
         cache.client = client
-        yield client
+        # Typed as the app types its own client: redis-py's shared stubs make every await ambiguous.
+        yield cast(AsyncRedisCommands, client)
     await client.aclose()
 
 
 @pytest.fixture
-def inbox(redis) -> ExecutorInbox:
+def inbox(redis: AsyncRedisCommands) -> ExecutorInbox:
     return ExecutorInbox(CONVERSATION)
 
 
@@ -172,7 +192,7 @@ class TestInbox:
         assert [entry.id for entry in await inbox.read()] == ["t0", "t1", "t2", "t3"]
 
     async def test_an_entry_is_stored_as_canonical_json(
-        self, inbox: ExecutorInbox, redis: fakeredis.aioredis.FakeRedis
+        self, inbox: ExecutorInbox, redis: AsyncRedisCommands
     ) -> None:
         """Retire removes by exact value, so the stored bytes must not depend on how the dict was built."""
         await inbox.append("t1", "also check spam")
@@ -190,7 +210,7 @@ class TestInbox:
         assert await inbox.read() == [entry]
 
     async def test_an_entry_written_before_tags_existed_reads_as_the_user(
-        self, inbox: ExecutorInbox, redis: fakeredis.aioredis.FakeRedis
+        self, inbox: ExecutorInbox, redis: AsyncRedisCommands
     ) -> None:
         await redis.rpush(f"executor:inbox:{CONVERSATION}", '{"id": "t0", "text": "legacy"}')
 
@@ -199,7 +219,7 @@ class TestInbox:
         ]
 
     async def test_an_unreadable_entry_is_logged_when_dropped(
-        self, inbox: ExecutorInbox, redis: fakeredis.aioredis.FakeRedis
+        self, inbox: ExecutorInbox, redis: AsyncRedisCommands
     ) -> None:
         await redis.rpush(f"executor:inbox:{CONVERSATION}", "{not json")
 
@@ -223,7 +243,7 @@ class TestInbox:
         await inbox.announce_interruption("then check my email")
 
         result = await drain_inbox_hook(
-            {"messages": [as_interjection(entry) for entry in first]}, CONFIG, None
+            _state(*(as_interjection(entry) for entry in first)), CONFIG, None
         )
 
         injected = result[INJECTED_MESSAGES_KEY]
@@ -303,7 +323,7 @@ class TestFraming:
         assert "<executor_interrupted>" in as_interjection(entry).content
 
     def test_the_framing_never_reaches_the_user(self) -> None:
-        content = as_interjection(InboxEntry(id="t1", text="also check spam")).content
+        content = as_interjection(InboxEntry(id="t1", text="also check spam")).text
 
         stripped = strip_internal_agent_tags(content)
         assert "also check spam" in stripped
@@ -315,7 +335,7 @@ class TestDrainHook:
         self, inbox: ExecutorInbox
     ) -> None:
         await inbox.append("t1", "also check spam")
-        state = {"messages": [HumanMessage(content="find my flight email")]}
+        state = _state(HumanMessage(content="find my flight email"))
 
         result = await drain_inbox_hook(state, CONFIG, None)
 
@@ -327,7 +347,7 @@ class TestDrainHook:
         """Without the staging the message reaches ONE model call and is then gone from the thread — the whole bug this channel exists to avoid."""
         await inbox.append("t1", "also check spam")
 
-        result = await drain_inbox_hook({"messages": []}, CONFIG, None)
+        result = await drain_inbox_hook(_state(), CONFIG, None)
 
         staged = pop_injected_messages(result)
         assert [m.additional_kwargs[INBOX_ENTRY_ID] for m in staged] == ["t1"]
@@ -338,7 +358,7 @@ class TestDrainHook:
         await inbox.append("t1", "also check spam")
         committed = HumanMessage(content="x", additional_kwargs={INBOX_ENTRY_ID: "t1"})
 
-        result = await drain_inbox_hook({"messages": [committed]}, CONFIG, None)
+        result = await drain_inbox_hook(_state(committed), CONFIG, None)
 
         assert result.get(INJECTED_MESSAGES_KEY, []) == []
 
@@ -346,7 +366,7 @@ class TestDrainHook:
         """Staging is not committing: a run that dies at the model call must leave the entry pending, so the thread stays the only record of what was actually delivered."""
         await inbox.append("t1", "also check spam")
 
-        await drain_inbox_hook({"messages": []}, CONFIG, None)
+        await drain_inbox_hook(_state(), CONFIG, None)
 
         assert [entry.id for entry in await inbox.read()] == ["t1"]
 
@@ -354,18 +374,18 @@ class TestDrainHook:
         await inbox.append("t1", "also check spam")
         committed = HumanMessage(content="x", additional_kwargs={INBOX_ENTRY_ID: "t1"})
 
-        await drain_inbox_hook({"messages": [committed]}, CONFIG, None)
+        await drain_inbox_hook(_state(committed), CONFIG, None)
 
         assert await inbox.count() == 0
 
     async def test_an_empty_inbox_leaves_the_turn_untouched(self, inbox: ExecutorInbox) -> None:
-        state = {"messages": [AIMessage(content="working")]}
+        state = _state(AIMessage(content="working"))
 
         assert await drain_inbox_hook(state, CONFIG, None) is state
 
     async def test_a_turn_with_no_conversation_is_left_alone(self, inbox: ExecutorInbox) -> None:
         await inbox.append("t1", "also check spam")
-        state = {"messages": []}
+        state = _state()
 
         async with captured_wide_event() as event:
             assert await drain_inbox_hook(state, {"configurable": {}}, None) is state
@@ -379,13 +399,13 @@ class TestDrainHook:
     ) -> None:
         """The executor runs on executor_<conversation>."""
         await inbox.append("t1", "also check spam")
-        thread_only = {"configurable": {"thread_id": f"executor_{CONVERSATION}"}}
+        thread_only: RunnableConfig = {"configurable": {"thread_id": f"executor_{CONVERSATION}"}}
 
-        assert await drain_inbox_hook({"messages": []}, thread_only, None) == {"messages": []}
+        assert await drain_inbox_hook(_state(), thread_only, None) == {"messages": []}
 
     async def test_a_redis_failure_never_breaks_the_turn(self, inbox: ExecutorInbox) -> None:
         """Reading the inbox is enrichment; failing it must not fail the run."""
-        state = {"messages": [HumanMessage(content="find my flight email")]}
+        state = _state(HumanMessage(content="find my flight email"))
         async with captured_wide_event() as event:
             with patch.object(ExecutorInbox, "read", side_effect=RuntimeError("redis down")):
                 assert await drain_inbox_hook(state, CONFIG, None) is state
@@ -399,7 +419,7 @@ class TestDrainHook:
     ) -> None:
         await inbox.append("t1", "also check spam")
 
-        result = await drain_inbox_hook({}, CONFIG, None)
+        result = await drain_inbox_hook(cast(State, {}), CONFIG, None)
 
         assert [m.additional_kwargs[INBOX_ENTRY_ID] for m in result["messages"]] == ["t1"]
 
@@ -408,7 +428,7 @@ class TestDrainHook:
         await inbox.append("t2", "second thing")
 
         async with captured_wide_event() as event:
-            await drain_inbox_hook({"messages": []}, CONFIG, None)
+            await drain_inbox_hook(_state(), CONFIG, None)
 
         assert event["executor_inbox_injected"] == 2
 
@@ -418,8 +438,84 @@ class TestDrainHook:
         await inbox.append("t1", "first thing")
         await inbox.append("t2", "second thing")
 
-        result = await drain_inbox_hook({"messages": []}, CONFIG, None)
+        result = await drain_inbox_hook(_state(), CONFIG, None)
 
         injected = [m.content for m in result[INJECTED_MESSAGES_KEY]]
         assert "first thing" in injected[0]
         assert "second thing" in injected[1]
+
+
+class TestAnAbsorbedUserTurnGetsItsOwnRequestCeiling:
+    """A user message absorbed by a busy run is charged to a ceiling of its own.
+
+    A busy executor run takes later user messages in through this inbox instead of
+    starting a run per message. The request ceiling counts tokens per root_request_id,
+    and the run keeps the id of the turn that started it, so before this every
+    message the user sent while it worked was charged against that first turn's
+    ceiling: a long conversation stopped on "This request hit its safety ceiling"
+    while each turn on its own was well under it.
+    """
+
+    @pytest.fixture(autouse=True)
+    def budget_redis(self, redis: AsyncRedisCommands) -> Iterator[None]:
+        with (
+            patch.object(redis_cache, "redis", redis),
+            patch.object(cost_budget, "record_cost", AsyncMock()),
+        ):
+            yield
+
+    async def _first_turn_spent(self, tokens: int) -> None:
+        await record_model_call_usage(
+            None,
+            UsageDailyIncrement(input_tokens=tokens),
+            FIRST_TURN_REQUEST,
+            charge_to_budget=False,
+        )
+
+    @pytest.mark.regression
+    async def test_a_new_user_message_restarts_the_ceiling(self, inbox: ExecutorInbox) -> None:
+        await self._first_turn_spent(PRO_PER_REQUEST_TOKEN_CEILING)
+        await inbox.append("t2", "now do the same for my work account")
+
+        async with captured_wide_event() as event:
+            await drain_inbox_hook(_state(), RUN_CONFIG, None)
+
+        assert await get_request_tokens(FIRST_TURN_REQUEST) == 0
+        assert event["request_ceiling_restarted"] is True
+
+    async def test_a_subagent_result_does_not_restart_it(self, inbox: ExecutorInbox) -> None:
+        """Work the run started reporting back is the same turn, not a new one."""
+        await self._first_turn_spent(1_000)
+        await inbox.append("r1", "found 3 invoices", AgentTag.SUBAGENT_RESULT)
+
+        async with captured_wide_event() as event:
+            await drain_inbox_hook(_state(), RUN_CONFIG, None)
+
+        assert await get_request_tokens(FIRST_TURN_REQUEST) == 1_000
+        assert "request_ceiling_restarted" not in event
+
+    async def test_a_failed_restart_keeps_the_message_for_the_next_step(
+        self, inbox: ExecutorInbox, redis: AsyncRedisCommands
+    ) -> None:
+        """The entry stays in the inbox, so the next model call injects it and restarts again."""
+        await self._first_turn_spent(1_000)
+        await inbox.append("t2", "now do the same for my work account")
+
+        with patch.object(redis, "delete", AsyncMock(side_effect=RedisConnectionError("gone"))):
+            assert await drain_inbox_hook(_state(), RUN_CONFIG, None) == _state()
+        retried = await drain_inbox_hook(_state(), RUN_CONFIG, None)
+
+        assert [m.additional_kwargs[INBOX_ENTRY_ID] for m in retried["messages"]] == ["t2"]
+        assert await get_request_tokens(FIRST_TURN_REQUEST) == 0
+
+    async def test_a_message_already_in_the_thread_does_not_restart_it_again(
+        self, inbox: ExecutorInbox
+    ) -> None:
+        """Every model call drains; only the call that takes the message in restarts the count."""
+        await self._first_turn_spent(1_000)
+        await inbox.append("t2", "now do the same for my work account")
+        committed = HumanMessage(content="x", additional_kwargs={INBOX_ENTRY_ID: "t2"})
+
+        await drain_inbox_hook(_state(committed), RUN_CONFIG, None)
+
+        assert await get_request_tokens(FIRST_TURN_REQUEST) == 1_000

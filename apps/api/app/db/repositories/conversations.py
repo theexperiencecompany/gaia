@@ -767,7 +767,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         head[LOG_HEAD_FIELD] = 0
         key = {"user_id": doc.user_id, "conversation_id": doc.conversation_id}
         with store_errors("create"):  # pragma: no mutate — error label only
-            if not await self._raw_collection().count_documents(key, limit=1):
+            if not await self._raw_collection().count_documents(key):
                 await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(key)
         # Outside store_errors: try_create reads a DuplicateKeyError as a lost creation race.
         await self._raw_collection().insert_one(head)
@@ -1104,7 +1104,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 match,
                 excluding=excluding,
                 heads_collection=self._raw_collection().name,
-                limit=limit,
+                limit=limit,  # pragma: no mutate — limit only bounds a read whose callers ask whether one exists
             )
             rows = await (
                 self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
