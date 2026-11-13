@@ -166,10 +166,8 @@ export default function LandingPageClient({
             <OpenSource />
           </HydrateOnVisible>
 
-          {/* Decision — price */}
-          <HydrateOnVisible>
-            <PricingSection />
-          </HydrateOnVisible>
+          {/* Decision — price. Conversion section: hydrated (and its prices fetched) at page load, never deferred. */}
+          <PricingSection />
 
           {/* Objections + final CTA */}
           <HydrateOnVisible>

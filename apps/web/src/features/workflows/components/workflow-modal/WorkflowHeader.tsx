@@ -133,7 +133,12 @@ export default function WorkflowHeader({
 
             <Dropdown>
               <DropdownTrigger>
-                <GaiaButton variant="default-soft" size="sm" isIconOnly>
+                <GaiaButton
+                  aria-label="More options"
+                  variant="default-soft"
+                  size="sm"
+                  isIconOnly
+                >
                   <MoreVerticalIcon className="h-4 w-4" />
                 </GaiaButton>
               </DropdownTrigger>

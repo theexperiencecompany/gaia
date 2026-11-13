@@ -69,6 +69,7 @@ export default function ChatBubble_Actions_Image({
       ) : null}
       <Tooltip>
         <GaiaButton
+          aria-label={fullWidth ? undefined : "Download image"}
           className={fullWidth ? "h-fit w-fit px-3 py-2" : "h-fit w-fit"}
           shape={fullWidth ? "sm" : "default"}
           isIconOnly={!fullWidth}

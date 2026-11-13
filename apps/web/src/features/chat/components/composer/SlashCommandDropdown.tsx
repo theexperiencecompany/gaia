@@ -377,6 +377,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
               </div>
               {/* Close Button */}
               <GaiaButton
+                aria-label="Close"
                 shape="pill"
                 onPress={onClose}
                 isIconOnly

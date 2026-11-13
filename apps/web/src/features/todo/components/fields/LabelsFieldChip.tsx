@@ -81,6 +81,7 @@ export default function LabelsFieldChip({
                   />
                 </div>
                 <GaiaButton
+                  aria-label="Add label"
                   size="sm"
                   variant="tertiary"
                   tone={canAddLabel ? "bright" : "subtle"}
@@ -107,6 +108,7 @@ export default function LabelsFieldChip({
                     <Tag01Icon size={12} />
                     {label}
                     <GaiaButton
+                      aria-label="Remove label"
                       variant="ghost"
                       tone="muted"
                       hoverTone="bright"

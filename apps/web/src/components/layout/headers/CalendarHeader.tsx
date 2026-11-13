@@ -110,6 +110,7 @@ export default function CalendarHeader() {
       <div className="relative flex items-center gap-2">
         <div className="flex items-center">
           <GaiaButton
+            aria-label="Previous day"
             isIconOnly
             size="sm"
             variant="ghost"
@@ -119,6 +120,7 @@ export default function CalendarHeader() {
           </GaiaButton>
 
           <GaiaButton
+            aria-label="Next day"
             isIconOnly
             size="sm"
             variant="ghost"

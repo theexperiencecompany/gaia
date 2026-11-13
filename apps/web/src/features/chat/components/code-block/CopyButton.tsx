@@ -9,6 +9,7 @@ interface CopyButtonProps {
 
 const CopyButton: React.FC<CopyButtonProps> = ({ copied, onPress }) => (
   <GaiaButton
+    aria-label="Copy code"
     className="text-xs"
     hoverTone="dim"
     size="sm"

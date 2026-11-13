@@ -102,6 +102,7 @@ export default function ProfileCardSettings() {
         <ButtonGroup>
           <Tooltip>
             <GaiaButton
+              aria-label="Copy profile link"
               isIconOnly
               variant="default-soft"
               onPress={handleCopyLink}
@@ -113,6 +114,7 @@ export default function ProfileCardSettings() {
           </Tooltip>
           <Tooltip>
             <GaiaButton
+              aria-label="Open profile"
               isIconOnly
               variant="default-soft"
               onPress={handleOpenProfile}

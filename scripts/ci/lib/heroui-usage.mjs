@@ -384,6 +384,27 @@ function attrStringValues(module, attr) {
   return classStrings(module, attr.value, []);
 }
 
+// Buttons whose only content can be an icon; shared icons are aria-hidden, so the name must come from a label.
+const ICON_BUTTONS = new Set(["Button", "GaiaButton", "LinkButton"]);
+const NAME_ATTRS = new Set(["aria-label", "aria-labelledby"]);
+
+/** An isIconOnly HeroUI or GAIA button with no aria-label, aria-labelledby or spread props that could carry one. */
+function isUnlabelledIconButton(node, module) {
+  if (node.name.type !== "JSXIdentifier") return false;
+  const local = node.name.name;
+  const imported = module.heroNamed.get(local) ?? module.imports.get(local)?.imported;
+  if (!ICON_BUTTONS.has(imported)) return false;
+  const attrs = node.attributes;
+  const iconOnly = attrs.some(
+    (a) =>
+      a.type === "JSXAttribute" &&
+      a.name.name === "isIconOnly" &&
+      !(a.value?.type === "JSXExpressionContainer" && a.value.expression.type === "BooleanLiteral" && !a.value.expression.value),
+  );
+  if (!iconOnly) return false;
+  return !attrs.some((a) => a.type === "JSXSpreadAttribute" || NAME_ATTRS.has(a.name?.name));
+}
+
 /** Each v2 leftover, missing control part or bare component a GAIA wrapper replaces, as `{ line, message }`. */
 export function heroUsageIn(file, src) {
   const module = Module.load(file, src);
@@ -404,6 +425,12 @@ export function heroUsageIn(file, src) {
   let hasRowHeader = false;
   traverse.default(module.ast, {
     JSXOpeningElement(nodePath) {
+      if (isUnlabelledIconButton(nodePath.node, module)) {
+        found.push({
+          line: nodePath.node.loc.start.line,
+          message: "isIconOnly button without aria-label: its icon is aria-hidden, so it has no name",
+        });
+      }
       const tag = heroTag(nodePath.node.name, module, new Map());
       if (!tag) return;
       const line = nodePath.node.loc.start.line;
