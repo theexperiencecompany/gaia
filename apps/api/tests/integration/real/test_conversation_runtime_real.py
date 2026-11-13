@@ -173,6 +173,7 @@ from tests.integration.real.test_comms_runner_real import (
     humans,
     patched_graph,
 )
+from tests.unit.services.conversation.log_helpers import workflow_run
 from tests.unit.services.conversation.runtime_doubles import ScriptedApprovals
 
 EntryT = TypeVar("EntryT")
@@ -1756,3 +1757,35 @@ async def test_a_stop_whose_hint_write_failed_is_still_what_the_step_reads(
     # A running attempt decides on this read: a stale hint would let its reply settle answered.
     hint = await rig.ports.log.hint(rig.conversation_id, rig.user_id)
     assert (hint.head, hint.stop_through) == (2, 1)
+
+
+def _fire_entry(rig: Rig) -> Entry:
+    del rig
+    return WorkflowFired(id="workflow:exec_id", run=workflow_run("exec_id"))
+
+
+def _chat_entry(rig: Rig) -> Entry:
+    del rig
+    return UserMessage(id="m1", text="hi", surface=ConversationSource.WEB)
+
+
+@pytest.mark.service
+@pytest.mark.parametrize("entry_for", [_chat_entry, _fire_entry], ids=["chat", "workflow"])
+async def test_every_comms_run_carries_the_identity_the_approval_gate_needs(
+    rig_for: RigFactory, entry_for: Callable[[Rig], Entry]
+) -> None:
+    built: list[CommsTurn] = []
+
+    async def recording(claim: StepClaim, batch: Batch) -> CommsTurn:
+        turn = await build_comms_turn(claim, batch)
+        built.append(turn)
+        return turn
+
+    rig = await rig_for(gated("ok"), build_turn=recording)
+    await accept(rig.ports, rig.conversation_id, rig.user_id, entry_for(rig))
+    await rig.settle()
+    configurable = built[0].config["configurable"]
+    # The gate refuses a gated call when any of these is missing.
+    assert configurable.get("stream_id")
+    assert configurable.get("user_id") == rig.user_id
+    assert configurable.get("conversation_id") == rig.conversation_id

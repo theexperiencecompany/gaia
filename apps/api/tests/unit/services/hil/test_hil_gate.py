@@ -327,13 +327,15 @@ class TestGateBypasses:
         assert result.content == "the tool really ran"
         assert policy.await_count == 0
 
-    async def test_an_ungateable_run_executes_the_tool(self) -> None:
-        # A background/queued run has nobody to ask. It runs — by design.
+    async def test_a_run_with_no_identity_is_refused_instead_of_running_ungated(self) -> None:
+        # Attack: one entry point forgets to stamp stream_id/user_id/conversation_id.
         handler = _Handler()
         with patch(f"{MODULE}.resolve_policy", new=AsyncMock()) as policy:
-            await run_through_gate(make_request(configurable={}), handler)
+            result = await run_through_gate(make_request(configurable={}), handler)
 
-        assert handler.ran is True
+        assert handler.ran is False
+        assert isinstance(result, ToolMessage)
+        assert result.additional_kwargs[HIL_STATUS_KWARG] == "error"
         assert policy.await_count == 0
 
     async def test_an_allowed_policy_runs_the_tool(self) -> None:
