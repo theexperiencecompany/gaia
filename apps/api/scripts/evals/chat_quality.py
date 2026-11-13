@@ -55,7 +55,6 @@ USER_TEMPLATE = os.environ.get("GAIA_DEV_USER_TEMPLATE", "cq-{slug}-" + RUN_ID +
 #: bot message (executor cards on the stream, comms narration via WebSocket).
 #: The user sees both, so the judge must too: poll the saved conversation.
 DELIVERY_WAIT_SECONDS = 75.0
-DELIVERY_POLL_SECONDS = 3.0
 TURN_TIMEOUT_SECONDS = 180.0
 JUDGE_TIMEOUT_SECONDS = 180.0
 JUDGE_CONCURRENCY = 4
@@ -65,7 +64,6 @@ REPLY_PREVIEW_WORDS = 30
 TURN_OPTIONS = TurnOptions(
     timeout=TURN_TIMEOUT_SECONDS,
     delivery_wait_seconds=DELIVERY_WAIT_SECONDS,
-    delivery_poll_seconds=DELIVERY_POLL_SECONDS,
 )
 
 #: One profile for every scenario: the difference we want to read is the
@@ -345,16 +343,11 @@ async def run(api_url: str, only: str | None) -> None:
         email = USER_TEMPLATE.format(slug=f"{index}-{_slug(label)}")
         print(f"\n\n######## {label}  ({email})")
         await provision(api_url, email, PROFILE)
-        history: list[dict[str, str]] = []
         prior: list[Turn] = []
         async with dev_client(email) as client:
             conversation_id = await open_conversation(client, api_url, label)
             for turn_number, message in enumerate(turns, start=1):
-                turn = await send_turn(
-                    client, api_url, message, conversation_id, history, TURN_OPTIONS
-                )
-                history.append({"role": "user", "content": message})
-                history.append({"role": "assistant", "content": turn.reply})
+                turn = await send_turn(client, api_url, message, conversation_id, TURN_OPTIONS)
                 collected.append(
                     Graded(
                         scenario=label,

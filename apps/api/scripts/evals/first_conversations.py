@@ -44,7 +44,7 @@ DEFAULT_API_URL = os.environ.get("GAIA_API_URL", "http://localhost:9330")
 RUN_ID = time.strftime("%H%M%S")
 USER_TEMPLATE = "fc-{slug}-" + RUN_ID + "@gaia.local"
 JUDGE_TIMEOUT_SECONDS = 90.0
-TURN_OPTIONS = TurnOptions(timeout=240.0, delivery_wait_seconds=150.0, delivery_poll_seconds=4.0)
+TURN_OPTIONS = TurnOptions(timeout=240.0, delivery_wait_seconds=150.0)
 #: The welcome thread's escape-hatch chip, in every language it ships in.
 SOMETHING_ELSE_LABELS = {copy.something_else for copy in WELCOME_COPY.values()}
 #: How long the wizard's next screens give the chips draft before completion.
@@ -284,7 +284,6 @@ async def _run(api_url: str, scenario: Scenario) -> Row:
         completion.raise_for_status()
         conversation_id, welcome = await _read_welcome(client, api_url)
         row = Row(scenario=scenario, welcome=welcome, conversation_id=conversation_id)
-        history = [{"role": "assistant", "content": bubble} for bubble in welcome.bubbles]
         for raw in scenario.messages:
             message = raw
             if raw == FIRST_CHIP:
@@ -292,11 +291,7 @@ async def _run(api_url: str, scenario: Scenario) -> Row:
                     (c for c in welcome.chips if c not in SOMETHING_ELSE_LABELS), welcome.chips[-1]
                 )
             print(f"    > {message}", flush=True)
-            turn = await send_turn(client, api_url, message, conversation_id, history, TURN_OPTIONS)
-            history += [
-                {"role": "user", "content": message},
-                {"role": "assistant", "content": turn.reply},
-            ]
+            turn = await send_turn(client, api_url, message, conversation_id, TURN_OPTIONS)
             row.turns.append(turn)
     return row
 

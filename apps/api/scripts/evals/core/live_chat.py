@@ -1,17 +1,13 @@
-"""One way to send a chat turn against a running API and read the reply back.
+"""One way to send a chat message to a running API and read back everything it caused.
 
-Three harnesses (chat_quality, adversarial_users,
-first_question_personas) each grew their own _send_turn against the same
-/api/v1/chat-stream endpoint, and two more scripts imported one of those
-copies from a *sibling script* to avoid a fourth. The copies had drifted in ways
-that changed what a run measured, not just how it was written: one dropped the
-retracted handoff preamble and two did not, one polled for the delegated answer
-and one silently graded the ack instead.
+A turn is the wire every client uses: POST /api/v1/conversations/{id}/messages with a
+client-minted message id (202, with the message's seq), then GET .../events after that
+seq until the message is answered. Every eval harness goes through this module, so the
+rules that decide what a run measures (which reply text is graded, which tool cards
+count, when a delegated answer has landed) live in one place: TurnReader, a pure fold
+over the stream's frames that is tested without an API.
 
-So the differences are kept as arguments rather than as forks. Every knob below
-is one behaviour a copy actually had; nothing here is speculative. A script that
-wants the old shape passes the flags for it, and the shape is then visible in one
-line at the call site instead of buried eighty lines down a private function.
+The differences between harnesses are TurnOptions fields rather than forks.
 """
 
 from __future__ import annotations
@@ -25,205 +21,346 @@ from uuid import uuid4
 import httpx
 from pydantic import BaseModel
 
-#: A stream that carried no prose at all. Scripts test replies against this
+from app.models.conversation_frame_models import (
+    EntryFrame,
+    EntryUpdatedFrame,
+    FollowUpActionsEvent,
+    OutputFrame,
+    ReplyDeltaFrame,
+    ResponseEvent,
+    RetractFrame,
+    ToolDataEvent,
+    WorkDeltaFrame,
+)
+from app.models.conversation_log_models import (
+    ApprovalDecided,
+    ApprovalRequested,
+    Entry,
+    Reply,
+    ReplyOutcome,
+    ReplySettled,
+    UserMessage,
+    WorkFinished,
+    WorkStarted,
+)
+from app.models.conversation_send_models import ConversationEvent, MessageAccepted
+from app.models.tool_data_models import ToolDataEntry
+
+#: A turn that produced no prose at all. Scripts test replies against this
 #: sentinel, so it has to be one string, not one per harness.
 NO_TEXT_REPLY = "[no text in stream]"
+NOTHING_DELIVERED = "\n\n[nothing delivered within budget]"
 
-#: Defaults for polling the saved conversation after a delegated turn.
+#: How long a delegated answer may take after the message's own reply settled.
 DELIVERY_WAIT_SECONDS = 75.0
-DELIVERY_POLL_SECONDS = 3.0
 
-#: The tool name that means comms handed this turn to the executor: the real
-#: answer will arrive on the saved conversation, not on this stream.
-DELEGATION_TOOL = "call_executor"
+TOOL_CALLS_CARD = "tool_calls_data"
+APPROVAL_CARD = "approval_request"
+SSE_DATA_PREFIX = "data:"
+
+#: The card status an approval decision settles to, as the approval card words it.
+DECISION_STATUS = {
+    "approve": "approved",
+    "deny": "denied",
+    "timeout": "timeout",
+    "abandon": "abandoned",
+}
+PENDING = "pending"
+
+
+class ApprovalSeen(BaseModel):
+    """One status an approval was seen in: requested (pending), decided, or a card's own status."""
+
+    approval_id: str
+    status: str
 
 
 class Turn(BaseModel):
-    """One exchange, plus the evidence GAIA did a thing rather than talked about it."""
+    """One message, what answered it, and the evidence GAIA did a thing rather than talked about it."""
 
     message: str
+    message_id: str = ""
     reply: str = ""
-    #: ``tool_name`` of every ``tool_data`` entry. A connect card arrives as
-    #: ``integration_connection_required``; a created reminder as the reminder
-    #: tool's own name.
+    #: Text of each write-up of work the message started, in the order they landed.
+    delivered: list[str] = []
+    #: tool_name of every card seen; a connect card arrives as
+    #: integration_connection_required, a created reminder as the reminder tool's name.
     tools: list[str] = []
-    #: Every distinct top-level key seen on an SSE frame. Captured generically so
-    #: a frame kind added upstream still shows up here instead of being dropped.
+    tool_data: list[ToolDataEntry] = []
+    approvals: list[ApprovalSeen] = []
+    follow_up_actions: list[str] | None = None
+    #: The emoji GAIA put on the message, when it reacted instead of (or as well as) writing.
+    reaction: str | None = None
+    #: Every distinct frame kind seen, collected generically so a kind added
+    #: upstream still shows up here instead of being dropped.
     frame_kinds: list[str] = []
-    #: True when the answer arrived on the saved conversation, not the stream.
+    #: True when the message started background work; its write-up is a later reply.
     delegated: bool = False
+    #: How the message's own reply settled; None when it never did.
+    outcome: ReplyOutcome | None = None
+    error: str | None = None
+    #: The newest log seq seen, the cursor a later follow resumes after.
+    last_seq: int = 0
+    #: True when work the message started had not reported within the delivery budget.
+    undelivered: bool = False
 
     @property
     def is_empty(self) -> bool:
         return not self.reply.strip() or self.reply.strip() == NO_TEXT_REPLY
 
+    @property
+    def awaiting_approval(self) -> bool:
+        latest = {seen.approval_id: seen.status for seen in self.approvals}
+        return PENDING in latest.values()
 
-def frame_tool_names(frame: dict, *, include_nested: bool = True) -> list[str]:
-    """Every tool name in one SSE frame's tool_data, which is an entry or a list.
 
-    include_nested also unwraps the tool a tool_calls_data announcement
-    carries (its data is one step dict). first_question_personas read only
-    the outer name, so that stays available rather than being quietly widened:
-    unwrapping adds names to the tool list the judge is shown, which can flip a
-    "did it actually do the thing" criterion.
-    """
-    payload = frame.get("tool_data")
-    entries = payload if isinstance(payload, list) else [payload]
-    names: list[str] = []
-    for entry in entries:
-        if not isinstance(entry, dict) or not isinstance(entry.get("tool_name"), str):
-            continue
-        names.append(entry["tool_name"])
-        if not include_nested:
-            continue
-        inner = entry.get("data")
-        if entry["tool_name"] == "tool_calls_data" and isinstance(inner, dict):
-            inner_name = inner.get("tool_name") or inner.get("name")
-            if isinstance(inner_name, str):
-                names.append(inner_name)
+def card_tool_names(entry: ToolDataEntry, *, include_nested: bool = True) -> list[str]:
+    """The card's tool name, plus the tool a tool_calls_data announcement carries when include_nested."""
+    names = [entry["tool_name"]]
+    inner = entry["data"]
+    if include_nested and entry["tool_name"] == TOOL_CALLS_CARD and isinstance(inner, dict):
+        inner_name = inner.get("tool_name") or inner.get("name")
+        if isinstance(inner_name, str):
+            names.append(inner_name)
     return names
 
 
-def assemble(
-    lines: list[str],
-    *,
-    include_nested_tool_names: bool = True,
-    drop_discarded_boundary: bool = True,
-    collect_frame_kinds: bool = False,
-) -> tuple[str, list[str], list[str]]:
-    """Fold raw SSE lines into (reply, tools, frame_kinds).
+def called_tools(tool_data: list[ToolDataEntry]) -> list[dict[str, object]]:
+    """Every tool call a tool_calls_data card announced, once per tool_call_id, as name and args."""
+    calls: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for entry in tool_data:
+        data = entry["data"]
+        if entry["tool_name"] != TOOL_CALLS_CARD or not isinstance(data, dict):
+            continue
+        call_id = data.get("tool_call_id")
+        if isinstance(call_id, str):
+            if call_id in seen:
+                continue
+            seen.add(call_id)
+        inputs = data.get("inputs")
+        calls.append(
+            {"name": data.get("tool_name"), "args": inputs if isinstance(inputs, dict) else {}}
+        )
+    return calls
 
-    Split out from the request so the assembly rules — which are the part that
-    decides what a run measures — are testable without an API. Non-data:
-    lines, undecodable payloads and non-dict frames are skipped rather than
-    raising: a stream that ends mid-frame is a slow lane, not a failed eval.
+
+class TurnReader:
+    """Fold a conversation's frames into what one message caused.
+
+    The message is answered once a ReplySettled lists it; it is settled once every piece
+    of work it started has finished and a reply has answered that finish (its write-up,
+    which also lists the message). done says when a follower stops reading: at the
+    answer, at the settle with wait_for_work, or at a pending approval with
+    stop_at_approval.
     """
-    chunks: list[str] = []
-    tools: list[str] = []
-    kinds: list[str] = []
-    for line in lines:
-        if not line.startswith("data: "):
-            continue
-        try:
-            frame = json.loads(line[len("data: ") :])
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(frame, dict):
-            continue
-        if collect_frame_kinds:
-            kinds.extend(key for key in frame if frame[key] is not None)
-        # A discarded boundary retracts the text streamed since the last one (the
-        # handoff preamble); the web and the bots drop it on this frame, so the
-        # harness must too or it reads as duplicated text.
-        boundary = frame.get("message_boundary")
-        if drop_discarded_boundary and isinstance(boundary, dict) and boundary.get("discarded"):
-            chunks.clear()
-        if isinstance(frame.get("response"), str):
-            chunks.append(frame["response"])
-        tools.extend(frame_tool_names(frame, include_nested=include_nested_tool_names))
-    reply = "".join(chunks).strip() or NO_TEXT_REPLY
-    return reply, tools, sorted(set(kinds))
 
+    def __init__(
+        self,
+        message: str,
+        message_id: str,
+        *,
+        collect_frame_kinds: bool = False,
+        wait_for_work: bool = True,
+        stop_at_approval: bool = False,
+    ) -> None:
+        self._turn = Turn(message=message, message_id=message_id)
+        self._collect_frame_kinds = collect_frame_kinds
+        self._wait_for_work = wait_for_work
+        self._stop_at_approval = stop_at_approval
+        self._kinds: set[str] = set()
+        self._reply_order: list[str] = []
+        self._reply_text: dict[str, str] = {}
+        self._attempt_reply: dict[str, str] = {}
+        self._attempt_text: dict[str, list[str]] = {}
+        self._answering: list[str] = []
+        self._cards: dict[str, ToolDataEntry] = {}
+        self._tasks: set[str] = set()
+        self._live_tasks: set[str] = set()
+        self._unreported: set[str] = set()
+        self._answered = False
 
-def bot_messages_after(messages: list[dict], user_text: str) -> list[dict]:
-    """Bot messages saved after the LAST user message equal to user_text.
+    @property
+    def answered(self) -> bool:
+        return self._answered
 
-    Last, not first: a scenario may send the same words twice, and the turn being
-    graded is the most recent one.
-    """
-    idx = None
-    for i, message in enumerate(messages):
-        if (
-            message.get("type") == "user"
-            and (message.get("response") or "").strip() == user_text.strip()
-        ):
-            idx = i
-    if idx is None:
-        return []
-    return [message for message in messages[idx + 1 :] if message.get("type") == "bot"]
+    @property
+    def settled(self) -> bool:
+        return self._answered and not self._live_tasks and not self._unreported
 
+    @property
+    def awaiting_approval(self) -> bool:
+        return self._turn.awaiting_approval
 
-async def await_delivery(
-    client: httpx.AsyncClient,
-    api_url: str,
-    conversation_id: str,
-    user_text: str,
-    *,
-    wait_seconds: float = DELIVERY_WAIT_SECONDS,
-    poll_seconds: float = DELIVERY_POLL_SECONDS,
-) -> tuple[str, list[str]]:
-    """Poll the saved conversation until the delegated answer lands (or the budget ends)."""
-    deadline = time.monotonic() + wait_seconds
-    last_seen = ""
-    while time.monotonic() < deadline:
-        await asyncio.sleep(poll_seconds)
-        try:
-            resp = await client.get(
-                f"{api_url}/api/v1/conversations/{conversation_id}", timeout=30.0
-            )
-        except Exception:
-            continue
-        if resp.status_code != 200:
-            continue
-        payload = resp.json()
-        convo = payload.get("conversation", payload) if isinstance(payload, dict) else {}
-        messages = convo.get("messages") or []
-        bots = bot_messages_after(messages, user_text)
-        texts = [(message.get("response") or "").strip() for message in bots]
-        delivered = [text for text in texts[1:] if text] if len(texts) > 1 else []
-        tool_names = [
-            entry.get("tool_name")
-            for message in bots
-            for entry in (message.get("tool_data") or [])
-            if isinstance(entry, dict)
+    @property
+    def done(self) -> bool:
+        if self._stop_at_approval and self.awaiting_approval:
+            return True
+        return self.settled if self._wait_for_work else self._answered
+
+    def feed(self, frame: OutputFrame) -> None:
+        if self._collect_frame_kinds:
+            self._kinds.add(frame.kind.value)
+        match frame:
+            case EntryFrame() | EntryUpdatedFrame():
+                self._turn.last_seq = max(self._turn.last_seq, frame.seq)
+                self._entry(frame.entry)
+            case ReplyDeltaFrame():
+                self._kind(f"{frame.kind.value}:{frame.payload.type.value}")
+                if isinstance(frame.payload, ResponseEvent):
+                    self._attempt_text.setdefault(frame.attempt_id, []).append(
+                        frame.payload.response
+                    )
+                self._payload(frame.payload)
+            case WorkDeltaFrame():
+                self._kind(f"{frame.kind.value}:{frame.payload.type.value}")
+                if frame.task_id in self._live_tasks:
+                    self._payload(frame.payload)
+            case RetractFrame():
+                self._attempt_text.pop(frame.attempt_id, None)
+            case _:
+                pass
+
+    def _kind(self, kind: str) -> None:
+        if self._collect_frame_kinds:
+            self._kinds.add(kind)
+
+    def _payload(self, payload: object) -> None:
+        if isinstance(payload, ToolDataEvent):
+            self._card(payload.tool_data)
+        elif isinstance(payload, FollowUpActionsEvent):
+            self._turn.follow_up_actions = list(payload.follow_up_actions)
+
+    def _card(self, entry: ToolDataEntry) -> None:
+        self._cards.setdefault(json.dumps(entry, sort_keys=True, default=str), entry)
+        data = entry["data"]
+        if entry["tool_name"] == APPROVAL_CARD and isinstance(data, dict):
+            approval_id, status = data.get("approval_id"), data.get("status")
+            if isinstance(approval_id, str) and isinstance(status, str):
+                self._approval(approval_id, status)
+
+    def _approval(self, approval_id: str, status: str) -> None:
+        seen = ApprovalSeen(approval_id=approval_id, status=status)
+        if seen not in self._turn.approvals:
+            self._turn.approvals.append(seen)
+
+    def _entry(self, entry: Entry) -> None:
+        self._kind(f"entry:{entry.kind.value}")
+        match entry:
+            case UserMessage(id=self._turn.message_id, reaction=reaction) if reaction is not None:
+                self._turn.reaction = reaction.emoji
+            case WorkStarted() | ApprovalRequested() | ApprovalDecided() | WorkFinished():
+                self._work_entry(entry)
+            case Reply():
+                self._reply(entry)
+            case ReplySettled():
+                self._settle(entry)
+            case _:
+                pass
+
+    def _work_entry(
+        self, entry: WorkStarted | ApprovalRequested | ApprovalDecided | WorkFinished
+    ) -> None:
+        match entry:
+            case WorkStarted() if (
+                self._turn.message_id in entry.answers or entry.joins in self._live_tasks
+            ):
+                self._turn.delegated = True
+                self._tasks.add(entry.task_id)
+                self._live_tasks.add(entry.task_id)
+            case ApprovalRequested() if entry.task_id in self._live_tasks:
+                self._approval(entry.approval_id, PENDING)
+            case ApprovalDecided() if any(
+                seen.approval_id == entry.approval_id for seen in self._turn.approvals
+            ):
+                self._approval(entry.approval_id, DECISION_STATUS[entry.decision])
+            case WorkFinished() if entry.task_id in self._live_tasks:
+                self._live_tasks.discard(entry.task_id)
+                self._unreported.add(entry.id)
+                for card in entry.tool_data:
+                    self._card(card)
+            case _:
+                pass
+
+    def _reply(self, entry: Reply) -> None:
+        if entry.reply_id not in self._reply_text:
+            self._reply_order.append(entry.reply_id)
+        self._attempt_reply[entry.attempt_id] = entry.reply_id
+        self._reply_text[entry.reply_id] = entry.text
+        for card in entry.tool_data:
+            self._card(card)
+        if entry.follow_up_actions:
+            self._turn.follow_up_actions = list(entry.follow_up_actions)
+
+    def _settle(self, entry: ReplySettled) -> None:
+        self._unreported.difference_update(entry.answers)
+        if self._turn.message_id not in entry.answers:
+            return
+        self._answering.append(entry.reply_id)
+        if not self._answered:
+            self._turn.outcome = entry.outcome
+            if entry.failure is not None:
+                self._turn.error = f"reply {entry.outcome.value}: {entry.failure.value}"
+        self._answered = True
+
+    def _text(self, reply_id: str) -> str:
+        text = self._reply_text.get(reply_id, "")
+        if text.strip():
+            return text.strip()
+        streamed = [
+            "".join(chunks)
+            for attempt, chunks in self._attempt_text.items()
+            if self._attempt_reply.get(attempt) == reply_id
         ]
-        real_tools = [name for name in tool_names if name and name != "tool_calls_data"]
-        if delivered and "\n".join(delivered) == last_seen:
-            return last_seen, real_tools
-        if delivered:
-            last_seen = "\n".join(delivered)
-        elif len(bots) > 1 and real_tools:
-            # A card-only result. Cards on the ack itself (a connect card the turn
-            # streamed) are not the result: its text lands a few seconds later.
-            return "", real_tools
-    return last_seen, []
+        return "".join(streamed).strip()
+
+    def turn(self, *, include_nested_tool_names: bool = True) -> Turn:
+        """The turn as read so far: reply is the message's own answer (or the sentinel), delivered its work's write-ups."""
+        answering = [reply_id for reply_id in self._reply_order if reply_id in set(self._answering)]
+        own = [self._text(reply_id) for reply_id in answering if reply_id not in self._tasks]
+        delivered = [self._text(reply_id) for reply_id in answering if reply_id in self._tasks]
+        tool_data = list(self._cards.values())
+        return self._turn.model_copy(
+            update={
+                "reply": "\n".join(text for text in own if text) or NO_TEXT_REPLY,
+                "delivered": [text for text in delivered if text],
+                "tool_data": tool_data,
+                "tools": [
+                    name
+                    for entry in tool_data
+                    for name in card_tool_names(entry, include_nested=include_nested_tool_names)
+                ],
+                "frame_kinds": sorted(self._kinds),
+            }
+        )
 
 
 @dataclass(frozen=True)
 class TurnOptions:
     """How one harness wants a turn read back.
 
-    Every field is one behaviour a copy of _send_turn actually had; nothing
-    here is speculative. Frozen because a harness's turn shape is fixed for the
-    whole run — a mutable options object shared across turns is a way for turn 7
-    to be read differently from turn 1 and for nobody to notice.
-
-    The defaults are chat_quality's behaviour, which is the shape three of
-    the five scripts want; the other two say how they differ at the call site,
-    in one visible line, instead of eighty lines down a private function.
+    Frozen because a harness's turn shape is fixed for the whole run: a mutable
+    options object shared across turns is a way for turn 7 to be read differently
+    from turn 1 and for nobody to notice.
     """
 
-    #: Budget for the whole streamed turn. Harness-specific: the adversarial
-    #: personas wait on the executor and needed 300s where 60s timed out 33/35.
+    #: Budget for the whole turn, delegated answer included.
     timeout: float = 180.0
-    #: Also unwrap the tool a ``tool_calls_data`` announcement carries.
+    #: Also count the tool a tool_calls_data announcement carries.
     include_nested_tool_names: bool = True
-    #: Drop text retracted by a discarded ``message_boundary`` (the handoff preamble).
-    drop_discarded_boundary: bool = True
-    #: Record every distinct top-level SSE frame key on the ``Turn``.
+    #: Record every distinct frame kind on the Turn.
     collect_frame_kinds: bool = False
-    #: Poll the saved conversation when the turn was delegated to the executor.
-    poll_for_delivery: bool = True
-    #: Separator between the streamed ack and the later delivered answer.
+    #: Wait for the write-up of work the message started, not just its own reply.
+    wait_for_work: bool = True
+    #: Separator between the comms reply and the later delivered answer.
     delivered_prefix: str = "\n\n[delivered later] "
-    #: Drop the "no text in stream" sentinel when a delivered answer replaces it.
+    #: Drop the "no text" sentinel when a delivered answer replaces it.
     drop_sentinel_before_delivery: bool = False
     delivery_wait_seconds: float = DELIVERY_WAIT_SECONDS
-    delivery_poll_seconds: float = DELIVERY_POLL_SECONDS
 
 
 async def open_conversation(client: httpx.AsyncClient, api_url: str, description: str) -> str:
-    """Create a conversation the caller owns and return its id; chat-stream 404s any other id."""
+    """Create a conversation the caller owns, titled description, and return its id."""
     conversation_id = str(uuid4())
     response = await client.post(
         f"{api_url}/api/v1/conversations",
@@ -234,68 +371,109 @@ async def open_conversation(client: httpx.AsyncClient, api_url: str, description
     return conversation_id
 
 
+async def follow(
+    client: httpx.AsyncClient,
+    api_url: str,
+    conversation_id: str,
+    reader: TurnReader,
+    *,
+    after: int,
+    delivery_wait_seconds: float = DELIVERY_WAIT_SECONDS,
+) -> bool:
+    """Feed the events after seq after into reader until it is done; False when the delivery budget ran out.
+
+    The delivery budget starts when the message's own reply settles.
+    """
+    delivery_deadline: float | None = None
+    async with client.stream(
+        "GET",
+        f"{api_url}/api/v1/conversations/{conversation_id}/events",
+        params={"after": str(after)},
+        timeout=httpx.Timeout(30.0, read=None),
+    ) as response:
+        if response.status_code != 200:
+            await response.aread()
+            raise httpx.HTTPStatusError(
+                f"events HTTP {response.status_code}: {response.text[:300]}",
+                request=response.request,
+                response=response,
+            )
+        async for line in response.aiter_lines():
+            if line.startswith(SSE_DATA_PREFIX):
+                event = ConversationEvent.model_validate_json(line.removeprefix(SSE_DATA_PREFIX))
+                reader.feed(event.frame)
+            if reader.done:
+                return True
+            if reader.answered and delivery_deadline is None:
+                delivery_deadline = time.monotonic() + delivery_wait_seconds
+            if delivery_deadline is not None and time.monotonic() > delivery_deadline:
+                return False
+    raise httpx.RemoteProtocolError("the events stream closed before the message was answered")
+
+
+async def send_message(
+    client: httpx.AsyncClient, api_url: str, conversation_id: str, text: str
+) -> MessageAccepted:
+    """Send text with a minted message id; raises httpx.HTTPStatusError when the API refuses it."""
+    response = await client.post(
+        f"{api_url}/api/v1/conversations/{conversation_id}/messages",
+        json={"message_id": str(uuid4()), "text": text},
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    return MessageAccepted.model_validate(response.json())
+
+
+async def read_turn(
+    client: httpx.AsyncClient,
+    api_url: str,
+    message: str,
+    conversation_id: str,
+    options: TurnOptions = TurnOptions(),
+) -> Turn:
+    """Send one message and read what answered it, as the reader saw it; the log carries the history."""
+    accepted = await send_message(client, api_url, conversation_id, message)
+    reader = TurnReader(
+        message,
+        accepted.message_id,
+        collect_frame_kinds=options.collect_frame_kinds,
+        wait_for_work=options.wait_for_work,
+    )
+    async with asyncio.timeout(options.timeout):
+        delivered_in_time = await follow(
+            client,
+            api_url,
+            conversation_id,
+            reader,
+            after=accepted.seq - 1,
+            delivery_wait_seconds=options.delivery_wait_seconds,
+        )
+    turn = reader.turn(include_nested_tool_names=options.include_nested_tool_names)
+    return turn.model_copy(update={"undelivered": not delivered_in_time})
+
+
 async def send_turn(
     client: httpx.AsyncClient,
     api_url: str,
     message: str,
     conversation_id: str,
-    history: list[dict[str, str]],
     options: TurnOptions = TurnOptions(),
 ) -> Turn:
-    """One comms turn against the running API, joined from its SSE frames.
+    """read_turn, with the delivered answer joined onto reply the way the harness asks.
 
-    history is the prior turns of THIS conversation in the shape the endpoint
-    expects; the new user message is appended to it. Sharing the conversation id
-    across turns is what makes turn 2 a follow-up rather than a second cold open.
-
-    A non-200 comes back as a Turn whose reply carries the status and body
-    rather than as an exception: one persona hitting a 402 should show up as one
-    bad row in the report, not as a dead run.
+    A refused send comes back as a Turn whose reply carries the status and body rather than
+    as an exception: one persona hitting a 402 should be one bad row, not a dead run.
     """
-    messages = [*history, {"role": "user", "content": message}]
-    body = {
-        "message": message,
-        "messages": messages,
-        "conversation_id": conversation_id,
-        "turn_id": str(uuid4()),
-    }
-    async with client.stream(
-        "POST", f"{api_url}/api/v1/chat-stream", json=body, timeout=options.timeout
-    ) as response:
-        if response.status_code != 200:
-            await response.aread()
-            return Turn(
-                message=message,
-                reply=f"[HTTP {response.status_code}] {response.text[:300]}",
-            )
-        lines = [line async for line in response.aiter_lines()]
-
-    reply, tools, kinds = assemble(
-        lines,
-        include_nested_tool_names=options.include_nested_tool_names,
-        drop_discarded_boundary=options.drop_discarded_boundary,
-        collect_frame_kinds=options.collect_frame_kinds,
-    )
-    delegated = DELEGATION_TOOL in tools
-    if delegated and options.poll_for_delivery:
-        delivered, more_tools = await await_delivery(
-            client,
-            api_url,
-            conversation_id,
-            message,
-            wait_seconds=options.delivery_wait_seconds,
-            poll_seconds=options.delivery_poll_seconds,
-        )
-        if delivered:
-            head = "" if options.drop_sentinel_before_delivery and reply == NO_TEXT_REPLY else reply
-            reply = (head + options.delivered_prefix + delivered).strip()
-            tools.extend(more_tools)
-        else:
-            reply = reply + "\n\n[nothing delivered within budget]"
-    return Turn(
-        message=message,
-        reply=reply,
-        tools=tools,
-        frame_kinds=kinds,
-        delegated=delegated,
-    )
+    try:
+        turn = await read_turn(client, api_url, message, conversation_id, options)
+    except httpx.HTTPStatusError as refused:
+        response = refused.response
+        return Turn(message=message, reply=f"[HTTP {response.status_code}] {response.text[:300]}")
+    if not (turn.delegated and options.wait_for_work):
+        return turn
+    if turn.delivered:
+        head = "" if options.drop_sentinel_before_delivery and turn.is_empty else turn.reply
+        reply = (head + options.delivered_prefix + "\n".join(turn.delivered)).strip()
+    else:
+        reply = turn.reply + (NOTHING_DELIVERED if turn.undelivered else "")
+    return turn.model_copy(update={"reply": reply})
