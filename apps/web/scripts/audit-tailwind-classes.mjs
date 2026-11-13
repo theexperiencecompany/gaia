@@ -46,7 +46,7 @@ const CUSTOM_PREFIX_HINTS = [
 ];
 
 /** Dev-only routes are excluded from production and never ship. */
-const IGNORED_PATH = /[\\/]dev[\\/]|\.dev\.tsx?$/;
+const IGNORED_PATH = /(?:[\\/]dev[\\/])|(?:\.dev\.tsx?$)/;
 
 const CLASS_ATTR =
   /(?:className|class)\s*=\s*(?:"([^"]*)"|'([^']*)'|\{`([^`]*)`\}|\{"([^"]*)"\})/g;
