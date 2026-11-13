@@ -466,3 +466,14 @@ def test_the_founder_conversations_patches_are_the_frames_the_clients_replay() -
     log = _founder_log(legacy=False)
     frames = [ConversationEvent(frame=patch).model_dump(mode="json") for patch in log.patches]
     assert json.loads(_FOUNDER_FRAMES.read_text()) == frames
+
+
+def test_work_lists_the_approvals_it_waits_on_until_each_is_decided() -> None:
+    started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
+    log = [logged(1, user("u1")), logged(2, started), logged(3, asked("ask:a1", "t1", "a1"))]
+    [_, waiting] = project_screen(log)
+    assert waiting.kind is ScreenItemKind.WORK
+    assert [request.approval_id for request in waiting.asking] == ["a1"]
+    [_, decided_work] = project_screen([*log, logged(4, decided("dec:a1", "a1"))])
+    assert decided_work.kind is ScreenItemKind.WORK
+    assert decided_work.asking == ()

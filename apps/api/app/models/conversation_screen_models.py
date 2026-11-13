@@ -16,6 +16,7 @@ from app.models.conversation_frame_models import (
 )
 from app.models.conversation_log_models import (
     WIRE_CONFIG,
+    ApprovalRequested,
     FailureReason,
     ReplyOutcome,
     UserMessage,
@@ -85,6 +86,8 @@ class WorkItem(_Item):
     kind: Literal[ScreenItemKind.WORK] = ScreenItemKind.WORK
     task_id: str
     status: WorkStatus
+    # The approvals the work waits on, oldest first; empty once it ends.
+    asking: tuple[ApprovalRequested, ...]
     handoff: ToolDataEntry | None
     tool_data: tuple[ToolDataEntry, ...]
     image: ImageData | None

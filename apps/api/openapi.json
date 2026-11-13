@@ -23515,6 +23515,13 @@
       "WorkItem": {
         "description": "One piece of work from its hand-off to its result, with every task handed to it.",
         "properties": {
+          "asking": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalRequested"
+            },
+            "title": "Asking",
+            "type": "array"
+          },
           "at": {
             "format": "date-time",
             "title": "At",
@@ -23577,6 +23584,7 @@
           "at",
           "task_id",
           "status",
+          "asking",
           "handoff",
           "tool_data",
           "image"

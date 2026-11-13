@@ -17525,6 +17525,8 @@ export interface components {
          * @description One piece of work from its hand-off to its result, with every task handed to it.
          */
         WorkItem: {
+            /** Asking */
+            asking: components["schemas"]["ApprovalRequested"][];
             /**
              * At
              * Format: date-time

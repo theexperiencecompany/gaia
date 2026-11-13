@@ -79,6 +79,7 @@
         "kind": "work",
         "task_id": "c4f22a9a",
         "status": "running",
+        "asking": [],
         "handoff": null,
         "tool_data": [],
         "image": null
@@ -130,6 +131,7 @@
         "kind": "work",
         "task_id": "c4f22a9a",
         "status": "running",
+        "asking": [],
         "handoff": {
           "tool_name": "tool_calls_data",
           "data": {
@@ -153,6 +155,7 @@
         "kind": "work",
         "task_id": "c4f22a9a",
         "status": "done",
+        "asking": [],
         "handoff": {
           "tool_name": "tool_calls_data",
           "data": {

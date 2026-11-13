@@ -4,8 +4,12 @@
  * the server can tell a resend from a new message; a send that never landed is
  * resent unchanged, so the server's message id dedup holds.
  */
-import type { ScreenItem } from "@shared/conversation";
-import { insertFrame, replyItem, userItem } from "@shared/conversation/testing";
+import {
+  insertFrame,
+  replyItem,
+  userItem,
+  userItemWith,
+} from "@shared/conversation/testing";
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -18,16 +22,6 @@ const { sendMessage, deliverSend } = vi.hoisted(() => ({
 }));
 vi.mock("@/features/chat/live/sendMessage", () => ({ sendMessage }));
 vi.mock("@/features/chat/live/connection", () => ({ deliverSend }));
-
-type UserItem = Extract<ScreenItem, { kind: "user" }>;
-
-function withMessage(
-  item: ScreenItem,
-  message: Partial<UserItem["message"]>,
-): UserItem {
-  if (item.kind !== "user") throw new Error(item.kind);
-  return { ...item, message: { ...item.message, ...message } };
-}
 
 describe("useRetryMessage", () => {
   beforeEach(() => {
@@ -65,7 +59,8 @@ describe("useRetryMessage", () => {
     ];
     useLiveConversationStore.getState().applyFrames("conv-1", [
       insertFrame(
-        withMessage(userItem("m-user", 1, "summarise"), {
+        userItemWith("m-user", 1, {
+          text: "summarise",
           file_ids: ["f1"],
           files,
           selected_tool: "gmail_send",

@@ -176,15 +176,21 @@ class _Log:
             shown.append(card if end is None else {**card, "data": {**card["data"], **end}})
         return tuple(shown)
 
+    def asking(self, root: str) -> tuple[ApprovalRequested, ...]:
+        """Return the approvals live work under root waits on, oldest first."""
+        if root in self.finished:
+            return ()
+        return tuple(
+            request
+            for approval_id, request in self.requests.items()
+            if self.root(request.task_id) == root and approval_id not in self.decisions
+        )
+
     def work_status(self, root: str) -> WorkStatus:
         finished = self.finished.get(root)
         if finished is not None:
             return WorkStatus(finished.outcome.value)
-        awaiting = any(
-            self.root(request.task_id) == root and approval_id not in self.decisions
-            for approval_id, request in self.requests.items()
-        )
-        return WorkStatus.AWAITING_APPROVAL if awaiting else WorkStatus.RUNNING
+        return WorkStatus.AWAITING_APPROVAL if self.asking(root) else WorkStatus.RUNNING
 
 
 def project_screen(entries: Sequence[Positioned]) -> list[ScreenItem]:
@@ -235,6 +241,7 @@ def _work_item(seq: int, at: AwareDatetime, task_id: str, read: _Log) -> WorkIte
         at=at,
         task_id=task_id,
         status=read.work_status(task_id),
+        asking=read.asking(task_id),
         handoff=None if started.handoff is None else read.handoffs.get(started.handoff),
         tool_data=() if finished is None else read.cards(finished.tool_data),
         image=None if finished is None else finished.image,

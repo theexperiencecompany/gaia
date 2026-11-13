@@ -145,3 +145,50 @@ export const stateFrame = (
   display: DisplayState,
   work: LiveTask[] = [],
 ): ConversationFrame => ({ kind: "state", head, display, work });
+
+type UserItem = Extract<ScreenItem, { kind: "user" }>;
+type WorkItem = Extract<ScreenItem, { kind: "work" }>;
+
+/** A user item whose message carries the given fields: a platform id, a reaction, files. */
+export function userItemWith(
+  id: string,
+  seq: number,
+  message: Partial<UserItem["message"]>,
+): UserItem {
+  const item = userItem(id, seq);
+  if (item.kind !== "user") throw new Error(item.kind);
+  return { ...item, message: { ...item.message, ...message } };
+}
+
+/** An approval a work item waits on. */
+export const approvalAsked = (
+  taskId: string,
+  approvalId: string,
+  summary: string,
+  expiresAt: string | null = null,
+): WorkItem["asking"][number] => ({
+  kind: "approval_requested",
+  id: `${approvalId}:asked`,
+  task_id: taskId,
+  approval_id: approvalId,
+  summary,
+  expires_at: expiresAt,
+});
+
+export const workItem = (
+  taskId: string,
+  seq: number,
+  status: WorkItem["status"],
+  asking: WorkItem["asking"] = [],
+): WorkItem => ({
+  kind: "work",
+  id: `work:${taskId}`,
+  seq,
+  at: AT,
+  task_id: taskId,
+  status,
+  asking,
+  handoff: null,
+  tool_data: [],
+  image: null,
+});
