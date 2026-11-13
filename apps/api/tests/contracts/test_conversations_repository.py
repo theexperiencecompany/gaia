@@ -1151,6 +1151,52 @@ class TestSearchAndSweeps:
         assert user in await repo.active_user_ids_since(since)
 
 
+class TestUserMessageSignal:
+    """has_user_message_since — dormancy must follow what the user wrote, never what GAIA sent."""
+
+    async def test_gaia_messaging_a_silent_user_does_not_make_them_active(self, repo):
+        old = (datetime.now(UTC) - timedelta(days=30)).isoformat()
+        doc = _doc(messages=[MessageModel(type="user", response="hi", date=old)])
+        await repo.create(doc)
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="bot", response="your report", date=_now_iso())],
+        )
+
+        cutoff = datetime.now(UTC) - timedelta(days=14)
+        assert await repo.has_activity_since(doc.user_id, cutoff) is True
+        assert await repo.has_user_message_since(doc.user_id, cutoff) is False
+
+    async def test_a_message_the_user_wrote_since_the_cutoff_counts(self, repo):
+        doc = _doc()
+        await repo.create(doc)
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="user", response="hi", date=_now_iso())],
+        )
+
+        cutoff = datetime.now(UTC) - timedelta(days=14)
+        assert await repo.has_user_message_since(doc.user_id, cutoff) is True
+
+    async def test_a_tracked_todos_chat_does_not_count(self, repo):
+        doc = _doc(todo_id="todo-1")
+        await repo.create(doc)
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="user", response="run", date=_now_iso())],
+        )
+
+        cutoff = datetime.now(UTC) - timedelta(days=14)
+        assert await repo.has_user_message_since(doc.user_id, cutoff) is False
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat()
+
+
 class TestActivitySignal:
     """has_activity_since — the dormancy sweep's transport-agnostic usage signal.
 

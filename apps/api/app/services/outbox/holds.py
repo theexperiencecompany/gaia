@@ -16,6 +16,8 @@ from app.constants.outbox_attention import (
     ACTIVITY_OVERRIDE_SECONDS,
     ANSWER_QUIET_GRACE_SECONDS,
     DEADLINE_PROXIMITY_SECONDS,
+    DIGEST_HOUR,
+    DIGEST_WEEKDAY,
     FLUSH_JITTER_MAX_SECONDS,
     IN_CALL_HOLD_SECONDS,
     MAX_DAYTIME_HOLD_SECONDS,
@@ -65,6 +67,8 @@ class AttentionState:
     last_active_at: datetime | None
     #: The user is in a live voice call.
     in_call: bool
+    #: The user has shown no presence for DORMANT_AFTER.
+    dormant: bool
     unsolicited_today: int
     last_unsolicited_at: datetime | None
     fact_history: FactHistory | None
@@ -140,6 +144,18 @@ def next_checkin(state: AttentionState) -> datetime | None:
         for slot in slots
     ]
     return min(candidate for candidate in candidates if candidate > local)
+
+
+def next_digest(user_id: str, user_clock: UserClock, now: datetime) -> datetime:
+    """Return the next weekly digest slot on the user's own clock, spread by the same jitter as every shared instant."""
+    local = user_clock.timezone.localize(now)
+    days_ahead = (DIGEST_WEEKDAY - local.weekday()) % 7
+    slot = datetime.combine(
+        local.date() + timedelta(days=days_ahead), time(DIGEST_HOUR), tzinfo=local.tzinfo
+    )
+    if slot <= local:
+        slot += timedelta(weeks=1)
+    return slot + _jitter(user_id)
 
 
 def _bounded(until: datetime, latest: datetime | None) -> datetime:
@@ -298,10 +314,13 @@ def place(
 ) -> Placement:
     """Return when an item the policy decided to tell is told.
 
-    urgency is what the Rails authorized. released says the item already waited out a hold of its
+    urgency is what the Rails authorized. A dormant user's routine and background items, other than
+    answers, wait for their return or the weekly digest, whatever age they have reached. released says the item already waited out a hold of its
     own kind, so it is not held again for the budget, the gap or a check-in; silence, the user's
     own timing and the hold-age cap apply either way.
     """
+    if state.dormant and urgency <= UrgencyClass.ROUTINE and not is_answer(report):
+        return Hold(next_digest(state.user_id, state.clock, state.now), HoldReason.DORMANT)
     prior = state.prior_hold
     if prior is not None and state.now - prior.since >= _seconds(MAX_HOLD_AGE_SECONDS):
         return Tell()

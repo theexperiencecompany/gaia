@@ -124,6 +124,27 @@ class TestCheckInactiveUsers:
     def ctx(self) -> dict:
         return {}
 
+    @pytest.fixture(autouse=True)
+    def email_is_set_up(self):
+        with patch(
+            "app.services.email.email_delivery_configured",
+            new=AsyncMock(return_value=True),
+        ):
+            yield
+
+    async def test_nothing_is_sent_or_looked_up_when_email_is_not_set_up(self, ctx):
+        with (
+            patch(
+                "app.services.email.email_delivery_configured",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(_FIND, new_callable=AsyncMock) as find,
+        ):
+            result = await check_inactive_users(ctx)
+
+        assert result == "skipped: email not configured"
+        find.assert_not_awaited()
+
     async def test_no_inactive_users_sends_no_emails(self, ctx):
         with (
             patch(_FIND, new_callable=AsyncMock, return_value=[]),

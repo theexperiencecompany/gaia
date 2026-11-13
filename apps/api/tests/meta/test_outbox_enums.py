@@ -81,12 +81,14 @@ def test_the_closed_vocabularies_are_exactly_these() -> None:
         "unwanted",
         "repeat_backoff",
         "leak_unresolved",
+        "digested",
     }
     assert _values(ItemFailure) == {
         "no_destination",
         "record_failed",
         "transport_skipped",
         "transport_failed",
+        "recovery_exhausted",
     }
     assert _values(MessageState) == {"sending", "sent", "failed"}
     assert _values(Disposition) == {"include", "skip"}
@@ -95,6 +97,7 @@ def test_the_closed_vocabularies_are_exactly_these() -> None:
         "account_linked",
         "first_contact",
         "generic_preview",
+        "digest_subject",
     }
 
 

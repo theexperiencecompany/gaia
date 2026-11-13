@@ -62,6 +62,14 @@ HELD_AGE_ALERT_SECONDS: Final = 20 * ONE_HOUR_TTL
 #: A hold for a live call is re-placed this often, so a call whose end was never reported cannot hold an item past it.
 IN_CALL_HOLD_SECONDS: Final = THIRTY_MINUTES_TTL
 
+# --- Dormancy ---
+
+#: A user with no presence for this long is away: routine and background items wait for their return.
+DORMANT_AFTER_SECONDS: Final = 14 * ONE_DAY_TTL
+#: What a dormant user missed is emailed once a week, on this weekday (Monday is 0) at this hour of their own clock.
+DIGEST_WEEKDAY: Final = 0
+DIGEST_HOUR: Final = 9
+
 # --- Flush ---
 
 #: Releases that land on a shared instant (quiet end, check-in slots) are spread over this window.
@@ -97,3 +105,5 @@ class HoldReason(StrEnum):
     WAIT_FOR_RUN = "wait_for_run"
     #: The user is in a live voice call: only answers and interrupts are spoken, the rest waits for the call to end.
     IN_CALL = "in_call"
+    #: The user has been away for DORMANT_AFTER: routine and background items wait for their return or the weekly digest.
+    DORMANT = "dormant"

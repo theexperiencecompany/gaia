@@ -3,7 +3,6 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_EMAIL
 from app.db.repositories.users import user_repository
@@ -49,9 +48,12 @@ def _should_send_inactive_email(user: UserDocument) -> bool:
 async def check_inactive_users(ctx: dict[str, Any]) -> str:  # noqa: ARG001 -- contract
     """Email users inactive for 7+ days, and again after 14+ days, then no more."""
     # Deferred import: email delivery stack kept off worker-task module load path until the check runs
-    from app.services.email import send_inactive_user_email  # noqa: PLC0415 -- deferred
+    from app.services.email import (  # noqa: PLC0415 -- deferred
+        email_delivery_configured,
+        send_inactive_user_email,
+    )
 
-    if not settings.RESEND_API_KEY or not settings.EMAIL_UNSUBSCRIBE_SECRET:
+    if not await email_delivery_configured():
         # The boundary emits one canonical event per run; the skip reason rides
         # on it instead of a standalone line.
         log.set(outcome="skipped", reason="email delivery not configured")

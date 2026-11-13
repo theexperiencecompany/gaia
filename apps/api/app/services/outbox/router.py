@@ -2,7 +2,7 @@
 
 Record is not alert. A result is recorded where it belongs (its owner conversation)
 whatever happens to the alert, and the alert goes to exactly one place: where the user
-is active now (a chat app or the GAIA app; in a live call, spoken there), else, for an answer, back to the direct
+is active now (a chat app they wrote on lately, a GAIA app they are looking at; in a live call, spoken there), else, for an answer, back to the direct
 message that asked, else the first chat app in their priority order that is linked and
 left enabled in notification settings, else the GAIA app. A chat app the user asked to be
 told on outranks all of that, when it is linked and enabled.
@@ -20,11 +20,15 @@ from app.db.repositories.users import user_repository
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource, SourceCategory
 from app.models.outbox_models import OutboxItemDocument
 from app.models.platform_models import PlatformLinkEntry
-from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import AuthenticatedUser
 from app.services.bot_service import BotService
 from app.services.delivery.chat_channel import resolve_channel_priority
-from app.services.delivery.presence import active_surface, read_call_room, read_presence
+from app.services.delivery.presence import (
+    active_surface,
+    read_call_room,
+    read_focus,
+    read_presence,
+)
 from app.services.outbox.judge_models import PRIVATE_SENSITIVITIES
 from app.services.outbox.models import UrgencyClass
 from app.services.outbox.policy import is_answer
@@ -139,7 +143,7 @@ def pick_chat_channel(
 async def _active_surface_of(user_id: str) -> ConversationSource | None:
     """Return the surface the user is active on now, or None when presence cannot be read."""
     try:
-        presence: PresenceSnapshot = await read_presence(user_id)
+        presence, focus = await asyncio.gather(read_presence(user_id), read_focus(user_id))
     except Exception as e:  # a degraded signal: the message still goes out, by priority
         log.warning(
             f"{LogTag.NOTIFICATION} Chat channel presence read failed; using priority order",
@@ -148,7 +152,7 @@ async def _active_surface_of(user_id: str) -> ConversationSource | None:
             error=str(e),
         )
         return None
-    return active_surface(presence, presence["captured_at"])
+    return active_surface(presence, focus, presence["captured_at"])
 
 
 async def resolve_proactive_target(user_id: str) -> ProactiveTarget:

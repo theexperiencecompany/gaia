@@ -34,6 +34,23 @@ This message is spoken aloud to the user in their live voice call, over whatever
 - Open with a few words that place it ("About that flight search:") when it answers something from earlier, so it does not land out of nowhere.
 - Dispositions still apply to every item, and what an item says is still the only truth.
 """
+#: Added when the user has just come back after weeks away: what waited for them is told once, briefly.
+AWAY_COMPOSE_RULES: Final = """
+
+The user was away for a long while and has just come back. These items waited for them. Tell them as one short catch-up, not one message per item:
+- Open with one line that welcomes them back and says how much waited.
+- Then one short line per item that matters, the most important first, and at most five. Fold the rest into one line that says how many more there were and that they can ask for them.
+- Drop an item that is no longer true or no longer matters. Dispositions still apply to every item, and what an item says is still the only truth.
+"""
+
+#: Added when the message is an email to a user who has been away: it is read later, as one page.
+DIGEST_COMPOSE_RULES: Final = """
+
+This message is the weekly email to a user who has been away from GAIA for a while. It lists what GAIA kept for them and did not message them about. It is read in an email, not in a chat:
+- Open with one plain line saying GAIA kept these for them while they were away.
+- Then one short part per item that matters, the most important first, each with the specifics an item gives (who, what, when, how much). Fold the small ones into one part that says how many there were.
+- Drop an item that is no longer true or no longer matters. Never nag, never ask them to come back, never mention how the work was done. Dispositions still apply to every item, and what an item says is still the only truth.
+"""
 
 #: The reply shape for each verified outcome; an item carries its own as how_to_say.
 OUTCOME_REPLY_SHAPES: dict[OutcomeState, str] = {

@@ -33,7 +33,10 @@ from app.constants.outbox_attention import (
 from app.constants.websocket import ReportSettledOutcome
 from app.db.repositories.outbox_items import outbox_items_repository
 from app.models.outbox_models import OutboxItemDocument
+from app.services.delivery.presence import read_last_active
 from app.services.outbox.deliver import flush_items
+from app.services.outbox.digest import settle_dormant
+from app.services.outbox.dormancy import is_dormant
 from app.services.outbox.flush_queue import release_and_flush, schedule_flush
 from app.services.outbox.intake import settle_report
 from app.services.outbox.metrics import OUTBOX_ITEMS_FAILED, OUTBOX_ITEMS_RECOVERED
@@ -46,12 +49,39 @@ from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
 
 #: What a user's return answers: items waiting for a check-in, the gap since the last message, or silence.
-_RELEASED_BY_RETURN = (HoldReason.CHECKIN, HoldReason.GAP, HoldReason.DND, HoldReason.QUIET_HOURS)
+_RELEASED_BY_RETURN = (
+    HoldReason.CHECKIN,
+    HoldReason.GAP,
+    HoldReason.DND,
+    HoldReason.QUIET_HOURS,
+    HoldReason.DORMANT,
+)
 
 
 def _held_for_call(item: OutboxItemDocument) -> bool:
     """Whether the item waited for a call to end, which is no hold of its own kind: it is placed as new."""
     return item.hold is not None and item.hold.reason is HoldReason.IN_CALL
+
+
+def _held_for_dormancy(item: OutboxItemDocument) -> bool:
+    """Whether the item waits for a dormant user's return or the weekly digest."""
+    return item.hold is not None and item.hold.reason is HoldReason.DORMANT
+
+
+async def _settle_dormant_holds(
+    user_id: str, due: list[OutboxItemDocument]
+) -> list[OutboxItemDocument]:
+    """Email what a user who is still away missed; return the due items that remain to be flushed.
+
+    A user who has come back since is told them in chat as every held item is: those stay in due.
+    """
+    waiting = [item for item in due if _held_for_dormancy(item)]
+    if not waiting:
+        return due
+    if not await is_dormant(user_id, await read_last_active(user_id), clock.now()):
+        return due
+    await settle_dormant(user_id, waiting)
+    return [item for item in due if item not in waiting]
 
 
 async def flush_due(user_id: str) -> int:
@@ -65,11 +95,13 @@ async def flush_due(user_id: str) -> int:
     due = await outbox_items_repository.list_due_held(
         user_id, now, limit=FLUSH_MAX_ITEMS_PER_RUN + 1
     )
+    more_due = len(due) > FLUSH_MAX_ITEMS_PER_RUN
+    due = await _settle_dormant_holds(user_id, due)
     stranded = await outbox_items_repository.list_recovering_queued(user_id)
-    if not due and not stranded:
+    if not due and not stranded and not more_due:
         log.info(f"{LogTag.NOTIFICATION} Outbox flush found nothing due", user_id=user_id)
         return 0
-    if len(due) > FLUSH_MAX_ITEMS_PER_RUN:
+    if more_due:
         await schedule_flush(user_id, now + timedelta(seconds=FLUSH_CONTINUATION_DELAY_SECONDS))
     released = [item.report_id for item in stranded]
     failures: list[Exception] = []

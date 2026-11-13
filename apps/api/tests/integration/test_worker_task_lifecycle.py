@@ -569,6 +569,13 @@ class TestWorkerStartupHooks:
 class TestUserTasks:
     """Verify inactive user detection and email sending."""
 
+    @pytest.fixture(autouse=True)
+    def email_is_set_up(self):
+        with patch(
+            "app.services.email.email_delivery_configured", new=AsyncMock(return_value=True)
+        ):
+            yield
+
     @freeze_time("2026-04-01T12:00:00Z")
     async def test_check_inactive_users_sends_emails(self):
         """Inactive users older than 7 days should receive an email."""

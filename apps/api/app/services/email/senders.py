@@ -256,6 +256,37 @@ async def send_inactive_user_email(
         raise
 
 
+async def send_outbox_digest_email(
+    user_email: str, user_id: str, subject: str, parts: list[str], idempotency_key: str
+) -> None:
+    """Email a dormant user the parts the outbox composed for them; the words and the subject are the caller's."""
+    try:
+        await send_email(
+            EmailMessage(
+                sender=FOUNDER_SENDER,
+                to=[user_email],
+                subject=subject,
+                html=render_email_template(
+                    "outbox_digest.html",
+                    parts=parts,
+                    unsubscribe_url=build_unsubscribe_url(user_id),
+                ),
+                reply_to=CONTACT_EMAIL,
+                headers=build_unsubscribe_headers(user_id),
+                idempotency_key=idempotency_key,
+            )
+        )
+        log.info(f"{LogTag.MAIL} Outbox digest email sent to", user={"id": user_id})
+    except Exception as e:
+        log.error(
+            f"{LogTag.MAIL} Failed to send outbox digest email to",
+            user={"id": user_id},
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
 async def send_badge_earned_email(
     user_email: str,
     user_name: str | None,

@@ -7,6 +7,8 @@ import fakeredis.aioredis
 
 from app.constants.notifications import (
     CALL_PRESENCE_TTL_SECONDS,
+    FOCUS_HEARTBEAT_SECONDS,
+    FOCUS_PRESENCE_TTL_SECONDS,
     PRESENCE_ACTIVE_WINDOW_SECONDS,
     PRESENCE_RETENTION_SECONDS,
 )
@@ -184,28 +186,116 @@ class TestActiveSurface:
     def test_the_newest_surface_inside_the_window_wins(self) -> None:
         snapshot = _snapshot(whatsapp=NOW - 600, telegram=NOW - 60)
 
-        assert active_surface(snapshot, NOW) is ConversationSource.TELEGRAM
+        assert active_surface(snapshot, {}, NOW) is ConversationSource.TELEGRAM
 
-    def test_a_web_turn_newer_than_a_chat_app_turn_is_where_they_are(self) -> None:
-        snapshot = _snapshot(web=NOW - 30, telegram=NOW - 120)
+    def test_a_message_sent_in_the_web_or_desktop_app_is_not_where_they_are_without_a_heartbeat(
+        self,
+    ) -> None:
+        snapshot = _snapshot(web=NOW - 30, desktop=NOW - 30, telegram=NOW - 600)
 
-        assert active_surface(snapshot, NOW) is ConversationSource.WEB
+        assert active_surface(snapshot, {}, NOW) is ConversationSource.TELEGRAM
+
+    def test_a_mobile_message_is_where_they_are_for_the_window(self) -> None:
+        assert active_surface(_snapshot(mobile=NOW - 60), {}, NOW) is ConversationSource.MOBILE
+
+    def test_an_app_in_view_outranks_an_older_chat_app_turn(self) -> None:
+        snapshot = _snapshot(whatsapp=NOW - 1200)
+
+        assert active_surface(snapshot, {ConversationSource.WEB: NOW - 30}, NOW) is (
+            ConversationSource.WEB
+        )
+
+    def test_a_chat_app_turn_newer_than_the_heartbeat_wins(self) -> None:
+        snapshot = _snapshot(whatsapp=NOW - 10)
+
+        assert active_surface(snapshot, {ConversationSource.DESKTOP: NOW - 50}, NOW) is (
+            ConversationSource.WHATSAPP
+        )
+
+    def test_a_heartbeat_counts_whatever_the_chat_window_says(self) -> None:
+        stale = _snapshot(telegram=NOW - WINDOW - 60)
+
+        assert active_surface(stale, {ConversationSource.WEB: NOW - 100}, NOW) is (
+            ConversationSource.WEB
+        )
 
     def test_a_surface_at_the_window_edge_is_still_active(self) -> None:
-        assert active_surface(_snapshot(slack=NOW - WINDOW), NOW) is ConversationSource.SLACK
+        assert active_surface(_snapshot(slack=NOW - WINDOW), {}, NOW) is ConversationSource.SLACK
 
     def test_everything_outside_the_window_is_none(self) -> None:
         snapshot = _snapshot(telegram=NOW - WINDOW - 1, web=NOW - WINDOW - 60)
 
-        assert active_surface(snapshot, NOW) is None
+        assert active_surface(snapshot, {}, NOW) is None
 
     def test_background_stamps_are_not_a_surface_the_user_is_on(self) -> None:
         snapshot = _snapshot(carrier_pigeon=NOW, background=NOW, discord=NOW - 30)
 
-        assert active_surface(snapshot, NOW) is ConversationSource.DISCORD
+        assert active_surface(snapshot, {}, NOW) is ConversationSource.DISCORD
 
     def test_no_entries_is_none(self) -> None:
-        assert active_surface(_snapshot(), NOW) is None
+        assert active_surface(_snapshot(), {}, NOW) is None
+
+
+def _focus_key(surface: str) -> str:
+    return f"user_focus_presence:{USER_ID}:{surface}"
+
+
+class TestFocusPresence:
+    async def test_nobody_is_looking_at_an_app_until_it_says_so(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        assert await presence_module.read_focus(USER_ID) == {}
+
+    async def test_a_beat_marks_its_surface_for_two_missed_heartbeats_and_each_beat_renews_it(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        await presence_module.mark_focused(USER_ID, ConversationSource.WEB)
+
+        assert set(await presence_module.read_focus(USER_ID)) == {ConversationSource.WEB}
+        assert 0 < await fake_redis.ttl(_focus_key("web")) <= FOCUS_PRESENCE_TTL_SECONDS
+        assert FOCUS_PRESENCE_TTL_SECONDS > 2 * FOCUS_HEARTBEAT_SECONDS
+
+    async def test_web_and_desktop_are_looked_at_independently(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        await presence_module.mark_focused(USER_ID, ConversationSource.WEB)
+        await presence_module.mark_focused(USER_ID, ConversationSource.DESKTOP)
+        await presence_module.clear_focus(USER_ID, ConversationSource.WEB)
+
+        assert set(await presence_module.read_focus(USER_ID)) == {ConversationSource.DESKTOP}
+
+    async def test_the_beat_carries_the_instant_it_was_sent(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        start = _epoch()
+
+        await presence_module.mark_focused(USER_ID, ConversationSource.DESKTOP)
+
+        beat = (await presence_module.read_focus(USER_ID))[ConversationSource.DESKTOP]
+        assert start <= beat <= _epoch()
+
+    async def test_focus_is_a_sign_of_presence_that_a_chat_app_turn_can_be_older_than(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        await fake_redis.hset(KEY, mapping={"whatsapp": str(_epoch() - 7200)})
+        assert await presence_module.read_last_active(USER_ID) == _epoch() - 7200
+
+        await presence_module.mark_focused(USER_ID, ConversationSource.WEB)
+
+        assert await presence_module.read_last_active(USER_ID) >= _epoch() - 5
+
+    async def test_a_user_seen_nowhere_has_no_last_active(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        assert await presence_module.read_last_active(USER_ID) is None
+
+    async def test_a_live_call_is_the_user_being_active_now(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        await fake_redis.hset(KEY, mapping={"telegram": str(_epoch() - 30 * 86400)})
+        await presence_module.mark_call_live(USER_ID, ROOM)
+
+        assert await presence_module.read_last_active(USER_ID) >= _epoch() - 5
 
 
 CALL_KEY = f"user_call_presence:{USER_ID}"
@@ -260,4 +350,4 @@ class TestCallPresence:
     def test_a_call_just_ended_puts_the_user_in_the_app_not_on_a_chat_app(self) -> None:
         recent = _snapshot(voice=NOW - 30, telegram=NOW - 600)
 
-        assert active_surface(recent, NOW) is ConversationSource.VOICE
+        assert active_surface(recent, {}, NOW) is ConversationSource.VOICE

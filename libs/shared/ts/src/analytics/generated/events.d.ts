@@ -33,6 +33,7 @@ export type ServerEventName =
   | "chat:message_submitted"
   | "chat:message_unpinned"
   | "chat:turn_reacted"
+  | "delivery:digest_sent"
   | "delivery:item_held"
   | "delivery:message_sent"
   | "delivery:updates_viewed"
@@ -603,11 +604,17 @@ export interface EventProperties {
     "location"?: "chat_demo";
     "has_small_text"?: boolean;
   };
+  "delivery:digest_sent": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "items_count": number;
+  };
   "delivery:item_held": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "reason": "quiet_hours" | "dnd" | "not_before" | "checkin" | "gap" | "wait_for_run" | "in_call";
+    "reason": "quiet_hours" | "dnd" | "not_before" | "checkin" | "gap" | "wait_for_run" | "in_call" | "dormant";
     "max_class": "background" | "routine" | "timely" | "interrupt";
   };
   "delivery:message_sent": {

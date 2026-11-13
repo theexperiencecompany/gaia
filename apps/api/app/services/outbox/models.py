@@ -130,6 +130,8 @@ class DropReason(StrEnum):
     REPEAT_BACKOFF = "repeat_backoff"
     #: A routine message kept naming GAIA internals through every recompose, so none was sent.
     LEAK_UNRESOLVED = "leak_unresolved"
+    #: Told in the weekly email to a user who was away, and never alerted in a chat app.
+    DIGESTED = "digested"
 
 
 class ItemFailure(StrEnum):

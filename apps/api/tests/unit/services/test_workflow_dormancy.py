@@ -42,7 +42,7 @@ def _patches(
             return_value=users,
         ),
         patch(
-            f"{_MOD}.conversation_repository.has_activity_since",
+            f"{_MOD}.conversation_repository.has_user_message_since",
             new_callable=AsyncMock,
             side_effect=lambda uid, _cut: uid in chat_active,
         ),
@@ -150,6 +150,34 @@ class TestSweepDormantWorkflows:
             "wf_b", "really_gone", reason=DeactivationReason.USER_DORMANT
         )
 
+    async def test_gaia_messaging_a_user_does_not_keep_their_workflows_awake(self):
+        """Every message a workflow or todo saves moves a conversation's updatedAt; only what the user wrote is activity."""
+        deactivate = AsyncMock()
+        p = _patches(
+            users=[_user("u1")],
+            workflows_by_user={"u1": [_workflow("wf_a")]},
+            deactivate=deactivate,
+        )
+        with (
+            p[0],
+            p[2],
+            p[3],
+            p[4],
+            patch(
+                f"{_MOD}.conversation_repository.has_activity_since",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                f"{_MOD}.conversation_repository.has_user_message_since",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
+            result = await sweep_dormant_workflows()
+
+        assert [c.user_id for c in result.candidates] == ["u1"]
+
     async def test_recent_metered_usage_keeps_a_user_out_of_the_cohort(self):
         deactivate = AsyncMock()
         p = _patches(
@@ -231,7 +259,7 @@ class TestSweepDormantWorkflows:
                 new_callable=AsyncMock,
                 return_value=[_user("u1")],
             ),
-            patch(f"{_MOD}.conversation_repository.has_activity_since", chat),
+            patch(f"{_MOD}.conversation_repository.has_user_message_since", chat),
             patch(f"{_MOD}.usage_daily_repository.counts_since", metered),
             patch(
                 f"{_MOD}.workflow_repository.find_activated_for_user",

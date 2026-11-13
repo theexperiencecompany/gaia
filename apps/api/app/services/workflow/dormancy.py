@@ -61,10 +61,11 @@ async def _is_really_dormant(user_id: str, cutoff: datetime) -> bool:
     """Return whether user_id shows no activity on ANY signal since cutoff.
 
     users.last_active_at alone only reports "hasn't opened the web app", so
-    chat activity and metered feature use are checked too — any one of them
-    being recent keeps the user's workflows running.
+    messages the user wrote and metered feature use are checked too — any one
+    of them being recent keeps the user's workflows running. GAIA's own
+    messages never count: they move a conversation's updatedAt.
     """
-    if await conversation_repository.has_activity_since(user_id, cutoff):
+    if await conversation_repository.has_user_message_since(user_id, cutoff):
         return False
     # Sum, not truthiness: a pure-automation day writes a usage_daily row with
     # cost but count 0, and a dict holding only zero-count rows is still truthy

@@ -19,7 +19,9 @@ from app.agents.core.thread_lock import comms_thread_lock
 from app.agents.core.thread_writes import with_message_ids
 from app.agents.llm.client import ainvoke_structured
 from app.agents.prompts.compose_prompts import (
+    AWAY_COMPOSE_RULES,
     COMPOSE_RULES,
+    DIGEST_COMPOSE_RULES,
     OUTCOME_REPLY_SHAPES,
     SPOKEN_COMPOSE_RULES,
 )
@@ -34,6 +36,7 @@ from app.constants.outbox import (
     COMPOSE_THREAD_SNAPSHOT_MESSAGES,
     OUTBOX_COMPOSE_LABEL,
 )
+from app.constants.outbox_attention import HoldReason
 from app.db.repositories.outbox_items import outbox_items_repository
 from app.db.repositories.outbox_messages import outbox_messages_repository
 from app.models.chat_models import ConversationSource
@@ -306,28 +309,45 @@ async def compose(
     )
 
 
+def _waited_for_return(items: list[OutboxItemDocument]) -> bool:
+    """Whether the items are what a dormant user's return released."""
+    return any(item.hold is not None and item.hold.reason is HoldReason.DORMANT for item in items)
+
+
+async def compose_digest(items: list[OutboxItemDocument], *, user_id: str, locale: str) -> Composed:
+    """Word the items a dormant user missed as the parts of their weekly email."""
+    return await _word(
+        items, user_id=user_id, mode=ComposeMode.UNSOLICITED, destination=None, locale=locale
+    )
+
+
 async def _word(
     items: list[OutboxItemDocument],
     *,
     user_id: str,
     mode: ComposeMode,
-    destination: Route,
+    destination: Route | None,
     locale: str,
 ) -> Composed:
-    source = _destination_source(destination.target)
-    spoken = _is_spoken(destination.target)
+    """Word items for destination; None is the weekly email, which joins no thread and no chat app."""
+    source = (
+        ConversationSource.WEB if destination is None else _destination_source(destination.target)
+    )
+    spoken = destination is not None and _is_spoken(destination.target)
     recent_sent = await outbox_messages_repository.recent_sent(
         user_id, limit=COMPOSE_LEDGER_MESSAGES
     )
     context: dict[str, object] = {
         "mode": mode.value,
         "locale": locale,
-        "destination": "voice" if spoken else source.value,
+        "destination": "email" if destination is None else "voice" if spoken else source.value,
         "items": [_item_view(item) for item in items],
-        "recent_thread": await _thread_snapshot(destination.alert_conversation_id),
+        "recent_thread": []
+        if destination is None
+        else await _thread_snapshot(destination.alert_conversation_id),
         "already_sent": [part for message in recent_sent for part in message.parts],
     }
-    if destination.requested_unavailable is not None:
+    if destination is not None and destination.requested_unavailable is not None:
         context["requested_channel_unavailable"] = destination.requested_unavailable.value
     if earlier_runs := await _earlier_runs(items):
         context["earlier_runs"] = earlier_runs
@@ -336,6 +356,13 @@ async def _word(
             content=get_comms_static_prompt(source.value)
             + COMPOSE_RULES
             + (SPOKEN_COMPOSE_RULES if spoken else "")
+            + (
+                DIGEST_COMPOSE_RULES
+                if destination is None
+                else AWAY_COMPOSE_RULES
+                if _waited_for_return(items)
+                else ""
+            )
         ),
         HumanMessage(content=json.dumps(context, ensure_ascii=False)),
     ]

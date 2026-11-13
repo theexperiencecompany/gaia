@@ -1,6 +1,7 @@
 """A chat turn the user sent stamps their presence on its surface and hands the run the state before it; agent-driven and voice turns never do."""
 
 from collections.abc import AsyncIterator
+from contextlib import ExitStack
 from dataclasses import dataclass
 from unittest.mock import AsyncMock, patch
 
@@ -32,6 +33,7 @@ def _context(actor: Actor, trigger: Trigger, surface: EntrySurface) -> Analytics
 @dataclass(frozen=True)
 class _Seams:
     record: AsyncMock
+    release: AsyncMock
     consume: AsyncMock
     publish_init: AsyncMock
     handle_error: AsyncMock
@@ -43,40 +45,47 @@ class _Seams:
         return turn.presence
 
 
+#: The stream's collaborators the turn does not exercise, each replaced by a stub that does nothing.
+_INERT_SEAMS = (
+    "register_executor_capture",
+    "_set_stream_log_context",
+    "schedule_last_active_touch",
+    "forward_artifact_events",
+    "_log_usage_summary",
+    "_persist_turn",
+    "_attach_executor_tool_data",
+    "_note_cancellation",
+    "_finalize_description",
+    "capture",
+    "_close_turn_timings",
+)
+
+
 @pytest.fixture
 async def seams() -> AsyncIterator[_Seams]:
     """Run the real stream orchestrator with the presence write and everything past it stubbed."""
-    with (
-        patch.object(
-            stream, "record_turn_presence", AsyncMock(return_value=BEFORE_THIS_TURN)
-        ) as record,
-        patch.object(stream, "stream_manager", AsyncMock()),
-        patch.object(stream, "register_executor_capture"),
-        patch.object(stream, "_set_stream_log_context"),
-        patch.object(stream, "_publish_init_chunk", AsyncMock()) as publish_init,
-        patch.object(stream, "_resolve_pending_approval_turn", AsyncMock(return_value=False)),
-        # Not a tracked todo's chat: the turn binds no todo.
-        patch.object(stream.conversation_repository, "get_todo_id", AsyncMock(return_value=None)),
-        patch.object(stream, "schedule_last_active_touch"),
-        patch.object(stream, "forward_artifact_events", AsyncMock()),
-        patch.object(stream, "_start_description_task", return_value=None),
-        patch.object(stream, "_consume_agent_stream", AsyncMock(return_value=None)) as consume,
-        patch.object(stream, "_log_usage_summary"),
-        patch.object(stream, "_persist_turn", AsyncMock()),
-        patch.object(stream, "_attach_executor_tool_data", AsyncMock()),
-        patch.object(stream, "_note_cancellation", AsyncMock()),
-        patch.object(stream, "_finalize_description", AsyncMock()),
-        patch.object(stream, "capture"),
-        patch.object(stream, "_handle_stream_error", AsyncMock(return_value="failed")) as handled,
-        patch.object(stream, "_close_turn_timings"),
-        patch.object(stream, "_finalize_stream", AsyncMock()) as finalize,
-    ):
+    with ExitStack() as stack:
+
+        def stub(name: str, **options: object) -> AsyncMock:
+            return stack.enter_context(patch.object(stream, name, **options))
+
+        for name in _INERT_SEAMS:
+            stub(name)
+        stub("stream_manager", new=AsyncMock())
+        stub("_resolve_pending_approval_turn", new=AsyncMock(return_value=False))
+        stub("_start_description_task", return_value=None)
+        stack.enter_context(
+            patch.object(
+                stream.conversation_repository, "get_todo_id", AsyncMock(return_value=None)
+            )
+        )
         yield _Seams(
-            record=record,
-            consume=consume,
-            publish_init=publish_init,
-            handle_error=handled,
-            finalize=finalize,
+            record=stub("record_turn_presence", new=AsyncMock(return_value=BEFORE_THIS_TURN)),
+            release=stub("release_on_return", new=AsyncMock()),
+            consume=stub("_consume_agent_stream", new=AsyncMock(return_value=None)),
+            publish_init=stub("_publish_init_chunk", new=AsyncMock()),
+            handle_error=stub("_handle_stream_error", new=AsyncMock(return_value="failed")),
+            finalize=stub("_finalize_stream", new=AsyncMock()),
         )
 
 
@@ -102,6 +111,11 @@ class TestPresenceIsRecordedForTheUsersOwnTurns:
         await _run_turn(USER_TURN_ON_WEB, "web")
 
         seams.record.assert_awaited_once_with(USER_ID, ConversationSource.WEB)
+
+    async def test_a_return_releases_what_waited_for_it(self, seams: _Seams) -> None:
+        await _run_turn(USER_TURN_ON_WEB, "web")
+
+        seams.release.assert_awaited_once_with(USER_ID)
 
     async def test_the_run_gets_the_state_before_this_turn(self, seams: _Seams) -> None:
         await _run_turn(USER_TURN_ON_BOT, "telegram")

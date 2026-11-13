@@ -86,6 +86,7 @@ from app.services.outbox.transport.bot_queue import OutboundResult
 from app.services.outbox.updates import read_updates
 from app.services.platform_link_completion import complete_platform_link
 from app.services.platform_link_service import PlatformLinkService
+from shared.py.analytics.catalog.delivery import DeliveryDigestSent
 from tests._harness.judge import ScriptedJudge, verdict
 from tests.e2e._harness.outbox_timeline import (
     DELIVER,
@@ -844,7 +845,7 @@ def _told(tl: OutboxTimeline) -> dict[str, Any]:
 async def test_a1_a_quick_task_on_web_is_one_message_in_the_conversation_it_was_asked_in(
     tl: OutboxTimeline,
 ) -> None:
-    await tl.active_on(ConversationSource.WEB)
+    await tl.focus_on(ConversationSource.WEB)
 
     await _report(tl, _executor_run("web-1"), finished_outcome(_filed(OutcomeState.DONE), "x"))
 
@@ -970,7 +971,7 @@ async def test_a13_tell_me_on_slack_when_done_asked_on_web_alerts_slack_only(
 async def test_a13_a_requested_chat_app_the_user_has_not_linked_is_said_so_and_the_user_is_told_where_they_are(
     tl: OutboxTimeline,
 ) -> None:
-    await tl.active_on(ConversationSource.WEB)
+    await tl.focus_on(ConversationSource.WEB)
     run = _executor_run(delivery_policy=DeliveryPolicy(channel=ConversationSource.DISCORD))
 
     await _report(tl, run, finished_outcome(_filed(OutcomeState.DONE), "x"))
@@ -982,7 +983,7 @@ async def test_a13_a_requested_chat_app_the_user_has_not_linked_is_said_so_and_t
 
 async def test_a_requested_chat_app_the_user_switched_off_is_not_used(tl: OutboxTimeline) -> None:
     tl.world.notification_channel_prefs = {"whatsapp": False}
-    await tl.active_on(ConversationSource.WEB)
+    await tl.focus_on(ConversationSource.WEB)
     run = _executor_run(delivery_policy=DeliveryPolicy(channel=ConversationSource.WHATSAPP))
 
     await _report(tl, run, finished_outcome(_filed(OutcomeState.DONE), "x"))
@@ -1981,3 +1982,160 @@ async def test_a_call_that_never_reported_its_end_stops_holding_things_once_its_
 
     assert await _states(tl) == {"run-1": ItemState.SENT}
     assert tl.sinks.voice == []
+
+
+async def test_a17_the_app_in_view_outranks_an_older_whatsapp_message(tl: OutboxTimeline) -> None:
+    await tl.active_on(ConversationSource.WHATSAPP)
+    await tl.at(20)
+    await tl.focus_on(ConversationSource.WEB)
+    await _told_at(tl, _run("run-1", OutcomeState.DONE, initiative=Initiative.ASKED), 21)
+
+    [message] = await tl.ledger()
+    assert (message.destination, message.destination_basis) == ("in_app", "active_in_app")
+    assert [conversation for conversation, _ in tl.sinks.ws] == ["web-1"]
+    assert tl.sinks.bot == []
+
+
+async def test_a_web_tab_left_open_in_the_background_is_not_presence(tl: OutboxTimeline) -> None:
+    await tl.active_on(ConversationSource.WEB)
+    await _told_at(tl, _run("run-1", OutcomeState.DONE, initiative=Initiative.ASKED), 5)
+
+    [message] = await tl.ledger()
+    assert (message.destination, message.destination_basis) == ("chat_app", "priority")
+    assert [source for source, _ in tl.sinks.bot] == ["whatsapp"]
+
+
+async def test_leaving_the_app_hands_the_next_message_back_to_the_chat_app(
+    tl: OutboxTimeline,
+) -> None:
+    await tl.focus_on(ConversationSource.DESKTOP)
+    await tl.focus_off(ConversationSource.DESKTOP)
+    await _told_at(tl, _run("run-1", OutcomeState.DONE, initiative=Initiative.ASKED), 1)
+
+    [message] = await tl.ledger()
+    assert message.destination == "chat_app"
+    assert tl.sinks.ws == []
+
+
+async def test_a_chat_app_message_newer_than_the_heartbeat_keeps_the_user_on_the_chat_app(
+    tl: OutboxTimeline,
+) -> None:
+    await tl.focus_on(ConversationSource.WEB)
+    await tl.at(1)
+    await tl.active_on(ConversationSource.TELEGRAM)
+    await _told_at(tl, _run("run-1", OutcomeState.DONE, initiative=Initiative.ASKED), 2)
+
+    [message] = await tl.ledger()
+    assert (message.destination, message.destination_basis) == ("chat_app", "recent_activity")
+    assert [source for source, _ in tl.sinks.bot] == ["telegram"]
+
+
+DIGEST_MINUTES = 6 * 24 * 60 + 21  # the Monday after T0, a minute past the longest jitter
+
+
+async def _dormant_routine(tl: OutboxTimeline, report_id: str = "run-1") -> None:
+    tl.world.go_away()
+    _judged_routine(tl, report_id)
+    await _told_at(tl, _routine(report_id, "todo-1", 0), 0)
+
+
+async def test_i7_a_dormant_users_routine_update_is_paused_not_alerted(tl: OutboxTimeline) -> None:
+    await _dormant_routine(tl)
+
+    [item] = await tl.items()
+    assert item.state is ItemState.HELD
+    assert item.hold is not None and item.hold.reason is HoldReason.DORMANT
+    assert [event.reason for event in tl.sinks.held] == ["dormant"]
+    assert await tl.ledger() == []
+    assert tl.sinks.bot == [] and tl.sinks.ws == []
+
+
+async def test_a_dormant_users_answer_is_still_told(tl: OutboxTimeline) -> None:
+    tl.world.go_away()
+    await _told_at(tl, _run("run-1", OutcomeState.DONE, initiative=Initiative.ASKED), 0)
+
+    assert len(await tl.ledger()) == 1
+
+
+async def test_i7_a_user_still_away_on_the_digest_morning_is_emailed_what_they_missed_once(
+    tl: OutboxTimeline,
+) -> None:
+    await _dormant_routine(tl)
+
+    await tl.at(DIGEST_MINUTES)
+    await tl.drain()
+
+    [(subject, parts)] = tl.sinks.emails
+    assert subject == "What GAIA kept for you while you were away"
+    assert parts == ["Inbox check: said"]
+    assert tl.compose.context["destination"] == "email"
+    assert tl.compose.context["recent_thread"] == []
+    [item] = await tl.items()
+    assert (item.state, item.drop_reason) == (ItemState.DROPPED, DropReason.DIGESTED)
+    assert tl.sinks.digests == [DeliveryDigestSent(items_count=1)]
+    assert await tl.ledger() == [] and tl.sinks.bot == []
+
+    await tl.at(DIGEST_MINUTES + 7 * 24 * 60)
+    await tl.drain()
+
+    assert len(tl.sinks.emails) == 1
+
+
+async def test_a_dormant_user_who_unsubscribed_is_never_emailed_and_keeps_waiting_for_their_return(
+    tl: OutboxTimeline,
+) -> None:
+    tl.world.notification_channel_prefs = {"email": False}
+    await _dormant_routine(tl)
+
+    await tl.at(DIGEST_MINUTES)
+    await tl.drain()
+
+    assert tl.sinks.emails == []
+    [item] = await tl.items()
+    assert item.state is ItemState.HELD
+    assert item.hold is not None and item.hold.until > tl.clock.current + timedelta(days=6)
+
+    await tl.active_on(ConversationSource.TELEGRAM)
+    await release_on_return(USER)
+    await tl.at(DIGEST_MINUTES + 1)
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.SENT}
+
+
+async def test_a_dormant_users_return_tells_what_waited_as_one_catch_up(
+    tl: OutboxTimeline,
+) -> None:
+    await _dormant_routine(tl, "run-1")
+    _judged_routine(tl, "run-2")
+    await _told_at(tl, _routine("run-2", "todo-2", 5), 5)
+    assert await _states(tl) == {"run-1": ItemState.HELD, "run-2": ItemState.HELD}
+
+    await tl.at(2 * 24 * 60)
+    await tl.active_on(ConversationSource.TELEGRAM)
+    await release_on_return(USER)
+    await tl.at(2 * 24 * 60 + 1)
+    await tl.drain()
+
+    [message] = await tl.ledger()
+    assert (message.destination, message.mode.value) == ("chat_app", "unsolicited")
+    assert sorted(message.report_ids) == ["run-1", "run-2"]
+    assert "has just come back" in str(tl.compose.calls[-1][0].content)
+    assert tl.sinks.emails == []
+
+
+async def test_a_user_silent_for_15_days_is_dormant_though_gaia_kept_messaging_them(
+    tl: OutboxTimeline,
+) -> None:
+    tl.world.go_away()
+    for day in range(15):
+        await _told_at(
+            tl, _run(f"ask-{day}", OutcomeState.DONE, initiative=Initiative.ASKED), day * 24 * 60
+        )
+    assert len(await tl.ledger()) == 15
+
+    _judged_routine(tl, "run-1")
+    await _told_at(tl, _routine("run-1", "todo-1", 15 * 24 * 60), 15 * 24 * 60)
+
+    assert [event.reason for event in tl.sinks.held] == ["dormant"]
+    assert (await _states(tl))["run-1"] is ItemState.HELD

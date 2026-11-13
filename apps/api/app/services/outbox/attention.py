@@ -13,8 +13,9 @@ from app.db.repositories.attention_settings import attention_settings_repository
 from app.db.repositories.outbox_items import outbox_items_repository
 from app.db.repositories.outbox_messages import outbox_messages_repository
 from app.models.user_models import AuthenticatedUser
-from app.services.delivery.presence import read_call_room, read_presence
+from app.services.delivery.presence import read_call_room, read_last_active
 from app.services.outbox.deliver import OutboxUserNotFoundError
+from app.services.outbox.dormancy import is_dormant
 from app.services.outbox.holds import AttentionState, FactHistory, Placement, place
 from app.services.outbox.judge_context import user_clock
 from app.services.outbox.judge_models import JudgeVerdict
@@ -51,24 +52,31 @@ async def attention_state(
     user_clock_ = user_clock(user)
     local = user_clock_.timezone.localize(now)
     day_start = local.replace(hour=0, minute=0, second=0, microsecond=0)
-    settings, presence, call_room, told_today, last_unsolicited_at, history = await asyncio.gather(
+    (
+        settings,
+        last_active,
+        call_room,
+        told_today,
+        last_unsolicited_at,
+        history,
+    ) = await asyncio.gather(
         attention_settings_repository.read(user_id),
-        read_presence(user_id),
+        read_last_active(user_id),
         read_call_room(user_id),
         outbox_messages_repository.count_sent_since(user_id, day_start, ComposeMode.UNSOLICITED),
         outbox_messages_repository.last_sent_at(user_id, ComposeMode.UNSOLICITED),
         _fact_history(user_id, verdict, now),
     )
-    last_seen = max(presence["last_seen"].values(), default=None)
-    in_call = call_room is not None
-    last_active_at = datetime.fromtimestamp(last_seen, UTC) if last_seen is not None else None
     return AttentionState(
         user_id=user_id,
         now=now,
         clock=user_clock_,
         settings=settings,
-        last_active_at=now if in_call else last_active_at,
-        in_call=in_call,
+        last_active_at=datetime.fromtimestamp(last_active, UTC)
+        if last_active is not None
+        else None,
+        in_call=call_room is not None,
+        dormant=await is_dormant(user_id, last_active, now),
         unsolicited_today=told_today,
         last_unsolicited_at=as_utc(last_unsolicited_at),
         fact_history=history,

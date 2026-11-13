@@ -1,0 +1,4 @@
+{% extends "_base_email.html" %}
+{% block content %}
+{% for part in parts %}{{ part }}<br /><br />{% endfor %}
+{% endblock %}

@@ -39,20 +39,31 @@ from app.db.mongodb.indexes import create_outbox_indexes
 from app.models.chat_models import ConversationSource
 from app.models.outbox_models import OutboxItemDocument, OutboxMessageDocument
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.services.delivery.presence import end_call, mark_call_live, record_turn_presence
+from app.services.delivery.presence import (
+    clear_focus,
+    end_call,
+    mark_call_live,
+    mark_focused,
+    record_turn_presence,
+)
 from app.services.outbox.flush import release_on_call_end
 from app.services.outbox.intake import submit
 from app.services.outbox.models import ComposeResult, OutboxReport
 from app.services.outbox.transport.bot_queue import OutboundResult
 from app.utils import clock
 from app.workers.tasks.outbox_tasks import outbox_flush, outbox_intake
-from shared.py.analytics.catalog.delivery import DeliveryItemHeld, DeliveryMessageSent
+from shared.py.analytics.catalog.delivery import (
+    DeliveryDigestSent,
+    DeliveryItemHeld,
+    DeliveryMessageSent,
+)
 from tests._harness.judge import ScriptedJudge
 
 T0 = datetime(2026, 11, 10, 9, 0, tzinfo=UTC)
 ROUTER = "app.services.outbox.router"
 DELIVER = "app.services.outbox.deliver"
 COMPOSE = "app.services.outbox.compose"
+DIGEST = "app.services.outbox.digest"
 
 
 class FakeClock:
@@ -184,6 +195,14 @@ class World:
     unread: set[str] = field(default_factory=set)
     #: Approvals the user can still answer; every other approval is decided or lapsed.
     open_approvals: set[str] = field(default_factory=set)
+    #: When the user last wrote a message, and when anything last touched a conversation: GAIA's own messages move the second only.
+    last_user_message_at: datetime = T0
+    conversation_touched_at: datetime = T0
+    email: str | None = "user@example.com"
+
+    def go_away(self) -> None:
+        """Make the user's last message 20 days older than the timeline's start."""
+        self.last_user_message_at = self.conversation_touched_at = T0 - timedelta(days=20)
 
     def link(self, platform: str, account_id: str) -> None:
         self.linked[platform] = account_id
@@ -232,12 +251,15 @@ class Sinks:
     ws: list[tuple[str, str]] = field(default_factory=list)
     #: (room, parts) of each message said in a live call.
     voice: list[tuple[str, list[str]]] = field(default_factory=list)
+    #: (subject, parts) of each weekly digest email.
+    emails: list[tuple[str, list[str]]] = field(default_factory=list)
     #: (approval id, body) of each approval push to a backgrounded phone.
     push: list[tuple[str, str]] = field(default_factory=list)
     #: The outbox message id each bot message was published under, parallel to `bot`.
     bot_message_ids: list[str | None] = field(default_factory=list)
     analytics: list[DeliveryMessageSent] = field(default_factory=list)
     held: list[DeliveryItemHeld] = field(default_factory=list)
+    digests: list[DeliveryDigestSent] = field(default_factory=list)
     bot_result: OutboundResult = OutboundResult.PUBLISHED
 
 
@@ -265,6 +287,13 @@ class OutboxTimeline:
 
     async def active_on(self, source: ConversationSource) -> None:
         await record_turn_presence(self.world.user_id, source)
+
+    async def focus_on(self, source: ConversationSource) -> None:
+        """Report the user visible, focused and in use in the app on source, as its heartbeat does."""
+        await mark_focused(self.world.user_id, source)
+
+    async def focus_off(self, source: ConversationSource) -> None:
+        await clear_focus(self.world.user_id, source)
 
     async def call_starts(self, room: str = "voice_session_room") -> None:
         await mark_call_live(self.world.user_id, room)
@@ -313,6 +342,48 @@ def _patched_holds(world: World, sinks: Sinks, arq: FakeArq) -> Iterator[None]:
         ),
         patch("app.services.outbox.attention.load_user_context", load_user),
         patch("app.services.outbox.intake.capture", capture_held),
+    ):
+        yield
+
+
+@contextmanager
+def _dormancy_doubles(world: World, sinks: Sinks) -> Iterator[None]:
+    """Double the user's conversations as dormancy reads them, and the weekly email's transport and settings."""
+
+    async def has_user_message_since(user_id: str, since: datetime) -> bool:
+        return world.last_user_message_at >= since
+
+    async def load_user(user_id: str) -> AuthenticatedUser | None:
+        if user_id != world.user_id:
+            return None
+        return AuthenticatedUser(
+            user_id=user_id,
+            email=world.email,
+            notification_channel_prefs=world.notification_channel_prefs,
+        )
+
+    async def send_email(
+        address: str, user_id: str, subject: str, parts: list[str], idempotency_key: str
+    ) -> None:
+        sinks.emails.append((subject, list(parts)))
+
+    def capture_digest(
+        distinct_id: object, event: DeliveryDigestSent, dedupe: object = None
+    ) -> None:
+        sinks.digests.append(event)
+
+    async def email_is_set_up() -> bool:
+        return True
+
+    with (
+        patch(
+            "app.services.outbox.dormancy.conversation_repository.has_user_message_since",
+            has_user_message_since,
+        ),
+        patch(f"{DIGEST}.load_user_context", load_user),
+        patch(f"{DIGEST}.send_outbox_digest_email", send_email),
+        patch(f"{DIGEST}.capture", capture_digest),
+        patch(f"{DIGEST}.email_delivery_configured", email_is_set_up),
     ):
         yield
 
@@ -367,6 +438,7 @@ def _patched(
         world.saved.setdefault(request.conversation_id, []).extend(
             m.response for m in request.messages
         )
+        world.conversation_touched_at = clock.now()
 
     async def set_unread(conversation_id: str, *, user_id: str, unread: bool) -> bool:
         world.unread.add(conversation_id)
@@ -445,6 +517,7 @@ def _patched(
         enter(patch(f"{DELIVER}.publish_conversation_message", publish_ws))
         enter(patch(f"{DELIVER}.publish_spoken", publish_voice))
         enter(_approval_doubles(world, sinks))
+        enter(_dormancy_doubles(world, sinks))
         enter(patch(f"{DELIVER}.capture", capture))
         enter(patch(f"{DELIVER}.load_user_context", load_user))
         enter(patch(f"{COMPOSE}.ainvoke_structured", compose))

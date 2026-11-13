@@ -2539,6 +2539,30 @@
       }
     },
     {
+      "event": "delivery:digest_sent",
+      "class": "DeliveryDigestSent",
+      "owner": "server",
+      "domain": "delivery",
+      "description": "The outbox emailed a user who has been away what it kept for them, instead of messaging them.",
+      "previous_names": [],
+      "budget_per_user_day": 1,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The outbox emailed a user who has been away what it kept for them, instead of messaging them.",
+        "properties": {
+          "items_count": {
+            "title": "Items Count",
+            "type": "integer"
+          }
+        },
+        "required": ["items_count"],
+        "title": "DeliveryDigestSent",
+        "type": "object"
+      }
+    },
+    {
       "event": "delivery:item_held",
       "class": "DeliveryItemHeld",
       "owner": "server",
@@ -2560,7 +2584,8 @@
               "checkin",
               "gap",
               "wait_for_run",
-              "in_call"
+              "in_call",
+              "dormant"
             ],
             "title": "Reason",
             "type": "string"

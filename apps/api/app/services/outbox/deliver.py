@@ -91,7 +91,7 @@ class OutboxBrokerUnavailableError(RuntimeError):
     """The chat apps' broker took none of a message: it went back to the queue, and the job retries."""
 
 
-def _locale_of(user: AuthenticatedUser) -> str:
+def locale_of(user: AuthenticatedUser) -> str:
     preferences = user.onboarding.preferences if user.onboarding is not None else None
     language = preferences.language if preferences is not None else None
     return language or DEFAULT_LOCALE
@@ -377,7 +377,7 @@ async def _send(
                     ),
                     None,
                 ),
-                push_body=_push_body(included, composed, _locale_of(user)),
+                push_body=_push_body(included, composed, locale_of(user)),
             ),
             has_text=bool(composed.parts),
         )
@@ -509,7 +509,7 @@ async def _flush(
             user_id=user.user_id,
             mode=_mode_of(items),
             destination=destination,
-            locale=_locale_of(user),
+            locale=locale_of(user),
         )
         if composed.skipped:
             dropped = await outbox_items_repository.drop_composing(

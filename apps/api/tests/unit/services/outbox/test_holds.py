@@ -23,6 +23,7 @@ from app.services.outbox.holds import (
     Tell,
     escalated,
     next_checkin,
+    next_digest,
     place,
 )
 from app.services.outbox.judge_verdict import UserClock
@@ -46,6 +47,7 @@ def _state(now: datetime = DAY, **overrides: Any) -> AttentionState:
         "settings": AttentionSettings(),
         "last_active_at": None,
         "in_call": False,
+        "dormant": False,
         "unsolicited_today": 0,
         "last_unsolicited_at": None,
         "fact_history": None,
@@ -375,3 +377,61 @@ def test_an_item_held_for_a_call_is_told_once_the_hold_age_cap_is_reached() -> N
     )
 
     assert place(notice(), UrgencyClass.TIMELY, verdict(), _in_call(prior_hold=held)) == Tell()
+
+
+def _dormant(now: datetime = DAY, **overrides: Any) -> AttentionState:
+    return _state(now, dormant=True, **overrides)
+
+
+MONDAY_DIGEST = datetime(2026, 11, 16, 9, 0, tzinfo=UTC)
+
+
+@pytest.mark.parametrize("urgency", [UrgencyClass.BACKGROUND, UrgencyClass.ROUTINE])
+def test_a_dormant_users_routine_and_background_items_wait_for_the_weekly_digest(
+    urgency: UrgencyClass,
+) -> None:
+    placed = place(notice(), urgency, verdict(), _dormant())
+
+    assert isinstance(placed, Hold)
+    assert placed.reason is HoldReason.DORMANT
+    assert MONDAY_DIGEST <= placed.until <= MONDAY_DIGEST + JITTER
+
+
+def test_a_dormant_users_answers_timely_items_and_interrupts_are_still_told() -> None:
+    answer = notice(initiative=Initiative.ASKED)
+
+    assert place(answer, ROUTINE, verdict(), _dormant()) == Tell()
+    assert place(notice(), UrgencyClass.TIMELY, verdict(), _dormant()) == Tell()
+    assert place(notice(), UrgencyClass.INTERRUPT, verdict(), _dormant()) == Tell()
+
+
+def test_the_hold_age_cap_does_not_release_a_dormant_users_item() -> None:
+    held_for_days = _dormant(DAY + timedelta(days=3), prior_hold=_held(DAY))
+
+    placed = place(notice(), ROUTINE, verdict(), held_for_days)
+
+    assert isinstance(placed, Hold)
+    assert placed.reason is HoldReason.DORMANT
+
+
+def test_an_item_a_returning_user_releases_is_told_not_held_again() -> None:
+    returned = _state(DAY + timedelta(days=3), prior_hold=_held(DAY))
+
+    assert place(notice(), ROUTINE, verdict(), returned, released=True) == Tell()
+
+
+@pytest.mark.parametrize(
+    ("now", "slot"),
+    [
+        (DAY, MONDAY_DIGEST),
+        (datetime(2026, 11, 16, 8, 0, tzinfo=UTC), MONDAY_DIGEST),
+        (datetime(2026, 11, 16, 9, 0, tzinfo=UTC), MONDAY_DIGEST + timedelta(weeks=1)),
+        (datetime(2026, 11, 16, 12, 0, tzinfo=UTC), MONDAY_DIGEST + timedelta(weeks=1)),
+    ],
+)
+def test_the_next_digest_is_the_next_monday_morning_on_the_users_clock(
+    now: datetime, slot: datetime
+) -> None:
+    due = next_digest(USER, _state(now).clock, now)
+
+    assert slot <= due <= slot + JITTER

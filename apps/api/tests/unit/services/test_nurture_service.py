@@ -23,7 +23,6 @@ from app.services.nurture.service import (
     _within_frequency_caps,
     run_nurture_sequence,
 )
-from app.services.providers.provider_credentials_service import ProviderConfig
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.onboarding import NurtureEmailSent
 
@@ -298,30 +297,20 @@ class TestProcessUser:
 class TestRunNurtureSequence:
     async def test_skips_when_email_not_configured(self) -> None:
         with (
-            patch("app.services.nurture.service.settings") as mock_settings,
             patch(
-                "app.services.nurture.service.resolve_resend_config",
-                new=AsyncMock(return_value=None),
+                "app.services.nurture.service.email_delivery_configured",
+                new=AsyncMock(return_value=False),
             ),
             patch("app.services.nurture.service.log"),
         ):
-            mock_settings.RESEND_API_KEY = None
-            mock_settings.EMAIL_UNSUBSCRIBE_SECRET = "s"
             assert await run_nurture_sequence() == "skipped: email not configured"
 
     async def test_counts_sent_and_checked(self) -> None:
         users = [self._user(f"u-{i}") for i in range(2)]
         with (
-            patch("app.services.nurture.service.settings") as mock_settings,
             patch(
-                "app.services.nurture.service.resolve_resend_config",
-                new=AsyncMock(
-                    side_effect={
-                        "resend": ProviderConfig(
-                            api_key="re-stored",
-                        )
-                    }.get
-                ),
+                "app.services.nurture.service.email_delivery_configured",
+                new=AsyncMock(return_value=True),
             ),
             patch(
                 "app.services.nurture.service.user_repository.find_nurture_candidates",
@@ -335,7 +324,6 @@ class TestRunNurtureSequence:
             ),
             patch("app.services.nurture.service.log"),
         ):
-            mock_settings.EMAIL_UNSUBSCRIBE_SECRET = "s"
             result = await run_nurture_sequence()
 
         assert result == "nurture: sent 1 of 2 candidates"

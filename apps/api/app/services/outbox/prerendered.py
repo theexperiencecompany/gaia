@@ -20,6 +20,7 @@ class PrerenderedKind(StrEnum):
     ACCOUNT_LINKED = "account_linked"
     FIRST_CONTACT = "first_contact"
     GENERIC_PREVIEW = "generic_preview"
+    DIGEST_SUBJECT = "digest_subject"
 
 
 #: Kinds that say hello: worth nothing late, so the bot's queue drops one that waited too long.
@@ -52,6 +53,9 @@ _COPY: Final[Mapping[PrerenderedKind, Mapping[str, str]]] = {
     },
     PrerenderedKind.GENERIC_PREVIEW: {
         "en": "Something needs your attention.",
+    },
+    PrerenderedKind.DIGEST_SUBJECT: {
+        "en": "What GAIA kept for you while you were away",
     },
     PrerenderedKind.ACCOUNT_LINKED: {
         "en": (

@@ -17,7 +17,7 @@ bumps updatedAt explicitly.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import ClassVar
 
 from bson import ObjectId
@@ -208,6 +208,30 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                         {"updatedAt": {"$gte": since}},
                         {"createdAt": {"$gte": since.isoformat()}},
                     ],
+                }
+            )
+            > 0
+        )
+
+    async def has_user_message_since(self, user_id: str, since: datetime) -> bool:
+        """Whether the user themselves wrote a message at or after since.
+
+        Unlike has_activity_since this ignores GAIA's own writes: every message GAIA saves,
+        in any chat, moves updatedAt, so a user who stopped writing weeks ago but kept
+        being messaged never reads as away there. Message dates are UTC ISO strings.
+        """
+        return (
+            await self._count(
+                {
+                    "user_id": user_id,
+                    "is_system_generated": {"$ne": True},
+                    "todo_id": None,
+                    "messages": {
+                        "$elemMatch": {
+                            "type": USER_MESSAGE_TYPE,
+                            "date": {"$gte": since.astimezone(UTC).isoformat()},
+                        }
+                    },
                 }
             )
             > 0

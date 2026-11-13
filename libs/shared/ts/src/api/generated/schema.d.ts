@@ -3481,6 +3481,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/presence/focus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Hold Focus
+         * @description Keep the user marked as looking at this app; the client calls it on every heartbeat while visible, focused and in use.
+         */
+        put: operations["presence_hold_focus"];
+        post?: never;
+        /**
+         * Release Focus
+         * @description Record that the user stopped looking at this app: it was hidden or lost focus.
+         */
+        delete: operations["presence_release_focus"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects": {
         parameters: {
             query?: never;
@@ -8417,7 +8441,7 @@ export interface components {
          * @description Why an item is recorded and never alerted.
          * @enum {string}
          */
-        DropReason: "nothing_new" | "cancelled" | "compose_skipped" | "not_watching" | "expired" | "user_muted" | "already_known" | "moot" | "superseded" | "duplicate" | "unwanted" | "repeat_backoff" | "leak_unresolved";
+        DropReason: "nothing_new" | "cancelled" | "compose_skipped" | "not_watching" | "expired" | "user_muted" | "already_known" | "moot" | "superseded" | "duplicate" | "unwanted" | "repeat_backoff" | "leak_unresolved" | "digested";
         /**
          * EmailSearchResponse
          * @description Contact-email addresses extracted from a web search, plus the raw search data.
@@ -26030,6 +26054,114 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MintPlatformLinkCodeResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    presence_hold_focus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The calling app does not report focus */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    presence_release_focus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The calling app does not report focus */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Unprocessable Entity */

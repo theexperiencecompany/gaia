@@ -360,6 +360,11 @@ class TestResolveProactiveTarget:
         with patch.object(router, "read_presence", AsyncMock(return_value=empty)) as read:
             yield read
 
+    @pytest.fixture(autouse=True)
+    def no_app_in_view(self) -> Iterator[AsyncMock]:
+        with patch.object(router, "read_focus", AsyncMock(return_value={})) as read:
+            yield read
+
     async def test_the_user_and_presence_reads_run_together(
         self, no_recent_activity: AsyncMock
     ) -> None:
@@ -477,7 +482,20 @@ class TestResolveProactiveTarget:
         with patch.object(user_repository, "get", AsyncMock(return_value=user)):
             assert await resolve_proactive_target(USER_ID) == InApp(reason="no_chat_app")
 
-    async def test_a_user_active_in_the_app_is_messaged_in_the_app_not_a_chat_app(
+    async def test_a_user_looking_at_the_app_is_messaged_in_the_app_not_a_chat_app(
+        self, no_recent_activity: AsyncMock, no_app_in_view: AsyncMock
+    ) -> None:
+        no_recent_activity.return_value = {
+            "captured_at": _now(),
+            "last_seen": {CHANNEL_TYPE_TELEGRAM: _now() - 600},
+        }
+        no_app_in_view.return_value = {ConversationSource.WEB: _now() - 30}
+        with patch.object(user_repository, "get", AsyncMock(return_value=_two_linked_user())):
+            picked = await resolve_proactive_target(USER_ID)
+
+        assert picked == InApp(reason="active_in_app")
+
+    async def test_a_web_message_with_the_tab_no_longer_in_view_does_not_keep_the_user_in_the_app(
         self, no_recent_activity: AsyncMock
     ) -> None:
         no_recent_activity.return_value = {
@@ -487,7 +505,23 @@ class TestResolveProactiveTarget:
         with patch.object(user_repository, "get", AsyncMock(return_value=_two_linked_user())):
             picked = await resolve_proactive_target(USER_ID)
 
-        assert picked == InApp(reason="active_in_app")
+        assert picked == ChatChannel(
+            source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
+        )
+
+    async def test_an_unreadable_focus_signal_falls_back_to_the_stored_order(
+        self, no_app_in_view: AsyncMock
+    ) -> None:
+        no_app_in_view.side_effect = ConnectionError("redis down")
+        with (
+            patch.object(user_repository, "get", AsyncMock(return_value=_two_linked_user())),
+            patch.object(log, "warning"),
+        ):
+            picked = await resolve_proactive_target(USER_ID)
+
+        assert picked == ChatChannel(
+            source=ConversationSource.SLACK, platform_user_id="sl-1", basis="priority"
+        )
 
     async def test_a_chat_app_turn_newer_than_the_app_wins_back_the_chat_app(
         self, no_recent_activity: AsyncMock

@@ -48,3 +48,8 @@ PRESENCE_RETENTION_SECONDS = 30 * 24 * 60 * 60
 # A live call is renewed by the voice worker's heartbeat; a worker that died without
 # ending the call stops being "in a call" after two missed beats.
 CALL_PRESENCE_TTL_SECONDS = 2 * CALL_HEARTBEAT_SECONDS + 30
+
+# How often a GAIA app that is visible, focused and in use tells the API so (the web client's own
+# constant names the same number). One missed beat is forgiven; a client that went quiet is not looked at.
+FOCUS_HEARTBEAT_SECONDS = 60
+FOCUS_PRESENCE_TTL_SECONDS = 2 * FOCUS_HEARTBEAT_SECONDS + 30

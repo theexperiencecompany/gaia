@@ -19,6 +19,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { UNPAID_APP_ROUTES } from "@/features/auth/constants";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
+import { useFocusHeartbeat } from "@/features/presence/hooks/useFocusHeartbeat";
 import { useAppSessionEnabled } from "@/features/pricing/hooks/useEntitlement";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { useIsMobile } from "@/hooks/ui/useMobile";
@@ -118,6 +119,7 @@ export function MainLayoutShell({ children }: { children: ReactNode }) {
   // Check if user needs onboarding
   useOnboardingGuard();
   useBackgroundSync(appSessionEnabled);
+  useFocusHeartbeat(appSessionEnabled);
 
   useChatStoreSync();
 
