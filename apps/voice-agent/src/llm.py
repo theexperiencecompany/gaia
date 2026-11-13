@@ -8,13 +8,14 @@ import time
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
-from livekit import rtc  # type: ignore[attr-defined]  # livekit __init__ untyped upstream
+from livekit import rtc
 from livekit.agents.llm import LLM, ChatChunk, ChatContext, ChoiceDelta
 
 from shared.py.wide_events import VoiceContext, get_trace_id, log, log_context, wide_task
 from src.constants import (
     BACKEND_REQUEST_TIMEOUT_S,
     DONE_SENTINEL,
+    ERROR_KEY,
     FRONTEND_STREAM_TOPIC,
     MAIN_RESPONSE_COMPLETE_KEY,
     MESSAGE_ID_KEY,
@@ -28,6 +29,7 @@ from src.constants import (
     TTS_HARD_FLUSH_CHARS,
     TTS_MIN_EMIT_CHARS,
     TTS_MIN_SENTENCE_CHARS,
+    VOICE_ERROR_REPLY,
     VOICE_TTS_KEY,
     LogTag,
 )
@@ -323,6 +325,9 @@ class _VoiceTurn:
         # Set when the stream fully ended ([DONE]) within the comms turn — then
         # there's nothing left to drain.
         self.stream_done = False
+        # Set when the backend sent a terminal error frame. The turn ends there:
+        # the backend can repeat the error, and it must be answered only once.
+        self.failed = False
 
     async def run(self) -> AsyncGenerator[ChatChunk, None]:
         """Drive the whole turn; yields sanitized TTS chunks as they flush."""
@@ -414,7 +419,7 @@ class _VoiceTurn:
             log.info(
                 f"{LogTag.LLM} turn complete",
                 phase="turn_complete",
-                status="ok",
+                status="error" if self.failed else "ok",
                 **self._turn_fields(),
             )
 
@@ -475,6 +480,10 @@ class _VoiceTurn:
             # once. The rest of the stream (executor events + answer) is handled
             # by the background drain spawned in run().
             if self.comms_complete:
+                return
+
+            if self.failed:
+                self.stream_done = True
                 return
 
         # Stream ended without a completion marker — nothing left to drain.
@@ -560,6 +569,10 @@ class _VoiceTurn:
         if event_payload.get(MAIN_RESPONSE_COMPLETE_KEY) is True:
             return await self._on_main_response_complete()
 
+        error = event_payload.get(ERROR_KEY)
+        if isinstance(error, str) and error:
+            return await self._on_backend_error(data, error)
+
         conv_id = event_payload.get("conversation_id")
         if isinstance(conv_id, str) and conv_id:
             await self.llm.set_conversation_id(conv_id)
@@ -613,6 +626,28 @@ class _VoiceTurn:
             ack_flushed=bool(tail),
         )
         return tail
+
+    async def _on_backend_error(self, raw_event: str, error: str) -> str:
+        """Surface a terminal backend failure on screen and answer it aloud.
+
+        Without this the frame carries no ``response`` and the turn ends in
+        silence — the user hears nothing and sees nothing. Any reply text
+        already buffered is spoken first so a mid-answer failure doesn't drop
+        what was said; the turn then ends (see ``failed``).
+        """
+        await self.llm.forward_stream_event_to_frontend(raw_event)
+        tail = None
+        if self.tts_enabled:
+            tail = await self._flush_buffer(min_chars=1, count_stats=False, label=None)
+        self.tts_enabled = False
+        self.failed = True
+        log.error(
+            f"{LogTag.LLM} backend returned stream error",
+            phase="backend_stream_error",
+            error=error,
+            elapsed_ms=ms_since(self.turn_start),
+        )
+        return f"{tail} {VOICE_ERROR_REPLY}" if tail else VOICE_ERROR_REPLY
 
     def _on_executor_answer(self, voice_tts: str) -> str | None:
         spoken = sanitize_for_tts(voice_tts)

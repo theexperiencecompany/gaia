@@ -11,6 +11,7 @@ import {
 import { readToolDataLoadingHints } from "@/features/chat/utils/loadingHints";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import type { IMessage } from "@/lib/db/chatDb";
+import { toast } from "@/lib/toast";
 import { useChatStore } from "@/stores/chatStore";
 import { useStreamStore } from "@/stores/streamStore";
 import { useVoiceModeActions } from "@/stores/voiceModeStore";
@@ -21,6 +22,8 @@ interface VoiceBotTurn {
   tool_data: ToolDataEntry[];
   follow_up_actions: string[];
   loading: boolean;
+  /** Set when the backend stream ended in a terminal error frame. */
+  error: string | null;
   createdAt: Date;
 }
 
@@ -37,7 +40,8 @@ function turnToIMessage(turn: VoiceBotTurn, conversationId: string): IMessage {
     conversationId,
     content: turn.response,
     role: "assistant",
-    status: turn.loading ? "sending" : "sent",
+    status: turn.error ? "failed" : turn.loading ? "sending" : "sent",
+    error: turn.error,
     createdAt: turn.createdAt,
     updatedAt: new Date(),
     tool_data: turn.tool_data.length > 0 ? turn.tool_data : null,
@@ -214,6 +218,7 @@ export function useVoiceMessages(
       tool_data: [],
       follow_up_actions: [],
       loading: true,
+      error: null,
       createdAt: nextCreatedAt(),
     };
     activeTurnRef.current = turn;
@@ -269,6 +274,15 @@ export function useVoiceMessages(
         Array.isArray(event.follow_up_actions)
       ) {
         turn.follow_up_actions = event.follow_up_actions as string[];
+        changed = true;
+      } else if (typeof event.error === "string" && event.error) {
+        // Terminal backend failure — mirror text mode (TurnSession.fail): toast
+        // the reason and leave it on the bubble so it survives past the toast.
+        // The agent speaks a short apology for the same frame.
+        turn.loading = false;
+        turn.error = event.error;
+        useStreamStore.getState().setAuxLoading(false);
+        toast.error(event.error);
         changed = true;
       } else if (event.main_response_complete === true) {
         // Response done, but keep the turn active: the backend emits
