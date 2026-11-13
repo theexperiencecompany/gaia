@@ -57,11 +57,13 @@ REACT_ID = re.compile(r"react-aria-[\w-]+")
 # A timing is a moment, not a page: two live crawls an hour apart flagged 1,008 and
 # 1,336 pages slow, so it counts only through the Performance score.
 TIMED_RULES = frozenset({"perf/ttfb"})
-# Rules that judge a page against the rest of the crawl (its inbound links, its schema
-# next to its peers'): on the PR gate's 126 pages they disagreed with the full crawl of
-# the same build on 69 pages, and no-contextual-inbound on 18, so only a full crawl judges them.
+# Rules that judge a page against the rest of the crawl (its inbound links, its schema or
+# title next to its peers'): on the PR gate's 126 pages they disagreed with the full crawl of
+# the same build on 69 pages, and no-contextual-inbound on 18; title-pattern-outlier flagged
+# #1766's 246-page sample and not #1764's, same pages. Only a full crawl judges them.
 CRAWL_RELATIVE_RULES = frozenset(
     {
+        "content/title-pattern-outlier",
         "links/orphan-pages",
         "links/weak-internal-links",
         "links/no-contextual-inbound",

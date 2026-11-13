@@ -416,6 +416,16 @@ def test_a_sample_does_not_judge_a_rule_that_needs_the_whole_site(tmp_path: Path
     assert _ratchet(tmp_path, rows, baseline).returncode == 1
 
 
+def test_a_sample_does_not_judge_a_title_against_only_its_own_pages(tmp_path: Path) -> None:
+    rows = [
+        _row(
+            "", "content/title-pattern-outlier", "title-pattern-outlier", [{"id": "brand-missing:"}]
+        )
+    ]
+    assert _ratchet(tmp_path, rows, "", "--sample", "--strict").returncode == 0
+    assert _ratchet(tmp_path, rows, "").returncode == 1
+
+
 def test_a_slow_response_counts_only_through_the_score(tmp_path: Path) -> None:
     rows = [_row("/a", "perf/ttfb", "ttfb")]
     assert (
