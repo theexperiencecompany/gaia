@@ -260,6 +260,9 @@ async def _serve(ports: RuntimePorts, claim: StepClaim, attempt_id: str) -> bool
         unshown = _empty_reply(attempt).model_copy(update={"tool_data": ()})
         await _conclude(ports, attempt, unshown, ReplyOutcome.SILENT)
         return True
+    if isinstance(batch.waking[0].entry, WorkflowFired) and not state.work:
+        # Under this claim no comms run writes the threads, and no live work runs on the executor's.
+        await ports.effects.reset_workflow_threads(conversation_id)
     # Everything since the last settled input that no batch carries: notes, stops, a dead attempt.
     context = [
         logged

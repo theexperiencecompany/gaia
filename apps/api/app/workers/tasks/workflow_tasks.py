@@ -33,7 +33,6 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
 )
 from app.config.rate_limits import RateLimitPeriod
-from app.config.settings import settings
 from app.constants.agents import (
     PLAYBOOK_FALLBACK_CONTEXT_KEY,
     AgentTag,
@@ -52,7 +51,7 @@ from app.db.repositories.workflows import workflow_repository
 from app.decorators import enforce_cost_budget
 from app.decorators.entitlements import capture_paywall_block, is_paid
 from app.decorators.rate_limiting import enforce_tiered_limit
-from app.models.conversation_log_models import WorkflowFired, WorkflowRun
+from app.models.conversation_log_models import StopBy, StopRequested, WorkflowFired, WorkflowRun
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -129,7 +128,6 @@ from app.services.workflow.playbook.runner import (
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 from app.services.workflow.scheduler import WorkflowScheduler, workflow_scheduler
 from app.services.workflow.service import WorkflowService
-from app.services.workflow.thread_reset import reset_workflow_threads
 from app.utils.auth_utils import OwnerNotFoundError, require_owner
 from app.utils.errors import create_error
 from app.utils.occurrence import parse_occurrence_stamp
@@ -1772,10 +1770,7 @@ async def execute_workflow_as_chat(
         user_id=user_id,
         workflow_title=workflow.title,
     )
-    # Each run starts from a clean thread instead of replaying every previous run; the
-    # previous run reaches the executor as its recorded trace (see call_executor).
-    if settings.WORKFLOW_THREAD_RESET_ENABLED:
-        await reset_workflow_threads(conversation_id)
+    # The step answering the fire starts it from clean threads (RuntimeEffects.reset_workflow_threads).
     await seed_run_record(execution_id, replayed)
     run = WorkflowRun(
         workflow=build_selected_workflow_data(workflow),
@@ -1796,9 +1791,23 @@ async def execute_workflow_as_chat(
     fired = await accept(
         ports, conversation_id, user_id, WorkflowFired(id=f"workflow:{execution_id}", run=run)
     )
-    outcome = await await_outcome(
-        ports.log, conversation_id, user_id, fired.appended.logged, BACKGROUND_EXECUTOR_WAIT_TIMEOUT
-    )
+    try:
+        outcome = await await_outcome(
+            ports.log,
+            conversation_id,
+            user_id,
+            fired.appended.logged,
+            BACKGROUND_EXECUTOR_WAIT_TIMEOUT,
+        )
+    except TimeoutError:
+        # Settled as stopped, so the step can never run the fire after the job recorded it failed.
+        stop = StopRequested(
+            id=f"workflow:{execution_id}:timed_out",
+            by=StopBy.GAIA,
+            covers_through=fired.appended.logged.seq,
+        )
+        await accept(ports, conversation_id, user_id, stop)
+        raise
     trace = await _run_trace(execution_id, workflow.id)
     if outcome.failure is not None:
         raise WorkflowTurnFailed(

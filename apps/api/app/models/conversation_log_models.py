@@ -399,6 +399,8 @@ class ConversationState(BaseModel):
     work: tuple[LiveWork, ...]
     # One per WorkFinished seq in unsettled_waking.
     finished_work: tuple[FinishedWork, ...] = ()
+    # Seqs of WorkflowFired entries in unsettled_waking: a fire while one is here is refused.
+    unsettled_fires: tuple[int, ...] = ()
 
     @property
     def display(self) -> DisplayState:
@@ -468,6 +470,7 @@ class RejectReason(StrEnum):
     REPLY_ALREADY_OPEN = "reply_already_open"
     REPLY_NOT_OPEN = "reply_not_open"
     REPLY_ANSWERS_FUTURE = "reply_answers_future"
+    FIRE_OVERLAPS = "fire_overlaps"
 
 
 class Rejected(BaseModel):

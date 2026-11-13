@@ -480,6 +480,9 @@ class RecordingEffects:
     ) -> None:
         self._record(EffectCall("deliver_files", tuple(file.path for file in files)))
 
+    async def reset_workflow_threads(self, conversation_id: str) -> None:
+        self._record(EffectCall("reset_workflow_threads"))
+
     def _record(self, call: EffectCall) -> None:
         self.calls.append(call)
         if call.name in self.failing:

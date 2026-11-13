@@ -33,6 +33,7 @@ from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.log import accept
 from app.services.conversation.ports import (
     CancelReason,
+    EntryRejected,
     Finished,
     ModelOutput,
     Reacted,
@@ -609,21 +610,17 @@ class StepScenarios:
         await run(rt)
         assert [s.failure for s in await settles(rt)] == [FailureReason.STEP_LIMIT]
 
-    async def test_two_workflow_fires_are_answered_one_at_a_time(self, rt: Runtime) -> None:
-        rt.runner.script(
-            [Do(arrive(rt, fired("wf2", "ex_2"))), Finished(Replied("first run"))],
-            [Finished(Replied("second run"))],
-        )
+    async def test_a_second_fire_while_the_first_is_unanswered_is_refused(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script([Finished(Replied("first run"))])
         await send(rt, fired("wf1"))
+        with pytest.raises(EntryRejected):
+            await send(rt, fired("wf2", "ex_2"))
         await run(rt)
-        assert [call for call in rt.runner.calls if isinstance(call, Started)] == [
-            Started(batch=(1,), context=()),
-            Started(batch=(2,), context=(3, 4)),
-        ]
-        assert await answered(rt) == [
-            (ReplyOutcome.ANSWERED, ("wf1",)),
-            (ReplyOutcome.ANSWERED, ("wf2",)),
-        ]
+        assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("wf1",))]
+        await send(rt, fired("wf3", "ex_3"))
+        assert (await rt.log.state(CONVERSATION, USER)).unsettled_waking == (4,)
 
     async def test_a_silent_run_for_a_user_still_answers_with_the_fallback(
         self, rt: Runtime

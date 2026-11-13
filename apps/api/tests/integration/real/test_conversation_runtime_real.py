@@ -50,6 +50,7 @@ from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManag
 from app.agents.core.graph_manager import GraphManager
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.run_record import append_call
+from app.config.settings import settings
 from app.constants.browser import HandoffDecision, HandoffStatus
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
@@ -100,6 +101,7 @@ from app.schemas.browser import NewHandoff
 from app.services import analytics_service
 from app.services.browser.handoff import create_pending_handoff
 from app.services.browser.handoff_buttons import decide_handoff_by_button
+from app.services.checkpoint_thread_reset import ThreadReset
 from app.services.conversation import mongo_log, reply_analytics, step as step_module, sweeper
 from app.services.conversation.bot_followers import list_active_bot_conversations
 from app.services.conversation.comms_runner import (
@@ -139,6 +141,7 @@ from app.services.conversation.work_log import (
     running_step_task,
 )
 from app.services.delivery.chat_channel import ChatChannel
+from app.services.workflow import thread_reset
 from app.services.workflow.conversation_service import log_playbook_run
 from app.services.workflow.execution_service import WorkflowFireOverlapped, WorkflowTurnFailed
 from app.utils.errors import ConversationIdTakenError
@@ -1675,3 +1678,60 @@ async def test_another_users_conversation_id_is_refused(rig_for: RigFactory) -> 
         {"conversation_id": rig.conversation_id}
     )
     assert heads == 1
+
+
+@pytest.mark.service
+async def test_a_fire_resets_its_threads_inside_the_step_that_answers_it(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("brief sent")
+    turns = _Turns()
+    held_while_reset: list[bool] = []
+
+    async def reset(conversation_id: str, **_: bool) -> ThreadReset:
+        # Another claimer is refused only while the answering step holds the conversation.
+        probe = await rig.ports.log.claim(conversation_id, rig.user_id)
+        held_while_reset.append(probe is None)
+        if probe is not None:
+            await rig.ports.log.release_if_caught_up(probe)
+        return ThreadReset(reset=2, skipped_inflight=0)
+
+    async with _fire_rig(rig_for, model, turns) as (rig, _notified):
+        with (
+            patch.object(settings, "WORKFLOW_THREAD_RESET_ENABLED", True),
+            patch.object(
+                conversation_repository, "is_workflow_execution", AsyncMock(return_value=True)
+            ),
+            patch.object(thread_reset, "reset_conversation_threads", reset),
+        ):
+            await execute_workflow_as_chat(
+                _workflow(rig.user_id),
+                AuthenticatedUser(user_id=rig.user_id),
+                {},
+                reservation=":fire-r",
+                execution_id="exec_r",
+            )
+            await rig.settle()
+    assert held_while_reset == [True]
+
+
+@pytest.mark.service
+async def test_a_fire_that_timed_out_is_never_answered_later(rig_for: RigFactory) -> None:
+    model = gated("too late", hold=[0])
+    turns = _Turns()
+    async with _fire_rig(rig_for, model, turns) as (rig, _notified):
+        with (
+            patch.object(workflow_tasks, "BACKGROUND_EXECUTOR_WAIT_TIMEOUT", 0.5),
+            pytest.raises(TimeoutError),
+        ):
+            await execute_workflow_as_chat(
+                _workflow(rig.user_id),
+                AuthenticatedUser(user_id=rig.user_id),
+                {},
+                reservation=":fire-t",
+                execution_id="exec_t",
+            )
+        state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+        assert state.unsettled_waking == ()
+        await rig.settle()
+    assert [outcome for outcome, _answers in await rig.answered()] != [ReplyOutcome.ANSWERED]

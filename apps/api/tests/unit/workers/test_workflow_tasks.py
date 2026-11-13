@@ -992,7 +992,6 @@ class TestExecuteWorkflowAsChat:
                 )
                 for name in (
                     "get_or_create_workflow_conversation",
-                    "reset_workflow_threads",
                     "accept",
                     "await_outcome",
                     "seed_run_record",
@@ -1047,11 +1046,9 @@ class TestExecuteWorkflowAsChat:
         # A caller that fires quietly lowers the workflow's own default.
         assert fired.run.trigger.workflow_notify_on_completion is False
 
-    async def test_the_threads_are_reset_and_the_record_seeded_before_the_fire(
-        self, boundaries
-    ) -> None:
+    async def test_the_record_is_seeded_before_the_fire(self, boundaries) -> None:
         order = MagicMock()
-        for name in ("reset_workflow_threads", "seed_run_record", "accept"):
+        for name in ("seed_run_record", "accept"):
             order.attach_mock(boundaries[name], name)
         await execute_workflow_as_chat(
             self._make_workflow(),
@@ -1061,12 +1058,7 @@ class TestExecuteWorkflowAsChat:
             execution_id="exec_1",
             replayed=[RecordedCall(tool_name="REPLAYED")],
         )
-        assert [c[0] for c in order.mock_calls] == [
-            "reset_workflow_threads",
-            "seed_run_record",
-            "accept",
-        ]
-        boundaries["reset_workflow_threads"].assert_awaited_once_with("conv_wf")
+        assert [c[0] for c in order.mock_calls] == ["seed_run_record", "accept"]
         boundaries["seed_run_record"].assert_awaited_once_with(
             "exec_1", [RecordedCall(tool_name="REPLAYED")]
         )

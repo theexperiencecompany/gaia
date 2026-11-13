@@ -204,6 +204,36 @@ def test_workflow_fired_wakes_and_kicks_without_an_ack() -> None:
     assert result.effects == (KickStep(),)
 
 
+def test_a_fire_while_the_previous_fire_is_unanswered_is_refused() -> None:
+    state, _ = fold([fired("f1", "ex_1")])
+    assert _reason(state, 2, fired("f2", "ex_2")) is RejectReason.FIRE_OVERLAPS
+
+
+def test_a_fire_while_work_still_runs_in_its_conversation_is_refused() -> None:
+    state, _ = fold(
+        [fired("f1", "ex_1"), started("w", "t1", 1), opened("o"), settled("s", ("f1",), 1)]
+    )
+    assert _reason(state, 5, fired("f2", "ex_2")) is RejectReason.FIRE_OVERLAPS
+
+
+def test_a_fire_after_the_previous_one_was_answered_and_its_work_ended_wakes() -> None:
+    state, _ = fold(
+        [
+            fired("f1", "ex_1"),
+            started("w", "t1", 1),
+            opened("o"),
+            settled("s", ("f1",), 1),
+            finished("d", "t1", WorkOutcome.CANCELLED),
+        ]
+    )
+    assert _accept(state, 6, fired("f2", "ex_2")).state.unsettled_waking == (6,)
+
+
+def test_a_stop_covering_a_fire_lets_the_next_fire_in() -> None:
+    state, _ = fold([fired("f1", "ex_1"), stop("s")])
+    assert _accept(state, 3, fired("f2", "ex_2")).state.unsettled_waking == (3,)
+
+
 @pytest.mark.parametrize("entry", [todo_woke("t"), notice("n")])
 def test_todo_woke_and_notice_move_only_the_head(entry: Entry) -> None:
     state, _ = fold([user("u1"), started("w", "t1", 1)])
