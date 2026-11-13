@@ -9,10 +9,8 @@ export type {
   LiveTask,
   Reaction,
   Reply,
-  ReplyDeltaFrame,
   StateFrame,
   UserMessage,
-  WorkDeltaFrame,
 } from "../api/generated";
 
 export type Entry = EntryFrame["entry"];

@@ -60,6 +60,8 @@ from app.models.workflow_execution_models import (
     build_result_digest,
 )
 from app.override.langgraph_bigtool.create_agent import create_agent as real_create_agent
+from app.services.conversation.runtime import install_runtime_ports
+from app.services.conversation.work_log import record_work_carried
 from app.services.hil.prompts import UNPAUSABLE_DENIAL_TEMPLATE
 from app.services.workflow.playbook.dry_run import DRY_RUN_READ_TOOLS, DryRun
 from app.services.workflow.playbook.evaluator import (
@@ -104,6 +106,8 @@ GATE = "app.services.hil.gate"
 #: A real ObjectId: the gated tool call captures analytics, and UserId refuses anything else.
 USER_ID = make_user_id()
 USER = PlaybookUser(email="ada@example.com", name="Ada", timezone="Europe/Berlin")
+from tests.unit.services.conversation.log_helpers import user
+from tests.unit.services.conversation.runtime_doubles import Runtime
 
 
 class _Recorder:
@@ -400,6 +404,13 @@ async def test_a_ledger_gated_call_stops_the_replay_pending_without_invoking_the
     ledger.find_live = AsyncMock(return_value=None)
     ledger.find_latest_denied = AsyncMock(return_value=None)
     ledger.register = AsyncMock(return_value="ap_ledger01")
+    runtime = Runtime()
+    install_runtime_ports(runtime.ports)
+    await runtime.log.append("conv_1", USER_ID, user("m1"))
+    # A replay runs as logged work in its conversation; the gate files its approval under it.
+    assert await record_work_carried(
+        "conv_1", USER_ID, "playbook_test", detached=True, exclusive=True
+    )
     with (
         patch(f"{GATE}.approval_ledger_repository", ledger),
         patch(f"{GATE}.recall_declined_call", AsyncMock(return_value=None)),

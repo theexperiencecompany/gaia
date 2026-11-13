@@ -124,8 +124,8 @@ describe("useComposerSubmit paywall pre-check", () => {
     expect(sendMessage).toHaveBeenCalledWith(
       "Hello GAIA",
       expect.objectContaining({
-        selectedTool: "gmail_send",
-        toolCategory: "gmail",
+        selected_tool: "gmail_send",
+        tool_category: "gmail",
       }),
     );
     expect(clearToolSelection).toHaveBeenCalledTimes(1);

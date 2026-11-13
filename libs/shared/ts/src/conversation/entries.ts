@@ -90,7 +90,7 @@ const TodoRunWakeSchema = z.object({
 const id = z.string().min(1);
 const revision = z.number().int().min(0).default(0);
 
-export const ReactionSchema = z.object({
+const ReactionSchema = z.object({
   emoji: z.string().min(1),
   by: z.enum(["jev", "chat_model"]),
 }) satisfies z.ZodType<Reaction>;
@@ -154,7 +154,7 @@ const ReplyToMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
 }) satisfies z.ZodType<ReplyToMessageData>;
 
-export const UserMessageSchema = z.object({
+const UserMessageSchema = z.object({
   kind: z.literal(ENTRY_KIND.USER_MESSAGE),
   id,
   text: z.string(),
@@ -321,7 +321,7 @@ const WorkFinishedSchema = z.object({
   image: ImageDataSchema.nullable().default(null),
 }) satisfies z.ZodType<WorkFinished>;
 
-export const ReplySchema = z.object({
+const ReplySchema = z.object({
   kind: z.literal(ENTRY_KIND.REPLY),
   id,
   reply_id: z.string(),

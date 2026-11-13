@@ -141,7 +141,7 @@ const seq = z.number().int().min(1);
 const index = z.number().int().min(0);
 const deltaPayload = StreamPayloadSchema.transform(toStreamEvent);
 
-export const LiveTaskSchema = z.object({
+const LiveTaskSchema = z.object({
   task_id: z.string(),
   awaiting_approval: z.boolean(),
 }) satisfies z.ZodType<LiveTask>;

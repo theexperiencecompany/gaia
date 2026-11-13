@@ -44,7 +44,7 @@ describe("useRetryMessage", () => {
 
     expect(sendMessage).toHaveBeenCalledWith(
       "hello",
-      expect.objectContaining({ conversationId: "conv-1", retryOf: "m-user" }),
+      expect.objectContaining({ conversationId: "conv-1", retry_of: "m-user" }),
     );
     expect(deliverSend).not.toHaveBeenCalled();
   });
@@ -75,9 +75,9 @@ describe("useRetryMessage", () => {
       "summarise",
       expect.objectContaining({
         files,
-        selectedTool: "gmail_send",
-        toolCategory: "gmail",
-        retryOf: "m-user",
+        selected_tool: "gmail_send",
+        tool_category: "gmail",
+        retry_of: "m-user",
       }),
     );
   });

@@ -88,6 +88,7 @@ class TestStopConversation:
                 "subagent_ids": ["s1"],
                 "approval_ids": [APPROVAL, LEDGER_APPROVAL],
                 "browser_jobs": {BROWSER_JOB: "stopped"},
+                "replay_ids": [],
             },
         }
         # The executor is the logged Stop's to cancel; the subagent no run holds is the rest's.

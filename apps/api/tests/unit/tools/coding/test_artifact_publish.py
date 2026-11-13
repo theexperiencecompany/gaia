@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, patch
 
 from app.agents.tools.coding import bash_tool
@@ -17,11 +19,15 @@ WRITER = "app.agents.tools.coding._context.current_stream_writer"
 MTIME = 1_700_000_000.0
 
 
-def _cards(emit: object) -> list[dict[str, object]]:
+def _cards(emit: Callable[[], None]) -> list[dict[str, object]]:
     written: list[dict[str, object]] = []
     with patch(WRITER, return_value=written.append):
-        emit()  # type: ignore[operator]
+        emit()
     return written
+
+
+def _path(card: dict[str, object]) -> object:
+    return cast(dict[str, object], card["artifact_data"])["path"]
 
 
 def test_publish_artifact_puts_the_file_on_the_run_as_a_card() -> None:
@@ -48,7 +54,7 @@ def test_a_write_under_artifacts_is_carded_relative_to_the_artifacts_root() -> N
 
     (card,) = _cards(lambda: publish_artifact_write(written, 3, MTIME))
 
-    assert card["artifact_data"]["path"] == "a/b.md"  # type: ignore[index]
+    assert _path(card) == "a/b.md"
 
 
 def test_a_write_outside_artifacts_puts_no_card() -> None:
@@ -80,4 +86,4 @@ async def test_bash_cards_every_file_find_lists_in_one_round_trip() -> None:
 
     sandbox.commands.run.assert_awaited_once()
     # The trailing record is cut short (no mtime), so only the complete one is carded.
-    assert [card["artifact_data"]["path"] for card in written] == ["a.md"]  # type: ignore[index]
+    assert [_path(card) for card in written] == ["a.md"]

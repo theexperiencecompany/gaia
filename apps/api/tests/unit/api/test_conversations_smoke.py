@@ -19,14 +19,15 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.models.conversation_frame_models import StateFrame
 from app.models.conversation_models import (
     ConversationActionResponse,
-    ConversationDocument,
     ConversationEntry,
     ConversationListResponse,
     ConversationMessageHit,
     CreateConversationResponse,
     DeleteAllConversationsResponse,
+    LoadedConversation,
     PinnedMessagesResponse,
     StarConversationResponse,
     UpdateDescriptionResponse,
@@ -137,12 +138,12 @@ class TestGetConversation:
     async def test_get_existing(self, client: AsyncClient):
         # A stray top-level field a legacy row carries must still reach the
         # client: the document is extra="allow" and the response model keeps it.
-        mock_resp = ConversationDocument.model_validate(
+        mock_resp = LoadedConversation.model_validate(
             {
                 "conversation_id": "conv_123",
                 "user_id": "user_1",
-                "messages": [],
                 "metadata": {"legacy": True},
+                "state": StateFrame(head=0, display="idle", work=()),
             }
         )
         with (
@@ -166,7 +167,7 @@ class TestGetConversation:
         assert mock_get.await_args.kwargs == {}
         body = resp.json()
         assert body["conversation_id"] == "conv_123"
-        assert body["messages"] == []
+        assert (body["entries"], body["has_older"], body["state"]["head"]) == ([], False, 0)
         assert body["metadata"] == {"legacy": True}
         # The Mongo _id is excluded from the response model — it must not
         # reach the client.
