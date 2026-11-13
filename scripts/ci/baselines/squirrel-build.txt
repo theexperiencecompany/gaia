@@ -733,7 +733,6 @@ score:URL Structure=93
 /de/compare/poke	content/keyword-stuffing/keyword-stuffing	sie
 /de/compare/poke	content/keyword-stuffing/keyword-stuffing	und
 /de/compare/quip	content/keyword-stuffing/keyword-stuffing	und
-/de/compare/reclaim	content/keyword-stuffing/keyword-stuffing	calendar
 /de/compare/sanebox	content/keyword-stuffing/keyword-stuffing	email
 /de/compare/saner-ai	content/keyword-stuffing/keyword-stuffing	und
 /de/compare/shortwave	content/keyword-stuffing/keyword-stuffing	email
@@ -1403,7 +1402,6 @@ score:URL Structure=93
 /es/compare/category/other	a11y/heading-order/heading-order	H3 after H1
 /es/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
 /es/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
-/es/compare/category/task-management	content/keyword-stuffing/keyword-stuffing	task
 /es/compare/clickup	content/keyword-stuffing/keyword-stuffing	clickup
 /es/compare/confluence	content/keyword-stuffing/keyword-stuffing	para
 /es/compare/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
@@ -1430,7 +1428,6 @@ score:URL Structure=93
 /es/compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
 /es/compare/poke	content/keyword-stuffing/keyword-stuffing	que
 /es/compare/quip	content/keyword-stuffing/keyword-stuffing	salesforce
-/es/compare/reclaim	content/keyword-stuffing/keyword-stuffing	calendar
 /es/compare/sanebox	content/keyword-stuffing/keyword-stuffing	email
 /es/compare/saner-ai	content/keyword-stuffing/keyword-stuffing	con
 /es/compare/saner-ai	content/keyword-stuffing/keyword-stuffing	notas
@@ -2096,7 +2093,6 @@ score:URL Structure=93
 /fr/compare/asana	content/keyword-stuffing/keyword-stuffing	des
 /fr/compare/bardeen	content/keyword-stuffing/keyword-stuffing	les
 /fr/compare/basecamp	content/keyword-stuffing/keyword-stuffing	les
-/fr/compare/bear	content/keyword-stuffing/keyword-stuffing	les
 /fr/compare/cal	content/keyword-stuffing/keyword-stuffing	des
 /fr/compare/cal	content/keyword-stuffing/keyword-stuffing	les
 /fr/compare/calendly	content/keyword-stuffing/keyword-stuffing	des
@@ -2111,7 +2107,6 @@ score:URL Structure=93
 /fr/compare/category/other	a11y/heading-order/heading-order	H3 after H1
 /fr/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
 /fr/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
-/fr/compare/category/task-management	content/keyword-stuffing/keyword-stuffing	task
 /fr/compare/chatgpt	content/keyword-stuffing/keyword-stuffing	des
 /fr/compare/chatgpt	content/keyword-stuffing/keyword-stuffing	les
 /fr/compare/chatgpt-enterprise	content/keyword-stuffing/keyword-stuffing	des
@@ -2165,7 +2160,6 @@ score:URL Structure=93
 /fr/compare/notion-calendar	content/keyword-stuffing/keyword-stuffing	notion
 /fr/compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
 /fr/compare/quip	content/keyword-stuffing/keyword-stuffing	les
-/fr/compare/reclaim	content/keyword-stuffing/keyword-stuffing	calendar
 /fr/compare/sanebox	content/keyword-stuffing/keyword-stuffing	email
 /fr/compare/saner-ai	content/keyword-stuffing/keyword-stuffing	les
 /fr/compare/saner-ai	content/keyword-stuffing/keyword-stuffing	notes
@@ -3039,9 +3033,7 @@ score:URL Structure=93
 /pt-br/compare/category/notes-knowledge	a11y/heading-order/heading-order	H3 after H1
 /pt-br/compare/category/other	a11y/heading-order/heading-order	H3 after H1
 /pt-br/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
-/pt-br/compare/category/project-management	content/keyword-stuffing/keyword-stuffing	project
 /pt-br/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
-/pt-br/compare/category/task-management	content/keyword-stuffing/keyword-stuffing	task
 /pt-br/compare/clickup	content/keyword-stuffing/keyword-stuffing	clickup
 /pt-br/compare/copilot	content/keyword-stuffing/keyword-stuffing	microsoft
 /pt-br/compare/dot-app	content/keyword-stuffing/keyword-stuffing	que
@@ -3055,7 +3047,6 @@ score:URL Structure=93
 /pt-br/compare/google-calendar	content/keyword-stuffing/keyword-stuffing	google
 /pt-br/compare/hey-email	content/keyword-stuffing/keyword-stuffing	hey
 /pt-br/compare/hubspot	content/keyword-stuffing/keyword-stuffing	hubspot
-/pt-br/compare/ia-writer	content/keyword-stuffing/keyword-stuffing	writing
 /pt-br/compare/lifestack	content/keyword-stuffing/keyword-stuffing	com
 /pt-br/compare/linear	content/keyword-stuffing/keyword-stuffing	linear
 /pt-br/compare/motion	content/keyword-stuffing/keyword-stuffing	calendar
@@ -3066,7 +3057,6 @@ score:URL Structure=93
 /pt-br/compare/otter-ai	content/keyword-stuffing/keyword-stuffing	meeting
 /pt-br/compare/poke	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/compare/quip	content/keyword-stuffing/keyword-stuffing	salesforce
-/pt-br/compare/reclaim	content/keyword-stuffing/keyword-stuffing	calendar
 /pt-br/compare/sanebox	content/keyword-stuffing/keyword-stuffing	email
 /pt-br/compare/shortwave	content/keyword-stuffing/keyword-stuffing	email
 /pt-br/compare/spark	content/keyword-stuffing/keyword-stuffing	email
