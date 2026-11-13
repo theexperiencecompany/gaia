@@ -97,6 +97,8 @@ class ConversationDocument(UserScopedDocument):
     todo_id: str | None = None
     # Assembled from conversation_entries by the reads that need history; never stored on the head.
     messages: list[ConversationEntry] = Field(default_factory=list)
+    # Derived on read (never stored): messages older than the ones read exist; page them by seq.
+    has_older: bool = False
     # Conversation-level artifact registry: one entry per agent-written file,
     # deduped by path; services/chat/artifacts_registry.py owns every write.
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
@@ -365,6 +367,8 @@ class ConversationSyncRow(ResponseModel):
     createdAt: str | None = None
     updatedAt: datetime | None = None
     messages: list[ConversationEntry] = Field(default_factory=list)
+    # Messages older than these exist: GET /conversations/{id}/messages?before_seq= pages them.
+    has_older: bool = False
     # Mirrored verbatim from the document (see ConversationDocument.artifacts).
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
     # Live work in the conversation awaits the user's approval: the sidebar's dot.
@@ -373,6 +377,13 @@ class ConversationSyncRow(ResponseModel):
     todo_id: str | None = None
     # Where the chat originated; a bot chat is never listed, so clients need it to keep one cached.
     source: ConversationSource | None = None
+
+
+class ConversationMessagesPage(ResponseModel):
+    """The newest messages before a seq, oldest first; has_more when older ones remain."""
+
+    messages: list[ConversationEntry]
+    has_more: bool
 
 
 class BatchSyncResponse(ResponseModel):

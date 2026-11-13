@@ -82,6 +82,7 @@ from app.models.conversation_models import (
     ConversationEntry,
     ConversationHead,
     ConversationMessageHit,
+    ConversationMessagesPage,
     ConversationSearchResults,
     ConversationSummary,
     ConversationUpdate,
@@ -548,7 +549,18 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         if not heads:
             return None
         [(head, entries)] = await self._entries_for(heads, _newest_window())
-        return self._with_messages(head, entries)
+        return self._with_newest(head, entries)
+
+    async def read_messages_before(
+        self, conversation_id: str, *, user_id: str, before_seq: int, limit: int
+    ) -> ConversationMessagesPage | None:
+        """Read the newest limit messages before before_seq, oldest first; None for a missing conversation."""
+        heads = await self._read_heads({"conversation_id": conversation_id, "user_id": user_id})
+        if not heads:
+            return None
+        window = EntryWindow(before_seq=before_seq, limit=limit + 1)
+        [(_, entries)] = await self._entries_for(heads, window)
+        return ConversationMessagesPage(messages=entries[-limit:], has_more=len(entries) > limit)
 
     async def get_message(
         self, conversation_id: str, message_id: str, *, user_id: str
@@ -662,7 +674,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             raise ValueError(
                 "create() writes only the head; append the messages with append_messages()"
             )
-        head = doc.model_dump(exclude={"id", "messages"}, exclude_none=True)
+        head = doc.model_dump(exclude={"id", "messages", "has_older"}, exclude_none=True)
         head[LOG_HEAD_FIELD] = 0
         key = {"user_id": doc.user_id, "conversation_id": doc.conversation_id}
         with store_errors("create"):  # pragma: no mutate — error label only
@@ -733,7 +745,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             return []
         heads = await self._read_heads({"$or": conditions})
         return [
-            self._with_messages(head, entries)
+            self._with_newest(head, entries)
             for head, entries in await self._entries_for(heads, _newest_window())
         ]
 
@@ -1113,6 +1125,14 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             )
         return ids
 
+    def _with_newest(
+        self, head: Head, entries: Sequence[ConversationEntry]
+    ) -> ConversationDocument:
+        """Return the head with the newest CONVERSATION_READ_LIMIT of entries, read one past it to tell."""
+        doc = self._with_messages(head, entries[-CONVERSATION_READ_LIMIT:])
+        doc.has_older = len(entries) > CONVERSATION_READ_LIMIT
+        return doc
+
     def _with_messages(
         self, head: Head, entries: Sequence[ConversationEntry]
     ) -> ConversationDocument:
@@ -1174,8 +1194,8 @@ def _backoff() -> float:
 
 
 def _newest_window() -> EntryWindow:
-    # Read at call time, so the limit stays one constant a test can lower.
-    return EntryWindow(limit=CONVERSATION_READ_LIMIT)
+    # Read at call time, so the limit stays one constant a test can lower; one past it tells has_older.
+    return EntryWindow(limit=CONVERSATION_READ_LIMIT + 1)
 
 
 def _refuse_other_content(

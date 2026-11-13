@@ -3939,6 +3939,11 @@
             "title": "Description",
             "type": "string"
           },
+          "has_older": {
+            "default": false,
+            "title": "Has Older",
+            "type": "boolean"
+          },
           "id": {
             "default": "",
             "title": "Id",
@@ -4471,6 +4476,28 @@
         "title": "ConversationMessageHit",
         "type": "object"
       },
+      "ConversationMessagesPage": {
+        "description": "The newest messages before a seq, oldest first; has_more when older ones remain.",
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationEntry"
+            },
+            "title": "Messages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "messages",
+          "has_more"
+        ],
+        "title": "ConversationMessagesPage",
+        "type": "object"
+      },
       "ConversationModel": {
         "description": "A chat conversation and its display/system metadata.",
         "properties": {
@@ -4762,6 +4789,11 @@
             "title": "Description",
             "type": "string"
           },
+          "has_older": {
+            "default": false,
+            "title": "Has Older",
+            "type": "boolean"
+          },
           "is_system_generated": {
             "anyOf": [
               {
@@ -4856,6 +4888,7 @@
           "createdAt",
           "updatedAt",
           "messages",
+          "has_older",
           "artifacts",
           "awaiting_approval",
           "todo_id",
@@ -28225,6 +28258,93 @@
       }
     },
     "/api/v1/conversations/{conversation_id}/messages": {
+      "get": {
+        "description": "Page a conversation's history back from before_seq: the newest limit messages before it.",
+        "operationId": "conversations_get_messages_before_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Return messages with a seq below this one",
+            "in": "query",
+            "name": "before_seq",
+            "required": true,
+            "schema": {
+              "description": "Return messages with a seq below this one",
+              "minimum": 1,
+              "title": "Before Seq",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Page size",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 600,
+              "description": "Page size",
+              "maximum": 600,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationMessagesPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Messages Before Endpoint",
+        "tags": [
+          "Conversations"
+        ]
+      },
       "post": {
         "description": "Accept a message into a conversation the step runs; its reply arrives on the events stream.",
         "operationId": "conversations_send_message_endpoint",

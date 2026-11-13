@@ -1080,7 +1080,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get Messages Before Endpoint
+         * @description Page a conversation's history back from before_seq: the newest limit messages before it.
+         */
+        get: operations["conversations_get_messages_before_endpoint"];
         /**
          * Update Messages Endpoint
          * @description Update the messages of a conversation.
@@ -7695,6 +7699,11 @@ export interface components {
              */
             description?: string;
             /**
+             * Has Older
+             * @default false
+             */
+            has_older?: boolean;
+            /**
              * Id
              * @default
              */
@@ -7832,6 +7841,16 @@ export interface components {
             message: components["schemas"]["ConversationEntry"];
         };
         /**
+         * ConversationMessagesPage
+         * @description The newest messages before a seq, oldest first; has_more when older ones remain.
+         */
+        ConversationMessagesPage: {
+            /** Has More */
+            has_more: boolean;
+            /** Messages */
+            messages: components["schemas"]["ConversationEntry"][];
+        };
+        /**
          * ConversationModel
          * @description A chat conversation and its display/system metadata.
          */
@@ -7940,6 +7959,11 @@ export interface components {
             createdAt: string | null;
             /** Description */
             description: string;
+            /**
+             * Has Older
+             * @default false
+             */
+            has_older: boolean;
             /** Is System Generated */
             is_system_generated: boolean | null;
             /** Is Unread */
@@ -17552,6 +17576,7 @@ export type ConversationEntry = components['schemas']['ConversationEntry'];
 export type ConversationEvent = components['schemas']['ConversationEvent'];
 export type ConversationListResponse = components['schemas']['ConversationListResponse'];
 export type ConversationMessageHit = components['schemas']['ConversationMessageHit'];
+export type ConversationMessagesPage = components['schemas']['ConversationMessagesPage'];
 export type ConversationModel = components['schemas']['ConversationModel'];
 export type ConversationSource = components['schemas']['ConversationSource'];
 export type ConversationStopResponse = components['schemas']['ConversationStopResponse'];
@@ -21078,6 +21103,60 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ConversationEvent"];
                     "text/event-stream": unknown;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    conversations_get_messages_before_endpoint: {
+        parameters: {
+            query: {
+                /** @description Return messages with a seq below this one */
+                before_seq: number;
+                /** @description Page size */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationMessagesPage"];
                 };
             };
             /** @description Unprocessable Entity */

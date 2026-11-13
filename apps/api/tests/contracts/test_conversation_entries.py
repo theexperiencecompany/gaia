@@ -883,3 +883,46 @@ async def test_the_reply_sweep_settles_a_reply_whose_process_died_before_its_flu
     settled = await repo.get_message(cid, "r1", user_id=uid)
     assert settled is not None
     assert (settled.in_progress, settled.error) == (None, "interrupted")
+
+
+async def test_a_read_says_whether_older_messages_exist_beyond_its_window(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(conversations_module, "CONVERSATION_READ_LIMIT", 3)
+    cid, uid = conversation.conversation_id, conversation.user_id
+    await repo.append(cid, user_id=uid, entries=[_message(f"m{n}") for n in range(1, 4)])
+
+    exactly = await repo.get(cid, user_id=uid)
+    assert exactly is not None
+    assert ([m.message_id for m in exactly.messages], exactly.has_older) == (
+        ["m1", "m2", "m3"],
+        False,
+    )
+
+    await repo.append(cid, user_id=uid, entries=[_message("m4")])
+    over = await repo.get(cid, user_id=uid)
+    (synced,) = await repo.find_updated_since(
+        uid, [ConversationSyncItem(conversation_id=cid, last_updated=None)]
+    )
+    assert over is not None
+    assert ([m.message_id for m in over.messages], over.has_older) == (["m2", "m3", "m4"], True)
+    assert synced.has_older is True
+
+
+async def test_messages_before_a_seq_page_back_to_the_first(
+    repo: ConversationRepository, conversation: ConversationDocument
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    await repo.append(cid, user_id=uid, entries=[_message(f"m{n}") for n in range(1, 6)])
+
+    page = await repo.read_messages_before(cid, user_id=uid, before_seq=5, limit=2)
+    last = await repo.read_messages_before(cid, user_id=uid, before_seq=3, limit=2)
+    exact = await repo.read_messages_before(cid, user_id=uid, before_seq=3, limit=3)
+
+    assert page is not None and last is not None and exact is not None
+    assert ([m.message_id for m in page.messages], page.has_more) == (["m3", "m4"], True)
+    assert ([m.message_id for m in last.messages], last.has_more) == (["m1", "m2"], False)
+    assert ([m.message_id for m in exact.messages], exact.has_more) == (["m1", "m2"], False)
+    assert await repo.read_messages_before("missing", user_id=uid, before_seq=3, limit=2) is None
