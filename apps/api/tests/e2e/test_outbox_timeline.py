@@ -49,7 +49,7 @@ from app.constants.websocket import ReportSettledOutcome
 from app.db.repositories.attention_settings import attention_settings_repository
 from app.db.repositories.outbox_items import outbox_items_repository
 from app.models.attention_settings_models import AttentionSettings
-from app.models.chat_models import ConversationSource
+from app.models.chat_models import ConversationSource, WorkRunOutcome
 from app.models.ownership_models import DeliveryPolicy, DeliveryTiming
 from app.models.platform_models import PlatformLinkResult
 from app.models.task_report_models import (
@@ -414,7 +414,7 @@ async def test_a_chat_app_that_skips_the_message_fails_the_item_and_logs_it(
 async def test_a_broker_that_comes_back_is_retried_and_the_message_goes_out_once(
     tl: OutboxTimeline,
 ) -> None:
-    tl.sinks.bot_result = OutboundResult.FAILED
+    tl.sinks.bot_result = OutboundResult.BROKER_UNAVAILABLE
     await tl.active_on(ConversationSource.TELEGRAM)
     await tl.submit(_reminder(owner=None))
     await tl.drain()
@@ -436,7 +436,7 @@ async def test_a_broker_that_comes_back_is_retried_and_the_message_goes_out_once
 async def test_a_broker_that_stays_down_gets_the_message_in_the_app_instead_of_failing_it(
     tl: OutboxTimeline,
 ) -> None:
-    tl.sinks.bot_result = OutboundResult.FAILED
+    tl.sinks.bot_result = OutboundResult.BROKER_UNAVAILABLE
     await tl.active_on(ConversationSource.TELEGRAM)
     await tl.submit(_reminder(owner=None))
     for minute in range(8):
@@ -447,6 +447,41 @@ async def test_a_broker_that_stays_down_gets_the_message_in_the_app_instead_of_f
     assert item.state is ItemState.SENT
     assert tl.sinks.ws == [("web-1", "Standup: said")]
     assert tl.world.saved == {"web-1": ["Standup: said"]}
+
+
+async def test_a_publish_that_may_have_reached_the_broker_is_never_resent_under_new_words(
+    tl: OutboxTimeline,
+) -> None:
+    tl.sinks.bot_result = OutboundResult.FAILED
+    await tl.active_on(ConversationSource.TELEGRAM)
+    await tl.submit(_reminder(owner=None))
+    for minute in range(8):
+        await tl.at(minute)
+        await tl.drain()
+
+    assert len(tl.sinks.bot) == 1
+    [item] = await tl.items()
+    assert item.state is ItemState.FAILED
+    assert item.failure is ItemFailure.TRANSPORT_FAILED
+
+
+async def test_a_message_a_down_broker_refused_is_told_again_within_minutes_whatever_its_subjects(
+    tl: OutboxTimeline,
+) -> None:
+    await _held_overnight(tl, "run-1", "run-2")
+    await tl.active_on(ConversationSource.TELEGRAM)
+    tl.sinks.bot_result = OutboundResult.BROKER_UNAVAILABLE
+    await tl.at(1400)
+    await tl.drain()
+    assert await _states(tl) == dict.fromkeys(("run-1", "run-2"), ItemState.QUEUED)
+
+    tl.sinks.bot_result = OutboundResult.PUBLISHED
+    await tl.at(1402)
+    await tl.drain()
+
+    assert await _states(tl) == dict.fromkeys(("run-1", "run-2"), ItemState.SENT)
+    assert len(tl.sinks.bot) == 2
+    assert tl.sinks.bot[-1][1] == ["Inbox check: said", "Inbox check: said"]
 
 
 async def test_a_photo_a_chat_app_refuses_does_not_undo_the_text_that_was_sent(
@@ -471,6 +506,10 @@ async def test_a_photo_a_chat_app_refuses_does_not_undo_the_text_that_was_sent(
     assert tl.world.saved == {"tg-dm": ["Browser task: said"]}
     assert [thread for thread, _, _ in tl.graph.writes] == ["tg-dm"]
     assert ("telegram", ["Step 1"]) in tl.sinks.bot
+    thread = str(tl.graph.threads["tg-dm"][-1].content)
+    assert "[File not delivered: 1.jpg]" in thread
+    assert "Step 1" in thread
+    assert "Attached file" not in thread
 
 
 async def test_two_flushers_on_one_queued_item_send_one_message(tl: OutboxTimeline) -> None:
@@ -717,6 +756,7 @@ async def test_a_file_a_chat_app_refuses_fails_the_item_loudly(tl: OutboxTimelin
 
     [item] = await tl.items()
     assert item.state is ItemState.FAILED
+    assert tl.graph.threads == {}
 
 
 async def _link_discord(tl: OutboxTimeline, first_contact: list[str] | None = None) -> None:
@@ -1657,6 +1697,26 @@ async def test_one_held_item_that_cannot_be_settled_does_not_keep_the_others_fro
     assert await _states(tl) == {"run-1": ItemState.SENT, "run-2": ItemState.SENT}
 
 
+async def test_a_held_item_that_can_never_be_settled_is_failed_loudly_after_the_attempts(
+    tl: OutboxTimeline,
+) -> None:
+    await _held_overnight(tl, "run-1")
+
+    async def never_readable(self: ScriptedJudge, report: OutboxReport) -> None:
+        raise RuntimeError("context read failed")
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(ScriptedJudge, "__call__", never_readable)
+        for attempt in range(OUTBOX_RECOVERY_MAX_ATTEMPTS + 2):
+            await tl.at(1400 + _RECOVERY_MINUTES * attempt)
+            await sweep_lost_flushes()
+            with suppress(Exception):
+                await tl.drain()
+
+    [item] = await tl.items()
+    assert (item.state, item.failure) == (ItemState.FAILED, ItemFailure.RECOVERY_EXHAUSTED)
+
+
 async def test_a_backlog_of_holds_is_flushed_in_bounded_runs(tl: OutboxTimeline) -> None:
     ids = tuple(f"run-{n}" for n in range(FLUSH_MAX_ITEMS_PER_RUN + 2))
     await _held_overnight(tl, *ids)
@@ -1753,23 +1813,40 @@ async def test_a_hold_the_creator_chose_days_ahead_is_not_a_lost_flush(
 
 
 async def _settled_after(
-    tl: OutboxTimeline, report: RunReport, *, chat_app: bool = False
-) -> list[tuple[str, str, ReportSettledOutcome]]:
-    settled: list[tuple[str, str, ReportSettledOutcome]] = []
+    tl: OutboxTimeline, *reports: RunReport, chat_app: bool = False
+) -> list[tuple[str, str, str, ReportSettledOutcome]]:
+    """Return (conversation, turn message, report, outcome) of each settle as the clients were told and as the turn's message recorded it."""
+    told: list[tuple[str, str, str, ReportSettledOutcome]] = []
+    recorded: list[tuple[str, str, str, ReportSettledOutcome]] = []
+
+    async def announce(
+        user_id: str,
+        conversation_id: str,
+        message_id: str,
+        report_id: str,
+        outcome: ReportSettledOutcome,
+    ) -> None:
+        told.append((conversation_id, message_id, report_id, outcome))
 
     async def record(
-        user_id: str, conversation_id: str, message_id: str, outcome: ReportSettledOutcome
-    ) -> None:
-        settled.append((conversation_id, message_id, outcome))
+        conversation_id: str, *, user_id: str, message_id: str, run: WorkRunOutcome
+    ) -> bool:
+        recorded.append((conversation_id, message_id, run.report_id, run.outcome))
+        return True
 
     if chat_app:
         await tl.active_on(ConversationSource.TELEGRAM)
     else:
         tl.world.linked.clear()
-    with patch("app.services.outbox.settled.publish_report_settled", record):
-        await tl.submit(report)
+    with (
+        patch("app.services.outbox.settled.publish_report_settled", announce),
+        patch("app.services.outbox.settled.conversation_repository.record_work_outcome", record),
+    ):
+        for report in reports:
+            await tl.submit(report)
         await tl.drain()
-    return settled
+    assert recorded == told
+    return told
 
 
 def _turn_run(outcome: OutcomeState) -> RunReport:
@@ -1783,7 +1860,7 @@ async def test_a_run_told_in_the_app_settles_the_chip_of_the_turn_that_started_i
 ) -> None:
     settled = await _settled_after(tl, _turn_run(OutcomeState.DONE))
 
-    assert settled == [("web-1", "bot-1", ReportSettledOutcome.DELIVERED_HERE)]
+    assert settled == [("web-1", "bot-1", "run-1", ReportSettledOutcome.DELIVERED_HERE)]
 
 
 async def test_a_run_told_on_a_chat_app_settles_the_chip_as_delivered_elsewhere(
@@ -1791,7 +1868,7 @@ async def test_a_run_told_on_a_chat_app_settles_the_chip_as_delivered_elsewhere(
 ) -> None:
     settled = await _settled_after(tl, _turn_run(OutcomeState.DONE), chat_app=True)
 
-    assert settled == [("web-1", "bot-1", ReportSettledOutcome.DELIVERED_ELSEWHERE)]
+    assert settled == [("web-1", "bot-1", "run-1", ReportSettledOutcome.DELIVERED_ELSEWHERE)]
 
 
 async def test_a_run_recorded_without_an_alert_still_settles_the_chip(
@@ -1802,7 +1879,23 @@ async def test_a_run_recorded_without_an_alert_still_settles_the_chip(
     )
     settled = await _settled_after(tl, unasked)
 
-    assert settled == [("web-1", "bot-1", ReportSettledOutcome.RECORDED)]
+    assert settled == [("web-1", "bot-1", "run-1", ReportSettledOutcome.RECORDED)]
+
+
+async def test_every_run_of_one_turn_settles_under_its_own_report(tl: OutboxTimeline) -> None:
+    other = _run(
+        "run-2",
+        OutcomeState.NOTHING_NEW,
+        subject_id="todo-2",
+        initiative=Initiative.SELF_INITIATED,
+    ).model_copy(update={"turn_message_id": "bot-1"})
+
+    settled = await _settled_after(tl, _turn_run(OutcomeState.DONE), other)
+
+    assert sorted(settled) == [
+        ("web-1", "bot-1", "run-1", ReportSettledOutcome.DELIVERED_HERE),
+        ("web-1", "bot-1", "run-2", ReportSettledOutcome.RECORDED),
+    ]
 
 
 async def test_a_run_no_turn_waits_on_settles_no_chip(tl: OutboxTimeline) -> None:

@@ -10630,6 +10630,20 @@
           "type": {
             "title": "Type",
             "type": "string"
+          },
+          "work_outcomes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/WorkRunOutcome"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Outcomes"
           }
         },
         "required": [
@@ -10940,6 +10954,20 @@
           "type": {
             "title": "Type",
             "type": "string"
+          },
+          "work_outcomes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/WorkRunOutcome"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Outcomes"
           }
         },
         "required": [
@@ -14759,6 +14787,17 @@
         ],
         "title": "ReplyToMessageData",
         "type": "object"
+      },
+      "ReportSettledOutcome": {
+        "description": "How a run's report ended, as the chip that waited on it learns it.",
+        "enum": [
+          "delivered_here",
+          "delivered_elsewhere",
+          "recorded",
+          "failed"
+        ],
+        "title": "ReportSettledOutcome",
+        "type": "string"
       },
       "ResetSessionRequest": {
         "description": "Request model for resetting a bot session (starting a new conversation).",
@@ -20652,6 +20691,24 @@
           "query"
         ],
         "title": "WebSearchResult",
+        "type": "object"
+      },
+      "WorkRunOutcome": {
+        "description": "How one run of the work an accepted turn started ended, as its status chip learns it.",
+        "properties": {
+          "outcome": {
+            "$ref": "#/components/schemas/ReportSettledOutcome"
+          },
+          "report_id": {
+            "title": "Report Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "report_id",
+          "outcome"
+        ],
+        "title": "WorkRunOutcome",
         "type": "object"
       },
       "WorkflowCreator": {

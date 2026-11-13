@@ -1,5 +1,9 @@
+import type {
+  ReportSettledOutcome,
+  WorkRunOutcome,
+} from "@shared/api/generated";
 import type { IMessage } from "@/lib/db/chatDb";
-import { ReportSettledOutcome } from "@/lib/websocket/outboxEvents";
+import { SettledOutcome } from "@/lib/websocket/outboxEvents";
 
 /** The backend message kind of a turn that handed work off and said nothing. */
 export const ACCEPTED_MESSAGE_KIND = "accepted";
@@ -32,26 +36,39 @@ function isFollowedByAnswer(
     );
 }
 
+const SETTLED_STATE_BY_OUTCOME: Record<
+  ReportSettledOutcome,
+  Exclude<WorkChipState, "working">
+> = {
+  [SettledOutcome.DeliveredHere]: "done",
+  [SettledOutcome.DeliveredElsewhere]: "done",
+  [SettledOutcome.Recorded]: "nothing_new",
+  [SettledOutcome.Failed]: "failed",
+};
+
+/** A turn that started several runs reads as the worst of them: a failure, else something done, else nothing new. */
+const SETTLED_STATE_PRECEDENCE = ["failed", "done", "nothing_new"] as const;
+
+function combinedSettledState(
+  runs: WorkRunOutcome[] | null | undefined,
+): Exclude<WorkChipState, "working"> | undefined {
+  const states = new Set(
+    (runs ?? []).map((run) => SETTLED_STATE_BY_OUTCOME[run.outcome]),
+  );
+  return SETTLED_STATE_PRECEDENCE.find((state) => states.has(state));
+}
+
 /**
- * Where the work an accepted turn started stands: the outcome the server
- * reported for that turn's own run, else whether an answer followed it.
+ * Where the work an accepted turn started stands: the outcomes the server
+ * recorded for that turn's own runs, else whether an answer followed it.
  */
 export function workChipState(
   messages: IMessage[],
   acceptedMessageId: string,
 ): WorkChipState {
   const accepted = messages.find((m) => m.id === acceptedMessageId);
-  switch (accepted?.workOutcome) {
-    case ReportSettledOutcome.DeliveredHere:
-    case ReportSettledOutcome.DeliveredElsewhere:
-      return "done";
-    case ReportSettledOutcome.Recorded:
-      return "nothing_new";
-    case ReportSettledOutcome.Failed:
-      return "failed";
-    default:
-      return isFollowedByAnswer(messages, acceptedMessageId)
-        ? "done"
-        : "working";
-  }
+  return (
+    combinedSettledState(accepted?.workOutcomes) ??
+    (isFollowedByAnswer(messages, acceptedMessageId) ? "done" : "working")
+  );
 }

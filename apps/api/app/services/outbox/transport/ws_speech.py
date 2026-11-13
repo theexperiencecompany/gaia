@@ -49,9 +49,13 @@ async def publish_conversation_message(
 
 
 async def publish_report_settled(
-    user_id: str, conversation_id: str, message_id: str, outcome: ReportSettledOutcome
+    user_id: str,
+    conversation_id: str,
+    message_id: str,
+    report_id: str,
+    outcome: ReportSettledOutcome,
 ) -> None:
-    """Tell the user's open clients how the run behind a status chip ended; one retry, then log and give up."""
+    """Tell the user's open clients how one run behind a status chip ended; one retry, then log and give up."""
     await _broadcast_with_retry(
         user_id,
         {
@@ -59,6 +63,7 @@ async def publish_report_settled(
             "kind": OutboxMessageKind.REPORT_SETTLED,
             "conversation_id": conversation_id,
             "message_id": message_id,
+            "report_id": report_id,
             "outcome": outcome,
         },
     )

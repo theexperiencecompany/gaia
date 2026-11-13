@@ -99,4 +99,23 @@ describe("ChatDexie IndexedDB availability latch", () => {
     expect(conversations.get).toHaveBeenCalledTimes(1);
     expect(conversations.orderBy).not.toHaveBeenCalled();
   });
+
+  it("keeps one outcome per run on an accepted turn's message", async () => {
+    messages.get.mockResolvedValue({ id: "turn-1", content: "" });
+    const db = await loadDb();
+
+    await db.addWorkOutcome("turn-1", { report_id: "r1", outcome: "failed" });
+    messages.get.mockResolvedValue(messages.put.mock.calls.at(-1)?.[0]);
+    await db.addWorkOutcome("turn-1", { report_id: "r2", outcome: "recorded" });
+    messages.get.mockResolvedValue(messages.put.mock.calls.at(-1)?.[0]);
+    const settled = await db.addWorkOutcome("turn-1", {
+      report_id: "r1",
+      outcome: "delivered_here",
+    });
+
+    expect(settled?.workOutcomes).toEqual([
+      { report_id: "r1", outcome: "delivered_here" },
+      { report_id: "r2", outcome: "recorded" },
+    ]);
+  });
 });

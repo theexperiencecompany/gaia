@@ -14,6 +14,7 @@ import uuid
 import pytest
 
 from app.constants import chat as chat_constants
+from app.constants.websocket import ReportSettledOutcome
 from app.db.mongodb import indexes
 from app.db.repositories import conversations as conversations_module
 from app.db.repositories.cache import CachePolicy
@@ -23,6 +24,7 @@ from app.models.chat_models import (
     MessageModel,
     SavedSubagentGroup,
     SystemPurpose,
+    WorkRunOutcome,
 )
 from app.models.conversation_models import ConversationDocument, ConversationSearchResults
 
@@ -157,6 +159,38 @@ class TestConversationFieldWrites:
         assert await repo.set_starred(_cid(), user_id=_uid(), starred=True) is False
 
 
+class TestWorkOutcomes:
+    async def test_each_run_of_a_turn_is_kept_on_its_message_once(self, repo):
+        doc = _doc()
+        await repo.create(doc)
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="bot", response="", message_id="turn-1")],
+        )
+        done = WorkRunOutcome(report_id="run:1", outcome=ReportSettledOutcome.DELIVERED_HERE)
+        failed = WorkRunOutcome(report_id="run:2.0", outcome=ReportSettledOutcome.FAILED)
+
+        for run in (done, failed, done):
+            assert await repo.record_work_outcome(
+                doc.conversation_id, user_id=doc.user_id, message_id="turn-1", run=run
+            )
+
+        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert stored is not None
+        assert stored.messages[0].work_outcomes == [done, failed]
+
+    async def test_a_turn_the_conversation_does_not_hold_is_reported_unsaved(self, repo):
+        doc = _doc()
+        await repo.create(doc)
+
+        run = WorkRunOutcome(report_id="run:1", outcome=ReportSettledOutcome.RECORDED)
+
+        assert not await repo.record_work_outcome(
+            doc.conversation_id, user_id=doc.user_id, message_id="missing", run=run
+        )
+
+
 class TestListSummaries:
     async def test_active_excludes_starred_and_bot_sources(self, repo):
         user = _uid()
@@ -211,6 +245,40 @@ class TestListSummaries:
             )
 
         assert await repo.latest_app_conversation_id(user) == docs["touched"].conversation_id
+
+    async def test_a_workflows_system_chat_is_never_the_latest_app_conversation(
+        self, repo, raw_collection
+    ):
+        user = _uid()
+        real = _doc(user_id=user, source=ConversationSource.WEB)
+        seeded = _doc(
+            user_id=user,
+            is_system_generated=True,
+            system_purpose=SystemPurpose.GETTING_STARTED,
+        )
+        workflow = _doc(
+            user_id=user,
+            source=ConversationSource.WORKFLOW_SYSTEM,
+            is_system_generated=True,
+            system_purpose=SystemPurpose.WORKFLOW_EXECUTION,
+        )
+        for doc in (real, seeded, workflow):
+            await repo.create(doc)
+        base = datetime.now(UTC)
+        for doc, touched in (
+            (real, base - timedelta(days=1)),
+            (seeded, base - timedelta(days=2)),
+            (workflow, base + timedelta(days=1)),
+        ):
+            await raw_collection.update_one(
+                {"conversation_id": doc.conversation_id}, {"$set": {"updatedAt": touched}}
+            )
+
+        assert await repo.latest_app_conversation_id(user) == real.conversation_id
+
+        await raw_collection.delete_one({"conversation_id": real.conversation_id})
+
+        assert await repo.latest_app_conversation_id(user) == seeded.conversation_id
 
     async def test_a_user_with_only_starred_app_chats_still_has_a_latest_one(self, repo):
         user = _uid()

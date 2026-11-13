@@ -45,7 +45,7 @@ class TestPublishOutboundMessage:
         assert ok is od.OutboundResult.SKIPPED
         linked.assert_not_awaited()  # short-circuits before the link lookup
 
-    async def test_broker_unavailable_is_failed(self) -> None:
+    async def test_broker_unavailable_is_reported_as_nothing_published(self) -> None:
         with (
             patch.object(
                 PlatformLinkService,
@@ -61,7 +61,7 @@ class TestPublishOutboundMessage:
             ),
         ):
             ok = await od.publish_outbound_message(ConversationSource.WHATSAPP, "user-1", ["hi"])
-        assert ok is od.OutboundResult.FAILED
+        assert ok is od.OutboundResult.BROKER_UNAVAILABLE
 
     async def test_publishes_one_ordered_envelope_for_multiple_parts(self) -> None:
         publisher = AsyncMock()
@@ -793,7 +793,7 @@ class TestALostOutboundMessageIsAlerted:
         ):
             ok = await publish()
 
-        assert ok in (od.OutboundResult.FAILED, False)
+        assert ok in (od.OutboundResult.BROKER_UNAVAILABLE, False)
         # Only the type travels to Slack: the message can carry the broker URL.
         assert _alert(report) == _enqueue_alert(
             reason="broker_unavailable", error_message="RuntimeError", is_channel=is_channel

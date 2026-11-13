@@ -97,7 +97,7 @@ async def flush_due(user_id: str) -> int:
     )
     more_due = len(due) > FLUSH_MAX_ITEMS_PER_RUN
     due = await _settle_dormant_holds(user_id, due)
-    stranded = await outbox_items_repository.list_recovering_queued(user_id)
+    stranded = await outbox_items_repository.list_stranded_queued(user_id)
     if not due and not stranded and not more_due:
         log.info(f"{LogTag.NOTIFICATION} Outbox flush found nothing due", user_id=user_id)
         return 0
@@ -119,6 +119,14 @@ async def flush_due(user_id: str) -> int:
                 error_type=type(error).__name__,
             )
             failures.append(error)
+            counted = await outbox_items_repository.count_failed_settle(
+                item.user_id,
+                item.report_id,
+                now,
+                now - timedelta(seconds=OUTBOX_RECOVERY_AFTER_SECONDS),
+            )
+            if counted is not None and counted.recovery_attempts > OUTBOX_RECOVERY_MAX_ATTEMPTS:
+                await _fail_exhausted(counted)
             continue
         if state is ItemState.QUEUED:
             released.append(item.report_id)
@@ -151,19 +159,25 @@ async def release_on_call_end(user_id: str) -> None:
     )
 
 
+async def _fail_exhausted(item: OutboxItemDocument) -> None:
+    """Fail an unsent item that used up its attempts, loudly; nothing when it was settled meanwhile."""
+    if await outbox_items_repository.fail_exhausted(item.user_id, item.report_id) is None:
+        return
+    OUTBOX_ITEMS_FAILED.labels(reason=ItemFailure.RECOVERY_EXHAUSTED.value).inc()
+    await announce_settled(item.report, ReportSettledOutcome.FAILED)
+    log.error(
+        f"{LogTag.NOTIFICATION} Outbox item never left the queue; gave up on it",
+        user_id=item.user_id,
+        report_id=item.report_id,
+        item_state=item.state.value,
+        recovery_attempts=item.recovery_attempts,
+    )
+
+
 async def _recover(item: OutboxItemDocument) -> None:
     """Drive one stranded unsent item again, or fail it when it has used up its attempts."""
     if item.recovery_attempts > OUTBOX_RECOVERY_MAX_ATTEMPTS:
-        if await outbox_items_repository.fail_exhausted(item.user_id, item.report_id) is not None:
-            OUTBOX_ITEMS_FAILED.labels(reason=ItemFailure.RECOVERY_EXHAUSTED.value).inc()
-            await announce_settled(item.report, ReportSettledOutcome.FAILED)
-            log.error(
-                f"{LogTag.NOTIFICATION} Outbox item never left the queue; gave up on it",
-                user_id=item.user_id,
-                report_id=item.report_id,
-                item_state=item.state.value,
-                recovery_attempts=item.recovery_attempts,
-            )
+        await _fail_exhausted(item)
         return
     OUTBOX_ITEMS_RECOVERED.labels(state=item.state.value).inc()
     log.error(

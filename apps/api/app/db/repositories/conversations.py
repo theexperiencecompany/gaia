@@ -41,6 +41,7 @@ from app.models.chat_models import (
     SavedSubagentGroup,
     SystemPurpose,
     ToolDataEntry,
+    WorkRunOutcome,
 )
 from app.models.conversation_models import (
     ConversationDocument,
@@ -60,6 +61,14 @@ from app.models.conversation_models import (
 )
 
 _BOT_SOURCE_VALUES: list[str] = [s.value for s in BOT_CONVERSATION_SOURCES]
+_AUTOMATION_PURPOSE_VALUES: list[str] = [
+    purpose.value
+    for purpose in (
+        SystemPurpose.WORKFLOW_EXECUTION,
+        SystemPurpose.EMAIL_PROCESSING,
+        SystemPurpose.REMINDER_PROCESSING,
+    )
+]
 _SUMMARY_PROJECTION: dict[str, object] = {
     "_id": 0,
     "conversation_id": 1,
@@ -120,12 +129,17 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def latest_app_conversation_id(self, user_id: str) -> str | None:
         """Return the app conversation the user touched last, starred or not; None when they have none.
 
-        A bot chat or a todo's chat is not an app conversation, and a background run is only one
-        while it holds a live approval.
+        A bot chat or a todo's chat is not an app conversation, nor is the chat an automation runs
+        in, and a background run is only one while it holds a live approval.
         """
         latest = await self._aggregate(
             [
-                {"$match": self._app_filter(user_id)},
+                {
+                    "$match": {
+                        **self._app_filter(user_id),
+                        "system_purpose": {"$nin": _AUTOMATION_PURPOSE_VALUES},
+                    }
+                },
                 {"$sort": {"updatedAt": -1, "createdAt": -1}},
                 {"$limit": 1},
                 {"$project": _SUMMARY_PROJECTION},
@@ -568,6 +582,22 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id, "messages.message_id": message_id},
             {"$push": {"messages.$.tool_data": {"$each": entries}}},
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+        )
+        return matched > 0
+
+    async def record_work_outcome(
+        self, conversation_id: str, *, user_id: str, message_id: str, run: WorkRunOutcome
+    ) -> bool:
+        """Record how one run an accepted turn started ended, on that turn's message; False when the conversation holds no such message.
+
+        Idempotent per run outcome; does not advance updatedAt.
+        """
+        matched = await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id, "messages.message_id": message_id},
+            {"$addToSet": {"messages.$.work_outcomes": run.model_dump(mode="json")}},
             scope=user_id,
             doc_id=conversation_id,
             extra_filter={"user_id": user_id},

@@ -8,6 +8,7 @@ from typing_extensions import TypedDict
 # app.constants.outbound can derive the outbound queue set without the model
 # stack. Re-exported here because this is the import site consumers use.
 from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource, SourceCategory
+from app.constants.websocket import ReportSettledOutcome
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -143,6 +144,13 @@ class MessageKind(StrEnum):
     )
 
 
+class WorkRunOutcome(BaseModel):
+    """How one run of the work an accepted turn started ended, as its status chip learns it."""
+
+    report_id: str
+    outcome: ReportSettledOutcome
+
+
 class MessageModel(BaseModel):
     """A single chat message with its content, attachments and tool data."""
 
@@ -190,6 +198,9 @@ class MessageModel(BaseModel):
     # Set on the user's linking message stored at account linking: no chat turn
     # ran for it, so no chat:message_submitted counts it. None everywhere else.
     first_contact: bool | None = None
+    # Set on an accepted turn: one entry per run it started that has ended, so the chip
+    # settles on every device and after a reload. None on every other message.
+    work_outcomes: list[WorkRunOutcome] | None = None
 
 
 class SystemPurpose(str, Enum):

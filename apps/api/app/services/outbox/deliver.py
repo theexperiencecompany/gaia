@@ -17,6 +17,7 @@ from app.constants.outbox import (
     DEFAULT_LOCALE,
     OUTBOX_MESSAGE_RETENTION_SECONDS,
     OUTBOX_TRANSPORT_MAX_RETRIES,
+    OUTBOX_TRANSPORT_RETRY_DELAY_SECONDS,
     OUTBOX_USER_LOCK_ACQUIRE_TIMEOUT_SECONDS,
     OUTBOX_USER_LOCK_LEASE_SECONDS,
     OUTBOX_USER_LOCK_MAX_HOLD_SECONDS,
@@ -36,6 +37,7 @@ from app.services.conversation_service import update_messages
 from app.services.outbox import compose as compose_module
 from app.services.outbox.approvals import approval_id_of_report, is_approval_open
 from app.services.outbox.compose import Composed
+from app.services.outbox.flush_queue import schedule_flush
 from app.services.outbox.judge_models import PRIVATE_SENSITIVITIES
 from app.services.outbox.metrics import (
     OUTBOX_ATTACHMENTS_FAILED,
@@ -88,7 +90,7 @@ TEXT_PART_COUNT = 1
 
 
 class OutboxBrokerUnavailableError(RuntimeError):
-    """The chat apps' broker took none of a message: it went back to the queue, and the job retries."""
+    """The chat apps' broker took none of a message: it goes back to the queue and is flushed again."""
 
 
 def locale_of(user: AuthenticatedUser) -> str:
@@ -111,12 +113,19 @@ def _max_class(items: list[OutboxItemDocument]) -> UrgencyClass:
     )
 
 
+def _preview_is_safe(item: OutboxItemDocument) -> bool:
+    """Whether the Judge read the item and found it fit for a lock screen: an unjudged item is not."""
+    judgement = item.judgement
+    return (
+        judgement is not None
+        and judgement.verdict is not None
+        and judgement.sensitivity not in PRIVATE_SENSITIVITIES
+    )
+
+
 def _push_body(included: list[OutboxItemDocument], composed: Composed, locale: str) -> str:
-    """Return the text a push may show on a lock screen: the first bubble, unless an item is too private to preview."""
-    if any(
-        item.judgement is not None and item.judgement.sensitivity in PRIVATE_SENSITIVITIES
-        for item in included
-    ):
+    """Return the text a push may show on a lock screen: the first bubble, only when every item was judged fit to preview."""
+    if not all(_preview_is_safe(item) for item in included):
         return prerendered_text(PrerenderedKind.GENERIC_PREVIEW, locale)
     return composed.parts[0] if composed.parts else ""
 
@@ -194,16 +203,24 @@ class _SentAs:
     push_body: str
 
 
-def _attachment_note(attachment: OutboundAttachment) -> str:
-    """Name a file handed to a chat app, with where it is kept when it is an artifact."""
+@dataclass(frozen=True, slots=True)
+class _ChatAppDelivery:
+    """What a chat app's queue took of a message: why none of it landed, and what the thread is to hold of it."""
+
+    failure: ItemFailure | None
+    thread_notes: list[str]
+
+
+def _file_note(label: str, attachment: OutboundAttachment) -> str:
+    """Name a file in the thread, with where it is kept when it is an artifact."""
     kept = f" (artifact {attachment.path})" if attachment.path is not None else ""
-    return f"[Attached file: {attachment.filename}{kept}]"
+    return f"[{label}: {attachment.filename}{kept}]"
 
 
 async def _degrade_attachment(
     target: ChatChannel, user_id: str, attachment: OutboundAttachment
-) -> bool:
-    """Say an attachment the chat app's queue refused as its caption; False when it has none or that fails too."""
+) -> str | None:
+    """Say an attachment the chat app's queue refused as its caption; return the caption told, None when it has none or that fails too."""
     OUTBOX_ATTACHMENTS_FAILED.inc()
     log.error(
         f"{LogTag.NOTIFICATION} Outbox attachment not delivered",
@@ -212,23 +229,24 @@ async def _degrade_attachment(
         has_caption=attachment.caption is not None,
     )
     if attachment.caption is None:
-        return False
+        return None
     told = await publish_outbound_message(
         target.source,
         user_id,
         [attachment.caption],
         destination_override=target.platform_user_id,
     )
-    return told is OutboundResult.PUBLISHED
+    return attachment.caption if told is OutboundResult.PUBLISHED else None
 
 
 async def _deliver_to_chat_app(
     target: ChatChannel, user_id: str, composed: Composed, attempt_id: str
-) -> ItemFailure | None:
-    """Hand the message to the chat app's queue; return why none of it landed, or None when something did.
+) -> _ChatAppDelivery:
+    """Hand the message to the chat app's queue; return why none of it landed (None when something did) and the file notes for the thread.
 
     A refused attachment degrades to its caption and never undoes the text before it.
-    Raises OutboxBrokerUnavailableError when the broker took none of the text.
+    Raises OutboxBrokerUnavailableError when the broker took none of the text; a publish that failed
+    midway may still have been taken, so it is not resent and fails the item.
     """
     if composed.parts:
         result = await publish_outbound_message(
@@ -239,19 +257,28 @@ async def _deliver_to_chat_app(
             ttl_seconds=composed.ttl_seconds,
             outbox_message_id=attempt_id,
         )
-        if result is OutboundResult.FAILED:
+        if result is OutboundResult.BROKER_UNAVAILABLE:
             raise OutboxBrokerUnavailableError(user_id)
+        if result is OutboundResult.FAILED:
+            return _ChatAppDelivery(ItemFailure.TRANSPORT_FAILED, [])
         if result is OutboundResult.SKIPPED:
-            return ItemFailure.TRANSPORT_SKIPPED
+            return _ChatAppDelivery(ItemFailure.TRANSPORT_SKIPPED, [])
     delivered = bool(composed.parts)
+    notes: list[str] = []
     for part_index, attachment in enumerate(composed.attachments, start=TEXT_PART_COUNT):
         if await _publish_attachment(
             target, user_id, attachment, attempt_id=attempt_id, part_index=part_index
-        ) or await _degrade_attachment(target, user_id, attachment):
+        ):
             delivered = True
-    if delivered or not composed.attachments:
-        return None
-    return ItemFailure.TRANSPORT_FAILED
+            notes.append(_file_note("Attached file", attachment))
+            continue
+        notes.append(_file_note("File not delivered", attachment))
+        caption = await _degrade_attachment(target, user_id, attachment)
+        if caption is not None:
+            delivered = True
+            notes.append(caption)
+    failed = not delivered and bool(composed.attachments)
+    return _ChatAppDelivery(ItemFailure.TRANSPORT_FAILED if failed else None, notes)
 
 
 async def _alert_in_app(
@@ -287,9 +314,16 @@ async def _alert_in_app(
 
 
 async def _hand_back_for_retry(user_id: str, attempt_id: str) -> None:
-    """Return a message the broker took none of to the queue, so the retried job composes and sends it again."""
+    """Return a message the broker took none of to the queue and flush it again shortly, whatever job sent it.
+
+    The flush finds the items by their refusal count, so a message that joined several subjects is
+    composed and sent again whole.
+    """
     await outbox_items_repository.release_sending(user_id, attempt_id)
     await outbox_messages_repository.finish_send(user_id, attempt_id, MessageState.FAILED)
+    await schedule_flush(
+        user_id, clock.now() + timedelta(seconds=OUTBOX_TRANSPORT_RETRY_DELAY_SECONDS)
+    )
     OUTBOX_TRANSPORT_RETRIES.inc()
     log.warning(
         f"{LogTag.NOTIFICATION} Chat apps' broker refused the message; handed back for a retry",
@@ -336,12 +370,14 @@ async def _send(
 
     target = destination.target
     failure: ItemFailure | None = None
+    notes: list[str] = []
     if isinstance(target, ChatChannel):
         try:
-            failure = await _deliver_to_chat_app(target, user_id, composed, attempt_id)
+            delivery = await _deliver_to_chat_app(target, user_id, composed, attempt_id)
         except OutboxBrokerUnavailableError:
             await _hand_back_for_retry(user_id, attempt_id)
-            raise
+            return
+        failure, notes = delivery.failure, delivery.thread_notes
     # A chat app's own chat is recorded only when that chat app got the message.
     recorded_in = (
         destination.recorded_in
@@ -386,13 +422,8 @@ async def _send(
     else:
         await _settle_sent(user_id, attempt_id, message, included)
 
-    # A chat app's thread holds only what that chat app received. A file it holds back until
-    # the user writes is noted, so the thread can answer "send it".
-    notes = (
-        [_attachment_note(attachment) for attachment in composed.attachments]
-        if isinstance(target, ChatChannel)
-        else []
-    )
+    # A chat app's thread holds only what that chat app received; a file it did not take is noted as
+    # not delivered, so the thread can answer "send it".
     thread_parts = [*composed.parts, *notes]
     if thread_parts:
         thread_text = "\n\n".join(thread_parts)

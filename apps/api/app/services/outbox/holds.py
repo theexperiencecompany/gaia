@@ -162,6 +162,11 @@ def _bounded(until: datetime, latest: datetime | None) -> datetime:
     return until if latest is None else min(until, latest)
 
 
+def _dnd_active(state: AttentionState) -> bool:
+    dnd_until = state.settings.dnd_until
+    return dnd_until is not None and dnd_until > state.now
+
+
 def _hold_cap(state: AttentionState) -> datetime:
     """Return the instant no hold on this item outlives, counted from when it was first held."""
     started = state.prior_hold.since if state.prior_hold is not None else state.now
@@ -169,8 +174,9 @@ def _hold_cap(state: AttentionState) -> datetime:
 
 
 def _hold_or_tell(state: AttentionState, until: datetime, reason: HoldReason) -> Hold | Tell:
-    """Hold until the instant, never past the hold-age cap; when it has already come, the item has waited long enough."""
-    until = min(until, _hold_cap(state))
+    """Hold until the instant, never past the hold-age cap unless the user's do-not-disturb runs longer; when it has already come, the item has waited long enough."""
+    if reason is not HoldReason.DND:
+        until = min(until, _hold_cap(state))
     return Hold(until, reason) if until > state.now else Tell()
 
 
@@ -332,7 +338,11 @@ def place(
             return Record(DropReason.EXPIRED)
         return Hold(until, HoldReason.DORMANT)
     prior = state.prior_hold
-    if prior is not None and state.now - prior.since >= _seconds(MAX_HOLD_AGE_SECONDS):
+    if (
+        prior is not None
+        and state.now - prior.since >= _seconds(MAX_HOLD_AGE_SECONDS)
+        and not _dnd_active(state)
+    ):
         return Tell()
     urgency = escalated(urgency, state)
     not_before = report.delivery_policy.not_before

@@ -23,7 +23,7 @@ class TestPublishReportSettled:
 
         with patch.object(ws_speech, "websocket_manager", manager):
             await ws_speech.publish_report_settled(
-                USER_ID, CONVERSATION_ID, "bot-1", ReportSettledOutcome.RECORDED
+                USER_ID, CONVERSATION_ID, "bot-1", "run-1", ReportSettledOutcome.RECORDED
             )
 
         manager.broadcast_to_user.assert_awaited_once_with(
@@ -33,6 +33,7 @@ class TestPublishReportSettled:
                 "kind": "report_settled",
                 "conversation_id": CONVERSATION_ID,
                 "message_id": "bot-1",
+                "report_id": "run-1",
                 "outcome": "recorded",
             },
         )

@@ -13,6 +13,7 @@ import {
 import { isUnlistedConversation } from "@/features/chat/utils/unlistedConversation";
 import type { RequestOrigin } from "@/lib/api/typed";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
+import { mergeWorkOutcomes } from "@/lib/db/workOutcomes";
 import { useChatStore } from "@/stores/chatStore";
 import {
   hasAnyLiveTurn,
@@ -35,6 +36,19 @@ const withPreservedToolData = (remote: IMessage, local: IMessage): IMessage => {
   }
   return remote;
 };
+
+// A work outcome this device learned from the live event may be newer than the fetched copy:
+// outcomes only accumulate, so the two lists are unioned rather than one replacing the other.
+const withMergedWorkOutcomes = (remote: IMessage, local: IMessage): IMessage =>
+  local.workOutcomes?.length
+    ? {
+        ...remote,
+        workOutcomes: mergeWorkOutcomes(
+          local.workOutcomes,
+          remote.workOutcomes,
+        ),
+      }
+    : remote;
 
 const mergeMessageLists = (
   localMessages: IMessage[],
@@ -63,11 +77,17 @@ const mergeMessageLists = (
       }
       // Not streaming? Clean up stale "sending" message by overwriting from remote,
       // but keep locally-retained tool cards the backend copy may still be missing.
-      messageMap.set(msg.id, withPreservedToolData(msg, existing));
+      messageMap.set(
+        msg.id,
+        withMergedWorkOutcomes(withPreservedToolData(msg, existing), existing),
+      );
     } else {
       // Always prefer the remote version here: local timestamps can drift ahead of the server's
       // via optimistic updates (e.g. abort). The only exception is 'sending', handled above.
-      messageMap.set(msg.id, withPreservedToolData(msg, existing));
+      messageMap.set(
+        msg.id,
+        withMergedWorkOutcomes(withPreservedToolData(msg, existing), existing),
+      );
     }
   });
 
@@ -121,6 +141,7 @@ const mapApiMessagesToStored = (
       kind: message.kind ?? null,
       reacts_to_message_id: message.reacts_to_message_id ?? null,
       stopped: message.stopped ?? null,
+      workOutcomes: message.work_outcomes ?? null,
     } satisfies IMessage;
   });
 

@@ -28,6 +28,7 @@ const BASE_BUBBLE_DEFAULTS = {
   kind: undefined,
   reacts_to_message_id: undefined,
   stopped: undefined,
+  work_outcomes: undefined,
   reactions: undefined,
   disableActions: true,
 } as const;

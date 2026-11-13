@@ -1,10 +1,10 @@
-import type { TodoRunWake } from "@shared/api/generated";
+import type { TodoRunWake, WorkRunOutcome } from "@shared/api/generated";
 import Dexie, { type IndexableType, type Table } from "dexie";
 import { EventEmitter } from "events";
 import type { MessageReaction } from "@/config/registries/baseMessageRegistry";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import type { SystemPurpose } from "@/features/chat/api/chatApi";
-import type { ReportSettledOutcome } from "@/lib/websocket/outboxEvents";
+import { mergeWorkOutcomes } from "@/lib/db/workOutcomes";
 import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import type {
@@ -85,8 +85,8 @@ export interface IMessage {
 
   // Backend message kind ("text" | "emoji_ack").
   kind?: string | null;
-  // How the run behind an accepted turn's status chip ended; unset until it settles.
-  workOutcome?: ReportSettledOutcome | null;
+  // How each run an accepted turn started ended, as the server recorded it on the message.
+  workOutcomes?: WorkRunOutcome[] | null;
   // GAIA id of the message an emoji_ack reacts to.
   reacts_to_message_id?: string | null;
   // The user stopped this turn with Stop (server's stopped).
@@ -409,6 +409,32 @@ class ChatDexie extends Dexie {
     if (updatedMessage) {
       dbEventEmitter.emitMessageUpserted(updatedMessage);
     }
+  }
+
+  /** Add one run's outcome to an accepted turn's message, replacing that run's earlier entry.
+   *  Returns the updated record, or `undefined` when no record with that id exists. */
+  public async addWorkOutcome(
+    messageId: string,
+    run: WorkRunOutcome,
+  ): Promise<IMessage | undefined> {
+    let updatedMessage: IMessage | undefined;
+    await this.run(undefined, () =>
+      messageQueue.enqueue(async () => {
+        const message = await this.messages.get(messageId);
+        if (message) {
+          updatedMessage = {
+            ...message,
+            workOutcomes: mergeWorkOutcomes(message.workOutcomes, [run]),
+            updatedAt: new Date(),
+          };
+          await this.messages.put(updatedMessage);
+        }
+      }),
+    );
+    if (updatedMessage) {
+      dbEventEmitter.emitMessageUpserted(updatedMessage);
+    }
+    return updatedMessage;
   }
 
   /** Merge `updates` into an existing message. Returns the updated record,

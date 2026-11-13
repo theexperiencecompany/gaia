@@ -1,7 +1,7 @@
+import type { WorkRunOutcome } from "@shared/api/generated";
 import { describe, expect, it } from "vitest";
-
 import type { IMessage } from "@/lib/db/chatDb";
-import { ReportSettledOutcome } from "@/lib/websocket/outboxEvents";
+import { SettledOutcome } from "@/lib/websocket/outboxEvents";
 import { ACCEPTED_MESSAGE_KIND, workChipState } from "./workChip";
 
 const message = (id: string, over: Partial<IMessage> = {}): IMessage => ({
@@ -13,6 +13,11 @@ const message = (id: string, over: Partial<IMessage> = {}): IMessage => ({
   createdAt: new Date(0),
   updatedAt: new Date(0),
   ...over,
+});
+
+const run = (report_id: string, outcome: WorkRunOutcome["outcome"]) => ({
+  report_id,
+  outcome,
 });
 
 describe("workChipState", () => {
@@ -55,23 +60,50 @@ describe("workChipState", () => {
 
   it("follows the outcome of its own run, not another run's answer", () => {
     const answeredElsewhere = [
-      { ...accepted, workOutcome: ReportSettledOutcome.Failed },
+      { ...accepted, workOutcomes: [run("r1", SettledOutcome.Failed)] },
       message("r", { content: "Another run's answer." }),
     ];
     expect(workChipState(answeredElsewhere, "a")).toBe("failed");
   });
 
   it.each([
-    [ReportSettledOutcome.DeliveredHere, "done"],
-    [ReportSettledOutcome.DeliveredElsewhere, "done"],
-    [ReportSettledOutcome.Recorded, "nothing_new"],
-    [ReportSettledOutcome.Failed, "failed"],
+    [SettledOutcome.DeliveredHere, "done"],
+    [SettledOutcome.DeliveredElsewhere, "done"],
+    [SettledOutcome.Recorded, "nothing_new"],
+    [SettledOutcome.Failed, "failed"],
   ] as const)(
     "settles on %s with no text in the conversation",
     (outcome, state) => {
-      expect(workChipState([{ ...accepted, workOutcome: outcome }], "a")).toBe(
-        state,
-      );
+      expect(
+        workChipState(
+          [{ ...accepted, workOutcomes: [run("r1", outcome)] }],
+          "a",
+        ),
+      ).toBe(state);
     },
   );
+
+  it("reads as the worst of the runs a turn started", () => {
+    const outcomesOf = (...runs: WorkRunOutcome[]) =>
+      workChipState([{ ...accepted, workOutcomes: runs }], "a");
+
+    expect(
+      outcomesOf(
+        run("r1", SettledOutcome.DeliveredHere),
+        run("r2", SettledOutcome.Failed),
+      ),
+    ).toBe("failed");
+    expect(
+      outcomesOf(
+        run("r1", SettledOutcome.Recorded),
+        run("r2", SettledOutcome.DeliveredElsewhere),
+      ),
+    ).toBe("done");
+    expect(
+      outcomesOf(
+        run("r1", SettledOutcome.Recorded),
+        run("r2", SettledOutcome.Recorded),
+      ),
+    ).toBe("nothing_new");
+  });
 });

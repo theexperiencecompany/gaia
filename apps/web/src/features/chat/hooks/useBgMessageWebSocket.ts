@@ -1,4 +1,4 @@
-import type { TodoRunWake } from "@shared/api/generated";
+import type { ReportSettledOutcome, TodoRunWake } from "@shared/api/generated";
 import { useCallback, useEffect } from "react";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import {
@@ -11,7 +11,6 @@ import { streamLog } from "@/lib/streamLogger";
 import {
   OUTBOX_MESSAGE_EVENT,
   OutboxMessageKind,
-  type ReportSettledOutcome,
 } from "@/lib/websocket/outboxEvents";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { useChatStore } from "@/stores/chatStore";
@@ -46,19 +45,21 @@ interface BgMessageEvent {
   };
 }
 
-/** WebSocket payload for how the run behind an accepted turn's status chip ended. */
+/** WebSocket payload for how one run behind an accepted turn's status chip ended. */
 interface ReportSettledEvent {
   type: typeof OUTBOX_MESSAGE_EVENT;
   kind: typeof OutboxMessageKind.ReportSettled;
   conversation_id: string;
   message_id: string;
+  report_id: string;
   outcome: ReportSettledOutcome;
 }
 
-/** Record the run's outcome on the accepted turn, so its chip settles (and stays settled on reload). */
+/** Record the run's outcome on the accepted turn, so its chip settles (the server keeps the same record for other devices and reloads). */
 async function settleWorkChip(event: ReportSettledEvent): Promise<void> {
-  const updated = await db.updateMessage(event.message_id, {
-    workOutcome: event.outcome,
+  const updated = await db.addWorkOutcome(event.message_id, {
+    report_id: event.report_id,
+    outcome: event.outcome,
   });
   if (!updated) {
     console.error(

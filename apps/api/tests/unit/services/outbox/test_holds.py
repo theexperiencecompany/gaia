@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from zlib import crc32
 
 import pytest
 
@@ -318,12 +319,22 @@ def test_a_security_notice_raised_to_an_interrupt_crosses_do_not_disturb() -> No
     assert place(notice(), UrgencyClass.INTERRUPT, security, dnd) == Tell()
 
 
-def test_a_long_do_not_disturb_never_holds_an_item_past_the_hold_age_cap() -> None:
-    week = _state(DAY, settings=AttentionSettings(dnd_until=DAY + timedelta(days=7)))
+def test_a_long_do_not_disturb_holds_an_item_to_its_end_past_the_hold_age_cap() -> None:
+    ends = DAY + timedelta(days=3)
+    dnd = AttentionSettings(dnd_until=ends)
+    held_since = DAY - timedelta(seconds=MAX_HOLD_AGE_SECONDS + 60)
+    old = ItemHold(reason=HoldReason.DND, until=ends, since=held_since, deferrals=0)
 
-    placed = place(notice(), ROUTINE, verdict(), week)
-
-    assert placed == Hold(DAY + timedelta(seconds=MAX_HOLD_AGE_SECONDS), HoldReason.DND)
+    assert place(notice(), ROUTINE, verdict(), _state(settings=dnd)) == Hold(
+        ends + timedelta(seconds=crc32(USER.encode()) % FLUSH_JITTER_MAX_SECONDS), HoldReason.DND
+    )
+    assert place(notice(), UrgencyClass.INTERRUPT, verdict(), _state(settings=dnd)) == Hold(
+        ends, HoldReason.DND
+    )
+    aged = place(notice(), ROUTINE, verdict(), _state(settings=dnd, prior_hold=old))
+    assert isinstance(aged, Hold)
+    assert aged.reason is HoldReason.DND
+    assert aged.until >= ends
 
 
 def _in_call(now: datetime = DAY, **overrides: Any) -> AttentionState:

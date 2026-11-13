@@ -10881,6 +10881,8 @@ export interface components {
             toolCategory?: string | null;
             /** Type */
             type: string;
+            /** Work Outcomes */
+            work_outcomes?: components["schemas"]["WorkRunOutcome"][] | null;
         };
         /**
          * MessageModel
@@ -10947,6 +10949,8 @@ export interface components {
             toolCategory?: string | null;
             /** Type */
             type: string;
+            /** Work Outcomes */
+            work_outcomes?: components["schemas"]["WorkRunOutcome"][] | null;
         };
         /**
          * MessageRequest
@@ -12783,6 +12787,12 @@ export interface components {
              */
             role: "user" | "assistant";
         };
+        /**
+         * ReportSettledOutcome
+         * @description How a run's report ended, as the chip that waited on it learns it.
+         * @enum {string}
+         */
+        ReportSettledOutcome: "delivered_here" | "delivered_elsewhere" | "recorded" | "failed";
         /**
          * ResetSessionRequest
          * @description Request model for resetting a bot session (starting a new conversation).
@@ -16108,6 +16118,15 @@ export interface components {
              */
             user_id: string;
         };
+        /**
+         * WorkRunOutcome
+         * @description How one run of the work an accepted turn started ended, as its status chip learns it.
+         */
+        WorkRunOutcome: {
+            outcome: components["schemas"]["ReportSettledOutcome"];
+            /** Report Id */
+            report_id: string;
+        };
         /** WritingStyleEditRequest */
         WritingStyleEditRequest: {
             /** Edited Summary */
@@ -16537,6 +16556,7 @@ export type RegistrationPolicyRequest = components['schemas']['RegistrationPolic
 export type RegistrationPolicyResponse = components['schemas']['RegistrationPolicyResponse'];
 export type ReminderResponse = components['schemas']['ReminderResponse'];
 export type ReplyToMessageData = components['schemas']['ReplyToMessageData'];
+export type ReportSettledOutcome = components['schemas']['ReportSettledOutcome'];
 export type ResetSessionRequest = components['schemas']['ResetSessionRequest'];
 export type ResetSessionResponse = components['schemas']['ResetSessionResponse'];
 export type ResetWorkflowResponse = components['schemas']['ResetWorkflowResponse'];
@@ -16699,6 +16719,7 @@ export type WorkflowStepInput = components['schemas']['WorkflowStepInput'];
 export type WorkflowStepOutput = components['schemas']['WorkflowStepOutput'];
 export type WorkflowTriggerResponse = components['schemas']['WorkflowTriggerResponse'];
 export type WorkflowWithIntegrations = components['schemas']['WorkflowWithIntegrations'];
+export type WorkRunOutcome = components['schemas']['WorkRunOutcome'];
 export type WritingStyleEditRequest = components['schemas']['WritingStyleEditRequest'];
 export type WritingStyleExampleBlocks = components['schemas']['WritingStyleExampleBlocks'];
 export type WritingStyleRegenerateRequest = components['schemas']['WritingStyleRegenerateRequest'];

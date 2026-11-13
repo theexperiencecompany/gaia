@@ -22,6 +22,7 @@ OUTBOX_TASK_MAX_TRIES: Final = 5
 OUTBOX_TASK_RETRY_DELAY_SECONDS: Final = 15
 #: A message the chat apps' queue refused this many times is told in the app instead.
 OUTBOX_TRANSPORT_MAX_RETRIES: Final = 3
+OUTBOX_TRANSPORT_RETRY_DELAY_SECONDS: Final = 30
 
 #: The per-user lock that spares a second flusher a compose the first is already doing.
 #: Only an optimisation: the compare-and-set on the items keeps a message single.

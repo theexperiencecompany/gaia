@@ -261,13 +261,13 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
             limit=limit,
         )
 
-    async def list_recovering_queued(self, user_id: str) -> list[OutboxItemDocument]:
-        """Return the user's queued items the recovery sweep found stranded, oldest first."""
+    async def list_stranded_queued(self, user_id: str) -> list[OutboxItemDocument]:
+        """Return the user's queued items that went back to the queue unsent: found stranded by the sweep, or refused by the chat apps' broker. Oldest first."""
         return await self._find(
             {
                 "user_id": user_id,
                 "state": ItemState.QUEUED.value,
-                "recovery_attempts": {"$gt": 0},
+                "$or": [{"recovery_attempts": {"$gt": 0}}, {"transport_retries": {"$gt": 0}}],
             },
             sort=[("created_at", 1)],
         )
@@ -318,12 +318,37 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
                 claimed.append(self._to_model(raw))
         return claimed
 
+    async def count_failed_settle(
+        self, user_id: str, report_id: str, now: datetime, stale_before: datetime
+    ) -> OutboxItemDocument | None:
+        """Count one failed attempt to settle a held item, once per staleness window as the sweep counts a stranded one.
+
+        None when the item is no longer held or was already counted within the window.
+        """
+        return await self._apply_raw_update(
+            {"user_id": user_id, "report_id": report_id},
+            {"$inc": {"recovery_attempts": 1}, "$set": {"recovered_at": now}},
+            scope=user_id,
+            extra_filter={
+                "state": ItemState.HELD.value,
+                "$or": [
+                    {"recovered_at": {"$exists": False}},
+                    {"recovered_at": {"$lt": stale_before}},
+                ],
+            },
+        )
+
     async def fail_exhausted(self, user_id: str, report_id: str) -> OutboxItemDocument | None:
-        """Fail an unsent item the recovery sweep gave up on; None when it was told or settled meanwhile."""
+        """Fail an unsent item that was given up on; None when it was told or settled meanwhile."""
         return await self._transition(
             user_id,
             {"report_id": report_id},
-            from_states=[ItemState.RECEIVED, ItemState.QUEUED, ItemState.COMPOSING],
+            from_states=[
+                ItemState.RECEIVED,
+                ItemState.HELD,
+                ItemState.QUEUED,
+                ItemState.COMPOSING,
+            ],
             changes={
                 "state": ItemState.FAILED.value,
                 "failure": ItemFailure.RECOVERY_EXHAUSTED.value,

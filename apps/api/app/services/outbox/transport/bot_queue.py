@@ -31,14 +31,15 @@ class OutboundResult(StrEnum):
     """Outcome of an outbound publish.
 
     Distinguishes a genuine *skip* (unsupported platform, unlinked account,
-    nothing to send) from a real *failure* (broker unavailable, publish error)
-    so callers can record the correct delivery status — a broker outage must
-    not be recorded as "skipped".
+    nothing to send) from a real failure so callers can record the correct
+    delivery status. BROKER_UNAVAILABLE means nothing was published; FAILED
+    means a publish raised, which can follow the broker accepting the message.
     """
 
     PUBLISHED = "published"
     SKIPPED = "skipped"
     FAILED = "failed"
+    BROKER_UNAVAILABLE = "broker_unavailable"
 
 
 def _envelope_fields(envelope: OutboundMessageEnvelope, user_id: str) -> dict[str, str]:
@@ -107,7 +108,7 @@ async def _prepare(
     destination_override sends to an explicit platform-native id (a group's
     channel) instead of resolving the user's DM — for a proactive message back
     into the group it came from. Returns (queue_name, destination_id, publisher)
-    on success, or an OutboundResult (SKIPPED/FAILED) otherwise.
+    on success, or an OutboundResult (SKIPPED/BROKER_UNAVAILABLE) otherwise.
     """
     queue_name = OUTBOUND_QUEUES.get(platform)
     if queue_name is None:
@@ -142,7 +143,7 @@ async def _prepare(
             destination_id=str(destination_id),
             is_channel=is_channel,
         )
-        return OutboundResult.FAILED
+        return OutboundResult.BROKER_UNAVAILABLE
 
     return queue_name, str(destination_id), publisher
 

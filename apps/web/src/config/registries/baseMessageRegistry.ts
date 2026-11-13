@@ -4,7 +4,7 @@
  * Extends the tools message schema to produce the full message shape.
  */
 
-import type { TodoRunWake } from "@shared/api/generated";
+import type { TodoRunWake, WorkRunOutcome } from "@shared/api/generated";
 import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import type { ImageData, MemoryData } from "@/types/features/toolDataTypes";
@@ -62,6 +62,8 @@ export const BASE_MESSAGE_SCHEMA = {
   kind: undefined as string | undefined,
   // GAIA id of the message an emoji_ack reacts to (server's reacts_to_message_id).
   reacts_to_message_id: undefined as string | null | undefined,
+  // How each run an accepted turn started ended: settles its status chip.
+  work_outcomes: undefined as WorkRunOutcome[] | null | undefined,
   // The user stopped this turn with Stop: a quiet "Stopped" line renders under it.
   stopped: undefined as boolean | null | undefined,
   // Reactions folded onto this message for render (built client-side by
