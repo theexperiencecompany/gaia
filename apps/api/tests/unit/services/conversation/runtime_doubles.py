@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Protocol
 
@@ -180,7 +180,10 @@ class InMemoryConversationLog:
     def _append(self, conversation: _Conversation, entry: Entry) -> Appended:
         first = conversation.first_results.get(entry.id)
         if first is not None:
-            return replace(first, duplicate=True)
+            state = conversation.state
+            return Appended(
+                logged=first.logged, previous=state, state=state, effects=(), duplicate=True
+            )
         logged = LoggedEntry(seq=conversation.state.head + 1, at=self._clock(), entry=entry)
         result = reduce(conversation.state, logged)
         if isinstance(result, Rejected):

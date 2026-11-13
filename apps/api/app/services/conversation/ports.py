@@ -55,7 +55,7 @@ class ConversationLog(Protocol):
     """One conversation's ordered record, its folded state, and the step's claim on it."""
 
     async def append(self, conversation_id: str, user_id: str, entry: Entry) -> Appended:
-        """Store entry at the next seq; the same id again returns the first result as a duplicate."""
+        """Store entry at the next seq; the same id again returns the stored entry as a duplicate, with the current state and no effects."""
         ...
 
     async def append_fenced(self, claim: StepClaim, entry: Entry) -> Appended:

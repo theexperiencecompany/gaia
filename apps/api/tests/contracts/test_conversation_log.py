@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any
+from unittest.mock import patch
 import uuid
 
 from hypothesis import HealthCheck, given, settings, strategies as st
@@ -254,6 +255,29 @@ async def test_the_same_id_appended_by_two_tasks_at_once_is_stored_once(
     assert sorted(result.duplicate for result in results) == [False, True, True, True]
     assert {result.logged for result in results} == {results[0].logged}
     assert await entries_collection.count_documents({"conversation_id": conversation}) == 1
+
+
+async def test_a_duplicate_append_reads_its_one_stored_entry_not_the_log(
+    conversation: str, raw_collection: Any
+) -> None:
+    repository = ConversationLogRepository()
+    log = MongoConversationLog(repository, FakeClock())
+    for number in range(40):
+        await log.append(conversation, UID, user(f"u{number}"))
+    read_log = repository.read_log
+    read: list[int] = []
+
+    async def counted(*args: Any, **kwargs: Any) -> list[LoggedEntry] | None:
+        entries = await read_log(*args, **kwargs)
+        read.append(len(entries or []))
+        return entries
+
+    with patch.object(repository, "read_log", side_effect=counted):
+        again = await log.append(conversation, UID, user("u3"))
+    state = await log.state(conversation, UID)
+    assert (again.duplicate, again.logged.seq, again.logged.entry.id) == (True, 4, "u3")
+    assert (again.previous, again.state, again.effects) == (state, state, ())
+    assert read == [1]
 
 
 @pytest.mark.parametrize("flushed", [False, True])
