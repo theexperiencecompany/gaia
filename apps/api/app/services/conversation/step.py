@@ -216,11 +216,18 @@ async def _recover(ports: RuntimePorts, claim: StepClaim) -> None:
         await ports.frames.publish(
             conversation_id, EntryFrame(seq=logged.seq, at=logged.at, entry=logged.entry)
         )
-    if state.open_reply is not None:
+    reply_id = state.open_reply
+    if reply_id is None and _started_work_unseen(state):
+        # Committed work is never redone silently: the dead attempt gets a failed reply too.
+        attempt_id = f"{claim.epoch}.0"
+        reply_id = f"r{attempt_id}"
+        opened = Reply(id=f"{attempt_id}:reply", reply_id=reply_id, attempt_id=attempt_id)
+        await _append(ports, claim, opened)
+    if reply_id is not None:
         # Its inputs stay unsettled, so the next run answers them with this failure in its context.
         recovered = ReplySettled(
-            id=f"{state.open_reply}:recovered:{claim.epoch}",
-            reply_id=state.open_reply,
+            id=f"{reply_id}:recovered:{claim.epoch}",
+            reply_id=reply_id,
             outcome=ReplyOutcome.FAILED,
             answers=(),
             through=state.settled_through,
@@ -230,6 +237,13 @@ async def _recover(ports: RuntimePorts, claim: StepClaim) -> None:
         await _append(ports, claim, recovered)
     elif state.comms is not CommsPhase.IDLE:
         await _set_comms(ports, claim, CommsPhase.IDLE)
+
+
+def _started_work_unseen(state: ConversationState) -> bool:
+    """Return whether a dead attempt dispatched work for inputs no reply has answered yet."""
+    return state.comms is not CommsPhase.IDLE and any(
+        item.cause_through > state.settled_through for item in state.work
+    )
 
 
 async def _serve(ports: RuntimePorts, claim: StepClaim, attempt_id: str) -> bool:
@@ -411,6 +425,9 @@ async def _watch(ports: RuntimePorts, attempt: _Attempt, run: CommsRun) -> _Endi
     try:
         while True:
             signal = await _next_signal(pump, ports.tick)
+            if isinstance(signal, ModelOutput | Summarized):
+                # Already checkpointed when its event arrives: this event can never be restarted.
+                _commit_quietly(attempt)
             decision = await _decide(ports, attempt)
             if decision is not Verdict.CONTINUE:
                 return decision

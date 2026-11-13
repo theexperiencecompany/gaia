@@ -266,6 +266,36 @@ class StepScenarios:
         assert (await settles(rt))[0].through == 3
         await assert_quiet(rt)
 
+    async def test_a_message_arriving_with_a_tool_only_output_joins_instead_of_restarting(
+        self, rt: Runtime
+    ) -> None:
+        # The tool call is already checkpointed when its event arrives: a restart would leave it unanswered.
+        rt.runner.script(
+            [Do(arrive(rt, user("u2"))), ModelOutput(True), Finished(Replied("both"))],
+            [Finished(Replied("restarted"))],
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        assert rt.runner.calls == [Started(batch=(1,), context=()), Absorbed((2,))]
+        assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u1", "u2"))]
+        await assert_quiet(rt)
+
+    async def test_a_dead_attempt_that_started_work_unseen_is_not_redone_silently(
+        self, rt: Runtime
+    ) -> None:
+        async def die() -> None:
+            await rt.lapse()
+
+        work = WorkStarted(id="w", task_id="t1", cause_through=1, answers=("u1",))
+        rt.runner.script(
+            [Do(arrive(rt, work)), ModelOutput(True), Pause((die,))],
+            [Finished(Replied("sorry, I was restarted; the work is running"))],
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        await run(rt)
+        assert [s.failure for s in await settles(rt)] == [FailureReason.SERVER_RESTART, None]
+
     async def test_a_message_after_the_restart_window_does_not_restart(self, rt: Runtime) -> None:
         async def late() -> None:
             rt.clock.advance(21)
