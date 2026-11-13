@@ -73,6 +73,14 @@ export const inputVariants = tv({
   defaultVariants: { size: "md", variant: "default", placeholder: "default" },
 });
 
+/** A Table root's surface: card is v2's default wrapper (16px padded zinc-900 card), plain v2's removeWrapper; gaia.css. */
+export const tableVariants = tv({
+  variants: {
+    surface: { card: "gaia-table-card", plain: "gaia-table-plain" },
+  },
+  defaultVariants: { surface: "card" },
+});
+
 /** surface raised: v2's quieter divider on a raised (zinc-800) surface, zinc-700 at 50%; gaia-separator-raised in gaia.css. */
 export const separatorVariants = tv({
   variants: { surface: { default: "", raised: "gaia-separator-raised" } },

@@ -3,6 +3,7 @@
 import { Chip, ListBox, Select } from "@heroui/react";
 import type { HilMode } from "@shared/chat";
 import { useRouter } from "next/navigation";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
@@ -56,7 +57,7 @@ export function HilApprovalMode() {
         description={MODES.find((m) => m.key === mode)?.description}
       >
         <Select
-          className="w-48"
+          className={inputVariants({ size: "sm", className: "w-48" })}
           aria-label="Approval mode"
           value={mode}
           isDisabled={isLoading || isSavingMode}
