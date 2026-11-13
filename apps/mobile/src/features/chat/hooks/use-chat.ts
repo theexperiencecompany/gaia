@@ -90,47 +90,41 @@ export function useChat(
   }, []);
 
   const onNavigate = options?.onNavigate;
-  const openNewConversation = useCallback(
-    (newConversationId: string) => {
-      // A new conversation has no log yet: nothing to fetch before its first message lands.
-      queryClient.setQueryData(chatKeys.page(newConversationId), 0);
-      useChatStore.getState().setActiveChatId(newConversationId);
-      onNavigate?.(newConversationId);
-    },
-    [onNavigate],
-  );
-  const send = useCallback(
-    (text: string, opts?: SendMessageOptions) => {
-      const attachments = opts?.attachments ?? [];
-      const sentTo = sendMessage(
-        conversationId,
-        {
-          text,
-          reply_to_message: opts?.replyToMessage ?? null,
-          selected_tool: opts?.selectedTool ?? null,
-          tool_category: opts?.toolCategory ?? null,
-          selected_workflow: opts?.selectedWorkflow ?? null,
-        },
-        attachments.flatMap((attachment) =>
-          attachment.fileId
-            ? [
-                {
-                  fileId: attachment.fileId,
-                  fileName: attachment.name,
-                  contentType: attachment.mimeType,
-                  fileSize: attachment.size,
-                  url: attachment.fileUrl,
-                },
-              ]
-            : [],
-        ),
-        openNewConversation,
-      );
-      if (sentTo === conversationId) return;
-      openNewConversation(sentTo);
-    },
-    [conversationId, openNewConversation, queryClient],
-  );
+  const openNewConversation = (newConversationId: string) => {
+    // A new conversation has no log yet: nothing to fetch before its first message lands.
+    queryClient.setQueryData(chatKeys.page(newConversationId), 0);
+    useChatStore.getState().setActiveChatId(newConversationId);
+    onNavigate?.(newConversationId);
+  };
+  const send = (text: string, opts?: SendMessageOptions) => {
+    const attachments = opts?.attachments ?? [];
+    const sentTo = sendMessage(
+      conversationId,
+      {
+        text,
+        reply_to_message: opts?.replyToMessage ?? null,
+        selected_tool: opts?.selectedTool ?? null,
+        tool_category: opts?.toolCategory ?? null,
+        selected_workflow: opts?.selectedWorkflow ?? null,
+      },
+      attachments.flatMap((attachment) =>
+        attachment.fileId
+          ? [
+              {
+                fileId: attachment.fileId,
+                fileName: attachment.name,
+                contentType: attachment.mimeType,
+                fileSize: attachment.size,
+                url: attachment.fileUrl,
+              },
+            ]
+          : [],
+      ),
+      openNewConversation,
+    );
+    if (sentTo === conversationId) return;
+    openNewConversation(sentTo);
+  };
 
   const retry = useCallback(
     (messageId: string) => {

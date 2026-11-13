@@ -338,24 +338,22 @@ export function ChatScreenContent({
     });
   }, []);
 
-  const handleLongPressMessage = useCallback(
-    (config: MessageLongPress) => {
-      const resolved: MessageActionConfig = {
-        ...config,
-        conversationId: activeChatId || "",
-      };
-      setActionConfig(resolved);
-      actionSheetRef.current?.open();
-    },
-    [activeChatId],
-  );
+  const handleLongPressMessage = (config: MessageLongPress) => {
+    const resolved: MessageActionConfig = {
+      ...config,
+      conversationId: activeChatId || "",
+    };
+    setActionConfig(resolved);
+    actionSheetRef.current?.open();
+  };
 
-  const handleActionPin = useCallback(
-    async (messageId: string, conversationId: string, pinned: boolean) => {
-      if (await pinMessage(conversationId, messageId, pinned)) await refetch();
-    },
-    [refetch],
-  );
+  const handleActionPin = async (
+    messageId: string,
+    conversationId: string,
+    pinned: boolean,
+  ) => {
+    if (await pinMessage(conversationId, messageId, pinned)) await refetch();
+  };
 
   const handleActionReply = useCallback(
     (messageId: string, _conversationId: string) => {

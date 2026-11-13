@@ -135,12 +135,12 @@ export const MessageActionSheet = forwardRef<
     setIsOpen(false);
   }, [config, onReply]);
 
-  const handlePin = useCallback(() => {
+  const handlePin = () => {
     if (!config) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onPin(config.messageId, config.conversationId, !config.isPinned);
     setIsOpen(false);
-  }, [config, onPin]);
+  };
 
   const handleReaction = useCallback(
     (reaction: ReactionType) => {

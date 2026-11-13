@@ -10,7 +10,7 @@ import {
 } from "@gaia/shared/utils";
 import * as Haptics from "expo-haptics";
 import { PressableFeedback } from "heroui-native";
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import { Text, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { MessageBubble } from "@/components/ui/message-bubble";
@@ -81,7 +81,7 @@ function useMessageLongPress(
   onLongPress?: (config: MessageLongPress) => void,
   onReply?: (message: Message) => void,
 ) {
-  return useCallback(() => {
+  return () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (onLongPress) {
       onLongPress({
@@ -93,7 +93,7 @@ function useMessageLongPress(
     } else {
       onReply?.(message);
     }
-  }, [onLongPress, onReply, message]);
+  };
 }
 
 interface MessagePart {
