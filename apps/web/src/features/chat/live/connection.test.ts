@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
+
+import { ApiError } from "@shared/api";
 import type { Entry, LoggedEntry } from "@shared/conversation";
 import { reply, replySettled, userMessage } from "@shared/conversation/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useChatStore } from "@/stores/chatStore";
 
 /**
  * A fake events endpoint: each subscription is a stream the test feeds frames to
@@ -23,7 +26,11 @@ const { server, saved, sendResult, retitled } = vi.hoisted(() => ({
   },
   saved: new Map<string, unknown>(),
   retitled: [] as { id: string; fields: unknown }[],
-  sendResult: { fail: null as Error | null, calls: [] as unknown[] },
+  sendResult: {
+    fail: null as Error | null,
+    refusals: [] as Error[],
+    calls: [] as unknown[],
+  },
 }));
 
 vi.mock("@/features/chat/api/chatApi", () => {
@@ -58,6 +65,8 @@ vi.mock("@/features/chat/api/chatApi", () => {
         body: { message_id: string },
       ) => {
         sendResult.calls.push({ conversationId, body });
+        const refusal = sendResult.refusals.shift();
+        if (refusal) throw refusal;
         if (sendResult.fail) throw sendResult.fail;
         return {
           conversation_id: conversationId,
@@ -76,6 +85,7 @@ vi.mock("@/lib/db/chatDb", () => ({
       saved.set(log.conversationId, structuredClone(log));
     },
     putConversation: async () => "",
+    deleteConversationAndMessages: async () => undefined,
     getAllConversations: async () => [],
     updateConversationFields: async (id: string, fields: unknown) => {
       retitled.push({ id, fields });
@@ -128,6 +138,7 @@ beforeEach(() => {
   server.notFound.clear();
   saved.clear();
   sendResult.fail = null;
+  sendResult.refusals = [];
   sendResult.calls = [];
   retitled.length = 0;
   useLiveConversationStore.setState({ conversations: {} });
@@ -347,6 +358,45 @@ describe("sending", () => {
     }[];
     expect(call.conversationId).toMatch(/^[0-9a-f-]{36}$/);
     expect(call.body.text).toBe("hello");
+  });
+
+  it("starts the conversation over under a fresh id when its minted id is taken", async () => {
+    sendResult.refusals = [
+      ApiError.fromBody(409, {
+        message: "That conversation id is taken.",
+        code: "conversation_id_taken",
+      }),
+    ];
+    await sendMessage("hello", { conversationId: null });
+    const calls = sendResult.calls as {
+      conversationId: string;
+      body: { text: string };
+    }[];
+    expect(calls).toHaveLength(2);
+    expect(calls[1].conversationId).not.toBe(calls[0].conversationId);
+    expect(calls[1].body.text).toBe("hello");
+    expect(liveConversation(calls[0].conversationId).sends).toEqual({});
+    expect(useChatStore.getState().activeConversationId).toBe(
+      calls[1].conversationId,
+    );
+  });
+
+  it("marks the send failed when the fresh id is taken too", async () => {
+    const taken = () =>
+      ApiError.fromBody(409, {
+        message: "That conversation id is taken.",
+        code: "conversation_id_taken",
+      });
+    sendResult.refusals = [taken(), taken()];
+    await expect(
+      sendMessage("hello", { conversationId: null }),
+    ).rejects.toThrow();
+    const calls = sendResult.calls as { conversationId: string }[];
+    expect(calls).toHaveLength(2);
+    const [{ id }] = liveConversation(calls[1].conversationId).view.pending;
+    expect(liveConversation(calls[1].conversationId).sends[id].failed).toBe(
+      true,
+    );
   });
 });
 

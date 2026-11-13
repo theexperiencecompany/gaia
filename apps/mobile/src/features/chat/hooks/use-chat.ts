@@ -116,6 +116,18 @@ export function useChat(
   }, []);
 
   const onNavigate = options?.onNavigate;
+  const openNewConversation = useCallback(
+    (newConversationId: string) => {
+      // A new conversation has no saved history: nothing to fetch before its first message lands.
+      queryClient.setQueryData(
+        chatKeys.messages(newConversationId),
+        EMPTY_MESSAGES,
+      );
+      useChatStore.getState().setActiveChatId(newConversationId);
+      onNavigate?.(newConversationId);
+    },
+    [onNavigate],
+  );
   const send = useCallback(
     (text: string, opts?: SendMessageOptions) => {
       const attachments = opts?.attachments ?? [];
@@ -141,14 +153,12 @@ export function useChat(
               ]
             : [],
         ),
+        openNewConversation,
       );
       if (sentTo === conversationId) return;
-      // A new conversation has no saved history: nothing to fetch before its first message lands.
-      queryClient.setQueryData(chatKeys.messages(sentTo), EMPTY_MESSAGES);
-      useChatStore.getState().setActiveChatId(sentTo);
-      onNavigate?.(sentTo);
+      openNewConversation(sentTo);
     },
-    [conversationId, onNavigate, queryClient],
+    [conversationId, openNewConversation, queryClient],
   );
 
   const retry = useCallback(

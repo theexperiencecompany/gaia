@@ -2,6 +2,7 @@ import type {
   ReplyToMessageData,
   SelectedCalendarEventData,
 } from "@shared/api/generated";
+import { isConversationIdTaken } from "@shared/conversation";
 import { v4 as uuidv4 } from "uuid";
 
 import { setUserProperties } from "@/lib/analytics";
@@ -73,6 +74,22 @@ async function startConversation(): Promise<string> {
   return conversationId;
 }
 
+/** Drop a conversation whose first message was refused, so the next attempt starts under a fresh id. */
+async function abandonConversation(conversationId: string): Promise<void> {
+  useLiveConversationStore.getState().discard(conversationId);
+  useChatStore.getState().removeConversation(conversationId);
+  await db.deleteConversationAndMessages(conversationId);
+}
+
+async function queueAndDeliver(
+  conversationId: string,
+  send: LocalSend,
+): Promise<void> {
+  useLiveConversationStore.getState().queueSend(conversationId, send);
+  persistConversation(conversationId, { immediately: true });
+  await deliverSend(conversationId, send.body.message_id);
+}
+
 /** Send a user message: its bubble shows at once, and the reply arrives on the conversation's events. */
 export async function sendMessage(
   content: string,
@@ -89,12 +106,10 @@ export async function sendMessage(
   if (!text && fileData.length === 0 && !hasSelection) return;
 
   trackFirstMessageMilestone();
-  const conversationId =
-    targetConversationId(overrides) ?? (await startConversation());
-  const messageId = uuidv4();
-  const send: LocalSend = {
+  const existingId = targetConversationId(overrides);
+  const buildSend = (): LocalSend => ({
     body: {
-      message_id: messageId,
+      message_id: uuidv4(),
       text,
       reply_to: replyToMessage?.id ?? null,
       reply_to_message: replyToMessage,
@@ -107,8 +122,18 @@ export async function sendMessage(
     },
     fileData,
     failed: false,
-  };
-  useLiveConversationStore.getState().queueSend(conversationId, send);
-  persistConversation(conversationId, { immediately: true });
-  await deliverSend(conversationId, messageId);
+  });
+
+  if (existingId) {
+    await queueAndDeliver(existingId, buildSend());
+    return;
+  }
+  const conversationId = await startConversation();
+  try {
+    await queueAndDeliver(conversationId, buildSend());
+  } catch (error) {
+    if (!isConversationIdTaken(error)) throw error;
+    await abandonConversation(conversationId);
+    await queueAndDeliver(await startConversation(), buildSend());
+  }
 }

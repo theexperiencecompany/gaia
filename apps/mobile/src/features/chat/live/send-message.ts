@@ -1,5 +1,8 @@
 import type { SendMessageRequest } from "@gaia/shared/api/generated";
-import { messageToRetry } from "@gaia/shared/conversation";
+import {
+  isConversationIdTaken,
+  messageToRetry,
+} from "@gaia/shared/conversation";
 import { randomUUID } from "expo-crypto";
 import { queryClient } from "@/lib/query-provider";
 import { usePaywallStore } from "@/stores/paywall-store";
@@ -40,17 +43,27 @@ function startConversation(): string {
   return conversationId;
 }
 
-/**
- * Send a user message into a conversation, or a new one when it is null: its bubble
- * shows at once and the reply arrives on the conversation's events. Returns the
- * conversation it went into.
- */
-export function sendMessage(
-  conversationId: string | null,
+/** Drop a conversation whose first message was refused, from the live store and the sidebar. */
+function abandonConversation(conversationId: string): void {
+  useLiveConversationStore.getState().discard(conversationId);
+  queryClient.setQueryData(
+    chatKeys.conversations(),
+    (previous: Conversation[] | undefined) =>
+      previous?.filter((conversation) => conversation.id !== conversationId),
+  );
+}
+
+/** A new conversation's first send, which starts over once under a fresh id when its minted id is taken. */
+interface Restart {
+  onRestart: ((conversationId: string) => void) | undefined;
+}
+
+function queueAndDeliver(
+  target: string,
   message: OutgoingMessage,
-  files: ApiFileData[] = [],
-): string {
-  const target = conversationId ?? startConversation();
+  files: ApiFileData[],
+  restart: Restart | null,
+): void {
   const messageId = randomUUID();
   const send: MobileSend = {
     body: {
@@ -68,8 +81,36 @@ export function sendMessage(
   usePaywallStore.getState().clearBlock();
   useLiveConversationStore.getState().queueSend(target, send);
   deliverSend(target, messageId).catch((error: unknown) => {
+    if (restart && isConversationIdTaken(error)) {
+      abandonConversation(target);
+      const fresh = startConversation();
+      queueAndDeliver(fresh, message, files, null);
+      restart.onRestart?.(fresh);
+      return;
+    }
     console.error("[sendMessage] send failed:", error);
   });
+}
+
+/**
+ * Send a user message into a conversation, or a new one when it is null: its bubble
+ * shows at once and the reply arrives on the conversation's events. Returns the
+ * conversation it went into; when a new conversation's minted id turns out to be taken,
+ * the send starts over under a fresh id and onRestart is told which.
+ */
+export function sendMessage(
+  conversationId: string | null,
+  message: OutgoingMessage,
+  files: ApiFileData[] = [],
+  onRestart?: (conversationId: string) => void,
+): string {
+  const target = conversationId ?? startConversation();
+  queueAndDeliver(
+    target,
+    message,
+    files,
+    conversationId === null ? { onRestart } : null,
+  );
   return target;
 }
 

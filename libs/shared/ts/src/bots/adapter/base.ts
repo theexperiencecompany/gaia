@@ -743,7 +743,7 @@ export abstract class BaseBotAdapter {
           },
           accepted.conversation_id,
           accepted.seq,
-          surface,
+          this.reportingReactions(surface, request.platformUserId),
         );
       },
     );
@@ -777,7 +777,7 @@ export abstract class BaseBotAdapter {
               },
               target.conversation_id,
               target.after_seq,
-              surface,
+              this.reportingReactions(surface, target.platform_user_id),
             );
             resumed += 1;
           } catch (error) {
@@ -789,6 +789,28 @@ export abstract class BaseBotAdapter {
         wideLog.set({ active: active.length, resumed });
       },
     );
+  }
+
+  /** The surface with each reaction the platform accepted captured as bot:reaction_delivered. */
+  private reportingReactions(
+    surface: ConversationSurface,
+    platformUserId: string,
+  ): ConversationSurface {
+    return {
+      ...surface,
+      react: async (platformMessageId, emoji, replaces) => {
+        const outcome = await surface.react(platformMessageId, emoji, replaces);
+        if (outcome === REACTION_OUTCOME.ATTACHED) {
+          const analytics = await this.analyticsFor(platformUserId);
+          analytics.client.capture(
+            analytics.distinctId,
+            "bot:reaction_delivered",
+            { success: true, surface: "live", delivery: "native" },
+          );
+        }
+        return outcome;
+      },
+    };
   }
 
   /** One follower per conversation a message was posted into, reading its events through gaia. */

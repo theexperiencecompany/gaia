@@ -15,6 +15,7 @@ export {
   oldestSeq,
   withNewestPage,
 } from "./history";
+export { CONVERSATION_ID_TAKEN, isConversationIdTaken } from "./idTaken";
 export type { LiveBubble, LoadingRow, WorkStatus } from "./selectors";
 export {
   loadingRow,

@@ -37,6 +37,8 @@ export interface LiveConversationState<Send extends QueuedSend> {
     messageId: string,
     failed: boolean,
   ) => void;
+  /** Forget a conversation and the sends it held. */
+  discard: (conversationId: string) => void;
   /** Take another window's copy of a conversation as-is. */
   mirror: (conversationId: string, live: LiveConversation<Send>) => void;
 }
@@ -130,6 +132,15 @@ export function createLiveConversationStore<Send extends QueuedSend>() {
           },
         }));
       },
+
+      discard: (conversationId) =>
+        set((state) => ({
+          conversations: Object.fromEntries(
+            Object.entries(state.conversations).filter(
+              ([id]) => id !== conversationId,
+            ),
+          ),
+        })),
 
       mirror: (conversationId, live) =>
         set((state) => ({

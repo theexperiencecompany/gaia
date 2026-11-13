@@ -28,6 +28,7 @@ const { server, sendResult, ids } = vi.hoisted(() => ({
   server: { streams: [] as OpenStream[], notFound: new Set<string>() },
   sendResult: {
     fail: null as Error | null,
+    refusals: [] as Error[],
     calls: [] as { conversationId: string; body: { message_id: string } }[],
   },
   ids: { next: 0 },
@@ -85,6 +86,8 @@ vi.mock("../api/chat-api", async () => {
         body: { message_id: string },
       ) => {
         sendResult.calls.push({ conversationId, body });
+        const refusal = sendResult.refusals.shift();
+        if (refusal) throw refusal;
         if (sendResult.fail) throw sendResult.fail;
         return { conversation_id: conversationId, message_id: body.message_id };
       },
@@ -100,6 +103,12 @@ import {
 } from "./live-conversation-store";
 import { liveMessages } from "./live-messages";
 import { retryMessage, sendMessage } from "./send-message";
+
+const idTaken = () =>
+  ApiError.fromBody(409, {
+    message: "That conversation id is taken.",
+    code: "conversation_id_taken",
+  });
 
 const AT = "2026-11-12T10:00:00+00:00";
 const NOW = new Date("2026-11-12T12:00:00Z");
@@ -141,7 +150,10 @@ const workCard = (taskId: string, index: number, message: string) => ({
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 const lastStream = () => server.streams.at(-1) as OpenStream;
 const live = () => liveConversation(CONVERSATION);
-const rows = () => liveMessages(live().view, live().sends, NOW);
+const rows = (conversationId = CONVERSATION) => {
+  const { view, sends } = liveConversation(conversationId);
+  return liveMessages(view, sends, NOW);
+};
 const loading = () => sendingLoadingRow(live().view, live().sends);
 
 let release: (() => void) | null = null;
@@ -150,6 +162,7 @@ beforeEach(() => {
   server.streams = [];
   server.notFound.clear();
   sendResult.fail = null;
+  sendResult.refusals = [];
   sendResult.calls = [];
   ids.next = 0;
   useLiveConversationStore.setState({ conversations: {} });
@@ -376,6 +389,32 @@ describe("sending", () => {
     const conversationId = sendMessage(null, { text: "hi" });
     expect(conversationId).toBe("id-1");
     expect(sendResult.calls[0]?.conversationId).toBe("id-1");
+  });
+
+  it("starts the conversation over under a fresh id when its minted id is taken", async () => {
+    sendResult.refusals = [idTaken()];
+    const restarted = vi.fn();
+    const first = sendMessage(null, { text: "hi" }, [], restarted);
+    await flush();
+
+    expect(sendResult.calls.map((call) => call.conversationId)).toEqual([
+      first,
+      "id-3",
+    ]);
+    expect(restarted).toHaveBeenCalledWith("id-3");
+    expect(liveConversation(first).sends).toEqual({});
+    expect(rows("id-3")[0]).toMatchObject({ text: "hi", sendFailed: false });
+  });
+
+  it("marks the send failed when the fresh id is taken too", async () => {
+    sendResult.refusals = [idTaken(), idTaken()];
+    const restarted = vi.fn();
+    sendMessage(null, { text: "hi" }, [], restarted);
+    await flush();
+
+    expect(sendResult.calls).toHaveLength(2);
+    expect(restarted).toHaveBeenCalledTimes(1);
+    expect(rows("id-3")[0]).toMatchObject({ sendFailed: true });
   });
 
   it("marks a send that failed, and its retry resends the same message", async () => {
