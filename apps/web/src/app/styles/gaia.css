@@ -169,6 +169,33 @@
     border-color: var(--foreground);
   }
 
+  /* inputVariants({ variant: "transparent" }): no fill at rest, hover or focus; inset and ring stay. */
+  .input.gaia-input-transparent,
+  .textarea.gaia-input-transparent,
+  .input-group.gaia-input-transparent,
+  .select__trigger.gaia-input-transparent {
+    background-color: transparent;
+    --input-bg: transparent;
+    --input-bg-hover: transparent;
+    --input-bg-focus: transparent;
+  }
+
+  /* inputVariants({ variant: "subtle" }): zinc-800 at 30%, lifting to 50% on hover. */
+  .input.gaia-input-subtle,
+  .textarea.gaia-input-subtle,
+  .input-group.gaia-input-subtle,
+  .select__trigger.gaia-input-subtle {
+    background-color: var(--gaia-field-subtle);
+    --input-bg: var(--gaia-field-subtle);
+  }
+  .input.gaia-input-subtle:hover,
+  .textarea.gaia-input-subtle:hover,
+  .input-group.gaia-input-subtle:hover,
+  .select__trigger.gaia-input-subtle:hover {
+    background-color: var(--gaia-field-subtle-hover);
+    --input-bg-hover: var(--gaia-field-subtle-hover);
+  }
+
   /* inputVariants({ variant: "translucent" }): v2's see-through settings field,
      zinc-800 at 50% that lifts to zinc-700 at 50% on hover. */
   .input.gaia-input-translucent,
@@ -192,10 +219,21 @@
     color: var(--danger);
   }
 
-  /* overlayVariants({ surface: "raised" }): v2's zinc-800 popover and tooltip
-     surface, lifted off a zinc-900 page (the default overlay is zinc-900). */
+  /* overlayVariants({ surface }): raised is v2's zinc-800 popover and tooltip
+     surface off a zinc-900 page; secondary is the #1a1a1a sidebar surface. */
   .gaia-overlay-raised {
     background-color: var(--gaia-overlay-raised);
+  }
+  .gaia-overlay-secondary {
+    background-color: var(--gaia-overlay-secondary);
+  }
+
+  /* tint light (SOFT_TINT_CLASSES): v2's 15% status tint on a soft Chip or Button. */
+  .gaia-tint-light {
+    --accent-soft: color-mix(in oklab, var(--accent) var(--gaia-soft-tint-light), transparent);
+    --success-soft: color-mix(in oklab, var(--success) var(--gaia-soft-tint-light), transparent);
+    --warning-soft: color-mix(in oklab, var(--warning) var(--gaia-soft-tint-light), transparent);
+    --danger-soft: color-mix(in oklab, var(--danger) var(--gaia-soft-tint-light), transparent);
   }
 
   /* Field placeholders: v2's zinc-500 at normal weight, in light and dark. */
@@ -475,9 +513,38 @@
   .checkbox.gaia-pill .checkbox__control {
     border-radius: var(--gaia-radius-pill);
   }
+  /* shape sharp/sm/md/xl: a fixed radius whatever the control's size (v2's radius prop). */
+  .gaia-sharp {
+    --radius-field: var(--gaia-radius-xs);
+  }
+  .gaia-radius-sm {
+    --radius-field: var(--gaia-radius-sm);
+  }
+  .gaia-radius-md {
+    --radius-field: var(--gaia-radius-md);
+  }
+  .gaia-radius-xl {
+    --radius-field: var(--gaia-radius-xl);
+  }
   .button.gaia-sharp,
-  .chip.gaia-sharp {
+  .chip.gaia-sharp,
+  .button-group.gaia-sharp {
     border-radius: var(--gaia-radius-xs);
+  }
+  .button.gaia-radius-sm,
+  .chip.gaia-radius-sm,
+  .button-group.gaia-radius-sm {
+    border-radius: var(--gaia-radius-sm);
+  }
+  .button.gaia-radius-md,
+  .chip.gaia-radius-md,
+  .button-group.gaia-radius-md {
+    border-radius: var(--gaia-radius-md);
+  }
+  .button.gaia-radius-xl,
+  .chip.gaia-radius-xl,
+  .button-group.gaia-radius-xl {
+    border-radius: var(--gaia-radius-xl);
   }
   .button-group.gaia-pill {
     overflow: hidden;
