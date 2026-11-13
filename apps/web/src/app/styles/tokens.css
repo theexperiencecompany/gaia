@@ -188,6 +188,7 @@ html {
   --gaia-modal-close-size: 2rem;
   --gaia-modal-close-inset: 0.25rem;
   --gaia-modal-close-padding: 0.5rem;
+  --gaia-close-button-hover: var(--color-zinc-800);
   --gaia-modal-body-gap: 0.75rem;
   --gaia-modal-footer-padding-y: 1rem;
   --gaia-input-sm-height: 2rem;

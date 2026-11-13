@@ -169,6 +169,11 @@
   .search-field__input {
     min-width: 0;
   }
+  /* v2's textareas had no resize handle (they grew with their text); v3's are browser-resizable. */
+  .textarea,
+  .input-group__input[data-slot="input-group-textarea"] {
+    resize: none;
+  }
   .select__value {
     min-width: 0;
     overflow: hidden;
@@ -831,6 +836,16 @@
   }
   .modal__container--full {
     padding: 0;
+  }
+
+  /* Close buttons (modal, drawer, alert, CloseButton): v2's had no fill at rest
+     and zinc-800 on hover; v3's default variant sits on a grey --default disc. */
+  .close-button--default {
+    background-color: transparent;
+  }
+  .close-button--default:hover,
+  .close-button--default[data-hovered="true"] {
+    background-color: var(--gaia-close-button-hover);
   }
 
   /* Modal close: v2's 32px round button 4px from the corner (v3: 24px, 16px in). */
