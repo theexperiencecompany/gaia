@@ -147,6 +147,7 @@ async def test_every_old_shape_becomes_log_entries_that_read_back_as_the_old_arr
         (14, "reply_settled", "m6:settled"),
         (15, "reply_settled", "ack-cards:settled"),
         (16, "reply_settled", f"{array[8]['message_id']}:settled"),
+        (17, "reply_settled", "m8:settled"),
     ]
     by_id = {e["id"]: e for e in entries}
     assert by_id["m1"]["reaction"] == {"emoji": "\U0001f44d", "by": "chat_model"}
@@ -155,8 +156,13 @@ async def test_every_old_shape_becomes_log_entries_that_read_back_as_the_old_arr
     assert (by_id["m2:settled"]["answers"], by_id["m2:settled"]["through"]) == (["m1"], 1)
     assert by_id["m4:settled"]["outcome"] == "stopped"
     assert by_id["m6:settled"]["failure"] == "model_error"
+    assert (by_id["m8:settled"]["outcome"], by_id["m8:settled"]["failure"]) == (
+        "failed",
+        "server_restart",
+    )
+    assert by_id["m8:settled"]["imported"] is True
     assert by_id["m1"]["at"] == datetime.fromisoformat(_DATE).replace(microsecond=123000)
-    assert head["log_head"] == 16 and head["state"]["comms"] == "idle"
+    assert head["log_head"] == 17 and head["state"]["comms"] == "idle"
     assert head["state"]["unsettled_waking"] == [] and head["state"]["open_reply"] is None
     assert head["updatedAt"] > datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -170,7 +176,7 @@ async def test_every_old_shape_becomes_log_entries_that_read_back_as_the_old_arr
     assert (
         shown["m6"].replyToMessage is not None and shown["m6"].replyToMessage.content == "message 5"
     )
-    assert shown["m8"].in_progress is True and shown["m2"].in_progress is None
+    assert shown["m8"].in_progress is None and shown["m8"].error == "server_restart"
     assert shown["m1"].fileIds == ["f1"] and shown["m1"].pinned and shown["m2"].pinned
     pinned = await ConversationRepository().list_pinned_messages(USER)
     assert {hit.message.message_id for hit in pinned} == {"m1", "m2"}
@@ -469,7 +475,7 @@ async def test_a_dry_run_writes_nothing_and_reports_what_it_would_do(
 
     outcome = await migration.migrate(ref, apply=False)
 
-    assert (outcome.action, outcome.written, outcome.identified) == (MigrationAction.COPIED, 16, 4)
+    assert (outcome.action, outcome.written, outcome.identified) == (MigrationAction.COPIED, 17, 4)
     assert await _head(raw_collection, ref) == before
     assert await _entries(entries_collection, ref) == []
 

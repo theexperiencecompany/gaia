@@ -281,6 +281,9 @@ def _ack_target(element: _Element, users: set[str]) -> tuple[str, str] | None:
 
 
 def _settle_outcome(message: ConversationEntry) -> tuple[ReplyOutcome, FailureReason | None]:
+    # An old build left the reply open when its process died mid-answer: nothing imported stays open.
+    if message.in_progress:
+        return ReplyOutcome.FAILED, FailureReason.SERVER_RESTART
     if message.error:
         known = {reason.value for reason in FailureReason}
         reason = message.error if message.error in known else FailureReason.MODEL_ERROR
@@ -326,8 +329,6 @@ def _element_entries(
     if folded_ack and not message.tool_data:
         return []
     reply = _reply(message, users, blank=folded_ack)
-    if message.in_progress:
-        return [_Planned(reply, element.seq, at)]
     settle = _Planned(_settle(message, reply, last_user), None, at, last_user)
     return [_Planned(reply, element.seq, at), settle]
 
@@ -471,7 +472,8 @@ def expected_messages(elements: Sequence[Mapping[str, object]]) -> list[dict[str
 
     An emoji_ack with a target and an emoji is its target's chat-model reaction (kept, emptied,
     when it carries cards); a failure reads as its reason, model_error when the old text names
-    none; a bot quote of a user message reads that message's text.
+    none, server_restart when the old reply never finished; a bot quote of a user message reads
+    that message's text.
     """
     parsed = [(e, ConversationEntry.model_validate({**e, "seq": 0})) for e in elements]
     users = {m.message_id: m for _, m in parsed if m.type == USER_MESSAGE_TYPE}
@@ -503,7 +505,7 @@ def expected_messages(elements: Sequence[Mapping[str, object]]) -> list[dict[str
             else {"id": quoted.message_id, "content": quoted.response, "role": "user"}
         )
         if m.in_progress:
-            payload.update(error=None, stopped=None)
+            payload.update(error=FailureReason.SERVER_RESTART.value, stopped=None, in_progress=None)
         elif m.error:
             known = {reason.value for reason in FailureReason}
             payload.update(error=m.error if m.error in known else FailureReason.MODEL_ERROR.value)
