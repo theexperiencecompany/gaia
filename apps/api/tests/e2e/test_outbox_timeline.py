@@ -1821,6 +1821,7 @@ def _integration_expired() -> NoticeReport:
         label="Notion connection",
         outcome=NoticeOutcome.NEEDS_YOU,
         facts=["The sign-in for the user's Notion account expired."],
+        display="Your Notion sign-in expired.",
     )
 
 
@@ -1834,6 +1835,7 @@ def _memory_ready() -> NoticeReport:
         label="Your memory",
         outcome=NoticeOutcome.INFO,
         facts=["GAIA organized memories from the user's past conversations."],
+        display="GAIA organized memories from your past conversations.",
     )
 
 

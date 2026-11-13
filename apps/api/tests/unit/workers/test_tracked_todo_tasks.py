@@ -1643,7 +1643,7 @@ class TestExecuteTodoWithRetryFailure:
 
         assert result == "failed:todo-1 (max retries reached)"
         pool.enqueue_job.assert_not_awaited()
-        mark_failed.assert_awaited_once_with("todo-1", OWNER_ID, doc)
+        mark_failed.assert_awaited_once_with("todo-1", OWNER_ID, doc, None)
         # The count must be persisted at the cap: the safety net's
         # gaia_retry_count < MAX filter is what keeps it from coming back.
         assert _updates(repo) == [{"gaia_retry_count": MAX_RETRY_ATTEMPTS}]
@@ -1743,6 +1743,34 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
             f"This run of 'Inbox desk' failed after {MAX_RETRY_ATTEMPTS} attempts. "
             "It runs again at its next scheduled time."
         ]
+
+    async def test_a_redelivered_final_attempt_files_the_same_notice_and_the_next_run_another(
+        self,
+    ) -> None:
+        """Regression: the key was the wall clock, so a redelivered final attempt filed a second notice."""
+        occurrence = datetime(2026, 11, 12, 8, 0, tzinfo=UTC)
+        ids = []
+        for scheduled_at in (occurrence, occurrence, occurrence + timedelta(days=1)):
+            _result, seams = await self._run(self._last_attempt(scheduled_at=scheduled_at))
+            ids.append(seams.notify.await_args.args[0].report_id)
+
+        first, again, next_run = ids
+        assert first == again
+        assert first != next_run
+
+    async def test_a_watch_runs_failure_is_named_by_the_event_that_woke_it(self) -> None:
+        woken_by = TriggerOrigin(
+            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread": "t-1"}
+        )
+        other = woken_by.model_copy(update={"payload": {"thread": "t-2"}})
+        ids = []
+        for origin in (woken_by, woken_by, other):
+            _result, seams = await self._run(self._last_attempt(), origin)
+            ids.append(seams.notify.await_args.args[0].report_id)
+
+        first, again, other_id = ids
+        assert first == again
+        assert first != other_id
 
     async def test_a_watch_run_that_gives_up_leaves_the_schedule_and_clears_the_count(self) -> None:
         pending = datetime.now(UTC) + timedelta(hours=5)
@@ -3758,7 +3786,7 @@ class TestMarkTodoFailed:
             patch(f"{MODULE}.submit", notify),
             patch(f"{MODULE}.teardown_subscriptions", teardown),
         ):
-            await _mark_todo_failed("todo-1", OWNER_ID, _doc(title="Nightly backup"))
+            await _mark_todo_failed("todo-1", OWNER_ID, _doc(title="Nightly backup"), None)
 
         repo.add_labels.assert_awaited_once_with("todo-1", user_id=OWNER_ID, labels=[FAILED_LABEL])
         # A failed todo is skipped by the execution path until a manual reset, so
@@ -3781,7 +3809,7 @@ class TestMarkTodoFailed:
             patch(f"{MODULE}.submit", AsyncMock()),
             patch(f"{MODULE}.teardown_subscriptions", AsyncMock(return_value=0)),
         ):
-            await _mark_todo_failed("todo-1", OWNER_ID, _doc())
+            await _mark_todo_failed("todo-1", OWNER_ID, _doc(), None)
 
         ((todo_id, user_id, event, detail),) = (c.args for c in activity.await_args_list)
         assert (todo_id, user_id, event) == ("todo-1", OWNER_ID, TodoActivityEvent.MARKED_FAILED)
@@ -3802,7 +3830,7 @@ class TestMarkTodoFailed:
             ),
             patch(f"{MODULE}.teardown_subscriptions", AsyncMock(return_value=0)),
         ):
-            await _mark_todo_failed("todo-1", OWNER_ID, _doc())
+            await _mark_todo_failed("todo-1", OWNER_ID, _doc(), None)
 
         repo.add_labels.assert_awaited_once()
 

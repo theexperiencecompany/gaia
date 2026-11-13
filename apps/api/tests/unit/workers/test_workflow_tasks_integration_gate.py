@@ -1,16 +1,18 @@
-"""The fire-time integration gate, and the limit-notice ceiling.
+"""The fire-time integration gate, and the day's one limit notice.
 
 186 of 649 bot messages in a 63-conversation production sample named a missing
 integration, and 14 threads carried three or more identical ones (one carried
 22, then six rate-limit messages). Both loops come from the same place: a
 scheduled workflow whose required integration is gone keeps firing, and every
 fire mints another message. Pausing on the first such fire, and letting the
-limit wall speak once per window, is what turns a message per occurrence into
+limit wall speak once per day, is what turns a message per occurrence into
 one message.
 """
 
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.models.scheduler_models import DeactivationReason
@@ -39,7 +41,11 @@ def _workflow(user_id: str = "6812f0b3c9a14e2b7d5a91cc") -> MagicMock:
 
 
 async def _run_task(
-    workflow: MagicMock, missing: list[IntegrationRef], context: dict[str, Any] | None
+    workflow: MagicMock,
+    missing: list[IntegrationRef],
+    context: dict[str, Any] | None,
+    *,
+    notice_error: Exception | None = None,
 ) -> tuple[str, AsyncMock, AsyncMock, AsyncMock]:
     onboarded = UserDocument.model_validate({"onboarding": {"completed": True}})
 
@@ -54,7 +60,7 @@ async def _run_task(
         patch(
             f"{PAUSE_MODULE}.WorkflowService.deactivate_workflow", new_callable=AsyncMock
         ) as deactivate,
-        patch(f"{MODULE}.submit", new_callable=AsyncMock) as notify,
+        patch(f"{MODULE}.submit", new_callable=AsyncMock, side_effect=notice_error) as notify,
         patch(f"{MODULE}.enforce_cost_budget", new_callable=AsyncMock) as budget,
         patch(f"{MODULE}.create_execution", new_callable=AsyncMock) as create,
         patch(
@@ -138,29 +144,49 @@ class TestADisconnectedIntegrationPausesTheWorkflow:
         budget.assert_awaited_once()
 
 
-class TestTheLimitNoticeSpeaksOncePerWindow:
-    async def _notify(self, already_sent: bool) -> AsyncMock:
-        with (
-            patch(
-                f"{MODULE}.workflow_repository.claim_limit_notice",
-                new_callable=AsyncMock,
-                return_value=not already_sent,
-            ),
-            patch(f"{MODULE}.submit", new_callable=AsyncMock) as notify,
-        ):
-            error = RateLimitExceededException(feature="trigger_workflow_executions")
-            await _notify_workflow_failed(error, _workflow())
+class TestTheLimitNoticeSpeaksOncePerDay:
+    async def _filed(self, error: Exception, execution_id: str | None = "exec-1") -> AsyncMock:
+        with patch(f"{MODULE}.submit", new_callable=AsyncMock) as notify:
+            await _notify_workflow_failed(error, _workflow(), execution_id)
         return notify
 
-    async def test_the_first_wall_of_the_day_is_reported(self) -> None:
-        notify = await self._notify(already_sent=False)
+    async def test_every_fire_that_hits_the_wall_files_the_one_notice_of_the_day(self) -> None:
+        """The report id names the wall's day, so the outbox keeps the repeats to one; no gate sits before the submit."""
+        error = RateLimitExceededException(feature="trigger_workflow_executions")
 
-        notify.assert_awaited_once()
+        first = await self._filed(error, "exec-1")
+        second = await self._filed(error, "exec-2")
 
-    async def test_every_later_fire_that_hits_the_same_wall_stays_quiet(self) -> None:
-        notify = await self._notify(already_sent=True)
+        first_id = first.await_args.args[0].report_id
+        assert first_id == second.await_args.args[0].report_id
+        assert first_id.startswith("sys:workflow_failed:wf-1:")
 
-        notify.assert_not_awaited()
+    async def test_a_wall_notice_that_cannot_be_filed_raises_and_the_next_fire_files_it(
+        self,
+    ) -> None:
+        """Regression: a SET NX claimed before the submit lost the day's notice when the submit failed."""
+        error = RateLimitExceededException(feature="trigger_workflow_executions")
+        with patch(f"{MODULE}.submit", new_callable=AsyncMock, side_effect=RuntimeError("down")):
+            with pytest.raises(RuntimeError, match="down"):
+                await _notify_workflow_failed(error, _workflow(), None)
+
+        retried = await self._filed(error, None)
+
+        retried.assert_awaited_once()
+
+
+class TestAFailureIsNamedByTheRunItBelongsTo:
+    async def test_redelivering_one_failed_run_files_one_notice(self) -> None:
+        """Regression: the key was the wall clock, so each redelivery of one run's failure filed another notice."""
+        error = RuntimeError("boom")
+        with patch(f"{MODULE}.submit", new_callable=AsyncMock) as notify:
+            await _notify_workflow_failed(error, _workflow(), "exec-1")
+            await _notify_workflow_failed(error, _workflow(), "exec-1")
+            await _notify_workflow_failed(error, _workflow(), "exec-2")
+
+        first, again, other = (c.args[0].report_id for c in notify.await_args_list)
+        assert first == again == "sys:workflow_failed:wf-1:exec-1"
+        assert other == "sys:workflow_failed:wf-1:exec-2"
 
 
 class TestTheNoticeTellsTheUserWhatToReconnect:
@@ -195,43 +221,18 @@ class TestTheNoticeTellsTheUserWhatToReconnect:
         assert notice.initiative is Initiative.USER_SCHEDULED
         assert notice.report_id.startswith("sys:workflow_paused:wf-1:gmail,notion:")
 
-    async def test_a_notice_that_cannot_be_filed_is_recorded_not_raised(self) -> None:
-        """A notice that can't be filed must not become a worker error, or the whole fire retries for nothing."""
-        with (
-            patch(
-                f"{MODULE}.submit",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("redis down"),
-            ),
-            patch(f"{MODULE}.log") as mock_log,
-        ):
-            await _notify_workflow_paused_for_integrations(_workflow(), GMAIL)
+    async def test_a_notice_that_cannot_be_filed_raises(self) -> None:
+        """Regression: the notice was best-effort, so a failed submit left the workflow paused with the user never told."""
+        with patch(f"{MODULE}.submit", new_callable=AsyncMock, side_effect=RuntimeError("down")):
+            with pytest.raises(RuntimeError, match="down"):
+                await _notify_workflow_paused_for_integrations(_workflow(), GMAIL)
 
-        mock_log.warning.assert_called_once()
-        assert mock_log.warning.call_args.args == (
-            "[WORKER] Could not file the integration-paused notice",
+
+class TestThePauseWaitsForItsNotice:
+    async def test_a_notice_that_cannot_be_filed_leaves_the_workflow_unpaused(self) -> None:
+        """Regression: pausing first and filing second left a silent pause whenever the filing failed."""
+        _, deactivate, _, _ = await _run_task(
+            _workflow(), GMAIL, {"trigger_type": "schedule"}, notice_error=RuntimeError("down")
         )
-        assert mock_log.warning.call_args.kwargs == {
-            "workflow_id": "wf-1",
-            "error": "redis down",
-            "error_type": "RuntimeError",
-        }
 
-
-class TestTheLimitNoticeIsClaimedPerWorkflow:
-    async def test_the_claim_is_made_for_this_workflow_and_its_owner(self) -> None:
-        """The claim is a SET NX per workflow: the wrong id silences a different workflow, the wrong user silences everyone."""
-        with (
-            patch(
-                f"{MODULE}.workflow_repository.claim_limit_notice",
-                new_callable=AsyncMock,
-                return_value=True,
-            ) as claim,
-            patch(f"{MODULE}.submit", new_callable=AsyncMock),
-        ):
-            await _notify_workflow_failed(
-                RateLimitExceededException(feature="trigger_workflow_executions"),
-                _workflow(user_id="6812f0b3c9a14e2b7d5a91c9"),
-            )
-
-        claim.assert_awaited_once_with("6812f0b3c9a14e2b7d5a91c9", "wf-1")
+        deactivate.assert_not_awaited()

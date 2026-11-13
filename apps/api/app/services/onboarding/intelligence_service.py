@@ -642,38 +642,31 @@ def _holo_card_message(card_url: str) -> str:
 
 
 async def _announce_personalization(user_id: str, *, card_ready: bool) -> str | None:
-    """File the personalization notice and seed a web conversation with the card link.
+    """File the personalization notice, then seed a web conversation with the card link.
 
-    Returns the seeded conversation id, or None when there is no card or
-    seeding failed. Fail-soft: an undelivered announcement must not fail the
-    pipeline or cost the user their personalization marker.
+    Returns the seeded conversation id, or None when there is no card or seeding failed.
+    A notice that cannot be filed raises before anything is seeded, so the pipeline does not
+    record personalization as done on a user who was never told.
     """
     card_url = holo_card_url(user_id)
     facts = list(_PERSONALIZATION_FACTS)
     if card_ready:
         facts.append(f"Their holo card is ready too, at {card_url}.")
 
-    try:
-        await submit(
-            system_notice(
-                user_id=user_id,
-                producer=ProducerKind.ACCOUNT,
-                subject_kind=SubjectKind.ACCOUNT,
-                kind="personalization",
-                key=user_id,
-                label="Your memories",
-                outcome=NoticeOutcome.INFO,
-                facts=facts,
-            )
-        )
-    except Exception as e:
-        log.warning(
-            f"{LogTag.ONBOARDING} personalization notification failed",
+    await submit(
+        system_notice(
             user_id=user_id,
-            step="announce",
-            error=str(e)[:200],
-            error_type=type(e).__name__,
+            producer=ProducerKind.ACCOUNT,
+            subject_kind=SubjectKind.ACCOUNT,
+            kind="personalization",
+            key=user_id,
+            label="Your memories",
+            outcome=NoticeOutcome.INFO,
+            facts=facts,
+            display="GAIA read through your inbox and saved what matters to your memories. "
+            "You can review them in settings, under memory.",
         )
+    )
 
     conversation_id = (
         await seed_holo_card_conversation(user_id, _holo_card_message(card_url))

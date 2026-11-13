@@ -586,6 +586,22 @@ class TestActions:
         deps.enqueue.assert_not_awaited()
         deps.repo.update.assert_not_awaited()
 
+    async def test_the_same_event_filed_twice_is_one_notice_and_another_event_is_another(
+        self, deps
+    ) -> None:
+        """Regression: the key was the wall clock, so a redelivered event filed a second notice."""
+        sub = _subscription(action=SubscriptionAction.NOTIFY)
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[sub])
+        ]
+
+        for payload in ({"thread_id": "t-1"}, {"thread_id": "t-1"}, {"thread_id": "t-2"}):
+            await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, payload)
+
+        first, again, other = (c.args[0].report_id for c in deps.notify.await_args_list)
+        assert first == again
+        assert first != other
+
     async def test_complete_goes_through_the_idempotent_completion_path(self, deps) -> None:
         # Not a direct repository write: completion also archives the canvas and
         # tears the subscriptions down, and skipping that leaks the trigger.

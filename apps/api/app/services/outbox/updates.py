@@ -19,6 +19,7 @@ from app.models.updates_models import (
     UpdatesResponse,
 )
 from app.services.outbox.models import (
+    NEEDS_YOU_OUTCOMES,
     ItemState,
     NoticeOutcome,
     NoticeReport,
@@ -27,7 +28,6 @@ from app.services.outbox.models import (
     facts_of,
 )
 
-_NEEDS_YOU = frozenset({OutcomeState.NEEDS_YOU.value, OutcomeState.BLOCKED.value})
 _FAILED = frozenset({OutcomeState.FAILED.value, OutcomeState.UNVERIFIED.value})
 _PROGRESS = frozenset({NoticeOutcome.PROGRESS.value})
 
@@ -43,12 +43,14 @@ def _outcome_value(report: OutboxReport) -> str:
 
 
 def update_outcome(report: OutboxReport) -> UpdateOutcome:
-    """Return how the report left what it is about: it needs the user, failed, or is done or just recorded."""
+    """Return how the report left what it is about: it needs the user, failed, only informs, or is done."""
     value = _outcome_value(report)
-    if value in _NEEDS_YOU:
+    if value in NEEDS_YOU_OUTCOMES:
         return UpdateOutcome.NEEDS_YOU
     if value in _FAILED:
         return UpdateOutcome.FAILED
+    if value == NoticeOutcome.INFO.value:
+        return UpdateOutcome.INFO
     return UpdateOutcome.DONE
 
 
@@ -60,10 +62,11 @@ def _row(item: OutboxItemDocument, message: OutboxMessageDocument | None) -> Upd
         report_id=item.report_id,
         subject_kind=report.subject.kind,
         subject_label=report.subject.label,
-        outcome=update_outcome(report),
+        outcome=UpdateOutcome.DONE if item.resolved_at is not None else update_outcome(report),
         state=item.state,
         drop_reason=item.drop_reason,
         facts=facts_of(report),
+        display=report.display if isinstance(report, NoticeReport) else None,
         told=message.parts if message is not None else None,
         held_until=item.hold.until
         if item.hold is not None and item.state is ItemState.HELD
@@ -71,6 +74,7 @@ def _row(item: OutboxItemDocument, message: OutboxMessageDocument | None) -> Upd
         conversation_id=report.subject.owner_conversation_id,
         occurred_at=report.occurred_at,
         told_at=message.sent_at if message is not None else None,
+        resolved_at=item.resolved_at,
         created_at=item.created_at,
     )
 
@@ -110,11 +114,15 @@ async def read_updates(
         case UpdateFilter.HELD:
             states, outcomes, excluded = {ItemState.HELD}, None, _PROGRESS
         case UpdateFilter.NEEDS_YOU:
-            states, outcomes, excluded = _LISTED_STATES, _NEEDS_YOU, _PROGRESS
+            states, outcomes, excluded = _LISTED_STATES, NEEDS_YOU_OUTCOMES, _PROGRESS
         case UpdateFilter.FAILED:
             states, outcomes, excluded = _LISTED_STATES, _FAILED, _PROGRESS
         case UpdateFilter.DONE:
-            states, outcomes, excluded = _LISTED_STATES, None, _NEEDS_YOU | _FAILED | _PROGRESS
+            states, outcomes, excluded = (
+                _LISTED_STATES,
+                None,
+                NEEDS_YOU_OUTCOMES | _FAILED | _PROGRESS,
+            )
         case UpdateFilter.ALL:
             states, outcomes, excluded = _LISTED_STATES, None, _PROGRESS
     items = await outbox_items_repository.list_feed(

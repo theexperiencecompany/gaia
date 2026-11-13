@@ -592,3 +592,91 @@ async def test_the_told_since_count_is_sent_items_after_the_instant_without_the_
     )
 
     assert await items.count_told_since(USER, T0, excluded_outcomes={"progress"}) == 1
+
+
+@pytest.mark.usefixtures("stamped")
+async def test_filed_with_a_prefix_reads_that_prefix_only_newest_first_and_bounded(repos) -> None:
+    items, _ = repos
+    for report_id in (
+        "sys:todo_overdue:t1:d1",
+        "sys:todo_overdue:t1:d2",
+        "sys:todo_overdue:t10:d1",
+    ):
+        await items.insert_if_new(_report(report_id), expires_at=EXPIRES)
+    await items.insert_if_new(_report("sys:todo_overdue:t1.d3"), expires_at=EXPIRES)
+    other = _report("sys:todo_overdue:t1:d9").model_copy(
+        update={"recipient": "6812f0b3c9a14e2b7d5a91dd"}
+    )
+    await items.insert_if_new(other, expires_at=EXPIRES)
+
+    filed = await items.list_filed_with_prefix(USER, "sys:todo_overdue:t1:", limit=5)
+
+    assert [item.report_id for item in filed] == [
+        "sys:todo_overdue:t1:d2",
+        "sys:todo_overdue:t1:d1",
+    ]
+    assert len(await items.list_filed_with_prefix(USER, "sys:todo_overdue:t1:", limit=1)) == 1
+
+
+@pytest.mark.usefixtures("stamped")
+async def test_settling_a_subject_moves_its_needs_you_items_out_of_needs_you_and_into_done(
+    repos,
+) -> None:
+    items, _ = repos
+    for report_id in (
+        "sys:integration_expired:notion:a1:t1",
+        "sys:integration_expired:notion:a2:t1",
+        "other",
+    ):
+        await items.insert_if_new(_noticed(report_id, NoticeOutcome.NEEDS_YOU), expires_at=EXPIRES)
+    needs = {"needs_you", "blocked"}
+
+    settled = await items.settle_with_prefix(
+        USER, "sys:integration_expired:notion:a1:", outcomes=needs
+    )
+
+    assert settled == 1
+    assert await _feed(items, outcomes=needs) == ["other", "sys:integration_expired:notion:a2:t1"]
+    assert await _feed(items, excluded_outcomes=needs | {"failed", "progress"}) == [
+        "sys:integration_expired:notion:a1:t1"
+    ]
+    assert await _feed(items, excluded_outcomes={"progress"}) == [
+        "other",
+        "sys:integration_expired:notion:a2:t1",
+        "sys:integration_expired:notion:a1:t1",
+    ]
+
+
+async def test_settling_twice_settles_nothing_the_second_time(repos) -> None:
+    items, _ = repos
+    await items.insert_if_new(
+        _noticed("sys:workflow_paused:wf-1:gmail:d1", NoticeOutcome.NEEDS_YOU), expires_at=EXPIRES
+    )
+
+    settle = items.settle_with_prefix(USER, "sys:workflow_paused:wf-1:", outcomes={"needs_you"})
+    assert await settle == 1
+    assert (
+        await items.settle_with_prefix(USER, "sys:workflow_paused:wf-1:", outcomes={"needs_you"})
+        == 0
+    )
+
+
+@pytest.mark.usefixtures("stamped")
+async def test_settling_drops_the_items_that_were_not_yet_told_as_moot(repos) -> None:
+    items, _ = repos
+    await items.insert_if_new(
+        _noticed("sys:workflow_paused:wf-2:gmail:d1", NoticeOutcome.NEEDS_YOU), expires_at=EXPIRES
+    )
+
+    await items.settle_with_prefix(USER, "sys:workflow_paused:wf-2:", outcomes={"needs_you"})
+
+    [stored] = await items.list_feed(
+        USER,
+        states=frozenset(ItemState),
+        outcomes=None,
+        excluded_outcomes=(),
+        before=None,
+        limit=5,
+    )
+    assert (stored.state, stored.drop_reason) == (ItemState.DROPPED, DropReason.MOOT)
+    assert stored.resolved_at is not None

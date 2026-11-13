@@ -31,6 +31,7 @@ from app.services.integrations.integration_status import (
 )
 from app.services.integrations.user_integration_status import publish_connected
 from app.services.onboarding.intelligence_job import enqueue_gmail_personalization
+from app.services.outbox.system_notices import settle_system_notices
 from app.services.system_workflows.provisioner import provision_system_workflows
 from app.services.todos.inbox_desk import queue_inbox_desk_provision
 from app.services.workflow.dormancy import resume_dormancy_paused_workflows
@@ -353,6 +354,12 @@ async def handle_oauth_connection(
         return connected
     log.info(f"{LogTag.OAUTH} Recorded connected account for", id=integration_config.id)
     await publish_connected(user_id, integration_config.id)
+    background_tasks.add_task(
+        settle_system_notices,
+        user_id,
+        "integration_expired",
+        f"{integration_config.id}:{connected.account.id}:",
+    )
 
     if integration_config.associated_triggers:
         _setup_account_triggers(user_id, integration_config, connected, background_tasks)

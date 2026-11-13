@@ -321,7 +321,7 @@ def _live_stack(workflow: Workflow, runs: list[tuple[datetime, int]]) -> Iterato
         patch("app.services.triggers.base.get_signal_matching_context", AsyncMock(return_value="")),
         patch(f"{MODULE}.workflow_scheduler") as scheduler,
         patch(f"{MODULE}.user_repository.get", AsyncMock(return_value=_onboarded_user())),
-        patch(f"{MODULE}.pause_workflow_before_fire", AsyncMock(return_value=[])),
+        patch(f"{MODULE}.missing_integrations_before_fire", AsyncMock(return_value=[])),
         patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
         patch(
             f"{MODULE}.create_execution", AsyncMock(return_value=MagicMock(execution_id="exec-1"))

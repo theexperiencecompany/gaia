@@ -30,7 +30,13 @@ from app.services.integrations.integration_accounts import (
 )
 from app.services.integrations_fs import schedule_user_integrations_sync
 from app.services.outbox.intake import submit
-from app.services.outbox.models import NoticeOutcome, ProducerKind, SubjectKind
+from app.services.outbox.models import (
+    NoticeAction,
+    NoticeActionKind,
+    NoticeOutcome,
+    ProducerKind,
+    SubjectKind,
+)
 from app.services.outbox.system_notices import system_notice
 from shared.py.wide_events import log
 
@@ -203,5 +209,11 @@ async def announce_account_expiry(
                 _expiry_body(named, paused_workflows, reason),
                 "Reconnecting it in the app's integrations page restores it.",
             ],
+            display=_expiry_body(named, paused_workflows, reason),
+            action=NoticeAction(
+                kind=NoticeActionKind.RECONNECT_INTEGRATION,
+                integration_id=integration_id,
+                account_id=expired.account.id,
+            ),
         )
     )

@@ -5,17 +5,19 @@ import { useEffect, useState } from "react";
 import UpdatesHeader from "@/components/layout/headers/UpdatesHeader";
 import { NotificationConnectBanner } from "@/features/notification/components/NotificationConnectBanner";
 import { UpdatesFeed } from "@/features/updates/components/UpdatesFeed";
-import { useUpdatesSeenStore } from "@/features/updates/stores/updatesSeenStore";
+import { useMarkUpdatesSeen } from "@/features/updates/hooks/useMarkUpdatesSeen";
 import { useHeader } from "@/hooks/layout/useHeader";
+import { track } from "@/lib/analytics";
 
 export default function UpdatesPage() {
   const [filter, setFilter] = useState<UpdateFilter>("all");
   const { setHeader } = useHeader();
-  const markSeen = useUpdatesSeenStore((state) => state.markSeen);
+
+  useMarkUpdatesSeen();
 
   useEffect(() => {
-    markSeen();
-  }, [markSeen]);
+    track("delivery:updates_viewed", {});
+  }, []);
 
   useEffect(() => {
     setHeader(<UpdatesHeader filter={filter} onFilterChange={setFilter} />);

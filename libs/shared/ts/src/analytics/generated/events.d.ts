@@ -36,7 +36,6 @@ export type ServerEventName =
   | "delivery:digest_sent"
   | "delivery:item_held"
   | "delivery:message_sent"
-  | "delivery:updates_viewed"
   | "device:approved"
   | "device:revoked"
   | "device:self_paired"
@@ -167,6 +166,7 @@ export type WebEventName =
   | "chat:tools_button_clicked"
   | "chat:voice_mode_toggled"
   | "cta:get_started_clicked"
+  | "delivery:updates_viewed"
   | "desktop_popup:dismissed"
   | "desktop_popup:opened"
   | "error:occurred"
@@ -635,13 +635,7 @@ export interface EventProperties {
     "max_class": "background" | "routine" | "timely" | "interrupt";
     "degraded": boolean;
   };
-  "delivery:updates_viewed": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "filter": "all" | "needs_you" | "done" | "failed" | "held";
-    "item_count": number;
-  };
+  "delivery:updates_viewed": Record<string, never>;
   "desktop_popup:dismissed": Record<string, never>;
   "desktop_popup:opened": {
     "triggered_by_wake_word": boolean;

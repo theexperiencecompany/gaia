@@ -14,7 +14,7 @@ import asyncio
 import contextvars
 from dataclasses import replace
 from typing import Any
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -651,41 +651,21 @@ class TestAnnouncePersonalization:
         assert seed.await_args.args[1] == _holo_card_message(CARD_URL)
         assert CARD_URL in seed.await_args.args[1]
 
-    async def test_an_undeliverable_notification_still_seeds_the_conversation(
+    async def test_an_undeliverable_notification_raises_and_seeds_nothing(
         self, announce_stack: Any
     ) -> None:
-        # Delivery is fail-soft: the user must not lose the card link because a
-        # notification channel was down.
+        """Regression: the failure was swallowed, so the pipeline recorded personalization done with the user never told."""
         submit, seed = announce_stack
         submit.side_effect = RuntimeError("channel down")
 
-        assert await _announce_personalization(USER, card_ready=True) == "conv-1"
+        with pytest.raises(RuntimeError, match="channel down"):
+            await _announce_personalization(USER, card_ready=True)
 
-        assert seed.await_args.args == (USER, ANY)
+        assert seed.await_count == 0
 
     async def test_a_failed_seed_reports_no_conversation(self, announce_stack: Any) -> None:
         with patch(f"{MODULE}.seed_holo_card_conversation", AsyncMock(return_value=None)):
             assert await _announce_personalization(USER, card_ready=True) is None
-
-    async def test_an_undeliverable_notification_is_visible_in_the_wide_event(
-        self, announce_stack: Any
-    ) -> None:
-        """Delivery is swallowed on purpose, so the warning is the ONLY evidence a user was never told."""
-        submit, _ = announce_stack
-        # Long on purpose: a provider stack trace is what actually lands here,
-        # and the 200-char cap is what keeps one failure from flooding the event.
-        blurb = "channel down: " + "x" * 500
-        submit.side_effect = RuntimeError(blurb)
-
-        await _announce_personalization(USER, card_ready=True)
-
-        intelligence_service.log.warning.assert_called_once_with(
-            f"{LogTag.ONBOARDING} personalization notification failed",
-            user_id=USER,
-            step="announce",
-            error=blurb[:200],
-            error_type="RuntimeError",
-        )
 
     @pytest.mark.parametrize(("seeded", "outcome"), [("conv-1", "ok"), (None, "partial")])
     async def test_the_announce_line_reports_which_half_landed(

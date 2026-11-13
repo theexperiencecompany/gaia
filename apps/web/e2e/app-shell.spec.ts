@@ -16,7 +16,7 @@ const MAIN_ROUTES = [
   "/workflows",
   "/integrations",
   "/settings",
-  "/notifications",
+  "/updates",
 ] as const;
 
 test.describe("app shell", () => {

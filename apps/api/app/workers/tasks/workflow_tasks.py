@@ -76,7 +76,14 @@ from app.services.analytics_service import capture
 from app.services.cost_budget import format_reset_date
 from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.outbox.intake import submit
-from app.services.outbox.models import Initiative, NoticeOutcome, ProducerKind, SubjectKind
+from app.services.outbox.models import (
+    Initiative,
+    NoticeAction,
+    NoticeActionKind,
+    NoticeOutcome,
+    ProducerKind,
+    SubjectKind,
+)
 from app.services.outbox.system_notices import system_notice
 from app.services.triggers.batching import (
     coalesce_window_seconds,
@@ -102,7 +109,10 @@ from app.services.workflow.execution_service import (
     create_execution,
     record_skipped_execution,
 )
-from app.services.workflow.integration_pause import pause_workflow_before_fire
+from app.services.workflow.integration_pause import (
+    missing_integrations_before_fire,
+    pause_workflow_before_fire,
+)
 from app.services.workflow.playbook.check import distrust_fresh_playbook
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.lifecycle import (
@@ -428,16 +438,24 @@ async def _quota_exhausted_body(workflow: Workflow, reset_time_str: str) -> str:
         return body
 
 
-async def _rate_limit_failure_content(error: Exception, workflow: Workflow) -> str:
-    """Say why a budget-, quota-, or plan-blocked run did not run, and the upgrade that lifts it."""
+def _rate_limit_detail(error: Exception) -> _RateLimitDetail:
+    """Read what a rate-limit error says about the wall the run hit."""
     # HTTPException.detail is typed str | None upstream, but RateLimitExceededException
     # always assigns a dict at runtime — read it via getattr, not the inherited annotation.
     raw_detail = getattr(error, "detail", None)
-    detail = _RateLimitDetail.model_validate(raw_detail if isinstance(raw_detail, dict) else {})
+    return _RateLimitDetail.model_validate(raw_detail if isinstance(raw_detail, dict) else {})
+
+
+def _can_upgrade_past(error: Exception) -> bool:
+    """Whether the wall the run hit lifts with a plan: a user already on the top tier has nothing to upgrade to."""
+    return _rate_limit_detail(error).current_plan != PlanType.PRO.value
+
+
+async def _rate_limit_failure_content(error: Exception, workflow: Workflow) -> str:
+    """Say why a budget-, quota-, or plan-blocked run did not run, and the upgrade that lifts it."""
+    detail = _rate_limit_detail(error)
     reset_time_str = detail.reset_time
-    # A user already on the top tier has nothing to upgrade to — drop the
-    # pitch and the upgrade action for them.
-    is_pro = detail.current_plan == PlanType.PRO.value
+    is_pro = not _can_upgrade_past(error)
     # Only two tiers exist, so the upgrade target is always Pro even when
     # plan_required is absent (a count wall on a feature free can still use).
     upgrade_plan = (detail.plan_required or PlanType.PRO.value).capitalize()
@@ -475,61 +493,52 @@ async def _rate_limit_failure_content(error: Exception, workflow: Workflow) -> s
     return body
 
 
-async def _limit_notice_already_sent(workflow: Workflow) -> bool:
-    """Whether this workflow already reported its limit wall in the current window.
-
-    One production thread ended on six identical limit notices: the wall is one
-    fact per day, so it is worth one message per day. The gate lives with the
-    workflow entity (claim_limit_notice); the run itself is still skipped
-    and re-armed either way.
-    """
-    return not await workflow_repository.claim_limit_notice(workflow.user_id, workflow.id)
-
-
 async def _notify_workflow_paused_for_integrations(
     workflow: Workflow, missing: list[IntegrationRef]
 ) -> None:
-    """File the one notice a workflow gets when it pauses for a dead integration.
-
-    Best-effort: failing to file it must not turn a clean skip into a worker
-    error. The workflow is already paused, so a lost notice costs one
-    message, not one per occurrence.
-    """
+    """File the one notice a workflow gets when it pauses for a dead integration."""
     names = ", ".join(ref.name for ref in missing)
-    try:
-        await submit(
-            system_notice(
-                user_id=workflow.user_id,
-                producer=ProducerKind.WORKFLOW,
-                subject_kind=SubjectKind.WORKFLOW_RUN,
-                kind="workflow_paused",
-                key=f"{workflow.id}:{','.join(sorted(ref.id for ref in missing))}:{clock.now().date()}",
-                label=workflow.title,
-                outcome=NoticeOutcome.NEEDS_YOU,
-                initiative=Initiative.USER_SCHEDULED,
-                facts=[
-                    f"'{workflow.title}' needs {names}, which isn't connected.",
-                    "It is paused and will run again once the user reconnects.",
-                ],
-            )
+    await submit(
+        system_notice(
+            user_id=workflow.user_id,
+            producer=ProducerKind.WORKFLOW,
+            subject_kind=SubjectKind.WORKFLOW_RUN,
+            kind="workflow_paused",
+            key=f"{workflow.id}:{','.join(sorted(ref.id for ref in missing))}:{clock.now().date()}",
+            label=workflow.title,
+            outcome=NoticeOutcome.NEEDS_YOU,
+            initiative=Initiative.USER_SCHEDULED,
+            facts=[
+                f"'{workflow.title}' needs {names}, which isn't connected.",
+                "It is paused and will run again once the user reconnects.",
+            ],
+            display=f"'{workflow.title}' is paused because {names} isn't connected. "
+            "It runs again once you reconnect.",
+            action=NoticeAction(
+                kind=NoticeActionKind.RECONNECT_INTEGRATION, integration_id=missing[0].id
+            ),
         )
-    except Exception as notify_err:
-        log.warning(
-            f"{LogTag.WORKER} Could not file the integration-paused notice",
-            workflow_id=workflow.id,
-            error=str(notify_err),
-            error_type=type(notify_err).__name__,
-        )
+    )
 
 
-async def _notify_workflow_failed(error: Exception, workflow: Workflow) -> None:
-    """File that the workflow failed, or was paused by a limit it hit."""
-    if isinstance(error, RateLimitExceededException) and await _limit_notice_already_sent(workflow):
-        return
+async def _notify_workflow_failed(
+    error: Exception, workflow: Workflow, execution_id: str | None
+) -> None:
+    """File that the workflow failed, or was paused by a limit it hit.
+
+    A limit wall is one fact a day however many fires meet it, and a failure that came before
+    the run had a record is one a day too; any other failure is named by its run.
+    """
+    today = clock.now().date().isoformat()
+    action: NoticeAction | None = None
     if isinstance(error, RateLimitExceededException):
         fact = await _rate_limit_failure_content(error, workflow)
+        occurrence = today
+        if _can_upgrade_past(error):
+            action = NoticeAction(kind=NoticeActionKind.UPGRADE)
     else:
         fact = f"Your workflow '{workflow.title}' encountered an error and could not complete."
+        occurrence = today if execution_id is None else execution_id
     # A budget skip is a pause, not a failure: the run resumes after the daily reset.
     outcome = (
         NoticeOutcome.INFO
@@ -542,11 +551,13 @@ async def _notify_workflow_failed(error: Exception, workflow: Workflow) -> None:
             producer=ProducerKind.WORKFLOW,
             subject_kind=SubjectKind.WORKFLOW_RUN,
             kind="workflow_failed",
-            key=f"{workflow.id}:{clock.now().isoformat()}",
+            key=f"{workflow.id}:{occurrence}",
             label=workflow.title,
             outcome=outcome,
             initiative=Initiative.USER_SCHEDULED,
             facts=[fact],
+            display=fact,
+            action=action,
         )
     )
 
@@ -605,7 +616,7 @@ async def _record_execution_failure(
     # workflow's failure notification; a second one here would say it twice.
     if not isinstance(error, WorkflowExecutorFailed):
         try:
-            await _notify_workflow_failed(error, workflow)
+            await _notify_workflow_failed(error, workflow, execution_id)
         except Exception as notify_err:
             log.error(
                 f"{LogTag.WORKER} Could not file the workflow failure notice",
@@ -1138,9 +1149,11 @@ async def _admit_fire(
     # connected" again, so it pauses instead: one notice, then nothing until
     # reconnect. A MANUAL fire gets the in-chat connect card and stays as-is.
     if trigger_type != TriggerType.MANUAL.value:
-        missing = await pause_workflow_before_fire(workflow)
+        missing = await missing_integrations_before_fire(workflow)
         if missing:
+            # Told first: a notice that fails leaves the workflow active, so the next fire tries again.
             await _notify_workflow_paused_for_integrations(workflow, missing)
+            await pause_workflow_before_fire(workflow, missing)
             names = ", ".join(ref.id for ref in missing)
             return f"Workflow {workflow_id} paused — not connected: {names}"
     return None

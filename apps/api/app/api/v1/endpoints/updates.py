@@ -7,10 +7,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.models.updates_models import UnseenUpdates, UpdateFilter, UpdatesResponse
-from app.services.analytics_service import capture
 from app.services.outbox.updates import count_unseen_updates, read_updates
-from shared.py.analytics import UserId
-from shared.py.analytics.catalog.delivery import DeliveryUpdatesViewed
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/updates")
@@ -29,13 +26,7 @@ async def get_updates(
 ) -> UpdatesResponse:
     """Return a page of the user's updates, newest first."""
     log.set(user={"id": user_id}, operation="read_updates")
-    page = await read_updates(user_id, update_filter, before=before, limit=limit)
-    if before is None:
-        capture(
-            UserId(user_id),
-            DeliveryUpdatesViewed(filter=update_filter.value, item_count=len(page.updates)),
-        )
-    return page
+    return await read_updates(user_id, update_filter, before=before, limit=limit)
 
 
 @router.get("/unseen")

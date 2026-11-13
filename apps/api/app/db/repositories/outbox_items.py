@@ -6,6 +6,7 @@ of two workers moving one item only one wins; the loser sees it and stops.
 
 from collections.abc import Collection
 from datetime import datetime
+import re
 from typing import Literal, NamedTuple
 
 from pymongo.errors import DuplicateKeyError
@@ -31,6 +32,10 @@ from app.utils import clock
 _TOLD_OR_TELLING_STATES = frozenset(
     {ItemState.COMPOSING, ItemState.SENDING, ItemState.SENT, *UNSENT_STATES}
 )
+
+
+#: An item nobody has resolved: it carries no resolved_at, whether stored without it or with it empty.
+_UNRESOLVED: dict[str, object] = {"resolved_at": None}
 
 
 def _judgement_fields(judgement: ItemJudgement | None) -> dict[str, object]:
@@ -88,6 +93,19 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
     async def get_by_report(self, user_id: str, report_id: str) -> OutboxItemDocument | None:
         """Return the item stored for a report, or None."""
         return await self._find_one({"user_id": user_id, "report_id": report_id})
+
+    async def list_filed_with_prefix(
+        self, user_id: str, report_id_prefix: str, *, limit: int
+    ) -> list[OutboxItemDocument]:
+        """Return the latest items whose report id starts with the prefix, newest filed first."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "report_id": {"$regex": f"^{re.escape(report_id_prefix)}"},
+            },
+            sort=[("created_at", -1)],
+            limit=limit,
+        )
 
     async def list_settled_of_series(
         self, user_id: str, series: str, *, before: datetime, limit: int
@@ -414,6 +432,7 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
         """Return a page of the user's items, newest first: in these states, with these outcomes, without those.
 
         An outcome is a run report's declared outcome or a notice's, whichever the item's report carries.
+        A resolved item no longer has the outcome it was reported with: it is done.
         """
         clauses: list[dict[str, object]] = [
             {"user_id": user_id, "state": {"$in": [state.value for state in states]}}
@@ -422,9 +441,40 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
             clauses.append({"created_at": {"$lt": before}})
         if outcomes is not None:
             clauses.append(_outcome_in(outcomes))
+            clauses.append(_UNRESOLVED)
         if excluded_outcomes:
-            clauses.append({"$nor": [_outcome_in(excluded_outcomes)]})
+            clauses.append({"$nor": [{"$and": [_outcome_in(excluded_outcomes), _UNRESOLVED]}]})
         return await self._find({"$and": clauses}, sort=[("created_at", -1)], limit=limit)
+
+    async def settle_with_prefix(
+        self, user_id: str, report_id_prefix: str, *, outcomes: Collection[str]
+    ) -> int:
+        """Resolve the unresolved items with these outcomes whose report id starts with the prefix; return how many.
+
+        An item not yet told is dropped as moot: what it would ask of the user is already done.
+        """
+        now = clock.now()
+        match = {
+            "user_id": user_id,
+            "report_id": {"$regex": f"^{re.escape(report_id_prefix)}"},
+            **_UNRESOLVED,
+            **_outcome_in(outcomes),
+        }
+        untold = await self._raw_collection().update_many(
+            {**match, "state": {"$in": [ItemState.RECEIVED.value, ItemState.HELD.value]}},
+            {
+                "$set": {
+                    "state": ItemState.DROPPED.value,
+                    "drop_reason": DropReason.MOOT.value,
+                    "resolved_at": now,
+                    "updated_at": now,
+                }
+            },
+        )
+        told = await self._raw_collection().update_many(
+            match, {"$set": {"resolved_at": now, "updated_at": now}}
+        )
+        return untold.modified_count + told.modified_count
 
     async def count_told_since(
         self, user_id: str, since: datetime, *, excluded_outcomes: Collection[str]

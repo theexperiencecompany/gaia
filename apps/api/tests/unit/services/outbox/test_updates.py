@@ -41,6 +41,7 @@ def _notice(outcome: NoticeOutcome = NoticeOutcome.INFO) -> NoticeReport:
         label="Your memory",
         outcome=outcome,
         facts=["Memories were organized."],
+        display="Your memories are ready.",
     )
 
 
@@ -105,12 +106,12 @@ def _message(attempt: str = "att-1", parts: tuple[str, ...] = ("Done.",)) -> Out
         (_run(OutcomeState.BLOCKED), UpdateOutcome.NEEDS_YOU),
         (_run(OutcomeState.FAILED), UpdateOutcome.FAILED),
         (_run(OutcomeState.UNVERIFIED), UpdateOutcome.FAILED),
-        (_notice(NoticeOutcome.INFO), UpdateOutcome.DONE),
+        (_notice(NoticeOutcome.INFO), UpdateOutcome.INFO),
         (_notice(NoticeOutcome.NEEDS_YOU), UpdateOutcome.NEEDS_YOU),
         (_notice(NoticeOutcome.FAILED), UpdateOutcome.FAILED),
     ],
 )
-def test_a_report_reads_as_done_needing_the_user_or_failed(
+def test_a_report_reads_as_done_info_needing_the_user_or_failed(
     report: NoticeReport | RunReport, expected: UpdateOutcome
 ) -> None:
     assert updates.update_outcome(report) is expected
@@ -143,6 +144,33 @@ async def test_a_told_item_reads_with_the_message_the_ledger_holds_for_it(reposi
     assert row.conversation_id == "chat-1"
     assert row.facts == []
     messages.assert_awaited_once_with(USER, {"att-1"})
+
+
+async def test_an_untold_system_notice_reads_as_the_line_its_producer_wrote(repositories) -> None:
+    feed, _ = repositories
+    feed.return_value = [_item(_notice(), ItemState.DROPPED, attempt=None)]
+
+    page = await updates.read_updates(USER, UpdateFilter.ALL, before=None, limit=10)
+
+    [row] = page.updates
+    assert row.display is not None
+    assert row.display.line == "Your memories are ready."
+
+
+async def test_a_resolved_needs_you_item_reads_as_done_and_says_when(repositories) -> None:
+    feed, messages = repositories
+    resolved_at = T0 + timedelta(hours=2)
+    feed.return_value = [
+        _item(_notice(NoticeOutcome.NEEDS_YOU), resolved_at=resolved_at),
+        _item(_notice(NoticeOutcome.NEEDS_YOU).model_copy(update={"report_id": "sys:b"})),
+    ]
+    messages.return_value = [_message()]
+
+    page = await updates.read_updates(USER, UpdateFilter.ALL, before=None, limit=10)
+
+    resolved, open_ = page.updates
+    assert (resolved.outcome, resolved.resolved_at) == (UpdateOutcome.DONE, resolved_at)
+    assert (open_.outcome, open_.resolved_at) == (UpdateOutcome.NEEDS_YOU, None)
 
 
 async def test_an_item_the_composer_skipped_is_not_shown_as_told_by_its_siblings_message(

@@ -197,11 +197,6 @@ DESKTOP_REQUEST_TTL_GRACE_SECONDS = 15
 # retrying agent is auto-denied instead of re-prompting the user for the same
 # action.
 HIL_DECLINED_PREFIX = "hil:declined:"
-# One workflow's "out of runs / budget" notice, keyed by user+workflow. The
-# daily wall it reports is worth exactly one message, not one per fire (a production thread ran to six).
-WORKFLOW_LIMIT_NOTICE_PREFIX = "workflow:limit-notice:"
-WORKFLOW_LIMIT_NOTICE_TTL = ONE_DAY_TTL
-
 # One bot user's personalised Dodo upgrade link; gates the MINT, not the
 # message, so a lapsed user's blocked turns don't each cost a get_plans call
 # and a checkout_sessions insert. An hour, not a day, since a Dodo session is single-use.
@@ -283,10 +278,6 @@ ELEVENLABS_SHARED_VOICES_CACHE_KEY = "voice:elevenlabs_shared_voices"
 # answer before sending [DONE] anyway. Real action turns resolve in a few
 # seconds; on timeout the answer still reaches the user via the WebSocket push.
 VOICE_EXECUTOR_RESULT_TIMEOUT_S = 90.0
-
-# One-shot gate (SET NX) for the heads-up at PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION of
-# the month, so a pro user is told once per month, not once per request.
-COST_BUDGET_NEAR_NOTIFIED_KEY = "cost_budget_near_notified:{user_id}:{window}"
 
 #: Prefix of the tiered rate limiter's per-user counters: ``{prefix}:{user_id}:{feature}:{period}:{window}``.
 #: Named so a dev tool can clear one user's counters without knowing the rest of the key.

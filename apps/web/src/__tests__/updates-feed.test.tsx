@@ -105,6 +105,106 @@ describe("UpdatesFeed", () => {
     expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
   });
 
+  it("shows what a system notice was written to say, never the facts the composer is given", async () => {
+    list.mockResolvedValue(
+      page([
+        row({
+          state: "dropped",
+          told: null,
+          facts: ["The sign-in for the user's Notion account expired."],
+          display: { line: "GAIA lost access to your Notion account." },
+        }),
+      ]),
+    );
+
+    renderFeed("all");
+
+    expect(
+      await screen.findByText("GAIA lost access to your Notion account."),
+    ).toBeDefined();
+    expect(screen.queryByText(/the user's Notion/)).toBeNull();
+  });
+
+  it("offers a notice's action as a button to where the user does it", async () => {
+    list.mockResolvedValue(
+      page([
+        row({
+          outcome: "needs_you",
+          told: null,
+          conversation_id: null,
+          display: {
+            line: "Notion disconnected.",
+            action: {
+              kind: "reconnect_integration",
+              integration_id: "notion",
+              account_id: "ca_1",
+            },
+          },
+        }),
+        row({
+          report_id: "r2",
+          outcome: "failed",
+          told: null,
+          conversation_id: null,
+          display: { line: "Out of runs.", action: { kind: "upgrade" } },
+        }),
+      ]),
+    );
+
+    renderFeed("all");
+
+    expect(
+      (await screen.findByRole("button", { name: "Reconnect" })).getAttribute(
+        "href",
+      ),
+    ).toBe("/integrations?connect=notion&account=ca_1");
+    expect(
+      screen.getByRole("button", { name: "Upgrade" }).getAttribute("href"),
+    ).toBe("/pricing");
+  });
+
+  it("takes the button away once what the notice asked is done", async () => {
+    list.mockResolvedValue(
+      page([
+        row({
+          outcome: "done",
+          resolved_at: "2026-11-10T10:00:00Z",
+          told: null,
+          conversation_id: null,
+          display: {
+            line: "Notion disconnected.",
+            action: {
+              kind: "reconnect_integration",
+              integration_id: "notion",
+            },
+          },
+        }),
+      ]),
+    );
+
+    renderFeed("all");
+
+    expect(await screen.findByText("Resolved")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Reconnect" })).toBeNull();
+  });
+
+  it("does not mark a warning as done with the green check", async () => {
+    list.mockResolvedValue(
+      page([
+        row({
+          outcome: "info",
+          told: null,
+          display: { line: "Most of your allowance is used." },
+        }),
+      ]),
+    );
+
+    const { container } = renderFeed("all");
+
+    await screen.findByText("Most of your allowance is used.");
+    expect(container.querySelector("svg.text-success")).toBeNull();
+  });
+
   it("says a held update waits", async () => {
     list.mockResolvedValue(
       page([

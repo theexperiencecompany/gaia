@@ -174,38 +174,32 @@ async def _notify_workflows_provisioned(
 ) -> None:
     """File what GAIA set up for the user's newly connected integration."""
     titles = sorted(request.title for request in created)
-    try:
-        await submit(
-            system_notice(
-                user_id=user_id,
-                producer=ProducerKind.ACCOUNT,
-                subject_kind=SubjectKind.ACCOUNT,
-                kind="workflows_provisioned",
-                key=f"{integration_display_name}:{'|'.join(titles)}",
-                label=f"Workflows for your {integration_display_name}",
-                outcome=NoticeOutcome.INFO,
-                facts=[
-                    f"GAIA set up {len(created)} workflow(s) for the user's "
-                    f"{integration_display_name}: "
-                    + "; ".join(f"{r.title} ({r.description})" for r in created)
-                    + ".",
-                    "They can adjust or turn them off anytime.",
-                ],
-            )
-        )
-        log.info(
-            f"{LogTag.WORKFLOW} Filed the system workflow provisioning notice for integration",
+    await submit(
+        system_notice(
             user_id=user_id,
-            integration_display_name=integration_display_name,
+            producer=ProducerKind.ACCOUNT,
+            subject_kind=SubjectKind.ACCOUNT,
+            kind="workflows_provisioned",
+            key=f"{integration_display_name}:{'|'.join(titles)}",
+            label=f"Workflows for your {integration_display_name}",
+            outcome=NoticeOutcome.INFO,
+            facts=[
+                f"GAIA set up {len(created)} workflow(s) for the user's "
+                f"{integration_display_name}: "
+                + "; ".join(f"{r.title} ({r.description})" for r in created)
+                + ".",
+                "They can adjust or turn them off anytime.",
+            ],
+            display=f"GAIA set up {len(created)} workflow(s) for your {integration_display_name}: "
+            + ", ".join(titles)
+            + ". You can adjust or turn them off anytime.",
         )
-    except Exception as e:
-        log.error(
-            f"{LogTag.WORKFLOW} Failed to file the provisioning notice for user",
-            user_id=user_id,
-            error=str(e),
-            error_type=type(e).__name__,
-            exc_info=True,
-        )
+    )
+    log.info(
+        f"{LogTag.WORKFLOW} Filed the system workflow provisioning notice for integration",
+        user_id=user_id,
+        integration_display_name=integration_display_name,
+    )
 
 
 async def _stamp_reset_trigger_timezone(trigger_config: TriggerConfig, user_id: str) -> None:

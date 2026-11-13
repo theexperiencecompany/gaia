@@ -22,11 +22,8 @@ from typing import Any
 
 from app.constants.cache import (
     REPO_GLOBAL_SCOPE,
-    WORKFLOW_LIMIT_NOTICE_PREFIX,
-    WORKFLOW_LIMIT_NOTICE_TTL,
 )
 from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT
-from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository
 from app.models.scheduler_models import (
     DeactivationReason,
@@ -45,7 +42,6 @@ from app.models.workflow_models import (
 )
 from app.utils.creator import creator_lookup_stage
 from app.utils.occurrence import occurrence_window
-from shared.py.wide_events import log
 
 # The scheduler's occurrence field, written by every arm/re-arm path and pinned
 # by the stale-fire claim gate. One constant keeps the dotted key from drifting
@@ -728,35 +724,6 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def distinct_users_with_activated_workflows(self) -> list[str]:
         """Every user id owning at least one activated workflow (the paid-only migration's candidate pool)."""
         return await self._distinct("user_id", {"activated": True})
-
-    async def claim_limit_notice(self, user_id: str, workflow_id: str) -> bool:
-        """Whether this run may send the workflow's limit-wall notice.
-
-        A Redis SET NX EX gate allows one notice per workflow per window,
-        since a quota/budget wall is hit again by every occurrence until reset.
-        Fails open (and logs) if Redis can't answer, so a degradation is
-        visible rather than silently repeating the notice.
-        """
-        client = redis_cache.redis
-        if client is None:
-            return True
-        try:
-            acquired = await client.set(
-                f"{WORKFLOW_LIMIT_NOTICE_PREFIX}{user_id}:{workflow_id}",
-                "1",
-                nx=True,
-                ex=WORKFLOW_LIMIT_NOTICE_TTL,
-            )
-        except Exception as e:
-            log.warning(
-                "Limit-notice dedup unavailable, sending the notice anyway",
-                workflow_id=workflow_id,
-                user_id=user_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            return True
-        return bool(acquired)
 
 
 workflow_repository = WorkflowsRepository()

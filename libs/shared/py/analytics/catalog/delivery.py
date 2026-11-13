@@ -8,7 +8,7 @@ event.
 
 from typing import ClassVar, Literal
 
-from shared.py.analytics.catalog.base import ServerEvent
+from shared.py.analytics.catalog.base import ServerEvent, WebEvent
 
 __all__ = [
     "DeliveryDigestSent",
@@ -83,11 +83,8 @@ class DeliveryDigestSent(ServerEvent):
     items_count: int
 
 
-class DeliveryUpdatesViewed(ServerEvent):
-    """A user opened the Updates feed, which lists what GAIA told them and what it only recorded."""
+class DeliveryUpdatesViewed(WebEvent):
+    """A user opened the Updates page, once per visit; the server cannot tell a visit from a refetch."""
 
     event: ClassVar[str] = "delivery:updates_viewed"
     budget_per_user_day: ClassVar[int] = 50
-
-    filter: Literal["all", "needs_you", "done", "failed", "held"]
-    item_count: int

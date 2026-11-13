@@ -51,7 +51,7 @@ from app.services.triggers.trigger_gate import (
     automation_text,
     decide_gate,
 )
-from app.utils import clock
+from app.utils.occurrence import event_digest
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.analytics import UserId
@@ -308,11 +308,11 @@ async def _perform_action(
             case SubscriptionAction.EXECUTE:
                 await _execute(todo, subscription, payload, coalesced=coalesced, verdict=verdict)
             case SubscriptionAction.NOTIFY:
-                await _notify(todo, subscription)
+                await _notify(todo, subscription, payload)
             case SubscriptionAction.COMPLETE:
                 await _complete(todo, subscription)
             case SubscriptionAction.UNBLOCK:
-                await _unblock(todo, subscription)
+                await _unblock(todo, subscription, payload)
     except Exception as e:
         # The fire is already on the timeline; without this it reads as if the action ran.
         await record_activity(
@@ -355,15 +355,17 @@ async def _execute(
     log.info("todo_subscription.execution_enqueued", todo_id=todo.id)
 
 
-async def _notify(todo: TodoDocument, subscription: TriggerSubscription) -> None:
-    """Tell the user the event landed. No state change — that is the point."""
+async def _notify(
+    todo: TodoDocument, subscription: TriggerSubscription, payload: dict[str, object]
+) -> None:
+    """Tell the user the event landed, once however often the event is delivered. No state change — that is the point."""
     await submit(
         system_notice(
             user_id=todo.user_id,
             producer=ProducerKind.TODO,
             subject_kind=SubjectKind.TODO_RUN,
             kind="trigger_notify",
-            key=f"{subscription.id}:{clock.now().isoformat()}",
+            key=f"{subscription.id}:{event_digest(payload)}",
             label=todo.title,
             outcome=NoticeOutcome.INFO,
             initiative=Initiative.USER_SCHEDULED,
@@ -371,6 +373,7 @@ async def _notify(todo: TodoDocument, subscription: TriggerSubscription) -> None
                 f"An event the user was watching for on '{todo.title}' just fired "
                 f"({subscription.trigger_name})."
             ],
+            display=f"An event you were watching for on '{todo.title}' just fired.",
         )
     )
     log.info("todo_subscription.notified", todo_id=todo.id)
@@ -388,7 +391,9 @@ async def _complete(todo: TodoDocument, subscription: TriggerSubscription) -> No
     log.info("todo_subscription.completed_todo", todo_id=todo.id)
 
 
-async def _unblock(todo: TodoDocument, subscription: TriggerSubscription) -> None:
+async def _unblock(
+    todo: TodoDocument, subscription: TriggerSubscription, payload: dict[str, object]
+) -> None:
     """Clear the blocking labels, or degrade to notify when there are none.
 
     A todo that was never blocked has nothing to unblock, and silently doing
@@ -399,7 +404,7 @@ async def _unblock(todo: TodoDocument, subscription: TriggerSubscription) -> Non
     blocking = BLOCKING_LABELS.intersection(todo.labels)
     if not blocking:
         log.info("todo_subscription.unblock_degraded_to_notify", todo_id=todo.id)
-        await _notify(todo, subscription)
+        await _notify(todo, subscription, payload)
         return
 
     await todo_repository.update(

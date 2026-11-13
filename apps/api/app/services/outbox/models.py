@@ -11,6 +11,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.constants.agents import OutcomeState
 from app.constants.outbox_attention import HoldReason
 from app.models.ownership_models import DeliveryPolicy
 from app.models.task_report_models import TaskReport
@@ -77,6 +78,10 @@ class NoticeOutcome(StrEnum):
     FAILED = "failed"
     #: Where a run is on its way; told only to someone watching it live.
     PROGRESS = "progress"
+
+
+#: The outcomes, of a run or of a notice, that ask something of the user.
+NEEDS_YOU_OUTCOMES = frozenset({OutcomeState.NEEDS_YOU.value, OutcomeState.BLOCKED.value})
 
 
 class ComposeMode(StrEnum):
@@ -253,6 +258,38 @@ class RunReport(_ReportBase):
         return self
 
 
+class NoticeActionKind(StrEnum):
+    """What the user can do about a notice from the Updates feed."""
+
+    RECONNECT_INTEGRATION = "reconnect_integration"
+    UPGRADE = "upgrade"
+
+
+class NoticeAction(BaseModel):
+    """The one thing a notice offers the user to do, which the feed renders as a button."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    kind: NoticeActionKind
+    integration_id: str | None = None
+    account_id: str | None = None
+
+    @model_validator(mode="after")
+    def _reconnect_names_its_integration(self) -> Self:
+        if self.kind is NoticeActionKind.RECONNECT_INTEGRATION and self.integration_id is None:
+            raise ValueError("reconnecting an integration names it")
+        return self
+
+
+class NoticeDisplay(BaseModel):
+    """How the Updates feed words a notice to its user, written by the producer's own code."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    line: str = Field(min_length=1, description="One user-facing sentence saying what happened.")
+    action: NoticeAction | None = None
+
+
 class NoticeReport(_ReportBase):
     """A report from a producer with no model: facts written by the producer's own code."""
 
@@ -265,6 +302,8 @@ class NoticeReport(_ReportBase):
     prerendered: PrerenderedMessage | None = None
     #: After this instant the notice is no longer worth telling.
     valid_until: datetime | None = None
+    #: What the Updates feed shows for the notice; the facts are for the composer and are never shown there.
+    display: NoticeDisplay | None = None
 
     @model_validator(mode="after")
     def _says_something(self) -> Self:

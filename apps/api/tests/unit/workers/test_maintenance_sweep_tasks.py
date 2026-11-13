@@ -11,6 +11,7 @@ from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from datetime import UTC, datetime, timedelta
 import re
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -62,7 +63,7 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
     """Build the patches an end-to-end sweep needs, with overridable return values.
 
     Returns (filed, mocks, patches): filed is the ledger read that says what the sweep already
-    filed today (None: nothing), and mocks keys name each seam.
+    filed for a todo (empty: nothing), and mocks keys name each seam.
     """
     defaults = {
         "list": [_doc()],
@@ -75,7 +76,7 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
     mocks: dict[str, AsyncMock] = {
         "list": AsyncMock(return_value=defaults["list"]),
         "migration_finder": AsyncMock(return_value=defaults["migration"]),
-        "filed": AsyncMock(return_value=None),
+        "filed": AsyncMock(return_value=[]),
         "daytime": AsyncMock(return_value=defaults["daytime"]),
         "canvas": AsyncMock(return_value=defaults["canvas"]),
         "health": AsyncMock(return_value=defaults["health"]),
@@ -94,7 +95,7 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
             mocks["migration_finder"],
             create=True,
         ),
-        patch(f"{MODULE}.outbox_items_repository.get_by_report", mocks["filed"]),
+        patch(f"{MODULE}.outbox_items_repository.list_filed_with_prefix", mocks["filed"]),
         patch(f"{MODULE}._is_user_daytime", mocks["daytime"]),
         patch(f"{MODULE}._read_canvas", mocks["canvas"]),
         patch(f"{MODULE}._health_check_verdict", mocks["health"]),
@@ -193,14 +194,29 @@ class TestIsDormant:
 
 
 class TestClassifyTrackedTodos:
-    async def _classify(self, todos: list[TodoDocument], *, filed: set[str] | None = None):
-        """Classify todos; filed names the report ids the ledger already holds."""
-        held = filed or set()
+    async def _classify(
+        self, todos: list[TodoDocument], *, filed: dict[str, datetime] | None = None
+    ):
+        """Classify todos; filed maps each report id the ledger holds to when it was filed."""
+        ledger = filed or {}
 
-        async def get_by_report(_user_id: str, report_id: str) -> object | None:
-            return object() if report_id in held else None
+        async def list_filed_with_prefix(
+            _user_id: str, prefix: str, *, limit: int
+        ) -> list[SimpleNamespace]:
+            rows = sorted(
+                (
+                    SimpleNamespace(created_at=at)
+                    for report_id, at in ledger.items()
+                    if report_id.startswith(prefix)
+                ),
+                key=lambda row: row.created_at,
+                reverse=True,
+            )
+            return rows[:limit]
 
-        with patch(f"{MODULE}.outbox_items_repository.get_by_report", get_by_report):
+        with patch(
+            f"{MODULE}.outbox_items_repository.list_filed_with_prefix", list_filed_with_prefix
+        ):
             return await _classify_tracked_todos(NOW, todos)
 
     async def test_buckets_expired_overdue_and_dormant(self):
@@ -216,43 +232,76 @@ class TestClassifyTrackedTodos:
         assert [t.id for t in overdue] == ["due"]
         assert [t.id for t in dormant] == ["dor"]
 
-    async def test_a_todo_the_sweep_already_filed_today_is_skipped(self):
+    async def test_a_todo_filed_a_few_hours_ago_is_skipped(self):
         todos = [
             _doc(id="todo-1", expires_at=NOW - timedelta(hours=1)),
             _doc(id="todo-2", expires_at=NOW - timedelta(hours=1)),
         ]
         expired, _overdue, _dormant = await self._classify(
-            todos, filed={"sys:todo_expired:todo-1:2026-01-15"}
+            todos, filed={"sys:todo_expired:todo-1:2026-01-15": NOW - timedelta(hours=3)}
         )
 
         assert [t.id for t in expired] == ["todo-2"]
 
-    async def test_an_overdue_todo_filed_today_is_skipped(self):
+    async def test_an_overdue_todo_inside_its_back_off_is_skipped(self):
         todos = [_doc(id="due", due_date=NOW - timedelta(days=1), updated_at=NOW)]
 
         _expired, overdue, _dormant = await self._classify(
-            todos, filed={"sys:todo_overdue:due:2026-01-15"}
+            todos, filed={"sys:todo_overdue:due:2026-01-15": NOW - timedelta(hours=1)}
         )
 
         assert overdue == []
 
-    async def test_a_users_dormant_todos_are_skipped_once_todays_digest_is_filed(self):
+    async def test_a_users_dormant_todos_are_skipped_inside_the_digests_back_off(self):
         todos = [_doc(id="dor", updated_at=NOW - timedelta(days=10))]
 
         _expired, _overdue, dormant = await self._classify(
-            todos, filed={"sys:todo_dormant_digest:user-1:2026-01-15"}
+            todos, filed={"sys:todo_dormant_digest:user-1:2026-01-15": NOW - timedelta(hours=1)}
         )
 
         assert dormant == []
 
-    async def test_yesterdays_notice_does_not_skip_todays_check(self):
+    async def test_yesterdays_notice_still_holds_the_todo_back_inside_the_one_day_wait(self):
+        """Regression: the day-keyed report id of each filing made every day look like a first notice."""
         todos = [_doc(id="exp", expires_at=NOW - timedelta(hours=1))]
 
         expired, _overdue, _dormant = await self._classify(
-            todos, filed={"sys:todo_expired:exp:2026-01-14"}
+            todos, filed={"sys:todo_expired:exp:2026-01-14": NOW - timedelta(hours=12)}
+        )
+
+        assert expired == []
+
+    async def test_a_todo_is_checked_again_once_the_one_day_wait_has_passed(self):
+        todos = [_doc(id="exp", expires_at=NOW - timedelta(hours=1))]
+
+        expired, _overdue, _dormant = await self._classify(
+            todos, filed={"sys:todo_expired:exp:2026-01-13": NOW - timedelta(hours=25)}
         )
 
         assert [t.id for t in expired] == ["exp"]
+
+    @pytest.mark.parametrize(
+        ("filings", "days_since_last", "again"),
+        [
+            (2, 2, False),
+            (2, 4, True),
+            (3, 6, False),
+            (3, 8, True),
+            (4, 29, False),
+            (4, 31, True),
+            (6, 20, False),
+        ],
+    )
+    async def test_the_wait_grows_one_three_seven_days_then_a_month(
+        self, filings: int, days_since_last: int, again: bool
+    ):
+        last = NOW - timedelta(days=days_since_last)
+        ledger = {f"sys:todo_expired:exp:d{n}": last - timedelta(days=n) for n in range(filings)}
+        todos = [_doc(id="exp", expires_at=NOW - timedelta(hours=1))]
+
+        expired, _overdue, _dormant = await self._classify(todos, filed=ledger)
+
+        assert bool(expired) is again
 
     async def test_due_todo_with_upcoming_schedule_is_not_overdue(self):
         todos = [
@@ -758,11 +807,13 @@ class TestMaintenanceSweep:
         notice = mocks["notify"].await_args.args[0]
         assert notice.report_id.startswith(f"sys:{KIND_DORMANT_DIGEST}:user-1:")
 
-    async def test_a_todo_the_sweep_already_filed_today_is_skipped_entirely(self):
+    async def test_a_todo_inside_its_back_off_is_skipped_entirely(self):
         with _sweep(
             list=[_doc(id="quiet-1", expires_at=datetime.now(UTC) - timedelta(hours=1))]
         ) as (filed, mocks):
-            filed.return_value = object()
+            filed.return_value = [
+                SimpleNamespace(created_at=datetime.now(UTC) - timedelta(hours=1))
+            ]
             summary = await maintenance_sweep_tracked_todos({})
 
         assert (

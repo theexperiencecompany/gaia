@@ -54,6 +54,7 @@ vi.mock("@/components/layout/headers/SidebarHeaderButton", () => ({
 }));
 
 import { UpdatesButton } from "@/features/updates/components/UpdatesButton";
+import { useMarkUpdatesSeen } from "@/features/updates/hooks/useMarkUpdatesSeen";
 import { useUpdatesLiveRefresh } from "@/features/updates/hooks/useUpdatesLiveRefresh";
 import { useUpdatesSeenStore } from "@/features/updates/stores/updatesSeenStore";
 
@@ -152,6 +153,37 @@ describe("live refresh", () => {
 
     unmount();
 
+    expect(handlers.has("outbox.message")).toBe(false);
+  });
+});
+
+describe("marking the page seen", () => {
+  beforeEach(() => {
+    handlers.clear();
+    localStorage.clear();
+    useUpdatesSeenStore.setState({ lastSeenAt: SEEN });
+  });
+
+  it("counts what is told while the page is open as seen", () => {
+    const { wrapper } = clientWrapper();
+    renderHook(() => useMarkUpdatesSeen(), { wrapper });
+    useUpdatesSeenStore.setState({ lastSeenAt: SEEN });
+
+    act(() =>
+      handlers.get("outbox.message")?.({ kind: "conversation_message" }),
+    );
+
+    expect(useUpdatesSeenStore.getState().lastSeenAt).not.toBe(SEEN);
+  });
+
+  it("counts what was told up to the moment the user leaves as seen", () => {
+    const { wrapper } = clientWrapper();
+    const { unmount } = renderHook(() => useMarkUpdatesSeen(), { wrapper });
+    useUpdatesSeenStore.setState({ lastSeenAt: SEEN });
+
+    unmount();
+
+    expect(useUpdatesSeenStore.getState().lastSeenAt).not.toBe(SEEN);
     expect(handlers.has("outbox.message")).toBe(false);
   });
 });

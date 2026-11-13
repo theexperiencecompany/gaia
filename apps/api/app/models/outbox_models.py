@@ -45,6 +45,8 @@ class OutboxItemDocument(UserScopedDocument):
     recovered_at: datetime | None = None
     #: The report_id of the item that replaced this one.
     superseded_by: str | None = None
+    #: When what the item asked of the user was done by other means, so it no longer needs them.
+    resolved_at: datetime | None = None
     expires_at: datetime
     created_at: datetime | None = None
     updated_at: datetime | None = None

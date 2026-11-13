@@ -217,17 +217,14 @@ async def require_bot_api_key(request: Request) -> None:
 async def _may_mint_bot_upgrade_link(user_id: str) -> bool:
     """Whether this turn may mint a fresh Dodo session for ``user_id``.
 
-    A ``SET NX EX`` window, the same gate shape as
-    ``workflow_repository.claim_limit_notice`` — one mint per user per
-    ``BOT_UPGRADE_LINK_TTL``, so a burst of blocked turns costs one session
-    instead of one per message.
+    A ``SET NX EX`` window: one mint per user per ``BOT_UPGRADE_LINK_TTL``, so a
+    burst of blocked turns costs one session instead of one per message.
 
-    Fails CLOSED, unlike that sibling, because what is at stake differs. There,
-    losing the gate costs the user a duplicate notification; here it costs a
-    trail of orphan Dodo sessions, and the newest of those buries the session
-    the user actually paid on when ``get_latest_for_user`` looks for it. A
-    degraded link is a marketing regression; a buried payment is a paying
-    customer told they have no subscription.
+    Fails CLOSED: losing the gate costs a trail of orphan Dodo sessions, and the
+    newest of those buries the session the user actually paid on when
+    ``get_latest_for_user`` looks for it. A degraded link is a marketing
+    regression; a buried payment is a paying customer told they have no
+    subscription.
     """
     try:
         claimed = await redis_cache.client.set(

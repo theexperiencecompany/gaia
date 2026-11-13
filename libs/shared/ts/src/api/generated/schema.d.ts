@@ -11213,6 +11213,35 @@ export interface components {
             snippet: string;
         };
         /**
+         * NoticeAction
+         * @description The one thing a notice offers the user to do, which the feed renders as a button.
+         */
+        NoticeAction: {
+            /** Account Id */
+            account_id?: string | null;
+            /** Integration Id */
+            integration_id?: string | null;
+            kind: components["schemas"]["NoticeActionKind"];
+        };
+        /**
+         * NoticeActionKind
+         * @description What the user can do about a notice from the Updates feed.
+         * @enum {string}
+         */
+        NoticeActionKind: "reconnect_integration" | "upgrade";
+        /**
+         * NoticeDisplay
+         * @description How the Updates feed words a notice to its user, written by the producer's own code.
+         */
+        NoticeDisplay: {
+            action?: components["schemas"]["NoticeAction"] | null;
+            /**
+             * Line
+             * @description One user-facing sentence saying what happened.
+             */
+            line: string;
+        };
+        /**
          * NotionAllPageEventsConfig
          * @description Config for the retired notion_all_page_events trigger.
          *
@@ -15048,7 +15077,7 @@ export interface components {
          * @description Where the update left what it is about.
          * @enum {string}
          */
-        UpdateOutcome: "done" | "needs_you" | "failed";
+        UpdateOutcome: "done" | "info" | "needs_you" | "failed";
         /**
          * UpdateProjectRequest
          * @description Model for updating projects - all fields optional
@@ -15108,6 +15137,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** @description What a system notice says to the user, with the action it offers; None for any other report. */
+            display?: components["schemas"]["NoticeDisplay"] | null;
             drop_reason?: components["schemas"]["DropReason"] | null;
             /**
              * Facts
@@ -15127,6 +15158,11 @@ export interface components {
             outcome: components["schemas"]["UpdateOutcome"];
             /** Report Id */
             report_id: string;
+            /**
+             * Resolved At
+             * @description When what the update asked of the user was done.
+             */
+            resolved_at?: string | null;
             state: components["schemas"]["ItemState"];
             subject_kind: components["schemas"]["SubjectKind"];
             /** Subject Label */
@@ -16423,6 +16459,9 @@ export type MyIntegrationsResponse = components['schemas']['MyIntegrationsRespon
 export type NoteModel = components['schemas']['NoteModel'];
 export type NoteResponse = components['schemas']['NoteResponse'];
 export type NoteSearchResult = components['schemas']['NoteSearchResult'];
+export type NoticeAction = components['schemas']['NoticeAction'];
+export type NoticeActionKind = components['schemas']['NoticeActionKind'];
+export type NoticeDisplay = components['schemas']['NoticeDisplay'];
 export type NotionAllPageEventsConfig = components['schemas']['NotionAllPageEventsConfig'];
 export type NotionNewPageInDbConfig = components['schemas']['NotionNewPageInDbConfig'];
 export type NotionPageContentUpdatedConfig = components['schemas']['NotionPageContentUpdatedConfig'];

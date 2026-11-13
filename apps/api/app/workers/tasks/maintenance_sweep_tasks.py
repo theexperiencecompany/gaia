@@ -11,6 +11,7 @@ from langchain_core.messages import BaseMessage, HumanMessage
 
 from app.agents.llm.client import ainvoke_llm, metered_config, resolve_model
 from app.agents.prompts.todo_prompts import HEALTH_CHECK_VERDICT_ONLY
+from app.constants.outbox_attention import REPEAT_BACKOFF_SECONDS, REPEAT_MUTE_SECONDS
 from app.constants.todos import BLOCKING_LABELS, TodoActivityEvent
 from app.db.repositories.outbox_items import outbox_items_repository
 from app.db.repositories.todos import todo_repository
@@ -22,7 +23,7 @@ from app.services.outbox.system_notices import system_notice, system_report_id
 from app.services.todo_activity import record_activity
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
-from app.utils.timezone import is_within_local_daytime
+from app.utils.timezone import as_utc, is_within_local_daytime
 from shared.py.wide_events import log
 
 DORMANT_DAYS = 5
@@ -145,10 +146,22 @@ def _notice_day(now: datetime) -> str:
     return now.date().isoformat()
 
 
-async def _already_filed_today(user_id: str, kind: str, key: str, now: datetime) -> bool:
-    """Whether the sweep already filed today's notice of one kind for key: nothing new to check or say."""
-    report_id = system_report_id(kind, f"{key}:{_notice_day(now)}")
-    return await outbox_items_repository.get_by_report(user_id, report_id) is not None
+def _repeat_wait(times_filed: int) -> timedelta:
+    """How long after its last notice a todo is left alone: 1d, then 3d, then 7d, then a month."""
+    if times_filed > len(REPEAT_BACKOFF_SECONDS):
+        return timedelta(seconds=REPEAT_MUTE_SECONDS)
+    return timedelta(seconds=REPEAT_BACKOFF_SECONDS[times_filed - 1])
+
+
+async def _in_back_off(user_id: str, kind: str, key: str, now: datetime) -> bool:
+    """Whether the ledger says a notice of one kind for key was filed too recently to check and say it again."""
+    filed = await outbox_items_repository.list_filed_with_prefix(
+        user_id, system_report_id(kind, f"{key}:"), limit=len(REPEAT_BACKOFF_SECONDS) + 1
+    )
+    if not filed:
+        return False
+    last_filed_at = as_utc(filed[0].created_at)
+    return last_filed_at is not None and now < last_filed_at + _repeat_wait(len(filed))
 
 
 async def _classify_tracked_todos(
@@ -156,7 +169,7 @@ async def _classify_tracked_todos(
 ) -> tuple[list[TodoDocument], list[TodoDocument], list[TodoDocument]]:
     """Bucket active tracked todos into expired/overdue/dormant tiers.
 
-    A todo the sweep already filed today's notice for is skipped, so it costs no health check.
+    A todo still inside the back-off its earlier notices set is skipped, so it costs no health check.
     Each tier is capped at 20 entries per sweep.
     """
     expired: list[TodoDocument] = []
@@ -165,12 +178,12 @@ async def _classify_tracked_todos(
 
     for todo in todos:
         if todo.expires_at and todo.expires_at <= now:
-            if not await _already_filed_today(todo.user_id, KIND_EXPIRED, todo.id, now):
+            if not await _in_back_off(todo.user_id, KIND_EXPIRED, todo.id, now):
                 expired.append(todo)
         elif todo.due_date and todo.due_date <= now and not _has_upcoming_schedule(todo, now):
-            if not await _already_filed_today(todo.user_id, KIND_OVERDUE, todo.id, now):
+            if not await _in_back_off(todo.user_id, KIND_OVERDUE, todo.id, now):
                 overdue.append(todo)
-        elif _is_dormant(todo, now) and not await _already_filed_today(
+        elif _is_dormant(todo, now) and not await _in_back_off(
             todo.user_id, KIND_DORMANT_DIGEST, todo.user_id, now
         ):
             dormant.append(todo)
@@ -375,6 +388,7 @@ async def _health_check_expired(todo: TodoDocument, now: datetime) -> ExpiredOut
         todo,
         KIND_EXPIRED,
         message or f"The tracked todo '{title}' has expired and may need attention.",
+        f"'{title}' has expired and may need your attention.",
         now,
     )
     await record_activity(
@@ -454,6 +468,8 @@ async def _notify_overdue(todo: TodoDocument, now: datetime) -> None:
         KIND_OVERDUE,
         f"'{title}' was due {days_overdue} day{'s' if days_overdue != 1 else ''} ago and has no "
         "scheduled follow-up.",
+        f"'{title}' was due {days_overdue} day{'s' if days_overdue != 1 else ''} ago and has "
+        "nothing scheduled to follow up.",
         now,
     )
 
@@ -505,6 +521,8 @@ async def _send_user_dormant_digest(
                 label="Dormant todos",
                 outcome=NoticeOutcome.INFO,
                 facts=facts,
+                display=f"{count} todo{'s have' if count != 1 else ' has'} gone quiet and may need "
+                "your attention: " + ", ".join(f"'{todo.title}'" for todo in user_todos) + ".",
             )
         )
         log.info("maintenance_sweep.dormant_digest_filed", user_id=user_id, todo_count=count)
@@ -553,8 +571,10 @@ async def _health_check_verdict(user_id: str, prompt: str) -> str:
     return cast(BaseMessage, response).text.strip()
 
 
-async def _file_todo_notice(todo: TodoDocument, kind: str, fact: str, now: datetime) -> None:
-    """File the notice of one kind for a todo, named by the day so the sweep files it at most once a day."""
+async def _file_todo_notice(
+    todo: TodoDocument, kind: str, fact: str, display: str, now: datetime
+) -> None:
+    """File the notice of one kind for a todo, named by the day: the sweep's back-off keeps it to one a day at most."""
     await submit(
         system_notice(
             user_id=todo.user_id,
@@ -565,6 +585,7 @@ async def _file_todo_notice(todo: TodoDocument, kind: str, fact: str, now: datet
             label=todo.title,
             outcome=NoticeOutcome.INFO,
             facts=[fact],
+            display=display,
         )
     )
 

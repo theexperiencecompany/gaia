@@ -15,6 +15,7 @@ from app.models.workflow_models import IntegrationRef
 from app.services.triggers.subscription_service import AccountScope
 from app.services.workflow.integration_pause import (
     PauseOutcome,
+    missing_integrations_before_fire,
     pause_watches_for_expired_account,
     pause_workflow_before_fire,
     pause_workflow_for_missing_integrations,
@@ -36,6 +37,13 @@ def subscription_side():
         patch(f"{MODULE}.resync_subscriptions_for_trigger_names", new_callable=AsyncMock) as resync,
     ):
         yield MagicMock(pause=pause, resync=resync)
+
+
+@pytest.fixture(autouse=True)
+def settled():
+    """Stub the outbox settle a resumed workflow makes; TestResume asserts it."""
+    with patch(f"{MODULE}.settle_system_notices", new_callable=AsyncMock) as settle:
+        yield settle
 
 
 def _workflow(workflow_id: str, title: str, *, activated: bool = True) -> MagicMock:
@@ -187,6 +195,26 @@ class TestResume:
             (USER_ID, DeactivationReason.INTEGRATION_NEVER_CONNECTED),
         ]
         service.activate_workflow.assert_awaited_once_with("wf-1", USER_ID)
+
+    async def test_a_resumed_workflow_settles_its_paused_notice_and_one_left_paused_does_not(
+        self, settled: AsyncMock
+    ) -> None:
+        """Regression: the paused notice stayed under Needs you after the workflow resumed."""
+        with (
+            patch(f"{MODULE}.workflow_repository") as repo,
+            patch(f"{MODULE}.compute_required_integrations", return_value={"gmail"}),
+            patch(f"{MODULE}.WorkflowService") as service,
+        ):
+            repo.find_paused_for_reason = _paused_only_when_expired(
+                [_workflow("wf-1", "Digest"), _workflow("wf-2", "Notes")]
+            )
+            service.activate_workflow = AsyncMock(
+                side_effect=[None, ValueError("Connect Notion to enable this workflow.")]
+            )
+
+            await resume_workflows_for_reconnected_integration(USER_ID, "gmail")
+
+        settled.assert_awaited_once_with(USER_ID, "workflow_paused", "wf-1:")
 
     async def test_a_workflow_still_missing_another_integration_stays_paused(self) -> None:
         # activate_workflow refuses while any required integration is missing, so
@@ -478,7 +506,7 @@ class TestPauseAtFireTime:
         ):
             service.deactivate_workflow = AsyncMock()
 
-            missing = await pause_workflow_before_fire(workflow)
+            missing = await missing_integrations_before_fire(workflow)
 
         assert missing == [IntegrationRef(id="gmail", name="Gmail")]
 
@@ -496,7 +524,7 @@ class TestPauseAtFireTime:
         ):
             service.deactivate_workflow = AsyncMock()
 
-            await pause_workflow_before_fire(workflow)
+            await pause_workflow_before_fire(workflow, [IntegrationRef(id="gmail", name="Gmail")])
 
         service.deactivate_workflow.assert_awaited_once_with(
             "wf-7",
@@ -519,12 +547,14 @@ class TestPauseAtFireTime:
         ):
             service.deactivate_workflow = AsyncMock()
 
-            assert await pause_workflow_before_fire(workflow) == []
+            assert await missing_integrations_before_fire(workflow) == []
 
         service.deactivate_workflow.assert_not_awaited()
         mock_log.warning.assert_not_called()
 
-    async def test_an_unsaved_workflow_is_not_paused_by_id(self) -> None:
+    async def test_an_unsaved_workflow_reports_nothing_missing_so_it_is_never_paused_by_id(
+        self,
+    ) -> None:
         """deactivate_workflow keys on the id; passing an empty one would match no document, or worse be treated as a wildcard downstream."""
         workflow = self._workflow_needing({"gmail"}, workflow_id="")
 
@@ -538,7 +568,7 @@ class TestPauseAtFireTime:
         ):
             service.deactivate_workflow = AsyncMock()
 
-            assert await pause_workflow_before_fire(workflow) == []
+            assert await missing_integrations_before_fire(workflow) == []
 
         service.deactivate_workflow.assert_not_awaited()
 
@@ -557,7 +587,13 @@ class TestPauseAtFireTime:
         ):
             service.deactivate_workflow = AsyncMock()
 
-            await pause_workflow_before_fire(workflow)
+            await pause_workflow_before_fire(
+                workflow,
+                [
+                    IntegrationRef(id="gmail", name="Gmail"),
+                    IntegrationRef(id="notion", name="Notion"),
+                ],
+            )
 
         mock_log.warning.assert_called_once()
         assert mock_log.warning.call_args.args == (

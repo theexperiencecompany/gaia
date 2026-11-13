@@ -2701,28 +2701,17 @@
     {
       "event": "delivery:updates_viewed",
       "class": "DeliveryUpdatesViewed",
-      "owner": "server",
+      "owner": "web",
       "domain": "delivery",
-      "description": "A user opened the Updates feed, which lists what GAIA told them and what it only recorded.",
+      "description": "A user opened the Updates page, once per visit; the server cannot tell a visit from a refetch.",
       "previous_names": [],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
+      "base_properties": null,
       "properties": {
         "additionalProperties": false,
-        "description": "A user opened the Updates feed, which lists what GAIA told them and what it only recorded.",
-        "properties": {
-          "filter": {
-            "enum": ["all", "needs_you", "done", "failed", "held"],
-            "title": "Filter",
-            "type": "string"
-          },
-          "item_count": {
-            "title": "Item Count",
-            "type": "integer"
-          }
-        },
-        "required": ["filter", "item_count"],
+        "description": "A user opened the Updates page, once per visit; the server cannot tell a visit from a refetch.",
+        "properties": {},
         "title": "DeliveryUpdatesViewed",
         "type": "object"
       }

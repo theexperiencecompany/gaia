@@ -178,5 +178,7 @@ async def _notify_memory_ready(user_id: str) -> None:
                 "their context, preferences and the people they mention.",
                 "They can review or edit any memory in settings, under memory.",
             ],
+            display="GAIA organized memories from your past conversations. "
+            "You can review or edit any of them in settings, under memory.",
         )
     )

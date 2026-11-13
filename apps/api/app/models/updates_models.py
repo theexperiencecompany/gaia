@@ -5,7 +5,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-from app.services.outbox.models import DropReason, ItemState, SubjectKind
+from app.services.outbox.models import DropReason, ItemState, NoticeDisplay, SubjectKind
 
 
 class UpdateFilter(StrEnum):
@@ -22,6 +22,8 @@ class UpdateOutcome(StrEnum):
     """Where the update left what it is about."""
 
     DONE = "done"
+    #: Something GAIA only recorded or warned about, which asks nothing of the user.
+    INFO = "info"
     NEEDS_YOU = "needs_you"
     FAILED = "failed"
 
@@ -36,6 +38,10 @@ class UpdateRow(BaseModel):
     state: ItemState
     drop_reason: DropReason | None = None
     facts: list[str] = Field(description="What GAIA recorded, one claim per entry.")
+    display: NoticeDisplay | None = Field(
+        default=None,
+        description="What a system notice says to the user, with the action it offers; None for any other report.",
+    )
     told: list[str] | None = Field(
         default=None,
         description="The message the user was told, one entry per bubble; None when it was not told.",
@@ -48,6 +54,9 @@ class UpdateRow(BaseModel):
     )
     occurred_at: datetime
     told_at: datetime | None = None
+    resolved_at: datetime | None = Field(
+        default=None, description="When what the update asked of the user was done."
+    )
     created_at: datetime
 
 

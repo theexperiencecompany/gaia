@@ -2,7 +2,7 @@
 
 Covers:
 - provision_system_workflows: no entries, idempotent skip, success, DuplicateKeyError, generic error
-- _notify_workflows_provisioned: the notice's facts, submit failure
+- _notify_workflows_provisioned: the notice's facts, a failed submit raising
 - reset_system_workflow_to_default: not found, no registry key, success with trigger re-registration,
   trigger registration failure, old trigger unregister failure (non-fatal)
 """
@@ -277,17 +277,16 @@ class TestNotifyWorkflowsProvisioned:
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.submit", new_callable=AsyncMock)
-    async def test_a_notice_that_cannot_be_filed_does_not_raise(
-        self, mock_submit: AsyncMock
-    ) -> None:
+    async def test_a_notice_that_cannot_be_filed_raises(self, mock_submit: AsyncMock) -> None:
+        """Regression: the failure was logged and dropped, so the user never learned what GAIA set up."""
         mock_submit.side_effect = RuntimeError("redis down")
 
         from app.services.system_workflows.provisioner import (
             _notify_workflows_provisioned,
         )
 
-        # Should not raise: the workflows are already provisioned
-        await _notify_workflows_provisioned("user-1", "Gmail", [_make_workflow_request()])
+        with pytest.raises(RuntimeError, match="redis down"):
+            await _notify_workflows_provisioned("user-1", "Gmail", [_make_workflow_request()])
 
 
 class TestResetSystemWorkflowToDefault:

@@ -87,10 +87,9 @@ from app.services.triggers.todo_trigger_window import (
 )
 from app.services.triggers.trigger_gate import GateHold, quiet_hours_hold
 from app.services.user_service import get_quiet_hours
-from app.utils import clock
 from app.utils.auth_utils import OwnerNotFoundError, require_owner
 from app.utils.cron_utils import CronError, get_next_run_time
-from app.utils.occurrence import occurrence_stamp, parse_occurrence_stamp
+from app.utils.occurrence import event_digest, occurrence_stamp, parse_occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
 from app.workers.queue import enqueue_worker_job
@@ -356,7 +355,7 @@ async def _execute_todo_with_retry(
         await todo_repository.update(
             todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=new_retry_count)
         )
-        await _mark_todo_failed(todo_id, user_id, doc)
+        await _mark_todo_failed(todo_id, user_id, doc, origin)
         return f"failed:{todo_id} (max retries reached)"
 
     # The run is delivered: a failure queueing what follows must not run it again.
@@ -543,6 +542,7 @@ async def _give_up_occurrence(
     )
     await _notify_run_failed(
         doc,
+        origin,
         f"This run of '{doc.title}' failed after {MAX_RETRY_ATTEMPTS} attempts. "
         "It runs again at its next scheduled time.",
     )
@@ -1005,7 +1005,9 @@ async def finish_tracked_todo_run(ctx: ArqJobContext, undone: FinishedTodoRun) -
     return f"failed:{undone.todo_id} (gave up)"
 
 
-async def _mark_todo_failed(todo_id: str, user_id: str, doc: TodoDocument) -> None:
+async def _mark_todo_failed(
+    todo_id: str, user_id: str, doc: TodoDocument, origin: TriggerOrigin | None
+) -> None:
     """Mark the todo as permanently failed and file the notice that says so."""
     await todo_repository.add_labels(todo_id, user_id=user_id, labels=[FAILED_LABEL])
     # The execution path skips failed todos until a manual reset, so leaving the
@@ -1021,12 +1023,22 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: TodoDocument) -> No
     log.info("tracked_todo.marked_failed", todo_id=todo_id)
     await _notify_run_failed(
         doc,
+        origin,
         f"Your scheduled task '{doc.title}' could not be completed after "
         f"{MAX_RETRY_ATTEMPTS} attempts. Please check the task and try again.",
     )
 
 
-async def _notify_run_failed(doc: TodoDocument, body: str) -> None:
+def _failed_run_key(doc: TodoDocument, origin: TriggerOrigin | None) -> str:
+    """Name the run that failed: the occurrence it was armed for, or the event that woke it."""
+    if origin is not None:
+        return f"{doc.id}:{event_digest(origin.model_dump(mode='json'))}"
+    if doc.scheduled_at is None:
+        raise ValueError(f"todo {doc.id} ran on its schedule with no occurrence armed")
+    return f"{doc.id}:{occurrence_stamp(doc.scheduled_at)}"
+
+
+async def _notify_run_failed(doc: TodoDocument, origin: TriggerOrigin | None, body: str) -> None:
     """File that a run used up its attempts; the schedule moves on whether or not the notice is filed."""
     try:
         await submit(
@@ -1035,11 +1047,12 @@ async def _notify_run_failed(doc: TodoDocument, body: str) -> None:
                 producer=ProducerKind.TODO,
                 subject_kind=SubjectKind.TODO_RUN,
                 kind="todo_run_failed",
-                key=f"{doc.id}:{clock.now().isoformat()}",
+                key=_failed_run_key(doc, origin),
                 label=doc.title,
                 outcome=NoticeOutcome.FAILED,
                 initiative=Initiative.USER_SCHEDULED,
                 facts=[body],
+                display=body,
             )
         )
     except Exception as notify_exc:

@@ -25,6 +25,7 @@ from app.services.oauth.oauth_service import (
     handle_oauth_connection,
     store_user_info,
 )
+from app.services.outbox.system_notices import settle_system_notices
 from app.services.workflow.integration_pause import (
     resume_workflows_for_reconnected_integration,
 )
@@ -569,6 +570,22 @@ class TestHandleOAuthConnection:
 
         mock_record_account.assert_awaited_once_with("user123", config, "ca_new")
         publish.assert_awaited_once_with("user123", "notion")
+
+    async def test_a_reconnected_account_settles_its_expiry_notice(self, mock_record_account):
+        """Regression: the expiry notice stayed under Needs you after the user reconnected."""
+        config = make_integration_config(integration_id="notion", name="Notion")
+        background_tasks = MagicMock()
+
+        await handle_oauth_connection(
+            user_id="user123",
+            integration_config=config,
+            background_tasks=background_tasks,
+            connected_account_id="ca_new",
+        )
+
+        background_tasks.add_task.assert_any_call(
+            settle_system_notices, "user123", "integration_expired", "notion:ca_new:"
+        )
 
     async def test_a_connect_over_the_account_limit_has_no_side_effects(self, mock_record_account):
         mock_record_account.return_value = AccountLimitReached(limit=5)

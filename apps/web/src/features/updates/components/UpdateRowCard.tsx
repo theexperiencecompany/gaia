@@ -1,10 +1,16 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { Alert02Icon, CheckmarkCircle02Icon, Clock01Icon } from "@icons";
+import {
+  Alert02Icon,
+  CheckmarkCircle02Icon,
+  Clock01Icon,
+  InformationCircleIcon,
+} from "@icons";
 import type { UpdateOutcome, UpdateRow } from "@shared/api/generated";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { SUBJECT_KIND_LABELS } from "../constants";
+import { updateAction } from "../utils/updateAction";
 import {
   updateBody,
   updateStatusLabel,
@@ -13,6 +19,7 @@ import {
 
 const OUTCOME_ICONS: Record<UpdateOutcome, ReactNode> = {
   done: <CheckmarkCircle02Icon className="size-5 text-success" />,
+  info: <InformationCircleIcon className="size-5 text-zinc-400" />,
   needs_you: <Alert02Icon className="size-5 text-warning" />,
   failed: <Alert02Icon className="size-5 text-danger" />,
 };
@@ -22,6 +29,8 @@ interface UpdateRowCardProps {
 }
 
 export function UpdateRowCard({ row }: UpdateRowCardProps) {
+  const action = updateAction(row);
+
   return (
     <article className="flex w-full items-start gap-3 rounded-2xl bg-zinc-900 p-4">
       <div className="mt-0.5 shrink-0">
@@ -54,16 +63,30 @@ export function UpdateRowCard({ row }: UpdateRowCardProps) {
         </div>
       </div>
 
-      {row.conversation_id && (
-        <Button
-          as={Link}
-          href={`/c/${row.conversation_id}`}
-          size="sm"
-          variant="flat"
-          className="shrink-0"
-        >
-          Open
-        </Button>
+      {(action || row.conversation_id) && (
+        <div className="flex shrink-0 flex-col gap-2">
+          {action && (
+            <Button
+              as={Link}
+              href={action.href}
+              size="sm"
+              color="primary"
+              variant="flat"
+            >
+              {action.label}
+            </Button>
+          )}
+          {row.conversation_id && (
+            <Button
+              as={Link}
+              href={`/c/${row.conversation_id}`}
+              size="sm"
+              variant="flat"
+            >
+              Open
+            </Button>
+          )}
+        </div>
       )}
     </article>
   );

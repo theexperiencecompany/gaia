@@ -11585,6 +11585,78 @@
         "title": "NoteSearchResult",
         "type": "object"
       },
+      "NoticeAction": {
+        "additionalProperties": false,
+        "description": "The one thing a notice offers the user to do, which the feed renders as a button.",
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "integration_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integration Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/NoticeActionKind"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "NoticeAction",
+        "type": "object"
+      },
+      "NoticeActionKind": {
+        "description": "What the user can do about a notice from the Updates feed.",
+        "enum": [
+          "reconnect_integration",
+          "upgrade"
+        ],
+        "title": "NoticeActionKind",
+        "type": "string"
+      },
+      "NoticeDisplay": {
+        "additionalProperties": false,
+        "description": "How the Updates feed words a notice to its user, written by the producer's own code.",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NoticeAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "line": {
+            "description": "One user-facing sentence saying what happened.",
+            "minLength": 1,
+            "title": "Line",
+            "type": "string"
+          }
+        },
+        "required": [
+          "line"
+        ],
+        "title": "NoticeDisplay",
+        "type": "object"
+      },
       "NotionAllPageEventsConfig": {
         "description": "Config for the retired notion_all_page_events trigger.\n\nKept only so stored workflow documents still deserialize; Composio\nretired the underlying slug and new registrations are rejected.",
         "properties": {
@@ -19386,6 +19458,7 @@
         "description": "Where the update left what it is about.",
         "enum": [
           "done",
+          "info",
           "needs_you",
           "failed"
         ],
@@ -19546,6 +19619,17 @@
             "title": "Created At",
             "type": "string"
           },
+          "display": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NoticeDisplay"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What a system notice says to the user, with the action it offers; None for any other report."
+          },
           "drop_reason": {
             "anyOf": [
               {
@@ -19588,6 +19672,19 @@
           "report_id": {
             "title": "Report Id",
             "type": "string"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When what the update asked of the user was done.",
+            "title": "Resolved At"
           },
           "state": {
             "$ref": "#/components/schemas/ItemState"

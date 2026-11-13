@@ -24,6 +24,7 @@ from app.models.workflow_models import (
     WorkflowDocument,
     WorkflowUpdate,
 )
+from app.services.outbox.system_notices import settle_system_notices
 from app.services.triggers.subscription_service import (
     AccountScope,
     pause_subscriptions_for_trigger_names,
@@ -161,8 +162,8 @@ def _wants_integration(
     )
 
 
-async def pause_workflow_before_fire(workflow: Workflow) -> list[IntegrationRef]:
-    """Pause workflow before it fires when an integration it needs is not connected.
+async def missing_integrations_before_fire(workflow: Workflow) -> list[IntegrationRef]:
+    """Return the integrations a workflow needs that are not connected, none for a workflow with no id.
 
     Complements pause_workflows_for_expired_integration, which relies on a
     Composio webhook that a revoked/missing webhook or a never-connected
@@ -171,9 +172,11 @@ async def pause_workflow_before_fire(workflow: Workflow) -> list[IntegrationRef]
     """
     required = compute_required_integrations(workflow.steps, workflow.trigger_config)
     missing = await compute_missing_integrations(required, workflow.user_id)
-    if not missing or not workflow.id:
-        return []
+    return missing if workflow.id else []
 
+
+async def pause_workflow_before_fire(workflow: Workflow, missing: list[IntegrationRef]) -> None:
+    """Pause workflow before it fires, recording the integrations it is blocked on."""
     await WorkflowService.deactivate_workflow(
         workflow.id,
         workflow.user_id,
@@ -186,7 +189,6 @@ async def pause_workflow_before_fire(workflow: Workflow) -> list[IntegrationRef]
         user_id=workflow.user_id,
         missing_integrations=[ref.id for ref in missing],
     )
-    return missing
 
 
 async def pause_watches_for_expired_account(
@@ -284,6 +286,7 @@ async def resume_workflows_for_reconnected_integration(user_id: str, integration
                 await workflow_repository.update_for_user(
                     workflow.id, user_id, WorkflowUpdate(blocked_on_integrations=[])
                 )
+            await settle_system_notices(user_id, "workflow_paused", f"{workflow.id}:")
             resumed += 1
 
     if resumed:

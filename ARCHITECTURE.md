@@ -475,7 +475,7 @@ Pipeline, all under `apps/api/app/services/outbox/`:
 
 The Updates feed:
 
-- `GET /api/v1/updates?filter=all|needs_you|done|failed|held&before=&limit=` (`app/api/v1/endpoints/updates.py`, `services/outbox/updates.py`) reads items newest first, with the ledger message that told a sent item. Superseded items and progress notices are not listed. Opening it emits `delivery:updates_viewed`.
+- `GET /api/v1/updates?filter=all|needs_you|done|failed|held&before=&limit=` (`app/api/v1/endpoints/updates.py`, `services/outbox/updates.py`) reads items newest first, with the ledger message that told a sent item. Superseded items and progress notices are not listed. A system notice carries the line the feed shows and an optional action (`NoticeDisplay`), and a needs-you notice is resolved (`resolved_at`) when its subject is, so it moves to Done. The page emits `delivery:updates_viewed` once per visit, from the web.
 - Web: `apps/web/src/features/updates/` and the `/updates` page; the header button shows how many updates arrived since the page was last opened. Rows open the conversation that owns the subject.
 
 What is left of "notifications" is the user's settings and plumbing, not a message path: per-channel on/off (`GET/PUT /notifications/preferences/channels`, `app/utils/channel_preferences.py`), push device registration (`/notifications/register-device`, `device_token_service.py`) and the signed email unsubscribe link (`app/utils/email_unsubscribe.py`). The pre-outbox `notifications` collection is frozen: nothing writes or reads it, no index code touches it, and its rows stay as they were.

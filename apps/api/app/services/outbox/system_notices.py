@@ -7,8 +7,12 @@ once. Whether, when and how the user is told is the outbox's to decide, as for a
 from datetime import datetime
 
 from app.constants.outbox import SYSTEM_REPORT_PREFIX
+from app.db.repositories.outbox_items import outbox_items_repository
 from app.services.outbox.models import (
+    NEEDS_YOU_OUTCOMES,
     Initiative,
+    NoticeAction,
+    NoticeDisplay,
     NoticeOutcome,
     NoticeReport,
     ProducerKind,
@@ -33,11 +37,16 @@ def system_notice(
     label: str,
     outcome: NoticeOutcome,
     facts: list[str],
+    display: str,
+    action: NoticeAction | None = None,
     initiative: Initiative = Initiative.SELF_INITIATED,
     owner_conversation_id: str | None = None,
     valid_until: datetime | None = None,
 ) -> NoticeReport:
-    """Return the notice that tells user_id what happened, named by its kind and the occurrence's natural key."""
+    """Return the notice that tells user_id what happened, named by its kind and the occurrence's natural key.
+
+    The facts are for the composer; display is the sentence the Updates feed shows, with the action it offers.
+    """
     occurrence = f"{kind}:{key}"
     return NoticeReport(
         report_id=system_report_id(kind, key),
@@ -54,4 +63,12 @@ def system_notice(
         outcome=outcome,
         facts=facts,
         valid_until=valid_until,
+        display=NoticeDisplay(line=display, action=action),
+    )
+
+
+async def settle_system_notices(user_id: str, kind: str, key_prefix: str) -> int:
+    """Resolve the needs-you notices of one kind whose key starts with key_prefix: what they asked of the user is done."""
+    return await outbox_items_repository.settle_with_prefix(
+        user_id, system_report_id(kind, key_prefix), outcomes=NEEDS_YOU_OUTCOMES
     )

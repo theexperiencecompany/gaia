@@ -12,6 +12,8 @@ inside the same second are one job and were never distinguishable.
 """
 
 from datetime import UTC, datetime, timedelta
+import hashlib
+import json
 
 from shared.py.wide_events import log
 
@@ -59,3 +61,9 @@ def occurrence_window(moment: datetime) -> dict[str, datetime]:
     """
     start = moment.replace(microsecond=0)
     return {"$gte": start, "$lt": start + OCCURRENCE_RESOLUTION}
+
+
+def event_digest(event: object) -> str:
+    """Name one trigger event by its content: a redelivery of it digests alike, another event does not."""
+    encoded = json.dumps(event, sort_keys=True, default=str).encode()
+    return hashlib.sha256(encoded).hexdigest()[:16]
