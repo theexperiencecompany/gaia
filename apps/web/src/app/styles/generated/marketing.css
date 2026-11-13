@@ -122,6 +122,7 @@
 @source "../../../components/seo/ProseParagraphs.tsx";
 @source "../../../components/seo/RelatedComparisonsGrid.tsx";
 @source "../../../components/seo/SiteLink.tsx";
+@source "../../../components/shared/accordionVariants.ts";
 @source "../../../components/shared/buttonVariants.ts";
 @source "../../../components/shared/ChunkErrorRecovery.tsx";
 @source "../../../components/shared/controlVariants.ts";
@@ -139,6 +140,7 @@
 @source "../../../components/shared/SecretInput.tsx";
 @source "../../../components/shared/shape.ts";
 @source "../../../components/shared/SuspenseLoader.tsx";
+@source "../../../components/shared/tabsVariants.ts";
 @source "../../../components/shared/tone.ts";
 @source "../../../components/ui/accordion.tsx";
 @source "../../../components/ui/avatar.tsx";
@@ -184,7 +186,6 @@
 @source "../../../lib/docs-links/automate-links.ts";
 @source "../../../lib/docs-links/index.ts";
 @source "../../../lib/electron/api.ts";
-@source "../../../lib/heroui/accordionParity.ts";
 @source "../../../types/features/toolDataTypes.ts";
 @source "../../../utils/date/dateUtils.ts";
 @source "../../[locale]/(landing)/client.tsx";

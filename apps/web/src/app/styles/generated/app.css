@@ -131,6 +131,7 @@
 @source "../../../components/navigation/SkipToContentLink.tsx";
 @source "../../../components/providers/KeyboardShortcutsProvider.tsx";
 @source "../../../components/seo/SiteLink.tsx";
+@source "../../../components/shared/accordionVariants.ts";
 @source "../../../components/shared/buttonVariants.ts";
 @source "../../../components/shared/ChunkErrorRecovery.tsx";
 @source "../../../components/shared/CollapsibleListWrapper.tsx";
@@ -159,6 +160,7 @@
 @source "../../../components/shared/SecretInput.tsx";
 @source "../../../components/shared/shape.ts";
 @source "../../../components/shared/SuspenseLoader.tsx";
+@source "../../../components/shared/tabsVariants.ts";
 @source "../../../components/shared/tone.ts";
 @source "../../../components/shared/WaveSpinnerSquare.tsx";
 @source "../../../components/ui/accordion.tsx";
@@ -236,8 +238,6 @@
 @source "../../../lib/api/typed.ts";
 @source "../../../lib/db/chatDb.ts";
 @source "../../../lib/electron/api.ts";
-@source "../../../lib/heroui/accordionParity.ts";
-@source "../../../lib/heroui/tabsParity.ts";
 @source "../../../lib/websocket/useWebSocketConnection.ts";
 @source "../../../lib/websocket/WebSocketManager.ts";
 @source "../../../services/api/notifications.ts";
