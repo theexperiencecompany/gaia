@@ -31,7 +31,7 @@ export function IntegrationAutomateGuides({
             href={`/automate/${combo.slug}`}
             className="group rounded-3xl bg-zinc-800 p-4 transition-colors select-none hover:bg-zinc-700/50"
           >
-            <h3 className="mb-1 text-base font-medium text-zinc-100 group-hover:text-primary">
+            <h3 className="mb-1 text-base font-medium text-zinc-100 group-hover:text-accent">
               {combo.toolA} + {combo.toolB}
             </h3>
             <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">

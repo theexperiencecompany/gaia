@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Input, Modal } from "@heroui/react";
+import { Input, Modal } from "@heroui/react";
 import { ShieldIcon } from "@icons";
 import type {
   ApprovalDecision,
@@ -12,6 +12,8 @@ import { formatApprovalAge } from "@shared/chat";
 import { flattenArgsPreview } from "@shared/utils";
 import { useState } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useMarkApprovalDecided } from "@/features/chat/hooks/useMarkApprovalDecided";
 import {
@@ -176,7 +178,12 @@ export default function ApprovalReviewSheet({
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Header className="flex items-center gap-2">
               <ShieldIcon width={18} className="shrink-0 text-amber-400" />
-              <Modal.Heading className="text-sm text-zinc-100">
+              <Modal.Heading
+                className={toneVariants({
+                  tone: "strong",
+                  className: "text-sm",
+                })}
+              >
                 {items.length} actions need your approval ({totals})
               </Modal.Heading>
             </Modal.Header>
@@ -232,7 +239,7 @@ export default function ApprovalReviewSheet({
                             </div>
                           )}
                           <div className="mt-2 flex items-center gap-2">
-                            <Button
+                            <GaiaButton
                               size="sm"
                               variant={
                                 picked === "approve" ? "primary" : "tertiary"
@@ -242,8 +249,8 @@ export default function ApprovalReviewSheet({
                               }
                             >
                               Approve
-                            </Button>
-                            <Button
+                            </GaiaButton>
+                            <GaiaButton
                               size="sm"
                               variant={
                                 picked === "deny" ? "danger" : "tertiary"
@@ -251,7 +258,7 @@ export default function ApprovalReviewSheet({
                               onPress={() => toggle(item.approval_id, "deny")}
                             >
                               Deny
-                            </Button>
+                            </GaiaButton>
                             {picked === "deny" && (
                               <Input
                                 className={inputVariants({
@@ -281,13 +288,13 @@ export default function ApprovalReviewSheet({
                 Each decision acts immediately; Submit closes up and tells your
                 agent.
               </span>
-              <Button
+              <GaiaButton
                 isDisabled={decidedIds.length === 0 || submitting}
                 onPress={submit}
                 variant="primary"
               >
                 {`Submit (${decidedIds.length})`}
-              </Button>
+              </GaiaButton>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

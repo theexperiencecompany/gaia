@@ -2,6 +2,8 @@
 
 import { Tooltip } from "@heroui/react";
 import { InformationCircleIcon } from "@icons";
+import { overlayVariants } from "@/components/shared/controlVariants";
+import { toneVariants } from "@/components/shared/tone";
 export const ACCENT = "#00bbff"; // brand blue — capacity meters
 export const HEALTHY = "#30d158"; // apple green — the activity trend
 export const NEAR = "#fbbf24"; // amber — approaching the limit
@@ -23,7 +25,7 @@ export function InfoTip({ text }: { text: string }) {
       </Tooltip.Trigger>
       <Tooltip.Content
         placement="top"
-        className="max-w-64 bg-zinc-800 text-xs text-zinc-300 shadow-xl"
+        className={`max-w-64 text-xs shadow-xl ${overlayVariants({ surface: "raised" })} ${toneVariants({ tone: "dim" })}`}
       >
         {text}
       </Tooltip.Content>

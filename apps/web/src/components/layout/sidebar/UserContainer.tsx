@@ -20,8 +20,8 @@ export default function UserContainer() {
   return (
     <SettingsMenu onOpenChange={setIsOpen}>
       <GaiaButton
-        variant="default-solid"
-        className="group/triggerbtn pointer-events-auto relative flex w-full flex-row justify-between gap-3 bg-transparent px-2 py-6! hover:bg-zinc-800"
+        variant="ghost"
+        className="group/triggerbtn pointer-events-auto relative flex w-full flex-row justify-between gap-3 px-2 py-6!"
       >
         <div className="flex items-center gap-3">
           <Avatar className="size-7 rounded-full bg-black">
@@ -41,7 +41,7 @@ export default function UserContainer() {
               (isUnknown ? (
                 <Skeleton className="h-2.5 w-12 rounded-full" />
               ) : (
-                <span className="text-[11px] text-foreground-400">
+                <span className="text-[11px] text-zinc-500">
                   {isPaid
                     ? "GAIA Pro"
                     : paywallCopyFor(hasEverSubscribed).planLabel}

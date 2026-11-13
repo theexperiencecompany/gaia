@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Description,
   FieldError,
   Input,
@@ -12,6 +11,7 @@ import {
 } from "@heroui/react";
 import { useState, useTransition } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { MAX_MEMORY_LENGTH } from "@/features/memory/constants";
 import { toast } from "@/lib/toast";
@@ -108,11 +108,10 @@ export function AddMemoryModal({
               </TextField>
             </Modal.Body>
             <Modal.Footer>
-              <Button variant="ghost" className="rounded-xl" onPress={onClose}>
+              <GaiaButton variant="ghost" onPress={onClose}>
                 Cancel
-              </Button>
-              <Button
-                className="rounded-xl"
+              </GaiaButton>
+              <GaiaButton
                 onPress={handleSave}
                 isPending={isPending}
                 isDisabled={
@@ -121,7 +120,7 @@ export function AddMemoryModal({
                 variant="primary"
               >
                 Save memory
-              </Button>
+              </GaiaButton>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

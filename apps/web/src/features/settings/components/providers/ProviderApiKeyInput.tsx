@@ -4,6 +4,7 @@ import { Link } from "@heroui/react";
 import { SquareArrowUpRight02Icon } from "@icons";
 import type { ComponentProps } from "react";
 import { SecretInput } from "@/components/shared/SecretInput";
+import { toneVariants } from "@/components/shared/tone";
 
 interface ProviderApiKeyInputProps
   extends Omit<ComponentProps<typeof SecretInput>, "subject"> {
@@ -28,7 +29,10 @@ export function ProviderApiKeyInput({
           href={keyUrl}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1 text-xs text-zinc-500"
+          className={toneVariants({
+            tone: "faint",
+            className: "inline-flex items-center gap-1 text-xs",
+          })}
         >
           Get your key
           <SquareArrowUpRight02Icon size={12} />

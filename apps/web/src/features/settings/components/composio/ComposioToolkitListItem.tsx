@@ -1,6 +1,7 @@
 "use client";
 
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import type { ComposioCatalogEntry } from "@/features/settings/api/composioSetupApi";
 
@@ -32,9 +33,10 @@ export function ComposioToolkitListItem({
       : STATUS_CHIP[toolkit.status];
 
   return (
-    <Button
+    <GaiaButton
       variant={isSelected ? "secondary" : "ghost"}
-      className="h-auto w-full shrink-0 justify-start gap-3 rounded-lg px-3 py-2 text-left"
+      size="sm"
+      className="h-auto w-full shrink-0 justify-start gap-3 text-left"
       onPress={() => onSelect(toolkit.slug)}
     >
       <IntegrationIcon
@@ -42,7 +44,7 @@ export function ComposioToolkitListItem({
         iconUrl={toolkit.logo}
         size={28}
       />
-      <span className="flex min-w-0 flex-1 flex-col">
+      <span className="flex min-w-0 flex-1 flex-col py-2">
         <span className="truncate text-sm text-zinc-100">{toolkit.name}</span>
         <span className="truncate text-xs text-zinc-500">
           {toolkit.categories[0] ?? "other"}
@@ -51,6 +53,6 @@ export function ComposioToolkitListItem({
       <Chip size="sm" variant="soft" color={chip.color}>
         {chip.label}
       </Chip>
-    </Button>
+    </GaiaButton>
   );
 }

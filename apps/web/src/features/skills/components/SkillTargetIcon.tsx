@@ -30,7 +30,7 @@ export function SkillTargetIcon({
   if (value === EXECUTOR_TARGET || icon === EXECUTOR_TARGET) {
     return (
       <AiMagicIcon
-        className="text-primary"
+        className="text-accent"
         style={{ width: size, height: size }}
       />
     );

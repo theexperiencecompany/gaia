@@ -7,7 +7,7 @@ import { REGENERATION_REASONS } from "../../constants/regeneration";
 import WorkflowSteps from "../shared/WorkflowSteps";
 import PanelHeader from "./PanelHeader";
 
-const DROPDOWN_ICON = "size-5 text-default-500 pointer-events-none shrink-0";
+const DROPDOWN_ICON = "size-5 text-zinc-400 pointer-events-none shrink-0";
 
 interface WorkflowStepsPanelProps {
   workflow: Workflow | null;

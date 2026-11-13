@@ -28,7 +28,7 @@ export default function DocsGuidesSection({
             href={guide.url}
             className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
           >
-            <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+            <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-accent">
               {guide.title}
             </h3>
             <p className="text-sm leading-relaxed text-zinc-400">

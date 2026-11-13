@@ -1,17 +1,15 @@
-import { Card, ScrollShadow } from "@heroui/react";
+import { Card } from "@heroui/react";
 import { PackageOpenIcon } from "@icons";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
-import { ToolCard } from "./ToolCard";
+import { ToolDescription } from "./ToolDescription";
+import { ToolList } from "./ToolList";
+import { displayToolDescription, displayToolName } from "./toolCopy";
 
 function EmptyTools() {
   return (
     <div className="flex flex-col items-center justify-center py-8 text-center">
-      <PackageOpenIcon
-        width={48}
-        height={48}
-        className="text-foreground-300 mb-4"
-      />
-      <p className="text-foreground-400 max-w-md text-sm">
+      <PackageOpenIcon width={48} height={48} className="text-zinc-600 mb-4" />
+      <p className="text-zinc-500 max-w-md text-sm">
         This integration might not have tools available yet because no one has
         connected to it, or the tools haven&apos;t been synced. Try refreshing
         the page.
@@ -20,6 +18,7 @@ function EmptyTools() {
   );
 }
 
+/** Every tool, rendered on the server: the markdown parser never ships to the browser. */
 export function IntegrationToolsCard({
   integration,
 }: {
@@ -28,7 +27,7 @@ export function IntegrationToolsCard({
   const hasTools = Boolean(integration.tools && integration.tools.length > 0);
 
   return (
-    <Card className="bg-zinc-900/50 backdrop-blur-md outline-0 border-none rounded-3xl">
+    <Card className="bg-zinc-900/50 backdrop-blur-md outline-0 border-none">
       {hasTools && (
         <Card.Header>
           <h2 className="text-lg font-normal">
@@ -38,18 +37,20 @@ export function IntegrationToolsCard({
       )}
       <Card.Content>
         {hasTools ? (
-          <ScrollShadow className="max-h-100">
-            <div className="grid grid-cols-2 gap-4">
-              {integration.tools?.map((tool) => (
-                <ToolCard
-                  key={tool.name}
-                  name={tool.name}
-                  description={tool.description}
-                  integrationName={integration.name}
+          <ToolList
+            items={(integration.tools ?? []).map((tool) => ({
+              key: tool.name,
+              label: displayToolName(tool.name, integration.name),
+              description: tool.description ? (
+                <ToolDescription
+                  markdown={displayToolDescription(
+                    tool.description,
+                    integration.name,
+                  )}
                 />
-              ))}
-            </div>
-          </ScrollShadow>
+              ) : null,
+            }))}
+          />
         ) : (
           <EmptyTools />
         )}

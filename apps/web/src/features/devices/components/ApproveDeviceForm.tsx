@@ -1,9 +1,11 @@
 "use client";
 
-import { Button, Chip, Separator } from "@heroui/react";
+import { Chip, Separator } from "@heroui/react";
 import { CheckmarkCircle02Icon, ComputerIcon } from "@icons";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { separatorVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toast } from "@/lib/toast";
 import { devicesApi } from "../api/devicesApi";
 import {
@@ -68,12 +70,12 @@ export function ApproveDeviceForm() {
             <span className="font-mono">{BRIDGE_UP_COMMAND}</span> to connect.
           </p>
         </div>
-        <Button
+        <GaiaButton
           onPress={() => router.push("/settings/devices")}
           variant="primary"
         >
           Manage devices
-        </Button>
+        </GaiaButton>
       </div>
     );
   }
@@ -99,14 +101,14 @@ export function ApproveDeviceForm() {
         </div>
       </header>
 
-      <Separator className="bg-zinc-700/50" />
+      <Separator className={separatorVariants({ surface: "raised" })} />
 
       {!cameFromCli && (
         <>
           <div className="py-5">
             <DeviceSetupGuide />
           </div>
-          <Separator className="bg-zinc-700/50" />
+          <Separator className={separatorVariants({ surface: "raised" })} />
         </>
       )}
 
@@ -123,14 +125,14 @@ export function ApproveDeviceForm() {
           onComplete={approve}
           isDisabled={isApproving}
         />
-        <Button
+        <GaiaButton
           isPending={isApproving}
           isDisabled={code.length < PAIRING_CODE_LENGTH}
           onPress={() => approve(code)}
           variant="primary"
         >
           Approve device
-        </Button>
+        </GaiaButton>
       </div>
     </div>
   );

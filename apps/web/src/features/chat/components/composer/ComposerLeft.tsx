@@ -52,7 +52,7 @@ export default function ComposerLeft({
       id: "upload_file",
       label: "Attach Files",
       icon: (
-        <AttachmentIcon className="min-h-[20px] min-w-[20px] text-primary" />
+        <AttachmentIcon className="min-h-[20px] min-w-[20px] text-accent" />
       ),
       action: openFilePicker,
       isMode: false,
@@ -75,7 +75,7 @@ export default function ComposerLeft({
           >
             <PlusSignIcon className="min-h-[23px] min-w-[23px] text-zinc-400!" />
             <span
-              className={`absolute -top-0 -right-0 h-2 w-2 rounded-full bg-primary transition ${currentMode ? "opacity-100" : "opacity-0"}`}
+              className={`absolute -top-0 -right-0 h-2 w-2 rounded-full bg-accent transition ${currentMode ? "opacity-100" : "opacity-0"}`}
               aria-hidden="true"
             />
           </Button>
@@ -103,7 +103,7 @@ export default function ComposerLeft({
                   className={cn(
                     "cursor-pointer rounded-lg px-3 py-2",
                     currentMode === item.id
-                      ? "bg-[#00bbff50] text-primary focus:bg-[#00bbff50] focus:text-primary"
+                      ? "bg-[#00bbff50] text-accent focus:bg-[#00bbff50] focus:text-accent"
                       : "focus:bg-zinc-800 focus:text-white",
                   )}
                 >
@@ -116,7 +116,7 @@ export default function ComposerLeft({
                     </div>
                     <div>
                       {currentMode === item.id && (
-                        <Tick02Icon className="min-h-[20px] min-w-[20px] text-primary" />
+                        <Tick02Icon className="min-h-[20px] min-w-[20px] text-accent" />
                       )}
                     </div>
                   </div>
@@ -139,7 +139,7 @@ export default function ComposerLeft({
               "group relative flex h-9 w-9 items-center justify-center rounded-full border-none bg-zinc-700 fill-zinc-400 p-0 text-zinc-400 hover:bg-zinc-600/90",
               isMainResponseStreaming ? "cursor-wait!" : "",
               isSlashCommandDropdownOpen &&
-                "border-primary/50 bg-primary/20 text-primary hover:bg-primary/40",
+                "border-accent/50 bg-accent/20 text-accent hover:bg-accent/40",
             )}
             disabled={isMainResponseStreaming}
             onClick={() => {
@@ -156,7 +156,7 @@ export default function ComposerLeft({
             />
             {isSlashCommandDropdownOpen && (
               <span
-                className="absolute top-0 right-0 h-2 w-2 rounded-full bg-primary transition"
+                className="absolute top-0 right-0 h-2 w-2 rounded-full bg-accent transition"
                 aria-hidden="true"
               />
             )}
@@ -164,7 +164,7 @@ export default function ComposerLeft({
           <Tooltip.Content placement="right" showArrow>
             <div className="flex items-center gap-2">
               Browse all tools
-              <Kbd className="text-zinc-400">Press /</Kbd>
+              <Kbd>Press /</Kbd>
             </div>
           </Tooltip.Content>
         </Tooltip>

@@ -79,7 +79,8 @@ export default function MemoryIndicator({
       shape="pill"
       size="sm"
       variant="default-soft"
-      className="w-fit text-gray-500"
+      tone="faint"
+      className="w-fit"
       onPress={onOpenModal}
     >
       <AiBrain01Icon className="h-4 w-4" />

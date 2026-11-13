@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { copyText } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
 
@@ -28,7 +28,7 @@ export default function CopyLinkButton({
   };
 
   return (
-    <Button
+    <GaiaButton
       onPress={handleCopyLink}
       variant="ghost"
       size="sm"
@@ -36,6 +36,6 @@ export default function CopyLinkButton({
       aria-label="Copy link to this post"
     >
       <span>{copied ? "Copied!" : "Copy Link"}</span>
-    </Button>
+    </GaiaButton>
   );
 }

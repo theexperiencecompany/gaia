@@ -7,9 +7,11 @@
 
 "use client";
 
-import { Button, ListBox, Select } from "@heroui/react";
+import { ListBox, Select } from "@heroui/react";
 import { useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
@@ -172,7 +174,7 @@ export function GitHubSettings({
                     ? [...repoOptions, LOADER_ITEM]
                     : repoOptions
                   ).map((item) => (
-                    <ListBox.Item
+                    <GaiaListBoxItem
                       key={item.value}
                       id={item.value}
                       textValue={item.label}
@@ -188,7 +190,7 @@ export function GitHubSettings({
                       ) : (
                         item.label
                       )}
-                    </ListBox.Item>
+                    </GaiaListBoxItem>
                   ))}
                 </ListBox>
               </Select.Popover>
@@ -200,13 +202,13 @@ export function GitHubSettings({
               <button
                 type="button"
                 onClick={() => setUseManualInput(true)}
-                className="text-xs text-primary hover:underline cursor-pointer"
+                className="text-xs text-accent hover:underline cursor-pointer"
               >
                 Or enter manually
               </button>
             </div>
             {hasNextPage && !isLoading && (
-              <Button
+              <GaiaButton
                 size="sm"
                 variant="ghost"
                 className="w-full text-xs"
@@ -214,7 +216,7 @@ export function GitHubSettings({
                 isPending={isFetchingNextPage}
               >
                 Load more repositories
-              </Button>
+              </GaiaButton>
             )}
           </div>
         ) : (
@@ -229,7 +231,7 @@ export function GitHubSettings({
               <button
                 type="button"
                 onClick={() => setUseManualInput(false)}
-                className="cursor-pointer font-medium text-primary hover:underline"
+                className="cursor-pointer font-medium text-accent hover:underline"
               >
                 Back to list
               </button>

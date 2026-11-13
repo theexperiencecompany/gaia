@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Kbd, ScrollShadow, Tooltip } from "@heroui/react";
+import { Kbd, ScrollShadow, Tooltip } from "@heroui/react";
 import { InternetIcon, PuzzleIcon } from "@icons";
 import { useCallback, useMemo, useState } from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
@@ -61,12 +61,15 @@ export default function IntegrationsSidebar() {
       const isPublic = integration.isPublic === true;
 
       return (
-        <Button
+        <GaiaButton
           key={integration.id}
           fullWidth
           onPress={() => handleIntegrationClick(integration)}
-          className="justify-start px-2 text-start text-sm text-zinc-500 hover:text-zinc-300"
+          className="justify-start text-start text-sm"
           variant="ghost"
+          tone="faint"
+          hoverTone="dim"
+          inset="tight"
           size="sm"
         >
           <div className="relative">
@@ -81,7 +84,7 @@ export default function IntegrationsSidebar() {
 
             <div className="flex items-center gap-2">
               {isPublic && (
-                <InternetIcon width={14} height={14} className="text-primary" />
+                <InternetIcon width={14} height={14} className="text-accent" />
               )}
               {isConnected && (
                 <span className="h-1.5 w-1.5 rounded-full bg-success" />
@@ -91,7 +94,7 @@ export default function IntegrationsSidebar() {
               )}
             </div>
           </div>
-        </Button>
+        </GaiaButton>
       );
     },
     [handleIntegrationClick],
@@ -117,7 +120,7 @@ export default function IntegrationsSidebar() {
       <Tooltip>
         <GaiaButton
           variant="accent-soft"
-          className="w-full justify-start text-sm text-primary"
+          className="w-full justify-start text-sm"
           size="sm"
           onPress={openIntegrationModal}
           data-keyboard-shortcut="create-integration"

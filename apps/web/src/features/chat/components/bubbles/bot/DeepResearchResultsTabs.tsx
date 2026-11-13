@@ -6,26 +6,18 @@ import {
   SearchIcon,
 } from "@icons";
 import { useState } from "react";
-import { tabsVariants } from "@/components/shared/controlVariants";
+import { accordionVariants } from "@/components/shared/accordionVariants";
+import { tabsVariants } from "@/components/shared/tabsVariants";
 import { safeUrl } from "@/features/chat/utils/safeUrl";
-import {
-  ACCORDION_INDICATOR,
-  ACCORDION_PANEL_COMPACT,
-  ACCORDION_TRIGGER_COMPACT,
-} from "@/lib/heroui/accordionParity";
-import {
-  TABS_INDICATOR_PRIMARY,
-  TABS_LIST_LIGHT,
-  TABS_PANEL,
-  TABS_ROOT,
-  TABS_SELECTED_PRIMARY,
-  TABS_TAB,
-} from "@/lib/heroui/tabsParity";
 import type {
   DeepResearchResults,
   EnhancedWebResult,
 } from "@/types/features/convoTypes";
 import SearchResultsTabs from "./SearchResultsTabs";
+
+const tabsStyles = tabsVariants({ variant: "light", color: "accent" });
+
+const accordionStyles = accordionVariants({ density: "compact" });
 
 interface DeepResearchResultsTabsProps {
   deep_research_results: DeepResearchResults;
@@ -40,98 +32,83 @@ export default function DeepResearchResultsTabs({
   return (
     <div className="w-full">
       <Accordion
-        className="w-full max-w-(--breakpoint-sm) px-0"
+        className="w-full max-w-(--breakpoint-sm)"
         expandedKeys={isExpanded ? ["1"] : []}
         onExpandedChange={(keys) => setIsExpanded(keys.has("1"))}
       >
-        <Accordion.Item
-          id="1"
-          className="w-screen max-w-(--breakpoint-sm) px-0"
-        >
+        <Accordion.Item id="1" className="w-screen max-w-(--breakpoint-sm)">
           <Accordion.Heading>
             <Accordion.Trigger
               aria-label="Deep Research Results"
-              className={ACCORDION_TRIGGER_COMPACT}
+              className={accordionStyles.trigger()}
             >
               <div className="h-full w-fit rounded-lg bg-white/10 p-1 px-3 text-sm font-medium transition-colors hover:bg-white/20">
                 {isExpanded
                   ? "Hide Deep research Results"
                   : "Show Deep research Results"}
               </div>
-              <Accordion.Indicator className={ACCORDION_INDICATOR} />
+              <Accordion.Indicator className={accordionStyles.indicator()} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className={ACCORDION_PANEL_COMPACT}>
-            <Tabs
-              className={tabsVariants({
-                color: "accent",
-                className: `p-0 ${TABS_ROOT}`,
-              })}
-            >
-              <Tabs.List
-                aria-label="Deep Research Results"
-                className={TABS_LIST_LIGHT}
-              >
+          <Accordion.Panel>
+            <div className={accordionStyles.content()}>
+              <Tabs className={tabsStyles.base({ className: "p-0" })}>
+                <Tabs.List
+                  aria-label="Deep Research Results"
+                  className={tabsStyles.tabList()}
+                >
+                  {enhanced_results && enhanced_results.length > 0 && (
+                    <Tabs.Tab id="enhanced" className={tabsStyles.tab()}>
+                      <div className="flex items-center space-x-2">
+                        {/* <DocumentTextIcon className="h-4 w-4" /> */}
+                        <span>Enhanced Results</span>
+                      </div>
+                      <Tabs.Indicator className={tabsStyles.tabIndicator()} />
+                    </Tabs.Tab>
+                  )}
+
+                  {original_search && (
+                    <Tabs.Tab id="original" className={tabsStyles.tab()}>
+                      <div className="flex items-center space-x-2">
+                        <SearchIcon className="h-4 w-4" />
+                        <span>Original Search</span>
+                      </div>
+                      <Tabs.Indicator className={tabsStyles.tabIndicator()} />
+                    </Tabs.Tab>
+                  )}
+
+                  {metadata && (
+                    <Tabs.Tab id="metadata" className={tabsStyles.tab()}>
+                      <div className="flex items-center space-x-2">
+                        <InternetIcon />
+                        <span>Search Info</span>
+                      </div>
+                      <Tabs.Indicator className={tabsStyles.tabIndicator()} />
+                    </Tabs.Tab>
+                  )}
+                </Tabs.List>
+
                 {enhanced_results && enhanced_results.length > 0 && (
-                  <Tabs.Tab
-                    id="enhanced"
-                    className={`${TABS_TAB} ${TABS_SELECTED_PRIMARY}`}
-                  >
-                    <div className="flex items-center space-x-2">
-                      {/* <DocumentTextIcon className="h-4 w-4" /> */}
-                      <span>Enhanced Results</span>
-                    </div>
-                    <Tabs.Indicator className={TABS_INDICATOR_PRIMARY} />
-                  </Tabs.Tab>
+                  <Tabs.Panel id="enhanced" className={tabsStyles.tabPanel()}>
+                    <EnhancedWebResults results={enhanced_results} />
+                  </Tabs.Panel>
                 )}
 
                 {original_search && (
-                  <Tabs.Tab
-                    id="original"
-                    className={`${TABS_TAB} ${TABS_SELECTED_PRIMARY}`}
-                  >
-                    <div className="flex items-center space-x-2">
-                      <SearchIcon className="h-4 w-4" />
-                      <span>Original Search</span>
-                    </div>
-                    <Tabs.Indicator className={TABS_INDICATOR_PRIMARY} />
-                  </Tabs.Tab>
+                  <Tabs.Panel id="original" className={tabsStyles.tabPanel()}>
+                    {original_search && (
+                      <SearchResultsTabs search_results={original_search} />
+                    )}
+                  </Tabs.Panel>
                 )}
 
                 {metadata && (
-                  <Tabs.Tab
-                    id="metadata"
-                    className={`${TABS_TAB} ${TABS_SELECTED_PRIMARY}`}
-                  >
-                    <div className="flex items-center space-x-2">
-                      <InternetIcon />
-                      <span>Search Info</span>
-                    </div>
-                    <Tabs.Indicator className={TABS_INDICATOR_PRIMARY} />
-                  </Tabs.Tab>
+                  <Tabs.Panel id="metadata" className={tabsStyles.tabPanel()}>
+                    <SearchMetadata metadata={metadata} />
+                  </Tabs.Panel>
                 )}
-              </Tabs.List>
-
-              {enhanced_results && enhanced_results.length > 0 && (
-                <Tabs.Panel id="enhanced" className={TABS_PANEL}>
-                  <EnhancedWebResults results={enhanced_results} />
-                </Tabs.Panel>
-              )}
-
-              {original_search && (
-                <Tabs.Panel id="original" className={TABS_PANEL}>
-                  {original_search && (
-                    <SearchResultsTabs search_results={original_search} />
-                  )}
-                </Tabs.Panel>
-              )}
-
-              {metadata && (
-                <Tabs.Panel id="metadata" className={TABS_PANEL}>
-                  <SearchMetadata metadata={metadata} />
-                </Tabs.Panel>
-              )}
-            </Tabs>
+              </Tabs>
+            </div>
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>
@@ -151,7 +128,7 @@ function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
           key={result.url}
           className="rounded-2xl bg-zinc-800 p-4 shadow-md transition-shadow hover:shadow-lg"
         >
-          <h2 className="truncate text-sm font-medium text-primary">
+          <h2 className="truncate text-sm font-medium text-accent">
             <a
               href={result.url}
               target="_blank"
@@ -162,12 +139,12 @@ function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
             </a>
           </h2>
 
-          <div className="mb-2 flex flex-wrap items-center gap-x-4 text-sm text-foreground-500">
+          <div className="mb-2 flex flex-wrap items-center gap-x-4 text-sm text-zinc-400">
             <span className="flex items-center gap-1">
               <LinkBackwardIcon width={13} height={13} />
               <a
                 href={result.url}
-                className="max-w-xs truncate hover:text-primary hover:underline"
+                className="max-w-xs truncate hover:text-accent hover:underline"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -195,7 +172,7 @@ function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
           {/* {result.full_content && (
             <div className="mt-2">
               <details className="group">
-                <summary className="cursor-pointer list-none text-sm font-medium text-primary">
+                <summary className="cursor-pointer list-none text-sm font-medium text-accent">
                   <span className="flex items-center">
                     View full content
                     <svg
@@ -212,7 +189,7 @@ function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
                     </svg>
                   </span>
                 </summary>
-                <div className="mt-2 max-h-60 overflow-auto rounded-md bg-zinc-900 p-3 text-sm leading-relaxed text-foreground-400">
+                <div className="mt-2 max-h-60 overflow-auto rounded-md bg-zinc-900 p-3 text-sm leading-relaxed text-zinc-500">
                   <p className="whitespace-pre-line">{result.full_content}</p>
                 </div>
               </details>
@@ -235,19 +212,19 @@ interface SearchMetadataProps {
 function SearchMetadata({ metadata }: SearchMetadataProps) {
   return (
     <div className="rounded-lg bg-zinc-800 p-4">
-      <h3 className="text-medium mb-2 font-medium text-primary">
+      <h3 className="text-base mb-2 font-medium text-accent">
         Search Statistics
       </h3>
       <div className="space-y-2 text-sm">
         {metadata.query && (
           <div className="flex items-center justify-between">
-            <span className="text-foreground-500">Search Query:</span>
+            <span className="text-zinc-400">Search Query:</span>
             <span className="font-medium">{metadata.query}</span>
           </div>
         )}
         {metadata.elapsed_time != null && metadata.elapsed_time > 0 && (
           <div className="flex items-center justify-between">
-            <span className="text-foreground-500">Processing Time:</span>
+            <span className="text-zinc-400">Processing Time:</span>
             <span className="font-medium">
               {metadata.elapsed_time.toFixed(2)} seconds
             </span>
@@ -256,7 +233,7 @@ function SearchMetadata({ metadata }: SearchMetadataProps) {
         {metadata.total_content_size != null &&
           metadata.total_content_size > 0 && (
             <div className="flex items-center justify-between">
-              <span className="text-foreground-500">Content Size:</span>
+              <span className="text-zinc-400">Content Size:</span>
               <span className="font-medium">
                 {(metadata.total_content_size / 1024).toFixed(2)} KB
               </span>

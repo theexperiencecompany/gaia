@@ -1,6 +1,8 @@
 import { TextArea } from "@heroui/react";
 import React, { useCallback, useImperativeHandle } from "react";
 
+import { inputVariants } from "@/components/shared/controlVariants";
+import { useAutosizeTextarea } from "@/features/chat/hooks/useAutosizeTextarea";
 import { useSlashCommandDropdownState } from "@/features/chat/hooks/useSlashCommandDropdownState";
 
 import SlashCommandDropdown from "./SlashCommandDropdown";
@@ -51,6 +53,8 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
       onSearchbarTextChange,
       onSlashCommandSelect,
     });
+
+    useAutosizeTextarea(inputRef, searchbarText);
 
     // Expose methods to parent component
     useImperativeHandle(
@@ -105,11 +109,20 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
 
     return (
       <>
-        <form onSubmit={handleFormSubmit}>
+        {/* v2's 48px field: one line centres, more lines grow inside an 8px inset */}
+        <form
+          className="flex min-h-12 items-center"
+          onSubmit={handleFormSubmit}
+        >
           <TextArea
             ref={inputRef}
             autoFocus
-            className="field-sizing-content max-h-84 min-h-12 w-full resize-none rounded-[14px] bg-transparent px-3 py-3 text-base leading-6 font-light shadow-none placeholder:text-foreground-500 focus:ring-0"
+            className={inputVariants({
+              variant: "bare",
+              placeholder: "muted",
+              className:
+                "max-h-82 w-full resize-none px-3 py-2 text-base leading-6 font-light shadow-none focus:ring-0",
+            })}
             rows={1}
             placeholder="What can I do for you today? (Type '/' for tools)"
             value={searchbarText}

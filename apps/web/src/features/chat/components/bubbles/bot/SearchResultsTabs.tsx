@@ -128,8 +128,11 @@ function ImageResults({ images }: ImageResultsProps) {
       {validImages.length > MAX_VISIBLE && (
         <GaiaButton
           onPress={cycleNext}
-          className="relative z-10 flex h-32 w-32 shrink-0 flex-col items-center justify-center gap-1.5 rounded-2xl bg-zinc-800/80 text-zinc-300 shadow-sm backdrop-blur-sm transition-colors hover:bg-zinc-700/80 hover:text-white"
-          variant="default-soft"
+          className="relative z-10 flex h-32 w-32 shrink-0 flex-col items-center justify-center gap-1.5 bg-zinc-800/80 shadow-sm backdrop-blur-sm transition-colors hover:bg-zinc-700/80"
+          variant="tertiary"
+          shape="xl"
+          tone="dim"
+          hoverTone="white"
           style={{
             rotate: displayImages.length % 2 === 0 ? "8deg" : "-8deg",
           }}
@@ -235,10 +238,7 @@ function SourcesButton({ web }: SourcesButtonProps) {
           </div>
           <span className="font-medium text-zinc-300">Search Results</span>
         </GaiaButton>
-        <Popover.Content
-          placement="top"
-          className="bg-transparent p-0! shadow-none"
-        >
+        <Popover.Content placement="top" className="bg-transparent shadow-none">
           <WebResults web={web} />
         </Popover.Content>
       </Popover>
@@ -258,7 +258,7 @@ function NewsResults({ news }: NewsResultsProps) {
           key={article.url + article.title}
           className="max-w-(--breakpoint-sm) overflow-hidden rounded-lg bg-zinc-800 p-4 shadow-md transition-shadow hover:shadow-lg"
         >
-          <div className="flex flex-row items-center gap-2 text-primary transition-colors hover:text-white">
+          <div className="flex flex-row items-center gap-2 text-accent transition-colors hover:text-white">
             <NewsIcon
               height={20}
               width={20}
@@ -270,10 +270,10 @@ function NewsResults({ news }: NewsResultsProps) {
               </a>
             </h2>
           </div>
-          <p className="mb-1 line-clamp-2 text-sm text-foreground-700">
+          <p className="mb-1 line-clamp-2 text-sm text-zinc-200">
             {article.content}
           </p>
-          <div className="flex flex-wrap items-center gap-x-4 text-sm text-foreground-500">
+          <div className="flex flex-wrap items-center gap-x-4 text-sm text-zinc-400">
             <span className="text-xs">Score: {article.score?.toFixed(2)}</span>
           </div>
         </div>
@@ -305,7 +305,7 @@ function WebResults({ web }: WebResultsProps) {
                 className="w-full space-y-1"
               >
                 <h2 className="truncate text-sm font-medium">{result.title}</h2>
-                <p className="line-clamp-2 text-xs text-foreground-500">
+                <p className="line-clamp-2 text-xs text-zinc-400">
                   {result.content}
                 </p>
                 <div className="flex flex-wrap items-center gap-x-4 text-sm">
@@ -321,7 +321,7 @@ function WebResults({ web }: WebResultsProps) {
                         target.style.display = "none";
                       }}
                     />
-                    <span className="max-w-xs truncate text-xs text-primary hover:underline">
+                    <span className="max-w-xs truncate text-xs text-accent hover:underline">
                       {host}
                     </span>
                   </span>
@@ -330,10 +330,10 @@ function WebResults({ web }: WebResultsProps) {
               </a>
             ) : (
               <div className="w-full space-y-1">
-                <h2 className="truncate text-sm font-medium text-foreground-500">
+                <h2 className="truncate text-sm font-medium text-zinc-400">
                   {result.title}
                 </h2>
-                <p className="line-clamp-2 text-xs text-foreground-500">
+                <p className="line-clamp-2 text-xs text-zinc-400">
                   {result.content}
                 </p>
               </div>

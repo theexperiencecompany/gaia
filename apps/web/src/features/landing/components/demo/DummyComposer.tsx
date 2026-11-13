@@ -6,9 +6,9 @@ import {
   PlusSignIcon,
   ToolsIcon,
 } from "@icons";
-import { twMerge } from "cn";
 import type React from "react";
 import { useRef, useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { Button as ShadcnButton } from "@/components/ui/button";
 import {
@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { cn } from "@/lib/utils";
 import { dummyIntegrations } from "./constants";
 import DummySlashCommandDropdown from "./DummySlashCommandDropdown";
 
@@ -74,7 +75,7 @@ const DummyComposer: React.FC<{
 
   return (
     <div
-      className={twMerge(
+      className={cn(
         "mx-auto flex w-full max-w-7xl flex-col items-center",
         className,
       )}
@@ -92,12 +93,15 @@ const DummyComposer: React.FC<{
         {/* Integration Banner - uses searchbar class to match composer width */}
         {!hideIntegrationBanner && (
           <GaiaButton
-            variant="default-solid"
-            className="searchbar absolute -top-4 z-0 flex h-fit rounded-full bg-zinc-800/40 px-4 py-2 pb-8 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400"
+            variant="default-soft"
+            shape="pill"
+            tone="subtle"
+            hoverTone="muted"
+            className="searchbar absolute -top-4 z-0 flex h-fit bg-zinc-800/40 text-xs hover:bg-zinc-800/70"
             onPress={handleIntegrationsClick}
             aria-label="Connect your tools to GAIA"
           >
-            <div className="flex w-full items-center justify-between">
+            <div className="flex w-full items-center justify-between pt-2 pb-8">
               <span className="text-xs">Connect your tools to GAIA</span>
               <div className="flex items-center gap-1">
                 {dummyIntegrations.slice(0, 7).map((integration) => (
@@ -135,18 +139,22 @@ const DummyComposer: React.FC<{
             aria-label="Demo chat input - not a real form submission"
             data-demo="true"
           >
-            <div className="flex items-end gap-2 px-3 pt-1">
+            <div className="flex min-h-12 items-center gap-2 px-3 py-2">
               <TextArea
                 ref={textareaRef}
                 autoFocus
                 rows={1}
-                className="field-sizing-content max-h-[17rem] w-full resize-none border-0 bg-transparent p-0 font-light shadow-none outline-none focus:ring-0"
+                className={inputVariants({
+                  variant: "bare",
+                  className:
+                    "field-sizing-content max-h-[17rem] w-full resize-none text-base font-light outline-none focus:ring-0",
+                })}
                 placeholder="What can I do for you today?"
                 value={message}
                 onChange={(e) => handleInputChange(e.target.value)}
                 onKeyDown={handleKeyPress}
               />
-              <div className="flex items-center gap-1 pb-1 text-xs text-nowrap text-foreground-500">
+              <div className="flex items-center gap-1 text-xs text-nowrap text-zinc-400">
                 <Kbd className="bg-zinc-700">/</Kbd>
                 for tools
               </div>
@@ -166,7 +174,7 @@ const DummyComposer: React.FC<{
                   >
                     <PlusSignIcon className="min-h-[23px] min-w-[23px] text-zinc-400!" />
                     <span
-                      className="absolute -top-0 -right-0 h-2 w-2 rounded-full bg-primary opacity-0 transition"
+                      className="absolute -top-0 -right-0 h-2 w-2 rounded-full bg-accent opacity-0 transition"
                       aria-hidden="true"
                     />
                   </ShadcnButton>
@@ -182,7 +190,7 @@ const DummyComposer: React.FC<{
                         <div className="flex w-full items-center justify-between gap-3">
                           <div className="flex flex-col">
                             <div className="flex flex-row items-center gap-2">
-                              <AttachmentIcon className="min-h-[20px] min-w-[20px] text-primary" />
+                              <AttachmentIcon className="min-h-[20px] min-w-[20px] text-accent" />
                               <span>Attach Files</span>
                             </div>
                           </div>
@@ -203,7 +211,7 @@ const DummyComposer: React.FC<{
                 <Tooltip.Trigger aria-label="Browse all tools">
                   <ShadcnButton
                     size="icon"
-                    className={`group w- relative h-9 rounded-full border-none bg-zinc-700 p-0 text-zinc-400 hover:bg-zinc-600/90 ${isSlashDropdownOpen && "border-primary/50 bg-primary/20 text-primary"}`}
+                    className={`group w- relative h-9 rounded-full border-none bg-zinc-700 p-0 text-zinc-400 hover:bg-zinc-600/90 ${isSlashDropdownOpen && "border-accent/50 bg-accent/20 text-accent"}`}
                     onClick={handleSlashButtonClick}
                     aria-label="Browse all tools"
                   >
@@ -214,7 +222,7 @@ const DummyComposer: React.FC<{
                     />
                     {isSlashDropdownOpen && (
                       <span
-                        className="absolute top-0 right-0 h-2 w-2 rounded-full bg-primary transition"
+                        className="absolute top-0 right-0 h-2 w-2 rounded-full bg-accent transition"
                         aria-hidden="true"
                       />
                     )}
@@ -232,7 +240,7 @@ const DummyComposer: React.FC<{
               type="submit"
               onClick={handleSend}
               disabled={!message.trim()}
-              className="h-9 w-9 rounded-full bg-primary p-0 text-xl hover:bg-primary/90 disabled:opacity-50"
+              className="h-9 w-9 rounded-full bg-accent p-0 text-xl hover:bg-accent/90 disabled:opacity-50"
               aria-label="Send message"
             >
               <ArrowUp02Icon

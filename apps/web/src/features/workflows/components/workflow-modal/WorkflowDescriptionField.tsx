@@ -1,4 +1,4 @@
-import { Button, Tooltip } from "@heroui/react";
+import { Tooltip } from "@heroui/react";
 import { SparklesIcon } from "@icons";
 import type { PromptTriggerHint } from "@shared/api/generated";
 import { useMemo, useState } from "react";
@@ -10,8 +10,9 @@ import {
   useWatch,
 } from "react-hook-form";
 import { TextMorph } from "torph/react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { MentionEditor } from "@/features/integrations/components/MentionEditor";
+import { LazyMentionEditor } from "@/features/integrations/components/LazyMentionEditor";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { getUserHomeTimezone } from "@/lib/timezone";
 import { toast } from "@/lib/toast";
@@ -146,10 +147,12 @@ export default function WorkflowDescriptionField({
       <Tooltip.Trigger>
         {/* span wrapper keeps the tooltip hoverable while the button is disabled */}
         <span className="inline-flex">
-          <Button
+          <GaiaButton
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-xs"
+            tone="accent"
+            inset="tight"
+            className="h-7 text-xs"
             isPending={isGenerating}
             isDisabled={isGenerating || !canGenerate}
             onPress={handleGenerate}
@@ -158,7 +161,7 @@ export default function WorkflowDescriptionField({
             <TextMorph duration={300}>
               {hasExistingPrompt ? "Improve with AI" : "Generate with AI"}
             </TextMorph>
-          </Button>
+          </GaiaButton>
         </span>
       </Tooltip.Trigger>
       <Tooltip.Content placement="top">
@@ -174,7 +177,7 @@ export default function WorkflowDescriptionField({
         control={control}
         render={({ field }) => (
           <>
-            <MentionEditor
+            <LazyMentionEditor
               value={field.value ?? ""}
               onChange={field.onChange}
               toolNames={toolNames}
@@ -185,10 +188,10 @@ export default function WorkflowDescriptionField({
               placeholder="E.g.: Every morning, check my unread emails for action items, review my calendar, then send me a 3-bullet briefing via Slack"
               // Match the HeroUI flat Textarea this replaced: same surface
               // (default-100), radius, padding and line height.
-              className={`relative rounded-medium transition-colors ${
+              className={`relative rounded-xl transition-colors ${
                 errors.prompt
                   ? "bg-danger-50"
-                  : "bg-default-100 hover:bg-default-200 focus-within:bg-default-100"
+                  : "bg-zinc-800 hover:bg-zinc-700 focus-within:bg-zinc-800"
               }`}
               textClassName="px-3 py-2 text-sm leading-relaxed"
               surfaceClassName="min-h-24 max-h-72"

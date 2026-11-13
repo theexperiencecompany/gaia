@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, Input, Separator } from "@heroui/react";
+import { Input, Separator } from "@heroui/react";
 import { Cancel01Icon, Clock01Icon } from "@icons";
 import { useMemo } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { getBrowserTimezone } from "@/lib/timezone";
 import BaseFieldChip from "./BaseFieldChip";
 
@@ -151,39 +152,42 @@ export default function ScheduledFieldChip({
           </div>
 
           {/* Quick schedule options */}
-          <Button
+          <GaiaButton
             variant="ghost"
+            tone="faint"
             fullWidth
-            className="justify-start gap-2 px-3 text-zinc-500"
+            className="justify-start gap-2 px-3"
             onPress={() => handleQuickSchedule(1, onClose)}
           >
             <Clock01Icon width={18} height={18} />
             In 1 hour
-          </Button>
-          <Button
+          </GaiaButton>
+          <GaiaButton
             variant="ghost"
+            tone="faint"
             fullWidth
-            className="justify-start gap-2 px-3 text-zinc-500"
+            className="justify-start gap-2 px-3"
             onPress={() => handleQuickSchedule(4, onClose)}
           >
             <Clock01Icon width={18} height={18} />
             In 4 hours
-          </Button>
-          <Button
+          </GaiaButton>
+          <GaiaButton
             variant="ghost"
+            tone="faint"
             fullWidth
-            className="justify-start gap-2 px-3 text-zinc-500"
+            className="justify-start gap-2 px-3"
             onPress={() => handleQuickSchedule(24, onClose)}
           >
             <Clock01Icon width={18} height={18} />
             Tomorrow
-          </Button>
+          </GaiaButton>
 
           {/* Clear option */}
           {value && (
             <>
-              <Separator className="my-1 bg-zinc-700" />
-              <Button
+              <Separator className="my-1" />
+              <GaiaButton
                 variant="ghost"
                 fullWidth
                 className="justify-start gap-2 px-3 text-red-400"
@@ -194,7 +198,7 @@ export default function ScheduledFieldChip({
               >
                 <Cancel01Icon width={18} height={18} />
                 Clear schedule
-              </Button>
+              </GaiaButton>
             </>
           )}
         </div>

@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Chip,
   Dropdown,
   Popover,
@@ -27,6 +26,7 @@ import { type ComponentType, useEffect, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useBrowserLogins } from "../hooks/useBrowserLogins";
 import type { SavedBrowserLogin } from "../types";
@@ -91,13 +91,17 @@ function ImportedBadge({ login }: { login: SavedBrowserLogin }) {
           onMouseEnter={() => setOpen(true)}
           onMouseLeave={() => setOpen(false)}
         >
-          <Chip size="sm" variant="soft" className="bg-zinc-800 text-zinc-300">
+          <Chip
+            size="sm"
+            variant="secondary"
+            className={toneVariants({ tone: "dim" })}
+          >
             <Chip.Label>Imported</Chip.Label>
           </Chip>
         </button>
       </Popover.Trigger>
-      <Popover.Content placement="top" className="rounded-2xl bg-zinc-900 p-3">
-        <div className="flex flex-col gap-3">
+      <Popover.Content placement="top">
+        <div className="flex flex-col gap-3 p-3">
           {login.source_browser && (
             <ProvenanceFact
               icon={BrowserLogo}
@@ -180,7 +184,7 @@ function LoginRow({
           </p>
         )}
       </div>
-      <Button
+      <GaiaButton
         size="sm"
         variant="ghost"
         className={`h-8 shrink-0 transition-opacity ${isForgetting ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
@@ -189,7 +193,7 @@ function LoginRow({
       >
         {!isForgetting && <Delete02Icon className="size-4" />}
         Forget
-      </Button>
+      </GaiaButton>
     </div>
   );
 }
@@ -262,7 +266,7 @@ export function SavedLogins() {
               onChange={setQuery}
               className={inputVariants({ size: "sm", className: "max-w-52" })}
             >
-              <SearchField.Group className="bg-zinc-800">
+              <SearchField.Group>
                 <Search01Icon className="size-4 text-zinc-500" />
                 <SearchField.Input placeholder="Search saved sites…" />
                 <SearchField.ClearButton />
@@ -270,14 +274,14 @@ export function SavedLogins() {
             </SearchField>
           )}
           <Dropdown>
-            <Button
+            <GaiaButton
               isIconOnly
               aria-label="Saved sites actions"
               size="sm"
               variant="ghost"
             >
               <MoreVerticalIcon className="size-4" />
-            </Button>
+            </GaiaButton>
             <Dropdown.Popover placement="bottom end">
               <Dropdown.Menu
                 aria-label="Saved sites actions"
@@ -298,7 +302,7 @@ export function SavedLogins() {
                 <Dropdown.Item
                   id="clear"
                   textValue="Clear all"
-                  className="text-danger"
+                  variant="danger"
                   isDisabled={logins.length === 0 || isClearingAll}
                 >
                   <Delete02Icon className="size-4" />
@@ -341,13 +345,13 @@ export function SavedLogins() {
           <p className="truncate text-xs text-zinc-500">
             Import logins from your computer's browser to get started.
           </p>
-          <Button
+          <GaiaButton
             size="sm"
             onPress={() => setConnectOpen(true)}
             variant="primary"
           >
             Import
-          </Button>
+          </GaiaButton>
         </div>
       ) : (
         <ScrollShadow className="max-h-[540px]">

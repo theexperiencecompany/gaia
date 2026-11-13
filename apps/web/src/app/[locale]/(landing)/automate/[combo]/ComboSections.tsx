@@ -29,7 +29,7 @@ export function ComboHero({ data, t }: ComboSectionProps) {
         <span className="inline-flex items-center rounded-full bg-zinc-800 px-3 py-1 text-xs font-medium text-zinc-400">
           {t("common.integration")}
         </span>
-        <span className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+        <span className="inline-flex items-center rounded-full bg-accent/10 px-3 py-1 text-xs font-medium text-accent">
           {t("common.powered_by_gaia")}
         </span>
       </div>

@@ -11,8 +11,7 @@
 # The PR that fixes a finding drops its line, and a finding not listed fails.
 
 score:Content=80
-score:Core SEO=89
-score:Links=87
+score:Core SEO=91
 score:Performance=75
 score:Security=96
 score:URL Structure=93
@@ -26,11 +25,8 @@ score:URL Structure=93
 *	url/slug-convention/slug-convention	depth:category:3
 *	url/slug-convention/slug-convention	depth:faq:1
 *	url/slug-convention/slug-convention	depth:faq:2
-/	perf/cache-headers/cache-control
-/about	perf/cache-headers/cache-control
-/ai-assistant-like-jarvis	perf/cache-headers/cache-control
+/	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
 /ai-assistant-that-can-see-your-screen	content/keyword-stuffing/keyword-stuffing	screen
-/ai-assistant-that-can-see-your-screen	perf/cache-headers/cache-control
 /ai-assistant-that-uses-your-computer	content/keyword-stuffing/keyword-stuffing	browser
 /ai-assistant-that-uses-your-computer	perf/cache-headers/cache-control
 /ai-assistant-whatsapp-telegram-imessage	perf/cache-headers/cache-control
@@ -39,7 +35,6 @@ score:URL Structure=93
 /ai-chief-of-staff	perf/cache-headers/cache-control
 /alternative-to/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /alternative-to/akiflow	content/keyword-stuffing/keyword-stuffing	tasks
-/alternative-to/akiflow	core/meta-description/meta-description
 /alternative-to/bardeen	content/keyword-stuffing/keyword-stuffing	browser
 /alternative-to/bear	content/keyword-stuffing/keyword-stuffing	bear
 /alternative-to/bee	content/keyword-stuffing/keyword-stuffing	bee
@@ -72,7 +67,6 @@ score:URL Structure=93
 /alternative-to/notion-ai	content/keyword-stuffing/keyword-stuffing	notion
 /alternative-to/omi	content/keyword-stuffing/keyword-stuffing	omi
 /alternative-to/openclaw	content/keyword-stuffing/keyword-stuffing	openclaw
-/alternative-to/openclaw	core/meta-description/meta-description
 /alternative-to/perplexity	content/keyword-stuffing/keyword-stuffing	perplexity
 /alternative-to/reclaim	content/keyword-stuffing/keyword-stuffing	calendar
 /alternative-to/roam-research	content/keyword-stuffing/keyword-stuffing	roam
@@ -214,7 +208,6 @@ score:URL Structure=93
 /automate/with/linear	content/keyword-stuffing/keyword-stuffing	engineering
 /automate/with/linear	content/keyword-stuffing/keyword-stuffing	issues
 /automate/with/linear	content/keyword-stuffing/keyword-stuffing	linear
-/automate/with/linear	content/word-count/word-count
 /automate/with/loom	content/keyword-stuffing/keyword-stuffing	loom
 /automate/with/loom	content/keyword-stuffing/keyword-stuffing	video
 /automate/with/loom	content/word-count/word-count
@@ -240,14 +233,8 @@ score:URL Structure=93
 /automate/zoom-drive	content/keyword-stuffing/keyword-stuffing	drive
 /automate/zoom-figma	content/keyword-stuffing/keyword-stuffing	figma
 /automate/zoom-teams	content/keyword-stuffing/keyword-stuffing	microsoft
-/best-ai-assistant	perf/cache-headers/cache-control
-/best-ai-calendar-assistant	perf/cache-headers/cache-control
 /best-ai-email-assistant	content/keyword-stuffing/keyword-stuffing	email
-/best-ai-email-assistant	perf/cache-headers/cache-control
-/best-ai-executive-assistant	perf/cache-headers/cache-control
 /blog	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
-/blog/desktop	core/meta-description/meta-description
-/blog/monorepo	core/meta-description/meta-description
 /blog/tool-calling-under-the-hood	content/keyword-stuffing/keyword-stuffing	tool
 /bots	perf/cache-headers/cache-control
 /brand	perf/cache-headers/cache-control
@@ -370,7 +357,6 @@ score:URL Structure=93
 /de/automate/asana-discord	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/asana-drive	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/asana-figma	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/asana-github	core/meta-description/meta-description
 /de/automate/asana-jira	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/asana-linear	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/asana-notion	content/keyword-stuffing/keyword-stuffing	notion
@@ -381,10 +367,8 @@ score:URL Structure=93
 /de/automate/asana-zoom	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/calendar-notion	content/keyword-stuffing/keyword-stuffing	meeting
 /de/automate/calendar-notion	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/calendar-notion	core/meta-description/meta-description
 /de/automate/calendar-slack	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/calendar-todoist	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/calendar-todoist	core/meta-description/meta-description
 /de/automate/discord-jira	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/discord-slack	content/keyword-stuffing/keyword-stuffing	community
 /de/automate/discord-slack	content/keyword-stuffing/keyword-stuffing	und
@@ -404,10 +388,8 @@ score:URL Structure=93
 /de/automate/github-clickup	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/github-discord	content/keyword-stuffing/keyword-stuffing	mit
 /de/automate/github-discord	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/github-discord	core/meta-description/meta-description
 /de/automate/github-drive	content/keyword-stuffing/keyword-stuffing	google
 /de/automate/github-drive	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/github-drive	core/meta-description/meta-description
 /de/automate/github-figma	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/github-google-calendar	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/github-hubspot	content/keyword-stuffing/keyword-stuffing	und
@@ -417,11 +399,9 @@ score:URL Structure=93
 /de/automate/github-notion	content/keyword-stuffing/keyword-stuffing	notion
 /de/automate/github-notion	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/github-salesforce	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/github-salesforce	core/meta-description/meta-description
 /de/automate/github-stripe	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/github-teams	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/github-todoist	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/github-todoist	core/meta-description/meta-description
 /de/automate/github-trello	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/github-zoom	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/gmail-airtable	content/keyword-stuffing/keyword-stuffing	und
@@ -429,7 +409,6 @@ score:URL Structure=93
 /de/automate/gmail-asana	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/gmail-clickup	content/keyword-stuffing/keyword-stuffing	mail
 /de/automate/gmail-clickup	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/gmail-clickup	core/meta-description/meta-description
 /de/automate/gmail-discord	content/keyword-stuffing/keyword-stuffing	sie
 /de/automate/gmail-discord	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/gmail-drive	content/keyword-stuffing/keyword-stuffing	und
@@ -449,13 +428,11 @@ score:URL Structure=93
 /de/automate/gmail-slack	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/gmail-stripe	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/gmail-teams	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/gmail-teams	core/meta-description/meta-description
 /de/automate/gmail-todoist	content/keyword-stuffing/keyword-stuffing	aufgaben
 /de/automate/gmail-todoist	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/gmail-trello	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/gmail-zoom	content/keyword-stuffing/keyword-stuffing	meeting
 /de/automate/gmail-zoom	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/gmail-zoom	core/meta-description/meta-description
 /de/automate/google-calendar-asana	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/google-calendar-clickup	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/google-calendar-drive	content/keyword-stuffing/keyword-stuffing	google
@@ -468,7 +445,6 @@ score:URL Structure=93
 /de/automate/google-calendar-linear	content/keyword-stuffing/keyword-stuffing	calendar
 /de/automate/google-calendar-linear	content/keyword-stuffing/keyword-stuffing	mit
 /de/automate/google-calendar-linear	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/google-calendar-linear	core/meta-description/meta-description
 /de/automate/google-calendar-loom	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/google-calendar-salesforce	content/keyword-stuffing/keyword-stuffing	mit
 /de/automate/google-calendar-salesforce	content/keyword-stuffing/keyword-stuffing	und
@@ -480,7 +456,6 @@ score:URL Structure=93
 /de/automate/google-calendar-trello	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/google-calendar-zoom	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/google-docs-slack	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/google-docs-slack	core/meta-description/meta-description
 /de/automate/hubspot-asana	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/hubspot-drive	content/keyword-stuffing/keyword-stuffing	deal
 /de/automate/hubspot-drive	content/keyword-stuffing/keyword-stuffing	und
@@ -488,15 +463,12 @@ score:URL Structure=93
 /de/automate/hubspot-notion	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/hubspot-slack	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/hubspot-zoom	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/hubspot-zoom	core/meta-description/meta-description
 /de/automate/jira-airtable	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/jira-clickup	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/jira-drive	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/jira-figma	content/keyword-stuffing/keyword-stuffing	sie
 /de/automate/jira-figma	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/jira-figma	core/meta-description/meta-description
 /de/automate/jira-hubspot	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/jira-hubspot	core/meta-description/meta-description
 /de/automate/jira-linear	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/jira-loom	content/keyword-stuffing/keyword-stuffing	mit
 /de/automate/jira-loom	content/keyword-stuffing/keyword-stuffing	ticket
@@ -506,15 +478,12 @@ score:URL Structure=93
 /de/automate/jira-stripe	content/keyword-stuffing/keyword-stuffing	mit
 /de/automate/jira-stripe	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/jira-teams	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/jira-todoist	core/meta-description/meta-description
 /de/automate/jira-zoom	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/jira-zoom	core/meta-description/meta-description
 /de/automate/linear-airtable	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/linear-clickup	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/linear-discord	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/linear-drive	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/linear-figma	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/linear-figma	core/meta-description/meta-description
 /de/automate/linear-loom	content/keyword-stuffing/keyword-stuffing	ticket
 /de/automate/linear-loom	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/linear-salesforce	content/keyword-stuffing/keyword-stuffing	mit
@@ -549,10 +518,8 @@ score:URL Structure=93
 /de/automate/salesforce-drive	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/salesforce-slack	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/slack-asana	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/slack-asana	core/meta-description/meta-description
 /de/automate/slack-clickup	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/slack-github	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/slack-github	core/meta-description/meta-description
 /de/automate/slack-google-calendar	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/slack-jira	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/slack-linear	content/keyword-stuffing/keyword-stuffing	und
@@ -560,18 +527,14 @@ score:URL Structure=93
 /de/automate/slack-notion	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/slack-stripe	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/slack-teams	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/slack-teams	core/meta-description/meta-description
 /de/automate/slack-todoist	content/keyword-stuffing/keyword-stuffing	sie
 /de/automate/slack-todoist	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/slack-todoist	core/meta-description/meta-description
 /de/automate/slack-trello	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/slack-zoom	content/keyword-stuffing/keyword-stuffing	meeting
 /de/automate/slack-zoom	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/teams-asana	content/keyword-stuffing/keyword-stuffing	teams
 /de/automate/teams-asana	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/todoist-airtable	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/todoist-airtable	core/meta-description/meta-description
-/de/automate/todoist-asana	core/meta-description/meta-description
 /de/automate/todoist-clickup	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/todoist-drive	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/todoist-figma	content/keyword-stuffing/keyword-stuffing	und
@@ -583,7 +546,6 @@ score:URL Structure=93
 /de/automate/todoist-stripe	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/todoist-teams	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/todoist-trello	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/todoist-trello	core/meta-description/meta-description
 /de/automate/todoist-zoom	content/keyword-stuffing/keyword-stuffing	aufgaben
 /de/automate/todoist-zoom	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/trello-figma	content/keyword-stuffing/keyword-stuffing	design
@@ -592,120 +554,96 @@ score:URL Structure=93
 /de/automate/with/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /de/automate/with/airtable	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/airtable	content/word-count/word-count
-/de/automate/with/airtable	core/meta-description/meta-description
 /de/automate/with/asana	content/keyword-stuffing/keyword-stuffing	asana
 /de/automate/with/asana	content/keyword-stuffing/keyword-stuffing	aufgaben
 /de/automate/with/asana	content/keyword-stuffing/keyword-stuffing	mit
 /de/automate/with/asana	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/asana	content/word-count/word-count
-/de/automate/with/asana	core/meta-description/meta-description
 /de/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	aufgaben
 /de/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	clickup
 /de/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/clickup	content/word-count/word-count
-/de/automate/with/clickup	core/meta-description/meta-description
 /de/automate/with/discord	content/keyword-stuffing/keyword-stuffing	discord
 /de/automate/with/discord	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/discord	content/word-count/word-count
-/de/automate/with/discord	core/meta-description/meta-description
 /de/automate/with/figma	content/keyword-stuffing/keyword-stuffing	design
 /de/automate/with/figma	content/keyword-stuffing/keyword-stuffing	figma
 /de/automate/with/figma	content/keyword-stuffing/keyword-stuffing	mit
 /de/automate/with/figma	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/figma	content/word-count/word-count
-/de/automate/with/figma	core/meta-description/meta-description
 /de/automate/with/github	content/keyword-stuffing/keyword-stuffing	mit
 /de/automate/with/github	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/github	content/word-count/word-count
-/de/automate/with/github	core/meta-description/meta-description
 /de/automate/with/gmail	content/keyword-stuffing/keyword-stuffing	automatisch
 /de/automate/with/gmail	content/keyword-stuffing/keyword-stuffing	mails
 /de/automate/with/gmail	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/gmail	content/word-count/word-count
-/de/automate/with/gmail	core/meta-description/meta-description
 /de/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	aus
 /de/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	automatisch
 /de/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
 /de/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	google
 /de/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/with/google-calendar	core/meta-description/meta-description
 /de/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	anh
 /de/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	automatisch
 /de/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	drive
 /de/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	google
 /de/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/google-drive	content/word-count/word-count
-/de/automate/with/google-drive	core/meta-description/meta-description
 /de/automate/with/google-sheets	content/word-count/word-count
-/de/automate/with/google-sheets	core/meta-description/meta-description
 /de/automate/with/hubspot	content/keyword-stuffing/keyword-stuffing	hubspot
 /de/automate/with/hubspot	content/keyword-stuffing/keyword-stuffing	mit
 /de/automate/with/hubspot	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/hubspot	content/word-count/word-count
-/de/automate/with/hubspot	core/meta-description/meta-description
 /de/automate/with/jira	content/keyword-stuffing/keyword-stuffing	jira
 /de/automate/with/jira	content/keyword-stuffing/keyword-stuffing	mit
 /de/automate/with/jira	content/keyword-stuffing/keyword-stuffing	tickets
 /de/automate/with/jira	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/jira	content/word-count/word-count
-/de/automate/with/jira	core/meta-description/meta-description
 /de/automate/with/linear	content/keyword-stuffing/keyword-stuffing	engineering
 /de/automate/with/linear	content/keyword-stuffing/keyword-stuffing	linear
 /de/automate/with/linear	content/keyword-stuffing/keyword-stuffing	mit
 /de/automate/with/linear	content/keyword-stuffing/keyword-stuffing	tickets
 /de/automate/with/linear	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/linear	content/word-count/word-count
-/de/automate/with/linear	core/meta-description/meta-description
 /de/automate/with/loom	content/keyword-stuffing/keyword-stuffing	loomloom
 /de/automate/with/loom	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/loom	content/word-count/word-count
-/de/automate/with/loom	core/meta-description/meta-description
 /de/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	microsoft
 /de/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	teams
 /de/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/microsoft-teams	content/word-count/word-count
-/de/automate/with/microsoft-teams	core/meta-description/meta-description
 /de/automate/with/notion	content/keyword-stuffing/keyword-stuffing	mit
 /de/automate/with/notion	content/keyword-stuffing/keyword-stuffing	notion
 /de/automate/with/notion	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/notion	content/word-count/word-count
-/de/automate/with/notion	core/meta-description/meta-description
 /de/automate/with/salesforce	content/keyword-stuffing/keyword-stuffing	mit
 /de/automate/with/salesforce	content/keyword-stuffing/keyword-stuffing	salesforce
 /de/automate/with/salesforce	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/salesforce	content/word-count/word-count
-/de/automate/with/salesforce	core/meta-description/meta-description
 /de/automate/with/slack	content/keyword-stuffing/keyword-stuffing	aus
 /de/automate/with/slack	content/keyword-stuffing/keyword-stuffing	slack
 /de/automate/with/slack	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/with/slack	core/meta-description/meta-description
 /de/automate/with/stripe	content/keyword-stuffing/keyword-stuffing	stripe
 /de/automate/with/stripe	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/stripe	content/word-count/word-count
-/de/automate/with/stripe	core/meta-description/meta-description
 /de/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	aufgaben
 /de/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	todoist
 /de/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/todoist	content/word-count/word-count
-/de/automate/with/todoist	core/meta-description/meta-description
 /de/automate/with/trello	content/keyword-stuffing/keyword-stuffing	karten
 /de/automate/with/trello	content/keyword-stuffing/keyword-stuffing	trello
 /de/automate/with/trello	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/trello	content/word-count/word-count
-/de/automate/with/trello	core/meta-description/meta-description
 /de/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	automatisch
 /de/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	meetings
 /de/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/with/zoom	content/word-count/word-count
-/de/automate/with/zoom	core/meta-description/meta-description
 /de/automate/zoom-clickup	content/keyword-stuffing/keyword-stuffing	aufgaben
 /de/automate/zoom-clickup	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/zoom-clickup	core/meta-description/meta-description
 /de/automate/zoom-drive	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/zoom-figma	content/keyword-stuffing/keyword-stuffing	und
 /de/automate/zoom-notion	content/keyword-stuffing/keyword-stuffing	mit
 /de/automate/zoom-notion	content/keyword-stuffing/keyword-stuffing	und
-/de/automate/zoom-notion	core/meta-description/meta-description
 /de/automate/zoom-teams	content/keyword-stuffing/keyword-stuffing	microsoft
 /de/automate/zoom-teams	content/keyword-stuffing/keyword-stuffing	und
 /de/compare	content/keyword-stuffing/keyword-stuffing	und
@@ -730,7 +668,6 @@ score:URL Structure=93
 /de/compare/category/calendar-scheduling	content/keyword-stuffing/keyword-stuffing	und
 /de/compare/category/email	a11y/heading-order/heading-order	H3 after H1
 /de/compare/category/email	content/keyword-stuffing/keyword-stuffing	email
-/de/compare/category/email	core/meta-description/meta-description
 /de/compare/category/notes-knowledge	a11y/heading-order/heading-order	H3 after H1
 /de/compare/category/other	a11y/heading-order/heading-order	H3 after H1
 /de/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
@@ -1049,7 +986,6 @@ score:URL Structure=93
 /de/learn/workflow-orchestration	content/keyword-stuffing/keyword-stuffing	workflow
 /de/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	die
 /de/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
-/download	perf/cache-headers/cache-control
 /es/alternative-to	content/keyword-stuffing/keyword-stuffing	con
 /es/alternative-to/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /es/alternative-to/bee	content/keyword-stuffing/keyword-stuffing	bee
@@ -1106,15 +1042,12 @@ score:URL Structure=93
 /es/automate/airtable-google-sheets	content/keyword-stuffing/keyword-stuffing	los
 /es/automate/airtable-notion	content/keyword-stuffing/keyword-stuffing	airtable
 /es/automate/airtable-slack	content/keyword-stuffing/keyword-stuffing	los
-/es/automate/airtable-slack	core/meta-description/meta-description
 /es/automate/asana-clickup	content/keyword-stuffing/keyword-stuffing	clickup
-/es/automate/asana-clickup	core/meta-description/meta-description
 /es/automate/asana-discord	content/keyword-stuffing/keyword-stuffing	asana
 /es/automate/asana-discord	content/keyword-stuffing/keyword-stuffing	discord
 /es/automate/asana-drive	content/keyword-stuffing/keyword-stuffing	drive
 /es/automate/asana-figma	content/keyword-stuffing/keyword-stuffing	dise
 /es/automate/asana-figma	content/keyword-stuffing/keyword-stuffing	figma
-/es/automate/asana-figma	core/meta-description/meta-description
 /es/automate/asana-github	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/asana-jira	content/keyword-stuffing/keyword-stuffing	asana
 /es/automate/asana-jira	content/keyword-stuffing/keyword-stuffing	jira
@@ -1122,17 +1055,11 @@ score:URL Structure=93
 /es/automate/asana-linear	content/keyword-stuffing/keyword-stuffing	asana
 /es/automate/asana-linear	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/asana-linear	content/keyword-stuffing/keyword-stuffing	linear
-/es/automate/asana-linear	core/meta-description/meta-description
 /es/automate/asana-notion	content/keyword-stuffing/keyword-stuffing	proyecto
 /es/automate/asana-salesforce	content/keyword-stuffing/keyword-stuffing	con
-/es/automate/asana-salesforce	core/meta-description/meta-description
 /es/automate/asana-trello	content/keyword-stuffing/keyword-stuffing	asana
 /es/automate/asana-trello	content/keyword-stuffing/keyword-stuffing	trello
-/es/automate/asana-trello	core/meta-description/meta-description
-/es/automate/calendar-notion	core/meta-description/meta-description
-/es/automate/calendar-slack	core/meta-description/meta-description
 /es/automate/calendar-todoist	content/keyword-stuffing/keyword-stuffing	tareas
-/es/automate/calendar-todoist	core/meta-description/meta-description
 /es/automate/discord-google-calendar	content/keyword-stuffing/keyword-stuffing	discord
 /es/automate/discord-google-calendar	content/keyword-stuffing/keyword-stuffing	google
 /es/automate/discord-google-calendar	content/keyword-stuffing/keyword-stuffing	los
@@ -1150,7 +1077,6 @@ score:URL Structure=93
 /es/automate/drive-slack	content/keyword-stuffing/keyword-stuffing	los
 /es/automate/drive-slack	content/keyword-stuffing/keyword-stuffing	slack
 /es/automate/drive-trello	content/keyword-stuffing/keyword-stuffing	drive
-/es/automate/drive-trello	core/meta-description/meta-description
 /es/automate/figma-notion	content/keyword-stuffing/keyword-stuffing	dise
 /es/automate/figma-notion	content/keyword-stuffing/keyword-stuffing	figma
 /es/automate/figma-notion	content/keyword-stuffing/keyword-stuffing	notion
@@ -1178,7 +1104,6 @@ score:URL Structure=93
 /es/automate/github-linear	content/keyword-stuffing/keyword-stuffing	github
 /es/automate/github-linear	content/keyword-stuffing/keyword-stuffing	linear
 /es/automate/github-linear	content/keyword-stuffing/keyword-stuffing	los
-/es/automate/github-linear	core/meta-description/meta-description
 /es/automate/github-loom	content/keyword-stuffing/keyword-stuffing	loom
 /es/automate/github-loom	content/keyword-stuffing/keyword-stuffing	para
 /es/automate/github-loom	content/keyword-stuffing/keyword-stuffing	que
@@ -1208,20 +1133,17 @@ score:URL Structure=93
 /es/automate/gmail-hubspot	content/keyword-stuffing/keyword-stuffing	hubspot
 /es/automate/gmail-jira	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/gmail-linear	content/keyword-stuffing/keyword-stuffing	que
-/es/automate/gmail-linear	core/meta-description/meta-description
 /es/automate/gmail-loom	content/keyword-stuffing/keyword-stuffing	loom
 /es/automate/gmail-notion	content/keyword-stuffing/keyword-stuffing	notion
 /es/automate/gmail-salesforce	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/gmail-salesforce	content/keyword-stuffing/keyword-stuffing	salesforce
 /es/automate/gmail-slack	content/keyword-stuffing/keyword-stuffing	que
-/es/automate/gmail-slack	core/meta-description/meta-description
 /es/automate/gmail-stripe	content/keyword-stuffing/keyword-stuffing	stripe
 /es/automate/gmail-teams	content/keyword-stuffing/keyword-stuffing	microsoft
 /es/automate/gmail-teams	content/keyword-stuffing/keyword-stuffing	que
 /es/automate/gmail-teams	content/keyword-stuffing/keyword-stuffing	teams
 /es/automate/gmail-todoist	content/keyword-stuffing/keyword-stuffing	que
 /es/automate/gmail-todoist	content/keyword-stuffing/keyword-stuffing	tareas
-/es/automate/gmail-todoist	core/meta-description/meta-description
 /es/automate/gmail-trello	content/keyword-stuffing/keyword-stuffing	trello
 /es/automate/gmail-zoom	content/keyword-stuffing/keyword-stuffing	zoom
 /es/automate/google-calendar-asana	content/keyword-stuffing/keyword-stuffing	tareas
@@ -1252,21 +1174,14 @@ score:URL Structure=93
 /es/automate/google-calendar-trello	content/keyword-stuffing/keyword-stuffing	trello
 /es/automate/google-calendar-zoom	content/keyword-stuffing/keyword-stuffing	google
 /es/automate/google-docs-slack	content/keyword-stuffing/keyword-stuffing	los
-/es/automate/hubspot-asana	core/meta-description/meta-description
 /es/automate/hubspot-drive	content/keyword-stuffing/keyword-stuffing	drive
 /es/automate/hubspot-linear	content/keyword-stuffing/keyword-stuffing	con
-/es/automate/hubspot-linear	core/meta-description/meta-description
 /es/automate/hubspot-notion	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/hubspot-notion	content/keyword-stuffing/keyword-stuffing	notion
-/es/automate/hubspot-slack	content/keyword-stuffing/keyword-stuffing	hubspot
-/es/automate/hubspot-zoom	core/meta-description/meta-description
 /es/automate/jira-airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /es/automate/jira-airtable	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/jira-airtable	content/keyword-stuffing/keyword-stuffing	jira
-/es/automate/jira-airtable	core/meta-description/meta-description
 /es/automate/jira-clickup	content/keyword-stuffing/keyword-stuffing	clickup
-/es/automate/jira-clickup	core/meta-description/meta-description
-/es/automate/jira-drive	core/meta-description/meta-description
 /es/automate/jira-figma	content/keyword-stuffing/keyword-stuffing	dise
 /es/automate/jira-figma	content/keyword-stuffing/keyword-stuffing	figma
 /es/automate/jira-linear	content/keyword-stuffing/keyword-stuffing	jira
@@ -1274,41 +1189,30 @@ score:URL Structure=93
 /es/automate/jira-linear	content/keyword-stuffing/keyword-stuffing	los
 /es/automate/jira-linear	content/keyword-stuffing/keyword-stuffing	que
 /es/automate/jira-loom	content/keyword-stuffing/keyword-stuffing	con
-/es/automate/jira-loom	core/meta-description/meta-description
 /es/automate/jira-notion	content/keyword-stuffing/keyword-stuffing	notion
-/es/automate/jira-notion	core/meta-description/meta-description
 /es/automate/jira-salesforce	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/jira-salesforce	content/keyword-stuffing/keyword-stuffing	los
-/es/automate/jira-salesforce	core/meta-description/meta-description
 /es/automate/jira-stripe	content/keyword-stuffing/keyword-stuffing	con
-/es/automate/jira-stripe	core/meta-description/meta-description
 /es/automate/jira-teams	content/keyword-stuffing/keyword-stuffing	jira
 /es/automate/jira-teams	content/keyword-stuffing/keyword-stuffing	teams
-/es/automate/jira-teams	core/meta-description/meta-description
 /es/automate/jira-todoist	content/keyword-stuffing/keyword-stuffing	jira
 /es/automate/jira-todoist	content/keyword-stuffing/keyword-stuffing	todoist
 /es/automate/jira-trello	content/keyword-stuffing/keyword-stuffing	jira
 /es/automate/jira-trello	content/keyword-stuffing/keyword-stuffing	trello
 /es/automate/linear-airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /es/automate/linear-airtable	content/keyword-stuffing/keyword-stuffing	linear
-/es/automate/linear-airtable	core/meta-description/meta-description
 /es/automate/linear-clickup	content/keyword-stuffing/keyword-stuffing	clickup
 /es/automate/linear-clickup	content/keyword-stuffing/keyword-stuffing	linear
 /es/automate/linear-discord	content/keyword-stuffing/keyword-stuffing	discord
-/es/automate/linear-discord	core/meta-description/meta-description
 /es/automate/linear-figma	content/keyword-stuffing/keyword-stuffing	dise
 /es/automate/linear-figma	content/keyword-stuffing/keyword-stuffing	figma
 /es/automate/linear-figma	content/keyword-stuffing/keyword-stuffing	linear
 /es/automate/linear-salesforce	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/linear-stripe	content/keyword-stuffing/keyword-stuffing	los
-/es/automate/linear-stripe	core/meta-description/meta-description
 /es/automate/linear-teams	content/keyword-stuffing/keyword-stuffing	teams
-/es/automate/linear-teams	core/meta-description/meta-description
 /es/automate/linear-todoist	content/keyword-stuffing/keyword-stuffing	linear
 /es/automate/linear-todoist	content/keyword-stuffing/keyword-stuffing	todoist
-/es/automate/linear-todoist	core/meta-description/meta-description
 /es/automate/linear-trello	content/keyword-stuffing/keyword-stuffing	trello
-/es/automate/linear-trello	core/meta-description/meta-description
 /es/automate/notion-clickup	content/keyword-stuffing/keyword-stuffing	clickup
 /es/automate/notion-clickup	content/keyword-stuffing/keyword-stuffing	notion
 /es/automate/notion-discord	content/keyword-stuffing/keyword-stuffing	discord
@@ -1334,8 +1238,6 @@ score:URL Structure=93
 /es/automate/page/2	content/keyword-stuffing/keyword-stuffing	los
 /es/automate/page/3	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/page/4	content/keyword-stuffing/keyword-stuffing	tareas
-/es/automate/salesforce-slack	core/meta-description/meta-description
-/es/automate/slack-asana	core/meta-description/meta-description
 /es/automate/slack-clickup	content/keyword-stuffing/keyword-stuffing	las
 /es/automate/slack-github	content/keyword-stuffing/keyword-stuffing	que
 /es/automate/slack-google-calendar	content/keyword-stuffing/keyword-stuffing	google
@@ -1344,12 +1246,10 @@ score:URL Structure=93
 /es/automate/slack-loom	content/keyword-stuffing/keyword-stuffing	loom
 /es/automate/slack-loom	content/keyword-stuffing/keyword-stuffing	slack
 /es/automate/slack-notion	content/keyword-stuffing/keyword-stuffing	que
-/es/automate/slack-notion	core/meta-description/meta-description
 /es/automate/slack-stripe	content/keyword-stuffing/keyword-stuffing	stripe
 /es/automate/slack-teams	content/keyword-stuffing/keyword-stuffing	que
 /es/automate/slack-teams	content/keyword-stuffing/keyword-stuffing	slack
 /es/automate/slack-teams	content/keyword-stuffing/keyword-stuffing	teams
-/es/automate/slack-teams	core/meta-description/meta-description
 /es/automate/slack-todoist	content/keyword-stuffing/keyword-stuffing	que
 /es/automate/slack-todoist	content/keyword-stuffing/keyword-stuffing	tareas
 /es/automate/slack-trello	content/keyword-stuffing/keyword-stuffing	slack
@@ -1397,36 +1297,28 @@ score:URL Structure=93
 /es/automate/todoist-zoom	content/keyword-stuffing/keyword-stuffing	que
 /es/automate/todoist-zoom	content/keyword-stuffing/keyword-stuffing	zoom
 /es/automate/trello-figma	content/keyword-stuffing/keyword-stuffing	figma
-/es/automate/trello-figma	core/meta-description/meta-description
 /es/automate/with/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /es/automate/with/airtable	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/with/airtable	content/word-count/word-count
-/es/automate/with/airtable	core/meta-description/meta-description
 /es/automate/with/asana	content/keyword-stuffing/keyword-stuffing	asana
 /es/automate/with/asana	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/with/asana	content/keyword-stuffing/keyword-stuffing	tareas
-/es/automate/with/asana	core/meta-description/meta-description
 /es/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	clickup
 /es/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	tareas
 /es/automate/with/clickup	content/word-count/word-count
-/es/automate/with/clickup	core/meta-description/meta-description
 /es/automate/with/discord	content/keyword-stuffing/keyword-stuffing	canales
 /es/automate/with/discord	content/keyword-stuffing/keyword-stuffing	discord
 /es/automate/with/discord	content/word-count/word-count
-/es/automate/with/discord	core/meta-description/meta-description
 /es/automate/with/figma	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/with/figma	content/keyword-stuffing/keyword-stuffing	dise
 /es/automate/with/figma	content/keyword-stuffing/keyword-stuffing	figma
 /es/automate/with/figma	content/keyword-stuffing/keyword-stuffing	figmavincula
 /es/automate/with/figma	content/word-count/word-count
-/es/automate/with/figma	core/meta-description/meta-description
 /es/automate/with/github	content/keyword-stuffing/keyword-stuffing	github
 /es/automate/with/github	content/keyword-stuffing/keyword-stuffing	los
-/es/automate/with/github	core/meta-description/meta-description
 /es/automate/with/gmail	content/keyword-stuffing/keyword-stuffing	autom
 /es/automate/with/gmail	content/keyword-stuffing/keyword-stuffing	correos
-/es/automate/with/gmail	core/meta-description/meta-description
 /es/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
 /es/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	calendario
 /es/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	con
@@ -1440,56 +1332,43 @@ score:URL Structure=93
 /es/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	driveadjunta
 /es/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	google
 /es/automate/with/google-drive	content/word-count/word-count
-/es/automate/with/google-drive	core/meta-description/meta-description
 /es/automate/with/google-sheets	content/word-count/word-count
-/es/automate/with/google-sheets	core/meta-description/meta-description
 /es/automate/with/hubspot	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/with/hubspot	content/keyword-stuffing/keyword-stuffing	hubspot
 /es/automate/with/hubspot	content/word-count/word-count
-/es/automate/with/hubspot	core/meta-description/meta-description
 /es/automate/with/jira	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/with/jira	content/keyword-stuffing/keyword-stuffing	jira
 /es/automate/with/jira	content/keyword-stuffing/keyword-stuffing	quets
-/es/automate/with/jira	core/meta-description/meta-description
 /es/automate/with/linear	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/with/linear	content/keyword-stuffing/keyword-stuffing	incidencias
 /es/automate/with/linear	content/keyword-stuffing/keyword-stuffing	las
 /es/automate/with/linear	content/keyword-stuffing/keyword-stuffing	linear
-/es/automate/with/linear	core/meta-description/meta-description
 /es/automate/with/loom	content/keyword-stuffing/keyword-stuffing	loom
 /es/automate/with/loom	content/word-count/word-count
-/es/automate/with/loom	core/meta-description/meta-description
 /es/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	microsoft
 /es/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	teams
 /es/automate/with/microsoft-teams	content/word-count/word-count
 /es/automate/with/notion	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/with/notion	content/keyword-stuffing/keyword-stuffing	las
 /es/automate/with/notion	content/keyword-stuffing/keyword-stuffing	notion
-/es/automate/with/notion	core/meta-description/meta-description
 /es/automate/with/salesforce	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/with/salesforce	content/keyword-stuffing/keyword-stuffing	salesforce
 /es/automate/with/salesforce	content/word-count/word-count
-/es/automate/with/salesforce	core/meta-description/meta-description
 /es/automate/with/slack	content/keyword-stuffing/keyword-stuffing	slack
-/es/automate/with/slack	core/meta-description/meta-description
 /es/automate/with/stripe	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/with/stripe	content/keyword-stuffing/keyword-stuffing	stripe
 /es/automate/with/stripe	content/word-count/word-count
-/es/automate/with/stripe	core/meta-description/meta-description
 /es/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	autom
 /es/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	tareas
 /es/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	todoist
-/es/automate/with/todoist	core/meta-description/meta-description
 /es/automate/with/trello	content/keyword-stuffing/keyword-stuffing	con
 /es/automate/with/trello	content/keyword-stuffing/keyword-stuffing	tarjetas
 /es/automate/with/trello	content/keyword-stuffing/keyword-stuffing	trello
 /es/automate/with/trello	content/word-count/word-count
-/es/automate/with/trello	core/meta-description/meta-description
 /es/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	las
 /es/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	reuniones
 /es/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	zoom
 /es/automate/with/zoom	content/word-count/word-count
-/es/automate/with/zoom	core/meta-description/meta-description
 /es/automate/zoom-clickup	content/keyword-stuffing/keyword-stuffing	clickup
 /es/automate/zoom-clickup	content/keyword-stuffing/keyword-stuffing	tareas
 /es/automate/zoom-drive	content/keyword-stuffing/keyword-stuffing	drive
@@ -1501,7 +1380,6 @@ score:URL Structure=93
 /es/automate/zoom-teams	content/keyword-stuffing/keyword-stuffing	microsoft
 /es/automate/zoom-teams	content/keyword-stuffing/keyword-stuffing	teams
 /es/automate/zoom-teams	content/keyword-stuffing/keyword-stuffing	zoom
-/es/automate/zoom-teams	core/meta-description/meta-description
 /es/compare/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /es/compare/airtable	content/keyword-stuffing/keyword-stuffing	para
 /es/compare/airtable	content/keyword-stuffing/keyword-stuffing	que
@@ -1511,15 +1389,12 @@ score:URL Structure=93
 /es/compare/carly	content/keyword-stuffing/keyword-stuffing	con
 /es/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
 /es/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
-/es/compare/category/automation	core/meta-description/meta-description
 /es/compare/category/calendar-scheduling	a11y/heading-order/heading-order	H3 after H1
 /es/compare/category/calendar-scheduling	content/keyword-stuffing/keyword-stuffing	calendar
 /es/compare/category/email	a11y/heading-order/heading-order	H3 after H1
 /es/compare/category/email	content/keyword-stuffing/keyword-stuffing	email
-/es/compare/category/email	core/meta-description/meta-description
 /es/compare/category/notes-knowledge	a11y/heading-order/heading-order	H3 after H1
 /es/compare/category/other	a11y/heading-order/heading-order	H3 after H1
-/es/compare/category/other	core/meta-description/meta-description
 /es/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
 /es/compare/category/task-management	a11y/heading-order/heading-order	H3 after H1
 /es/compare/category/task-management	content/keyword-stuffing/keyword-stuffing	task
@@ -1632,7 +1507,6 @@ score:URL Structure=93
 /es/learn/ai-personal-productivity	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/ai-task-prioritization	content/keyword-stuffing/keyword-stuffing	tareas
 /es/learn/api-gateway	content/keyword-stuffing/keyword-stuffing	api
-/es/learn/api-gateway	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/api-integration	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/async-communication	content/keyword-stuffing/keyword-stuffing	que
 /es/learn/asynchronous-meeting	content/keyword-stuffing/keyword-stuffing	para
@@ -1652,7 +1526,6 @@ score:URL Structure=93
 /es/learn/calendar-automation	content/keyword-stuffing/keyword-stuffing	para
 /es/learn/category/ai-concepts	a11y/heading-order/heading-order	H3 after H1
 /es/learn/category/ai-concepts	content/keyword-stuffing/keyword-stuffing	que
-/es/learn/category/ai-concepts	content/keyword-stuffing/keyword-stuffing	una
 /es/learn/category/automation	a11y/heading-order/heading-order	H3 after H1
 /es/learn/category/automation	content/keyword-stuffing/keyword-stuffing	automatizaci
 /es/learn/category/calendar	a11y/heading-order/heading-order	H3 after H1
@@ -1698,7 +1571,6 @@ score:URL Structure=93
 /es/learn/email-triage	content/keyword-stuffing/keyword-stuffing	electr
 /es/learn/embeddings	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/energy-management	content/keyword-stuffing/keyword-stuffing	energ
-/es/learn/entity-extraction	content/keyword-stuffing/keyword-stuffing	entidades
 /es/learn/event-driven-architecture	content/keyword-stuffing/keyword-stuffing	eventos
 /es/learn/event-driven-architecture	content/keyword-stuffing/keyword-stuffing	los
 /es/learn/event-driven-architecture	content/keyword-stuffing/keyword-stuffing	que
@@ -1824,7 +1696,6 @@ score:URL Structure=93
 /es/learn/workflow-orchestration	content/keyword-stuffing/keyword-stuffing	flujos
 /es/learn/workflow-orchestration	content/keyword-stuffing/keyword-stuffing	trabajo
 /es/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
-/faq	perf/cache-headers/cache-control
 /features	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
 /features/contacts	content/keyword-stuffing/keyword-stuffing	contact
 /features/contacts	content/keyword-stuffing/keyword-stuffing	email
@@ -1832,16 +1703,12 @@ score:URL Structure=93
 /features/discord-bot	content/keyword-stuffing/keyword-stuffing	discord
 /features/event-triggers	content/keyword-stuffing/keyword-stuffing	event
 /features/marketplace	content/keyword-stuffing/keyword-stuffing	integration
-/features/marketplace	core/meta-description/meta-description
 /features/mcp-support	content/keyword-stuffing/keyword-stuffing	mcp
-/features/pins	core/meta-description/meta-description
 /features/reminders	content/keyword-stuffing/keyword-stuffing	reminder
-/features/rich-responses	core/meta-description/meta-description
 /features/skills	content/keyword-stuffing/keyword-stuffing	skill
 /features/slack-bot	content/keyword-stuffing/keyword-stuffing	slack
 /features/telegram-bot	content/keyword-stuffing/keyword-stuffing	telegram
 /for	content/keyword-stuffing/keyword-stuffing	read
-/for/agency-owners	core/meta-description/meta-description
 /for/content-creators	content/keyword-stuffing/keyword-stuffing	content
 /for/data-analysts	content/keyword-stuffing/keyword-stuffing	data
 /for/data-scientists	content/keyword-stuffing/keyword-stuffing	data
@@ -1910,13 +1777,10 @@ score:URL Structure=93
 /fr/automate/airtable-notion	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/airtable-slack	content/keyword-stuffing/keyword-stuffing	dans
 /fr/automate/airtable-slack	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/airtable-slack	core/meta-description/meta-description
 /fr/automate/asana-clickup	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/asana-discord	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/asana-drive	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/asana-figma	content/keyword-stuffing/keyword-stuffing	design
 /fr/automate/asana-figma	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/asana-figma	core/meta-description/meta-description
 /fr/automate/asana-github	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/asana-jira	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/asana-linear	content/keyword-stuffing/keyword-stuffing	les
@@ -1931,13 +1795,10 @@ score:URL Structure=93
 /fr/automate/calendar-todoist	content/keyword-stuffing/keyword-stuffing	ches
 /fr/automate/calendar-todoist	content/keyword-stuffing/keyword-stuffing	des
 /fr/automate/calendar-todoist	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/calendar-todoist	core/meta-description/meta-description
 /fr/automate/discord-google-calendar	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/discord-google-calendar	content/keyword-stuffing/keyword-stuffing	nements
 /fr/automate/discord-jira	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/discord-jira	core/meta-description/meta-description
 /fr/automate/discord-slack	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/discord-slack	core/meta-description/meta-description
 /fr/automate/discord-todoist	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/discord-trello	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/drive-notion	content/keyword-stuffing/keyword-stuffing	drive
@@ -1947,16 +1808,12 @@ score:URL Structure=93
 /fr/automate/drive-trello	content/keyword-stuffing/keyword-stuffing	des
 /fr/automate/drive-trello	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/figma-notion	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/figma-notion	core/meta-description/meta-description
 /fr/automate/figma-slack	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/github-airtable	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/github-airtable	core/meta-description/meta-description
 /fr/automate/github-clickup	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/github-clickup	core/meta-description/meta-description
 /fr/automate/github-discord	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/github-drive	content/keyword-stuffing/keyword-stuffing	google
 /fr/automate/github-drive	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/github-drive	core/meta-description/meta-description
 /fr/automate/github-figma	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/github-google-calendar	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/github-hubspot	content/keyword-stuffing/keyword-stuffing	les
@@ -1968,7 +1825,6 @@ score:URL Structure=93
 /fr/automate/github-loom	content/keyword-stuffing/keyword-stuffing	vid
 /fr/automate/github-notion	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/github-salesforce	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/github-salesforce	core/meta-description/meta-description
 /fr/automate/github-stripe	content/keyword-stuffing/keyword-stuffing	des
 /fr/automate/github-stripe	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/github-teams	content/keyword-stuffing/keyword-stuffing	les
@@ -1980,18 +1836,14 @@ score:URL Structure=93
 /fr/automate/gmail-asana	content/keyword-stuffing/keyword-stuffing	des
 /fr/automate/gmail-asana	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/gmail-clickup	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/gmail-clickup	core/meta-description/meta-description
 /fr/automate/gmail-discord	content/keyword-stuffing/keyword-stuffing	dans
 /fr/automate/gmail-discord	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/gmail-drive	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/gmail-drive	core/meta-description/meta-description
 /fr/automate/gmail-figma	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/gmail-figma	core/meta-description/meta-description
 /fr/automate/gmail-github	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/gmail-google-calendar	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/gmail-hubspot	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/gmail-jira	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/gmail-jira	core/meta-description/meta-description
 /fr/automate/gmail-linear	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/gmail-loom	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/gmail-loom	content/keyword-stuffing/keyword-stuffing	vid
@@ -2004,9 +1856,7 @@ score:URL Structure=93
 /fr/automate/gmail-todoist	content/keyword-stuffing/keyword-stuffing	ches
 /fr/automate/gmail-todoist	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/gmail-trello	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/gmail-trello	core/meta-description/meta-description
 /fr/automate/gmail-zoom	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/gmail-zoom	core/meta-description/meta-description
 /fr/automate/google-calendar-asana	content/keyword-stuffing/keyword-stuffing	des
 /fr/automate/google-calendar-asana	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/google-calendar-clickup	content/keyword-stuffing/keyword-stuffing	les
@@ -2038,7 +1888,6 @@ score:URL Structure=93
 /fr/automate/jira-airtable	content/keyword-stuffing/keyword-stuffing	des
 /fr/automate/jira-airtable	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/jira-clickup	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/jira-clickup	core/meta-description/meta-description
 /fr/automate/jira-drive	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/jira-figma	content/keyword-stuffing/keyword-stuffing	design
 /fr/automate/jira-figma	content/keyword-stuffing/keyword-stuffing	les
@@ -2052,7 +1901,6 @@ score:URL Structure=93
 /fr/automate/jira-teams	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/jira-todoist	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/jira-trello	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/jira-trello	core/meta-description/meta-description
 /fr/automate/jira-zoom	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/linear-airtable	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/linear-clickup	content/keyword-stuffing/keyword-stuffing	les
@@ -2062,16 +1910,13 @@ score:URL Structure=93
 /fr/automate/linear-drive	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/linear-figma	content/keyword-stuffing/keyword-stuffing	design
 /fr/automate/linear-figma	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/linear-figma	core/meta-description/meta-description
 /fr/automate/linear-loom	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/linear-loom	content/keyword-stuffing/keyword-stuffing	vid
 /fr/automate/linear-salesforce	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/linear-stripe	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/linear-teams	content/keyword-stuffing/keyword-stuffing	dans
 /fr/automate/linear-teams	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/linear-teams	core/meta-description/meta-description
 /fr/automate/linear-todoist	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/linear-todoist	core/meta-description/meta-description
 /fr/automate/linear-trello	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/linear-zoom	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/notion-clickup	content/keyword-stuffing/keyword-stuffing	les
@@ -2079,12 +1924,10 @@ score:URL Structure=93
 /fr/automate/notion-discord	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/notion-google-calendar	content/keyword-stuffing/keyword-stuffing	des
 /fr/automate/notion-google-calendar	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/notion-google-calendar	core/meta-description/meta-description
 /fr/automate/notion-linear	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/notion-loom	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/notion-loom	content/keyword-stuffing/keyword-stuffing	vid
 /fr/automate/notion-salesforce	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/notion-salesforce	core/meta-description/meta-description
 /fr/automate/notion-stripe	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/notion-teams	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/notion-todoist	content/keyword-stuffing/keyword-stuffing	ches
@@ -2105,19 +1948,15 @@ score:URL Structure=93
 /fr/automate/salesforce-slack	content/keyword-stuffing/keyword-stuffing	dans
 /fr/automate/salesforce-slack	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/slack-asana	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/slack-asana	core/meta-description/meta-description
 /fr/automate/slack-clickup	content/keyword-stuffing/keyword-stuffing	dans
 /fr/automate/slack-clickup	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/slack-clickup	core/meta-description/meta-description
 /fr/automate/slack-github	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/slack-github	core/meta-description/meta-description
 /fr/automate/slack-google-calendar	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/slack-jira	content/keyword-stuffing/keyword-stuffing	dans
 /fr/automate/slack-jira	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/slack-linear	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/slack-loom	content/keyword-stuffing/keyword-stuffing	dans
 /fr/automate/slack-loom	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/slack-loom	core/meta-description/meta-description
 /fr/automate/slack-notion	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/slack-stripe	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/slack-teams	content/keyword-stuffing/keyword-stuffing	les
@@ -2141,54 +1980,44 @@ score:URL Structure=93
 /fr/automate/todoist-loom	content/keyword-stuffing/keyword-stuffing	vid
 /fr/automate/todoist-salesforce	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/todoist-stripe	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/todoist-stripe	core/meta-description/meta-description
 /fr/automate/todoist-teams	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/todoist-trello	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/todoist-zoom	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/todoist-zoom	core/meta-description/meta-description
 /fr/automate/trello-figma	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/trello-zoom	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /fr/automate/with/airtable	content/keyword-stuffing/keyword-stuffing	des
 /fr/automate/with/airtable	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/airtable	content/word-count/word-count
-/fr/automate/with/airtable	core/meta-description/meta-description
 /fr/automate/with/asana	content/keyword-stuffing/keyword-stuffing	asana
 /fr/automate/with/asana	content/keyword-stuffing/keyword-stuffing	ches
 /fr/automate/with/asana	content/keyword-stuffing/keyword-stuffing	dans
 /fr/automate/with/asana	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/with/asana	core/meta-description/meta-description
 /fr/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	ches
 /fr/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	clickup
 /fr/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/clickup	content/word-count/word-count
-/fr/automate/with/clickup	core/meta-description/meta-description
 /fr/automate/with/discord	content/keyword-stuffing/keyword-stuffing	dans
 /fr/automate/with/discord	content/keyword-stuffing/keyword-stuffing	discord
 /fr/automate/with/discord	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/discord	content/keyword-stuffing/keyword-stuffing	vos
 /fr/automate/with/discord	content/word-count/word-count
-/fr/automate/with/discord	core/meta-description/meta-description
 /fr/automate/with/figma	content/keyword-stuffing/keyword-stuffing	dans
 /fr/automate/with/figma	content/keyword-stuffing/keyword-stuffing	design
 /fr/automate/with/figma	content/keyword-stuffing/keyword-stuffing	figma
 /fr/automate/with/figma	content/keyword-stuffing/keyword-stuffing	figmareliez
 /fr/automate/with/figma	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/figma	content/word-count/word-count
-/fr/automate/with/figma	core/meta-description/meta-description
 /fr/automate/with/github	content/keyword-stuffing/keyword-stuffing	github
 /fr/automate/with/github	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/with/github	core/meta-description/meta-description
 /fr/automate/with/gmail	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/gmail	content/keyword-stuffing/keyword-stuffing	mails
-/fr/automate/with/gmail	core/meta-description/meta-description
 /fr/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	agenda
 /fr/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
 /fr/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	depuis
 /fr/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	google
 /fr/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	nements
-/fr/automate/with/google-calendar	core/meta-description/meta-description
 /fr/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	automatiquement
 /fr/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	aux
 /fr/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	drive
@@ -2196,77 +2025,61 @@ score:URL Structure=93
 /fr/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	google
 /fr/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/google-drive	content/word-count/word-count
-/fr/automate/with/google-drive	core/meta-description/meta-description
 /fr/automate/with/google-sheets	content/word-count/word-count
-/fr/automate/with/google-sheets	core/meta-description/meta-description
 /fr/automate/with/hubspot	content/keyword-stuffing/keyword-stuffing	affaires
 /fr/automate/with/hubspot	content/keyword-stuffing/keyword-stuffing	dans
 /fr/automate/with/hubspot	content/keyword-stuffing/keyword-stuffing	hubspot
 /fr/automate/with/hubspot	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/hubspot	content/word-count/word-count
-/fr/automate/with/hubspot	core/meta-description/meta-description
 /fr/automate/with/jira	content/keyword-stuffing/keyword-stuffing	jira
 /fr/automate/with/jira	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/jira	content/keyword-stuffing/keyword-stuffing	tickets
-/fr/automate/with/jira	core/meta-description/meta-description
 /fr/automate/with/linear	content/keyword-stuffing/keyword-stuffing	dans
 /fr/automate/with/linear	content/keyword-stuffing/keyword-stuffing	ing
 /fr/automate/with/linear	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/linear	content/keyword-stuffing/keyword-stuffing	linear
 /fr/automate/with/linear	content/keyword-stuffing/keyword-stuffing	tickets
-/fr/automate/with/linear	core/meta-description/meta-description
 /fr/automate/with/loom	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/loom	content/keyword-stuffing/keyword-stuffing	loom
 /fr/automate/with/loom	content/keyword-stuffing/keyword-stuffing	vid
 /fr/automate/with/loom	content/word-count/word-count
-/fr/automate/with/loom	core/meta-description/meta-description
 /fr/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	dans
 /fr/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	microsoft
 /fr/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	teams
 /fr/automate/with/microsoft-teams	content/word-count/word-count
-/fr/automate/with/microsoft-teams	core/meta-description/meta-description
 /fr/automate/with/notion	content/keyword-stuffing/keyword-stuffing	dans
 /fr/automate/with/notion	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/notion	content/keyword-stuffing/keyword-stuffing	notion
-/fr/automate/with/notion	core/meta-description/meta-description
 /fr/automate/with/salesforce	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/salesforce	content/keyword-stuffing/keyword-stuffing	salesforce
 /fr/automate/with/salesforce	content/word-count/word-count
-/fr/automate/with/salesforce	core/meta-description/meta-description
 /fr/automate/with/slack	content/keyword-stuffing/keyword-stuffing	dans
 /fr/automate/with/slack	content/keyword-stuffing/keyword-stuffing	des
 /fr/automate/with/slack	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/slack	content/keyword-stuffing/keyword-stuffing	slack
-/fr/automate/with/slack	core/meta-description/meta-description
 /fr/automate/with/stripe	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/stripe	content/keyword-stuffing/keyword-stuffing	paiement
 /fr/automate/with/stripe	content/keyword-stuffing/keyword-stuffing	stripe
 /fr/automate/with/stripe	content/word-count/word-count
-/fr/automate/with/stripe	core/meta-description/meta-description
 /fr/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	ches
 /fr/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	todoist
-/fr/automate/with/todoist	core/meta-description/meta-description
 /fr/automate/with/trello	content/keyword-stuffing/keyword-stuffing	cartes
 /fr/automate/with/trello	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/trello	content/keyword-stuffing/keyword-stuffing	trello
 /fr/automate/with/trello	content/word-count/word-count
-/fr/automate/with/trello	core/meta-description/meta-description
 /fr/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	unions
 /fr/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	zoom
 /fr/automate/with/zoom	content/word-count/word-count
-/fr/automate/with/zoom	core/meta-description/meta-description
 /fr/automate/zoom-clickup	content/keyword-stuffing/keyword-stuffing	ches
 /fr/automate/zoom-clickup	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/zoom-drive	content/keyword-stuffing/keyword-stuffing	les
-/fr/automate/zoom-drive	core/meta-description/meta-description
 /fr/automate/zoom-figma	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/zoom-notion	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/zoom-teams	content/keyword-stuffing/keyword-stuffing	les
 /fr/automate/zoom-teams	content/keyword-stuffing/keyword-stuffing	microsoft
-/fr/automate/zoom-teams	core/meta-description/meta-description
 /fr/compare/activepieces	content/keyword-stuffing/keyword-stuffing	des
 /fr/compare/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /fr/compare/airtable	content/keyword-stuffing/keyword-stuffing	des
@@ -2483,8 +2296,6 @@ score:URL Structure=93
 /fr/learn/body-doubling	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/body-doubling	content/keyword-stuffing/keyword-stuffing	une
 /fr/learn/buffer-time	content/keyword-stuffing/keyword-stuffing	les
-/fr/learn/buffer-time	content/keyword-stuffing/keyword-stuffing	tampon
-/fr/learn/buffer-time	content/keyword-stuffing/keyword-stuffing	une
 /fr/learn/business-process-automation	content/keyword-stuffing/keyword-stuffing	automatisation
 /fr/learn/business-process-automation	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/business-process-automation	content/keyword-stuffing/keyword-stuffing	les
@@ -2788,8 +2599,6 @@ score:URL Structure=93
 /fr/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
-/how-to-use-ai-as-a-personal-assistant	perf/cache-headers/cache-control
-/inbox-zero-ai	perf/cache-headers/cache-control
 /ja/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
 /ja/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
 /ja/compare/category/calendar-scheduling	a11y/heading-order/heading-order	H3 after H1
@@ -2836,7 +2645,6 @@ score:URL Structure=93
 /learn/business-process-automation	content/keyword-stuffing/keyword-stuffing	automation
 /learn/calendar-automation	content/keyword-stuffing/keyword-stuffing	calendar
 /learn/category/ai-concepts	a11y/heading-order/heading-order	H3 after H1
-/learn/category/ai-concepts	core/meta-description/meta-description
 /learn/category/automation	a11y/heading-order/heading-order	H3 after H1
 /learn/category/automation	content/keyword-stuffing/keyword-stuffing	automation
 /learn/category/calendar	a11y/heading-order/heading-order	H3 after H1
@@ -2845,15 +2653,11 @@ score:URL Structure=93
 /learn/category/development	a11y/heading-order/heading-order	H3 after H1
 /learn/category/email	a11y/heading-order/heading-order	H3 after H1
 /learn/category/email	content/keyword-stuffing/keyword-stuffing	email
-/learn/category/email	core/meta-description/meta-description
 /learn/category/knowledge-management	a11y/heading-order/heading-order	H3 after H1
 /learn/category/knowledge-management	content/keyword-stuffing/keyword-stuffing	knowledge
 /learn/category/knowledge-management	content/word-count/word-count
-/learn/category/knowledge-management	core/meta-description/meta-description
 /learn/category/productivity	a11y/heading-order/heading-order	H3 after H1
-/learn/category/productivity	core/meta-description/meta-description
 /learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
-/learn/category/task-management	core/meta-description/meta-description
 /learn/chatbot-vs-ai-assistant	content/keyword-stuffing/keyword-stuffing	assistant
 /learn/conflict-resolution	content/keyword-stuffing/keyword-stuffing	data
 /learn/constitutional-ai	content/keyword-stuffing/keyword-stuffing	human
@@ -2873,7 +2677,6 @@ score:URL Structure=93
 /learn/fine-tuning	content/keyword-stuffing/keyword-stuffing	fine
 /learn/follow-up-automation	content/keyword-stuffing/keyword-stuffing	follow
 /learn/foundation-model	content/keyword-stuffing/keyword-stuffing	foundation
-/learn/foundation-model	content/keyword-stuffing/keyword-stuffing	model
 /learn/foundation-model	content/keyword-stuffing/keyword-stuffing	models
 /learn/function-calling	content/keyword-stuffing/keyword-stuffing	function
 /learn/gdpr	content/keyword-stuffing/keyword-stuffing	data
@@ -2932,8 +2735,6 @@ score:URL Structure=93
 /learn/work-life-integration	content/keyword-stuffing/keyword-stuffing	work
 /learn/workflow-orchestration	content/keyword-stuffing/keyword-stuffing	workflow
 /learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
-/manifesto	links/no-contextual-inbound/no-contextual-inbound
-/manifesto	perf/cache-headers/cache-control
 /marketplace/adspo-mcp-other	content/keyword-stuffing/keyword-stuffing	adspo
 /marketplace/agentmail	content/keyword-stuffing/keyword-stuffing	email
 /marketplace/asana	perf/dom-size/dom-max-children
@@ -2949,6 +2750,7 @@ score:URL Structure=93
 /marketplace/gmail	perf/dom-size/dom-max-children
 /marketplace/googlecalendar	content/keyword-stuffing/keyword-stuffing	calendar
 /marketplace/googledocs	content/keyword-stuffing/keyword-stuffing	document
+/marketplace/googledocs	content/keyword-stuffing/keyword-stuffing	google
 /marketplace/googledrive	content/keyword-stuffing/keyword-stuffing	file
 /marketplace/googledrive	perf/dom-size/dom-max-children
 /marketplace/googlemeet	content/keyword-stuffing/keyword-stuffing	conference
@@ -2961,7 +2763,7 @@ score:URL Structure=93
 /marketplace/instagram	content/keyword-stuffing/keyword-stuffing	media
 /marketplace/jira	perf/dom-size/dom-max-children
 /marketplace/keyloom-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	component
-/marketplace/linear	content/keyword-stuffing/keyword-stuffing	issue
+/marketplace/linear	content/keyword-stuffing/keyword-stuffing	linear
 /marketplace/manufact-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	server
 /marketplace/microsoft-teams	content/keyword-stuffing/keyword-stuffing	teams
 /marketplace/open-web-search-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	search
@@ -2970,7 +2772,6 @@ score:URL Structure=93
 /marketplace/outlook	content/keyword-stuffing/keyword-stuffing	use
 /marketplace/outlook	content/keyword-stuffing/keyword-stuffing	user
 /marketplace/outlook	perf/dom-size/dom-max-children
-/marketplace/outlook	perf/dom-size/dom-total-nodes
 /marketplace/page/2	content/word-count/word-count
 /marketplace/page/3	content/word-count/word-count
 /marketplace/postman-code-eu-mcp-developer	content/keyword-stuffing/keyword-stuffing	code
@@ -2988,14 +2789,11 @@ score:URL Structure=93
 /marketplace/todoist	perf/dom-size/dom-max-children
 /marketplace/trello	content/keyword-stuffing/keyword-stuffing	board
 /marketplace/trello	perf/dom-size/dom-max-children
-/marketplace/trello	perf/dom-size/dom-total-nodes
 /marketplace/twitter	content/keyword-stuffing/keyword-stuffing	user
 /marketplace/twitter	perf/dom-size/dom-max-children
 /marketplace/yelp	content/keyword-stuffing/keyword-stuffing	business
 /marketplace/zoom	content/keyword-stuffing/keyword-stuffing	meeting
-/open-source-ai-assistant	perf/cache-headers/cache-control
-/pricing	perf/cache-headers/cache-control
-/privacy	perf/cache-headers/cache-control
+/pricing	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
 /pt-br/alternative-to	content/keyword-stuffing/keyword-stuffing	com
 /pt-br/alternative-to	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/alternative-to/airtable	content/keyword-stuffing/keyword-stuffing	airtable
@@ -3042,7 +2840,6 @@ score:URL Structure=93
 /pt-br/alternative-to/omi	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/alternative-to/openai-dots	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/alternative-to/openclaw	content/keyword-stuffing/keyword-stuffing	openclaw
-/pt-br/alternative-to/openclaw	core/meta-description/meta-description
 /pt-br/alternative-to/perplexity	content/keyword-stuffing/keyword-stuffing	perplexity
 /pt-br/alternative-to/poke	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/alternative-to/roam-research	content/keyword-stuffing/keyword-stuffing	roam
@@ -3065,7 +2862,6 @@ score:URL Structure=93
 /pt-br/automate/calendar-slack	content/keyword-stuffing/keyword-stuffing	reuni
 /pt-br/automate/calendar-todoist	content/keyword-stuffing/keyword-stuffing	agenda
 /pt-br/automate/calendar-todoist	content/keyword-stuffing/keyword-stuffing	tarefas
-/pt-br/automate/calendar-todoist	core/meta-description/meta-description
 /pt-br/automate/discord-google-calendar	content/keyword-stuffing/keyword-stuffing	agenda
 /pt-br/automate/discord-google-calendar	content/keyword-stuffing/keyword-stuffing	eventos
 /pt-br/automate/discord-jira	content/keyword-stuffing/keyword-stuffing	jira
@@ -3076,24 +2872,17 @@ score:URL Structure=93
 /pt-br/automate/drive-notion	content/keyword-stuffing/keyword-stuffing	notion
 /pt-br/automate/drive-slack	content/keyword-stuffing/keyword-stuffing	drive
 /pt-br/automate/drive-slack	content/keyword-stuffing/keyword-stuffing	google
-/pt-br/automate/drive-slack	core/meta-description/meta-description
 /pt-br/automate/figma-notion	content/keyword-stuffing/keyword-stuffing	design
-/pt-br/automate/github-airtable	core/meta-description/meta-description
 /pt-br/automate/github-discord	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/automate/github-drive	content/keyword-stuffing/keyword-stuffing	google
 /pt-br/automate/github-figma	content/keyword-stuffing/keyword-stuffing	design
 /pt-br/automate/github-google-calendar	content/keyword-stuffing/keyword-stuffing	agenda
 /pt-br/automate/github-linear	content/keyword-stuffing/keyword-stuffing	issue
 /pt-br/automate/github-loom	content/keyword-stuffing/keyword-stuffing	deo
-/pt-br/automate/github-salesforce	core/meta-description/meta-description
 /pt-br/automate/github-trello	content/keyword-stuffing/keyword-stuffing	card
 /pt-br/automate/github-zoom	content/keyword-stuffing/keyword-stuffing	reuni
-/pt-br/automate/gmail-clickup	core/meta-description/meta-description
-/pt-br/automate/gmail-discord	core/meta-description/meta-description
-/pt-br/automate/gmail-linear	core/meta-description/meta-description
 /pt-br/automate/gmail-loom	content/keyword-stuffing/keyword-stuffing	deo
 /pt-br/automate/gmail-stripe	content/keyword-stuffing/keyword-stuffing	para
-/pt-br/automate/gmail-teams	core/meta-description/meta-description
 /pt-br/automate/gmail-todoist	content/keyword-stuffing/keyword-stuffing	tarefas
 /pt-br/automate/gmail-zoom	content/keyword-stuffing/keyword-stuffing	reuni
 /pt-br/automate/google-calendar-asana	content/keyword-stuffing/keyword-stuffing	tarefas
@@ -3106,7 +2895,6 @@ score:URL Structure=93
 /pt-br/automate/google-calendar-loom	content/keyword-stuffing/keyword-stuffing	reuni
 /pt-br/automate/google-calendar-salesforce	content/keyword-stuffing/keyword-stuffing	reuni
 /pt-br/automate/google-calendar-stripe	content/keyword-stuffing/keyword-stuffing	cobran
-/pt-br/automate/google-calendar-stripe	core/meta-description/meta-description
 /pt-br/automate/google-calendar-teams	content/keyword-stuffing/keyword-stuffing	agenda
 /pt-br/automate/google-calendar-teams	content/keyword-stuffing/keyword-stuffing	google
 /pt-br/automate/google-calendar-teams	content/keyword-stuffing/keyword-stuffing	que
@@ -3114,25 +2902,18 @@ score:URL Structure=93
 /pt-br/automate/google-calendar-trello	content/keyword-stuffing/keyword-stuffing	google
 /pt-br/automate/google-calendar-zoom	content/keyword-stuffing/keyword-stuffing	google
 /pt-br/automate/google-calendar-zoom	content/keyword-stuffing/keyword-stuffing	reuni
-/pt-br/automate/google-calendar-zoom	core/meta-description/meta-description
 /pt-br/automate/google-docs-slack	content/keyword-stuffing/keyword-stuffing	docs
 /pt-br/automate/hubspot-asana	content/keyword-stuffing/keyword-stuffing	neg
 /pt-br/automate/hubspot-drive	content/keyword-stuffing/keyword-stuffing	neg
 /pt-br/automate/hubspot-notion	content/keyword-stuffing/keyword-stuffing	neg
-/pt-br/automate/hubspot-slack	content/keyword-stuffing/keyword-stuffing	neg
 /pt-br/automate/jira-drive	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/automate/jira-figma	content/keyword-stuffing/keyword-stuffing	design
-/pt-br/automate/jira-hubspot	core/meta-description/meta-description
 /pt-br/automate/jira-linear	content/keyword-stuffing/keyword-stuffing	para
-/pt-br/automate/jira-salesforce	core/meta-description/meta-description
 /pt-br/automate/jira-stripe	content/keyword-stuffing/keyword-stuffing	com
-/pt-br/automate/jira-stripe	core/meta-description/meta-description
 /pt-br/automate/jira-zoom	content/keyword-stuffing/keyword-stuffing	reuni
 /pt-br/automate/linear-clickup	content/keyword-stuffing/keyword-stuffing	que
-/pt-br/automate/linear-discord	core/meta-description/meta-description
 /pt-br/automate/linear-figma	content/keyword-stuffing/keyword-stuffing	design
 /pt-br/automate/linear-figma	content/keyword-stuffing/keyword-stuffing	issues
-/pt-br/automate/linear-loom	core/meta-description/meta-description
 /pt-br/automate/linear-salesforce	content/keyword-stuffing/keyword-stuffing	com
 /pt-br/automate/linear-trello	content/keyword-stuffing/keyword-stuffing	card
 /pt-br/automate/linear-zoom	content/keyword-stuffing/keyword-stuffing	reuni
@@ -3141,134 +2922,98 @@ score:URL Structure=93
 /pt-br/automate/notion-google-calendar	content/keyword-stuffing/keyword-stuffing	google
 /pt-br/automate/notion-linear	content/keyword-stuffing/keyword-stuffing	issues
 /pt-br/automate/notion-linear	content/keyword-stuffing/keyword-stuffing	notion
-/pt-br/automate/notion-linear	core/meta-description/meta-description
 /pt-br/automate/notion-loom	content/keyword-stuffing/keyword-stuffing	deo
-/pt-br/automate/notion-stripe	core/meta-description/meta-description
 /pt-br/automate/notion-todoist	content/keyword-stuffing/keyword-stuffing	tarefas
 /pt-br/automate/notion-todoist	content/keyword-stuffing/keyword-stuffing	todoist
 /pt-br/automate/page/3	content/keyword-stuffing/keyword-stuffing	issues
 /pt-br/automate/salesforce-slack	content/keyword-stuffing/keyword-stuffing	neg
 /pt-br/automate/slack-clickup	content/keyword-stuffing/keyword-stuffing	tarefas
-/pt-br/automate/slack-clickup	core/meta-description/meta-description
-/pt-br/automate/slack-github	content/keyword-stuffing/keyword-stuffing	com
-/pt-br/automate/slack-github	core/meta-description/meta-description
 /pt-br/automate/slack-google-calendar	content/keyword-stuffing/keyword-stuffing	agenda
 /pt-br/automate/slack-google-calendar	content/keyword-stuffing/keyword-stuffing	reuni
 /pt-br/automate/slack-loom	content/keyword-stuffing/keyword-stuffing	grava
-/pt-br/automate/slack-notion	core/meta-description/meta-description
 /pt-br/automate/slack-stripe	content/keyword-stuffing/keyword-stuffing	para
-/pt-br/automate/slack-stripe	core/meta-description/meta-description
 /pt-br/automate/slack-todoist	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/automate/slack-todoist	content/keyword-stuffing/keyword-stuffing	tarefas
 /pt-br/automate/slack-todoist	content/keyword-stuffing/keyword-stuffing	todoist
 /pt-br/automate/slack-zoom	content/keyword-stuffing/keyword-stuffing	reuni
-/pt-br/automate/slack-zoom	core/meta-description/meta-description
 /pt-br/automate/teams-asana	content/keyword-stuffing/keyword-stuffing	asana
 /pt-br/automate/todoist-airtable	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/automate/todoist-drive	content/keyword-stuffing/keyword-stuffing	tarefas
 /pt-br/automate/todoist-figma	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/automate/todoist-figma	content/keyword-stuffing/keyword-stuffing	tarefas
-/pt-br/automate/todoist-hubspot	core/meta-description/meta-description
 /pt-br/automate/todoist-loom	content/keyword-stuffing/keyword-stuffing	deo
 /pt-br/automate/todoist-loom	content/keyword-stuffing/keyword-stuffing	para
-/pt-br/automate/todoist-salesforce	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/automate/todoist-stripe	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/automate/todoist-trello	content/keyword-stuffing/keyword-stuffing	para
-/pt-br/automate/todoist-trello	core/meta-description/meta-description
 /pt-br/automate/todoist-zoom	content/keyword-stuffing/keyword-stuffing	reuni
 /pt-br/automate/trello-figma	content/keyword-stuffing/keyword-stuffing	design
 /pt-br/automate/trello-zoom	content/keyword-stuffing/keyword-stuffing	reuni
 /pt-br/automate/with/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /pt-br/automate/with/airtable	content/keyword-stuffing/keyword-stuffing	com
 /pt-br/automate/with/airtable	content/word-count/word-count
-/pt-br/automate/with/airtable	core/meta-description/meta-description
 /pt-br/automate/with/asana	content/keyword-stuffing/keyword-stuffing	asana
 /pt-br/automate/with/asana	content/keyword-stuffing/keyword-stuffing	tarefas
-/pt-br/automate/with/asana	core/meta-description/meta-description
 /pt-br/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	clickup
 /pt-br/automate/with/clickup	content/keyword-stuffing/keyword-stuffing	tarefas
 /pt-br/automate/with/clickup	content/word-count/word-count
-/pt-br/automate/with/clickup	core/meta-description/meta-description
 /pt-br/automate/with/discord	content/keyword-stuffing/keyword-stuffing	discord
 /pt-br/automate/with/discord	content/word-count/word-count
-/pt-br/automate/with/discord	core/meta-description/meta-description
 /pt-br/automate/with/figma	content/keyword-stuffing/keyword-stuffing	design
 /pt-br/automate/with/figma	content/keyword-stuffing/keyword-stuffing	figma
 /pt-br/automate/with/figma	content/word-count/word-count
-/pt-br/automate/with/figma	core/meta-description/meta-description
 /pt-br/automate/with/github	content/keyword-stuffing/keyword-stuffing	github
 /pt-br/automate/with/github	content/keyword-stuffing/keyword-stuffing	prs
-/pt-br/automate/with/github	core/meta-description/meta-description
 /pt-br/automate/with/gmail	content/keyword-stuffing/keyword-stuffing	mails
-/pt-br/automate/with/gmail	core/meta-description/meta-description
 /pt-br/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	agenda
 /pt-br/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	calendar
 /pt-br/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	eventos
 /pt-br/automate/with/google-calendar	content/keyword-stuffing/keyword-stuffing	google
-/pt-br/automate/with/google-calendar	core/meta-description/meta-description
 /pt-br/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	autom
 /pt-br/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	drive
 /pt-br/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	driveanexe
 /pt-br/automate/with/google-drive	content/keyword-stuffing/keyword-stuffing	google
 /pt-br/automate/with/google-drive	content/word-count/word-count
-/pt-br/automate/with/google-drive	core/meta-description/meta-description
 /pt-br/automate/with/google-sheets	content/word-count/word-count
-/pt-br/automate/with/google-sheets	core/meta-description/meta-description
 /pt-br/automate/with/hubspot	content/keyword-stuffing/keyword-stuffing	hubspot
 /pt-br/automate/with/hubspot	content/word-count/word-count
-/pt-br/automate/with/hubspot	core/meta-description/meta-description
 /pt-br/automate/with/jira	content/keyword-stuffing/keyword-stuffing	jira
 /pt-br/automate/with/jira	content/keyword-stuffing/keyword-stuffing	tickets
-/pt-br/automate/with/jira	core/meta-description/meta-description
 /pt-br/automate/with/linear	content/keyword-stuffing/keyword-stuffing	engenharia
 /pt-br/automate/with/linear	content/keyword-stuffing/keyword-stuffing	issues
 /pt-br/automate/with/linear	content/keyword-stuffing/keyword-stuffing	linear
-/pt-br/automate/with/linear	core/meta-description/meta-description
 /pt-br/automate/with/loom	content/keyword-stuffing/keyword-stuffing	deo
 /pt-br/automate/with/loom	content/keyword-stuffing/keyword-stuffing	loom
 /pt-br/automate/with/loom	content/word-count/word-count
-/pt-br/automate/with/loom	core/meta-description/meta-description
 /pt-br/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	microsoft
 /pt-br/automate/with/microsoft-teams	content/keyword-stuffing/keyword-stuffing	teams
 /pt-br/automate/with/microsoft-teams	content/word-count/word-count
-/pt-br/automate/with/microsoft-teams	core/meta-description/meta-description
 /pt-br/automate/with/notion	content/keyword-stuffing/keyword-stuffing	ginas
 /pt-br/automate/with/notion	content/keyword-stuffing/keyword-stuffing	notion
-/pt-br/automate/with/notion	core/meta-description/meta-description
 /pt-br/automate/with/salesforce	content/keyword-stuffing/keyword-stuffing	salesforce
 /pt-br/automate/with/salesforce	content/word-count/word-count
-/pt-br/automate/with/salesforce	core/meta-description/meta-description
 /pt-br/automate/with/slack	content/keyword-stuffing/keyword-stuffing	slack
-/pt-br/automate/with/slack	core/meta-description/meta-description
 /pt-br/automate/with/stripe	content/keyword-stuffing/keyword-stuffing	stripe
 /pt-br/automate/with/stripe	content/word-count/word-count
-/pt-br/automate/with/stripe	core/meta-description/meta-description
 /pt-br/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	tarefas
 /pt-br/automate/with/todoist	content/keyword-stuffing/keyword-stuffing	todoist
-/pt-br/automate/with/todoist	core/meta-description/meta-description
 /pt-br/automate/with/trello	content/keyword-stuffing/keyword-stuffing	cards
 /pt-br/automate/with/trello	content/keyword-stuffing/keyword-stuffing	trello
 /pt-br/automate/with/trello	content/word-count/word-count
-/pt-br/automate/with/trello	core/meta-description/meta-description
 /pt-br/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	autom
 /pt-br/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	reuni
 /pt-br/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	zoom
 /pt-br/automate/with/zoom	content/word-count/word-count
-/pt-br/automate/with/zoom	core/meta-description/meta-description
 /pt-br/automate/zoom-clickup	content/keyword-stuffing/keyword-stuffing	reuni
 /pt-br/automate/zoom-clickup	content/keyword-stuffing/keyword-stuffing	tarefas
 /pt-br/automate/zoom-drive	content/keyword-stuffing/keyword-stuffing	drive
 /pt-br/automate/zoom-drive	content/keyword-stuffing/keyword-stuffing	grava
-/pt-br/automate/zoom-drive	core/meta-description/meta-description
 /pt-br/automate/zoom-figma	content/keyword-stuffing/keyword-stuffing	figma
 /pt-br/automate/zoom-notion	content/keyword-stuffing/keyword-stuffing	com
 /pt-br/automate/zoom-teams	content/keyword-stuffing/keyword-stuffing	reuni
-/pt-br/automate/zoom-teams	core/meta-description/meta-description
 /pt-br/compare/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /pt-br/compare/airtable	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/compare/akiflow	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/compare/akiflow	content/keyword-stuffing/keyword-stuffing	tarefas
-/pt-br/compare/asana	core/meta-description/meta-description
 /pt-br/compare/bee	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/compare/cal	content/keyword-stuffing/keyword-stuffing	com
 /pt-br/compare/carly	content/keyword-stuffing/keyword-stuffing	com
@@ -3278,7 +3023,6 @@ score:URL Structure=93
 /pt-br/compare/category/calendar-scheduling	content/keyword-stuffing/keyword-stuffing	calendar
 /pt-br/compare/category/email	a11y/heading-order/heading-order	H3 after H1
 /pt-br/compare/category/email	content/keyword-stuffing/keyword-stuffing	email
-/pt-br/compare/category/email	core/meta-description/meta-description
 /pt-br/compare/category/notes-knowledge	a11y/heading-order/heading-order	H3 after H1
 /pt-br/compare/category/other	a11y/heading-order/heading-order	H3 after H1
 /pt-br/compare/category/project-management	a11y/heading-order/heading-order	H3 after H1
@@ -3380,7 +3124,6 @@ score:URL Structure=93
 /pt-br/learn/category/knowledge-management	a11y/heading-order/heading-order	H3 after H1
 /pt-br/learn/category/knowledge-management	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/learn/category/knowledge-management	content/word-count/word-count
-/pt-br/learn/category/knowledge-management	core/meta-description/meta-description
 /pt-br/learn/category/productivity	a11y/heading-order/heading-order	H3 after H1
 /pt-br/learn/category/productivity	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/category/task-management	a11y/heading-order/heading-order	H3 after H1
@@ -3396,7 +3139,6 @@ score:URL Structure=93
 /pt-br/learn/context-window	content/keyword-stuffing/keyword-stuffing	contexto
 /pt-br/learn/data-sovereignty	content/keyword-stuffing/keyword-stuffing	dados
 /pt-br/learn/digital-executive-assistant	content/keyword-stuffing/keyword-stuffing	assistente
-/pt-br/learn/digital-minimalism	content/keyword-stuffing/keyword-stuffing	digital
 /pt-br/learn/dot-app	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/energy-management	content/keyword-stuffing/keyword-stuffing	energia
 /pt-br/learn/entity-extraction	content/keyword-stuffing/keyword-stuffing	extra
@@ -3429,8 +3171,6 @@ score:URL Structure=93
 /pt-br/learn/intent-recognition	content/keyword-stuffing/keyword-stuffing	inten
 /pt-br/learn/knowledge-worker	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/learn/langchain	content/keyword-stuffing/keyword-stuffing	para
-/pt-br/learn/langgraph	content/keyword-stuffing/keyword-stuffing	com
-/pt-br/learn/langgraph	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/llm	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/low-code	content/keyword-stuffing/keyword-stuffing	code
 /pt-br/learn/low-code	content/keyword-stuffing/keyword-stuffing	que
@@ -3483,12 +3223,10 @@ score:URL Structure=93
 /pt-br/learn/siri	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/smart-reply	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/learn/smart-scheduling	content/keyword-stuffing/keyword-stuffing	para
-/pt-br/learn/social-engineering	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/learn/spam-filter	content/keyword-stuffing/keyword-stuffing	como
 /pt-br/learn/spam-filter	content/keyword-stuffing/keyword-stuffing	mails
 /pt-br/learn/spam-filter	content/keyword-stuffing/keyword-stuffing	spam
 /pt-br/learn/speech-to-text	content/keyword-stuffing/keyword-stuffing	voz
-/pt-br/learn/sprint	content/keyword-stuffing/keyword-stuffing	que
 /pt-br/learn/subagent	content/keyword-stuffing/keyword-stuffing	agente
 /pt-br/learn/supervisor-agent	content/keyword-stuffing/keyword-stuffing	agente
 /pt-br/learn/supervisor-agent	content/keyword-stuffing/keyword-stuffing	supervisor
@@ -3514,13 +3252,10 @@ score:URL Structure=93
 /pt-br/learn/video-conferencing	content/keyword-stuffing/keyword-stuffing	reuni
 /pt-br/learn/workflow-automation	content/keyword-stuffing/keyword-stuffing	fluxos
 /pt-br/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
-/signup	core/robots-meta/robots-meta
+/signup	content/word-count/word-count
 /signup	images/offscreen-lazy/offscreen-images-not-lazy	image
-/signup	perf/cache-headers/cache-control
-/terms	perf/cache-headers/cache-control
 /thanks	a11y/identical-links-same-purpose/identical-links-same-purpose	"discord" → 2 different URLs
 /thanks	content/word-count/word-count
-/thanks	perf/cache-headers/cache-control
 /use-cases/add-deadlines-to-calendar	content/word-count/word-count
 /use-cases/assignment-tracker	content/keyword-stuffing/keyword-stuffing	due
 /use-cases/assignment-tracker	content/word-count/word-count
@@ -3557,5 +3292,3 @@ score:URL Structure=93
 /use-cases/weekly-work-summary	content/word-count/word-count
 /use-cases/workflow-229fb7	content/keyword-stuffing/keyword-stuffing	daily
 /use-cases/workflow-229fb7	content/word-count/word-count
-/use-cases/workflow-229fb7	links/orphan-pages/orphan-pages
-/use-cases/workflow-229fb7	links/weak-internal-links/weak-internal-links

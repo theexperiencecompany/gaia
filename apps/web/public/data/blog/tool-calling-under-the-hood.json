@@ -1,6 +1,7 @@
 {
   "slug": "tool-calling-under-the-hood",
   "title": "How does tool calling work under the hood?",
+  "description": "What happens when an LLM calls a tool: how binding a tool works, the tool calling cycle, and how LangChain passes messages between the model and your code.",
   "date": "2025-11-14",
   "authors": [
     {

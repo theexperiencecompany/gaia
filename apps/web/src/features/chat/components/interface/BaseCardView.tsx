@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Dropdown, Header, Separator, Tooltip } from "@heroui/react";
+import { Dropdown, Header, Separator, Tooltip } from "@heroui/react";
 import {
   ArrowUpRight01Icon,
   RedoIcon,
@@ -8,8 +8,10 @@ import {
   ZapIcon,
 } from "@icons";
 import type React from "react";
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { IntegrationConnectCard } from "@/components/shared/IntegrationConnectCard";
+import { toneVariants } from "@/components/shared/tone";
 
 export interface CardAction {
   key: string;
@@ -77,20 +79,21 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
           <h2 className="font-medium text-zinc-300">{title}</h2>
           {onRefresh && isConnected && (
             <Tooltip>
-              <Button
+              <GaiaButton
                 isIconOnly
                 size="sm"
                 variant="ghost"
                 onPress={onRefresh}
                 isDisabled={isFetching}
-                className="min-w-0 text-zinc-400 transition-colors duration-200 hover:bg-zinc-800"
+                tone="muted"
+                className="min-w-0 transition-colors duration-200"
               >
                 <div
                   className={`transition-transform duration-500 ${isFetching ? "animate-spin" : "hover:rotate-180"}`}
                 >
                   <RedoIcon className="h-4 w-4" />
                 </div>
-              </Button>
+              </GaiaButton>
               <Tooltip.Content placement="bottom" showArrow>
                 Refresh
               </Tooltip.Content>
@@ -98,20 +101,29 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
           )}
         </div>
         {hasMenu && (
-          <Dropdown className="text-foreground">
+          <Dropdown>
             <GaiaButton
               size="sm"
               variant="default-soft"
-              className="text-xs text-zinc-400"
+              tone="muted"
+              className="text-xs"
             >
               Ask GAIA
               <ArrowUpRight01Icon className="h-3.5 w-3.5" />
             </GaiaButton>
-            <Dropdown.Popover placement="bottom end">
+            <Dropdown.Popover
+              placement="bottom end"
+              className={overlayVariants({ backdrop: "opaque" })}
+            >
               <Dropdown.Menu aria-label={`${title} actions`} className="w-100">
                 {hasActions ? (
                   <Dropdown.Section id="ask-gaia">
-                    <Header className="px-2 py-1 text-xs text-zinc-500">
+                    <Header
+                      className={toneVariants({
+                        tone: "faint",
+                        className: "py-1 text-xs",
+                      })}
+                    >
                       Ask GAIA
                     </Header>
                     {actions.map((action) => (
@@ -122,7 +134,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                         onAction={action.onPress}
                       >
                         {action.icon ?? (
-                          <ZapIcon className="size-4 text-default-500" />
+                          <ZapIcon className="size-4 text-zinc-400" />
                         )}
                         <div className="flex flex-col">
                           <span>{action.label}</span>
@@ -142,7 +154,12 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                 {hasActions && path ? <Separator /> : null}
                 {path ? (
                   <Dropdown.Section id="navigation">
-                    <Header className="px-2 py-1 text-xs text-zinc-500">
+                    <Header
+                      className={toneVariants({
+                        tone: "faint",
+                        className: "py-1 text-xs",
+                      })}
+                    >
                       Navigation
                     </Header>
                     <Dropdown.Item
@@ -150,7 +167,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                       href={path}
                       textValue="View All"
                     >
-                      <SquareArrowUpRight02Icon className="size-4 text-primary" />
+                      <SquareArrowUpRight02Icon className="size-4 text-accent" />
                       <div className="flex flex-col">
                         <span>View All</span>
                         <span className="whitespace-normal text-xs text-zinc-500">
@@ -191,13 +208,13 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                     Connect your account to view {title.toLowerCase()}
                   </p>
                   {onConnect && (
-                    <Button
+                    <GaiaButton
                       variant="tertiary"
                       size="sm"
                       onPress={() => onConnect(connectIntegrationId || "")}
                     >
                       {connectButtonText}
-                    </Button>
+                    </GaiaButton>
                   )}
                 </>
               )}

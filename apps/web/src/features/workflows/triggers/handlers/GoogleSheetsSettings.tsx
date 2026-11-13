@@ -10,6 +10,7 @@
 import { Description, Header, ListBox, Select } from "@heroui/react";
 import { useMemo } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
@@ -267,31 +268,29 @@ export function GoogleSheetsSettings({
                         )?.label || group.group;
                       return (
                         <ListBox.Section key={group.group} id={group.group}>
-                          <Header className="px-2 py-1 text-xs font-semibold text-zinc-400">
+                          <Header className="py-1 font-semibold">
                             {spreadsheetName}
                           </Header>
                           {group.options.map((option) => (
-                            <ListBox.Item
+                            <GaiaListBoxItem
                               key={option.value}
                               id={option.value}
                               textValue={option.label}
                             >
                               {option.label}
-                              <ListBox.ItemIndicator />
-                            </ListBox.Item>
+                            </GaiaListBoxItem>
                           ))}
                         </ListBox.Section>
                       );
                     })
                   : (groupedSheetOptions as OptionItem[]).map((option) => (
-                      <ListBox.Item
+                      <GaiaListBoxItem
                         key={option.value}
                         id={option.value}
                         textValue={option.label}
                       >
                         {option.label}
-                        <ListBox.ItemIndicator />
-                      </ListBox.Item>
+                      </GaiaListBoxItem>
                     ))}
               </ListBox>
             </Select.Popover>

@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import type { CommunityWorkflow } from "@/types/features/workflowTypes";
 import { workflowApi } from "../api/workflowApi";
+import { EXPLORE_WORKFLOWS_LIMIT } from "../constants/explore";
 
 const EXPLORE_WORKFLOWS_QUERY_KEY = ["explore-workflows"] as const;
 
 const EXPLORE_WORKFLOWS_STALE_TIME = 5 * 60 * 1000;
-const EXPLORE_WORKFLOWS_LIMIT = 50;
 
 interface UseExploreWorkflowsReturn {
   workflows: CommunityWorkflow[];

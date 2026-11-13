@@ -26,6 +26,8 @@ import {
   WhatsappIcon,
 } from "@icons";
 import type React from "react";
+import { overlayVariants } from "@/components/shared/controlVariants";
+import { toneVariants } from "@/components/shared/tone";
 import { NestedMenuTooltip } from "@/features/settings/components/NestedMenuTooltip";
 import { useNestedMenu } from "@/features/settings/hooks/useNestedMenu";
 
@@ -93,13 +95,16 @@ export default function DemoSettingsDropdown({
         <Dropdown.Popover
           placement="right bottom"
           offset={21}
-          className="dark rounded-2xl bg-secondary-bg text-foreground shadow-xl"
+          className={overlayVariants({
+            surface: "secondary",
+            className: "dark shadow-xl",
+          })}
         >
           <Dropdown.Menu aria-label="Settings">
             <Dropdown.Section>
               <Dropdown.Item id="upgrade" textValue="Subscribe to GAIA Pro">
                 <CircleArrowUp02Icon className={ic} color="#00bbff" />
-                <span className="text-primary font-medium">
+                <span className="text-accent font-medium">
                   Subscribe to GAIA Pro
                 </span>
               </Dropdown.Item>
@@ -110,7 +115,7 @@ export default function DemoSettingsDropdown({
               <Dropdown.Item
                 id="profile"
                 textValue="Profile Card"
-                className="text-zinc-400 transition hover:text-white"
+                className={toneVariants({ tone: "muted", interactive: true })}
               >
                 <SparklesIcon className={ic} />
                 Profile Card
@@ -118,7 +123,7 @@ export default function DemoSettingsDropdown({
               <Dropdown.Item
                 id="account"
                 textValue="Account"
-                className="text-zinc-400 transition hover:text-white"
+                className={toneVariants({ tone: "muted", interactive: true })}
               >
                 <UserCircleIcon className={ic} />
                 Account
@@ -126,7 +131,7 @@ export default function DemoSettingsDropdown({
               <Dropdown.Item
                 id="usage"
                 textValue="Usage"
-                className="text-zinc-400 transition hover:text-white"
+                className={toneVariants({ tone: "muted", interactive: true })}
               >
                 <ChartLineData02Icon className={ic} />
                 Usage
@@ -134,7 +139,7 @@ export default function DemoSettingsDropdown({
               <Dropdown.Item
                 id="preferences"
                 textValue="Preferences"
-                className="text-zinc-400 transition hover:text-white"
+                className={toneVariants({ tone: "muted", interactive: true })}
               >
                 <MessageMultiple02Icon className={ic} />
                 Preferences
@@ -142,7 +147,7 @@ export default function DemoSettingsDropdown({
               <Dropdown.Item
                 id="memory"
                 textValue="Memories"
-                className="text-zinc-400 transition hover:text-white"
+                className={toneVariants({ tone: "muted", interactive: true })}
               >
                 <AiBrain01Icon className={ic} />
                 Memories
@@ -150,7 +155,7 @@ export default function DemoSettingsDropdown({
               <Dropdown.Item
                 id="shortcuts"
                 textValue="Keyboard Shortcuts"
-                className="text-zinc-400 transition hover:text-white"
+                className={toneVariants({ tone: "muted", interactive: true })}
               >
                 <KeyboardIcon className={ic} />
                 Keyboard Shortcuts
@@ -192,7 +197,7 @@ export default function DemoSettingsDropdown({
               <Dropdown.Item
                 id="download"
                 textValue="Download for Desktop"
-                className="text-zinc-400 transition hover:text-white"
+                className={toneVariants({ tone: "muted", interactive: true })}
                 onMouseEnter={downloadMenu.handleMouseEnter}
                 onMouseLeave={downloadMenu.handleMouseLeave}
               >
@@ -203,7 +208,7 @@ export default function DemoSettingsDropdown({
               <Dropdown.Item
                 id="resources"
                 textValue="Resources"
-                className="text-zinc-400 transition hover:text-white"
+                className={toneVariants({ tone: "muted", interactive: true })}
                 onMouseEnter={resourcesMenu.handleMouseEnter}
                 onMouseLeave={resourcesMenu.handleMouseLeave}
               >
@@ -214,7 +219,7 @@ export default function DemoSettingsDropdown({
               <Dropdown.Item
                 id="support"
                 textValue="Support"
-                className="text-zinc-400 transition hover:text-white"
+                className={toneVariants({ tone: "muted", interactive: true })}
                 onMouseEnter={supportMenu.handleMouseEnter}
                 onMouseLeave={supportMenu.handleMouseLeave}
               >
@@ -225,17 +230,12 @@ export default function DemoSettingsDropdown({
               <Dropdown.Item
                 id="settings"
                 textValue="Settings"
-                className="text-zinc-400 transition hover:text-white"
+                className={toneVariants({ tone: "muted", interactive: true })}
               >
                 <Settings01Icon className={ic} />
                 Settings
               </Dropdown.Item>
-              <Dropdown.Item
-                id="logout"
-                textValue="Sign Out"
-                variant="danger"
-                className="text-danger"
-              >
+              <Dropdown.Item id="logout" textValue="Sign Out" variant="danger">
                 <Logout02Icon className={ic} />
                 Sign Out
               </Dropdown.Item>

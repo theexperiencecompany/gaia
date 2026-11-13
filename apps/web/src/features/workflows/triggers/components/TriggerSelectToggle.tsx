@@ -10,6 +10,7 @@ import { Input, ListBox, Select } from "@heroui/react";
 import { useState } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { TriggerTagInput } from "./TriggerTagInput";
 import type { TriggerSelectToggleProps } from "./types";
@@ -80,18 +81,18 @@ export function TriggerSelectToggle({
           <Select.Popover>
             <ListBox>
               {isLoading && options.length === 0 ? (
-                <ListBox.Item id="loading" isDisabled textValue="Loading...">
+                <GaiaListBoxItem id="loading" isDisabled textValue="Loading...">
                   Loading...
-                </ListBox.Item>
+                </GaiaListBoxItem>
               ) : (
                 options.map((option) => (
-                  <ListBox.Item
+                  <GaiaListBoxItem
                     key={option.value}
                     id={option.value}
                     textValue={option.label}
                   >
                     {option.label}
-                  </ListBox.Item>
+                  </GaiaListBoxItem>
                 ))
               )}
             </ListBox>
@@ -104,7 +105,7 @@ export function TriggerSelectToggle({
               <button
                 type="button"
                 onClick={() => setUseManualInput(true)}
-                className="text-xs text-primary hover:underline cursor-pointer"
+                className="text-xs text-accent hover:underline cursor-pointer"
               >
                 Or enter manually
               </button>
@@ -127,7 +128,7 @@ export function TriggerSelectToggle({
         <button
           type="button"
           onClick={() => setUseManualInput(false)}
-          className="text-primary/90 hover:text-primary font-medium hover:underline cursor-pointer transition-colors"
+          className="text-accent/90 hover:text-accent font-medium hover:underline cursor-pointer transition-colors"
         >
           Back to list
         </button>

@@ -70,13 +70,13 @@ export default function BrandPage() {
               <h1 className="mb-6 text-4xl font-medium tracking-tight md:text-5xl">
                 GAIA Logo and Brand Assets
               </h1>
-              <p className="mb-4 text-lg text-foreground-600 dark:text-foreground-400">
+              <p className="mb-4 text-lg text-zinc-300 dark:text-zinc-500">
                 Download the official GAIA logo as SVG or PNG, the GAIA wordmark
                 in black and white, and The Experience Company logos. Use the
                 SVG for print and anything that scales, and the PNG for slides,
                 documents and social posts.
               </p>
-              <p className="mb-8 text-sm text-foreground-500">
+              <p className="mb-8 text-sm text-zinc-400">
                 These are the assets for GAIA, the proactive AI assistant at
                 heygaia.io, made by The Experience Company. GAIA is not
                 affiliated with the Gaia streaming service or other companies
@@ -104,7 +104,7 @@ export default function BrandPage() {
               <div className="space-y-8">
                 <div>
                   <h3 className="mb-3 text-xl font-semibold">Logo Usage</h3>
-                  <div className="space-y-3 text-foreground-600 dark:text-foreground-400">
+                  <div className="space-y-3 text-zinc-300 dark:text-zinc-500">
                     <p>
                       Use the full logo with wordmark whenever space allows. For
                       tight layouts or logo grids, the standalone icon is
@@ -122,7 +122,7 @@ export default function BrandPage() {
                   <h3 className="mb-3 text-xl font-semibold">
                     Spacing & Sizing
                   </h3>
-                  <div className="space-y-3 text-foreground-600 dark:text-foreground-400">
+                  <div className="space-y-3 text-zinc-300 dark:text-zinc-500">
                     <p>
                       Provide plenty of space around our brand assets. Make them
                       big or make them small, but give them room to breathe.
@@ -163,7 +163,7 @@ export default function BrandPage() {
                   </ul>
                 </div>
 
-                <div className="rounded-3xl bg-zinc-800 p-4 dark:border-foreground-800">
+                <div className="rounded-3xl bg-zinc-800 p-4 dark:border-zinc-100">
                   <p className="mb-3">
                     <strong className="text-zinc-300">Important:</strong> The
                     provided graphics are proprietary and protected under
@@ -178,7 +178,7 @@ export default function BrandPage() {
                     For questions or special requests, please{" "}
                     <Link
                       href="/contact"
-                      className="text-primary hover:underline"
+                      className="text-accent hover:underline"
                     >
                       contact us
                     </Link>

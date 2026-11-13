@@ -4,6 +4,7 @@ import { Chip } from "@heroui/react";
 import { useInView } from "motion/react";
 import * as m from "motion/react-m";
 import { useRef } from "react";
+import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 const INTEGRATIONS = [
@@ -61,8 +62,11 @@ export default function IntegrationsDemo() {
             >
               <Chip
                 size="sm"
-                variant="soft"
-                className="border-0 bg-zinc-800 text-xs font-medium text-zinc-300"
+                variant="secondary"
+                className={toneVariants({
+                  tone: "dim",
+                  className: "border-0 text-xs font-medium",
+                })}
               >
                 {icon ? <span className="ml-1">{icon}</span> : undefined}
                 <Chip.Label>{integration.name}</Chip.Label>

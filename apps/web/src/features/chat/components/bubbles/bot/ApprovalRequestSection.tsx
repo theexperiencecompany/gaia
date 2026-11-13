@@ -1,4 +1,4 @@
-import { Button, Dropdown, Input, Menu, TextField } from "@heroui/react";
+import { Dropdown, Input, Menu, TextField } from "@heroui/react";
 import { MoreHorizontalIcon } from "@icons";
 import type {
   ApprovalDecision,
@@ -143,7 +143,7 @@ export default function ApprovalRequestSection({
         </div>
         <div className="mt-1 text-xs text-zinc-400">{data.summary}</div>
         <div className="mt-3 flex items-center gap-2">
-          <Button
+          <GaiaButton
             size="sm"
             onPress={() => {
               setPhase("idle");
@@ -152,7 +152,7 @@ export default function ApprovalRequestSection({
             variant="primary"
           >
             Yes, still approve
-          </Button>
+          </GaiaButton>
           <GaiaButton
             variant="default-soft"
             size="sm"
@@ -203,14 +203,14 @@ export default function ApprovalRequestSection({
         >
           <Input placeholder="Tell GAIA why (optional)" />
         </TextField>
-        <Button
+        <GaiaButton
           size="sm"
           isDisabled={locked}
           onPress={onApproveTap}
           variant="primary"
         >
           Approve
-        </Button>
+        </GaiaButton>
         <GaiaButton
           variant="default-soft"
           size="sm"
@@ -221,7 +221,7 @@ export default function ApprovalRequestSection({
         </GaiaButton>
         {!data.always_asks && (
           <Dropdown>
-            <Button
+            <GaiaButton
               isIconOnly
               size="sm"
               variant="ghost"
@@ -229,7 +229,7 @@ export default function ApprovalRequestSection({
               aria-label="More approval options"
             >
               <MoreHorizontalIcon width={18} />
-            </Button>
+            </GaiaButton>
             <Dropdown.Popover placement="bottom end">
               <Menu aria-label="Approval options">
                 <Menu.Item

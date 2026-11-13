@@ -1,8 +1,10 @@
 "use client";
 
-import { Button, Tooltip } from "@heroui/react";
+import { Tooltip } from "@heroui/react";
 import { PlayIcon } from "@icons";
 import { SiteLink } from "@/components/seo/SiteLink";
+import { overlayVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type {
   CommunityWorkflow,
@@ -13,6 +15,7 @@ import type {
 } from "@/types/features/workflowTypes";
 import type { ContentCreator } from "@/types/shared/contentTypes";
 import { formatRunCount } from "@/utils/formatters";
+import { WORKFLOW_CARD_ICON_SIZE } from "../../constants/workflowIconStyle";
 import { getTriggerDisplayInfo } from "../../triggers/utils";
 import { isSystemCreator } from "../../utils/creator";
 import { useWorkflowCardActions } from "./useWorkflowCardActions";
@@ -161,7 +164,7 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
       steps={steps}
       icon={customIcon}
       iconColor={customIconColor}
-      iconSize={25}
+      iconSize={WORKFLOW_CARD_ICON_SIZE}
       maxIcons={3}
     />
   );
@@ -283,9 +286,12 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
       <Tooltip.Content
         placement="top"
         showArrow
-        className="max-w-xs rounded-3xl bg-zinc-800 p-4"
+        className={overlayVariants({
+          surface: "raised",
+          className: "max-w-xs rounded-3xl",
+        })}
       >
-        {workflow?.prompt || displayDescription}
+        <div className="p-2">{workflow?.prompt || displayDescription}</div>
       </Tooltip.Content>
     </Tooltip>
   ) : (
@@ -395,7 +401,7 @@ function getButtonConfig(
   action: WorkflowCardAction,
   customLabel?: string,
   propActionType?: "prompt" | "workflow",
-): { label: string; variant: "primary" | "secondary" } {
+): { label: string; variant: "primary" | "accent-soft" } {
   if (customLabel) {
     return { label: customLabel, variant: "primary" };
   }
@@ -407,13 +413,13 @@ function getButtonConfig(
 
   switch (action) {
     case "run":
-      return { label: "Run", variant: "secondary" };
+      return { label: "Run", variant: "accent-soft" };
     case "create":
       return { label: "Create", variant: "primary" };
     case "insert-prompt":
       return { label: "Insert Prompt", variant: "primary" };
     case "navigate":
-      return { label: "View", variant: "secondary" };
+      return { label: "View", variant: "accent-soft" };
     default:
       return { label: "Try", variant: "primary" };
   }
@@ -424,7 +430,7 @@ interface WorkflowActionButtonProps {
   label: string;
   isPending: boolean;
   onPress: (e: React.MouseEvent) => void;
-  variant?: "primary" | "secondary";
+  variant?: "primary" | "accent-soft";
   size?: "sm" | "md";
 }
 
@@ -435,17 +441,16 @@ function WorkflowActionButton({
   variant = "primary",
   size = "sm",
 }: WorkflowActionButtonProps) {
-  const buttonVariant = variant === "secondary" ? "secondary" : "primary";
-
   return (
-    <Button
+    <GaiaButton
       size={size}
-      variant={buttonVariant}
-      className={`font-medium rounded-xl ${variant === "secondary" ? "text-primary" : ""}`}
+      shape="md"
+      variant={variant}
+      className="font-medium"
       isPending={isPending}
       onPress={(e) => onPress(e as unknown as React.MouseEvent)}
     >
       {label}
-    </Button>
+    </GaiaButton>
   );
 }

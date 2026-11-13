@@ -48,14 +48,14 @@ bg-emerald-400/10 text-emerald-400
 | ------- | ----- |
 | Cards (outer and inner) | `rounded-2xl` |
 | Images | `rounded-3xl` |
-| Buttons, inputs | `rounded-md` |
+| HeroUI buttons, inputs | no class: the size's radius, or the `shape` prop |
 | Badges, pills | `rounded-full` |
 
 Outer cards use `p-4`, inner items `p-3`.
 
 ## Building UI
 
-- Use HeroUI components, not raw HTML elements.
+- Use HeroUI components, not raw HTML elements, and style them only with layout classes and the variants in `apps/web/src/components/shared/` (DESIGN.md, "How to write frontend code").
 - Import icons from `@icons`, never raw SVGs or Unicode symbols.
 - Use `cn()` to merge classes and `motion/react` for animation.
 - Show toasts with `toast` from `@/lib/toast`. The toaster is already mounted.

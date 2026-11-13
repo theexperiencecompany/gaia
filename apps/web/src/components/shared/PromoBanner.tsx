@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import type { ReactNode } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
 
 export interface PromoBannerAction {
@@ -9,8 +9,6 @@ export interface PromoBannerAction {
   icon?: ReactNode;
   href?: string;
   onPress?: () => void;
-  variant?: "flat" | "solid";
-  color?: "default" | "primary";
 }
 
 export interface PromoBannerProps {
@@ -22,12 +20,9 @@ export interface PromoBannerProps {
   secondaryActions?: PromoBannerAction[];
 }
 
-/** Renders a promo action as a link button when it has an href, else a press button. */
+/** Renders a promo action as a link button when it has an href, else a press button; a secondary action is v2's flat default. */
 function renderAction(action: PromoBannerAction, isPrimary: boolean) {
-  const variant: "primary" | "secondary" =
-    action.variant === "flat" || (action.variant === undefined && !isPrimary)
-      ? "secondary"
-      : "primary";
+  const variant = isPrimary ? "primary" : "default-soft";
   const href = action.href;
 
   if (href) {
@@ -40,10 +35,10 @@ function renderAction(action: PromoBannerAction, isPrimary: boolean) {
   }
 
   return (
-    <Button key={action.label} variant={variant} onPress={action.onPress}>
+    <GaiaButton key={action.label} variant={variant} onPress={action.onPress}>
       {action.label}
       {action.icon}
-    </Button>
+    </GaiaButton>
   );
 }
 
@@ -58,7 +53,7 @@ export function PromoBanner({
     <div className="relative overflow-hidden rounded-3xl bg-zinc-800/50">
       <div className="relative z-10 flex flex-wrap items-center justify-between gap-4 p-4">
         <div className="flex min-w-72 flex-1 items-center gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/20">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent/20">
             {icon}
           </div>
           <div>

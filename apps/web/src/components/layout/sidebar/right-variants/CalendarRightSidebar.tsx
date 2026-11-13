@@ -1,19 +1,15 @@
 "use client";
 
-import {
-  Button,
-  Input,
-  Label,
-  ListBox,
-  Select,
-  Switch,
-  TextArea,
-} from "@heroui/react";
+import { Input, Label, ListBox, Select, Switch, TextArea } from "@heroui/react";
 import { Delete02Icon, RepeatIcon, UserCircleIcon } from "@icons";
 import React, { useEffectEvent } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
+import { toneVariants } from "@/components/shared/tone";
 import {
   Accordion,
   AccordionContent,
@@ -87,7 +83,14 @@ const EventTitleFields: React.FC<EventTitleFieldsProps> = ({
       value={summary}
       onChange={(e) => onSummaryChange(e.target.value)}
       placeholder="Event title"
-      className="border-b border-zinc-700 bg-transparent px-0 text-2xl text-zinc-100 shadow-none placeholder:text-zinc-700 hover:bg-transparent focus:bg-transparent"
+      className={inputVariants({
+        variant: "transparent",
+        placeholder: "ghost",
+        className: toneVariants({
+          tone: "strong",
+          className: "border-b border-zinc-700 px-0 text-2xl shadow-none",
+        }),
+      })}
       autoFocus={isCreating}
     />
 
@@ -96,7 +99,11 @@ const EventTitleFields: React.FC<EventTitleFieldsProps> = ({
       onChange={(e) => onDescriptionChange(e.target.value)}
       placeholder="Add description"
       rows={6}
-      className="bg-zinc-800/30 text-zinc-200 placeholder:text-zinc-700 hover:bg-zinc-800/50"
+      className={inputVariants({
+        variant: "subtle",
+        placeholder: "ghost",
+        className: toneVariants({ tone: "bright" }),
+      })}
     />
   </div>
 );
@@ -179,35 +186,40 @@ const RecurrenceSelector: React.FC<RecurrenceSelectorProps> = ({
         if (key != null) onRecurrenceTypeChange(String(key));
       }}
     >
-      <Label className="text-zinc-400">Repeat</Label>
-      <Select.Trigger className="bg-zinc-800/30 shadow-none hover:bg-zinc-800/50">
+      <Label className={toneVariants({ tone: "muted" })}>Repeat</Label>
+      <Select.Trigger
+        className={inputVariants({
+          variant: "subtle",
+          className: "shadow-none",
+        })}
+      >
         <RepeatIcon className="size-4 text-zinc-500" />
         <GaiaSelectValue />
         <Select.Indicator />
       </Select.Trigger>
-      <Select.Popover className="border border-zinc-800 bg-zinc-900">
+      <Select.Popover className="border border-zinc-800">
         <ListBox>
-          <ListBox.Item id="none" textValue="Does not repeat">
+          <GaiaListBoxItem id="none" textValue="Does not repeat">
             Does not repeat
-          </ListBox.Item>
-          <ListBox.Item id="daily" textValue="Daily">
+          </GaiaListBoxItem>
+          <GaiaListBoxItem id="daily" textValue="Daily">
             Daily
-          </ListBox.Item>
-          <ListBox.Item id="weekdays" textValue="Every weekday (Mon-Fri)">
+          </GaiaListBoxItem>
+          <GaiaListBoxItem id="weekdays" textValue="Every weekday (Mon-Fri)">
             Every weekday (Mon-Fri)
-          </ListBox.Item>
-          <ListBox.Item id="weekly" textValue="Weekly">
+          </GaiaListBoxItem>
+          <GaiaListBoxItem id="weekly" textValue="Weekly">
             Weekly
-          </ListBox.Item>
-          <ListBox.Item id="monthly" textValue="Monthly">
+          </GaiaListBoxItem>
+          <GaiaListBoxItem id="monthly" textValue="Monthly">
             Monthly
-          </ListBox.Item>
-          <ListBox.Item id="yearly" textValue="Yearly">
+          </GaiaListBoxItem>
+          <GaiaListBoxItem id="yearly" textValue="Yearly">
             Yearly
-          </ListBox.Item>
-          <ListBox.Item id="custom" textValue="Custom (select days)">
+          </GaiaListBoxItem>
+          <GaiaListBoxItem id="custom" textValue="Custom (select days)">
             Custom (select days)
-          </ListBox.Item>
+          </GaiaListBoxItem>
         </ListBox>
       </Select.Popover>
     </Select>
@@ -257,8 +269,13 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({
       }}
       isRequired
     >
-      <Label className="text-zinc-400">Calendar</Label>
-      <Select.Trigger className="bg-zinc-800/30 shadow-none hover:bg-zinc-800/50">
+      <Label className={toneVariants({ tone: "muted" })}>Calendar</Label>
+      <Select.Trigger
+        className={inputVariants({
+          variant: "subtle",
+          className: "shadow-none",
+        })}
+      >
         {selectedCalendarId && (
           <div
             className="size-3 rounded-full"
@@ -272,10 +289,10 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({
         <GaiaSelectValue />
         <Select.Indicator />
       </Select.Trigger>
-      <Select.Popover className="border border-zinc-800 bg-zinc-900">
+      <Select.Popover className="border border-zinc-800">
         <ListBox>
           {calendars.map((cal) => (
-            <ListBox.Item
+            <GaiaListBoxItem
               key={cal.id}
               id={cal.id}
               textValue={`${cal.name || cal.summary}${cal.primary ? " (Primary)" : ""}`}
@@ -288,7 +305,7 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({
               />
               {cal.name || cal.summary}
               {cal.primary ? " (Primary)" : ""}
-            </ListBox.Item>
+            </GaiaListBoxItem>
           ))}
         </ListBox>
       </Select.Popover>
@@ -529,7 +546,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
         {/* Create/Delete Actions */}
         <div className="flex items-center gap-3">
           {isCreating ? (
-            <Button
+            <GaiaButton
               onPress={onCreate}
               isDisabled={isSaving || !summary.trim()}
               fullWidth
@@ -537,7 +554,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
               variant="primary"
             >
               {isSaving ? "Creating..." : "Create Event"}
-            </Button>
+            </GaiaButton>
           ) : (
             <>
               <div className="flex-1 text-center text-sm text-zinc-500">

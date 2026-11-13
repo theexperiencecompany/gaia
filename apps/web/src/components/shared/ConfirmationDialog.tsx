@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Kbd, Modal } from "@heroui/react";
+import { Kbd, Modal } from "@heroui/react";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 
@@ -85,12 +85,13 @@ export function ConfirmationDialog({
             </Modal.Body>
             <Modal.Footer>
               <GaiaButton
-                variant="default-soft"
+                variant="tertiary"
+                tone="dim"
+                className="hover:bg-zinc-700"
                 onPress={() => {
                   onCancel();
                   handleOpenChange(false);
                 }}
-                className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
                 isDisabled={isLoading}
               >
                 {cancelText}
@@ -98,7 +99,7 @@ export function ConfirmationDialog({
                   <Kbd.Abbr keyValue="escape" />
                 </Kbd>
               </GaiaButton>
-              <Button
+              <GaiaButton
                 ref={confirmButtonRef}
                 onPress={handleConfirmPress}
                 variant={variant === "destructive" ? "danger" : "primary"}
@@ -111,7 +112,7 @@ export function ConfirmationDialog({
                     <Kbd.Abbr keyValue="enter" />
                   </Kbd>
                 )}
-              </Button>
+              </GaiaButton>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

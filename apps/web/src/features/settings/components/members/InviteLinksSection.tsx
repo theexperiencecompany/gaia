@@ -1,10 +1,11 @@
 "use client";
 
-import { Button, InputGroup } from "@heroui/react";
+import { InputGroup } from "@heroui/react";
 import { Copy01Icon, UserAdd01Icon } from "@icons";
 import type { InviteResponse } from "@shared/api/generated";
 import { useRef, useState } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { inviteLink } from "@/features/settings/hooks/useMembers";
@@ -53,7 +54,7 @@ export function InviteLinksSection({
         label="New invite link"
         description="You can only copy a link right after you create it."
       >
-        <Button
+        <GaiaButton
           size="sm"
           variant="primary"
           isPending={isCreating}
@@ -61,7 +62,7 @@ export function InviteLinksSection({
         >
           <UserAdd01Icon width={16} height={16} />
           Create link
-        </Button>
+        </GaiaButton>
       </SettingsRow>
       {newLink && (
         <div className="px-4 py-3.5">
@@ -73,7 +74,7 @@ export function InviteLinksSection({
               readOnly
             />
             <InputGroup.Suffix>
-              <Button
+              <GaiaButton
                 isIconOnly
                 size="sm"
                 variant="ghost"
@@ -81,7 +82,7 @@ export function InviteLinksSection({
                 onPress={() => void copyLink(linkField.current)}
               >
                 <Copy01Icon width={16} height={16} />
-              </Button>
+              </GaiaButton>
             </InputGroup.Suffix>
           </InputGroup>
         </div>
@@ -92,14 +93,14 @@ export function InviteLinksSection({
           label="Unused invite link"
           description={`Expires ${formatRelativeDate(invite.expires_at)}`}
         >
-          <Button
+          <GaiaButton
             variant="danger-soft"
             size="sm"
             isPending={revokingInviteId === invite.id}
             onPress={() => onRevoke(invite.id)}
           >
             Revoke
-          </Button>
+          </GaiaButton>
         </SettingsRow>
       ))}
     </SettingsSection>

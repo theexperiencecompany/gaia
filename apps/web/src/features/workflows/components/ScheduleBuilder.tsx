@@ -2,6 +2,7 @@ import { Input, ListBox, Select, TextField } from "@heroui/react";
 import { Clock01Icon, InformationCircleIcon } from "@icons";
 import { useEffect, useMemo, useState } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { getTimezoneList, normalizeTimezone } from "@/utils/timezoneUtils";
 import { useCronValidation } from "../hooks/useCronValidation";
@@ -91,7 +92,7 @@ const initializeCustomCron = (cronExpression?: string): string => {
 // narrow trigger width (truncates "Custom", "Month", "Wednesday", …).
 const SELECT_POPOVER_CLASSNAME = "min-w-fit";
 
-/** A compact single-select used by the schedule presets. */
+/** A compact single-select used by the schedule presets: v2's small (32px) select. */
 function CompactSelect({
   ariaLabel,
   value,
@@ -114,7 +115,7 @@ function CompactSelect({
       onChange={(key) => {
         if (key != null) onChange(String(key));
       }}
-      className={className}
+      className={inputVariants({ size: "sm", className })}
       placeholder={placeholder}
     >
       <Select.Trigger>
@@ -124,14 +125,13 @@ function CompactSelect({
       <Select.Popover className={SELECT_POPOVER_CLASSNAME}>
         <ListBox>
           {options.map((option) => (
-            <ListBox.Item
+            <GaiaListBoxItem
               key={option.value}
               id={option.value}
               textValue={option.label}
             >
               {option.label}
-              <ListBox.ItemIndicator />
-            </ListBox.Item>
+            </GaiaListBoxItem>
           ))}
         </ListBox>
       </Select.Popover>

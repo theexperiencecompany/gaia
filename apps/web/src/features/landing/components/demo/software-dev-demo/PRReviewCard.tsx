@@ -59,7 +59,7 @@ export default function PRReviewCard() {
         {PR_ITEMS.map((item) => (
           <div key={item.id} className="rounded-xl bg-zinc-900 p-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-primary">
+              <span className="text-sm font-medium text-accent">
                 {item.branch}{" "}
                 <span className="font-mono text-xs text-zinc-500">
                   ({item.number})

@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Input,
   Label,
   Modal,
@@ -12,6 +11,7 @@ import {
 } from "@heroui/react";
 import { useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { todoApi } from "@/features/todo/api/todoApi";
 import { toast } from "@/lib/toast";
 import type { ProjectCreate } from "@/types/features/todoTypes";
@@ -110,54 +110,52 @@ export default function AddProjectModal({
                 {/* Color */}
                 <div>
                   <label
-                    className="mb-2 block text-sm font-medium text-foreground-600"
+                    className="mb-2 block text-sm font-medium text-zinc-300"
                     htmlFor="radiogroupcolorpicker"
                   >
                     Project Color
                   </label>
-                  <RadioGroup
-                    id="radiogroupcolorpicker"
-                    value={formData.color}
-                    onChange={(value) =>
-                      setFormData((prev) => ({ ...prev, color: value }))
-                    }
-                    orientation="horizontal"
-                    className="flex gap-8 p-3"
-                  >
-                    {colorOptions.map((option) => (
-                      <Radio
-                        key={option.value}
-                        value={option.value}
-                        className="p-0"
-                      >
-                        <Radio.Content>
-                          <Radio.Control>
-                            <Radio.Indicator />
-                          </Radio.Control>
-                          <div className="flex h-full w-full items-center">
-                            <div
-                              className="h-7 w-7 rounded-full"
-                              style={{ backgroundColor: option.value }}
-                            />
-                          </div>
-                        </Radio.Content>
-                      </Radio>
-                    ))}
-                  </RadioGroup>
+                  <div className="p-3">
+                    <RadioGroup
+                      id="radiogroupcolorpicker"
+                      value={formData.color}
+                      onChange={(value) =>
+                        setFormData((prev) => ({ ...prev, color: value }))
+                      }
+                      orientation="horizontal"
+                      className="flex gap-8"
+                    >
+                      {colorOptions.map((option) => (
+                        <Radio key={option.value} value={option.value}>
+                          <Radio.Content>
+                            <Radio.Control>
+                              <Radio.Indicator />
+                            </Radio.Control>
+                            <div className="flex h-full w-full items-center">
+                              <div
+                                className="h-7 w-7 rounded-full"
+                                style={{ backgroundColor: option.value }}
+                              />
+                            </div>
+                          </Radio.Content>
+                        </Radio>
+                      ))}
+                    </RadioGroup>
+                  </div>
                 </div>
               </div>
             </Modal.Body>
             <Modal.Footer>
-              <Button variant="ghost" onPress={() => onOpenChange(false)}>
+              <GaiaButton variant="ghost" onPress={() => onOpenChange(false)}>
                 Cancel
-              </Button>
-              <Button
+              </GaiaButton>
+              <GaiaButton
                 onPress={handleSubmit}
                 isPending={loading}
                 variant="primary"
               >
                 Create Project
-              </Button>
+              </GaiaButton>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

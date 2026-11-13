@@ -172,7 +172,7 @@ function TabStrip({
           isIconOnly
           size="sm"
           variant="ghost"
-          className="text-zinc-400"
+          tone="muted"
           aria-label="Close browser panel"
           onPress={onClose}
         >
@@ -214,7 +214,8 @@ function Omnibox({
               variant="ghost"
               size="sm"
               isIconOnly
-              className="shrink-0 text-zinc-400"
+              tone="muted"
+              className="shrink-0"
               aria-label="Open the live browser in a new tab"
             >
               <SquareArrowUpRight02Icon className="size-4" />

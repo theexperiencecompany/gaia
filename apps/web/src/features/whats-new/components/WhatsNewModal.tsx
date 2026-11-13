@@ -79,8 +79,8 @@ export function WhatsNewModal() {
 
   return (
     <Modal isOpen={isModalOpen} onOpenChange={closeModal}>
-      <Modal.Backdrop>
-        <Modal.Container size="lg">
+      <Modal.Backdrop variant="blur">
+        <Modal.Container>
           <Modal.Dialog className={modalVariants({ size: "2xl" })}>
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Header>What&apos;s new in GAIA</Modal.Header>
@@ -135,23 +135,27 @@ export function WhatsNewModal() {
                 <div className="flex items-center gap-1">
                   <GaiaButton
                     isIconOnly
-                    variant="default-soft"
+                    variant="tertiary"
+                    tone="muted"
+                    hoverTone="white"
                     size="sm"
                     isDisabled={!canScrollPrev}
                     onPress={scrollPrev}
                     aria-label="Previous release"
-                    className="h-7 w-7 min-w-7 bg-zinc-800 text-zinc-400 hover:text-white disabled:opacity-30"
+                    className="h-7 w-7 min-w-7 disabled:opacity-30"
                   >
                     <ArrowLeft02Icon className="h-4 w-4" />
                   </GaiaButton>
                   <GaiaButton
                     isIconOnly
-                    variant="default-soft"
+                    variant="tertiary"
+                    tone="muted"
+                    hoverTone="white"
                     size="sm"
                     isDisabled={!canScrollNext}
                     onPress={scrollNext}
                     aria-label="Next release"
-                    className="h-7 w-7 min-w-7 bg-zinc-800 text-zinc-400 hover:text-white disabled:opacity-30"
+                    className="h-7 w-7 min-w-7 disabled:opacity-30"
                   >
                     <ArrowRight02Icon className="h-4 w-4" />
                   </GaiaButton>

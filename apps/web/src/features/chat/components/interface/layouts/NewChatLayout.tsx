@@ -43,7 +43,8 @@ export const NewChatLayout: React.FC<NewChatLayoutProps> = ({
         {!showUseCases && (
           <GaiaButton
             shape="pill"
-            className="font-medium text-zinc-300"
+            tone="dim"
+            className="font-medium"
             variant="default-soft"
             onPress={() => setShowUseCases(true)}
           >

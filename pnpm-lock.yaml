@@ -82,7 +82,7 @@ overrides:
 
 patchedDependencies:
   sileo@0.1.4:
-    hash: b5e5ff2a9de25c3696a3d7c39efc501d18129425a6da872a694e18d127e3ce91
+    hash: c772514d99c37c6841086258148cc5323a0e6e5009156c986f1f58f7abea210f
     path: patches/sileo@0.1.4.patch
 
 importers:
@@ -701,9 +701,6 @@ importers:
       '@next/mdx':
         specifier: ^16.3.0
         version: 16.3.0(@mdx-js/loader@3.1.1(webpack@5.108.4(@swc/core@1.15.43(@swc/helpers@0.5.23))(lightningcss@1.33.0)(postcss@8.5.32)(sharp@0.35.5(@types/node@24.13.3))))(@mdx-js/react@3.1.1(@types/react@19.2.17)(react@19.2.3))
-      '@next/third-parties':
-        specifier: ^16.3.0
-        version: 16.3.0(next@16.4.2(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.62.1)(@types/node@24.13.3)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(sass@1.101.0))(react@19.2.3)
       '@number-flow/react':
         specifier: ^0.6.1
         version: 0.6.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -854,15 +851,9 @@ importers:
       chrono-node:
         specifier: ^2.10.1
         version: 2.10.1
-      class-variance-authority:
-        specifier: ^0.7.1
-        version: 0.7.1
       cmdk:
         specifier: ^1.1.1
         version: 1.1.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
-      cn:
-        specifier: ^0.2.4
-        version: 0.2.4
       cronstrue:
         specifier: ^3.24.0
         version: 3.24.0
@@ -1009,7 +1000,7 @@ importers:
         version: 0.35.5(@types/node@24.13.3)
       sileo:
         specifier: ^0.1.4
-        version: 0.1.4(patch_hash=b5e5ff2a9de25c3696a3d7c39efc501d18129425a6da872a694e18d127e3ce91)(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+        version: 0.1.4(patch_hash=c772514d99c37c6841086258148cc5323a0e6e5009156c986f1f58f7abea210f)(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       streamdown:
         specifier: ^2.5.0
         version: 2.5.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -4064,12 +4055,6 @@ packages:
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [win32]
-
-  '@next/third-parties@16.3.0':
-    resolution: {integrity: sha512-cAA96hSI9NC7083b6sEsKjgyvM/YJ2eqXs4HWv8a/z5LE12CL1sUJS+cmcTwNMY4yAFpLyyuZHrMBEfh/4Xupw==}
-    peerDependencies:
-      next: ^13.0.0 || ^14.0.0 || ^15.0.0 || ^16.0.0-beta.0
-      react: 19.2.3
 
   '@noble/hashes@1.8.0':
     resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
@@ -9053,11 +9038,6 @@ packages:
     peerDependencies:
       react: 19.2.3
       react-dom: 19.2.3
-
-  cn@0.2.4:
-    resolution: {integrity: sha512-SzQvoh5FwizWtQg9+JueKdjWhlfCZMdu5DqNHm9q1wUlRVmKb9WXlepR9bTTbPwzEOyX1ujJ6lcCppmn3bNUCg==}
-    engines: {node: '>=20'}
-    hasBin: true
 
   code-excerpt@4.0.0:
     resolution: {integrity: sha512-xxodCmBen3iy2i0WtAK8FlFNrRzjUqjRsMfho58xT/wvZU1YTM3fCnRjcy1gJPMepaRlgm/0e6w8SpWHpn3/cA==}
@@ -15019,9 +14999,6 @@ packages:
   thenify@3.3.1:
     resolution: {integrity: sha512-RVZSIV5IG10Hk3enotrhvz0T9em6cyHBLkH/YAZuKqd8hRkKhSfCGIcP2KUY0EPxndzANBmNllzWPwak+bheSw==}
 
-  third-party-capital@1.0.20:
-    resolution: {integrity: sha512-oB7yIimd8SuGptespDAZnNkzIz+NWaJCu2RMsbs4Wmp9zSDUM8Nhi3s2OOcqYuv3mN4hitXc8DVx+LyUmbUDiA==}
-
   throat@5.0.0:
     resolution: {integrity: sha512-fcwX4mndzpLQKBS1DVYhGAcYaYt7vsHNIvQV+WXMvnow5cgjPphq5CaayLaGsjRdSCKZFNGt7/GYAuXaNOiYCA==}
 
@@ -19696,12 +19673,6 @@ snapshots:
 
   '@next/swc-win32-x64-msvc@16.4.2':
     optional: true
-
-  '@next/third-parties@16.3.0(next@16.4.2(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.62.1)(@types/node@24.13.3)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(sass@1.101.0))(react@19.2.3)':
-    dependencies:
-      next: 16.4.2(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.62.1)(@types/node@24.13.3)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(sass@1.101.0)
-      react: 19.2.3
-      third-party-capital: 1.0.20
 
   '@noble/hashes@1.8.0': {}
 
@@ -24821,8 +24792,6 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
       - '@types/react-dom'
-
-  cn@0.2.4: {}
 
   code-excerpt@4.0.0:
     dependencies:
@@ -32114,7 +32083,7 @@ snapshots:
 
   signal-exit@4.1.0: {}
 
-  sileo@0.1.4(patch_hash=b5e5ff2a9de25c3696a3d7c39efc501d18129425a6da872a694e18d127e3ce91)(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
+  sileo@0.1.4(patch_hash=c772514d99c37c6841086258148cc5323a0e6e5009156c986f1f58f7abea210f)(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
     dependencies:
       motion: 12.42.2(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       react: 19.2.3
@@ -32597,8 +32566,6 @@ snapshots:
   thenify@3.3.1:
     dependencies:
       any-promise: 1.3.0
-
-  third-party-capital@1.0.20: {}
 
   throat@5.0.0: {}
 

@@ -235,12 +235,12 @@ function OwnWordsInput({
         autoFocus
       />
       {showsCounter && !isAtLimit && (
-        <Description className="text-tiny">
+        <Description className="text-xs">
           {`${value.length}/${maxLength}`}
         </Description>
       )}
       {isAtLimit && (
-        <FieldError className="text-tiny">
+        <FieldError className="text-xs">
           {`Keep it under ${maxLength} characters`}
         </FieldError>
       )}

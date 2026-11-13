@@ -237,7 +237,7 @@ The visual language for building any UI in this codebase. Tokens, patterns, and 
 > **Parsed by docs:** This file is the source of truth for [`docs/design-system.mdx`](docs/design-system.mdx), rendered at [docs.heygaia.io/design-system](https://docs.heygaia.io/design-system). When updating tokens here, keep that page in sync.
 
 **Related files:**
-- Token source: `apps/web/src/app/styles/globals.css`
+- Token source: `apps/web/src/app/styles/tokens.css` (GAIA's values under HeroUI's token names, and the `--gaia-*` control dimensions), `theme.css` (fonts, brand colours, animations), `gaia.css` (the `gaia` layer: v2's look on HeroUI's components)
 - Claude design rules: `apps/web/CLAUDE.md` (behavioral) + this file (tokens)
 - Visual docs: `docs/design-system.mdx` → renders this file as a style guide
 - Chat bubble & tool-card design: `apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md`
@@ -461,7 +461,7 @@ Depth is conveyed through **tonal layering**, not shadows. Cards stack `neutral-
 
 ## Shapes
 
-The shape language is **soft and rounded**. Cards default to `rounded-xl (16px)` for outer containers — large enough to read as a deliberate card, never `rounded-lg` (the Shadcn default which feels cramped). Buttons and inputs use `rounded-md (8px)`. Pills and avatars are fully rounded. Sharp corners (`rounded-none`) are not used anywhere in the product surface.
+The shape language is **soft and rounded**. Cards default to `rounded-2xl` (16px) for outer containers — large enough to read as a deliberate card, never `rounded-lg` (the Shadcn default which feels cramped). HeroUI controls take their radius from the gaia layer by size (8px sm, 12px md, 14px lg), never from a `rounded-*` class; the `shape` prop fixes it when a design calls for another (see "How to write frontend code"). Pills and avatars are fully rounded. Sharp corners (`rounded-none`) are not used anywhere in the product surface.
 
 ### Decision Table
 
@@ -470,15 +470,95 @@ The shape language is **soft and rounded**. Cards default to `rounded-xl (16px)`
 | Dark cards — outer | `rounded-2xl` (16px) |
 | Dark cards — inner items | `rounded-2xl` or `rounded-xl` (12px) |
 | Images | `rounded-3xl` (24px) |
-| Buttons, inputs | `rounded-md` (6px) |
+| HeroUI buttons and fields | no class: the size's radius; `shape` (`sm`, `md`, `lg`, `xl`, `pill`, `sharp`) to fix it |
+| HeroUI chips | no class: a pill at weight 400, v2's chip default; `shape` (`sm`, `md`, `lg`) where v2 set `radius` |
 | Badges, pills | `rounded-full` |
 | Context menus | `rounded-xl` (12px) |
 
 Never use `rounded-lg` on card containers — that's the Shadcn base radius, visually too small for cards.
 
+## How to write frontend code
+
+Frontend code is a HeroUI component plus layout classes plus a documented variant. Nothing else styles a HeroUI component.
+
+### 1. Pick the component
+
+Use the HeroUI v3 component from `@heroui/react`. Where a GAIA wrapper exists, it replaces the bare component everywhere (`checks.mjs heroui-usage` enforces it):
+
+| Need | Use | Never |
+|---|---|---|
+| Button | `GaiaButton` (`components/shared/GaiaButton.tsx`) | HeroUI `Button`, Shadcn `ui/button`, `<button>` |
+| Button that navigates | `LinkButton` (`components/shared/LinkButton.tsx`) | `<a>` styled as a button |
+| Select trigger value | `GaiaSelectValue` | bare `Select.Value` (it renders the whole item) |
+| List or select item | `GaiaListBoxItem` | bare `ListBox.Item` (it draws no selected check) |
+| ComboBox input row | `ComboBoxInput` | a hand-built `ComboBox.InputGroup` |
+| Switch, Checkbox | `<Switch><Switch.Control>…</Switch.Control></Switch>` | self-closing `<Switch />` (renders nothing) |
+
+A wrapper exists only to change HeroUI's structure or behaviour (an extra part, a default render function, a clear button) or to add GAIA's variants to a component. Shadcn (`components/ui/`) is for what HeroUI lacks: sidebar, chart, calendar, input-otp.
+
+### 2. Layout classes are free; the look comes from variants
+
+On any HeroUI component or GAIA wrapper you may use layout utilities: `w-*`, `h-*`, `min-*`/`max-*`, `m-*`, `gap-*`, `flex`/`grid`/`order-*`, `self-*`, `justify-*`, `items-*`, font size and weight. You may not use a colour, background, border colour, `rounded-*` or padding class, inline or through a constant (`checks.mjs heroui-style-overrides` reads both). The look comes from these, all in `src/components/shared/`:
+
+| Prop / option | Means | Values | Where |
+|---|---|---|---|
+| `variant` | the fill | Button: HeroUI's `primary`, `secondary`, `tertiary`, `ghost`, `danger`, `danger-soft`, `outline` plus GAIA's `default-solid`, `default-soft`, `accent-soft`, `success-soft`, `warning-soft`, `text`. Field: `default`, `bare`, `transparent`, `underlined`, `translucent`, `subtle`. Tabs: `solid`, `light`, `underlined`. Accordion: `light`, `shadow` | `GaiaButton variant=`, `inputVariants`, `tabsVariants`, `accordionVariants` |
+| `color` | semantic colour where HeroUI has a `color` prop | `accent`, `success`, `warning`, `danger`, `default` | `Chip color=`, `tabsVariants`, `sliderVariants` |
+| `size` | dimensions | `sm`, `md`, `lg`; Modal `xl`–`5xl` | the component's `size=`, `inputVariants`, `modalVariants` |
+| `shape` | corners | `default` (the size's radius), `sharp` 2px, `sm` 8px, `md` 12px, `xl` 16px, `pill` | `GaiaButton shape=`, `shapeVariants` |
+| `tone` | text colour | `white`, `strong` zinc-100, `bright` 200, `dim` 300, `muted` 400, `faint` 500, `subtle` 600, `ghost` 700, `accent` | `GaiaButton tone=`, `toneVariants` |
+| `hoverTone` | text colour on hover | `none`, `foreground`, `white`, `strong`, `bright`, `dim`, `muted`, `accent` | `GaiaButton hoverTone=`; `toneVariants({ interactive: true })` brightens to white |
+| `placeholder` | field placeholder colour | the tone scale, `dim` to `ghost` | `inputVariants` |
+| `tint` | strength of a soft fill | `default` (20%), `light` (15%) | `GaiaButton tint=`, `chipVariants` |
+| `inset` | a button's horizontal padding | `default`, `tight` (8px), `none` | `GaiaButton inset=` |
+| `surface` | the surface an element is, or sits on | overlays: `raised` (zinc-800), `secondary` (#1a1a1a); dividers: `raised` (on a zinc-800 card) | `overlayVariants`, `separatorVariants` |
+| `density` | an accordion's vertical rhythm | `default`, `compact`, `flush` | `accordionVariants` |
+| `labelPlacement` | where a field's label sits | `outside`, `inside` (v2's 56px field) | `fieldVariants` |
+| `is*` | a boolean state | `isSelected`, `isBordered` | `chipVariants`, `avatarVariants` |
+
+A variant function goes on `className`, with any layout classes passed through it:
+
+```tsx
+<GaiaButton variant="tertiary" size="sm" tone="muted" hoverTone="foreground">Cancel</GaiaButton>
+<Chip className={toneVariants({ tone: "dim", className: "shrink-0" })}>Draft</Chip>
+<Input className={inputVariants({ variant: "translucent", placeholder: "faint" })} />
+```
+
+Tabs and accordions style several parts, so their functions return one class function per part (slot names as in HeroUI):
+
+```tsx
+const tabs = tabsVariants({ variant: "light", size: "sm" });
+<Tabs className={tabs.base()}>
+  <Tabs.List className={tabs.tabList({ className: "w-full" })}>
+    <Tabs.Tab id="a" className={tabs.tab()}>A<Tabs.Indicator className={tabs.tabIndicator()} /></Tabs.Tab>
+  </Tabs.List>
+  <Tabs.Panel id="a" className={tabs.tabPanel()}>…</Tabs.Panel>
+</Tabs>
+```
+
+### 3. Colours, type and radii
+
+Neutrals are Tailwind's zinc scale; the brand and status colours are `accent`, `success`, `warning` and `danger` (`text-accent`, `bg-success-soft`). Type is Tailwind's scale (`text-xs` to `text-4xl`). There are no v2 names: no `primary`, `default-500`, `foreground-500`, `content1`, `text-small` or `rounded-medium`. Plain elements (a card `div`, a layout wrapper) style with utilities directly, following the dark card contract below.
+
+### 4. A new page or section
+
+1. Put the route in its group and import exactly one area stylesheet at the top of the page, or inherit one from its layout: `styles/marketing.css` (landing pages), `styles/content.css` (SEO and content pages) or `styles/app.css` (the signed-in app). `pnpm area-css` fails when a page has none or two.
+2. Build it from sections 1 and 2. A settings page is `Card`s holding `TextField` or `Select` (`fieldVariants`, `inputVariants({ variant: "translucent" })`), `Switch`, `GaiaButton` and `Separator`. A marketing section is layout `div`s plus `LinkButton`, `Chip` and plain text.
+3. Run `pnpm area-css` (`pnpm dev` and `pnpm build` run it too) and commit `styles/generated/*.css`. It derives each area's Tailwind sources and HeroUI component sheets from the routes' imports; a stale file fails the web tests.
+
+### 5. When the look you need does not exist
+
+Add it once: a value on the owning variant function in `src/components/shared/`, its rule on HeroUI's BEM class in `styles/gaia.css` when a utility cannot reach the part, any new value as a token in `styles/tokens.css`, and a row in the table above. Never a className at the call site, a constant holding classes, or a new wrapper. The overrides that predate the rule are listed, each with its reason, in `scripts/ci/baselines/heroui-style-overrides.txt`, which only shrinks.
+
+### 6. Checks and review
+
+- Lint (`lint-node`): `checks.mjs heroui-style-overrides` and `checks.mjs heroui-usage` (v3 APIs only, controls with their parts, wrappers over bare components).
+- Web tests: `css-token-completeness` (every `var(--x)` the shipped sheets read is defined) and `tailwind-source-globs` (the area sheets are fresh and every source exists).
+- Before merging a UI change, run `mise web:visual:review <base>` on the M4 and read the `review.html` it writes.
+
 ## Components
 
-GAIA composes from three component families: **Shadcn** (`src/components/ui/`) for layout primitives, **HeroUI v3** (`@heroui/react`) for richer in-card UI (chips, accordions, progress, tabs), and a small set of GAIA-native cards built directly to the dark card contract. Pick the right overlay for the context — `Dialog` for focus, `Sheet` for side panels, `Popover` for inline pickers, `Tooltip` for labels only.
+GAIA composes from **HeroUI v3** (`@heroui/react`) for every control and overlay, the GAIA wrappers and variant functions in `src/components/shared/` that give it GAIA's look, and GAIA-native cards built directly to the dark card contract. **Shadcn** (`src/components/ui/`) remains for what HeroUI lacks (sidebar, chart, calendar, input-otp, context menu); its copies of HeroUI primitives are legacy, not for new code. Start with "How to write frontend code" above.
 
 ### Dark Card Styling Contract
 
@@ -497,7 +577,7 @@ Most data cards, tool sections, and info panels follow this two-tone zinc patter
 | Meta / timestamp | `text-xs text-zinc-500` |
 | Item spacing | `space-y-2` |
 | Status badge | `rounded-full px-2 py-0.5 text-xs` + status color |
-| Section divider | `<Separator className="bg-zinc-700/50" />` (HeroUI) |
+| Section divider | `<Separator className={separatorVariants({ surface: "raised" })} />` (HeroUI) |
 | Glass variant | `rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl` |
 | Hoverable list item | `p-4 transition-all hover:bg-white/5` (no bg, just overlay on hover) |
 
@@ -565,24 +645,21 @@ Style: `new-york`, base: `zinc`, CSS variables on.
 
 ### HeroUI v3 (`@heroui/react`)
 
-Used for richer UI inside cards.
+Every control and overlay. "How to write frontend code" above lists the wrappers and every variant; this section lists the dimensions the gaia layer gives them.
 
 | Component | Standard usage |
 |---|---|
-| `Chip` | Status badges · `variant="tertiary"`, text in `<Chip.Label>` |
-| `Button` | Card actions · `variant="tertiary"` or `variant="primary"` |
-| `GaiaButton` (`@/components/shared/GaiaButton`) | GAIA's two extra Button variants, built with `tv({ extend: buttonVariants })`: `variant="default-solid"` is the neutral filled button (zinc-700, foreground text) for secondary actions on dark cards, where HeroUI's `tertiary` (zinc-800) disappears into the card; `variant="default-soft"` is the quiet neutral tint (zinc-700 at 40%), v2's flat button; `variant="success-soft"` / `"warning-soft"` are the status text on its own 20% tint (v2's success/warning flat, e.g. the workflow editor's Run), and HeroUI's own `"danger-soft"` is the danger one; `variant="accent-soft"` is the accent text on an accent tint, for a highlighted but non-primary action (the sidebar's New Chat). Every other variant is HeroUI's own `Button`. `LinkButton` takes the same variants for links. |
-| `Accordion` / `Accordion.Item` | Expandable card sections |
-| `ProgressBar` | Progress bars |
-| `Tabs` / `Tabs.Tab` / `Tabs.Panel` | Tabbed card content |
-| `Avatar` | Contact / user avatars |
-| `ScrollShadow` | Wraps overflowing lists |
+| `GaiaButton` | Every button. `default-solid` (zinc-700) is the neutral filled button for secondary actions on dark cards, where HeroUI's `tertiary` (zinc-800) disappears into the card; `default-soft` is v2's flat button (zinc-700 at 40%); `success-soft` / `warning-soft` / HeroUI's `danger-soft` are status text on its tint; `accent-soft` is a highlighted non-primary action; `text` is the small inline text action |
+| `Chip` | Status badges · `variant="soft"` with `color`, text in `<Chip.Label>` |
+| `Accordion` | Expandable card sections · `accordionVariants` |
+| `Tabs` | Tabbed card content · `tabsVariants` |
+| `ProgressBar`, `Avatar`, `ScrollShadow` | Progress, contact avatars, overflowing lists |
 
 Chart palette (Recharts): `["#a78bfa", "#34d399", "#60a5fa", "#f472b6", "#fb923c"]`
 
 ### HeroUI control dimensions
 
-v2's sizes on v3's components, set once as `--gaia-*` variables in the `gaia` layer of `apps/web/src/app/styles/base.css`. Never restate them per component.
+v2's sizes on v3's components: each value is a `--gaia-*` token in `apps/web/src/app/styles/tokens.css`, applied once in the `gaia` layer (`styles/gaia.css`). Never restate them per component.
 
 | Control | sm | md (default) | lg |
 |---|---|---|---|
@@ -592,36 +669,23 @@ v2's sizes on v3's components, set once as `--gaia-*` variables in the `gaia` la
 | Button radius | 8px | 12px | 14px |
 | Icon-only button | 32px square, 8px radius | 40px square | 48px square |
 | Chip min-height | 24px | 28px | 32px |
-| Chip radius | 8px | 8px | 8px |
+| Chip text | 12px | 14px | 16px |
+| Chip radius | full | full | full |
+| Field height | 32px (`inputVariants({ size: "sm" })`) | 40px; 56px with the label inside | |
 | Checkbox control | 20px, 8px gap to its label | | |
 
-Buttons use font-weight 400.
-
-Corner shape is one closed dimension, `shape: "default" | "pill"` (`components/shared/shape.ts`). `default` is the radius above; `pill` fully rounds the control and means the same on Button (`GaiaButton shape="pill"`, `LinkButton shape="pill"`), Chip, Tabs, text fields, Checkbox and ButtonGroup (`className={shapeVariants({ shape: "pill" })}`). Never put a `rounded-*` class on a HeroUI control.
-
-Other control options, each one class in the gaia layer and one variant function (never a per-site class):
-
-| Option | Function | Use |
-|---|---|---|
-| Field label inside (v2 default) | `fieldVariants({ labelPlacement: "inside" })` on TextField / Select / ComboBox | 56px field, label 12px zinc-400 top-left, value below |
-| Selected chip | `chipVariants({ isSelected })` | the chosen chip in a picker lifts on a shadow tinted by its fill |
-| Bordered avatar | `avatarVariants({ bordered: true })` | contributor and member stacks: a 2px zinc-700 ring outside a 2px gap |
-| Accent tabs | `tabsVariants({ color: "accent" })` | a segmented switch whose selected tab is the accent with dark text |
-
-Field placeholders are zinc-500 at normal weight everywhere (`--field-placeholder`).
-
-Field text is 14px at every width (`--gaia-field-font-size`). A Select trigger renders its value through `GaiaSelectValue` (`components/shared/GaiaSelectValue.tsx`, never bare `Select.Value`): it shows the selected item's `textValue` on one truncated line, as v2 did, so a rich item's description stays in the open list.
+Buttons use font-weight 400. Field text is 14px at every width and field placeholders v2's foreground-500, zinc-400 in dark (`--field-placeholder`). List and menu items are 34px rows on an 8px radius. Overlays keep v2's radii: popover, select, dropdown and modal 14px, tooltip 12px. Dividers are the translucent `--separator` (white at 15%). Tables have 8px by 12px cells, no row rules, and the selected row on `--default-soft`. A danger menu item is red whether or not its text sits in a Label. Modals wider than 32rem take `modalVariants({ size })` on `Modal.Dialog` and no size on the Container.
 
 ### Overlay Hierarchy
 
 | Use case | Component |
 |---|---|
-| Destructive confirmation, focused form | `Dialog` |
-| Side panel, settings, multi-step flow | `Sheet` |
-| Inline picker, date selector, contextual detail | `Popover` |
-| Single-line label on hover | `Tooltip` |
-| Action list from a trigger | `DropdownMenu` |
-| Right-click actions | `ContextMenu` |
+| Destructive confirmation, focused form | HeroUI `Modal` (or `AlertDialog`) |
+| Side panel, settings, multi-step flow | HeroUI `Drawer` |
+| Inline picker, date selector, contextual detail | HeroUI `Popover` |
+| Single-line label on hover | HeroUI `Tooltip` |
+| Action list from a trigger | HeroUI `Dropdown` + `Menu` |
+| Right-click actions | Shadcn `ContextMenu` (HeroUI has none) |
 
 ### Forms & Validation
 
@@ -684,15 +748,15 @@ Empty state pattern (no shared component — build inline):
 
 ## Do's and Don'ts
 
-- Do use `primary` (`#00bbff`) for the single most important action per screen — never on multiple buttons in the same view.
+- Do use the `accent` (`#00bbff`) for the single most important action per screen — never on multiple buttons in the same view.
 - Do layer cards as `bg-zinc-800` outer over `bg-zinc-900` inner — this two-tone is the entire separation mechanism.
 - Do render status with `<color>/10` background + full `<color>` text. Never solid status backgrounds.
 - Do use icons from `@icons` (`@theexperiencecompany/gaia-icons`). Never raw SVG.
-- Do use `cn()` from `@/lib/utils` for conditional class merging, and `cva` for components with multiple visual variants.
+- Do use `cn()` from `@/lib/utils` for conditional class merging, and `tv()` for components with multiple visual variants.
 - Do use Sileo for toasts — it is mounted globally; just call the toast function.
 - Do truncate long strings in constrained containers with `truncate` or `line-clamp-N`.
 - Don't put `border-`, `ring-`, or `outline-` anywhere in the card tree. Depth comes from tonal layering only.
-- Don't use `rounded-lg` on card containers. It is the Shadcn default and visually too cramped — use `rounded-xl` (16px).
+- Don't use `rounded-lg` on card containers. It is the Shadcn default and visually too cramped — use `rounded-2xl` (16px).
 - Don't use Unicode symbols (`→`, `↗`, `•`, `✓`, `×`) as UI elements. Always use icon components from `@icons`.
 - Don't use solid color backgrounds for status states. Always pair `/10` background with full color text.
 - Don't import from `framer-motion` — import from `motion/react`. `AnimatePresence` is required for exit animations.
@@ -793,20 +857,16 @@ import { cn } from "@/lib/utils";
 <div className={cn("base-class", condition && "conditional-class", className)} />
 ```
 
-### `cva`
+### `tv()` (tailwind-variants)
 
-Use `cva` from `class-variance-authority` for components with multiple visual variants.
+A component with visual variants defines them with `tv()` from `tailwind-variants`, the library HeroUI's own variants use. A HeroUI component's variants live in `src/components/shared/` (see "How to write frontend code"). Never `cva`.
 
 ```typescript
-import { cva } from "class-variance-authority";
+import { tv } from "tailwind-variants";
 
-const cardVariants = cva("rounded-2xl p-4", {
-  variants: {
-    depth: {
-      outer: "bg-zinc-800",
-      inner: "bg-zinc-900",
-    },
-  },
+const cardVariants = tv({
+  base: "rounded-2xl p-4",
+  variants: { depth: { outer: "bg-zinc-800", inner: "bg-zinc-900" } },
 });
 ```
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Tooltip } from "@heroui/react";
+import { Tooltip } from "@heroui/react";
 import { CheckmarkBadge01Icon } from "@icons";
 import { ScrollArea } from "@radix-ui/react-scroll-area";
 import { AnimatePresence } from "motion/react";
@@ -49,11 +49,11 @@ export default function DemoNotificationsPopover({
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
-                  className={`flex flex-1 items-center justify-center gap-2 px-4 py-3 text-sm transition-colors ${activeTab === tab ? "border-b-2 border-primary text-white" : "text-zinc-400 hover:text-zinc-300"}`}
+                  className={`flex flex-1 items-center justify-center gap-2 px-4 py-3 text-sm transition-colors ${activeTab === tab ? "border-b-2 border-accent text-white" : "text-zinc-400 hover:text-zinc-300"}`}
                 >
                   <span className="capitalize">{tab}</span>
                   {tab === "unread" && unreadNotifications.length > 0 && (
-                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-zinc-950">
+                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[10px] font-medium text-zinc-950">
                       {unreadNotifications.length}
                     </span>
                   )}
@@ -76,7 +76,7 @@ export default function DemoNotificationsPopover({
                             {n.title}
                           </h4>
                           {n.unread && (
-                            <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                            <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
                           )}
                         </div>
                         <p className="my-1 line-clamp-2 text-left text-sm font-light text-zinc-400">
@@ -116,9 +116,9 @@ export default function DemoNotificationsPopover({
               <GaiaButton variant="default-solid" size="sm" fullWidth>
                 Mark all as read
               </GaiaButton>
-              <Button size="sm" variant="outline" fullWidth>
+              <GaiaButton size="sm" variant="outline" fullWidth>
                 View all notifications
-              </Button>
+              </GaiaButton>
             </div>
           </m.div>
         </>

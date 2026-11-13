@@ -2,6 +2,7 @@
 
 import { Chip } from "@heroui/react";
 import { getToolDisplayName } from "@shared/icons";
+import { shapeVariants } from "@/components/shared/shape";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 
@@ -42,7 +43,7 @@ export default function WorkflowStep({
   return (
     <div className="relative flex items-start gap-5">
       <div
-        className={`relative z-10 mt-0.5 flex ${dotSize} shrink-0 items-center justify-center rounded-full bg-primary`}
+        className={`relative z-10 mt-0.5 flex ${dotSize} shrink-0 items-center justify-center rounded-full bg-accent`}
       >
         <span className={`${dotTextSize} font-semibold text-black`}>
           {index + 1}
@@ -55,7 +56,10 @@ export default function WorkflowStep({
             variant="soft"
             title={categoryLabel}
             aria-label={categoryLabel}
-            className={`${chipHeight} pl-2 space-x-1 truncate ${chipTextSize}`}
+            className={shapeVariants({
+              shape: "md",
+              className: `${chipHeight} gap-1 truncate ${chipTextSize}`,
+            })}
           >
             <div className="min-w-fit">
               {getToolCategoryIcon(

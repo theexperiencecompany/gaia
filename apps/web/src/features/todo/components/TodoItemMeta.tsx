@@ -15,6 +15,8 @@ import {
 import { isTrackedTodo } from "@shared/todos";
 import { formatDistanceToNow } from "date-fns";
 import { memo } from "react";
+import { shapeVariants } from "@/components/shared/shape";
+import { toneVariants } from "@/components/shared/tone";
 import { Priority, type Project, type Todo } from "@/types/features/todoTypes";
 import { formatDate } from "@/utils/date/dateUtils";
 
@@ -57,7 +59,10 @@ function TodoPriorityChip({ priority }: { priority: Todo["priority"] }) {
       <Chip
         size="sm"
         variant="soft"
-        className={`px-2 ${PRIORITY_CHIP_CLASS[priority]}`}
+        className={shapeVariants({
+          shape: "sm",
+          className: `px-2 ${PRIORITY_CHIP_CLASS[priority]}`,
+        })}
       >
         <Flag02Icon width={15} height={15} className="mx-1" />
         <Chip.Label>{capitalize(priority)}</Chip.Label>
@@ -89,7 +94,10 @@ export const TodoItemMeta = memo(function TodoItemMeta({
     <div className="mt-2 flex flex-wrap items-center gap-1">
       {todo.due_date && (
         <Chip
-          className="flex items-center px-1"
+          className={shapeVariants({
+            shape: "sm",
+            className: "flex items-center",
+          })}
           size="sm"
           color={dueChipColor(isToday, isOverdue)}
           variant="soft"
@@ -101,7 +109,10 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {todo.scheduled_at && (
         <Chip
-          className="flex items-center px-1"
+          className={shapeVariants({
+            shape: "sm",
+            className: "flex items-center",
+          })}
           size="sm"
           color="accent"
           variant="soft"
@@ -113,7 +124,10 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {todo.expires_at && (
         <Chip
-          className="flex items-center px-1"
+          className={shapeVariants({
+            shape: "sm",
+            className: "flex items-center",
+          })}
           size="sm"
           color="warning"
           variant="soft"
@@ -125,7 +139,10 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {isTrackedTodo(todo) && (
         <Chip
-          className="flex items-center px-1"
+          className={shapeVariants({
+            shape: "sm",
+            className: "flex items-center",
+          })}
           size="sm"
           color="accent"
           variant="soft"
@@ -137,7 +154,13 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {todo.sub_todo_count > 0 && (
         <Chip
-          className="flex items-center text-zinc-400 px-1"
+          className={shapeVariants({
+            shape: "sm",
+            className: toneVariants({
+              tone: "muted",
+              className: "flex items-center",
+            }),
+          })}
           size="sm"
           variant="soft"
         >
@@ -148,9 +171,9 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {todoProject && (
         <Chip
+          className={shapeVariants({ shape: "sm" })}
           size="sm"
           variant="soft"
-          className=" text-zinc-400 px-1"
           style={{ color: todoProject.color }}
         >
           <Folder02Icon width={15} height={15} className="mx-1" />
@@ -164,7 +187,13 @@ export const TodoItemMeta = memo(function TodoItemMeta({
             key={label}
             size="sm"
             variant="soft"
-            className="flex items-center text-zinc-400 px-1"
+            className={shapeVariants({
+              shape: "sm",
+              className: toneVariants({
+                tone: "muted",
+                className: "flex items-center",
+              }),
+            })}
           >
             <Tag01Icon width={17} height={17} className="mx-1" />
             <Chip.Label>{capitalize(label)}</Chip.Label>
@@ -176,7 +205,14 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {/* Checklist progress */}
       {todo.subtasks.length > 0 && (
-        <Chip size="sm" variant="soft" className=" text-zinc-400 px-1">
+        <Chip
+          size="sm"
+          variant="soft"
+          className={shapeVariants({
+            shape: "sm",
+            className: toneVariants({ tone: "muted" }),
+          })}
+        >
           <CheckmarkCircle02Icon width={15} height={15} className="mx-1" />
           <Chip.Label>
             {todo.subtasks.filter((s) => s.completed).length}/

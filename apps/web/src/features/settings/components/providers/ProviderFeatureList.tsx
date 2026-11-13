@@ -2,6 +2,7 @@
 
 import { Accordion } from "@heroui/react";
 import type { ProviderFeature } from "@shared/api/generated";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 import type {
   ProviderCatalog,
   SetupStatus,
@@ -10,6 +11,8 @@ import { FeatureProviderPicker } from "./FeatureProviderPicker";
 import { featureState } from "./featureState";
 import { type FeatureGroup, featureAnchorId } from "./providerRows";
 import { StatusBadge } from "./StatusBadge";
+
+const accordionStyles = accordionVariants({ variant: "light" });
 
 interface ProviderFeatureListProps {
   groups: FeatureGroup[];
@@ -31,7 +34,7 @@ export function ProviderFeatureList({
       allowsMultipleExpanded
       variant="default"
       defaultExpandedKeys={openFeature ? [openFeature] : []}
-      className="rounded-2xl bg-zinc-900 px-2"
+      className={accordionStyles.base({ className: "rounded-2xl bg-zinc-900" })}
     >
       {groups.map((group) => {
         const state = featureState(group, catalog);
@@ -56,12 +59,14 @@ export function ProviderFeatureList({
                 <Accordion.Indicator />
               </Accordion.Trigger>
             </Accordion.Heading>
-            <Accordion.Panel className="pb-4">
-              <FeatureProviderPicker
-                group={group}
-                catalog={catalog}
-                status={status}
-              />
+            <Accordion.Panel>
+              <div className="pb-4">
+                <FeatureProviderPicker
+                  group={group}
+                  catalog={catalog}
+                  status={status}
+                />
+              </div>
             </Accordion.Panel>
           </Accordion.Item>
         );

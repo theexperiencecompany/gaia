@@ -9,19 +9,20 @@ import {
 import { ArrowRight02Icon, ConnectIcon, InformationCircleIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { chipVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { InstanceSetupNotice } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import type { SuggestedIntegration } from "@/features/integrations/types";
-import {
-  ACCORDION_INDICATOR,
-  ACCORDION_TRIGGER_BASE,
-} from "@/lib/heroui/accordionParity";
 import { toast } from "@/lib/toast";
+
+const accordionStyles = accordionVariants({ density: "compact" });
 
 interface IntegrationListSectionProps {
   suggestedIntegrations?: SuggestedIntegration[];
@@ -40,7 +41,10 @@ function AccordionTitle({ title, count, tooltip }: AccordionTitleProps) {
       <Chip
         size="sm"
         variant="soft"
-        className="text-xs aspect-square flex items-center justify-center text-zinc-400"
+        className={toneVariants({
+          tone: "muted",
+          className: "text-xs aspect-square flex items-center justify-center",
+        })}
       >
         {count}
       </Chip>
@@ -217,7 +221,12 @@ function IntegrationListSection({
               <span className="text-sm font-medium text-white">
                 {suggestion.name}
               </span>
-              <Chip size="sm" variant="soft" color="accent">
+              <Chip
+                size="sm"
+                variant="soft"
+                color="accent"
+                className={chipVariants({ hue: "secondary" })}
+              >
                 Community
               </Chip>
             </div>
@@ -256,20 +265,22 @@ function IntegrationListSection({
       <AccordionItem key="connected" id="connected">
         <Accordion.Heading>
           <Accordion.Trigger
-            className={`cursor-pointer py-2 text-xs font-semibold text-zinc-400 ${ACCORDION_TRIGGER_BASE}`}
+            className={`cursor-pointer text-xs font-semibold ${toneVariants({ tone: "muted" })} ${accordionStyles.trigger()}`}
           >
             <AccordionTitle
               title="Connected"
               count={connectedIntegrations.length}
               tooltip="Your active integrations"
             />
-            <Accordion.Indicator className={ACCORDION_INDICATOR} />
+            <Accordion.Indicator className={accordionStyles.indicator()} />
           </Accordion.Trigger>
         </Accordion.Heading>
-        <Accordion.Panel className="pt-0 pb-4">
-          <ScrollShadow className="max-h-[150px]">
-            {connectedIntegrations.map(renderIntegration)}
-          </ScrollShadow>
+        <Accordion.Panel>
+          <div className="pb-4">
+            <ScrollShadow className="max-h-[150px]">
+              {connectedIntegrations.map(renderIntegration)}
+            </ScrollShadow>
+          </div>
         </Accordion.Panel>
       </AccordionItem>
     ) : null,
@@ -277,28 +288,33 @@ function IntegrationListSection({
       <AccordionItem key="suggested" id="suggested">
         <Accordion.Heading>
           <Accordion.Trigger
-            className={`cursor-pointer py-2 text-xs font-semibold text-zinc-400 ${ACCORDION_TRIGGER_BASE}`}
+            className={`cursor-pointer text-xs font-semibold ${toneVariants({ tone: "muted" })} ${accordionStyles.trigger()}`}
           >
             <AccordionTitle
               title="Discover More"
               count={suggestedIntegrations.length}
               tooltip="Public integrations from the community marketplace"
             />
-            <Accordion.Indicator className={ACCORDION_INDICATOR} />
+            <Accordion.Indicator className={accordionStyles.indicator()} />
           </Accordion.Trigger>
         </Accordion.Heading>
-        <Accordion.Panel className="pt-0 pb-4">
-          <ScrollShadow className="max-h-[150px] divide-y divide-zinc-700">
-            {suggestedIntegrations.map(renderSuggested)}
-          </ScrollShadow>
-          <div className="mt-3 flex justify-center">
-            <Link
-              href="/marketplace"
-              className="text-xs text-primary hover:underline gap-1"
-            >
-              <span>Go to Marketplace</span>
-              <ArrowRight02Icon width={16} height={16} />
-            </Link>
+        <Accordion.Panel>
+          <div className="pb-4">
+            <ScrollShadow className="max-h-[150px] divide-y divide-zinc-700">
+              {suggestedIntegrations.map(renderSuggested)}
+            </ScrollShadow>
+            <div className="mt-3 flex justify-center">
+              <Link
+                href="/marketplace"
+                className={toneVariants({
+                  tone: "accent",
+                  className: "text-xs hover:underline gap-1",
+                })}
+              >
+                <span>Go to Marketplace</span>
+                <ArrowRight02Icon width={16} height={16} />
+              </Link>
+            </div>
           </div>
         </Accordion.Panel>
       </AccordionItem>
@@ -307,20 +323,22 @@ function IntegrationListSection({
       <AccordionItem key="available" id="available">
         <Accordion.Heading>
           <Accordion.Trigger
-            className={`cursor-pointer py-2 text-xs font-semibold text-zinc-400 ${ACCORDION_TRIGGER_BASE}`}
+            className={`cursor-pointer text-xs font-semibold ${toneVariants({ tone: "muted" })} ${accordionStyles.trigger()}`}
           >
             <AccordionTitle
               title="Available"
               count={notConnectedIntegrations.length}
               tooltip="Integrations provided natively by GAIA"
             />
-            <Accordion.Indicator className={ACCORDION_INDICATOR} />
+            <Accordion.Indicator className={accordionStyles.indicator()} />
           </Accordion.Trigger>
         </Accordion.Heading>
-        <Accordion.Panel className="pt-0 pb-4">
-          <ScrollShadow className="max-h-[200px]">
-            {notConnectedIntegrations.map(renderIntegration)}
-          </ScrollShadow>
+        <Accordion.Panel>
+          <div className="pb-4">
+            <ScrollShadow className="max-h-[200px]">
+              {notConnectedIntegrations.map(renderIntegration)}
+            </ScrollShadow>
+          </div>
         </Accordion.Panel>
       </AccordionItem>
     ) : null,
@@ -331,7 +349,6 @@ function IntegrationListSection({
       <Accordion
         allowsMultipleExpanded
         defaultExpandedKeys={defaultExpandedKeys}
-        className="px-0"
       >
         {accordionItems}
       </Accordion>

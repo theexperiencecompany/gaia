@@ -5,7 +5,7 @@
  * one — and Restart, which confirms via a modal before invoking `onRestart`.
  */
 
-import { Button, Dropdown, Header, Modal } from "@heroui/react";
+import { Dropdown, Header, Modal } from "@heroui/react";
 import { Logout02Icon, RedoIcon, UserCircleIcon } from "@icons";
 import * as m from "motion/react-m";
 import { memo, useState } from "react";
@@ -69,7 +69,7 @@ function OnboardingProgressImpl({
             }}
           >
             <m.div
-              className="absolute inset-0 origin-left rounded-full bg-primary"
+              className="absolute inset-0 origin-left rounded-full bg-accent"
               initial={{ scaleX: 0 }}
               animate={{ scaleX: scaleXValue }}
               transition={{ duration: 0.4, ease: "easeInOut" }}
@@ -118,7 +118,7 @@ function OnboardingProgressImpl({
               <Dropdown.Item
                 id={LOGOUT_KEY}
                 textValue="Log out"
-                className="text-danger"
+                variant="danger"
                 onAction={onLogout}
               >
                 <div className="flex flex-row items-center justify-start gap-2">
@@ -132,7 +132,7 @@ function OnboardingProgressImpl({
       </Dropdown>
 
       <Modal isOpen={confirmOpen} onOpenChange={setConfirmOpen}>
-        <Modal.Backdrop>
+        <Modal.Backdrop variant="blur">
           <Modal.Container placement="center" size="md">
             <Modal.Dialog>
               <Modal.CloseTrigger aria-label="Close" />
@@ -152,7 +152,7 @@ function OnboardingProgressImpl({
                 >
                   Cancel
                 </GaiaButton>
-                <Button
+                <GaiaButton
                   onPress={() => {
                     setConfirmOpen(false);
                     onRestart?.();
@@ -160,7 +160,7 @@ function OnboardingProgressImpl({
                   variant="danger"
                 >
                   Restart
-                </Button>
+                </GaiaButton>
               </Modal.Footer>
             </Modal.Dialog>
           </Modal.Container>

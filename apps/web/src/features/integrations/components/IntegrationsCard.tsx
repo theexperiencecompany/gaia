@@ -1,5 +1,5 @@
 import type { Key } from "@heroui/react";
-import { Accordion, Button } from "@heroui/react";
+import { Accordion } from "@heroui/react";
 import { Add01Icon, RedoIcon } from "@icons";
 import {
   CONNECT_ACTION_LABEL,
@@ -89,7 +89,7 @@ const IntegrationItem: React.FC<{
           <InstanceSetupNotice />
         ) : (
           (isAvailable || needsAttention) && (
-            <Button
+            <GaiaButton
               size="sm"
               variant="secondary"
               className="text-xs"
@@ -97,7 +97,7 @@ const IntegrationItem: React.FC<{
             >
               {needsAttention && <RedoIcon width={16} height={16} />}
               {CONNECT_ACTION_LABEL[state]}
-            </Button>
+            </GaiaButton>
           )
         )}
       </div>
@@ -147,7 +147,6 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
     <div className="mx-2 mb-3 border-b-1 border-zinc-800">
       <Accordion
         variant="default"
-        className="px-0!"
         expandedKeys={expandedKeys}
         onExpandedChange={handleSelectionChange}
         allowsMultipleExpanded
@@ -158,7 +157,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
               <div className="flex items-center gap-3 pt-1">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-normal text-foreground-500">
+                    <span className="text-xs font-normal text-zinc-400">
                       Integrations
                     </span>
                     <span className="text-xs font-light text-zinc-400">
@@ -170,48 +169,51 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
               <Accordion.Indicator />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className="pb-1">
-            <Accordion.Body>
-              <div className="grid grid-cols-2 gap-2 pl-1">
-                {myIntegrations
-                  .toSorted((a, b) => {
-                    // Needs-attention first, then connected, then alphabetically
-                    const aOrder =
-                      INTEGRATION_STATE_ORDER[
-                        integrationConnectionState(a.status)
-                      ];
-                    const bOrder =
-                      INTEGRATION_STATE_ORDER[
-                        integrationConnectionState(b.status)
-                      ];
-                    if (aOrder !== bOrder) return aOrder - bOrder;
-                    return a.name.localeCompare(b.name);
-                  })
-                  .map((integration) => (
-                    <IntegrationItem
-                      key={integration.id}
-                      integration={integration}
-                      onConnect={handleConnect}
-                      size={size}
-                      onClick={(id) => onIntegrationClick?.(id)}
-                    />
-                  ))}
-              </div>
+          <Accordion.Panel>
+            <div className="pb-1">
+              <Accordion.Body>
+                <div className="grid grid-cols-2 gap-2 pl-1">
+                  {myIntegrations
+                    .toSorted((a, b) => {
+                      // Needs-attention first, then connected, then alphabetically
+                      const aOrder =
+                        INTEGRATION_STATE_ORDER[
+                          integrationConnectionState(a.status)
+                        ];
+                      const bOrder =
+                        INTEGRATION_STATE_ORDER[
+                          integrationConnectionState(b.status)
+                        ];
+                      if (aOrder !== bOrder) return aOrder - bOrder;
+                      return a.name.localeCompare(b.name);
+                    })
+                    .map((integration) => (
+                      <IntegrationItem
+                        key={integration.id}
+                        integration={integration}
+                        onConnect={handleConnect}
+                        size={size}
+                        onClick={(id) => onIntegrationClick?.(id)}
+                      />
+                    ))}
+                </div>
 
-              <GaiaButton
-                fullWidth
-                size="sm"
-                variant="default-soft"
-                className="mt-2 text-xs text-zinc-400"
-                onPress={() => {
-                  router.push("/integrations");
-                  onClose?.();
-                }}
-              >
-                <Add01Icon width={15} height={15} />
-                Connect more integrations
-              </GaiaButton>
-            </Accordion.Body>
+                <GaiaButton
+                  fullWidth
+                  size="sm"
+                  variant="default-soft"
+                  tone="muted"
+                  className="mt-2 text-xs"
+                  onPress={() => {
+                    router.push("/integrations");
+                    onClose?.();
+                  }}
+                >
+                  <Add01Icon width={15} height={15} />
+                  Connect more integrations
+                </GaiaButton>
+              </Accordion.Body>
+            </div>
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>

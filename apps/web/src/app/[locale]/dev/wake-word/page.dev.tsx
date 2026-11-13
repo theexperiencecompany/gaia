@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Chip, Tooltip } from "@heroui/react";
+import { Chip, Tooltip } from "@heroui/react";
 import {
   CheckmarkCircle02Icon,
   Mic02Icon,
@@ -10,6 +10,7 @@ import {
 import { AnimatePresence, domAnimation, LazyMotion } from "motion/react";
 import * as m from "motion/react-m";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useHeyGaia } from "@/features/wake-word";
 
 interface DetectionRecord {
@@ -316,14 +317,14 @@ function ControlBar({
   const label = controlLabel(enabled, state);
   return (
     <div className="flex flex-wrap items-center gap-4">
-      <Button size="lg" onPress={onToggle}>
+      <GaiaButton size="lg" onPress={onToggle}>
         {enabled ? (
           <MicOff02Icon className="size-4" />
         ) : (
           <Mic02Icon className="size-4" />
         )}
         {label}
-      </Button>
+      </GaiaButton>
 
       <div className="flex items-center gap-2">
         <Tooltip>

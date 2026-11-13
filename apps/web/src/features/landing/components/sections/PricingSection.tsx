@@ -24,9 +24,9 @@ export default function PricingSection() {
       />
 
       <div className="mt-8 flex w-full flex-col items-center gap-6">
-        <BillingPeriodTabs isYearly={isYearly} onChange={setIsYearly} />
-
-        <PricingCards durationIsMonth={!isYearly} hideEnterprise />
+        <BillingPeriodTabs isYearly={isYearly} onChange={setIsYearly}>
+          <PricingCards durationIsMonth={!isYearly} hideEnterprise />
+        </BillingPeriodTabs>
 
         <Link
           href="/pricing"

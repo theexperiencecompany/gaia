@@ -113,7 +113,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
             {/* Content */}
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-sm text-foreground-600">
+                <span className="truncate text-sm text-zinc-300">
                   {formatToolName(match.tool.name)}
                 </span>
                 {selectedCategory === "all" && (

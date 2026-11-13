@@ -16,7 +16,9 @@ import {
   StarIcon,
 } from "@icons";
 import { useCallback, useDeferredValue, useMemo } from "react";
+import { tableVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
 import { GenderIcon } from "@/features/settings/components/VoiceFilters";
 import { useVoicePreview } from "@/features/settings/hooks/useVoicePreview";
@@ -55,11 +57,10 @@ interface VoiceTableProps {
   /** Fired (after persisting) when the selection changes — lets the live
    * session re-point the agent's voice. */
   onSelect?: (voiceId: string) => void;
-  classNames?: {
-    base?: string;
-    wrapper?: string;
-    [key: string]: string | undefined;
-  };
+  /** card is the settings page's padded card; plain sits flush inside another surface. */
+  surface?: "card" | "plain";
+  /** Layout classes for the table root, e.g. a scroll height. */
+  className?: string;
   "aria-label"?: string;
 }
 
@@ -121,8 +122,9 @@ function VoiceCell({
               aria-label={
                 voice.starred ? `Unstar ${voice.name}` : `Star ${voice.name}`
               }
+              tone="subtle"
+              hoverTone={voice.starred ? "none" : "dim"}
               className={cn(
-                "text-zinc-600 hover:text-zinc-300",
                 voice.starred && "text-yellow-400 hover:text-yellow-300",
               )}
               onPress={() => onToggleStar(voice)}
@@ -135,7 +137,7 @@ function VoiceCell({
               <p className="truncate text-sm text-white">{voice.name}</p>
               {inlineGender && <GenderIcon gender={voice.gender} />}
               {voice.isSelected && (
-                <CheckmarkCircle02Icon className="h-4 w-4 shrink-0 text-primary" />
+                <CheckmarkCircle02Icon className="h-4 w-4 shrink-0 text-accent" />
               )}
             </div>
             <p
@@ -165,8 +167,11 @@ function VoiceCell({
               <Tooltip.Trigger>
                 <Chip
                   size="sm"
-                  variant="soft"
-                  className="cursor-default bg-zinc-800 text-zinc-400"
+                  variant="secondary"
+                  className={toneVariants({
+                    tone: "muted",
+                    className: "cursor-default",
+                  })}
                 >
                   +{voice.languages.length - 1}
                 </Chip>
@@ -220,7 +225,7 @@ function VoiceCell({
                 : `Play ${voice.name} preview`
             }
             isDisabled={!voice.preview_url}
-            className={cn(voice.isPlaying && "text-primary")}
+            tone={voice.isPlaying ? "accent" : "default"}
             onPress={() => onTogglePreview(voice)}
           >
             <PreviewIcon className="h-4 w-4" />
@@ -243,7 +248,8 @@ export function VoiceTable({
   wrapText = false,
   previewOnSelect = true,
   onSelect,
-  classNames,
+  surface = "card",
+  className,
   "aria-label": ariaLabel = "Available voices",
 }: Readonly<VoiceTableProps>) {
   const { data, isLoading } = useVoices();
@@ -345,20 +351,20 @@ export function VoiceTable({
   );
 
   return (
-    <Table className={classNames?.base}>
+    <Table className={tableVariants({ surface, className })}>
       <Table.Content
         aria-label={ariaLabel}
         selectionMode="single"
         disallowEmptySelection
         selectedKeys={selectedKeys}
         onSelectionChange={handleSelectionChange}
-        className={classNames?.wrapper}
       >
         <Table.Header columns={columns}>
           {(column) => (
             <Table.Column
               key={column.key}
               id={column.key}
+              isRowHeader={column.key === "voice"}
               className={column.align === "end" ? "text-right" : undefined}
             >
               {column.label}

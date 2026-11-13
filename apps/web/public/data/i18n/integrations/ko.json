@@ -3810,7 +3810,7 @@
       "Slack과 Stripe 연결",
       "Stripe Slack 웹훅"
     ],
-    "metaDescription": "신규 결제, 실패, 매출 마일스톤을 고른 Slack 채널에 게시하세요. GAIA가 테스트 거래를 걸러냅니다. 설정 방법을 확인하세요.",
+    "metaDescription": "신규 결제, 결제 실패, 매출 마일스톤을 원하는 Slack 채널에 자동으로 게시하세요. GAIA가 테스트 거래는 걸러 줍니다. 설정 방법을 확인하세요.",
     "metaTitle": "Stripe Slack 연동: 결제를 Slack 채널에 게시",
     "tagline": "Stripe의 실시간 결제 알림과 매출 요약을 Slack에서 받으세요",
     "toolA": "Slack",
@@ -6151,7 +6151,7 @@
       "비동기 코드 리뷰 Loom",
       "GitHub Loom 워크플로우"
     ],
-    "metaDescription": "큰 PR에 Loom 녹화를 권하고 Loom 버그 녹화에서 이슈를 여세요. GAIA가 리뷰를 분명하게 합니다. 설정 방법을 확인하세요.",
+    "metaDescription": "큰 PR에는 작성자에게 Loom 녹화를 요청하고, Loom 버그 녹화에서 바로 이슈를 여세요. GAIA가 코드 리뷰를 더 명확하게 만듭니다. 설정 방법을 확인하세요.",
     "metaTitle": "GitHub + Loom 연동: PR의 영상 둘러보기",
     "tagline": "Loom 둘러보기를 PR에 첨부하고 복잡한 코드 변경에 영상 리뷰를 자동 요청하세요",
     "toolA": "GitHub",

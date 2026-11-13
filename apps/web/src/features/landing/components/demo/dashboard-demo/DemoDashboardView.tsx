@@ -17,6 +17,8 @@ import {
 import { useInView } from "motion/react";
 import * as m from "motion/react-m";
 import { useRef } from "react";
+import { shapeVariants } from "@/components/shared/shape";
+import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   DUMMY_CALENDARS,
@@ -122,7 +124,7 @@ function DemoEventsCard() {
               <div className="w-1/5 flex-shrink-0">
                 <div className="sticky top-0 z-10 px-2 pt-1">
                   <span
-                    className={`text-sm ${index === 0 ? "text-primary" : "text-zinc-400"}`}
+                    className={`text-sm ${index === 0 ? "text-accent" : "text-zinc-400"}`}
                   >
                     {label}
                   </span>
@@ -201,11 +203,25 @@ function DemoTodosCard() {
                 </p>
               )}
               <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                <Chip size="sm" variant="soft" className="text-zinc-400 px-1">
+                <Chip
+                  size="sm"
+                  variant="soft"
+                  className={shapeVariants({
+                    shape: "sm",
+                    className: toneVariants({ tone: "muted" }),
+                  })}
+                >
                   {todo.priority}
                 </Chip>
                 {todo.due_date && (
-                  <Chip size="sm" variant="soft" className="text-zinc-400 px-1">
+                  <Chip
+                    size="sm"
+                    variant="soft"
+                    className={shapeVariants({
+                      shape: "sm",
+                      className: toneVariants({ tone: "muted" }),
+                    })}
+                  >
                     {new Date(todo.due_date).toDateString() ===
                     new Date().toDateString()
                       ? "Today"
@@ -311,7 +327,7 @@ function DemoGoalsCard() {
                   <div className="mt-2 flex items-center gap-2">
                     <div className="relative h-2 flex-1 rounded-full">
                       <div
-                        className="absolute top-0 left-0 z-[2] h-2 rounded-full bg-primary"
+                        className="absolute top-0 left-0 z-[2] h-2 rounded-full bg-accent"
                         style={{ width: `${goal.progress}%` }}
                       />
                       <div className="absolute top-0 left-0 h-2 w-full rounded-full bg-zinc-900" />
@@ -343,7 +359,10 @@ function DemoGoalsCard() {
                     <Chip
                       size="sm"
                       variant="soft"
-                      className="text-zinc-400 px-1"
+                      className={shapeVariants({
+                        shape: "sm",
+                        className: toneVariants({ tone: "muted" }),
+                      })}
                     >
                       <CheckmarkCircle02Icon
                         width={15}
@@ -398,7 +417,14 @@ function DemoConversationsCard() {
                 )}
               </div>
               <div className="mt-2 flex items-center gap-1">
-                <Chip size="sm" variant="soft" className="text-zinc-400 px-1">
+                <Chip
+                  size="sm"
+                  variant="soft"
+                  className={shapeVariants({
+                    shape: "sm",
+                    className: toneVariants({ tone: "muted" }),
+                  })}
+                >
                   <MessageMultiple02Icon
                     width={15}
                     height={15}
@@ -409,7 +435,14 @@ function DemoConversationsCard() {
                     {conversation.messageCount === 1 ? "message" : "messages"}
                   </Chip.Label>
                 </Chip>
-                <Chip size="sm" variant="soft" className="text-zinc-400 px-1">
+                <Chip
+                  size="sm"
+                  variant="soft"
+                  className={shapeVariants({
+                    shape: "sm",
+                    className: toneVariants({ tone: "muted" }),
+                  })}
+                >
                   <Calendar03Icon width={15} height={15} className="mx-1" />
                   <Chip.Label>
                     {new Date(conversation.updated_at).toLocaleDateString()}

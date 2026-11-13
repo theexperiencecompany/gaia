@@ -1,4 +1,4 @@
-import { Button, Kbd, Tooltip } from "@heroui/react";
+import { Kbd, Tooltip } from "@heroui/react";
 import { PlayIcon, Share01Icon } from "@icons";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 
@@ -84,13 +84,13 @@ export default function WorkflowFooter({
       {/* Right: cancel + primary save */}
       <div className="flex items-center gap-2">
         <Tooltip>
-          <Button
+          <GaiaButton
             variant="ghost"
             onPress={onCancel}
             className="active:scale-[0.97] transition-transform duration-150"
           >
             Cancel
-          </Button>
+          </GaiaButton>
           <Tooltip.Content placement="top">
             <Kbd>
               <Kbd.Abbr keyValue="escape" />
@@ -98,7 +98,7 @@ export default function WorkflowFooter({
           </Tooltip.Content>
         </Tooltip>
         <Tooltip isDisabled={isCreating || isDisabled}>
-          <Button
+          <GaiaButton
             onPress={onSave}
             isPending={isCreating}
             isDisabled={isDisabled}
@@ -106,7 +106,7 @@ export default function WorkflowFooter({
             variant="primary"
           >
             {buttonText}
-          </Button>
+          </GaiaButton>
           <Tooltip.Content placement="top">
             <Kbd>
               <Kbd.Abbr keyValue={modifierKeyName} />

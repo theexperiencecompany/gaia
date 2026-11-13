@@ -120,7 +120,7 @@ export default function RightSide({
       return (
         <div className="flex items-center gap-2">
           Queue message
-          <Kbd className="text-zinc-400">
+          <Kbd>
             <Kbd.Abbr keyValue="enter" />
           </Kbd>
         </div>
@@ -147,7 +147,7 @@ export default function RightSide({
     return (
       <div className="flex items-center gap-2">
         Send Message
-        <Kbd className="text-zinc-400">
+        <Kbd>
           <Kbd.Abbr keyValue="enter" />
         </Kbd>
       </div>

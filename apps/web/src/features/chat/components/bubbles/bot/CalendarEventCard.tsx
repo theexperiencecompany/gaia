@@ -1,6 +1,6 @@
-import { Button } from "@heroui/react";
 import { Tick02Icon } from "@icons";
 import type { ReactNode } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 export type EventStatus = "idle" | "loading" | "completed";
 export type EventVariant = "display" | "action";
@@ -62,7 +62,7 @@ export const EventCard = ({
       <div className="min-w-0 flex-1">
         {label && (
           <div
-            className={`mb-1 text-xs font-medium ${isDotted ? "text-primary" : "text-zinc-500"}`}
+            className={`mb-1 text-xs font-medium ${isDotted ? "text-accent" : "text-zinc-500"}`}
           >
             {label}
           </div>
@@ -71,7 +71,7 @@ export const EventCard = ({
       </div>
 
       {hasAction && (
-        <Button
+        <GaiaButton
           variant={buttonColor === "danger" ? "danger" : "primary"}
           size="sm"
           isDisabled={status === "completed"}
@@ -88,7 +88,7 @@ export const EventCard = ({
           ) : (
             <>Confirm</>
           )}
-        </Button>
+        </GaiaButton>
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, ButtonGroup, Tooltip } from "@heroui/react";
+import { ButtonGroup, Tooltip } from "@heroui/react";
 import {
   GlobalIcon,
   LinkSquareIcon,
@@ -51,7 +51,7 @@ export function ConnectedActions({
     <ButtonGroup variant="tertiary" className="w-full" fullWidth>
       {disconnect && (
         <Tooltip>
-          <Button
+          <GaiaButton
             isIconOnly={useIconOnly}
             className="w-full"
             onPress={disconnect.onDisconnect}
@@ -62,7 +62,7 @@ export function ConnectedActions({
           >
             {!disconnect.isPending && disconnect.icon}
             {!useIconOnly && disconnect.label}
-          </Button>
+          </GaiaButton>
           <Tooltip.Content>{`${disconnect.label} this integration`}</Tooltip.Content>
         </Tooltip>
       )}
@@ -91,7 +91,7 @@ export function ConnectedActions({
 
       {isOwnIntegration && integration.isPublic && publish && (
         <Tooltip>
-          <Button
+          <GaiaButton
             isIconOnly={useIconOnly}
             className="w-full"
             onPress={publish.onPublish}
@@ -108,14 +108,14 @@ export function ConnectedActions({
               />
             )}
             {!useIconOnly && "Unpublish"}
-          </Button>
+          </GaiaButton>
           <Tooltip.Content>Unpublish from Marketplace</Tooltip.Content>
         </Tooltip>
       )}
 
       {isOwnIntegration && !integration.isPublic && publish && (
         <Tooltip>
-          <Button
+          <GaiaButton
             isIconOnly={useIconOnly}
             className="w-full"
             onPress={publish.onPublish}
@@ -126,7 +126,7 @@ export function ConnectedActions({
           >
             {!publish.isPending && <GlobalIcon width={18} height={18} />}
             {!useIconOnly && "Publish"}
-          </Button>
+          </GaiaButton>
           <Tooltip.Content>Publish to Community Marketplace</Tooltip.Content>
         </Tooltip>
       )}

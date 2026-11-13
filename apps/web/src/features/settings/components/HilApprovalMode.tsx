@@ -3,7 +3,9 @@
 import { Chip, ListBox, Select } from "@heroui/react";
 import type { HilMode } from "@shared/chat";
 import { useRouter } from "next/navigation";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
@@ -55,7 +57,7 @@ export function HilApprovalMode() {
         description={MODES.find((m) => m.key === mode)?.description}
       >
         <Select
-          className="w-48"
+          className={inputVariants({ size: "sm", className: "w-48" })}
           aria-label="Approval mode"
           value={mode}
           isDisabled={isLoading || isSavingMode}
@@ -71,10 +73,9 @@ export function HilApprovalMode() {
           <Select.Popover>
             <ListBox>
               {MODES.map((m) => (
-                <ListBox.Item key={m.key} id={m.key} textValue={m.label}>
+                <GaiaListBoxItem key={m.key} id={m.key} textValue={m.label}>
                   {m.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
+                </GaiaListBoxItem>
               ))}
             </ListBox>
           </Select.Popover>
@@ -86,8 +87,8 @@ export function HilApprovalMode() {
       >
         <GaiaButton
           size="sm"
+          shape="md"
           variant="default-soft"
-          className="rounded-xl"
           onPress={() => router.push("/integrations")}
         >
           Open Integrations

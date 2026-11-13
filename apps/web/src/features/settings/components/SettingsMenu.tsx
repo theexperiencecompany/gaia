@@ -26,7 +26,9 @@ import {
   ConfirmActionDialog,
 } from "@/components/shared/ConfirmActionDialog";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { ChevronRight, Github } from "@/components/shared/icons";
+import { toneVariants } from "@/components/shared/tone";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
@@ -328,7 +330,7 @@ export default function SettingsMenu({
                   }),
                 icon: CircleArrowUp02Icon,
                 iconColor: "#00bbff",
-                customClassNames: { title: "text-primary font-medium" },
+                customClassNames: { title: "text-accent font-medium" },
               },
             ],
           },
@@ -373,7 +375,7 @@ export default function SettingsMenu({
                 hasSubmenu: true,
                 badge:
                   unseenReleases.length > 0 ? (
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-accent" />
                   ) : undefined,
               },
             ]),
@@ -432,7 +434,10 @@ export default function SettingsMenu({
         <Dropdown.Popover
           placement="right"
           offset={21}
-          className="bg-secondary-bg text-foreground dark shadow-xl"
+          className={overlayVariants({
+            surface: "secondary",
+            className: "dark shadow-xl",
+          })}
         >
           <Dropdown.Menu aria-label="Settings Menu">
             {menuSections.map((section) => (
@@ -443,16 +448,12 @@ export default function SettingsMenu({
                     const Icon = item.icon;
                     const iconColor =
                       item.iconColor || socialMediaColorMap[item.key];
-                    const itemClassName = [
-                      item.color === "danger"
-                        ? "text-danger"
-                        : iconColor
-                          ? "transition"
-                          : "text-zinc-400 transition hover:text-white",
-                      item.customClassNames?.title,
-                    ]
-                      .filter(Boolean)
-                      .join(" ");
+                    const isQuiet = item.color !== "danger" && !iconColor;
+                    const itemClassName = toneVariants({
+                      tone: isQuiet ? "muted" : "default",
+                      interactive: isQuiet,
+                      className: item.customClassNames?.title,
+                    });
 
                     // Handle nested menus (What's new, Download, Resources, Support)
                     if (item.hasSubmenu) {
@@ -465,7 +466,10 @@ export default function SettingsMenu({
                           textValue={item.label}
                           onMouseEnter={menu.handleMouseEnter}
                           onMouseLeave={menu.handleMouseLeave}
-                          className="text-zinc-400 transition hover:text-white"
+                          className={toneVariants({
+                            tone: "muted",
+                            interactive: true,
+                          })}
                         >
                           {Icon && <Icon className={ICON_CLASSES} />}
                           {item.label}

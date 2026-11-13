@@ -43,7 +43,7 @@ export default function UseCasesPageClient({
           </div>
           {communityWorkflows.length === 0 ? (
             <div className="flex h-48 items-center justify-center">
-              <div className="text-foreground-500">
+              <div className="text-zinc-400">
                 No community workflows available yet
               </div>
             </div>

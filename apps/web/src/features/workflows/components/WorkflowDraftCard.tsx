@@ -38,7 +38,7 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
           label: cronLabel,
           icon: <Clock01Icon className="size-3.5" />,
           color: "accent" as const,
-          bgColor: "bg-primary/15",
+          bgColor: "bg-accent/15",
         };
       }
       case "integration":
@@ -72,11 +72,9 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
           size="sm"
           variant="soft"
           color="warning"
-          className="absolute -top-2 -right-2 bg-warning/20"
+          className="absolute -top-2 -right-2"
         >
-          <Chip.Label className="text-xs font-semibold text-warning">
-            Draft
-          </Chip.Label>
+          <Chip.Label className="text-xs font-semibold">Draft</Chip.Label>
         </Chip>
 
         <button
@@ -86,8 +84,8 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
         >
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15">
-                <FlowIcon className="size-5 text-primary" />
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent/15">
+                <FlowIcon className="size-5 text-accent" />
               </div>
               <div className="flex flex-col">
                 <span className="line-clamp-2 text-base font-medium leading-tight">
@@ -131,8 +129,9 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
         <GaiaButton
           variant="accent-soft"
           size="sm"
+          shape="md"
           onPress={() => setIsModalOpen(true)}
-          className="mt-1 w-full rounded-xl font-medium"
+          className="mt-1 w-full font-medium"
         >
           <PencilEdit01Icon className="size-3.5" />
           Review &amp; Create

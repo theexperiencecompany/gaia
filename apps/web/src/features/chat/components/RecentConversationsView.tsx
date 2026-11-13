@@ -12,6 +12,8 @@ import {
 import { useRouter } from "next/navigation";
 import { memo, useCallback, useMemo } from "react";
 import { DiscordIcon } from "@/components/shared/icons";
+import { shapeVariants } from "@/components/shared/shape";
+import { toneVariants } from "@/components/shared/tone";
 import type { CardAction } from "@/features/chat/components/interface/BaseCardView";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import { useConversationList } from "@/features/chat/hooks/useConversationList";
@@ -125,7 +127,14 @@ const RecentConversationsView = memo(() => {
                 )}
               </div>
               <div className="mt-2 flex items-center gap-1">
-                <Chip size="sm" variant="soft" className="text-zinc-400 px-1">
+                <Chip
+                  size="sm"
+                  variant="soft"
+                  className={shapeVariants({
+                    shape: "sm",
+                    className: toneVariants({ tone: "muted" }),
+                  })}
+                >
                   <MessageMultiple02Icon
                     width={15}
                     height={15}
@@ -137,7 +146,14 @@ const RecentConversationsView = memo(() => {
                   </Chip.Label>
                 </Chip>
 
-                <Chip size="sm" variant="soft" className="text-zinc-400 px-1">
+                <Chip
+                  size="sm"
+                  variant="soft"
+                  className={shapeVariants({
+                    shape: "sm",
+                    className: toneVariants({ tone: "muted" }),
+                  })}
+                >
                   <Calendar03Icon width={15} height={15} className="mx-1" />
                   <Chip.Label>
                     {new Date(conversation.updated_at).toLocaleDateString(
@@ -155,7 +171,10 @@ const RecentConversationsView = memo(() => {
                       <Chip
                         size="sm"
                         variant="soft"
-                        className="text-zinc-400 px-1"
+                        className={shapeVariants({
+                          shape: "sm",
+                          className: toneVariants({ tone: "muted" }),
+                        })}
                       >
                         <DiscordIcon width={13} height={13} color="#5865f2" />
                       </Chip>

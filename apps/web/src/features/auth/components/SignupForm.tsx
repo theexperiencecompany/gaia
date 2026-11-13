@@ -1,10 +1,11 @@
 "use client";
 
-import { Button, Input, Label, TextField } from "@heroui/react";
+import { Input, Label, TextField } from "@heroui/react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { FormError } from "@/components/shared/FormError";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { SecretInput } from "@/components/shared/SecretInput";
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
 import { RegistrationClosedNotice } from "@/features/auth/components/RegistrationClosedNotice";
@@ -117,14 +118,14 @@ export function SignupForm({
 
       {error && <FormError>{error}</FormError>}
 
-      <Button
+      <GaiaButton
         type="submit"
         variant="primary"
         isPending={isSubmitting}
         className="w-full"
       >
         Create account
-      </Button>
+      </GaiaButton>
     </form>
   );
 }

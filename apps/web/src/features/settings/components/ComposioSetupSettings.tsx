@@ -1,9 +1,10 @@
 "use client";
 
-import { Button, Link, Spinner } from "@heroui/react";
+import { Link, Spinner } from "@heroui/react";
 import { Search01Icon, SquareArrowUpRight02Icon } from "@icons";
 import { useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { COMPOSIO_SETUP_DOCS_URL } from "@/features/settings/api/composioSetupApi";
 import { ComposioAuthConfigRow } from "@/features/settings/components/ComposioAuthConfigRow";
 import { ComposioCatalogModal } from "@/features/settings/components/composio/ComposioCatalogModal";
@@ -59,7 +60,9 @@ export function ComposioSetupSettings() {
             />
           </div>
         ) : (
-          <Spinner size="sm" className="p-4" />
+          <div className="p-4">
+            <Spinner size="sm" />
+          </div>
         )}
       </SettingsSection>
 
@@ -85,7 +88,11 @@ export function ComposioSetupSettings() {
             Browse Composio catalog
           </GaiaButton>
         </div>
-        {composio.isLoading && <Spinner size="sm" className="p-4" />}
+        {composio.isLoading && (
+          <div className="p-4">
+            <Spinner size="sm" />
+          </div>
+        )}
         {composio.error && (
           <p className="p-4 text-sm text-zinc-400">
             {apiErrorMessage(composio.error) ??
@@ -114,12 +121,15 @@ export function ComposioSetupSettings() {
           href={COMPOSIO_SETUP_DOCS_URL}
           target="_blank"
           rel="noreferrer"
-          className="flex items-center text-zinc-400"
+          className={toneVariants({
+            tone: "muted",
+            className: "flex items-center",
+          })}
         >
           How to set up Composio
           <SquareArrowUpRight02Icon className="ml-1 size-3.5" />
         </Link>
-        <Button
+        <GaiaButton
           variant="primary"
           size="sm"
           isDisabled={!composio.isDirty}
@@ -127,7 +137,7 @@ export function ComposioSetupSettings() {
           onPress={composio.save}
         >
           Save
-        </Button>
+        </GaiaButton>
       </div>
       <ComposioCatalogModal
         key={catalogSlug ?? "catalog"}

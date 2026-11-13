@@ -53,7 +53,10 @@ function edges(file) {
   for (const imp of module.staticImports) {
     const runtime = imp.entries.filter((e) => !e.isType);
     if (imp.entries.length && !runtime.length) continue;
-    out.push({ specifier: imp.moduleRequest.value, names: runtime.map((e) => e.importName.name ?? null) });
+    out.push({
+      specifier: imp.moduleRequest.value,
+      names: runtime.length ? runtime.map((e) => e.importName.name ?? null) : [null],
+    });
   }
   for (const exp of module.staticExports) {
     for (const e of exp.entries) {
@@ -76,10 +79,48 @@ function walkDir(dir) {
   });
 }
 
+/** The area stylesheet each route file under app/ imports, resolved, so the alias and relative forms both count. */
+function areaImports() {
+  const byFile = new Map();
+  for (const file of walkDir(APP).filter((f) => CODE.test(f))) {
+    for (const { specifier } of edges(file)) {
+      if (!specifier.endsWith(".css")) continue;
+      const area = AREAS.find((a) => resolveFrom(file, specifier) === path.join(STYLES, `${a}.css`));
+      if (area) byFile.set(file, [...(byFile.get(file) ?? []), area]);
+    }
+  }
+  return byFile;
+}
+
+/** The areas that style a page: its own area import and every layout's above it. */
+function areasOfPage(page, byFile) {
+  const areas = new Set(byFile.get(page) ?? []);
+  for (let dir = path.dirname(page); dir.startsWith(APP); dir = path.dirname(dir)) {
+    for (const ext of [".tsx", ".ts"]) {
+      for (const area of byFile.get(path.join(dir, `layout${ext}`)) ?? []) areas.add(area);
+    }
+  }
+  return areas;
+}
+
+/** Fail unless every page is styled by exactly one area: none ships it unstyled, two ship a component twice. */
+export function assertEveryPageHasOneArea() {
+  const byFile = areaImports();
+  const wrong = walkDir(APP)
+    .filter((f) => /^page\.tsx?$/.test(path.basename(f)))
+    .map((page) => ({ page, areas: [...areasOfPage(page, byFile)] }))
+    .filter(({ areas }) => areas.length !== 1);
+  if (wrong.length) {
+    const lines = wrong.map(({ page, areas }) => `  ${path.relative(WEB, page)}: ${areas.length ? areas.join(" + ") : "no area"}`);
+    throw new Error(
+      `generate-area-css: every page imports exactly one of styles/{${AREAS.join(",")}}.css (itself or through a layout):\n${lines.join("\n")}`,
+    );
+  }
+}
+
 /** The route files that import styles/<area>.css, the routes under such a layout, and every layout-level file above them. */
 export function areaEntries(area) {
-  const marker = new RegExp(`import\\s+["'](?:\\.\\./)+styles/${area}\\.css["']`);
-  const pages = walkDir(APP).filter((f) => CODE.test(f) && marker.test(fs.readFileSync(f, "utf8")));
+  const pages = [...areaImports()].filter(([, areas]) => areas.includes(area)).map(([file]) => file);
   if (!pages.length) throw new Error(`generate-area-css: no route imports styles/${area}.css`);
   const entries = new Set(pages);
   // A layout's stylesheet styles every route below it.
@@ -110,7 +151,12 @@ function reach(entries) {
     files.add(file);
     for (const { specifier, names } of edges(file)) {
       if (specifier === HEROUI_REACT || specifier === HEROUI_STYLES) {
-        for (const name of names) if (name) heroui.add(name);
+        if (names.includes(null)) {
+          throw new Error(
+            `generate-area-css: ${path.relative(WEB, file)} imports ${specifier} without naming its exports (namespace, side-effect or dynamic import); import the components by name so their sheets can be traced`,
+          );
+        }
+        for (const name of names) heroui.add(name);
         continue;
       }
       if (isBuiltin(specifier) || /\.(?:css|svg|png|jpe?g|webp|gif|json|mdx?|txt|woff2?)$/.test(specifier)) continue;
@@ -194,6 +240,7 @@ export function renderArea(area) {
 
 function main() {
   const check = process.argv.includes("--check");
+  assertEveryPageHasOneArea();
   fs.mkdirSync(OUT, { recursive: true });
   const stale = [];
   for (const area of AREAS) {

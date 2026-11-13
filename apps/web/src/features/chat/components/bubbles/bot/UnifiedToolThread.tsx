@@ -3,18 +3,17 @@
 import { Accordion, AccordionItem } from "@heroui/react";
 import { ToolsIcon } from "@icons";
 import { useMemo, useState } from "react";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 import { ChevronDown } from "@/components/shared/icons";
 import type {
   SubagentGroupData,
   ToolCallEntry,
 } from "@/config/registries/toolRegistry";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import {
-  ACCORDION_PANEL_COMPACT,
-  ACCORDION_TRIGGER_BASE,
-} from "@/lib/heroui/accordionParity";
 import { type ApprovalOutcome, StepRow, SubagentRow } from "./SubagentRow";
 import { deriveTimelineItemKeys } from "./TextBubble/useSubagentSynthesis";
+
+const accordionStyles = accordionVariants({ density: "flush" });
 
 /**
  * Unified timeline item — either a regular tool call or a subagent invocation.
@@ -89,7 +88,7 @@ function StackedIcons({
         );
       })}
       {icons.length > SHOW_ICONS && (
-        <div className="z-0 flex size-7 min-h-7 min-w-7 items-center justify-center rounded-lg bg-zinc-700/60 text-xs text-foreground-500 font-normal">
+        <div className="z-0 flex size-7 min-h-7 min-w-7 items-center justify-center rounded-lg bg-zinc-700/60 text-xs text-zinc-400 font-normal">
           +{icons.length - SHOW_ICONS}
         </div>
       )}
@@ -172,12 +171,13 @@ export default function UnifiedToolThread({
         onExpandedChange={(keys) => {
           setIsExpanded(keys.has("tools"));
         }}
-        className="p-0"
       >
         <AccordionItem key="tools" id="tools">
           <Accordion.Heading>
             <Accordion.Trigger
-              className={`cursor-pointer py-0 ${ACCORDION_TRIGGER_BASE}`}
+              className={accordionStyles.trigger({
+                className: "cursor-pointer",
+              })}
             >
               <div className="flex items-center hover:text-white text-zinc-500">
                 {totalToolCount > 1 && <StackedIcons icons={uniqueIcons} />}
@@ -198,34 +198,38 @@ export default function UnifiedToolThread({
               </div>
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className={ACCORDION_PANEL_COMPACT}>
-            <div className="py-2">
-              {timeline.map((item, idx) => {
-                const isLast = idx === timeline.length - 1;
+          <Accordion.Panel>
+            <div className={accordionStyles.content()}>
+              <div className="py-2">
+                {timeline.map((item, idx) => {
+                  const isLast = idx === timeline.length - 1;
 
-                if (item.kind === "tool") {
+                  if (item.kind === "tool") {
+                    return (
+                      <StepRow
+                        key={itemKeys[idx]}
+                        call={item.data}
+                        isLast={isLast}
+                        pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+                        approvalOutcomeByToolCallId={
+                          approvalOutcomeByToolCallId
+                        }
+                      />
+                    );
+                  }
+
                   return (
-                    <StepRow
+                    <SubagentRow
                       key={itemKeys[idx]}
-                      call={item.data}
+                      group={item.data}
                       isLast={isLast}
+                      isStreaming={isStreaming}
                       pendingApprovalToolCallIds={pendingApprovalToolCallIds}
                       approvalOutcomeByToolCallId={approvalOutcomeByToolCallId}
                     />
                   );
-                }
-
-                return (
-                  <SubagentRow
-                    key={itemKeys[idx]}
-                    group={item.data}
-                    isLast={isLast}
-                    isStreaming={isStreaming}
-                    pendingApprovalToolCallIds={pendingApprovalToolCallIds}
-                    approvalOutcomeByToolCallId={approvalOutcomeByToolCallId}
-                  />
-                );
-              })}
+                })}
+              </div>
             </div>
           </Accordion.Panel>
         </AccordionItem>

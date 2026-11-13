@@ -1,6 +1,7 @@
 {
   "slug": "how-tool-calling-works",
   "title": "How we scaled GAIA to use thousands of tools",
+  "description": "How GAIA went from breaking at 200 tools to using thousands: semantic tool retrieval, a tool registry, and a three-layer agent architecture.",
   "date": "2025-02-15",
   "updated": "2026-02-16",
   "authors": [

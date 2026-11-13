@@ -88,7 +88,7 @@ export default function TodosHeader() {
       <div className="relative flex items-center">
         <Tooltip>
           <Tooltip.Trigger>
-            <div className="group/btn [&_svg]:!h-5 [&_svg]:!w-5 [&_svg]:!text-zinc-400 hover:[&_svg]:!text-primary">
+            <div className="group/btn [&_svg]:!h-5 [&_svg]:!w-5 [&_svg]:!text-zinc-400 hover:[&_svg]:!text-accent">
               <TodoModal
                 mode="add"
                 buttonText=""

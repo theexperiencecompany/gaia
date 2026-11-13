@@ -10,6 +10,7 @@ import {
 } from "@heroui/react";
 import { SquareArrowUpRight02Icon } from "@icons";
 import { useMemo, useState } from "react";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { LinkButton } from "@/components/shared/LinkButton";
 import type {
@@ -120,7 +121,7 @@ export function FeatureProviderPicker({
               <Select.Popover>
                 <ListBox>
                   {group.rows.map((row) => (
-                    <ListBox.Item
+                    <GaiaListBoxItem
                       key={row.key}
                       id={row.key}
                       textValue={row.label}
@@ -137,7 +138,7 @@ export function FeatureProviderPicker({
                           </span>
                         )}
                       </span>
-                    </ListBox.Item>
+                    </GaiaListBoxItem>
                   ))}
                 </ListBox>
               </Select.Popover>

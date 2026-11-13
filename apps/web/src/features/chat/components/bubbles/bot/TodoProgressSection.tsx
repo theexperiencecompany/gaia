@@ -8,13 +8,16 @@ import {
   Loading03Icon,
 } from "@icons";
 import { useEffect, useMemo, useRef } from "react";
+import { accordionVariants } from "@/components/shared/accordionVariants";
+import { toneVariants } from "@/components/shared/tone";
 import { toTitleCase } from "@/features/chat/utils/chatUtils";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
-import { ACCORDION_TRIGGER_COMPACT } from "@/lib/heroui/accordionParity";
 import type {
   TodoProgressData,
   TodoProgressItem,
 } from "@/types/features/todoProgressTypes";
+
+const accordionStyles = accordionVariants({ density: "compact" });
 
 /** Resolver mapping a todo_progress source to its display label. */
 type SourceLabel = (source: string) => string;
@@ -41,7 +44,7 @@ const STATUS_ICON_MAP: Record<
 
 const STATUS_COLOR: Record<TodoProgressItem["status"], string> = {
   completed: "text-emerald-400",
-  in_progress: "text-primary",
+  in_progress: "text-accent",
   pending: "text-zinc-600",
   cancelled: "text-zinc-600",
 };
@@ -164,7 +167,9 @@ function SingleSourceCard({
           {getSourceLabel(source)}
         </span>
         <Chip size="sm" variant="soft" className="bg-zinc-700/60">
-          <Chip.Label className="text-xs text-zinc-400">
+          <Chip.Label
+            className={toneVariants({ tone: "muted", className: "text-xs" })}
+          >
             {completedCount}/{todos.length}
           </Chip.Label>
         </Chip>
@@ -208,7 +213,7 @@ function MultiSourceAccordion({
 
   return (
     <div className="mt-2 mb-2 animate-scale-in rounded-2xl bg-zinc-800/70 backdrop-blur-xl p-1 w-full max-w-96">
-      <Accordion defaultExpandedKeys={[defaultExpandedKey]} className="px-0">
+      <Accordion defaultExpandedKeys={[defaultExpandedKey]}>
         {activeSources.map((source) => {
           const todos = todo_progress[source].todos;
           const completedCount = todos.filter(
@@ -221,7 +226,7 @@ function MultiSourceAccordion({
           return (
             <AccordionItem key={source} id={source} className="px-2">
               <Accordion.Heading>
-                <Accordion.Trigger className={ACCORDION_TRIGGER_COMPACT}>
+                <Accordion.Trigger className={accordionStyles.trigger()}>
                   <div className="flex items-center gap-2 w-full pr-1">
                     <span className="text-xs font-medium text-zinc-400 min-w-0 flex-1 truncate">
                       {getSourceLabel(source)}
@@ -238,18 +243,30 @@ function MultiSourceAccordion({
                     <Chip
                       size="sm"
                       variant="soft"
-                      className="bg-zinc-700/60 shrink-0"
+                      className="shrink-0 bg-zinc-700/60"
                     >
-                      <Chip.Label className="text-xs text-zinc-500">
+                      <Chip.Label
+                        className={toneVariants({
+                          tone: "faint",
+                          className: "text-xs",
+                        })}
+                      >
                         {completedCount}/{todos.length}
                       </Chip.Label>
                     </Chip>
                   </div>
-                  <Accordion.Indicator className="size-3 text-zinc-500" />
+                  <Accordion.Indicator
+                    className={toneVariants({
+                      tone: "faint",
+                      className: "size-3",
+                    })}
+                  />
                 </Accordion.Trigger>
               </Accordion.Heading>
-              <Accordion.Panel className="pb-2 pt-0">
-                <SourceTaskList todos={todos} isStreaming={isStreaming} />
+              <Accordion.Panel>
+                <div className="pb-2">
+                  <SourceTaskList todos={todos} isStreaming={isStreaming} />
+                </div>
               </Accordion.Panel>
             </AccordionItem>
           );

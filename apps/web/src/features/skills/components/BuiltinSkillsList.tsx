@@ -2,6 +2,7 @@
 
 import { Chip } from "@heroui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { chipVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { skillsApi } from "../api/skillsApi";
@@ -74,8 +75,8 @@ export function BuiltinSkillsList({ query }: Readonly<BuiltinSkillsListProps>) {
         <p className="text-sm text-zinc-400">Couldn't load built-in skills.</p>
         <GaiaButton
           size="sm"
+          shape="md"
           variant="default-soft"
-          className="rounded-xl"
           onPress={() => load()}
         >
           Retry
@@ -113,7 +114,7 @@ export function BuiltinSkillsList({ query }: Readonly<BuiltinSkillsListProps>) {
                     size="sm"
                     variant="soft"
                     color="warning"
-                    className="bg-warning/15"
+                    className={chipVariants({ tint: "light" })}
                   >
                     <Chip.Label className="text-xs font-medium">
                       Not connected
@@ -123,7 +124,6 @@ export function BuiltinSkillsList({ query }: Readonly<BuiltinSkillsListProps>) {
                     variant="accent-soft"
                     href={`/integrations?id=${encodeURIComponent(group.icon)}`}
                     size="sm"
-                    className="rounded-lg"
                   >
                     Connect
                   </LinkButton>

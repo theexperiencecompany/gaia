@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -71,20 +71,22 @@ export default function SettingsSidebar() {
               onPress={navigate}
               size="sm"
               variant="accent-soft"
-              className="group flex w-full justify-start text-primary"
+              className="group flex w-full justify-start"
             >
               {label}
             </GaiaButton>
           ) : (
-            <Button
+            <GaiaButton
               key={item.key}
               onPress={navigate}
               size="sm"
               variant="ghost"
-              className="group flex w-full justify-start text-zinc-400 hover:text-white"
+              tone="muted"
+              hoverTone="white"
+              className="group flex w-full justify-start"
             >
               {label}
-            </Button>
+            </GaiaButton>
           );
         })}
       </nav>
