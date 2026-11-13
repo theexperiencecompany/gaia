@@ -81,6 +81,7 @@ from app.schemas.browser import NewHandoff
 from app.services import analytics_service
 from app.services.browser.handoff import create_pending_handoff
 from app.services.browser.handoff_buttons import decide_handoff_by_button
+from app.services.conversation import reply_analytics
 from app.services.conversation.bot_followers import list_active_bot_conversations
 from app.services.conversation.comms_runner import (
     CommsGraphRunner,
@@ -130,6 +131,7 @@ from app.workers.tasks.workflow_tasks import (
 from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.base import ServerEvent
+from shared.py.analytics.catalog.chat import ChatMessageCancelled, ChatMessageCompleted
 from shared.py.analytics.catalog.workflows import WorkflowExecuted
 from shared.py.analytics.context import (
     AnalyticsContext,
@@ -1391,3 +1393,51 @@ async def test_a_successful_fire_records_success_and_emits_workflow_executed_onc
     assert completed.await_args.kwargs["status"] == "success"
     assert completed.await_args.kwargs["conversation_id"] == rig.conversation_id
     notified.assert_awaited_once()
+
+
+def _turn_ends(calls: list[ServerEvent]) -> list[tuple[str, str]]:
+    return [
+        (event.event, event.stream_id)
+        for event in calls
+        if isinstance(event, ChatMessageCancelled | ChatMessageCompleted)
+    ]
+
+
+@pytest.mark.service
+async def test_a_stop_before_any_reply_is_shown_counts_the_message_cancelled_once(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("never shown", hold=(0,))
+    rig = await rig_for(model)
+    captured: list[ServerEvent] = []
+
+    def record(_user: object, event: ServerEvent, *_args: object, **_kwargs: object) -> None:
+        captured.append(event)
+
+    with patch.object(reply_analytics, "capture", side_effect=record):
+        await rig.send("m1", "find me flights")
+        await model.entered(0).wait()
+        await record_user_stop(rig.conversation_id, rig.user_id, "s1")
+        await record_user_stop(rig.conversation_id, rig.user_id, "s2")
+        await rig.settle()
+
+    assert await rig.of(Reply) == []
+    assert _turn_ends(captured) == [("chat:message_cancelled", "m1")]
+
+
+@pytest.mark.service
+async def test_a_stop_after_the_reply_settled_counts_nothing_more(rig_for: RigFactory) -> None:
+    model = gated("it is noon")
+    rig = await rig_for(model)
+    captured: list[ServerEvent] = []
+
+    def record(_user: object, event: ServerEvent, *_args: object, **_kwargs: object) -> None:
+        captured.append(event)
+
+    with patch.object(reply_analytics, "capture", side_effect=record):
+        await rig.send("m1", "what time is it?")
+        await rig.settle()
+        await record_user_stop(rig.conversation_id, rig.user_id, "s1")
+        await rig.settle()
+
+    assert _turn_ends(captured) == [("chat:message_completed", "m1")]
