@@ -331,6 +331,7 @@
 @source "../../../features/auth/hooks/useLogout.ts";
 @source "../../../features/auth/hooks/useOnboardingGuard.ts";
 @source "../../../features/auth/utils/firstName.ts";
+@source "../../../features/auth/utils/signupCta.ts";
 @source "../../../features/auth/utils/toCurrentUser.ts";
 @source "../../../features/bots/hooks/useBotLinks.ts";
 @source "../../../features/browser/api/browserApi.ts";
@@ -362,6 +363,7 @@
 @source "../../../features/chat/components/RecentConversationsView.tsx";
 @source "../../../features/chat/constants/devModels.ts";
 @source "../../../features/chat/constants/files.ts";
+@source "../../../features/chat/constants/mcpApp.ts";
 @source "../../../features/chat/constants/reactionBadge.ts";
 @source "../../../features/chat/hooks/useApprovalDecisionWebSocket.ts";
 @source "../../../features/chat/hooks/useArtifactText.ts";
@@ -880,14 +882,18 @@
 @source "../../../features/chat/components/interface/StarterText.tsx";
 @source "../../../features/chat/components/memory/MemoryIndicator.tsx";
 @source "../../../features/chat/components/memory/MemoryModal.tsx";
+@source "../../../features/chat/components/tools/MCPAppLoading.tsx";
 @source "../../../features/chat/components/tools/MCPAppRenderer.tsx";
 @source "../../../features/chat/components/voice-agent/agent-control-bar.tsx";
 @source "../../../features/chat/components/voice-agent/constants.ts";
+@source "../../../features/chat/components/voice-agent/VoiceCallControls.tsx";
 @source "../../../features/chat/components/voice-agent/VoiceConnectionStatus.tsx";
 @source "../../../features/chat/components/voice-agent/VoiceControlBarContainer.tsx";
+@source "../../../features/chat/components/voice-agent/VoiceControlBarPending.tsx";
 @source "../../../features/chat/components/voice-agent/VoiceCustomizePopover.tsx";
 @source "../../../features/chat/components/voice-agent/VoiceGradient.tsx";
 @source "../../../features/chat/components/voice-agent/VoiceModeBackground.tsx";
+@source "../../../features/chat/components/voice-agent/VoiceSession.tsx";
 @source "../../../features/chat/components/voice-agent/VoiceSessionContext.tsx";
 @source "../../../features/landing/components/demo/constants.ts";
 @source "../../../features/landing/components/demo/DummyComposer.tsx";
