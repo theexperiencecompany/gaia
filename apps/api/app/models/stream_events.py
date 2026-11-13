@@ -53,7 +53,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from app.models.chat_models import MessageReaction
 from app.models.hil_models import HILApprovalStatus
 
 # ---------------------------------------------------------------------------
@@ -224,45 +223,7 @@ class MainResponseCompleteFrame(BaseModel):
     usage: dict[str, Any] | None = None
 
 
-class ReactionPayload(MessageReaction):
-    """A reaction GAIA placed, and the user message it sits on."""
-
-    message_id: str
-
-
-class ReactionFrame(BaseModel):
-    """GAIA reacted to a user message; the client sets the message's badge, replacing any earlier one.
-
-    Not the turn's answer: a turn can react and still reply or keep working.
-    """
-
-    reaction: ReactionPayload
-
-
 class TodoProgressFrame(BaseModel):
     """Envelope for a todo-progress snapshot."""
 
     todo_progress: dict[str, Any]
-
-
-class ConversationInitializedFrame(BaseModel):
-    """Identity frame sent first: conversation + message ids for the turn.
-
-    New conversations dump all fields (``conversation_description`` may be
-    ``null`` and is still included); resumed conversations exclude the two
-    conversation-level fields via ``model_dump(exclude=...)``.
-    """
-
-    conversation_id: str | None = None
-    conversation_description: str | None = None
-    # Single identity: this IS the client's send id (turn_id) when the client
-    # provided one — the optimistic record already carries the final key.
-    user_message_id: str
-    # The saved user message's place in the conversation's order.
-    user_message_seq: int
-    # The user message text. Makes the event log a complete record of the
-    # turn: a client that reloads before its local write ever committed can
-    # reconstruct the user message from replay alone.
-    user_message_content: str
-    bot_message_id: str
-    stream_id: str

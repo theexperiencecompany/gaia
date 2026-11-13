@@ -81,7 +81,6 @@ def _idle_timer_world(
             patch.object(lifecycle.settings, "E2B_SANDBOX_IDLE_PAUSE_SECONDS", 0),
             patch.object(pool_module.settings, "E2B_AGENT_LAB_TEMPLATE_ID", LAB_TEMPLATE),
             patch.object(lifecycle, "e2b_sandbox_repository", repo),
-            patch.object(lifecycle, "_stop_watcher", AsyncMock()),
             patch.object(lifecycle, "save_agents_home", AsyncMock(return_value=True)),
             patch(
                 "app.db.repositories.todos.todo_repository.find_active_by_user_and_trigger",

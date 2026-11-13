@@ -18,13 +18,11 @@ import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
-import random
 from typing import ClassVar
 
 from pymongo.errors import DuplicateKeyError
 
 from app.constants.chat import (
-    CONVERSATION_APPEND_JITTER_SECONDS,
     CONVERSATION_ENTRIES_COLLECTION,
     CONVERSATION_READ_LIMIT,
 )
@@ -94,7 +92,6 @@ from app.utils.errors import (
 )
 from shared.py.wide_events import spawn_logged_task
 
-_JITTER = random.SystemRandom()
 #: A quote, a settle's quote, an approval, its work: the longest chain a message reads beside it.
 _BESIDE_PASSES = 4
 _BOT_SOURCE_VALUES: list[str] = [s.value for s in BOT_CONVERSATION_SOURCES]
@@ -1003,12 +1000,6 @@ async def _read_beside(
         asked |= {*ids, *reply_ids}
         related += await lookup(ids, reply_ids)
     return related
-
-
-def _backoff() -> float:
-    """Return how long a writer that lost the conditional write waits before rereading the head."""
-    # Any short wait is correct, so its bounds are not behaviour a test can pin.
-    return _JITTER.uniform(0, CONVERSATION_APPEND_JITTER_SECONDS)  # pragma: no mutate
 
 
 def _todo_binding(todo_id: str) -> dict[str, object]:

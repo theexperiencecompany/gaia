@@ -29,7 +29,6 @@ from app.agents.core.background.executor_queue import (
 from app.agents.core.background.session import ExecutorRun, RunKind
 from app.constants.agents import AgentTag
 from app.constants.cache import (
-    EXECUTOR_ALIVE_PREFIX,
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
@@ -278,7 +277,7 @@ class TestTheRunAnIdleConversationGets:
         await fake_redis.set(
             f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}", OTHER_RUN_LOCK, ex=_OLD_LOCK_SECONDS
         )
-        await fake_redis.set(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:{OTHER_RUN_LOCK}", "1")
+        await eq.hold_run_alive(CONVERSATION, OTHER_RUN_LOCK)
 
         with _real_lifecycle() as h:
             await er.deliver_to_executor(CONVERSATION, USER, TASK)

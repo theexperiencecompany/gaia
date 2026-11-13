@@ -499,7 +499,7 @@ class TestABackgroundRunThatParks:
 
 FULL_DISPLAY = SubagentDisplay(
     name="summarise the report",
-    agent_type="mcp",
+    agent_type="handoff",
     tool_category="linear",
     icon_url="https://icons.example/linear.png",
     integration="linear",
@@ -564,7 +564,7 @@ class TestABlockingRunDrivesItsGraph:
             "subagent": "linear",
             "subagent_id": "row-1",
             "subagent_name": "summarise the report",
-            "agent_type": "mcp",
+            "agent_type": "handoff",
             "icon_url": "https://icons.example/linear.png",
             "tool_category": "linear",
             "parent_subagent_id": "parent-row",
