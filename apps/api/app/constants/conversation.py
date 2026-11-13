@@ -72,6 +72,8 @@ SERVER_RESTART_NOTE = (
 
 #: conv:events:{conversation_id}, the one Redis Stream of a conversation's output frames.
 EVENTS_KEY_PREFIX = "conv:events:"
+#: conv:events-open:{conversation_id} exists while a reply is open; its stream is not trimmed meanwhile.
+EVENTS_OPEN_REPLY_KEY_PREFIX = "conv:events-open:"
 # A reply streams a few hundred deltas; older frames are replayed from the log instead.
 EVENTS_STREAM_MAXLEN = 2000
 # An idle conversation's frames are all in the log, so the stream only needs to outlive a session.

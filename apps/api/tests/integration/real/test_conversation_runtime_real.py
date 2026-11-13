@@ -55,7 +55,7 @@ from app.config.settings import settings
 from app.constants.browser import HandoffDecision, HandoffStatus
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
-from app.constants.conversation import STEP_TICK_SECONDS
+from app.constants.conversation import EVENTS_STREAM_MAXLEN, STEP_TICK_SECONDS
 from app.constants.graphs import GraphName
 from app.constants.todos import TodoWakeKind
 from app.core.lazy_loader import providers
@@ -66,7 +66,13 @@ from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
 from app.models.agent_config import AgentConfigurable, StepTurnRef
 from app.models.agent_models import AgentRunnableConfig
-from app.models.conversation_frame_models import EntryFrame, ToolDataEvent, WorkDeltaFrame
+from app.models.conversation_frame_models import (
+    EntryFrame,
+    ReplyDeltaFrame,
+    ResponseEvent,
+    ToolDataEvent,
+    WorkDeltaFrame,
+)
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
@@ -1789,3 +1795,38 @@ async def test_every_comms_run_carries_the_identity_the_approval_gate_needs(
     assert configurable.get("stream_id")
     assert configurable.get("user_id") == rig.user_id
     assert configurable.get("conversation_id") == rig.conversation_id
+
+
+async def _read_all(conversation_id: str) -> list[StreamedFrame]:
+    return await read_frames(conversation_id, "0-0", block_ms=0)
+
+
+@pytest.mark.service
+async def test_a_reload_mid_reply_longer_than_the_streams_retention_sees_all_its_text(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated("unused"))
+    frames = RedisStreamFrames()
+    opened = Reply(id="a:reply", reply_id="r1", attempt_id="a")
+    await frames.publish(rig.conversation_id, EntryFrame(seq=2, at=_now(), entry=opened))
+    for index in range(3 * EVENTS_STREAM_MAXLEN):
+        delta = ReplyDeltaFrame(
+            attempt_id="a", reply_id="r1", index=index, payload=ResponseEvent(response="x")
+        )
+        await frames.publish(rig.conversation_id, delta)
+    # What a client reloading now reads: every delta since the reply opened.
+    shown = await _read_all(rig.conversation_id)
+    settled = ReplySettled(
+        id="a:settled",
+        reply_id="r1",
+        outcome=ReplyOutcome.ANSWERED,
+        answers=("m1",),
+        through=1,
+        quote_target=None,
+    )
+    await frames.publish(rig.conversation_id, EntryFrame(seq=3, at=_now(), entry=settled))
+    after = await _read_all(rig.conversation_id)
+    deltas = [item for item in shown if isinstance(item.frame, ReplyDeltaFrame)]
+    assert len(deltas) == 3 * EVENTS_STREAM_MAXLEN
+    # Once nothing is open, retention applies again.
+    assert len(after) < 3 * EVENTS_STREAM_MAXLEN
