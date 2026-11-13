@@ -65,7 +65,7 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
             <h1 className="text-4xl font-bold tracking-tight text-white md:text-5xl">
               Tools We Love
             </h1>
-            <p className="mx-auto max-w-2xl text-lg font-light leading-relaxed text-foreground-500">
+            <p className="mx-auto max-w-2xl text-lg font-light leading-relaxed text-zinc-400">
               GAIA is built on the shoulders of giants. This page exists to
               celebrate open-source culture and the incredible tools that make
               building great software possible. These projects inspire us daily,
@@ -105,7 +105,7 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
         </div>
 
         <div className="border-t border-zinc-800 pt-12 text-center">
-          <p className="text-sm text-foreground-500">
+          <p className="text-sm text-zinc-400">
             Thank you to all the maintainers, contributors, and communities
             behind these amazing projects.{" "}
             <Link href="/about" className="underline underline-offset-2">

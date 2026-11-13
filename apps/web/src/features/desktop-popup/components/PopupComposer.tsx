@@ -5,6 +5,7 @@ import { Cancel01Icon } from "@icons";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { sendMessage } from "@/features/chat/stream/sendMessage";
 import { useElectron } from "@/hooks/useElectron";
@@ -84,11 +85,7 @@ export default function PopupComposer({
         onChange={setText}
         isDisabled={disabled}
       >
-        <InputGroup
-          className="
-            bg-transparent shadow-none border-none outline-none ring-0 py-0 pl-0.5 pr-2
-          "
-        >
+        <InputGroup className="bg-transparent shadow-none border-none outline-none ring-0 py-0 pl-0.5 pr-2">
           <InputGroup.Prefix>
             {/* Canvas is larger than the visible sphere (glow padding) — the
                 negative margins keep the optical size in line with the send
@@ -101,7 +98,13 @@ export default function PopupComposer({
             placeholder={
               disabled ? "Sign in from the GAIA window to chat" : "Ask GAIA…"
             }
-            className="px-1.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-400"
+            className={inputVariants({
+              placeholder: "muted",
+              className: toneVariants({
+                tone: "strong",
+                className: "px-1.5 text-sm outline-none",
+              }),
+            })}
           />
           <InputGroup.Suffix>
             {/* The pill's capsule IS the window shape — a corner-overhanging
@@ -114,7 +117,9 @@ export default function PopupComposer({
               variant="ghost"
               onPress={dismissPopup}
               aria-label="Close"
-              className="h-6 min-h-6 w-6 max-w-6 min-w-6 shrink-0 text-zinc-500 hover:text-zinc-200"
+              tone="faint"
+              hoverTone="bright"
+              className="h-6 min-h-6 w-6 max-w-6 min-w-6 shrink-0"
             >
               <Cancel01Icon className="size-3.5" />
             </GaiaButton>

@@ -97,7 +97,7 @@ export function UpgradeModal() {
             {dismissible && (
               <Modal.CloseTrigger
                 aria-label="Close"
-                className="top-3 right-3 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+                className="top-3 right-3 hover:bg-zinc-800 hover:text-white"
               />
             )}
             {dismissible ? (

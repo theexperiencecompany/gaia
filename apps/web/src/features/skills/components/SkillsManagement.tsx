@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, SearchField, Tabs } from "@heroui/react";
+import { SearchField, Tabs } from "@heroui/react";
 import {
   FolderLibraryIcon,
   PlusSignIcon,
@@ -10,11 +10,10 @@ import {
 import type { ComponentType } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import {
-  inputVariants,
-  tabsVariants,
-} from "@/components/shared/controlVariants";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
+import { tabsVariants } from "@/components/shared/tabsVariants";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { track } from "@/lib/analytics";
 import type { Skill } from "../api/types";
@@ -95,8 +94,7 @@ export default function SkillsManagement() {
       {/* Tabs, search, and New skill share one row. */}
       <div className="flex items-center gap-3">
         <Tabs
-          className={tabsVariants({
-            color: "accent",
+          className={tabsVariants({ color: "accent" }).base({
             className: shapeVariants({ shape: "pill", className: "shrink-0" }),
           })}
           variant="primary"
@@ -131,15 +129,16 @@ export default function SkillsManagement() {
             <SearchField.ClearButton />
           </SearchField.Group>
         </SearchField>
-        <Button
+        <GaiaButton
           size="sm"
-          className="shrink-0 rounded-xl"
+          shape="md"
+          className="shrink-0"
           onPress={openCreate}
           variant="primary"
         >
           <PlusSignIcon className="size-4" />
           New skill
-        </Button>
+        </GaiaButton>
       </div>
 
       <div className="min-h-0 flex-1">

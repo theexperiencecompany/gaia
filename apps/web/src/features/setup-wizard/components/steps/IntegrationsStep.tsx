@@ -7,7 +7,7 @@
 
 "use client";
 
-import { Button, Chip, Skeleton } from "@heroui/react";
+import { Chip, Skeleton } from "@heroui/react";
 import { CircleArrowUpRight02Icon, ConnectIcon, KeyIcon } from "@icons";
 import {
   CONNECT_ACTION_LABEL,
@@ -15,6 +15,7 @@ import {
 } from "@shared/utils";
 import * as m from "motion/react-m";
 import { useMemo } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -142,7 +143,7 @@ export function IntegrationsStep({ status, catalog }: IntegrationsStepProps) {
                       {integration.description}
                     </p>
                   </div>
-                  <Button
+                  <GaiaButton
                     size="sm"
                     variant={state === "expired" ? "tertiary" : "secondary"}
                     className={
@@ -155,7 +156,7 @@ export function IntegrationsStep({ status, catalog }: IntegrationsStepProps) {
                     }}
                   >
                     {CONNECT_ACTION_LABEL[state]}
-                  </Button>
+                  </GaiaButton>
                 </div>
               );
             })}
@@ -183,7 +184,8 @@ export function IntegrationsStep({ status, catalog }: IntegrationsStepProps) {
         href="/integrations"
         variant="ghost"
         size="sm"
-        className="self-start text-zinc-400"
+        tone="muted"
+        className="self-start"
       >
         Browse all integrations
         <CircleArrowUpRight02Icon className="size-4" />

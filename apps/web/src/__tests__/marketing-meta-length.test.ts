@@ -182,12 +182,20 @@ function allPages(): Promise<RenderedPage[]> {
   return renderedPages;
 }
 
+/** Full-width CJK and Hangul, each as wide in a snippet as two Latin characters (seo_audit.py's WIDE_CHARACTER). */
+const WIDE_CHARACTER = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/g;
+
+/** How much of the snippet the copy fills, a wide character counting twice. */
+function snippetWidth(value: string): number {
+  return value.length + (value.match(WIDE_CHARACTER)?.length ?? 0);
+}
+
 async function outOfRange(
   field: "title" | "description",
   { min, max }: Range,
 ): Promise<string[]> {
   return (await allPages()).flatMap(({ page, locale, [field]: value }) =>
-    value.length < min || value.length > max
+    snippetWidth(value) < min || value.length > max
       ? [`${value.length} ${locale} ${page}`]
       : [],
   );

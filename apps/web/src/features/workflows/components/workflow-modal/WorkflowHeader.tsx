@@ -22,15 +22,19 @@ import {
   ToggleOnIcon,
 } from "@icons";
 import { type Control, Controller, type FieldErrors } from "react-hook-form";
-import { inputVariants } from "@/components/shared/controlVariants";
+import {
+  chipVariants,
+  inputVariants,
+} from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { cn } from "@/lib/utils";
 import type { Workflow } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 import { NeedsSetupChip } from "../shared/WorkflowCardComponents";
 import WorkflowIconPicker from "./WorkflowIconPicker";
 
-const iconClasses = "size-5 text-default-500 pointer-events-none shrink-0";
+const iconClasses = "size-5 text-zinc-400 pointer-events-none shrink-0";
 
 interface WorkflowHeaderProps {
   mode: "create" | "edit" | "preview";
@@ -94,7 +98,14 @@ export default function WorkflowHeader({
                 placeholder={
                   mode === "edit" ? "Workflow name" : "Name your workflow"
                 }
-                className={`${inputVariants({ variant: "bare" })} h-auto min-h-0 text-2xl font-semibold text-white placeholder:font-normal placeholder:text-zinc-600`}
+                className={inputVariants({
+                  variant: "bare",
+                  placeholder: "subtle",
+                  className: toneVariants({
+                    tone: "white",
+                    className: "h-auto min-h-0 text-2xl font-semibold",
+                  }),
+                })}
               />
               <FieldError>{errors.title?.message}</FieldError>
             </TextField>
@@ -108,9 +119,11 @@ export default function WorkflowHeader({
             ) : (
               <Chip
                 size="sm"
-                variant="soft"
+                variant={isActivated ? "soft" : "secondary"}
                 color={isActivated ? "success" : "default"}
-                className={isActivated ? "bg-success/15" : "bg-zinc-800"}
+                className={chipVariants({
+                  tint: isActivated ? "light" : "default",
+                })}
               >
                 <Chip.Label className="text-xs font-medium">
                   {isActivated ? "Active" : "Paused"}
@@ -191,7 +204,6 @@ export default function WorkflowHeader({
                     id="delete"
                     textValue="Delete workflow"
                     variant="danger"
-                    className="text-danger"
                   >
                     <Delete02Icon className={cn(iconClasses, "text-danger")} />
                     <Label>Delete workflow</Label>
@@ -218,7 +230,14 @@ export default function WorkflowHeader({
             <TextArea
               placeholder="Add a short description..."
               rows={1}
-              className={`${inputVariants({ variant: "bare" })} resize-none text-sm text-zinc-300 field-sizing-content max-h-20`}
+              className={inputVariants({
+                variant: "bare",
+                className: toneVariants({
+                  tone: "dim",
+                  className:
+                    "resize-none text-sm field-sizing-content max-h-20",
+                }),
+              })}
             />
             <FieldError>{errors.description?.message}</FieldError>
           </TextField>

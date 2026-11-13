@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Kbd, ListBox, Select } from "@heroui/react";
+import { Kbd, ListBox, Select } from "@heroui/react";
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
@@ -10,6 +10,7 @@ import {
 import { useHotkeys } from "react-hotkeys-hook";
 import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import {
   useCreateEventAction,
@@ -77,7 +78,7 @@ export default function CalendarHeader() {
           }}
           className="w-34"
         >
-          <Select.Trigger className="bg-zinc-800 text-xs! cursor-pointer">
+          <Select.Trigger className="text-xs! cursor-pointer">
             <GaiaSelectValue>
               {
                 dayOptions.find(
@@ -91,7 +92,7 @@ export default function CalendarHeader() {
           <Select.Popover>
             <ListBox>
               {dayOptions.map((option) => (
-                <ListBox.Item
+                <GaiaListBoxItem
                   key={option.value}
                   id={option.value}
                   textValue={option.label}
@@ -99,7 +100,7 @@ export default function CalendarHeader() {
                 >
                   {option.label}
                   <Kbd>{option.kbd}</Kbd>
-                </ListBox.Item>
+                </GaiaListBoxItem>
               ))}
             </ListBox>
           </Select.Popover>
@@ -108,18 +109,23 @@ export default function CalendarHeader() {
 
       <div className="relative flex items-center gap-2">
         <div className="flex items-center">
-          <Button
+          <GaiaButton
             isIconOnly
             size="sm"
             variant="ghost"
             onPress={goToPreviousDay}
           >
             <ArrowLeft01Icon className="h-5 w-5 text-zinc-400" />
-          </Button>
+          </GaiaButton>
 
-          <Button isIconOnly size="sm" variant="ghost" onPress={goToNextDay}>
+          <GaiaButton
+            isIconOnly
+            size="sm"
+            variant="ghost"
+            onPress={goToNextDay}
+          >
             <ArrowRight01Icon className="h-5 w-5 text-zinc-400" />
-          </Button>
+          </GaiaButton>
           <GaiaButton
             variant="default-soft"
             onPress={goToToday}
@@ -136,7 +142,7 @@ export default function CalendarHeader() {
             tooltip="Create new calendar event"
             onClick={createEventAction}
           >
-            <CalendarAdd01Icon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-primary" />
+            <CalendarAdd01Icon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-accent" />
           </SidebarHeaderButton>
         )}
       </div>

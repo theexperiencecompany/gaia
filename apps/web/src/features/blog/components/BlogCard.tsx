@@ -41,7 +41,7 @@ export function BlogCard({ blog, variant = "large", titleAs }: BlogCardProps) {
                 variant="soft"
                 color="accent"
                 size="sm"
-                className="absolute top-3 right-3 text-primary"
+                className="absolute top-3 right-3"
               >
                 Featured
               </Chip>
@@ -73,10 +73,10 @@ export function BlogCard({ blog, variant = "large", titleAs }: BlogCardProps) {
           </div>
 
           <div className="mb-1 flex items-center gap-3">
-            <span className="text-xs text-foreground-500 group-hover:text-foreground">
+            <span className="text-xs text-zinc-400 group-hover:text-foreground">
               {blog.category}
             </span>
-            <span className="text-xs text-foreground-300 group-hover:text-foreground-500">
+            <span className="text-xs text-zinc-600 group-hover:text-zinc-400">
               {new Date(blog.date).toLocaleDateString("en-US", {
                 month: "short",
                 day: "numeric",

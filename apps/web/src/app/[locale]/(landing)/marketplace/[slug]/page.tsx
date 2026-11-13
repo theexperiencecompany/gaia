@@ -22,6 +22,8 @@ import {
   marketplaceApiIdentifier,
 } from "@/features/integrations/lib/serverMarketplaceApi";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
+import { WorkflowIconElementsProvider } from "@/features/workflows/components/shared/WorkflowIconElements";
+import { workflowIconElements } from "@/features/workflows/lib/workflowIconElements";
 import { isRedirectedPath } from "@/lib/canonicalLinks";
 import {
   getMarketplaceFallbackGuides,
@@ -38,6 +40,7 @@ import {
   siteConfig,
 } from "@/lib/seo";
 import { IntegrationDetailClient } from "./client";
+import { IntegrationToolsCard } from "./IntegrationToolsCard";
 import {
   generateIntegrationDescription,
   generateIntegrationTitle,
@@ -220,22 +223,27 @@ export default async function IntegrationPage({ params }: Props) {
           ...contentSchemas,
         ]}
       />
-      <IntegrationDetailClient
-        integration={integration}
-        comparisonSlug={comparisonSlug}
-        alternativeSlug={
-          alternative && !isRedirectedPath(`/alternative-to/${slug}`)
-            ? slug
-            : undefined
-        }
-        relatedIntegrations={related}
-        directoryHref={directoryHref}
-        initialRelatedWorkflows={relatedWorkflows}
-        automateCombos={automateCombos}
-        docsGuides={
-          MARKETPLACE_DOCS_LINKS[slug] ?? getMarketplaceFallbackGuides()
-        }
-      />
+      <WorkflowIconElementsProvider
+        icons={workflowIconElements(relatedWorkflows)}
+      >
+        <IntegrationDetailClient
+          integration={integration}
+          toolsCard={<IntegrationToolsCard integration={integration} />}
+          comparisonSlug={comparisonSlug}
+          alternativeSlug={
+            alternative && !isRedirectedPath(`/alternative-to/${slug}`)
+              ? slug
+              : undefined
+          }
+          relatedIntegrations={related}
+          directoryHref={directoryHref}
+          initialRelatedWorkflows={relatedWorkflows}
+          automateCombos={automateCombos}
+          docsGuides={
+            MARKETPLACE_DOCS_LINKS[slug] ?? getMarketplaceFallbackGuides()
+          }
+        />
+      </WorkflowIconElementsProvider>
     </>
   );
 }

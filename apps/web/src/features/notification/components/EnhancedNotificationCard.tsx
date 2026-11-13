@@ -1,6 +1,6 @@
 "use client";
 
-import { Button as HeroButton, Tooltip } from "@heroui/react";
+import { Tooltip } from "@heroui/react";
 import {
   AlertCircleIcon,
   CheckmarkBadge01Icon,
@@ -97,7 +97,7 @@ export const EnhancedNotificationCard = ({
                 {notification.content.title}
               </h3>
               {isUnread && (
-                <div className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary" />
+                <div className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent" />
               )}
             </div>
 
@@ -114,14 +114,14 @@ export const EnhancedNotificationCard = ({
             notification.status !== NotificationStatus.ARCHIVED && (
               <Tooltip delay={300}>
                 <Tooltip.Trigger>
-                  <HeroButton
+                  <GaiaButton
                     size="sm"
                     onPress={handleMarkAsRead}
                     variant="tertiary"
                     isIconOnly
                   >
                     <CheckmarkBadge01Icon className="h-4 w-4 text-zinc-500" />
-                  </HeroButton>
+                  </GaiaButton>
                 </Tooltip.Trigger>
                 <Tooltip.Content>Mark as read</Tooltip.Content>
               </Tooltip>
@@ -146,15 +146,22 @@ export const EnhancedNotificationCard = ({
 
                   return (
                     <GaiaButton
-                      variant="default-solid"
+                      variant={
+                        action.style === "primary"
+                          ? "accent-soft"
+                          : action.style === "danger"
+                            ? "danger-soft"
+                            : "tertiary"
+                      }
+                      shape="sm"
                       key={action.id}
                       isDisabled={
                         buttonProps.disabled || isLoading || isExecuted
                       }
                       onPress={() => handleActionClick(action.id)}
-                      className={`gap-1.5 rounded-lg px-4 text-xs font-normal transition ${
+                      className={`gap-1.5 text-xs font-normal transition ${
                         action.style === "primary"
-                          ? "bg-primary/10 text-primary hover:bg-primary/20"
+                          ? "bg-accent/10 text-accent hover:bg-accent/20"
                           : action.style === "danger"
                             ? "bg-red-500/10 text-red-500 hover:bg-red-500/20"
                             : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300"

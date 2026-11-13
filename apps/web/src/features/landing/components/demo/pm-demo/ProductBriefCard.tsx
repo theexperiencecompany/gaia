@@ -22,7 +22,7 @@ export default function ProductBriefCard() {
         </p>
         <div className="mt-1 mb-2 rounded-full bg-zinc-700 h-1.5">
           <div
-            className="h-1.5 rounded-full bg-primary"
+            className="h-1.5 rounded-full bg-accent"
             style={{ width: "64%" }}
           />
         </div>

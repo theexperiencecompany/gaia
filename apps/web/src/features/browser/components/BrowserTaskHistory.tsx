@@ -125,7 +125,7 @@ function TaskActions({
           isIconOnly
           size="sm"
           variant="ghost"
-          className="text-zinc-400"
+          tone="muted"
           aria-label="Open conversation"
           onPress={() => router.push(`/c/${task.conversation_id}`)}
         >
@@ -182,7 +182,7 @@ function TaskRow({
       {hasRecap && (
         <Modal isOpen={recapOpen} onOpenChange={setRecapOpen}>
           <Modal.Backdrop>
-            <Modal.Container size="lg">
+            <Modal.Container>
               <Modal.Dialog
                 className={modalVariants({
                   size: "2xl",

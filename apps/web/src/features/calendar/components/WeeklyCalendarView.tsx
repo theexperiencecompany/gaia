@@ -1,12 +1,12 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import {
   CONNECT_ACTION_LABEL,
   integrationConnectionState,
 } from "@shared/utils";
 import type React from "react";
 import { useMemo } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 import { GoogleCalendarIcon } from "@/components/shared/icons";
 import { CalendarGrid } from "@/features/calendar/components/CalendarGrid";
@@ -78,13 +78,13 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
             <p className="text-sm text-zinc-500 text-center max-w-lg">
               View and manage your events in GAIA.
             </p>
-            <Button
+            <GaiaButton
               className="mt-4"
               onPress={() => connectIntegration("googlecalendar")}
               variant="primary"
             >
               {connectLabel} Calendar
-            </Button>
+            </GaiaButton>
           </div>
         ) : (
           <div

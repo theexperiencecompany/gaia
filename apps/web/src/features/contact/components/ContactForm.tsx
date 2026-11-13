@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   FieldError,
   Input,
   Label,
@@ -13,6 +12,8 @@ import {
 import { Turnstile } from "@marsidev/react-turnstile";
 import type React from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import {
@@ -113,22 +114,22 @@ function ContactRequestForm({
         </Select.Trigger>
         <Select.Popover>
           <ListBox>
-            <ListBox.Item
+            <GaiaListBoxItem
               id={SUPPORT_REQUEST_TYPES.SUPPORT}
               textValue={
                 SUPPORT_REQUEST_TYPE_LABELS[SUPPORT_REQUEST_TYPES.SUPPORT]
               }
             >
               {SUPPORT_REQUEST_TYPE_LABELS[SUPPORT_REQUEST_TYPES.SUPPORT]}
-            </ListBox.Item>
-            <ListBox.Item
+            </GaiaListBoxItem>
+            <GaiaListBoxItem
               id={SUPPORT_REQUEST_TYPES.FEATURE}
               textValue={
                 SUPPORT_REQUEST_TYPE_LABELS[SUPPORT_REQUEST_TYPES.FEATURE]
               }
             >
               {SUPPORT_REQUEST_TYPE_LABELS[SUPPORT_REQUEST_TYPES.FEATURE]}
-            </ListBox.Item>
+            </GaiaListBoxItem>
           </ListBox>
         </Select.Popover>
       </Select>
@@ -181,14 +182,14 @@ function ContactRequestForm({
       )}
 
       <div className="flex justify-end">
-        <Button
+        <GaiaButton
           type="submit"
           isDisabled={isSubmitting || (isVisitor && !TURNSTILE_SITE_KEY)}
           isPending={visitor.isVerifying}
           variant="primary"
         >
           {isSubmitting ? "Submitting..." : "Submit"}
-        </Button>
+        </GaiaButton>
       </div>
     </form>
   );

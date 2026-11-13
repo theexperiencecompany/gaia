@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Chip,
   Description,
   Input,
@@ -12,6 +11,7 @@ import {
 import { CheckmarkCircle02Icon, Delete02Icon, Link01Icon } from "@icons";
 import { useState } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import type {
   ComposioCatalogEntry,
@@ -153,7 +153,7 @@ function ToolkitActions({
   return (
     <div className="flex items-center justify-end gap-2">
       {toolkit.status === "enabled" && (
-        <Button
+        <GaiaButton
           variant="danger-soft"
           size="sm"
           isPending={disable.isPending}
@@ -161,7 +161,7 @@ function ToolkitActions({
         >
           <Delete02Icon className="size-4" />
           Remove
-        </Button>
+        </GaiaButton>
       )}
       {toolkit.set_up ? (
         <Chip size="sm" variant="soft" color="success">
@@ -169,7 +169,7 @@ function ToolkitActions({
           <Chip.Label>Ready to connect</Chip.Label>
         </Chip>
       ) : (
-        <Button
+        <GaiaButton
           size="sm"
           variant="primary"
           isDisabled={!canSubmit}
@@ -178,7 +178,7 @@ function ToolkitActions({
         >
           {!enable.isPending && <Link01Icon className="size-4" />}
           {toolkit.status === "built_in" ? "Set up" : "Enable"}
-        </Button>
+        </GaiaButton>
       )}
     </div>
   );

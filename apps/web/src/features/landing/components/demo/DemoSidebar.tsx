@@ -230,7 +230,7 @@ const IntegrationsSidebarContent = memo(function IntegrationsSidebarContent({
             <span className="flex-1 truncate">{integration.name}</span>
             <div className="flex items-center gap-1.5">
               {integration.isPublic && (
-                <InternetIcon width={14} height={14} className="text-primary" />
+                <InternetIcon width={14} height={14} className="text-accent" />
               )}
               {integration.status === "connected" && (
                 <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
@@ -468,7 +468,7 @@ const DemoSidebar = memo(function DemoSidebar({
                 variant="accent-soft"
                 size="sm"
                 fullWidth
-                className="mt-1 mb-4 flex justify-start text-sm font-medium text-primary"
+                className="mt-1 mb-4 flex justify-start text-sm font-medium"
               >
                 {primaryAction.icon}
                 {primaryAction.label}

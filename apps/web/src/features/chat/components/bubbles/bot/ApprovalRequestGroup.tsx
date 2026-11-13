@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { ShieldIcon } from "@icons";
 import type {
   ApprovalDecision,
@@ -124,14 +123,14 @@ export default function ApprovalRequestGroup({
           <div className="min-w-0 flex-1 text-sm text-zinc-100">
             {pending.length} actions need your approval
           </div>
-          <Button
+          <GaiaButton
             size="sm"
             isDisabled={batchSubmitting !== null}
             onPress={() => decideAll("approve")}
             variant="primary"
           >
             Approve all
-          </Button>
+          </GaiaButton>
           <GaiaButton
             variant="default-soft"
             size="sm"
@@ -141,14 +140,14 @@ export default function ApprovalRequestGroup({
             Decline all
           </GaiaButton>
           {pending.length >= 3 && (
-            <Button
+            <GaiaButton
               variant="outline"
               size="sm"
               isDisabled={batchSubmitting !== null}
               onPress={() => setSheetOpen(true)}
             >
               {`Review ${pending.length}`}
-            </Button>
+            </GaiaButton>
           )}
         </div>
       )}

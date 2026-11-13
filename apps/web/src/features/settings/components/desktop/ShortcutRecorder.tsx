@@ -1,8 +1,9 @@
 "use client";
 
 import type { KbdKey } from "@heroui/react";
-import { Button, Kbd } from "@heroui/react";
+import { Kbd } from "@heroui/react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 interface ShortcutRecorderProps {
   /** Electron accelerator string, e.g. "CommandOrControl+Shift+G". */
@@ -185,18 +186,18 @@ export function ShortcutRecorder({
     content = <ShortcutKbd accelerator={heldPreview} />;
   } else {
     content = (
-      <span className="text-xs text-primary">Type shortcut, Esc to cancel</span>
+      <span className="text-xs text-accent">Type shortcut, Esc to cancel</span>
     );
   }
 
   return (
-    <Button
+    <GaiaButton
       variant="tertiary"
       onPress={() => (recording ? stopRecording() : setRecording(true))}
       onBlur={stopRecording}
       className="h-9 min-w-36 px-3"
     >
       {content}
-    </Button>
+    </GaiaButton>
   );
 }

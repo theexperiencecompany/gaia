@@ -36,7 +36,7 @@ export function ProvidersSettings() {
         code. Apps you sign into, like Gmail or Calendar, live in{" "}
         <NextLink
           href="/integrations"
-          className="text-sm text-primary hover:underline"
+          className="text-sm text-accent hover:underline"
         >
           Integrations
         </NextLink>

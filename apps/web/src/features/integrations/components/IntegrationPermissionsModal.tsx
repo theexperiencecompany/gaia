@@ -2,6 +2,7 @@
 
 import { Modal } from "@heroui/react";
 import { modalVariants } from "@/components/shared/controlVariants";
+import { toneVariants } from "@/components/shared/tone";
 import type { IntegrationPermissions } from "@/features/integrations/hooks/useIntegrationPermissions";
 import type { IntegrationToolEntry } from "@/features/integrations/hooks/useIntegrationTools";
 import { PermissionModeDecision } from "./PermissionModeDecision";
@@ -29,11 +30,16 @@ export const IntegrationPermissionsModal = ({
 }: IntegrationPermissionsModalProps) => (
   <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
     <Modal.Backdrop>
-      <Modal.Container size="lg">
+      <Modal.Container>
         <Modal.Dialog className={modalVariants({ size: "xl" })}>
           <Modal.CloseTrigger aria-label="Close" />
           <Modal.Header className="flex-col items-start gap-1 pb-3">
-            <Modal.Heading className="text-base font-semibold text-zinc-100">
+            <Modal.Heading
+              className={toneVariants({
+                tone: "strong",
+                className: "text-base font-semibold",
+              })}
+            >
               {name} permissions
             </Modal.Heading>
             {/* Someone opening this for the first time has no idea GAIA acts on

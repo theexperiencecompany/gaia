@@ -1,4 +1,4 @@
-import { Button, Spinner } from "@heroui/react";
+import { Spinner } from "@heroui/react";
 import { AlertCircleIcon, CheckmarkCircle02Icon } from "@icons";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { Workflow } from "../../api/workflowApi";
@@ -37,12 +37,12 @@ export default function WorkflowLoadingState({
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="ghost" onPress={onClose}>
+          <GaiaButton variant="ghost" onPress={onClose}>
             Cancel
-          </Button>
-          <Button onPress={onRetry} variant="primary">
+          </GaiaButton>
+          <GaiaButton onPress={onRetry} variant="primary">
             Try again
-          </Button>
+          </GaiaButton>
         </div>
       </div>
     );

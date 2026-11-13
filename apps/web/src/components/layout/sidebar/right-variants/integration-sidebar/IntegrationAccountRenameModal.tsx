@@ -1,9 +1,10 @@
 "use client";
 
-import { Button, Description, Input, Modal, TextField } from "@heroui/react";
+import { Description, Input, Modal, TextField } from "@heroui/react";
 import type { IntegrationAccountResponse } from "@shared/api/generated";
 import { useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 interface IntegrationAccountRenameModalProps {
   /** The account being renamed; null keeps the modal closed. */
@@ -35,7 +36,7 @@ export function IntegrationAccountRenameModal({
         }}
       >
         <Modal.Container>
-          <Modal.Dialog className="text-foreground dark">
+          <Modal.Dialog className="dark">
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Header className="pb-0">Rename account</Modal.Header>
             <Modal.Body>
@@ -59,12 +60,12 @@ export function IntegrationAccountRenameModal({
               </TextField>
             </Modal.Body>
             <Modal.Footer>
-              <Button variant="ghost" onPress={onClose}>
+              <GaiaButton variant="ghost" onPress={onClose}>
                 Cancel
-              </Button>
-              <Button onPress={save} variant="primary">
+              </GaiaButton>
+              <GaiaButton onPress={save} variant="primary">
                 Save
-              </Button>
+              </GaiaButton>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

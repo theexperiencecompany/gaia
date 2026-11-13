@@ -1,11 +1,10 @@
 "use client";
 
 import { Accordion } from "@heroui/react";
-import {
-  ACCORDION_INDICATOR,
-  ACCORDION_PANEL,
-  ACCORDION_TRIGGER,
-} from "@/lib/heroui/accordionParity";
+import { accordionVariants } from "@/components/shared/accordionVariants";
+import { toneVariants } from "@/components/shared/tone";
+
+const accordionStyles = accordionVariants();
 
 interface FAQ {
   question: string;
@@ -17,23 +16,31 @@ export default function FAQAccordion({ faqs }: { faqs: FAQ[] }) {
   return (
     <Accordion
       variant="default"
-      className="p-0!"
       defaultExpandedKeys={firstFaq ? [firstFaq.question] : []}
     >
       {faqs.map((faq) => (
         <Accordion.Item key={faq.question} id={faq.question}>
           <Accordion.Heading>
             <Accordion.Trigger
-              className={`text-lg font-medium ${ACCORDION_TRIGGER}`}
+              className={accordionStyles.trigger({
+                className: "text-lg font-medium",
+              })}
             >
               {faq.question}
-              <Accordion.Indicator className={ACCORDION_INDICATOR} />
+              <Accordion.Indicator className={accordionStyles.indicator()} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel
-            className={`${ACCORDION_PANEL} pb-4 text-base font-light text-zinc-400`}
-          >
-            {faq.answer}
+          <Accordion.Panel>
+            <div
+              className={toneVariants({
+                tone: "muted",
+                className: accordionStyles.content({
+                  className: "text-base font-light",
+                }),
+              })}
+            >
+              <div className="pb-2">{faq.answer}</div>
+            </div>
           </Accordion.Panel>
         </Accordion.Item>
       ))}

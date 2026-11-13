@@ -29,7 +29,7 @@ const ease = [0.22, 1, 0.36, 1] as const;
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="mb-4 text-xs font-medium uppercase tracking-widest text-primary">
+    <p className="mb-4 text-xs font-medium uppercase tracking-widest text-accent">
       {children}
     </p>
   );

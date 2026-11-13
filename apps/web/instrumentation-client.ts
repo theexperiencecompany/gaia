@@ -6,16 +6,18 @@
 // so their chunks do not execute during the critical rendering path. Without
 // deferral Sentry alone causes ~630ms of long tasks (TBT) at page load.
 
-// Type-only import — zero runtime cost.
-import type * as SentryNs from "@sentry/nextjs";
 import { config as configureZod } from "zod/v4/core";
 import { DODO_RETURN_IDENTIFYING_PARAMS } from "@/features/pricing/lib/dodoReturnUrl";
+import { onFirstInteraction } from "@/lib/firstInteraction";
+import { whenIdle } from "@/lib/idle";
 import {
   EXTENSION_URL_PATTERNS,
   filterExceptionBeforeSend,
   filterSentryEvent,
   IGNORED_EXCEPTION_MESSAGES,
 } from "@/lib/observability/exception-filter";
+// Type-only import — zero runtime cost.
+import type * as SentryNs from "@/lib/observability/sentryClient";
 
 // The CSP allows no eval, so zod skips its new Function() probe instead of tripping a violation on every app page.
 configureZod({ jitless: true });
@@ -30,7 +32,7 @@ if (typeof window !== "undefined") {
     // Sentry (production only)
     if (process.env.NODE_ENV === "production") {
       try {
-        const Sentry = await import("@sentry/nextjs");
+        const Sentry = await import("@/lib/observability/sentryClient");
 
         Sentry.init({
           dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -69,21 +71,7 @@ if (typeof window !== "undefined") {
               // Replay is best-effort: a load failure must not break the page.
             });
         };
-        const interactionEvents = [
-          "pointerdown",
-          "keydown",
-          "touchstart",
-          "scroll",
-        ] as const;
-        const onFirstInteraction = () => {
-          for (const ev of interactionEvents) {
-            window.removeEventListener(ev, onFirstInteraction);
-          }
-          loadReplay();
-        };
-        for (const ev of interactionEvents) {
-          window.addEventListener(ev, onFirstInteraction, { passive: true });
-        }
+        onFirstInteraction(loadReplay);
       } catch {
         // Observability should never break the app.
       }
@@ -138,11 +126,7 @@ if (typeof window !== "undefined") {
     }
   };
 
-  if ("requestIdleCallback" in window) {
-    requestIdleCallback(loadObservability, { timeout: 4000 });
-  } else {
-    setTimeout(loadObservability, 3000);
-  }
+  whenIdle(loadObservability, { timeoutMs: 4000, fallbackDelayMs: 3000 });
 }
 
 // Next.js calls this hook at the start of every client-side navigation.

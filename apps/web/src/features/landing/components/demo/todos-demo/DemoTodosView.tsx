@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import {
   ArrowDown01Icon,
   CalendarCheckOut01Icon,
@@ -14,6 +14,8 @@ import {
 } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import { useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   DEMO_PROJECTS,
@@ -87,7 +89,7 @@ function DemoTodoItem({
   return (
     <button
       type="button"
-      className={`block w-full cursor-pointer p-4 pl-5 text-left transition-all hover:bg-zinc-800/50 ${isSelected ? "bg-primary/5" : ""} ${todo.completed ? "opacity-30" : ""}`}
+      className={`block w-full cursor-pointer p-4 pl-5 text-left transition-all hover:bg-zinc-800/50 ${isSelected ? "bg-accent/5" : ""} ${todo.completed ? "opacity-30" : ""}`}
       onClick={onClick}
     >
       <div className="flex h-full items-start gap-3">
@@ -115,7 +117,10 @@ function DemoTodoItem({
           <div className="mt-2 flex flex-wrap items-center gap-1">
             {todo.due_date && (
               <Chip
-                className="flex items-center px-1 text-zinc-400"
+                className={toneVariants({
+                  tone: "muted",
+                  className: "flex items-center",
+                })}
                 size="sm"
                 color={
                   isDueToday(todo.due_date)
@@ -150,12 +155,7 @@ function DemoTodoItem({
             )}
 
             {project && (
-              <Chip
-                size="sm"
-                variant="soft"
-                className="px-1 text-zinc-400"
-                style={{ color: project.color }}
-              >
+              <Chip size="sm" variant="soft" style={{ color: project.color }}>
                 <Folder02Icon width={15} height={15} className="mx-1" />
                 <Chip.Label>{project.name}</Chip.Label>
               </Chip>
@@ -166,7 +166,10 @@ function DemoTodoItem({
                 key={label}
                 size="sm"
                 variant="soft"
-                className="flex items-center px-1 text-zinc-400"
+                className={toneVariants({
+                  tone: "muted",
+                  className: "flex items-center",
+                })}
               >
                 <Tag01Icon width={17} height={17} className="mx-1" />
                 <Chip.Label>
@@ -176,7 +179,11 @@ function DemoTodoItem({
             ))}
 
             {todo.subtasks.length > 0 && (
-              <Chip size="sm" variant="soft" className="px-1 text-zinc-400">
+              <Chip
+                size="sm"
+                variant="soft"
+                className={toneVariants({ tone: "muted" })}
+              >
                 <CheckmarkCircle02Icon
                   width={15}
                   height={15}
@@ -250,7 +257,7 @@ function DemoWorkflowSteps({ steps }: { steps: DemoWorkflowStep[] }) {
   return (
     <div className="relative">
       {/* Gradient connector line */}
-      <div className="absolute left-[13px] top-4 bottom-4 w-[2px] bg-linear-to-b from-primary via-primary/80 to-transparent" />
+      <div className="absolute left-[13px] top-4 bottom-4 w-[2px] bg-linear-to-b from-accent via-accent/80 to-transparent" />
       <div className="space-y-4">
         {steps.map((step, index) => {
           const IconComponent = getToolCategoryIcon(step.category, {
@@ -260,8 +267,8 @@ function DemoWorkflowSteps({ steps }: { steps: DemoWorkflowStep[] }) {
           return (
             <div key={step.id} className="flex items-start gap-3">
               {/* Numbered dot */}
-              <div className="relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-primary bg-primary/10 backdrop-blur-sm">
-                <span className="text-xs font-medium text-primary">
+              <div className="relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-accent bg-accent/10 backdrop-blur-sm">
+                <span className="text-xs font-medium text-accent">
                   {index + 1}
                 </span>
               </div>
@@ -463,14 +470,14 @@ function DemoTodoSidebar({
             addSuffix: true,
           })}
         </span>
-        <Button
+        <GaiaButton
           variant="danger-soft"
           isIconOnly
           size="sm"
           aria-label="Delete todo"
         >
           <Delete02Icon className="size-5" />
-        </Button>
+        </GaiaButton>
       </div>
     </div>
   );

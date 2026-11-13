@@ -6,12 +6,23 @@ import UseCaseDetailClient from "@/app/[locale]/(landing)/use-cases/[slug]/clien
 import JsonLd from "@/components/seo/JsonLd";
 import { relatedUseCases } from "@/features/use-cases/lib/relatedUseCases";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
+import { WorkflowIconElementsProvider } from "@/features/workflows/components/shared/WorkflowIconElements";
+import { DEFAULT_WORKFLOW_ICON_COLOR } from "@/features/workflows/constants/workflowIconStyle";
 import {
+  COMMUNITY_PAGE_SIZE,
   getAllCommunityWorkflowsServer,
+  getCommunityWorkflowsServer,
   getExploreWorkflowsServer,
   getPublicWorkflowServer,
 } from "@/features/workflows/lib/serverWorkflowsApi";
-import { findCopiedTemplate } from "@/features/workflows/lib/templateCopies";
+import {
+  findCopiedTemplate,
+  withoutTemplateCopies,
+} from "@/features/workflows/lib/templateCopies";
+import {
+  workflowIconElement,
+  workflowIconElements,
+} from "@/features/workflows/lib/workflowIconElements";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
 import { generateBreadcrumbSchema, siteConfig } from "@/lib/seo";
 import type { UseCase } from "@/types/features/workflowTypes";
@@ -27,6 +38,9 @@ const getExploreWorkflowsCached = cache((limit: number) =>
 interface PageProps {
   params: Promise<{ readonly slug: string }>;
 }
+
+/** The hero tile draws the workflow's icon at this size. */
+const HERO_ICON_SIZE = 26;
 
 export const revalidate = 3600; // Revalidate every hour
 
@@ -203,10 +217,15 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
 
   const display = displayFromResolved(useCase, communityWorkflow);
   const structuredData = generateUseCaseStructuredData({ ...display, slug });
-  const related = relatedUseCases(
-    { slug: data.slug ?? slug },
-    await getExploreWorkflowsCached(200),
-  );
+  const [explore, community] = await Promise.all([
+    getExploreWorkflowsCached(200),
+    getCommunityWorkflowsServer(COMMUNITY_PAGE_SIZE),
+  ]);
+  // The newest community workflows join the rotation, one request per page, so each is linked from its neighbours.
+  const related = relatedUseCases({ slug: data.slug ?? slug }, [
+    ...explore,
+    ...withoutTemplateCopies(community.workflows, explore),
+  ]);
 
   const breadcrumbSchema = generateBreadcrumbSchema([
     { name: "Home", url: siteConfig.url },
@@ -220,12 +239,20 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
   return (
     <>
       <JsonLd data={[structuredData, breadcrumbSchema]} />
-      <UseCaseDetailClient
-        useCase={useCase}
-        communityWorkflow={communityWorkflow}
-        slug={slug}
-        relatedUseCases={related}
-      />
+      <WorkflowIconElementsProvider icons={workflowIconElements(related)}>
+        <UseCaseDetailClient
+          useCase={useCase}
+          communityWorkflow={communityWorkflow}
+          slug={slug}
+          relatedUseCases={related}
+          heroIconElement={workflowIconElement(
+            (useCase ?? communityWorkflow)?.icon,
+            (useCase ?? communityWorkflow)?.icon_color ??
+              DEFAULT_WORKFLOW_ICON_COLOR,
+            HERO_ICON_SIZE,
+          )}
+        />
+      </WorkflowIconElementsProvider>
     </>
   );
 }

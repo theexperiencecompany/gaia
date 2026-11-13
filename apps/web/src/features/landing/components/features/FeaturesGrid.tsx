@@ -78,12 +78,7 @@ export function FeaturesGrid({ children }: { children?: ReactNode }) {
           transition={{ duration: 0.5, ease }}
           className="relative z-10 mb-6"
         >
-          <Chip
-            variant="soft"
-            color="accent"
-            size="md"
-            className="text-primary"
-          >
+          <Chip variant="soft" color="accent" size="md">
             Features
           </Chip>
         </m.div>
@@ -169,7 +164,7 @@ export function FeaturesGrid({ children }: { children?: ReactNode }) {
           if (features.length === 0) return null;
           return (
             <section key={category} className="mb-16">
-              <p className="mb-4 mt-12 text-xs font-medium uppercase tracking-widest text-primary">
+              <p className="mb-4 mt-12 text-xs font-medium uppercase tracking-widest text-accent">
                 {category}
               </p>
               <m.div

@@ -55,8 +55,8 @@ export function AuthorTooltip({
             <Avatar.Fallback>{initials}</Avatar.Fallback>
           </Avatar>
           <div className="flex flex-col">
-            <span className="text-medium">{author.name}</span>
-            <span className="text-xs text-foreground-500">{author.role}</span>
+            <span className="text-base">{author.name}</span>
+            <span className="text-xs text-zinc-400">{author.role}</span>
           </div>
           <div className="mt-1 ml-6 flex gap-2">
             {author.linkedin && (

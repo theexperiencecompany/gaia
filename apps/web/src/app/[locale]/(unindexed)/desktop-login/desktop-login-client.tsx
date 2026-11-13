@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Spinner } from "@heroui/react";
+import { Spinner } from "@heroui/react";
 import { CancelCircleIcon } from "@icons";
 import type { DesktopServerFormReason } from "@shared/desktop-tools";
 import Image from "next/image";
@@ -102,11 +102,12 @@ export function DesktopLoginClient({
 
   // Listen for the main process signalling it's about to navigate to /c
   useEffect(() => {
-    if (typeof window === "undefined" || !window.api?.onAuthRedirecting) return;
-    const cleanup = window.api.onAuthRedirecting(() => {
+    const api = getElectronAPI();
+    // Desktop builds older than the auth-redirect event do not expose it.
+    if (typeof api?.onAuthRedirecting !== "function") return;
+    return api.onAuthRedirecting(() => {
       setStatus("redirecting");
     });
-    return cleanup;
   }, []);
 
   // Resolved during render, not an effect, so this screen never paints before
@@ -207,14 +208,15 @@ export function DesktopLoginClient({
                       You&apos;ll be redirected back automatically
                     </p>
                   </div>
-                  <Button
+                  <GaiaButton
                     variant="ghost"
                     size="sm"
-                    className="mt-2 text-zinc-500"
+                    tone="faint"
+                    className="mt-2"
                     onPress={() => setStatus("ready")}
                   >
                     Try again
-                  </Button>
+                  </GaiaButton>
                 </div>
               )}
 
@@ -251,7 +253,7 @@ export function DesktopLoginClient({
                     shape="pill"
                     variant="ghost"
                     size="sm"
-                    className="text-zinc-400"
+                    tone="muted"
                     onPress={() => setShowServerForm(true)}
                   >
                     Use my own server

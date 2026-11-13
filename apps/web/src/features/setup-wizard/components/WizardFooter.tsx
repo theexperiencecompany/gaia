@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { ArrowLeft02Icon, ArrowRight02Icon } from "@icons";
 import * as m from "motion/react-m";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -28,10 +27,10 @@ export function WizardFooter({
     >
       <div className="flex w-full items-center justify-between gap-2">
         {onBack ? (
-          <Button variant="ghost" onPress={onBack}>
+          <GaiaButton variant="ghost" onPress={onBack}>
             <ArrowLeft02Icon className="size-4" />
             Back
-          </Button>
+          </GaiaButton>
         ) : (
           <span />
         )}
@@ -41,10 +40,10 @@ export function WizardFooter({
               Skip for now
             </GaiaButton>
           )}
-          <Button variant="primary" onPress={onContinue}>
+          <GaiaButton variant="primary" onPress={onContinue}>
             Continue
             <ArrowRight02Icon className="size-4" />
-          </Button>
+          </GaiaButton>
         </div>
       </div>
       <p

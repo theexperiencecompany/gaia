@@ -49,7 +49,7 @@ export default function PersonaSEOSection({
             key={stat.label}
             className="rounded-2xl bg-zinc-800/60 p-5 text-center"
           >
-            <p className="mb-1 text-2xl font-semibold text-primary">
+            <p className="mb-1 text-2xl font-semibold text-accent">
               {stat.value}
             </p>
             <p className="text-sm text-zinc-400">{stat.label}</p>
@@ -117,7 +117,7 @@ export default function PersonaSEOSection({
               href={relatedRole.href}
               className="group rounded-2xl bg-zinc-800/60 p-5 transition-colors hover:bg-zinc-700/50"
             >
-              <h3 className="mb-2 text-base font-medium text-white transition-colors group-hover:text-primary">
+              <h3 className="mb-2 text-base font-medium text-white transition-colors group-hover:text-accent">
                 {relatedRole.label}
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">

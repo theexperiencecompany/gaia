@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Description,
   FieldError,
   Input,
@@ -13,12 +12,11 @@ import {
 } from "@heroui/react";
 import { Github01Icon } from "@icons";
 import { useState } from "react";
-import {
-  modalVariants,
-  tabsVariants,
-} from "@/components/shared/controlVariants";
+import { modalVariants } from "@/components/shared/controlVariants";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
+import { tabsVariants } from "@/components/shared/tabsVariants";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { toast } from "@/lib/toast";
 import { skillsApi } from "../api/skillsApi";
@@ -181,19 +179,18 @@ function SkillEditorFooter({
 }>) {
   return (
     <Modal.Footer>
-      <Button variant="ghost" className="rounded-xl" onPress={onClose}>
+      <GaiaButton variant="ghost" onPress={onClose}>
         {isWriting ? "Cancel" : "Done"}
-      </Button>
+      </GaiaButton>
       {isWriting && (
-        <Button
-          className="rounded-xl"
+        <GaiaButton
           onPress={onSave}
           isPending={isSaving}
           isDisabled={!isValid}
           variant="primary"
         >
           {isEdit ? "Save changes" : "Create skill"}
-        </Button>
+        </GaiaButton>
       )}
     </Modal.Footer>
   );
@@ -300,8 +297,7 @@ function SkillEditorForm({
           <Tabs
             selectedKey={mode}
             onSelectionChange={(key) => setMode(key as "write" | "import")}
-            className={tabsVariants({
-              color: "accent",
+            className={tabsVariants({ color: "accent" }).base({
               className: shapeVariants({ shape: "pill", className: "mb-1" }),
             })}
           >
@@ -353,7 +349,7 @@ export function SkillEditorModal({
   return (
     <Modal isOpen={isOpen} onOpenChange={(open) => !open && onClose()}>
       <Modal.Backdrop>
-        <Modal.Container size="lg">
+        <Modal.Container>
           <Modal.Dialog
             className={modalVariants({ size: "2xl", className: "max-w-2xl" })}
           >

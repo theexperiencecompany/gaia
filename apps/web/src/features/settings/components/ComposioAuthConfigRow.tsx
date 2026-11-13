@@ -1,6 +1,7 @@
 import { Chip, Input, ListBox, Select, TextField } from "@heroui/react";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import type { ComposioIntegrationSetup } from "@/features/settings/api/composioSetupApi";
@@ -75,7 +76,7 @@ export function ComposioAuthConfigRow({
             <Select.Popover>
               <ListBox>
                 {row.detected.map((candidate) => (
-                  <ListBox.Item
+                  <GaiaListBoxItem
                     key={candidate.id}
                     id={candidate.id}
                     textValue={candidate.name}
@@ -86,7 +87,7 @@ export function ComposioAuthConfigRow({
                         {candidate.id}
                       </span>
                     </span>
-                  </ListBox.Item>
+                  </GaiaListBoxItem>
                 ))}
               </ListBox>
             </Select.Popover>

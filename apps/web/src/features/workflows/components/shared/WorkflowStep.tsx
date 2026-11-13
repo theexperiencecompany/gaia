@@ -42,7 +42,7 @@ export default function WorkflowStep({
   return (
     <div className="relative flex items-start gap-5">
       <div
-        className={`relative z-10 mt-0.5 flex ${dotSize} shrink-0 items-center justify-center rounded-full bg-primary`}
+        className={`relative z-10 mt-0.5 flex ${dotSize} shrink-0 items-center justify-center rounded-full bg-accent`}
       >
         <span className={`${dotTextSize} font-semibold text-black`}>
           {index + 1}
@@ -55,7 +55,7 @@ export default function WorkflowStep({
             variant="soft"
             title={categoryLabel}
             aria-label={categoryLabel}
-            className={`${chipHeight} pl-2 space-x-1 truncate ${chipTextSize}`}
+            className={`${chipHeight} space-x-1 truncate ${chipTextSize}`}
           >
             <div className="min-w-fit">
               {getToolCategoryIcon(

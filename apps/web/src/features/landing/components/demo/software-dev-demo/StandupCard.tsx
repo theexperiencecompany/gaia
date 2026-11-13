@@ -74,14 +74,14 @@ export default function StandupCard() {
         </div>
 
         <div>
-          <span className="text-[11px] font-medium uppercase tracking-wide text-primary">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-accent">
             Today
           </span>
           <div className="mt-1.5 space-y-1.5">
             {TODAY_ITEMS.map((item) => (
               <div key={item.id} className="flex items-baseline gap-1.5">
                 <ArrowRight02Icon
-                  className="shrink-0 text-primary"
+                  className="shrink-0 text-accent"
                   width={12}
                   height={12}
                 />

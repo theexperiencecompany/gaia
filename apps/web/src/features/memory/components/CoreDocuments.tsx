@@ -1,12 +1,13 @@
 "use client";
 
-import { Button, Separator, Skeleton, Tabs, TextArea } from "@heroui/react";
+import { Separator, Skeleton, Tabs, TextArea } from "@heroui/react";
 import { FileEmpty02Icon, PencilEdit02Icon } from "@icons";
 import type { MemoryDocType, MemoryDocument } from "@shared/api/generated";
 import { formatDistanceToNow } from "date-fns";
 import { type ReactNode, useEffect, useState, useTransition } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { separatorVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import { memoryApi } from "@/features/memory/api/memoryApi";
@@ -121,23 +122,23 @@ export function CoreDocuments() {
           autoFocus
         />
         <div className="flex justify-end gap-2">
-          <Button
+          <GaiaButton
             size="sm"
+            shape="md"
             variant="ghost"
-            className="rounded-xl"
             onPress={() => setDraft(null)}
           >
             Cancel
-          </Button>
-          <Button
+          </GaiaButton>
+          <GaiaButton
             size="sm"
-            className="rounded-xl"
+            shape="md"
             onPress={handleSave}
             isPending={isSaving}
             variant="primary"
           >
             Save
-          </Button>
+          </GaiaButton>
         </div>
       </div>
     );
@@ -186,7 +187,12 @@ export function CoreDocuments() {
         {/* Meta row — version + updated timestamp, separated by divider */}
         {document && (
           <>
-            <Separator className="my-3 bg-zinc-700/50" />
+            <Separator
+              className={separatorVariants({
+                surface: "raised",
+                className: "my-3",
+              })}
+            />
             <div className="flex items-center justify-between gap-3">
               <p className="flex items-center gap-1.5 text-xs text-zinc-500">
                 <span>v{document.version}</span>
@@ -201,8 +207,9 @@ export function CoreDocuments() {
               {draft === null && (
                 <GaiaButton
                   size="sm"
+                  shape="md"
                   variant="default-soft"
-                  className="shrink-0 rounded-xl"
+                  className="shrink-0"
                   onPress={() => setDraft(document.content)}
                 >
                   <PencilEdit02Icon className="size-4" />

@@ -58,7 +58,7 @@ export function CompareRelatedSections({
                 href={`/compare/${comp.slug}`}
                 className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
               >
-                <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
+                <h3 className="mb-1 text-base font-medium text-white group-hover:text-accent">
                   {t("comparisons.gaia_vs", { name: comp.name })}
                 </h3>
                 <p className="text-xs text-zinc-400">{comp.tagline}</p>
@@ -89,7 +89,7 @@ export function CompareRelatedSections({
                 href={`/for/${persona.slug}`}
                 className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
               >
-                <h3 className="mb-2 text-base font-medium text-white group-hover:text-primary">
+                <h3 className="mb-2 text-base font-medium text-white group-hover:text-accent">
                   {t("comparisons.gaia_for_persona", { role: persona.role })}
                 </h3>
                 <p className="line-clamp-2 text-xs leading-relaxed text-zinc-400">

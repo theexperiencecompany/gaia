@@ -1,8 +1,9 @@
-import { Button, Spinner, Tooltip } from "@heroui/react";
+import { Spinner, Tooltip } from "@heroui/react";
 import { Cancel01Icon } from "@icons";
 import { formatFileSize } from "@shared/utils";
 import Image from "next/image";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { FileTypeIcon } from "@/features/chat/components/files/FileTypeIcon";
 import {
   getFileTypeExtension,
@@ -45,16 +46,17 @@ const FileChip: React.FC<{
         </div>
       )}
 
-      <Button
+      <GaiaButton
         isIconOnly
         size="sm"
         variant="tertiary"
         isDisabled={file.isUploading}
-        className="absolute top-0 right-0 z-10 h-6 w-6 min-w-0 scale-90 rounded-full opacity-0 transition-opacity group-hover:opacity-100"
+        shape="pill"
+        className="absolute top-0 right-0 z-10 h-6 w-6 min-w-0 scale-90 opacity-0 transition-opacity group-hover:opacity-100"
         onPress={() => onRemove(file.id)}
       >
         <Cancel01Icon size={14} />
-      </Button>
+      </GaiaButton>
 
       {file.type.startsWith("image/") ? (
         <div className="h-12 w-12 overflow-hidden rounded-md">

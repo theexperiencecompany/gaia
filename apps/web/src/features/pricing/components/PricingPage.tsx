@@ -70,12 +70,12 @@ export default function PricingPage({
             isYearly={isYearly}
             onChange={setIsYearly}
             initialPlans={initialPlans}
-          />
-
-          <PricingCards
-            durationIsMonth={!isYearly}
-            initialPlans={initialPlans}
-          />
+          >
+            <PricingCards
+              durationIsMonth={!isYearly}
+              initialPlans={initialPlans}
+            />
+          </BillingPeriodTabs>
         </div>
 
         <ComparisonGrid />

@@ -9,7 +9,7 @@
 
 "use client";
 
-import { Button, Spinner } from "@heroui/react";
+import { Spinner } from "@heroui/react";
 import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -117,12 +117,12 @@ export function Platforms({ state, dispatch, onConfirmed }: PlatformsProps) {
             >
               Open {BOT_PLATFORM_LABELS[awaitingPlatform]} again
             </GaiaButton>
-            <Button variant="ghost" size="md" onPress={chooseAnother}>
+            <GaiaButton variant="ghost" size="md" onPress={chooseAnother}>
               {AWAITING_LINK_OTHER_APP_LABEL}
-            </Button>
-            <Button variant="ghost" size="md" onPress={skip}>
+            </GaiaButton>
+            <GaiaButton variant="ghost" size="md" onPress={skip}>
               {AWAITING_LINK_SKIP_LABEL}
-            </Button>
+            </GaiaButton>
           </div>
         </m.div>
       )}

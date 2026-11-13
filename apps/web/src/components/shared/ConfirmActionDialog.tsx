@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Modal } from "@heroui/react";
+import { Modal } from "@heroui/react";
 import { useRouter } from "next/navigation";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useLogout } from "@/features/auth/hooks/useLogout";
@@ -101,20 +101,21 @@ export function ConfirmActionDialog({
             </Modal.Body>
             <Modal.Footer>
               <GaiaButton
-                variant="default-soft"
+                variant="tertiary"
+                tone="dim"
+                className="hover:bg-zinc-700"
                 onPress={() => handleOpenChange(false)}
-                className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
               >
                 {config.cancelText}
               </GaiaButton>
-              <Button
+              <GaiaButton
                 onPress={() => {
                   handleConfirm();
                   handleOpenChange(false);
                 }}
               >
                 {config.confirmText}
-              </Button>
+              </GaiaButton>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

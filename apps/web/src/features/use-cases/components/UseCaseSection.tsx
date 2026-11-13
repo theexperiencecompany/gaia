@@ -1,4 +1,4 @@
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import { StarAward01Icon, WorkflowCircle03Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronUp } from "@/components/shared/icons";
+import { toneVariants } from "@/components/shared/tone";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
@@ -132,7 +133,7 @@ function CategoryChip({
       <Chip
         variant={isSelected ? "primary" : "soft"}
         color={isSelected ? "accent" : "default"}
-        className={`cursor-pointer capitalize ${isSelected ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
+        className={`${toneVariants({ tone: isSelected ? "default" : "muted" })} cursor-pointer capitalize ${isSelected ? "" : "bg-white/5!"} font-light! backdrop-blur-2xl!`}
         size="lg"
         onClick={onClick}
       >
@@ -282,7 +283,7 @@ export default function UseCaseSection({
               size="sm"
               variant="default-soft"
               onPress={() => setShowUseCases(false)}
-              className="text-zinc-300"
+              tone="dim"
             >
               <ChevronUp />
             </GaiaButton>
@@ -490,12 +491,12 @@ function UseCaseEmptyStates({
         workflowsLength === 0 && (
           <div className="flex h-48 items-center justify-center">
             <div className="text-center space-y-1">
-              <p className="text-lg text-foreground-600">No workflows found</p>
-              <p className="text-sm text-foreground-400 mb-5">
+              <p className="text-lg text-zinc-300">No workflows found</p>
+              <p className="text-sm text-zinc-500 mb-5">
                 Create your first workflow to get started
               </p>
               <Link href={"/workflows"}>
-                <Button variant="primary">Create</Button>
+                <GaiaButton variant="primary">Create</GaiaButton>
               </Link>
             </div>
           </div>
@@ -504,7 +505,7 @@ function UseCaseEmptyStates({
       {selectedCategory === "workflows" && isLoadingWorkflows && (
         <div className="flex h-48 items-center justify-center">
           <div className="text-center">
-            <p className="text-lg text-foreground-500">Loading workflows...</p>
+            <p className="text-lg text-zinc-400">Loading workflows...</p>
           </div>
         </div>
       )}

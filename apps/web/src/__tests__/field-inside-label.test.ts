@@ -4,13 +4,13 @@ import { describe, expect, it } from "vitest";
 
 import { fieldVariants } from "@/components/shared/fieldVariants";
 
-const BASE_CSS = readFileSync(
-  path.resolve(__dirname, "../app/styles/base.css"),
+const GAIA_CSS = readFileSync(
+  path.resolve(__dirname, "../app/styles/gaia.css"),
   "utf8",
 );
 const VISIBLE_LABEL_GATE = ".gaia-field-inside:has(> .label:not(.sr-only))";
 
-/** Every selector in base.css that styles the inside-label layout. */
+/** Every selector in gaia.css that styles the inside-label layout. */
 function insideLabelSelectors(css: string): string[] {
   const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
   return [...withoutComments.matchAll(/([^{}]+)\{/g)]
@@ -23,7 +23,7 @@ function insideLabelSelectors(css: string): string[] {
 // rendered; an aria-label or sr-only label must keep the plain field.
 describe("inside-label fields", () => {
   it("lay out inside only when a visible Label renders", () => {
-    const selectors = insideLabelSelectors(BASE_CSS);
+    const selectors = insideLabelSelectors(GAIA_CSS);
     expect(selectors.length).toBeGreaterThan(0);
     expect(
       selectors.filter((selector) => !selector.startsWith(VISIBLE_LABEL_GATE)),

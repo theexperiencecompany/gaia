@@ -11,6 +11,7 @@ import {
 } from "@icons";
 import Image from "next/image";
 import { useState } from "react";
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
@@ -143,19 +144,17 @@ export function SystemWorkflowChip({ size = "sm" }: SystemWorkflowChipProps) {
   return (
     <Tooltip delay={300} closeDelay={0}>
       <Tooltip.Trigger>
-        <Chip
-          color="accent"
-          variant="soft"
-          size={size}
-          className="text-primary"
-        >
+        <Chip color="accent" variant="soft" size={size}>
           <Image src="/brand/gaia_logo.svg" alt="GAIA" width={14} height={14} />
-          <Chip.Label className="pl-0.5">System</Chip.Label>
+          <Chip.Label>System</Chip.Label>
         </Chip>
       </Tooltip.Trigger>
       <Tooltip.Content
         placement="top"
-        className="bg-zinc-800 text-xs max-w-48 text-center"
+        className={overlayVariants({
+          surface: "raised",
+          className: "text-xs max-w-48 text-center",
+        })}
       >
         Automatically created by GAIA when you connected this integration
       </Tooltip.Content>
@@ -263,7 +262,10 @@ export function MissingIntegrationsWarning({
       </Tooltip.Trigger>
       <Tooltip.Content
         placement="top"
-        className="bg-zinc-800 text-xs max-w-56 text-center"
+        className={overlayVariants({
+          surface: "raised",
+          className: "text-xs max-w-56 text-center",
+        })}
       >
         {missingIntegrationsMessage(missingIntegrations)}
       </Tooltip.Content>

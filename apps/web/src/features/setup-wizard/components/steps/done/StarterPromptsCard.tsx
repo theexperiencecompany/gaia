@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { ArrowRight02Icon, SparklesIcon } from "@icons";
 import * as m from "motion/react-m";
 import { useRouter } from "next/navigation";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useAppendToInput } from "@/stores/composerStore";
 import { CARD_TRANSITION, CARD_VARIANTS, ITEM_VARIANTS } from "./doneMotion";
 import type { StarterPrompt } from "./starterPrompts";
@@ -41,15 +41,18 @@ export function StarterPromptsCard({ prompts }: StarterPromptsCardProps) {
       >
         {prompts.map(({ prompt, icon: Icon }) => (
           <m.div key={prompt} variants={ITEM_VARIANTS}>
-            <Button
+            <GaiaButton
               fullWidth
               variant="ghost"
               size="sm"
+              shape="md"
               onPress={() => {
                 appendToInput(prompt);
                 router.push("/c");
               }}
-              className="h-11 justify-start gap-3 rounded-xl bg-zinc-900 px-3 text-sm font-normal text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100"
+              tone="dim"
+              hoverTone="strong"
+              className="h-11 justify-start gap-3 bg-zinc-900 text-sm font-normal hover:bg-zinc-700"
             >
               <Icon size={18} className="shrink-0 text-zinc-500" />
               <span className="truncate text-left">{prompt}</span>
@@ -57,7 +60,7 @@ export function StarterPromptsCard({ prompts }: StarterPromptsCardProps) {
                 size={14}
                 className="ml-auto shrink-0 text-zinc-600"
               />
-            </Button>
+            </GaiaButton>
           </m.div>
         ))}
       </m.div>

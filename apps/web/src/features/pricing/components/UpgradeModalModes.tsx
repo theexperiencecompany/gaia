@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, Chip, ModalBody, Tabs } from "@heroui/react";
+import { Chip, ModalBody, Tabs } from "@heroui/react";
 import type { ReactNode } from "react";
 import { chipVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { RaisedButton } from "@/components/ui/raised-button";
 import type { Plan } from "../api/pricingApi";
 import type { PaywallCopy } from "../constants";
@@ -125,7 +126,7 @@ export function UpgradeModalOffer({
                 key={feature}
                 className="flex items-start gap-2 text-sm font-light"
               >
-                <span className="mt-1.5 size-1 shrink-0 rounded-full bg-primary" />
+                <span className="mt-1.5 size-1 shrink-0 rounded-full bg-accent" />
                 <PlanFeature feature={feature} />
               </div>
             ))}
@@ -148,14 +149,17 @@ export function UpgradeModalOffer({
         </RaisedButton>
       )}
 
-      <Button
-        variant="ghost"
+      <GaiaButton
+        variant="text"
         size="sm"
-        className="mx-auto mt-1 h-auto min-w-0 p-0 text-xs text-zinc-500 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-300 data-[hover=true]:underline"
+        tone="faint"
+        hoverTone="dim"
+        inset="none"
+        className="mx-auto mt-1 text-xs data-[hover=true]:underline"
         onPress={() => onLogout()}
       >
         Log out
-      </Button>
+      </GaiaButton>
     </ModalBody>
   );
 }

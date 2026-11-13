@@ -148,9 +148,9 @@
       "cache": false,
       "inputs": [
         "ciHarness",
-        "{workspaceRoot}/apps/web/src/**/*.tsx",
-        "{workspaceRoot}/apps/desktop/src/**/*.tsx",
-        "{workspaceRoot}/libs/shared/ts/src/**/*.tsx",
+        "{workspaceRoot}/apps/web/src/**/*.{ts,tsx}",
+        "{workspaceRoot}/apps/desktop/src/**/*.{ts,tsx}",
+        "{workspaceRoot}/libs/shared/ts/src/**/*.{ts,tsx}",
         {
           "externalDependencies": []
         }
@@ -159,6 +159,29 @@
         "ci": {
           "job": "lint-node",
           "check": "heroui-style-overrides",
+          "area": "node"
+        }
+      }
+    },
+    "heroui-usage": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs heroui-usage"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/apps/web/src/**/*.{ts,tsx}",
+        "{workspaceRoot}/apps/desktop/src/**/*.{ts,tsx}",
+        "{workspaceRoot}/libs/shared/ts/src/**/*.{ts,tsx}",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-node",
+          "check": "heroui-usage",
           "area": "node"
         }
       }

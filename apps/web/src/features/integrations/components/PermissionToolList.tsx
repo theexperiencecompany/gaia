@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, InputGroup, Switch } from "@heroui/react";
+import { InputGroup, Switch } from "@heroui/react";
 import { Search01Icon } from "@icons";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -43,15 +43,17 @@ export const PermissionToolList = ({
       description={`${permissions.askCount} of ${tools.length} turned on. Everything else runs without asking.`}
       action={
         permissions.deviations > 0 && (
-          <Button
+          <GaiaButton
             size="sm"
             variant="ghost"
-            className="-mr-1 h-7 shrink-0 px-2 text-xs text-zinc-400"
+            tone="muted"
+            inset="tight"
+            className="-mr-1 h-7 shrink-0 text-xs"
             isPending={permissions.isSavingTools}
             onPress={permissions.resetToDefaults}
           >
             Reset to defaults
-          </Button>
+          </GaiaButton>
         )
       }
     >

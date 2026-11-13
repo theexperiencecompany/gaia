@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import {
   ArrowRight02Icon,
   PlayIcon,
@@ -146,20 +146,22 @@ function DemoWorkflowCard({
             {variant === "user" ? (
               <GaiaButton
                 size="sm"
+                shape="md"
                 variant="accent-soft"
-                className="font-medium rounded-xl"
+                className="font-medium"
               >
                 Run
               </GaiaButton>
             ) : (
-              <Button
+              <GaiaButton
                 size="sm"
+                shape="md"
                 variant="primary"
-                className="font-medium rounded-xl"
+                className="font-medium"
               >
                 Create
                 <ZapIcon width={16} height={16} />
-              </Button>
+              </GaiaButton>
             )}
           </div>
         </div>
@@ -176,8 +178,8 @@ export default function DemoWorkflowsView() {
         <div className="relative overflow-hidden rounded-3xl bg-zinc-800/50">
           <div className="relative z-10 flex items-center justify-between gap-6 p-4">
             <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/20">
-                <UserGroupIcon className="h-6 w-6 text-primary" />
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent/20">
+                <UserGroupIcon className="h-6 w-6 text-accent" />
               </div>
               <div>
                 <h3 className="text-lg font-medium text-white">
@@ -194,10 +196,10 @@ export default function DemoWorkflowsView() {
                 Browse Use Cases
                 <ArrowRight02Icon className="h-4 w-4" />
               </GaiaButton>
-              <Button size="sm" variant="primary">
+              <GaiaButton size="sm" variant="primary">
                 <ZapIcon className="h-4 w-4" />
                 Create New Workflow
-              </Button>
+              </GaiaButton>
             </div>
           </div>
         </div>

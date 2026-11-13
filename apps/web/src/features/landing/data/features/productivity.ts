@@ -472,7 +472,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
     tagline: "Save and bookmark any message for later reference",
     headline: "Never lose an important insight again.",
     subheadline:
-      "Pin any message from any conversation to save it permanently, then search and browse all your pins in one place.",
+      "Pin any message from any conversation to save it permanently, then search and browse all your pins in one place, so a useful answer is never lost.",
     benefits: [
       {
         icon: "Bookmark01Icon",

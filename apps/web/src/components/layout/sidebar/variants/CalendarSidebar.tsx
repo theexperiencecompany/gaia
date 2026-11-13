@@ -36,7 +36,7 @@ export default function CalendarSidebar() {
           size="sm"
           fullWidth
           onPress={handleCreateEvent}
-          className="mb-4 flex justify-start text-sm font-medium text-primary"
+          className="mb-4 flex justify-start text-sm font-medium"
           data-keyboard-shortcut="create-event"
         >
           <CalendarAdd01Icon width={18} height={18} />

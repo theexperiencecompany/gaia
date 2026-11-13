@@ -4,6 +4,7 @@ import { Badge, Popover, Tabs } from "@heroui/react";
 import { NotificationIcon } from "@icons";
 import { useMemo, useState } from "react";
 import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
@@ -80,7 +81,7 @@ export function NotificationCenter({
                 aria-label="Notifications"
                 tooltip="Notifications"
               >
-                <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-primary" />
+                <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-accent" />
               </SidebarHeaderButton>
               {unreadCount > 0 && (
                 <Badge
@@ -96,7 +97,12 @@ export function NotificationCenter({
           </div>
         </Popover.Trigger>
 
-        <Popover.Content className="mr-4 w-96 rounded-2xl border-1 border-zinc-700 bg-zinc-800 p-0 shadow-xl">
+        <Popover.Content
+          className={overlayVariants({
+            surface: "raised",
+            className: "mr-4 w-96 border-1 border-zinc-700 shadow-xl",
+          })}
+        >
           <Tabs
             selectedKey={activeTab}
             onSelectionChange={(key) => setActiveTab(key as "unread" | "all")}

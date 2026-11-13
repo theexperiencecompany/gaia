@@ -11,6 +11,7 @@ import type { MemoryEpisode } from "@shared/api/generated";
 import { addDays, format, isToday, parseISO, subDays } from "date-fns";
 import { type ReactNode, useEffect, useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { MemoryEmptyState } from "@/features/memory/components/MemoryEmptyState";
 import { JOURNAL_RANGE_DAYS } from "@/features/memory/constants";
@@ -96,32 +97,36 @@ export function MemoryTimeline() {
                       {format(date, "EEEE, MMM d")}
                     </span>
                     {isToday(date) && (
-                      <span className="text-xs text-primary">Today</span>
+                      <span className="text-xs text-accent">Today</span>
                     )}
                   </div>
-                  <Accordion.Indicator className="text-zinc-500" />
+                  <Accordion.Indicator
+                    className={toneVariants({ tone: "faint" })}
+                  />
                 </Accordion.Trigger>
               </Accordion.Heading>
-              <Accordion.Panel className="pt-0 pb-4">
-                {episode.summary && (
-                  <p className="text-sm text-zinc-400">{episode.summary}</p>
-                )}
+              <Accordion.Panel>
+                <div className="pb-4">
+                  {episode.summary && (
+                    <p className="text-sm text-zinc-400">{episode.summary}</p>
+                  )}
 
-                {episode.entries.length > 0 && (
-                  <div className="mt-2 space-y-1.5">
-                    {episode.entries.map((entry) => (
-                      <div
-                        key={`${entry.time}-${entry.text}`}
-                        className="flex items-baseline gap-3"
-                      >
-                        <span className="shrink-0 text-xs tabular-nums text-zinc-500">
-                          {entry.time}
-                        </span>
-                        <p className="text-sm text-zinc-300">{entry.text}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                  {episode.entries.length > 0 && (
+                    <div className="mt-2 space-y-1.5">
+                      {episode.entries.map((entry) => (
+                        <div
+                          key={`${entry.time}-${entry.text}`}
+                          className="flex items-baseline gap-3"
+                        >
+                          <span className="shrink-0 text-xs tabular-nums text-zinc-500">
+                            {entry.time}
+                          </span>
+                          <p className="text-sm text-zinc-300">{entry.text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </Accordion.Panel>
             </Accordion.Item>
           );
@@ -140,8 +145,8 @@ export function MemoryTimeline() {
           <GaiaButton
             isIconOnly
             size="sm"
+            shape="md"
             variant="default-soft"
-            className="rounded-xl"
             aria-label="Previous two weeks"
             onPress={() => setRangeEnd(subDays(rangeEnd, JOURNAL_RANGE_DAYS))}
           >
@@ -150,8 +155,8 @@ export function MemoryTimeline() {
           <GaiaButton
             isIconOnly
             size="sm"
+            shape="md"
             variant="default-soft"
-            className="rounded-xl"
             aria-label="Next two weeks"
             isDisabled={atToday}
             onPress={() => {

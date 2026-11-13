@@ -4,18 +4,18 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
 import { useMemo, useState } from "react";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import {
-  ACCORDION_INDICATOR,
-  ACCORDION_PANEL_COMPACT,
-  ACCORDION_ROOT,
-  ACCORDION_TRIGGER_COMPACT,
-} from "@/lib/heroui/accordionParity";
 import { dummyIntegrations } from "./constants";
+
+const accordionStyles = accordionVariants({
+  variant: "light",
+  density: "compact",
+});
 
 // Dummy Integrations Card Component
 const DummyIntegrationsCard: React.FC = () => {
@@ -25,7 +25,7 @@ const DummyIntegrationsCard: React.FC = () => {
     <div className="mx-2 mb-3 border-b-1 border-zinc-800">
       <Accordion
         variant="default"
-        className={ACCORDION_ROOT}
+        className={accordionStyles.base()}
         expandedKeys={isExpanded ? new Set(["integrations"]) : new Set([])}
         onExpandedChange={(keys) => {
           const expanded = keys instanceof Set && keys.has("integrations");
@@ -35,12 +35,14 @@ const DummyIntegrationsCard: React.FC = () => {
         <Accordion.Item id="integrations" className="pb-1">
           <Accordion.Heading>
             <Accordion.Trigger
-              className={`cursor-pointer ${ACCORDION_TRIGGER_COMPACT}`}
+              className={accordionStyles.trigger({
+                className: "cursor-pointer",
+              })}
             >
               <div className="flex items-center gap-3 px-1 pt-1">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-normal text-foreground-500">
+                    <span className="text-xs font-normal text-zinc-400">
                       Integrations
                     </span>
                     <span className="text-xs font-light text-zinc-400">
@@ -49,44 +51,46 @@ const DummyIntegrationsCard: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <Accordion.Indicator className={ACCORDION_INDICATOR} />
+              <Accordion.Indicator className={accordionStyles.indicator()} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className={ACCORDION_PANEL_COMPACT}>
-            <div>
-              <div className="grid grid-cols-2 gap-2">
-                {dummyIntegrations.map((integration) => (
-                  <div
-                    key={integration.id}
-                    className="flex items-center gap-2 rounded-lg p-2 px-3"
-                  >
-                    {/* Icon */}
-                    <div className="flex-shrink-0">
-                      <div className="flex items-center justify-center rounded-lg">
-                        {getToolCategoryIcon(integration.id, {
-                          size: 25,
-                          width: 25,
-                          height: 25,
-                          showBackground: false,
-                        })}
+          <Accordion.Panel>
+            <div className={accordionStyles.content()}>
+              <div>
+                <div className="grid grid-cols-2 gap-2">
+                  {dummyIntegrations.map((integration) => (
+                    <div
+                      key={integration.id}
+                      className="flex items-center gap-2 rounded-lg p-2 px-3"
+                    >
+                      {/* Icon */}
+                      <div className="flex-shrink-0">
+                        <div className="flex items-center justify-center rounded-lg">
+                          {getToolCategoryIcon(integration.id, {
+                            size: 25,
+                            width: 25,
+                            height: 25,
+                            showBackground: false,
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Name */}
+                      <div className="min-w-0 flex-1">
+                        <span className="block truncate text-xs text-zinc-300">
+                          {integration.name}
+                        </span>
+                      </div>
+
+                      {/* Status */}
+                      <div className="flex-shrink-0">
+                        <Chip size="sm" variant="soft" color="success">
+                          Connected
+                        </Chip>
                       </div>
                     </div>
-
-                    {/* Name */}
-                    <div className="min-w-0 flex-1">
-                      <span className="block truncate text-xs text-zinc-300">
-                        {integration.name}
-                      </span>
-                    </div>
-
-                    {/* Status */}
-                    <div className="flex-shrink-0">
-                      <Chip size="sm" variant="soft" color="success">
-                        Connected
-                      </Chip>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           </Accordion.Panel>
@@ -650,7 +654,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-sm text-foreground-600">
+                          <span className="truncate text-sm text-zinc-300">
                             {formatToolName(tool.name)}
                           </span>
                           <div className="flex items-center gap-2">

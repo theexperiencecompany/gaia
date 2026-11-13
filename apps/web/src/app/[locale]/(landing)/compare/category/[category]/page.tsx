@@ -22,20 +22,24 @@ interface PageProps {
 }
 
 export function generateStaticParams() {
+  // Labels do not decide which categories exist, so the message key stands in for them.
   return prerenderedMarketingParams(async () =>
-    comparisonCategoryGroups(await getAllComparisons()).map((category) => ({
-      category: category.slug,
-    })),
+    comparisonCategoryGroups(await getAllComparisons(), (key) => key).map(
+      (category) => ({ category: category.slug }),
+    ),
   );
 }
 
 export const dynamicParams = false;
 
-async function findCategory(slug: string, locale?: string) {
-  const categories = comparisonCategoryGroups(
-    await getTranslatedComparisons(locale),
+async function findCategory(slug: string, locale: string) {
+  const [t, comparisons] = await Promise.all([
+    getTranslations({ locale, namespace: "comparisons" }),
+    getTranslatedComparisons(locale),
+  ]);
+  return comparisonCategoryGroups(comparisons, t).find(
+    (category) => category.slug === slug,
   );
-  return categories.find((category) => category.slug === slug);
 }
 
 export async function generateMetadata({

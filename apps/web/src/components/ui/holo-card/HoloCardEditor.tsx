@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  Button,
-  ButtonGroup,
-  Dropdown,
-  Popover,
-  Slider,
-  Tooltip,
-} from "@heroui/react";
+import { ButtonGroup, Dropdown, Popover, Slider, Tooltip } from "@heroui/react";
 import {
   Copy01Icon,
   Download01Icon,
@@ -34,7 +27,10 @@ function random(): number {
   return crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
 }
 
-import { sliderVariants } from "@/components/shared/controlVariants";
+import {
+  overlayVariants,
+  sliderVariants,
+} from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { Dices, TwitterIcon } from "@/components/shared/icons";
 import { holoCardApi } from "@/features/onboarding/api/holoCardApi";
@@ -268,11 +264,17 @@ const EditorToolbar = ({
           >
             <ColorSwatch color={color} />
           </GaiaButton>
-          <Popover.Content placement="top" className="w-auto bg-zinc-800 p-4">
-            <div className="flex flex-col gap-3">
+          <Popover.Content
+            placement="top"
+            className={overlayVariants({
+              surface: "raised",
+              className: "w-auto",
+            })}
+          >
+            <div className="flex flex-col gap-3 p-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-white/70">Color Picker</span>
-                <Button
+                <GaiaButton
                   size="sm"
                   variant="ghost"
                   isIconOnly
@@ -280,7 +282,7 @@ const EditorToolbar = ({
                   aria-label="Reset Color"
                 >
                   <ReloadIcon size={16} />
-                </Button>
+                </GaiaButton>
               </div>
               <ColorPicker
                 value={color}

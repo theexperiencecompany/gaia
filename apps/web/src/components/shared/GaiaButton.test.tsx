@@ -48,4 +48,27 @@ describe("GAIA button variants", () => {
       "bg-accent-soft",
     );
   });
+
+  it("rounds a pill LinkButton instead of leaking shape onto the anchor", () => {
+    render(
+      <LinkButton href="/c" shape="pill">
+        Open
+      </LinkButton>,
+    );
+    const link = screen.getByRole("link", { name: "Open" });
+    expect(link.className).toContain("gaia-pill");
+    expect(link.hasAttribute("shape")).toBe(false);
+  });
+
+  it.each([
+    ["muted", "text-zinc-400"],
+    ["accent", "text-accent"],
+  ] as const)("gives a %s-toned ghost button its text colour", (tone, cls) => {
+    render(
+      <GaiaButton variant="ghost" tone={tone}>
+        Go
+      </GaiaButton>,
+    );
+    expect(screen.getByRole("button", { name: "Go" }).className).toContain(cls);
+  });
 });

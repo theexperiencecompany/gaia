@@ -208,7 +208,7 @@ function AlternativeArticle({
               {
                 key: "gaia",
                 label: t("alternatives.gaia_column"),
-                headerClassName: "text-primary",
+                headerClassName: "text-accent",
                 cellClassName: "text-emerald-400",
               },
               {
@@ -281,7 +281,7 @@ function AlternativeArticle({
           </p>
           <SiteLink
             href={marketplacePath}
-            className="inline-flex items-center rounded-full bg-primary px-6 py-3 text-sm font-medium text-black transition-opacity hover:opacity-90"
+            className="inline-flex items-center rounded-full bg-accent px-6 py-3 text-sm font-medium text-black transition-opacity hover:opacity-90"
           >
             Connect {data.name}
           </SiteLink>
@@ -301,7 +301,7 @@ function AlternativeArticle({
                 href={`/alternative-to/${alt.slug}`}
                 className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
               >
-                <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
+                <h3 className="mb-1 text-base font-medium text-white group-hover:text-accent">
                   {t("alternatives.best_alternative", { name: alt.name })}
                 </h3>
                 <p className="text-xs text-zinc-400">{alt.tagline}</p>
@@ -324,7 +324,7 @@ function AlternativeArticle({
                 href={`/compare/${comp.slug}`}
                 className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
               >
-                <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
+                <h3 className="mb-1 text-base font-medium text-white group-hover:text-accent">
                   {t("alternatives.gaia_vs_name", { name: comp.name })}
                 </h3>
                 <p className="text-xs text-zinc-400">{comp.tagline}</p>

@@ -369,7 +369,7 @@ export function MCPAppRenderer({ data }: Props) {
   return (
     <div
       ref={observeContainer}
-      className="rounded-2xl overflow-hidden border border-default-200 my-2 max-w-2xl"
+      className="rounded-2xl overflow-hidden border border-zinc-700 my-2 max-w-2xl"
       style={{ width: "100%", height: `${appHeight}px` }}
     >
       {frame}

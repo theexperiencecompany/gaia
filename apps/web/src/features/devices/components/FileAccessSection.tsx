@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Chip } from "@heroui/react";
+import { Chip } from "@heroui/react";
 import { Folder01Icon, HardDriveIcon } from "@icons";
 import type { ProtectedFolder } from "@shared/desktop-tools";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -45,14 +45,14 @@ export function FileAccessSection() {
                   Allowed
                 </Chip>
               ) : (
-                <Button
+                <GaiaButton
                   size="sm"
                   variant="tertiary"
                   isPending={busy === folder}
                   onPress={() => void requestFolder(folder)}
                 >
                   {state === "denied" ? "Denied — retry" : "Allow"}
-                </Button>
+                </GaiaButton>
               )}
             </div>
           );

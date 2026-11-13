@@ -1,11 +1,9 @@
 import type { Selection } from "@heroui/react";
 import { Accordion } from "@heroui/react";
 import { type ReactNode, useState } from "react";
-import {
-  ACCORDION_INDICATOR,
-  ACCORDION_PANEL_COMPACT,
-  ACCORDION_TRIGGER_COMPACT,
-} from "@/lib/heroui/accordionParity";
+import { accordionVariants } from "@/components/shared/accordionVariants";
+
+const accordionStyles = accordionVariants({ density: "compact" });
 
 interface CollapsibleListWrapperProps {
   children: ReactNode;
@@ -42,19 +40,18 @@ export default function CollapsibleListWrapper({
   return (
     <div className="w-full">
       <Accordion
-        className="w-full max-w-(--breakpoint-sm) px-0"
+        className="w-full max-w-(--breakpoint-sm)"
         defaultExpandedKeys={defaultKeys}
         onExpandedChange={(keys) => {
           setIsExpanded(keys instanceof Set && keys.has("1"));
         }}
       >
-        <Accordion.Item
-          id="1"
-          className="w-screen max-w-(--breakpoint-sm) px-0"
-        >
+        <Accordion.Item id="1" className="w-screen max-w-(--breakpoint-sm)">
           <Accordion.Heading>
             <Accordion.Trigger
-              className={`cursor-pointer ${ACCORDION_TRIGGER_COMPACT}`}
+              className={accordionStyles.trigger({
+                className: "cursor-pointer",
+              })}
             >
               <div className="flex items-center gap-2 text-sm font-normal text-zinc-400 transition hover:text-white">
                 {icon}
@@ -62,11 +59,11 @@ export default function CollapsibleListWrapper({
                   {isExpanded ? "Hide" : "Show"} {getCountLabel()}
                 </div>
               </div>
-              <Accordion.Indicator className={ACCORDION_INDICATOR} />
+              <Accordion.Indicator className={accordionStyles.indicator()} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className={ACCORDION_PANEL_COMPACT}>
-            {children}
+          <Accordion.Panel>
+            <div className={accordionStyles.content()}>{children}</div>
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>

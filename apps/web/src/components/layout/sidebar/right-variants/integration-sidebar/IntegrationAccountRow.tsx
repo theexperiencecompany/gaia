@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Chip,
   Dropdown,
   DropdownItem,
@@ -16,6 +15,7 @@ import {
   StarIcon,
 } from "@icons";
 import type { IntegrationAccountResponse } from "@shared/api/generated";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 interface IntegrationAccountRowProps {
   account: IntegrationAccountResponse;
@@ -61,7 +61,7 @@ export function IntegrationAccountRow({
       )}
       <Dropdown>
         <DropdownTrigger>
-          <Button
+          <GaiaButton
             isIconOnly
             size="sm"
             variant="ghost"
@@ -69,7 +69,7 @@ export function IntegrationAccountRow({
             aria-label={`Manage ${account.displayName}`}
           >
             <MoreHorizontalIcon className="size-4" />
-          </Button>
+          </GaiaButton>
         </DropdownTrigger>
         <Dropdown.Popover placement="bottom end">
           <DropdownMenu
@@ -111,7 +111,6 @@ export function IntegrationAccountRow({
               key="remove"
               textValue="Disconnect"
               variant="danger"
-              className="text-danger"
               onAction={onRemove}
             >
               <Delete02Icon className="size-4" />

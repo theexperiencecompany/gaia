@@ -102,13 +102,13 @@ export default function SendStopButton({
   // Queue widens into a labelled pill; stop/send stay icon-only square buttons.
   const stopCursor = showStop ? "cursor-pointer" : "";
   const shapeClass = showQueue
-    ? "h-9 min-h-9 gap-1.5 rounded-xl px-3"
+    ? "h-9 min-h-9 gap-1.5 px-3"
     : `${className} ${stopCursor}`;
 
   return (
     <GaiaButton
       variant={bg === "primary" ? "primary" : "default-solid"}
-      shape="pill"
+      shape={showQueue ? "default" : "pill"}
       isIconOnly={!showQueue}
       aria-label={MODE_ARIA_LABEL[mode]}
       className={`transition-all duration-300 ${contentColor} ${shapeClass}`}

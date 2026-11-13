@@ -80,7 +80,9 @@
 @source "../../../lib/chunkErrorRecovery.ts";
 @source "../../../lib/clipboard.ts";
 @source "../../../lib/environment.ts";
+@source "../../../lib/firstInteraction.ts";
 @source "../../../lib/hubPagination.ts";
+@source "../../../lib/idle.ts";
 @source "../../../lib/imageDimensions.ts";
 @source "../../../lib/privateBlob.ts";
 @source "../../../lib/queryClient.ts";
@@ -131,6 +133,7 @@
 @source "../../../components/navigation/SkipToContentLink.tsx";
 @source "../../../components/providers/KeyboardShortcutsProvider.tsx";
 @source "../../../components/seo/SiteLink.tsx";
+@source "../../../components/shared/accordionVariants.ts";
 @source "../../../components/shared/buttonVariants.ts";
 @source "../../../components/shared/ChunkErrorRecovery.tsx";
 @source "../../../components/shared/CollapsibleListWrapper.tsx";
@@ -142,6 +145,7 @@
 @source "../../../components/shared/fieldVariants.ts";
 @source "../../../components/shared/FormError.tsx";
 @source "../../../components/shared/GaiaButton.tsx";
+@source "../../../components/shared/GaiaListBoxItem.tsx";
 @source "../../../components/shared/GaiaSelectValue.tsx";
 @source "../../../components/shared/icons.tsx";
 @source "../../../components/shared/IntegrationConnectCard.tsx";
@@ -158,6 +162,8 @@
 @source "../../../components/shared/SecretInput.tsx";
 @source "../../../components/shared/shape.ts";
 @source "../../../components/shared/SuspenseLoader.tsx";
+@source "../../../components/shared/tabsVariants.ts";
+@source "../../../components/shared/tone.ts";
 @source "../../../components/shared/WaveSpinnerSquare.tsx";
 @source "../../../components/ui/accordion.tsx";
 @source "../../../components/ui/avatar.tsx";
@@ -234,8 +240,6 @@
 @source "../../../lib/api/typed.ts";
 @source "../../../lib/db/chatDb.ts";
 @source "../../../lib/electron/api.ts";
-@source "../../../lib/heroui/accordionParity.ts";
-@source "../../../lib/heroui/tabsParity.ts";
 @source "../../../lib/websocket/useWebSocketConnection.ts";
 @source "../../../lib/websocket/WebSocketManager.ts";
 @source "../../../services/api/notifications.ts";
@@ -361,6 +365,7 @@
 @source "../../../features/chat/constants/reactionBadge.ts";
 @source "../../../features/chat/hooks/useApprovalDecisionWebSocket.ts";
 @source "../../../features/chat/hooks/useArtifactText.ts";
+@source "../../../features/chat/hooks/useAutosizeTextarea.ts";
 @source "../../../features/chat/hooks/useBgMessageWebSocket.ts";
 @source "../../../features/chat/hooks/useCalendarEventSelection.ts";
 @source "../../../features/chat/hooks/useChatBubbleUser.ts";
@@ -464,6 +469,7 @@
 @source "../../../features/integrations/components/IntegrationSection.tsx";
 @source "../../../features/integrations/components/IntegrationsList.tsx";
 @source "../../../features/integrations/components/IntegrationsSearchInput.tsx";
+@source "../../../features/integrations/components/LazyMentionEditor.tsx";
 @source "../../../features/integrations/components/MCPIntegrationModal.tsx";
 @source "../../../features/integrations/components/MentionChip.tsx";
 @source "../../../features/integrations/components/MentionEditor.tsx";
@@ -496,6 +502,7 @@
 @source "../../../features/integrations/utils/permissionCopy.ts";
 @source "../../../features/integrations/utils/toolMentions.ts";
 @source "../../../features/landing/components/LazyMotionProvider.tsx";
+@source "../../../features/landing/components/motionFeatures.ts";
 @source "../../../features/mail/api/mailApi.ts";
 @source "../../../features/mail/components/ContactListCard.tsx";
 @source "../../../features/mail/components/EmailComposeCard.tsx";
@@ -785,10 +792,12 @@
 @source "../../../features/workflows/components/WorkflowModal.tsx";
 @source "../../../features/workflows/components/WorkflowPage.tsx";
 @source "../../../features/workflows/components/WorkflowSkeletons.tsx";
+@source "../../../features/workflows/constants/explore.ts";
 @source "../../../features/workflows/constants/gates.ts";
 @source "../../../features/workflows/constants/regeneration.ts";
 @source "../../../features/workflows/constants/workflowIconCatalog.data.ts";
 @source "../../../features/workflows/constants/workflowIconCatalog.ts";
+@source "../../../features/workflows/constants/workflowIconStyle.ts";
 @source "../../../features/workflows/hooks/useCronValidation.ts";
 @source "../../../features/workflows/hooks/useExploreWorkflows.ts";
 @source "../../../features/workflows/hooks/useTriggerFilter.ts";
@@ -946,10 +955,13 @@
 @source "../../../features/todo/components/fields/ScheduledFieldChip.tsx";
 @source "../../../features/todo/components/shared/SubtaskManager.tsx";
 @source "../../../features/todo/components/shared/TodoFieldsRow.tsx";
+@source "../../../features/workflows/components/shared/CatalogWorkflowIcons.tsx";
 @source "../../../features/workflows/components/shared/UnifiedWorkflowCard.tsx";
 @source "../../../features/workflows/components/shared/useWorkflowCardActions.ts";
 @source "../../../features/workflows/components/shared/WorkflowCardComponents.tsx";
 @source "../../../features/workflows/components/shared/workflowCardHelpers.ts";
+@source "../../../features/workflows/components/shared/WorkflowIconElements.tsx";
+@source "../../../features/workflows/components/shared/WorkflowIconParts.tsx";
 @source "../../../features/workflows/components/shared/WorkflowIcons.tsx";
 @source "../../../features/workflows/components/shared/WorkflowStep.tsx";
 @source "../../../features/workflows/components/shared/WorkflowSteps.tsx";
