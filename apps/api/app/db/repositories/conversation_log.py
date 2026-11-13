@@ -41,7 +41,7 @@ from app.models.conversation_models import ConversationHead, StoredEntry
 
 _ENTRY: TypeAdapter[Entry] = TypeAdapter(Entry)
 #: A stored entry's keys beside the log entry's own fields; id is both, so it stays.
-_POSITION_KEYS = ("conversation_id", "user_id", "seq", "at", "migration_hash")
+_POSITION_KEYS = ("conversation_id", "user_id", "seq", "at", "content_hash", "migration_fields")
 _INTEGRATION_KINDS = (EntryKind.INTEGRATION_NEEDED, EntryKind.INTEGRATION_CONNECTED)
 #: A head the sweep must visit: unflushed entries, unsettled inputs or live work. A non-empty
 #: outbox sorts after {}. Also the sweep index's partial filter, so only these heads are indexed.

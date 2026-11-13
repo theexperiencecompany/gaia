@@ -18,14 +18,27 @@ import { useChatStore } from "@/stores/chatStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import { fromRegistryEntries } from "@/types/features/toolDataTypes";
 
+const sameMessageKey = (msg: IMessage): string =>
+  `${msg.createdAt.getTime()}|${msg.role}|${msg.content}`;
+
 const mergeMessageLists = (
   localMessages: IMessage[],
   remoteMessages: IMessage[],
 ): IMessage[] => {
   const messageMap = new Map<string, IMessage>();
+  const remoteIds = new Set(remoteMessages.map((msg) => msg.id));
+  const remoteCopies = new Set(remoteMessages.map(sameMessageKey));
 
-  // Start with local messages
-  localMessages.forEach((msg) => messageMap.set(msg.id, msg));
+  // Start with local messages. A cached copy stored before its message had a server id
+  // (keyed by position) is the same message the server now returns under its real id.
+  localMessages.forEach((msg) => {
+    const supersededLegacyCopy =
+      !msg.messageId &&
+      !msg.optimistic &&
+      !remoteIds.has(msg.id) &&
+      remoteCopies.has(sameMessageKey(msg));
+    if (!supersededLegacyCopy) messageMap.set(msg.id, msg);
+  });
 
   // The remote copy is authoritative: no live stream writes these rows any more.
   remoteMessages.forEach((msg) => messageMap.set(msg.id, msg));

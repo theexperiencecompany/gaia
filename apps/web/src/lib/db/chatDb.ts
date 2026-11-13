@@ -181,10 +181,6 @@ class ChatDexie extends Dexie {
       conversations: "id, updatedAt, createdAt",
       messages: "id, conversationId, createdAt",
     });
-    // Rows cached before seq existed keep no seq until a sync brings it.
-    this.version(2).stores({
-      messages: "id, conversationId, createdAt, [conversationId+seq]",
-    });
     // v3: a reaction is a field on the user message; cached emoji_ack messages fold into it.
     this.version(3)
       .stores({})

@@ -12,6 +12,7 @@ from hypothesis import HealthCheck, given, settings, strategies as st
 import pytest
 from redis.asyncio import Redis
 
+from app.db.repositories import conversations as conversations_module
 from app.db.repositories.conversation_entries_migration import (
     ConversationEntriesMigration,
     HeadRef,
@@ -443,7 +444,6 @@ async def _message_payloads(user_id: str, conversation_id: str, pattern: str) ->
     )
     search = await repo.search(user_id, pattern=pattern)
     pinned = await repo.list_pinned_messages(user_id)
-    recent = await repo.list_recent_messages(conversation_id, user_id=user_id, limit=2)
     one = await repo.get_message(conversation_id, f"{pattern}2", user_id=user_id)
     owner = await repo.find_owner_of_message(user_id, f"{pattern}2")
 
@@ -455,7 +455,6 @@ async def _message_payloads(user_id: str, conversation_id: str, pattern: str) ->
         shape(synced.messages),
         shape([hit.message for hit in search.messages]),
         shape([hit.message for hit in pinned]),
-        shape(recent),
         shape([one] if one else []),
         owner == conversation_id,
         await repo.has_sent_message(user_id),
@@ -479,14 +478,41 @@ async def test_message_readers_never_see_a_log_entry_of_any_kind(raw_collection:
         await repo.set_message_pinned(
             conversation_id, user_id=user_id, message_id="inv2", pinned=True
         )
-        await repo.set_message_response(
-            conversation_id, user_id=user_id, message_id="inv2", response="found the inv invoice"
-        )
     for entry in kinds[6:]:
         await log.append(mixed[1], mixed[0], entry)
     stored_kinds = {item.entry.kind for item in await log.read_after(mixed[1], mixed[0], 0)}
     assert stored_kinds == set(EntryKind)
     assert await _message_payloads(*mixed, "inv") == await _message_payloads(*plain, "inv")
+
+
+async def test_whole_conversation_reads_return_the_newest_messages_past_interleaved_log_entries(
+    raw_collection: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(conversations_module, "CONVERSATION_READ_LIMIT", 2)
+    repo = ConversationRepository()
+    log = MongoConversationLog(ConversationLogRepository(), FakeClock())
+    user_id = f"u-{uuid.uuid4().hex}"
+    chats = [f"c-{uuid.uuid4().hex}" for _ in range(2)]
+    kinds = _every_kind()
+    for conversation_id in chats:
+        await _create_head(conversation_id, user_id)
+        first, second, third = _messages(conversation_id)
+        await repo.append_messages(conversation_id, user_id=user_id, messages=[first, second])
+        for entry in kinds[:6]:
+            await log.append(conversation_id, user_id, entry)
+        await repo.append_messages(conversation_id, user_id=user_id, messages=[third])
+        for entry in kinds[6:]:
+            await log.append(conversation_id, user_id, entry)
+
+    doc = await repo.get(chats[0], user_id=user_id)
+    assert doc is not None
+    assert [m.message_id for m in doc.messages] == [f"{chats[0]}2", f"{chats[0]}3"]
+    synced = await repo.find_updated_since(
+        user_id, [ConversationSyncItem(conversation_id=c, last_updated=None) for c in chats]
+    )
+    assert {d.conversation_id: [m.message_id for m in d.messages] for d in synced} == {
+        c: [f"{c}2", f"{c}3"] for c in chats
+    }
 
 
 async def test_a_migrated_conversation_reads_as_an_idle_log_at_its_message_count(

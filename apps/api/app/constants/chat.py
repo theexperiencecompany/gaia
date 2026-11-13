@@ -114,6 +114,10 @@ CONVERSATION_ENTRIES_COLLECTION = "conversation_entries"
 CONVERSATION_APPEND_MAX_ATTEMPTS = 64
 CONVERSATION_APPEND_JITTER_SECONDS = 0.004
 
+# The newest entries a whole-conversation read (get, sync, recent) returns: the
+# window clients saw when the old build capped every thread at 600 messages.
+CONVERSATION_READ_LIMIT = 600
+
 # Named in every refusal of a conversation the entries migration has not reached.
 CONVERSATION_ENTRIES_MIGRATION_SCRIPT = "app.scripts.migrate_conversation_entries"
 
