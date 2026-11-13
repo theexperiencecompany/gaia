@@ -52,6 +52,7 @@ from app.agents.core.outcome_review import NOT_REVIEWED, OutcomeReview
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext, SubagentOutcome
 from app.constants.agents import AgentTag, OutcomeState
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_INBOX_PREFIX
+from app.constants.conversation import WORK_STOPPED_REPORT
 from app.constants.executor import (
     EXECUTOR_APPROVAL_LOST_MESSAGE,
     EXECUTOR_CARRY_TASK,
@@ -67,6 +68,7 @@ from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.models.agent_models import InboxEntry
 from app.models.chat_models import SourceCategory, ToolDataEntry
+from app.models.conversation_log_models import WorkOutcome
 from app.models.executor_activity_models import ExecutorActivity
 from app.models.user_models import AuthenticatedUser
 from app.services.hil import bridge
@@ -1131,3 +1133,18 @@ async def test_a_step_run_paused_on_an_approval_logs_the_cards_summary_and_expir
     requested.assert_awaited_once_with(
         "conv-1", USER_ID, "task-1", "ap1", summary="Send the invoice to Sam", expires_at=expires
     )
+
+
+async def test_a_stopped_run_reports_that_the_user_stopped_it() -> None:
+    """Regression (live test): a user Stop reported "The executor_agent run ended without reporting a result"."""
+    stopped = er.TerminalOutcome(
+        result_text="The executor_agent run ended without reporting a result, so nothing confirms any of it happened.",
+        result_type="final",
+        was_cancelled=True,
+        tool_data=[],
+    )
+    with patch.object(er, "record_work_finished", new_callable=AsyncMock) as record:
+        await er._log_work_finished(_run(RunKind.LIVE), stopped, stopped=True)
+    report = record.await_args.args[4]
+    assert record.await_args.args[3] is WorkOutcome.CANCELLED
+    assert report.text == WORK_STOPPED_REPORT

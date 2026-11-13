@@ -61,6 +61,7 @@ from app.agents.core.subagents.subagent_runner import (
 )
 from app.agents.prompts.comms_prompts import outcome_delivery_note
 from app.constants.agents import NON_WAKING_TAGS, AgentTag, OutcomeState
+from app.constants.conversation import WORK_STOPPED_REPORT
 from app.constants.executor import (
     EXECUTOR_APPROVAL_LOST_MESSAGE,
     EXECUTOR_CARRY_TASK,
@@ -728,14 +729,15 @@ async def _log_work_finished(
     if outcome is None or not run.task_id:
         return
     review = outcome.review
+    ended_as = _work_outcome(outcome, stopped=stopped)
     try:
         await record_work_finished(
             run.conversation_id,
             run.user.user_id,
             run.task_id,
-            _work_outcome(outcome, stopped=stopped),
+            ended_as,
             WorkReport(
-                outcome.result_text,
+                WORK_STOPPED_REPORT if ended_as is WorkOutcome.CANCELLED else outcome.result_text,
                 outcome.tool_data,
                 note=outcome_delivery_note(review.declared, review.problem),
                 nothing_for_user=review.nothing_for_user,
