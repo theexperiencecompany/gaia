@@ -332,6 +332,16 @@ class StepScenarios:
         assert [(r.reply_id, r.quote_target) for r in await replies(rt)][-1] == ("t1", "u0")
         await assert_quiet(rt)
 
+    async def test_a_write_up_that_says_nothing_settles_silent_though_it_carries_the_works_cards(
+        self, rt: Runtime
+    ) -> None:
+        await start_work(rt)
+        rt.runner.script([Finished(Replied(""))])
+        await send(rt, finished("f", "t1").model_copy(update={"tool_data": (CARD,)}))
+        await run(rt)
+        assert (await answered(rt))[-1] == (ReplyOutcome.SILENT, ("f", "u0"))
+        assert (await replies(rt))[-1].tool_data == (CARD,)
+
     async def test_a_streamed_late_result_quotes_the_request_from_its_first_frame(
         self, rt: Runtime
     ) -> None:

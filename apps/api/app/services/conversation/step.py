@@ -613,7 +613,8 @@ def _final_reply(attempt: _Attempt, outcome: RunOutcome) -> tuple[Reply, ReplyOu
                 "follow_up_actions": outcome.follow_up_actions,
             }
         )
-    if filled.text or filled.tool_data:
+    # The work's own cards ride every write-up; only what the run said or showed makes it an answer.
+    if filled.text or len(filled.tool_data) > len(attempt.work_cards):
         return filled, ReplyOutcome.ANSWERED
     if isinstance(outcome, Reacted) or not _asked(attempt):
         return filled, ReplyOutcome.SILENT

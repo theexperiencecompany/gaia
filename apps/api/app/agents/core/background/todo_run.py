@@ -63,6 +63,7 @@ from app.services.conversation.outcome import EntryOutcome, await_outcome
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.work_log import record_work_carried
 from app.utils.background_tasks import spawn_background_task
+from app.utils.errors import ConversationNotFoundError
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.wide_events import log
 
@@ -156,7 +157,12 @@ async def run_todo_on_executor(request: TodoRunRequest) -> None:
         await asyncio.wait({run_task})
         raise TodoRunFailedError(reason) from None
     log_port = runtime_ports().log
-    state = await log_port.state(conversation_id, user_id)
+    try:
+        state = await log_port.state(conversation_id, user_id)
+    except ConversationNotFoundError:
+        # The todo was deleted with its chat while the run went: nothing is left to deliver.
+        log.set_ns("tracked_todo", chat_deleted=True)
+        return
     if any(work.task_id == task_id for work in state.work):
         log.set_ns("tracked_todo", parked_on_approval=True)
         return

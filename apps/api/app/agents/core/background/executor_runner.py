@@ -99,6 +99,7 @@ from app.services.latency_metrics import (
     span,
 )
 from app.utils.background_tasks import spawn_background_task
+from app.utils.errors import ConversationNotFoundError
 from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.analytics.context import analytics_context
 from shared.py.wide_events import WorkflowContext, get_trace_id, log, wide_task
@@ -720,18 +721,26 @@ async def _log_work_finished(
     if outcome is None or not run.task_id:
         return
     review = outcome.review
-    await record_work_finished(
-        run.conversation_id,
-        run.user.user_id,
-        run.task_id,
-        _work_outcome(outcome, stopped=stopped),
-        WorkReport(
-            outcome.result_text,
-            outcome.tool_data,
-            note=outcome_delivery_note(review.declared, review.problem),
-            nothing_for_user=review.nothing_for_user,
-        ),
-    )
+    try:
+        await record_work_finished(
+            run.conversation_id,
+            run.user.user_id,
+            run.task_id,
+            _work_outcome(outcome, stopped=stopped),
+            WorkReport(
+                outcome.result_text,
+                outcome.tool_data,
+                note=outcome_delivery_note(review.declared, review.problem),
+                nothing_for_user=review.nothing_for_user,
+            ),
+        )
+    except ConversationNotFoundError:
+        # The user deleted the conversation while its work ran: the result has nowhere to land.
+        log.info(
+            "work finished after its conversation was deleted",
+            conversation_id=run.conversation_id,
+            task_id=run.task_id,
+        )
 
 
 async def _close_queued_stream(run: ExecutorRun, was_cancelled: bool) -> None:

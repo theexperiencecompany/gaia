@@ -13,7 +13,7 @@ real queue and run by the test), and the retry ladder (test_tracked_todo_tasks).
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable, Iterator, Sequence
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from contextlib import (
     AbstractAsyncContextManager,
     AbstractContextManager,
@@ -55,12 +55,23 @@ from app.constants.todos import (
     WaitingOn,
 )
 from app.constants.triggers import GMAIL_NEW_MESSAGE_TRIGGER_NAME
-from app.core.stream_manager import stream_manager
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb import indexes
+from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.todos import todo_repository
 from app.memory.ingestion import RetainedMemory
 from app.models.chat_models import ConversationModel, ConversationSource
+from app.models.conversation_frame_models import EntryFrame
+from app.models.conversation_log_models import (
+    Entry,
+    Reply,
+    ReplyOutcome,
+    ReplySettled,
+    TodoWoke,
+    UserMessage,
+    WorkFinished,
+    WorkOutcome,
+)
 from app.models.conversation_send_models import SendMessageRequest
 from app.models.hil_models import HILPreferences
 from app.models.integration_models import UserIntegrationCapabilities
@@ -76,6 +87,8 @@ from app.models.trigger_subscription_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation.composition import build_runtime_ports
+from app.services.conversation.event_stream import replay_from_log
+from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.runtime import install_runtime_ports
 from app.services.conversation.send import submit_message
 from app.services.conversation_service import (
@@ -94,7 +107,6 @@ from app.workers.tasks.tracked_todo_tasks import (
 from tests.conftest import FAKE_USER, FAKE_USER_2
 from tests.e2e._harness.background import drain_background_runs
 from tests.e2e._harness.graph_run import StreamingScriptedModel, call, streaming_model
-from tests.e2e._harness.transcript import Transcript
 from tests.helpers import stored_conversation, worker_redis_url
 
 pytestmark = pytest.mark.e2e
@@ -359,19 +371,36 @@ async def _follow_up(conversation_id: str, owner: AuthenticatedUser, message: st
     await drain_background_runs()
 
 
-def _reports(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Keep the chat's GAIA side: each run's report, without the wake that leads it."""
-    return [m for m in messages if m["type"] == "bot"]
+async def _shown(mongo_db: AsyncIOMotorDatabase, todo_id: str) -> list[Entry]:
+    """Return what a device opening the todo's chat receives: the events route's replay of its log."""
+    (chat,) = await mongo_db["conversations"].find({"todo_id": todo_id}).to_list(None)
+    log = MongoConversationLog(conversation_log_repository, lambda: datetime.now(UTC))
+    frames = await replay_from_log(log, chat["conversation_id"], chat["user_id"], 0)
+    return [f.frame.entry for f in frames if isinstance(f.frame, EntryFrame)]
 
 
-def _wake_kinds(messages: list[dict[str, Any]]) -> list[str]:
-    return [m["todo_run_wake"]["kind"] for m in messages if m.get("todo_run_wake")]
+def _finished(shown: Sequence[Entry]) -> list[WorkFinished]:
+    """Each run's own end: its outcome, report and cards, as the chat shows its work."""
+    return [entry for entry in shown if isinstance(entry, WorkFinished)]
 
 
-def _card_tool_names(message: dict[str, Any]) -> list[str]:
+def _reports(shown: Sequence[Entry]) -> list[str]:
+    return [finished.report for finished in _finished(shown)]
+
+
+def _write_ups(shown: Sequence[Entry]) -> list[Reply]:
+    """Return what GAIA said in the chat: every reply, a run's write-up or an answer to the user."""
+    return [entry for entry in shown if isinstance(entry, Reply)]
+
+
+def _wake_kinds(shown: Sequence[Entry]) -> list[str]:
+    return [entry.run.wake.kind.value for entry in shown if isinstance(entry, TodoWoke)]
+
+
+def _card_tool_names(tool_data: Sequence[Mapping[str, Any]]) -> list[str]:
     return [
         str((entry.get("data") or {}).get("tool_name", entry.get("tool_name")))
-        for entry in message.get("tool_data") or []
+        for entry in tool_data
     ]
 
 
@@ -382,7 +411,7 @@ class TestARunLandsInTheTodosOwnChat:
     ) -> None:
         todo_id = await _new_tracked_todo(owner)
 
-        async with open_stack(executor=executor_run(REPORT), comms=[NARRATED]) as stack:
+        async with open_stack(executor=executor_run(REPORT), comms=[NARRATED]):
             await _run(todo_id, owner)
 
         chat = await _chat_of(mongo_db, todo_id)
@@ -393,39 +422,24 @@ class TestARunLandsInTheTodosOwnChat:
         assert chat.get("is_unread") is False
         assert not chat.get("is_system_generated")
 
-        # The client was told where to watch, and the stream it watched closed.
-        (started,) = stack.pushed_of("executor.stream_started")
-        assert started["conversation_id"] == conversation_id
-        frames = [c async for c in stream_manager.subscribe_stream(started["stream_id"])]
-        assert any("create_flowchart" in frame for frame in frames)
-        assert Transcript.from_sse("".join(frames)).is_done
-
-        # The executor's own report and card, saved under the placeholder the stream rendered into.
-        # What woke the run leads its report, on the user's side, as a workflow run's card does.
-        wake, report = chat["messages"]
-        assert (wake["type"], wake["response"]) == ("user", "")
-        assert wake["todo_run_wake"] == {
-            "kind": TodoWakeKind.SCHEDULE.value,
-            "trigger_names": [],
-            "approval_summary": None,
-        }
-        assert (report["type"], report["response"]) == ("bot", REPORT)
-        assert report["message_id"] == started["task_id"]
-        assert "create_flowchart" in _card_tool_names(report)
-        # An open chat is shown the wake live, before the run starts streaming.
-        woke, landed = stack.pushed_of("conversation.new_message")
-        assert stack.pushed.index(woke) < stack.pushed.index(started)
-        assert woke["conversation_id"] == conversation_id
-        assert woke["message"] == {
-            "type": "user",
-            "response": "",
-            "message_id": wake["message_id"],
-            "date": wake["date"],
-            "todo_run_wake": wake["todo_run_wake"],
-        }
-        assert landed["conversation_id"] == conversation_id
-        assert landed["message"]["task_id"] == started["task_id"]
-        assert landed["message"]["response"] == REPORT
+        # What woke the run leads the chat, then the work and the write-up that narrates it.
+        shown = await _shown(mongo_db, todo_id)
+        assert [entry.kind for entry in shown] == [
+            "todo_woke",
+            "work_started",
+            "work_finished",
+            "reply",
+            "reply_settled",
+        ]
+        woke, _, finished, reply, settled = shown
+        assert isinstance(woke, TodoWoke) and woke.run.wake.kind is TodoWakeKind.SCHEDULE
+        assert isinstance(finished, WorkFinished)
+        assert (finished.outcome, finished.report) == (WorkOutcome.DONE, REPORT)
+        assert isinstance(reply, Reply) and reply.text == NARRATED
+        assert reply.reply_id == finished.task_id
+        assert "create_flowchart" in _card_tool_names(reply.tool_data)
+        assert isinstance(settled, ReplySettled) and settled.outcome is ReplyOutcome.ANSWERED
+        assert woke.id in settled.answers
 
         # What reaches the user is comms' write-up, in the app since no chat app is linked.
         note = await mongo_db["notifications"].find_one({"user_id": owner.user_id})
@@ -453,12 +467,10 @@ class TestARunLandsInTheTodosOwnChat:
 
         chat = await _chat_of(mongo_db, todo_id)
         assert chat["conversation_id"] == conversation_id
-        assert [(m["type"], m["response"]) for m in chat["messages"]] == [
-            ("user", ""),
-            ("bot", REPORT),
-            ("user", ""),
-            ("bot", SECOND_REPORT),
-        ]
+        shown = await _shown(mongo_db, todo_id)
+        assert _wake_kinds(shown) == [TodoWakeKind.SCHEDULE.value] * 2
+        assert _reports(shown) == [REPORT, SECOND_REPORT]
+        assert [reply.text for reply in _write_ups(shown)] == [NARRATED, NARRATED]
         # The second run never read the first one's execution: its thread started over.
         executor_thread = f"executor_{conversation_id}"
         assert second_threads[executor_thread] > first_threads[executor_thread]
@@ -478,9 +490,11 @@ class TestARunLandsInTheTodosOwnChat:
             with pytest.raises(TodoRunFailedError):
                 await _run(todo_id, owner)
 
-        (failed,) = _reports((await _chat_of(mongo_db, todo_id))["messages"])
-        assert failed["response"] == ""
-        assert failed["error"]
+        shown = await _shown(mongo_db, todo_id)
+        (failed,) = _finished(shown)
+        assert failed.outcome is WorkOutcome.FAILED and failed.report
+        (settled,) = [entry for entry in shown if isinstance(entry, ReplySettled)]
+        assert settled.reply_id == failed.task_id and settled.outcome is ReplyOutcome.FAILED
         # A failed run tells the user nothing yet: the worker's retry ladder owns it.
         assert await mongo_db["notifications"].count_documents({"user_id": owner.user_id}) == 0
         todo = await todo_repository.get_by_id(todo_id)
@@ -519,7 +533,9 @@ class TestTheChatIsHiddenButOpensFromItsTodo:
         )
         (row,) = synced.json()["conversations"]
         assert row["todo_id"] == todo_id
-        assert [m["response"] for m in _reports(row["messages"])] == [REPORT]
+        shown = await _shown(mongo_db, todo_id)
+        assert _reports(shown) == [REPORT]
+        assert [reply.text for reply in _write_ups(shown)] == [NARRATED]
 
     async def test_opening_before_any_run_creates_the_one_chat_its_runs_then_use(
         self,
@@ -538,7 +554,7 @@ class TestTheChatIsHiddenButOpensFromItsTodo:
         assert first == again
         chat = await _chat_of(mongo_db, todo_id)
         assert chat["conversation_id"] == first["conversation_id"]
-        assert [m["response"] for m in _reports(chat["messages"])] == [REPORT]
+        assert _reports(await _shown(mongo_db, todo_id)) == [REPORT]
 
     async def test_concurrent_first_opens_make_exactly_one_chat(
         self, owner: AuthenticatedUser, mongo_db: AsyncIOMotorDatabase
@@ -606,22 +622,20 @@ class TestWhatTheUserSeesOutlivesTheExecutionState:
                 "/api/v1/conversations/batch-sync",
                 json={"conversations": [{"conversation_id": conversation_id}]},
             )
-            (row,) = synced.json()["conversations"]
-            assert [m["response"] for m in _reports(row["messages"])] == [REPORT]
+            assert synced.status_code == 200
+            assert _reports(await _shown(mongo_db, todo_id)) == [REPORT]
 
-            transcript = await _follow_up(conversation_id, owner, "is it still green?")
+            await _follow_up(conversation_id, owner, "is it still green?")
 
-        assert FOLLOW_UP_REPLY in transcript.final_text()
         # The turn knew which todo "it" is: comms was shown this todo, bound to the turn.
         prompt = " ".join(str(m.content) for m in stack.comms_model.chat_messages_log[-1])
         assert "ACTIVE TODO" in prompt
         assert f"id: {todo_id}" in prompt
 
-        saved = (await _chat_of(mongo_db, todo_id))["messages"]
-        assert [(m["type"], m["response"]) for m in saved][-2:] == [
-            ("user", "is it still green?"),
-            ("bot", FOLLOW_UP_REPLY),
-        ]
+        shown = await _shown(mongo_db, todo_id)
+        (asked,) = [entry for entry in shown if isinstance(entry, UserMessage)]
+        assert asked.text == "is it still green?"
+        assert _write_ups(shown)[-1].text == FOLLOW_UP_REPLY
 
 
 THREAD_ID = "19a6c1f0d2e3b4a5"
@@ -742,12 +756,12 @@ class TestAFollowUpKnowsTheRunsAboveIt:
             with pytest.raises(TodoRunFailedError):
                 await _run(todo_id, owner)
         chat = await _chat_of(mongo_db, todo_id)
-        (failed,) = _reports(chat["messages"])
+        (failed,) = _finished(await _shown(mongo_db, todo_id))
         async with open_stack(executor=[], comms=[FOLLOW_UP_REPLY]) as stack:
             await _follow_up(chat["conversation_id"], owner, "why did it fail?")
 
         prompt = " ".join(str(m.content) for m in stack.comms_model.chat_messages_log[-1])
-        assert failed["error"] in prompt
+        assert failed.report in prompt
 
 
 @pytest.mark.usefixtures("mongo_db")
@@ -777,11 +791,7 @@ class TestDeletingTheTodoDeletesItsChat:
             "/api/v1/conversations/batch-sync",
             json={"conversations": [{"conversation_id": conversation_id}]},
         )
-        assert synced.json() == {
-            "conversations": [],
-            "missing": [conversation_id],
-            "active_streams": {},
-        }
+        assert synced.json() == {"conversations": [], "missing": [conversation_id]}
 
 
 # ---------------------------------------------------------------------------
@@ -985,19 +995,18 @@ class TestAnApprovalTheRunWaitsOnStaysInTheTodosChat:
         assert resumed == f"resumed:{todo_id}"
         assert after is None
 
-        chat = await _chat_of(mongo_db, todo_id)
+        shown = await _shown(mongo_db, todo_id)
         # The approval's resume says the approval woke it; the ticket run is no todo run.
-        assert _wake_kinds(chat["messages"]) == [
-            TodoWakeKind.SCHEDULE.value,
-            TodoWakeKind.APPROVAL.value,
-        ]
-        assert [m["response"] for m in _reports(chat["messages"])] == [
+        assert _wake_kinds(shown) == [TodoWakeKind.SCHEDULE.value, TodoWakeKind.APPROVAL.value]
+        # The parked run, the ticket run the approval started, then the resume.
+        assert _reports(shown) == [
             WAITING,
-            NARRATED,
+            DRAWN,
             # Two model messages, so two bubbles (HeldReplies, app/agents/core/held_replies.py).
             f"{RESUMED}{NEW_MESSAGE_BREAKER}{NOTHING_PENDING}",
         ]
-        assert "approve" in _card_tool_names(_reports(chat["messages"])[1])
+        assert [reply.text for reply in _write_ups(shown)] == [NARRATED] * 3
+        assert "approve" in _card_tool_names(_finished(shown)[1].tool_data)
         # Every leg continued the parked execution: no reset dropped its thread.
         executor_thread = f"executor_{conversation_id}"
         assert resumed_threads[executor_thread] == parked_threads[executor_thread]
@@ -1032,8 +1041,11 @@ class TestAnApprovalTheRunWaitsOnStaysInTheTodosChat:
         assert ledger is not None and ledger["state"] == "denied"
         assert await worker_pool.queued_jobs() == []
         # The run the verdict started told the chat what was skipped.
-        chat = await _chat_of(mongo_db, todo_id)
-        assert [m["response"] for m in _reports(chat["messages"])] == [WAITING, NARRATED]
+        shown = await _shown(mongo_db, todo_id)
+        parked, verdict = _reports(shown)
+        assert parked == WAITING
+        assert verdict.split(NEW_MESSAGE_BREAKER)[0] == SKIPPED
+        assert [reply.text for reply in _write_ups(shown)] == [NARRATED] * 2
         assert (
             f"[{TodoActivityEvent.APPROVAL_DENIED.value}] {row['approval_id']} ('not this week'): "
             f"skipped {row['summary']}"
@@ -1086,9 +1098,11 @@ class TestARunThatFindsItsChatBusyWaits:
         assert f"[{TodoActivityEvent.RUN_FAILED.value}]" not in activity
         assert f"[{TodoActivityEvent.RETRY_SCHEDULED.value}]" not in activity
         # The follow-up the user was having still answered them, in its chat.
-        messages = (await _chat_of(mongo_db, todo_id))["messages"]
-        assert [m["type"] for m in messages] == ["user", "bot", "bot"]
-        assert messages[-1]["response"] == NARRATED
+        shown = await _shown(mongo_db, todo_id)
+        (asked,) = [entry for entry in shown if isinstance(entry, UserMessage)]
+        assert asked.text == "is it still green?"
+        assert _wake_kinds(shown) == []
+        assert _write_ups(shown)[-1].text == NARRATED
 
 
 @pytest.mark.usefixtures("mongo_db")
@@ -1107,7 +1121,7 @@ class TestStoppingARunFromItsChat:
         await get_or_create_todo_conversation(owner.user_id, todo_id, TITLE)
         executor = prompt_reading(executor_run(REPORT))
 
-        async with open_stack(executor=executor, comms=[NARRATED]) as stack:
+        async with open_stack(executor=executor, comms=[NARRATED]):
             # The call after the card: its prompt is the first to hold the flowchart's output.
             after_the_card = executor.hold_calls_seeing(f"direction: {FLOWCHART['direction']}")
             with _paid():
@@ -1115,12 +1129,12 @@ class TestStoppingARunFromItsChat:
                     execute_tracked_todo({}, todo_id, scheduled_for=occurrence_stamp(due))
                 )
                 await after_the_card.reached.wait()
-                (started,) = stack.pushed_of("executor.stream_started")
-                stopped = await client.post(f"/api/v1/cancel-stream/{started['stream_id']}")
+                conversation_id = (await _chat_of(mongo_db, todo_id))["conversation_id"]
+                stopped = await client.post(f"/api/v1/conversations/{conversation_id}/stop")
                 after_the_card.released.set()
                 result = await running
 
-        assert stopped.json()["success"] is True
+        assert stopped.status_code == 200, stopped.text
         assert result == f"cancelled:{todo_id}"
         activity = await _activity(todo_id)
         assert f"[{TodoActivityEvent.RUN_CANCELLED.value}] scheduled run stopped by the user" in (
@@ -1131,9 +1145,9 @@ class TestStoppingARunFromItsChat:
         # Nothing reached the user: they stopped it.
         assert await mongo_db["notifications"].count_documents({"user_id": owner.user_id}) == 0
         # The cards it already streamed stay in the chat.
-        messages = (await _chat_of(mongo_db, todo_id))["messages"]
-        assert messages[-1]["message_id"] == started["task_id"]
-        assert "create_flowchart" in _card_tool_names(messages[-1])
+        (stopped_work,) = _finished(await _shown(mongo_db, todo_id))
+        assert stopped_work.outcome is WorkOutcome.CANCELLED
+        assert "create_flowchart" in _card_tool_names(stopped_work.tool_data)
 
 
 @pytest.mark.usefixtures("mongo_db")
@@ -1174,9 +1188,7 @@ class TestTheChatFollowsItsTodo:
 
         assert completed.json()["completed"] is True
         assert opened.json() == {"conversation_id": conversation_id}
-        assert [
-            m["response"] for m in _reports((await _chat_of(mongo_db, todo_id))["messages"])
-        ] == [REPORT]
+        assert _reports(await _shown(mongo_db, todo_id)) == [REPORT]
 
     async def test_starring_the_chat_never_lists_it(
         self, owner: AuthenticatedUser, client: AsyncClient
@@ -1204,9 +1216,7 @@ class TestTheChatFollowsItsTodo:
         async with open_stack(executor=executor_run(REPORT), comms=[NARRATED]):
             await _run(created.todo.id, owner)
 
-        assert [
-            m["response"] for m in _reports((await _chat_of(mongo_db, created.todo.id))["messages"])
-        ] == [REPORT]
+        assert _reports(await _shown(mongo_db, created.todo.id)) == [REPORT]
         assert await mongo_db["notifications"].count_documents({"user_id": owner.user_id}) == 0
 
     async def test_a_run_comms_keeps_quiet_about_still_keeps_its_report_in_the_chat(
@@ -1219,11 +1229,9 @@ class TestTheChatFollowsItsTodo:
         ):
             await _run(todo_id, owner)
 
-        assert [
-            m["response"] for m in _reports((await _chat_of(mongo_db, todo_id))["messages"])
-        ] == [REPORT]
+        assert _reports(await _shown(mongo_db, todo_id)) == [REPORT]
         assert await mongo_db["notifications"].count_documents({"user_id": owner.user_id}) == 0
-        assert "kept quiet: nothing changed" in await _activity(todo_id)
+        assert "kept quiet: the write-up found it not worth a message" in await _activity(todo_id)
 
 
 @pytest.mark.usefixtures("mongo_db")
