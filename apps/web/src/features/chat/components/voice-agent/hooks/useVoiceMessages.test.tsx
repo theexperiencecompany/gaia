@@ -90,7 +90,6 @@ beforeEach(() => {
   useLiveConversationStore.setState({ conversations: {} });
   useChatStore.setState({
     activeConversationId: CONVERSATION,
-    messagesByConversation: {},
     optimisticMessage: null,
   });
 });

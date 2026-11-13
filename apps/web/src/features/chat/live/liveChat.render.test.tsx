@@ -81,7 +81,6 @@ beforeEach(() => {
   useLiveConversationStore.setState({ conversations: {} });
   useChatStore.setState({
     activeConversationId: CONVERSATION,
-    messagesByConversation: {},
     optimisticMessage: null,
   });
 });
@@ -163,7 +162,11 @@ describe("the chat rendered from the conversation's events", () => {
       },
     ];
     act(() => {
-      useLiveConversationStore.getState().hydrate(CONVERSATION, saved, {});
+      useLiveConversationStore.getState().restore(CONVERSATION, {
+        entries: saved,
+        olderBefore: null,
+        sends: {},
+      });
     });
     renderChat();
     expect(screen.getByText("draft my email")).toBeDefined();
@@ -219,11 +222,15 @@ describe("the chat rendered from the conversation's events", () => {
       },
     ];
     act(() => {
-      useLiveConversationStore.getState().hydrate(CONVERSATION, saved, {
-        m1: {
-          body: { message_id: "m1", text: "hi" },
-          fileData: [],
-          failed: false,
+      useLiveConversationStore.getState().restore(CONVERSATION, {
+        entries: saved,
+        olderBefore: null,
+        sends: {
+          m1: {
+            body: { message_id: "m1", text: "hi" },
+            fileData: [],
+            failed: false,
+          },
         },
       });
     });

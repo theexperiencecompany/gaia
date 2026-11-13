@@ -7,14 +7,15 @@ import { useChatStore } from "@/stores/chatStore";
 
 vi.mock("@/features/chat/api/chatApi", () => ({
   chatApi: { markAsRead: vi.fn().mockResolvedValue(undefined) },
-  toClientMessages: (messages: unknown[]) => messages,
+}));
+
+vi.mock("@/features/chat/live/connection", () => ({
+  applyConversationPage: vi.fn(),
 }));
 
 vi.mock("@/lib/db/chatDb", () => ({
   db: {
     putConversation: vi.fn(),
-    getMessagesForConversation: vi.fn().mockResolvedValue([]),
-    syncMessages: vi.fn(),
   },
 }));
 
@@ -26,7 +27,9 @@ const noticedRow = (conversationId: string): ConversationSyncRow => ({
   description: "Reminder",
   createdAt: AT,
   updatedAt: AT,
-  messages: [],
+  entries: [],
+  state: { kind: "state", head: 0, display: "idle", work: [] },
+  cursor: null,
   artifacts: [],
   awaiting_approval: false,
   has_older: false,

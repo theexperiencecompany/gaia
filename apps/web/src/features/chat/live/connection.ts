@@ -1,3 +1,4 @@
+import type { ConversationPage } from "@shared/conversation";
 import { createConversationFollower } from "@shared/conversation/live";
 import {
   ConversationNotFoundError,
@@ -18,10 +19,11 @@ function persistNow(conversationId: string): void {
   const timer = persistTimers.get(conversationId);
   if (timer) clearTimeout(timer);
   persistTimers.delete(conversationId);
-  const { view, sends } = liveConversation(conversationId);
+  const { view, sends, olderBefore } = liveConversation(conversationId);
   db.putConversationLog({
     conversationId,
     entries: [...view.entries],
+    olderBefore,
     sends: { ...sends },
   }).catch((error: unknown) => {
     console.error("[conversation] failed to save the log locally:", error);
@@ -44,11 +46,23 @@ export function persistConversation(
   );
 }
 
-async function hydrate(conversationId: string): Promise<void> {
+async function restore(conversationId: string): Promise<void> {
   const saved = await db.getConversationLog(conversationId);
-  useLiveConversationStore
-    .getState()
-    .hydrate(conversationId, saved?.entries ?? [], saved?.sends ?? {});
+  useLiveConversationStore.getState().restore(conversationId, {
+    entries: saved?.entries ?? [],
+    olderBefore: saved?.olderBefore ?? null,
+    sends: saved?.sends ?? {},
+  });
+}
+
+/** Fold a page of the server's log into the conversation, over what this device saved of it, and save the result. */
+export async function applyConversationPage(
+  conversationId: string,
+  page: ConversationPage,
+): Promise<void> {
+  await restore(conversationId);
+  useLiveConversationStore.getState().applyPage(conversationId, page);
+  persistConversation(conversationId, { immediately: true });
 }
 
 // The sidebar and the header read the title from the conversation list, which this update feeds.
@@ -74,7 +88,7 @@ const follower = createConversationFollower({
   },
   retitle,
   prepare: async (conversationId) => {
-    await hydrate(conversationId);
+    await restore(conversationId);
     deliverOutstandingSends(conversationId);
   },
   onInvalidFrame: (conversationId, error) => {

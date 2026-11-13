@@ -7,6 +7,7 @@ import {
   sendingLoadingRow,
 } from "@shared/conversation";
 import { useEffect, useMemo } from "react";
+import { useApprovalSettlementStore } from "@/features/chat/stores/approvalSettlementStore";
 import { readToolDataLoadingHints } from "@/features/chat/utils/loadingHints";
 import {
   type ActiveToolInfo,
@@ -33,7 +34,11 @@ export function useOpenConversation(conversationId: string | null): void {
 /** The conversation's rows from its event stream, in the shape the chat bubbles render. */
 export function useLiveMessages(conversationId: string | null): MessageType[] {
   const { view, sends } = useLiveConversation(conversationId);
-  return useMemo(() => liveMessages(view, sends), [view, sends]);
+  const verdicts = useApprovalSettlementStore((state) => state.settled);
+  return useMemo(
+    () => liveMessages(view, sends, verdicts),
+    [view, sends, verdicts],
+  );
 }
 
 /** What the server says GAIA is doing in this conversation; idle for one not open here. */

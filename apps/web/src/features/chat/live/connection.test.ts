@@ -85,7 +85,7 @@ vi.mock("@/lib/db/chatDb", () => ({
       saved.set(log.conversationId, structuredClone(log));
     },
     putConversation: async () => "",
-    deleteConversationAndMessages: async () => undefined,
+    deleteConversationAndLog: async () => undefined,
     getAllConversations: async () => [],
     updateConversationFields: async (id: string, fields: unknown) => {
       retitled.push({ id, fields });

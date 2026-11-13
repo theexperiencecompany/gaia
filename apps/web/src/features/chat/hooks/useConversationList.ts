@@ -1,7 +1,20 @@
+import { type ConversationView, ENTRY_KIND } from "@shared/conversation";
 import { useMemo } from "react";
+import { useLiveConversationStore } from "@/features/chat/live/liveConversationStore";
 import { isUnlistedConversation } from "@/features/chat/utils/unlistedConversation";
 import type { IConversation } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
+
+const MESSAGE_KINDS: ReadonlySet<string> = new Set([
+  ENTRY_KIND.USER_MESSAGE,
+  ENTRY_KIND.REPLY,
+  ENTRY_KIND.NOTICE,
+]);
+
+/** The messages this device holds of a conversation's log. */
+const messageCount = (view: ConversationView | undefined): number =>
+  view?.entries.filter(({ entry }) => MESSAGE_KINDS.has(entry.kind)).length ??
+  0;
 
 const toConversationRow = (conv: IConversation, messageCount: number) => ({
   conversation_id: conv.id,
@@ -30,9 +43,7 @@ export type ConversationRow = ReturnType<typeof toConversationRow>;
  */
 export const useConversationList = () => {
   const conversations = useChatStore((state) => state.conversations);
-  const messagesByConversation = useChatStore(
-    (state) => state.messagesByConversation,
-  );
+  const live = useLiveConversationStore((state) => state.conversations);
 
   // Memoized so consumers (ChatsList accordions) can safely depend on array
   // identity — a fresh map() result per render caused an infinite effect loop.
@@ -41,14 +52,9 @@ export const useConversationList = () => {
       conversations.flatMap((conv) =>
         isUnlistedConversation(conv)
           ? []
-          : [
-              toConversationRow(
-                conv,
-                messagesByConversation[conv.id]?.length || 0,
-              ),
-            ],
+          : [toConversationRow(conv, messageCount(live[conv.id]?.view))],
       ),
-    [conversations, messagesByConversation],
+    [conversations, live],
   );
 
   return {
@@ -64,15 +70,14 @@ export const useConversationRow = (
   const conversation = useChatStore((state) =>
     state.conversations.find((conv) => conv.id === conversationId),
   );
-  const messageCount = useChatStore((state) =>
+  const count = useLiveConversationStore((state) =>
     conversationId
-      ? (state.messagesByConversation[conversationId]?.length ?? 0)
+      ? messageCount(state.conversations[conversationId]?.view)
       : 0,
   );
 
   return useMemo(
-    () =>
-      conversation ? toConversationRow(conversation, messageCount) : undefined,
-    [conversation, messageCount],
+    () => (conversation ? toConversationRow(conversation, count) : undefined),
+    [conversation, count],
   );
 };

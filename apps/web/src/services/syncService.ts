@@ -1,105 +1,21 @@
-import type { ConversationEntry } from "@shared/api/generated";
-import type { HistoryPage } from "@shared/conversation";
+import { ConversationPageSchema } from "@shared/conversation";
 import {
   type Conversation,
   type ConversationSyncItem,
   chatApi,
   type SyncedConversation,
-  toClientMessages,
 } from "@/features/chat/api/chatApi";
 import { MAX_SYNC_CONVERSATIONS } from "@/features/chat/constants";
+import { applyConversationPage } from "@/features/chat/live/connection";
 import {
   apiRowAwaitsApproval,
   isApprovalFlagStale,
 } from "@/features/chat/utils/approvalFlag";
 import { isUnlistedConversation } from "@/features/chat/utils/unlistedConversation";
 import type { RequestOrigin } from "@/lib/api/typed";
-import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
-import { compareMessageOrder } from "@/lib/db/messageOrder";
+import { db, type IConversation } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
-import type { MessageType } from "@/types/features/convoTypes";
 import { fromRegistryEntries } from "@/types/features/toolDataTypes";
-
-const sameMessageKey = (msg: IMessage): string =>
-  `${msg.createdAt.getTime()}|${msg.role}|${msg.content}`;
-
-const mergeMessageLists = (
-  localMessages: IMessage[],
-  remoteMessages: IMessage[],
-): IMessage[] => {
-  const messageMap = new Map<string, IMessage>();
-  const remoteIds = new Set(remoteMessages.map((msg) => msg.id));
-  const remoteCopies = new Set(remoteMessages.map(sameMessageKey));
-
-  // Start with local messages. A cached copy stored before its message had a server id
-  // (keyed by position) is the same message the server now returns under its real id.
-  localMessages.forEach((msg) => {
-    const supersededLegacyCopy =
-      !msg.messageId &&
-      !msg.optimistic &&
-      !remoteIds.has(msg.id) &&
-      remoteCopies.has(sameMessageKey(msg));
-    if (!supersededLegacyCopy) messageMap.set(msg.id, msg);
-  });
-
-  // The remote copy is authoritative: no live stream writes these rows any more.
-  remoteMessages.forEach((msg) => messageMap.set(msg.id, msg));
-
-  return Array.from(messageMap.values()).toSorted(compareMessageOrder);
-};
-
-/** The server's history rows as this device stores them. */
-export const storedMessagesFromHistory = (
-  history: ConversationEntry[],
-  conversationId: string,
-): IMessage[] =>
-  toClientMessages(history).map((message, index) => {
-    const createdAt = message.date ? new Date(message.date) : new Date();
-    const role = mapMessageRole(message.type);
-    const messageId =
-      message.message_id || `${conversationId}-${index}-${createdAt.getTime()}`;
-
-    return {
-      id: messageId,
-      conversationId,
-      content: message.response,
-      role,
-      status: message.loading || message.in_progress ? "sending" : "sent",
-      createdAt,
-      updatedAt: createdAt,
-      messageId: message.message_id,
-      seq: message.seq ?? undefined,
-      fileIds: message.fileIds,
-      fileData: message.fileData,
-      toolName: message.selectedTool ?? null,
-      toolCategory: message.toolCategory ?? null,
-      follow_up_actions: message.follow_up_actions ?? null,
-      image_data: message.image_data ?? null,
-      error: message.error ?? null,
-      tool_data: message.tool_data ?? null,
-      pinned: message.pinned ?? false,
-      selectedCalendarEvent: message.selectedCalendarEvent,
-      selectedWorkflow: message.selectedWorkflow,
-      todoRunWake: message.todo_run_wake ?? null,
-      replyToMessageId: message.replyToMessage?.id ?? null,
-      replyToMessageData: message.replyToMessage ?? null,
-      stopped: message.stopped ?? null,
-      reaction: message.reaction ?? null,
-    } satisfies IMessage;
-  });
-
-const mapMessageRole = (
-  role: MessageType["type"],
-): "user" | "assistant" | "system" => {
-  switch (role) {
-    case "user":
-      return "user";
-    case "bot":
-      return "assistant";
-    default:
-      return "system";
-  }
-};
 
 const toTimestamp = (timestamp?: string): number => {
   if (!timestamp) return 0;
@@ -129,7 +45,6 @@ const toStoredConversation = (
   isSystemGenerated: conversation.is_system_generated ?? false,
   systemPurpose: conversation.system_purpose ?? null,
   isUnread: unreadUnlessViewed(conversation),
-  hasOlder: conversation.has_older,
   awaitingApproval: apiRowAwaitsApproval(conversation),
   todoId: conversation.todo_id ?? null,
   source: conversation.source ?? undefined,
@@ -241,43 +156,6 @@ const identifyDeletedConversations = (
 
 // DEBUG: surface cases where a sync merge would blank out or shrink an existing
 // bot message's content — the symptom of a known overwrite bug.
-const warnOnMessageContentLoss = (
-  mergedMessages: IMessage[],
-  localMessages: IMessage[],
-  conversationId: string,
-): void => {
-  // Index local messages once for O(1) lookups inside the loop.
-  const localsById = new Map(
-    localMessages.map((m): [string, IMessage] => [m.id, m]),
-  );
-
-  for (const merged of mergedMessages) {
-    if (merged.role !== "assistant") continue;
-
-    const local = localsById.get(merged.id);
-    if (local?.content && !merged.content) {
-      console.warn(
-        `[SyncService] ⚠️ SYNC OVERWRITING bot message ${merged.id} — local has content (${local.content.length} chars), merged is EMPTY. This is the bug!`,
-        {
-          conversationId,
-          localStatus: local.status,
-          mergedStatus: merged.status,
-        },
-      );
-    }
-    if (
-      local?.content &&
-      merged.content &&
-      local.content.length > merged.content.length
-    ) {
-      console.warn(
-        `[SyncService] ⚠️ SYNC SHRINKING bot message ${merged.id} — local: ${local.content.length} chars, merged: ${merged.content.length} chars`,
-        { conversationId },
-      );
-    }
-  }
-};
-
 export const batchSyncConversations = async (
   origin: RequestOrigin = {},
 ): Promise<void> => {
@@ -320,7 +198,7 @@ export const batchSyncConversations = async (
 
     if (deletedConversationIds.length > 0) {
       // Delete conversations that no longer exist on the server
-      await db.deleteConversationsAndMessagesBulk(deletedConversationIds);
+      await db.deleteConversationsAndLogsBulk(deletedConversationIds);
     }
 
     if (staleItems.length === 0) {
@@ -331,7 +209,7 @@ export const batchSyncConversations = async (
       await chatApi.batchSyncConversations(staleItems, origin);
 
     if (missing.length > 0) {
-      await db.deleteConversationsAndMessagesBulk(missing);
+      await db.deleteConversationsAndLogsBulk(missing);
     }
 
     if (freshConversations.length === 0) {
@@ -339,105 +217,31 @@ export const batchSyncConversations = async (
     }
 
     await Promise.allSettled(
-      freshConversations.map(async (conversation) => {
-        const conversationId = conversation.conversation_id;
-        const { messages } = conversation;
-        const artifacts = fromRegistryEntries(
-          conversation.artifacts,
-          conversationId,
-        );
-
-        const mappedConversation = toStoredConversation(
-          conversation,
-          artifacts,
-        );
-
-        // Refresh the runtime lookup map from the server-authoritative registry.
-        // Safe from clobbering a live turn: streaming conversations are filtered
-        // out by shouldBlockSync above.
-        useChatStore
-          .getState()
-          .setConversationArtifacts(conversationId, artifacts);
-
-        const remoteMessages = storedMessagesFromHistory(
-          messages,
-          conversationId,
-        );
-        const localMessages =
-          await db.getMessagesForConversation(conversationId);
-        const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
-
-        warnOnMessageContentLoss(mergedMessages, localMessages, conversationId);
-
-        await Promise.allSettled([
-          db.putConversation(mappedConversation),
-          messages.length > 0
-            ? db.syncMessages(conversationId, mergedMessages)
-            : Promise.resolve(),
-        ]);
-      }),
+      freshConversations.map((conversation) =>
+        applySyncedConversation(conversation.conversation_id, conversation),
+      ),
     );
   } catch {
     // Ignore background sync errors to avoid impacting the UI
   }
 };
 
-/**
- * Merge an already-fetched conversation payload into IndexedDB. No-op while
- * the conversation streams or a save is pending — a live turn's messages must
- * never be overwritten by the server's not-yet-persisted copy.
- */
+/** Store a synced row's conversation fields and fold its newest page of entries into the live view. */
 export const applySyncedConversation = async (
   conversationId: string,
   conversation: SyncedConversation,
 ): Promise<void> => {
-  const { messages } = conversation;
   const artifacts = fromRegistryEntries(conversation.artifacts, conversationId);
-  const mappedConversation = toStoredConversation(conversation, artifacts);
-
   // Refresh the runtime lookup map from the server-authoritative registry. The
   // store stamps session_id onto each entry so artifact fetch URLs resolve.
   useChatStore.getState().setConversationArtifacts(conversationId, artifacts);
-
-  // Map messages
-  const remoteMessages = storedMessagesFromHistory(messages, conversationId);
-  const localMessages = await db.getMessagesForConversation(conversationId);
-
-  const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
-
-  // Persist to IndexedDB
-  await Promise.allSettled([
-    db.putConversation(mappedConversation),
-    messages.length > 0
-      ? db.syncMessages(conversationId, mergedMessages)
-      : Promise.resolve(),
+  await Promise.all([
+    db.putConversation(toStoredConversation(conversation, artifacts)),
+    applyConversationPage(
+      conversationId,
+      ConversationPageSchema.parse(conversation),
+    ),
   ]);
-
-  console.debug(
-    `[SyncService] Synced conversation ${conversationId} with ${messages.length} messages`,
-  );
-};
-
-/** Store a page of older messages under the ones already stored, and whether more remain. */
-export const applyOlderMessagesPage = async (
-  conversationId: string,
-  page: HistoryPage<ConversationEntry>,
-): Promise<void> => {
-  const olderMessages = storedMessagesFromHistory(
-    page.messages,
-    conversationId,
-  );
-  const [localMessages, conversation] = await Promise.all([
-    db.getMessagesForConversation(conversationId),
-    db.getConversation(conversationId),
-  ]);
-  await db.syncMessages(
-    conversationId,
-    mergeMessageLists(localMessages, olderMessages),
-  );
-  if (conversation) {
-    await db.putConversation({ ...conversation, hasOlder: page.has_more });
-  }
 };
 
 /**

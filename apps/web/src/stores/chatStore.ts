@@ -1,8 +1,7 @@
 import { useEffect } from "react";
 import { create } from "zustand";
-import type { IConversation, IMessage } from "@/lib/db/chatDb";
+import type { IConversation } from "@/lib/db/chatDb";
 import { db, dbEventEmitter } from "@/lib/db/chatDb";
-import { compareMessageOrder } from "@/lib/db/messageOrder";
 import type {
   ReplyToMessageData,
   SelectedCalendarEventData,
@@ -35,7 +34,6 @@ export interface OptimisticMessage {
 
 interface ChatState {
   conversations: IConversation[];
-  messagesByConversation: Record<string, IMessage[]>;
   // Per-conversation artifact registry keyed by path, resolving a message's path references to
   // full ArtifactData. Hydrated from IConversation.artifacts on load/sync, updated live by SSE,
   // and persisted back to IndexedDB at end-of-stream.
@@ -51,16 +49,7 @@ interface ChatState {
     conversationId: string,
     updates: Partial<IConversation>,
   ) => void;
-  setMessagesForConversation: (
-    conversationId: string,
-    messages: IMessage[],
-  ) => void;
-  addOrUpdateMessage: (message: IMessage) => void;
-  /** Replace an existing message without re-sorting — the per-tick streaming
-   *  write path. Falls back to insert (sorted) if the message isn't present. */
-  updateMessageInPlace: (message: IMessage) => void;
   removeConversation: (conversationId: string) => void;
-  removeMessage: (messageId: string, conversationId: string) => void;
   setConversationArtifacts: (
     conversationId: string,
     artifacts: ArtifactData[],
@@ -76,7 +65,6 @@ interface ChatState {
 
 export const useChatStore = create<ChatState>((set) => ({
   conversations: [],
-  messagesByConversation: {},
   artifactsByConversation: {},
   activeConversationId: null,
   hydrationCompleted: false, // Becomes true when IndexedDB hydration is done
@@ -110,111 +98,18 @@ export const useChatStore = create<ChatState>((set) => ({
       ),
     })),
 
-  setMessagesForConversation: (conversationId, messages) =>
-    set((state) => ({
-      messagesByConversation: {
-        ...state.messagesByConversation,
-        [conversationId]: [...messages],
-      },
-    })),
-
-  addOrUpdateMessage: (message) =>
-    set((state) => {
-      const { conversationId } = message;
-      const existingMessages =
-        state.messagesByConversation[conversationId] ?? [];
-      const index = existingMessages.findIndex(
-        (existing) => existing.id === message.id,
-      );
-
-      const updatedMessages = (
-        index === -1
-          ? [...existingMessages, message]
-          : existingMessages.map((existing) =>
-              existing.id === message.id ? message : existing,
-            )
-      ).toSorted(compareMessageOrder);
-
-      return {
-        messagesByConversation: {
-          ...state.messagesByConversation,
-          [conversationId]: updatedMessages,
-        },
-      };
-    }),
-
-  updateMessageInPlace: (message) =>
-    set((state) => {
-      const { conversationId } = message;
-      const existingMessages =
-        state.messagesByConversation[conversationId] ?? [];
-      const index = existingMessages.findIndex(
-        (existing) => existing.id === message.id,
-      );
-
-      // Not present yet, or its place changed (its seq arrived): sorted insert.
-      if (
-        index === -1 ||
-        compareMessageOrder(existingMessages[index], message) !== 0
-      ) {
-        const placed = [
-          ...existingMessages.filter((existing) => existing.id !== message.id),
-          message,
-        ].toSorted(compareMessageOrder);
-        return {
-          messagesByConversation: {
-            ...state.messagesByConversation,
-            [conversationId]: placed,
-          },
-        };
-      }
-
-      // Same place in the order — keep the array position, skip the re-sort.
-      const updated = existingMessages.slice();
-      updated[index] = message;
-      return {
-        messagesByConversation: {
-          ...state.messagesByConversation,
-          [conversationId]: updated,
-        },
-      };
-    }),
-
   removeConversation: (conversationId) =>
     set((state) => {
       const conversations = state.conversations.filter(
         (conversation) => conversation.id !== conversationId,
       );
 
-      const { [conversationId]: _removed, ...remainingMessages } =
-        state.messagesByConversation;
-
       const activeConversationId =
         state.activeConversationId === conversationId
           ? null
           : state.activeConversationId;
 
-      return {
-        conversations,
-        messagesByConversation: remainingMessages,
-        activeConversationId,
-      };
-    }),
-
-  removeMessage: (messageId, conversationId) =>
-    set((state) => {
-      // NOTE: This removes a persisted chat message from the local store
-      // (used for IndexedDB sync events like messageDeleted).
-      // It is not related to streaming tool events; those are handled separately.
-      const messages = state.messagesByConversation[conversationId] ?? [];
-      const filteredMessages = messages.filter((msg) => msg.id !== messageId);
-
-      return {
-        messagesByConversation: {
-          ...state.messagesByConversation,
-          [conversationId]: filteredMessages,
-        },
-      };
+      return { conversations, activeConversationId };
     }),
 
   // Server registry entries persist only per-file fields (path, size, mtime, content type) —
@@ -262,11 +157,7 @@ const startHydration = async () => {
   hydrationStarted = true;
 
   try {
-    // Load all conversations and messages in parallel (2 queries total)
-    const [conversations, allMessages] = await Promise.all([
-      db.getAllConversations(),
-      db.getAllMessages(),
-    ]);
+    const conversations = await db.getAllConversations();
 
     useChatStore.getState().setConversations(conversations);
 
@@ -277,25 +168,6 @@ const startHydration = async () => {
           .getState()
           .setConversationArtifacts(conversation.id, conversation.artifacts);
       }
-    }
-
-    // Group messages by conversationId client-side (instant, no I/O)
-    const messagesByConversation = allMessages.reduce(
-      (acc, msg) => {
-        if (!acc[msg.conversationId]) acc[msg.conversationId] = [];
-        acc[msg.conversationId].push(msg);
-        return acc;
-      },
-      {} as Record<string, IMessage[]>,
-    );
-
-    // Set all messages at once
-    for (const [conversationId, messages] of Object.entries(
-      messagesByConversation,
-    )) {
-      useChatStore
-        .getState()
-        .setMessagesForConversation(conversationId, messages);
     }
   } catch (error) {
     console.error("Failed to hydrate from IndexedDB:", error);
@@ -326,62 +198,6 @@ export const useChatStoreSync = () => {
   useEffect(() => {
     // Event handlers for real-time updates from IndexedDB
 
-    const handleMessageUpserted = (message: IMessage) => {
-      useChatStore.getState().addOrUpdateMessage(message);
-    };
-
-    const handleMessageDeleted = (
-      messageId: string,
-      conversationId: string,
-    ) => {
-      useChatStore.getState().removeMessage(messageId, conversationId);
-    };
-
-    const handleMessagesSynced = (
-      conversationId: string,
-      messages: IMessage[],
-    ) => {
-      useChatStore
-        .getState()
-        .setMessagesForConversation(conversationId, messages);
-    };
-
-    const handleMessageIdReplaced = (oldId: string, newMessage: IMessage) => {
-      const state = useChatStore.getState();
-      const messages =
-        state.messagesByConversation[newMessage.conversationId] ?? [];
-
-      // Check if the old message exists in the store
-      const oldIndex = messages.findIndex((msg) => msg.id === oldId);
-
-      let updatedMessages: IMessage[];
-      if (oldIndex !== -1) {
-        // Replace the old message with the new one
-        updatedMessages = messages.map((msg) =>
-          msg.id === oldId ? newMessage : msg,
-        );
-      } else {
-        // Old message not found - check if new message already exists (avoid duplicates)
-        const newIndex = messages.findIndex((msg) => msg.id === newMessage.id);
-        if (newIndex !== -1) {
-          // Update existing message with new ID
-          updatedMessages = messages.map((msg) =>
-            msg.id === newMessage.id ? newMessage : msg,
-          );
-        } else {
-          // Neither found - add the new message
-          updatedMessages = [...messages, newMessage];
-        }
-      }
-
-      updatedMessages = updatedMessages.toSorted(compareMessageOrder);
-
-      state.setMessagesForConversation(
-        newMessage.conversationId,
-        updatedMessages,
-      );
-    };
-
     const handleConversationAdded = (conversation: IConversation) => {
       useChatStore.getState().upsertConversation(conversation);
     };
@@ -400,10 +216,6 @@ export const useChatStoreSync = () => {
       });
     };
 
-    dbEventEmitter.on("messageUpserted", handleMessageUpserted);
-    dbEventEmitter.on("messageDeleted", handleMessageDeleted);
-    dbEventEmitter.on("messagesSynced", handleMessagesSynced);
-    dbEventEmitter.on("messageIdReplaced", handleMessageIdReplaced);
     dbEventEmitter.on("conversationAdded", handleConversationAdded);
     dbEventEmitter.on("conversationUpdated", handleConversationUpdated);
     dbEventEmitter.on("conversationDeleted", handleConversationDeleted);
@@ -413,10 +225,6 @@ export const useChatStoreSync = () => {
     );
 
     return () => {
-      dbEventEmitter.off("messageUpserted", handleMessageUpserted);
-      dbEventEmitter.off("messageDeleted", handleMessageDeleted);
-      dbEventEmitter.off("messagesSynced", handleMessagesSynced);
-      dbEventEmitter.off("messageIdReplaced", handleMessageIdReplaced);
       dbEventEmitter.off("conversationAdded", handleConversationAdded);
       dbEventEmitter.off("conversationUpdated", handleConversationUpdated);
       dbEventEmitter.off("conversationDeleted", handleConversationDeleted);

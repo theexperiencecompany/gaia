@@ -8,16 +8,17 @@ import {
 
 vi.mock("@/features/chat/api/chatApi", () => ({
   chatApi: { fetchConversations: vi.fn(), batchSyncConversations: vi.fn() },
-  toClientMessages: () => [],
+}));
+
+vi.mock("@/features/chat/live/connection", () => ({
+  applyConversationPage: vi.fn(),
 }));
 
 vi.mock("@/lib/db/chatDb", () => ({
   db: {
     getAllConversations: vi.fn(),
-    deleteConversationsAndMessagesBulk: vi.fn(),
+    deleteConversationsAndLogsBulk: vi.fn(),
     putConversation: vi.fn(),
-    getMessagesForConversation: vi.fn().mockResolvedValue([]),
-    syncMessages: vi.fn(),
   },
 }));
 
@@ -92,7 +93,7 @@ describe("syncing a tracked todo's chat", () => {
 
     await batchSyncConversations();
 
-    expect(db.deleteConversationsAndMessagesBulk).toHaveBeenCalledWith([
+    expect(db.deleteConversationsAndLogsBulk).toHaveBeenCalledWith([
       "deleted-on-server",
     ]);
   });
@@ -123,7 +124,7 @@ describe("syncing a tracked todo's chat", () => {
       ],
       {},
     );
-    expect(db.deleteConversationsAndMessagesBulk).toHaveBeenCalledWith([
+    expect(db.deleteConversationsAndLogsBulk).toHaveBeenCalledWith([
       "deleted-todo-chat",
     ]);
   });
@@ -132,7 +133,9 @@ describe("syncing a tracked todo's chat", () => {
     await applySyncedConversation("todo-chat", {
       conversation_id: "todo-chat",
       description: "Watch the deploy",
-      messages: [],
+      entries: [],
+      state: { kind: "state", head: 0, display: "idle", work: [] },
+      cursor: null,
       artifacts: [],
       awaiting_approval: false,
       has_older: false,
@@ -168,7 +171,7 @@ describe("syncing a bot DM chat", () => {
 
     await batchSyncConversations();
 
-    expect(db.deleteConversationsAndMessagesBulk).toHaveBeenCalledWith([
+    expect(db.deleteConversationsAndLogsBulk).toHaveBeenCalledWith([
       "deleted-on-server",
     ]);
     expect(chatApi.batchSyncConversations).toHaveBeenCalledWith(
@@ -186,7 +189,9 @@ describe("syncing a bot DM chat", () => {
     await applySyncedConversation("telegram-dm", {
       conversation_id: "telegram-dm",
       description: "Telegram Chat",
-      messages: [],
+      entries: [],
+      state: { kind: "state", head: 0, display: "idle", work: [] },
+      cursor: null,
       artifacts: [],
       awaiting_approval: false,
       has_older: false,

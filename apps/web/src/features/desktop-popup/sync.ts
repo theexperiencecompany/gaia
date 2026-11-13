@@ -7,7 +7,6 @@ import {
   useLiveConversationStore,
 } from "@/features/chat/live/liveConversationStore";
 import type { PaywallSource } from "@/lib/analytics";
-import type { IMessage } from "@/lib/db/chatDb";
 import { type AuxLoading, useAuxLoadingStore } from "@/stores/auxLoadingStore";
 import { useChatStore } from "@/stores/chatStore";
 import type { UpgradeOffer } from "@/stores/upgradeModal.types";
@@ -29,7 +28,6 @@ const CHANNEL_NAME = "gaia-desktop-popup-chat";
 interface PopupChatState {
   type: "state";
   activeConversationId: string | null;
-  messages: IMessage[];
   /** The active conversation as its event stream has built it. */
   live: LiveConversation | null;
   /** Auxiliary (voice/upload) loading, mirrored as-is. */
@@ -66,7 +64,6 @@ function snapshot(): PopupChatState {
     paywallSource: paywall.source,
     type: "state",
     activeConversationId: id,
-    messages: id ? (chat.messagesByConversation[id] ?? []) : [],
     live: id ? liveConversation(id) : null,
     auxLoading: useAuxLoadingStore.getState().auxLoading,
   };
@@ -138,16 +135,10 @@ export function usePopupChatConsumer(): void {
         else paywall.closeModal({ force: true });
       }
       chat.setActiveConversationId(data.activeConversationId);
-      if (data.activeConversationId) {
-        chat.setMessagesForConversation(
-          data.activeConversationId,
-          data.messages,
-        );
-        if (data.live)
-          useLiveConversationStore
-            .getState()
-            .mirror(data.activeConversationId, data.live);
-      }
+      if (data.activeConversationId && data.live)
+        useLiveConversationStore
+          .getState()
+          .mirror(data.activeConversationId, data.live);
       useAuxLoadingStore.setState({ auxLoading: data.auxLoading });
     };
 

@@ -78,7 +78,7 @@ async function startConversation(): Promise<string> {
 async function abandonConversation(conversationId: string): Promise<void> {
   useLiveConversationStore.getState().discard(conversationId);
   useChatStore.getState().removeConversation(conversationId);
-  await db.deleteConversationAndMessages(conversationId);
+  await db.deleteConversationAndLog(conversationId);
 }
 
 async function queueAndDeliver(

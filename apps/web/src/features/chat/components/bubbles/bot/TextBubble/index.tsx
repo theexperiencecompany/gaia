@@ -11,6 +11,7 @@ import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
+import { useApprovalSettlementStore } from "@/features/chat/stores/approvalSettlementStore";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
   DEFAULT_PART_CHOREOGRAPHY,
@@ -19,7 +20,6 @@ import {
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
-import { db } from "@/lib/db/chatDb";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import MarkdownRenderer from "../../../interface/MarkdownRenderer";
 import {
@@ -372,21 +372,15 @@ export default function TextBubble({
 }) {
   const baseId = useId();
 
-  // Persist a HIL approval decision into THIS message's tool_data so the
-  // pending card settles (clears the pill) and survives reload — the
-  // resolved frame publishes on a different (resumed) message's stream.
+  // Settle the card on this device's own decision at once; the log's decision follows on the stream.
   const resolveApproval = React.useCallback<ApprovalResolver>(
-    (approvalId, resolved) => {
-      if (!message_id || !tool_data) return;
-      const next = tool_data.map((entry) =>
-        entry.tool_name === APPROVAL_REQUEST_TOOL_NAME &&
-        (entry.data as ApprovalRequestData | null)?.approval_id === approvalId
-          ? { ...entry, data: resolved }
-          : entry,
-      );
-      void db.updateMessage(message_id, { tool_data: next });
-    },
-    [message_id, tool_data],
+    (approvalId, resolved) =>
+      useApprovalSettlementStore.getState().settle({
+        approval_id: approvalId,
+        status: resolved.status,
+        feedback: resolved.feedback ?? null,
+      }),
+    [],
   );
 
   // Parse thinking content from text

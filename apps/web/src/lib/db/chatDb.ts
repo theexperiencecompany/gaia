@@ -1,19 +1,9 @@
-import type { MessageReaction, TodoRunWake } from "@shared/api/generated";
 import type { LoggedEntry } from "@shared/conversation";
 import Dexie, { type IndexableType, type Table } from "dexie";
 import { EventEmitter } from "events";
-import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import type { SystemPurpose } from "@/features/chat/api/chatApi";
 import type { LocalSend } from "@/features/chat/live/liveConversationStore";
-import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
-import type { ArtifactData, ImageData } from "@/types/features/toolDataTypes";
-import type { WorkflowData } from "@/types/features/workflowTypes";
-import type { FileData } from "@/types/shared/fileTypes";
-import {
-  foldLegacyReactionAcks,
-  type LegacyStoredMessage,
-} from "./foldLegacyReactionAcks";
-import { compareMessageOrder } from "./messageOrder";
+import type { ArtifactData } from "@/types/features/toolDataTypes";
 
 export interface IConversation {
   id: string;
@@ -24,8 +14,6 @@ export interface IConversation {
   isSystemGenerated?: boolean;
   systemPurpose?: SystemPurpose | null;
   isUnread?: boolean;
-  // The server holds messages older than the oldest one stored here.
-  hasOlder?: boolean;
   source?: string; // ConversationSource from backend (web, telegram, discord, etc.)
   // Live work here awaits the user's approval: the sidebar lists the
   // conversation for its card, and the row lights the approval dot.
@@ -40,59 +28,11 @@ export interface IConversation {
   updatedAt: Date;
 }
 
-export interface IMessage {
-  id: string;
-  conversationId: string;
-  content: string;
-  role: "user" | "assistant" | "system";
-  status: "sending" | "sent" | "failed" | "queued";
-  createdAt: Date;
-  updatedAt: Date;
-  messageId?: string;
-  // The message's place in its conversation's order, from the server. Absent
-  // until the server has placed it (see compareMessageOrder).
-  seq?: number;
-
-  // File data
-  fileIds?: string[];
-  fileData?: FileData[];
-
-  // Tool/workflow data
-  toolName?: string | null;
-  toolCategory?: string | null;
-  selectedWorkflow?: WorkflowData | null;
-  selectedCalendarEvent?: SelectedCalendarEventData | null;
-  todoRunWake?: TodoRunWake | null;
-
-  // Rich content data from BaseMessageData
-  tool_data?: TypedToolDataEntry[] | null;
-  follow_up_actions?: string[] | null;
-  image_data?: ImageData | null;
-
-  // Message metadata
-  pinned?: boolean;
-  // Present when a bot turn died with no response text (persisted server-side).
-  error?: string | null;
-  optimistic?: boolean; // Temporary message waiting for backend ID
-
-  // Reply data
-  replyToMessageId?: string | null;
-  replyToMessageData?: {
-    id: string;
-    content: string;
-    role: "user" | "assistant";
-  } | null;
-
-  // The user stopped this turn with Stop (server's stopped).
-  stopped?: boolean | null;
-  // GAIA's one reaction on a user message (server's reaction).
-  reaction?: MessageReaction | null;
-}
-
-/** A conversation's log as this device last saw it, and the sends it made into it. */
+/** A conversation's log as this device last saw it, where an older page starts, and the sends it made into it. */
 export interface IConversationLog {
   conversationId: string;
   entries: LoggedEntry[];
+  olderBefore: number | null;
   sends: Record<string, LocalSend>;
 }
 
@@ -117,22 +57,6 @@ class DBEventEmitter extends EventEmitter {
     this.setMaxListeners(1); // Enforce single listener per event
   }
 
-  emitMessageUpserted(message: IMessage) {
-    this.emit("messageUpserted", message);
-  }
-
-  emitMessageDeleted(messageId: string, conversationId: string) {
-    this.emit("messageDeleted", messageId, conversationId);
-  }
-
-  emitMessagesSynced(conversationId: string, messages: IMessage[]) {
-    this.emit("messagesSynced", conversationId, messages);
-  }
-
-  emitMessageIdReplaced(oldId: string, newMessage: IMessage) {
-    this.emit("messageIdReplaced", oldId, newMessage);
-  }
-
   emitConversationAdded(conversation: IConversation) {
     this.emit("conversationAdded", conversation);
   }
@@ -154,7 +78,6 @@ export const dbEventEmitter = new DBEventEmitter();
 
 class ChatDexie extends Dexie {
   public conversations!: Table<IConversation, string>;
-  public messages!: Table<IMessage, string>;
   public conversationLogs!: Table<IConversationLog, string>;
 
   /**
@@ -173,23 +96,16 @@ class ChatDexie extends Dexie {
       conversations: "id, updatedAt, createdAt",
       messages: "id, conversationId, createdAt",
     });
-    // v3: a reaction is a field on the user message; cached emoji_ack messages fold into it.
-    this.version(3)
-      .stores({})
-      .upgrade(async (tx) => {
-        const messages = tx.table<LegacyStoredMessage, string>("messages");
-        const { updated, removedIds } = foldLegacyReactionAcks(
-          await messages.toArray(),
-        );
-        await messages.bulkPut(updated);
-        await messages.bulkDelete(removedIds);
-      });
-
+    this.version(3).stores({});
     // v4: the conversation event stream's log, so a reload shows it before the stream reconnects.
     this.version(4).stores({ conversationLogs: "conversationId" });
+    // v5: a conversation is its log alone. Cached messages go, and logs saved without a page
+    // cursor are dropped so each conversation refetches its newest page once.
+    this.version(5)
+      .stores({ messages: null })
+      .upgrade((tx) => tx.table("conversationLogs").clear());
 
     this.conversations = this.table("conversations");
-    this.messages = this.table("messages");
     this.conversationLogs = this.table("conversationLogs");
   }
 
@@ -282,54 +198,13 @@ class ChatDexie extends Dexie {
     return conversations.map((conversation) => conversation.id);
   }
 
-  public getMessagesForConversation(
-    conversationId: string,
-  ): Promise<IMessage[]> {
-    return this.run([], async () =>
-      (
-        await this.messages
-          .where("conversationId")
-          .equals(conversationId)
-          .toArray()
-      ).toSorted(compareMessageOrder),
-    );
-  }
-
-  public getAllMessages(): Promise<IMessage[]> {
-    return this.run([], async () =>
-      (await this.messages.toArray()).toSorted(compareMessageOrder),
-    );
-  }
-
-  public async putMessage(message: IMessage): Promise<string> {
-    await this.run(undefined, () =>
-      messageQueue.enqueue(() => this.messages.put(message)),
-    );
-    dbEventEmitter.emitMessageUpserted(message);
-    return message.id;
-  }
-
-  public async putMessagesBulk(messages: IMessage[]): Promise<string[]> {
-    await this.run(undefined, () =>
-      messageQueue.enqueue(() => this.messages.bulkPut(messages)),
-    );
-    messages.forEach((message) => dbEventEmitter.emitMessageUpserted(message));
-    return messages.map((message) => message.id);
-  }
-
-  public async deleteConversationAndMessages(
-    conversationId: string,
-  ): Promise<void> {
+  public async deleteConversationAndLog(conversationId: string): Promise<void> {
     await this.run(undefined, () =>
       messageQueue.enqueue(() =>
         (this as Dexie).transaction(
           "rw",
-          [this.conversations, this.messages, this.conversationLogs],
+          [this.conversations, this.conversationLogs],
           async () => {
-            await this.messages
-              .where("conversationId")
-              .equals(conversationId)
-              .delete();
             await this.conversationLogs.delete(conversationId);
             await this.conversations.delete(conversationId);
           },
@@ -339,10 +214,10 @@ class ChatDexie extends Dexie {
   }
 
   /**
-   * Bulk delete multiple conversations and their messages.
+   * Bulk delete multiple conversations and their logs.
    * Used by sync service to clean up deleted conversations.
    */
-  public async deleteConversationsAndMessagesBulk(
+  public async deleteConversationsAndLogsBulk(
     conversationIds: string[],
   ): Promise<void> {
     if (conversationIds.length === 0) return;
@@ -351,14 +226,8 @@ class ChatDexie extends Dexie {
       messageQueue.enqueue(() =>
         (this as Dexie).transaction(
           "rw",
-          [this.conversations, this.messages, this.conversationLogs],
+          [this.conversations, this.conversationLogs],
           async () => {
-            // Delete all messages for these conversations in one indexed
-            // query — same rw transaction, no sequential await loop.
-            await this.messages
-              .where("conversationId")
-              .anyOf(conversationIds)
-              .delete();
             await this.conversationLogs.bulkDelete(conversationIds);
             // Delete the conversations themselves
             await this.conversations.bulkDelete(conversationIds);
@@ -371,55 +240,14 @@ class ChatDexie extends Dexie {
     dbEventEmitter.emitConversationsDeletedBulk(conversationIds);
   }
 
-  /** Merge `updates` into an existing message. Returns the updated record,
-   *  or `undefined` when no record with that id exists (nothing is written). */
-  public async updateMessage(
-    messageId: string,
-    updates: Partial<IMessage>,
-  ): Promise<IMessage | undefined> {
-    let updatedMessage: IMessage | undefined;
-    await this.run(undefined, () =>
-      messageQueue.enqueue(async () => {
-        const message = await this.messages.get(messageId);
-        if (message) {
-          updatedMessage = {
-            ...message,
-            ...updates,
-            updatedAt: new Date(),
-          };
-          await this.messages.put(updatedMessage);
-        }
-      }),
-    );
-    if (updatedMessage) {
-      dbEventEmitter.emitMessageUpserted(updatedMessage);
-    }
-    return updatedMessage;
-  }
-
-  public async syncMessages(
-    conversationId: string,
-    messages: IMessage[],
-  ): Promise<void> {
-    await this.run(undefined, () =>
-      messageQueue.enqueue(() =>
-        (this as Dexie).transaction("rw", this.messages, async () => {
-          await this.messages.bulkPut(messages);
-        }),
-      ),
-    );
-    dbEventEmitter.emitMessagesSynced(conversationId, messages);
-  }
-
   public async clearAll(): Promise<void> {
     const conversationIds = await this.run<IndexableType[]>([], () =>
       messageQueue.enqueue(async () => {
         const ids = await this.conversations.toCollection().primaryKeys();
         await (this as Dexie).transaction(
           "rw",
-          [this.conversations, this.messages, this.conversationLogs],
+          [this.conversations, this.conversationLogs],
           async () => {
-            await this.messages.clear();
             await this.conversationLogs.clear();
             await this.conversations.clear();
           },

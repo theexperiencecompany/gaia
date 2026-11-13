@@ -1,6 +1,5 @@
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import type {
-  ConversationEntry,
   ConversationSummary,
   ConversationSyncItem,
   ConversationSyncRow,
@@ -17,6 +16,10 @@ import type {
   BatchApprovalDecisionPayload,
   BatchApprovalDecisionResponse,
 } from "@shared/chat";
+import {
+  type ConversationPage,
+  ConversationPageSchema,
+} from "@shared/conversation";
 import type { DesktopToolResult } from "@shared/desktop-tools";
 import { BATCH_OUTCOME_REASON } from "@/features/chat/utils/batchOutcome";
 import {
@@ -31,7 +34,6 @@ import {
   type RequestOrigin,
 } from "@/lib/api/typed";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
-import type { MessageType } from "@/types/features/convoTypes";
 
 /** The events stream refused a conversation the server does not hold yet: its first send has not landed. */
 export class ConversationNotFoundError extends Error {
@@ -61,15 +63,6 @@ export const SystemPurpose = {
 } as const satisfies Record<string, SystemPurposeLiteral>;
 
 export type Conversation = ConversationSummary;
-
-/**
- * The stored message as the chat UI holds it. The client message adds its
- * own transient flags (loading/queued/failed) and reads the API's nullable
- * fields as optional; this is the one place that conversion is stated.
- */
-export const toClientMessages = (
-  messages: ConversationEntry[],
-): MessageType[] => messages as unknown as MessageType[];
 
 export type SyncedConversation = ConversationSyncRow;
 
@@ -148,25 +141,18 @@ export const chatApi = {
     });
   },
 
-  // Fetch messages for a conversation
-  fetchMessages: async (conversationId: string): Promise<MessageType[]> => {
-    const response = await api.get("/api/v1/conversations/{conversation_id}", {
-      path: { conversation_id: conversationId },
-      errorMessage: "Failed to fetch messages",
-    });
-    return toClientMessages(response.messages ?? []);
-  },
-
-  fetchMessagesBefore: (
+  fetchEntriesBefore: async (
     conversationId: string,
     beforeSeq: number,
     limit: number,
-  ) =>
-    api.get("/api/v1/conversations/{conversation_id}/messages", {
-      path: { conversation_id: conversationId },
-      query: { before_seq: beforeSeq, limit },
-      errorMessage: "Failed to load older messages",
-    }),
+  ): Promise<ConversationPage> =>
+    ConversationPageSchema.parse(
+      await api.get("/api/v1/conversations/{conversation_id}/entries", {
+        path: { conversation_id: conversationId },
+        query: { before_seq: beforeSeq, limit },
+        errorMessage: "Failed to load older messages",
+      }),
+    ),
 
   // Star/unstar conversation
   toggleStarConversation: async (

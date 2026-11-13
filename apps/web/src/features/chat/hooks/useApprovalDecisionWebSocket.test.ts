@@ -1,11 +1,17 @@
 // @vitest-environment jsdom
 
 import type { ApprovalRequestData } from "@shared/chat";
+import {
+  applyFrame,
+  EMPTY_CONVERSATION_VIEW,
+  type Entry,
+} from "@shared/conversation";
+import { entryFrame, reply } from "@shared/conversation/testing";
+import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import { useApprovalDecisionWebSocket } from "@/features/chat/hooks/useApprovalDecisionWebSocket";
-import type { IMessage } from "@/lib/db/chatDb";
-import { useChatStore } from "@/stores/chatStore";
+import { liveMessages } from "@/features/chat/live/liveMessages";
+import { useApprovalSettlementStore } from "@/features/chat/stores/approvalSettlementStore";
 
 type WsHandler = (message: unknown) => void;
 
@@ -20,14 +26,7 @@ vi.mock("@/lib/websocket/WebSocketManager", () => ({
   wsManager: harness.wsManager,
 }));
 
-vi.mock("@/lib/db/chatDb", () => ({
-  db: { putMessage: vi.fn() },
-}));
-
-const card = (
-  approval_id: string,
-  status: ApprovalRequestData["status"] = "pending",
-): TypedToolDataEntry => ({
+const card = (approval_id: string) => ({
   tool_name: "approval_request",
   tool_category: "hil",
   timestamp: "2026-09-19T00:00:00Z",
@@ -38,151 +37,74 @@ const card = (
     integration_name: "gmail",
     summary: `Send ${approval_id}`,
     args_preview: {},
-    status,
+    status: "pending",
     feedback: null,
     auto_reason: null,
     timeout_seconds: 300,
   },
 });
 
-const message = (id: string, tool_data: IMessage["tool_data"]): IMessage => ({
-  id,
-  conversationId: "conv-1",
-  content: "hi",
-  role: "assistant",
-  status: "sent",
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  messageId: id,
-  tool_data: tool_data ?? null,
-  follow_up_actions: null,
-  replyToMessageData: null,
-});
+// A reply in the log carrying four approval cards, none decided in the log.
+const VIEW = applyFrame(
+  EMPTY_CONVERSATION_VIEW,
+  entryFrame(1, {
+    ...reply("r1", "a1", "Here are the emails to send."),
+    tool_data: ["ap_1", "ap_2", "ap_3", "ap_4"].map(card),
+  } as Entry),
+).view;
+
+const shownStatus = (approvalId: string) =>
+  (
+    liveMessages(VIEW, {}, useApprovalSettlementStore.getState().settled)[0]
+      ?.tool_data ?? []
+  )
+    .map((entry) => entry.data as ApprovalRequestData)
+    .find((data) => data.approval_id === approvalId)?.status;
 
 function handler(): WsHandler {
-  expect(harness.wsManager.on).toHaveBeenCalledWith(
-    "hil_approval_decided",
-    expect.any(Function),
-  );
   const call = harness.wsManager.on.mock.calls.find(
-    ([t]) => t === "hil_approval_decided",
+    ([type]) => type === "hil_approval_decided",
   );
+  expect(call).toBeDefined();
   return call?.[1] as WsHandler;
 }
+
+const decided = (approval_id: string, status: string, version = 1) => ({
+  type: "hil_approval_decided",
+  data: {
+    conversation_id: "conv-1",
+    approval_id,
+    status,
+    feedback: null,
+    version,
+  },
+});
 
 describe("useApprovalDecisionWebSocket", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useChatStore.setState({
-      messagesByConversation: {
-        "conv-1": [
-          message("m1", [
-            card("ap_1"),
-            card("ap_2"),
-            card("ap_3"),
-            card("ap_4"),
-          ]),
-        ],
-      },
-    });
-    // Mount the subscription (hook body runs on import in test via direct call is
-    // unavailable without a renderer; invoke through React in the shell below).
+    useApprovalSettlementStore.setState({ settled: {} });
+    renderHook(() => useApprovalDecisionWebSocket());
   });
 
-  it("settles the matching card and leaves siblings alone", async () => {
-    const { renderHook } = await import("@testing-library/react");
-    renderHook(() => useApprovalDecisionWebSocket());
-    await handler()({
-      type: "hil_approval_decided",
-      data: {
-        conversation_id: "conv-1",
-        approval_id: "ap_1",
-        status: "approved",
-        feedback: null,
-        version: 1,
-      },
-    });
-    const msgs = useChatStore.getState().messagesByConversation["conv-1"] ?? [];
-    const entries = (msgs[0]?.tool_data ?? []) as {
-      data: { approval_id: string; status: string };
-    }[];
-    expect(
-      entries.find((e) => e.data.approval_id === "ap_1")?.data.status,
-    ).toBe("approved");
-    expect(
-      entries.find((e) => e.data.approval_id === "ap_2")?.data.status,
-    ).toBe("pending");
+  it("settles the matching card on screen and leaves siblings alone", () => {
+    handler()(decided("ap_1", "approved"));
+
+    expect(shownStatus("ap_1")).toBe("approved");
+    expect(shownStatus("ap_2")).toBe("pending");
   });
 
-  it("raises revoked tombstones and ignores unknown ids and statuses", async () => {
-    const { renderHook } = await import("@testing-library/react");
-    renderHook(() => useApprovalDecisionWebSocket());
+  it("raises revoked tombstones and ignores unknown ids and statuses", () => {
     const h = handler();
-    await h({
-      type: "hil_approval_decided",
-      data: {
-        conversation_id: "conv-1",
-        approval_id: "ap_2",
-        status: "revoked",
-        feedback: null,
-        version: 2,
-      },
-    });
-    await h({
-      type: "hil_approval_decided",
-      data: {
-        conversation_id: "conv-1",
-        approval_id: "ap_nope",
-        status: "approved",
-        feedback: null,
-        version: 1,
-      },
-    });
-    await h({
-      type: "hil_approval_decided",
-      data: {
-        conversation_id: "conv-1",
-        approval_id: "ap_1",
-        status: "executing",
-        feedback: null,
-        version: 1,
-      },
-    });
-    await h({
-      type: "hil_approval_decided",
-      data: {
-        conversation_id: "conv-1",
-        approval_id: "ap_3",
-        status: "executed",
-        feedback: null,
-        version: 2,
-      },
-    });
-    await h({
-      type: "hil_approval_decided",
-      data: {
-        conversation_id: "conv-1",
-        approval_id: "ap_4",
-        status: "unknown",
-        feedback: null,
-        version: 3,
-      },
-    });
-    const msgs = useChatStore.getState().messagesByConversation["conv-1"] ?? [];
-    const entries = (msgs[0]?.tool_data ?? []) as {
-      data: { approval_id: string; status: string };
-    }[];
-    expect(
-      entries.find((e) => e.data.approval_id === "ap_2")?.data.status,
-    ).toBe("revoked");
-    expect(
-      entries.find((e) => e.data.approval_id === "ap_1")?.data.status,
-    ).toBe("pending");
-    expect(
-      entries.find((e) => e.data.approval_id === "ap_3")?.data.status,
-    ).toBe("executed");
-    expect(
-      entries.find((e) => e.data.approval_id === "ap_4")?.data.status,
-    ).toBe("unknown");
+    h(decided("ap_2", "revoked", 2));
+    h(decided("ap_nope", "approved"));
+    h(decided("ap_1", "executing"));
+    h(decided("ap_3", "executed", 2));
+    h(decided("ap_4", "unknown", 3));
+
+    expect(shownStatus("ap_2")).toBe("revoked");
+    expect(shownStatus("ap_1")).toBe("pending");
+    expect(shownStatus("ap_3")).toBe("executed");
+    expect(shownStatus("ap_4")).toBe("unknown");
   });
 });
