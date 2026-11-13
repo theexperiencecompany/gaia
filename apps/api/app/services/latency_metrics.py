@@ -181,26 +181,6 @@ _HIL_DISPATCH_LAG_SECONDS = _register_once(
     ),
 )
 
-_DELIVERY_NARRATION_SECONDS = _register_once(
-    "delivery_narration_seconds",
-    lambda: Histogram(
-        name="delivery_narration_seconds",
-        documentation="Executor result narration duration in seconds",
-        labelnames=("status",),
-        buckets=_TURN_BUCKETS,
-    ),
-)
-
-_DELIVERY_PERSIST_SECONDS = _register_once(
-    "delivery_persist_seconds",
-    lambda: Histogram(
-        name="delivery_persist_seconds",
-        documentation="Result persistence write duration in seconds",
-        labelnames=("op",),
-        buckets=_TTFT_BUCKETS,
-    ),
-)
-
 _TRANSPORT_REDIS_PUBLISH_SECONDS = _register_once(
     "transport_redis_publish_seconds",
     lambda: Histogram(
@@ -323,8 +303,6 @@ ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _SUBAGENT_RUN_SECONDS,
     _HIL_USER_WAIT_SECONDS,
     _HIL_DISPATCH_LAG_SECONDS,
-    _DELIVERY_NARRATION_SECONDS,
-    _DELIVERY_PERSIST_SECONDS,
     _TRANSPORT_REDIS_PUBLISH_SECONDS,
     _SSE_DELIVERY_SECONDS,
     _LLM_CALL_SECONDS,
@@ -498,16 +476,6 @@ def observe_hil_dispatch_lag(seconds: float) -> None:
     _observe(_HIL_DISPATCH_LAG_SECONDS, seconds)
 
 
-def observe_delivery_narration(seconds: float, *, status: str) -> None:
-    """Record executor result narration duration."""
-    _observe(_DELIVERY_NARRATION_SECONDS, seconds, status=status)
-
-
-def observe_delivery_persist(seconds: float, *, op: str) -> None:
-    """Record result persistence write duration for one op."""
-    _observe(_DELIVERY_PERSIST_SECONDS, seconds, op=op)
-
-
 def observe_transport_redis_publish(seconds: float) -> None:
     """Record Redis stream publish duration."""
     _observe(_TRANSPORT_REDIS_PUBLISH_SECONDS, seconds)
@@ -536,8 +504,6 @@ __all__ = [
     "observe_chat_turn_total",
     "observe_comms_graph",
     "observe_context_assemble",
-    "observe_delivery_narration",
-    "observe_delivery_persist",
     "observe_executor_active",
     "observe_executor_e2e",
     "observe_executor_queue_wait",

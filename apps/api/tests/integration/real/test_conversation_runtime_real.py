@@ -20,13 +20,19 @@ import pytest
 from redis.asyncio import Redis
 
 from app.agents.context.slots import TIME_CONTEXT_MARKER, PromptSlot, mark, slot_of
-from app.agents.core.background import executor_runner, todo_run, todo_run_delivery
+from app.agents.core.background import (
+    executor_runner,
+    result_delivery,
+    todo_run,
+    todo_run_delivery,
+)
 from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_lock_value,
     try_acquire_lock,
 )
 from app.agents.core.background.executor_runner import deliver_to_executor
+from app.agents.core.background.result_delivery import deliver_message_to_conversation
 from app.agents.core.background.session import ExecutorRun
 from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_executor
 from app.agents.core.background.todo_run_delivery import report_form_of
@@ -43,6 +49,7 @@ from app.core.lazy_loader import providers
 from app.db.redis import redis_cache
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
+from app.db.repositories.conversations import conversation_repository
 from app.models.agent_config import AgentConfigurable, StepTurnRef
 from app.models.agent_models import AgentRunnableConfig
 from app.models.conversation_frame_models import EntryFrame, ToolDataEvent, WorkDeltaFrame
@@ -114,6 +121,7 @@ from app.services.conversation.work_log import (
     record_approval_decided,
     record_approval_requested,
     record_user_stop,
+    record_work_carried,
     record_work_finished,
     record_work_started,
     running_step_task,
@@ -1441,3 +1449,60 @@ async def test_a_stop_after_the_reply_settled_counts_nothing_more(rig_for: RigFa
         await rig.settle()
 
     assert _turn_ends(captured) == [("chat:message_completed", "m1")]
+
+
+async def _unread(rig: Rig) -> bool | None:
+    stored = await conversation_repository.get(rig.conversation_id, user_id=rig.user_id)
+    assert stored is not None
+    return stored.is_unread
+
+
+@pytest.mark.service
+async def test_a_delivered_reminder_is_one_notice_with_its_cards_and_no_legacy_message(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated())
+    card = _card("reminder")
+    with patch.object(result_delivery, "deliver_message_to_platform", AsyncMock()) as to_platform:
+        await deliver_message_to_conversation(
+            conversation_id=rig.conversation_id,
+            user=AuthenticatedUser(user_id=rig.user_id),
+            text="time to stretch",
+            origin="reminder",
+            tool_data=[card],
+        )
+    (notice,) = await rig.of(Notice)
+    stored = await conversation_repository.get(rig.conversation_id, user_id=rig.user_id)
+    assert (notice.text, notice.tool_data) == ("time to stretch", (card,))
+    assert stored is not None
+    assert [m.response for m in stored.messages if m.response == "time to stretch"] == []
+    to_platform.assert_not_awaited()
+    assert await _unread(rig) is True
+
+
+@pytest.mark.service
+async def test_a_write_up_of_work_no_message_asked_for_marks_the_conversation_unread(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated("it is noon", "your report is ready"))
+    await rig.send("m1", "what time is it?")
+    await rig.settle()
+    assert await _unread(rig) is False
+    await record_work_carried(rig.conversation_id, rig.user_id, "t1")
+    await record_work_finished(
+        rig.conversation_id, rig.user_id, "t1", WorkOutcome.DONE, WorkReport("report done")
+    )
+    await rig.settle()
+    assert [reply.text for reply in await rig.of(Reply)] == ["it is noon", "your report is ready"]
+    assert await _unread(rig) is True
+
+
+@pytest.mark.service
+async def test_a_reply_to_the_users_own_message_leaves_the_conversation_read(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated("it is noon"))
+    await rig.send("m1", "what time is it?")
+    await rig.settle()
+    assert await rig.answered() == [(ReplyOutcome.ANSWERED, ("m1",))]
+    assert await _unread(rig) is False

@@ -33,10 +33,13 @@ from app.models.conversation_log_models import (
     ConversationState,
     Entry,
     LoggedEntry,
+    Notice,
     PreemptHint,
     Reaction,
     Rejected,
     Reply,
+    ReplyOutcome,
+    ReplySettled,
     StepClaim,
     UserMessage,
 )
@@ -210,6 +213,7 @@ class MongoConversationLog:
     async def _append(
         self, conversation_id: str, user_id: str, entry: Entry, *, epoch: int | None
     ) -> Appended:
+        unread = await self._marks_unread(conversation_id, user_id, entry)
         for _ in range(CONVERSATION_APPEND_MAX_ATTEMPTS):
             head = await self._head(conversation_id, user_id, entry.id)
             if epoch is not None and head.holder != epoch:
@@ -221,7 +225,9 @@ class MongoConversationLog:
             result = reduce(head.state, logged)
             if isinstance(result, Rejected):
                 raise EntryRejected(result.reason)
-            if await self._repository.commit_log_entry(head, logged, result.state, epoch=epoch):
+            if await self._repository.commit_log_entry(
+                head, logged, result.state, epoch=epoch, unread=unread
+            ):
                 await _publish_hint(conversation_id, user_id, logged, result.state)
                 return Appended(
                     logged=logged,
@@ -236,6 +242,19 @@ class MongoConversationLog:
             why=f"the head moved under each of {CONVERSATION_APPEND_MAX_ATTEMPTS} attempts",
             meta={"conversation_id": conversation_id},
         )
+
+    async def _marks_unread(self, conversation_id: str, user_id: str, entry: Entry) -> bool:
+        """Return whether entry is news the user did not ask for here: a Notice, or a reply answering no message of theirs."""
+        match entry:
+            case Notice():
+                return True
+            case ReplySettled(outcome=ReplyOutcome.ANSWERED, answers=answers) if answers:
+                answered = await self._repository.read_log(
+                    conversation_id, user_id=user_id, ids=list(answers)
+                )
+                return not any(isinstance(logged.entry, UserMessage) for logged in answered or ())
+            case _:
+                return False
 
     async def _first_result(self, conversation_id: str, user_id: str, seq: int) -> Appended:
         """Replay the log through seq: what the append that stored it returned, as a duplicate."""
