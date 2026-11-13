@@ -1617,57 +1617,6 @@
       }
     },
     {
-      "event": "chat:background_update_resolved",
-      "class": "ChatBackgroundUpdateResolved",
-      "owner": "server",
-      "domain": "chat",
-      "description": "Comms resolved a background executor update as a message, a one-emoji react, or silence.",
-      "previous_names": [],
-      "budget_per_user_day": 100,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "Comms resolved a background executor update as a message, a one-emoji react, or silence.",
-        "properties": {
-          "outcome": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Outcome",
-            "type": "string"
-          },
-          "emoji": {
-            "anyOf": [
-              {
-                "pattern": "^(?:[0-9#*]\ufe0f?\u20e3|[^\\x00-\\x7F]{1,16})$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Emoji"
-          },
-          "delivery": {
-            "anyOf": [
-              {
-                "enum": ["message", "reaction", "badge", "fallback_text"],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Delivery"
-          }
-        },
-        "required": ["outcome"],
-        "title": "ChatBackgroundUpdateResolved",
-        "type": "object"
-      }
-    },
-    {
       "event": "chat:composer_plus_menu_clicked",
       "class": "ChatComposerPlusMenuClicked",
       "owner": "web",

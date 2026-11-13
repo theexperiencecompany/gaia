@@ -32,6 +32,7 @@ from app.models.conversation_log_models import (
     WorkStarted,
 )
 from app.models.tool_data_models import ToolDataEntry
+from app.services.conversation.composition import PostHogTurnAnalytics
 from app.services.conversation.log import accept
 from app.services.conversation.ports import (
     CancelReason,
@@ -185,6 +186,14 @@ class StepScenarios:
     @pytest.fixture
     def rt(self) -> Runtime:
         raise NotImplementedError
+
+    @pytest.fixture
+    def posthog_turns(
+        self, rt: Runtime, posthog_events: list[dict[str, object]]
+    ) -> list[dict[str, object]]:
+        """Count turn ends through the production PostHog port; return what PostHog would receive."""
+        rt.analytics = PostHogTurnAnalytics()
+        return posthog_events
 
     async def test_one_message_gets_one_reply(self, rt: Runtime) -> None:
         rt.runner.script(
@@ -854,7 +863,7 @@ class StepScenarios:
         assert await answered(rt) == [(ReplyOutcome.FAILED, ("u1",))]
 
     async def test_each_answered_reply_counts_once_as_completed_on_the_message_it_answers(
-        self, rt: Runtime, posthog_events: list[dict[str, object]]
+        self, rt: Runtime, posthog_turns: list[dict[str, object]]
     ) -> None:
         rt.runner.script(
             [text("hi"), Do(arrive(rt, user("u2"))), Finished(Replied("hi"))],
@@ -865,22 +874,22 @@ class StepScenarios:
         await run(rt)
         spoken = ("user", "interactive", "web")
         completed = ("chat:message_completed", USER, spoken)
-        assert turn_ends(posthog_events) == [
+        assert turn_ends(posthog_turns) == [
             (*completed, "u1", CONVERSATION, True, False, False, "web"),
             (*completed, "u2", CONVERSATION, False, False, True, "web"),
         ]
-        ended = [e for e in posthog_events if e["event"] == "chat:message_completed"]
+        ended = [e for e in posthog_turns if e["event"] == "chat:message_completed"]
         props = cast(dict[str, object], ended[0]["properties"])
         assert isinstance(props["ttft_ms"], float) and isinstance(props["e2e_full_ms"], float)
         assert 0 <= props["ttft_ms"] <= props["e2e_full_ms"]
 
     async def test_a_stopped_reply_counts_once_as_cancelled(
-        self, rt: Runtime, posthog_events: list[dict[str, object]]
+        self, rt: Runtime, posthog_turns: list[dict[str, object]]
     ) -> None:
         rt.runner.script([text("partial"), Pause((arrive(rt, stop("s")),))])
         await send(rt, user("u1", voice=True))
         await run(rt)
-        assert turn_ends(posthog_events) == [
+        assert turn_ends(posthog_turns) == [
             (
                 "chat:message_cancelled",
                 USER,
@@ -895,12 +904,12 @@ class StepScenarios:
         ]
 
     async def test_a_reply_is_counted_in_the_browser_session_its_message_came_from(
-        self, rt: Runtime, posthog_events: list[dict[str, object]]
+        self, rt: Runtime, posthog_turns: list[dict[str, object]]
     ) -> None:
         rt.runner.script([Finished(Replied("hi"))])
         await send(rt, user("u1").model_copy(update={"posthog_session_id": "0190f00d-sess"}))
         await run(rt)
-        [ended] = [e for e in posthog_events if e["event"] == "chat:message_completed"]
+        [ended] = [e for e in posthog_turns if e["event"] == "chat:message_completed"]
         assert cast(dict[str, object], ended["properties"])["$session_id"] == "0190f00d-sess"
 
     async def test_a_file_the_run_made_is_saved_on_the_reply_and_sent_to_a_bot_once(
@@ -926,14 +935,14 @@ class StepScenarios:
         assert [c for c in rt.effects.calls if c.name == "deliver_files"] == []
 
     async def test_a_reply_that_dispatched_work_counts_as_delegated(
-        self, rt: Runtime, posthog_events: list[dict[str, object]]
+        self, rt: Runtime, posthog_turns: list[dict[str, object]]
     ) -> None:
         await start_work(rt)
-        [end] = turn_ends(posthog_events)
+        [end] = turn_ends(posthog_turns)
         assert end[3:6] == ("u0", CONVERSATION, True) and end[6] is True
 
     async def test_a_reply_to_no_user_message_and_a_failed_reply_count_nothing(
-        self, rt: Runtime, posthog_events: list[dict[str, object]]
+        self, rt: Runtime, posthog_turns: list[dict[str, object]]
     ) -> None:
         rt.runner.script([Finished(Replied("the workflow ran"))], [Fail(RuntimeError("down"))])
         await send(rt, fired("wf"))
@@ -944,7 +953,22 @@ class StepScenarios:
             (ReplyOutcome.ANSWERED, ("wf",)),
             (ReplyOutcome.FAILED, ("u1",)),
         ]
-        assert turn_ends(posthog_events) == []
+        assert turn_ends(posthog_turns) == []
+
+    async def test_a_reply_that_resolves_to_a_reaction_counts_it_once_on_the_user(
+        self, rt: Runtime, posthog_turns: list[dict[str, object]]
+    ) -> None:
+        rt.runner.script([Finished(Reacted("👍"))])
+        await send(rt, user("u1"))
+        await run(rt)
+        reacted = [e for e in posthog_turns if e["event"] == "chat:turn_reacted"]
+        assert [(e["distinct_id"], e["properties"]["emoji"]) for e in reacted] == [(USER, "👍")]
+        props = cast(dict[str, object], reacted[0]["properties"])
+        assert (props["actor"], props["trigger"], props["surface"]) == (
+            "user",
+            "interactive",
+            "web",
+        )
 
 
 @dataclass

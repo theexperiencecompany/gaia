@@ -35,6 +35,7 @@ from tests.conftest import FAKE_USER
 from tests.helpers import log_history
 from tests.unit.services.conversation.runtime_doubles import (
     EffectCall,
+    RecordingAnalytics,
     RecordingEffects,
     RecordingFrames,
     ScriptedApprovals,
@@ -71,6 +72,7 @@ def sends(conversations_collection: object, real_redis: Redis) -> Iterator[Sends
             frames=frames,
             effects=recorded,
             approvals=ScriptedApprovals(),
+            analytics=RecordingAnalytics(),
             clock=lambda: datetime.now(UTC),
             tick=_no_tick,
         )

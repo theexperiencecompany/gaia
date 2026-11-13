@@ -14,15 +14,15 @@ from app.models.conversation_log_models import (
     Reply,
     ReplyOutcome,
     ReplySettled,
+    StepClaim,
     UserMessage,
     WorkStarted,
 )
-from app.services.analytics_service import capture
-from app.services.conversation.ports import Appended
-from shared.py.analytics import Dedupe, UserId
+from app.services.conversation.ports import Appended, TurnAnalytics
+from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.chat import ChatMessageCancelled, ChatMessageCompleted
-from shared.py.analytics.context import AnalyticsContext, analytics_context
+from shared.py.analytics.context import AnalyticsContext
 
 # A truncated reply is one the user spoke over: it still answered them.
 _TURN_END: dict[ReplyOutcome, type[ChatMessageCompleted | ChatMessageCancelled]] = {
@@ -53,8 +53,8 @@ def _ms(since: datetime, until: datetime) -> float:
 
 
 def capture_reply_ended(
-    user_id: str,
-    conversation_id: str,
+    analytics: TurnAnalytics,
+    claim: StepClaim,
     covers: Sequence[LoggedEntry],
     settled: ReplySettled,
     settled_at: datetime,
@@ -72,15 +72,20 @@ def capture_reply_ended(
         None,
     )
     _capture_turn_end(
+        analytics,
         _TURN_END[settled.outcome],
-        user_id,
-        conversation_id,
+        claim.user_id,
+        claim.conversation_id,
         _TurnEnd(covers, since, settled.id, settled_at, shown, settled.reply_id),
     )
 
 
 def capture_unanswered_stop(
-    user_id: str, conversation_id: str, appended: Appended, logged: Sequence[LoggedEntry]
+    analytics: TurnAnalytics,
+    user_id: str,
+    conversation_id: str,
+    appended: Appended,
+    logged: Sequence[LoggedEntry],
 ) -> None:
     """Count the user messages a Stop settled before any reply showed; logged is the log after the earliest.
 
@@ -93,6 +98,7 @@ def capture_unanswered_stop(
     stop = appended.logged
     since = [entry for entry in logged if entry.seq > covers[0].seq]
     _capture_turn_end(
+        analytics,
         ChatMessageCancelled,
         user_id,
         conversation_id,
@@ -118,6 +124,7 @@ class _TurnEnd:
 
 
 def _capture_turn_end(
+    analytics: TurnAnalytics,
     kind: type[ChatMessageCompleted | ChatMessageCancelled],
     user_id: str,
     conversation_id: str,
@@ -149,5 +156,6 @@ def _capture_turn_end(
         e2e_full_ms=_ms(asked.at, end.ended_at),
         source=message.surface.value,
     )
-    with analytics_context(spoken_context(message)):
-        capture(UserId(user_id), event, Dedupe(key=end.ended_by, occurred_at=end.ended_at))
+    analytics.capture(
+        user_id, event, spoken_context(message), Dedupe(key=end.ended_by, occurred_at=end.ended_at)
+    )

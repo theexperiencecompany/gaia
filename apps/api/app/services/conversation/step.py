@@ -67,11 +67,13 @@ from app.services.conversation.ports import (
     Streamed,
     Summarized,
 )
-from app.services.conversation.reply_analytics import capture_reply_ended
+from app.services.conversation.reply_analytics import capture_reply_ended, spoken_context
 from app.services.conversation.reply_files import reply_files
 from app.services.conversation.todo_wake import nothing_to_report
 from app.services.conversation.verdict import merge_group, quote_target, verdict
 from app.utils.liveness import keep_proving
+from shared.py.analytics import Dedupe
+from shared.py.analytics.catalog.chat import ChatTurnReacted
 from shared.py.wide_events import log
 
 
@@ -691,8 +693,15 @@ async def _react(ports: RuntimePorts, attempt: _Attempt, emoji: str) -> None:
     messages = [logged.entry for logged in attempt.covers if isinstance(logged.entry, UserMessage)]
     if not messages:
         return
+    message = messages[-1]
     reaction = Reaction(emoji=emoji, by=ReactionBy.CHAT_MODEL)
-    await _amend(ports, attempt.claim, messages[-1].model_copy(update={"reaction": reaction}))
+    amended = await _amend(ports, attempt.claim, message.model_copy(update={"reaction": reaction}))
+    ports.analytics.capture(
+        attempt.claim.user_id,
+        ChatTurnReacted(emoji=emoji),
+        spoken_context(message),
+        Dedupe(key=f"reacted:{message.id}:{emoji}", occurred_at=amended.at),
+    )
 
 
 async def _fail(ports: RuntimePorts, attempt: _Attempt, error: Exception) -> None:
@@ -836,7 +845,12 @@ async def _settle(
         return
     since = await ports.log.read_after(claim.conversation_id, claim.user_id, covers[0].seq)
     capture_reply_ended(
-        claim.user_id, claim.conversation_id, covers, settled, appended.logged.at, since
+        ports.analytics,
+        claim,
+        covers,
+        settled,
+        appended.logged.at,
+        since,
     )
     replies = [
         logged.entry

@@ -29,14 +29,18 @@ from app.services.conversation.ports import (
     Appended,
     CancelReason,
     ClaimLost,
+    ConversationAnalyticsEvent,
     ConversationLog,
     EntryRejected,
     Finished,
     RunEvent,
     RuntimePorts,
+    TurnAnalytics,
 )
 from app.services.conversation.reducer import reduce
 from app.services.conversation.reply_files import ReplyFile
+from shared.py.analytics import Dedupe
+from shared.py.analytics.context import AnalyticsContext
 from tests.unit.services.conversation.log_helpers import EMPTY, T0
 
 LIVENESS = timedelta(seconds=10)
@@ -497,6 +501,24 @@ class RecordingEffects:
 
 
 @dataclass
+class RecordingAnalytics:
+    """Records each event the runtime counts, with the context and dedupe it was sent under."""
+
+    ended: list[tuple[str, ConversationAnalyticsEvent, AnalyticsContext, Dedupe]] = field(
+        default_factory=list
+    )
+
+    def capture(
+        self,
+        user_id: str,
+        event: ConversationAnalyticsEvent,
+        context: AnalyticsContext,
+        dedupe: Dedupe,
+    ) -> None:
+        self.ended.append((user_id, event, context, dedupe))
+
+
+@dataclass
 class ScriptedApprovals:
     """Resolves typed replies as the HIL resolver does: each approval its own decision, logged once."""
 
@@ -561,6 +583,7 @@ class Runtime:
     frames: RecordingFrames = field(default_factory=RecordingFrames)
     effects: RecordingEffects = field(default_factory=RecordingEffects)
     approvals: ScriptedApprovals = field(default_factory=ScriptedApprovals)
+    analytics: TurnAnalytics = field(default_factory=RecordingAnalytics)
     make_log: Callable[[FakeClock], LogUnderTest] = in_memory_log
     log: ScenarioLog = field(init=False)
     runner: ScriptedRunner = field(init=False)
@@ -583,6 +606,7 @@ class Runtime:
             frames=self.frames,
             effects=self.effects,
             approvals=self.approvals,
+            analytics=self.analytics,
             clock=self.clock,
             tick=self.ticks.tick,
         )
