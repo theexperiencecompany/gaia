@@ -407,6 +407,24 @@ class StepScenarios:
         assert [item.pending_approvals for item in state.work] == [frozenset()]
         await assert_quiet(rt)
 
+    async def test_a_mixed_typed_answer_logs_each_approval_once_with_its_own_decision(
+        self, rt: Runtime
+    ) -> None:
+        await start_work(rt)
+        await send(rt, asked("ask1", "t1", "ap1"), asked("ask2", "t1", "ap2"))
+        rt.approvals.decision = "approve"
+        rt.approvals.each = {"ap2": "deny"}
+        await send(rt, bot_user("u6"))
+        await run(rt)
+        decided = [
+            item.entry for item in await rt.entries() if isinstance(item.entry, ApprovalDecided)
+        ]
+        assert sorted((item.approval_id, item.decision) for item in decided) == [
+            ("ap1", "approve"),
+            ("ap2", "deny"),
+        ]
+        await assert_quiet(rt)
+
     async def test_a_buttonless_message_that_is_not_an_approval_answer_runs_normally(
         self, rt: Runtime
     ) -> None:

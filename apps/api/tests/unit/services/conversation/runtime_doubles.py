@@ -9,6 +9,7 @@ from typing import Protocol
 from app.constants.hil import ApprovalDecision
 from app.models.conversation_frame_models import OutputFrame
 from app.models.conversation_log_models import (
+    ApprovalDecided,
     BargeIn,
     Batch,
     CommsPhase,
@@ -491,16 +492,31 @@ class RecordingEffects:
 
 @dataclass
 class ScriptedApprovals:
+    """Resolves typed replies as the HIL resolver does: each approval its own decision, logged once."""
+
     decision: ApprovalDecision | None = None
+    # Per-approval decisions; an approval not named here takes decision.
+    each: dict[str, ApprovalDecision] = field(default_factory=dict)
     asked: list[str] = field(default_factory=list)
     histories: list[list[MessageDict]] = field(default_factory=list)
+    log: ConversationLog | None = None
 
-    async def classify(
+    async def resolve(
         self, conversation_id: str, user_id: str, message_text: str, history: list[MessageDict]
     ) -> ApprovalDecision | None:
         self.asked.append(message_text)
         self.histories.append(history)
-        return self.decision
+        if self.decision is None or self.log is None:
+            return self.decision
+        state = await self.log.state(conversation_id, user_id)
+        pending = sorted(approval for item in state.work for approval in item.pending_approvals)
+        decisions = [self.each.get(approval, self.decision) for approval in pending]
+        for approval_id, decision in zip(pending, decisions, strict=True):
+            entry = ApprovalDecided(
+                id=f"decided:{approval_id}", approval_id=approval_id, decision=decision
+            )
+            await self.log.append(conversation_id, user_id, entry)
+        return "approve" if "approve" in decisions else "deny"
 
 
 CONVERSATION = "c1"
@@ -548,6 +564,7 @@ class Runtime:
         under_test = self.make_log(self.clock)
         self.log, self._lapse = under_test.log, under_test.lapse
         self.runner = ScriptedRunner(self.ticks)
+        self.approvals.log = self.log
 
     async def lapse(self) -> None:
         await self._lapse()

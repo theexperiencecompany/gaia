@@ -222,7 +222,7 @@ class Effects(Protocol):
 class ApprovalReplies(Protocol):
     """Reads a typed reply on a button-less surface as an answer to pending approvals."""
 
-    async def classify(
+    async def resolve(
         self, conversation_id: str, user_id: str, message_text: str, history: list[MessageDict]
     ) -> ApprovalDecision | None:
         """Return the decision the message gives, read against the turns before it; None when it is not an answer."""

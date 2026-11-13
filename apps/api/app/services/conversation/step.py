@@ -28,7 +28,6 @@ from app.models.conversation_frame_models import (
     ToolDataEvent,
 )
 from app.models.conversation_log_models import (
-    ApprovalDecided,
     BargeIn,
     Batch,
     CommitReason,
@@ -350,16 +349,12 @@ async def _answered_as_approval(
     ):
         return False
     history = await _turns_before(ports, claim, first.seq)
-    decision = await ports.approvals.classify(
+    # The resolver logs each approval's own decision; the step only acknowledges the reply.
+    decision = await ports.approvals.resolve(
         claim.conversation_id, claim.user_id, message.text, history
     )
     if decision is None:
         return False
-    for approval_id in awaiting:
-        decided = ApprovalDecided(
-            id=f"{message.id}:decided:{approval_id}", approval_id=approval_id, decision=decision
-        )
-        await _append(ports, claim, decided)
     text = HIL_ACK_APPROVED if decision == "approve" else HIL_ACK_DENIED
     ack = Reply(
         id=f"{attempt_id}:reply", reply_id=f"r{attempt_id}", attempt_id=attempt_id, text=text
