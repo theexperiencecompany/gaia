@@ -147,7 +147,7 @@ function ResultFooter({ result }: { result: BrowserResultSnapshot }) {
   return (
     <>
       <Separator
-        className={separatorVariants({ tone: "subtle", className: "my-3" })}
+        className={separatorVariants({ surface: "raised", className: "my-3" })}
       />
       <div className="flex items-start gap-2.5">
         {result.success ? (
