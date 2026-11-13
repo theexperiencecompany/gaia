@@ -106,7 +106,7 @@ function utilityOf(token) {
   return token.slice(cut).replace(/^!/, "").replace(/!$/, "").replace(/^-/, "");
 }
 
-export function isStylingToken(token) {
+function isStylingToken(token) {
   const utility = utilityOf(token);
   if (utility.startsWith("bg-")) return true;
   if (ROUNDED.test(utility) || PADDING.test(utility)) return true;

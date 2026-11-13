@@ -296,9 +296,7 @@ set -eu
 harness=tools/heroui-migration/review
 for entry in run.sh stack.sh; do
   if [ ! -f "$harness/$entry" ]; then
-    echo "web:visual:review: $harness/$entry is missing on this branch." >&2
-    echo "The review harness lives on heroui/review-harness until it merges:" >&2
-    echo "  git fetch origin heroui/review-harness && git merge origin/heroui/review-harness" >&2
+    echo "web:visual:review: $harness/$entry is missing; this checkout predates the review harness." >&2
     exit 1
   fi
 done

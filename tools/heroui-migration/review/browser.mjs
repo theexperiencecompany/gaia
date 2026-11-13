@@ -1,0 +1,336 @@
+/**
+ * The deterministic browser every capture and discovery run shares: fixed clock,
+ * zone, locale, seeded Math.random, no motion, mutations blocked, third-party
+ * bytes replayed from a disk cache, and one settle routine.
+ */
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { API_BASE, CLOCK_OFFSET_MS, LOCALE, ONBOARDING_USER, TIMEZONE } from "./config.mjs";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const harnessRequire = createRequire(join(HERE, "..", "package.json"));
+const { chromium } = harnessRequire("playwright");
+const { PNG } = harnessRequire("pngjs");
+export { chromium };
+
+const API_ORIGIN = new URL(API_BASE).origin;
+/** POSTs the app makes to read, not write. Every other mutation is blocked so captures never change the seed. */
+const READ_ONLY_POSTS = [/\/conversations\/batch-sync$/, /\/calendar\/events\/query$/];
+const THIRD_PARTY_BLOCK = /(posthog|google-analytics|googletagmanager|doubleclick|rybbit|sentry|clarity\.ms|fastlane|hotjar|intercom|crisp\.chat)/;
+const ANON_USER = "anonymous@review.invalid";
+const THIRD_PARTY_KEEP = new Set(["image", "font", "stylesheet", "script"]);
+/**
+ * API reads the local API answers from a live third party (GitHub releases), so the answer would depend on
+ * the network at capture time. Both builds get the same recorded payload (review/fixtures/, from prod).
+ */
+const API_FIXTURES = {
+  "/api/v1/desktop/releases/latest": readFileSync(join(HERE, "fixtures", "desktop-releases-latest.json"), "utf8"),
+};
+
+/** Applied before any page script: every CSS animation lands on its end frame, nothing transitions. */
+const FREEZE_CSS = `*,*::before,*::after{animation-duration:0s!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:0s!important;transition-delay:0s!important;caret-color:transparent!important;scroll-behavior:auto!important}`;
+
+function initScript({ css }) {
+  // mulberry32: the app's random choices (greetings, placeholders, ids in markup) repeat run to run.
+  let s = 0x5eed;
+  Math.random = () => {
+    s |= 0;
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const add = () => {
+    const el = document.createElement("style");
+    el.setAttribute("data-review-freeze", "");
+    el.textContent = css;
+    (document.head || document.documentElement).appendChild(el);
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", add, { once: true });
+  else add();
+}
+
+/** One synthetic client address per page load, so the API's per-address rate limit sees one visitor per load. */
+const pageAddresses = new WeakMap();
+let nextAddress = 0;
+function visitorAddress(req) {
+  const page = req.frame().page();
+  if (!pageAddresses.has(page)) {
+    const n = nextAddress++;
+    pageAddresses.set(page, `10.${(n >> 16) & 255}.${(n >> 8) & 255}.${n & 255}`);
+  }
+  return pageAddresses.get(page);
+}
+
+export function captureTime(seed) {
+  return new Date(new Date(seed.seededAt).getTime() + CLOCK_OFFSET_MS);
+}
+
+/**
+ * One browser context per (viewport, user). `log` collects what the guard
+ * blocked and what the network cache missed, so the manifest can show it.
+ */
+export async function newContext(browser, { vp, user, seed, cacheDir, log }) {
+  const ctx = await browser.newContext({
+    viewport: { width: vp.width, height: vp.height },
+    deviceScaleFactor: vp.deviceScaleFactor,
+    isMobile: vp.isMobile,
+    hasTouch: vp.hasTouch,
+    locale: LOCALE,
+    timezoneId: TIMEZONE,
+    colorScheme: "dark",
+    reducedMotion: "reduce",
+    serviceWorkers: "block",
+  });
+  await ctx.clock.setFixedTime(captureTime(seed));
+  // Each top-level navigation is a new visitor (see visitorAddress).
+  ctx.on("page", (p) => p.on("framenavigated", (f) => f === p.mainFrame() && pageAddresses.delete(p)));
+  await ctx.addInitScript(initScript, { css: FREEZE_CSS });
+  const devUser = user === "anon" ? ANON_USER : user === "onboarding" ? ONBOARDING_USER : null;
+  mkdirSync(cacheDir, { recursive: true });
+
+  await ctx.route("**/*", async (route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    const type = req.resourceType();
+    if (type === "media" || type === "eventsource") return route.abort();
+    if (url.origin === API_ORIGIN) {
+      const fixture = API_FIXTURES[url.pathname];
+      if (fixture && req.method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: fixture });
+      const method = req.method();
+      if (!["GET", "HEAD", "OPTIONS"].includes(method) && !READ_ONLY_POSTS.some((re) => re.test(url.pathname))) {
+        log.blocked.add(`${method} ${url.pathname}`);
+        return route.abort("blockedbyclient");
+      }
+      if (method === "OPTIONS") return route.continue();
+      const headers = { ...req.headers(), "x-forwarded-for": visitorAddress(req) };
+      if (devUser) headers["x-dev-user"] = devUser;
+      return route.continue({ headers });
+    }
+    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return route.continue();
+    if (THIRD_PARTY_BLOCK.test(url.hostname)) return route.abort();
+    // Third-party pixels (images, fonts, styles, scripts) are kept and replayed; third-party documents,
+    // iframes and API calls are not part of this app's rendering and only add network variance.
+    if (req.method() !== "GET" || !THIRD_PARTY_KEEP.has(type)) return route.abort();
+    return replayThirdParty(route, cacheDir, log);
+  });
+  return ctx;
+}
+
+/** Third-party GETs are fetched once and replayed from disk, so both builds and both runs see the same bytes. */
+async function replayThirdParty(route, cacheDir, log) {
+  const url = route.request().url();
+  const key = createHash("sha256").update(url).digest("hex").slice(0, 32);
+  const meta = join(cacheDir, `${key}.json`);
+  const body = join(cacheDir, `${key}.bin`);
+  if (existsSync(meta)) {
+    const m = JSON.parse(readFileSync(meta, "utf8"));
+    if (m.failed) return route.abort();
+    return route.fulfill({ status: m.status, headers: m.headers, body: readFileSync(body) });
+  }
+  try {
+    const res = await route.fetch({ timeout: 15_000 });
+    const headers = res.headers();
+    delete headers["content-encoding"];
+    delete headers["content-length"];
+    writeFileSync(body, await res.body());
+    writeFileSync(meta, JSON.stringify({ url, status: res.status(), headers }));
+    log.fetched.add(url);
+    return route.fulfill({ status: res.status(), headers, body: readFileSync(body) });
+  } catch (e) {
+    // A host that cannot be reached is recorded as unreachable, so every later run fails it identically.
+    writeFileSync(meta, JSON.stringify({ url, failed: String(e.message).split("\n")[0] }));
+    log.fetched.add(`${url} (unreachable)`);
+    return route.abort();
+  }
+}
+
+/** Resolve when no request has been in flight for `quietMs`; false if `capMs` passed first. */
+export async function networkQuiet(page, quietMs = 700, capMs = 20_000) {
+  let inflight = 0;
+  let last = Date.now();
+  const on = () => { inflight++; last = Date.now(); };
+  const off = () => { inflight = Math.max(0, inflight - 1); last = Date.now(); };
+  page.on("request", on);
+  page.on("requestfinished", off);
+  page.on("requestfailed", off);
+  const t0 = Date.now();
+  try {
+    while (Date.now() - t0 < capMs) {
+      if (inflight === 0 && Date.now() - last >= quietMs) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return false;
+  } finally {
+    page.off("request", on);
+    page.off("requestfinished", off);
+    page.off("requestfailed", off);
+  }
+}
+
+/** Scroll the document and the largest inner scroller end to end, so lazy content loads, then return to top. */
+async function scrollToLoad(page) {
+  await page.evaluate(async () => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const scrollers = [document.scrollingElement];
+    let best = null;
+    for (const el of document.querySelectorAll("*")) {
+      const cs = getComputedStyle(el);
+      if (!/(auto|scroll)/.test(cs.overflowY) || el.scrollHeight - el.clientHeight < 80) continue;
+      if (!best || el.clientHeight * el.clientWidth > best.clientHeight * best.clientWidth) best = el;
+    }
+    if (best) scrollers.push(best);
+    for (const sc of scrollers) {
+      for (let y = 0; y < sc.scrollHeight; y += Math.max(200, Math.floor(sc.clientHeight * 0.8))) {
+        sc.scrollTop = y;
+        await sleep(80);
+      }
+      sc.scrollTop = sc.scrollHeight;
+      await sleep(150);
+    }
+    // Chats open at their newest message; every other scroller at its top.
+    for (const sc of scrollers) sc.scrollTop = sc === best && document.location.pathname.startsWith("/c/") ? sc.scrollHeight : 0;
+    await sleep(150);
+  });
+}
+
+/** Resolve once the DOM has had no mutation for `quietMs` (capped), so mount-on-scroll content has rendered. */
+async function domSettled(page, quietMs = 300, capMs = 3000) {
+  await page.evaluate(
+    ([quiet, cap]) =>
+      new Promise((resolve) => {
+        let timer = setTimeout(done, quiet);
+        const obs = new MutationObserver(() => {
+          clearTimeout(timer);
+          timer = setTimeout(done, quiet);
+        });
+        const hard = setTimeout(done, cap);
+        function done() {
+          obs.disconnect();
+          clearTimeout(timer);
+          clearTimeout(hard);
+          resolve();
+        }
+        obs.observe(document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true });
+      }),
+    [quietMs, capMs],
+  );
+}
+
+/**
+ * The full page as a user scrolls through it: one viewport per slice, each section in view while it
+ * is shot (so in-view mounts and reveals are captured, not blank), stitched top to bottom. Fixed and
+ * sticky chrome appears once, in the first slice. Returns the page height and whether it was cut.
+ */
+export async function shootFullPage(page, vp, file, maxHeight) {
+  const total = await page.evaluate(() => document.documentElement.scrollHeight);
+  const height = Math.min(total, maxHeight);
+  const slices = [];
+  for (let y = 0; y < height; y += vp.height) {
+    const top = Math.min(y, Math.max(0, total - vp.height));
+    await page.evaluate((t) => window.scrollTo(0, t), top);
+    await domSettled(page);
+    await imagesAndFonts(page);
+    await finishAnimations(page);
+    if (y > 0 && slices.length === 1) {
+      await page.evaluate(() => {
+        for (const el of document.querySelectorAll("body *")) {
+          const p = getComputedStyle(el).position;
+          if (p === "fixed" || p === "sticky") el.style.setProperty("visibility", "hidden", "important");
+        }
+      });
+    }
+    const shot = PNG.sync.read(await page.screenshot({ animations: "disabled", caret: "hide" }));
+    slices.push({ shot, offset: y - top, y, h: Math.min(vp.height, height - y) });
+  }
+  const scale = slices[0].shot.width / vp.width;
+  const out = new PNG({ width: slices[0].shot.width, height: Math.round(height * scale) });
+  for (const s of slices) {
+    PNG.bitblt(s.shot, out, 0, Math.round(s.offset * scale), out.width, Math.round(s.h * scale), 0, Math.round(s.y * scale));
+  }
+  writeFileSync(file, PNG.sync.write(out));
+  await page.evaluate(() => window.scrollTo(0, 0));
+  return { height: total, truncated: total > maxHeight };
+}
+
+async function imagesAndFonts(page) {
+  await page.evaluate(async () => {
+    const pending = [...document.images].filter((i) => !i.complete);
+    await Promise.race([
+      Promise.all(pending.map((i) => new Promise((r) => { i.onload = r; i.onerror = r; }))),
+      new Promise((r) => setTimeout(r, 8000)),
+    ]);
+    await document.fonts.ready;
+  });
+}
+
+/**
+ * Jump every running Web Animation to its end state. The CSS freeze covers CSS animations,
+ * but JS libraries (framer-motion's blur/fade reveals) drive WAAPI animations it cannot reach,
+ * and with the clock pinned those stop mid-frame. Infinite ones (spinners) cannot finish and stay put.
+ */
+export async function finishAnimations(page) {
+  await page.evaluate(() => {
+    for (const a of document.getAnimations()) {
+      if (a.effect?.getComputedTiming().endTime === Number.POSITIVE_INFINITY) continue;
+      a.finish();
+    }
+  });
+  await page.waitForTimeout(100);
+}
+
+/** Navigate and settle. Returns facts the manifest records; a non-2xx page or a server error throws. */
+export async function load(page, base, target, { wholePage = true } = {}) {
+  const res = await page.goto(base + target.url, { waitUntil: "load", timeout: 60_000 });
+  const status = res?.status() ?? 0;
+  if (status >= 400) throw new Error(`HTTP ${status} for ${target.url}`);
+  let quiet = await networkQuiet(page);
+  // The app shell boots behind a full-screen loader (auth, then data); a quiet network can come before it lifts.
+  const loaded = await page
+    .waitForFunction((sel) => ![...document.querySelectorAll(sel)].some((e) => e.getClientRects().length > 0), LOADING_SELECTOR, { timeout: 20_000, polling: 200 })
+    .then(() => true, () => false);
+  if (loaded) quiet = (await networkQuiet(page, 500, 10_000)) && quiet;
+  await domSettled(page);
+  await imagesAndFonts(page);
+  let quiet2 = true;
+  // A state shot is one viewport around its trigger, so only the full-page shot needs lazy content loaded.
+  if (wholePage) {
+    await scrollToLoad(page);
+    quiet2 = await networkQuiet(page, 500, 10_000);
+    await imagesAndFonts(page);
+  }
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(400);
+  await finishAnimations(page);
+  return { status, finalUrl: new URL(page.url()).pathname + new URL(page.url()).search, networkBusy: !(quiet && quiet2), stillLoading: !loaded };
+}
+
+/** Visible loaders that mean "not rendered yet": ARIA progress/busy, HeroUI's spinner, and the app's own SuspenseLoader (components/ui/spinner.tsx, an unlabeled .animate-spin). */
+const LOADING_SELECTOR = '[role=progressbar],[aria-busy="true"],[data-slot=spinner],[aria-label="Loading"],.animate-spin';
+
+/** The locator a state step names, by ARIA role + accessible name, so it pairs across v2 and v3 markup. */
+export function stepLocator(page, step) {
+  // role "clickable-text": a click target with no ARIA role (e.g. the landing demo's onClick Chips), by its exact text.
+  if (step.role === "clickable-text") return page.locator(".cursor-pointer").getByText(step.name, { exact: true }).nth(step.nth);
+  return page.getByRole(step.role, { name: step.name, exact: true }).nth(step.nth);
+}
+
+/**
+ * stepLocator, plus one fallback: v2 icons leaked their labels into control names ("Product Chevron Down");
+ * marking them decorative (aria-hidden) leaves "Product". When the recorded name is gone but the name without
+ * the icon label exists, it is the same control.
+ */
+export async function resolveStep(page, step) {
+  const exact = stepLocator(page, step);
+  if (step.role === "clickable-text" || (await exact.count()) > 0) return exact;
+  const bare = step.name.replace(ICON_LABEL, " ").replace(/\s+/g, " ").trim();
+  if (!bare || bare === step.name) return exact;
+  return page.getByRole(step.role, { name: bare, exact: true }).nth(step.nth);
+}
+
+const ICON_LABEL = /\b(Chevron (Down|Up|Left|Right)|Arrow (Down|Up|Left|Right)( \d+)?)\b/g;
+
+export const OVERLAY_SELECTOR = "[role=dialog],[role=alertdialog],[role=menu],[role=listbox],[role=tooltip]";
