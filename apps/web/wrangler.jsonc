@@ -14,7 +14,7 @@
   "vars": {
     // "enforce" or "report-only": whether the worker's nonce CSP blocks or only reports
     // (scripts/inline-worker-css.mjs). A dashboard edit flips it now; the next deploy restores this value.
-    "CSP_MODE": "report-only"
+    "CSP_MODE": "enforce"
   },
   // Co-locate the worker near R2 (the incremental cache it waits on) instead of
   // near the user, to cut the R2-read wall-time. Cloudflare auto-disables it if
