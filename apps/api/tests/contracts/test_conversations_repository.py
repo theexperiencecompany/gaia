@@ -629,11 +629,11 @@ class TestMessages:
 
 
 class TestMessageSettlementWrites:
-    """set_message_response / set_message_tool_data / set_message_approval_status — in-place writes that settle an already-persisted turn."""
+    """set_message_approval_status — the in-place write that settles an already-persisted card."""
 
     @staticmethod
-    async def _seed(repo) -> tuple[ConversationDocument, str, str]:
-        """Build a conversation with a tool_data-less user message and a bot message.
+    async def _seed(repo, *approval_ids: str) -> tuple[ConversationDocument, str, str]:
+        """Build a conversation with a tool_data-less user message and a bot message carrying pending cards.
 
         The leading user message is load-bearing for the approval-status
         filter: it has no tool_data at all, the shape a messages.$[]
@@ -646,111 +646,26 @@ class TestMessageSettlementWrites:
             user_id=doc.user_id,
             messages=[
                 MessageModel(type="user", response="do the thing"),
-                MessageModel(type="bot", response=""),
+                MessageModel(
+                    type="bot",
+                    response="",
+                    tool_data=[
+                        {
+                            "tool_name": "approval_request",
+                            "data": {"approval_id": approval_id, "status": "pending"},
+                            "timestamp": "2026-01-01",
+                        }
+                        for approval_id in approval_ids
+                    ],
+                ),
             ],
         )
         assert ids is not None and len(ids) == 2
         return doc, ids[0], ids[1]
 
-    async def test_set_response_writes_only_the_named_message(self, repo):
-        doc, user_mid, bot_mid = await self._seed(repo)
-
-        assert await repo.set_message_response(
-            doc.conversation_id, user_id=doc.user_id, message_id=bot_mid, response="the answer"
-        )
-
-        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert fetched is not None
-        assert [m.response for m in fetched.messages] == ["do the thing", "the answer"]
-        assert [m.message_id for m in fetched.messages] == [user_mid, bot_mid]
-
-    async def test_set_response_on_an_unknown_message_returns_false(self, repo):
-        doc, _user_mid, _bot_mid = await self._seed(repo)
-        assert (
-            await repo.set_message_response(
-                doc.conversation_id, user_id=doc.user_id, message_id="no-such", response="x"
-            )
-            is False
-        )
-
-    async def test_set_response_is_refused_for_another_user(self, repo):
-        doc, _user_mid, bot_mid = await self._seed(repo)
-
-        assert (
-            await repo.set_message_response(
-                doc.conversation_id, user_id="attacker", message_id=bot_mid, response="pwned"
-            )
-            is False
-        )
-        stored = await repo.get_message(doc.conversation_id, bot_mid, user_id=doc.user_id)
-        assert stored is not None and stored.response == ""
-
-    async def test_set_tool_data_replaces_rather_than_appends(self, repo):
-        """Distinguished from append_message_tool_data: delivery re-persists the whole frame list, so a stale entry must not survive the write."""
-        doc, _user_mid, bot_mid = await self._seed(repo)
-        assert await repo.append_message_tool_data(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=bot_mid,
-            entries=[{"tool_name": "stale", "data": {}, "timestamp": "2026-01-01"}],
-        )
-
-        assert await repo.set_message_tool_data(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=bot_mid,
-            entries=[{"tool_name": "fresh", "data": {"ok": True}, "timestamp": "2026-01-02"}],
-        )
-
-        stored = await repo.get_message(doc.conversation_id, bot_mid, user_id=doc.user_id)
-        assert stored is not None and stored.tool_data is not None
-        assert [e["tool_name"] for e in stored.tool_data] == ["fresh"]
-
-    async def test_set_tool_data_on_an_unknown_message_returns_false(self, repo):
-        doc, _user_mid, _bot_mid = await self._seed(repo)
-        assert (
-            await repo.set_message_tool_data(
-                doc.conversation_id, user_id=doc.user_id, message_id="no-such", entries=[]
-            )
-            is False
-        )
-
-    async def test_set_tool_data_is_refused_for_another_user(self, repo):
-        doc, _user_mid, bot_mid = await self._seed(repo)
-
-        assert (
-            await repo.set_message_tool_data(
-                doc.conversation_id,
-                user_id="attacker",
-                message_id=bot_mid,
-                entries=[{"tool_name": "injected", "data": {}, "timestamp": "2026-01-01"}],
-            )
-            is False
-        )
-        stored = await repo.get_message(doc.conversation_id, bot_mid, user_id=doc.user_id)
-        assert stored is not None
-        assert not stored.tool_data
-
     async def test_approval_status_settles_only_the_named_frame(self, repo):
         """Two approval cards on one message: settling a1 must not touch a2."""
-        doc, _user_mid, bot_mid = await self._seed(repo)
-        assert await repo.set_message_tool_data(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=bot_mid,
-            entries=[
-                {
-                    "tool_name": "approval_request",
-                    "data": {"approval_id": "a1", "status": "pending"},
-                    "timestamp": "2026-01-01",
-                },
-                {
-                    "tool_name": "approval_request",
-                    "data": {"approval_id": "a2", "status": "pending"},
-                    "timestamp": "2026-01-01",
-                },
-            ],
-        )
+        doc, _user_mid, bot_mid = await self._seed(repo, "a1", "a2")
 
         assert (
             await repo.set_message_approval_status(
@@ -767,19 +682,7 @@ class TestMessageSettlementWrites:
     @pytest.mark.regression
     async def test_approval_status_for_an_unknown_id_reports_failure(self, repo):
         """Regression: filtering on the conversation alone made matched > 0 mean "conversation exists", true even for a stale approval_id."""
-        doc, _user_mid, bot_mid = await self._seed(repo)
-        assert await repo.set_message_tool_data(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=bot_mid,
-            entries=[
-                {
-                    "tool_name": "approval_request",
-                    "data": {"approval_id": "a1", "status": "pending"},
-                    "timestamp": "2026-01-01",
-                }
-            ],
-        )
+        doc, _user_mid, bot_mid = await self._seed(repo, "a1")
 
         assert (
             await repo.set_message_approval_status(
@@ -789,19 +692,7 @@ class TestMessageSettlementWrites:
         )
 
     async def test_approval_status_for_an_unknown_id_settles_nothing(self, repo):
-        doc, _user_mid, bot_mid = await self._seed(repo)
-        assert await repo.set_message_tool_data(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=bot_mid,
-            entries=[
-                {
-                    "tool_name": "approval_request",
-                    "data": {"approval_id": "a1", "status": "pending"},
-                    "timestamp": "2026-01-01",
-                }
-            ],
-        )
+        doc, _user_mid, bot_mid = await self._seed(repo, "a1")
 
         await repo.set_message_approval_status(
             doc.conversation_id, user_id=doc.user_id, approval_id="nope", status="approved"
@@ -820,19 +711,7 @@ class TestMessageSettlementWrites:
         )
 
     async def test_approval_status_is_refused_for_another_user(self, repo):
-        doc, _user_mid, bot_mid = await self._seed(repo)
-        assert await repo.set_message_tool_data(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=bot_mid,
-            entries=[
-                {
-                    "tool_name": "approval_request",
-                    "data": {"approval_id": "a1", "status": "pending"},
-                    "timestamp": "2026-01-01",
-                }
-            ],
-        )
+        doc, _user_mid, bot_mid = await self._seed(repo, "a1")
 
         assert (
             await repo.set_message_approval_status(
@@ -844,28 +723,13 @@ class TestMessageSettlementWrites:
         assert stored is not None and stored.tool_data is not None
         assert stored.tool_data[0]["data"]["status"] == "pending"
 
-    async def test_settlement_writes_never_advance_updated_at(self, repo):
+    async def test_settling_a_card_never_advances_updated_at(self, repo):
         """Bumping updatedAt here would reshuffle the sidebar's recency ordering behind the user's back."""
-        doc, _user_mid, bot_mid = await self._seed(repo)
+        doc, _user_mid, _bot_mid = await self._seed(repo, "a1")
         assert await repo.set_starred(doc.conversation_id, user_id=doc.user_id, starred=True)
         before = await repo.get(doc.conversation_id, user_id=doc.user_id)
         assert before is not None and before.updatedAt is not None
 
-        assert await repo.set_message_response(
-            doc.conversation_id, user_id=doc.user_id, message_id=bot_mid, response="answer"
-        )
-        assert await repo.set_message_tool_data(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=bot_mid,
-            entries=[
-                {
-                    "tool_name": "approval_request",
-                    "data": {"approval_id": "a1", "status": "pending"},
-                    "timestamp": "2026-01-01",
-                }
-            ],
-        )
         assert await repo.set_message_approval_status(
             doc.conversation_id, user_id=doc.user_id, approval_id="a1", status="approved"
         )

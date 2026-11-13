@@ -17,7 +17,6 @@ import fakeredis.aioredis
 import pytest
 
 from app.agents.core.background.executor_channel import ExecutorInbox
-from app.agents.core.background.executor_queue import hold_run_alive
 from app.constants.agents import NON_WAKING_TAGS, AgentTag
 from app.constants.browser import (
     BROWSER_JOB_DEATH_CONFIRM_SECONDS,
@@ -26,14 +25,12 @@ from app.constants.browser import (
     BROWSER_JOB_SLOT_TAKEN_SUMMARY,
     BROWSER_JOB_SUSPECT_KEY,
     BROWSER_JOB_WAKE_GRACE_SECONDS,
-    BROWSER_JOB_WAKE_KEY,
     BROWSER_JOB_WORKER_LOST_SUMMARY,
     BrowserRunFailure,
     BrowserSessionStatus,
 )
-from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_INBOX_PREFIX
-from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS
 from app.constants.log_tags import LogTag
+from app.db.redis import redis_cache
 from app.schemas.browser import BrowserResultSnapshot
 from app.schemas.browser_job import (
     BrowserJobFinished,
@@ -57,6 +54,7 @@ from app.services.browser.jobs import (
     record_ending,
     release_job_alive,
 )
+from app.utils.redis_utils import RedisPoolManager
 from app.workers.tasks import browser_tasks as tasks_mod
 from tests.helpers import captured_wide_event
 
@@ -111,7 +109,7 @@ def world(fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(tasks_mod, "execute_browser_job", _execute)
     monkeypatch.setattr(tasks_mod, "wake_executor_for_inbox", _wake)
     monkeypatch.setattr(tasks_mod, "load_user_context", _user)
-    monkeypatch.setattr(tasks_mod.RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
+    monkeypatch.setattr(RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
     return w
 
 
@@ -320,30 +318,12 @@ async def _running_with_no_worker(
     return request
 
 
-async def _suspected_long_ago(fake_redis: fakeredis.aioredis.FakeRedis, job_id: str) -> None:
+async def _suspected_long_ago(job_id: str) -> None:
     """Record that an earlier sweep found it without a worker, a full confirm window ago."""
-    await fake_redis.hset(
-        BROWSER_JOB_SUSPECT_KEY, job_id, str(time() - BROWSER_JOB_DEATH_CONFIRM_SECONDS - 1)
+    await redis_cache.client.hset(
+        BROWSER_JOB_SUSPECT_KEY,
+        mapping={job_id: str(time() - BROWSER_JOB_DEATH_CONFIRM_SECONDS - 1)},
     )
-
-
-async def test_a_result_landed_during_a_park_is_still_there_to_tell_when_it_ends(
-    world: World, fake_redis: fakeredis.aioredis.FakeRedis
-) -> None:
-    """An approval can wait hours: neither the answer nor the record that wakes a reader for it may lapse first."""
-    await _queued()
-    await fake_redis.set(f"{EXECUTOR_BUSY_PREFIX}conv-9", "s1:t1", ex=HIL_PAUSED_LOCK_TTL_SECONDS)
-    await hold_run_alive("conv-9", "s1:t1", HIL_PAUSED_LOCK_TTL_SECONDS)
-
-    await end_job("job-1", BrowserJobFinished(result=DONE))
-    inbox_ttl = await fake_redis.ttl(f"{EXECUTOR_INBOX_PREFIX}conv-9")
-    await fake_redis.expire(BROWSER_JOB_WAKE_KEY, 60)
-    await tasks_mod.reap_browser_jobs({})
-
-    assert inbox_ttl > HIL_PAUSED_LOCK_TTL_SECONDS - 5
-    assert await landed_wake("job-1") is not None
-    assert await fake_redis.ttl(BROWSER_JOB_WAKE_KEY) >= inbox_ttl - 5
-    assert world.woken == []
 
 
 async def test_a_job_whose_worker_died_is_ended_on_its_card_and_told_once(
@@ -351,7 +331,7 @@ async def test_a_job_whose_worker_died_is_ended_on_its_card_and_told_once(
 ) -> None:
     """ARQ never retries a browser job: with its worker gone the card spun and the user heard nothing, forever."""
     await _running_with_no_worker(fake_redis)
-    await _suspected_long_ago(fake_redis, "job-1")
+    await _suspected_long_ago("job-1")
 
     async with captured_wide_event() as event:
         assert await tasks_mod.reap_browser_jobs({}) == "reaped=1 results_to_tell=0"
@@ -387,7 +367,7 @@ async def test_one_sweep_without_a_worker_is_no_evidence_of_death(
     assert await tasks_mod.reap_browser_jobs({}) == "reaped=0 results_to_tell=0"
     assert await done_state("job-1") is None
 
-    await _suspected_long_ago(fake_redis, "job-1")
+    await _suspected_long_ago("job-1")
     assert await tasks_mod.reap_browser_jobs({}) == "reaped=1 results_to_tell=0"
 
 
@@ -395,7 +375,7 @@ async def test_a_job_unleased_for_exactly_the_confirm_window_is_dead(
     world: World, fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     await _running_with_no_worker(fake_redis)
-    await fake_redis.hset(BROWSER_JOB_SUSPECT_KEY, "job-1", "1000.0")
+    await redis_cache.client.hset(BROWSER_JOB_SUSPECT_KEY, mapping={"job-1": "1000.0"})
     monkeypatch.setattr(tasks_mod, "time", lambda: 1000.0 + BROWSER_JOB_DEATH_CONFIRM_SECONDS)
 
     assert await tasks_mod.reap_browser_jobs({}) == "reaped=1 results_to_tell=0"
@@ -407,7 +387,7 @@ async def test_a_job_waiting_for_a_worker_or_held_by_one_is_left_alone_and_unsus
 ) -> None:
     """A long queue wait and a long handoff are both a live job: reaping either would end a run the user is in."""
     request = await _running_with_no_worker(fake_redis)
-    await _suspected_long_ago(fake_redis, "job-1")
+    await _suspected_long_ago("job-1")
     if evidence == "queued":
         await fake_redis.delete(f"{in_progress_key_prefix}job-1")
         await fake_redis.zadd(BROWSER_JOB_QUEUE, {request.job_id: 1})
@@ -419,7 +399,7 @@ async def test_a_job_waiting_for_a_worker_or_held_by_one_is_left_alone_and_unsus
 
     assert event["browser"] == {"reaped_jobs": [], "results_to_tell": []}
     assert await done_state("job-1") is None
-    assert await fake_redis.hget(BROWSER_JOB_SUSPECT_KEY, "job-1") is None
+    assert await redis_cache.client.hget(BROWSER_JOB_SUSPECT_KEY, "job-1") is None
 
 
 async def test_a_headless_job_whose_worker_died_unblocks_its_caller_without_an_inbox_entry(
@@ -427,7 +407,7 @@ async def test_a_headless_job_whose_worker_died_unblocks_its_caller_without_an_i
 ) -> None:
     """Its tool call follows the feed: closing it is what lets a workflow go on."""
     await _running_with_no_worker(fake_redis, PAYLOAD | {"in_background": False})
-    await _suspected_long_ago(fake_redis, "job-1")
+    await _suspected_long_ago("job-1")
 
     assert await tasks_mod.reap_browser_jobs({}) == "reaped=1 results_to_tell=0"
 
@@ -445,7 +425,7 @@ async def test_a_job_that_ended_or_expired_is_forgotten_by_the_reaper(
     # A RUNNING write landing after the ending puts the ended job back in view.
     await put_job_state(BrowserJobState.of(request, BrowserJobStatus.RUNNING))
     # A job whose state expired leaves its id behind with nothing to read.
-    await fake_redis.sadd(BROWSER_JOB_LIVE_KEY, "job-gone")
+    await redis_cache.client.sadd(BROWSER_JOB_LIVE_KEY, "job-gone")
 
     async with captured_wide_event() as event:
         assert await tasks_mod.reap_browser_jobs({}) == "reaped=0 results_to_tell=0"
@@ -459,11 +439,11 @@ async def test_every_dead_job_is_reaped_whatever_comes_before_it_in_the_walk(
     world: World, fake_redis: fakeredis.aioredis.FakeRedis
 ) -> None:
     """A live or ended job ahead of a dead one in the walk must not end the sweep early."""
-    await fake_redis.sadd(BROWSER_JOB_LIVE_KEY, "job-gone")
+    await redis_cache.client.sadd(BROWSER_JOB_LIVE_KEY, "job-gone")
     waiting = await _queued(PAYLOAD | {"job_id": "job-0", "conversation_id": "conv-0"})
     await fake_redis.zadd(BROWSER_JOB_QUEUE, {waiting.job_id: 1})
     await _running_with_no_worker(fake_redis, PAYLOAD | {"in_background": False})
-    await _suspected_long_ago(fake_redis, "job-1")
+    await _suspected_long_ago("job-1")
 
     async with captured_wide_event() as event:
         await tasks_mod.reap_browser_jobs({})

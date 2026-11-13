@@ -27,16 +27,15 @@ import pytest
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.core.lazy_loader import providers
-from app.override.langgraph_bigtool.create_agent import (
+from app.override.langgraph_bigtool.agent_config import (
     AgentConfig,
     HookConfig,
     ToolRetrievalConfig,
-    create_agent,
 )
+from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from tests.helpers import BindableToolsFakeModel, pg_advisory_lock, skip_items_without_real_services
 from tests.integration.real.db_fixtures import (
-    hil_approvals_collection,
     mongo_db,
     mongodb_url,
     postgres_url,
@@ -47,7 +46,6 @@ from tests.integration.real.db_fixtures import (
 # Imported to register the fixtures for this directory; `__all__` marks them as
 # a deliberate re-export (same pattern as tests/integration/real/conftest.py).
 __all__ = [
-    "hil_approvals_collection",
     "mongo_db",
     "mongodb_url",
     "postgres_url",
@@ -69,8 +67,6 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     """
 
     real_infra_files = {
-        "test_hil_barrier_e2e.py",
-        "test_hil_spawn_e2e.py",
         "test_todo_trigger_dispatch_e2e.py",
         "test_tracked_todo_chat_e2e.py",
     }

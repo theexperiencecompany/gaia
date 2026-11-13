@@ -2,7 +2,7 @@
 
 from contextlib import contextmanager
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import BaseTool
@@ -10,7 +10,6 @@ from langgraph.errors import GraphInterrupt
 import pytest
 
 from app.agents.core.subagents.subagent_runner import subagent_row_id
-from app.models.agent_models import SubagentKind
 
 MODULE = "app.agents.middleware.subagent"
 ACTIVATION = "app.agents.core.subagents.integration_activation"
@@ -66,12 +65,6 @@ def _make_spawn_config(**configurable) -> dict:
     }
 
 
-def _paused(approval_id: str):
-    from app.agents.core.subagents.subagent_runner import SubagentOutcome
-
-    return SubagentOutcome(text="", interrupt={"approval_id": approval_id})
-
-
 def _done(text: str):
     from app.agents.core.subagents.subagent_runner import SubagentOutcome
 
@@ -79,24 +72,18 @@ def _done(text: str):
 
 
 @contextmanager
-def _spawn_harness(outcomes, decisions=("approved",), recovered=None):
-    """Patch only the edges of a spawn (stream context, memory retrieval, graph runner, HIL interrupt); rest stays real."""
+def _spawn_harness(outcomes):
+    """Patch only the edges of a spawn (stream context, memory retrieval, graph runner); rest stays real."""
     writer = MagicMock()
     execute = AsyncMock(side_effect=outcomes)
-    resume = MagicMock(side_effect=decisions)
-    recover = AsyncMock(return_value=recovered)
     registry = MagicMock(claim=AsyncMock(return_value=True), deregister=AsyncMock())
     with (
         patch(f"{MODULE}.build_initial_messages", new=AsyncMock(return_value=[])),
         patch(f"{DELEGATION}.current_stream_writer", return_value=writer),
         patch(f"{DELEGATION}.execute_subagent_stream", new=execute),
-        patch(f"{DELEGATION}.resume_for_gate", new=resume),
-        patch(f"{DELEGATION}.recover_from_checkpoint", new=recover),
         patch(f"{DELEGATION}.RunningSubagents", return_value=registry),
     ):
-        yield SimpleNamespace(
-            writer=writer, execute=execute, resume=resume, recover=recover, registry=registry
-        )
+        yield SimpleNamespace(writer=writer, execute=execute, registry=registry)
 
 
 @contextmanager
@@ -304,13 +291,10 @@ class TestSpawnSubagentTool:
 
         assert build.await_args.kwargs["integration_ids"] == ["gmail", "googlecalendar"]
 
-    async def test_hil_pause_propagates_out_of_the_tool(self):
-        """A GraphBubbleUp is the approval request in flight; swallowing it into a tool error would drop it."""
+    async def test_graph_control_flow_propagates_out_of_the_tool(self):
+        """A GraphBubbleUp is control flow for the parent graph; swallowing it into a tool error would drop it."""
         mw = _ready_middleware()
-        with _spawn_harness(
-            outcomes=[_paused("approval-1")],
-            decisions=[GraphInterrupt()],
-        ) as h:
+        with _spawn_harness(outcomes=[GraphInterrupt()]) as h:
             with pytest.raises(GraphInterrupt):
                 await mw.tools[0].coroutine(
                     task="delete the repo",
@@ -319,9 +303,6 @@ class TestSpawnSubagentTool:
                     config=_make_spawn_config(),
                 )
 
-        assert h.resume.call_args_list == [call({"approval_id": "approval-1"})]
-        # The row stays live across the pause — ending it here would orphan the
-        # spinner and open a duplicate when the approval resumes the spawn.
         assert _event_names(h.writer) == ["subagent_start"]
 
     async def test_unexpected_failure_becomes_a_tool_error(self):
@@ -339,61 +320,6 @@ class TestSpawnSubagentTool:
         assert message.status == "error"
         # A failed spawn must close its row, or the UI spins forever.
         assert _event_names(h.writer) == ["subagent_start", "subagent_end"]
-
-    async def test_drive_resumes_every_gate_before_returning(self):
-        """Two gated calls in one task pause twice; only the final, unpaused outcome is the tool result."""
-        mw = _ready_middleware()
-        with _spawn_harness(
-            outcomes=[_paused("approval-1"), _paused("approval-2"), _done("deleted 2 files")],
-            decisions=["approve-1", "approve-2"],
-        ) as h:
-            result = await mw.tools[0].coroutine(
-                task="clean up",
-                tool_call_id="call_1",
-                selected_tool_ids=[],
-                config=_make_spawn_config(),
-            )
-
-        assert _tool_message(result).content == "deleted 2 files"
-        assert h.execute.await_count == 3
-        assert h.resume.call_args_list == [
-            call({"approval_id": "approval-1"}),
-            call({"approval_id": "approval-2"}),
-        ]
-        resumed = [c.kwargs.get("resume") for c in h.execute.await_args_list]
-        assert resumed[0] is None
-        assert [r.resume for r in resumed[1:]] == ["approve-1", "approve-2"]
-        assert _event_names(h.writer) == ["subagent_start", "subagent_end"]
-
-    async def test_fresh_spawn_never_probes_the_checkpoint(self):
-        mw = _ready_middleware()
-        with _spawn_harness(outcomes=[_done("ok")]) as h:
-            await mw.tools[0].coroutine(
-                task="summarise",
-                tool_call_id="call_1",
-                selected_tool_ids=[],
-                config=_make_spawn_config(),
-            )
-
-        h.recover.assert_not_awaited()
-        assert h.execute.await_count == 1
-
-    async def test_replay_returns_the_checkpointed_result_without_rerunning(self):
-        """A sibling's pause replays this tool node; re-running the spawn would repeat every action already taken."""
-        from app.constants.hil import HIL_RESUME_CONFIG_KEY
-
-        mw = _ready_middleware()
-        with _spawn_harness(outcomes=[_done("second run")], recovered=_done("first run")) as h:
-            result = await mw.tools[0].coroutine(
-                task="send the email",
-                tool_call_id="call_1",
-                selected_tool_ids=[],
-                config=_make_spawn_config(**{HIL_RESUME_CONFIG_KEY: True}),
-            )
-
-        assert _tool_message(result).content == "first run"
-        h.recover.assert_awaited_once()
-        h.execute.assert_not_awaited()
 
     async def test_spawn_context_isolates_the_thread_and_starts_lean(self):
         mw = _ready_middleware(excluded_tool_names={"handoff"})
@@ -501,7 +427,7 @@ class TestSpawnNesting:
         assert event["agent_type"] == "spawned"
 
     async def test_the_row_id_is_stable_across_replays_of_one_call(self):
-        """An approval pause replays the spawn; a fresh row id each time would orphan the paused row."""
+        """A replay of the dispatching node re-runs the spawn; a fresh row id each time would orphan the first row."""
         mw = _ready_middleware()
         ids = []
         for _ in range(2):
@@ -592,9 +518,7 @@ class TestBuildContextWiring:
 
 
 class TestBuildDelegation:
-    """build_delegation is also how a parked spawn is rebuilt, so its recipe must round-trip whole."""
-
-    async def test_the_delegation_carries_the_recipe_that_rebuilds_it(self):
+    async def test_the_delegation_names_its_row_and_seeds_the_task_with_its_context(self):
         mw = _ready_middleware(inherit_parent_tools=True)
         parent = _make_spawn_config(conversation_id="conv-9")["configurable"]
         with _context_harness() as h:
@@ -606,16 +530,10 @@ class TestBuildDelegation:
                 inherited_tool_names=["create_flowchart"],
             )
 
-        assert delegation.kind is SubagentKind.SPAWN
         assert delegation.subagent_id == subagent_row_id("call_abc")
-        assert delegation.resume_item() == {
-            "kind": SubagentKind.SPAWN,
-            "tool_call_id": "call_abc",
-            "task": "draw the flowchart",
-            "context": "the user's notes",
-            "inherited_tool_names": ["create_flowchart"],
-            "parent_configurable": parent,
-        }
+        assert delegation.tool_call_id == "call_abc"
+        assert delegation.task == "draw the flowchart"
+        assert delegation.parent_configurable is parent
         assert h.task == "Context:\nthe user's notes\n\nTask:\ndraw the flowchart"
         assert delegation.ctx.initial_state["selected_tool_ids"] == ["create_flowchart"]
 
@@ -665,25 +583,6 @@ class TestBuildDelegation:
             "create_flowchart",
             "query_json",
         ]
-        # A parked spawn is rebuilt from the recipe without activating again, so the
-        # tools activation bound have to travel in it.
-        assert delegation.resume_item()["inherited_tool_names"] == [
-            "create_flowchart",
-            "query_json",
-        ]
-
-    async def test_no_inherited_tools_is_an_empty_recipe_entry(self):
-        mw = _ready_middleware()
-        with _context_harness():
-            delegation = await mw.build_delegation(
-                task="t",
-                context="",
-                parent_configurable=_make_spawn_config()["configurable"],
-                tool_call_id="call_abc",
-                inherited_tool_names=None,
-            )
-
-        assert delegation.inherited_tool_names == ()
 
     @pytest.mark.parametrize(
         ("task", "name"),

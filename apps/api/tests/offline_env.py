@@ -25,8 +25,6 @@ os.environ["COMPOSIO_AUTH_CONFIG_OVERRIDES"] = "{}"
 # Code mode mints per-invocation tokens; pin it off so a developer's .env
 # cannot leak execute env into hermetic bash tests. Opt in per test.
 os.environ["ENABLE_CODE_MODE"] = "false"
-# The HIL ledger ships ON too; barrier-path tests opt out via hil_barrier_mode.
-os.environ["ENABLE_HIL_LEDGER"] = "true"
 # The console sink enqueues to a background thread, which only races the tests that
 # assert on captured stdout/stderr. Write inline instead.
 os.environ["LOG_ENQUEUE"] = "false"

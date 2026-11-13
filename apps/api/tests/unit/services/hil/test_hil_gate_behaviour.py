@@ -13,7 +13,7 @@ from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.tools import BaseTool
 import pytest
 
-from app.models.hil_models import ApprovalProposal, HILApprovalStatus
+from app.models.hil_models import ApprovalProposal
 from app.services.hil import gate
 from app.services.hil.intent import AutoContext, IntentDecision, JudgedCall
 from app.services.hil.utils import GatedCall, unpack_tool_call
@@ -22,7 +22,6 @@ from .conftest import (
     CONVERSATION_ID,
     STREAM_ID,
     USER_ID,
-    make_record,
     make_request,
     make_tool,
     registered_row,
@@ -102,9 +101,7 @@ class TestLedgerPathResolvesForTheRunsUser:
     ) -> None:
         ledger = _ledger()
         with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
-            patch(f"{MODULE}.recall_declined_call", new=AsyncMock(return_value=None)),
             patch(f"{MODULE}.approval_ledger_repository", new=ledger),
             patch(f"{MODULE}.publish_ledger_request", new=AsyncMock()) as publish,
         ):
@@ -129,7 +126,7 @@ class TestLedgerPathResolvesForTheRunsUser:
             )
 
         assert verdict.runs is True
-        assert judged.await_args.args[4] == SUMMARY
+        assert judged.await_args.args[3] == SUMMARY
 
 
 def _call() -> GatedCall:
@@ -138,31 +135,7 @@ def _call() -> GatedCall:
 
 @pytest.mark.unit
 @pytest.mark.usefixtures("resolves_the_mcp_tool")
-class TestLivePathResolvesForTheRunsUser:
-    async def test_the_pending_card_names_the_integration_of_the_servers_tool(self) -> None:
-        with (
-            patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=None)),
-            patch(f"{MODULE}.recall_declined_call", new=AsyncMock(return_value=None)),
-            patch(f"{MODULE}.publish_approval_request", new=AsyncMock()) as publish,
-        ):
-            pending = await gate._decide(_execute_request(), _context(), "ask", _call())
-
-        assert isinstance(pending, gate._Pending)
-        assert pending.summary == SUMMARY
-        assert pending.integration_name == INTEGRATION_NAME
-        assert publish.await_args.args[0].integration_name == INTEGRATION_NAME
-
-    async def test_always_allow_stores_the_rule_under_the_servers_key(self) -> None:
-        record = make_record(status=HILApprovalStatus.APPROVED, scope="always_tool")
-        with (
-            patch(f"{MODULE}.publish_decision", new=AsyncMock()),
-            patch(f"{MODULE}.set_tool_override", new=AsyncMock()) as store,
-        ):
-            cleared = await gate._apply(record, _execute_request(), _context(), _call())
-
-        assert cleared is None
-        store.assert_awaited_once_with(USER_ID, SERVER_KEY, False)
-
+class TestTheJudgeSeesTheServersKey:
     @pytest.mark.parametrize(
         ("never_auto", "expected"),
         [(frozenset({SERVER_KEY}), True), (frozenset({TOOL_NAME}), False)],
@@ -182,7 +155,7 @@ class TestLivePathResolvesForTheRunsUser:
             patch(f"{MODULE}.is_jev_judge_enabled", new=AsyncMock(return_value=False)),
             patch(f"{MODULE}.judge_intent", new=judge),
         ):
-            await gate._judge(_execute_request(), _context(), _call(), None, SUMMARY)
+            await gate._judge(_execute_request(), _context(), _call(), SUMMARY)
 
         auto_context: AutoContext = judge.await_args.args[0]
         assert auto_context.never_auto is expected

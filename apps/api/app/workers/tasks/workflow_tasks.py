@@ -82,7 +82,6 @@ from app.models.workflow_models import (
 )
 from app.services.analytics_service import capture
 from app.services.cost_budget import format_reset_date
-from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.notification_service import notification_service
 from app.services.triggers.batching import (
     coalesce_window_seconds,
@@ -691,12 +690,6 @@ REPLAY_FLAGGED_SUMMARY = (
 )
 OVERLAPPED_SUMMARY = (
     "Skipped: a previous run of this workflow was still going, and that run delivered the result"
-)
-# The same skip when the collided run is parked on an approval — otherwise the
-# record blames "a run still going" for something the user can restart, and an
-# hourly workflow sits out the whole approval window saying nothing.
-OVERLAPPED_AWAITING_APPROVAL_SUMMARY = (
-    "Skipped: the previous run of this workflow is waiting for you to answer its approval"
 )
 SHORTCUT_DISCARDED_SUMMARY = (
     "Ran the full workflow; the saved shortcut was discarded because the workflow changed"
@@ -1377,22 +1370,18 @@ async def _record_overlapped_fire(
     trigger_type: str,
 ) -> str:
     # This fire never ran: the conversation was already claimed by another run, so
-    # it dropped out before charging quota. The user is told nothing — except when
-    # the holding run is parked on an approval, the one overlap they can clear.
-    awaiting_approval = bool(await list_pending_for_conversation(overlapped.conversation_id))
+    # it dropped out before charging quota.
     log.set_ns(
         "workflow",
         overlapped=True,
         lock_holder=overlapped.holder,
         outcome="overlapped_in_flight_run",
-        holder_awaiting_approval=awaiting_approval,
     )
     log.warning(
         f"{LogTag.WORKER} Workflow fire overlapped an in-flight run — nothing executed",
         workflow_id=workflow_id,
         conversation_id=overlapped.conversation_id,
         lock_holder=overlapped.holder,
-        holder_awaiting_approval=awaiting_approval,
     )
     # Minted here rather than reused: the overlap is caught before the fire has a
     # record. The skip still belongs in history — without a row the user sees a
@@ -1401,7 +1390,7 @@ async def _record_overlapped_fire(
         workflow_id,
         overlapped.user_id,
         trigger_type,
-        OVERLAPPED_AWAITING_APPROVAL_SUMMARY if awaiting_approval else OVERLAPPED_SUMMARY,
+        OVERLAPPED_SUMMARY,
         conversation_id=overlapped.conversation_id,
     )
     await WorkflowService.increment_execution_count(

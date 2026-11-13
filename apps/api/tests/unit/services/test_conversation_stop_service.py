@@ -18,7 +18,6 @@ from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ChatWorkStopped
 from tests.work_cancel_fakes import (
     EXECUTOR_STREAM,
-    ApprovalSeams,
     approval_seams,
     claim_subagent,
     seed_live_work,
@@ -32,7 +31,7 @@ USER = "507f1f77bcf86cd799439011"
 
 
 @pytest.fixture
-def no_approvals() -> Iterator[ApprovalSeams]:
+def no_approvals() -> Iterator[AsyncMock]:
     yield from approval_seams(pending=False)
 
 

@@ -1,10 +1,9 @@
-"""Surface an approval request to the user's clients, and remember declines.
+"""Surface an approval request to the user's clients.
 
-The gate pauses its run with LangGraph's interrupt(); nothing here waits. This
-module only *publishes*: it records the pending approval durably, pushes the
-approval_request tool_data card onto the turn's SSE stream, and wakes clients
-that aren't watching it. The decision arrives out-of-band and is applied by
-app/services/hil/resolution.py, which resumes the paused thread.
+Nothing here waits or decides. This module only *publishes*: it pushes the
+approval_request tool_data card onto the turn's SSE stream, holds a live run's
+cards until the run ends, and wakes clients that aren't watching it. Decisions
+are applied by app/services/hil/ledger_decide.py.
 
 Frame delivery mirrors make_redis_stream_writer: every frame is both published
 to the replayable stream event log (live + reload) AND appended to the stream
@@ -17,34 +16,26 @@ stream_id, is what makes the card work at every nesting depth.
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-import hashlib
 import json
 from typing import Any, Protocol, TypedDict, cast
 
 from pydantic import TypeAdapter
 
 from app.agents.core.background.session import RunKind, get_session
-from app.constants.cache import HIL_DECLINED_PREFIX
 from app.constants.hil import (
     APPROVAL_REQUEST_TOOL_NAME,
     APPROVAL_TOOL_CATEGORY,
     HIL_CLASSIFIER_MAX_ARG_CHARS,
     HIL_CLASSIFIER_MAX_ARGS,
     HIL_CLASSIFIER_MAX_DETAIL_CHARS,
-    HIL_DECLINE_MEMORY_TTL_SECONDS,
 )
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
-from app.db.redis import redis_cache
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.conversations import conversation_repository
-from app.models.agent_config import SubagentResumeItem
 from app.models.hil_models import (
     ApprovalDescription,
     ApprovalLedgerDocument,
-    DeclinedCallRecord,
-    HILApprovalRecord,
-    HILApprovalStatus,
     LedgerState,
 )
 from app.models.stream_events import (
@@ -54,12 +45,10 @@ from app.models.stream_events import (
     SettledApprovalStatus,
 )
 from app.services.analytics_service import capture
-from app.services.hil.approvals_store import record_auto_approval, upsert_pending_approval
 from app.services.hil.describe import describe_call
 from app.services.hil.notify import notify_approval_pending
 from app.services.hil.policy import asks_every_time
 from app.services.hil.utils import GatedCall
-from app.services.latency_metrics import observe_hil_pause
 from app.utils.general_utils import clip_text
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilCardShown
@@ -85,15 +74,6 @@ class _ApprovalFrameData(TypedDict, total=False):
     status: str
     feedback: str
     expires_at: object
-
-
-@dataclass
-class ApprovalOutcome:
-    """The resolved result of an approval request: status, optional feedback, and scope."""
-
-    status: HILApprovalStatus
-    feedback: str | None = None
-    scope: str = "once"
 
 
 @dataclass(frozen=True)
@@ -137,62 +117,6 @@ class SettledApprovalCard:
     integration_name: str | None
 
 
-async def publish_approval_request(
-    approval: GatedApproval,
-    *,
-    auto_reason: str | None = None,
-    subagent_resume: SubagentResumeItem | None = None,
-    subagent_thread_id: str | None = None,
-) -> None:
-    """Record the pending approval and surface its card — exactly once.
-
-    The gate re-enters this on every resume replay (the node re-runs from the
-    top), so the card and the notification are gated on whether the upsert
-    actually created the record. A replay is a no-op.
-    """
-    record = await upsert_pending_approval(
-        approval_id=approval.approval_id,
-        user_id=approval.user_id,
-        conversation_id=approval.conversation_id,
-        stream_id=approval.stream_id,
-        tool_name=approval.tool_call.name,
-        tool_call_id=approval.tool_call.id,
-        args=approval.tool_call.args,
-        summary=approval.summary,
-        integration_name=approval.integration_name,
-        subagent_thread_id=subagent_thread_id,
-        subagent_resume=subagent_resume,
-    )
-    if record is None:
-        return
-
-    # Counted here — the one place a genuine pause is born (gated on `created`,
-    # so a resume replay is a no-op) — not at the decision, where it would count
-    # decisions and miss still-pending pauses.
-    observe_hil_pause()
-    log.set(
-        hil={
-            "approval_id": approval.approval_id,
-            "tool": approval.tool_call.name,
-            "stream_id": approval.stream_id,
-        }
-    )
-    await _publish_entry(
-        approval.stream_id,
-        _entry(
-            await _pending_data(
-                approval,
-                auto_reason=auto_reason,
-                asked_at=record.created_at,
-                expires_at=record.expires_at,
-            )
-        ),
-    )
-    _schedule_pending_notification(
-        approval.user_id, approval.conversation_id, approval.approval_id, approval.summary
-    )
-
-
 async def publish_ledger_request(
     approval: GatedApproval,
     *,
@@ -204,8 +128,7 @@ async def publish_ledger_request(
 ) -> None:
     """Surface a ledger PENDING card exactly once per registration.
 
-    Same approval_request wire shape as the barrier path, so clients render it
-    unchanged. On a live run the card is HELD (recorded on the session for the
+    On a live run the card is HELD (recorded on the session for the
     end-of-run drain, no SSE until then); background runs publish immediately,
     nobody being there to watch the stream.
     """
@@ -274,109 +197,6 @@ async def sync_conversation_approval_flag(conversation_id: str, user_id: str) ->
             error=str(e),
             error_type=type(e).__name__,
         )
-
-
-async def publish_decision(
-    record: HILApprovalRecord, status: HILApprovalStatus, *, stream_id: str, feedback: str | None
-) -> None:
-    """Settle this approval's card, on the stream the user is watching NOW.
-
-    Never record.stream_id: that is the stream the request was raised on, and a run
-    that paused resumes on a fresh one (prepare_run_from_item), leaving the original
-    closed. The client follows the new stream via executor.stream_started, so a card
-    settled on the old one resolves where nobody is looking.
-    """
-    card = SettledApprovalCard(
-        approval_id=record.approval_id,
-        tool_call=GatedCall(name=record.tool_name, id=record.tool_call_id, args=record.args),
-        description=describe_call(record.tool_name, record.args, record.integration_name),
-        integration_name=record.integration_name,
-    )
-    await _publish_entry(
-        stream_id, _approval_entry(card, status, asked_at=record.created_at, feedback=feedback)
-    )
-    # Settle the PERSISTED frame now too, since a later pause before final delivery
-    # reconciles would otherwise show a dead pending card. Isolated: the caller
-    # (the gate) fails CLOSED, so a write error here must not become a denial.
-    try:
-        await conversation_repository.set_message_approval_status(
-            record.conversation_id,
-            user_id=record.user_id,
-            approval_id=record.approval_id,
-            status=status.value,
-        )
-    except Exception as e:
-        log.error(
-            f"{LogTag.HIL} Could not settle persisted approval frame; delivery will reconcile",
-            approval_id=record.approval_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-
-
-async def publish_auto_approval(approval: GatedApproval, *, reason: str) -> None:
-    """Record and surface an action auto mode ran without asking.
-
-    The card is published already settled, so it needs no decision and wakes nobody — it
-    is a receipt, not a request. Auto mode should never mean the user cannot see what was
-    done in their name.
-    """
-    asked_at = datetime.now(UTC)
-    await record_auto_approval(
-        approval_id=approval.approval_id,
-        user_id=approval.user_id,
-        conversation_id=approval.conversation_id,
-        stream_id=approval.stream_id,
-        tool_name=approval.tool_call.name,
-        tool_call_id=approval.tool_call.id,
-        args=approval.tool_call.args,
-        summary=approval.summary,
-        integration_name=approval.integration_name,
-        reason=reason,
-    )
-    await _publish_entry(
-        approval.stream_id,
-        _approval_entry(
-            approval, HILApprovalStatus.AUTO_APPROVED, asked_at=asked_at, auto_reason=reason
-        ),
-    )
-
-
-async def remember_declined_call(
-    stream_id: str,
-    tool_name: str,
-    args: Mapping[str, object],
-    feedback: str | None,
-) -> None:
-    """Record that this exact call was declined for the rest of the turn."""
-    if not redis_cache.redis:
-        return
-    record: DeclinedCallRecord = {"feedback": feedback}
-    await redis_cache.set(
-        _declined_key(stream_id, tool_name, args),
-        record,
-        ttl=HIL_DECLINE_MEMORY_TTL_SECONDS,
-    )
-
-
-async def recall_declined_call(
-    stream_id: str, tool_name: str, args: Mapping[str, object]
-) -> ApprovalOutcome | None:
-    """Return the prior decline for this exact call in this turn, if any.
-
-    Lets the gate auto-deny a retry with the user's original feedback and never re-prompt.
-    """
-    if not redis_cache.redis:
-        return None
-    raw = await redis_cache.get(_declined_key(stream_id, tool_name, args))
-    if not raw:
-        return None
-    # Correct by construction: the only writer is ``remember_declined_call`` above.
-    record: DeclinedCallRecord = cast(DeclinedCallRecord, raw)
-    return ApprovalOutcome(
-        status=HILApprovalStatus.DENIED,
-        feedback=record.get("feedback"),
-    )
 
 
 def build_action_detail(summary: str, args: Mapping[str, object]) -> str:
@@ -575,28 +395,16 @@ def _is_held(event: object) -> bool:
     return frame.get("_held_approval") is True
 
 
-async def pending_card(
-    record: HILApprovalRecord | ApprovalLedgerDocument,
-) -> PendingApprovalCardData:
-    """Rebuild a still-pending approval's card from its stored row, as the bot prompt lists it."""
-    if isinstance(record, ApprovalLedgerDocument):
-        card = SettledApprovalCard(
-            approval_id=record.approval_id,
-            tool_call=GatedCall(name=record.tool_name, id="", args=record.args),
-            description=describe_call(record.tool_name, record.args, None, record.account),
-            integration_name=None,
-        )
-        return await _pending_data(
-            card, auto_reason=None, asked_at=record.created_at, ledger_version=record.v
-        )
+async def pending_card(record: ApprovalLedgerDocument) -> PendingApprovalCardData:
+    """Rebuild a still-pending approval's card from its ledger row, as the bot prompt lists it."""
     card = SettledApprovalCard(
         approval_id=record.approval_id,
-        tool_call=GatedCall(name=record.tool_name, id=record.tool_call_id, args=record.args),
-        description=describe_call(record.tool_name, record.args, record.integration_name),
-        integration_name=record.integration_name,
+        tool_call=GatedCall(name=record.tool_name, id="", args=record.args),
+        description=describe_call(record.tool_name, record.args, None, record.account),
+        integration_name=None,
     )
     return await _pending_data(
-        card, auto_reason=None, asked_at=record.created_at, expires_at=record.expires_at
+        card, auto_reason=None, asked_at=record.created_at, ledger_version=record.v
     )
 
 
@@ -605,14 +413,12 @@ async def _pending_data(
     *,
     auto_reason: str | None,
     asked_at: datetime,
-    expires_at: datetime | None = None,
     ledger_version: int | None = None,
 ) -> PendingApprovalCardData:
     """Build a PENDING card, stamped with whether its call asks every time."""
     return PendingApprovalCardData(
         **_card_fields(card, asked_at=asked_at, feedback=None, auto_reason=auto_reason),
         status="pending",
-        expires_at=expires_at,
         ledger_version=ledger_version,
         always_asks=await asks_every_time(card.tool_call.name, card.tool_call.args),
     )
@@ -620,15 +426,14 @@ async def _pending_data(
 
 def _approval_entry(
     card: ApprovalCard,
-    status: HILApprovalStatus | LedgerState,
+    status: LedgerState,
     *,
     asked_at: datetime,
     feedback: str | None = None,
-    auto_reason: str | None = None,
 ) -> ApprovalRequestEntry:
     """Build a decided card; a pending status here is a bug and raises."""
     data = SettledApprovalCardData(
-        **_card_fields(card, asked_at=asked_at, feedback=feedback, auto_reason=auto_reason),
+        **_card_fields(card, asked_at=asked_at, feedback=feedback, auto_reason=None),
         status=_SETTLED_STATUS.validate_python(status.value),
     )
     return _entry(data)
@@ -675,13 +480,3 @@ def _entry(data: PendingApprovalCardData | SettledApprovalCardData) -> ApprovalR
         data=data,
         timestamp=datetime.now(UTC).isoformat(),
     )
-
-
-def _declined_key(stream_id: str, tool_name: str, args: Mapping[str, object]) -> str:
-    return f"{HIL_DECLINED_PREFIX}{stream_id}:{tool_name}:{_args_hash(args)}"
-
-
-def _args_hash(args: Mapping[str, object]) -> str:
-    # md5 over the canonical args — a cache key, not a security boundary.
-    payload = json.dumps(args or {}, sort_keys=True, default=str)
-    return hashlib.md5(payload.encode(), usedforsecurity=False).hexdigest()  # nosec B324

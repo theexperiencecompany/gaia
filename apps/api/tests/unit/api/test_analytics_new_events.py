@@ -30,7 +30,6 @@ from app.models.user_instructions_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import Workflow
-from app.schemas.hil_schemas import BatchDecisionOutcome
 from app.services.hil.ledger_decide import LedgerDecision
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.calendars import CalendarPreferencesUpdated
@@ -41,7 +40,6 @@ from shared.py.analytics.catalog.chat import (
     ImageGenerated,
 )
 from shared.py.analytics.catalog.devices import DeviceApproved, DeviceRevoked
-from shared.py.analytics.catalog.hil import ApprovalDecided
 from shared.py.analytics.catalog.integrations import (
     IntegrationConnectInitiated,
     IntegrationCustomDeleted,
@@ -615,36 +613,6 @@ class TestNotificationNewEvents:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.usefixtures("hil_barrier_mode")
-class TestApprovalNewEvents:
-    async def test_decision_captures(self, client: AsyncClient) -> None:
-        with (
-            patch("app.api.v1.endpoints.approvals.resolve_approval", new_callable=AsyncMock),
-            patch("app.api.v1.endpoints.approvals.capture") as mock_capture,
-        ):
-            resp = await client.post("/api/v1/approvals/a1/decision", json={"decision": "approve"})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), ApprovalDecided(decision="approve"))
-
-    async def test_batch_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(
-                "app.api.v1.endpoints.approvals.resolve_approvals_batch",
-                new_callable=AsyncMock,
-                return_value=[BatchDecisionOutcome(approval_id="a1", resolved=True)],
-            ),
-            patch("app.api.v1.endpoints.approvals.capture") as mock_capture,
-        ):
-            resp = await client.post(
-                "/api/v1/approvals/batch-decision",
-                json={"decisions": [{"approval_id": "a1", "decision": "approve"}]},
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(
-            UserId(UID), ApprovalDecided(batch=True, decisions=1, resolved=1)
-        )
-
-
 def _ledger_decision(*, committed: bool, stale: bool = False) -> LedgerDecision:
     return LedgerDecision(
         committed=committed,
@@ -657,18 +625,6 @@ def _ledger_decision(*, committed: bool, stale: bool = False) -> LedgerDecision:
 
 class TestLedgerApprovalEvents:
     """The ledger emits hil:decision_submitted per committed decision; the endpoint must not count it twice."""
-
-    async def test_a_committed_decision_emits_no_second_event(self, client: AsyncClient) -> None:
-        with (
-            patch(
-                "app.api.v1.endpoints.approvals.decide_ledger_card",
-                new=AsyncMock(return_value=_ledger_decision(committed=True)),
-            ),
-            patch("app.api.v1.endpoints.approvals.capture") as mock_capture,
-        ):
-            resp = await client.post("/api/v1/approvals/ap_1/decision", json={"decision": "deny"})
-        assert resp.json()["success"] is True
-        mock_capture.assert_not_called()
 
     @pytest.mark.regression
     async def test_a_card_tap_is_decided_as_a_card_decision(self, client: AsyncClient) -> None:
@@ -696,25 +652,6 @@ class TestLedgerApprovalEvents:
 
         assert capture.call_args.args[1].via == "card"
 
-    async def test_a_batch_emits_no_second_event(self, client: AsyncClient) -> None:
-        with (
-            patch(
-                "app.api.v1.endpoints.approvals.decide_ledger_batch",
-                new=AsyncMock(
-                    return_value=[BatchDecisionOutcome(approval_id="ap_1", resolved=True)]
-                ),
-            ),
-            patch("app.api.v1.endpoints.approvals.capture") as mock_capture,
-        ):
-            resp = await client.post(
-                "/api/v1/approvals/batch-decision",
-                json={"decisions": [{"approval_id": "ap_1", "decision": "approve"}]},
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_not_called()
-
-
-class TestPlatformConnectInit:
     async def test_init_captures(self, client: AsyncClient) -> None:
         from app.models.platform_models import InitiatePlatformConnectResponse
 

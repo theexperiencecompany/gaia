@@ -62,7 +62,6 @@ USER_OWNED_COLLECTIONS = (
     "device_tokens",
     "e2b_sandboxes",
     "files",
-    "hil_approvals",
     "llm_calls",
     "notes",
     "notifications",

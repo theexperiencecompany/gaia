@@ -1,13 +1,12 @@
 """A conversation with every kind of live work, on real Redis keys, for the stop paths to cancel.
 
-Only the approval stores are faked (Mongo-backed); the executor lock, inbox, subagent
+Only the approval ledger is faked (Mongo-backed); the executor lock, inbox, subagent
 registry and browser job are the real Redis records each stop reads.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator
-from dataclasses import dataclass
 from unittest.mock import AsyncMock, patch
 
 from app.agents.core.background.executor_channel import ExecutorInbox
@@ -24,27 +23,13 @@ EXECUTOR_TASK = "running-task"
 SUBAGENT_STREAM = "subagent_s1"
 BROWSER_JOB = "job-1"
 APPROVAL = "approval-1"
-LEDGER_APPROVAL = "ledger-1"
 
 
-@dataclass(frozen=True)
-class ApprovalSeams:
-    """The two approval stores' cancel calls, as the stop paths reach them."""
-
-    barrier: AsyncMock
-    ledger: AsyncMock
-
-
-def approval_seams(*, pending: bool) -> Iterator[ApprovalSeams]:
-    """Patch both approval cancels; each closes one approval when pending, none otherwise."""
-    barrier = AsyncMock(return_value=[APPROVAL] if pending else [])
-    ledger = AsyncMock(return_value=[LEDGER_APPROVAL] if pending else [])
-    module = "app.agents.core.background.work_cancel"
-    with (
-        patch(f"{module}.cancel_conversation_approvals", barrier),
-        patch(f"{module}.cancel_ledger_approvals", ledger),
-    ):
-        yield ApprovalSeams(barrier=barrier, ledger=ledger)
+def approval_seams(*, pending: bool) -> Iterator[AsyncMock]:
+    """Patch the ledger's cancel; it closes one approval when pending, none otherwise."""
+    ledger = AsyncMock(return_value=[APPROVAL] if pending else [])
+    with patch("app.agents.core.background.work_cancel.cancel_ledger_approvals", ledger):
+        yield ledger
 
 
 async def seed_live_work(conversation_id: str) -> None:

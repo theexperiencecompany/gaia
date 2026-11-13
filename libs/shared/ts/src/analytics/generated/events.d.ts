@@ -6,7 +6,6 @@ export type ServerEventName =
   | "agent:run_failed"
   | "agent:run_started"
   | "ai:llm_call_completed"
-  | "approval:decided"
   | "bot:audio_transcribed"
   | "bot:chat_opened"
   | "bot:session_reset"
@@ -320,15 +319,6 @@ export interface EventProperties {
     "status": number;
     "url": string;
     "error_code"?: string;
-  };
-  "approval:decided": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "decision"?: "approve" | "deny";
-    "batch"?: boolean;
-    "decisions"?: number;
-    "resolved"?: number;
   };
   "blog:article_viewed": {
     "slug": string;

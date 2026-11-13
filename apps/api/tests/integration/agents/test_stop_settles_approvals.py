@@ -82,10 +82,6 @@ def seams() -> Iterator[_Seams]:
         patch("app.services.hil.bridge.approval_ledger_repository", ledger),
         patch("app.services.hil.ledger_decide.conversation_repository", conversations),
         patch("app.services.hil.bridge.conversation_repository", conversations),
-        patch(
-            "app.services.hil.resolution.list_pending_for_conversation",
-            new=AsyncMock(return_value=[]),
-        ),
         patch("app.services.hil.ledger_decide.websocket_manager.broadcast_to_user", broadcast),
         patch.object(job_stop, "_abort_if_started", AsyncMock(return_value=True)),
         patch("app.services.hil.ledger_decide.capture"),

@@ -20,9 +20,7 @@ from tests.work_cancel_fakes import (
     BROWSER_JOB,
     EXECUTOR_STREAM,
     EXECUTOR_TASK,
-    LEDGER_APPROVAL,
     SUBAGENT_STREAM,
-    ApprovalSeams,
     approval_seams,
     seed_live_work,
 )
@@ -35,12 +33,12 @@ STOP_URL = f"/api/v1/conversations/{CONVERSATION}/stop"
 
 
 @pytest.fixture
-def pending_approvals() -> Iterator[ApprovalSeams]:
+def pending_approvals() -> Iterator[AsyncMock]:
     yield from approval_seams(pending=True)
 
 
 @pytest.fixture
-def no_approvals() -> Iterator[ApprovalSeams]:
+def no_approvals() -> Iterator[AsyncMock]:
     yield from approval_seams(pending=False)
 
 
@@ -57,7 +55,7 @@ def owned(owned_conversations: set[tuple[str, str]]) -> None:
 @pytest.mark.usefixtures("owned")
 class TestStopConversation:
     async def test_the_stop_cancels_the_turn_and_the_full_set_of_work(
-        self, client: AsyncClient, pending_approvals: ApprovalSeams
+        self, client: AsyncClient, pending_approvals: AsyncMock
     ) -> None:
         await stream_manager.start_stream(TURN, CONVERSATION, FAKE_USER.user_id)
         await seed_live_work(CONVERSATION)
@@ -75,7 +73,7 @@ class TestStopConversation:
                 "pending_tasks": 1,
                 "pending_task_ids": [],
                 "subagent_ids": ["s1"],
-                "approval_ids": [APPROVAL, LEDGER_APPROVAL],
+                "approval_ids": [APPROVAL],
                 "browser_jobs": {BROWSER_JOB: "stopped"},
             },
         }
@@ -89,7 +87,7 @@ class TestStopConversation:
 
     @pytest.mark.regression
     async def test_web_stop_cancels_approvals_and_the_browser_job(
-        self, client: AsyncClient, pending_approvals: ApprovalSeams
+        self, client: AsyncClient, pending_approvals: AsyncMock
     ) -> None:
         """Regression: the web Stop cancelled the turn's stream and left approval cards live and the executor running."""
         await stream_manager.start_stream(TURN, CONVERSATION, FAKE_USER.user_id)
@@ -97,12 +95,11 @@ class TestStopConversation:
 
         await client.post(STOP_URL)
 
-        pending_approvals.barrier.assert_awaited_once_with(CONVERSATION, FAKE_USER.user_id)
-        pending_approvals.ledger.assert_awaited_once_with(CONVERSATION, FAKE_USER.user_id)
+        pending_approvals.assert_awaited_once_with(CONVERSATION, FAKE_USER.user_id)
         assert await job_cancel_requested(BROWSER_JOB)
 
     async def test_a_web_stop_emits_work_stopped_exactly_once(
-        self, client: AsyncClient, no_approvals: ApprovalSeams, monkeypatch: pytest.MonkeyPatch
+        self, client: AsyncClient, no_approvals: AsyncMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         captured = MagicMock()
         monkeypatch.setattr(conversation_stop_service, "capture", captured)
@@ -113,7 +110,7 @@ class TestStopConversation:
         assert [type(event) for event in events] == [ChatWorkStopped]
 
     async def test_the_stop_is_recorded_on_the_wide_event(
-        self, client: AsyncClient, no_approvals: ApprovalSeams
+        self, client: AsyncClient, no_approvals: AsyncMock
     ) -> None:
         await stream_manager.start_stream(TURN, CONVERSATION, FAKE_USER.user_id)
 
@@ -131,7 +128,7 @@ class TestStopConversation:
         )
 
     async def test_stopping_an_idle_conversation_is_an_empty_summary(
-        self, client: AsyncClient, no_approvals: ApprovalSeams, fake_redis
+        self, client: AsyncClient, no_approvals: AsyncMock, fake_redis
     ) -> None:
         response = await client.post(STOP_URL)
 
@@ -148,7 +145,7 @@ class TestStopIsRefusedForAnotherUser:
         self,
         client: AsyncClient,
         owned_conversations: set[tuple[str, str]],
-        pending_approvals: ApprovalSeams,
+        pending_approvals: AsyncMock,
         fake_redis,
     ) -> None:
         owned_conversations.add((CONVERSATION, FAKE_USER_2.user_id))
@@ -159,4 +156,4 @@ class TestStopIsRefusedForAnotherUser:
         assert response.status_code == 404
         assert not await stream_manager.is_cancelled(EXECUTOR_STREAM)
         assert await fake_redis.get(f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}") is not None
-        pending_approvals.barrier.assert_not_awaited()
+        pending_approvals.assert_not_awaited()

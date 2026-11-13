@@ -40,7 +40,6 @@ from app.models.chat_models import (
     MessageModel,
     SavedSubagentGroup,
     SystemPurpose,
-    ToolDataEntry,
 )
 from app.models.conversation_models import (
     ConversationDocument,
@@ -523,32 +522,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     "group.data.subagent_id": group.subagent_id,
                 },
             ],
-        )
-        return matched > 0
-
-    async def set_message_response(
-        self, conversation_id: str, *, user_id: str, message_id: str, response: str
-    ) -> bool:
-        """Set a message's response text in place; does not advance updatedAt."""
-        matched = await self._apply_raw_update_unfetched(
-            {"conversation_id": conversation_id, "messages.message_id": message_id},
-            {"$set": {"messages.$.response": response}},
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
-        )
-        return matched > 0
-
-    async def set_message_tool_data(
-        self, conversation_id: str, *, user_id: str, message_id: str, entries: list[ToolDataEntry]
-    ) -> bool:
-        """Replace a message's tool_data wholesale; does not advance updatedAt."""
-        matched = await self._apply_raw_update_unfetched(
-            {"conversation_id": conversation_id, "messages.message_id": message_id},
-            {"$set": {"messages.$.tool_data": entries}},
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
         )
         return matched > 0
 

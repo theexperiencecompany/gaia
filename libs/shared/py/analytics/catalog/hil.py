@@ -6,24 +6,11 @@ from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.properties import Identifier
 
 __all__ = [
-    "ApprovalDecided",
     "HilCardShown",
     "HilDecisionSubmitted",
     "HilResumed",
     "HilRevoked",
 ]
-
-
-class ApprovalDecided(ServerEvent):
-    """A user decided one pending approval (decision) or a batch of them (batch, decisions, resolved)."""
-
-    event: ClassVar[str] = "approval:decided"
-    budget_per_user_day: ClassVar[int] = 10
-
-    decision: Literal["approve", "deny"] | None = None
-    batch: bool | None = None
-    decisions: int | None = None
-    resolved: int | None = None
 
 
 class HilCardShown(ServerEvent):
@@ -46,6 +33,7 @@ class HilDecisionSubmitted(ServerEvent):
     """A gated call was decided: a committed ledger decision, or auto mode's judge settling it with no card."""
 
     event: ClassVar[str] = "hil:decision_submitted"
+    previous_names: ClassVar[tuple[str, ...]] = ("approval:decided",)
     budget_per_user_day: ClassVar[int] = 10
 
     decision: Literal["approved", "denied"]

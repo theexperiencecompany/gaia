@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock
 from langchain_core.tools import BaseTool
 import pytest
 
+from app.agents.core.background import work_cancel
 from app.agents.core.background.executor_channel import decide_drain
 from app.agents.tools.browser_chat_tools import browser_step_done, stop_browser_task
 from app.agents.tools.executor_tool import cancel_executor
@@ -208,6 +209,13 @@ async def test_a_second_browser_task_in_one_turn_is_refused_by_name() -> None:
     assert any(world.enqueued[0].job_id in text for text in refusal)
 
 
+@pytest.fixture
+def no_approvals(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stand in for the approval ledger a stop-everything clears: it lives in Mongo, which no journey here boots."""
+    monkeypatch.setattr(work_cancel, "cancel_ledger_approvals", AsyncMock(return_value=[]))
+
+
+@pytest.mark.usefixtures("no_approvals")
 async def test_a_stop_reaches_the_browser_and_releases_the_conversation() -> None:
     """The run outlives the turn that started it, so a stop typed later has to reach the job itself rather than a stream nobody is on."""
     waiting = [ScriptedStep(actions=[], await_stop=True)]
@@ -670,20 +678,15 @@ async def test_a_password_the_run_typed_never_reaches_a_card_or_the_answer() -> 
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("no_approvals")
 async def test_a_stop_while_the_user_is_asked_to_sign_in_ends_the_run_stopped_at_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Regression: a stop during a handoff waited out the handoff window, and the run then read as timed out, not stopped."""
-    from app.agents.tools import executor_tool
     from app.config.settings import settings
 
     # Short, so a stop the wait never hears ends as the timeout it once was, not a hang.
     monkeypatch.setattr(settings, "BROWSER_USE_HANDOFF_TIMEOUT_SECONDS", 5)
-    # A stop-everything also clears the conversation's approvals, which live in Mongo:
-    # stand in for them, as the executor tool's own tests do, so this journey only
-    # exercises the browser stop and never reaches the process-wide Mongo client.
-    monkeypatch.setattr(executor_tool, "cancel_conversation_approvals", AsyncMock(return_value=[]))
-    monkeypatch.setattr(executor_tool, "cancel_ledger_approvals", AsyncMock(return_value=[]))
     async with browser_job_world(STREAM, steps=[SIGN_IN, BOOK_SIGNED_IN]) as world:
         async with executor_graph([RETRIEVE, START, "Started."]) as graph:
             await run_graph(

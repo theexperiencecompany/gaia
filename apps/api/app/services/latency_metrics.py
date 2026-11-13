@@ -161,26 +161,6 @@ _SUBAGENT_RUN_SECONDS = _register_once(
     ),
 )
 
-_HIL_USER_WAIT_SECONDS = _register_once(
-    "hil_user_wait_seconds",
-    lambda: Histogram(
-        name="hil_user_wait_seconds",
-        documentation="HIL approval decided_at minus created_at in seconds",
-        labelnames=(),
-        buckets=_TURN_BUCKETS,
-    ),
-)
-
-_HIL_DISPATCH_LAG_SECONDS = _register_once(
-    "hil_dispatch_lag_seconds",
-    lambda: Histogram(
-        name="hil_dispatch_lag_seconds",
-        documentation="HIL approval resumed_at minus decided_at in seconds",
-        labelnames=(),
-        buckets=_TTFT_BUCKETS,
-    ),
-)
-
 _DELIVERY_NARRATION_SECONDS = _register_once(
     "delivery_narration_seconds",
     lambda: Histogram(
@@ -280,21 +260,13 @@ _TRIGGER_GATE_DECISION_TOTAL = _register_once(
     ),
 )
 
-_HIL_PAUSE_TOTAL = _register_once(
-    "hil_pause_total",
-    lambda: Counter(
-        name="hil_pause_total",
-        documentation="Lifetime HIL pause observations",
-    ),
-)
-
 
 def _bool_label(value: bool | str) -> str:
     return value if isinstance(value, str) else ("true" if value else "false")
 
 
 # The ARQ worker mirrors these onto its own registry (app/workers/metrics.py) so
-# samples from worker-run paths (HIL sweep, re-dispatched and workflow-triggered
+# samples from worker-run paths (re-dispatched and workflow-triggered
 # executor runs) are served rather than landing on an unscraped default registry.
 ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _CHAT_TTFT_SECONDS,
@@ -309,8 +281,6 @@ ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _EXECUTOR_E2E_SECONDS,
     _TOOL_CALL_SECONDS,
     _SUBAGENT_RUN_SECONDS,
-    _HIL_USER_WAIT_SECONDS,
-    _HIL_DISPATCH_LAG_SECONDS,
     _DELIVERY_NARRATION_SECONDS,
     _DELIVERY_PERSIST_SECONDS,
     _TRANSPORT_REDIS_PUBLISH_SECONDS,
@@ -321,7 +291,6 @@ ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _EXECUTOR_RUN_TOTAL,
     _TOOL_CALL_TOTAL,
     _TRIGGER_GATE_DECISION_TOTAL,
-    _HIL_PAUSE_TOTAL,
 )
 
 
@@ -472,21 +441,6 @@ def observe_trigger_gate_decision(*, owner: str, outcome: str, reason: str) -> N
     _inc(_TRIGGER_GATE_DECISION_TOTAL, owner=owner, outcome=outcome, reason=reason)
 
 
-def observe_hil_pause() -> None:
-    """Increment the lifetime HIL-pause counter."""
-    _inc(_HIL_PAUSE_TOTAL)
-
-
-def observe_hil_user_wait(seconds: float) -> None:
-    """Record HIL approval decided_at minus created_at."""
-    _observe(_HIL_USER_WAIT_SECONDS, seconds)
-
-
-def observe_hil_dispatch_lag(seconds: float) -> None:
-    """Record HIL approval resumed_at minus decided_at."""
-    _observe(_HIL_DISPATCH_LAG_SECONDS, seconds)
-
-
 def observe_delivery_narration(seconds: float, *, status: str) -> None:
     """Record executor result narration duration."""
     _observe(_DELIVERY_NARRATION_SECONDS, seconds, status=status)
@@ -533,9 +487,6 @@ __all__ = [
     "observe_executor_run_total",
     "observe_executor_ttft",
     "observe_graph_node",
-    "observe_hil_dispatch_lag",
-    "observe_hil_pause",
-    "observe_hil_user_wait",
     "observe_llm_call",
     "observe_llm_ttft",
     "observe_sse_delivery",

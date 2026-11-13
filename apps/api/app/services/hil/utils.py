@@ -21,7 +21,6 @@ from langchain_core.tools import BaseTool
 
 from app.agents.tools.execute.unwrap import execute_call_account, unwrap_execute_call
 from app.constants.hil import (
-    HIL_APPROVAL_TIMEOUT_SECONDS,
     HIL_JUDGE_MAX_ARGS_CHARS,
     HIL_JUDGE_MAX_ASSISTANT_CHARS,
     HIL_JUDGE_MAX_ASSISTANT_TURNS,
@@ -305,21 +304,6 @@ def render_tool_schema(schema: dict[str, object] | None) -> str:
     if not schema:
         return "(no schema)"
     return clip_text(json.dumps(schema, default=str), HIL_JUDGE_MAX_SCHEMA_CHARS)
-
-
-def approval_window_label() -> str:
-    """How long the gate waited, in words, for the expiry message to the model.
-
-    The configured window, not a measured elapsed time: the sweep resolves an
-    approval within a tick of expires_at, so the two agree to within a minute
-    out of hours. Threading a real duration through the resume payload would buy
-    nothing the user could notice.
-    """
-    hours, seconds = divmod(HIL_APPROVAL_TIMEOUT_SECONDS, 3600)
-    if hours:
-        return "1 hour" if hours == 1 else f"{hours} hours"
-    minutes = max(1, seconds // 60)
-    return "1 minute" if minutes == 1 else f"{minutes} minutes"
 
 
 def untrusted_fence() -> str:

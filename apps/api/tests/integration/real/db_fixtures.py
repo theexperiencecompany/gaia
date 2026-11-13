@@ -1,6 +1,6 @@
 """Shared real-infra fixtures for the real-database suites.
 
-Canonical home for the connection fixtures used by tests/integration/real/ and tests/e2e/test_hil_*_e2e.py. Import them into a conftest to register for a directory; they are plain functions so each suite controls its own scope/autouse policy.
+Canonical home for the connection fixtures used by tests/integration/real/ and the e2e suite's real-infra tests. Import them into a conftest to register for a directory; they are plain functions so each suite controls its own scope/autouse policy.
 
 The approach: patch the app's singletons to point at real test containers,
 then call production functions directly. No rewriting production logic.
@@ -70,23 +70,6 @@ async def mongo_db(mongodb_url: str, monkeypatch):
     yield db
 
     client.close()
-
-
-@pytest.fixture
-async def hil_approvals_collection(mongo_db):
-    """Real hil_approvals collection, emptied around each test.
-
-    Not autouse here — suites that stream chat on every turn (see the
-    tests/integration/real conftest) re-register it autouse so approval
-    records can be asserted on exactly; suites that only read it once opt in
-    explicitly (see tests/e2e/conftest.py).
-    """
-    coll = mongo_db["hil_approvals"]
-    await coll.delete_many({})
-
-    yield coll
-
-    await coll.delete_many({})
 
 
 @pytest.fixture

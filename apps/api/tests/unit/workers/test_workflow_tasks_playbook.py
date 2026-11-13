@@ -60,7 +60,6 @@ from app.utils.timezone import Timezone
 from app.workers.tasks.workflow_tasks import (
     AGENT_RUN_SUMMARY,
     HEAL_RUN_SUMMARY,
-    OVERLAPPED_AWAITING_APPROVAL_SUMMARY,
     OVERLAPPED_SUMMARY,
     REPLAY_FLAGGED_SUMMARY,
     REPLAY_NARRATION_FAILED_SUMMARY,
@@ -176,7 +175,6 @@ class _Harness:
         #: The reservation's liveness renewal, and whether it still ran when the agent did.
         self.alive_task = MagicMock()
         self.alive = AsyncMock(return_value=self.alive_task)
-        self.pending_approvals = AsyncMock(return_value=[])
         self.drain = AsyncMock(return_value=[{"id": "evt_1"}])
         #: Seams a single test needs on top of the shared set, entered last so
         #: they win over anything the harness already patched.
@@ -239,7 +237,6 @@ class _Harness:
             patch(f"{MODULE}.release_lock_if_owned", self.release),
             patch(f"{MODULE}.get_lock_holder", self.holder),
             patch(f"{MODULE}.keep_alive", self.alive),
-            patch(f"{MODULE}.list_pending_for_conversation", self.pending_approvals),
             patch(f"{MODULE}.drain_trigger_batch", self.drain),
             patch(f"{MODULE}.reschedule_if_refilled", AsyncMock()),
             patch(f"{MODULE}.log", self.log),
@@ -2295,7 +2292,6 @@ class TestTheReplayRunsAsTheWorkflowsOwnerInItsOwnConversation:
             workflow_id="wf_1",
             conversation_id="conv_1",
             lock_holder="stream_9:task_9",
-            holder_awaiting_approval=False,
         )
         assert harness.complete_execution.await_args_list == [
             call(
@@ -2319,7 +2315,6 @@ class TestTheReplayRunsAsTheWorkflowsOwnerInItsOwnConversation:
             workflow_id="wf_1",
             conversation_id="conv_1",
             lock_holder="",
-            holder_awaiting_approval=False,
         )
 
 
@@ -2695,18 +2690,6 @@ class TestAnAgentFireOverlapsToo:
         await _fire_with_context(harness, {"trigger_batch_key": "batch_1"})
 
         harness.drain.assert_not_awaited()
-
-    async def test_a_fire_that_overlaps_an_approval_says_so_on_the_record(self) -> None:
-        """A parked run holds the lock for the whole approval window."""
-        workflow = _workflow()
-        harness = _Harness(workflow)
-        harness.acquire = AsyncMock(return_value=False)
-        harness.pending_approvals = AsyncMock(return_value=[MagicMock()])
-
-        await _fire(harness)
-
-        assert harness.summary() == OVERLAPPED_AWAITING_APPROVAL_SUMMARY
-        harness.pending_approvals.assert_awaited_once_with("conv_1")
 
     async def test_an_overlapped_fire_gets_its_own_skipped_row_in_the_workflows_history(
         self,

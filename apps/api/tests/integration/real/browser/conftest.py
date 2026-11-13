@@ -23,8 +23,8 @@ from tests.integration.real.browser._stack.stack import BrowserStack
 
 
 @pytest.fixture(autouse=True)
-def _autouse_hil_approvals_collection() -> None:
-    """Replace the real tier's per-test approvals collection, which this tier must not use.
+def _autouse_real_mongo() -> None:
+    """Replace the real tier's per-test database, which this tier must not use.
 
     That fixture repoints this process's repository layer at a per-worker database
     on the test's own loop; the stack's processes use the app's own database, which

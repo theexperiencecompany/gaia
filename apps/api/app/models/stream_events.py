@@ -90,8 +90,8 @@ class ToolCallsDataEntry(BaseModel):
     mcp_server_url: str | None
 
 
-# Every status a decided card can show; settled ledger cards carry the ledger's own
-# states (executed, revoked, cancelled...), interrupt-path ones the barrier's.
+# Every status a decided card can show. timeout/abandoned/auto_approved are no longer
+# produced; they stay so clients still render cards saved by the retired interrupt path.
 SettledApprovalStatus = Literal[
     "approved",
     "denied",

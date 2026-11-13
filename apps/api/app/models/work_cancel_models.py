@@ -24,9 +24,7 @@ class WorkCancelled(ResponseModel):
         default_factory=list, description="Queued executor requests dropped by id."
     )
     subagent_ids: list[str] = Field(default_factory=list, description="Running subagents stopped.")
-    approval_ids: list[str] = Field(
-        default_factory=list, description="Pending approvals closed, barrier and ledger."
-    )
+    approval_ids: list[str] = Field(default_factory=list, description="Pending approvals closed.")
     browser_jobs: dict[str, BrowserStopOutcome] = Field(
         default_factory=dict, description="Browser jobs reached, with what each stop came to."
     )

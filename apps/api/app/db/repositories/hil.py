@@ -1,124 +1,11 @@
-"""Repositories for the HIL collections — approval records and tool-risk cache.
+"""Repository for the HIL tool-risk cache: one stored destructiveness verdict per custom tool.
 
-hil_approvals is keyed by the deterministic approval_id stored as the
-string _id (see approval_id_for): the gate's pre-interrupt() code
-re-runs from the top of the node on every resume replay, and the unique _id
-is what makes record creation naturally once-only — a replay's duplicate insert
-is the idempotency guarantee working, not an error.
-
-Uncached (cache_policy = None): approvals are decision state read at
-low volume around pauses, and the pending → decided transition is a conditional
-write the entity cache could only misrepresent.
+Uncached (cache_policy = None): a verdict is read once per classification and
+refreshed in place when the tool's description changes.
 """
 
-from datetime import UTC, datetime, timedelta
-
-from pymongo.errors import DuplicateKeyError
-
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
-from app.models.hil_models import (
-    HILApprovalRecord,
-    HILApprovalStatus,
-    HILApprovalUpdate,
-    HILToolRiskRecord,
-    HILToolRiskUpdate,
-)
-
-
-class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate]):
-    collection_name = "hil_approvals"
-    document_model = HILApprovalRecord
-    update_model = HILApprovalUpdate
-    uses_object_id = False
-    cache_policy = None
-
-    async def create_if_absent(self, record: HILApprovalRecord) -> bool:
-        """Insert the record unless its approval_id already exists.
-
-        Returns True only when newly created — the caller publishes the
-        approval card exactly once on that signal. A duplicate id is a resume
-        replay re-running the gate's pre-pause code: the existing record (pending
-        or already decided) must never be reset, so the duplicate is a no-op.
-        """
-        doc = record.model_copy(update={"id": record.approval_id})
-        try:
-            await self.create(doc)
-        except DuplicateKeyError:
-            return False
-        return True
-
-    async def mark_decided(
-        self,
-        approval_id: str,
-        status: HILApprovalStatus,
-        *,
-        feedback: str | None,
-        scope: str,
-        decided_by: str | None,
-    ) -> bool:
-        """Transition a pending record to a terminal status, exactly once.
-
-        Conditional on the current status so a duplicate or racing decision
-        cannot double-resolve: only the call that performed the transition
-        returns True.
-        """
-        updated = await self._apply_raw_update(
-            {"_id": approval_id, "status": HILApprovalStatus.PENDING},
-            {
-                "$set": {
-                    "status": status,
-                    "feedback": feedback,
-                    "scope": scope,
-                    "decided_by": decided_by,
-                    "decided_at": datetime.now(UTC),
-                }
-            },
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
-        return updated is not None
-
-    async def list_parked_subagents_for_conversation(
-        self, conversation_id: str
-    ) -> list[HILApprovalRecord]:
-        """List a background subagent's approvals no decision has resumed yet, oldest first."""
-        return await self._find(
-            {
-                "conversation_id": conversation_id,
-                "subagent_resume": {"$ne": None},
-                "resumed_at": None,
-            },
-            sort=[("created_at", 1)],
-        )
-
-    async def list_expired_pending(self) -> list[HILApprovalRecord]:
-        """Pending approvals past expires_at — the timeout sweep's work list."""
-        return await self._find(
-            {"status": HILApprovalStatus.PENDING, "expires_at": {"$lt": datetime.now(UTC)}}
-        )
-
-    async def list_decided_unresumed(
-        self, statuses: list[str], grace_seconds: float
-    ) -> list[HILApprovalRecord]:
-        """Decided records whose resume never dispatched (a crash after deciding but before the run spawn)."""
-        cutoff = datetime.now(UTC) - timedelta(seconds=grace_seconds)
-        return await self._find(
-            {
-                "status": {"$in": statuses},
-                "resumed_at": None,
-                # An executor pause or a parked background subagent: each resumes.
-                "$or": [{"resume_item": {"$ne": None}}, {"subagent_resume": {"$ne": None}}],
-                "decided_at": {"$lt": cutoff},
-            }
-        )
-
-    async def list_pending_for_conversation(self, conversation_id: str) -> list[HILApprovalRecord]:
-        """Every still-pending approval in a conversation, oldest first."""
-        return await self._find(
-            {"conversation_id": conversation_id, "status": HILApprovalStatus.PENDING},
-            sort=[("created_at", 1)],
-        )
+from app.models.hil_models import HILToolRiskRecord, HILToolRiskUpdate
 
 
 class HilToolRiskRepository(MongoRepository[HILToolRiskRecord, HILToolRiskUpdate]):
@@ -150,5 +37,4 @@ class HilToolRiskRepository(MongoRepository[HILToolRiskRecord, HILToolRiskUpdate
         )
 
 
-hil_approval_repository = HilApprovalRepository()
 hil_tool_risk_repository = HilToolRiskRepository()

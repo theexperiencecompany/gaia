@@ -690,74 +690,6 @@
       }
     },
     {
-      "event": "approval:decided",
-      "class": "ApprovalDecided",
-      "owner": "server",
-      "domain": "approval",
-      "description": "A user decided one pending approval (decision) or a batch of them (batch, decisions, resolved).",
-      "previous_names": [],
-      "budget_per_user_day": 10,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user decided one pending approval (decision) or a batch of them (batch, decisions, resolved).",
-        "properties": {
-          "decision": {
-            "anyOf": [
-              {
-                "enum": ["approve", "deny"],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Decision"
-          },
-          "batch": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Batch"
-          },
-          "decisions": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Decisions"
-          },
-          "resolved": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Resolved"
-          }
-        },
-        "title": "ApprovalDecided",
-        "type": "object"
-      }
-    },
-    {
       "event": "blog:article_viewed",
       "class": "BlogArticleViewed",
       "owner": "web",
@@ -3350,7 +3282,7 @@
       "owner": "server",
       "domain": "hil",
       "description": "A gated call was decided: a committed ledger decision, or auto mode's judge settling it with no card.",
-      "previous_names": [],
+      "previous_names": ["approval:decided"],
       "budget_per_user_day": 10,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",

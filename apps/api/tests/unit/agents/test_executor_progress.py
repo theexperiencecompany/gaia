@@ -19,6 +19,7 @@ import pytest
 from app.agents.context.live_work import build_executor_status_block
 from app.agents.context.section_context import SectionContext
 from app.agents.context.tiers import AgentTier
+from app.agents.core.background import executor_queue
 from app.agents.core.background.executor_progress import (
     ProgressRecorder,
     RunProgress,
@@ -43,7 +44,6 @@ from app.constants.cache import (
 )
 from app.constants.executor import EXECUTOR_PROGRESS_MAX_CALLS
 from app.constants.general import CALL_EXECUTOR_NAME
-from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
@@ -330,35 +330,28 @@ class TestLifetime:
         assert await fake_redis.ttl(progress_key(CONV, HOLDER)) > 5
 
     async def test_a_long_silent_tool_call_keeps_its_progress_while_the_run_lives(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
+        self, fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A tool call that emits nothing for longer than the record's TTL: the beat, not frames, keeps it."""
         await _record(HOLDER, _call("deep_research", {"topic": "x"}))
+        monkeypatch.setattr(executor_queue, "EXECUTOR_ALIVE_TTL", 2)
         for _ in range(3):
             await fake_redis.expire(progress_key(CONV, HOLDER), 1)
-            await hold_run_alive(CONV, HOLDER, ttl_seconds=2)
+            await hold_run_alive(CONV, HOLDER)
             await asyncio.sleep(1.1)
 
         assert (await read_progress(CONV, HOLDER)).calls
 
     async def test_once_the_beat_stops_the_record_expires(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
+        self, fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         await _record(HOLDER, _call("search", {"q": "x"}))
-        await hold_run_alive(CONV, HOLDER, ttl_seconds=1)
+        monkeypatch.setattr(executor_queue, "EXECUTOR_ALIVE_TTL", 1)
+        await hold_run_alive(CONV, HOLDER)
 
         await asyncio.sleep(1.2)
 
         assert describe_progress(await read_progress(CONV, HOLDER)) == ""
-
-    async def test_a_paused_run_keeps_its_progress_for_the_approval_window(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
-    ) -> None:
-        await _record(HOLDER, _call("GMAIL_SEND", {"to": "a@b.c"}))
-
-        await hold_run_alive(CONV, HOLDER, HIL_PAUSED_LOCK_TTL_SECONDS)
-
-        assert await fake_redis.ttl(progress_key(CONV, HOLDER)) > EXECUTOR_ALIVE_TTL
 
     async def test_the_beat_never_creates_a_record(
         self, fake_redis: fakeredis.aioredis.FakeRedis

@@ -22,7 +22,6 @@ class FeatureFlag(StrEnum):
     """PostHog flag keys GAIA evaluates; member name is the code handle, value the dashboard key."""
 
     CODE_MODE = "CODE_MODE"
-    HIL_LEDGER = "HIL_LEDGER"
     HIL_JEV_JUDGE = "HIL_JEV_JUDGE"
     HIL_JEV_REPLY = "HIL_JEV_REPLY"
     TRIGGER_GATES = "TRIGGER_GATES"
@@ -76,14 +75,6 @@ FEATURE_FLAGS: dict[FeatureFlag, FlagSpec] = {
             "(see ENABLE_CODE_MODE)."
         ),
         default=lambda: settings.ENABLE_CODE_MODE,
-    ),
-    FeatureFlag.HIL_LEDGER: FlagSpec(
-        description=(
-            "Gated calls register PENDING in the approval ledger and return "
-            "instead of parking the run; off keeps the interrupt barrier. On by "
-            "default (see ENABLE_HIL_LEDGER)."
-        ),
-        default=lambda: settings.ENABLE_HIL_LEDGER,
     ),
     FeatureFlag.HIL_JEV_JUDGE: FlagSpec(
         description=(

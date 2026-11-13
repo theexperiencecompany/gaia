@@ -52,7 +52,6 @@ class TestLedgerPublish:
 
         ledger = _ledger()
         with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
             patch(f"{MODULE}.approval_ledger_repository", new=ledger),
             patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
@@ -71,7 +70,6 @@ class TestLedgerPublish:
         live = MagicMock(approval_id="ap_live", summary="Send it")
         live.state = LedgerState.PENDING
         with (
-            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
             patch(f"{MODULE}.approval_ledger_repository", new=_ledger(live=live)),
             patch(f"{MODULE}.publish_ledger_request", new=AsyncMock()) as pub,

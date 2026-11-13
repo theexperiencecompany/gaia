@@ -26,12 +26,11 @@ from app.agents.core.background import (
 from app.agents.core.background.executor_runner import _ExecutorResult, run_executor_background
 from app.agents.core.background.session import ExecutorRun, RunKind, get_session, teardown_session
 from app.agents.tools import executor_tool as et
-from app.constants.executor import EXECUTOR_PAUSED
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.core.stream_manager import StreamManager
 from app.models.agent_models import AgentConfigurable
 from app.models.user_models import AuthenticatedUser
-from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
+from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunStarted
 
 # A run says it lives in Redis while it runs: give it a per-test Redis, never the ambient one.
 pytestmark = pytest.mark.usefixtures("fake_redis")
@@ -198,7 +197,6 @@ class TestExecutorRunLatency:
         *,
         first_frame_at: float | None = None,
         result: _ExecutorResult | None = None,
-        record_pause: bool | AsyncMock = True,
     ) -> MagicMock:
         """Drive run_executor_background with execute stubbed and the boundaries mocked.
 
@@ -207,19 +205,12 @@ class TestExecutorRunLatency:
         if first_frame_at is not None:
             session = sess.create_session(run.stream_id, run.kind)
             session.executor_first_frame_perf = first_frame_at
-        pause_recorder = (
-            record_pause
-            if isinstance(record_pause, AsyncMock)
-            else AsyncMock(return_value=record_pause)
-        )
         with (
             patch.object(
                 er,
                 "_execute_executor",
                 AsyncMock(return_value=result or _ExecutorResult("done", "final")),
             ),
-            patch.object(er, "_record_pause", pause_recorder),
-            patch.object(er, "_finalize_paused_run", AsyncMock()),
             patch.object(er, "_deliver_terminal_outcome", AsyncMock()),
             patch.object(er, "release_lock_if_owned", AsyncMock()),
             patch.object(er, "_close_queued_stream", AsyncMock()),
@@ -229,78 +220,6 @@ class TestExecutorRunLatency:
                 run=run, task="do the thing", configurable={"conversation_source": "web"}
             )
         return mock_capture
-
-    async def test_pause_record_failure_labels_the_active_span_error(self) -> None:
-        """Labelled error, not the pre-pause paused, to agree with the E2E/run-total labels."""
-        run = _run("exec-pause-lost", t_dispatch_perf=time.perf_counter())
-        error_before = _count("executor_active_seconds", {"status": "error"})
-        paused_before = _count("executor_active_seconds", {"status": "paused"})
-
-        mock_capture = await self._background(
-            run,
-            result=_ExecutorResult("", EXECUTOR_PAUSED, ("appr-1",)),
-            record_pause=False,
-        )
-
-        assert _count("executor_active_seconds", {"status": "error"}) == error_before + 1
-        assert _count("executor_active_seconds", {"status": "paused"}) == paused_before
-        failed = [c for c in mock_capture.call_args_list if isinstance(c.args[1], AgentRunFailed)]
-        assert len(failed) == 1
-
-    async def test_a_pause_records_the_runs_resume_context_on_its_approvals(self) -> None:
-        run = _run("exec-pause-args", t_dispatch_perf=time.perf_counter())
-        recorder = AsyncMock(return_value=True)
-
-        await self._background(
-            run,
-            result=_ExecutorResult("", EXECUTOR_PAUSED, ("appr-1", "appr-2")),
-            record_pause=recorder,
-        )
-
-        recorder.assert_awaited_once_with(
-            run, "do the thing", {"conversation_source": "web"}, ("appr-1", "appr-2")
-        )
-
-    async def test_recorded_pause_labels_the_active_span_paused(self) -> None:
-        """A pause that records cleanly stays paused on the active span."""
-        run = _run("exec-pause-ok", t_dispatch_perf=time.perf_counter())
-        paused_before = _count("executor_active_seconds", {"status": "paused"})
-        error_before = _count("executor_active_seconds", {"status": "error"})
-
-        await self._background(
-            run,
-            result=_ExecutorResult("", EXECUTOR_PAUSED, ("appr-1",)),
-            record_pause=True,
-        )
-
-        assert _count("executor_active_seconds", {"status": "paused"}) == paused_before + 1
-        assert _count("executor_active_seconds", {"status": "error"}) == error_before
-
-    async def test_active_histogram_agrees_with_the_active_ms_it_reports(self) -> None:
-        """Recording the pause is bookkeeping I/O after the run went idle and must stretch neither."""
-        run = _run("exec-slow-pause-record", t_dispatch_perf=time.perf_counter())
-        sum_before = (
-            REGISTRY.get_sample_value("executor_active_seconds_sum", {"status": "error"}) or 0.0
-        )
-
-        async def _slow_pause_record(*_args: Any, **_kwargs: Any) -> bool:
-            await asyncio.sleep(0.3)
-            return False
-
-        mock_capture = await self._background(
-            run,
-            result=_ExecutorResult("", EXECUTOR_PAUSED, ("appr-1",)),
-            record_pause=AsyncMock(side_effect=_slow_pause_record),
-        )
-
-        failed = [c for c in mock_capture.call_args_list if isinstance(c.args[1], AgentRunFailed)]
-        active_ms = failed[0].args[1].executor_active_ms
-        assert active_ms is not None
-        observed_s = (
-            REGISTRY.get_sample_value("executor_active_seconds_sum", {"status": "error"})
-            - sum_before
-        )
-        assert abs(observed_s - active_ms / 1000.0) < 0.05
 
     async def test_queue_wait_is_labelled_by_whether_the_run_was_queued(self) -> None:
         """A live run's dispatch-to-start gap is spawn delay; a backlog would hide behind ~0s samples."""
@@ -326,8 +245,8 @@ class TestExecutorRunLatency:
             == queued_before + 1
         )
 
-    async def test_hil_resume_is_not_labelled_queued(self) -> None:
-        """A HIL resume runs on RunKind.QUEUED but never waited on the busy lock."""
+    async def test_a_detached_run_that_never_queued_is_not_labelled_queued(self) -> None:
+        """A detached run is RunKind.QUEUED but never waited on the busy lock."""
 
         def _run_total(queued: str) -> float:
             return (
@@ -543,9 +462,7 @@ class TestBackgroundRunExactWiring:
         is_cancelled_mock = AsyncMock(return_value=is_cancelled)
         with (
             patch.object(er, "_execute_executor", execute),
-            patch.object(er, "_record_pause", AsyncMock(return_value=True)),
             patch.object(er, "_finalize_executor_run", AsyncMock()),
-            patch.object(er, "_finalize_paused_run", AsyncMock()),
             patch.object(er, "_deliver_terminal_outcome", AsyncMock()),
             patch.object(er, "release_lock_if_owned", AsyncMock()),
             patch.object(er, "_close_queued_stream", AsyncMock()),
@@ -571,7 +488,7 @@ class TestBackgroundRunExactWiring:
         with self._env(run, perf_values=[1000.0, 1000.0, 1000.5]) as env:
             await run_executor_background(run=run, task="the task", configurable=configurable)
 
-        env.execute.assert_awaited_once_with("the task", configurable, run, None)
+        env.execute.assert_awaited_once_with("the task", configurable, run)
 
     @pytest.mark.parametrize(
         ("task_id", "lock_value"), [("task-1", "exec-alive:task-1"), (None, "exec-alive:")]
@@ -698,55 +615,3 @@ class TestBackgroundRunExactWiring:
 
         assert captured["ttft_ms"] is None
         assert captured["active_ms"] is None
-
-
-class TestResumeForwarding:
-    def setup_method(self) -> None:
-        sess._sessions.clear()
-
-    def teardown_method(self) -> None:
-        sess._sessions.clear()
-
-    async def test_the_resume_command_reaches_the_executor(self) -> None:
-        """Dropping the resume Command would replay the run instead of continuing past the approval."""
-        run = _run("exec-resume-forward")
-        sentinel = object()
-        with (
-            patch.object(
-                er, "_execute_executor", AsyncMock(return_value=_ExecutorResult("done", "final"))
-            ) as execute,
-            patch.object(er, "_record_pause", AsyncMock(return_value=True)),
-            patch.object(er, "_finalize_paused_run", AsyncMock()),
-            patch.object(er, "_deliver_terminal_outcome", AsyncMock()),
-            patch.object(er, "release_lock_if_owned", AsyncMock()),
-            patch.object(er, "_close_queued_stream", AsyncMock()),
-            patch.object(er, "release_resume_dispatch", AsyncMock()) as release,
-            patch("app.services.analytics_service.capture"),
-        ):
-            await run_executor_background(
-                run=run,
-                task="do the thing",
-                configurable={"conversation_source": "web"},
-                resume=sentinel,
-            )
-
-        assert execute.await_args.args[3] is sentinel
-        # A resume held the conversation's resume slot; finishing frees it.
-        release.assert_awaited_once_with("conv-1")
-
-    async def test_a_fresh_run_frees_no_resume_slot(self) -> None:
-        with (
-            patch.object(
-                er, "_execute_executor", AsyncMock(return_value=_ExecutorResult("done", "final"))
-            ),
-            patch.object(er, "_deliver_terminal_outcome", AsyncMock()),
-            patch.object(er, "release_lock_if_owned", AsyncMock()),
-            patch.object(er, "_close_queued_stream", AsyncMock()),
-            patch.object(er, "release_resume_dispatch", AsyncMock()) as release,
-            patch("app.services.analytics_service.capture"),
-        ):
-            await run_executor_background(
-                run=_run("exec-fresh"), task="do the thing", configurable={}
-            )
-
-        release.assert_not_awaited()

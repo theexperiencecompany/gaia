@@ -25,10 +25,8 @@ import pytest
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     execute_subagent_stream,
-    interrupt_payload,
     subagent_row_id,
 )
-from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
 from tests.e2e._harness import (
     Event,
     ScriptedGraph,
@@ -193,7 +191,6 @@ class TestReturnValue:
 
         assert "ended without running any tool" in outcome.text
         assert "Re-issue the task" in outcome.text
-        assert outcome.paused is False
 
     async def test_narration_alongside_a_real_tool_call_is_returned_as_the_answer(self):
         """Control for the guard above: once a tool ran, the text IS the result."""
@@ -411,60 +408,13 @@ class TestMalformedEvents:
 
 
 # ---------------------------------------------------------------------------
-# HIL pause
-# ---------------------------------------------------------------------------
-
-
-class TestApprovalPause:
-    async def test_a_paused_run_reports_the_approval_and_drains_the_stream(self):
-        """Regression: under durability="exit", abandoning the generator on pause skipped the only checkpoint write and LangGraph re-ran already-completed tasks on resume — see tests/unit/agents/test_pause_checkpointing.py."""
-        graph = ScriptedGraph(
-            [
-                *flat(message(AIMessageChunk(content="About to send. "))),
-                ("updates", {LANGGRAPH_INTERRUPT_KEY: ({"approval_id": "ap_1"},)}),
-                *flat(message(AIMessageChunk(content="after the pause"))),
-            ]
-        )
-        transcript, outcome, _ = await run_subagent([], graph=graph)
-
-        assert outcome.paused is True, "a pause must never be reported as a result"
-        assert outcome.interrupt == {"approval_id": "ap_1"}
-        assert graph.yielded == 3, (
-            "the whole stream must be consumed, or the run-exit checkpoint never lands"
-        )
-        assert transcript.frames() == []
-
-    async def test_every_paused_call_is_reported_not_just_the_last(self):
-        """One __interrupt__ event per paused task; an approval left out gets no resume_item and later raises ApprovalNotResumableError."""
-        graph = ScriptedGraph(
-            [
-                ("updates", {LANGGRAPH_INTERRUPT_KEY: ({"approval_id": "ap_1"},)}),
-                ("updates", {LANGGRAPH_INTERRUPT_KEY: ({"approval_id": "ap_2"},)}),
-            ]
-        )
-        _transcript, outcome, _ = await run_subagent([], graph=graph)
-
-        assert outcome.paused is True
-        assert outcome.interrupt is not None
-        assert outcome.interrupt.get("approval_ids") == ["ap_1", "ap_2"], (
-            f"both approvals must be reported, got {outcome.interrupt}"
-        )
-
-    async def test_an_unreadable_interrupt_is_an_empty_payload_not_a_crash(self):
-        """Downstream denies on an empty payload; a raised error here would abort the turn instead."""
-        assert interrupt_payload(("not-a-dict",)) == {}
-        assert interrupt_payload(()) == {}
-        assert interrupt_payload(None) == {}
-
-
-# ---------------------------------------------------------------------------
 # Row identity and run configuration
 # ---------------------------------------------------------------------------
 
 
 class TestRunShape:
     async def test_a_subagent_row_id_is_stable_across_replays_of_one_call(self):
-        """A fresh uuid per replay would orphan the paused row and emit a duplicate on resume."""
+        """A fresh uuid per replay would orphan the first row and emit a duplicate."""
         first_replay = subagent_row_id("tc_abc")
         second_replay = subagent_row_id("tc_abc")
         assert first_replay == second_replay

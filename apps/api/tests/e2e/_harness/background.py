@@ -6,15 +6,11 @@ import asyncio
 
 from app.agents.core.background.executor_runner import (
     DETACHED_EXECUTOR_TASK_NAME,
-    run_executor_background,
+    LIVE_EXECUTOR_TASK_NAME,
 )
 from app.agents.core.background.redis_writer import STREAM_PUBLISH_TASK_NAME
 from app.agents.core.subagents.delegation import BACKGROUND_SUBAGENT_TASK_NAME
-from app.services.hil import resolution
 from app.utils import background_tasks
-
-#: call_executor spawns its live run unnamed, so the task carries the coroutine's name.
-LIVE_EXECUTOR_TASK_NAME = run_executor_background.__qualname__
 
 
 def tasks_named(*names: str) -> list[asyncio.Task[object]]:
@@ -43,8 +39,7 @@ async def drain_background_runs() -> None:
     """Wait out every executor and background-subagent run still in flight, whatever spawned it.
 
     A background subagent's landing can wake a collection executor run, which can
-    hand off again, and HIL's resume set spawns into the same keep-alive set — so
-    this loops until all of them are empty. Callers keep their patches open
+    hand off again — so this loops until all of them are empty. Callers keep their patches open
     across it: a run outliving its doubles would reach the real services.
     """
     while pending := [
@@ -54,6 +49,5 @@ async def drain_background_runs() -> None:
             DETACHED_EXECUTOR_TASK_NAME,
             BACKGROUND_SUBAGENT_TASK_NAME,
         ),
-        *resolution._resume_tasks,
     ]:
         await asyncio.gather(*pending, return_exceptions=True)

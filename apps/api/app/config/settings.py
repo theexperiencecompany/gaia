@@ -150,10 +150,6 @@ class Settings(BrowserHostSettings):
     # script can be written without a get_tool_schema call. App-wide, not per user.
     # Off by default: discovery docs carry args only and never read the observed-shape store.
     ENABLE_INLINE_TOOL_RETURNS: bool = False
-    # Executor-free HIL ledger — gated calls register PENDING and return
-    # instead of parking the run on an interrupt. On by default; off keeps the
-    # interrupt-and-resume barrier.
-    ENABLE_HIL_LEDGER: bool = True
     # JEV choice judge for auto mode — a structured decision call classifies first
     # (49/50 on the calibration set, zero dangerous accepts), LLM intent judge as
     # the transport-failure fallback. On by default; a JEV outage never opens the gate.

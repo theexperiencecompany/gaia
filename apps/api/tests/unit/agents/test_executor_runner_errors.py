@@ -20,7 +20,6 @@ from app.agents.core.background.session import ExecutorRun, RunKind
 from app.agents.core.subagents.subagent_runner import SubagentOutcome
 from app.constants import executor as executor_constants
 from app.constants.executor import (
-    EXECUTOR_ERROR_MALFORMED_APPROVAL,
     EXECUTOR_ERROR_PREP_FAILED,
     EXECUTOR_STEP_LIMIT_MESSAGE,
 )
@@ -63,7 +62,39 @@ async def _run_with(
             else AsyncMock(side_effect=side_effect),
         ),
     ):
-        return await er._execute_executor("do the thing", {}, run, None)
+        return await er._execute_executor("do the thing", {}, run)
+
+
+@pytest.mark.unit
+async def test_the_prepared_context_runs_and_its_frames_reach_the_stream() -> None:
+    ctx = SimpleNamespace(config={}, configurable={})
+    streamed: list[dict[str, object]] = []
+    seen: dict[str, object] = {}
+
+    async def execute(*, ctx: object, stream_writer: Any) -> SubagentOutcome:
+        seen["ctx"] = ctx
+        stream_writer({"progress": "step"})
+        return SubagentOutcome(text="done", answered=True)
+
+    run = ExecutorRun(
+        stream_id="stream-1",
+        conversation_id="conv-1",
+        user=AuthenticatedUser(user_id="u1"),
+        kind=RunKind.LIVE,
+        task_id="task-1",
+        user_message_id=None,
+        bot_message_id=None,
+    )
+    with (
+        patch.object(er, "prepare_executor_execution", AsyncMock(return_value=(ctx, None))),
+        patch.object(er, "make_redis_stream_writer", lambda _sid: streamed.append),
+        patch.object(er, "execute_subagent_stream", execute),
+    ):
+        result = await er._execute_executor("do the thing", {}, run)
+
+    assert (result.text, result.type) == ("done", "final")
+    assert seen["ctx"] is ctx
+    assert streamed == [{"progress": "step"}]
 
 
 @pytest.fixture
@@ -174,15 +205,6 @@ class TestAFailureBeforeOrInsteadOfARunNamesItsCause:
 
         assert result.type == "final"
         assert result.stopped is True
-
-    async def test_a_pause_with_no_approval_id_is_a_malformed_approval(self) -> None:
-        result = await _run_with(SubagentOutcome(text="", interrupt={"summary": "x"}))
-
-        assert (result.text, result.type, result.error_type) == (
-            "Approval request was malformed",
-            "error",
-            EXECUTOR_ERROR_MALFORMED_APPROVAL,
-        )
 
 
 @pytest.mark.unit

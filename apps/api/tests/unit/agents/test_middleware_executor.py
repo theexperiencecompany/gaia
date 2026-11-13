@@ -951,8 +951,8 @@ class TestToolChainFailsClosed:
         with (
             patch("app.services.hil.gate.resolve_policy", AsyncMock(return_value="ask")),
             patch(
-                "app.services.hil.gate.is_hil_ledger_enabled",
-                AsyncMock(side_effect=RuntimeError("flag store down")),
+                "app.services.hil.gate._decide_ledger",
+                AsyncMock(side_effect=RuntimeError("ledger down")),
             ),
             patch("app.agents.middleware.executor.log") as mock_log,
         ):
