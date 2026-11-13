@@ -3,7 +3,10 @@
 from datetime import UTC, datetime, time, timedelta
 from unittest.mock import AsyncMock, patch
 
-from app.agents.tools.attention_tool import adjust_attention
+from pydantic import ValidationError
+import pytest
+
+from app.agents.tools.attention_tool import AdjustAttentionArgs, adjust_attention
 from app.models.attention_settings_models import AttentionSettings
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 
@@ -66,3 +69,14 @@ async def test_a_check_in_time_that_is_not_a_time_changes_nothing_and_says_why()
 
     save.assert_not_awaited()
     assert reply.startswith("Not changed")
+
+
+@pytest.mark.parametrize("hours", [-1, 24 * 365])
+def test_do_not_disturb_hours_are_bounded(hours: float) -> None:
+    with pytest.raises(ValidationError):
+        AdjustAttentionArgs(do_not_disturb_hours=hours)
+
+
+def test_a_do_not_disturb_end_without_a_timezone_is_refused() -> None:
+    with pytest.raises(ValidationError):
+        AttentionSettings(dnd_until=datetime(2026, 11, 10, 11, 0))

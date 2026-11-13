@@ -167,6 +167,7 @@ def run_report(run: ExecutorRun, outcome: RunOutcome) -> RunReport:
         occurred_at=clock.now(),
         initiative=Initiative.ASKED,
         delivery_policy=run.delivery_policy,
+        turn_message_id=run.bot_message_id,
         report=outcome.report,
         result=outcome.result,
         review_problem=outcome.review_problem,

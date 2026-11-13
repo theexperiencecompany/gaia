@@ -40,6 +40,9 @@ class OutboxItemDocument(UserScopedDocument):
     compose_attempt_id: str | None = None
     #: How many times the chat apps' broker refused a message carrying this item, which went back to the queue.
     transport_retries: int = 0
+    #: How many times the recovery sweep drove the item again, and when it last did.
+    recovery_attempts: int = 0
+    recovered_at: datetime | None = None
     #: The report_id of the item that replaced this one.
     superseded_by: str | None = None
     expires_at: datetime

@@ -1,7 +1,7 @@
 """Internals guard: finds GAIA machinery in text about to be told to a user.
 
 What it flags: ids GAIA issued that belong to this user (run, todo, workflow, approval), tool
-names from the registry, agent payload tags and the executor's own vocabulary. What it never
+names from the registry, agent payload tags and the agent architecture's own vocabulary (the executor agent, subagents, tool calls). What it never
 flags is the user's data: a hex string that is not one of this user's GAIA ids is an order
 number or a commit, and the words workflow, todo and trigger are product words.
 """
@@ -22,7 +22,9 @@ _OBJECT_ID_RE = re.compile(r"\b[0-9a-f]{24}\b")
 _UUID_RE = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b")
 _TOOL_NAME_CANDIDATE_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+\b")
 _AGENT_TAG_RE = re.compile(r"</?(?:" + "|".join(tag.value for tag in AgentTag) + r")\b")
-_VOCABULARY_RE = re.compile(r"\b(?:executor|subagents?|tool calls?|task_ids?)\b", re.IGNORECASE)
+_VOCABULARY_RE = re.compile(
+    r"\b(?:executor (?:agent|tier|run|lock)s?|subagents?|tool calls?|task_ids?)\b", re.IGNORECASE
+)
 
 
 async def _is_users_object_id(user_id: str, candidate: str) -> bool:

@@ -4,6 +4,7 @@ import { EventEmitter } from "events";
 import type { MessageReaction } from "@/config/registries/baseMessageRegistry";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import type { SystemPurpose } from "@/features/chat/api/chatApi";
+import type { ReportSettledOutcome } from "@/lib/websocket/outboxEvents";
 import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import type {
@@ -84,6 +85,8 @@ export interface IMessage {
 
   // Backend message kind ("text" | "emoji_ack").
   kind?: string | null;
+  // How the run behind an accepted turn's status chip ended; unset until it settles.
+  workOutcome?: ReportSettledOutcome | null;
   // GAIA id of the message an emoji_ack reacts to.
   reacts_to_message_id?: string | null;
   // The user stopped this turn with Stop (server's stopped).

@@ -23,6 +23,7 @@ from app.constants.outbox import (
     OUTBOX_USER_LOCK_PREFIX,
     OUTBOX_USER_LOCK_RENEW_SECONDS,
 )
+from app.constants.websocket import ReportSettledOutcome
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.outbox_items import outbox_items_repository
 from app.db.repositories.outbox_messages import outbox_messages_repository
@@ -53,6 +54,7 @@ from app.services.outbox.models import (
 )
 from app.services.outbox.prerendered import PrerenderedKind, prerendered_text
 from app.services.outbox.router import ChatChannel, NoDestinationError, Route, destination_of, route
+from app.services.outbox.settled import announce_attempt_settled, announce_items_settled
 from app.services.outbox.transport.bot_queue import (
     OutboundResult,
     publish_outbound_file,
@@ -138,6 +140,7 @@ async def _fail_items(user_id: str, attempt_id: str, failure: ItemFailure) -> No
     await outbox_items_repository.finish_send(user_id, attempt_id, ItemState.FAILED, failure)
     await outbox_messages_repository.finish_send(user_id, attempt_id, MessageState.FAILED)
     OUTBOX_ITEMS_FAILED.labels(reason=failure.value).inc()
+    await announce_attempt_settled(user_id, attempt_id, ReportSettledOutcome.FAILED)
     log.error(
         f"{LogTag.NOTIFICATION} Outbox message not delivered",
         user_id=user_id,
@@ -401,6 +404,12 @@ async def _settle_sent(
     await outbox_messages_repository.finish_send(
         user_id, attempt_id, MessageState.SENT, sent_at=sent_at
     )
+    await announce_items_settled(
+        included,
+        ReportSettledOutcome.DELIVERED_HERE
+        if message.destination == "in_app"
+        else ReportSettledOutcome.DELIVERED_ELSEWHERE,
+    )
     first = included[0].report
     capture(
         UserId(user_id),
@@ -499,6 +508,10 @@ async def _flush(
                 user.user_id, attempt_id, composed.skipped, composed.skip_reason
             )
             OUTBOX_ITEMS_DROPPED.labels(reason=composed.skip_reason.value).inc(dropped)
+            await announce_items_settled(
+                [item for item in items if item.report_id in composed.skipped],
+                ReportSettledOutcome.RECORDED,
+            )
         if composed.included:
             await _send(user, items, destination, composed, attempt_id)
     except NoDestinationError:
@@ -506,6 +519,7 @@ async def _flush(
             user.user_id, attempt_id, ItemFailure.NO_DESTINATION
         )
         OUTBOX_ITEMS_FAILED.labels(reason=ItemFailure.NO_DESTINATION.value).inc()
+        await announce_attempt_settled(user.user_id, attempt_id, ReportSettledOutcome.FAILED)
         log.error(
             f"{LogTag.NOTIFICATION} Outbox message has nowhere to go; the user has no app conversation",
             user_id=user.user_id,

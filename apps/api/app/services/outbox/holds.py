@@ -32,7 +32,13 @@ from app.constants.outbox_attention import (
 from app.models.attention_settings_models import AttentionSettings
 from app.services.outbox.judge_models import JudgeVerdict
 from app.services.outbox.judge_verdict import UserClock
-from app.services.outbox.models import DropReason, ItemHold, OutboxReport, UrgencyClass
+from app.services.outbox.models import (
+    DropReason,
+    ItemHold,
+    NoticeReport,
+    OutboxReport,
+    UrgencyClass,
+)
 from app.services.outbox.policy import is_answer, is_security_notice, is_users_own, urgency_of
 
 _ONE_DAY = timedelta(days=1)
@@ -113,13 +119,18 @@ def _silence(state: AttentionState) -> tuple[HoldReason, datetime] | None:
     return None
 
 
-def next_checkin(state: AttentionState) -> datetime:
-    """Return the next check-in slot after now on the user's own clock: when quiet hours end, or a chosen time."""
+def next_checkin(state: AttentionState) -> datetime | None:
+    """Return the next check-in slot after now on the user's own clock: when quiet hours end, or a chosen time.
+
+    None when the user has no slots at all: no chosen times and quiet hours off.
+    """
     local = state.clock.timezone.localize(state.now)
     slots: list[time] = list(state.settings.checkin_times)
     quiet = state.clock.quiet_hours
     if quiet.enabled:
         slots.append(time(quiet.end_hour))
+    if not slots:
+        return None
     candidates = [
         datetime.combine(local.date() + timedelta(days=day), slot, tzinfo=local.tzinfo)
         for day in (0, 1)
@@ -132,18 +143,33 @@ def _bounded(until: datetime, latest: datetime | None) -> datetime:
     return until if latest is None else min(until, latest)
 
 
+def _hold_cap(state: AttentionState) -> datetime:
+    """Return the instant no hold on this item outlives, counted from when it was first held."""
+    started = state.prior_hold.since if state.prior_hold is not None else state.now
+    return started + _seconds(MAX_HOLD_AGE_SECONDS)
+
+
 def _hold_or_tell(state: AttentionState, until: datetime, reason: HoldReason) -> Hold | Tell:
-    """Hold until the instant; when it has already come, the item has waited long enough."""
+    """Hold until the instant, never past the hold-age cap; when it has already come, the item has waited long enough."""
+    until = min(until, _hold_cap(state))
     return Hold(until, reason) if until > state.now else Tell()
 
 
+def _checkin_hold(state: AttentionState, latest: datetime | None) -> Hold | Tell:
+    """Hold for the next check-in; a user with none is told on their return or at the hold-age cap."""
+    slot = next_checkin(state)
+    until = _hold_cap(state) if slot is None else slot + _jitter(state.user_id)
+    return _hold_or_tell(state, _bounded(until, latest), HoldReason.CHECKIN)
+
+
 def _deadline(report: OutboxReport, verdict: JudgeVerdict | None) -> datetime | None:
-    """Return the instant after which telling loses its value: the creator's by, or the Judge's deliver_by."""
+    """Return the instant after which telling loses its value: the creator's by, the Judge's deliver_by, or a notice's valid_until."""
     candidates = [
         moment
         for moment in (
             report.delivery_policy.by,
             verdict.deliver_by if verdict is not None else None,
+            report.valid_until if isinstance(report, NoticeReport) else None,
         )
         if moment is not None
     ]
@@ -203,14 +229,14 @@ def _in_silence(
     if silence is None:
         return None
     reason, ends = silence
+    if verdict is not None and is_security_notice(verdict):
+        return Tell()
     if urgency is UrgencyClass.INTERRUPT:
         if reason is HoldReason.DND and not is_users_own(report, urgency_of(report)):
-            return Hold(ends, reason)
+            return _hold_or_tell(state, ends, reason)
         return Tell()
     grace = ANSWER_QUIET_GRACE_SECONDS if is_answer(report) else ACTIVITY_OVERRIDE_SECONDS
     if _active_within(state, grace):
-        return Tell()
-    if verdict is not None and is_security_notice(verdict):
         return Tell()
     return _hold_or_tell(state, _bounded(ends + _jitter(state.user_id), latest), reason)
 
@@ -239,17 +265,9 @@ def _unsolicited(
     if released:
         return Tell()
     if urgency is UrgencyClass.BACKGROUND:
-        return _hold_or_tell(
-            state,
-            _bounded(next_checkin(state) + _jitter(state.user_id), latest),
-            HoldReason.CHECKIN,
-        )
+        return _checkin_hold(state, latest)
     if state.unsolicited_today >= state.settings.max_unsolicited_per_day:
-        return _hold_or_tell(
-            state,
-            _bounded(next_checkin(state) + _jitter(state.user_id), latest),
-            HoldReason.CHECKIN,
-        )
+        return _checkin_hold(state, latest)
     if state.last_unsolicited_at is not None:
         gap_ends = state.last_unsolicited_at + _seconds(MIN_UNSOLICITED_GAP_SECONDS)
         return _hold_or_tell(state, _bounded(gap_ends, latest), HoldReason.GAP)

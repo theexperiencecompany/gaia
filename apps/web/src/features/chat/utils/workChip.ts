@@ -1,4 +1,5 @@
 import type { IMessage } from "@/lib/db/chatDb";
+import { ReportSettledOutcome } from "@/lib/websocket/outboxEvents";
 
 /** The backend message kind of a turn that handed work off and said nothing. */
 export const ACCEPTED_MESSAGE_KIND = "accepted";
@@ -8,13 +9,14 @@ const SILENT_KINDS = new Set<string | undefined>([
   "emoji_ack",
 ]);
 
+export type WorkChipState = "working" | "done" | "nothing_new" | "failed";
+
 /**
- * Whether the work an accepted turn started has produced an answer: a later
- * assistant message with words in it. The result lands in the conversation that
- * asked, so this reads the same live (an `outbox.message` arrives) and after a
- * reload.
+ * Whether any assistant text followed the accepted turn. Only the read for a
+ * turn whose run's outcome never reached this device (another device settled
+ * it, or the event was missed): it cannot tell which run the text answers.
  */
-export function isWorkAnswered(
+function isFollowedByAnswer(
   messages: IMessage[],
   acceptedMessageId: string,
 ): boolean {
@@ -28,4 +30,28 @@ export function isWorkAnswered(
         m.content.trim().length > 0 &&
         !SILENT_KINDS.has(m.kind ?? undefined),
     );
+}
+
+/**
+ * Where the work an accepted turn started stands: the outcome the server
+ * reported for that turn's own run, else whether an answer followed it.
+ */
+export function workChipState(
+  messages: IMessage[],
+  acceptedMessageId: string,
+): WorkChipState {
+  const accepted = messages.find((m) => m.id === acceptedMessageId);
+  switch (accepted?.workOutcome) {
+    case ReportSettledOutcome.DeliveredHere:
+    case ReportSettledOutcome.DeliveredElsewhere:
+      return "done";
+    case ReportSettledOutcome.Recorded:
+      return "nothing_new";
+    case ReportSettledOutcome.Failed:
+      return "failed";
+    default:
+      return isFollowedByAnswer(messages, acceptedMessageId)
+        ? "done"
+        : "working";
+  }
 }

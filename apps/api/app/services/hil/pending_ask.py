@@ -1,9 +1,9 @@
 """Which approval a user's reply is about, read from where GAIA asked it.
 
 An approval is asked in whatever chat the user is in, not necessarily the conversation the
-work belongs to, so a reply is matched to the ask it answers: the message it quotes, else
-the latest message that asked. Only when neither names an open approval does the caller fall
-back on the conversation's own pending approvals.
+work belongs to, so a reply is matched to the ask it answers: the message it quotes, else the
+latest message that asked in the chat the reply came from. A message sent to another chat is
+never what a reply here answers.
 """
 
 from app.constants.hil import PENDING_ASK_LOOKBACK_MESSAGES
@@ -36,24 +36,22 @@ async def _asked_in_quoted(user_id: str, platform_message_id: str) -> list[Appro
     return []
 
 
-async def _asked_in_latest(user_id: str) -> list[ApprovalLedgerDocument]:
-    for message in await outbox_messages_repository.recent_sent(
-        user_id, limit=PENDING_ASK_LOOKBACK_MESSAGES
+async def quoted_approvals(
+    user_id: str, reply_to_platform_message_id: str | None
+) -> list[ApprovalLedgerDocument]:
+    """Return the open approvals in the message a reply quotes; empty when it quotes none or none asked."""
+    if reply_to_platform_message_id is None:
+        return []
+    return await _asked_in_quoted(user_id, reply_to_platform_message_id)
+
+
+async def latest_approvals_in_chat(
+    user_id: str, conversation_id: str
+) -> list[ApprovalLedgerDocument]:
+    """Return the open approvals in the latest message that asked in this chat; empty when none did."""
+    for message in await outbox_messages_repository.recent_sent_in(
+        user_id, conversation_id, limit=PENDING_ASK_LOOKBACK_MESSAGES
     ):
         if rows := await _pending_rows(user_id, message.report_ids):
             return rows
     return []
-
-
-async def asked_approvals(
-    user_id: str, reply_to_platform_message_id: str | None
-) -> list[ApprovalLedgerDocument]:
-    """Return the open approvals a reply is about: those in the message it quotes, else in the latest that asked.
-
-    Empty when no message GAIA sent names an open approval.
-    """
-    if reply_to_platform_message_id is not None:
-        quoted = await _asked_in_quoted(user_id, reply_to_platform_message_id)
-        if quoted:
-            return quoted
-    return await _asked_in_latest(user_id)

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from contextlib import suppress
 from datetime import timedelta
 import json
 from typing import Any
@@ -31,10 +32,17 @@ from app.agents.core.outcome_review import OutcomeReview
 from app.agents.prompts.compose_prompts import OUTCOME_REPLY_SHAPES
 from app.constants.agents import OutcomeState
 from app.constants.outbound import OUTBOUND_TTL_SECONDS_DEFAULT, OUTBOUND_TTL_SECONDS_GREETING
-from app.constants.outbox import LIVE_WATCH_WINDOW_SECONDS, OUTBOX_BATCHED_JOB_ID_SUFFIX
-from app.constants.outbox_attention import HoldReason
+from app.constants.outbox import (
+    LIVE_WATCH_WINDOW_SECONDS,
+    OUTBOX_BATCHED_JOB_ID_SUFFIX,
+    OUTBOX_RECOVERY_AFTER_SECONDS,
+    OUTBOX_RECOVERY_MAX_ATTEMPTS,
+)
+from app.constants.outbox_attention import FLUSH_MAX_ITEMS_PER_RUN, HoldReason
 from app.constants.task_report import FactKind, NeedsYouKind
+from app.constants.websocket import ReportSettledOutcome
 from app.db.repositories.attention_settings import attention_settings_repository
+from app.db.repositories.outbox_items import outbox_items_repository
 from app.models.attention_settings_models import AttentionSettings
 from app.models.chat_models import ConversationSource
 from app.models.ownership_models import DeliveryPolicy, DeliveryTiming
@@ -50,6 +58,7 @@ from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.schemas.outbound import OutboundAttachment
+from app.services.attention_settings_service import set_attention_settings
 from app.services.outbox.approvals import ApprovalAsk, ApprovalNoticeState, approval_notice
 from app.services.outbox.deliver import flush_subject
 from app.services.outbox.flush import release_on_return, sweep_lost_flushes
@@ -58,10 +67,12 @@ from app.services.outbox.models import (
     ComposeResult,
     DropReason,
     Initiative,
+    ItemFailure,
     ItemState,
     MessageState,
     NoticeOutcome,
     NoticeReport,
+    OutboxReport,
     ProducerKind,
     RunReport,
     Subject,
@@ -72,11 +83,12 @@ from app.services.outbox.models import (
 from app.services.outbox.transport.bot_queue import OutboundResult
 from app.services.platform_link_completion import complete_platform_link
 from app.services.platform_link_service import PlatformLinkService
-from tests._harness.judge import verdict
+from tests._harness.judge import ScriptedJudge, verdict
 from tests.e2e._harness.outbox_timeline import (
     DELIVER,
     T0,
     OutboxTimeline,
+    ScriptedCompose,
     World,
     outbox_timeline,
     prepare_collections,
@@ -1576,3 +1588,214 @@ async def test_c1_an_approval_asked_overnight_goes_with_the_morning_findings_as_
 
     [message] = await tl.ledger()
     assert sorted(message.report_ids) == ["hil:ap_1:pending", "run-1"]
+
+
+_RECOVERY_MINUTES = OUTBOX_RECOVERY_AFTER_SECONDS / 60 + 1
+
+
+async def _held_overnight(tl: OutboxTimeline, *report_ids: str) -> None:
+    _judged_routine(tl, *report_ids)
+    for n, report_id in enumerate(report_ids):
+        await _told_at(tl, _routine(report_id, f"todo-{n}", 840), 840)
+    assert await _states(tl) == dict.fromkeys(report_ids, ItemState.HELD)
+
+
+def _compose_fails(mp: pytest.MonkeyPatch) -> None:
+    async def outage(*_: object, **__: object) -> ComposeResult:
+        raise RuntimeError("provider outage")
+
+    mp.setattr(ScriptedCompose, "__call__", outage)
+
+
+async def test_a_flush_whose_compose_fails_is_driven_again_by_the_sweep(
+    tl: OutboxTimeline,
+) -> None:
+    await _held_overnight(tl, "run-1")
+    await tl.at(1400)
+    with pytest.MonkeyPatch.context() as mp:
+        _compose_fails(mp)
+        await tl.drain()
+    assert await _states(tl) == {"run-1": ItemState.QUEUED}
+
+    await tl.at(1400 + _RECOVERY_MINUTES)
+    await sweep_lost_flushes()
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.SENT}
+
+
+async def test_one_held_item_that_cannot_be_settled_does_not_keep_the_others_from_being_told(
+    tl: OutboxTimeline,
+) -> None:
+    await _held_overnight(tl, "run-1", "run-2")
+    await tl.at(1400)
+    with pytest.MonkeyPatch.context() as mp:
+
+        async def broken_for_run_1(self: ScriptedJudge, report: OutboxReport) -> None:
+            if report.report_id == "run-1":
+                raise RuntimeError("context read failed")
+            return verdict(urgency=UrgencyClass.ROUTINE)
+
+        mp.setattr(ScriptedJudge, "__call__", broken_for_run_1)
+        await tl.drain()
+    assert await _states(tl) == {"run-1": ItemState.HELD, "run-2": ItemState.SENT}
+
+    await tl.at(1410)
+    await sweep_lost_flushes()
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.SENT, "run-2": ItemState.SENT}
+
+
+async def test_a_backlog_of_holds_is_flushed_in_bounded_runs(tl: OutboxTimeline) -> None:
+    ids = tuple(f"run-{n}" for n in range(FLUSH_MAX_ITEMS_PER_RUN + 2))
+    await _held_overnight(tl, *ids)
+
+    await tl.at(1400)
+    await tl.drain()
+    told = [i for i in await tl.items() if i.state is ItemState.SENT]
+    assert len(told) == FLUSH_MAX_ITEMS_PER_RUN
+
+    await tl.at(1401)
+    await tl.drain()
+    assert await _states(tl) == dict.fromkeys(ids, ItemState.SENT)
+
+
+async def test_an_item_that_never_leaves_the_queue_is_failed_loudly_after_the_attempts(
+    tl: OutboxTimeline,
+) -> None:
+    with pytest.MonkeyPatch.context() as mp:
+        _compose_fails(mp)
+        await tl.submit(_run("run-1", OutcomeState.DONE, initiative=Initiative.ASKED))
+        with suppress(RuntimeError):
+            await tl.drain()
+        for attempt in range(OUTBOX_RECOVERY_MAX_ATTEMPTS + 1):
+            await tl.at(_RECOVERY_MINUTES * (attempt + 1))
+            await sweep_lost_flushes()
+            with suppress(RuntimeError):
+                await tl.drain()
+
+    [item] = await tl.items()
+    assert (item.state, item.failure) == (ItemState.FAILED, ItemFailure.RECOVERY_EXHAUSTED)
+
+
+async def test_a_received_item_whose_intake_job_died_is_taken_in_by_the_sweep(
+    tl: OutboxTimeline,
+) -> None:
+    report = _run("run-1", OutcomeState.DONE, initiative=Initiative.ASKED)
+    await outbox_items_repository.insert_if_new(
+        report, expires_at=tl.clock.now() + timedelta(days=1)
+    )
+
+    await tl.at(_RECOVERY_MINUTES)
+    await sweep_lost_flushes()
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.SENT}
+
+
+async def test_ending_do_not_disturb_tells_what_it_held_at_once(tl: OutboxTimeline) -> None:
+    await attention_settings_repository.save(
+        USER, AttentionSettings(dnd_until=T0 + timedelta(hours=2))
+    )
+    _judged_routine(tl, "run-1")
+    await _told_at(tl, _routine("run-1", "todo-1", 0), 0)
+    assert await _states(tl) == {"run-1": ItemState.HELD}
+
+    await tl.at(30)
+    with patch("app.services.attention_settings_service.capture"):
+        await set_attention_settings(USER, AttentionSettings())
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.SENT}
+
+
+async def test_a_users_return_releases_what_do_not_disturb_held(tl: OutboxTimeline) -> None:
+    await attention_settings_repository.save(
+        USER, AttentionSettings(dnd_until=T0 + timedelta(hours=2))
+    )
+    _judged_routine(tl, "run-1")
+    await _told_at(tl, _routine("run-1", "todo-1", 0), 0)
+
+    await tl.at(30)
+    await tl.active_on(ConversationSource.WEB)
+    await release_on_return(USER)
+    await tl.at(31)
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.SENT}
+
+
+async def test_a_hold_the_creator_chose_days_ahead_is_not_a_lost_flush(
+    tl: OutboxTimeline,
+) -> None:
+    report = _run("run-1", OutcomeState.DONE, minutes=0, initiative=Initiative.ASKED)
+    report = report.model_copy(
+        update={"delivery_policy": DeliveryPolicy(not_before=T0 + timedelta(hours=40))}
+    )
+    await _told_at(tl, report, 0)
+
+    await tl.at(60 * 24)
+    with patch("app.services.outbox.flush.log") as log:
+        await sweep_lost_flushes()
+
+    log.error.assert_not_called()
+
+
+async def _settled_after(
+    tl: OutboxTimeline, report: RunReport, *, chat_app: bool = False
+) -> list[tuple[str, str, ReportSettledOutcome]]:
+    settled: list[tuple[str, str, ReportSettledOutcome]] = []
+
+    async def record(
+        user_id: str, conversation_id: str, message_id: str, outcome: ReportSettledOutcome
+    ) -> None:
+        settled.append((conversation_id, message_id, outcome))
+
+    if chat_app:
+        await tl.active_on(ConversationSource.TELEGRAM)
+    else:
+        tl.world.linked.clear()
+    with patch("app.services.outbox.settled.publish_report_settled", record):
+        await tl.submit(report)
+        await tl.drain()
+    return settled
+
+
+def _turn_run(outcome: OutcomeState) -> RunReport:
+    return _run("run-1", outcome, initiative=Initiative.ASKED).model_copy(
+        update={"turn_message_id": "bot-1"}
+    )
+
+
+async def test_a_run_told_in_the_app_settles_the_chip_of_the_turn_that_started_it(
+    tl: OutboxTimeline,
+) -> None:
+    settled = await _settled_after(tl, _turn_run(OutcomeState.DONE))
+
+    assert settled == [("web-1", "bot-1", ReportSettledOutcome.DELIVERED_HERE)]
+
+
+async def test_a_run_told_on_a_chat_app_settles_the_chip_as_delivered_elsewhere(
+    tl: OutboxTimeline,
+) -> None:
+    settled = await _settled_after(tl, _turn_run(OutcomeState.DONE), chat_app=True)
+
+    assert settled == [("web-1", "bot-1", ReportSettledOutcome.DELIVERED_ELSEWHERE)]
+
+
+async def test_a_run_recorded_without_an_alert_still_settles_the_chip(
+    tl: OutboxTimeline,
+) -> None:
+    unasked = _turn_run(OutcomeState.NOTHING_NEW).model_copy(
+        update={"initiative": Initiative.SELF_INITIATED}
+    )
+    settled = await _settled_after(tl, unasked)
+
+    assert settled == [("web-1", "bot-1", ReportSettledOutcome.RECORDED)]
+
+
+async def test_a_run_no_turn_waits_on_settles_no_chip(tl: OutboxTimeline) -> None:
+    unwaited = _turn_run(OutcomeState.DONE).model_copy(update={"turn_message_id": None})
+
+    assert await _settled_after(tl, unwaited) == []

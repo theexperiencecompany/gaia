@@ -1,9 +1,9 @@
 """A user's own limits on how much GAIA tells them unprompted, and when."""
 
-from datetime import datetime, time
+from datetime import time
 from typing import Annotated, Self
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from app.constants.outbox_attention import (
     ATTENTION_RULE_MAX_CHARS,
@@ -39,7 +39,7 @@ class AttentionSettings(BaseModel):
         max_length=CHECKIN_MAX_SLOTS,
         description="Local times of the daily check-ins, besides the one when quiet hours end.",
     )
-    dnd_until: datetime | None = Field(
+    dnd_until: AwareDatetime | None = Field(
         default=None,
         description="Nothing but security notices and the user's own timings gets through until then.",
     )
@@ -61,7 +61,7 @@ class AttentionSettingsDocument(UserScopedDocument):
 
     max_unsolicited_per_day: int
     checkin_times: list[time]
-    dnd_until: datetime | None = None
+    dnd_until: AwareDatetime | None = None
     rules: list[str]
 
 
@@ -72,5 +72,5 @@ class AttentionSettingsUpdate(BaseModel):
 
     max_unsolicited_per_day: int | None = None
     checkin_times: list[time] | None = None
-    dnd_until: datetime | None = None
+    dnd_until: AwareDatetime | None = None
     rules: list[str] | None = None

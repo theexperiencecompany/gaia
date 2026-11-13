@@ -1,6 +1,6 @@
 """The one write path for attention settings: what it stores, reports and skips."""
 
-from datetime import time
+from datetime import UTC, datetime, time
 from unittest.mock import AsyncMock, patch
 
 from app.models.attention_settings_models import AttentionSettings
@@ -46,3 +46,32 @@ def test_two_check_ins_at_one_time_are_refused() -> None:
 
     with pytest.raises(ValueError, match="distinct"):
         AttentionSettings(checkin_times=[time(9, 0), time(9, 0)])
+
+
+async def test_a_changed_do_not_disturb_re_places_what_it_held() -> None:
+    ended = AttentionSettings()
+    with (
+        patch(f"{MODULE}.attention_settings_repository") as repo,
+        patch(f"{MODULE}.capture"),
+        patch(f"{MODULE}.release_silence_holds", AsyncMock()) as release,
+    ):
+        repo.read = AsyncMock(
+            return_value=AttentionSettings(dnd_until=datetime(2026, 11, 10, 11, 0, tzinfo=UTC))
+        )
+        repo.save = AsyncMock()
+        await set_attention_settings(USER, ended)
+
+    release.assert_awaited_once_with(USER)
+
+
+async def test_a_change_that_leaves_do_not_disturb_alone_releases_nothing() -> None:
+    with (
+        patch(f"{MODULE}.attention_settings_repository") as repo,
+        patch(f"{MODULE}.capture"),
+        patch(f"{MODULE}.release_silence_holds", AsyncMock()) as release,
+    ):
+        repo.read = AsyncMock(return_value=AttentionSettings())
+        repo.save = AsyncMock()
+        await set_attention_settings(USER, AttentionSettings(max_unsolicited_per_day=2))
+
+    release.assert_not_awaited()

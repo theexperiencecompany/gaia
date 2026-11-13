@@ -96,5 +96,19 @@ class OutboxMessagesRepository(UserScopedRepository[OutboxMessageDocument, Outbo
             limit=limit,
         )
 
+    async def recent_sent_in(
+        self, user_id: str, conversation_id: str, *, limit: int
+    ) -> list[OutboxMessageDocument]:
+        """Return the latest messages sent to one conversation, newest first."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "state": MessageState.SENT.value,
+                "conversation_id": conversation_id,
+            },
+            sort=[("sent_at", -1)],
+            limit=limit,
+        )
+
 
 outbox_messages_repository = OutboxMessagesRepository()

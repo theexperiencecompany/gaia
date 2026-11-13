@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.log_tags import LogTag
+from app.constants.websocket import ReportSettledOutcome
 from app.services.outbox.transport import ws_speech
 from tests.helpers import captured_wide_event
 
@@ -16,6 +17,27 @@ def _manager(**kwargs: object) -> MagicMock:
     manager = MagicMock()
     manager.broadcast_to_user = AsyncMock(**kwargs)
     return manager
+
+
+class TestPublishReportSettled:
+    async def test_frame_shape(self) -> None:
+        manager = _manager()
+
+        with patch.object(ws_speech, "websocket_manager", manager):
+            await ws_speech.publish_report_settled(
+                USER_ID, CONVERSATION_ID, "bot-1", ReportSettledOutcome.RECORDED
+            )
+
+        manager.broadcast_to_user.assert_awaited_once_with(
+            USER_ID,
+            {
+                "type": "outbox.message",
+                "kind": "report_settled",
+                "conversation_id": CONVERSATION_ID,
+                "message_id": "bot-1",
+                "outcome": "recorded",
+            },
+        )
 
 
 class TestPublishConversationMessage:
@@ -49,7 +71,7 @@ class TestPublishConversationMessage:
         assert manager.broadcast_to_user.await_count == 2
         assert event["warnings"] == [
             {
-                "msg": f"{LogTag.AGENT} publish_conversation_message: broadcast attempt failed",
+                "msg": f"{LogTag.AGENT} outbox broadcast attempt failed",
                 "attempt": 1,
                 "user_id": USER_ID,
                 "error": "socket gone",

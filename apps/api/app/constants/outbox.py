@@ -31,6 +31,16 @@ OUTBOX_USER_LOCK_RENEW_SECONDS: Final = 20.0
 OUTBOX_USER_LOCK_ACQUIRE_TIMEOUT_SECONDS: Final = 2.0
 OUTBOX_USER_LOCK_MAX_HOLD_SECONDS: Final = 300.0
 
+#: An unsent item untouched for this long was dropped by a job that died; the recovery sweep drives it again.
+OUTBOX_RECOVERY_AFTER_SECONDS: Final = 10 * 60
+#: The sweep drives one item this many times, then fails it loudly instead of looping forever.
+OUTBOX_RECOVERY_MAX_ATTEMPTS: Final = 5
+#: Items one sweep takes up, so a backlog is worked off over several sweeps.
+OUTBOX_RECOVERY_BATCH: Final = 100
+
+#: The intake job a recovery attempt enqueues is the report's own job id plus this and the attempt number.
+OUTBOX_RECOVERY_JOB_ID_SUFFIX: Final = ":recover"
+
 #: Compose asks the model again once when its answer drops an item that must be said.
 COMPOSE_MAX_ATTEMPTS: Final = 2
 

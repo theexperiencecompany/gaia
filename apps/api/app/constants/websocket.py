@@ -31,3 +31,17 @@ class OutboxMessageKind(StrEnum):
 
     CONVERSATION_MESSAGE = "conversation_message"
     NOTIFICATION = "notification"
+    #: A report the app showed a status chip for has settled; the frame says how.
+    REPORT_SETTLED = "report_settled"
+
+
+class ReportSettledOutcome(StrEnum):
+    """How a run's report ended, as the chip that waited on it learns it."""
+
+    #: Told in the app, where the user can read it now.
+    DELIVERED_HERE = "delivered_here"
+    #: Told on a chat app, and recorded in the conversation that asked.
+    DELIVERED_ELSEWHERE = "delivered_elsewhere"
+    #: Recorded and never alerted: there was nothing to tell.
+    RECORDED = "recorded"
+    FAILED = "failed"

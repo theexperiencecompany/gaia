@@ -5,6 +5,7 @@ from datetime import timedelta
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.agents.tools.core.mutations import define_mutation_tool
+from app.constants.outbox_attention import MAX_DND_HOURS
 from app.models.attention_settings_models import AttentionSettings
 from app.models.quiet_hours_models import QuietHours
 from app.services.attention_settings_service import get_attention_settings, set_attention_settings
@@ -33,6 +34,8 @@ class AdjustAttentionArgs(BaseModel):
     )
     do_not_disturb_hours: float | None = Field(
         default=None,
+        ge=0,
+        le=MAX_DND_HOURS,
         description="Hours from now with nothing but security notices and the user's own timings; 0 ends it.",
     )
     checkin_times: list[str] | None = Field(

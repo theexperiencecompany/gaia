@@ -50,6 +50,15 @@ OUTBOX_TRANSPORT_RETRIES = _register_once(
     ),
 )
 
+OUTBOX_ITEMS_RECOVERED = _register_once(
+    "outbox_items_recovered_total",
+    lambda: Counter(
+        name="outbox_items_recovered_total",
+        documentation="Unsent items the recovery sweep drove again, by the state it found them in",
+        labelnames=("state",),
+    ),
+)
+
 OUTBOX_COMPOSE_DEGRADED = _register_once(
     "outbox_compose_degraded_total",
     lambda: Counter(

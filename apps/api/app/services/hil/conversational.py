@@ -41,7 +41,7 @@ from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.hil.bridge import build_action_detail
 from app.services.hil.jev_reply import ask_jev_reply, settle_reply
 from app.services.hil.ledger_decide import LedgerDecision, decide_ledger
-from app.services.hil.pending_ask import asked_approvals
+from app.services.hil.pending_ask import latest_approvals_in_chat, quoted_approvals
 from app.services.hil.prompts import (
     CONVERSATIONAL_BATCH_PROMPT,
     CONVERSATIONAL_CONTEXT_BLOCK,
@@ -83,8 +83,8 @@ async def resolve_pending_from_message(
 ) -> DecisionAction | None:
     """Resolve the pending approval(s) the user's message answers; None when it answered none.
 
-    A ledger approval is the one the quoted (else the latest asking) message told, else the
-    conversation's own. Returns "approve", "deny" or "unrelated" (the user moved on).
+    A ledger approval is the one the quoted message told, else the conversation's own, else the
+    one the latest message that asked in this chat told. Returns "approve", "deny" or "unrelated" (the user moved on).
     """
     pending = await list_pending_for_conversation(conversation_id)
     if pending:
@@ -92,9 +92,11 @@ async def resolve_pending_from_message(
             return await _resolve_single(pending[0], conversation_id, user_id, message, history)
         return await _resolve_batch(pending, conversation_id, user_id, message, history)
     # Barrier store empty: ledger-enabled users' rows live in approval_ledger.
-    ledger_pending = await asked_approvals(
-        user_id, reply_to_platform_message_id
-    ) or await _list_pending_ledger(conversation_id)
+    ledger_pending = (
+        await quoted_approvals(user_id, reply_to_platform_message_id)
+        or await _list_pending_ledger(conversation_id)
+        or await latest_approvals_in_chat(user_id, conversation_id)
+    )
     if not ledger_pending:
         return None
     if len(ledger_pending) == 1:

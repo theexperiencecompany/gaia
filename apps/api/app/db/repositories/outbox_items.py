@@ -216,11 +216,25 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
             filter_["report_id"] = {"$ne": exclude_report_id}
         return await self._find(filter_, sort=[("created_at", -1)], limit=limit)
 
-    async def list_due_held(self, user_id: str, now: datetime) -> list[OutboxItemDocument]:
+    async def list_due_held(
+        self, user_id: str, now: datetime, *, limit: int = 0
+    ) -> list[OutboxItemDocument]:
         """Return the user's held items whose hold has ended, oldest hold first."""
         return await self._find(
             {"user_id": user_id, "state": ItemState.HELD.value, "hold.until": {"$lte": now}},
             sort=[("hold.until", 1)],
+            limit=limit,
+        )
+
+    async def list_recovering_queued(self, user_id: str) -> list[OutboxItemDocument]:
+        """Return the user's queued items the recovery sweep found stranded, oldest first."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "state": ItemState.QUEUED.value,
+                "recovery_attempts": {"$gt": 0},
+            },
+            sort=[("created_at", 1)],
         )
 
     async def users_with_due_held(self, now: datetime) -> list[str]:
@@ -229,9 +243,69 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
             "user_id", {"state": ItemState.HELD.value, "hold.until": {"$lte": now}}
         )
 
-    async def count_held_since_before(self, cutoff: datetime) -> int:
-        """Return how many items have been held since before the cutoff."""
-        return await self._count({"state": ItemState.HELD.value, "hold.since": {"$lt": cutoff}})
+    async def count_overdue_held_since_before(self, now: datetime, cutoff: datetime) -> int:
+        """Return how many items have been held since before the cutoff although their hold has ended."""
+        return await self._count(
+            {
+                "state": ItemState.HELD.value,
+                "hold.since": {"$lt": cutoff},
+                "hold.until": {"$lte": now},
+            }
+        )
+
+    async def claim_recovery(
+        self, now: datetime, stale_before: datetime, *, limit: int
+    ) -> list[OutboxItemDocument]:
+        """Count one recovery attempt on each unsent item untouched since the cutoff; return the ones this call won.
+
+        An attempt moves recovered_at, so an item is driven once per staleness window.
+        """
+        stale = {
+            "state": {
+                "$in": [
+                    ItemState.RECEIVED.value,
+                    ItemState.QUEUED.value,
+                    ItemState.COMPOSING.value,
+                ]
+            },
+            "updated_at": {"$lt": stale_before},
+            "$or": [{"recovered_at": {"$exists": False}}, {"recovered_at": {"$lt": stale_before}}],
+        }
+        candidates = await self._raw_collection().find(stale, {"_id": 1}).to_list(length=limit)
+        claimed: list[OutboxItemDocument] = []
+        for candidate in candidates:
+            raw = await self._raw_collection().find_one_and_update(
+                {**stale, "_id": candidate["_id"]},
+                {"$inc": {"recovery_attempts": 1}, "$set": {"recovered_at": now}},
+                return_document=True,
+            )
+            if raw is not None:
+                claimed.append(self._to_model(raw))
+        return claimed
+
+    async def fail_exhausted(self, user_id: str, report_id: str) -> OutboxItemDocument | None:
+        """Fail an unsent item the recovery sweep gave up on; None when it was told or settled meanwhile."""
+        return await self._transition(
+            user_id,
+            {"report_id": report_id},
+            from_states=[ItemState.RECEIVED, ItemState.QUEUED, ItemState.COMPOSING],
+            changes={
+                "state": ItemState.FAILED.value,
+                "failure": ItemFailure.RECOVERY_EXHAUSTED.value,
+            },
+        )
+
+    async def requeue_composing(self, user_id: str, report_id: str) -> OutboxItemDocument | None:
+        """Give an item a dead compose left composing back to the queue; None when it was not composing."""
+        return await self._apply_raw_update(
+            {"user_id": user_id, "report_id": report_id},
+            {
+                "$set": {"state": ItemState.QUEUED.value},
+                "$unset": {"compose_attempt_id": ""},
+            },
+            scope=user_id,
+            extra_filter={"state": ItemState.COMPOSING.value},
+        )
 
     async def release_held(
         self, user_id: str, reasons: Collection[HoldReason], now: datetime
@@ -294,6 +368,10 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
             sort=[("report.occurred_at", -1)],
             limit=limit,
         )
+
+    async def list_of_attempt(self, user_id: str, attempt_id: str) -> list[OutboxItemDocument]:
+        """Return the items one compose attempt took, whatever state they are in now."""
+        return await self._find({"user_id": user_id, "compose_attempt_id": attempt_id})
 
     async def claim_queued(
         self, user_id: str, report_ids: list[str], attempt_id: str

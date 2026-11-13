@@ -5,6 +5,7 @@ from typing import Literal
 from app.db.repositories.attention_settings import attention_settings_repository
 from app.models.attention_settings_models import AttentionSettings
 from app.services.analytics_service import capture
+from app.services.outbox.flush_queue import release_silence_holds
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.settings import SettingsAttentionUpdated
 
@@ -30,12 +31,14 @@ async def get_attention_settings(user_id: str) -> AttentionSettings:
 
 
 async def set_attention_settings(user_id: str, settings: AttentionSettings) -> AttentionSettings:
-    """Store the user's settings and report what changed; nothing is written or reported when nothing did."""
+    """Store the user's settings, re-place the items a changed DND held, and report what changed; nothing is written or reported when nothing did."""
     before = await attention_settings_repository.read(user_id)
     changed = _changed(before, settings)
     if not changed:
         return settings
     await attention_settings_repository.save(user_id, settings)
+    if "dnd" in changed:
+        await release_silence_holds(user_id)
     capture(
         UserId(user_id),
         SettingsAttentionUpdated(

@@ -15,6 +15,7 @@ verdict and resolve_approval is the production code under test.
 """
 
 from collections.abc import Iterator
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -46,6 +47,7 @@ from app.services.hil.conversational import (
     resolve_pending_from_message,
 )
 from app.services.hil.ledger_decide import LedgerDecision
+from app.services.hil.pending_ask import latest_approvals_in_chat
 from app.services.hil.resolution import (
     ApprovalRequestForbiddenError,
     ApprovalRequestNotFoundError,
@@ -54,6 +56,7 @@ from app.services.hil.resolution import (
 from .conftest import CONVERSATION_ID, USER_ID, jev_reply_body, make_record, serve_jev
 
 MODULE = "app.services.hil.conversational"
+PENDING_ASK = "app.services.hil.pending_ask"
 
 
 @pytest.fixture(autouse=True)
@@ -73,7 +76,8 @@ def resolver():
         patch(f"{MODULE}.abandon_conversation_approvals", new=AsyncMock()) as abandon,
         patch(f"{MODULE}.ainvoke_structured", new=AsyncMock()) as llm,
         patch(f"{MODULE}.approval_ledger_repository") as ledger,
-        patch(f"{MODULE}.asked_approvals", new=AsyncMock(return_value=[])),
+        patch(f"{MODULE}.quoted_approvals", new=AsyncMock(return_value=[])),
+        patch(f"{MODULE}.latest_approvals_in_chat", new=AsyncMock(return_value=[])),
         patch(f"{MODULE}.is_jev_reply_enabled", new=AsyncMock(return_value=False)) as jev_flag,
     ):
         ledger.list_open = AsyncMock(return_value=[])
@@ -714,7 +718,7 @@ class TestLedgerRows:
         assert "draft the quarterly deck email" in text
         ledger["resolve"].assert_not_awaited()
 
-    async def test_the_reply_decides_the_approval_it_answers_even_when_asked_in_another_chat(
+    async def test_the_reply_decides_the_approval_it_quotes_even_when_asked_in_another_chat(
         self, ledger: dict[str, AsyncMock]
     ) -> None:
         asked_elsewhere = _ledger_row("ap_asked").model_copy(update={"conversation_id": "web-1"})
@@ -722,29 +726,57 @@ class TestLedgerRows:
         ledger["llm"].return_value = DecisionResult(action="approve")
 
         with patch(
-            f"{MODULE}.asked_approvals", new=AsyncMock(return_value=[asked_elsewhere])
-        ) as asked:
+            f"{MODULE}.quoted_approvals", new=AsyncMock(return_value=[asked_elsewhere])
+        ) as quoted:
             action = await resolve_pending_from_message(
                 CONVERSATION_ID, USER_ID, "yes", reply_to_platform_message_id="wamid-1"
             )
 
         assert action == "approve"
-        asked.assert_awaited_once_with(USER_ID, "wamid-1")
+        quoted.assert_awaited_once_with(USER_ID, "wamid-1")
         assert decided(ledger["decide"]) == [("ap_asked", "approve", None)]
 
-    async def test_moving_on_abandons_only_the_approval_that_was_asked(
+    async def test_the_conversations_own_approval_beats_the_latest_ask_in_the_chat(
         self, ledger: dict[str, AsyncMock]
     ) -> None:
         ledger["list_open"].return_value = [_ledger_row("ap_here")]
         ledger["llm"].return_value = DecisionResult(action="unrelated")
 
         with patch(
-            f"{MODULE}.asked_approvals", new=AsyncMock(return_value=[_ledger_row("ap_asked")])
+            f"{MODULE}.latest_approvals_in_chat",
+            new=AsyncMock(return_value=[_ledger_row("ap_asked")]),
         ):
             action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "new topic")
 
         assert action == "unrelated"
-        assert [row[0] for row in decided(ledger["decide"])] == ["ap_asked"]
+        assert [row[0] for row in decided(ledger["decide"])] == ["ap_here"]
+
+    async def test_a_reply_in_one_chat_never_decides_an_approval_asked_in_another(
+        self, ledger: dict[str, AsyncMock]
+    ) -> None:
+        web_ask = SimpleNamespace(
+            conversation_id="web-1", report_ids=["hil:ap_web:pending"], sent_at=None
+        )
+        rows = {"ap_web": _ledger_row("ap_web").model_copy(update={"conversation_id": "web-1"})}
+
+        async def recent_sent_in(
+            user_id: str, conversation_id: str, *, limit: int
+        ) -> list[SimpleNamespace]:
+            return [m for m in (web_ask,) if m.conversation_id == conversation_id]
+
+        async def get_row(approval_id: str) -> ApprovalLedgerDocument | None:
+            return rows.get(approval_id)
+
+        with (
+            patch(f"{MODULE}.latest_approvals_in_chat", new=latest_approvals_in_chat),
+            patch(f"{PENDING_ASK}.outbox_messages_repository.recent_sent_in", new=recent_sent_in),
+            patch(f"{PENDING_ASK}.approval_ledger_repository.get_by_approval_id", new=get_row),
+        ):
+            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+
+        assert action is None
+        ledger["decide"].assert_not_awaited()
+        ledger["llm"].assert_not_awaited()
 
     async def test_an_approval_with_a_change_denies_the_row_with_that_change(
         self, ledger: dict[str, AsyncMock]

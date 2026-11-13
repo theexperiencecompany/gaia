@@ -23,6 +23,7 @@ from app.constants.outbox_judge import (
     JUDGE_BATCH_WINDOW_SECONDS,
     JUDGE_INTERRUPT_CAP_WINDOW_SECONDS,
 )
+from app.constants.websocket import ReportSettledOutcome
 from app.db.repositories.outbox_items import outbox_items_repository
 from app.services.analytics_service import capture
 from app.services.outbox.attention import place_item
@@ -45,6 +46,7 @@ from app.services.outbox.policy import (
     is_progress,
     waits_for_batch,
 )
+from app.services.outbox.settled import announce_settled
 from app.services.outbox.watching import is_watched_live
 from app.utils import clock
 from app.utils.redis_utils import RedisPoolManager
@@ -126,6 +128,7 @@ async def settle_report(
         if dropped is None:
             return None
         OUTBOX_ITEMS_DROPPED.labels(reason=drop_reason.value).inc()
+        await announce_settled(report, ReportSettledOutcome.RECORDED)
         log.info(
             f"{LogTag.NOTIFICATION} Outbox report recorded, not alerted",
             drop_reason=drop_reason.value,

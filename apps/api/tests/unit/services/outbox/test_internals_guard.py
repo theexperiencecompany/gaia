@@ -44,7 +44,7 @@ async def _leaks(*texts: str, todo: bool = False, run: bool = False) -> list[str
         ("approved ap_0123456789ab for you", ["ap_0123456789ab"]),
         ("I used GMAIL_SEND_EMAIL to send it", ["GMAIL_SEND_EMAIL"]),
         ("<executor_result>done</executor_result>", ["<executor_result", "</executor_result"]),
-        ("the executor finished", ["executor"]),
+        ("the executor agent finished", ["executor agent"]),
         ("a subagent made a tool call", ["subagent", "tool call"]),
         ("cancel task_id 12", ["task_id"]),
     ],
@@ -64,3 +64,7 @@ async def test_product_words_and_ordinary_underscores_are_not_internals() -> Non
     assert (
         await _leaks("your workflow ran, the todo is done, a trigger fired, see my_file_name") == []
     )
+
+
+async def test_the_plain_word_executor_is_ordinary_english() -> None:
+    assert await _leaks("she is the executor of the will") == []

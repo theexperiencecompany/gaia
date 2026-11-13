@@ -93,6 +93,7 @@ class TestQuietHours:
                 AsyncMock(return_value=UserDocument(id=FAKE_USER_ID)),
             ) as update,
             patch("app.services.user_service.capture") as capture,
+            patch("app.services.user_service.release_silence_holds", AsyncMock()) as release,
         ):
             async with captured_wide_event() as live:
                 response = await client.patch(f"{USER_BASE}/quiet-hours", json=body)
@@ -107,6 +108,7 @@ class TestQuietHours:
         update.assert_awaited_once_with(
             FAKE_USER_ID, QuietHours(enabled=True, start_hour=23, end_hour=7)
         )
+        release.assert_awaited_once_with(FAKE_USER_ID)
         capture.assert_called_once_with(
             UserId(FAKE_USER_ID),
             SettingsQuietHoursUpdated(enabled=True, start_hour=23, end_hour=7),

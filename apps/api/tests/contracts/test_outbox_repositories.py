@@ -10,6 +10,7 @@ from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
 
 from app.constants.outbox import ITEMS_COLLECTION, MESSAGES_COLLECTION
+from app.constants.outbox_attention import ATTENTION_SETTINGS_COLLECTION
 from app.constants.outbox_judge import ATTENTION_PROFILES_COLLECTION
 from app.db.mongodb.indexes import create_outbox_indexes
 from app.db.repositories.attention_profiles import AttentionProfilesRepository
@@ -49,6 +50,7 @@ async def repos(
         ITEMS_COLLECTION: f"{ITEMS_COLLECTION}_{suffix}",
         MESSAGES_COLLECTION: f"{MESSAGES_COLLECTION}_{suffix}",
         ATTENTION_PROFILES_COLLECTION: f"{ATTENTION_PROFILES_COLLECTION}_{suffix}",
+        ATTENTION_SETTINGS_COLLECTION: f"{ATTENTION_SETTINGS_COLLECTION}_{suffix}",
     }
     monkeypatch.setattr(
         "app.db.repositories.base.get_async_collection", lambda name: database[names[name]]
@@ -84,7 +86,7 @@ async def _queued(items: OutboxItemsRepository, report: NoticeReport) -> None:
     assert queued is not None
 
 
-def _message(attempt: str) -> OutboxMessageDocument:
+def _message(attempt: str, *, conversation_id: str = "c") -> OutboxMessageDocument:
     return OutboxMessageDocument(
         user_id=USER,
         compose_attempt_id=attempt,
@@ -94,8 +96,8 @@ def _message(attempt: str) -> OutboxMessageDocument:
         parts=["hi"],
         destination="in_app",
         destination_basis="no_chat_app",
-        conversation_id="c",
-        recorded_in=["c"],
+        conversation_id=conversation_id,
+        recorded_in=[conversation_id],
         expires_at=EXPIRES,
     )
 
@@ -198,6 +200,17 @@ async def test_a_message_settles_once_and_recent_sent_lists_newest_first(repos) 
     recent = await messages.recent_sent(USER, limit=5)
 
     assert [m.compose_attempt_id for m in recent] == ["two", "one"]
+
+
+async def test_recent_sent_in_lists_only_what_was_sent_to_that_conversation(repos) -> None:
+    _, messages = repos
+    for attempt, conversation in (("here", "tg-dm"), ("there", "web-1")):
+        await messages.insert_attempt(_message(attempt, conversation_id=conversation))
+        assert await messages.finish_send(USER, attempt, MessageState.SENT, sent_at=T0)
+
+    recent = await messages.recent_sent_in(USER, "tg-dm", limit=5)
+
+    assert [m.compose_attempt_id for m in recent] == ["here"]
 
 
 def _of_series(report_id: str, series: str | None, *, minutes: int) -> NoticeReport:

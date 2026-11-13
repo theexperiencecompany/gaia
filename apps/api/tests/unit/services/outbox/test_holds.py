@@ -281,3 +281,42 @@ def test_the_next_check_in_is_the_next_slot_on_the_users_own_clock() -> None:
     off = DEFAULT_QUIET_HOURS.model_copy(update={"enabled": False})
     no_morning = _state(DAY.replace(hour=19), clock=UserClock(Timezone.utc(), off))
     assert next_checkin(no_morning) == MORNING.replace(hour=13)
+
+
+def test_a_user_with_no_check_in_times_and_quiet_hours_off_is_told_at_the_hold_age_cap() -> None:
+    off = DEFAULT_QUIET_HOURS.model_copy(update={"enabled": False})
+    bare = _state(
+        DAY,
+        clock=UserClock(Timezone.utc(), off),
+        settings=AttentionSettings(checkin_times=[]),
+    )
+
+    placed = place(notice(), UrgencyClass.BACKGROUND, verdict(), bare)
+
+    assert isinstance(placed, Hold)
+    assert placed.reason is HoldReason.CHECKIN
+    assert placed.until == DAY + timedelta(seconds=MAX_HOLD_AGE_SECONDS)
+
+
+def test_a_notices_valid_until_bounds_a_hold_for_quiet_hours() -> None:
+    expires = NIGHT + timedelta(hours=6)
+    ask = notice(valid_until=expires)
+
+    placed = place(ask, UrgencyClass.TIMELY, verdict(urgency=UrgencyClass.TIMELY), _state(NIGHT))
+
+    assert placed == Hold(expires - timedelta(minutes=15), HoldReason.QUIET_HOURS)
+
+
+def test_a_security_notice_raised_to_an_interrupt_crosses_do_not_disturb() -> None:
+    dnd = _state(DAY, settings=AttentionSettings(dnd_until=DAY + timedelta(hours=2)))
+    security = verdict(topics=["security"])
+
+    assert place(notice(), UrgencyClass.INTERRUPT, security, dnd) == Tell()
+
+
+def test_a_long_do_not_disturb_never_holds_an_item_past_the_hold_age_cap() -> None:
+    week = _state(DAY, settings=AttentionSettings(dnd_until=DAY + timedelta(days=7)))
+
+    placed = place(notice(), ROUTINE, verdict(), week)
+
+    assert placed == Hold(DAY + timedelta(seconds=MAX_HOLD_AGE_SECONDS), HoldReason.DND)

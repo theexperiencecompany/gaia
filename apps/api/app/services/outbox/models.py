@@ -139,6 +139,8 @@ class ItemFailure(StrEnum):
     RECORD_FAILED = "record_failed"
     TRANSPORT_SKIPPED = "transport_skipped"
     TRANSPORT_FAILED = "transport_failed"
+    #: The recovery sweep drove the item again and again and it never left the queue.
+    RECOVERY_EXHAUSTED = "recovery_exhausted"
 
 
 class MessageState(StrEnum):
@@ -234,6 +236,8 @@ class RunReport(_ReportBase):
     #: Why the run interrupts the user's quiet hours, set exactly when its trigger's gate let it through them.
     interrupt_reason: str | None = None
     guidance: ProducerGuidance | None = None
+    #: The saved turn whose status chip waits on this run; None for a run no turn is waiting on.
+    turn_message_id: str | None = None
     #: The approvals the run asked for that are settled now; final, whatever the run's own thread says.
     decided_approvals: list[DecidedApproval] = Field(default_factory=list)
 

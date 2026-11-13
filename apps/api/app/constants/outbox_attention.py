@@ -20,6 +20,8 @@ MAX_UNSOLICITED_BUDGET: Final = 50
 #: Check-in slots on the user's own clock, besides the one that opens each day when quiet hours end.
 CHECKIN_DEFAULT_TIMES: Final = (time(13, 0), time(18, 0))
 CHECKIN_MAX_SLOTS: Final = 6
+#: The longest do-not-disturb a user can ask for in one go.
+MAX_DND_HOURS: Final = 7 * 24
 ATTENTION_RULES_MAX: Final = 20
 ATTENTION_RULE_MAX_CHARS: Final = 300
 
@@ -66,6 +68,9 @@ RETURN_FLUSH_DELAY_SECONDS: Final = 20.0
 #: The flush job of one user and instant; a held item scheduled twice is flushed once.
 OUTBOX_FLUSH_TASK: Final = "outbox_flush"
 OUTBOX_FLUSH_JOB_ID_PREFIX: Final = "outbox:flush:"
+#: Held items one flush job re-judges; the rest are flushed by a follow-up job, so a backlog never nears the job timeout.
+FLUSH_MAX_ITEMS_PER_RUN: Final = 5
+FLUSH_CONTINUATION_DELAY_SECONDS: Final = 5.0
 #: The sweep that flushes a user whose flush job was lost.
 FLUSH_SWEEP_INTERVAL_MINUTES: Final = FIVE_MINUTES_TTL // 60
 #: Concurrent compose calls in one process while a quiet-end herd flushes.

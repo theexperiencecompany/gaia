@@ -11,6 +11,7 @@ from app.models.user_models import (
 )
 from app.services.analytics_service import capture
 from app.services.blob_store import blob_store
+from app.services.outbox.flush_queue import release_silence_holds
 from app.utils.timezone import Timezone, resolve_home_timezone
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.settings import SettingsQuietHoursUpdated
@@ -35,9 +36,10 @@ async def get_quiet_hours(user_id: str) -> QuietHours:
 
 
 async def set_quiet_hours(user_id: str, hours: QuietHours) -> QuietHours:
-    """Store the user's quiet hours and report the change; 404 when there is no such user."""
+    """Store the user's quiet hours, re-place the items they held, and report the change; 404 when there is no such user."""
     if await user_repository.set_quiet_hours(user_id, hours) is None:
         raise HTTPException(status_code=404, detail="User not found")
+    await release_silence_holds(user_id)
     capture(
         UserId(user_id),
         SettingsQuietHoursUpdated(

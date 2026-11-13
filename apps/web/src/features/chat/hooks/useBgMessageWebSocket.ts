@@ -11,6 +11,7 @@ import { streamLog } from "@/lib/streamLogger";
 import {
   OUTBOX_MESSAGE_EVENT,
   OutboxMessageKind,
+  type ReportSettledOutcome,
 } from "@/lib/websocket/outboxEvents";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { useChatStore } from "@/stores/chatStore";
@@ -45,9 +46,32 @@ interface BgMessageEvent {
   };
 }
 
+/** WebSocket payload for how the run behind an accepted turn's status chip ended. */
+interface ReportSettledEvent {
+  type: typeof OUTBOX_MESSAGE_EVENT;
+  kind: typeof OutboxMessageKind.ReportSettled;
+  conversation_id: string;
+  message_id: string;
+  outcome: ReportSettledOutcome;
+}
+
+/** Record the run's outcome on the accepted turn, so its chip settles (and stays settled on reload). */
+async function settleWorkChip(event: ReportSettledEvent): Promise<void> {
+  const updated = await db.updateMessage(event.message_id, {
+    workOutcome: event.outcome,
+  });
+  if (!updated) {
+    console.error(
+      "[useBgMessageWebSocket] Settled run names a turn this device never saved:",
+      event.message_id,
+    );
+  }
+}
+
 /**
  * Subscribe to `outbox.message` WebSocket events of kind
- * `conversation_message` and insert the message into IndexedDB and the Zustand store.
+ * `conversation_message` and insert the message into IndexedDB and the Zustand store,
+ * and of kind `report_settled` and settle the status chip of the turn it names.
  *
  * Conversation-scoped: only the active chat view updates immediately; other
  * conversations are persisted to IndexedDB and appear on navigation.
@@ -134,10 +158,21 @@ export function useBgMessageWebSocket() {
     });
   }, []);
 
+  const handleOutboxEvent = useCallback(
+    async (raw: unknown) => {
+      if ((raw as BgMessageEvent).kind === OutboxMessageKind.ReportSettled) {
+        await settleWorkChip(raw as ReportSettledEvent);
+        return;
+      }
+      await handleBgMessage(raw);
+    },
+    [handleBgMessage],
+  );
+
   useEffect(() => {
-    wsManager.on(OUTBOX_MESSAGE_EVENT, handleBgMessage);
+    wsManager.on(OUTBOX_MESSAGE_EVENT, handleOutboxEvent);
     return () => {
-      wsManager.off(OUTBOX_MESSAGE_EVENT, handleBgMessage);
+      wsManager.off(OUTBOX_MESSAGE_EVENT, handleOutboxEvent);
     };
-  }, [handleBgMessage]);
+  }, [handleOutboxEvent]);
 }
