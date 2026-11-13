@@ -1,3 +1,5 @@
+import type { ConversationEntry } from "@shared/api/generated";
+import type { HistoryPage } from "@shared/conversation";
 import {
   type Conversation,
   type ConversationSyncItem,
@@ -119,6 +121,7 @@ const toStoredConversation = (
   isSystemGenerated: conversation.is_system_generated ?? false,
   systemPurpose: conversation.system_purpose ?? null,
   isUnread: conversation.is_unread ?? false,
+  hasOlder: conversation.has_older,
   awaitingApproval: apiRowAwaitsApproval(conversation),
   todoId: conversation.todo_id ?? null,
   source: conversation.source ?? undefined,
@@ -402,6 +405,28 @@ export const applySyncedConversation = async (
   console.debug(
     `[SyncService] Synced conversation ${conversationId} with ${messages.length} messages`,
   );
+};
+
+/** Store a page of older messages under the ones already stored, and whether more remain. */
+export const applyOlderMessagesPage = async (
+  conversationId: string,
+  page: HistoryPage<ConversationEntry>,
+): Promise<void> => {
+  const olderMessages = mapApiMessagesToStored(
+    toClientMessages(page.messages),
+    conversationId,
+  );
+  const [localMessages, conversation] = await Promise.all([
+    db.getMessagesForConversation(conversationId),
+    db.getConversation(conversationId),
+  ]);
+  await db.syncMessages(
+    conversationId,
+    mergeMessageLists(localMessages, olderMessages),
+  );
+  if (conversation) {
+    await db.putConversation({ ...conversation, hasOlder: page.has_more });
+  }
 };
 
 /**

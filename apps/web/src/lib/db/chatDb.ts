@@ -29,6 +29,8 @@ export interface IConversation {
   isSystemGenerated?: boolean;
   systemPurpose?: SystemPurpose | null;
   isUnread?: boolean;
+  // The server holds messages older than the oldest one stored here.
+  hasOlder?: boolean;
   source?: string; // ConversationSource from backend (web, telegram, discord, etc.)
   // Live work here awaits the user's approval: the sidebar lists the
   // conversation for its card, and the row lights the approval dot.

@@ -157,6 +157,17 @@ export const chatApi = {
     return toClientMessages(response.messages ?? []);
   },
 
+  fetchMessagesBefore: (
+    conversationId: string,
+    beforeSeq: number,
+    limit: number,
+  ) =>
+    api.get("/api/v1/conversations/{conversation_id}/messages", {
+      path: { conversation_id: conversationId },
+      query: { before_seq: beforeSeq, limit },
+      errorMessage: "Failed to load older messages",
+    }),
+
   // Star/unstar conversation
   toggleStarConversation: async (
     conversationId: string,
