@@ -52,7 +52,8 @@
   --warning: #f5a524;
   --danger: #f31260;
   --accent-soft: color-mix(in oklab, var(--accent) 20%, transparent);
-  --accent-soft-foreground: var(--accent);
+  /* v2 flat primary text was primary-600, not the brand blue: blue-600 light, blue-400 dark */
+  --accent-soft-foreground: #005bc4;
   --accent-soft-hover: color-mix(in oklab, var(--accent) 30%, transparent);
   --success-soft: color-mix(in oklab, var(--success) 20%, transparent);
   --success-soft-foreground: var(--success);
@@ -79,6 +80,9 @@
 }
 
 .dark {
+  --accent-soft-foreground: #66aaf9;
+  /* v2 flat default text: default-700, zinc-200 in dark */
+  --default-soft-foreground: var(--color-zinc-200);
   --default-soft: color-mix(in oklab, #3f3f46 40%, transparent);
   --default-soft-hover: color-mix(in oklab, #3f3f46 60%, transparent);
 }
@@ -96,7 +100,24 @@ html {
   --gaia-radius-lg: 0.875rem;
   --gaia-radius-xl: 1rem;
   --gaia-radius-pill: 9999px;
-  --gaia-list-item-height: 2.125rem;
+  --gaia-list-item-height: 2rem;
+  --gaia-list-item-padding-x: 0.5rem;
+  --gaia-list-item-gap: 0.5rem;
+  --gaia-list-item-indicator: 0.75rem;
+  --gaia-list-gap: 0.125rem;
+  --gaia-list-inset: 0.5rem;
+  --gaia-list-max-height: 16.5rem;
+  --gaia-field-active: var(--color-zinc-700);
+  --gaia-combo-clear-end: 2.25rem;
+  --gaia-combo-input-clear-end: 4.25rem;
+  --gaia-combo-trigger-end: 0.75rem;
+  --gaia-select-indicator-end: 0.75rem;
+  --gaia-table-header-height: 2.5rem;
+  --gaia-table-header-gap: 5px;
+  --gaia-table-card-padding: 1rem;
+  --gaia-table-card-shadow: 0 0 5px 0 rgb(0 0 0 / 0.05), 0 2px 10px 0 rgb(0 0 0 / 0.2), inset 0 0 1px 0 rgb(255 255 255 / 0.15);
+  --gaia-table-row-selected: color-mix(in oklab, var(--color-zinc-700) 60%, transparent);
+  --gaia-table-row-hover: color-mix(in oklab, var(--color-zinc-800) 70%, transparent);
   --gaia-table-cell-padding-y: 0.5rem;
   --gaia-table-cell-padding-x: 0.75rem;
   --gaia-slider-marks-gap: 0.375rem;
@@ -106,6 +127,8 @@ html {
   --gaia-field-subtle-hover: color-mix(in oklab, var(--color-zinc-800) 50%, transparent);
   --gaia-overlay-raised: var(--color-zinc-800);
   --gaia-overlay-secondary: var(--color-secondary-bg);
+  /* v2 backdrop="opaque": bg-overlay/50 */
+  --gaia-overlay-scrim: rgb(0 0 0 / 0.5);
   --gaia-soft-tint-light: 15%;
   --gaia-separator-raised: color-mix(in oklab, var(--color-zinc-700) 50%, transparent);
   --gaia-button-weight: 400;
@@ -156,7 +179,9 @@ html {
   --gaia-chip-sm-font-size: 0.75rem;
   --gaia-chip-md-font-size: 0.875rem;
   --gaia-chip-lg-font-size: 1rem;
-  --gaia-chip-lg-padding-x: 0.5rem;
+  --gaia-chip-sm-padding-x: 0.375rem;
+  --gaia-chip-md-padding-x: 0.625rem;
+  --gaia-chip-lg-padding-x: 0.875rem;
   --gaia-field-height: 2.5rem;
   --gaia-field-font-size: 0.875rem;
   --gaia-field-background: var(--color-zinc-800);
@@ -178,6 +203,8 @@ html {
   --gaia-slider-sm-track: 0.25rem;
   --gaia-slider-sm-thumb: 1.25rem;
   --gaia-slider-sm-thumb-inner: 1rem;
+  --gaia-slider-sm-marks-gap: 0.125rem;
+  --gaia-slider-sm-marks-band: 1.25rem;
   /* quiet hours */
   --gaia-slider-indigo-thumb: var(--color-indigo-300);
   --gaia-slider-indigo-fill: color-mix(in oklab, var(--color-indigo-400) 70%, transparent);

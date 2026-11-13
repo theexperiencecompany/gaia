@@ -6,13 +6,17 @@ export const SOFT_TINT_CLASSES = {
   light: "gaia-tint-light",
 } as const;
 
-/** A selected chip lifts on a shadow tinted by its own fill (v2's Chip variant="shadow"); gaia-chip-selected in base.css. */
+/**
+ * A selected chip lifts on a shadow tinted by its own fill (v2's Chip variant="shadow");
+ * hue secondary repaints an accent chip as v2's purple secondary, a colour v3 dropped.
+ */
 export const chipVariants = tv({
   variants: {
     isSelected: { true: "gaia-chip-selected", false: "" },
     tint: SOFT_TINT_CLASSES,
+    hue: { default: "", secondary: "gaia-hue-secondary" },
   },
-  defaultVariants: { isSelected: false, tint: "default" },
+  defaultVariants: { isSelected: false, tint: "default", hue: "default" },
 });
 
 /** v2's Avatar isBordered: a 2px zinc-700 ring outside a 2px background gap; gaia-avatar-bordered in base.css. */
@@ -73,13 +77,25 @@ export const inputVariants = tv({
   defaultVariants: { size: "md", variant: "default", placeholder: "default" },
 });
 
+/** A Table root's surface: card is v2's default wrapper (16px padded zinc-900 card), plain v2's removeWrapper; gaia.css. */
+export const tableVariants = tv({
+  variants: {
+    surface: { card: "gaia-table-card", plain: "gaia-table-plain" },
+  },
+  defaultVariants: { surface: "card" },
+});
+
 /** surface raised: v2's quieter divider on a raised (zinc-800) surface, zinc-700 at 50%; gaia-separator-raised in gaia.css. */
 export const separatorVariants = tv({
   variants: { surface: { default: "", raised: "gaia-separator-raised" } },
   defaultVariants: { surface: "default" },
 });
 
-/** An overlay's surface on Popover.Content, Tooltip.Content or Select.Popover: raised is v2's zinc-800 off a zinc-900 page, secondary the #1a1a1a sidebar surface. */
+/**
+ * An overlay's surface on Popover.Content, Tooltip.Content, Select.Popover or
+ * Dropdown.Popover: raised is v2's zinc-800 off a zinc-900 page, secondary the
+ * #1a1a1a sidebar surface. backdrop opaque dims the page behind it (v2's backdrop="opaque").
+ */
 export const overlayVariants = tv({
   variants: {
     surface: {
@@ -87,6 +103,7 @@ export const overlayVariants = tv({
       raised: "gaia-overlay-raised",
       secondary: "gaia-overlay-secondary",
     },
+    backdrop: { none: "", opaque: "gaia-overlay-opaque" },
   },
-  defaultVariants: { surface: "default" },
+  defaultVariants: { surface: "default", backdrop: "none" },
 });

@@ -35,7 +35,7 @@ const NoIntegrationsFound: React.FC<NoIntegrationsFoundProps> = ({
         ? `No integrations found for "${searchQuery}"`
         : `No ${getCategoryLabel(selectedCategory).toLowerCase()} integrations found`}
     </p>
-    <GaiaButton onPress={clearFilters} variant="ghost" size="sm">
+    <GaiaButton onPress={clearFilters} variant="ghost" tone="accent" size="sm">
       Clear filters
     </GaiaButton>
   </div>

@@ -139,7 +139,7 @@ const DummyComposer: React.FC<{
             aria-label="Demo chat input - not a real form submission"
             data-demo="true"
           >
-            <div className="flex items-end gap-2 px-3 pt-1">
+            <div className="flex min-h-12 items-center gap-2 px-3 py-2">
               <TextArea
                 ref={textareaRef}
                 autoFocus
@@ -147,14 +147,14 @@ const DummyComposer: React.FC<{
                 className={inputVariants({
                   variant: "bare",
                   className:
-                    "field-sizing-content max-h-[17rem] w-full resize-none font-light outline-none focus:ring-0",
+                    "field-sizing-content max-h-[17rem] w-full resize-none text-base font-light outline-none focus:ring-0",
                 })}
                 placeholder="What can I do for you today?"
                 value={message}
                 onChange={(e) => handleInputChange(e.target.value)}
                 onKeyDown={handleKeyPress}
               />
-              <div className="flex items-center gap-1 pb-1 text-xs text-nowrap text-zinc-400">
+              <div className="flex items-center gap-1 text-xs text-nowrap text-zinc-400">
                 <Kbd className="bg-zinc-700">/</Kbd>
                 for tools
               </div>

@@ -11,6 +11,7 @@ import {
 } from "@heroui/react";
 import { ConnectIcon, KeyIcon, PuzzleIcon } from "@icons";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { useModalForm } from "@/hooks/ui/useModalForm";
@@ -142,9 +143,9 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
         if (!nextOpen && !loading) handleClose();
       }}
     >
-      <Modal.Backdrop isDismissable={!loading}>
+      <Modal.Backdrop variant="blur" isDismissable={!loading}>
         <Modal.Container placement="center" size="lg">
-          <Modal.Dialog className="shadow-none">
+          <Modal.Dialog className="shadow-none rounded-2xl">
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Header className="flex flex-col gap-1">
               <Modal.Heading className="text-xl font-semibold">
@@ -159,6 +160,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
             <Modal.Body>
               <div className="flex flex-col gap-4">
                 <TextField
+                  className={fieldVariants({ labelPlacement: "inside" })}
                   value={formData.name}
                   onChange={(value) => updateField("name", value)}
                   isRequired
@@ -176,6 +178,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
                 </TextField>
 
                 <TextField
+                  className={fieldVariants({ labelPlacement: "inside" })}
                   value={formData.description || ""}
                   onChange={(value) => updateField("description", value)}
                 >
@@ -187,6 +190,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
                 </TextField>
 
                 <TextField
+                  className={fieldVariants({ labelPlacement: "inside" })}
                   value={formData.server_url}
                   onChange={(value) => updateField("server_url", value)}
                   isRequired
@@ -207,6 +211,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
                 </TextField>
 
                 <TextField
+                  className={fieldVariants({ labelPlacement: "inside" })}
                   value={formData.bearer_token || ""}
                   onChange={(value) => updateField("bearer_token", value)}
                 >

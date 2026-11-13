@@ -294,7 +294,7 @@ export default function LinkedAccountsSettings() {
                   <OpenPlatformChatButton platform={platform.id} />
                 )}
                 <GaiaButton
-                  variant={isConnected ? "danger-soft" : "primary"}
+                  variant={isConnected ? "danger-soft" : "accent-soft"}
                   size="sm"
                   onPress={() =>
                     isConnected

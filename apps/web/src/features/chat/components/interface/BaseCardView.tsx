@@ -8,6 +8,7 @@ import {
   ZapIcon,
 } from "@icons";
 import type React from "react";
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { IntegrationConnectCard } from "@/components/shared/IntegrationConnectCard";
 import { toneVariants } from "@/components/shared/tone";
@@ -110,7 +111,10 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
               Ask GAIA
               <ArrowUpRight01Icon className="h-3.5 w-3.5" />
             </GaiaButton>
-            <Dropdown.Popover placement="bottom end">
+            <Dropdown.Popover
+              placement="bottom end"
+              className={overlayVariants({ backdrop: "opaque" })}
+            >
               <Dropdown.Menu aria-label={`${title} actions`} className="w-100">
                 {hasActions ? (
                   <Dropdown.Section id="ask-gaia">

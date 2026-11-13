@@ -78,7 +78,7 @@ const IntegrationRow: React.FC<{
           !isConnected &&
           !integration.instanceSetupRequired && (
             <GaiaButton
-              variant="secondary"
+              variant={needsAttention ? "warning-soft" : "accent-soft"}
               size="sm"
               onPress={() => {
                 onConnect(integration.id);

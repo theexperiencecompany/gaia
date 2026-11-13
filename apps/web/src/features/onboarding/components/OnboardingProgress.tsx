@@ -132,7 +132,7 @@ function OnboardingProgressImpl({
       </Dropdown>
 
       <Modal isOpen={confirmOpen} onOpenChange={setConfirmOpen}>
-        <Modal.Backdrop>
+        <Modal.Backdrop variant="blur">
           <Modal.Container placement="center" size="md">
             <Modal.Dialog>
               <Modal.CloseTrigger aria-label="Close" />

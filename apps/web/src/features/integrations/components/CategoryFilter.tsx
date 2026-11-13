@@ -22,7 +22,7 @@ export function CategoryFilter({
       {allCategories.map((category) => (
         <Chip
           key={category}
-          variant="primary"
+          variant={selectedCategory === category ? "primary" : "soft"}
           color={selectedCategory === category ? "accent" : "default"}
           className="cursor-pointer transition-colors duration-200"
           onClick={() => onCategoryChange(category)}

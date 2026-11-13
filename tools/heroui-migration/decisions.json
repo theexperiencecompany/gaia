@@ -1,7 +1,6 @@
 {
   "drop": {
     "button": ["color", "radius"],
-    "chip": ["radius"],
     "spinner": ["variant"],
     "tabs": ["size", "color", "radius"],
     "accordion": ["size", "color"],
@@ -105,6 +104,12 @@
       "variant": {
         "flat": "soft",
         "shadow": "chipVariants({ isSelected: true })"
+      },
+      "radius": {
+        "full": "default (v2's chip default is a pill; the gaia layer matches)",
+        "sm": "shape=\"sm\" (components/shared/shape.ts)",
+        "md": "shape=\"md\"",
+        "lg": "shape=\"lg\""
       }
     },
     "radius": {

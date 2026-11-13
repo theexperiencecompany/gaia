@@ -16,6 +16,7 @@ import {
   StarIcon,
 } from "@icons";
 import { useCallback, useDeferredValue, useMemo } from "react";
+import { tableVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toneVariants } from "@/components/shared/tone";
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
@@ -56,11 +57,10 @@ interface VoiceTableProps {
   /** Fired (after persisting) when the selection changes — lets the live
    * session re-point the agent's voice. */
   onSelect?: (voiceId: string) => void;
-  classNames?: {
-    base?: string;
-    wrapper?: string;
-    [key: string]: string | undefined;
-  };
+  /** card is the settings page's padded card; plain sits flush inside another surface. */
+  surface?: "card" | "plain";
+  /** Layout classes for the table root, e.g. a scroll height. */
+  className?: string;
   "aria-label"?: string;
 }
 
@@ -248,7 +248,8 @@ export function VoiceTable({
   wrapText = false,
   previewOnSelect = true,
   onSelect,
-  classNames,
+  surface = "card",
+  className,
   "aria-label": ariaLabel = "Available voices",
 }: Readonly<VoiceTableProps>) {
   const { data, isLoading } = useVoices();
@@ -350,14 +351,13 @@ export function VoiceTable({
   );
 
   return (
-    <Table className={classNames?.base}>
+    <Table className={tableVariants({ surface, className })}>
       <Table.Content
         aria-label={ariaLabel}
         selectionMode="single"
         disallowEmptySelection
         selectedKeys={selectedKeys}
         onSelectionChange={handleSelectionChange}
-        className={classNames?.wrapper}
       >
         <Table.Header columns={columns}>
           {(column) => (
