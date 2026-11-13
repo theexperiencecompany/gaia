@@ -15,9 +15,9 @@ _EXPO_PUSH_BATCH_SIZE = 100
 
 
 async def push_approval_pending(
-    user_id: str, conversation_id: str, approval_id: str, summary: str
+    user_id: str, conversation_id: str, approval_id: str, body: str
 ) -> None:
-    """Push an approval prompt to the user's registered devices. Best-effort: never raises."""
+    """Push the composed approval ask to the user's registered devices. Best-effort: never raises."""
     try:
         tokens = await _active_device_tokens(user_id)
         if tokens:
@@ -25,11 +25,11 @@ async def push_approval_pending(
                 tokens,
                 conversation_id=conversation_id,
                 approval_id=approval_id,
-                summary=summary,
+                body=body,
             )
     except Exception as e:
         log.warning(
-            f"{LogTag.HIL} HIL notify: Expo push failed",
+            f"{LogTag.HIL} Approval push failed",
             error=str(e),
             error_type=type(e).__name__,
             user_id=user_id,
@@ -42,13 +42,13 @@ async def _active_device_tokens(user_id: str) -> list[str]:
 
 
 async def _send_expo_push(
-    tokens: list[str], *, conversation_id: str, approval_id: str, summary: str
+    tokens: list[str], *, conversation_id: str, approval_id: str, body: str
 ) -> None:
     messages: list[dict[str, Any]] = [
         {
             "to": token,
             "title": "GAIA needs your approval",
-            "body": summary,
+            "body": body,
             "categoryId": "hil_approval",
             "data": {
                 "type": "hil_approval",

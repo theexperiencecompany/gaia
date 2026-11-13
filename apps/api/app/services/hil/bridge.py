@@ -2,8 +2,8 @@
 
 The gate pauses its run with LangGraph's interrupt(); nothing here waits. This
 module only *publishes*: it records the pending approval durably, pushes the
-approval_request tool_data card onto the turn's SSE stream, and wakes clients
-that aren't watching it. The decision arrives out-of-band and is applied by
+approval_request tool_data card onto the turn's SSE stream, and files the ask
+with the outbox for whoever isn't watching it. The decision arrives out-of-band and is applied by
 app/services/hil/resolution.py, which resumes the paused thread.
 
 Frame delivery mirrors make_redis_stream_writer: every frame is both published
@@ -16,7 +16,7 @@ stream_id, is what makes the card work at every nesting depth.
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import hashlib
 import json
 from typing import Any, Protocol, TypedDict, cast
@@ -51,14 +51,21 @@ from app.models.hil_models import (
 from app.models.stream_events import ApprovalRequestEntry, ApprovalRequestEntryData
 from app.services.analytics_service import capture
 from app.services.hil.approvals_store import record_auto_approval, upsert_pending_approval
-from app.services.hil.notify import notify_approval_pending
 from app.services.hil.policy import asks_every_time
 from app.services.hil.utils import GatedCall
 from app.services.latency_metrics import observe_hil_pause
+from app.services.outbox.approvals import (
+    ApprovalAsk,
+    ApprovalNoticeState,
+    approval_notice,
+    ledger_approval_notice,
+)
+from app.services.outbox.intake import submit
+from app.utils import clock
 from app.utils.general_utils import clip_text
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilCardShown
-from shared.py.wide_events import log, spawn_logged_task
+from shared.py.wide_events import log
 
 
 class _SessionFrame(TypedDict, total=False):
@@ -173,8 +180,10 @@ async def publish_approval_request(
         approval.stream_id,
         await _pending_entry(approval, auto_reason=auto_reason),
     )
-    _schedule_pending_notification(
-        approval.user_id, approval.conversation_id, approval.approval_id, approval.summary
+    await _file_pending_notice(
+        approval,
+        expires_at=clock.now() + timedelta(seconds=HIL_APPROVAL_TIMEOUT_SECONDS),
+        set_up_by_user=False,
     )
 
 
@@ -231,9 +240,7 @@ async def publish_ledger_request(
         # nobody is watching this stream (or there is none to drain), so holding
         # would hide the card until a drain that never comes.
         await _publish_entry(stream_id, entry)
-        _schedule_pending_notification(
-            approval.user_id, approval.conversation_id, approval.approval_id, approval.summary
-        )
+        await _file_ledger_notice(approval.approval_id)
         return
     frame = {"tool_data": entry.model_dump(), "_held_approval": True}
     session.tool_events.append(frame)
@@ -419,20 +426,27 @@ def build_action_detail(summary: str, args: Mapping[str, object]) -> str:
 # --- internals -----------------------------------------------------------------
 
 
-def _schedule_pending_notification(
-    user_id: str, conversation_id: str, approval_id: str, summary: str
+async def _file_pending_notice(
+    approval: GatedApproval, *, expires_at: datetime | None, set_up_by_user: bool
 ) -> None:
-    """Wake clients not watching the stream.
-
-    Detached, since a notify failure must never block the gate.
-    """
-    spawn_logged_task(
-        "approval_pending_notification",
-        notify_approval_pending(user_id, conversation_id, approval_id, summary),
-        user={"id": user_id},
-        conversation_id=conversation_id,
-        approval_id=approval_id,
+    """Tell the outbox an approval waits on the user; it decides where, when and in what words."""
+    ask = ApprovalAsk(
+        approval_id=approval.approval_id,
+        user_id=approval.user_id,
+        conversation_id=approval.conversation_id,
+        summary=approval.summary,
+        expires_at=expires_at,
+        set_up_by_user=set_up_by_user,
     )
+    await submit(approval_notice(ask, ApprovalNoticeState.PENDING, now=clock.now()))
+
+
+async def _file_ledger_notice(approval_id: str) -> None:
+    """Tell the outbox a registered ledger approval waits on the user."""
+    row = await approval_ledger_repository.get_by_approval_id(approval_id)
+    if row is None:
+        raise LookupError(f"ledger approval {approval_id} vanished before its notice was filed")
+    await submit(ledger_approval_notice(row, ApprovalNoticeState.PENDING, now=clock.now()))
 
 
 async def _publish_entry(stream_id: str, entry: ApprovalRequestEntry) -> None:
@@ -546,9 +560,6 @@ async def flush_held_approval_cards(stream_id: str) -> int:
         try:
             frame = {"tool_data": tool_data}
             await stream_manager.publish_chunk(stream_id, f"data: {json.dumps(frame)}\n\n")
-            _schedule_pending_notification(
-                row.user_id, row.conversation_id, row.approval_id, row.summary
-            )
         except Exception as e:
             log.warning(
                 f"{LogTag.HIL} Held card flush missed its stream",
@@ -562,6 +573,7 @@ async def flush_held_approval_cards(stream_id: str) -> int:
         # a no-op — live frames can never duplicate.
         kept.append(frame)
         flushed += 1
+        await _file_ledger_notice(row.approval_id)
     session.tool_events[:] = kept
     return flushed
 

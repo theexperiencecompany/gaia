@@ -608,8 +608,8 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "producer": "executor" | "workflow" | "todo" | "reminder" | "browser" | "artifact" | "account";
-    "subject_kind": "ask" | "workflow_run" | "todo_run" | "reminder" | "browser_job" | "account";
+    "producer": "executor" | "workflow" | "todo" | "reminder" | "browser" | "artifact" | "account" | "approval";
+    "subject_kind": "ask" | "workflow_run" | "todo_run" | "reminder" | "browser_job" | "account" | "approval";
     "mode": "answer" | "unsolicited" | "interrupt";
     "destination": "chat_app" | "in_app";
     "destination_basis": "recent_activity" | "priority" | "owner_chat" | "requested_channel" | "active_in_app" | "no_chat_app";
@@ -732,9 +732,9 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "decision": "approved" | "denied";
+    "decision": "approved" | "denied" | "expired";
     "tool_name": string;
-    "via": "card" | "batch" | "chat" | "auto";
+    "via": "card" | "batch" | "chat" | "auto" | "expiry";
     "approval_id"?: string;
     "ledger_version"?: number;
     "card_age_seconds"?: number;

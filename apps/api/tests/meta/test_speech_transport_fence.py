@@ -19,12 +19,11 @@ OUTBOX_DIR = "apps/api/app/services/outbox/"
 KNOWN_SPEAKERS: dict[str, str] = {
     "apps/api/app/agents/core/background/run_cards.py": "tool cards and a tracked todo's own record of its run pushed to an open chat",
     "apps/api/app/utils/notification/orchestrator.py": "notification record pushed to the in-app list",
-    "apps/api/app/services/hil/notify.py": "approval prompt pushed to a backgrounded mobile app",
     "apps/api/app/utils/notification/channels/external.py": "notification channel adapter for external chat platforms",
 }
 
 #: The ceiling for len(KNOWN_SPEAKERS). Lower it as callers move behind the outbox; never raise it.
-KNOWN_SPEAKERS_CEILING = 4
+KNOWN_SPEAKERS_CEILING = 3
 
 
 def _repo_root() -> Path:

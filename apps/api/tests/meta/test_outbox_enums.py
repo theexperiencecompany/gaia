@@ -38,6 +38,7 @@ def test_the_closed_vocabularies_are_exactly_these() -> None:
         "reminder",
         "browser_job",
         "account",
+        "approval",
     }
     assert _values(SubjectMerge) == {"replace", "accumulate"}
     assert _values(ProducerKind) == {
@@ -48,6 +49,7 @@ def test_the_closed_vocabularies_are_exactly_these() -> None:
         "browser",
         "artifact",
         "account",
+        "approval",
     }
     assert _values(Initiative) == {"asked", "user_scheduled", "self_initiated"}
     assert _values(DeliveryTiming) == {"the_moment", "at_time", "when_done"}
@@ -89,6 +91,7 @@ def test_the_closed_vocabularies_are_exactly_these() -> None:
         "compose_degraded",
         "account_linked",
         "first_contact",
+        "generic_preview",
     }
 
 

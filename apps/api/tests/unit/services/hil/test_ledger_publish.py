@@ -109,7 +109,7 @@ class TestLedgerPublishHold:
                     "app.services.hil.bridge.stream_manager.publish_chunk",
                     new=AsyncMock(),
                 ) as chunk,
-                patch("app.services.hil.bridge._schedule_pending_notification") as notify,
+                patch("app.services.hil.bridge._file_ledger_notice", new=AsyncMock()) as notify,
             ):
                 await publish_ledger_request(
                     GatedApproval(
@@ -143,7 +143,7 @@ class TestLedgerPublishHold:
                 "app.services.hil.bridge.stream_manager.publish_chunk",
                 new=AsyncMock(),
             ) as chunk,
-            patch("app.services.hil.bridge._schedule_pending_notification") as notify,
+            patch("app.services.hil.bridge._file_ledger_notice", new=AsyncMock()) as notify,
         ):
             await publish_ledger_request(
                 GatedApproval(
@@ -173,7 +173,7 @@ class TestLedgerPublishHold:
                     "app.services.hil.bridge.stream_manager.publish_chunk",
                     new=AsyncMock(),
                 ) as chunk,
-                patch("app.services.hil.bridge._schedule_pending_notification") as notify,
+                patch("app.services.hil.bridge._file_ledger_notice", new=AsyncMock()) as notify,
             ):
                 await publish_ledger_request(
                     GatedApproval(
@@ -203,7 +203,7 @@ class TestLedgerPublishHold:
                     "app.services.hil.bridge.stream_manager.publish_chunk",
                     new=AsyncMock(),
                 ) as chunk,
-                patch("app.services.hil.bridge._schedule_pending_notification") as notify,
+                patch("app.services.hil.bridge._file_ledger_notice", new=AsyncMock()) as notify,
             ):
                 await publish_ledger_request(
                     GatedApproval(
@@ -236,7 +236,7 @@ class TestLedgerPublishHold:
                     "app.services.hil.bridge.stream_manager.publish_chunk",
                     new=AsyncMock(),
                 ),
-                patch("app.services.hil.bridge._schedule_pending_notification"),
+                patch("app.services.hil.bridge._file_ledger_notice", new=AsyncMock()),
             ):
                 await publish_ledger_request(
                     GatedApproval(
@@ -304,13 +304,13 @@ class TestFlushHeldCards:
             with (
                 patch.object(bridge, "approval_ledger_repository") as repo,
                 patch.object(bridge.stream_manager, "publish_chunk", new=AsyncMock()) as chunk,
-                patch.object(bridge, "_schedule_pending_notification") as notify,
+                patch.object(bridge, "_file_ledger_notice", new=AsyncMock()) as notify,
             ):
                 repo.get_by_approval_id = AsyncMock(return_value=row)
                 assert await bridge.flush_held_approval_cards(stream_id) == 1
                 assert await bridge.flush_held_approval_cards(stream_id) == 0
             chunk.assert_awaited_once()
-            notify.assert_called_once_with(USER_ID, "conv-1", "ap_hold", "Send it")
+            notify.assert_called_once_with("ap_hold")
         finally:
             self._teardown(stream_id)
 
@@ -325,7 +325,7 @@ class TestFlushHeldCards:
             with (
                 patch.object(bridge, "approval_ledger_repository") as repo,
                 patch.object(bridge.stream_manager, "publish_chunk", new=AsyncMock()) as chunk,
-                patch.object(bridge, "_schedule_pending_notification") as notify,
+                patch.object(bridge, "_file_ledger_notice", new=AsyncMock()) as notify,
             ):
                 repo.get_by_approval_id = AsyncMock(return_value=row)
                 assert await bridge.flush_held_approval_cards(stream_id) == 0

@@ -54,6 +54,8 @@ async function run(stream: PassThrough) {
     onError,
     "/bot/chat-stream",
     undefined,
+    undefined,
+    undefined,
     0,
   ).catch(() => undefined);
   return { onChunk, onDone, onError };

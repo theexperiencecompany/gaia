@@ -196,13 +196,14 @@ class HILToolRiskUpdate(BaseModel):
 
 class LedgerState(StrEnum):
     """Where one ledger approval stands. Separate enum from ``HILApprovalStatus``:
-    the ledger has no expiry/timeout states and adds execution tracking — reusing
-    the old enum would let timeout machinery read ledger rows and vice versa."""
+    the ledger expires only through ``ledger_decide`` and adds execution tracking —
+    reusing the old enum would let timeout machinery read ledger rows and vice versa."""
 
     PENDING = "pending"
     APPROVED = "approved"
     DENIED = "denied"
     REVOKED = "revoked"
+    EXPIRED = "expired"
     EXECUTING = "executing"
     EXECUTED = "executed"
     FAILED = "failed"
@@ -241,8 +242,9 @@ class ApprovalProposal(BaseModel):
 class ApprovalLedgerDocument(MongoDocument, ApprovalProposal):
     """One entry in the executor-free approval ledger (``approval_ledger``).
 
-    Uncached and never expiring: rows are decision state read at low volume, and
-    a pending row leaves only by user decision or agent revoke — never by timer.
+    Uncached: rows are decision state read at low volume. A pending row leaves by
+    user decision, agent revoke, or expiry through ``ledger_decide``; one registered
+    before expiry existed has no ``expires_at`` and never expires.
     """
 
     approval_id: str
@@ -256,6 +258,10 @@ class ApprovalLedgerDocument(MongoDocument, ApprovalProposal):
     decided_at: datetime | None = None
     v: int = 0
     created_at: datetime | None = None
+    # When the unanswered ask expires, and when its one reminder is due; reminded_at stamps the claim.
+    expires_at: datetime | None = None
+    remind_at: datetime | None = None
+    reminded_at: datetime | None = None
     # When this row entered EXECUTING. The lazy reconciler treats EXECUTING
     # older than the cutoff as crashed (UNKNOWN) — never blind-retried.
     executing_started_at: datetime | None = None

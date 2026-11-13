@@ -46,6 +46,7 @@ from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.schemas.outbound import OutboundAttachment
+from app.services.outbox.approvals import ApprovalAsk, ApprovalNoticeState, approval_notice
 from app.services.outbox.deliver import flush_subject
 from app.services.outbox.judge_models import Relevance, Sensitivity
 from app.services.outbox.models import (
@@ -1136,3 +1137,86 @@ async def test_when_the_judge_is_unavailable_the_reminder_is_still_told_and_tagg
     assert item.state is ItemState.SENT and item.urgency is UrgencyClass.INTERRUPT
     assert item.judgement is not None and item.judgement.judge_unavailable is True
     assert len(await tl.ledger()) == 1
+
+
+def _approval(
+    approval_id: str = "ap_1",
+    state: ApprovalNoticeState = ApprovalNoticeState.PENDING,
+    *,
+    minutes: float = 0,
+    conversation: str = "web-1",
+    expires_in_hours: float = 24,
+) -> NoticeReport:
+    ask = ApprovalAsk(
+        approval_id=approval_id,
+        user_id=USER,
+        conversation_id=conversation,
+        summary="Send the deck to Bob",
+        expires_at=T0 + timedelta(hours=expires_in_hours),
+        set_up_by_user=False,
+    )
+    return approval_notice(ask, state, now=T0 + timedelta(minutes=minutes))
+
+
+async def test_c1_an_approval_ask_reaches_the_chat_app_the_user_is_on_as_a_composed_message(
+    tl: OutboxTimeline,
+) -> None:
+    tl.world.open_approvals.add("ap_1")
+    await tl.active_on(ConversationSource.TELEGRAM)
+    await tl.submit(_approval())
+    await tl.drain()
+
+    [message] = await tl.ledger()
+    assert message.state is MessageState.SENT
+    assert [source for source, _ in tl.sinks.bot] == ["telegram"]
+    assert tl.compose.context["items"][0]["outcome"] == "needs_you"
+    assert tl.sinks.bot_message_ids == [message.compose_attempt_id]
+    assert tl.sinks.push == []
+
+
+async def test_an_approval_ask_in_the_app_is_pushed_to_a_backgrounded_phone(
+    tl: OutboxTimeline,
+) -> None:
+    tl.world.linked.clear()
+    tl.world.open_approvals.add("ap_1")
+    await tl.submit(_approval())
+    await tl.drain()
+
+    assert tl.sinks.push == [("ap_1", "Send the deck to Bob: said")]
+
+
+async def test_c7_an_approval_answered_before_its_message_is_composed_is_never_told(
+    tl: OutboxTimeline,
+) -> None:
+    await tl.submit(_approval())
+    await tl.drain()
+
+    [item] = await tl.items()
+    assert (item.state, item.drop_reason) == (ItemState.DROPPED, DropReason.MOOT)
+    assert tl.sinks.bot == [] and tl.sinks.ws == [] and tl.sinks.push == []
+
+
+async def test_c4_the_reminder_replaces_an_ask_not_yet_told_and_is_one_message(
+    tl: OutboxTimeline,
+) -> None:
+    tl.world.open_approvals.add("ap_1")
+    await tl.at(18 * 60)
+    await tl.submit(_approval(state=ApprovalNoticeState.REMINDER, minutes=18 * 60))
+    await tl.drain()
+
+    [message] = await tl.ledger()
+    assert message.report_ids == ["hil:ap_1:reminder"]
+    assert any("already asked" in fact for fact in tl.compose.context["items"][0]["facts"])
+
+
+async def test_an_ask_that_lapsed_before_it_could_be_told_is_recorded_as_expired(
+    tl: OutboxTimeline,
+) -> None:
+    tl.world.open_approvals.add("ap_1")
+    await tl.at(25 * 60)
+    await tl.submit(_approval())
+    await tl.drain()
+
+    [item] = await tl.items()
+    assert (item.state, item.drop_reason) == (ItemState.DROPPED, DropReason.EXPIRED)
+    assert tl.sinks.bot == [] and tl.sinks.ws == []

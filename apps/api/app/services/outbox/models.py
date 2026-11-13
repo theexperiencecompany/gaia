@@ -26,6 +26,7 @@ class SubjectKind(StrEnum):
     REMINDER = "reminder"
     BROWSER_JOB = "browser_job"
     ACCOUNT = "account"
+    APPROVAL = "approval"
 
 
 class SubjectMerge(StrEnum):
@@ -47,6 +48,7 @@ class ProducerKind(StrEnum):
     BROWSER = "browser"
     ARTIFACT = "artifact"
     ACCOUNT = "account"
+    APPROVAL = "approval"
 
 
 class Initiative(StrEnum):
@@ -184,6 +186,26 @@ class ProducerGuidance(BaseModel):
     verbatim: bool = False
 
 
+class ApprovalOutcome(StrEnum):
+    """What became of an action the user was asked to approve."""
+
+    APPROVED = "approved"
+    DENIED = "denied"
+    EXPIRED = "expired"
+    WITHDRAWN = "withdrawn"
+    FAILED = "failed"
+    UNKNOWN = "unknown"
+
+
+class DecidedApproval(BaseModel):
+    """An approval the user's run asked for that has since been settled, in the words the user knows it by."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    summary: str = Field(min_length=1)
+    outcome: ApprovalOutcome
+
+
 class RunReport(_ReportBase):
     """The report of an executor run: the finish_task report, plus what the code knows of the run."""
 
@@ -194,6 +216,8 @@ class RunReport(_ReportBase):
     #: How the run's own calls disagreed with its report; set exactly when the outcome was downgraded.
     review_problem: str | None = None
     guidance: ProducerGuidance | None = None
+    #: The approvals the run asked for that are settled now; final, whatever the run's own thread says.
+    decided_approvals: list[DecidedApproval] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _outcome_declared(self) -> Self:

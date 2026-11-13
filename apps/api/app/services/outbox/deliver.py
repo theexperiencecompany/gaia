@@ -7,6 +7,7 @@ under a unique (user, compose attempt); the transport runs only for the insert t
 won. A per-user Redis lock only saves the second flusher a compose.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -30,7 +31,9 @@ from app.schemas.outbound import OutboundAttachment
 from app.services.analytics_service import capture
 from app.services.conversation_service import update_messages
 from app.services.outbox import compose as compose_module
+from app.services.outbox.approvals import approval_id_of_report, is_approval_open
 from app.services.outbox.compose import Composed
+from app.services.outbox.judge_models import Sensitivity
 from app.services.outbox.metrics import OUTBOX_ITEMS_DROPPED, OUTBOX_ITEMS_FAILED
 from app.services.outbox.models import (
     ComposeMode,
@@ -41,6 +44,7 @@ from app.services.outbox.models import (
     NoticeReport,
     UrgencyClass,
 )
+from app.services.outbox.prerendered import PrerenderedKind, prerendered_text
 from app.services.outbox.router import ChatChannel, NoDestinationError, Route, destination_of, route
 from app.services.outbox.transport.bot_queue import (
     OutboundResult,
@@ -48,6 +52,7 @@ from app.services.outbox.transport.bot_queue import (
     publish_outbound_message,
     publish_outbound_photo,
 )
+from app.services.outbox.transport.push import push_approval_pending
 from app.services.outbox.transport.ws_speech import publish_conversation_message
 from app.utils import clock
 from app.utils.auth_utils import load_user_context
@@ -55,6 +60,11 @@ from app.utils.redis_lock import DistributedLock
 from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.delivery import DeliveryMessageSent
 from shared.py.wide_events import log
+
+#: What a lock screen never previews: the push says only that something needs attention.
+PUSH_PREVIEW_HIDDEN_SENSITIVITIES = frozenset(
+    {Sensitivity.HEALTH, Sensitivity.FINANCE, Sensitivity.CREDENTIALS, Sensitivity.SOCIAL_PRIVATE}
+)
 
 
 class OutboxUserNotFoundError(RuntimeError):
@@ -79,6 +89,17 @@ def _max_class(items: list[OutboxItemDocument]) -> UrgencyClass:
     return max(
         (item.urgency for item in items if item.urgency is not None), default=UrgencyClass.ROUTINE
     )
+
+
+def _push_body(included: list[OutboxItemDocument], composed: Composed, locale: str) -> str:
+    """Return the text a push may show on a lock screen: the first bubble, unless an item is too private to preview."""
+    if any(
+        item.judgement is not None
+        and item.judgement.sensitivity in PUSH_PREVIEW_HIDDEN_SENSITIVITIES
+        for item in included
+    ):
+        return prerendered_text(PrerenderedKind.GENERIC_PREVIEW, locale)
+    return composed.parts[0] if composed.parts else ""
 
 
 async def _save_messages(
@@ -131,10 +152,26 @@ async def _publish_attachment(
     raise ValueError("an outbound attachment names a URL or an artifact")
 
 
+@dataclass(frozen=True, slots=True)
+class _SentAs:
+    """What a message is delivered as: the ledger message it is, the approval it asks about, what a lock screen shows."""
+
+    attempt_id: str
+    approval_id: str | None
+    push_body: str
+
+
 async def _alert(
-    user_id: str, destination: Route, composed: Composed, saved: dict[str, list[MessageModel]]
+    user_id: str,
+    destination: Route,
+    composed: Composed,
+    saved: dict[str, list[MessageModel]],
+    sent: _SentAs,
 ) -> ItemFailure | None:
-    """Alert the one destination; return why it did not land, or None when it did."""
+    """Alert the one destination; return why it did not land, or None when it did.
+
+    An app alert that asks about an approval also pushes to a backgrounded phone.
+    """
     target = destination.target
     if isinstance(target, ChatChannel):
         if composed.parts:
@@ -144,6 +181,7 @@ async def _alert(
                 composed.parts,
                 destination_override=target.platform_user_id,
                 ttl_seconds=composed.ttl_seconds,
+                outbox_message_id=sent.attempt_id,
             )
             if result is not OutboundResult.PUBLISHED:
                 return (
@@ -166,6 +204,10 @@ async def _alert(
                 "date": message.date,
                 "kind": message.kind.value,
             },
+        )
+    if sent.approval_id is not None and composed.parts:
+        await push_approval_pending(
+            user_id, destination.alert_conversation_id, sent.approval_id, sent.push_body
         )
     return None
 
@@ -220,7 +262,24 @@ async def _send(
     except Exception:
         await _fail_items(user_id, attempt_id, ItemFailure.RECORD_FAILED)
         raise
-    failure = await _alert(user_id, destination, composed, saved)
+    failure = await _alert(
+        user_id,
+        destination,
+        composed,
+        saved,
+        _SentAs(
+            attempt_id=attempt_id,
+            approval_id=next(
+                (
+                    approval_id
+                    for item in included
+                    if (approval_id := approval_id_of_report(item.report_id)) is not None
+                ),
+                None,
+            ),
+            push_body=_push_body(included, composed, _locale_of(user)),
+        ),
+    )
     if failure is not None:
         await _fail_items(user_id, attempt_id, failure)
     else:
@@ -290,6 +349,25 @@ async def _drop_expired(
     return [item for item in items if item.report_id not in expired]
 
 
+async def _drop_answered_approvals(
+    user_id: str, attempt_id: str, items: list[OutboxItemDocument]
+) -> list[OutboxItemDocument]:
+    """Record the approval asks the user can no longer answer and never tell them; return the rest."""
+    moot = [
+        item.report_id
+        for item in items
+        if (approval_id := approval_id_of_report(item.report_id)) is not None
+        and not await is_approval_open(approval_id)
+    ]
+    if not moot:
+        return items
+    dropped = await outbox_items_repository.drop_composing(
+        user_id, attempt_id, moot, DropReason.MOOT
+    )
+    OUTBOX_ITEMS_DROPPED.labels(reason=DropReason.MOOT.value).inc(dropped)
+    return [item for item in items if item.report_id not in moot]
+
+
 async def _flush(user: AuthenticatedUser, subject_id: str) -> None:
     attempt_id = str(uuid4())
     items = await outbox_items_repository.claim_queued_for_subject(
@@ -303,6 +381,7 @@ async def _flush(user: AuthenticatedUser, subject_id: str) -> None:
         return
     try:
         items = await _drop_expired(user.user_id, attempt_id, items)
+        items = await _drop_answered_approvals(user.user_id, attempt_id, items)
         if not items:
             return
         destination = await route(user, items)

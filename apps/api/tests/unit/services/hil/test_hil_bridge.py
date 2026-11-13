@@ -13,7 +13,6 @@ The bridge is what the user actually sees, and what stops them being asked twice
   strict and a verbatim retry re-prompts the user for something they just refused.
 """
 
-import asyncio
 from collections.abc import Iterator
 import json
 from typing import Any
@@ -62,15 +61,19 @@ PAUSED_RUN_STREAM_ID = "stream-of-the-paused-run"
 
 @pytest.fixture
 def bridge():
-    """Patch the publish side: the store's verdict, the SSE stream, the session collector, and the notifier."""
+    """Patch the publish side: the store's verdict, the SSE stream, the session collector, and the outbox."""
     session = MagicMock(tool_events=[])
     with (
         patch(f"{MODULE}.log") as log,
         patch(f"{MODULE}.upsert_pending_approval", new=AsyncMock(return_value=True)) as upsert,
         patch(f"{MODULE}.stream_manager") as stream,
         patch(f"{MODULE}.get_session", return_value=session) as get_session,
-        patch(f"{MODULE}.notify_approval_pending", new=AsyncMock()) as notify,
+        patch(f"{MODULE}.submit", new=AsyncMock()) as submit,
         patch(f"{MODULE}.conversation_repository") as conversations,
+        patch(
+            f"{MODULE}.approval_ledger_repository.get_by_approval_id",
+            new=AsyncMock(return_value=_ledger_row("ap_1")),
+        ),
     ):
         stream.publish_chunk = AsyncMock()
         conversations.set_message_approval_status = AsyncMock()
@@ -79,7 +82,7 @@ def bridge():
             "stream": stream,
             "session": session,
             "get_session": get_session,
-            "notify": notify,
+            "submit": submit,
             "conversations": conversations,
             "log": log,
         }
@@ -98,7 +101,6 @@ async def publish(bridge: dict, **overrides: Any) -> None:
         ),
         **overrides,
     )
-    await asyncio.sleep(0)  # let the fire-and-forget notify task start
 
 
 def published_frame(bridge: dict) -> dict[str, Any]:
@@ -114,19 +116,19 @@ class TestPublishExactlyOnce:
         await publish(bridge)
 
         bridge["stream"].publish_chunk.assert_awaited_once()
-        bridge["notify"].assert_awaited_once()
+        bridge["submit"].assert_awaited_once()
 
-    async def test_the_notification_names_the_user_conversation_and_approval(
-        self, bridge: dict
-    ) -> None:
-        # The wake-up is delivered out-of-band (push/email), so every one of these has
-        # to be the real value: a wrong user notifies a stranger, a wrong conversation
-        # or approval id deep-links the user to a card that isn't the one waiting.
+    async def test_the_notice_names_the_user_conversation_and_approval(self, bridge: dict) -> None:
+        # The ask is delivered out-of-band, so every one of these has to be the real
+        # value: a wrong user tells a stranger, a wrong conversation or approval id points
+        # the user at an ask that isn't the one waiting.
         await publish(bridge)
 
-        bridge["notify"].assert_awaited_once_with(
-            USER_ID, CONVERSATION_ID, "appr-1", "Send email — to: bob@example.com"
-        )
+        report = bridge["submit"].await_args.args[0]
+        assert report.recipient == USER_ID
+        assert report.subject.owner_conversation_id == CONVERSATION_ID
+        assert report.report_id == "hil:appr-1:pending"
+        assert report.subject.label == "Send email — to: bob@example.com"
 
     async def test_the_wide_event_names_the_approval_its_tool_and_its_stream(
         self, bridge: dict
@@ -156,7 +158,7 @@ class TestPublishExactlyOnce:
         await publish(bridge)
 
         bridge["stream"].publish_chunk.assert_not_awaited()
-        bridge["notify"].assert_not_awaited()
+        bridge["submit"].assert_not_awaited()
         assert bridge["session"].tool_events == []
 
     async def test_a_new_pause_is_counted_exactly_once(self, bridge: dict) -> None:
@@ -844,7 +846,6 @@ async def publish_ledger(**overrides: Any) -> None:
     kwargs: dict[str, Any] = {"live": False}
     with patch(f"{MODULE}.capture"):
         await publish_ledger_request(approval, **{**kwargs, **overrides})
-    await asyncio.sleep(0)  # let the fire-and-forget notify task start
 
 
 class TestLedgerCardPublish:
@@ -860,12 +861,13 @@ class TestLedgerCardPublish:
         assert data["age_seconds"] == 0
         assert data["ledger_version"] == 0
 
-    async def test_an_unheld_card_wakes_the_user_about_the_right_approval(
+    async def test_an_unheld_card_files_the_ask_about_the_right_approval(
         self, bridge: dict
     ) -> None:
         await publish_ledger()
 
-        bridge["notify"].assert_awaited_once_with(USER_ID, CONVERSATION_ID, "ap_1", "Send it")
+        report = bridge["submit"].await_args.args[0]
+        assert (report.recipient, report.report_id) == (USER_ID, "hil:ap_1:pending")
 
     async def test_the_wide_event_names_the_approval_tool_and_stream(self, bridge: dict) -> None:
         await publish_ledger()
@@ -1082,16 +1084,15 @@ class TestFlushHeldApprovalCardsDelivery:
         ]
 
         flushed = await flush_held_approval_cards(STREAM_ID)
-        await asyncio.sleep(0)
 
         assert flushed == 2
         card_1 = {"tool_data": _card_frame("ap_1")["tool_data"]}
         card_2 = {"tool_data": _card_frame("ap_2")["tool_data"]}
         assert self.published(bridge) == [(STREAM_ID, card_1), (STREAM_ID, card_2)]
         assert bridge["session"].tool_events == ["not-a-frame", {"text": "hello"}, card_1, card_2]
-        assert [c.args for c in bridge["notify"].await_args_list] == [
-            (USER_ID, CONVERSATION_ID, "ap_1", "summary ap_1"),
-            (USER_ID, CONVERSATION_ID, "ap_2", "summary ap_2"),
+        assert [c.args[0].report_id for c in bridge["submit"].await_args_list] == [
+            "hil:ap_1:pending",
+            "hil:ap_2:pending",
         ]
 
     async def test_an_unreadable_row_keeps_its_card_held_is_reported_and_the_rest_still_flush(

@@ -28,6 +28,7 @@ from app.agents.tools.execute.dispatch import (
 )
 from app.constants.agents import AgentTag
 from app.constants.general import EXECUTOR_THREAD_PREFIX
+from app.constants.hil import APPROVAL_EXPIRED_NOTE
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
@@ -66,7 +67,31 @@ from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilDecisionSubmitted, HilDecisionVia, HilRevoked
 from shared.py.wide_events import log
 
-DecisionKind = Literal["approve", "deny"]
+DecisionKind = Literal["approve", "deny", "expire"]
+
+_TARGET_STATES: dict[DecisionKind, LedgerState] = {
+    "approve": LedgerState.APPROVED,
+    "deny": LedgerState.DENIED,
+    "expire": LedgerState.EXPIRED,
+}
+_DECISION_LABELS: dict[LedgerState, Literal["approved", "denied", "expired"]] = {
+    LedgerState.APPROVED: "approved",
+    LedgerState.DENIED: "denied",
+    LedgerState.EXPIRED: "expired",
+}
+# The card status each decision settles to; an expired ask reads as the timeout clients already render.
+_CARD_STATUSES: dict[LedgerState, HILApprovalStatus] = {
+    LedgerState.APPROVED: HILApprovalStatus.APPROVED,
+    LedgerState.DENIED: HILApprovalStatus.DENIED,
+    LedgerState.EXPIRED: HILApprovalStatus.TIMEOUT,
+}
+# What the run that proposed a declined approval is told to do about it, by verdict.
+_VERDICT_GUIDANCE: dict[str, str] = {
+    "DENIED": "The user said no — report what you skipped and continue without it. "
+    "Do not re-request it.",
+    "EXPIRED": "The user did not answer before the ask expired, so it did not happen — "
+    "report what you did not do and continue without it. Do not re-request it.",
+}
 
 # A redeem that dies between claim and receipt leaves EXECUTING behind.
 # Reconciled lazily to UNKNOWN on the decide path — there is no sweeper by
@@ -171,9 +196,15 @@ async def _commit_decision(
     if kind == "approve" and feedback is not None and feedback.strip() != "":
         kind = "deny"
 
-    target = LedgerState.APPROVED if kind == "approve" else LedgerState.DENIED
+    target = _TARGET_STATES[kind]
+    if target is LedgerState.EXPIRED:
+        feedback = APPROVAL_EXPIRED_NOTE
     transitioned = await approval_ledger_repository.transition(
-        approval_id, LedgerState.PENDING, target, decided_by=user_id, feedback=feedback
+        approval_id,
+        LedgerState.PENDING,
+        target,
+        decided_by=None if target is LedgerState.EXPIRED else user_id,
+        feedback=feedback,
     )
     if not transitioned:
         current = await approval_ledger_repository.get_by_approval_id(approval_id)
@@ -196,7 +227,7 @@ async def _commit_decision(
         UserId(user_id),
         HilDecisionSubmitted(
             approval_id=approval_id,
-            decision="approved" if target is LedgerState.APPROVED else "denied",
+            decision=_DECISION_LABELS[target],
             tool_name=row.tool_name,
             via=via,
             card_age_seconds=card_age_seconds,
@@ -224,11 +255,11 @@ async def _commit_decision(
         await resume_owner_after_approval(row)
     await publish_ledger_decision(row, target, feedback=feedback)
     await sync_conversation_approval_flag(row.conversation_id, row.user_id)
-    if target is LedgerState.DENIED:
-        # Denials schedule nothing, but the agent still needs the verdict and a
+    if target.name in _VERDICT_GUIDANCE:
+        # A denial or an expiry schedules nothing, but the agent still needs the verdict and a
         # wake alone only reaches a running run — deliver, so an idle
         # conversation starts one that reports what was skipped.
-        await _deliver_verdict(row, "DENIED", feedback)
+        await _deliver_verdict(row, target.name, feedback)
         # A background todo has no other surface: leave the skip in its log.
         await record_owner_deny(row, feedback)
     elif queued:
@@ -337,7 +368,7 @@ async def _deliver_ticket(row: ApprovalLedgerDocument) -> None:
 
 
 async def _deliver_verdict(row: ApprovalLedgerDocument, outcome: str, result: object) -> None:
-    """Steer or start a run with a non-approve verdict (deny today).
+    """Steer or start a run with a verdict that declines the action (denied or expired).
 
     The inbox wake alone only reaches a running run; an idle conversation
     would never wrap up ("user said no" arrives nowhere). Delivery starts one
@@ -352,8 +383,7 @@ async def _deliver_verdict(row: ApprovalLedgerDocument, outcome: str, result: ob
     task = (
         f"DECISION {row.approval_id}={outcome} {row.summary}"
         + (f" :: {preview}" if preview else "")
-        + " The user said no — report what you skipped and continue without it. "
-        "Do not re-request it."
+        + f" {_VERDICT_GUIDANCE[outcome]}"
     )
     try:
         await deliver_to_executor(
@@ -619,9 +649,7 @@ async def publish_ledger_decision(
     proposing stream when it is still live, persists the settled status for
     reload, and broadcasts so listening clients refresh.
     """
-    mapped = (
-        HILApprovalStatus.APPROVED if status is LedgerState.APPROVED else HILApprovalStatus.DENIED
-    )
+    mapped = _CARD_STATUSES[status]
     card = SettledApprovalCard(
         approval_id=row.approval_id,
         tool_call=GatedCall(name=row.tool_name, id="", args=row.args),

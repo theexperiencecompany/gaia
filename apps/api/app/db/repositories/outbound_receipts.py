@@ -30,5 +30,11 @@ class OutboundReceiptsRepository(MongoRepository[OutboundReceiptDocument, Outbou
             return False
         return True
 
+    async def outbox_message_ids_of(self, platform_message_id: str) -> list[str]:
+        """Return the outbox messages one platform message was sent as a part of."""
+        return await self._raw_collection().distinct(
+            "outbox_message_id", {"platform_message_ids": platform_message_id}
+        )
+
 
 outbound_receipts_repository = OutboundReceiptsRepository()

@@ -490,12 +490,20 @@ async def hil_world(
         ),
         # The ledger path is off in these worlds, so the ledger holds no rows.
         patch.object(approval_ledger_repository, "list_open", new=AsyncMock(return_value=[])),
+        patch.object(
+            approval_ledger_repository, "list_pending_expired", new=AsyncMock(return_value=[])
+        ),
+        patch.object(
+            approval_ledger_repository,
+            "list_pending_reminders_due",
+            new=AsyncMock(return_value=[]),
+        ),
         patch.object(conversation_repository, "refresh_live_approval_flag", new=AsyncMock()),
         # None of these conversations is a tracked todo's chat.
         patch.object(conversation_repository, "get_todo_id", new=AsyncMock(return_value=None)),
         patch.object(user_repository, "get", new=AsyncMock(return_value=stored_user)),
         patch.object(user_repository, "set_hil_tool_override", new=_set_override),
-        patch("app.services.hil.bridge.notify_approval_pending", new=AsyncMock()),
+        patch("app.services.hil.bridge.submit", new=AsyncMock()),
         patch.object(websocket_manager, "broadcast_to_user", new=_broadcast),
         patch.object(
             build_graph_module, "get_tools_store", AsyncMock(return_value=InMemoryStore())
@@ -973,7 +981,7 @@ class TestApprovalExpiry:
 
             counts = await sweep()
 
-            assert counts == "expired=1 redispatched=0", (
+            assert counts == "expired=1 redispatched=0 ledger_expired=0 ledger_reminded=0", (
                 f"the sweep must report the one expiry it performed, got {counts!r}"
             )
             record = world.approvals.only_record()
@@ -1003,7 +1011,7 @@ class TestApprovalExpiry:
 
             counts = await sweep()
 
-            assert counts == "expired=0 redispatched=0", (
+            assert counts == "expired=0 redispatched=0 ledger_expired=0 ledger_reminded=0", (
                 f"a live approval is not the sweep's to touch, got {counts!r}"
             )
             record = world.approvals.only_record()
@@ -1221,7 +1229,7 @@ class TestResumeAgainstAThreadWithNoInterrupt:
             orphan_the_resume(world)
             counts = await sweep()
 
-            assert counts == "expired=0 redispatched=1", (
+            assert counts == "expired=0 redispatched=1 ledger_expired=0 ledger_reminded=0", (
                 f"the sweep must re-dispatch the crashed resume, got {counts!r}"
             )
             assert len(await world.outputs_for(GATED_CALL_ID)) == 1, (

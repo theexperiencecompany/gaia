@@ -38,7 +38,6 @@ async function drive(sseBody: string) {
   const onChunk = vi.fn();
   const onDone = vi.fn();
   const onError = vi.fn();
-  const onApproval = vi.fn();
   const onBoundary = vi.fn();
   const onNotice = vi.fn();
   await streamChat(
@@ -48,7 +47,6 @@ async function drive(sseBody: string) {
     onDone,
     onError,
     "/api/v1/bot/chat-stream",
-    onApproval,
     onBoundary,
     onNotice,
   );
@@ -129,7 +127,7 @@ describe("streamChat — the rate-limit notice", () => {
 
 describe("streamChat — the 401 session-token retry", () => {
   it("keeps every handler on the retried attempt", async () => {
-    // Bug: retry re-invoked the streamer with `onApprovalUpdate` and the boundary
+    // Bug: retry re-invoked the streamer with the boundary
     // handler but not `onNotice`, so a routine stale session token (12min TTL)
     // silently dropped that turn's rate-limit notice with no failure signal.
     const body = frames(
@@ -159,7 +157,6 @@ describe("streamChat — the 401 session-token retry", () => {
       vi.fn(),
       vi.fn(),
       "/api/v1/bot/chat-stream",
-      vi.fn(),
       vi.fn(),
       onNotice,
     );

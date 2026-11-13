@@ -7,7 +7,7 @@ never as done; an error is a failed outcome with the reason the runner knows.
 
 from typing import NamedTuple
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.background.session import ExecutorRun
 from app.agents.core.outcome_review import OutcomeReview
@@ -23,6 +23,7 @@ from app.constants.task_report import FailureReason, FailureRecovery
 from app.models.ownership_models import DeliveryPolicy
 from app.models.task_report_models import ReportFailure, TaskReport
 from app.services.outbox.models import (
+    DecidedApproval,
     Initiative,
     ProducerKind,
     RunReport,
@@ -40,6 +41,7 @@ class RunOutcome(BaseModel):
     report: TaskReport
     result: str = ""
     review_problem: str | None = None
+    decided_approvals: list[DecidedApproval] = Field(default_factory=list)
 
 
 def _unconfirmed(result: str, problem: str | None) -> RunOutcome:
@@ -118,6 +120,7 @@ def workflow_run_report(
         report=outcome.report,
         result=outcome.result,
         review_problem=outcome.review_problem,
+        decided_approvals=outcome.decided_approvals,
     )
 
 
@@ -154,4 +157,5 @@ def run_report(run: ExecutorRun, outcome: RunOutcome) -> RunReport:
         report=outcome.report,
         result=outcome.result,
         review_problem=outcome.review_problem,
+        decided_approvals=outcome.decided_approvals,
     )

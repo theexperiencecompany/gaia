@@ -45,6 +45,8 @@ OUTBOX_COMPOSE_LABEL: Final = "outbox_compose"
 ASK_REPORT_PREFIX: Final = "ask:"
 WORKFLOW_REPORT_PREFIX: Final = "wf:"
 TODO_REPORT_PREFIX: Final = "todo:"
+APPROVAL_REPORT_PREFIX: Final = "hil:"
+APPROVAL_SUBJECT_PREFIX: Final = "approval:"
 
 #: What a subject is called to the user when the producer has no name for it: an ask is the request.
 ASK_LABEL_FALLBACK: Final = "Your request"

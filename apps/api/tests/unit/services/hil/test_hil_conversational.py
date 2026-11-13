@@ -73,6 +73,7 @@ def resolver():
         patch(f"{MODULE}.abandon_conversation_approvals", new=AsyncMock()) as abandon,
         patch(f"{MODULE}.ainvoke_structured", new=AsyncMock()) as llm,
         patch(f"{MODULE}.approval_ledger_repository") as ledger,
+        patch(f"{MODULE}.asked_approvals", new=AsyncMock(return_value=[])),
         patch(f"{MODULE}.is_jev_reply_enabled", new=AsyncMock(return_value=False)) as jev_flag,
     ):
         ledger.list_open = AsyncMock(return_value=[])
@@ -712,6 +713,38 @@ class TestLedgerRows:
         assert "'yes send it'" in text
         assert "draft the quarterly deck email" in text
         ledger["resolve"].assert_not_awaited()
+
+    async def test_the_reply_decides_the_approval_it_answers_even_when_asked_in_another_chat(
+        self, ledger: dict[str, AsyncMock]
+    ) -> None:
+        asked_elsewhere = _ledger_row("ap_asked").model_copy(update={"conversation_id": "web-1"})
+        ledger["list_open"].return_value = [_ledger_row("ap_here")]
+        ledger["llm"].return_value = DecisionResult(action="approve")
+
+        with patch(
+            f"{MODULE}.asked_approvals", new=AsyncMock(return_value=[asked_elsewhere])
+        ) as asked:
+            action = await resolve_pending_from_message(
+                CONVERSATION_ID, USER_ID, "yes", reply_to_platform_message_id="wamid-1"
+            )
+
+        assert action == "approve"
+        asked.assert_awaited_once_with(USER_ID, "wamid-1")
+        assert decided(ledger["decide"]) == [("ap_asked", "approve", None)]
+
+    async def test_moving_on_abandons_only_the_approval_that_was_asked(
+        self, ledger: dict[str, AsyncMock]
+    ) -> None:
+        ledger["list_open"].return_value = [_ledger_row("ap_here")]
+        ledger["llm"].return_value = DecisionResult(action="unrelated")
+
+        with patch(
+            f"{MODULE}.asked_approvals", new=AsyncMock(return_value=[_ledger_row("ap_asked")])
+        ):
+            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "new topic")
+
+        assert action == "unrelated"
+        assert [row[0] for row in decided(ledger["decide"])] == ["ap_asked"]
 
     async def test_an_approval_with_a_change_denies_the_row_with_that_change(
         self, ledger: dict[str, AsyncMock]

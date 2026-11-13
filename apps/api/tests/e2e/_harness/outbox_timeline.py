@@ -164,6 +164,8 @@ class World:
     sessions: dict[str, tuple[str, str, str | None]] = field(default_factory=dict)
     saved: dict[str, list[str]] = field(default_factory=dict)
     unread: set[str] = field(default_factory=set)
+    #: Approvals the user can still answer; every other approval is decided or lapsed.
+    open_approvals: set[str] = field(default_factory=set)
 
     def link(self, platform: str, account_id: str) -> None:
         self.linked[platform] = account_id
@@ -208,6 +210,10 @@ class Sinks:
     #: (platform, what the bot fetches: a URL or an artifact path, caption) for each file sent.
     files: list[tuple[str, str, str | None]] = field(default_factory=list)
     ws: list[tuple[str, str]] = field(default_factory=list)
+    #: (approval id, body) of each approval push to a backgrounded phone.
+    push: list[tuple[str, str]] = field(default_factory=list)
+    #: The outbox message id each bot message was published under, parallel to `bot`.
+    bot_message_ids: list[str | None] = field(default_factory=list)
     analytics: list[DeliveryMessageSent] = field(default_factory=list)
     bot_result: OutboundResult = OutboundResult.PUBLISHED
 
@@ -260,6 +266,23 @@ class OutboxTimeline:
 
 
 @contextmanager
+def _approval_doubles(world: World, sinks: Sinks) -> Iterator[None]:
+    """Approvals the world holds open, and the push transport they are asked on."""
+
+    async def push(user_id: str, conversation_id: str, approval_id: str, body: str) -> None:
+        sinks.push.append((approval_id, body))
+
+    async def is_open(approval_id: str) -> bool:
+        return approval_id in world.open_approvals
+
+    with (
+        patch(f"{DELIVER}.push_approval_pending", push),
+        patch(f"{DELIVER}.is_approval_open", is_open),
+    ):
+        yield
+
+
+@contextmanager
 def _patched(
     world: World, sinks: Sinks, arq: FakeArq, compose: ScriptedCompose, judge: ScriptedJudge
 ) -> Iterator[None]:
@@ -305,7 +328,9 @@ def _patched(
         *,
         destination_override: str | None = None,
         ttl_seconds: int | None = None,
+        outbox_message_id: str | None = None,
     ) -> OutboundResult:
+        sinks.bot_message_ids.append(outbox_message_id)
         sinks.bot.append((source.value, list(parts)))
         sinks.bot_destinations.append(destination_override)
         sinks.bot_ttls.append(ttl_seconds)
@@ -355,6 +380,7 @@ def _patched(
         enter(patch(f"{DELIVER}.publish_outbound_photo", publish_photo))
         enter(patch(f"{DELIVER}.publish_outbound_file", publish_file))
         enter(patch(f"{DELIVER}.publish_conversation_message", publish_ws))
+        enter(_approval_doubles(world, sinks))
         enter(patch(f"{DELIVER}.capture", capture))
         enter(patch(f"{DELIVER}.load_user_context", load_user))
         enter(patch(f"{COMPOSE}.ainvoke_structured", compose))

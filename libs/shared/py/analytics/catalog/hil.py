@@ -38,17 +38,17 @@ class HilCardShown(ServerEvent):
     background: bool
 
 
-#: Where an approval decision was made: a card tap, the batch review, a chat reply, or auto mode's judge.
-HilDecisionVia = Literal["card", "batch", "chat", "auto"]
+#: Where an approval decision was made: a card tap, the batch review, a chat reply, auto mode's judge, or the clock.
+HilDecisionVia = Literal["card", "batch", "chat", "auto", "expiry"]
 
 
 class HilDecisionSubmitted(ServerEvent):
-    """A gated call was decided: a committed ledger decision, or auto mode's judge settling it with no card."""
+    """A gated call was decided: a committed ledger decision (an expiry counts), or auto mode's judge settling it with no card."""
 
     event: ClassVar[str] = "hil:decision_submitted"
     budget_per_user_day: ClassVar[int] = 10
 
-    decision: Literal["approved", "denied"]
+    decision: Literal["approved", "denied", "expired"]
     tool_name: Identifier
     via: HilDecisionVia
     # Absent on an auto decision, which settles the call before any ledger row exists.

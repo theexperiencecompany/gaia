@@ -1738,6 +1738,7 @@ async def create_outbound_receipt_indexes() -> None:
         await asyncio.gather(
             receipts.create_index([("envelope_id", 1), ("status", 1)], unique=True),
             receipts.create_index([("outbox_message_id", 1), ("part_index", 1)]),
+            receipts.create_index("platform_message_ids"),
             receipts.create_index(
                 "recorded_at", expireAfterSeconds=OUTBOUND_RECEIPTS_RETENTION_SECONDS
             ),

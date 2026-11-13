@@ -12,6 +12,7 @@ user's flag is on, the LLM on its transport failure. Fails safe: a classifier
 error leaves approvals pending, never approves.
 """
 
+from collections.abc import Sequence
 import contextlib
 from typing import Literal, assert_never
 
@@ -40,6 +41,7 @@ from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.hil.bridge import build_action_detail
 from app.services.hil.jev_reply import ask_jev_reply, settle_reply
 from app.services.hil.ledger_decide import LedgerDecision, decide_ledger
+from app.services.hil.pending_ask import asked_approvals
 from app.services.hil.prompts import (
     CONVERSATIONAL_BATCH_PROMPT,
     CONVERSATIONAL_CONTEXT_BLOCK,
@@ -63,6 +65,7 @@ LEDGER_OUTCOME_TEXT: dict[LedgerState, str] = {
     LedgerState.FAILED: "approved by the user but execution failed",
     LedgerState.UNKNOWN: "approved by the user but the outcome is unknown; never retried",
     LedgerState.REVOKED: "withdrawn by the agent; the action did NOT run",
+    LedgerState.EXPIRED: "expired with no answer; the action did NOT run",
 }
 
 
@@ -76,13 +79,12 @@ async def resolve_pending_from_message(
     user_id: str,
     message: str,
     history: list[MessageDict] | None = None,
+    reply_to_platform_message_id: str | None = None,
 ) -> DecisionAction | None:
-    """Resolve the conversation's pending approval(s) from message.
+    """Resolve the pending approval(s) the user's message answers; None when it answered none.
 
-    history is a recent window of prior turns (context for the classifier).
-    Returns the overall classified action ("approve" when anything was approved,
-    "deny" when things were only declined, "unrelated" when the user moved on),
-    or None when nothing was pending or the reply addressed none of it.
+    A ledger approval is the one the quoted (else the latest asking) message told, else the
+    conversation's own. Returns "approve", "deny" or "unrelated" (the user moved on).
     """
     pending = await list_pending_for_conversation(conversation_id)
     if pending:
@@ -90,7 +92,9 @@ async def resolve_pending_from_message(
             return await _resolve_single(pending[0], conversation_id, user_id, message, history)
         return await _resolve_batch(pending, conversation_id, user_id, message, history)
     # Barrier store empty: ledger-enabled users' rows live in approval_ledger.
-    ledger_pending = await _list_pending_ledger(conversation_id)
+    ledger_pending = await asked_approvals(
+        user_id, reply_to_platform_message_id
+    ) or await _list_pending_ledger(conversation_id)
     if not ledger_pending:
         return None
     if len(ledger_pending) == 1:
@@ -116,7 +120,7 @@ async def _resolve_single(
         # The user moved on. Abandon the paused run so it resumes, sees a refusal,
         # wraps up, and frees the conversation's executor lock for the new turn.
         if isinstance(record, ApprovalLedgerDocument):
-            await _abandon_ledger_approvals(conversation_id, user_id)
+            await _abandon_ledger_approvals([record], user_id)
         else:
             await abandon_conversation_approvals(conversation_id, user_id, UNRELATED_FEEDBACK)
         return "unrelated"
@@ -147,8 +151,9 @@ async def _resolve_batch(
         message, action_details, history, user_id=user_id
     )
     if result.unrelated:
-        if pending and isinstance(pending[0], ApprovalLedgerDocument):
-            await _abandon_ledger_approvals(conversation_id, user_id)
+        ledger_rows = [row for row in pending if isinstance(row, ApprovalLedgerDocument)]
+        if ledger_rows:
+            await _abandon_ledger_approvals(ledger_rows, user_id)
         else:
             await abandon_conversation_approvals(conversation_id, user_id, UNRELATED_FEEDBACK)
         return "unrelated"
@@ -391,12 +396,12 @@ async def _safe_resolve_ledger(
         )
 
 
-async def _abandon_ledger_approvals(conversation_id: str, user_id: str) -> None:
-    """Deny every pending ledger row because the user moved on.
+async def _abandon_ledger_approvals(rows: Sequence[ApprovalLedgerDocument], user_id: str) -> None:
+    """Deny each pending ledger row because the user moved on.
 
     Denies with the moved-on feedback, which wakes the agent to wrap up.
     """
-    for row in await _list_pending_ledger(conversation_id):
+    for row in rows:
         with contextlib.suppress(ApprovalRequestNotFoundError, ApprovalRequestForbiddenError):
             await decide_ledger(
                 row.approval_id,

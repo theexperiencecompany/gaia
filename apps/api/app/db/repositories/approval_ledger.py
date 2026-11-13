@@ -2,8 +2,8 @@
 
 One row per gated call envelope. Uncached (cache_policy = None): rows are
 decision state read at low volume, and every transition is a conditional write
-the entity cache could only misrepresent. Rows never expire — a pending row
-leaves only by user decision or agent revoke.
+the entity cache could only misrepresent. A pending row leaves by user decision,
+agent revoke or expiry (ledger_decide), never by a timer here.
 
 Dedup is atomic: a partial unique index on (conversation_id, fingerprint)
 over live states makes the second concurrent insert fail, and the loser reads
@@ -17,6 +17,7 @@ from uuid import uuid4
 
 from pymongo.errors import DuplicateKeyError
 
+from app.constants.hil import APPROVAL_DEFAULT_TTL_SECONDS, APPROVAL_REMINDER_AT
 from app.db.repositories.base import MongoRepository
 from app.models.hil_models import (
     LIVE_LEDGER_STATES,
@@ -45,9 +46,16 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
         if existing is not None:
             return existing.approval_id
         approval_id = f"ap_{uuid4().hex[:12]}"
+        now = datetime.now(UTC)
         try:
             await self.create(
-                ApprovalLedgerDocument(approval_id=approval_id, **proposal.model_dump())
+                ApprovalLedgerDocument(
+                    approval_id=approval_id,
+                    expires_at=now + timedelta(seconds=APPROVAL_DEFAULT_TTL_SECONDS),
+                    remind_at=now
+                    + timedelta(seconds=APPROVAL_DEFAULT_TTL_SECONDS * APPROVAL_REMINDER_AT),
+                    **proposal.model_dump(),
+                )
             )
         except DuplicateKeyError:
             # Lost the insert race (partial unique index on live
@@ -100,6 +108,44 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
             {"$set": update, "$inc": {"v": 1}},
         )
         return bool(result.modified_count)
+
+    async def mark_reminded(self, approval_id: str) -> bool:
+        """Stamp the reminder of a still-pending approval as filed; False when it already was."""
+        result = await self._raw_collection().update_one(
+            {"approval_id": approval_id, "state": str(LedgerState.PENDING), "reminded_at": None},
+            {"$set": {"reminded_at": datetime.now(UTC)}},
+        )
+        return bool(result.modified_count)
+
+    async def list_pending_expired(self, now: datetime) -> list[ApprovalLedgerDocument]:
+        """List PENDING rows whose ask ran out before now, oldest first."""
+        return await self._list_pending_due("expires_at", now)
+
+    async def list_pending_reminders_due(self, now: datetime) -> list[ApprovalLedgerDocument]:
+        """List PENDING rows whose reminder is due at now and was never sent, oldest first."""
+        return await self._list_pending_due("remind_at", now, unreminded_only=True)
+
+    async def _list_pending_due(
+        self, field: str, now: datetime, *, unreminded_only: bool = False
+    ) -> list[ApprovalLedgerDocument]:
+        query: dict[str, Any] = {"state": str(LedgerState.PENDING), field: {"$lte": now}}
+        if unreminded_only:
+            query["reminded_at"] = None
+        cursor = self._raw_collection().find(query).sort(field, 1)
+        return [
+            ApprovalLedgerDocument.model_validate(raw) for raw in await cursor.to_list(length=200)
+        ]
+
+    async def list_pending_for_user(self, user_id: str) -> list[ApprovalLedgerDocument]:
+        """List every PENDING row the user is being asked about, oldest first."""
+        cursor = (
+            self._raw_collection()
+            .find({"user_id": user_id, "state": str(LedgerState.PENDING)})
+            .sort("created_at", 1)
+        )
+        return [
+            ApprovalLedgerDocument.model_validate(raw) for raw in await cursor.to_list(length=200)
+        ]
 
     async def claim_executing(self, approval_id: str) -> bool:
         """Move APPROVED -> EXECUTING and stamp the claim time, atomically.

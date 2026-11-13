@@ -2565,7 +2565,8 @@
               "reminder",
               "browser",
               "artifact",
-              "account"
+              "account",
+              "approval"
             ],
             "title": "Producer",
             "type": "string"
@@ -2577,7 +2578,8 @@
               "todo_run",
               "reminder",
               "browser_job",
-              "account"
+              "account",
+              "approval"
             ],
             "title": "Subject Kind",
             "type": "string"
@@ -3341,17 +3343,17 @@
       "class": "HilDecisionSubmitted",
       "owner": "server",
       "domain": "hil",
-      "description": "A gated call was decided: a committed ledger decision, or auto mode's judge settling it with no card.",
+      "description": "A gated call was decided: a committed ledger decision (an expiry counts), or auto mode's judge settling it with no card.",
       "previous_names": [],
       "budget_per_user_day": 10,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A gated call was decided: a committed ledger decision, or auto mode's judge settling it with no card.",
+        "description": "A gated call was decided: a committed ledger decision (an expiry counts), or auto mode's judge settling it with no card.",
         "properties": {
           "decision": {
-            "enum": ["approved", "denied"],
+            "enum": ["approved", "denied", "expired"],
             "title": "Decision",
             "type": "string"
           },
@@ -3361,7 +3363,7 @@
             "type": "string"
           },
           "via": {
-            "enum": ["card", "batch", "chat", "auto"],
+            "enum": ["card", "batch", "chat", "auto", "expiry"],
             "title": "Via",
             "type": "string"
           },

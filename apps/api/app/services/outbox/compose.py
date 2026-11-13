@@ -111,6 +111,10 @@ def _item_view(item: OutboxItemDocument) -> dict[str, object]:
                 view["review_problem"] = report.review_problem
             if report.guidance is not None:
                 view["guidance"] = report.guidance.model_dump(mode="json", exclude_none=True)
+            if report.decided_approvals:
+                view["decided_approvals"] = [
+                    decided.model_dump(mode="json") for decided in report.decided_approvals
+                ]
         case NoticeReport():
             view["outcome"] = report.outcome.value
             view["facts"] = report.facts

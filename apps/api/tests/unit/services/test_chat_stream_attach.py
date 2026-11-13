@@ -281,7 +281,11 @@ class TestResolvePendingApprovalTurnApproves:
 
         assert result is True
         classifier.assert_awaited_once_with(
-            "conv-1", USER_ID, "yes", [{"role": "assistant", "content": "Send the email?"}]
+            "conv-1",
+            USER_ID,
+            "yes",
+            [{"role": "assistant", "content": "Send the email?"}],
+            reply_to_platform_message_id=None,
         )
 
 

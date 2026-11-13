@@ -40,8 +40,12 @@ from app.constants.chat import (
     RECURSION_LIMIT_MESSAGE,
     TURN_REPLY_NOT_SAVED,
 )
-from app.constants.comms import DISPATCH_ACK_EMOJI, CommsDirectiveKind
-from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_HISTORY_TURNS
+from app.constants.comms import DISPATCH_ACK_EMOJI, EMOJI_TAG, CommsDirectiveKind
+from app.constants.hil import (
+    APPROVAL_APPROVED_REACTION,
+    APPROVAL_DENIED_REACTION,
+    HIL_CLASSIFIER_HISTORY_TURNS,
+)
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.repositories.conversations import conversation_repository
@@ -529,7 +533,13 @@ async def _resolve_pending_approval_turn(
 
     try:
         history = _recent_history(body.messages)
-        action = await resolve_pending_from_message(conversation_id, user_id, message, history)
+        action = await resolve_pending_from_message(
+            conversation_id,
+            user_id,
+            message,
+            history,
+            reply_to_platform_message_id=body.reply_to_platform_message_id,
+        )
     except Exception as e:  # chat must survive this
         # Critical path for every message but an optional feature; on failure the
         # safe degradation is a normal turn (approval stays pending till the sweep
@@ -545,21 +555,22 @@ async def _resolve_pending_approval_turn(
     if action not in ("approve", "deny"):
         return False
 
-    ack = HIL_ACK_APPROVED if action == "approve" else HIL_ACK_DENIED
-    state.complete_message = ack
+    # Acknowledged by a reaction on the reply, never words: the run the decision wakes reports what became of it.
+    reaction = APPROVAL_APPROVED_REACTION if action == "approve" else APPROVAL_DENIED_REACTION
+    state.complete_message = f"<{EMOJI_TAG}>{reaction}</{EMOJI_TAG}>"
     state.turn_completed_at = datetime.now(UTC)
     state.ack_perf = time.perf_counter()
-    await stream_manager.publish_chunk(stream_id, format_sse_response(ack))
     if state.ttft_perf is None:
         state.ttft_perf = state.ack_perf
     _stamp_turn_latencies(state)
+    await _persist_turn(stream_id, body, user, conversation_id, state)
+    await _publish_emoji_ack(stream_id, state)
     await stream_manager.publish_chunk(
         stream_id,
         format_sse_data(
             MainResponseCompleteFrame(main_response_complete=True).model_dump(exclude_none=True)
         ),
     )
-    await _persist_turn(stream_id, body, user, conversation_id, state)
     await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
     await stream_manager.complete_stream(stream_id)
     return True

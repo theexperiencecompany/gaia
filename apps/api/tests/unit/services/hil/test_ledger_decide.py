@@ -18,6 +18,7 @@ from app.constants.cache import (
     EXECUTOR_BUSY_TTL,
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
 )
+from app.constants.hil import APPROVAL_EXPIRED_NOTE
 from app.constants.log_tags import LogTag
 from app.models.execute_models import DispatchError, DispatchErrorKind
 from app.models.hil_models import ApprovalLedgerDocument, LedgerState
@@ -2255,3 +2256,69 @@ class TestDecideLedgerAlwaysToolScope:
         ):
             await self._decide(repo, decision="approve", scope="always_tool")
         repo.transition.assert_not_awaited()
+
+
+@pytest.mark.unit
+class TestExpireLedger:
+    """Expiry is a decision kind: it commits through the same CAS and tells the proposing run it did not happen."""
+
+    async def test_expiry_commits_unattributed_and_tells_the_run_the_ask_lapsed(self) -> None:
+        repo = _repo(_row())
+        with (
+            patch(f"{MODULE}.approval_ledger_repository", new=repo),
+            patch(f"{MODULE}.publish_ledger_decision", new=AsyncMock()) as publish,
+            patch(f"{MODULE}._deliver_ticket", new=AsyncMock()) as ticket,
+            patch(f"{MODULE}._deliver_verdict", new=AsyncMock()) as verdict,
+            patch(f"{MODULE}.capture") as capture,
+        ):
+            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="expire", via="expiry")
+
+        assert (outcome.committed, outcome.state) == (True, LedgerState.EXPIRED)
+        repo.transition.assert_awaited_once_with(
+            "ap_abc",
+            LedgerState.PENDING,
+            LedgerState.EXPIRED,
+            decided_by=None,
+            feedback=APPROVAL_EXPIRED_NOTE,
+        )
+        ticket.assert_not_awaited()
+        assert verdict.await_args.args[1] == "EXPIRED"
+        assert publish.await_args.args[1] is LedgerState.EXPIRED
+        event = capture.call_args.args[1]
+        assert (event.decision, event.via) == ("expired", "expiry")
+
+    async def test_the_run_is_told_it_did_not_happen_and_not_to_ask_again(self) -> None:
+        row = _row()
+        with patch(f"{RUNNER}.deliver_to_executor", new=AsyncMock()) as deliver:
+            await ledger_decide._deliver_verdict(row, "EXPIRED", None)
+
+        task = deliver.await_args.args[2]
+        assert "EXPIRED" in task
+        assert "did not happen" in task
+        assert "Do not re-request it" in task
+        assert "said no" not in task
+
+    async def test_an_approval_answered_first_is_not_expired(self) -> None:
+        repo = _repo(_row())
+        repo.transition = AsyncMock(return_value=False)
+        with (
+            patch(f"{MODULE}.approval_ledger_repository", new=repo),
+            patch(f"{MODULE}.publish_ledger_decision", new=AsyncMock()) as publish,
+            patch(f"{MODULE}._deliver_verdict", new=AsyncMock()) as verdict,
+        ):
+            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="expire", via="expiry")
+
+        assert outcome.committed is False
+        publish.assert_not_awaited()
+        verdict.assert_not_awaited()
+
+    async def test_an_expired_card_settles_as_the_timeout_clients_render(self) -> None:
+        with (
+            patch(f"{MODULE}._publish_entry", new=AsyncMock()) as published,
+            patch(f"{MODULE}._persist_decision_status", new=AsyncMock()) as persisted,
+            patch(f"{MODULE}._broadcast_decision", new=AsyncMock()),
+        ):
+            await publish_ledger_decision(_row(proposing_run_id=None), LedgerState.EXPIRED)
+
+        published.assert_not_awaited()
+        assert persisted.await_args.args[1] == "timeout"

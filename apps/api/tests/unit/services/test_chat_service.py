@@ -30,6 +30,7 @@ from app.agents.core.background.session import (
     teardown_session,
 )
 from app.constants.chat import EMPTY_RESPONSE_FALLBACK, TURN_REPLY_NOT_SAVED
+from app.constants.hil import APPROVAL_APPROVED_REACTION, APPROVAL_DENIED_REACTION
 from app.core.stream_manager import stream_manager as _stream_manager
 from app.models.chat_models import ConversationModel, MessageKind
 from app.models.message_models import MessageRequestWithHistory, SelectedWorkflowData
@@ -1659,6 +1660,58 @@ class TestRunChatStreamBackground:
         assert state.ttft_perf == 52.0
         assert state.ttft_ms == 2000.0
         assert state.e2e_ack_ms == 2000.0
+
+    @pytest.mark.parametrize(
+        ("action", "emoji"),
+        [("approve", APPROVAL_APPROVED_REACTION), ("deny", APPROVAL_DENIED_REACTION)],
+    )
+    async def test_an_approval_reply_is_acknowledged_by_a_reaction_never_by_words(
+        self, test_user, existing_conv_body, action, emoji
+    ):
+        """The run the decision wakes reports what became of it; the reply itself gets a reaction."""
+        state = _StreamState()
+        sm = _make_stream_manager_mock()
+        save = AsyncMock()
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.resolve_pending_from_message",
+                new=AsyncMock(return_value=action),
+            ),
+            patch("app.services.chat.stream.save_bot_reply", new=save),
+        ):
+            handled = await _resolve_pending_approval_turn(
+                existing_conv_body, test_user, "conv_existing_123", "s_approval", state, "whatsapp"
+            )
+
+        assert handled is True
+        reply = save.await_args.kwargs["reply"]
+        assert (reply.kind, reply.complete_message) == (MessageKind.EMOJI_ACK, emoji)
+        assert reply.reacts_to_message_id == state.user_message_id
+        frames = [
+            json.loads(call.args[1].removeprefix("data: "))
+            for call in sm.publish_chunk.await_args_list
+            if call.args[1].startswith("data: {")
+        ]
+        assert {"emoji": emoji, "reacts_to_message_id": state.user_message_id} in [
+            frame.get("emoji_ack") for frame in frames
+        ]
+        assert not any("response" in frame for frame in frames)
+
+    async def test_the_reply_that_quoted_a_message_is_resolved_against_that_message(
+        self, test_user, existing_conv_body
+    ):
+        quoted = existing_conv_body.model_copy(update={"reply_to_platform_message_id": "wamid-7"})
+        resolve = AsyncMock(return_value=None)
+        with (
+            _patch_stream_manager(_make_stream_manager_mock()),
+            patch("app.services.chat.stream.resolve_pending_from_message", new=resolve),
+        ):
+            await _resolve_pending_approval_turn(
+                quoted, test_user, "conv_existing_123", "s_approval", _StreamState(), "whatsapp"
+            )
+
+        assert resolve.await_args.kwargs["reply_to_platform_message_id"] == "wamid-7"
 
     # chunk dispatch: every frame goes through `_dispatch_stream_chunk`, which
     # picks what the client sees and what the turn persists. The tests above

@@ -199,10 +199,20 @@ HIL_PAUSING_TOOLS: frozenset[str] = frozenset({"spawn_subagent"})
 APPROVAL_REQUEST_TOOL_NAME = "approval_request"
 APPROVAL_TOOL_CATEGORY = "hil"
 
-# Ack text streamed when a chat message resolves a pending approval instead of
-# starting a new turn.
-HIL_ACK_APPROVED = "Got it, going ahead."
-HIL_ACK_DENIED = "Understood, I will not do that."
+# How long a ledger approval waits for an answer before it expires, and the share of that
+# wait after which one reminder is due.
+APPROVAL_DEFAULT_TTL_SECONDS = 24 * 60 * 60
+APPROVAL_REMINDER_AT = 0.75
+
+# Stamped on a ledger approval that expired unanswered.
+APPROVAL_EXPIRED_NOTE = "No answer came before the approval expired."
+
+# How many of the user's latest messages are searched for the one that last asked them to approve something.
+PENDING_ASK_LOOKBACK_MESSAGES = 10
+
+# What a chat reply that resolved an approval is acknowledged with: a reaction, never words.
+APPROVAL_APPROVED_REACTION = "👍"
+APPROVAL_DENIED_REACTION = "👌"
 
 # Auto-deny reason when a bot user moves on without answering a pending approval.
 UNRELATED_FEEDBACK = "The user moved on to a different request; do not perform the action."

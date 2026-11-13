@@ -39,8 +39,12 @@ class DeliveryMessageSent(ServerEvent):
     )
     budget_per_user_day: ClassVar[int] = 500
 
-    producer: Literal["executor", "workflow", "todo", "reminder", "browser", "artifact", "account"]
-    subject_kind: Literal["ask", "workflow_run", "todo_run", "reminder", "browser_job", "account"]
+    producer: Literal[
+        "executor", "workflow", "todo", "reminder", "browser", "artifact", "account", "approval"
+    ]
+    subject_kind: Literal[
+        "ask", "workflow_run", "todo_run", "reminder", "browser_job", "account", "approval"
+    ]
     mode: Literal["answer", "unsolicited", "interrupt"]
     destination: ProactiveDestinationKind
     destination_basis: ProactiveDestinationBasis

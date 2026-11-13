@@ -62,7 +62,7 @@ class TestPushToDevices:
 class TestSendExpoPush:
     async def test_message_shape(self, mock_expo):
         await _send_expo_push(
-            ["token-1"], conversation_id=CONVERSATION_ID, approval_id=APPROVAL_ID, summary=SUMMARY
+            ["token-1"], conversation_id=CONVERSATION_ID, approval_id=APPROVAL_ID, body=SUMMARY
         )
 
         payload = mock_expo.post.await_args.kwargs["json"]
@@ -85,7 +85,7 @@ class TestSendExpoPush:
         tokens = [f"token-{i}" for i in range(150)]
 
         await _send_expo_push(
-            tokens, conversation_id=CONVERSATION_ID, approval_id=APPROVAL_ID, summary=SUMMARY
+            tokens, conversation_id=CONVERSATION_ID, approval_id=APPROVAL_ID, body=SUMMARY
         )
 
         assert mock_expo.post.await_count == 2
@@ -109,13 +109,13 @@ class TestSendExpoPush:
             ["token-1", "token-2"],
             conversation_id=CONVERSATION_ID,
             approval_id=APPROVAL_ID,
-            summary=SUMMARY,
+            body=SUMMARY,
         )
 
         mock_channels.device.deactivate_tokens.assert_awaited_once_with(["token-2"])
 
     async def test_post_failure_is_swallowed(self, mock_channels, mock_expo):
-        """The swallow happens in push_approval_pending — notify must never raise."""
+        """The swallow happens in push_approval_pending: a push failure never fails the delivery."""
         mock_channels.device.get_active_tokens.return_value = ["token-1"]
         mock_expo.post.side_effect = RuntimeError("expo down")
 

@@ -155,13 +155,14 @@ async def publish_outbound_message(
     destination_override: str | None = None,
     is_channel: bool = False,
     ttl_seconds: int = OUTBOUND_TTL_SECONDS_DEFAULT,
+    outbox_message_id: str | None = None,
 ) -> OutboundResult:
     """Enqueue text_parts as a single ordered envelope for user_id on platform.
 
     One envelope (not one-per-part) stops a concurrent consumer reordering bubbles; each part
     also splits on the bubble-break sentinel. destination_override + is_channel target a
-    channel/group instead of the DM; ttl_seconds caps the wait before dead-lettering. Returns
-    PUBLISHED, SKIPPED (unsupported/unlinked/empty) or FAILED; never raises into the caller.
+    channel/group instead of the DM; outbox_message_id is the ledger message the bot dedupes
+    on and files receipts under. Returns PUBLISHED, SKIPPED or FAILED; never raises.
     """
     parts = [bubble for part in text_parts for bubble in split_message_bubbles(part)]
     if not parts:
@@ -183,6 +184,7 @@ async def publish_outbound_message(
             destination_id=destination_id,
             text=parts[0],
             is_channel=is_channel,
+            outbox_message_id=outbox_message_id,
         )
     else:
         envelope = OutboundMessageEnvelope(
@@ -190,6 +192,7 @@ async def publish_outbound_message(
             destination_id=destination_id,
             text_parts=parts,
             is_channel=is_channel,
+            outbox_message_id=outbox_message_id,
         )
 
     try:

@@ -287,7 +287,7 @@ class _ApprovalFrameData(BaseModel):
     status: object = None
 
 
-def _approval_id(entry: ToolDataEntry) -> str | None:
+def approval_id_of_entry(entry: ToolDataEntry) -> str | None:
     if entry.get("tool_name") != APPROVAL_REQUEST_TOOL_NAME:
         return None
     data = entry.get("data")
@@ -316,10 +316,12 @@ def _merge_tool_data(
 
     merged = list(existing)
     index_by_approval = {
-        approval_id: i for i, entry in enumerate(merged) if (approval_id := _approval_id(entry))
+        approval_id: i
+        for i, entry in enumerate(merged)
+        if (approval_id := approval_id_of_entry(entry))
     }
     for entry in new:
-        approval_id = _approval_id(entry)
+        approval_id = approval_id_of_entry(entry)
         if approval_id is None or approval_id not in index_by_approval:
             merged.append(entry)
             if approval_id is not None:
@@ -343,7 +345,7 @@ async def _reconcile_approval_statuses(entries: list[ToolDataEntry]) -> list[Too
     reconciled: list[ToolDataEntry] = []
     entry: ToolDataEntry
     for entry in entries:
-        approval_id = _approval_id(entry)
+        approval_id = approval_id_of_entry(entry)
         data = entry.get("data")
         if approval_id is None or not isinstance(data, dict):
             reconciled.append(entry)

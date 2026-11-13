@@ -25,6 +25,7 @@ from langsmith import traceable
 
 from app.agents.core.background.comms_narrator import record_executor_cancellation
 from app.agents.core.background.confirmation_gate import record_confirmation_asked
+from app.agents.core.background.decided_approvals import decided_approvals_of
 from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.core.background.executor_channel import ExecutorInbox, decide_drain
 from app.agents.core.background.executor_progress import ProgressRecorder
@@ -773,7 +774,7 @@ async def _deliver_terminal_outcome(
         failed_outcome(outcome.error_type)
         if outcome.result_type == "error"
         else finished_outcome(review, outcome.result_text)
-    )
+    ).model_copy(update={"decided_approvals": await decided_approvals_of(run)})
     if run.todo_run is not None:
         await record_todo_run_report(
             run, outcome.result_text, outcome.result_type, outcome.tool_data

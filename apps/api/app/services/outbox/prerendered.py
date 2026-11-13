@@ -19,6 +19,7 @@ class PrerenderedKind(StrEnum):
     COMPOSE_DEGRADED = "compose_degraded"
     ACCOUNT_LINKED = "account_linked"
     FIRST_CONTACT = "first_contact"
+    GENERIC_PREVIEW = "generic_preview"
 
 
 #: Kinds that say hello: worth nothing late, so the bot's queue drops one that waited too long.
@@ -48,6 +49,9 @@ class PrerenderedMessage(BaseModel):
 _COPY: Final[Mapping[PrerenderedKind, Mapping[str, str]]] = {
     PrerenderedKind.COMPOSE_DEGRADED: {
         "en": "I couldn't word this one properly, so here it is plainly:",
+    },
+    PrerenderedKind.GENERIC_PREVIEW: {
+        "en": "Something needs your attention.",
     },
     PrerenderedKind.ACCOUNT_LINKED: {
         "en": (
