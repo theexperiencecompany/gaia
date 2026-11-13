@@ -301,12 +301,6 @@ def outbox_entries_matching(
     return [{"$match": heads}, *_OUTBOX_AS_ENTRIES, {"$match": dict(match)}]
 
 
-def every_outbox_entry_matching(match: Mapping[str, object]) -> list[dict[str, object]]:
-    """Read every head's outbox entries that match, across all users (a maintenance sweep's read)."""
-    heads = {OUTBOX_FIELD: {"$exists": True, "$ne": {}}}
-    return [{"$match": heads}, *_OUTBOX_AS_ENTRIES, {"$match": dict(match)}]
-
-
 def stored_entries_matching(
     user_id: str,
     match: Mapping[str, object],

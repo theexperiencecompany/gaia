@@ -15,13 +15,3 @@ export const REACTION_OUTCOME = {
 
 export type ReactionOutcome =
   (typeof REACTION_OUTCOME)[keyof typeof REACTION_OUTCOME];
-
-/**
- * Fired when GAIA reacts to the user's message; `replaces` is the emoji it put there
- * earlier in the turn, which this one replaces. Resolves ATTACHED once the emoji is
- * attached natively to that message.
- */
-export type ReactionHandler = (
-  emoji: string,
-  replaces: string | null,
-) => Promise<ReactionOutcome>;

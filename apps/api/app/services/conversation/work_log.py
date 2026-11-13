@@ -271,7 +271,9 @@ async def record_user_stop(conversation_id: str, user_id: str, stop_id: str) -> 
     )
     if stopped := stopped_waking(accepted.appended):
         logged = await ports.log.read_after(conversation_id, user_id, min(stopped) - 1)
-        capture_unanswered_stop(user_id, conversation_id, accepted.appended, logged)
+        capture_unanswered_stop(
+            ports.analytics, user_id, conversation_id, accepted.appended, logged
+        )
     if any(isinstance(effect, CancelWork) for effect in accepted.failed_effects):
         raise WorkNotCancelled(conversation_id)
     return accepted.cancelled

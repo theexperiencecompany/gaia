@@ -524,7 +524,7 @@ importers:
         specifier: ^57.0.22
         version: 57.0.22(expo@57.0.30)(react-native@0.86.3(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@7.0.2))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))
       expo-crypto:
-        specifier: ~57.0.4
+        specifier: ^57.0.4
         version: 57.0.4(expo@57.0.30)
       expo-dev-client:
         specifier: ^57.0.20

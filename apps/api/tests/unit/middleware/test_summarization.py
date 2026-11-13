@@ -941,7 +941,7 @@ async def test_a_result_narration_turn_is_not_the_running_turn() -> None:
     narration = HumanMessage(
         content=(
             wrap_agent_payload(AgentTag.DELIVERY_INSTRUCTIONS, "follow the delivery rules")
-            + wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "created the todo")
+            + wrap_agent_payload(AgentTag.SUBAGENT_RESULT, "created the todo")
         ),
         name=BACKGROUND_EXECUTOR_NAME,
         id="narration",

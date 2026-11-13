@@ -8,7 +8,7 @@ talks over a reply, the follower posts a barge-in naming it and how far into it 
 import asyncio
 from collections.abc import AsyncIterable, AsyncIterator
 import json
-from typing import Literal, Protocol, override
+from typing import Literal, Protocol
 from uuid import uuid4
 
 import aiohttp
@@ -17,6 +17,7 @@ from livekit.agents import Agent
 from livekit.agents.llm import ChatContext, ChatItem, ChatMessage
 from livekit.agents.voice import SpeechHandle
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from typing_extensions import override
 
 from shared.py.wide_events import VoiceContext, log, log_context, wide_task
 from src.constants import (

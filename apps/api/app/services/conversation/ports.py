@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Protocol
+from typing import Protocol, TypeAlias
 
 from app.constants.hil import ApprovalDecision
 from app.models.conversation_frame_models import OutputFrame, StreamPayload
@@ -26,6 +26,13 @@ from app.models.message_models import MessageDict
 from app.models.tool_data_models import ToolDataEntry
 from app.models.work_cancel_models import WorkCancelled
 from app.services.conversation.reply_files import ReplyFile
+from shared.py.analytics import Dedupe
+from shared.py.analytics.catalog.chat import (
+    ChatMessageCancelled,
+    ChatMessageCompleted,
+    ChatTurnReacted,
+)
+from shared.py.analytics.context import AnalyticsContext
 
 
 class EntryRejected(Exception):
@@ -254,6 +261,26 @@ class ApprovalReplies(Protocol):
         ...
 
 
+#: What the step counts about a turn: how its reply ended, or the reaction it resolved to.
+ConversationAnalyticsEvent: TypeAlias = (
+    ChatMessageCompleted | ChatMessageCancelled | ChatTurnReacted
+)
+
+
+class TurnAnalytics(Protocol):
+    """Counts what a turn came to, under the context of the user message it answered."""
+
+    def capture(
+        self,
+        user_id: str,
+        event: ConversationAnalyticsEvent,
+        context: AnalyticsContext,
+        dedupe: Dedupe,
+    ) -> None:
+        """Send the event once; a resend with the same dedupe is the same row."""
+        ...
+
+
 @dataclass(frozen=True)
 class RuntimePorts:
     """Everything accept and advance touch outside their own logic."""
@@ -263,5 +290,6 @@ class RuntimePorts:
     frames: Frames
     effects: Effects
     approvals: ApprovalReplies
+    analytics: TurnAnalytics
     clock: Callable[[], datetime]
     tick: Callable[[], Awaitable[None]]

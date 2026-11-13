@@ -46,6 +46,7 @@ from tests.conftest import FAKE_USER
 from tests.helpers import shown_messages
 from tests.unit.services.conversation.log_helpers import asked, finished, started
 from tests.unit.services.conversation.runtime_doubles import (
+    RecordingAnalytics,
     RecordingEffects,
     RecordingFrames,
     ScriptedApprovals,
@@ -72,6 +73,7 @@ def mongo_log(
             frames=RecordingFrames(),
             effects=RecordingEffects(),
             approvals=ScriptedApprovals(),
+            analytics=RecordingAnalytics(),
             clock=lambda: datetime.now(UTC),
             tick=_no_tick,
         )

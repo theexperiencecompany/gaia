@@ -47,7 +47,9 @@ from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
+from app.services.conversation.runtime import install_runtime_ports
 from tests.helpers import captured_wide_event
+from tests.unit.services.conversation.runtime_doubles import Runtime
 
 CONV = "conv-1"
 HOLDER = build_lock_value("stream-1", "task-1")
@@ -405,6 +407,7 @@ class TestLifetime:
         """Cancel frees the lock directly, so the run's later finalize finds it gone and deletes nothing."""
         monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
         monkeypatch.setattr(websocket_manager, "broadcast_to_user", AsyncMock())
+        install_runtime_ports(Runtime().ports)
         await _hold_live_lock(fake_redis)
         await _record(HOLDER, _call("search", {"q": "x"}))
 

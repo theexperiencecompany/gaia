@@ -134,9 +134,9 @@ from app.services.browser.handoff import create_pending_handoff
 from app.services.browser.handoff_buttons import decide_handoff_by_button
 from app.services.checkpoint_thread_reset import ThreadReset
 from app.services.conversation import (
+    composition,
     event_stream,
     mongo_log,
-    reply_analytics,
     step as step_module,
     sweeper,
 )
@@ -148,7 +148,11 @@ from app.services.conversation.comms_runner import (
     step_turn_ref,
 )
 from app.services.conversation.comms_turn import build_comms_turn
-from app.services.conversation.composition import RuntimeEffects, running_steps
+from app.services.conversation.composition import (
+    PostHogTurnAnalytics,
+    RuntimeEffects,
+    running_steps,
+)
 from app.services.conversation.event_stream import (
     RedisStreamFrames,
     StreamedFrame,
@@ -406,6 +410,7 @@ async def rig_for(
                 frames=frames,
                 effects=effects,
                 approvals=ScriptedApprovals(),
+                analytics=PostHogTurnAnalytics(),
                 clock=_now,
                 tick=tick,
             )
@@ -2220,7 +2225,7 @@ async def test_a_stop_before_any_reply_is_shown_counts_the_message_cancelled_onc
     def record(_user: object, event: ServerEvent, *_args: object, **_kwargs: object) -> None:
         captured.append(event)
 
-    with patch.object(reply_analytics, "capture", side_effect=record):
+    with patch.object(composition, "capture", side_effect=record):
         await rig.send("m1", "find me flights")
         await model.entered(0).wait()
         await record_user_stop(rig.conversation_id, rig.user_id, "s1")
@@ -2240,7 +2245,7 @@ async def test_a_stop_after_the_reply_settled_counts_nothing_more(rig_for: RigFa
     def record(_user: object, event: ServerEvent, *_args: object, **_kwargs: object) -> None:
         captured.append(event)
 
-    with patch.object(reply_analytics, "capture", side_effect=record):
+    with patch.object(composition, "capture", side_effect=record):
         await rig.send("m1", "what time is it?")
         await rig.settle()
         await record_user_stop(rig.conversation_id, rig.user_id, "s1")

@@ -24,19 +24,22 @@ from app.models.conversation_log_models import (
     UserMessage,
 )
 from app.models.work_cancel_models import WorkCancelled
+from app.services.analytics_service import capture
 from app.services.conversation.ack import decide_reaction
 from app.services.conversation.approval_replies import HilApprovalReplies
 from app.services.conversation.comms_runner import CommsGraphRunner
 from app.services.conversation.comms_turn import build_comms_turn
 from app.services.conversation.event_stream import RedisStreamFrames
 from app.services.conversation.mongo_log import MongoConversationLog
-from app.services.conversation.ports import RuntimePorts
+from app.services.conversation.ports import ConversationAnalyticsEvent, RuntimePorts
 from app.services.conversation.reply_files import ReplyFile
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.step import advance
 from app.services.outbound_delivery import publish_outbound_file
 from app.services.workflow.thread_reset import reset_workflow_threads
 from app.utils.background_tasks import spawn_background_task
+from shared.py.analytics import Dedupe, UserId
+from shared.py.analytics.context import AnalyticsContext, analytics_context
 from shared.py.wide_events import log
 
 # The entries before a message the instant reaction reads GAIA's previous words from.
@@ -148,6 +151,21 @@ class RuntimeEffects:
             )
 
 
+class PostHogTurnAnalytics:
+    """Send a turn's end to PostHog under the analytics context of the message it answered."""
+
+    def capture(
+        self,
+        user_id: str,
+        event: ConversationAnalyticsEvent,
+        context: AnalyticsContext,
+        dedupe: Dedupe,
+    ) -> None:
+        """Capture the event on the user's profile with the message's attribution bound."""
+        with analytics_context(context):
+            capture(UserId(user_id), event, dedupe)
+
+
 def _previous_reply_text(recent: Sequence[LoggedEntry], message_id: str) -> str:
     """Return GAIA's last reply before the message, or empty when it opens the conversation."""
     text = ""
@@ -169,6 +187,7 @@ def build_runtime_ports() -> RuntimePorts:
         frames=frames,
         effects=RuntimeEffects(log, frames, runtime_ports),
         approvals=HilApprovalReplies(),
+        analytics=PostHogTurnAnalytics(),
         clock=_now,
         tick=_tick,
     )

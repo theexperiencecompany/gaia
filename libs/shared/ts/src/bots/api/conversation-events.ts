@@ -13,10 +13,10 @@ import type { ConversationStreamEvent } from "../../conversation/types";
 import { wideLog } from "../utils/wide-events";
 
 /** The server sends a keepalive every 15 s; three missed means the connection is dead. */
-export const EVENTS_INACTIVITY_MS = 45_000;
+const EVENTS_INACTIVITY_MS = 45_000;
 
 /** Splits SSE text into the `data:` payload of each complete event, keeping the unfinished tail. */
-export function takeSseData(buffer: string): { data: string[]; rest: string } {
+function takeSseData(buffer: string): { data: string[]; rest: string } {
   const blocks = buffer.split("\n\n");
   const rest = blocks.pop() ?? "";
   const data = blocks.flatMap((block) => {

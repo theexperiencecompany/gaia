@@ -441,7 +441,7 @@ export function quoteFor(
  * Whether GAIA owes this device a reply the server has not announced yet: a send not
  * accepted (and not failed), or an accepted one whose following state frame is still due.
  */
-export function awaitingServerState(
+function awaitingServerState(
   view: ConversationView,
   sends: Readonly<Record<string, { failed: boolean }>>,
 ): boolean {

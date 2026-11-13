@@ -48,7 +48,7 @@ async def spawned() -> AsyncIterator[AsyncMock]:
         patch.object(eq.redis_cache, "redis", client),
         patch.object(ec.redis_cache, "redis", client),
         patch.object(eq, "StreamManager", AsyncMock()),
-        patch.object(eq, "websocket_manager", AsyncMock()),
+        patch.object(er, "record_work_carried", AsyncMock(return_value=True)),
         patch.object(er, "_spawn_detached_run") as spawn,
     ):
         yield spawn
