@@ -407,13 +407,8 @@ def _enter_persistence_patches(stack: ExitStack, users: _UserStore, externals: _
         )
         return conversation
 
-    async def _append_messages(
-        conversation_id: str, *, user_id: str, messages: list[Any]
-    ) -> list[str]:
-        externals.seeded_messages.setdefault(conversation_id, []).extend(
-            m.response for m in messages
-        )
-        return [f"msg-{i}" for i, _ in enumerate(messages)]
+    async def _log_notice(_ports: Any, conversation_id: str, _user_id: str, notice: Any) -> None:
+        externals.seeded_messages.setdefault(conversation_id, []).append(notice.text)
 
     async def _list_user_integrations(_user_id: str) -> list[Any]:
         out = []
@@ -425,9 +420,6 @@ def _enter_persistence_patches(stack: ExitStack, users: _UserStore, externals: _
 
     async def _disconnect(_user_id: str, integration_id: str) -> None:
         externals.disconnected.append(integration_id)
-
-    seeding_conversations = AsyncMock()
-    seeding_conversations.append_messages.side_effect = _append_messages
 
     todo_repo = AsyncMock()
     todo_repo.delete_onboarding_todos.side_effect = lambda _uid: externals.todos_purged
@@ -462,7 +454,8 @@ def _enter_persistence_patches(stack: ExitStack, users: _UserStore, externals: _
         patch("app.api.v1.endpoints.onboarding.todo_repository", todo_repo),
         patch("app.api.v1.endpoints.onboarding.workflow_repository", AsyncMock()),
         patch(f"{SVC}.onboarding_service.conversation_repository", conversation_repo),
-        patch("app.utils.seeding_utils.conversation_repository", seeding_conversations),
+        patch("app.utils.seeding_utils.accept", side_effect=_log_notice),
+        patch("app.utils.seeding_utils.runtime_ports"),
         patch("app.utils.seeding_utils.create_conversation_service", _create_conversation),
         patch(f"{SVC}.onboarding_service.user_integration_repository", integrations_repo),
         patch(f"{SVC}.onboarding_service.memory_engine", memory),

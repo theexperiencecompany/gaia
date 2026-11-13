@@ -146,7 +146,7 @@ async def test_a_workflow_run_blocks_for_the_ending_and_tells_it_itself() -> Non
     assert world.woken == []
 
 
-async def test_every_step_card_reaches_the_jobs_stream_and_the_turns_message() -> None:
+async def test_every_step_card_reaches_the_jobs_stream_and_its_logged_work() -> None:
     """The cards are produced in a worker with no stream of its own; without the relay the user watches nothing and reloads to nothing."""
     async with browser_job_world(STREAM, steps=TWO_STEPS) as world:
         async with executor_graph([RETRIEVE, START, "Started."]) as graph:
@@ -156,8 +156,8 @@ async def test_every_step_card_reaches_the_jobs_stream_and_the_turns_message() -
     assert [card["kind"] for card in cards] == ["session", "step", "step", "result"]
     assert [card["index"] for card in cards if card["kind"] == "step"] == [1, 2]
     assert cards[3]["status"] == BrowserSessionStatus.COMPLETED.value
-    [(message_id, saved)] = world.saved
-    assert message_id == TURN_MESSAGE
+    [(task_id, saved)] = world.saved
+    assert task_id == f"browser_{world.enqueued[0].job_id}"
     assert [
         entry["data"]["kind"] for entry in saved if entry["tool_name"] == "browser_task_data"
     ] == ["session", "step", "step", "result"]
