@@ -40,7 +40,6 @@ export type {
   ChannelPreferences,
   InAppNotification,
   InAppNotificationContent,
-  NotificationAction,
   NotificationActionConfig,
   PlatformLink,
   PlatformLinksResponse,

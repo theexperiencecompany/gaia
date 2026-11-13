@@ -69,6 +69,97 @@ async function settleWorkChip(event: ReportSettledEvent): Promise<void> {
   }
 }
 
+/** Remove the streaming placeholder (id === task_id) useExecutorStream queued for live tool progress; the final message replaces it. */
+function removeExecutorPlaceholder(
+  conversationId: string,
+  taskId: string,
+): void {
+  const { messagesByConversation, removeMessage } = useChatStore.getState();
+  const messages = messagesByConversation[conversationId] ?? [];
+  if (messages.some((m) => m.id === taskId)) {
+    removeMessage(taskId, conversationId);
+  }
+}
+
+function toIMessage(
+  conversationId: string,
+  message: BgMessageEvent["message"],
+): IMessage {
+  return {
+    id: message.message_id,
+    conversationId,
+    content: message.response,
+    role: message.type === "bot" ? "assistant" : "user",
+    status: "sent",
+    createdAt: new Date(message.date),
+    updatedAt: new Date(message.date),
+    messageId: message.message_id,
+    kind: message.kind ?? null,
+    reacts_to_message_id: message.reacts_to_message_id ?? null,
+    tool_data: message.tool_data ?? null,
+    error: message.error ?? null,
+    follow_up_actions: message.follow_up_actions ?? null,
+    replyToMessageData: message.replyToMessage ?? null,
+    todoRunWake: message.todo_run_wake ?? null,
+  };
+}
+
+/** Persist to IndexedDB (dbEventEmitter syncs to the store); a message answering a queued executor placeholder replaces it atomically so no duplicate is left behind. */
+async function persistMessage(
+  message: IMessage,
+  replacesTaskId: string | undefined,
+): Promise<void> {
+  try {
+    if (replacesTaskId) {
+      await db.replaceMessage(replacesTaskId, message);
+    } else {
+      await db.putMessage(message);
+    }
+  } catch (err) {
+    console.error("[useBgMessageWebSocket] Failed to persist message:", err);
+  }
+}
+
+/** Render now when the conversation is open; a bot result landing elsewhere surfaces as unread in the sidebar (cleared by ChatPage's mark-as-read). */
+function surfaceMessage(message: IMessage, isBotReply: boolean): void {
+  if (isViewingConversation(message.conversationId)) {
+    useChatStore.getState().addOrUpdateMessage(message);
+  } else if (isBotReply) {
+    markConversationUnread(message.conversationId);
+  }
+}
+
+/** End the awaiting-executor session after the result is in the store, so loading hands off to it in the same frame. */
+function endAwaitingExecutor(conversationId: string): void {
+  const stream = useStreamStore.getState();
+  if (stream.sessions[conversationId]?.phase === "awaiting_executor") {
+    stream.endSession(conversationId);
+  }
+}
+
+async function handleConversationMessage(event: BgMessageEvent): Promise<void> {
+  const { conversation_id, message } = event;
+  if (!conversation_id || !message?.message_id) {
+    return;
+  }
+  const isBotReply = message.type === "bot";
+  const replacesTaskId = isBotReply ? message.task_id : undefined;
+
+  if (replacesTaskId) {
+    removeExecutorPlaceholder(conversation_id, replacesTaskId);
+  }
+  const iMessage = toIMessage(conversation_id, message);
+  await persistMessage(iMessage, replacesTaskId);
+  surfaceMessage(iMessage, isBotReply);
+  if (isBotReply) {
+    endAwaitingExecutor(conversation_id);
+  }
+  streamLog("ws", OUTBOX_MESSAGE_EVENT, {
+    conversationId: conversation_id,
+    detail: { task_id: message.task_id },
+  });
+}
+
 /**
  * Subscribe to `outbox.message` WebSocket events of kind
  * `conversation_message` and insert the message into IndexedDB and the Zustand store,
@@ -78,97 +169,14 @@ async function settleWorkChip(event: ReportSettledEvent): Promise<void> {
  * conversations are persisted to IndexedDB and appear on navigation.
  */
 export function useBgMessageWebSocket() {
-  const handleBgMessage = useCallback(async (raw: unknown) => {
-    const event = raw as BgMessageEvent;
-    if (event.kind !== OutboxMessageKind.ConversationMessage) {
-      return;
+  const handleOutboxEvent = useCallback(async (raw: unknown) => {
+    const event = raw as BgMessageEvent | ReportSettledEvent;
+    if (event.kind === OutboxMessageKind.ReportSettled) {
+      await settleWorkChip(event);
+    } else if (event.kind === OutboxMessageKind.ConversationMessage) {
+      await handleConversationMessage(event);
     }
-    const { conversation_id, message } = event;
-
-    if (!conversation_id || !message?.message_id) {
-      return;
-    }
-    const isBotReply = message.type === "bot";
-
-    // Remove streaming placeholder (id === task_id) if one exists in the store.
-    // The placeholder was created by useExecutorStream for live tool progress;
-    // now the final message is here, so the placeholder is no longer needed.
-    if (isBotReply && message.task_id) {
-      const state = useChatStore.getState();
-      const msgs = state.messagesByConversation[conversation_id] ?? [];
-      const hasPlaceholder = msgs.some((m) => m.id === message.task_id);
-      if (hasPlaceholder) {
-        useChatStore.getState().removeMessage(message.task_id, conversation_id);
-      }
-    }
-
-    // Build IMessage for IndexedDB
-    const iMessage: IMessage = {
-      id: message.message_id,
-      conversationId: conversation_id,
-      content: message.response,
-      role: isBotReply ? "assistant" : "user",
-      status: "sent",
-      createdAt: new Date(message.date),
-      updatedAt: new Date(message.date),
-      messageId: message.message_id,
-      kind: message.kind ?? null,
-      reacts_to_message_id: message.reacts_to_message_id ?? null,
-      tool_data: message.tool_data ?? null,
-      error: message.error ?? null,
-      follow_up_actions: message.follow_up_actions ?? null,
-      replyToMessageData: message.replyToMessage ?? null,
-      todoRunWake: message.todo_run_wake ?? null,
-    };
-
-    // Persist to IndexedDB (dbEventEmitter syncs to store automatically). When
-    // this matches a queued executor placeholder (keyed by task_id, from
-    // useExecutorStream), replace it atomically so no duplicate is left behind.
-    try {
-      if (isBotReply && message.task_id) {
-        await db.replaceMessage(message.task_id, iMessage);
-      } else {
-        await db.putMessage(iMessage);
-      }
-    } catch (err) {
-      console.error("[useBgMessageWebSocket] Failed to persist message:", err);
-    }
-
-    // Also update store directly for immediate render if viewing this conversation
-    if (isViewingConversation(conversation_id)) {
-      useChatStore.getState().addOrUpdateMessage(iMessage);
-    } else if (isBotReply) {
-      // A background result landing in a conversation the user isn't viewing
-      // surfaces as unread in the sidebar (cleared by ChatPage's mark-as-read).
-      markConversationUnread(conversation_id);
-    }
-
-    // End the awaiting-executor session AFTER the result message is in the
-    // store, so loading hands off to the rendered result in the same frame — no
-    // flash of "loading gone" before the result appears.
-    const stream = useStreamStore.getState();
-    if (
-      isBotReply &&
-      stream.sessions[conversation_id]?.phase === "awaiting_executor"
-    ) {
-      stream.endSession(conversation_id);
-    }
-    streamLog("ws", OUTBOX_MESSAGE_EVENT, {
-      conversationId: conversation_id,
-      detail: { task_id: message.task_id },
-    });
   }, []);
-
-  const handleOutboxEvent = useCallback(
-    async (raw: unknown) => {
-      if ((raw as BgMessageEvent).kind === OutboxMessageKind.ReportSettled) {
-        await settleWorkChip(raw as ReportSettledEvent);
-        return;
-      }
-      await handleBgMessage(raw);
-    },
-    [handleBgMessage],
-  );
 
   useEffect(() => {
     wsManager.on(OUTBOX_MESSAGE_EVENT, handleOutboxEvent);

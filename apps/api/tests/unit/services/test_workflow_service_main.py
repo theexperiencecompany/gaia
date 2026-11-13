@@ -1452,6 +1452,42 @@ class TestGetWorkflowStatus:
 class TestActivateWorkflow:
     """Tests for WorkflowService.activate_workflow."""
 
+    @pytest.fixture(autouse=True)
+    def settled(self):
+        with patch(
+            "app.services.workflow.service.settle_system_notices", new_callable=AsyncMock
+        ) as settle:
+            yield settle
+
+    @patch("app.services.workflow.service.workflow_scheduler")
+    @patch(
+        "app.services.workflow.service.WorkflowService.get_workflow",
+        new_callable=AsyncMock,
+    )
+    @patch(f"{_REPO}.activate", new_callable=AsyncMock)
+    async def test_activation_settles_the_paused_notice(
+        self, mock_activate, mock_get, mock_scheduler, settled
+    ):
+        """Regression: a user re-activating a paused workflow left its workflow_paused notice under Needs you."""
+        mock_get.side_effect = [_make_workflow(activated=False), _make_workflow(activated=True)]
+        mock_activate.return_value = _make_workflow_doc(_make_workflow(activated=True))
+
+        await WorkflowService.activate_workflow(WORKFLOW_ID, USER_ID)
+
+        settled.assert_awaited_once_with(USER_ID, "workflow_paused", f"{WORKFLOW_ID}:")
+
+    @patch(
+        "app.services.workflow.service.WorkflowService.get_workflow",
+        new_callable=AsyncMock,
+    )
+    @patch(f"{_REPO}.activate", new_callable=AsyncMock, return_value=None)
+    async def test_a_refused_activation_leaves_the_notice(self, _mock_activate, mock_get, settled):
+        mock_get.return_value = _make_workflow(activated=False)
+
+        await WorkflowService.activate_workflow(WORKFLOW_ID, USER_ID)
+
+        settled.assert_not_awaited()
+
     @patch("app.services.workflow.service.workflow_scheduler")
     @patch(
         "app.services.workflow.service.WorkflowService.get_workflow",

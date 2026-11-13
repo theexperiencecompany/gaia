@@ -16,7 +16,6 @@
 # reported as removable and does not fail the gate.
 
 apps/mobile/src/components/EmptyState.tsx:EmptyStateProps=CreateWorkflowRequest
-apps/mobile/src/config/openui/components/content.tsx:CarouselItem=NotificationContentView
 apps/mobile/src/features/auth/api/auth-api.ts:UserInfoResponse=AuthenticatedUserResponse
 apps/mobile/src/features/auth/types/index.ts:UserInfo=AuthenticatedUserResponse
 apps/mobile/src/features/chat/api/chat-api.ts:ApiConversationDetail=ConversationDocument
@@ -37,7 +36,6 @@ apps/mobile/src/features/chat/tool-data/cards/chart-card.tsx:ChartDisplayData=Su
 apps/mobile/src/features/chat/tool-data/cards/connection-status-card.tsx:ConnectionStatusData=IntegrationSuccessResponse
 apps/mobile/src/features/chat/tool-data/cards/email-fetch-card.tsx:EmailFetchItem=GmailMessageSummary
 apps/mobile/src/features/chat/tool-data/cards/integration-list-card.tsx:SuggestedIntegration=IntegrationConfigItem
-apps/mobile/src/features/chat/tool-data/cards/notification-card.tsx:NotificationActionItem=NotificationAction
 apps/mobile/src/features/chat/tool-data/cards/support-ticket-card.tsx:SupportResponse=SupportRequestSubmissionResponse
 apps/mobile/src/features/chat/tool-data/cards/support-ticket-card.tsx:SupportTicketData=SupportRequestCreate
 apps/mobile/src/features/dashboard/api/dashboard-api.ts:ApiConversation=ConversationDocument
@@ -47,7 +45,6 @@ apps/mobile/src/features/integrations/api/integrations-api.ts:CreateCustomIntegr
 apps/mobile/src/features/integrations/components/CreateMCPIntegrationSheet.tsx:FormState=CreateCustomIntegrationRequest
 apps/mobile/src/features/integrations/hooks/useCommunityIntegrations.ts:CommunityIntegrationsPage=CommunityListResponse
 apps/mobile/src/features/notes/api/notes-api.ts:Note=MemoryEntry
-apps/mobile/src/features/notifications/types/inapp-notification-types.ts:InAppNotificationsListResponse=PaginatedNotificationsResponse
 apps/mobile/src/features/search/api/search-api.ts:SearchMessageResult=MessageSearchResult
 apps/mobile/src/features/search/api/search-api.ts:SearchResponse=SearchResultsResponse
 apps/mobile/src/features/settings/api/settings-api.ts:UserProfile=AuthenticatedUserResponse
@@ -78,8 +75,6 @@ apps/web/src/features/auth/utils/toCurrentUser.ts:CurrentUser=AuthenticatedUserR
 apps/web/src/features/blog/components/BlogMetadata.tsx:TeamMember=AuthorDetails
 apps/web/src/features/chat/components/bubbles/bot/ChartDisplay.tsx:ChartData=SupportRequestCreate
 apps/web/src/features/chat/components/bubbles/user/ChatBubbleUser.tsx:BubbleIndicatorsProps=MessageModelInput
-apps/web/src/features/chat/components/composer/ComposerLeft.tsx:DropdownItemConfig=NotificationAction
-apps/web/src/features/chat/components/memory/MemoryIndicator.tsx:MemoryItem=NotificationRequest
 # One of the ten raw-apiauth feature files the concurrent migration is moving
 # onto the typed client; expected to go with it.
 apps/web/src/features/chat/stream/types.ts:TurnOptions=MessageRequestWithHistory
@@ -146,7 +141,6 @@ apps/web/src/types/features/searchTypes.ts:NewsResult=SearchResultItem
 apps/web/src/types/features/searchTypes.ts:SearchResults=WebSearchResult
 apps/web/src/types/features/searchTypes.ts:WebResult=SearchResultItem
 apps/web/src/types/features/supportTypes.ts:SupportTicketData=SupportRequestCreate
-apps/web/src/types/features/todoProgressTypes.ts:TodoProgressItem=NotificationView
 apps/web/src/types/features/todoToolTypes.ts:TodoItem=SubTaskInput
 apps/web/src/types/features/todoToolTypes.ts:TodoProject=ProjectCreate
 apps/web/src/types/features/todoToolTypes.ts:TodoSubtask=SubTaskInput
@@ -187,7 +181,6 @@ libs/shared/ts/src/chat/types.ts:NewsResult=SearchResultItem
 libs/shared/ts/src/chat/types.ts:SameDayEvent=GoogleCalendarEventResource
 libs/shared/ts/src/chat/types.ts:SearchResults=WebSearchResult
 libs/shared/ts/src/chat/types.ts:TodoItem=SubTaskInput
-libs/shared/ts/src/chat/types.ts:TodoProgressItem=NotificationView
 libs/shared/ts/src/chat/types.ts:TodoProject=ProjectCreate
 libs/shared/ts/src/chat/types.ts:TodoSubtask=SubTaskInput
 libs/shared/ts/src/chat/types.ts:TodoToolStats=TodoCounts
@@ -201,11 +194,7 @@ libs/shared/ts/src/types/integrations.ts:CommunityIntegration=CommunityIntegrati
 libs/shared/ts/src/types/integrations.ts:CommunityIntegrationsResponse=CommunityListResponse
 libs/shared/ts/src/types/integrations.ts:Integration=IntegrationConfigItem
 libs/shared/ts/src/types/integrations.ts:MarketplaceIntegration=CommunityIntegrationItem
-libs/shared/ts/src/types/memory.ts:MemoryCreate=NotificationRequest
 libs/shared/ts/src/types/notes.ts:Note=NoteResponse
-libs/shared/ts/src/types/notification.ts:InAppNotification=NotificationView
-libs/shared/ts/src/types/notification.ts:InAppNotificationContent=NotificationContent
-libs/shared/ts/src/types/notification.ts:NotificationActionConfig=ActionConfig
 libs/shared/ts/src/types/notification.ts:PlatformLink=CreateLinkTokenRequest
 libs/shared/ts/src/types/reminders.ts:CronValidationResult=CronValidationResponse
 libs/shared/ts/src/types/search.ts:SearchResponse=SearchResultsResponse

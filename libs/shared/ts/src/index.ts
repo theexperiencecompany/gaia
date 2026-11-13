@@ -325,7 +325,6 @@ export type {
   NoteCreate,
   NoteListResponse,
   NoteUpdate,
-  NotificationAction,
   NotificationActionConfig,
   PaginationMeta,
   PlatformLink,

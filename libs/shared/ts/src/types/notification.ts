@@ -40,23 +40,21 @@ export interface NotificationActionConfig {
   };
 }
 
-export interface NotificationAction {
-  id: string;
-  type: NotificationActionType;
-  label: string;
-  style: NotificationActionStyle;
-  config?: NotificationActionConfig | null;
-  disabled: boolean;
-  executed: boolean;
-  executed_at?: string | null;
-  requires_confirmation: boolean;
-  confirmation_message?: string | null;
-}
-
 export interface InAppNotificationContent {
   title: string;
   body: string;
-  actions?: NotificationAction[];
+  actions?: {
+    id: string;
+    type: NotificationActionType;
+    label: string;
+    style: NotificationActionStyle;
+    config?: NotificationActionConfig | null;
+    disabled: boolean;
+    executed: boolean;
+    executed_at?: string | null;
+    requires_confirmation: boolean;
+    confirmation_message?: string | null;
+  }[];
 }
 
 export interface InAppNotification {

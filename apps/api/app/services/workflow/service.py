@@ -28,6 +28,7 @@ from app.models.workflow_models import (
     public_workflow_steps,
 )
 from app.services.integrations.integration_status import get_all_integrations_status
+from app.services.outbox.system_notices import settle_system_notices
 from app.services.triggers.gate_edits import apply_gate_edit, report_gate_edit
 from app.services.workflow.integration_requirements import (
     build_integration_refs,
@@ -1025,6 +1026,8 @@ class WorkflowService:
                     max_occurrences=getattr(updated_workflow, "max_occurrences", None),
                     stop_after=getattr(updated_workflow, "stop_after", None),
                 )
+
+            await settle_system_notices(user_id, "workflow_paused", f"{workflow_id}:")
 
             log.set(workflow={"id": workflow_id, "status": "activated"})
             log.info(

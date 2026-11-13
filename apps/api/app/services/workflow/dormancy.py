@@ -61,11 +61,8 @@ class DormancySweepResult(BaseModel):
 async def _is_really_dormant(user_id: str, cutoff: datetime) -> bool:
     """Return whether user_id shows no activity on ANY signal since cutoff.
 
-    users.last_active_at alone only reports "hasn't opened the web app", so
-    messages the user wrote, metered feature use and presence (the app in view,
-    a call) are checked too — any one of them being recent keeps the user's
-    workflows running. GAIA's own messages never count: they move a
-    conversation's updatedAt.
+    Messages the user wrote, metered feature use and presence count alongside last_active_at;
+    GAIA's own messages never do.
     """
     last_seen = await read_last_active(user_id)
     if last_seen is not None and last_seen >= cutoff.timestamp():

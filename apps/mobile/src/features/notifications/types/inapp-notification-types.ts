@@ -1,11 +1,10 @@
-import type { ActionExecutionResponse } from "@gaia/shared/api/generated";
+import type { InAppNotificationContent } from "@gaia/shared/types";
 
 export type {
   ChannelPlatform,
   ChannelPreferences,
   InAppNotification,
   InAppNotificationContent,
-  NotificationAction as InAppNotificationAction,
   NotificationActionConfig as InAppNotificationActionConfig,
   NotificationActionStyle,
   NotificationActionType,
@@ -19,6 +18,10 @@ export {
   NotificationStatus as InAppNotificationStatus,
 } from "@gaia/shared/types";
 
+export type InAppNotificationAction = NonNullable<
+  InAppNotificationContent["actions"]
+>[number];
+
 export interface InAppNotificationsListResponse {
   notifications: import("@gaia/shared/types").InAppNotification[];
   total: number;
@@ -26,13 +29,12 @@ export interface InAppNotificationsListResponse {
   offset: number;
 }
 
-// The API's action result, with `data` narrowed to the redirect an action may carry.
-export type NotificationActionResponse = Omit<
-  ActionExecutionResponse,
-  "data"
-> & {
+// The legacy notification action endpoints' result; the API no longer publishes this model.
+export interface NotificationActionResponse {
+  success: boolean;
+  message: string;
   data?: { redirect_url?: string; [key: string]: unknown } | null;
-};
+}
 
 export interface NotificationCategoryPreferences {
   push: boolean;

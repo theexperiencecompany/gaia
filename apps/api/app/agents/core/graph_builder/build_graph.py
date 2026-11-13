@@ -293,11 +293,8 @@ async def build_comms_graph(
 def comms_tools(*, tasks_only: bool = False) -> dict[str, BaseTool]:
     """Return the comms agent's whole tool set, by name; all bound from the start.
 
-    The discovery pair are read-only catalogue lookups, so they do not breach
-    "delegate every real ask". Connecting an integration is a real ask and
-    goes to the executor. The browser trio acts on a task already running.
-    With tasks_only, work goes through the task tools (a tracked todo per ask) and
-    comms reads a task's record with read_task, never call_executor.
+    The discovery pair are read-only lookups; connecting an integration goes to the executor.
+    With tasks_only, work goes through the task tools and comms reads a record with read_task.
     """
     tools: dict[str, BaseTool] = {
         "call_executor": call_executor,

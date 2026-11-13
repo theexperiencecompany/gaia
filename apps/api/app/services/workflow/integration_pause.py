@@ -24,7 +24,6 @@ from app.models.workflow_models import (
     WorkflowDocument,
     WorkflowUpdate,
 )
-from app.services.outbox.system_notices import settle_system_notices
 from app.services.triggers.subscription_service import (
     AccountScope,
     pause_subscriptions_for_trigger_names,
@@ -286,7 +285,6 @@ async def resume_workflows_for_reconnected_integration(user_id: str, integration
                 await workflow_repository.update_for_user(
                     workflow.id, user_id, WorkflowUpdate(blocked_on_integrations=[])
                 )
-            await settle_system_notices(user_id, "workflow_paused", f"{workflow.id}:")
             resumed += 1
 
     if resumed:

@@ -277,11 +277,8 @@ async def route(
 ) -> Route:
     """Decide where one message covering items goes; the first item's conversation is the owner it may go back to.
 
-    chat_apps_down keeps the alert in the app: the chat apps' queue could not take the message.
-
-    A message that covers several subjects is also recorded in each other subject's app chat.
-
-    Raises NoDestinationError when the alert stays in the app and the user has no conversation there.
+    chat_apps_down keeps the alert in the app. A message covering several subjects is also recorded
+    in each other subject's app chat. Raises NoDestinationError when the user has no conversation there.
     """
     owner = await _find_owner(user.user_id, items[0].report.subject.owner_conversation_id)
     requested = items[0].report.delivery_policy.channel

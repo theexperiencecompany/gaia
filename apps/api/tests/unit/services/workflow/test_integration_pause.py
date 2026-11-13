@@ -39,13 +39,6 @@ def subscription_side():
         yield MagicMock(pause=pause, resync=resync)
 
 
-@pytest.fixture(autouse=True)
-def settled():
-    """Stub the outbox settle a resumed workflow makes; TestResume asserts it."""
-    with patch(f"{MODULE}.settle_system_notices", new_callable=AsyncMock) as settle:
-        yield settle
-
-
 def _workflow(workflow_id: str, title: str, *, activated: bool = True) -> MagicMock:
     w = MagicMock()
     w.id = workflow_id
@@ -195,26 +188,6 @@ class TestResume:
             (USER_ID, DeactivationReason.INTEGRATION_NEVER_CONNECTED),
         ]
         service.activate_workflow.assert_awaited_once_with("wf-1", USER_ID)
-
-    async def test_a_resumed_workflow_settles_its_paused_notice_and_one_left_paused_does_not(
-        self, settled: AsyncMock
-    ) -> None:
-        """Regression: the paused notice stayed under Needs you after the workflow resumed."""
-        with (
-            patch(f"{MODULE}.workflow_repository") as repo,
-            patch(f"{MODULE}.compute_required_integrations", return_value={"gmail"}),
-            patch(f"{MODULE}.WorkflowService") as service,
-        ):
-            repo.find_paused_for_reason = _paused_only_when_expired(
-                [_workflow("wf-1", "Digest"), _workflow("wf-2", "Notes")]
-            )
-            service.activate_workflow = AsyncMock(
-                side_effect=[None, ValueError("Connect Notion to enable this workflow.")]
-            )
-
-            await resume_workflows_for_reconnected_integration(USER_ID, "gmail")
-
-        settled.assert_awaited_once_with(USER_ID, "workflow_paused", "wf-1:")
 
     async def test_a_workflow_still_missing_another_integration_stays_paused(self) -> None:
         # activate_workflow refuses while any required integration is missing, so

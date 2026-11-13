@@ -240,13 +240,10 @@ async def publish_outbound_file(
     outbox_message_id: str | None = None,
     part_index: int = 0,
 ) -> bool:
-    """Enqueue a file (artifact) for the bot to deliver to user_id.
+    """Enqueue a file for the bot to deliver to user_id; the envelope references the artifact, not its bytes.
 
-    The bytes are not enqueued — the envelope references the artifact by
-    (conversation_id, path) and the bot fetches + uploads it. outbox_message_id and
-    part_index file it under the ledger message it belongs to. Best-effort:
-    unknown platform, unlinked account, unavailable broker, and publish errors
-    all return False without raising.
+    outbox_message_id and part_index file it under its ledger message. Returns False, never raises,
+    for an unknown platform, unlinked account, unavailable broker or publish error.
     """
     prep = await _prepare(platform, user_id, "publish_outbound_file")
     if isinstance(prep, OutboundResult):
