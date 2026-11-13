@@ -17,6 +17,7 @@ from app.models.conversation_log_models import (
     Rejected,
     RejectReason,
     ReplyOutcome,
+    ReplySettled,
     StartAck,
     StopBy,
     Transition,
@@ -693,3 +694,47 @@ def test_an_accepted_message_shows_gaia_thinking_before_a_step_picks_it_up() -> 
 def test_a_conversation_with_nothing_unsettled_and_no_work_is_idle() -> None:
     state, _ = fold([user("u1"), stop("s")])
     assert state.display is DisplayState.IDLE
+
+
+def _imported_history(*, imported: bool = True) -> list[Entry]:
+    """Two old turns as the entries migration writes them: messages in place, settles at the tail."""
+    flag = {"imported": imported}
+    return [
+        user("u1").model_copy(update=flag),
+        opened("r1", "r1").model_copy(update=flag),
+        user("u2").model_copy(update=flag),
+        opened("r2", "r2").model_copy(update=flag),
+        settled("r1:settled", ["u1"], 1, reply_id="r1").model_copy(update=flag),
+        settled("r2:settled", ["u2"], 3, reply_id="r2").model_copy(update=flag),
+    ]
+
+
+def test_imported_history_folds_idle_with_its_settles_after_later_messages() -> None:
+    state, effects = fold(_imported_history())
+
+    assert (state.comms, state.open_reply, state.unsettled_waking) == (CommsPhase.IDLE, None, ())
+    assert (state.head, state.settled_through, effects) == (6, 3, [])
+
+
+def test_the_same_history_live_is_refused_its_second_reply_while_the_first_is_open() -> None:
+    live = _imported_history(imported=False)
+    state = fold(live[:3])[0]
+
+    assert _reason(state, 4, live[3]) is RejectReason.REPLY_ALREADY_OPEN
+
+
+def test_an_imported_settle_never_answers_a_seq_at_or_after_its_own() -> None:
+    entries = _imported_history()
+    state = fold(entries[:4])[0]
+    ahead = settled("r1:settled", ["u1"], 5, reply_id="r1").model_copy(update={"imported": True})
+
+    assert _reason(state, 5, ahead) is RejectReason.REPLY_ANSWERS_FUTURE
+
+
+def test_an_imported_reply_may_answer_nothing_but_a_live_one_may_not() -> None:
+    lone = {"id": "s", "reply_id": "r", "outcome": ReplyOutcome.ANSWERED, "answers": ()}
+    assert ReplySettled.model_validate(
+        {**lone, "through": 0, "quote_target": None, "imported": True}
+    )
+    with pytest.raises(ValueError, match="answers at least one entry"):
+        ReplySettled.model_validate({**lone, "through": 0, "quote_target": None})

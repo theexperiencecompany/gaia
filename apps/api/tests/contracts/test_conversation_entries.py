@@ -361,9 +361,7 @@ async def test_cross_conversation_reads_see_flushed_and_outbox_entries(
     }
 
 
-async def test_search_skips_a_todos_chat_and_an_unmigrated_chat_never_blocks_the_others(
-    repo: ConversationRepository, held: HeldFlushes, raw_collection: Any
-) -> None:
+async def test_search_skips_a_todos_chat(repo: ConversationRepository, held: HeldFlushes) -> None:
     uid = f"u-{uuid.uuid4().hex}"
     todo_chat = await _chat(repo, uid, todo_id="todo-1", description="needle todo")
     described = await _chat(repo, uid, description="needle notes")
@@ -375,13 +373,6 @@ async def test_search_skips_a_todos_chat_and_an_unmigrated_chat_never_blocks_the
         ConversationDescriptionHit(conversation_id=described, description="needle notes")
     ]
 
-    await raw_collection.insert_one(
-        {
-            "conversation_id": "old",
-            "user_id": uid,
-            "messages": [{"type": "user", "response": "needle", "message_id": "o1"}],
-        }
-    )
     await _append(described, uid, [_message("d1", "needle")])
     await held.run_all()
     found = await repo.search(uid, pattern="needle")
@@ -389,12 +380,6 @@ async def test_search_skips_a_todos_chat_and_an_unmigrated_chat_never_blocks_the
         (described, "d1")
     ]
     assert await repo.has_sent_message(uid) is True
-
-
-_REFUSAL = (
-    "has messages the entries migration has not copied: run python -m "
-    "app.scripts.migrate_conversation_entries --apply"
-)
 
 
 async def test_a_head_written_before_log_head_existed_starts_its_log_at_one(

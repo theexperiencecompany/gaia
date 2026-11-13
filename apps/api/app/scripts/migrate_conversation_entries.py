@@ -1,29 +1,27 @@
 #!/usr/bin/env python3
-"""Move every conversation's embedded messages array into conversation_entries.
+"""Rewrite every conversation's old message shape as conversation log entries.
 
-Element i becomes the entry at seq i+1; the array stays in place until
---drop-embedded. An element with no message_id, or one repeating an earlier
-element's, first gets a fresh id written back into the array. Safe to re-run:
-each pass visits only the conversations whose array changed since it was
-copied (any append, trim or in-place edit), and merges them by message id.
-Every --apply then folds each emoji_ack message, in any conversation and
-whichever build wrote it, into a reaction on the user message it answered;
---verify fails while any copied ack is unfolded.
+Sources: each head's embedded messages array, and message-shaped entries an earlier build
+of this stack copied into conversation_entries. A user message becomes a UserMessage and a
+bot message a Reply at its position, with the bot message's ReplySettled appended at the
+tail; an emoji_ack folds into a reaction on its message. An element with no message_id, or
+one repeating an earlier element's, first gets a fresh id written back into the array. Safe
+to re-run: a pass visits only conversations whose array changed since (any append, trim or
+in-place edit) and sets only the fields whose source changed. A head written meanwhile is
+reported RACED and changes nothing; re-run until 0 raced. A conversation the log cannot hold
+is reported REFUSED with why. Both make the run exit 1.
 
 Cutover, in this order:
-  1. --apply while the old build serves (repeat until it reports 0 raced).
-  2. Fence: stop the old build, so nothing writes an embedded array.
-  3. --apply again (the final full pass), then --verify; both must exit 0.
-  4. Deploy the new build.
-  5. Later, --drop-embedded --apply: it verifies every conversation first and
-     drops nothing unless all pass, then unsets each array only while it is
-     exactly the one verified.
+  1. --apply while the old build serves; repeat until it reports 0 raced and 0 refused.
+  2. Stop the old build, so nothing writes an embedded array.
+  3. --apply again, then --verify; both must exit 0.
+  4. Deploy the new build. It refuses to boot while any conversation has an embedded array
+     no pass marked, or message-shaped entries.
+  5. Later, --drop-embedded --apply: it verifies every conversation first and drops nothing
+     unless all pass, then unsets each array only while it is exactly the one verified.
 
-Rollback before step 5: redeploy the old build. The arrays are untouched, so it
-reads every message written before the cutover; what the new build wrote in
-between stays in conversation_entries, and the next cutover (steps 1-4) merges
-the old build's later writes after it. After step 5 there is no rollback but a
-database restore.
+Rollback before step 5: redeploy the old build; the arrays are untouched. After step 5
+there is no rollback but a database restore.
 
 Usage::
 
@@ -42,6 +40,7 @@ from collections import Counter
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 
 from app.db.repositories.conversation_entries_migration import (
+    NOT_KEPT_FIELDS,
     HeadRef,
     MigrationAction,
     VerifyReport,
@@ -49,11 +48,11 @@ from app.db.repositories.conversation_entries_migration import (
 )
 
 _BATCH = 200
+_Scan = Callable[[str | None], Awaitable[list[HeadRef]]]
+_FAILED = (MigrationAction.RACED, MigrationAction.REFUSED)
 
 
-async def _heads(
-    scan: Callable[[str | None], Awaitable[list[HeadRef]]],
-) -> AsyncIterator[HeadRef]:
+async def _heads(scan: _Scan) -> AsyncIterator[HeadRef]:
     """Walk heads in _id order one batch at a time, never holding more than a batch."""
     after: str | None = None
     seen = 0
@@ -67,70 +66,65 @@ async def _heads(
         # pragma: no mutate end
 
 
-def _embedded(after: str | None) -> Awaitable[list[HeadRef]]:
-    return conversation_entries_migration.heads_with_embedded(after_head_id=after, batch=_BATCH)
+def _scans(*, every_embedded: bool) -> tuple[_Scan, _Scan]:
+    """Return the two sources' scans: embedded arrays (all, or the ones the log lags) and message entries."""
+    migration = conversation_entries_migration
+    embedded = migration.heads_with_embedded if every_embedded else migration.heads_to_migrate
+    return (
+        lambda after: embedded(after_head_id=after, batch=_BATCH),
+        lambda after: migration.heads_with_message_entries(after_head_id=after, batch=_BATCH),
+    )
 
 
 async def _migrate(args: argparse.Namespace) -> int:
     actions: Counter[MigrationAction] = Counter()
-    copied = identified = folded = 0
-    async for ref in _heads(
-        lambda after: conversation_entries_migration.heads_to_migrate(
-            after_head_id=after, batch=_BATCH
-        )
-    ):
-        outcome = await conversation_entries_migration.migrate(ref, apply=args.apply)
-        actions[outcome.action] += 1
-        copied += outcome.copied
-        identified += outcome.identified
-        folded += outcome.folded
-        if outcome.action is MigrationAction.RACED:
-            print(f"  [{outcome.action}] {ref.conversation_id}: written meanwhile, re-run")
-        elif outcome.action is not MigrationAction.UNCHANGED:
-            print(
-                f"  [{outcome.action}] {ref.conversation_id}: {outcome.copied} copied, "
-                f"{outcome.rewritten} rewritten, {outcome.identified} given an id"
+    totals: Counter[str] = Counter()
+    for scan in _scans(every_embedded=False):
+        async for ref in _heads(scan):
+            outcome = await conversation_entries_migration.migrate(ref, apply=args.apply)
+            actions[outcome.action] += 1
+            totals.update(
+                written=outcome.written,
+                rewritten=outcome.rewritten,
+                identified=outcome.identified,
+                folded=outcome.folded,
+                not_kept=outcome.not_kept,
             )
-    folded += await _fold_remaining_acks(apply=args.apply)
-    acks = f"{folded} emoji_ack messages folded into reactions"
-    if actions:
-        counts = ", ".join(f"{n} {a}" for a, n in sorted(actions.items()))
-        print(f"Summary: {counts}; {copied} entries; {identified} elements given an id; {acks}")
-    else:
-        print(f"Summary: nothing to migrate; {acks}")
+            if outcome.action in _FAILED:
+                print(f"  [{outcome.action}] {ref.conversation_id}: {outcome.reason or 're-run'}")
+            elif outcome.action is not MigrationAction.UNCHANGED:
+                print(
+                    f"  [{outcome.action}] {ref.conversation_id}: {outcome.written} written, "
+                    f"{outcome.rewritten} rewritten, {outcome.identified} given an id"
+                )
+    counts = ", ".join(f"{n} {a}" for a, n in sorted(actions.items())) or "nothing to migrate"
+    print(
+        f"Summary: {counts}; {totals['written']} entries written, {totals['rewritten']} "
+        f"rewritten; {totals['identified']} messages given an id; {totals['folded']} "
+        "emoji_ack messages folded into reactions."
+    )
+    if totals["not_kept"]:
+        print(
+            f"  {totals['not_kept']} messages carry fields the log does not keep "
+            f"({', '.join(NOT_KEPT_FIELDS)})."
+        )
     if not args.apply:
         print("Dry run only. Re-run with --apply to write.")
-    return 1 if actions[MigrationAction.RACED] else 0
-
-
-async def _fold_remaining_acks(*, apply: bool) -> int:
-    """Fold the acks in conversations the copy did not visit: ones a build without the fold appended."""
-    folded = 0
-    async for ref in _heads(
-        lambda after: conversation_entries_migration.heads_with_acks(
-            after_head_id=after, batch=_BATCH
-        )
-    ):
-        folded += await conversation_entries_migration.fold_reaction_acks(ref, apply=apply)
-    return folded
+    return 1 if any(actions[action] for action in _FAILED) else 0
 
 
 async def _verify_all() -> tuple[list[tuple[HeadRef, VerifyReport]], int]:
-    """Verify every head still holding an array, printing each mismatch; returns the reports and failures."""
+    """Verify every head with an embedded array or message entries, printing each mismatch."""
     reports: list[tuple[HeadRef, VerifyReport]] = []
     failed = 0
-    async for ref in _heads(_embedded):
-        report = await conversation_entries_migration.verify(ref)
-        reports.append((ref, report))
-        if not report.ok:
-            failed += 1
-            for mismatch in report.mismatches:
-                print(f"  MISMATCH {ref.conversation_id}: {mismatch}")
-        elif report.entries != report.embedded:
-            print(
-                f"  {ref.conversation_id}: {report.entries - report.embedded} entries beyond the "
-                "embedded array (trimmed by the old cap, or appended since)"
-            )
+    for scan in _scans(every_embedded=True):
+        async for ref in _heads(scan):
+            report = await conversation_entries_migration.verify(ref)
+            reports.append((ref, report))
+            if not report.ok:
+                failed += 1
+                for mismatch in report.mismatches:
+                    print(f"  MISMATCH {ref.conversation_id}: {mismatch}")
     print(f"Verified {len(reports)} conversations: {failed} with mismatches.")
     return reports, failed
 
@@ -145,14 +139,13 @@ async def _drop(args: argparse.Namespace) -> int:
     if failed:
         print("Nothing dropped: every conversation must verify first. Run --apply, then retry.")
         return 1
+    droppable = [(ref, report.fingerprint) for ref, report in reports if report.fingerprint]
     if not args.apply:
-        print(f"{len(reports)} embedded arrays would drop. Dry run only. Re-run with --apply.")
+        print(f"{len(droppable)} embedded arrays would drop. Dry run only. Re-run with --apply.")
         return 0
     dropped = refused = 0
-    for ref, report in reports:
-        if report.fingerprint is not None and await conversation_entries_migration.drop_embedded(
-            ref, verified=report.fingerprint
-        ):
+    for ref, fingerprint in droppable:
+        if await conversation_entries_migration.drop_embedded(ref, verified=fingerprint):
             dropped += 1
         else:
             refused += 1
@@ -183,7 +176,7 @@ def _parser() -> argparse.ArgumentParser:
     mode.add_argument(
         "--verify",
         action="store_true",
-        help="Compare entries with each embedded array.",  # pragma: no mutate — help text only
+        help="Check what clients read back against each old array.",  # pragma: no mutate — help text only
     )
     mode.add_argument(
         "--drop-embedded",

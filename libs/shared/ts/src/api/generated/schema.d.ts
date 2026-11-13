@@ -13526,6 +13526,12 @@ export interface components {
              * @description Producer-minted idempotency key
              */
             id: string;
+            image?: components["schemas"]["ImageData"] | null;
+            /**
+             * Imported
+             * @default false
+             */
+            imported?: boolean;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -13594,6 +13600,11 @@ export interface components {
              * @description Producer-minted idempotency key
              */
             id: string;
+            /**
+             * Imported
+             * @default false
+             */
+            imported?: boolean;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -16366,6 +16377,11 @@ export interface components {
              */
             id: string;
             /**
+             * Imported
+             * @default false
+             */
+            imported?: boolean;
+            /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
@@ -16397,6 +16413,7 @@ export interface components {
             surface: components["schemas"]["ConversationSource"];
             /** Text */
             text: string;
+            todo_run_wake?: components["schemas"]["TodoRunWake"] | null;
             /** Tool Category */
             tool_category?: string | null;
             /**

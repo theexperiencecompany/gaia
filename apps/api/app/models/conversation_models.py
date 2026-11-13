@@ -204,7 +204,6 @@ class StoredEntry(BaseModel):
     seq: int
     id: str
     at: datetime | None = None
-    content_hash: str | None = None
     migration_fields: dict[str, str] | None = None
     # Set only on an amendable log entry (a reply, a user message): each amend bumps it.
     revision: int | None = None
@@ -221,20 +220,12 @@ class StoredEntry(BaseModel):
 
 
 class EntryKey(BaseModel):
-    """Which entry holds a seq: the id, seq and committed-content hash of a stored entry, projected."""
+    """Which entry holds a seq: the id and seq of a stored entry, projected."""
 
     model_config = ConfigDict(extra="ignore")
 
     id: str
     seq: int
-    content_hash: str | None = None
-
-
-class EmbeddedState(BaseModel):
-    """What a head read reports of the embedded messages array without shipping it."""
-
-    count: int = 0
-    fingerprint: int | None = None
 
 
 class LegacyMessage(BaseModel):
@@ -257,19 +248,8 @@ class StepHolder(BaseModel):
     alive_key: str
 
 
-class RetiredAckFields(BaseModel):
-    """What the entries migration reads of a message stored as a retired emoji_ack, to fold it into a reaction."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    kind: str | None = None
-    response: str = ""
-    reacts_to_message_id: str | None = None
-    tool_data: list[object] | None = None
-
-
 class ConversationHead(BaseModel):
-    """A conversations document as the entry log reads it: identity, log_head, outbox, migration and log state."""
+    """A conversations document as the entry log reads it: identity, log_head, outbox and log state."""
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
@@ -277,15 +257,26 @@ class ConversationHead(BaseModel):
     user_id: str
     log_head: int | None = None
     outbox: dict[int, StoredEntry] = Field(default_factory=dict)
-    migrated_fingerprint: int | None = None
-    migration_folded_acks: list[str] = Field(default_factory=list)
-    embedded: EmbeddedState | None = Field(default=None, alias="_embedded")
     existing: list[EntryKey] = Field(default_factory=list)
-    messages: list[LegacyMessage] = Field(default_factory=list)
     # The conversation log's fold, absent until its first entry; the step holder; the last epoch handed out.
     state: ConversationState | None = None
     runner: StepHolder | None = None
     runner_epoch: int = 0
+
+
+class EmbeddedHead(BaseModel):
+    """A head as the entries migration reads it: the old embedded array, its fingerprint, and the log."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    conversation_id: str
+    user_id: str
+    source: str | None = None
+    log_head: int | None = None
+    state: ConversationState | None = None
+    messages: list[LegacyMessage] = Field(default_factory=list)
+    migrated_fingerprint: int | None = None
+    fingerprint: int = Field(alias="_fingerprint")
 
 
 class HeadRefRow(BaseModel):

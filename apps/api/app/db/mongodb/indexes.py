@@ -265,6 +265,12 @@ async def create_user_indexes() -> None:
 # Only chats bound to a todo are in the filter. Shared with the contract suite.
 CONVERSATION_ID_UNIQUE_KEYS: IndexKeys = [("conversation_id", 1)]
 CONVERSATION_ID_UNIQUE_OPTIONS: IndexOptions = {"unique": True, "name": "conversation_id_unique"}
+# The boot check: a head whose embedded messages array no migration pass marked.
+UNMIGRATED_HEAD_KEYS: IndexKeys = [("migrated_fingerprint", 1)]
+UNMIGRATED_HEAD_OPTIONS: IndexOptions = {
+    "name": "embedded_messages_migrated",
+    "partialFilterExpression": {"messages.0": {"$exists": True}},
+}
 CONVERSATION_TODO_BINDING_KEYS: IndexKeys = [("user_id", 1), ("todo_id", 1)]
 CONVERSATION_TODO_BINDING_OPTIONS: IndexOptions = {
     "unique": True,
@@ -309,10 +315,10 @@ CONVERSATION_ENTRY_INDEXES: list[tuple[IndexKeys, IndexOptions]] = [
         [("user_id", 1), ("at", 1)],
         {"name": "user_pinned_at", "partialFilterExpression": {"pinned": True}},
     ),
-    # unfinished replies of the message-shaped era, until the rewrite (step 5) replaces them
+    # the boot check: an entry still in the old message shape, which only those carry a type
     (
-        [("at", 1)],
-        {"name": "in_progress_at", "partialFilterExpression": {"in_progress": True}},
+        [("type", 1)],
+        {"name": "message_shaped", "partialFilterExpression": {"type": {"$exists": True}}},
     ),
 ]
 
@@ -332,6 +338,7 @@ async def create_conversation_indexes() -> None:
             conversations_collection.create_index(
                 CONVERSATION_ID_UNIQUE_KEYS, **CONVERSATION_ID_UNIQUE_OPTIONS
             ),
+            conversations_collection.create_index(UNMIGRATED_HEAD_KEYS, **UNMIGRATED_HEAD_OPTIONS),
             # For starred conversations queries
             conversations_collection.create_index(
                 [("user_id", 1), ("starred", 1), ("createdAt", -1)]

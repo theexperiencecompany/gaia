@@ -490,8 +490,8 @@ class TestCreateConversationIndexes:
                 {"name": "user_pinned_at", "partialFilterExpression": {"pinned": True}},
             ),
             (
-                ([("at", 1)],),
-                {"name": "in_progress_at", "partialFilterExpression": {"in_progress": True}},
+                ([("type", 1)],),
+                {"name": "message_shaped", "partialFilterExpression": {"type": {"$exists": True}}},
             ),
         ]
         heads = [call.args[0] for call in collections["conversations"].create_index.await_args_list]

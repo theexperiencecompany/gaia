@@ -32,13 +32,12 @@ from app.db.repositories.base import UserScopedRepository
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversation_entries import (
     AWAITING_APPROVAL,
+    AWAITING_APPROVAL_STAGE,
     DROP_EMBEDDED_STAGE,
-    EMBEDDED_STATE_STAGE,
     LOG_HEAD_FIELD,
     OUTBOX_FIELD,
     REVISION_FIELD,
     STATE_FIELD,
-    UNMIGRATED_HEADS,
     EntryWindow,
     Head,
     StoredRow,
@@ -93,7 +92,7 @@ from app.utils.errors import (
     ConversationIdTakenError,
     ConversationStoreError,
 )
-from shared.py.wide_events import log, spawn_logged_task
+from shared.py.wide_events import spawn_logged_task
 
 _JITTER = random.SystemRandom()
 #: A quote, a settle's quote, an approval, its work: the longest chain a message reads beside it.
@@ -669,13 +668,13 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         sort: Mapping[str, int] | None = None,
         limit: int = 0,
     ) -> list[Head]:
-        """Read heads without their embedded arrays, refusing any the migration has not caught up with."""
+        """Read heads without their embedded arrays."""
         pipeline: list[Mapping[str, object]] = [{"$match": dict(match)}]
         if sort:
             pipeline.append({"$sort": dict(sort)})
         if limit:
             pipeline.append({"$limit": limit})
-        pipeline += [EMBEDDED_STATE_STAGE, DROP_EMBEDDED_STAGE]
+        pipeline += [AWAITING_APPROVAL_STAGE, DROP_EMBEDDED_STAGE]
         with store_errors("head read"):
             raws = await self._raw_collection().aggregate(pipeline).to_list(length=None)
         return [head_from_raw(raw) for raw in raws]
@@ -859,13 +858,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
         excluding names the heads whose entries never count; limit bounds the collection
         read for callers that need only whether one exists. Only entries under a live head
-        count. A conversation the migration has not caught up with is left out and logged,
-        so one such chat never blocks the user's other reads.
+        count.
         """
         with store_errors("entry search"):  # pragma: no mutate — error label only
-            behind = await self._distinct(
-                "conversation_id", {"user_id": user_id, **UNMIGRATED_HEADS}
-            )
             pending = await (
                 self._raw_collection()
                 .aggregate(outbox_entries_matching(user_id, match, excluding=excluding))
@@ -893,12 +888,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
                 .aggregate(stored)
                 .to_list(length=None)
-            )
-        if behind:
-            log.warning(
-                "[conversations] cross-conversation read left out unmigrated conversations",
-                user_id=user_id,
-                conversation_ids=behind,
             )
         staged = {(str(row["conversation_id"]), int(str(row["seq"]))) for row in revised}
         found: dict[tuple[str, int], StoredRow] = {}
