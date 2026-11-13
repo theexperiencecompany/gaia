@@ -2,6 +2,7 @@ import { z } from "zod";
 import type {
   ApprovalDecided,
   ApprovalRequested,
+  Attribution,
   BargeIn,
   ConversationSource,
   FailureReason,
@@ -16,11 +17,14 @@ import type {
   SelectedCalendarEventData,
   SelectedWorkflowDataOutput,
   StopRequested,
+  TodoRun,
   TodoRunWake,
   TodoWoke,
   UserMessage,
   WorkFinished,
   WorkflowFired,
+  WorkflowRun,
+  WorkflowTriggerContext,
   WorkStarted,
 } from "../api/generated";
 import { ToolDataEntrySchema } from "../chat/schema";
@@ -173,22 +177,82 @@ const BargeInSchema = z.object({
   kind: z.literal(ENTRY_KIND.BARGE_IN),
   id,
   reply_id: z.string(),
-  heard_text: z.string(),
+  heard_through: z.number().int().min(0),
 }) satisfies z.ZodType<BargeIn>;
+
+const AttributionSchema = z.object({
+  actor: z.enum(["user", "agent"]),
+  surface: z.enum(["web", "desktop", "bot", "voice", "worker"]),
+  trigger: z.enum([
+    "interactive",
+    "schedule",
+    "integration_trigger",
+    "webhook",
+    "system",
+  ]),
+}) satisfies z.ZodType<Attribution>;
+
+const WorkflowTriggerSchema = z
+  .object({
+    type: optionalString,
+    workflow_id: optionalString,
+    triggered_at: z.string().optional(),
+    trigger_data: z.record(z.string(), z.unknown()).optional(),
+    email_data: z
+      .object({
+        message_text: z.string().optional(),
+        sender: z.string().optional(),
+        subject: z.string().optional(),
+      })
+      .optional(),
+    playbook_fallback: optionalString,
+    quiet_hours: z
+      .discriminatedUnion("kind", [
+        z.object({ kind: z.literal("bypass"), reason: z.string() }),
+        z.object({ kind: z.literal("hold") }),
+      ])
+      .nullish(),
+    tracked_todos_context: z.string().optional(),
+    workflow_notify_on_completion: z.boolean().optional(),
+  })
+  .loose() satisfies z.ZodType<WorkflowTriggerContext>;
+
+const WorkflowRunSchema = z.object({
+  workflow: SelectedWorkflowSchema,
+  execution_id: z.string(),
+  timezone: z.string(),
+  reservation: z.string(),
+  trigger: WorkflowTriggerSchema,
+  attribution: AttributionSchema,
+}) satisfies z.ZodType<WorkflowRun>;
 
 const WorkflowFiredSchema = z.object({
   kind: z.literal(ENTRY_KIND.WORKFLOW_FIRED),
   id,
-  workflow_id: z.string(),
-  execution_id: z.string(),
-  context: z.record(z.string(), z.unknown()),
+  run: WorkflowRunSchema,
 }) satisfies z.ZodType<WorkflowFired>;
+
+const TodoRunSchema = z.object({
+  todo_id: z.string(),
+  run_id: z.string(),
+  title: z.string(),
+  trigger_type: z.enum([
+    "manual",
+    "schedule",
+    "integration",
+    "scheduled_todo",
+    "todo_trigger",
+  ]),
+  runs_once: z.boolean(),
+  wake: TodoRunWakeSchema,
+  report_form: z.enum(["write_up", "as_written"]),
+  attribution: AttributionSchema,
+}) satisfies z.ZodType<TodoRun>;
 
 const TodoWokeSchema = z.object({
   kind: z.literal(ENTRY_KIND.TODO_WOKE),
   id,
-  todo_id: z.string(),
-  wake: TodoRunWakeSchema,
+  run: TodoRunSchema,
 }) satisfies z.ZodType<TodoWoke>;
 
 const NoticeSchema = z.object({

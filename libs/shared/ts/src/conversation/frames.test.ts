@@ -115,21 +115,43 @@ describe("parseConversationEvent", () => {
   });
 
   it("parses every entry kind the server can append", () => {
+    const attribution = {
+      actor: "agent",
+      surface: "worker",
+      trigger: "schedule",
+    } as const;
     const entries = [
       { kind: "stop_requested", id: "s", by: "user", covers_through: null },
-      { kind: "barge_in", id: "b", reply_id: "r", heard_text: "he" },
+      { kind: "barge_in", id: "b", reply_id: "r", heard_through: 2 },
       {
         kind: "workflow_fired",
         id: "w",
-        workflow_id: "wf",
-        execution_id: "ex",
-        context: { a: 1 },
+        run: {
+          workflow: { id: "wf", title: "Digest", description: "", steps: [] },
+          execution_id: "ex",
+          timezone: "UTC",
+          reservation: "lock",
+          trigger: { type: "schedule" },
+          attribution,
+        },
       },
       {
         kind: "todo_woke",
         id: "t",
-        todo_id: "td",
-        wake: { kind: "schedule", trigger_names: [], approval_summary: null },
+        run: {
+          todo_id: "td",
+          run_id: "run",
+          title: "Follow up",
+          trigger_type: "schedule",
+          runs_once: false,
+          wake: {
+            kind: "schedule",
+            trigger_names: [],
+            approval_summary: null,
+          },
+          report_form: "write_up",
+          attribution,
+        },
       },
       { kind: "notice", id: "n", text: "hello", origin: "reminder" },
       {

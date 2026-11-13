@@ -106,7 +106,6 @@ describe("syncing a tracked todo's chat", () => {
     vi.mocked(chatApi.batchSyncConversations).mockResolvedValue({
       conversations: [],
       missing: ["deleted-todo-chat"],
-      active_streams: {},
     });
 
     await batchSyncConversations();
@@ -134,6 +133,7 @@ describe("syncing a tracked todo's chat", () => {
       conversation_id: "todo-chat",
       description: "Watch the deploy",
       messages: [],
+      has_older: false,
       artifacts: [],
       awaiting_approval: false,
       todo_id: "todo-1",
@@ -164,7 +164,6 @@ describe("syncing a bot DM chat", () => {
     vi.mocked(chatApi.batchSyncConversations).mockResolvedValue({
       conversations: [],
       missing: [],
-      active_streams: {},
     });
 
     await batchSyncConversations();
@@ -188,6 +187,7 @@ describe("syncing a bot DM chat", () => {
       conversation_id: "telegram-dm",
       description: "Telegram Chat",
       messages: [],
+      has_older: false,
       artifacts: [],
       awaiting_approval: false,
       todo_id: null,

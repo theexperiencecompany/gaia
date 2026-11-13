@@ -116,7 +116,7 @@ const handleForbiddenError = (
  * Maps the `subscription_required` 402 payload onto the paywall store's
  * offer shape the axios interceptor (below) opens the paywall with.
  */
-export const subscriptionRequiredOfferFromDetail = (
+const subscriptionRequiredOfferFromDetail = (
   detail: SubscriptionRequiredDetail,
 ): UpgradeOffer => ({
   discountCode: detail.discount_code,

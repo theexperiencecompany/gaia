@@ -72,7 +72,7 @@ const StreamPayloadSchema = z.discriminatedUnion("type", [
       subagent_id: z.string(),
       subagent_name: z.string(),
       subagent: optionalString,
-      agent_type: z.string(),
+      agent_type: z.enum(["handoff", "spawned"]),
       started_at: z.string(),
       icon_url: optionalString,
       tool_category: optionalString,

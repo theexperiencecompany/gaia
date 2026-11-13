@@ -23,6 +23,7 @@ describe("syncing a conversation GAIA reacted in", () => {
     await applySyncedConversation("conv-1", {
       conversation_id: "conv-1",
       description: "Flights",
+      has_older: false,
       messages: [
         {
           type: "user",
