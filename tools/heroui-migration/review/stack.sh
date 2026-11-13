@@ -41,7 +41,8 @@ cmd_tree() {
   local label="$1" ref="$2" dest="$REVIEW_HOME/$1"
   web_port "$label" >/dev/null
   git -C "$GIT_SOURCE" rev-parse --verify --quiet "$ref^{commit}" >/dev/null || die "$ref is not a commit in $GIT_SOURCE (fetch it or apply a bundle first)"
-  if [ -d "$dest" ]; then git -C "$dest" checkout -q --detach "$ref"; else git -C "$GIT_SOURCE" worktree add -q --detach "$dest" "$ref"; fi
+  # -f: a build rewrites apps/web/src/lib/image-dimensions.generated.json; these trees hold no work to keep.
+  if [ -d "$dest" ]; then git -C "$dest" checkout -q -f --detach "$ref"; else git -C "$GIT_SOURCE" worktree add -q --detach "$dest" "$ref"; fi
   cd "$dest"
   for f in $(git ls-files | grep -E '(^|/)mise\.toml$'); do mise trust -q "$f"; done
   pnpm install --frozen-lockfile
