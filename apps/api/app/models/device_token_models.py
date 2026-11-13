@@ -2,9 +2,12 @@
 Device Token Models for Push Notifications
 """
 
+from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.db.repositories.base import UserScopedDocument
 
 
 class PlatformType(str, Enum):
@@ -27,3 +30,22 @@ class PushTokenResponse(BaseModel):
 
     success: bool = Field(..., description="Operation success status")
     message: str = Field(..., description="Response message")
+
+
+class DeviceTokenDocument(UserScopedDocument):
+    """One Expo push token and the user whose device currently holds it."""
+
+    token: str
+    platform: PlatformType
+    device_id: str | None = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class DeviceTokenUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    platform: PlatformType | None = None
+    device_id: str | None = None
+    is_active: bool | None = None

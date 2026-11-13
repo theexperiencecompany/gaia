@@ -130,7 +130,7 @@ secrets or raw user content (tokens, message bodies, email addresses) as a field
 
 ## repository-boundaries
 
-**Rule:** the repository layer is the only path to MongoDB. Four checks:
+**Rule:** the repository layer is the only path to MongoDB. Five checks:
 
 1. `app.db.mongodb.collections` is imported only inside `app/db/repositories/`
    and `app/db/mongodb/`.
@@ -142,6 +142,10 @@ secrets or raw user content (tokens, message bodies, email addresses) as a field
    `app/db/` (the repository `CachePolicy`) and `app/decorators/` (the
    `@Cacheable` / `@CacheInvalidator` machinery). The raw `redis_cache` client
    (locks / rate-limits) is not banned.
+5. The Mongo client — `app.db.mongodb.mongodb` (`MongoDB` / `init_mongodb`) and
+   any `.get_collection(...)` call — stays inside `app/db/` and `app/scripts/`.
+   Check 1 alone misses a service that is handed a `MongoDB` and builds its own
+   collection handle: it never imports `collections`.
 
 **Why:** services reach Mongo through typed domain repositories
 (`app/db/repositories/CLAUDE.md`). Raw collection handles, `ObjectId`, Mongo
@@ -160,7 +164,10 @@ as each remaining reader migrates — never added; a new violation must be fixed
 not allowlisted. Check 4's allowlist is the legitimate NON-entity caches
 (aggregate rollups, tokens, external-data / derived-display caches) — the ban is
 only on hand-caching a repository-managed *entity* behind the repo's back. Check 3
-has no allowlist (the layer is new — it starts clean).
+has no allowlist (the layer is new — it starts clean). Check 5's two allowlists
+are not debt: `CLIENT_IMPORT_ALLOWLIST` names the startup caller that opens the
+connection, and `GET_COLLECTION_CALL_ALLOWLIST` names the Chroma call sites the
+AST cannot tell from Mongo's. A Mongo call site is never added to either.
 
 ---
 
