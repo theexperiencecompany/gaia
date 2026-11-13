@@ -118,16 +118,16 @@ function CompactReveal({
 const ChatMessageItem = memo(function ChatMessageItem({
   message,
   options,
-  isFollowedByBot,
-  isPrecededByBot,
+  isGroupedWithNext,
+  isGroupedWithPrev,
   suppressForBusy,
   compact,
   bubbleKey,
 }: {
   message: MessageType;
   options: Parameters<typeof getMessageProps>[2];
-  isFollowedByBot: boolean;
-  isPrecededByBot: boolean;
+  isGroupedWithNext: boolean;
+  isGroupedWithPrev: boolean;
   suppressForBusy: boolean;
   compact: boolean;
   bubbleKey: string;
@@ -149,15 +149,15 @@ const ChatMessageItem = memo(function ChatMessageItem({
     bubble = (
       <ChatBubbleBot
         {...botProps}
-        disableActions={compact || isFollowedByBot || suppressForBusy}
+        disableActions={compact || isGroupedWithNext || suppressForBusy}
         follow_up_actions={
-          compact || isFollowedByBot || suppressForBusy
+          compact || isGroupedWithNext || suppressForBusy
             ? undefined
             : botProps.follow_up_actions
         }
-        date={isFollowedByBot ? undefined : botProps.date}
-        isGroupedWithNext={isFollowedByBot}
-        isGroupedWithPrev={isPrecededByBot}
+        date={isGroupedWithNext ? undefined : botProps.date}
+        isGroupedWithNext={isGroupedWithNext}
+        isGroupedWithPrev={isGroupedWithPrev}
         hideAvatar={compact}
       />
     );
@@ -168,6 +168,8 @@ const ChatMessageItem = memo(function ChatMessageItem({
         hideAvatar={compact}
         fullWidth={compact}
         disableActions={compact}
+        isGroupedWithNext={isGroupedWithNext}
+        isGroupedWithPrev={isGroupedWithPrev}
       />
     );
   }
@@ -384,17 +386,19 @@ export default function ChatRenderer({
   }, [messagesWithDeduplicatedToolCalls, rendersAsBotBubble]);
 
   // Walk in `step` direction from `index`, skipping empty bot messages, and
-  // report whether the next/previous *rendered* bubble is a bot bubble.
-  const hasRenderedBotInDirection = useCallback(
+  // report whether the next/previous *rendered* bubble is from the same side.
+  const isGroupedInDirection = useCallback(
     (index: number, step: 1 | -1): boolean => {
+      const side = messagesWithDeduplicatedToolCalls[index].type;
       for (
         let i = index + step;
         i >= 0 && i < messagesWithDeduplicatedToolCalls.length;
         i += step
       ) {
         const candidate = messagesWithDeduplicatedToolCalls[i];
-        if (candidate.type !== "bot") return false;
-        if (rendersAsBotBubble(candidate)) return true;
+        if (candidate.type !== side) return false;
+        if (candidate.type !== "bot" || rendersAsBotBubble(candidate))
+          return true;
         // Empty bot message — skip it and keep scanning in this direction.
       }
       return false;
@@ -423,11 +427,11 @@ export default function ChatRenderer({
       />
       {messagesWithDeduplicatedToolCalls?.map(
         (message: MessageType, index: number) => {
-          // Consecutive bot bubble grouping (iMessage-style): only the LAST
+          // Consecutive bubbles from one side group (iMessage-style): only the LAST
           // shows the avatar/actions/timestamp; others sit tight with no
           // gap. Looks past empty bot messages (never render) so grouping matches visible bubbles.
-          const isFollowedByBot = hasRenderedBotInDirection(index, 1);
-          const isPrecededByBot = hasRenderedBotInDirection(index, -1);
+          const isGroupedWithNext = isGroupedInDirection(index, 1);
+          const isGroupedWithPrev = isGroupedInDirection(index, -1);
           // Only the active turn's bubble (the last rendered one) is suppressed
           // while the conversation is busy — finished turns keep their actions.
           const suppressForBusy =
@@ -448,8 +452,8 @@ export default function ChatRenderer({
               <ChatMessageItem
                 message={message}
                 options={messagePropsOptions}
-                isFollowedByBot={isFollowedByBot}
-                isPrecededByBot={isPrecededByBot}
+                isGroupedWithNext={isGroupedWithNext}
+                isGroupedWithPrev={isGroupedWithPrev}
                 suppressForBusy={suppressForBusy}
                 compact={compact}
                 bubbleKey={messageId}

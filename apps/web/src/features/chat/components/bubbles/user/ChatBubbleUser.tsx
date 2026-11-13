@@ -112,10 +112,15 @@ export default function ChatBubbleUser({
   loading,
   hideAvatar = false,
   fullWidth = false,
+  isGroupedWithNext = false,
+  isGroupedWithPrev = false,
 }: ChatBubbleUserProps & {
   disableActions?: boolean;
   hideAvatar?: boolean;
   fullWidth?: boolean;
+  /** Consecutive user messages read as one group: only the last carries the avatar, tail and footer. */
+  isGroupedWithNext?: boolean;
+  isGroupedWithPrev?: boolean;
 }) {
   const { hasContent, user, isEmojiOnly, bubbleClassName, textClassName } =
     useChatBubbleUser({
@@ -130,9 +135,15 @@ export default function ChatBubbleUser({
 
   if (!hasContent) return null;
 
+  // A queued or failed message keeps its footer: its label and Retry must stay reachable.
+  const showFooter = !isGroupedWithNext || queued || failed;
+
   return (
     <div
-      className="group flex w-full justify-end gap-3"
+      className={cn(
+        "group flex w-full justify-end gap-3",
+        isGroupedWithPrev && "mt-1.5",
+      )}
       style={{ contentVisibility: "auto", containIntrinsicSize: "0 80px" }}
     >
       <div className="flex flex-col items-end gap-1">
@@ -154,7 +165,13 @@ export default function ChatBubbleUser({
             />
 
             {text?.trim() && (
-              <div className={cn("relative", bubbleClassName)}>
+              <div
+                className={cn(
+                  "relative",
+                  bubbleClassName,
+                  isGroupedWithNext && "imessage-grouped-first",
+                )}
+              >
                 {reaction && <MessageReactions reaction={reaction} />}
                 {isEmojiOnly ? (
                   <div className={textClassName}>{text}</div>
@@ -173,32 +190,36 @@ export default function ChatBubbleUser({
 
           {!hideAvatar && (
             <div className="min-w-10">
-              <Avatar className="rounded-full bg-black">
-                <AvatarImage src={user?.profilePicture} alt="User Avatar" />
-                <AvatarFallback>
-                  <Image
-                    src={"/images/avatars/default.webp"}
-                    width={35}
-                    height={35}
-                    alt="Default profile picture"
-                  />
-                </AvatarFallback>
-              </Avatar>
+              {!isGroupedWithNext && (
+                <Avatar className="rounded-full bg-black">
+                  <AvatarImage src={user?.profilePicture} alt="User Avatar" />
+                  <AvatarFallback>
+                    <Image
+                      src={"/images/avatars/default.webp"}
+                      width={35}
+                      height={35}
+                      alt="Default profile picture"
+                    />
+                  </AvatarFallback>
+                </Avatar>
+              )}
             </div>
           )}
         </div>
 
-        <ChatBubbleUserFooter
-          text={text}
-          date={date}
-          message_id={message_id}
-          queued={queued}
-          failed={failed}
-          onRetry={onRetry}
-          isRetrying={isRetrying}
-          disableActions={disableActions}
-          hideAvatar={hideAvatar}
-        />
+        {showFooter && (
+          <ChatBubbleUserFooter
+            text={text}
+            date={date}
+            message_id={message_id}
+            queued={queued}
+            failed={failed}
+            onRetry={onRetry}
+            isRetrying={isRetrying}
+            disableActions={disableActions}
+            hideAvatar={hideAvatar}
+          />
+        )}
       </div>
     </div>
   );

@@ -24,6 +24,7 @@ from app.models.conversation_frame_models import (
     RetractFrame,
     StreamPayload,
     ToolDataEvent,
+    ToolOutputEvent,
     state_frame,
 )
 from app.models.conversation_log_models import (
@@ -77,6 +78,7 @@ from app.services.conversation.todo_wake import nothing_to_report
 from app.services.conversation.verdict import merge_group, quote_target, verdict
 from app.utils.hot_path import first_text_gate, first_text_shown
 from app.utils.liveness import keep_proving
+from app.utils.stream_utils import with_tool_output
 from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.chat import ChatTurnReacted
 from shared.py.wide_events import log
@@ -94,8 +96,15 @@ class _Quiet:
 
 
 @dataclass(frozen=True)
+class _Drafting:
+    """Committed, showing only live work (cards) at the bottom: the reply takes its slot with its first text."""
+
+    reply: Reply
+
+
+@dataclass(frozen=True)
 class _Showing:
-    """Committed, and the user sees this reply: its content is the fold of every delta shown."""
+    """Committed, and the user reads this reply's text in its slot: its content is the fold of every delta shown."""
 
     reply: Reply
     seq: int
@@ -106,7 +115,7 @@ class _Attempt:
     """One comms attempt: what it covers, how far it got, and which newer inputs could join it."""
 
     claim: StepClaim
-    attempt_id: str
+    run_id: str
     reply_id: str
     batch: Batch
     covers: tuple[LoggedEntry, ...]
@@ -115,7 +124,9 @@ class _Attempt:
     view: StepView
     # The log's head as the last verdict's hint read it: the view answers only while it reaches this.
     hint_head: int = 0
-    progress: _Quiet | _Showing | None = None
+    progress: _Quiet | _Drafting | _Showing | None = None
+    # Replies this attempt settled before absorbing a later message; each later one is a new segment.
+    segment: int = 0
     # Waking entries after covers, of the batch's group, not past a Stop.
     joiners: tuple[LoggedEntry, ...] = ()
     # A Stop or another group's input ended the run of joinable entries.
@@ -127,6 +138,11 @@ class _Attempt:
     # The reply as settled once the answer was final; the run only adds follow-up suggestions after.
     answered: LoggedEntry | None = None
 
+    @property
+    def attempt_id(self) -> str:
+        """Return the id the current reply segment streams and settles under."""
+        return self.run_id if self.segment == 0 else f"{self.run_id}/{self.segment}"
+
     def settled_view(self) -> StepView | None:
         """Return the view when its newest entry is this attempt's own settle, so it holds everything through it."""
         newest = self.view.entries[-1].entry if self.view.entries else None
@@ -137,6 +153,8 @@ class _Attempt:
         """Return why the attempt is committed, or None while it can still restart."""
         if isinstance(self.progress, _Showing):
             return CommitReason.VISIBLE_TEXT
+        if isinstance(self.progress, _Drafting):
+            return CommitReason.MODEL_OUTPUT
         return self.progress.reason if self.progress is not None else None
 
     @property
@@ -290,7 +308,7 @@ async def _serve(
     work = _answered_work(batch, reply_id)
     attempt = _Attempt(
         claim=claim,
-        attempt_id=attempt_id,
+        run_id=attempt_id,
         reply_id=reply_id,
         batch=batch,
         covers=batch.waking,
@@ -443,7 +461,7 @@ async def _run_attempt(
         ending = await _watch(ports, attempt, run)
     except ClaimLost:
         await run.cancel(CancelReason.LOST)
-        if attempt.progress is None:
+        if not isinstance(attempt.progress, _Showing):
             await _retract(ports, attempt)
         raise
     except Exception as error:  # a store or stream failure mid-attempt fails it, under the claim
@@ -579,6 +597,8 @@ async def _handle(
             _commit_quietly(attempt)
             if has_tool_calls and attempt.joiners:
                 await run.absorb(attempt.joiners)
+                if isinstance(attempt.progress, _Showing):
+                    await _next_segment(ports, attempt)
                 attempt.covers = (*attempt.covers, *attempt.joiners)
                 attempt.joiners = ()
         case Streamed(payload=payload):
@@ -590,18 +610,36 @@ def _commit_quietly(attempt: _Attempt) -> None:
         attempt.progress = _Quiet(reason=CommitReason.MODEL_OUTPUT)
 
 
+async def _next_segment(ports: RuntimePorts, attempt: _Attempt) -> None:
+    """Settle the text the user already read where it stands, answering what it covered; the rest answers below the absorbed messages."""
+    await _conclude(ports, attempt, _base_reply(attempt), ReplyOutcome.ANSWERED)
+    attempt.covers = ()
+    attempt.segment += 1
+    attempt.reply_id = f"r{attempt.attempt_id}"
+    attempt.progress = _Quiet(reason=CommitReason.MODEL_OUTPUT)
+    attempt.deltas = 0
+    attempt.work_cards = ()
+    attempt.work_image = None
+
+
 async def _show(ports: RuntimePorts, attempt: _Attempt, payload: StreamPayload) -> None:
-    """Open the reply on the first visible delta, then stream the delta into it."""
-    if not isinstance(attempt.progress, _Showing):
-        reply = await _opening_reply(ports, attempt, _empty_reply(attempt))
+    """Stream the delta; the reply's entry opens with its first text, so it sits below every message it answers.
+
+    Until then its cards are live work, drawn at the bottom from the deltas alone.
+    """
+    if not isinstance(attempt.progress, _Showing) and _is_text(payload):
+        reply = await _opening_reply(ports, attempt, _base_reply(attempt))
         opened = await _append_seen(ports, attempt, reply)
         attempt.progress = _Showing(reply=reply, seq=opened.seq)
         if opened.seq == attempt.seen + 1:
             # Its own entry: no need to read the log for joiners the next verdict.
             attempt.seen = opened.seq
         first_text_shown()
+    folded = _fold(_base_reply(attempt), payload)
     shown = attempt.progress
-    attempt.progress = replace(shown, reply=_fold(shown.reply, payload))
+    attempt.progress = (
+        replace(shown, reply=folded) if isinstance(shown, _Showing) else _Drafting(reply=folded)
+    )
     delta = ReplyDeltaFrame(
         attempt_id=attempt.attempt_id,
         reply_id=attempt.reply_id,
@@ -641,11 +679,11 @@ async def _restart(ports: RuntimePorts, attempt: _Attempt) -> None:
 async def _stop(ports: RuntimePorts, attempt: _Attempt) -> None:
     """Keep what was shown as a stopped reply, or withdraw an attempt that showed nothing."""
     progress = attempt.progress
-    if not isinstance(progress, _Showing):
+    if not isinstance(progress, _Showing | _Drafting):
         await _retract(ports, attempt)
         await _set_comms(ports, attempt.claim, CommsPhase.IDLE)
         return
-    await _amend_seen(ports, attempt, progress.reply)
+    await _put_reply(ports, attempt, progress.reply)
     state = await ports.log.state(attempt.claim.conversation_id, attempt.claim.user_id)
     await _settle(
         ports,
@@ -659,6 +697,9 @@ async def _stop(ports: RuntimePorts, attempt: _Attempt) -> None:
 async def _truncate(ports: RuntimePorts, attempt: _Attempt) -> None:
     """Cut the reply to what the user heard before speaking over it; it still answered its inputs."""
     progress = attempt.progress
+    if isinstance(progress, _Drafting):
+        await _conclude(ports, attempt, progress.reply, ReplyOutcome.TRUNCATED)
+        return
     if not isinstance(progress, _Showing):
         await _retract(ports, attempt)
         return
@@ -706,8 +747,8 @@ async def _cut_spoken_over(
 
 
 async def _lose(ports: RuntimePorts, attempt: _Attempt) -> None:
-    """Write nothing more: the new holder recovers whatever this attempt left."""
-    if attempt.progress is None:
+    """Write nothing more: the new holder recovers whatever this attempt left; live work never logged is withdrawn."""
+    if not isinstance(attempt.progress, _Showing):
         await _retract(ports, attempt)
     raise ClaimLost
 
@@ -745,7 +786,7 @@ async def _add_follow_ups(
 def _final_reply(attempt: _Attempt, outcome: RunOutcome) -> tuple[Reply, ReplyOutcome]:
     """Save what was shown; a run's Replied content is used only when it streamed nothing."""
     filled = _base_reply(attempt)
-    if isinstance(outcome, Replied) and not isinstance(attempt.progress, _Showing):
+    if isinstance(outcome, Replied) and not isinstance(attempt.progress, _Showing | _Drafting):
         filled = filled.model_copy(
             update={
                 "text": outcome.text,
@@ -888,13 +929,25 @@ def _visible(logged: LoggedEntry) -> VisibleEntry | None:
     return None
 
 
+def _is_text(payload: StreamPayload) -> bool:
+    return isinstance(payload, ResponseEvent) and bool(payload.response)
+
+
 def _fold(reply: Reply, payload: StreamPayload) -> Reply:
-    """Return reply with one more shown delta folded in: text, a tool card, or follow-ups."""
+    """Return reply with one more shown delta folded in: text, a tool card, its output, or follow-ups."""
     match payload:
         case ResponseEvent(response=response):
             return reply.model_copy(update={"text": reply.text + response})
         case ToolDataEvent(tool_data=card):
             return reply.model_copy(update={"tool_data": (*reply.tool_data, card)})
+        case ToolOutputEvent(tool_output=output) if output.subagent_id is None:
+            return reply.model_copy(
+                update={
+                    "tool_data": with_tool_output(
+                        reply.tool_data, output.tool_call_id, output.output
+                    )
+                }
+            )
         case FollowUpActionsEvent(follow_up_actions=actions):
             return reply.model_copy(update={"follow_up_actions": tuple(actions)})
     return reply
@@ -912,7 +965,7 @@ def _empty_reply(attempt: _Attempt) -> Reply:
 
 def _base_reply(attempt: _Attempt) -> Reply:
     progress = attempt.progress
-    return progress.reply if isinstance(progress, _Showing) else _empty_reply(attempt)
+    return progress.reply if isinstance(progress, _Showing | _Drafting) else _empty_reply(attempt)
 
 
 async def _put_reply(ports: RuntimePorts, attempt: _Attempt, reply: Reply) -> LoggedEntry:

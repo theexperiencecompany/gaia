@@ -5,7 +5,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from itertools import count, pairwise
 
-from hypothesis import given, settings, strategies as st
+from hypothesis import example, given, settings, strategies as st
 
 from app.constants.chat import ConversationSource
 from app.models.conversation_frame_models import (
@@ -381,6 +381,19 @@ def _assert_saved_replies_keep_everything_shown(
         assert (reply.text, reply.tool_data) == (text, cards), reply.reply_id
 
 
+def _assert_every_reply_sits_below_what_it_answers(entries: Sequence[LoggedEntry]) -> None:
+    replies = {item.entry.reply_id: item.seq for item in entries if isinstance(item.entry, Reply)}
+    asked = {item.entry.id: item.seq for item in entries if isinstance(item.entry, UserMessage)}
+    for item in entries:
+        settled = item.entry
+        if not isinstance(settled, ReplySettled) or settled.reply_id not in replies:
+            continue
+        newest = max((asked[a] for a in settled.answers if a in asked), default=0)
+        assert replies[settled.reply_id] > newest, (
+            f"{settled.reply_id} sits above an input it answers"
+        )
+
+
 def _assert_frames_reproduce_the_log(world: World, entries: Sequence[LoggedEntry]) -> None:
     view: dict[int, Entry] = {}
     for frame in world.rt.frames.published:
@@ -395,8 +408,28 @@ def _revision(entry: Entry) -> int:
     return entry.revision if isinstance(entry, Reply | UserMessage) else 0
 
 
+_CARDS_THEN_A_NEW_ASK = [
+    ("tool_call", ""),
+    ("card", ""),
+    ("do", "user"),
+    ("card", ""),
+    ("tool_call", ""),
+    ("text", ""),
+    ("replied", ""),
+]
+_TEXT_THEN_A_NEW_ASK = [
+    ("text", ""),
+    ("do", "user"),
+    ("tool_call", ""),
+    ("text", ""),
+    ("replied", ""),
+]
+
+
 @settings(max_examples=300)
 @given(op_list=ops, plans=run_plans, approves=st.booleans())
+@example(op_list=[AppendOp("user")], plans=[_CARDS_THEN_A_NEW_ASK], approves=False)
+@example(op_list=[AppendOp("user")], plans=[_TEXT_THEN_A_NEW_ASK], approves=False)
 def test_any_interleaving_answers_every_input_once_with_one_run_at_a_time(
     op_list: list[Op], plans: list[list[tuple[str, str]]], approves: bool
 ) -> None:
@@ -411,3 +444,4 @@ def test_any_interleaving_answers_every_input_once_with_one_run_at_a_time(
     _assert_no_empty_answer(entries)
     _assert_frames_reproduce_the_log(world, entries)
     _assert_saved_replies_keep_everything_shown(world, entries)
+    _assert_every_reply_sits_below_what_it_answers(entries)

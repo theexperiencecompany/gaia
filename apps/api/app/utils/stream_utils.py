@@ -17,10 +17,10 @@ It is an open bag by design, so a TypedDict would misdescribe it.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from typing import Annotated, TypedDict
+from typing import Annotated, TypedDict, cast
 
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel, ConfigDict, Field, SkipValidation
@@ -332,6 +332,20 @@ def apply_outputs_to_tool_data(
         tc_id = _EntryDataRefs.model_validate(data).tool_call_id
         if tc_id and tc_id in tool_outputs:
             data["output"] = tool_outputs[tc_id]
+
+
+def with_tool_output(
+    entries: Sequence[ToolDataEntry], tool_call_id: str, output: str
+) -> tuple[ToolDataEntry, ...]:
+    """Return entries with the tool call's card carrying its output; entries themselves are left as they were."""
+    copied = [
+        cast(ToolDataEntry, {**entry, "data": dict(entry["data"])})
+        if isinstance(entry["data"], dict)
+        else entry
+        for entry in entries
+    ]
+    apply_outputs_to_tool_data(copied, {tool_call_id: output}, only_tool_name="tool_calls_data")
+    return tuple(copied)
 
 
 def reconstruct_subagent_groups(accumulated: MutableMapping[str, object]) -> None:

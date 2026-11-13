@@ -16,6 +16,7 @@ from app.models.conversation_frame_models import (
     ResponseEvent,
     RetractFrame,
     ToolDataEvent,
+    ToolOutputEvent,
 )
 from app.models.conversation_log_models import (
     ApprovalDecided,
@@ -31,6 +32,7 @@ from app.models.conversation_log_models import (
     UserMessage,
     WorkStarted,
 )
+from app.models.stream_events import ToolOutputPayload
 from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.composition import PostHogTurnAnalytics
 from app.services.conversation.log import accept
@@ -258,23 +260,128 @@ class StepScenarios:
         await assert_quiet(rt)
         assert [settled.quote_target for settled in await settles(rt)] == [None, None]
 
-    async def test_second_message_while_a_tool_call_is_pending_is_absorbed_into_one_reply(
+    async def test_a_message_absorbed_after_text_was_read_continues_in_a_reply_below_it(
         self, rt: Runtime
     ) -> None:
+        # The text the user read keeps its slot; what the attempt says after the absorb answers below u2.
         rt.runner.script(
             [
                 text("on it"),
                 Do(arrive(rt, user("u2"))),
                 ModelOutput(True),
-                Finished(Replied("both")),
+                text("both"),
+                Finished(Replied("on it")),
             ]
         )
         await send(rt, user("u1"))
         await run(rt)
         assert rt.runner.calls == [Started(batch=(1,), context=()), Absorbed((3,))]
-        assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u1", "u2"))]
-        assert (await settles(rt))[0].through == 3
+        assert await kinds(rt) == [
+            "user_message",
+            "reply",
+            "user_message",
+            "reply_settled",
+            "reply",
+            "reply_settled",
+        ]
+        assert [reply.text for reply in await replies(rt)] == ["on it", "both"]
+        assert await answered(rt) == [
+            (ReplyOutcome.ANSWERED, ("u1",)),
+            (ReplyOutcome.ANSWERED, ("u2",)),
+        ]
+        assert [settled.through for settled in await settles(rt)] == [1, 3]
+        assert [settled.quote_target for settled in await settles(rt)] == [None, None]
+        first, second = await replies(rt)
+        assert first.reply_id != second.reply_id
+        assert first.attempt_id != second.attempt_id
+        # Each segment streams as its own draft, so settling the first never swallows the second's deltas.
+        deltas = [f for f in rt.frames.published if isinstance(f, ReplyDeltaFrame)]
+        assert [(f.attempt_id, f.index) for f in deltas] == [
+            (first.attempt_id, 0),
+            (second.attempt_id, 0),
+        ]
         await assert_quiet(rt)
+
+    async def test_cards_shown_before_a_message_arrives_answer_below_it_in_one_reply(
+        self, rt: Runtime
+    ) -> None:
+        # Conversation d0fb1e04: searches for u1 were showing when u2 changed the ask.
+        rt.runner.script(
+            [
+                ModelOutput(True),
+                card(),
+                Do(arrive(rt, user("u2"))),
+                card(),
+                ModelOutput(True),
+                text("PDEU is a university"),
+                ModelOutput(False),
+                Finished(Replied("PDEU is a university")),
+            ]
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        assert rt.runner.calls == [Started(batch=(1,), context=()), Absorbed((2,))]
+        assert await kinds(rt) == ["user_message", "user_message", "reply", "reply_settled"]
+        (reply,) = await replies(rt)
+        assert (reply.text, reply.tool_data) == ("PDEU is a university", (CARD, CARD))
+        assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u1", "u2"))]
+        assert (await settles(rt))[0].quote_target is None
+        # Live, the cards stream as a draft with no entry: no reply entry reaches a client before u2.
+        entry_seqs = [f.seq for f in rt.frames.published if isinstance(f, EntryFrame)]
+        assert entry_seqs == sorted(entry_seqs)
+        await assert_quiet(rt)
+
+    async def test_a_chat_model_reaction_lands_on_the_newest_message_of_a_burst(
+        self, rt: Runtime
+    ) -> None:
+        # The instant reaction is decided per message at accept; the chat model's only on the newest.
+        rt.runner.script([Finished(Reacted("👍"))])
+        await send(rt, user("u1"), user("u2"))
+        await run(rt)
+        reactions = {
+            item.entry.id: item.entry.reaction
+            for item in await rt.entries()
+            if isinstance(item.entry, UserMessage)
+        }
+        assert reactions == {"u1": None, "u2": Reaction(emoji="👍", by=ReactionBy.CHAT_MODEL)}
+        assert (await answered(rt))[-1] == (ReplyOutcome.SILENT, ("u1", "u2"))
+
+    async def test_a_reply_of_cards_only_takes_its_slot_when_it_settles(self, rt: Runtime) -> None:
+        rt.runner.script(
+            [card(), Do(arrive(rt, user("u2"))), Finished(Replied(""))],
+            [Finished(Replied("two"))],
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        assert (await kinds(rt))[:4] == ["user_message", "user_message", "reply", "reply_settled"]
+        assert (await replies(rt))[0].tool_data == (CARD,)
+        assert (await answered(rt))[0] == (ReplyOutcome.ANSWERED, ("u1",))
+        assert (await settles(rt))[0].quote_target == "u1"
+        await assert_quiet(rt)
+
+    async def test_a_comms_tool_card_keeps_its_output_in_the_saved_reply(self, rt: Runtime) -> None:
+        call: ToolDataEntry = {
+            "tool_name": "tool_calls_data",
+            "data": {"tool_name": "web_search_tool", "tool_call_id": "c1", "inputs": {"q": "x"}},
+        }
+        rt.runner.script(
+            [
+                Streamed(payload=ToolDataEvent(tool_data=call)),
+                Streamed(
+                    payload=ToolOutputEvent(
+                        tool_output=ToolOutputPayload(tool_call_id="c1", output="sunny, 31C")
+                    )
+                ),
+                text("It is sunny."),
+                Finished(Replied("It is sunny.")),
+            ]
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        # What a reload reads: the log's reply entry.
+        (reply,) = await replies(rt)
+        assert reply.tool_data[0]["data"]["output"] == "sunny, 31C"
+        assert "output" not in call["data"]
 
     async def test_a_message_arriving_with_a_tool_only_output_joins_instead_of_restarting(
         self, rt: Runtime

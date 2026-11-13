@@ -12,6 +12,7 @@ import {
   retractFrame,
   stateFrame,
   stopRequested,
+  toolCallCard,
   userMessage,
   workCardDelta,
   workFinished,
@@ -67,6 +68,52 @@ describe("verification scenarios as frame sequences", () => {
       'reply:r1 "Booking for $900"',
     ]);
     expect(loadingRow(view).visible).toBe(false);
+  });
+
+  it("second message while only cards showed: the live work stays at the bottom and the reply takes its slot below the message", () => {
+    const searching = toolCallCard("c1", "Searching");
+    const card: ConversationFrame = {
+      kind: "reply_delta",
+      attempt_id: "a1",
+      reply_id: "r1",
+      index: 0,
+      payload: { type: "tool_data", entry: searching },
+    };
+    const live = fold([
+      entryFrame(1, userMessage("m1", "search aryan")),
+      card,
+      entryFrame(2, userMessage("m2", "actually tell me about pdeu")),
+    ]);
+    expect(screen(live)).toEqual(["user:m1", "user:m2", 'draft:a1 ""']);
+    const opened = { ...reply("r1", "a1"), tool_data: [searching] };
+    const settled = {
+      ...reply("r1", "a1", "PDEU is", 1),
+      tool_data: [searching],
+    };
+    const done = fold(
+      [
+        entryFrame(3, opened),
+        replyDelta("a1", "r1", 1, "PDEU is"),
+        entryUpdatedFrame(3, settled),
+        entryFrame(4, replySettled("r1", ["m1", "m2"], 2)),
+      ],
+      live,
+    );
+    const reload = fold([
+      entryFrame(1, userMessage("m1", "search aryan")),
+      entryFrame(2, userMessage("m2", "actually tell me about pdeu")),
+      entryFrame(3, settled),
+      entryFrame(4, replySettled("r1", ["m1", "m2"], 2)),
+    ]);
+    const expected = ["user:m1", "user:m2", 'reply:r1 "PDEU is"'];
+    expect(screen(done)).toEqual(expected);
+    expect(screen(reload)).toEqual(expected);
+    const cards = (view: ConversationView) =>
+      visibleBubbles(view).flatMap((bubble) =>
+        bubble.kind === "reply" ? bubble.toolData.length : [],
+      );
+    expect(cards(done)).toEqual([1]);
+    expect(cards(reload)).toEqual([1]);
   });
 
   it("second message mid-text: the committed reply finishes above the new message, which gets its own reply", () => {
