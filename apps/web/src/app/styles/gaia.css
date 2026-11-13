@@ -78,6 +78,14 @@
     font-weight: 400;
     padding-inline: var(--gaia-chip-lg-padding-x);
   }
+  /* chipVariants({ hasStartContent }): v2 inset a leading icon by the chip's own
+     4px (8px lg), not the text inset. */
+  .chip.gaia-chip-start-content {
+    padding-inline-start: var(--gaia-chip-start-inset);
+  }
+  .chip--lg.gaia-chip-start-content {
+    padding-inline-start: var(--gaia-chip-lg-start-inset);
+  }
   .checkbox__control {
     width: var(--gaia-checkbox-size);
     height: var(--gaia-checkbox-size);
@@ -112,8 +120,8 @@
     min-height: var(--gaia-field-height);
   }
 
-  /* Field text: v2's 14px at every width (v3 runs 16px below sm); a selected
-     value stays on one line and truncates, as v2's did. */
+  /* Field text: v2's 14px on 20px lines at every width (v3 runs 16px below
+     sm); a selected value stays on one line and truncates, as v2's did. */
   .input,
   .textarea,
   .input-group__input,
@@ -121,6 +129,7 @@
   .number-field__input,
   .select__value {
     font-size: var(--gaia-field-font-size);
+    line-height: var(--gaia-field-line-height);
   }
   /* v2's grouped input shrank with its row instead of holding its intrinsic width. */
   .input-group__input,
@@ -336,7 +345,7 @@
     --accent-soft-foreground: #ae7ede;
   }
 
-  /* Field placeholders: v2's zinc-500 at normal weight, in light and dark. */
+  /* Field placeholders: v2's foreground-500 (zinc-400 dark, zinc-500 light) at normal weight. */
   .input::placeholder,
   .textarea::placeholder,
   .input-group__input::placeholder {
@@ -390,6 +399,11 @@
     padding-top: var(--gaia-field-inside-padding-top);
     padding-bottom: var(--gaia-field-inside-padding-bottom);
     padding-inline: var(--gaia-field-inside-padding-x);
+  }
+  /* v2's inside-label textarea stacked its text under the 22px label row: 30px above, 10px below. */
+  .gaia-field-inside:has(> .label:not(.sr-only)) .textarea {
+    padding-top: var(--gaia-field-inside-textarea-padding-top);
+    padding-bottom: var(--gaia-field-inside-textarea-padding-bottom);
   }
 
   /* components/shared/controlVariants.ts */
@@ -648,6 +662,17 @@
   .table__column:last-child {
     border-start-end-radius: var(--gaia-radius-sm);
     border-end-end-radius: var(--gaia-radius-sm);
+  }
+
+  /* v2's header cells never wrapped, so a long label widens its column. */
+  .table__column {
+    white-space: nowrap;
+  }
+
+  /* Accordion: v2's divider was its own 1px row between items, where v3
+     draws it over the item's last pixel. */
+  .accordion__item:not(:last-child, [data-hide-separator="true"]) {
+    padding-bottom: 1px;
   }
 
   /* tableVariants({ surface }): card is v2's default Table wrapper, a 16px

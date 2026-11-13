@@ -1,6 +1,7 @@
 "use client";
 
 import { Table } from "@heroui/react";
+import { tableVariants } from "@/components/shared/controlVariants";
 
 export interface ComparisonColumn {
   key: string;
@@ -19,10 +20,15 @@ interface Props {
 
 export default function ComparisonTable({ columns, rows, ariaLabel }: Props) {
   return (
-    <Table className="overflow-hidden rounded-3xl bg-zinc-800">
+    <Table
+      className={tableVariants({
+        surface: "plain",
+        className: "overflow-hidden rounded-3xl bg-zinc-800",
+      })}
+    >
       <Table.Content
         aria-label={ariaLabel ?? "Feature comparison"}
-        className="min-w-full"
+        className="min-w-full border-collapse"
       >
         <Table.Header className="[&>tr]:border-b [&>tr]:border-zinc-700">
           {columns.map((col, index) => (
