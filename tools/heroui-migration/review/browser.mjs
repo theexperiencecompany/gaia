@@ -318,4 +318,19 @@ export function stepLocator(page, step) {
   return page.getByRole(step.role, { name: step.name, exact: true }).nth(step.nth);
 }
 
+/**
+ * stepLocator, plus one fallback: v2 icons leaked their labels into control names ("Product Chevron Down");
+ * marking them decorative (aria-hidden) leaves "Product". When the recorded name is gone but the name without
+ * the icon label exists, it is the same control.
+ */
+export async function resolveStep(page, step) {
+  const exact = stepLocator(page, step);
+  if (step.role === "clickable-text" || (await exact.count()) > 0) return exact;
+  const bare = step.name.replace(ICON_LABEL, " ").replace(/\s+/g, " ").trim();
+  if (!bare || bare === step.name) return exact;
+  return page.getByRole(step.role, { name: bare, exact: true }).nth(step.nth);
+}
+
+const ICON_LABEL = /\b(Chevron (Down|Up|Left|Right)|Arrow (Down|Up|Left|Right)( \d+)?)\b/g;
+
 export const OVERLAY_SELECTOR = "[role=dialog],[role=alertdialog],[role=menu],[role=listbox],[role=tooltip]";
