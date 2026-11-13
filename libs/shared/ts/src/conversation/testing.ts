@@ -35,6 +35,8 @@ export const userMessage = (
   reply_to_message: null,
   voice: false,
   reaction,
+  todo_run_wake: null,
+  pinned: false,
   revision,
 });
 
@@ -54,6 +56,8 @@ export const reply = (
   follow_up_actions: [],
   heard_through: null,
   quote_target: quoteTarget,
+  image: null,
+  pinned: false,
   revision,
 });
 

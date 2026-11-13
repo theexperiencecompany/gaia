@@ -31,11 +31,14 @@ export interface MessageActionConfig {
   isPinned?: boolean;
 }
 
+/** What a long-pressed message knows about itself; the screen adds its conversation. */
+export type MessageLongPress = Omit<MessageActionConfig, "conversationId">;
+
 type ReactionType = "thumbsUp" | "thumbsDown";
 
 interface MessageActionSheetProps {
   config: MessageActionConfig | null;
-  onPin: (messageId: string, conversationId: string) => void;
+  onPin: (messageId: string, conversationId: string, pinned: boolean) => void;
   onReply: (messageId: string, conversationId: string) => void;
 }
 
@@ -135,7 +138,7 @@ export const MessageActionSheet = forwardRef<
   const handlePin = useCallback(() => {
     if (!config) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onPin(config.messageId, config.conversationId);
+    onPin(config.messageId, config.conversationId, !config.isPinned);
     setIsOpen(false);
   }, [config, onPin]);
 

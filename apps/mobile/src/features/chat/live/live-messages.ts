@@ -2,10 +2,9 @@ import type { FileData } from "@gaia/shared/api/generated";
 import {
   type ConversationView,
   ENTRY_KIND,
-  FAILURE_REASON,
   type LiveBubble,
   quoteFor,
-  REPLY_FAILURE_MESSAGE,
+  replyFailureMessage,
   type UserMessage,
   visibleBubbles,
   type WorkStatus,
@@ -65,7 +64,8 @@ function rowFor(bubble: LiveBubble, context: RowContext): Message {
     case "user": {
       const { message } = bubble;
       return {
-        id: message.id,
+        id: bubble.messageId,
+        seq: bubble.seq,
         text: message.text,
         isUser: true,
         timestamp: dateOf(context, bubble.seq),
@@ -74,12 +74,14 @@ function rowFor(bubble: LiveBubble, context: RowContext): Message {
         replyToMessage:
           message.reply_to_message ?? quoted(userMessages, message.reply_to),
         reaction: bubble.reaction,
+        pinned: message.pinned,
+        todoRunWake: message.todo_run_wake,
       };
     }
     case "pending": {
       const send = sends[bubble.send.id];
       return {
-        id: bubble.send.id,
+        id: bubble.messageId,
         text: bubble.send.text,
         isUser: true,
         timestamp: send ? new Date(send.sentAt) : context.now,
@@ -93,19 +95,20 @@ function rowFor(bubble: LiveBubble, context: RowContext): Message {
     case "reply": {
       const settled = settlement(view, bubble.replyId);
       return {
-        id: bubble.replyId ?? bubble.key,
+        id: bubble.messageId,
+        seq: bubble.seq ?? undefined,
         text: bubble.text,
         isUser: false,
         timestamp: dateOf(context, bubble.seq),
         toolData: [...bubble.toolData],
         followUpActions: [...bubble.followUpActions],
+        imageData: bubble.image,
+        pinned: bubble.pinned,
         inProgress: bubble.streaming,
         stopped: settled?.outcome === "stopped",
         error:
           settled?.outcome === "failed"
-            ? REPLY_FAILURE_MESSAGE[
-                settled.failure ?? FAILURE_REASON.MODEL_ERROR
-              ]
+            ? replyFailureMessage(settled.failure)
             : undefined,
         replyToMessage: bubble.replyId
           ? quoted(userMessages, quoteFor(view, bubble.replyId))
@@ -114,7 +117,8 @@ function rowFor(bubble: LiveBubble, context: RowContext): Message {
     }
     case "work":
       return {
-        id: bubble.key,
+        id: bubble.messageId,
+        seq: bubble.seq ?? undefined,
         text: "",
         isUser: false,
         timestamp: dateOf(context, bubble.seq),
@@ -124,7 +128,8 @@ function rowFor(bubble: LiveBubble, context: RowContext): Message {
       };
     case "notice":
       return {
-        id: bubble.key,
+        id: bubble.messageId,
+        seq: bubble.seq ?? undefined,
         text: bubble.text,
         isUser: false,
         timestamp: dateOf(context, bubble.seq),
@@ -133,7 +138,8 @@ function rowFor(bubble: LiveBubble, context: RowContext): Message {
     // The run's side of the chat: its card alone, as a message with no text.
     case "workflow_fired":
       return {
-        id: bubble.key,
+        id: bubble.messageId,
+        seq: bubble.seq ?? undefined,
         text: "",
         isUser: true,
         timestamp: dateOf(context, bubble.seq),
@@ -141,7 +147,8 @@ function rowFor(bubble: LiveBubble, context: RowContext): Message {
       };
     case "todo_woke":
       return {
-        id: bubble.key,
+        id: bubble.messageId,
+        seq: bubble.seq ?? undefined,
         text: "",
         isUser: true,
         timestamp: dateOf(context, bubble.seq),

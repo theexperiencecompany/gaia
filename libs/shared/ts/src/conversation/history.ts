@@ -71,18 +71,22 @@ export const createOlderHistoryLoader = <M>(
 /**
  * The chat screen's rows: saved history and the live view, one row per message id.
  * The server's history and its events project the same log under the same ids, so a
- * live row replaces the saved row it shares an id with. Rows read in seq order; live
+ * live row replaces the saved row it shares an id with (a row with no id is never
+ * matched). Rows read in seq order; live
  * rows the server has not placed yet (a streaming draft, a pending send) come last.
  */
 export const withLiveRows = <M extends Sequenced>(
   saved: readonly M[],
   live: readonly M[],
-  idOf: (row: M) => string,
+  idOf: (row: M) => string | undefined,
 ): M[] => {
   if (live.length === 0) return [...saved];
   const liveIds = new Set(live.map(idOf));
   const placed = [
-    ...saved.filter((row) => !liveIds.has(idOf(row))),
+    ...saved.filter((row) => {
+      const id = idOf(row);
+      return id === undefined || !liveIds.has(id);
+    }),
     ...live.filter((row) => row.seq != null),
   ];
   // Saved rows cached before seq existed keep their place ahead of every placed row.

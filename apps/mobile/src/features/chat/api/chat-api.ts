@@ -1,5 +1,6 @@
 import type {
   ApprovalDecisionResponse,
+  ConversationEntry,
   ImageData,
   MessageAccepted,
   MessageReaction,
@@ -12,7 +13,10 @@ import type {
 export type { ImageData, ReplyToMessageData } from "@gaia/shared/api/generated";
 
 import type { ApprovalDecisionPayload, ToolDataEntry } from "@gaia/shared/chat";
-import type { HistoryPage } from "@gaia/shared/conversation";
+import {
+  type HistoryPage,
+  replyFailureMessage,
+} from "@gaia/shared/conversation";
 import { getAuthToken } from "@/features/auth/utils/auth-storage";
 import { ApiError, apiService } from "@/lib/api";
 import { API_BASE_URL } from "@/lib/constants";
@@ -42,24 +46,6 @@ export interface ApiFileData {
 /** @deprecated Use ToolDataEntry from @gaia/shared/chat instead. */
 export type ApiToolData = ToolDataEntry;
 
-export interface ApiMessage {
-  type: "user" | "bot";
-  response: string;
-  date: string;
-  message_id: string;
-  /** The message's place in its conversation's order. */
-  seq: number;
-  fileIds: string[];
-  fileData: ApiFileData[];
-  tool_data?: ToolDataEntry[];
-  metadata?: Record<string, unknown>;
-  replyToMessage?: ReplyToMessageData | null;
-  reply_to_message?: ReplyToMessageData | null;
-  reaction?: MessageReaction | null;
-  /** What woke a tracked todo's run; set on that run's user message. */
-  todo_run_wake?: TodoRunWake | null;
-}
-
 export interface ApiConversationDetail {
   _id: string;
   user_id: string;
@@ -70,18 +56,14 @@ export interface ApiConversationDetail {
   is_unread: boolean;
   /** Messages older than the ones returned remain on the server. */
   has_older: boolean;
-  messages: ApiMessage[];
+  messages: ConversationEntry[];
   createdAt: string;
   updatedAt?: string;
 }
 
-export interface MemoryData {
-  [key: string]: unknown;
-}
-
 export interface Message {
   id: string;
-  /** The saved message's place in its conversation's order; absent on live rows. */
+  /** The message's place in its conversation's order; absent while a live row has none yet. */
   seq?: number;
   text: string;
   isUser: boolean;
@@ -91,9 +73,7 @@ export interface Message {
   toolData?: ToolDataEntry[];
   followUpActions?: string[];
   imageData?: ImageData | null;
-  memoryData?: MemoryData | null;
   pinned?: boolean;
-  metadata?: Record<string, unknown>;
   replyToMessage?: ReplyToMessageData | null;
   /**
    * Set when the turn producing this message failed. The streamed text (if
@@ -125,27 +105,40 @@ export interface ConversationDetail {
   hasOlder: boolean;
 }
 
-function normalizeMessage(apiMsg: ApiMessage): Message {
-  const imageData = apiMsg.metadata?.image_data as ImageData | undefined;
-  const memoryData = apiMsg.metadata?.memory_data as MemoryData | undefined;
-  const replyToMessage =
-    apiMsg.replyToMessage ?? apiMsg.reply_to_message ?? null;
+function messageIdOf(apiMsg: ConversationEntry): string {
+  if (!apiMsg.message_id)
+    throw new Error(`History row at seq ${apiMsg.seq} has no message_id`);
+  return apiMsg.message_id;
+}
 
+function normalizeMessage(apiMsg: ConversationEntry): Message {
+  const isUser = apiMsg.type === "user";
   return {
-    id: apiMsg.message_id,
+    id: messageIdOf(apiMsg),
     seq: apiMsg.seq,
     text: apiMsg.response,
-    isUser: apiMsg.type === "user",
-    timestamp: new Date(apiMsg.date),
-    fileIds: apiMsg.fileIds,
-    fileData: apiMsg.fileData,
-    toolData: apiMsg.tool_data,
-    imageData: imageData ?? null,
-    memoryData: memoryData ?? null,
-    metadata: apiMsg.metadata,
-    replyToMessage,
+    isUser,
+    timestamp: apiMsg.date ? new Date(apiMsg.date) : new Date(),
+    fileIds: apiMsg.fileIds ?? [],
+    fileData: (apiMsg.fileData ?? []).map((file) => ({
+      fileId: file.fileId,
+      fileName: file.filename,
+      url: file.url,
+      contentType: file.type ?? undefined,
+    })),
+    toolData: apiMsg.tool_data ?? undefined,
+    followUpActions: apiMsg.follow_up_actions ?? undefined,
+    imageData: apiMsg.image_data ?? null,
+    pinned: apiMsg.pinned ?? false,
+    replyToMessage: apiMsg.replyToMessage ?? null,
     reaction: apiMsg.reaction ?? null,
+    inProgress: apiMsg.in_progress ?? false,
+    stopped: apiMsg.stopped ?? false,
+    error: apiMsg.error ? replyFailureMessage(apiMsg.error) : undefined,
     todoRunWake: apiMsg.todo_run_wake ?? null,
+    // A workflow run is a user-side row with only the workflow card.
+    firedWorkflow:
+      isUser && !apiMsg.response ? (apiMsg.selectedWorkflow ?? null) : null,
   };
 }
 
@@ -183,7 +176,7 @@ export async function fetchMessagesBefore(
   beforeSeq: number,
   limit: number,
 ): Promise<HistoryPage<Message>> {
-  const page = await apiService.get<HistoryPage<ApiMessage>>(
+  const page = await apiService.get<HistoryPage<ConversationEntry>>(
     `/conversations/${encodeURIComponent(conversationId)}/messages?before_seq=${beforeSeq}&limit=${limit}`,
   );
   return {
@@ -269,14 +262,16 @@ export async function deleteMessage(
   }
 }
 
+/** Pin or unpin a message; false when the server refused. */
 export async function pinMessage(
   conversationId: string,
   messageId: string,
+  pinned: boolean,
 ): Promise<boolean> {
   try {
-    await apiService.post(
-      `/chat/${conversationId}/messages/${messageId}/pin`,
-      {},
+    await apiService.put(
+      `/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/pin`,
+      { pinned },
     );
     return true;
   } catch (error) {

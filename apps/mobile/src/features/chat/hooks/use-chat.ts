@@ -1,5 +1,5 @@
 import type { SelectedWorkflowDataInput } from "@gaia/shared/api/generated";
-import { DISPLAY_STATE } from "@gaia/shared/conversation";
+import { DISPLAY_STATE, withLiveRows } from "@gaia/shared/conversation";
 import type { FlashListRef } from "@shopify/flash-list";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef } from "react";
@@ -95,7 +95,7 @@ export function useChat(
 
   const messages = useMemo(() => {
     const saved = history ?? EMPTY_MESSAGES;
-    return liveRows.length > 0 ? [...saved, ...liveRows] : saved;
+    return withLiveRows(saved, liveRows, (message) => message.id);
   }, [history, liveRows]);
 
   // Opening a conversation the list shows unread reads it, including one that

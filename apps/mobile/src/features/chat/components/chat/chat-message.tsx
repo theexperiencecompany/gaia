@@ -25,17 +25,13 @@ import { FailedResponse, MessageNote } from "./failed-response";
 import { FollowUpActions } from "./follow-up-actions";
 import { ImageBubble } from "./image-bubble";
 import { LinkPreviewCard } from "./link-preview-card";
-import { MemoryIndicator } from "./memory-indicator";
-import type { MessageActionConfig } from "./message-action-sheet";
+import type { MessageLongPress } from "./message-action-sheet";
 import { MessageReactions } from "./message-reactions";
 import { MessageReplyQuote } from "./message-reply-quote";
 import { TodoRunWakeIndicator, WorkflowRunIndicator } from "./run-indicator";
 import { ThinkingBubble } from "./thinking-bubble";
 
 const EMOJI_ONLY_REGEX = /^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\s]+$/u;
-
-/** Shape accepted by MemoryIndicator, derived from the component itself. */
-type MemoryIndicatorData = Parameters<typeof MemoryIndicator>[0]["memoryData"];
 
 // Gap scale token (decisions §5).
 const GAP_SM = 4;
@@ -53,7 +49,7 @@ interface ChatMessageProps {
   message: Message;
   onFollowUpAction?: (action: string) => void;
   onReply?: (message: Message) => void;
-  onLongPress?: (config: MessageActionConfig) => void;
+  onLongPress?: (config: MessageLongPress) => void;
   /** Resend a send that failed, or ask again for a failed reply (useChat.retryMessage). */
   onRetry?: () => void;
   isLoading?: boolean;
@@ -82,7 +78,7 @@ function emojiFontSize(count: number): number | null {
 /** Long-press handler shared by the sent and received message layouts. */
 function useMessageLongPress(
   message: Message,
-  onLongPress?: (config: MessageActionConfig) => void,
+  onLongPress?: (config: MessageLongPress) => void,
   onReply?: (message: Message) => void,
 ) {
   return useCallback(() => {
@@ -90,10 +86,9 @@ function useMessageLongPress(
     if (onLongPress) {
       onLongPress({
         messageId: message.id,
-        conversationId: (message.metadata?.conversation_id as string) ?? "",
         content: message.text ?? "",
         isUser: message.isUser,
-        isPinned: message.metadata?.is_pinned as boolean | undefined,
+        isPinned: message.pinned,
       });
     } else {
       onReply?.(message);
@@ -325,12 +320,10 @@ function AIMainContent({
 }
 
 function hasFooterContent(message: ChatMessageLayoutProps["message"]): boolean {
-  return (
-    !!message.memoryData || !!message.followUpActions?.length || !!message.error
-  );
+  return !!message.followUpActions?.length || !!message.error;
 }
 
-/** Memory pill, follow-up chips and the failure row under an AI message. */
+/** Follow-up chips and the failure row under an AI message. */
 function AIMessageFooter({
   message,
   failed,
@@ -346,11 +339,6 @@ function AIMessageFooter({
 }) {
   return (
     <>
-      {message.memoryData ? (
-        <MemoryIndicator
-          memoryData={message.memoryData as MemoryIndicatorData}
-        />
-      ) : null}
       {message.followUpActions?.length ? (
         <FollowUpActions
           actions={message.followUpActions}

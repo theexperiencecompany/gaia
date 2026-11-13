@@ -50,6 +50,7 @@ import { EmptyChatState } from "./empty-chat-state";
 import type {
   MessageActionConfig,
   MessageActionSheetRef,
+  MessageLongPress,
 } from "./message-action-sheet";
 import { MessageActionSheet } from "./message-action-sheet";
 import { PaywallNotice } from "./paywall-notice";
@@ -338,10 +339,10 @@ export function ChatScreenContent({
   }, []);
 
   const handleLongPressMessage = useCallback(
-    (config: MessageActionConfig) => {
+    (config: MessageLongPress) => {
       const resolved: MessageActionConfig = {
         ...config,
-        conversationId: config.conversationId || activeChatId || "",
+        conversationId: activeChatId || "",
       };
       setActionConfig(resolved);
       actionSheetRef.current?.open();
@@ -350,10 +351,10 @@ export function ChatScreenContent({
   );
 
   const handleActionPin = useCallback(
-    async (messageId: string, conversationId: string) => {
-      await pinMessage(conversationId, messageId);
+    async (messageId: string, conversationId: string, pinned: boolean) => {
+      if (await pinMessage(conversationId, messageId, pinned)) await refetch();
     },
-    [],
+    [refetch],
   );
 
   const handleActionReply = useCallback(
@@ -632,8 +633,8 @@ export function ChatScreenContent({
       <MessageActionSheet
         ref={actionSheetRef}
         config={actionConfig}
-        onPin={(messageId, conversationId) => {
-          void handleActionPin(messageId, conversationId);
+        onPin={(messageId, conversationId, pinned) => {
+          void handleActionPin(messageId, conversationId, pinned);
         }}
         onReply={handleActionReply}
       />
