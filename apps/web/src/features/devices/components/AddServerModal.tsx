@@ -17,6 +17,7 @@ import type { AddOptions } from "@shared/bridge-core/config-builders";
 import { useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 
 // Folder access is a one-switch toggle on the card (the built-in filesystem
@@ -119,13 +120,13 @@ export function AddServerModal({ onAdd, isBusy }: AddServerModalProps) {
                   <Select.Popover>
                     <ListBox>
                       {SERVER_TYPES.map((option) => (
-                        <ListBox.Item
+                        <GaiaListBoxItem
                           key={option.key}
                           id={option.key}
                           textValue={option.label}
                         >
                           {option.label}
-                        </ListBox.Item>
+                        </GaiaListBoxItem>
                       ))}
                     </ListBox>
                   </Select.Popover>

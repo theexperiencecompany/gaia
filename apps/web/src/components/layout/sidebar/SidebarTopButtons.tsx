@@ -80,7 +80,9 @@ export default function SidebarTopButtons() {
         href="/c"
         size="sm"
         variant="ghost"
-        className="w-full justify-start gap-2 text-sm text-zinc-400 hover:text-zinc-300"
+        tone="muted"
+        hoverTone="dim"
+        className="w-full justify-start gap-2 text-sm"
       >
         <ChevronLeft className="size-4" />
         Back to chats
@@ -126,7 +128,9 @@ export default function SidebarTopButtons() {
                   href={route}
                   size="sm"
                   variant={isRouteActive(route) ? "secondary" : "ghost"}
-                  className={`group-topbtns focus-visible:outline-none w-full justify-start text-sm ${isRouteActive(route) ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
+                  tone={isRouteActive(route) ? "dim" : "muted"}
+                  hoverTone={isRouteActive(route) ? "none" : "dim"}
+                  className="group-topbtns focus-visible:outline-none w-full justify-start text-sm"
                   onClick={() => {
                     track("navigation:sidebar_clicked", {
                       destination: route,
@@ -148,12 +152,7 @@ export default function SidebarTopButtons() {
                     </span>
                   </div>
                 </LinkButton>
-                <Tooltip.Content
-                  placement="right"
-                  offset={1}
-                  showArrow
-                  className="rounded-xl"
-                >
+                <Tooltip.Content placement="right" offset={1} showArrow>
                   {shortcut ? (
                     <span className="flex items-center gap-2 text-sm text-zinc-400 font-light py-1 px-2">
                       <span className="text-xs">Go to {label}</span>

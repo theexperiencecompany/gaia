@@ -2,6 +2,7 @@
 
 import { Avatar, Chip } from "@heroui/react";
 import { UserCircle02Icon } from "@icons";
+import { toneVariants } from "@/components/shared/tone";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import type { Integration } from "@/features/integrations/types";
 
@@ -46,7 +47,10 @@ export function IntegrationHeaderChips({
             <Chip
               size="sm"
               variant="soft"
-              className="text-xs font-light relative text-foreground-500"
+              className={toneVariants({
+                tone: "muted",
+                className: "text-xs font-light relative",
+              })}
             >
               {integration.creator.picture ? (
                 <Avatar size="sm" className="h-4 w-4">
@@ -72,7 +76,10 @@ export function IntegrationHeaderChips({
               size="sm"
               variant="soft"
               color="default"
-              className="text-xs text-zinc-400 font-light relative right-1"
+              className={toneVariants({
+                tone: "muted",
+                className: "text-xs font-light relative right-1",
+              })}
             >
               <Avatar size="sm" className="h-4 w-4">
                 <Avatar.Image src={currentUserPicture || undefined} />

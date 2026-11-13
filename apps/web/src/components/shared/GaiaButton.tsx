@@ -2,8 +2,15 @@
 
 import { Button, type ButtonProps } from "@heroui/react";
 
-import { type ButtonVariants, buttonVariants } from "./buttonVariants";
-import { type Shape, shapeVariants } from "./shape";
+import {
+  type ButtonHoverTone,
+  type ButtonInset,
+  type ButtonTone,
+  type ButtonVariants,
+  buttonOverlayVariants,
+  buttonVariants,
+} from "./buttonVariants";
+import type { Shape } from "./shape";
 
 /** HeroUI's button variants plus GAIA's, closed: a misspelt or v2 variant is a type error. */
 export type GaiaButtonVariant = NonNullable<ButtonVariants["variant"]>;
@@ -13,7 +20,8 @@ type GaiaOnlyVariant =
   | "default-soft"
   | "accent-soft"
   | "success-soft"
-  | "warning-soft";
+  | "warning-soft"
+  | "text";
 
 function isGaiaVariant(variant: GaiaButtonVariant): variant is GaiaOnlyVariant {
   return (
@@ -21,13 +29,17 @@ function isGaiaVariant(variant: GaiaButtonVariant): variant is GaiaOnlyVariant {
     variant === "default-soft" ||
     variant === "accent-soft" ||
     variant === "success-soft" ||
-    variant === "warning-soft"
+    variant === "warning-soft" ||
+    variant === "text"
   );
 }
 
 type GaiaButtonProps = Omit<ButtonProps, "variant" | "className"> & {
   variant?: GaiaButtonVariant;
   shape?: Shape;
+  tone?: ButtonTone;
+  hoverTone?: ButtonHoverTone;
+  inset?: ButtonInset;
   className?: string;
 };
 
@@ -35,6 +47,9 @@ type GaiaButtonProps = Omit<ButtonProps, "variant" | "className"> & {
 export function GaiaButton({
   variant = "primary",
   shape = "default",
+  tone = "default",
+  hoverTone = "none",
+  inset = "default",
   size,
   isIconOnly,
   fullWidth,
@@ -48,7 +63,13 @@ export function GaiaButton({
         size={size}
         isIconOnly={isIconOnly}
         fullWidth={fullWidth}
-        className={shapeVariants({ shape, className })}
+        className={buttonOverlayVariants({
+          shape,
+          tone,
+          hoverTone,
+          inset,
+          className,
+        })}
         {...props}
       />
     );
@@ -62,6 +83,9 @@ export function GaiaButton({
       className={buttonVariants({
         variant,
         shape,
+        tone,
+        hoverTone,
+        inset,
         size,
         isIconOnly,
         fullWidth,

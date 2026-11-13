@@ -172,7 +172,6 @@ export default function UnifiedToolThread({
         onExpandedChange={(keys) => {
           setIsExpanded(keys.has("tools"));
         }}
-        className="p-0"
       >
         <AccordionItem key="tools" id="tools">
           <Accordion.Heading>

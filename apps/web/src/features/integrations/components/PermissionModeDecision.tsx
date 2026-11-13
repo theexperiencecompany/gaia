@@ -2,6 +2,7 @@
 
 import { Description, Radio, RadioGroup } from "@heroui/react";
 import type { HilMode } from "@shared/chat";
+import { toneVariants } from "@/components/shared/tone";
 import type { IntegrationPermissions } from "@/features/integrations/hooks/useIntegrationPermissions";
 import { MODE_OPTIONS } from "@/features/integrations/utils/permissionCopy";
 import { cn } from "@/lib/utils";
@@ -43,14 +44,16 @@ export const PermissionModeDecision = ({
             option.mode === permissions.mode && "bg-zinc-800",
           )}
         >
-          <Radio.Content className="text-sm text-zinc-200">
+          <Radio.Content className="text-sm">
             <Radio.Control>
               <Radio.Indicator />
             </Radio.Control>
             {option.label}
           </Radio.Content>
           {option.description ? (
-            <Description className="text-xs text-zinc-500">
+            <Description
+              className={toneVariants({ tone: "faint", className: "text-xs" })}
+            >
               {option.description}
             </Description>
           ) : null}

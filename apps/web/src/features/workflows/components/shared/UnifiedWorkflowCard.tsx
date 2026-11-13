@@ -1,8 +1,10 @@
 "use client";
 
-import { Button, Tooltip } from "@heroui/react";
+import { Tooltip } from "@heroui/react";
 import { PlayIcon } from "@icons";
 import { SiteLink } from "@/components/seo/SiteLink";
+import { overlayVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type {
   CommunityWorkflow,
@@ -284,9 +286,12 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
       <Tooltip.Content
         placement="top"
         showArrow
-        className="max-w-xs rounded-3xl bg-zinc-800 p-4"
+        className={overlayVariants({
+          surface: "raised",
+          className: "max-w-xs rounded-3xl",
+        })}
       >
-        {workflow?.prompt || displayDescription}
+        <div className="p-2">{workflow?.prompt || displayDescription}</div>
       </Tooltip.Content>
     </Tooltip>
   ) : (
@@ -436,17 +441,16 @@ function WorkflowActionButton({
   variant = "primary",
   size = "sm",
 }: WorkflowActionButtonProps) {
-  const buttonVariant = variant === "secondary" ? "secondary" : "primary";
-
   return (
-    <Button
+    <GaiaButton
       size={size}
-      variant={buttonVariant}
-      className={`font-medium rounded-xl ${variant === "secondary" ? "text-primary" : ""}`}
+      variant={variant}
+      tone={variant === "secondary" ? "accent" : "default"}
+      className="rounded-xl font-medium"
       isPending={isPending}
       onPress={(e) => onPress(e as unknown as React.MouseEvent)}
     >
       {label}
-    </Button>
+    </GaiaButton>
   );
 }

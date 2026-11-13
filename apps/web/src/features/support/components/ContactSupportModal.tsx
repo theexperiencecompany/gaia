@@ -15,6 +15,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { modalVariants } from "@/components/shared/controlVariants";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { toast } from "@/lib/toast";
@@ -250,7 +251,7 @@ function SupportRequestModal({
                 </Select.Trigger>
                 <Select.Popover>
                   <ListBox>
-                    <ListBox.Item
+                    <GaiaListBoxItem
                       id={SUPPORT_REQUEST_TYPES.SUPPORT}
                       textValue={
                         SUPPORT_REQUEST_TYPE_LABELS[
@@ -263,9 +264,8 @@ function SupportRequestModal({
                           SUPPORT_REQUEST_TYPES.SUPPORT
                         ]
                       }
-                      <ListBox.ItemIndicator />
-                    </ListBox.Item>
-                    <ListBox.Item
+                    </GaiaListBoxItem>
+                    <GaiaListBoxItem
                       id={SUPPORT_REQUEST_TYPES.FEATURE}
                       textValue={
                         SUPPORT_REQUEST_TYPE_LABELS[
@@ -278,8 +278,7 @@ function SupportRequestModal({
                           SUPPORT_REQUEST_TYPES.FEATURE
                         ]
                       }
-                      <ListBox.ItemIndicator />
-                    </ListBox.Item>
+                    </GaiaListBoxItem>
                   </ListBox>
                 </Select.Popover>
               </Select>

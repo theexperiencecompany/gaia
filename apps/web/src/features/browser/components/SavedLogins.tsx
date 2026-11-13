@@ -27,6 +27,7 @@ import { type ComponentType, useEffect, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useBrowserLogins } from "../hooks/useBrowserLogins";
 import type { SavedBrowserLogin } from "../types";
@@ -91,13 +92,17 @@ function ImportedBadge({ login }: { login: SavedBrowserLogin }) {
           onMouseEnter={() => setOpen(true)}
           onMouseLeave={() => setOpen(false)}
         >
-          <Chip size="sm" variant="soft" className="bg-zinc-800 text-zinc-300">
+          <Chip
+            size="sm"
+            variant="secondary"
+            className={toneVariants({ tone: "dim" })}
+          >
             <Chip.Label>Imported</Chip.Label>
           </Chip>
         </button>
       </Popover.Trigger>
-      <Popover.Content placement="top" className="rounded-2xl bg-zinc-900 p-3">
-        <div className="flex flex-col gap-3">
+      <Popover.Content placement="top">
+        <div className="flex flex-col gap-3 p-3">
           {login.source_browser && (
             <ProvenanceFact
               icon={BrowserLogo}
@@ -262,7 +267,7 @@ export function SavedLogins() {
               onChange={setQuery}
               className={inputVariants({ size: "sm", className: "max-w-52" })}
             >
-              <SearchField.Group className="bg-zinc-800">
+              <SearchField.Group>
                 <Search01Icon className="size-4 text-zinc-500" />
                 <SearchField.Input placeholder="Search saved sites…" />
                 <SearchField.ClearButton />
@@ -298,7 +303,7 @@ export function SavedLogins() {
                 <Dropdown.Item
                   id="clear"
                   textValue="Clear all"
-                  className="text-danger"
+                  variant="danger"
                   isDisabled={logins.length === 0 || isClearingAll}
                 >
                   <Delete02Icon className="size-4" />

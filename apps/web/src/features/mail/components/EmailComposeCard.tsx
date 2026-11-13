@@ -143,7 +143,7 @@ function EmailBodyPreview({
   onEdit: () => void;
 }) {
   return (
-    <ScrollShadow className="relative z-1 max-h-46 overflow-y-auto pb-5 text-sm leading-relaxed text-zinc-200">
+    <ScrollShadow className="relative z-1 max-h-46 overflow-y-auto text-sm leading-relaxed">
       {!isLocked && (
         <div className="absolute top-0 right-0 z-2 flex w-full justify-end">
           <Button variant="ghost" size="sm" isIconOnly onPress={onEdit}>
@@ -151,7 +151,9 @@ function EmailBodyPreview({
           </Button>
         </div>
       )}
-      <HtmlEmailBody html={html} />
+      <div className="pb-5">
+        <HtmlEmailBody html={html} />
+      </div>
     </ScrollShadow>
   );
 }
@@ -171,7 +173,7 @@ function AttachmentsRow({
           key={`${attachment.name}-${attachment.mimetype}`}
           size="sm"
           variant="soft"
-          className="max-w-full text-xs text-zinc-200"
+          className="max-w-full text-xs"
         >
           <AttachmentIcon className="h-3.5 w-3.5 text-zinc-400" />
           <Chip.Label className="truncate">{attachment.name}</Chip.Label>
@@ -346,22 +348,24 @@ function EditEmailModal({
               </div>
               {/* Action Buttons */}
               <div className="mt-4 flex justify-end gap-2">
-                <Button
+                <GaiaButton
                   variant="ghost"
+                  tone="dim"
+                  inset="tight"
                   size="sm"
                   onPress={onClose}
-                  className="h-7 px-2 text-xs text-gray-300"
+                  className="h-7 text-xs"
                 >
                   Cancel
-                </Button>
-                <Button
+                </GaiaButton>
+                <GaiaButton
                   size="sm"
                   onPress={() => onSave(draft)}
-                  className="h-7 px-3 text-xs font-medium"
+                  className="h-7 text-xs font-medium"
                   variant="primary"
                 >
                   Save
-                </Button>
+                </GaiaButton>
               </div>
             </Modal.Body>
           </Modal.Dialog>

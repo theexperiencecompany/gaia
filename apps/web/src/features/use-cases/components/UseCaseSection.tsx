@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronUp } from "@/components/shared/icons";
+import { toneVariants } from "@/components/shared/tone";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
@@ -132,7 +133,7 @@ function CategoryChip({
       <Chip
         variant={isSelected ? "primary" : "soft"}
         color={isSelected ? "accent" : "default"}
-        className={`cursor-pointer capitalize ${isSelected ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
+        className={`${toneVariants({ tone: isSelected ? "default" : "muted" })} cursor-pointer capitalize ${isSelected ? "" : "bg-white/5!"} font-light! backdrop-blur-2xl!`}
         size="lg"
         onClick={onClick}
       >
@@ -282,7 +283,7 @@ export default function UseCaseSection({
               size="sm"
               variant="default-soft"
               onPress={() => setShowUseCases(false)}
-              className="text-zinc-300"
+              tone="dim"
             >
               <ChevronUp />
             </GaiaButton>

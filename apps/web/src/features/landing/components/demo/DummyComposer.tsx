@@ -8,6 +8,7 @@ import {
 } from "@icons";
 import type React from "react";
 import { useRef, useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { Button as ShadcnButton } from "@/components/ui/button";
 import {
@@ -92,12 +93,14 @@ const DummyComposer: React.FC<{
         {/* Integration Banner - uses searchbar class to match composer width */}
         {!hideIntegrationBanner && (
           <GaiaButton
-            variant="default-solid"
-            className="searchbar absolute -top-4 z-0 flex h-fit rounded-full bg-zinc-800/40 px-4 py-2 pb-8 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400"
+            variant="default-soft"
+            shape="pill"
+            hoverTone="muted"
+            className="searchbar absolute -top-4 z-0 flex h-fit bg-zinc-800/40 text-xs text-foreground-300 hover:bg-zinc-800/70"
             onPress={handleIntegrationsClick}
             aria-label="Connect your tools to GAIA"
           >
-            <div className="flex w-full items-center justify-between">
+            <div className="flex w-full items-center justify-between pt-2 pb-8">
               <span className="text-xs">Connect your tools to GAIA</span>
               <div className="flex items-center gap-1">
                 {dummyIntegrations.slice(0, 7).map((integration) => (
@@ -140,7 +143,11 @@ const DummyComposer: React.FC<{
                 ref={textareaRef}
                 autoFocus
                 rows={1}
-                className="field-sizing-content max-h-[17rem] w-full resize-none border-0 bg-transparent p-0 font-light shadow-none outline-none focus:ring-0"
+                className={inputVariants({
+                  variant: "bare",
+                  className:
+                    "field-sizing-content max-h-[17rem] w-full resize-none font-light outline-none focus:ring-0",
+                })}
                 placeholder="What can I do for you today?"
                 value={message}
                 onChange={(e) => handleInputChange(e.target.value)}

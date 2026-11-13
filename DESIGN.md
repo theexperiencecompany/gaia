@@ -597,6 +597,8 @@ v2's sizes on v3's components, set once as `--gaia-*` variables in the `gaia` la
 
 Buttons use font-weight 400.
 
+Button text tone is one closed dimension, `tone: "default" | "dim" | "muted" | "faint" | "accent"` on `GaiaButton` and `LinkButton` (`BUTTON_TONE_CLASSES` in `components/shared/buttonVariants.ts`), for quiet ghost and tertiary buttons: `dim` zinc-300, `muted` zinc-400, `faint` zinc-500 (v2's light buttons in the greys, each brightening on hover), `accent` the accent text (v2's primary light button). The same tones without the hover step are `toneVariants({ tone })` (`components/shared/tone.ts`) for quiet content on a Chip, Chip.Label, list Header or Accordion.Panel. Never put a `text-*` colour class on a HeroUI control.
+
 Corner shape is one closed dimension, `shape: "default" | "pill"` (`components/shared/shape.ts`). `default` is the radius above; `pill` fully rounds the control and means the same on Button (`GaiaButton shape="pill"`, `LinkButton shape="pill"`), Chip, Tabs, text fields, Checkbox and ButtonGroup (`className={shapeVariants({ shape: "pill" })}`). Never put a `rounded-*` class on a HeroUI control.
 
 Other control options, each one class in the gaia layer and one variant function (never a per-site class):
@@ -609,6 +611,10 @@ Other control options, each one class in the gaia layer and one variant function
 | Accent tabs | `tabsVariants({ color: "accent" })` | a segmented switch whose selected tab is the accent with dark text |
 
 Field placeholders are zinc-500 at normal weight everywhere (`--field-placeholder`).
+
+List and menu items are v2's 34px rows on an 8px radius, and every `ListBox.Item` goes through `GaiaListBoxItem` (`components/shared/GaiaListBoxItem.tsx`), which renders v2's selected check. Overlays keep v2's radii: popover, select, dropdown and modal 14px, tooltip 12px. Dividers are v2's translucent `--separator` (white at 15%); `separatorVariants({ tone: "subtle" })` is v2's quieter zinc-700/50 divider inside a zinc-800 card. Tables are v2's: 8px by 12px cells, no row rules, the selected row on `--default-soft`.
+
+`overlayVariants({ surface: "raised" })` is v2's zinc-800 popover, tooltip and select surface lifted off a zinc-900 page; `inputVariants({ variant: "translucent" })` is v2's see-through settings field (zinc-800 at 50%, zinc-700 at 50% on hover) on an Input, TextArea, InputGroup or Select.Trigger. A danger menu item (`variant="danger"`) is red whether or not its text sits in a Label. `toneVariants({ tone, interactive: true })` brightens quiet text to the foreground on hover (v2's muted menu items).
 
 Field text is 14px at every width (`--gaia-field-font-size`). A Select trigger renders its value through `GaiaSelectValue` (`components/shared/GaiaSelectValue.tsx`, never bare `Select.Value`): it shows the selected item's `textValue` on one truncated line, as v2 did, so a rich item's description stays in the open list.
 

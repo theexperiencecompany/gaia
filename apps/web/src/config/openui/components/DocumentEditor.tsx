@@ -13,6 +13,7 @@ import { BubbleMenu } from "@tiptap/react/menus";
 import StarterKit from "@tiptap/starter-kit";
 import React from "react";
 import type { z } from "zod";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { copyWithFeedback } from "@/lib/clipboard";
 import { ToolCard } from "../primitives/ToolCard";
 import type { textDocumentSchema } from "../promptSpecs";
@@ -186,16 +187,20 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
           ].join(" ")}
         >
           {/* Main copy button — copies as markdown */}
-          <Button
+          <GaiaButton
             isIconOnly
             variant="ghost"
             size="sm"
+            tone={copied ? "default" : "muted"}
             onPress={copyAsMarkdown}
             aria-label={copied ? "Copied" : "Copy as Markdown"}
-            className={copied ? "text-emerald-400" : "text-zinc-400"}
           >
-            {copied ? <Tick01Icon size={14} /> : <Copy01Icon size={14} />}
-          </Button>
+            {copied ? (
+              <Tick01Icon size={14} className="text-emerald-400" />
+            ) : (
+              <Copy01Icon size={14} />
+            )}
+          </GaiaButton>
 
           {/* Divider */}
           <div
@@ -208,15 +213,18 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
           {/* Chevron dropdown trigger */}
           <Dropdown>
             <DropdownTrigger>
-              <Button
+              <GaiaButton
                 isIconOnly
                 variant="ghost"
                 size="sm"
+                tone={copied ? "default" : "muted"}
                 aria-label="Copy options"
-                className={copied ? "text-emerald-400" : "text-zinc-400"}
               >
-                <ArrowDown01Icon size={12} />
-              </Button>
+                <ArrowDown01Icon
+                  size={12}
+                  className={copied ? "text-emerald-400" : undefined}
+                />
+              </GaiaButton>
             </DropdownTrigger>
             <Dropdown.Popover placement="bottom end">
               <DropdownMenu

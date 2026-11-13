@@ -70,11 +70,13 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
               <Accordion.Indicator className={ACCORDION_INDICATOR} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className="pt-0 pb-2">
-            <div className="w-full max-w-[30vw] overflow-hidden rounded-[15px] rounded-b-[20px]">
-              <ChatCodeBlock className={`language-${code_data.language}`}>
-                {code_data.code}
-              </ChatCodeBlock>
+          <Accordion.Panel>
+            <div className="pb-2">
+              <div className="w-full max-w-[30vw] overflow-hidden rounded-[15px] rounded-b-[20px]">
+                <ChatCodeBlock className={`language-${code_data.language}`}>
+                  {code_data.code}
+                </ChatCodeBlock>
+              </div>
             </div>
           </Accordion.Panel>
         </Accordion.Item>
@@ -89,14 +91,16 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
               <Accordion.Indicator className={ACCORDION_INDICATOR} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel className="pt-0 pb-2">
-            <CodeExecutionOutput
-              output={code_data.output}
-              status={code_data.status}
-              language={code_data.language}
-              onCopy={handleCopyOutput}
-              copied={outputCopied}
-            />
+          <Accordion.Panel>
+            <div className="pb-2">
+              <CodeExecutionOutput
+                output={code_data.output}
+                status={code_data.status}
+                language={code_data.language}
+                onCopy={handleCopyOutput}
+                copied={outputCopied}
+              />
+            </div>
           </Accordion.Panel>
         </Accordion.Item>
 
@@ -111,8 +115,10 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
                 <Accordion.Indicator className={ACCORDION_INDICATOR} />
               </Accordion.Trigger>
             </Accordion.Heading>
-            <Accordion.Panel className="pt-0 pb-2">
-              <ChartDisplay charts={code_data.charts} />
+            <Accordion.Panel>
+              <div className="pb-2">
+                <ChartDisplay charts={code_data.charts} />
+              </div>
             </Accordion.Panel>
           </Accordion.Item>
         ) : null}

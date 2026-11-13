@@ -10,6 +10,7 @@ import {
 import { useHotkeys } from "react-hotkeys-hook";
 import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import {
   useCreateEventAction,
@@ -77,7 +78,7 @@ export default function CalendarHeader() {
           }}
           className="w-34"
         >
-          <Select.Trigger className="bg-zinc-800 text-xs! cursor-pointer">
+          <Select.Trigger className="text-xs! cursor-pointer">
             <GaiaSelectValue>
               {
                 dayOptions.find(
@@ -91,7 +92,7 @@ export default function CalendarHeader() {
           <Select.Popover>
             <ListBox>
               {dayOptions.map((option) => (
-                <ListBox.Item
+                <GaiaListBoxItem
                   key={option.value}
                   id={option.value}
                   textValue={option.label}
@@ -99,7 +100,7 @@ export default function CalendarHeader() {
                 >
                   {option.label}
                   <Kbd>{option.kbd}</Kbd>
-                </ListBox.Item>
+                </GaiaListBoxItem>
               ))}
             </ListBox>
           </Select.Popover>

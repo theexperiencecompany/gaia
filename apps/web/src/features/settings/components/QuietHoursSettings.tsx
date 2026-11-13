@@ -3,6 +3,7 @@
 import { Slider, Switch } from "@heroui/react";
 import { Moon02Icon } from "@icons";
 import { sliderVariants } from "@/components/shared/controlVariants";
+import { toneVariants } from "@/components/shared/tone";
 import { useQuietHours } from "@/features/settings/hooks/useQuietHours";
 import {
   formatHour,
@@ -107,7 +108,10 @@ export function QuietHoursSettings() {
               <Slider.Mark
                 key={value}
                 value={value}
-                className="whitespace-nowrap text-[11px] text-zinc-500 tabular-nums"
+                className={toneVariants({
+                  tone: "faint",
+                  className: "whitespace-nowrap text-[11px] tabular-nums",
+                })}
               >
                 {markLabel(value)}
               </Slider.Mark>

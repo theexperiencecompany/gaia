@@ -144,7 +144,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
     >
       <Modal.Backdrop isDismissable={!loading}>
         <Modal.Container placement="center" size="lg">
-          <Modal.Dialog className="rounded-2xl shadow-none">
+          <Modal.Dialog className="shadow-none">
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Header className="flex flex-col gap-1">
               <Modal.Heading className="text-xl font-semibold">

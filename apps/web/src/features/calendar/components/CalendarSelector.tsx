@@ -1,5 +1,6 @@
 import { Chip } from "@heroui/react";
 import { ViewIcon, ViewOffSlashIcon } from "@icons";
+import { toneVariants } from "@/components/shared/tone";
 import { isTooDark } from "@/features/calendar/utils/calendarUtils";
 import type {
   CalendarChipProps,
@@ -19,15 +20,8 @@ function CalendarChip({ calendar, selected, onSelect }: CalendarChipProps) {
       onClick={() => onSelect(calendar.id)}
     >
       <Chip
-        className={`${selected ? "text-zinc-300" : "text-zinc-600"} `}
-        variant="secondary"
-        style={{
-          margin: "0",
-          background: "transparent",
-          borderWidth: "0px",
-          // color: computedColor,
-          borderRadius: "7px",
-        }}
+        className={toneVariants({ tone: selected ? "dim" : "faint" })}
+        variant="tertiary"
       >
         <div
           className="mr-2 aspect-square min-h-[12px] min-w-[12px] rounded-full"

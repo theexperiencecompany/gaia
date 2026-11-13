@@ -16,7 +16,8 @@ export default function ContactSupport() {
             shape="pill"
             variant="default-soft"
             fullWidth
-            className="text-left flex justify-center text-zinc-300 h-7"
+            tone="dim"
+            className="text-left flex justify-center h-7"
             size="sm"
             onPress={open}
           >

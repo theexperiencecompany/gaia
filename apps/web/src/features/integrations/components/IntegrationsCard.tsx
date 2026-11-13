@@ -147,7 +147,6 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
     <div className="mx-2 mb-3 border-b-1 border-zinc-800">
       <Accordion
         variant="default"
-        className="px-0!"
         expandedKeys={expandedKeys}
         onExpandedChange={handleSelectionChange}
         allowsMultipleExpanded
@@ -202,7 +201,8 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
                 fullWidth
                 size="sm"
                 variant="default-soft"
-                className="mt-2 text-xs text-zinc-400"
+                tone="muted"
+                className="mt-2 text-xs"
                 onPress={() => {
                   router.push("/integrations");
                   onClose?.();

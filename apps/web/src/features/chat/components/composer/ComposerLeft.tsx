@@ -164,7 +164,7 @@ export default function ComposerLeft({
           <Tooltip.Content placement="right" showArrow>
             <div className="flex items-center gap-2">
               Browse all tools
-              <Kbd className="text-zinc-400">Press /</Kbd>
+              <Kbd>Press /</Kbd>
             </div>
           </Tooltip.Content>
         </Tooltip>

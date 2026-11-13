@@ -15,6 +15,7 @@ import {
 import { isTrackedTodo } from "@shared/todos";
 import { formatDistanceToNow } from "date-fns";
 import { memo } from "react";
+import { toneVariants } from "@/components/shared/tone";
 import { Priority, type Project, type Todo } from "@/types/features/todoTypes";
 import { formatDate } from "@/utils/date/dateUtils";
 
@@ -89,7 +90,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
     <div className="mt-2 flex flex-wrap items-center gap-1">
       {todo.due_date && (
         <Chip
-          className="flex items-center px-1"
+          className="flex items-center"
           size="sm"
           color={dueChipColor(isToday, isOverdue)}
           variant="soft"
@@ -101,7 +102,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {todo.scheduled_at && (
         <Chip
-          className="flex items-center px-1"
+          className="flex items-center"
           size="sm"
           color="accent"
           variant="soft"
@@ -113,7 +114,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {todo.expires_at && (
         <Chip
-          className="flex items-center px-1"
+          className="flex items-center"
           size="sm"
           color="warning"
           variant="soft"
@@ -125,7 +126,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {isTrackedTodo(todo) && (
         <Chip
-          className="flex items-center px-1"
+          className="flex items-center"
           size="sm"
           color="accent"
           variant="soft"
@@ -137,7 +138,10 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {todo.sub_todo_count > 0 && (
         <Chip
-          className="flex items-center text-zinc-400 px-1"
+          className={toneVariants({
+            tone: "muted",
+            className: "flex items-center",
+          })}
           size="sm"
           variant="soft"
         >
@@ -147,12 +151,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
       )}
 
       {todoProject && (
-        <Chip
-          size="sm"
-          variant="soft"
-          className=" text-zinc-400 px-1"
-          style={{ color: todoProject.color }}
-        >
+        <Chip size="sm" variant="soft" style={{ color: todoProject.color }}>
           <Folder02Icon width={15} height={15} className="mx-1" />
           <Chip.Label>{todoProject.name}</Chip.Label>
         </Chip>
@@ -164,7 +163,10 @@ export const TodoItemMeta = memo(function TodoItemMeta({
             key={label}
             size="sm"
             variant="soft"
-            className="flex items-center text-zinc-400 px-1"
+            className={toneVariants({
+              tone: "muted",
+              className: "flex items-center",
+            })}
           >
             <Tag01Icon width={17} height={17} className="mx-1" />
             <Chip.Label>{capitalize(label)}</Chip.Label>
@@ -176,7 +178,11 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       {/* Checklist progress */}
       {todo.subtasks.length > 0 && (
-        <Chip size="sm" variant="soft" className=" text-zinc-400 px-1">
+        <Chip
+          size="sm"
+          variant="soft"
+          className={toneVariants({ tone: "muted" })}
+        >
           <CheckmarkCircle02Icon width={15} height={15} className="mx-1" />
           <Chip.Label>
             {todo.subtasks.filter((s) => s.completed).length}/

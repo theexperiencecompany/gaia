@@ -146,9 +146,7 @@ export default function ChatOptionsDropdown({
 
   return (
     <>
-      <Dropdown
-        className={`group/${chatId} w-fit min-w-fit text-foreground dark`}
-      >
+      <Dropdown className={`group/${chatId} w-fit min-w-fit dark`}>
         <Button
           className={`ml-auto ${buttonHovered ? "backdrop-blur-lg" : ""}`}
           isIconOnly={!btnChildren}
@@ -205,7 +203,6 @@ export default function ChatOptionsDropdown({
             </Dropdown.Item>
             <Dropdown.Item
               id="delete"
-              className="text-danger"
               variant="danger"
               textValue="Delete"
               onMouseOut={() => setDangerStateHovered(false)}
@@ -226,7 +223,7 @@ export default function ChatOptionsDropdown({
       </Dropdown>
 
       <Modal isOpen={isEditModalOpen} onOpenChange={closeEditModal}>
-        <Modal.Backdrop className="text-foreground dark">
+        <Modal.Backdrop className="dark">
           <Modal.Container>
             <Modal.Dialog>
               <Modal.CloseTrigger aria-label="Close" />

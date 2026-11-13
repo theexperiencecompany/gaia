@@ -1,8 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { PlusSignIcon, PuzzleIcon } from "@icons";
 import { useMemo } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { Skill, SkillTarget } from "../api/types";
 import { EXECUTOR_TARGET } from "../constants";
 import { skillMatchesQuery } from "../utils";
@@ -152,7 +152,7 @@ function EmptyState({
             Skills are reusable workflows your assistant can follow, like
             triaging your inbox or planning your day.
           </p>
-          <Button
+          <GaiaButton
             size="sm"
             className="mt-4 rounded-xl"
             onPress={onCreate}
@@ -160,7 +160,7 @@ function EmptyState({
           >
             <PlusSignIcon className="size-4" />
             New skill
-          </Button>
+          </GaiaButton>
         </>
       )}
     </div>

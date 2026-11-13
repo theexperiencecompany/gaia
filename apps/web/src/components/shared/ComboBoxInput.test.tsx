@@ -2,7 +2,7 @@
 import { ComboBox, ListBox } from "@heroui/react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { ComboBoxInput } from "./ComboBoxInput";
 
 function Country({
@@ -29,9 +29,9 @@ function Country({
       />
       <ComboBox.Popover>
         <ListBox>
-          <ListBox.Item id="in" textValue="India">
+          <GaiaListBoxItem id="in" textValue="India">
             India
-          </ListBox.Item>
+          </GaiaListBoxItem>
         </ListBox>
       </ComboBox.Popover>
     </ComboBox>

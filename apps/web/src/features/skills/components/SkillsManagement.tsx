@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, SearchField, Tabs } from "@heroui/react";
+import { SearchField, Tabs } from "@heroui/react";
 import {
   FolderLibraryIcon,
   PlusSignIcon,
@@ -14,6 +14,7 @@ import {
   inputVariants,
   tabsVariants,
 } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { track } from "@/lib/analytics";
@@ -131,7 +132,7 @@ export default function SkillsManagement() {
             <SearchField.ClearButton />
           </SearchField.Group>
         </SearchField>
-        <Button
+        <GaiaButton
           size="sm"
           className="shrink-0 rounded-xl"
           onPress={openCreate}
@@ -139,7 +140,7 @@ export default function SkillsManagement() {
         >
           <PlusSignIcon className="size-4" />
           New skill
-        </Button>
+        </GaiaButton>
       </div>
 
       <div className="min-h-0 flex-1">

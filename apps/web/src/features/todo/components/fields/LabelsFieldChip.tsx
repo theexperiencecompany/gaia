@@ -1,9 +1,10 @@
 "use client";
 
-import { Button, Input } from "@heroui/react";
+import { Input } from "@heroui/react";
 import { Cancel01Icon, PlusSignIcon, Tag01Icon } from "@icons";
 import { useState } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import BaseFieldChip from "./BaseFieldChip";
 import FieldChipOption from "./FieldChipOption";
 
@@ -25,9 +26,11 @@ export default function LabelsFieldChip({
       ? `${value.length} label${value.length > 1 ? "s" : ""}`
       : undefined;
 
+  const trimmedLabel = newLabel.trim();
+  const canAddLabel = trimmedLabel !== "" && !value.includes(trimmedLabel);
+
   const handleAddLabel = () => {
-    const trimmedLabel = newLabel.trim();
-    if (trimmedLabel && !value.includes(trimmedLabel)) {
+    if (canAddLabel) {
       onChange([...value, trimmedLabel]);
       setNewLabel("");
     }
@@ -69,24 +72,23 @@ export default function LabelsFieldChip({
                     className={inputVariants({
                       size: "sm",
                       className:
-                        "border-0 bg-zinc-800 text-sm text-zinc-200 placeholder:text-zinc-500 hover:bg-zinc-700 focus:bg-zinc-700",
+                        "border-0 text-sm hover:bg-zinc-700 focus:bg-zinc-700",
                     })}
                   />
                 </div>
-                <Button
+                <GaiaButton
                   size="sm"
-                  variant="ghost"
-                  isDisabled={
-                    !newLabel.trim() || value.includes(newLabel.trim())
-                  }
+                  variant="tertiary"
+                  tone={canAddLabel ? "default" : "faint"}
+                  isIconOnly
+                  isDisabled={!canAddLabel}
                   onPress={() => {
                     handleAddLabel();
                     onClose();
                   }}
-                  className={`h-8 min-w-8 border-0 p-0 ${!newLabel.trim() || value.includes(newLabel.trim()) ? "bg-zinc-800 text-zinc-600 hover:bg-zinc-700" : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"}`}
                 >
                   <PlusSignIcon size={14} />
-                </Button>
+                </GaiaButton>
               </div>
             </div>
 
@@ -100,14 +102,17 @@ export default function LabelsFieldChip({
                   >
                     <Tag01Icon size={12} />
                     {label}
-                    <Button
+                    <GaiaButton
                       variant="ghost"
+                      tone="muted"
+                      hoverTone="foreground"
                       size="sm"
+                      isIconOnly
                       onPress={() => handleRemoveLabel(label)}
-                      className="h-4 w-4 min-w-4 border-0 p-0 text-zinc-400 hover:text-zinc-200"
+                      className="h-4 w-4 min-w-4"
                     >
                       <Cancel01Icon size={10} />
-                    </Button>
+                    </GaiaButton>
                   </div>
                 ))}
               </div>

@@ -176,7 +176,7 @@ export default function ApprovalReviewSheet({
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Header className="flex items-center gap-2">
               <ShieldIcon width={18} className="shrink-0 text-amber-400" />
-              <Modal.Heading className="text-sm text-zinc-100">
+              <Modal.Heading className="text-sm">
                 {items.length} actions need your approval ({totals})
               </Modal.Heading>
             </Modal.Header>

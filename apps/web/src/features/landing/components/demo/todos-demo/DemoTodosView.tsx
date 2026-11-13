@@ -14,6 +14,7 @@ import {
 } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import { useMemo, useState } from "react";
+import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   DEMO_PROJECTS,
@@ -115,7 +116,10 @@ function DemoTodoItem({
           <div className="mt-2 flex flex-wrap items-center gap-1">
             {todo.due_date && (
               <Chip
-                className="flex items-center px-1 text-zinc-400"
+                className={toneVariants({
+                  tone: "muted",
+                  className: "flex items-center",
+                })}
                 size="sm"
                 color={
                   isDueToday(todo.due_date)
@@ -150,12 +154,7 @@ function DemoTodoItem({
             )}
 
             {project && (
-              <Chip
-                size="sm"
-                variant="soft"
-                className="px-1 text-zinc-400"
-                style={{ color: project.color }}
-              >
+              <Chip size="sm" variant="soft" style={{ color: project.color }}>
                 <Folder02Icon width={15} height={15} className="mx-1" />
                 <Chip.Label>{project.name}</Chip.Label>
               </Chip>
@@ -166,7 +165,10 @@ function DemoTodoItem({
                 key={label}
                 size="sm"
                 variant="soft"
-                className="flex items-center px-1 text-zinc-400"
+                className={toneVariants({
+                  tone: "muted",
+                  className: "flex items-center",
+                })}
               >
                 <Tag01Icon width={17} height={17} className="mx-1" />
                 <Chip.Label>
@@ -176,7 +178,11 @@ function DemoTodoItem({
             ))}
 
             {todo.subtasks.length > 0 && (
-              <Chip size="sm" variant="soft" className="px-1 text-zinc-400">
+              <Chip
+                size="sm"
+                variant="soft"
+                className={toneVariants({ tone: "muted" })}
+              >
                 <CheckmarkCircle02Icon
                   width={15}
                   height={15}

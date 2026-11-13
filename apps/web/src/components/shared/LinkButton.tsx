@@ -9,6 +9,10 @@ type LinkButtonProps = Omit<ComponentProps<typeof NextLink>, "className"> &
 /** A link styled as a HeroUI button: HeroUI's documented routing pattern, button variants on a Next.js link. */
 export function LinkButton({
   variant,
+  shape,
+  tone,
+  hoverTone,
+  inset,
   size,
   isIconOnly,
   fullWidth,
@@ -19,6 +23,10 @@ export function LinkButton({
     <NextLink
       className={buttonVariants({
         variant,
+        shape,
+        tone,
+        hoverTone,
+        inset,
         size,
         isIconOnly,
         fullWidth,

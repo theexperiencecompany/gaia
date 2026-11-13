@@ -72,11 +72,9 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
           size="sm"
           variant="soft"
           color="warning"
-          className="absolute -top-2 -right-2 bg-warning/20"
+          className="absolute -top-2 -right-2"
         >
-          <Chip.Label className="text-xs font-semibold text-warning">
-            Draft
-          </Chip.Label>
+          <Chip.Label className="text-xs font-semibold">Draft</Chip.Label>
         </Chip>
 
         <button

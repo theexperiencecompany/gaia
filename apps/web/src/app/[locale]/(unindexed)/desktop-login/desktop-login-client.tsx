@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Spinner } from "@heroui/react";
+import { Spinner } from "@heroui/react";
 import { CancelCircleIcon } from "@icons";
 import type { DesktopServerFormReason } from "@shared/desktop-tools";
 import Image from "next/image";
@@ -205,14 +205,15 @@ export function DesktopLoginClient({
                       You&apos;ll be redirected back automatically
                     </p>
                   </div>
-                  <Button
+                  <GaiaButton
                     variant="ghost"
                     size="sm"
-                    className="mt-2 text-zinc-500"
+                    tone="faint"
+                    className="mt-2"
                     onPress={() => setStatus("ready")}
                   >
                     Try again
-                  </Button>
+                  </GaiaButton>
                 </div>
               )}
 
@@ -249,7 +250,7 @@ export function DesktopLoginClient({
                     shape="pill"
                     variant="ghost"
                     size="sm"
-                    className="text-zinc-400"
+                    tone="muted"
                     onPress={() => setShowServerForm(true)}
                   >
                     Use my own server

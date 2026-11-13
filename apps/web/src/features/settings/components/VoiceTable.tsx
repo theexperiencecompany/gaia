@@ -17,6 +17,7 @@ import {
 } from "@icons";
 import { useCallback, useDeferredValue, useMemo } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
 import { GenderIcon } from "@/features/settings/components/VoiceFilters";
 import { useVoicePreview } from "@/features/settings/hooks/useVoicePreview";
@@ -121,8 +122,9 @@ function VoiceCell({
               aria-label={
                 voice.starred ? `Unstar ${voice.name}` : `Star ${voice.name}`
               }
+              hoverTone={voice.starred ? "none" : "dim"}
               className={cn(
-                "text-zinc-600 hover:text-zinc-300",
+                "text-zinc-600",
                 voice.starred && "text-yellow-400 hover:text-yellow-300",
               )}
               onPress={() => onToggleStar(voice)}
@@ -165,8 +167,11 @@ function VoiceCell({
               <Tooltip.Trigger>
                 <Chip
                   size="sm"
-                  variant="soft"
-                  className="cursor-default bg-zinc-800 text-zinc-400"
+                  variant="secondary"
+                  className={toneVariants({
+                    tone: "muted",
+                    className: "cursor-default",
+                  })}
                 >
                   +{voice.languages.length - 1}
                 </Chip>
@@ -220,7 +225,7 @@ function VoiceCell({
                 : `Play ${voice.name} preview`
             }
             isDisabled={!voice.preview_url}
-            className={cn(voice.isPlaying && "text-primary")}
+            tone={voice.isPlaying ? "accent" : "default"}
             onPress={() => onTogglePreview(voice)}
           >
             <PreviewIcon className="h-4 w-4" />

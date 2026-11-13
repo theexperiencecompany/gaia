@@ -444,7 +444,9 @@ function CTAGroup({
           variant="default-soft"
           aria-label="Previous platform"
           onPress={onPrev}
-          className="min-w-10 h-10 w-10 p-0 text-zinc-500 transition-colors hover:text-zinc-200"
+          tone="faint"
+          hoverTone="foreground"
+          className="min-w-10 h-10 w-10 transition-colors"
         >
           <ArrowLeft02Icon size={24} />
         </GaiaButton>
@@ -454,7 +456,9 @@ function CTAGroup({
           variant="default-soft"
           aria-label="Next platform"
           onPress={onNext}
-          className="min-w-10 h-10 w-10 p-0 text-zinc-500 transition-colors hover:text-zinc-200"
+          tone="faint"
+          hoverTone="foreground"
+          className="min-w-10 h-10 w-10 transition-colors"
         >
           <ArrowRight02Icon size={24} />
         </GaiaButton>

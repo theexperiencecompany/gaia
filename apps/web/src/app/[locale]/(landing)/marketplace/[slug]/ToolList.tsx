@@ -88,10 +88,12 @@ export function ToolList({
               {clamped.has(key) || isExpanded ? (
                 <GaiaButton
                   shape="pill"
-                  variant="ghost"
+                  variant="text"
                   size="sm"
+                  tone="faint"
+                  hoverTone="dim"
                   onPress={() => toggle(key)}
-                  className="mt-1 h-auto min-w-0 px-2 py-1 text-xs text-zinc-500 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-300"
+                  className="mt-1 text-xs"
                 >
                   {isExpanded ? "View less" : "View more"}
                 </GaiaButton>

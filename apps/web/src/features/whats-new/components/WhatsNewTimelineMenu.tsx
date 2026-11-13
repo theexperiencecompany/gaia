@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/react";
 import { PackageOpenIcon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { track } from "@/lib/analytics";
 import { useWhatsNewStore } from "@/stores/whatsNewStore";
 import { useReleases } from "../hooks/useReleases";
@@ -92,15 +92,16 @@ export function WhatsNewTimelineMenu({ onClose }: WhatsNewTimelineMenuProps) {
 
       {/* Footer */}
       <div className="px-3">
-        <Button
+        <GaiaButton
           variant="ghost"
           size="sm"
           onPress={handleViewAll}
-          className="justify-start text-zinc-500"
+          tone="faint"
+          className="justify-start"
         >
           <PackageOpenIcon className="size-4 shrink-0" />
           View all releases
-        </Button>
+        </GaiaButton>
       </div>
     </div>
   );

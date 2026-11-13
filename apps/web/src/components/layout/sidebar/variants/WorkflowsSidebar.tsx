@@ -34,7 +34,7 @@ export default function WorkflowsSidebar() {
             variant="accent-soft"
             size="sm"
             fullWidth
-            className="mb-2 flex justify-start text-sm font-medium text-primary"
+            className="mb-2 flex justify-start text-sm font-medium"
             onPress={open}
             data-keyboard-shortcut="create-workflow"
           >

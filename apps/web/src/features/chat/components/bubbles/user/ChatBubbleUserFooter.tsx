@@ -50,7 +50,8 @@ export function ChatBubbleUserFooter({
         {onRetry && (
           <GaiaButton
             shape="pill"
-            className="h-7 min-w-0 px-2 text-xs"
+            inset="tight"
+            className="h-7 min-w-0 text-xs"
             isDisabled={isRetrying}
             onPress={onRetry}
             size="sm"

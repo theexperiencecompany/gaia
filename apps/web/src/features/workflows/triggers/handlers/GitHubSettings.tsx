@@ -10,6 +10,7 @@
 import { Button, ListBox, Select } from "@heroui/react";
 import { useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
@@ -172,7 +173,7 @@ export function GitHubSettings({
                     ? [...repoOptions, LOADER_ITEM]
                     : repoOptions
                   ).map((item) => (
-                    <ListBox.Item
+                    <GaiaListBoxItem
                       key={item.value}
                       id={item.value}
                       textValue={item.label}
@@ -188,7 +189,7 @@ export function GitHubSettings({
                       ) : (
                         item.label
                       )}
-                    </ListBox.Item>
+                    </GaiaListBoxItem>
                   ))}
                 </ListBox>
               </Select.Popover>

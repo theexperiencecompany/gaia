@@ -33,7 +33,7 @@ export const IntegrationPermissionsModal = ({
         <Modal.Dialog className={modalVariants({ size: "xl" })}>
           <Modal.CloseTrigger aria-label="Close" />
           <Modal.Header className="flex-col items-start gap-1 pb-3">
-            <Modal.Heading className="text-base font-semibold text-zinc-100">
+            <Modal.Heading className="text-base font-semibold">
               {name} permissions
             </Modal.Heading>
             {/* Someone opening this for the first time has no idea GAIA acts on

@@ -31,7 +31,7 @@ export function IntegrationToolsCard({
   const hasTools = Boolean(integration.tools && integration.tools.length > 0);
 
   return (
-    <Card className="bg-zinc-900/50 backdrop-blur-md outline-0 border-none rounded-3xl">
+    <Card className="bg-zinc-900/50 backdrop-blur-md outline-0 border-none">
       {hasTools && (
         <Card.Header>
           <h2 className="text-lg font-normal">

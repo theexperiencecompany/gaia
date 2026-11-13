@@ -1,8 +1,11 @@
-import { Button, Input, Popover, Tooltip } from "@heroui/react";
+import { Input, Popover, Tooltip } from "@heroui/react";
 import { PlusSignIcon, Search01Icon } from "@icons";
 import { useMemo, useState } from "react";
 import { type Control, useController } from "react-hook-form";
-import { inputVariants } from "@/components/shared/controlVariants";
+import {
+  inputVariants,
+  overlayVariants,
+} from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { cn } from "@/lib/utils";
 import {
@@ -36,19 +39,16 @@ function IconGrid({ icons, selectedName, onPick }: IconGridProps) {
     <div className="grid grid-cols-8 gap-1">
       {icons.map((def) => (
         <Tooltip key={def.name} delay={300} closeDelay={0}>
-          <Button
+          <GaiaButton
             isIconOnly
             size="sm"
-            variant="ghost"
+            variant={selectedName === def.name ? "default-solid" : "ghost"}
+            tone="dim"
             aria-label={workflowIconLabel(def.name)}
-            className={cn(
-              "text-zinc-300",
-              selectedName === def.name && "bg-zinc-700",
-            )}
             onPress={() => onPick(def)}
           >
             <def.Icon size={18} />
-          </Button>
+          </GaiaButton>
           <Tooltip.Content>{workflowIconLabel(def.name)}</Tooltip.Content>
         </Tooltip>
       ))}
@@ -113,12 +113,9 @@ export default function WorkflowIconPicker({
     >
       <GaiaButton
         isIconOnly
-        variant="default-soft"
+        variant={selected ? "default-soft" : "tertiary"}
         aria-label={selected ? "Change workflow icon" : "Add workflow icon"}
-        className={cn(
-          "-mt-0.5 size-10 min-w-10 shrink-0",
-          !selected && "bg-zinc-800",
-        )}
+        className="-mt-0.5 size-10 min-w-10 shrink-0"
         style={selected ? tintedBg : undefined}
       >
         {selected ? (
@@ -129,9 +126,9 @@ export default function WorkflowIconPicker({
       </GaiaButton>
       <Popover.Content
         placement="bottom start"
-        className="w-80 bg-zinc-800 p-3"
+        className={overlayVariants({ surface: "raised", className: "w-80" })}
       >
-        <div className="flex w-full flex-col gap-3">
+        <div className="flex w-full flex-col gap-3 p-3">
           <div className="flex items-center gap-2 rounded-lg bg-zinc-900 px-2">
             <Search01Icon className="size-4 shrink-0 text-zinc-500" />
             <Input
@@ -191,10 +188,11 @@ export default function WorkflowIconPicker({
           )}
 
           {selected && (
-            <Button
+            <GaiaButton
               size="sm"
               variant="ghost"
-              className="self-start text-zinc-400"
+              tone="muted"
+              className="self-start"
               onPress={() => {
                 iconField.onChange(null);
                 colorField.onChange(null);
@@ -202,7 +200,7 @@ export default function WorkflowIconPicker({
               }}
             >
               Remove icon
-            </Button>
+            </GaiaButton>
           )}
         </div>
       </Popover.Content>

@@ -71,7 +71,7 @@ export function SecretInput({
             isIconOnly
             size="sm"
             variant="ghost"
-            className="text-zinc-500"
+            tone="faint"
             aria-label={`${isRevealed ? "Hide" : "Show"} ${subject}`}
             onPress={toggle}
           >

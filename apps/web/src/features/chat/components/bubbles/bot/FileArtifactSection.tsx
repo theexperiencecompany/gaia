@@ -1,4 +1,4 @@
-import { Button, Card, Chip } from "@heroui/react";
+import { Card, Chip } from "@heroui/react";
 import { CodeIcon, Download01Icon, File01Icon } from "@icons";
 import { formatFileSize } from "@shared/utils";
 import type React from "react";
@@ -187,21 +187,22 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
               <GaiaButton
                 size="sm"
                 variant="default-soft"
-                className="font-medium text-zinc-200"
+                className="font-medium"
                 onPress={handleOpen}
               >
                 Open
               </GaiaButton>
-              <Button
+              <GaiaButton
                 isIconOnly
                 size="sm"
                 variant="ghost"
-                className="text-zinc-300 group-hover:text-white"
+                tone="dim"
+                className="group-hover:text-white"
                 onPress={handleDownload}
                 aria-label="Download artifact"
               >
                 <Download01Icon size={16} />
-              </Button>
+              </GaiaButton>
             </div>
           </div>
         </Card.Content>

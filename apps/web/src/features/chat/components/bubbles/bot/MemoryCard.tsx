@@ -13,7 +13,9 @@ import {
 import type { MemoryEntry } from "@shared/api/generated";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
+import { separatorVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import type { MemoryData } from "@/config/registries/toolRegistry";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { CORE_DOCUMENTS } from "@/features/memory/constants";
@@ -143,7 +145,9 @@ function SearchSection({
           </div>
         )}
         <Chip size="sm" variant="soft" className="ml-auto">
-          <Chip.Label className="text-xs text-zinc-400">
+          <Chip.Label
+            className={toneVariants({ tone: "muted", className: "text-xs" })}
+          >
             {item.memories.length} result{item.memories.length === 1 ? "" : "s"}
           </Chip.Label>
         </Chip>
@@ -280,9 +284,11 @@ function DocumentSection({
           <GaiaButton
             shape="pill"
             size="sm"
-            variant="ghost"
+            variant="text"
             onPress={() => setExpanded((v) => !v)}
-            className="mt-2 h-auto min-w-0 px-2 py-1 text-xs text-zinc-500 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-300"
+            tone="faint"
+            hoverTone="dim"
+            className="mt-2 min-w-0 text-xs"
           >
             {expanded ? "Show less" : "Show more"}
           </GaiaButton>
@@ -313,7 +319,14 @@ export default function MemoryCard({ items: rawItems }: MemoryCardProps) {
       <div className="flex flex-col gap-3 p-4">
         {items.map(({ item, index }) => (
           <div key={`${item.action}-${index}`}>
-            {index > 0 && <Separator className="mb-3 bg-zinc-700/50" />}
+            {index > 0 && (
+              <Separator
+                className={separatorVariants({
+                  tone: "subtle",
+                  className: "mb-3",
+                })}
+              />
+            )}
             {item.action === "add" && <AddSection item={item} />}
             {item.action === "search" && <SearchSection item={item} />}
             {item.action === "update" && <UpdateSection item={item} />}

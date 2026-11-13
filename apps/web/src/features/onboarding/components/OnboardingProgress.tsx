@@ -118,7 +118,7 @@ function OnboardingProgressImpl({
               <Dropdown.Item
                 id={LOGOUT_KEY}
                 textValue="Log out"
-                className="text-danger"
+                variant="danger"
                 onAction={onLogout}
               >
                 <div className="flex flex-row items-center justify-start gap-2">

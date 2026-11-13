@@ -8,6 +8,7 @@ import { FormError } from "@/components/shared/FormError";
 import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { SecretInput } from "@/components/shared/SecretInput";
+import { toneVariants } from "@/components/shared/tone";
 import CopyButton from "@/components/ui/CopyButton";
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
 
@@ -86,7 +87,8 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
           variant="ghost"
           size="sm"
           onPress={() => setShowResetHelp(true)}
-          className="text-xs text-zinc-400"
+          tone="muted"
+          className="text-xs"
         >
           Forgot password?
           <ArrowRight02Icon size={14} />
@@ -108,7 +110,10 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
           signup page exists — mirror the signup page's sign-in link. */}
       <Link
         href="/signup"
-        className="self-center text-sm text-primary hover:underline"
+        className={toneVariants({
+          tone: "accent",
+          className: "self-center text-sm hover:underline",
+        })}
       >
         Need an account? Sign up
       </Link>
@@ -124,27 +129,29 @@ export function LoginForm({ safeReturnUrl }: LoginFormProps) {
               <Modal.Header>
                 <Modal.Heading>Reset admin password</Modal.Heading>
               </Modal.Header>
-              <Modal.Body className="gap-3 pb-6">
-                <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                  If you are the admin and forgot your password, run this on the
-                  host that runs GAIA:
-                </p>
-                <div className="relative">
-                  <pre className="overflow-x-auto rounded-xl bg-zinc-900 p-3 pr-11 text-xs text-zinc-100">
-                    {RESET_CMD}
-                  </pre>
-                  <CopyButton
-                    textToCopy={RESET_CMD}
-                    variant="ghost"
-                    size="sm"
-                    className="absolute top-2 right-2 text-zinc-400"
-                  />
+              <Modal.Body>
+                <div className="flex flex-col gap-3 pb-4">
+                  <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                    If you are the admin and forgot your password, run this on
+                    the host that runs GAIA:
+                  </p>
+                  <div className="relative">
+                    <pre className="overflow-x-auto rounded-xl bg-zinc-900 p-3 pr-11 text-xs text-zinc-100">
+                      {RESET_CMD}
+                    </pre>
+                    <CopyButton
+                      textToCopy={RESET_CMD}
+                      variant="ghost"
+                      size="sm"
+                      className="absolute top-2 right-2 text-zinc-400"
+                    />
+                  </div>
+                  <p className="text-xs text-zinc-500">
+                    It prints a new password for the admin account and signs out
+                    every admin session. Sign in with it, then change it in
+                    Settings. Your account and data stay as they are.
+                  </p>
                 </div>
-                <p className="text-xs text-zinc-500">
-                  It prints a new password for the admin account and signs out
-                  every admin session. Sign in with it, then change it in
-                  Settings. Your account and data stay as they are.
-                </p>
               </Modal.Body>
             </Modal.Dialog>
           </Modal.Container>

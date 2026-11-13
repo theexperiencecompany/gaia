@@ -152,14 +152,14 @@ function DemoWorkflowCard({
                 Run
               </GaiaButton>
             ) : (
-              <Button
+              <GaiaButton
                 size="sm"
                 variant="primary"
                 className="font-medium rounded-xl"
               >
                 Create
                 <ZapIcon width={16} height={16} />
-              </Button>
+              </GaiaButton>
             )}
           </div>
         </div>

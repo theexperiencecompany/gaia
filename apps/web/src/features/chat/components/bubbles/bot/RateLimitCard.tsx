@@ -1,6 +1,7 @@
 import { Chip, Separator } from "@heroui/react";
 import { Clock01Icon, UploadCircle01Icon } from "@icons";
 import type { RateLimitData } from "@shared/chat";
+import { separatorVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useRateLimitCard } from "@/features/chat/hooks/useRateLimitCard";
 import { DailyLimitBody, UpgradeRequiredBody } from "./RateLimitCardBody";
@@ -49,13 +50,13 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
           size="sm"
           variant="soft"
           color={isUpgradeRequired ? "warning" : "danger"}
-          className={`shrink-0 text-xs font-semibold ${isUpgradeRequired ? "bg-warning/15" : "bg-red-500/15"}`}
+          className="shrink-0 text-xs font-semibold"
         >
           {isUpgradeRequired ? planName : "Limit Hit"}
         </Chip>
       </div>
 
-      <Separator className="bg-zinc-700/50" />
+      <Separator className={separatorVariants({ tone: "subtle" })} />
 
       {/* Body */}
       <div className="flex flex-col gap-3 p-4">
@@ -77,7 +78,7 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
 
       {showFooter && (
         <>
-          <Separator className="bg-zinc-700/50" />
+          <Separator className={separatorVariants({ tone: "subtle" })} />
 
           {/* Footer CTA */}
           <div className="p-3">

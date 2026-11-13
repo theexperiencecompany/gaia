@@ -2,6 +2,7 @@ import { Accordion, AccordionItem, Chip, ScrollShadow } from "@heroui/react";
 import { NotificationIcon } from "@icons";
 import { useMemo, useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { NotificationItem } from "@/features/notification/components/NotificationItem";
 import {
   ACCORDION_INDICATOR,
@@ -147,7 +148,7 @@ export default function NotificationListSection({
                 </div>
                 {localNotifications.length > 0 && (
                   <Chip
-                    className="bg-zinc-700 text-zinc-300"
+                    className={`bg-zinc-700 ${toneVariants({ tone: "dim" })}`}
                     size="sm"
                     variant="soft"
                   >
@@ -177,7 +178,7 @@ export default function NotificationListSection({
                     variant="default-soft"
                     onPress={handleMarkAllAsRead}
                     isPending={isMarkingAllRead}
-                    className="text-zinc-300"
+                    tone="dim"
                   >
                     Mark all read
                   </GaiaButton>

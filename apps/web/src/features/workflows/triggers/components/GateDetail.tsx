@@ -3,6 +3,7 @@
 import { Button, Separator, Switch, TextArea } from "@heroui/react";
 import type { GateSkipRecord } from "@shared/api/generated";
 import { type KeyboardEvent, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   GATE_CONDITION_MAX_CHARS,
   type GATE_COPY,
@@ -59,7 +60,7 @@ export function GateDetail({
   };
 
   return (
-    <div className="flex w-full flex-col gap-4 p-4">
+    <div className="flex w-full flex-col gap-4">
       {draft === null ? (
         <div className="flex flex-col gap-1">
           <p className="text-sm leading-snug text-pretty text-zinc-200">
@@ -71,16 +72,19 @@ export function GateDetail({
                 {editedByUser && GATE_EDITED_BY_USER}
               </span>
               {editable && (
-                <Button
+                <GaiaButton
                   size="sm"
                   variant="ghost"
+                  tone="muted"
+                  hoverTone="foreground"
+                  inset="tight"
                   aria-label={GATE_EDIT_LABEL}
-                  className="h-6 min-w-0 px-2 text-xs text-zinc-400 data-[hover=true]:text-zinc-200"
+                  className="h-6 min-w-0 text-xs"
                   onPress={() => setDraft(condition)}
                   isDisabled={isDisabled}
                 >
                   Edit
-                </Button>
+                </GaiaButton>
               )}
             </div>
           )}
@@ -95,7 +99,7 @@ export function GateDetail({
             maxLength={GATE_CONDITION_MAX_CHARS}
             rows={2}
             autoFocus
-            className="max-h-32 resize-none field-sizing-content bg-zinc-800 text-sm hover:bg-zinc-800"
+            className="max-h-32 resize-none field-sizing-content text-sm"
           />
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="ghost" onPress={() => setDraft(null)}>
@@ -115,7 +119,7 @@ export function GateDetail({
 
       <GateSkipList skips={skips} />
 
-      <Separator className="bg-zinc-800" />
+      <Separator />
 
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-0.5">

@@ -3,6 +3,7 @@
 import { ComboBox, ListBox } from "@heroui/react";
 import { useEffect, useMemo, useState } from "react";
 import { ComboBoxInput } from "@/components/shared/ComboBoxInput";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { timezoneSearchText } from "@/utils/timezoneUtils";
 
 interface TimezoneOption {
@@ -85,7 +86,7 @@ export function TimezoneAutocomplete({
           {(tz: TimezoneOption) => {
             const { city, region } = describeZone(tz.value);
             return (
-              <ListBox.Item id={tz.value} textValue={city}>
+              <GaiaListBoxItem id={tz.value} textValue={city}>
                 <div className="flex min-w-0 flex-col">
                   <span className="truncate">{city}</span>
                   {region ? (
@@ -97,8 +98,7 @@ export function TimezoneAutocomplete({
                 <span className="ml-auto shrink-0 pl-4 text-xs tabular-nums text-default-500">
                   {tz.offset}
                 </span>
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
+              </GaiaListBoxItem>
             );
           }}
         </ListBox>

@@ -6,7 +6,9 @@ import { USAGE_WARN_THRESHOLD } from "@shared/constants/usage";
 import type { FeatureUsage, UsageActivity, UsageSummary } from "@shared/types";
 import { formatCompactNumber, formatDateUTC } from "@shared/utils";
 import { useMemo, useState } from "react";
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { shapeVariants } from "@/components/shared/shape";
+import { toneVariants } from "@/components/shared/tone";
 import BlurStack from "@/components/ui/blur-stack";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { useRecharts } from "@/components/ui/chart-loader";
@@ -330,7 +332,7 @@ function Stats({
               </Tooltip.Trigger>
               <Tooltip.Content
                 placement="top"
-                className="max-w-64 bg-zinc-800 text-xs text-zinc-300 shadow-xl"
+                className={`max-w-64 text-xs shadow-xl ${overlayVariants({ surface: "raised" })} ${toneVariants({ tone: "dim" })}`}
               >
                 {`${streak}-day streak. You've been active every day for the last ${streak} days`}
               </Tooltip.Content>
@@ -825,7 +827,7 @@ function FeatureRow({
         </Tooltip.Trigger>
         <Tooltip.Content
           placement="top"
-          className="max-w-56 bg-zinc-800 text-xs text-zinc-300 shadow-xl"
+          className={`max-w-56 text-xs shadow-xl ${overlayVariants({ surface: "raised" })} ${toneVariants({ tone: "dim" })}`}
         >
           {feature.description}
         </Tooltip.Content>

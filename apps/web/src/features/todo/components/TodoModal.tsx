@@ -300,10 +300,13 @@ function TodoTextInputFields({
   onDescriptionChange,
 }: TodoTextInputFieldsProps) {
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col pt-4">
       <Input
         placeholder="Title"
-        className={`${inputVariants({ variant: "underlined" })} text-2xl font-semibold text-zinc-100 placeholder:text-zinc-500`}
+        className={inputVariants({
+          variant: "underlined",
+          className: "text-2xl font-semibold",
+        })}
         value={title}
         onChange={(e) => onTitleChange(e.target.value)}
         required
@@ -316,7 +319,10 @@ function TodoTextInputFields({
         value={description}
         onChange={(e) => onDescriptionChange(e.target.value)}
         rows={1}
-        className={`${inputVariants({ variant: "underlined" })} max-h-40 min-h-9 resize-none field-sizing-content text-zinc-200 placeholder:text-zinc-500`}
+        className={inputVariants({
+          variant: "underlined",
+          className: "max-h-40 min-h-9 resize-none field-sizing-content",
+        })}
       />
     </div>
   );
@@ -390,7 +396,7 @@ export default function TodoModal({
           <Modal.Container size="lg">
             <Modal.Dialog>
               <Modal.CloseTrigger aria-label="Close" />
-              <Modal.Body className="gap-6 pt-6">
+              <Modal.Body className="gap-6">
                 <TodoTextInputFields
                   title={formData.title}
                   description={formData.description || ""}

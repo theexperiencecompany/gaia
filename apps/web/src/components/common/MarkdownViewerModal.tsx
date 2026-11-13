@@ -78,7 +78,7 @@ const MarkdownViewerModal: React.FC<MarkdownViewerModalProps> = ({
           >
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Header className="border-b border-zinc-800 pb-3">
-              <Modal.Heading className="text-sm font-medium text-zinc-200">
+              <Modal.Heading className="text-sm font-medium">
                 {title}
               </Modal.Heading>
             </Modal.Header>

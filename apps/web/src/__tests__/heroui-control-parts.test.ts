@@ -53,4 +53,17 @@ describe("HeroUI v3 controls render their parts", () => {
     );
     expect(offenders).toEqual([]);
   });
+
+  // v3's ListBox.Item draws no selected check unless it renders its
+  // ItemIndicator; GaiaListBoxItem always does, as v2's items did.
+  it("renders list items through GaiaListBoxItem", () => {
+    const offenders = files.filter(
+      (file) =>
+        !file.endsWith("GaiaListBoxItem.tsx") &&
+        /<ListBox\.Item\b(?!Indicator)/.test(
+          readFileSync(path.join(SRC_DIR, file), "utf8"),
+        ),
+    );
+    expect(offenders).toEqual([]);
+  });
 });

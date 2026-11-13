@@ -94,7 +94,7 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
         isKeyboardDismissDisabled={isLoading}
       >
         <Modal.Container placement="center" size="md">
-          <Modal.Dialog className="rounded-2xl shadow-none">
+          <Modal.Dialog className="shadow-none">
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Header className="flex flex-col gap-1">
               <Modal.Heading className="text-xl font-semibold">

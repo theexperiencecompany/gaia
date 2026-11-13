@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, ButtonGroup, Dropdown, Menu } from "@heroui/react";
+import { ButtonGroup, Dropdown, Menu } from "@heroui/react";
 import {
   ArrowDown01Icon,
   CallEnd04Icon,
@@ -133,24 +133,27 @@ export function AgentControlBar({
       {/* One floating pill holds every control — iOS-call style. */}
       <div className="flex items-center gap-1.5 rounded-full bg-zinc-900/80 p-1.5 shadow-lg backdrop-blur-md">
         <ButtonGroup className={shapeVariants({ shape: "pill" })}>
-          <Button
+          <GaiaButton
             isIconOnly
             aria-label={micLive ? "Mute microphone" : "Unmute microphone"}
             isPending={microphoneToggle.pending}
             isDisabled={preConnectCapture}
             onPress={handleMicPress}
-            className="h-12 w-14 bg-zinc-800 text-white transition-colors hover:bg-zinc-700 active:bg-zinc-700"
+            variant="tertiary"
+            className="h-12 w-14 transition-colors"
           >
             <MicStateIcon className="h-6 w-6" />
-          </Button>
+          </GaiaButton>
           <Dropdown onOpenChange={(open) => open && refreshDevices()}>
-            <Button
+            <GaiaButton
               isIconOnly
               aria-label="Select microphone"
-              className="h-12 w-9 bg-zinc-800 text-zinc-400 transition-colors hover:bg-zinc-700"
+              variant="tertiary"
+              tone="muted"
+              className="h-12 w-9 transition-colors"
             >
               <ArrowDown01Icon className="h-4 w-4" />
-            </Button>
+            </GaiaButton>
             <Dropdown.Popover placement="top end">
               <Menu
                 aria-label="Audio input devices"
@@ -183,7 +186,8 @@ export function AgentControlBar({
             aria-label="End voice session"
             onPress={onLeave}
             isDisabled={isDisconnecting}
-            className="h-12 w-14 bg-red-500/15 transition-colors hover:bg-red-500/20 active:bg-red-500/25"
+            variant="danger-soft"
+            className="h-12 w-14 transition-colors"
           >
             <CallEnd04Icon className="h-6 w-6 text-red-400" />
           </GaiaButton>

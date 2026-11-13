@@ -897,6 +897,10 @@ def _hero_component(jsx: str, imports: str = "Button, Chip, Modal") -> str:
         ('<Button className={`w-full ${a ? "rounded-xl" : ""}`}>x</Button>', "Button:rounded-xl"),
         ("<Button style={{ borderRadius: 8 }}>x</Button>", "Button:style.borderRadius"),
         ("<Button style={{ color: 'red' }}>x</Button>", "Button:style.color"),
+        (
+            '<Chip className={toneVariants({ tone: "muted", className: "bg-zinc-800" })}>x</Chip>',
+            "Chip:bg-zinc-800",
+        ),
     ],
 )
 def test_a_heroui_style_override_fails(tmp_path: Path, jsx: str, entry: str) -> None:

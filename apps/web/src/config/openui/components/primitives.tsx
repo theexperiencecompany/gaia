@@ -32,7 +32,7 @@ function ProgressView(props: z.infer<typeof progressSchema>) {
         size="md"
         className="w-full"
       >
-        <ProgressBar.Track className="bg-zinc-800">
+        <ProgressBar.Track>
           <ProgressBar.Fill />
         </ProgressBar.Track>
       </ProgressBar>
