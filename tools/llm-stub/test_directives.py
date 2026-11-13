@@ -755,6 +755,30 @@ def test_the_front_door_re_voices_the_executor_result_handed_to_it():
     assert resolve_response(messages, COMMS_TOOLS) == SayResponse(text="Reminder set for 9am.")
 
 
+@pytest.mark.parametrize(
+    "note",
+    [
+        "[Background work finished. The user has not seen this result yet, so report it in "
+        "your reply: Pantry stocked.]",
+        "[Background work ended failed. The user has not seen this yet, so tell them in your "
+        "reply: Pantry stocked.]",
+    ],
+)
+def test_the_front_door_re_voices_the_conversation_steps_finished_work_note(note: str):
+    """Regression (live test): the result was re-voiced as the newest script's say instead."""
+    script = '[[tool:create_todo {"title": "x"}]] [[say:On it.]]'
+    messages = [
+        _user(script),
+        _assistant_tool_call(CALL_EXECUTOR_TOOL, {"task": script}),
+        _tool_result(CALL_EXECUTOR_TOOL),
+        {"role": "assistant", "content": "On it."},
+        _user("three [[say:Got all three.]]"),
+        {"role": "assistant", "content": "Got all three."},
+        _user(note),
+    ]
+    assert resolve_response(messages, COMMS_TOOLS) == SayResponse(text="Pantry stocked.")
+
+
 def test_the_working_tier_re_voices_a_browser_result():
     messages = [
         _user('[[tool:web_search {"q": "x"}]] [[say:ok]]'),

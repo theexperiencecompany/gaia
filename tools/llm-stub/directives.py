@@ -602,6 +602,15 @@ _RESULT_PAYLOAD_RE = re.compile(
 )
 
 
+# The conversation step's note for finished work (WORK_DONE_NOTE / WORK_UNFINISHED_NOTE in
+# apps/api/app/constants/conversation.py): its report is the result to re-voice.
+_WORK_NOTE_RE = re.compile(
+    r"^\[Background work (?:finished|ended \w+)\. The user has not seen this(?: result)? yet, "
+    r"so (?:report it|tell them) in your reply: (?P<body>.*)\]$",
+    re.DOTALL,
+)
+
+
 def _result_echo(messages: Sequence[dict[str, Any]]) -> SayResponse | None:
     """Return the newest result payload handed over after the newest script, as the reply."""
     scripted = _script_message_index(messages)
@@ -611,7 +620,8 @@ def _result_echo(messages: Sequence[dict[str, Any]]) -> SayResponse | None:
         message = messages[idx]
         if message.get("role") != "user":
             continue
-        found = _RESULT_PAYLOAD_RE.search(message_text(message))
+        text = message_text(message)
+        found = _RESULT_PAYLOAD_RE.search(text) or _WORK_NOTE_RE.match(text.strip())
         if found is not None:
             return SayResponse(found.group("body").strip())
     return None
