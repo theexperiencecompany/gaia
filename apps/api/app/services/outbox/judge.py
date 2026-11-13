@@ -79,7 +79,7 @@ async def _decide(context: JudgeContext, user_id: str, clock_: UserClock) -> Jud
     runs = context.offered_runs
 
     def read(answers: PassAnswers, kind: JudgePass, confidence: float | None) -> JudgeVerdict:
-        return build_verdict(
+        verdict = build_verdict(
             answers,
             decided_by=kind,
             decisions_confidence=confidence,
@@ -87,6 +87,7 @@ async def _decide(context: JudgeContext, user_id: str, clock_: UserClock) -> Jud
             clock=clock_,
             offered_runs=runs.keys(),
         )
+        return context.with_wait_run(verdict)
 
     async def first_pass() -> tuple[JudgeVerdict, float]:
         answers = await ask_decisions(state, runs)

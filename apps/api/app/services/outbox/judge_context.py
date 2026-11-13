@@ -34,6 +34,7 @@ from app.constants.outbox_judge import (
 )
 from app.constants.todos import WaitingOn
 from app.db.repositories.attention_profiles import attention_profiles_repository
+from app.db.repositories.attention_settings import attention_settings_repository
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.outbox_items import outbox_items_repository
 from app.db.repositories.outbox_messages import outbox_messages_repository
@@ -41,6 +42,7 @@ from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
 from app.memory.retrieval import recall
 from app.models.attention_profile_models import ProfileAnswer
+from app.models.attention_settings_models import AttentionSettings
 from app.models.chat_models import ConversationSource
 from app.models.conversation_models import ConversationMessageRow
 from app.models.outbox_models import OutboxItemDocument, OutboxMessageDocument
@@ -360,9 +362,14 @@ def _pending_asks(todos: list[TodoDocument]) -> list[PendingAskView]:
     ]
 
 
-def _settings_view(quiet: QuietHours) -> SettingsView:
+def _settings_view(quiet: QuietHours, settings: AttentionSettings) -> SettingsView:
     hours = f"{quiet.start_hour:02d}:00-{quiet.end_hour:02d}:00" if quiet.enabled else "off"
-    return SettingsView(quiet_hours=hours)
+    return SettingsView(
+        quiet_hours=hours,
+        unsolicited_budget_per_day=settings.max_unsolicited_per_day,
+        dnd_until=settings.dnd_until,
+        rules=settings.rules,
+    )
 
 
 async def build_judge_context(
@@ -382,13 +389,14 @@ async def build_judge_context(
         ),
         todo_repository.find_running_tracked_for_user(user_id),
     )
-    (runs, presence, sent, waits) = await asyncio.gather(
+    (runs, presence, sent, waits, settings) = await asyncio.gather(
         _upcoming_runs(user_id, now, todos),
         read_presence(user_id),
         outbox_messages_repository.sent_since(
             user_id, now - timedelta(seconds=JUDGE_LEDGER_WINDOW_SECONDS), limit=JUDGE_LEDGER_MAX
         ),
         outbox_items_repository.list_waits(user_id, limit=WAIT_HISTORY_N),
+        attention_settings_repository.read(user_id),
     )
     quiet = _quiet_hours_of(user)
     wake, sleep = _clock_hours(quiet)
@@ -415,7 +423,7 @@ async def build_judge_context(
         recent_deliveries=_delivery_views(sent),
         memory=memories,
         calendar=calendar,
-        attention_settings=_settings_view(quiet),
+        attention_settings=_settings_view(quiet, settings),
         presence=_presence_view(presence),
         upcoming_runs=runs,
         held_items=held,

@@ -28,6 +28,7 @@ from app.agents.middleware import (
 )
 from app.agents.middleware.subagent import SubagentMiddleware, bind_spawner
 from app.agents.tools import memory_tools
+from app.agents.tools.attention_tool import adjust_attention
 from app.agents.tools.browser_chat_tools import (
     browser_step_done,
     stop_browser_task,
@@ -296,6 +297,7 @@ def comms_tools() -> dict[str, BaseTool]:
     return {
         "call_executor": call_executor,
         "cancel_executor": cancel_executor,
+        adjust_attention.name: adjust_attention,
         read_work_record.name: read_work_record,
         browser_step_done.name: browser_step_done,
         stop_browser_task.name: stop_browser_task,

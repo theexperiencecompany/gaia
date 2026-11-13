@@ -171,6 +171,8 @@ class AgentConfigurable(TypedDict, total=False):
     #: How the user wants the result of a run told, as a DeliveryPolicy dump; survives queueing
     #: and a HIL resume. Absent means the defaults.
     delivery_policy: dict[str, object]
+    #: Why this run interrupts the user's quiet hours; absent for any other run.
+    interrupt_reason: str
     #: A playbook replay stopped partway and the agent is finishing it: the
     #: replay's own record of what already ran, carried verbatim to the
     #: executor since comms can't be trusted to transcribe it into its task.
@@ -263,6 +265,7 @@ class AgentConfigurableView(BaseModel):
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
     delivery_policy: DeliveryPolicy = DeliveryPolicy()
+    interrupt_reason: str | None = None
     langfuse_trace_id: str | None = None
     langfuse_tags: list[str] | None = None
 

@@ -440,6 +440,7 @@ class TestBuildCommsGraph:
             assert kwargs["tools_config"].initial_tool_ids == [
                 "call_executor",
                 "cancel_executor",
+                "adjust_attention",
                 "read_work_record",
                 "browser_step_done",
                 "stop_browser_task",

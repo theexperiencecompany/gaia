@@ -573,6 +573,60 @@
         "title": "AsanaTaskTriggerConfig",
         "type": "object"
       },
+      "AttentionSettings": {
+        "additionalProperties": false,
+        "description": "What the user chose about being told things they did not ask for.\n\nQuiet hours are not here: they are the user's QuietHours, shared with the trigger gate.",
+        "properties": {
+          "checkin_times": {
+            "default": [
+              "13:00:00",
+              "18:00:00"
+            ],
+            "description": "Local times of the daily check-ins, besides the one when quiet hours end.",
+            "items": {
+              "format": "time",
+              "type": "string"
+            },
+            "maxItems": 6,
+            "title": "Checkin Times",
+            "type": "array"
+          },
+          "dnd_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nothing but security notices and the user's own timings gets through until then.",
+            "title": "Dnd Until"
+          },
+          "max_unsolicited_per_day": {
+            "default": 6,
+            "description": "Unsolicited routine messages per day; 0 leaves them to the check-ins.",
+            "maximum": 50.0,
+            "minimum": 0.0,
+            "title": "Max Unsolicited Per Day",
+            "type": "integer"
+          },
+          "rules": {
+            "description": "The user's own words about what to tell them, applied by the Judge.",
+            "items": {
+              "maxLength": 300,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Rules",
+            "type": "array"
+          }
+        },
+        "title": "AttentionSettings",
+        "type": "object"
+      },
       "AuthenticatedUserResponse": {
         "additionalProperties": true,
         "description": "The full ``GET /me`` payload.\n\n``build_user_context()`` (``app/utils/auth_utils.py``) spreads the entire\n``UserDocument`` into ``request.state.user`` (see that class's docstring)\nplus a handful of auth-context fields layered on top: ``user_id``\n(replacing ``_id``), ``auth_provider``, and per-auth-path flags present on\nonly *some* paths \u2014 a plain WorkOS session sets none of them, the agent\ntoken path sets ``impersonated``, bots set ``bot_authenticated``, and the\ndev bypass sets ``dev_bypass``. This model mirrors ``UserDocument``'s\ndeclared fields at the point where the endpoint returns them, rather than\nsubclassing it, so the DB document's shape and this response's shape can\nevolve independently. ``extra=\"allow\"`` for the same reason\n``UserDocument`` has it: undeclared historical fields on the document\nstill need to reach this response. ``onboarding`` holds\n``get_user_onboarding_status()``'s processed shape, not the raw\n``UserDocument.onboarding`` blob it overwrites.",
@@ -40727,6 +40781,118 @@
         "summary": "Get Usage Summary",
         "tags": [
           "Usage"
+        ]
+      }
+    },
+    "/api/v1/user/attention": {
+      "get": {
+        "description": "How much GAIA tells the user unprompted: the daily budget, check-in times, DND and rules.",
+        "operationId": "user_read_attention_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttentionSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Read Attention Settings",
+        "tags": [
+          "User"
+        ]
+      },
+      "put": {
+        "description": "Store the user's attention settings and echo what was saved.",
+        "operationId": "user_update_attention_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttentionSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttentionSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Update Attention Settings",
+        "tags": [
+          "User"
         ]
       }
     },

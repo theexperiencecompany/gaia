@@ -151,11 +151,11 @@ def record_only_reason(report: OutboxReport, *, watched_live: bool) -> DropReaso
     return None
 
 
-def _is_security_notice(verdict: JudgeVerdict) -> bool:
+def is_security_notice(verdict: JudgeVerdict) -> bool:
     return verdict.sensitivity is Sensitivity.CREDENTIALS or JUDGE_SECURITY_TOPIC in verdict.topics
 
 
-def _is_users_own(report: OutboxReport, producer: UrgencyClass) -> bool:
+def is_users_own(report: OutboxReport, producer: UrgencyClass) -> bool:
     """Whether the item is the user's own words or timing: an answer, a reminder, or "the moment"."""
     return (
         is_answer(report)
@@ -169,9 +169,9 @@ def _not_worth_telling(
 ) -> DropReason | None:
     """Return why the item is recorded only, when the Judge is sure enough that it is not worth telling."""
     reason = _NOT_WORTH_TELLING_REASONS.get(verdict.relevance)
-    if reason is None or _is_security_notice(verdict):
+    if reason is None or is_security_notice(verdict):
         return None
-    if _is_users_own(report, producer) and (
+    if is_users_own(report, producer) and (
         verdict.not_worth_probability < JUDGE_ANSWER_SUPPRESS_PROBABILITY
     ):
         return None
@@ -202,7 +202,7 @@ def _authorized_urgency(
         if raised_today >= JUDGE_INTERRUPT_DAILY_CAP:
             return _Urgency(max(producer, UrgencyClass.TIMELY), interrupt_capped=True)
         return _Urgency(judged, raised_interrupt=True)
-    if _is_users_own(report, producer) or _is_security_notice(verdict):
+    if is_users_own(report, producer) or is_security_notice(verdict):
         return _Urgency(producer)
     return _Urgency(judged)
 

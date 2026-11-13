@@ -977,3 +977,19 @@ def _isolate_wide_event_state() -> Iterator[None]:
     yield
     wide_events._event_state.set(None)
     wide_events._trace_id.set("")
+
+
+@pytest.fixture
+def real_tool_registry():
+    """Register the real global ToolRegistry provider (in-process only, no ChromaDB/network).
+
+    format_tool_call_entry needs get_tool_registry() registered to resolve a
+    streamed tool call's category. The provider registry is a process-wide
+    singleton with no reset between tests, so registration happens once and is
+    reused exactly as in a running app.
+    """
+    from app.agents.tools.core.registry import init_tool_registry
+
+    if not providers.is_initialized("tool_registry"):
+        init_tool_registry()
+    return providers

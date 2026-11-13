@@ -4,12 +4,14 @@ Every transition is a single conditional write on the state the item must be in,
 of two workers moving one item only one wins; the loser sees it and stops.
 """
 
+from collections.abc import Collection
 from datetime import datetime
 from typing import Literal, NamedTuple
 
 from pymongo.errors import DuplicateKeyError
 
 from app.constants.outbox import ITEMS_COLLECTION
+from app.constants.outbox_attention import HoldReason
 from app.db.repositories.base import UserScopedRepository
 from app.models.outbox_models import OutboxItemDocument, OutboxItemUpdate
 from app.services.outbox.judge_models import ItemJudgement
@@ -18,6 +20,7 @@ from app.services.outbox.models import (
     ComposeMode,
     DropReason,
     ItemFailure,
+    ItemHold,
     ItemState,
     OutboxReport,
     UrgencyClass,
@@ -144,13 +147,37 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
         mode: ComposeMode,
         judgement: ItemJudgement | None = None,
     ) -> OutboxItemDocument | None:
-        """Move a received item to queued, keeping what the Judge made of it; None when it was no longer received."""
+        """Move a received or held item to queued, keeping what the Judge made of it; None when it was neither."""
         return await self._transition(
             user_id,
             {"report_id": report_id},
-            from_states=[ItemState.RECEIVED],
+            from_states=[ItemState.RECEIVED, ItemState.HELD],
             changes={
                 "state": ItemState.QUEUED.value,
+                "urgency": int(urgency),
+                "mode": mode.value,
+                **_judgement_fields(judgement),
+            },
+        )
+
+    async def hold(
+        self,
+        user_id: str,
+        report_id: str,
+        hold: ItemHold,
+        *,
+        urgency: UrgencyClass,
+        mode: ComposeMode,
+        judgement: ItemJudgement | None = None,
+    ) -> OutboxItemDocument | None:
+        """Hold a received or held item until an instant; None when it was neither."""
+        return await self._transition(
+            user_id,
+            {"report_id": report_id},
+            from_states=[ItemState.RECEIVED, ItemState.HELD],
+            changes={
+                "state": ItemState.HELD.value,
+                "hold": hold.model_dump(mode="python"),
                 "urgency": int(urgency),
                 "mode": mode.value,
                 **_judgement_fields(judgement),
@@ -165,11 +192,11 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
         *,
         judgement: ItemJudgement | None = None,
     ) -> OutboxItemDocument | None:
-        """Record a received item and never alert it; None when it was no longer received."""
+        """Record a received or held item and never alert it; None when it was neither."""
         return await self._transition(
             user_id,
             {"report_id": report_id},
-            from_states=[ItemState.RECEIVED],
+            from_states=[ItemState.RECEIVED, ItemState.HELD],
             changes={
                 "state": ItemState.DROPPED.value,
                 "drop_reason": reason.value,
@@ -188,6 +215,53 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
         if exclude_report_id is not None:
             filter_["report_id"] = {"$ne": exclude_report_id}
         return await self._find(filter_, sort=[("created_at", -1)], limit=limit)
+
+    async def list_due_held(self, user_id: str, now: datetime) -> list[OutboxItemDocument]:
+        """Return the user's held items whose hold has ended, oldest hold first."""
+        return await self._find(
+            {"user_id": user_id, "state": ItemState.HELD.value, "hold.until": {"$lte": now}},
+            sort=[("hold.until", 1)],
+        )
+
+    async def users_with_due_held(self, now: datetime) -> list[str]:
+        """Return the users who have a held item whose hold has ended: the ones a lost flush job left waiting."""
+        return await self._raw_collection().distinct(
+            "user_id", {"state": ItemState.HELD.value, "hold.until": {"$lte": now}}
+        )
+
+    async def count_held_since_before(self, cutoff: datetime) -> int:
+        """Return how many items have been held since before the cutoff."""
+        return await self._count({"state": ItemState.HELD.value, "hold.since": {"$lt": cutoff}})
+
+    async def release_held(
+        self, user_id: str, reasons: Collection[HoldReason], now: datetime
+    ) -> int:
+        """End the holds of the user's held items that wait for a reason a return answers; return how many."""
+        result = await self._raw_collection().update_many(
+            {
+                "user_id": user_id,
+                "state": ItemState.HELD.value,
+                "hold.reason": {"$in": [reason.value for reason in reasons]},
+                "hold.until": {"$gt": now},
+            },
+            {"$set": {"hold.until": now, "updated_at": now}},
+        )
+        return result.modified_count
+
+    async def list_told_of_fact(
+        self, user_id: str, same_fact_key: str, *, since: datetime, limit: int
+    ) -> list[OutboxItemDocument]:
+        """Return the items that told one real-world fact since the cutoff, newest first."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "judgement.verdict.same_fact_key": same_fact_key,
+                "state": ItemState.SENT.value,
+                "updated_at": {"$gte": since},
+            },
+            sort=[("updated_at", -1)],
+            limit=limit,
+        )
 
     async def count_raised_interrupts_since(self, user_id: str, since: datetime) -> int:
         """Return how many items the Judge raised to interrupt since the cutoff."""
@@ -219,6 +293,33 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
             },
             sort=[("report.occurred_at", -1)],
             limit=limit,
+        )
+
+    async def claim_queued(
+        self, user_id: str, report_ids: list[str], attempt_id: str
+    ) -> list[OutboxItemDocument]:
+        """Move the queued ones among the named reports to composing under attempt_id; return the ones this call won."""
+        await self._raw_collection().update_many(
+            {
+                "user_id": user_id,
+                "report_id": {"$in": report_ids},
+                "state": ItemState.QUEUED.value,
+            },
+            {
+                "$set": {
+                    "state": ItemState.COMPOSING.value,
+                    "compose_attempt_id": attempt_id,
+                    "updated_at": clock.now(),
+                }
+            },
+        )
+        return await self._find(
+            {
+                "user_id": user_id,
+                "compose_attempt_id": attempt_id,
+                "state": ItemState.COMPOSING.value,
+            },
+            sort=[("report.occurred_at", 1)],
         )
 
     async def claim_queued_for_subject(

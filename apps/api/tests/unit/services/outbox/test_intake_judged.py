@@ -18,6 +18,7 @@ from app.constants.outbox_judge import (
     JUDGE_INTERRUPT_DAILY_CAP,
 )
 from app.models.task_report_models import TaskReport
+from app.services.outbox.holds import Tell
 from app.services.outbox.intake import process_report
 from app.services.outbox.judge_models import ItemJudgement, JudgeVerdict, Relevance, Sensitivity
 from app.services.outbox.models import (
@@ -69,6 +70,7 @@ def _intake(judged: JudgeVerdict | None = NEUTRAL, raised_today: int = 0) -> Ite
         enter(patch(f"{MODULE}.judge_report", world.judge))
         enter(patch(f"{MODULE}.outbox_items_repository", world.repo))
         enter(patch(f"{MODULE}.flush_subject", world.flush))
+        enter(patch(f"{MODULE}.place_item", AsyncMock(return_value=Tell())))
         enter(patch(f"{MODULE}.enqueue_worker_job", world.enqueue))
         enter(patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock()))
         enter(patch(f"{MODULE}.OUTBOX_JUDGE_INTERRUPT_CAPPED", world.capped))

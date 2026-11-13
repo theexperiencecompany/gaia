@@ -99,7 +99,7 @@ from app.utils.timezone import Timezone
 from app.workers.queue import enqueue_worker_job
 from app.workers.task_envelope import ArqJobContext
 from app.workers.tasks.todo_run_context import collect_run_context
-from app.workers.tasks.todo_run_prompt import build_execution_prompt
+from app.workers.tasks.todo_run_prompt import build_execution_prompt, interrupt_reason
 from app.workers.tasks.todo_run_settle import Settlement, settle
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Trigger
@@ -786,13 +786,15 @@ async def _execute_on_executor(
     doc = await with_desk_notes(doc)
     todo_id = doc.id
     user_id = doc.user_id
+    local_now = datetime.now(user_tz.tzinfo)
+    quiet_hours = await get_quiet_hours(user_id)
     prompt = build_execution_prompt(
         doc,
         context=await collect_run_context(doc, user_tz),
         origin=origin,
         coalesced=coalesced,
-        local_now=datetime.now(user_tz.tzinfo),
-        quiet_hours=await get_quiet_hours(user_id),
+        local_now=local_now,
+        quiet_hours=quiet_hours,
     )
 
     # The todo's own chat, reused by every run so the user can follow them in one
@@ -804,7 +806,12 @@ async def _execute_on_executor(
             TodoRunRequest(
                 user=user_data,
                 todo_run=TodoRun(
-                    todo_id=todo_id, trigger_type=_trigger_type(origin), runs_once=doc.runs_once
+                    todo_id=todo_id,
+                    trigger_type=_trigger_type(origin),
+                    runs_once=doc.runs_once,
+                    interrupt_reason=interrupt_reason(
+                        origin, coalesced, quiet_hours.contains(local_now)
+                    ),
                 ),
                 todo_title=doc.title,
                 task=prompt,

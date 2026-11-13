@@ -2539,6 +2539,43 @@
       }
     },
     {
+      "event": "delivery:item_held",
+      "class": "DeliveryItemHeld",
+      "owner": "server",
+      "domain": "delivery",
+      "description": "The outbox held an item to tell the user later: why, and how urgent it was.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The outbox held an item to tell the user later: why, and how urgent it was.",
+        "properties": {
+          "reason": {
+            "enum": [
+              "quiet_hours",
+              "dnd",
+              "not_before",
+              "checkin",
+              "gap",
+              "wait_for_run"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "max_class": {
+            "enum": ["background", "routine", "timely", "interrupt"],
+            "title": "Max Class",
+            "type": "string"
+          }
+        },
+        "required": ["reason", "max_class"],
+        "title": "DeliveryItemHeld",
+        "type": "object"
+      }
+    },
+    {
       "event": "delivery:message_sent",
       "class": "DeliveryMessageSent",
       "owner": "server",
@@ -5853,6 +5890,38 @@
         "description": "A user pinned a session artifact.",
         "properties": {},
         "title": "SessionArtifactPinned",
+        "type": "object"
+      }
+    },
+    {
+      "event": "settings:attention_updated",
+      "class": "SettingsAttentionUpdated",
+      "owner": "server",
+      "domain": "settings",
+      "description": "A user changed how much GAIA tells them unprompted: which settings, and the daily budget they now have.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user changed how much GAIA tells them unprompted: which settings, and the daily budget they now have.",
+        "properties": {
+          "changed": {
+            "items": {
+              "enum": ["budget", "checkin_times", "dnd", "rules"],
+              "type": "string"
+            },
+            "title": "Changed",
+            "type": "array"
+          },
+          "max_unsolicited_per_day": {
+            "title": "Max Unsolicited Per Day",
+            "type": "integer"
+          }
+        },
+        "required": ["changed", "max_unsolicited_per_day"],
+        "title": "SettingsAttentionUpdated",
         "type": "object"
       }
     },

@@ -33,6 +33,7 @@ export type ServerEventName =
   | "chat:message_submitted"
   | "chat:message_unpinned"
   | "chat:turn_reacted"
+  | "delivery:item_held"
   | "delivery:message_sent"
   | "device:approved"
   | "device:revoked"
@@ -104,6 +105,7 @@ export type ServerEventName =
   | "reminder:updated"
   | "search:performed"
   | "session:artifact_pinned"
+  | "settings:attention_updated"
   | "settings:chat_channel_priority_updated"
   | "settings:notifications_toggled"
   | "settings:preferences_changed"
@@ -603,6 +605,13 @@ export interface EventProperties {
   "cta:get_started_clicked": {
     "location"?: "chat_demo";
     "has_small_text"?: boolean;
+  };
+  "delivery:item_held": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "reason": "quiet_hours" | "dnd" | "not_before" | "checkin" | "gap" | "wait_for_run";
+    "max_class": "background" | "routine" | "timely" | "interrupt";
   };
   "delivery:message_sent": {
     "actor": "user" | "agent";
@@ -1192,6 +1201,13 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+  };
+  "settings:attention_updated": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "changed": ("budget" | "checkin_times" | "dnd" | "rules")[];
+    "max_unsolicited_per_day": number;
   };
   "settings:chat_channel_priority_updated": {
     "actor": "user" | "agent";

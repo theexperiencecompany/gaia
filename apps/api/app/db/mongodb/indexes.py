@@ -17,6 +17,7 @@ from app.constants.outbox import (
     ITEMS_COLLECTION,
     MESSAGES_COLLECTION,
 )
+from app.constants.outbox_attention import ATTENTION_SETTINGS_COLLECTION
 from app.constants.outbox_judge import ATTENTION_PROFILES_COLLECTION
 from app.constants.payments import CLAIMED_STATUS
 from app.constants.run_trace import (
@@ -1651,6 +1652,7 @@ async def create_outbox_indexes() -> None:
     items = get_async_collection(ITEMS_COLLECTION)
     messages = get_async_collection(MESSAGES_COLLECTION)
     profiles = get_async_collection(ATTENTION_PROFILES_COLLECTION)
+    settings = get_async_collection(ATTENTION_SETTINGS_COLLECTION)
     try:
         await asyncio.gather(
             items.create_index([("user_id", 1), ("report_id", 1)], unique=True),
@@ -1682,6 +1684,17 @@ async def create_outbox_indexes() -> None:
             ),
             items.create_index("expires_at", expireAfterSeconds=0),
             profiles.create_index("user_id", unique=True),
+            settings.create_index("user_id", unique=True),
+            items.create_index(
+                [("state", 1), ("hold.until", 1)],
+                name="held_until",
+                partialFilterExpression={"state": "held"},
+            ),
+            items.create_index(
+                [("user_id", 1), ("judgement.verdict.same_fact_key", 1), ("updated_at", -1)],
+                name="told_by_fact",
+                partialFilterExpression={"judgement.verdict.same_fact_key": {"$type": "string"}},
+            ),
             messages.create_index([("user_id", 1), ("compose_attempt_id", 1)], unique=True),
             messages.create_index([("user_id", 1), ("sent_at", -1)]),
             messages.create_index("expires_at", expireAfterSeconds=0),

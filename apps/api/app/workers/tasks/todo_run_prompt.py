@@ -9,7 +9,6 @@ from datetime import datetime
 import json
 from types import MappingProxyType
 
-from app.agents.prompts.quiet_hours_prompts import QUIET_HOURS_BYPASS_NOTE
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
     DELIVERED_RESULT_RULES,
@@ -79,17 +78,17 @@ def delivery_guidance(doc: TodoDocument) -> str:
     return DELIVERED_RESULT_GUIDANCE
 
 
-def _quiet_hours_note(
-    origin: TriggerOrigin, coalesced: Sequence[TriggerOrigin], quiet_now: bool
+def interrupt_reason(
+    origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin], quiet_now: bool
 ) -> str | None:
-    """Say why a run its gate let through quiet hours interrupts them; None for any other run."""
+    """Return why a run its gate let through quiet hours interrupts them; None for any other run."""
+    if origin is None or not quiet_now:
+        return None
     bypass = next(
         (event.quiet_hours_bypass for event in [origin, *coalesced] if event.quiet_hours_bypass),
         None,
     )
-    if bypass is None or not quiet_now:
-        return None
-    return QUIET_HOURS_BYPASS_NOTE.format(reason=bypass.reason)
+    return bypass.reason if bypass is not None else None
 
 
 def opening_parts(
@@ -104,7 +103,7 @@ def opening_parts(
     if origin is None:
         return [f"Execute the following scheduled task: {title}"]
     quiet_now = quiet_hours.contains(local_now)
-    bypass_note = _quiet_hours_note(origin, coalesced, quiet_now)
+    bypassed = interrupt_reason(origin, coalesced, quiet_now) is not None
     fence = untrusted_fence()
     if coalesced:
         opening = f"Events you were watching fired. Execute this task: {title}"
@@ -118,10 +117,9 @@ def opening_parts(
         opening = f"An event you were watching just fired. Execute this task: {title}"
         label = f"Triggering event ({origin.trigger_name})"
         events_json = json.dumps(origin.payload, indent=2, default=str)
-    if bypass_note is not None:
-        opening = f"{opening}\n\n{bypass_note}"
-    elif (
-        quiet_now
+    if (
+        not bypassed
+        and quiet_now
         and doc.external_ref is not None
         and doc.external_ref.source is ExternalRefSource.INBOX_DESK
     ):

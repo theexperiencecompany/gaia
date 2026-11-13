@@ -18,16 +18,25 @@ from app.constants.outbox import (
     OUTBOX_ITEM_RETENTION_SECONDS,
     OUTBOX_JOB_ID_PREFIX,
 )
+from app.constants.outbox_attention import HoldReason
 from app.constants.outbox_judge import (
     JUDGE_BATCH_WINDOW_SECONDS,
     JUDGE_INTERRUPT_CAP_WINDOW_SECONDS,
 )
 from app.db.repositories.outbox_items import outbox_items_repository
+from app.services.analytics_service import capture
+from app.services.outbox.attention import place_item
 from app.services.outbox.deliver import flush_subject
+from app.services.outbox.flush_queue import schedule_flush
+from app.services.outbox.holds import Hold, Placement, Record, Tell
 from app.services.outbox.judge import judge_report
 from app.services.outbox.judge_models import ItemJudgement
-from app.services.outbox.metrics import OUTBOX_ITEMS_DROPPED, OUTBOX_JUDGE_INTERRUPT_CAPPED
-from app.services.outbox.models import ItemState, OutboxReport, SubjectMerge
+from app.services.outbox.metrics import (
+    OUTBOX_ITEMS_DROPPED,
+    OUTBOX_ITEMS_HELD,
+    OUTBOX_JUDGE_INTERRUPT_CAPPED,
+)
+from app.services.outbox.models import ItemHold, ItemState, OutboxReport, SubjectMerge
 from app.services.outbox.policy import (
     Decision,
     DecisionKind,
@@ -40,6 +49,8 @@ from app.services.outbox.watching import is_watched_live
 from app.utils import clock
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
+from shared.py.analytics import Dedupe, UserId
+from shared.py.analytics.catalog.delivery import DeliveryItemHeld
 from shared.py.wide_events import log
 
 
@@ -86,10 +97,97 @@ async def _judge_and_decide(
     )
 
 
+async def settle_report(
+    report: OutboxReport,
+    *,
+    prior_hold: ItemHold | None = None,
+    released: bool = False,
+) -> ItemState | None:
+    """Judge a report, decide and place it; return the state it was left in, None when another worker settled it first.
+
+    QUEUED means it is to be told now, HELD that it waits for an instant (a flush is scheduled),
+    DROPPED that it is recorded and never alerted. released says it already waited out a hold.
+    """
+    watched_live = is_progress(report) and await is_watched_live(report)
+    decision, judgement = await _judge_and_decide(report, watched_live=watched_live)
+    verdict = judgement.verdict if judgement is not None else None
+    drop_reason = decision.drop_reason if decision.kind is DecisionKind.RECORD_ONLY else None
+    placement: Placement = Tell()
+    if drop_reason is None:
+        placement = await place_item(
+            report, decision.urgency, verdict, prior_hold=prior_hold, released=released
+        )
+        if isinstance(placement, Record):
+            drop_reason = placement.reason
+    if drop_reason is not None:
+        dropped = await outbox_items_repository.drop(
+            report.recipient, report.report_id, drop_reason, judgement=judgement
+        )
+        if dropped is None:
+            return None
+        OUTBOX_ITEMS_DROPPED.labels(reason=drop_reason.value).inc()
+        log.info(
+            f"{LogTag.NOTIFICATION} Outbox report recorded, not alerted",
+            drop_reason=drop_reason.value,
+        )
+        return ItemState.DROPPED
+    if isinstance(placement, Hold):
+        return await _hold(report, decision, judgement, placement, prior_hold)
+    queued = await outbox_items_repository.queue(
+        report.recipient,
+        report.report_id,
+        urgency=decision.urgency,
+        mode=decision.mode,
+        judgement=judgement,
+    )
+    return ItemState.QUEUED if queued is not None else None
+
+
+async def _hold(
+    report: OutboxReport,
+    decision: Decision,
+    judgement: ItemJudgement | None,
+    placement: Hold,
+    prior_hold: ItemHold | None,
+) -> ItemState | None:
+    now = clock.now()
+    deferrals = prior_hold.deferrals if prior_hold is not None else 0
+    hold = ItemHold(
+        reason=placement.reason,
+        until=placement.until,
+        since=prior_hold.since if prior_hold is not None else now,
+        deferrals=deferrals + (1 if placement.reason is HoldReason.WAIT_FOR_RUN else 0),
+    )
+    held = await outbox_items_repository.hold(
+        report.recipient,
+        report.report_id,
+        hold,
+        urgency=decision.urgency,
+        mode=decision.mode,
+        judgement=judgement,
+    )
+    if held is None:
+        return None
+    await schedule_flush(report.recipient, placement.until)
+    OUTBOX_ITEMS_HELD.labels(reason=placement.reason.value).inc()
+    capture(
+        UserId(report.recipient),
+        DeliveryItemHeld(reason=placement.reason.value, max_class=decision.urgency.name.lower()),
+        Dedupe(key=f"{report.report_id}:{int(placement.until.timestamp())}", occurred_at=now),
+    )
+    log.info(
+        f"{LogTag.NOTIFICATION} Outbox report held",
+        hold_reason=placement.reason.value,
+        hold_until=placement.until.isoformat(),
+    )
+    return ItemState.HELD
+
+
 async def _queue_if_to_be_told(report: OutboxReport, *, batched: bool) -> bool:
     """Run a received report through supersede, the Judge and the policy; True when it is queued to be told.
 
-    False also when it was handed back to the queue to wait for its user's other reports.
+    False also when it was handed back to the queue to wait for its user's other reports,
+    and when it was held or recorded.
     """
     if (
         report.subject.merge is SubjectMerge.REPLACE
@@ -105,26 +203,7 @@ async def _queue_if_to_be_told(report: OutboxReport, *, batched: bool) -> bool:
     ):
         await _enqueue(report, batched=True)
         return False
-    decision, judgement = await _judge_and_decide(report, watched_live=watched_live)
-    if decision.kind is DecisionKind.RECORD_ONLY and decision.drop_reason is not None:
-        dropped = await outbox_items_repository.drop(
-            report.recipient, report.report_id, decision.drop_reason, judgement=judgement
-        )
-        if dropped is not None:
-            OUTBOX_ITEMS_DROPPED.labels(reason=decision.drop_reason.value).inc()
-        log.info(
-            f"{LogTag.NOTIFICATION} Outbox report recorded, not alerted",
-            drop_reason=decision.drop_reason.value,
-        )
-        return False
-    queued = await outbox_items_repository.queue(
-        report.recipient,
-        report.report_id,
-        urgency=decision.urgency,
-        mode=decision.mode,
-        judgement=judgement,
-    )
-    return queued is not None
+    return await settle_report(report) is ItemState.QUEUED
 
 
 async def process_report(report: OutboxReport, *, batched: bool = False) -> None:

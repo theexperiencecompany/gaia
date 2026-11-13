@@ -80,6 +80,8 @@ class TodoRun:
     #: Read when the run starts: a run that completes its todo tears its watches
     #: down, so the todo read at delivery would look like one that runs once.
     runs_once: bool
+    #: Why the run interrupts the user's quiet hours, when its trigger's gate let it through them.
+    interrupt_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -155,6 +157,7 @@ class ExecutorRun:
     workflow_notify_on_completion: bool = True
     #: How the user asked to be told what this run produced; the defaults when they said nothing.
     delivery_policy: DeliveryPolicy = field(default_factory=DeliveryPolicy)
+    interrupt_reason: str | None = None
     #: What the user wrote that started the run, bounded: what its result is called to them.
     request_excerpt: str = ""
     active_todo_id: str | None = None
@@ -201,6 +204,7 @@ class ExecutorRun:
             workflow_title=view.workflow_title,
             workflow_notify_on_completion=view.workflow_notify_on_completion,
             delivery_policy=view.delivery_policy,
+            interrupt_reason=view.interrupt_reason,
             request_excerpt=(view.user_request or "")[:SUBJECT_LABEL_MAX_CHARS],
             active_todo_id=view.active_todo_id,
             source_category=SourceCategory(view.source_category or SourceCategory.BG.value),

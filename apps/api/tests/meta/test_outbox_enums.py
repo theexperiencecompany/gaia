@@ -7,6 +7,7 @@ two are pinned together here.
 from enum import StrEnum
 from typing import get_args
 
+from app.constants.outbox_attention import HoldReason
 from app.models.ownership_models import DeliveryTiming
 from app.services.outbox.models import (
     ComposeMode,
@@ -23,7 +24,7 @@ from app.services.outbox.models import (
     UrgencyClass,
 )
 from app.services.outbox.prerendered import PrerenderedKind
-from shared.py.analytics.catalog.delivery import DeliveryMessageSent
+from shared.py.analytics.catalog.delivery import DeliveryItemHeld, DeliveryMessageSent
 
 
 def _values(enum: type[StrEnum]) -> set[str]:
@@ -58,6 +59,7 @@ def test_the_closed_vocabularies_are_exactly_these() -> None:
     assert _values(ItemState) == {
         "received",
         "queued",
+        "held",
         "composing",
         "sending",
         "sent",
@@ -77,6 +79,7 @@ def test_the_closed_vocabularies_are_exactly_these() -> None:
         "superseded",
         "duplicate",
         "unwanted",
+        "repeat_backoff",
         "leak_unresolved",
     }
     assert _values(ItemFailure) == {
@@ -113,3 +116,9 @@ def test_the_analytics_event_names_the_same_values_as_the_enums() -> None:
     assert _literal("subject_kind") == _values(SubjectKind)
     assert _literal("mode") == _values(ComposeMode)
     assert _literal("max_class") == {c.name.lower() for c in UrgencyClass}
+
+
+def test_the_held_event_names_the_same_values_as_the_hold_reasons() -> None:
+    held = DeliveryItemHeld.model_fields
+    assert set(get_args(held["reason"].annotation)) == _values(HoldReason)
+    assert set(get_args(held["max_class"].annotation)) == {c.name.lower() for c in UrgencyClass}

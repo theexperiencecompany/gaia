@@ -13,6 +13,7 @@ from app.services.outbox.models import (
     ComposeMode,
     DropReason,
     ItemFailure,
+    ItemHold,
     ItemState,
     MessageState,
     OutboxReport,
@@ -32,6 +33,8 @@ class OutboxItemDocument(UserScopedDocument):
     drop_reason: DropReason | None = None
     #: What the Judge and the Rails made of the item; None for an item no Judge was asked about.
     judgement: ItemJudgement | None = None
+    #: Set while the item is held, and kept after its release.
+    hold: ItemHold | None = None
     failure: ItemFailure | None = None
     #: Set while a compose owns the item, and kept after, so the message it produced is findable.
     compose_attempt_id: str | None = None

@@ -94,6 +94,7 @@ from app.services.latency_metrics import (
     observe_chat_ttft,
     observe_chat_turn_total,
 )
+from app.services.outbox.flush import release_on_return
 from app.services.storage import flush_fs_metrics
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
@@ -159,7 +160,9 @@ async def _capture_presence(user_id: str, source: str | None) -> PresenceSnapsho
     surface = ConversationSource.coerce(source)
     if surface is None or SourceCategory.from_source(surface) is SourceCategory.BG:
         return None
-    return await record_turn_presence(user_id, surface)
+    before = await record_turn_presence(user_id, surface)
+    await release_on_return(user_id)
+    return before
 
 
 class _ErrorOrReasoningChunk(BaseModel):

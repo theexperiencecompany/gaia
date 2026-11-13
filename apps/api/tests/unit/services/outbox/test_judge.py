@@ -56,7 +56,9 @@ def _context(runs: list[RunView] | None = None) -> JudgeContext:
         recent_deliveries=[],
         memory=[],
         calendar=None,
-        attention_settings=SettingsView(quiet_hours="22:00-08:00"),
+        attention_settings=SettingsView(
+            quiet_hours="22:00-08:00", unsolicited_budget_per_day=6, rules=[]
+        ),
         presence=PresenceView(last_active_surface=None, last_active_at=None, active_surfaces={}),
         upcoming_runs=runs or [],
         held_items=[],
@@ -280,4 +282,5 @@ async def test_the_runs_in_the_context_are_offered_and_a_wait_for_one_is_kept() 
         verdict = await judge_report(notice())
 
     assert verdict is not None and verdict.wait_for_run == "workflow:wf_1"
+    assert (verdict.wait_run_at, verdict.wait_run_hit_rate) == (run.starts_at, 1.0)
     assert world.decisions.await_args.args[1] == {"workflow:wf_1": "Morning briefing"}

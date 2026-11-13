@@ -24,7 +24,16 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from redis.asyncio.lock import Lock
 
 from app.constants.cache import COMMS_THREAD_LOCK_PREFIX
-from app.constants.outbox import ITEMS_COLLECTION, MESSAGES_COLLECTION
+from app.constants.outbox import (
+    ITEMS_COLLECTION,
+    MESSAGES_COLLECTION,
+    OUTBOX_INTAKE_TASK,
+)
+from app.constants.outbox_attention import (
+    ATTENTION_SETTINGS_COLLECTION,
+    OUTBOX_FLUSH_JOB_ID_PREFIX,
+    OUTBOX_FLUSH_TASK,
+)
 from app.db.mongodb.indexes import create_outbox_indexes
 from app.models.chat_models import ConversationSource
 from app.models.outbox_models import OutboxItemDocument, OutboxMessageDocument
@@ -34,8 +43,8 @@ from app.services.outbox.intake import submit
 from app.services.outbox.models import ComposeResult, OutboxReport
 from app.services.outbox.transport.bot_queue import OutboundResult
 from app.utils import clock
-from app.workers.tasks.outbox_tasks import outbox_intake
-from shared.py.analytics.catalog.delivery import DeliveryMessageSent
+from app.workers.tasks.outbox_tasks import outbox_flush, outbox_intake
+from shared.py.analytics.catalog.delivery import DeliveryItemHeld, DeliveryMessageSent
 from tests._harness.judge import ScriptedJudge
 
 T0 = datetime(2026, 11, 10, 9, 0, tzinfo=UTC)
@@ -76,7 +85,7 @@ class FakeArq:
         _defer_by: float | None = None,
         **kwargs: Any,
     ) -> object | None:
-        assert function == "outbox_intake", function
+        assert function in {OUTBOX_INTAKE_TASK, OUTBOX_FLUSH_TASK}, function
         if _job_id in self.jobs:
             return None
         key = _job_id or f"job-{len(self.jobs)}"
@@ -93,7 +102,8 @@ class FakeArq:
         )
         for key in due:
             job = self.jobs.pop(key)
-            await outbox_intake({}, *job.args)
+            task = outbox_flush if key.startswith(OUTBOX_FLUSH_JOB_ID_PREFIX) else outbox_intake
+            await task({}, *job.args)
             ran.append(key)
         return ran
 
@@ -215,6 +225,7 @@ class Sinks:
     #: The outbox message id each bot message was published under, parallel to `bot`.
     bot_message_ids: list[str | None] = field(default_factory=list)
     analytics: list[DeliveryMessageSent] = field(default_factory=list)
+    held: list[DeliveryItemHeld] = field(default_factory=list)
     bot_result: OutboundResult = OutboundResult.PUBLISHED
 
 
@@ -263,6 +274,27 @@ class OutboxTimeline:
         return [
             OutboxMessageDocument.model_validate({**row, "id": str(row["_id"])}) for row in rows
         ]
+
+
+@contextmanager
+def _patched_holds(world: World, sinks: Sinks, arq: FakeArq) -> Iterator[None]:
+    """Double the seams the holds and the flush read through: the queue, the user, the held-item event."""
+
+    def capture_held(distinct_id: object, event: DeliveryItemHeld, dedupe: object = None) -> None:
+        sinks.held.append(event)
+
+    async def load_user(user_id: str) -> AuthenticatedUser | None:
+        return AuthenticatedUser(user_id=user_id) if user_id == world.user_id else None
+
+    with (
+        patch(
+            "app.services.outbox.flush_queue.RedisPoolManager.get_pool",
+            AsyncMock(return_value=arq),
+        ),
+        patch("app.services.outbox.attention.load_user_context", load_user),
+        patch("app.services.outbox.intake.capture", capture_held),
+    ):
+        yield
 
 
 @contextmanager
@@ -390,6 +422,7 @@ def _patched(
                 "app.services.outbox.intake.RedisPoolManager.get_pool", AsyncMock(return_value=arq)
             )
         )
+        enter(_patched_holds(world, sinks, arq))
         yield
 
 
@@ -427,7 +460,7 @@ def outbox_timeline(
 
 async def prepare_collections(db: AsyncIOMotorDatabase[Any]) -> None:
     """Empty the outbox collections and build the production indexes on them."""
-    for name in (ITEMS_COLLECTION, MESSAGES_COLLECTION):
+    for name in (ITEMS_COLLECTION, MESSAGES_COLLECTION, ATTENTION_SETTINGS_COLLECTION):
         await db[name].drop()
     with patch("app.db.mongodb.indexes.get_async_collection", lambda name: db[name]):
         await create_outbox_indexes()

@@ -61,6 +61,7 @@ from app.models.agent_models import (
 )
 from app.models.message_models import MessageRequestWithHistory
 from app.models.presence_models import PresenceSnapshot
+from app.models.trigger_gate_models import QuietHoursBypass, QuietHoursStamp
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
 from app.services.chat.state import aggregate_usage_metadata
@@ -90,6 +91,7 @@ class _AgentTriggerContext(BaseModel):
     workflow_id: str | None = None
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
+    quiet_hours: QuietHoursStamp | None = None
     playbook_fallback: str | None = Field(
         default=None, validation_alias=PLAYBOOK_FALLBACK_CONTEXT_KEY
     )
@@ -279,6 +281,8 @@ async def _core_agent_logic(
         configurable["workflow_title"] = trigger.workflow_title
         configurable["workflow_notify_on_completion"] = trigger.workflow_notify_on_completion
         configurable["playbook_fallback"] = trigger.playbook_fallback
+        if isinstance(trigger.quiet_hours, QuietHoursBypass):
+            configurable["interrupt_reason"] = trigger.quiet_hours.reason
         configurable["executor_lock_reservation"] = trigger.executor_lock_reservation
 
     log.set(

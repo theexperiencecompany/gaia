@@ -11,6 +11,7 @@ from typing import ClassVar, Literal
 from shared.py.analytics.catalog.base import ServerEvent
 
 __all__ = [
+    "DeliveryItemHeld",
     "DeliveryMessageSent",
     "ProactiveDestinationBasis",
     "ProactiveDestinationKind",
@@ -51,3 +52,13 @@ class DeliveryMessageSent(ServerEvent):
     items_count: int
     max_class: Literal["background", "routine", "timely", "interrupt"]
     degraded: bool
+
+
+class DeliveryItemHeld(ServerEvent):
+    """The outbox held an item to tell the user later: why, and how urgent it was."""
+
+    event: ClassVar[str] = "delivery:item_held"
+    budget_per_user_day: ClassVar[int] = 500
+
+    reason: Literal["quiet_hours", "dnd", "not_before", "checkin", "gap", "wait_for_run"]
+    max_class: Literal["background", "routine", "timely", "interrupt"]

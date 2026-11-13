@@ -37,7 +37,7 @@ from app.services.outbox.models import ComposeMode, ComposeResult, UrgencyClass
 from app.services.outbox.router import InApp, Route
 from app.services.tracked_todo_service import starting_canvas
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("real_tool_registry")]
 
 USER = AuthenticatedUser(user_id="6812f0b3c9a14e2b7d5a91ce")
 DESK = TodoDocument(

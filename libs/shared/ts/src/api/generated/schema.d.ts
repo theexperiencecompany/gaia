@@ -5164,6 +5164,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/user/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Attention Settings
+         * @description How much GAIA tells the user unprompted: the daily budget, check-in times, DND and rules.
+         */
+        get: operations["user_read_attention_settings"];
+        /**
+         * Update Attention Settings
+         * @description Store the user's attention settings and echo what was saved.
+         */
+        put: operations["user_update_attention_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/user/chat-channel-priority": {
         parameters: {
             query?: never;
@@ -6112,6 +6136,39 @@ export interface components {
              * @default
              */
             workspace_id?: string;
+        };
+        /**
+         * AttentionSettings
+         * @description What the user chose about being told things they did not ask for.
+         *
+         *     Quiet hours are not here: they are the user's QuietHours, shared with the trigger gate.
+         */
+        AttentionSettings: {
+            /**
+             * Checkin Times
+             * @description Local times of the daily check-ins, besides the one when quiet hours end.
+             * @default [
+             *       "13:00:00",
+             *       "18:00:00"
+             *     ]
+             */
+            checkin_times?: string[];
+            /**
+             * Dnd Until
+             * @description Nothing but security notices and the user's own timings gets through until then.
+             */
+            dnd_until?: string | null;
+            /**
+             * Max Unsolicited Per Day
+             * @description Unsolicited routine messages per day; 0 leaves them to the check-ins.
+             * @default 6
+             */
+            max_unsolicited_per_day?: number;
+            /**
+             * Rules
+             * @description The user's own words about what to tell them, applied by the Judge.
+             */
+            rules?: string[];
         };
         /**
          * AuthenticatedUserResponse
@@ -16463,6 +16520,7 @@ export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];
 export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry'];
 export type AsanaTaskTriggerConfig = components['schemas']['AsanaTaskTriggerConfig'];
+export type AttentionSettings = components['schemas']['AttentionSettings'];
 export type AuthenticatedUserResponse = components['schemas']['AuthenticatedUserResponse'];
 export type AuthorDetails = components['schemas']['AuthorDetails'];
 export type AuthoredGateView = components['schemas']['AuthoredGateView'];
@@ -30900,6 +30958,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UsageSummary"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    user_read_attention_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttentionSettings"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    user_update_attention_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttentionSettings"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttentionSettings"];
                 };
             };
             /** @description Unprocessable Entity */

@@ -22,6 +22,7 @@ from app.config.workos import get_workos_client
 from app.constants.auth import WOS_SESSION_COOKIE
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
+from app.models.attention_settings_models import AttentionSettings
 from app.models.chat_channel_models import ChannelPriorityList
 from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import (
@@ -38,6 +39,7 @@ from app.models.user_models import (
 )
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import capture
+from app.services.attention_settings_service import get_attention_settings, set_attention_settings
 from app.services.delivery.chat_channel import (
     get_chat_channel_priority,
     set_chat_channel_priority,
@@ -479,4 +481,23 @@ async def update_quiet_hours(body: QuietHours, user_id: str = Depends(get_user_i
     log.set(user={"id": user_id}, operation="update_quiet_hours")
     saved = await set_quiet_hours(user_id, body)
     log.audit("quiet hours updated", actor=user_id, quiet_hours=saved.model_dump())
+    return saved
+
+
+# evlog-map-disable-next-line audit -- read-only preference lookup, no state change to audit
+@router.get("/attention")
+async def read_attention_settings(user_id: str = Depends(get_user_id)) -> AttentionSettings:
+    """How much GAIA tells the user unprompted: the daily budget, check-in times, DND and rules."""
+    log.set(user={"id": user_id}, operation="read_attention_settings")
+    return await get_attention_settings(user_id)
+
+
+@router.put("/attention")
+async def update_attention_settings(
+    body: AttentionSettings, user_id: str = Depends(get_user_id)
+) -> AttentionSettings:
+    """Store the user's attention settings and echo what was saved."""
+    log.set(user={"id": user_id}, operation="update_attention_settings")
+    saved = await set_attention_settings(user_id, body)
+    log.audit("attention settings updated", actor=user_id, attention=saved.model_dump(mode="json"))
     return saved

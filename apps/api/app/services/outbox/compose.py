@@ -109,6 +109,8 @@ def _item_view(item: OutboxItemDocument) -> dict[str, object]:
             view["how_to_say"] = _how_to_say(report)
             if report.review_problem is not None:
                 view["review_problem"] = report.review_problem
+            if report.interrupt_reason is not None:
+                view["interrupt_reason"] = report.interrupt_reason
             if report.guidance is not None:
                 view["guidance"] = report.guidance.model_dump(mode="json", exclude_none=True)
             if report.decided_approvals:

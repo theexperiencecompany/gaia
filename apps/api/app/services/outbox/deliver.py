@@ -7,6 +7,7 @@ under a unique (user, compose attempt); the transport runs only for the insert t
 won. A per-user Redis lock only saves the second flusher a compose.
 """
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -368,11 +369,11 @@ async def _drop_answered_approvals(
     return [item for item in items if item.report_id not in moot]
 
 
-async def _flush(user: AuthenticatedUser, subject_id: str) -> None:
+async def _flush(
+    user: AuthenticatedUser, claim: Callable[[str], Awaitable[list[OutboxItemDocument]]]
+) -> None:
     attempt_id = str(uuid4())
-    items = await outbox_items_repository.claim_queued_for_subject(
-        user.user_id, subject_id, attempt_id
-    )
+    items = await claim(attempt_id)
     if not items:
         log.info(
             f"{LogTag.NOTIFICATION} Outbox subject has nothing queued; another flusher took it",
@@ -413,13 +414,9 @@ async def _flush(user: AuthenticatedUser, subject_id: str) -> None:
         raise
 
 
-async def flush_subject(user_id: str, subject_id: str) -> None:
-    """Tell the user everything queued for one subject, as one message.
-
-    Raises OutboxUserNotFoundError when user_id is no user. Items a failed step left
-    composing go back to the queue for the job's retry; items already sending stay,
-    since a text that may have gone out is never resent.
-    """
+async def _flush_claimed(
+    user_id: str, claim: Callable[[str], Awaitable[list[OutboxItemDocument]]]
+) -> None:
     user = await load_user_context(user_id)
     if user is None:
         raise OutboxUserNotFoundError(user_id)
@@ -432,4 +429,31 @@ async def flush_subject(user_id: str, subject_id: str) -> None:
     )
     # Not holding it is fine: the compare-and-set on the items decides who sends.
     async with lock.hold():
-        await _flush(user, subject_id)
+        await _flush(user, claim)
+
+
+async def flush_subject(user_id: str, subject_id: str) -> None:
+    """Tell the user everything queued for one subject, as one message.
+
+    Raises OutboxUserNotFoundError when user_id is no user. Items a failed step left
+    composing go back to the queue for the job's retry; items already sending stay,
+    since a text that may have gone out is never resent.
+    """
+    await _flush_claimed(
+        user_id,
+        lambda attempt_id: outbox_items_repository.claim_queued_for_subject(
+            user_id, subject_id, attempt_id
+        ),
+    )
+
+
+async def flush_items(user_id: str, report_ids: list[str]) -> None:
+    """Tell the queued ones among the named reports as one message, whatever their subjects.
+
+    Raises OutboxUserNotFoundError when user_id is no user. Items another flusher claimed
+    are not in it.
+    """
+    await _flush_claimed(
+        user_id,
+        lambda attempt_id: outbox_items_repository.claim_queued(user_id, report_ids, attempt_id),
+    )

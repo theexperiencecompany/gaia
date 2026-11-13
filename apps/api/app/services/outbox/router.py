@@ -226,8 +226,24 @@ async def _latest_app_conversation_id(user_id: str) -> str:
     return summaries[0].conversation_id
 
 
+async def _in_app_owner_ids(
+    user_id: str, items: list[OutboxItemDocument], first: _Owner | None
+) -> list[str]:
+    """Return the app chats that own the items' subjects, the first item's first."""
+    owners = [first] if first is not None else []
+    for conversation_id in dict.fromkeys(
+        item.report.subject.owner_conversation_id for item in items[1:]
+    ):
+        other = await _find_owner(user_id, conversation_id)
+        if other is not None:
+            owners.append(other)
+    return [owner.conversation_id for owner in owners if owner.in_app]
+
+
 async def route(user: AuthenticatedUser, items: list[OutboxItemDocument]) -> Route:
-    """Decide where one message covering items goes; they share a subject, so one owner conversation.
+    """Decide where one message covering items goes; the first item's conversation is the owner it may go back to.
+
+    A message that covers several subjects is also recorded in each other subject's app chat.
 
     Raises NoDestinationError when the alert stays in the app and the user has no conversation there.
     """
@@ -256,8 +272,9 @@ async def route(user: AuthenticatedUser, items: list[OutboxItemDocument]) -> Rou
         alert_id = await _latest_app_conversation_id(user.user_id)
 
     recorded_in = [alert_id]
-    if owner is not None and owner.in_app and owner.conversation_id != alert_id:
-        recorded_in.append(owner.conversation_id)
+    for conversation_id in await _in_app_owner_ids(user.user_id, items, owner):
+        if conversation_id not in recorded_in:
+            recorded_in.append(conversation_id)
     return Route(
         alert_conversation_id=alert_id,
         recorded_in=tuple(recorded_in),

@@ -27,7 +27,6 @@ import pytest
 
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
-from app.core.lazy_loader import providers
 from app.override.langgraph_bigtool.agent_config import (
     AgentConfig,
     HookConfig,
@@ -178,22 +177,6 @@ async def in_memory_store():
             yield store
     else:
         yield InMemoryStore()
-
-
-@pytest.fixture
-def real_tool_registry():
-    """Register the real global ToolRegistry provider (in-process only, no ChromaDB/network).
-
-    format_tool_call_entry needs get_tool_registry() registered to resolve a
-    streamed tool call's category. The provider registry is a process-wide
-    singleton with no reset between tests, so registration happens once and is
-    reused exactly as in a running app.
-    """
-    from app.agents.tools.core.registry import init_tool_registry
-
-    if not providers.is_initialized("tool_registry"):
-        init_tool_registry()
-    return providers
 
 
 @pytest.fixture

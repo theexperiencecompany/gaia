@@ -128,7 +128,7 @@ from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
 from app.workers.task_envelope import arq_task
 from app.workers.tasks.todo_run_context import collect_reference_learnings, collect_run_context
-from app.workers.tasks.todo_run_prompt import build_execution_prompt
+from app.workers.tasks.todo_run_prompt import build_execution_prompt, interrupt_reason
 from app.workers.tasks.tracked_todo_tasks import (
     PAYWALL_FEATURE_TRACKED_TODO,
     _compute_next_run,
@@ -865,7 +865,7 @@ class TestDeliveryContractInThePrompt:
 
         assert todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE.split("{")[0] not in prompt
 
-    def test_a_desk_let_through_quiet_hours_reports_and_says_why(self) -> None:
+    def test_a_desk_let_through_quiet_hours_reports_instead_of_staying_quiet(self) -> None:
         desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
         origin = TriggerOrigin(
             subscription_id="sub-1",
@@ -876,8 +876,7 @@ class TestDeliveryContractInThePrompt:
 
         prompt = _prompt(_doc(external_ref=desk), origin=origin, local_now=_LATE)
 
-        assert f"quiet-hours bypass: {_MEETING}." in prompt
-        assert f"I'm interrupting your quiet hours because {_MEETING}." in prompt
+        assert _MEETING not in prompt
         assert "report only that nothing is new" not in prompt
 
     def test_any_event_a_run_carries_can_let_it_through_quiet_hours(self) -> None:
@@ -891,9 +890,11 @@ class TestDeliveryContractInThePrompt:
             }
         )
 
+        assert interrupt_reason(origin, [urgent], quiet_now=True) == _MEETING
+        assert interrupt_reason(origin, [urgent], quiet_now=False) is None
+        assert interrupt_reason(origin, [], quiet_now=True) is None
+        assert interrupt_reason(None, [urgent], quiet_now=True) is None
         prompt = _prompt(_doc(), origin=origin, coalesced=[urgent], local_now=_LATE)
-
-        assert f"quiet-hours bypass: {_MEETING}." in prompt
         # The events the run reads are the payloads, not what the gate decided about them.
         assert "quiet_hours_bypass" not in prompt
         assert '"t-2"' in prompt

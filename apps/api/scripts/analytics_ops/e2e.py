@@ -44,12 +44,13 @@ from shared.py.analytics.catalog.chat import (
     ChatMessageCompleted,
     ChatMessageSubmitted,
 )
-from shared.py.analytics.catalog.delivery import DeliveryMessageSent
+from shared.py.analytics.catalog.delivery import DeliveryItemHeld, DeliveryMessageSent
 from shared.py.analytics.catalog.onboarding import (
     OnboardingCompleted,
     OnboardingPhaseCompleted,
     OnboardingStarted,
 )
+from shared.py.analytics.catalog.settings import SettingsAttentionUpdated
 from shared.py.analytics.catalog.workflows import WorkflowCreated, WorkflowExecuted
 from shared.py.analytics.context import POSTHOG_SESSION_PROPERTY
 
@@ -110,6 +111,9 @@ NOT_DRIVABLE = (
     f"{DeliveryMessageSent.event} (producer, destination, destination_basis): no journey fires a "
     "reminder or a tracked todo run, and the workflow journey's sim comms replies itself, so its "
     "run never reaches the executor's report",
+    f"{DeliveryItemHeld.event}: needs an unsolicited report in quiet hours or past the budget, "
+    "which no journey submits",
+    f"{SettingsAttentionUpdated.event}: no journey writes attention settings",
 )
 
 

@@ -17,6 +17,7 @@ __all__ = [
     "InstructionsUpdated",
     "ProfileLinkCopied",
     "ProfileUpdated",
+    "SettingsAttentionUpdated",
     "SettingsChatChannelPriorityUpdated",
     "SettingsDesktopPreferenceChanged",
     "SettingsNotificationsToggled",
@@ -40,6 +41,16 @@ class SettingsChatChannelPriorityUpdated(ServerEvent):
 
     first: Identifier
     count: int
+
+
+class SettingsAttentionUpdated(ServerEvent):
+    """A user changed how much GAIA tells them unprompted: which settings, and the daily budget they now have."""
+
+    event: ClassVar[str] = "settings:attention_updated"
+    budget_per_user_day: ClassVar[int] = 50
+
+    changed: list[Literal["budget", "checkin_times", "dnd", "rules"]]
+    max_unsolicited_per_day: int
 
 
 class SettingsQuietHoursUpdated(ServerEvent):

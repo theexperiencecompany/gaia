@@ -37,6 +37,7 @@ from app.constants.agents import (
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
 from app.models.agent_models import SilentRunResult
+from app.models.ownership_models import DeliveryTiming
 from app.models.playbook_models import (
     PlaybookDocument,
     PlaybookRunOutcome,
@@ -2152,7 +2153,7 @@ class TestAReplaysReportNeedsTheExecutionItBelongsTo:
             patch(f"{MODULE}.current_workflow_execution_id", lambda: "exec_1"),
             pytest.raises(ValueError, match="execution"),
         ):
-            await _file_replay_report(workflow, AGENT_USER, "conv_1", "Agenda sent.")
+            await _file_replay_report(workflow, AGENT_USER, "conv_1", "Agenda sent.", None)
 
         submit.assert_not_awaited()
 
@@ -2162,7 +2163,7 @@ class TestAReplaysReportNeedsTheExecutionItBelongsTo:
             patch(f"{MODULE}.current_workflow_execution_id", lambda: None),
             pytest.raises(ValueError, match="execution"),
         ):
-            await _file_replay_report(_workflow(), AGENT_USER, "conv_1", "Agenda sent.")
+            await _file_replay_report(_workflow(), AGENT_USER, "conv_1", "Agenda sent.", None)
 
         submit.assert_not_awaited()
 
@@ -2172,7 +2173,7 @@ class TestAReplaysReportNeedsTheExecutionItBelongsTo:
             patch(f"{MODULE}.current_workflow_execution_id", lambda: "exec_1"),
             pytest.raises(ConnectionError, match="redis down"),
         ):
-            await _file_replay_report(_workflow(), AGENT_USER, "conv_1", "Agenda sent.")
+            await _file_replay_report(_workflow(), AGENT_USER, "conv_1", "Agenda sent.", None)
 
 
 @pytest.mark.asyncio
@@ -2798,7 +2799,7 @@ _MEETING = "someone is waiting on you for a meeting happening soon"
 class TestQuietHoursOnTheRecord:
     """A fire held for, or let through, the user's quiet hours says so in its history and message."""
 
-    async def test_a_let_through_replay_opens_its_message_with_why_it_interrupts(self) -> None:
+    async def test_a_let_through_replay_is_filed_as_an_interrupt_with_its_reason(self) -> None:
         workflow = _workflow()
         harness = _Harness(workflow)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
@@ -2806,11 +2807,11 @@ class TestQuietHoursOnTheRecord:
 
         await _fire_with_context(harness, {"quiet_hours": {"kind": "bypass", "reason": _MEETING}})
 
-        delivered = harness.submit.await_args.args[0].result
-        assert delivered == (
-            f"I'm interrupting your quiet hours because {_MEETING}.\n\nAgenda sent."
-        )
-        assert harness.add_messages.await_args.kwargs["response"] == delivered
+        report = harness.submit.await_args.args[0]
+        assert report.result == "Agenda sent."
+        assert report.interrupt_reason == _MEETING
+        assert report.delivery_policy.timing is DeliveryTiming.THE_MOMENT
+        assert report.delivery_policy.may_wake
         assert harness.summary() == f"Ran during quiet hours: {_MEETING}. {REPLAY_SUMMARY}"
 
     async def test_a_held_agent_run_says_it_waited(self) -> None:

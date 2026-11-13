@@ -22,6 +22,7 @@ from app.agents.core.background.run_report import (
     RunOutcome,
     failed_outcome,
     finished_outcome,
+    interrupting_policy,
     run_report,
 )
 from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
@@ -31,7 +32,10 @@ from app.agents.prompts.compose_prompts import OUTCOME_REPLY_SHAPES
 from app.constants.agents import OutcomeState
 from app.constants.outbound import OUTBOUND_TTL_SECONDS_DEFAULT, OUTBOUND_TTL_SECONDS_GREETING
 from app.constants.outbox import LIVE_WATCH_WINDOW_SECONDS, OUTBOX_BATCHED_JOB_ID_SUFFIX
+from app.constants.outbox_attention import HoldReason
 from app.constants.task_report import FactKind, NeedsYouKind
+from app.db.repositories.attention_settings import attention_settings_repository
+from app.models.attention_settings_models import AttentionSettings
 from app.models.chat_models import ConversationSource
 from app.models.ownership_models import DeliveryPolicy, DeliveryTiming
 from app.models.platform_models import PlatformLinkResult
@@ -48,6 +52,7 @@ from app.models.workflow_models import TriggerType
 from app.schemas.outbound import OutboundAttachment
 from app.services.outbox.approvals import ApprovalAsk, ApprovalNoticeState, approval_notice
 from app.services.outbox.deliver import flush_subject
+from app.services.outbox.flush import release_on_return, sweep_lost_flushes
 from app.services.outbox.judge_models import Relevance, Sensitivity
 from app.services.outbox.models import (
     ComposeResult,
@@ -141,7 +146,9 @@ async def world(mongo_db) -> World:
 
 
 @pytest.fixture
-async def tl(mongo_db, world: World, fake_redis) -> AsyncIterator[OutboxTimeline]:
+async def tl(
+    mongo_db, world: World, fake_redis, real_tool_registry
+) -> AsyncIterator[OutboxTimeline]:
     with outbox_timeline(mongo_db, world, fake_redis) as timeline:
         yield timeline
     for name in ("outbox_items", "outbox_messages"):
@@ -227,6 +234,7 @@ async def test_an_update_nobody_asked_for_waits_out_the_batch_window_as_a_deferr
     tl: OutboxTimeline,
 ) -> None:
     report = _run("run-1", OutcomeState.DONE, initiative=Initiative.SELF_INITIATED)
+    tl.judge.verdicts["run-1"] = verdict(urgency=UrgencyClass.TIMELY)
     await tl.submit(report)
 
     await tl.drain()
@@ -239,6 +247,8 @@ async def test_an_update_nobody_asked_for_waits_out_the_batch_window_as_a_deferr
 
 
 async def test_b9_accumulating_reports_of_a_subject_are_one_message(tl: OutboxTimeline) -> None:
+    for report_id in ("run-1", "run-2"):
+        tl.judge.verdicts[report_id] = verdict(urgency=UrgencyClass.TIMELY)
     first = _run("run-1", OutcomeState.DONE, merge=SubjectMerge.ACCUMULATE, minutes=0)
     await _park_queued(tl, first)
     await tl.submit(_run("run-2", OutcomeState.DONE, merge=SubjectMerge.ACCUMULATE, minutes=5))
@@ -1139,6 +1149,251 @@ async def test_when_the_judge_is_unavailable_the_reminder_is_still_told_and_tagg
     assert len(await tl.ledger()) == 1
 
 
+async def _told_at(tl: OutboxTimeline, report: RunReport, minutes: float) -> None:
+    """Submit a report at a minute and let its intake, batch window included, run."""
+    await tl.at(minutes)
+    await tl.submit(report)
+    await tl.drain()
+    await tl.at(minutes + 1)
+    await tl.drain()
+
+
+def _routine(report_id: str, subject_id: str, minutes: float) -> RunReport:
+    return _run(report_id, OutcomeState.DONE, subject_id=subject_id, minutes=minutes)
+
+
+def _judged_routine(tl: OutboxTimeline, *report_ids: str, **overrides: object) -> None:
+    for report_id in report_ids:
+        tl.judge.verdicts[report_id] = verdict(urgency=UrgencyClass.ROUTINE, **overrides)
+
+
+async def _states(tl: OutboxTimeline) -> dict[str, ItemState]:
+    return {item.report_id: item.state for item in await tl.items()}
+
+
+async def test_b2_an_update_in_quiet_hours_is_held_and_told_after_they_end(
+    tl: OutboxTimeline,
+) -> None:
+    _judged_routine(tl, "run-1")
+    await _told_at(tl, _routine("run-1", "todo-1", 840), 840)
+
+    assert await _states(tl) == {"run-1": ItemState.HELD}
+    assert await tl.ledger() == []
+    assert [event.reason for event in tl.sinks.held] == ["quiet_hours"]
+
+    await tl.at(1400)
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.SENT}
+    [message] = await tl.ledger()
+    assert message.sent_at == tl.clock.current
+
+
+async def test_a16_an_answer_that_lands_at_2am_for_a_user_who_is_away_is_the_first_message_of_the_morning(
+    tl: OutboxTimeline,
+) -> None:
+    answer = _run("run-1", OutcomeState.DONE, minutes=1020, initiative=Initiative.ASKED)
+    await _told_at(tl, answer, 1020)
+
+    assert await tl.ledger() == []
+    assert (await _states(tl)) == {"run-1": ItemState.HELD}
+
+    await tl.at(1400)
+    await tl.drain()
+
+    [message] = await tl.ledger()
+    assert (message.mode.value, message.report_ids) == ("answer", ["run-1"])
+
+
+async def test_an_answer_for_a_user_who_just_wrote_at_night_is_told_at_once(
+    tl: OutboxTimeline,
+) -> None:
+    await tl.at(1020)
+    await tl.active_on(ConversationSource.TELEGRAM)
+    answer = _run("run-1", OutcomeState.DONE, minutes=1020, initiative=Initiative.ASKED)
+    await _told_at(tl, answer, 1025)
+
+    assert await _states(tl) == {"run-1": ItemState.SENT}
+
+
+async def test_b2_what_waited_the_night_for_one_subject_is_one_message(tl: OutboxTimeline) -> None:
+    _judged_routine(tl, "run-1", "run-2")
+    for report_id, minutes in (("run-1", 840), ("run-2", 900)):
+        report = _run(
+            report_id,
+            OutcomeState.DONE,
+            merge=SubjectMerge.ACCUMULATE,
+            minutes=minutes,
+        )
+        await _told_at(tl, report, minutes)
+    assert await tl.ledger() == []
+
+    await tl.at(1400)
+    await tl.drain()
+
+    [message] = await tl.ledger()
+    assert sorted(message.report_ids) == ["run-1", "run-2"]
+
+
+async def test_b1_updates_past_the_days_budget_wait_for_the_next_check_in(
+    tl: OutboxTimeline,
+) -> None:
+    await attention_settings_repository.save(USER, AttentionSettings(max_unsolicited_per_day=1))
+    _judged_routine(tl, "run-1", "run-2")
+    await _told_at(tl, _routine("run-1", "todo-1", 0), 0)
+    await _told_at(tl, _routine("run-2", "todo-2", 40), 40)
+
+    assert await _states(tl) == {"run-1": ItemState.SENT, "run-2": ItemState.HELD}
+    assert [event.reason for event in tl.sinks.held] == ["checkin"]
+
+    await tl.at(300)
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.SENT, "run-2": ItemState.SENT}
+    assert len(await tl.ledger()) == 2
+
+
+async def test_an_update_right_after_another_waits_out_the_minimum_gap(tl: OutboxTimeline) -> None:
+    _judged_routine(tl, "run-1", "run-2")
+    await _told_at(tl, _routine("run-1", "todo-1", 0), 0)
+    await _told_at(tl, _routine("run-2", "todo-2", 10), 10)
+
+    assert await _states(tl) == {"run-1": ItemState.SENT, "run-2": ItemState.HELD}
+    assert [event.reason for event in tl.sinks.held] == ["gap"]
+
+    await tl.at(33)
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.SENT, "run-2": ItemState.SENT}
+
+
+async def test_a_background_update_waits_for_the_users_return_which_flushes_it(
+    tl: OutboxTimeline,
+) -> None:
+    background = _run("run-1", OutcomeState.DONE, minutes=0)
+    await _told_at(tl, background, 0)
+    assert await _states(tl) == {"run-1": ItemState.HELD}
+
+    await tl.at(30)
+    await release_on_return(USER)
+    await tl.drain()
+    assert await _states(tl) == {"run-1": ItemState.HELD}
+
+    await tl.at(31)
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.SENT}
+
+
+async def test_an_item_waits_for_the_run_the_judge_named_and_is_told_when_it_has_run(
+    tl: OutboxTimeline,
+) -> None:
+    _judged_routine(
+        tl,
+        "run-1",
+        wait_for_run="run-9",
+        wait_run_at=T0 + timedelta(minutes=30),
+        wait_run_hit_rate=0.9,
+    )
+    await _told_at(tl, _routine("run-1", "todo-1", 0), 0)
+
+    [item] = await tl.items()
+    assert (item.state, item.hold.reason, item.hold.deferrals) == (
+        ItemState.HELD,
+        HoldReason.WAIT_FOR_RUN,
+        1,
+    )
+
+    await tl.at(31)
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.SENT}
+
+
+async def test_a_time_the_creator_chose_holds_an_item_until_then(tl: OutboxTimeline) -> None:
+    tonight = T0 + timedelta(hours=6)
+    report = _run("run-1", OutcomeState.DONE, minutes=0, initiative=Initiative.ASKED)
+    report = report.model_copy(update={"delivery_policy": DeliveryPolicy(not_before=tonight)})
+    await _told_at(tl, report, 0)
+
+    assert [event.reason for event in tl.sinks.held] == ["not_before"]
+    await tl.at(359)
+    await tl.drain()
+    assert await _states(tl) == {"run-1": ItemState.HELD}
+
+    await tl.at(361)
+    await tl.drain()
+    assert await _states(tl) == {"run-1": ItemState.SENT}
+
+
+async def test_do_not_disturb_holds_an_update_until_it_ends(tl: OutboxTimeline) -> None:
+    until = T0 + timedelta(hours=2)
+    await attention_settings_repository.save(USER, AttentionSettings(dnd_until=until))
+    _judged_routine(tl, "run-1")
+    await _told_at(tl, _routine("run-1", "todo-1", 0), 0)
+
+    assert [event.reason for event in tl.sinks.held] == ["dnd"]
+
+    await tl.at(125)
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.SENT}
+
+
+async def test_a_lost_flush_job_is_found_by_the_sweep(tl: OutboxTimeline) -> None:
+    _judged_routine(tl, "run-1")
+    await _told_at(tl, _routine("run-1", "todo-1", 840), 840)
+    tl.arq.jobs.clear()
+
+    await tl.at(1400)
+    await tl.drain()
+    assert await _states(tl) == {"run-1": ItemState.HELD}
+
+    await sweep_lost_flushes()
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.SENT}
+
+
+async def test_b15_three_findings_held_overnight_are_one_message_when_quiet_hours_end(
+    tl: OutboxTimeline,
+) -> None:
+    ids = ("run-1", "run-2", "run-3")
+    _judged_routine(tl, *ids)
+    for n, report_id in enumerate(ids):
+        minutes = 840 + 30 * n
+        await _told_at(tl, _routine(report_id, f"todo-{n}", minutes), minutes)
+    assert await tl.ledger() == []
+    assert len(tl.arq.jobs) >= 1
+
+    await tl.at(1400)
+    await tl.drain()
+
+    [message] = await tl.ledger()
+    assert sorted(message.report_ids) == list(ids)
+    assert len(tl.compose.calls) == 1
+    assert len(tl.sinks.bot) + len(tl.sinks.ws) == 1
+    assert await _states(tl) == dict.fromkeys(ids, ItemState.SENT)
+
+
+async def test_b23_a_run_let_through_quiet_hours_interrupts_and_says_why(
+    tl: OutboxTimeline,
+) -> None:
+    reason = "someone is waiting on you for a meeting happening soon"
+    report = _run("run-1", OutcomeState.DONE, minutes=1020)
+    report = report.model_copy(
+        update={
+            "interrupt_reason": reason,
+            "delivery_policy": interrupting_policy(notify=True, reason=reason),
+        }
+    )
+    await _told_at(tl, report, 1020)
+
+    [message] = await tl.ledger()
+    assert message.mode.value == "interrupt"
+    assert tl.compose.context["items"][0]["interrupt_reason"] == reason
+
+
 def _approval(
     approval_id: str = "ap_1",
     state: ApprovalNoticeState = ApprovalNoticeState.PENDING,
@@ -1201,6 +1456,7 @@ async def test_c4_the_reminder_replaces_an_ask_not_yet_told_and_is_one_message(
 ) -> None:
     tl.world.open_approvals.add("ap_1")
     await tl.at(18 * 60)
+    await tl.active_on(ConversationSource.WEB)
     await tl.submit(_approval(state=ApprovalNoticeState.REMINDER, minutes=18 * 60))
     await tl.drain()
 
@@ -1220,3 +1476,21 @@ async def test_an_ask_that_lapsed_before_it_could_be_told_is_recorded_as_expired
     [item] = await tl.items()
     assert (item.state, item.drop_reason) == (ItemState.DROPPED, DropReason.EXPIRED)
     assert tl.sinks.bot == [] and tl.sinks.ws == []
+
+
+async def test_c1_an_approval_asked_overnight_goes_with_the_morning_findings_as_one_message(
+    tl: OutboxTimeline,
+) -> None:
+    tl.world.open_approvals.add("ap_1")
+    _judged_routine(tl, "run-1")
+    await _told_at(tl, _routine("run-1", "todo-1", 840), 840)
+    await tl.at(900)
+    await tl.submit(_approval(minutes=900, expires_in_hours=30))
+    await tl.drain()
+    assert await tl.ledger() == []
+
+    await tl.at(1400)
+    await tl.drain()
+
+    [message] = await tl.ledger()
+    assert sorted(message.report_ids) == ["hil:ap_1:pending", "run-1"]

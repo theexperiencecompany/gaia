@@ -11,7 +11,7 @@ from pymongo.errors import PyMongoError
 from redis.exceptions import RedisError
 
 from app.agents.core.background.comms_narrator import record_executor_report
-from app.agents.core.background.run_report import RunOutcome
+from app.agents.core.background.run_report import RunOutcome, interrupting_policy
 from app.agents.core.background.session import ExecutorRun, TodoRun
 from app.constants.log_tags import LogTag
 from app.constants.outbox import TODO_REPORT_PREFIX
@@ -28,7 +28,6 @@ from app.constants.todos import (
 )
 from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
 from app.db.repositories.todos import todo_repository
-from app.models.ownership_models import DeliveryPolicy
 from app.models.todo_models import TodoDocument
 from app.models.workflow_models import TriggerType
 from app.services.canvas_markdown import section_body
@@ -65,6 +64,8 @@ class FinishedTodoRun(BaseModel):
     outcome: RunOutcome
     runs_once: bool
     result_text: str
+    #: Why the run interrupts the user's quiet hours, when its trigger's gate let it through them.
+    interrupt_reason: str | None = None
     #: Set once the report is filed; only the finish entry is left then.
     finish_entry: str | None = None
 
@@ -97,6 +98,7 @@ async def deliver_todo_run_result(
         outcome=outcome,
         runs_once=todo_run.runs_once,
         result_text=result_text,
+        interrupt_reason=todo_run.interrupt_reason,
     )
     if (undone := await finish_todo_run(finished)) is not None:
         await hand_unfinished_run_to_job(undone)
@@ -215,10 +217,13 @@ def _todo_report(finished: FinishedTodoRun, todo: TodoDocument) -> RunReport:
         ),
         occurred_at=clock.now(),
         initiative=Initiative.ASKED if finished.runs_once else Initiative.SELF_INITIATED,
-        delivery_policy=DeliveryPolicy(notify=todo.notify_on_run),
+        delivery_policy=interrupting_policy(
+            notify=todo.notify_on_run, reason=finished.interrupt_reason
+        ),
         report=finished.outcome.report,
         result=finished.outcome.result,
         review_problem=finished.outcome.review_problem,
+        interrupt_reason=finished.interrupt_reason,
         decided_approvals=finished.outcome.decided_approvals,
         guidance=ProducerGuidance(
             title=todo.title,

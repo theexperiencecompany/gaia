@@ -161,6 +161,12 @@ class JudgeVerdict(BaseModel):
     wait_for_run: str | None = Field(
         default=None, description="The upcoming run this item should be merged with."
     )
+    wait_run_at: datetime | None = Field(
+        default=None, description="When the run wait_for_run names starts."
+    )
+    wait_run_hit_rate: float | None = Field(
+        default=None, description="The share of that run's last runs that produced something told."
+    )
     reason: str
     confidence: float | None = Field(
         default=None,

@@ -16,6 +16,15 @@ OUTBOX_ITEMS_DROPPED = _register_once(
     ),
 )
 
+OUTBOX_ITEMS_HELD = _register_once(
+    "outbox_items_held_total",
+    lambda: Counter(
+        name="outbox_items_held_total",
+        documentation="Outbox items held to be told later, by reason",
+        labelnames=("reason",),
+    ),
+)
+
 OUTBOX_ITEMS_FAILED = _register_once(
     "outbox_items_failed_total",
     lambda: Counter(

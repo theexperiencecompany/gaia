@@ -13,6 +13,7 @@ import pytest
 
 from app.constants.agents import OutcomeState
 from app.constants.attention_profile import DEFAULT_ATTENTION_PROFILE
+from app.constants.outbox_attention import DEFAULT_UNSOLICITED_BUDGET
 from app.constants.outbox_judge import (
     JUDGE_BATCH_MAX,
     JUDGE_CALENDAR_EVENTS_MAX,
@@ -24,6 +25,7 @@ from app.constants.outbox_judge import (
 )
 from app.constants.task_report import FactKind
 from app.models.attention_profile_models import AttentionProfileDocument, ProfileAnswer
+from app.models.attention_settings_models import AttentionSettings
 from app.models.calendar_models import (
     CalendarEventsResponse,
     GoogleCalendarEventDateTime,
@@ -143,6 +145,12 @@ def _world() -> Iterator[_Sources]:
         s.repos.recall = AsyncMock(
             side_effect=lambda *a, **k: MemorySearchResult(memories=s.memories)
         )
+        enter(
+            patch(
+                f"{MODULE}.attention_settings_repository.read",
+                AsyncMock(return_value=AttentionSettings()),
+            )
+        )
         enter(patch(f"{MODULE}.recall", s.repos.recall))
         s.repos.calendar = calendar
         enter(patch(f"{MODULE}.get_calendar_events", calendar))
@@ -235,7 +243,11 @@ async def test_the_users_clock_comes_from_their_timezone_and_quiet_hours() -> No
 
     assert state["user"]["timezone"] == "Asia/Kolkata"
     assert (state["user"]["usual_wake"], state["user"]["usual_sleep"]) == ("07:00", "23:00")
-    assert state["attention_settings"] == {"quiet_hours": "23:00-07:00"}
+    assert state["attention_settings"] == {
+        "quiet_hours": "23:00-07:00",
+        "unsolicited_budget_per_day": DEFAULT_UNSOLICITED_BUDGET,
+        "rules": [],
+    }
 
 
 async def test_the_attention_profile_is_read_for_the_user() -> None:

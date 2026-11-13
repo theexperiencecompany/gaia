@@ -20,7 +20,7 @@ from app.constants.outbox import (
     WORKFLOW_REPORT_PREFIX,
 )
 from app.constants.task_report import FailureReason, FailureRecovery
-from app.models.ownership_models import DeliveryPolicy
+from app.models.ownership_models import DeliveryPolicy, DeliveryTiming
 from app.models.task_report_models import ReportFailure, TaskReport
 from app.services.outbox.models import (
     DecidedApproval,
@@ -94,6 +94,15 @@ class WorkflowRunRef(NamedTuple):
     user_id: str
     conversation_id: str
     notify: bool
+    #: Why the run interrupts the user's quiet hours, when its trigger's gate let it through them.
+    interrupt_reason: str | None = None
+
+
+def interrupting_policy(*, notify: bool, reason: str | None) -> DeliveryPolicy:
+    """Return the policy of a run: a run let through quiet hours is told the moment it is done, even to someone asleep."""
+    if reason is None:
+        return DeliveryPolicy(notify=notify)
+    return DeliveryPolicy(timing=DeliveryTiming.THE_MOMENT, may_wake=True, notify=notify)
 
 
 def workflow_run_report(
@@ -116,10 +125,13 @@ def workflow_run_report(
         ),
         occurred_at=clock.now(),
         initiative=Initiative.USER_SCHEDULED,
-        delivery_policy=DeliveryPolicy(notify=workflow.notify),
+        delivery_policy=interrupting_policy(
+            notify=workflow.notify, reason=workflow.interrupt_reason
+        ),
         report=outcome.report,
         result=outcome.result,
         review_problem=outcome.review_problem,
+        interrupt_reason=workflow.interrupt_reason,
         decided_approvals=outcome.decided_approvals,
     )
 
@@ -138,6 +150,7 @@ def run_report(run: ExecutorRun, outcome: RunOutcome) -> RunReport:
             user_id=run.user.user_id,
             conversation_id=run.conversation_id,
             notify=run.workflow_notify_on_completion,
+            interrupt_reason=run.interrupt_reason,
         )
         return workflow_run_report(workflow, run_key=run.stream_id, outcome=outcome)
     subject_id = run.task_id or run.stream_id

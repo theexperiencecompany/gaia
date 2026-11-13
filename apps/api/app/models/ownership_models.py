@@ -1,6 +1,7 @@
 """What comms hands the executor about the outcome a request is for, and how to tell the user."""
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from typing import Self
 
@@ -29,6 +30,10 @@ class DeliveryPolicy(BaseModel):
     channel: ConversationSource | None = None
     #: False when the user turned this producer's updates off: only what needs them gets through.
     notify: bool = True
+    #: Told at this instant and not before; the creator's own timing ("tonight", "after my meeting").
+    not_before: datetime | None = None
+    #: Told by this instant at the latest; a hold for anything else never outlasts it.
+    by: datetime | None = None
 
     @model_validator(mode="after")
     def _channel_is_a_chat_app(self) -> Self:

@@ -7,6 +7,7 @@ run_executor_background.
 """
 
 import asyncio
+from datetime import datetime
 import time
 from typing import Annotated, Literal
 from uuid import uuid4
@@ -146,6 +147,15 @@ async def call_executor(
         "True only when the user asked to be pinged the moment it is done even if they are "
         "away or it is late.",
     ] = False,
+    delivery_not_before: Annotated[
+        datetime | None,
+        "When the user asked to hear about it later ('tonight', 'after my meeting', 'Monday'): "
+        "the instant, never earlier. Omit unless they named a time.",
+    ] = None,
+    delivery_by: Annotated[
+        datetime | None,
+        "When the user needs to hear about it by at the latest. Omit unless they named a deadline.",
+    ] = None,
     active_todo_id: Annotated[
         str | None,
         "Optional tracked-todo ID to BIND this executor run to. When set, "
@@ -208,7 +218,11 @@ async def call_executor(
         defaults_assumed=tuple(defaults_assumed or ()),
         irreversible_approved=irreversible_approved and answers_gaias_question,
         delivery=DeliveryPolicy(
-            timing=delivery_timing, may_wake=may_wake, channel=delivery_channel
+            timing=delivery_timing,
+            may_wake=may_wake,
+            channel=delivery_channel,
+            not_before=delivery_not_before,
+            by=delivery_by,
         ),
     )
     configurable["delivery_policy"] = intent.delivery.model_dump(mode="json")

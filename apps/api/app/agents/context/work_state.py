@@ -30,6 +30,7 @@ from shared.py.wide_events import log
 _UNTOLD_STATE_TEXT = {
     ItemState.RECEIVED: "finished, not told yet",
     ItemState.QUEUED: "finished, waiting for a good moment to tell",
+    ItemState.HELD: "finished, kept until quiet hours end or the next check-in",
 }
 
 

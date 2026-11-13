@@ -11,6 +11,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.constants.outbox_attention import HoldReason
 from app.models.ownership_models import DeliveryPolicy
 from app.models.task_report_models import TaskReport
 from app.schemas.outbound import OutboundAttachment
@@ -91,6 +92,8 @@ class ItemState(StrEnum):
 
     RECEIVED = "received"
     QUEUED = "queued"
+    #: Decided to be told, at an instant that has not come.
+    HELD = "held"
     COMPOSING = "composing"
     SENDING = "sending"
     SENT = "sent"
@@ -100,7 +103,7 @@ class ItemState(StrEnum):
 
 
 #: States an item can still leave: it has not been told, and nothing is telling it.
-UNSENT_STATES = frozenset({ItemState.RECEIVED, ItemState.QUEUED})
+UNSENT_STATES = frozenset({ItemState.RECEIVED, ItemState.QUEUED, ItemState.HELD})
 
 
 class DropReason(StrEnum):
@@ -123,6 +126,8 @@ class DropReason(StrEnum):
     SUPERSEDED = "superseded"
     DUPLICATE = "duplicate"
     UNWANTED = "unwanted"
+    #: The user was told this same fact recently and has not acted on it: told again only after a growing wait.
+    REPEAT_BACKOFF = "repeat_backoff"
     #: A routine message kept naming GAIA internals through every recompose, so none was sent.
     LEAK_UNRESOLVED = "leak_unresolved"
 
@@ -142,6 +147,17 @@ class MessageState(StrEnum):
     SENDING = "sending"
     SENT = "sent"
     FAILED = "failed"
+
+
+class ItemHold(BaseModel):
+    """Why and until when an item waits; kept after its release, so the next hold counts what came before."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    reason: HoldReason
+    until: datetime
+    since: datetime = Field(description="When the item was first held.")
+    deferrals: int = Field(default=0, description="Times it was held to wait for a run.")
 
 
 class Subject(BaseModel):
@@ -215,6 +231,8 @@ class RunReport(_ReportBase):
     result: str = ""
     #: How the run's own calls disagreed with its report; set exactly when the outcome was downgraded.
     review_problem: str | None = None
+    #: Why the run interrupts the user's quiet hours, set exactly when its trigger's gate let it through them.
+    interrupt_reason: str | None = None
     guidance: ProducerGuidance | None = None
     #: The approvals the run asked for that are settled now; final, whatever the run's own thread says.
     decided_approvals: list[DecidedApproval] = Field(default_factory=list)

@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.attention_profile_models import ProfileAnswer
+from app.services.outbox.judge_models import JudgeVerdict
 
 
 class _View(BaseModel):
@@ -65,6 +66,9 @@ class CalendarEventView(_View):
 
 class SettingsView(_View):
     quiet_hours: str
+    unsolicited_budget_per_day: int
+    dnd_until: datetime | None = None
+    rules: list[str]
 
 
 class PresenceView(_View):
@@ -119,6 +123,15 @@ class JudgeContext(_View):
     def offered_runs(self) -> dict[str, str]:
         """The runs the Judge may tell an item to wait for, by id."""
         return {run.run_id: run.label for run in self.upcoming_runs}
+
+    def with_wait_run(self, verdict: JudgeVerdict) -> JudgeVerdict:
+        """Return the verdict with the start and hit rate of the run it waits for, which the Rails bound the wait by."""
+        run = next((run for run in self.upcoming_runs if run.run_id == verdict.wait_for_run), None)
+        if run is None:
+            return verdict
+        return verdict.model_copy(
+            update={"wait_run_at": run.starts_at, "wait_run_hit_rate": run.hit_rate}
+        )
 
     def as_state(self) -> dict[str, object]:
         """Return the context as the JSON state both passes read."""

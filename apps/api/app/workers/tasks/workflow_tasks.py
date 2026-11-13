@@ -24,7 +24,6 @@ from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_FALLBACK_TEMPLATE,
     PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE,
 )
-from app.agents.prompts.quiet_hours_prompts import QUIET_HOURS_BYPASS_OPENING
 from app.agents.prompts.workflow_prompts import (
     TODO_WORKFLOW_DESCRIPTION_TEMPLATE,
     TODO_WORKFLOW_PROMPT_TEMPLATE,
@@ -909,7 +908,11 @@ async def _run_workflow(fire: _Fire) -> tuple[str, list[RecordedCall], str]:
 
 
 async def _file_replay_report(
-    workflow: Workflow, user: AuthenticatedUser, conversation_id: str, text: str
+    workflow: Workflow,
+    user: AuthenticatedUser,
+    conversation_id: str,
+    text: str,
+    interrupt_reason: str | None,
 ) -> None:
     """File a finished replay's result with the outbox, the same way the agent path files its run.
 
@@ -928,6 +931,7 @@ async def _file_replay_report(
                 user_id=user.user_id,
                 conversation_id=conversation_id,
                 notify=workflow.notify_on_completion,
+                interrupt_reason=interrupt_reason,
             ),
             run_key=REPLAY_RUN_KEY,
             outcome=RunOutcome(report=TaskReport(outcome=OutcomeState.DONE), result=text),
@@ -965,9 +969,9 @@ async def _deliver_replay(
             reason=result.narration_failed,
         )
     text = result.text
-    if isinstance(fire.quiet_hours, QuietHoursBypass):
-        opening = QUIET_HOURS_BYPASS_OPENING.format(reason=fire.quiet_hours.reason)
-        text = f"{opening}\n\n{text}"
+    interrupt_reason = (
+        fire.quiet_hours.reason if isinstance(fire.quiet_hours, QuietHoursBypass) else None
+    )
     await add_playbook_run_messages(
         conversation_id=conversation_id,
         user_id=workflow.user_id,
@@ -976,7 +980,7 @@ async def _deliver_replay(
         trace=result.trace,
         playbook=playbook,
     )
-    await _file_replay_report(workflow, user, conversation_id, text)
+    await _file_replay_report(workflow, user, conversation_id, text, interrupt_reason)
     summary = REPLAY_SUMMARY if result.narration_failed is None else REPLAY_NARRATION_FAILED_SUMMARY
     return conversation_id, result.trace, summary
 
