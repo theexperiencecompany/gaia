@@ -64,10 +64,8 @@ export function VoiceCustomizePopover() {
             inlineGender
             wrapText
             onSelect={applyLiveVoice}
-            classNames={{
-              base: "max-h-[60vh] overflow-y-auto overflow-x-hidden",
-              wrapper: "p-0 shadow-none bg-transparent",
-            }}
+            surface="plain"
+            className="max-h-[60vh] overflow-y-auto overflow-x-hidden"
           />
         </div>
       </Popover.Content>

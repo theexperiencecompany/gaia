@@ -134,9 +134,10 @@
     color: var(--color-zinc-300);
   }
 
-  /* ComboBoxInput's clear button: v2 showed it only on hover or focus. */
-  .combo-box__input-group:not(:hover, :focus-within) .gaia-combo-clear {
-    display: none;
+  /* Select chevron: v2's sat 12px from the end in the trigger's own text colour. */
+  .select__indicator {
+    inset-inline-end: var(--gaia-select-indicator-end);
+    color: inherit;
   }
 
   /* inputVariants({ size: "sm" }): v2's small field, 32px with an 8px inset. */
@@ -150,6 +151,13 @@
     font-size: var(--gaia-input-sm-font-size);
     border-radius: var(--gaia-radius-sm);
   }
+  /* v2's sm Select: a 32px trigger on an 8px radius. */
+  .gaia-input-sm .select__trigger {
+    min-height: var(--gaia-input-sm-height);
+    height: var(--gaia-input-sm-height);
+    padding-block: 0;
+    border-radius: var(--gaia-radius-sm);
+  }
   .gaia-input-sm .input,
   .input.gaia-input-sm,
   .gaia-input-sm .input-group__input,
@@ -160,6 +168,43 @@
   .gaia-input-sm .select__trigger {
     padding-block: 0;
     padding-inline-start: var(--gaia-input-sm-padding-x);
+  }
+
+  /* ComboBoxInput is v2's Autocomplete field: the row is the filled field,
+     lifting to zinc-700 on hover or focus (ringed only on keyboard focus), and
+     the input, start content, clear button and chevron all sit inside it. */
+  .combo-box__input-group {
+    border-radius: var(--gaia-radius-md);
+    background-color: var(--field-background);
+  }
+  .combo-box__input-group:hover,
+  .combo-box__input-group:focus-within {
+    background-color: var(--gaia-field-active);
+  }
+  .combo-box__input-group:has(> .input[data-focus-visible="true"]) {
+    box-shadow: 0 0 0 2px var(--focus);
+  }
+  .combo-box__input-group > .input {
+    min-height: 0;
+    background-color: transparent;
+    box-shadow: none;
+  }
+  .combo-box__input-group > .gaia-combo-clear {
+    position: absolute;
+    inset-inline-end: var(--gaia-combo-clear-end);
+    background-color: transparent;
+  }
+  .combo-box__input-group:has(> .gaia-combo-clear) > .input {
+    padding-inline-end: var(--gaia-combo-input-clear-end);
+  }
+  .combo-box__trigger {
+    padding-inline-end: var(--gaia-combo-trigger-end);
+    color: var(--foreground);
+  }
+
+  /* ComboBoxInput's clear button: v2 showed it only on hover or focus. */
+  .combo-box__input-group:not(:hover, :focus-within) .gaia-combo-clear {
+    display: none;
   }
 
   /* inputVariants({ variant: "bare" }): v2 flat fields whose wrapper was made transparent, unpadded and ringless. */
@@ -237,6 +282,12 @@
   .select__trigger.gaia-input-translucent:hover {
     background-color: var(--gaia-field-translucent-hover);
     --input-bg-hover: var(--gaia-field-translucent-hover);
+  }
+
+  /* An open Select or Autocomplete: v2 lifted any filled trigger to zinc-700. */
+  .select[data-open="true"] .select__trigger:not(.gaia-input-transparent, .gaia-input-bare),
+  .combo-box[data-open="true"] .combo-box__input-group {
+    background-color: var(--gaia-field-active);
   }
 
   /* A danger menu item is red whether or not its text sits in a Label slot,
@@ -458,6 +509,14 @@
     width: var(--gaia-slider-sm-thumb-inner);
     height: var(--gaia-slider-sm-thumb-inner);
   }
+  /* v2's sm row is the thumb's height with the track centred in it, and its
+     marks sit 2px under that row in a 20px band (no gap for v3's empty label row). */
+  .slider.gaia-slider-sm {
+    row-gap: 0;
+  }
+  .slider.gaia-slider-sm[data-orientation="horizontal"] .slider__track {
+    margin-block: calc((var(--gaia-slider-sm-thumb) - var(--gaia-slider-sm-track)) / 2);
+  }
 
   /* Overlays: v2's radii (popover, select, dropdown and modal lg 14px, tooltip
      md 12px); v3 rounds them at 24-32px. */
@@ -472,7 +531,7 @@
     border-radius: var(--gaia-radius-md);
   }
 
-  /* List and menu items: v2's 34px row on an 8px radius (v3 is 40px on 16px);
+  /* List and menu items: v2's 32px row on an 8px radius (v3 is 36px on 16px);
      the selected check is GaiaListBoxItem's ListBox.ItemIndicator. */
   .list-box-item,
   .menu-item {
@@ -480,17 +539,111 @@
     border-radius: var(--gaia-radius-sm);
   }
 
-  /* Table: v2's rows, 8px by 12px cells with no row rules, and the selected
-     row on v2's default tint. */
+  /* Select and ComboBox lists: v2's 8px inset, rows 2px apart with 8px
+     padding and gap, a 12px check, and the focused row (the selected one on
+     open) on v2's zinc-700. */
+  .select__popover .list-box,
+  .combo-box__popover .list-box {
+    padding: var(--gaia-list-inset);
+  }
+  .list-box > * + * {
+    margin-top: var(--gaia-list-gap);
+  }
+  .list-box-item {
+    gap: var(--gaia-list-item-gap);
+    padding-inline: var(--gaia-list-item-padding-x);
+  }
+  .list-box-item:has(.list-box-item__indicator) {
+    padding-inline-end: calc(var(--gaia-list-item-padding-x) * 2 + var(--gaia-list-item-indicator));
+  }
+  .list-box-item__indicator,
+  .list-box-item__indicator [data-slot="list-box-item-indicator--checkmark"] {
+    width: var(--gaia-list-item-indicator);
+    height: var(--gaia-list-item-indicator);
+  }
+  .list-box-item[data-focused="true"] {
+    background-color: var(--gaia-field-active);
+  }
+
+  /* v2's Select and Autocomplete popovers: the trigger's width, at most 256px
+     of list (plus the inset) before it scrolls. */
+  .select__popover,
+  .combo-box__popover {
+    width: var(--trigger-width);
+  }
+  .select__popover .list-box,
+  .combo-box__popover .list-box {
+    max-height: var(--gaia-list-max-height);
+    overflow-y: auto;
+  }
+
+  /* Table: v2's rows, 8px by 12px unfilled cells with no row rules, and the
+     selected row on zinc-700 at 60%, rounded 8px at its ends. */
   .table__cell {
     padding: var(--gaia-table-cell-padding-y) var(--gaia-table-cell-padding-x);
     border-bottom-width: 0;
+    border-radius: 0;
+    background-color: transparent;
   }
   .table__row {
     border-bottom-width: 0;
   }
   .table__row[data-selected="true"] .table__cell {
-    background-color: var(--default-soft);
+    background-color: var(--gaia-table-row-selected);
+  }
+  .table__row[data-hovered="true"]:not([data-selected="true"]) .table__cell {
+    background-color: var(--gaia-table-row-hover);
+  }
+  .table__row .table__cell:first-child {
+    border-start-start-radius: var(--gaia-radius-sm);
+    border-end-start-radius: var(--gaia-radius-sm);
+  }
+  .table__row .table__cell:last-child {
+    border-start-end-radius: var(--gaia-radius-sm);
+    border-end-end-radius: var(--gaia-radius-sm);
+  }
+
+  /* Table header: v2's 40px zinc-800 strip, rounded 8px at its ends, in 12px
+     semibold with no column rules, 5px above the first row. */
+  .table__header {
+    border-bottom-width: 0;
+    background-color: transparent;
+  }
+  .table__header::after {
+    content: "";
+    display: table-row;
+    height: var(--gaia-table-header-gap);
+  }
+  .table__column {
+    height: var(--gaia-table-header-height);
+    padding: 0 var(--gaia-table-cell-padding-x);
+    background-color: var(--field-background);
+    font-weight: 600;
+  }
+  .table__column::after {
+    content: none;
+  }
+  .table__column:first-child {
+    border-start-start-radius: var(--gaia-radius-sm);
+    border-end-start-radius: var(--gaia-radius-sm);
+  }
+  .table__column:last-child {
+    border-start-end-radius: var(--gaia-radius-sm);
+    border-end-end-radius: var(--gaia-radius-sm);
+  }
+
+  /* tableVariants({ surface }): card is v2's default Table wrapper, a 16px
+     padded zinc-900 card; plain is v2's removed wrapper. */
+  .table-root.gaia-table-card {
+    padding: var(--gaia-table-card-padding);
+    border-radius: var(--gaia-radius-lg);
+    background-color: var(--color-zinc-900);
+    box-shadow: var(--gaia-table-card-shadow);
+  }
+  .table-root.gaia-table-plain {
+    padding: 0;
+    border-radius: 0;
+    background-color: transparent;
   }
 
   /* separatorVariants({ surface: "raised" }): v2's zinc-700/50 divider on a zinc-800 card. */
@@ -501,6 +654,10 @@
   /* Slider marks: v2 set them 6px further below the track. */
   .slider__marks {
     margin-top: var(--gaia-slider-marks-gap);
+  }
+  .slider.gaia-slider-sm .slider__marks {
+    margin-top: var(--gaia-slider-sm-marks-gap);
+    height: calc(var(--gaia-slider-sm-marks-band) - var(--gaia-slider-sm-marks-gap));
   }
 
   /* Modal inset: v2 kept 4px between dialog and viewport on mobile and 64px by
