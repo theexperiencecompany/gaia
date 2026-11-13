@@ -39,7 +39,6 @@ from app.constants.search import (
     CRAWL4AI_DEFAULT_MAX_BROWSERS,
     CRAWL4AI_MIN_MAX_BROWSERS,
 )
-from shared.py.voice import default_voice_agent_name
 from shared.py.wide_events import log
 
 load_dotenv()
@@ -511,11 +510,6 @@ class Settings(BrowserHostSettings):
     # agent on its boot-time GAIA_BACKEND_URL — set in multi-backend deployments
     # (one agent, many preview APIs).
     VOICE_AGENT_BACKEND_URL: str | None = None
-    # LiveKit agent every voice room is explicitly dispatched to; the worker
-    # registers under the same name (shared.py.voice).
-    VOICE_AGENT_NAME: str = Field(
-        default_factory=lambda data: default_voice_agent_name(data["ENV"])
-    )
 
     # ----------------------------------------------
     # Webhook Secrets & Security

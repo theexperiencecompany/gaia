@@ -22,6 +22,7 @@ from app.schemas.voice_schemas import VoiceListResponse, VoiceOption
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.settings import SettingsPreferencesChanged
+from shared.py.voice import DEVELOPMENT_VOICE_AGENT_NAME, PRODUCTION_VOICE_AGENT_NAME
 from tests.helpers import read_jwt
 
 VOICE_BASE = "/api/v1"
@@ -147,18 +148,30 @@ class TestGetVoiceToken:
 
     @patch("app.api.v1.endpoints.voice.get_user_voice", new_callable=AsyncMock)
     @pytest.mark.regression
-    async def test_token_dispatches_only_the_configured_agent(
-        self, mock_get_voice: AsyncMock, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    @pytest.mark.parametrize(
+        ("env", "agent_name"),
+        [
+            ("development", DEVELOPMENT_VOICE_AGENT_NAME),
+            ("production", PRODUCTION_VOICE_AGENT_NAME),
+        ],
+    )
+    async def test_token_dispatches_only_its_environments_agent(
+        self,
+        mock_get_voice: AsyncMock,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+        env: str,
+        agent_name: str,
     ):
         # Undispatched rooms were taken by another environment's worker on the shared LiveKit project.
         self._enable_livekit(monkeypatch)
-        monkeypatch.setattr(settings, "VOICE_AGENT_NAME", "gaia-voice-test")
+        monkeypatch.setattr(settings, "ENV", env)
         mock_get_voice.return_value = None
         resp = await client.get(VOICE_BASE + "/token")
         assert resp.status_code == 200
         claims = _decode_token(resp.json()["participantToken"])
         agents = claims["roomConfig"]["agents"]
-        assert [a["agentName"] for a in agents] == ["gaia-voice-test"]
+        assert [a["agentName"] for a in agents] == [agent_name]
 
     @patch("app.api.v1.endpoints.voice.get_user_voice", new_callable=AsyncMock)
     async def test_token_for_user_without_email_has_blank_participant_name(

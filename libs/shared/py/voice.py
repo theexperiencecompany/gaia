@@ -14,6 +14,6 @@ DEVELOPMENT_VOICE_AGENT_NAME: Final[str] = "gaia-voice-dev"
 _DEVELOPMENT_ENV: Final[str] = "development"
 
 
-def default_voice_agent_name(env: str) -> str:
-    """Return the agent name an environment uses unless VOICE_AGENT_NAME overrides it."""
+def voice_agent_name(env: str) -> str:
+    """Return the agent name an environment's voice rooms are dispatched to."""
     return DEVELOPMENT_VOICE_AGENT_NAME if env == _DEVELOPMENT_ENV else PRODUCTION_VOICE_AGENT_NAME
