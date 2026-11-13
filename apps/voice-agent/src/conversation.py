@@ -24,7 +24,6 @@ from src.constants import (
     CONVERSATION_ID_TOPIC,
     FOLLOW_RECONNECT_DELAY_S,
     FRONTEND_STREAM_TOPIC,
-    MAIN_RESPONSE_COMPLETE_KEY,
     RESPONSE_KEY,
     SSE_DATA_PREFIX,
     VOICE_SYSTEM_PROMPT,
@@ -184,8 +183,7 @@ class VoiceConversation:
             case _EntryFrame(entry=_ReplyEntry(kind="reply_settled", reply_id=reply_id)):
                 speech = self._speeches.get(reply_id)
                 if speech is not None and not speech.settled:
-                    await self._spoken(speech, speech.finish())
-                    await self.forward(json.dumps({MAIN_RESPONSE_COMPLETE_KEY: True}))
+                    self._spoken(speech, speech.finish())
             case _ReplyDelta(reply_id=str(reply_id), index=index, payload=payload):
                 await self._delta(reply_id, index, payload)
             case _ConversationUpdated(description=description):
@@ -198,15 +196,12 @@ class VoiceConversation:
         self._deltas_seen.add((reply_id, index))
         text = payload.get(RESPONSE_KEY)
         if isinstance(text, str):
-            await self._spoken(speech, speech.add(text))
-        else:
-            await self.forward(json.dumps(payload))
+            self._spoken(speech, speech.add(text))
 
-    async def _spoken(self, speech: ReplySpeech, flushed: Flush | None) -> None:
-        """Show what was flushed, and start speaking the reply with its first spoken chunk."""
+    def _spoken(self, speech: ReplySpeech, flushed: Flush | None) -> None:
+        """Start speaking the reply with its first spoken chunk; every device shows it from the events stream."""
         if flushed is None:
             return
-        await self.forward(json.dumps({RESPONSE_KEY: flushed.raw}))
         if flushed.spoken and speech.reply_id not in self._speaking:
             self._speak(speech)
 

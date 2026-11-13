@@ -16,14 +16,11 @@ def spoken_reply() -> ReplySpeech:
     return speech
 
 
-def test_each_sentence_is_flushed_once_with_its_markup_left_for_the_screen() -> None:
+def test_each_sentence_is_flushed_once_sanitised_for_speech() -> None:
     speech = ReplySpeech("r1")
     first = speech.add(FIRST)
     assert first is not None
-    assert (first.raw, first.spoken) == (
-        FIRST,
-        "Your flight to Berlin leaves at nine tomorrow morning.",
-    )
+    assert first.spoken == "Your flight to Berlin leaves at nine tomorrow morning."
     assert speech.add(" Short") is None
 
 

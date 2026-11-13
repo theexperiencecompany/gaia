@@ -26,7 +26,6 @@ FRONTEND_STREAM_TOPIC = "backend-stream-event"
 CONVERSATION_ID_TOPIC = "conversation-id"
 CONVERSATION_DESCRIPTION_TOPIC = "conversation-description"
 RESPONSE_KEY = "response"
-MAIN_RESPONSE_COMPLETE_KEY = "main_response_complete"
 # The events stream dropped (a deploy, a network blip): wait this long before following again.
 FOLLOW_RECONNECT_DELAY_S = 1.0
 
@@ -87,7 +86,6 @@ __all__ = [
     "SSE_DATA_PREFIX",
     "FRONTEND_STREAM_TOPIC",
     "RESPONSE_KEY",
-    "MAIN_RESPONSE_COMPLETE_KEY",
     "CONVERSATION_ID_TOPIC",
     "CONVERSATION_DESCRIPTION_TOPIC",
     "FOLLOW_RECONNECT_DELAY_S",
