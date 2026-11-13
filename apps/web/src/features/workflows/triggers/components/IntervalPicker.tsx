@@ -160,9 +160,7 @@ export function IntervalPicker({
             <Select.Popover className="min-w-fit">
               <ListBox>
                 {units.map((u) => (
-                  <GaiaListBoxItem key={u} id={u} textValue={u}>
-                    {u}
-                  </GaiaListBoxItem>
+                  <GaiaListBoxItem key={u} id={u} textValue={u} />
                 ))}
               </ListBox>
             </Select.Popover>
