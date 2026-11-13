@@ -698,7 +698,7 @@ class TestReclaimDeadLock:
     async def test_a_parked_runs_liveness_lasts_its_park(self, redis) -> None:
         await hold_run_alive(CONVERSATION, "s1:t1", 9000)
 
-        assert 8990 < await redis.ttl(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:s1:t1") <= 9000
+        assert 8990 < await redis.ttl(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:t1") <= 9000
 
     async def test_a_holder_kept_alive_keeps_its_lock_until_it_lets_go(self, redis) -> None:
         """Every holder, a run or a workflow's reservation, stays live only while it renews."""
@@ -707,7 +707,7 @@ class TestReclaimDeadLock:
         with patch.object(eq, "EXECUTOR_ALIVE_BEAT_SECONDS", 0):
             alive = await keep_alive(CONVERSATION, "s1:t1")
             assert alive.get_name() == "executor_alive_beat"
-            await redis.delete(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:s1:t1")
+            await redis.delete(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:t1")
             for _ in range(20):
                 await asyncio.sleep(0)
             assert await reclaim_dead_lock(CONVERSATION) is False
@@ -717,7 +717,7 @@ class TestReclaimDeadLock:
         # Its liveness lapses EXECUTOR_ALIVE_TTL after the last beat, and the lock that
         # beat renewed has aged as long by then.
         await redis.expire(BUSY_KEY, EXECUTOR_BUSY_TTL - EXECUTOR_ALIVE_TTL)
-        await redis.delete(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:s1:t1")
+        await redis.delete(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:t1")
         assert await reclaim_dead_lock(CONVERSATION) is True
 
 

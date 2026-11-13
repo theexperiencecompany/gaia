@@ -37,6 +37,7 @@ from app.agents.core.background import (
 from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_lock_value,
+    keep_alive,
     try_acquire_lock,
 )
 from app.agents.core.background.executor_runner import deliver_to_executor
@@ -1566,3 +1567,32 @@ async def test_a_reply_streaming_longer_than_the_claims_ttl_is_answered_once(
     assert await rig.answered() == [(ReplyOutcome.ANSWERED, ("m1",))]
     assert [reply.text for reply in await rig.of(Reply)] == [text]
     assert len(model.prompts) == 1
+
+
+@pytest.mark.service
+async def test_a_sweep_leaves_live_chat_work_alone_and_its_result_is_narrated(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("working on it", "your inbox is clean")
+    rig = await rig_for(model)
+    _during(model, 0, lambda: rig.start_work("t9"))
+    await rig.send("m1", "clean my inbox")
+    await rig.settle()
+    # The executor call_executor spawned from a chat turn: its lock carries the turn's stream id.
+    lock_value = build_lock_value("stream-1", "t9")
+    assert await try_acquire_lock(f"{EXECUTOR_BUSY_PREFIX}{rig.conversation_id}", lock_value)
+    alive = await keep_alive(rig.conversation_id, lock_value)
+    try:
+        await sweep_conversations()
+        await rig.settle()
+        assert await rig.of(WorkFinished) == []
+        await record_work_finished(
+            rig.conversation_id, rig.user_id, "t9", WorkOutcome.DONE, WorkReport("done")
+        )
+        await rig.settle()
+    finally:
+        alive.cancel()
+    assert [(f.task_id, f.outcome) for f in await rig.of(WorkFinished)] == [
+        ("t9", WorkOutcome.DONE)
+    ]
+    assert (await rig.of(Reply))[-1].text == "your inbox is clean"

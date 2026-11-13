@@ -85,8 +85,10 @@ async def record_work_finished(
     conversation_id: str, user_id: str, task_id: str, outcome: WorkOutcome, report: WorkReport
 ) -> None:
     """Append WorkFinished; its kick wakes the step, which narrates the result and its cards in the task's own reply."""
+    # A lost marker never shares the real result's id, so that result can never be dropped as its duplicate.
+    ending = "lost" if outcome is WorkOutcome.LOST else "finished"
     entry = WorkFinished(
-        id=f"work:{task_id}:finished",
+        id=f"work:{task_id}:{ending}",
         task_id=task_id,
         outcome=outcome,
         report=report.text,

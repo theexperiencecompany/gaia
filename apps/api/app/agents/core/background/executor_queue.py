@@ -201,7 +201,9 @@ async def get_lock_holder(conversation_id: str) -> str | None:
 
 
 def _alive_key(conversation_id: str, lock_value: str) -> str:
-    return f"{EXECUTOR_ALIVE_PREFIX}{conversation_id}:{lock_value}"
+    """Key a holder's liveness by its task id, so whoever knows only the task can ask whether it runs."""
+    task_id = parse_lock_value(lock_value)[1]
+    return f"{EXECUTOR_ALIVE_PREFIX}{conversation_id}:{task_id or lock_value}"
 
 
 async def hold_run_alive(
@@ -477,12 +479,15 @@ async def prepare_run_from_item(
 
 
 async def run_is_lost(conversation_id: str, task_id: str) -> bool:
-    """Return whether no live process runs task_id, a run dispatched with no stream id.
+    """Return whether no live process runs task_id, whatever stream id its run carries.
 
     A run's liveness outlasts its finalize, so a run that just ended is never lost.
     """
-    lock_value = build_lock_value(None, task_id)
-    if await redis_cache.client.exists(_alive_key(conversation_id, lock_value)):
+    if await redis_cache.client.exists(
+        _alive_key(conversation_id, build_lock_value(None, task_id))
+    ):
         return False
     holder = await get_lock_holder(conversation_id)
-    return holder != lock_value or await _holder_is_dead(conversation_id, holder)
+    if holder is None or parse_lock_value(holder)[1] != task_id:
+        return True
+    return await _holder_is_dead(conversation_id, holder)
