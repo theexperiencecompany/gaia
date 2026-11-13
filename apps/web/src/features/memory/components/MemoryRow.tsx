@@ -92,22 +92,24 @@ export function MemoryRow({
             </Chip>
           )}
           {memory.version > 1 && (
-            <Chip
-              size="sm"
-              variant="secondary"
+            <button
+              type="button"
               onClick={toggleHistory}
-              className="h-5 cursor-pointer"
+              aria-expanded={expanded}
+              className="cursor-pointer rounded-full"
             >
-              <Chip.Label
-                className={toneVariants({
-                  tone: "muted",
-                  className: "px-1.5 text-xs",
-                })}
-              >
-                v{memory.version}
-                {expanded ? " · hide history" : " · history"}
-              </Chip.Label>
-            </Chip>
+              <Chip size="sm" variant="secondary" className="h-5">
+                <Chip.Label
+                  className={toneVariants({
+                    tone: "muted",
+                    className: "px-1.5 text-xs",
+                  })}
+                >
+                  v{memory.version}
+                  {expanded ? " · hide history" : " · history"}
+                </Chip.Label>
+              </Chip>
+            </button>
           )}
         </div>
 
