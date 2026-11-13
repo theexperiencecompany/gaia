@@ -206,6 +206,24 @@ describe("HarnessAdapter — plain reply", () => {
       },
     ]);
   });
+
+  // Regression (live test): ids restarted at in1 every run, so a second run in the
+  // same conversation was deduplicated against the first and replayed its replies.
+  it("names each run's messages apart from every other run's", async () => {
+    const ids: (string | undefined)[] = [];
+    for (const _run of [1, 2]) {
+      const { adapter, recorder } = makeAdapter("telegram", { chunks: ["ok"] });
+      await adapter.simulateMessage("dev-user-1", "hi there");
+      await adapter.conversationsIdle();
+      ids.push(
+        recorder
+          .getEvents()
+          .find((e): e is InboundEvent => e.type === "inbound")?.messageId,
+      );
+    }
+    expect(ids[0]).toBeDefined();
+    expect(ids[0]).not.toEqual(ids[1]);
+  });
 });
 
 describe("HarnessAdapter — markdown fidelity via the real converter", () => {

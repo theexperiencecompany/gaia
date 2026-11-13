@@ -14,6 +14,7 @@
  * @module
  */
 
+import { randomUUID } from "node:crypto";
 import {
   type ActiveBotConversation,
   BaseBotAdapter,
@@ -59,6 +60,8 @@ export class HarnessAdapter extends BaseBotAdapter {
   private readonly transcript: TranscriptRecorder;
   private readonly adapterLogger: BotLogger;
   private nextMessageId = 1;
+  // Platform message ids are deduplicated per conversation, so each run names its own.
+  private readonly runId = randomUUID().slice(0, 8);
 
   protected override readonly consumesOutbound: boolean;
 
@@ -185,7 +188,7 @@ export class HarnessAdapter extends BaseBotAdapter {
     options: SimulateOptions = {},
   ): Promise<void> {
     const channelId = options.channelId ?? userId;
-    const messageId = `in${this.nextMessageId++}`;
+    const messageId = `in-${this.runId}-${this.nextMessageId++}`;
     this.transcript.record({
       type: "inbound",
       userId,

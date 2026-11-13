@@ -3,9 +3,13 @@
  * against hand-recorded transcripts and a fake adapter (no API).
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { HarnessAdapter } from "../../harness/src/adapter";
-import { deliverTurn, evaluateAssertion } from "../../harness/src/runner";
+import {
+  deliverTurn,
+  evaluateAssertion,
+  linkDevUser,
+} from "../../harness/src/runner";
 import { TranscriptRecorder } from "../../harness/src/transcript";
 import type { TranscriptEventInput } from "../../harness/src/transcript.types";
 
@@ -178,5 +182,26 @@ describe("deliverTurn", () => {
     await expect(deliverTurn(adapter, "u", { burst: [] })).rejects.toThrow(
       "at least one message",
     );
+  });
+});
+
+describe("linkDevUser", () => {
+  // Regression (live test): scenario users were seeded free, so every reply was the paywall.
+  it("seeds the scenario user with Pro, since every bot reply is paid-only", async () => {
+    const bodies: Record<string, unknown> = {};
+    const fetchStub = vi.fn(async (url: string, init: RequestInit) => {
+      bodies[new URL(url).pathname] = JSON.parse(String(init.body));
+      const reply = url.endsWith("/seed")
+        ? { platform_user_ids: { telegram: "dev-telegram-u1" } }
+        : { id: "u1", email: "s@gaia.local", name: "S" };
+      return new Response(JSON.stringify(reply), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchStub);
+    try {
+      await linkDevUser("http://api.test", "s@gaia.local", "telegram");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(bodies["/api/v1/dev/seed"]).toMatchObject({ pro: true });
   });
 });

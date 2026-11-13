@@ -88,6 +88,8 @@ export async function linkDevUser(
     {
       email,
       platform_links: [platform],
+      // Every bot reply is paid-only; a scenario user without Pro only ever sees the paywall.
+      pro: true,
     },
   );
   // The seeded id is the seed endpoint's contract — never re-derive its format.
