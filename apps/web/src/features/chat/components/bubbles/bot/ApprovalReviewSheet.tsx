@@ -12,17 +12,17 @@ import {
 import { ShieldIcon } from "@icons";
 import type {
   ApprovalDecision,
+  ApprovalEnd,
   ApprovalRequestData,
-  ApprovalStatus,
   BatchDecisionOutcome,
 } from "@shared/chat";
 import { formatApprovalAge } from "@shared/chat";
-import { flattenArgsPreview } from "@shared/utils";
+import { decidedEnd, flattenArgsPreview } from "@shared/utils";
 import { useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
 import {
   BATCH_OUTCOME_REASON,
-  resolveBatchOutcomeStatus,
+  resolveBatchOutcome,
 } from "@/features/chat/utils/batchOutcome";
 import { toast } from "@/lib/toast";
 
@@ -37,7 +37,7 @@ interface ApprovalReviewSheetProps {
   onClose: () => void;
   onSettled: (
     approvalId: string,
-    status: ApprovalStatus,
+    end: ApprovalEnd,
     feedback: string | null,
   ) => void;
 }
@@ -56,7 +56,7 @@ function settleBatchOutcome(
   if (outcome.resolved) {
     onSettled(
       outcome.approval_id,
-      made.decision === "approve" ? "approved" : "denied",
+      decidedEnd(made.decision),
       made.feedback.trim() || null,
     );
     removeDecision(outcome.approval_id);
@@ -65,10 +65,7 @@ function settleBatchOutcome(
   if (outcome.reason === BATCH_OUTCOME_REASON.NOT_FOUND) {
     onSettled(
       outcome.approval_id,
-      resolveBatchOutcomeStatus(
-        outcome.status,
-        made.decision === "approve" ? "approved" : "denied",
-      ),
+      resolveBatchOutcome(outcome, decidedEnd(made.decision)),
       made.feedback.trim() || null,
     );
     removeDecision(outcome.approval_id);

@@ -28,7 +28,7 @@ import {
 } from "../ApprovalResolveContext";
 import { ChatItemBoundary } from "../ChatItemBoundary";
 import { StoppedNote } from "../StoppedNote";
-import type { ApprovalOutcome } from "../SubagentRow";
+import type { ApprovalReceipt } from "../SubagentRow";
 import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread from "../UnifiedToolThread";
 import { getTypedData, renderTool, type ToolDataUnion } from "./ToolRenderers";
@@ -414,7 +414,7 @@ export default function TextBubble({
     tool_data?.forEach((entry) => {
       if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return;
       const data = entry.data as ApprovalRequestData | null;
-      if (data?.status === "pending" && data.tool_call_id) {
+      if (data && data.outcome == null && data.tool_call_id) {
         ids.add(data.tool_call_id);
       }
     });
@@ -424,13 +424,15 @@ export default function TextBubble({
   // Settled decisions, keyed the same way — the tool's row carries the outcome
   // as a chip, with feedback so it shows the receipt, not just "Approved".
   const { approvalOutcomeByToolCallId } = React.useMemo(() => {
-    const outcomes = new Map<string, ApprovalOutcome>();
+    const outcomes = new Map<string, ApprovalReceipt>();
     tool_data?.forEach((entry) => {
       if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return;
       const data = entry.data as ApprovalRequestData | null;
-      if (data?.tool_call_id && data.status !== "pending") {
+      if (data?.tool_call_id && data.outcome != null) {
         outcomes.set(data.tool_call_id, {
-          status: data.status,
+          outcome: data.outcome,
+          decider: data.decider ?? null,
+          action: data.action ?? null,
           feedback: data.feedback ?? null,
         });
       }

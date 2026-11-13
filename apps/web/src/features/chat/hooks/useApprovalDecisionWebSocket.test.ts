@@ -26,7 +26,7 @@ vi.mock("@/lib/db/chatDb", () => ({
 
 const card = (
   approval_id: string,
-  status: ApprovalRequestData["status"] = "pending",
+  outcome: ApprovalRequestData["outcome"] = null,
 ): TypedToolDataEntry => ({
   tool_name: "approval_request",
   tool_category: "hil",
@@ -38,7 +38,7 @@ const card = (
     integration_name: "gmail",
     summary: `Send ${approval_id}`,
     args_preview: {},
-    status,
+    outcome,
     feedback: null,
     auto_reason: null,
     timeout_seconds: 300,
@@ -97,24 +97,28 @@ describe("useApprovalDecisionWebSocket", () => {
       data: {
         conversation_id: "conv-1",
         approval_id: "ap_1",
-        status: "approved",
+        outcome: "approved",
         feedback: null,
         version: 1,
       },
     });
     const msgs = useChatStore.getState().messagesByConversation["conv-1"] ?? [];
     const entries = (msgs[0]?.tool_data ?? []) as {
-      data: { approval_id: string; status: string };
+      data: {
+        approval_id: string;
+        outcome: string | null;
+        action?: string | null;
+      };
     }[];
     expect(
-      entries.find((e) => e.data.approval_id === "ap_1")?.data.status,
+      entries.find((e) => e.data.approval_id === "ap_1")?.data.outcome,
     ).toBe("approved");
     expect(
-      entries.find((e) => e.data.approval_id === "ap_2")?.data.status,
-    ).toBe("pending");
+      entries.find((e) => e.data.approval_id === "ap_2")?.data.outcome,
+    ).toBeNull();
   });
 
-  it("raises revoked tombstones and ignores unknown ids and statuses", async () => {
+  it("raises withdrawn tombstones and ignores unknown ids and outcomes", async () => {
     const { renderHook } = await import("@testing-library/react");
     renderHook(() => useApprovalDecisionWebSocket());
     const h = handler();
@@ -123,7 +127,7 @@ describe("useApprovalDecisionWebSocket", () => {
       data: {
         conversation_id: "conv-1",
         approval_id: "ap_2",
-        status: "revoked",
+        outcome: "withdrawn",
         feedback: null,
         version: 2,
       },
@@ -133,7 +137,7 @@ describe("useApprovalDecisionWebSocket", () => {
       data: {
         conversation_id: "conv-1",
         approval_id: "ap_nope",
-        status: "approved",
+        outcome: "approved",
         feedback: null,
         version: 1,
       },
@@ -143,7 +147,7 @@ describe("useApprovalDecisionWebSocket", () => {
       data: {
         conversation_id: "conv-1",
         approval_id: "ap_1",
-        status: "executing",
+        outcome: "executing",
         feedback: null,
         version: 1,
       },
@@ -153,7 +157,8 @@ describe("useApprovalDecisionWebSocket", () => {
       data: {
         conversation_id: "conv-1",
         approval_id: "ap_3",
-        status: "executed",
+        outcome: "approved",
+        action: "executed",
         feedback: null,
         version: 2,
       },
@@ -163,26 +168,31 @@ describe("useApprovalDecisionWebSocket", () => {
       data: {
         conversation_id: "conv-1",
         approval_id: "ap_4",
-        status: "unknown",
+        outcome: "approved",
+        action: "unknown",
         feedback: null,
         version: 3,
       },
     });
     const msgs = useChatStore.getState().messagesByConversation["conv-1"] ?? [];
     const entries = (msgs[0]?.tool_data ?? []) as {
-      data: { approval_id: string; status: string };
+      data: {
+        approval_id: string;
+        outcome: string | null;
+        action?: string | null;
+      };
     }[];
     expect(
-      entries.find((e) => e.data.approval_id === "ap_2")?.data.status,
-    ).toBe("revoked");
+      entries.find((e) => e.data.approval_id === "ap_2")?.data.outcome,
+    ).toBe("withdrawn");
     expect(
-      entries.find((e) => e.data.approval_id === "ap_1")?.data.status,
-    ).toBe("pending");
+      entries.find((e) => e.data.approval_id === "ap_1")?.data.outcome,
+    ).toBeNull();
     expect(
-      entries.find((e) => e.data.approval_id === "ap_3")?.data.status,
+      entries.find((e) => e.data.approval_id === "ap_3")?.data.action,
     ).toBe("executed");
     expect(
-      entries.find((e) => e.data.approval_id === "ap_4")?.data.status,
+      entries.find((e) => e.data.approval_id === "ap_4")?.data.action,
     ).toBe("unknown");
   });
 });

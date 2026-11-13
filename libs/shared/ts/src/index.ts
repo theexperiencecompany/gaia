@@ -86,9 +86,10 @@ export type {
   ApiToolData,
   ApprovalDecision,
   ApprovalDecisionPayload,
+  ApprovalEnd,
+  ApprovalLabels,
   ApprovalRequestData,
   ApprovalScope,
-  ApprovalStatus,
   ArtifactData,
   BatchApprovalDecisionPayload,
   BatchApprovalDecisionResponse,
@@ -174,6 +175,7 @@ export type {
 export {
   APPROVAL_REQUEST_TOOL_NAME,
   applyStreamEvent,
+  approvalLabel,
   approvalOutcomeLabel,
   createTurnAccumulator,
   DEFAULT_HIL_MODE,
@@ -400,7 +402,9 @@ export type {
 export {
   CONNECT_ACTION_LABEL,
   connectionPromptState,
+  decidedEnd,
   dispatchOpenUIAction,
+  endAfterDecision,
   extractUrls,
   flattenArgsPreview,
   formatCompactNumber,
@@ -423,7 +427,6 @@ export {
   getTriggerLabel,
   INTEGRATION_STATE_ORDER,
   integrationConnectionState,
-  isKnownApprovalStatus,
   isOverdue,
   isTokenExpired,
   NEW_MESSAGE_BREAK_TOKEN,
@@ -444,8 +447,6 @@ export {
   settleApprovalToolData,
   shouldRefreshToken,
   splitMessageByBreaks,
-  statusAfterDecision,
-  TERMINAL_APPROVAL_STATUSES,
   truncateText,
 } from "./utils";
 export type {

@@ -121,7 +121,8 @@ export const approvalDecided = (approvalId: string): Entry => ({
   kind: "approval_decided",
   id: `decided-${approvalId}`,
   approval_id: approvalId,
-  decision: "approve",
+  outcome: "approved",
+  decider: "user",
 });
 
 export const stopRequested = (

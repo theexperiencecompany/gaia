@@ -25,7 +25,7 @@ const card = (id: string, integration: string): ApprovalRequestData => ({
   integration_name: integration,
   summary: `Send ${id}`,
   args_preview: { to: "b@x" },
-  status: "pending",
+  outcome: null,
   feedback: null,
   timeout_seconds: 300,
   age_seconds: 60,
@@ -124,21 +124,21 @@ describe("ApprovalReviewSheet", () => {
     const { ApprovalResolveProvider } = await import(
       "@/features/chat/components/bubbles/bot/ApprovalResolveContext"
     );
-    const settled: { id: string; status: string }[] = [];
+    const settled: { id: string; outcome: string | null }[] = [];
     vi.mocked(chatApi.postApprovalBatchDecision).mockResolvedValue({
       outcomes: [
         {
           approval_id: "a",
           resolved: false,
           reason: "not_found",
-          status: "denied",
+          outcome: "denied",
         },
       ],
     });
     render(
       <ApprovalResolveProvider
         value={(approvalId, resolved) =>
-          settled.push({ id: approvalId, status: resolved.status })
+          settled.push({ id: approvalId, outcome: resolved.outcome })
         }
       >
         <ApprovalRequestGroup
@@ -157,7 +157,7 @@ describe("ApprovalReviewSheet", () => {
     fireEvent.click(screen.getByRole("button", { name: /submit \(1\)/i }));
     await vi.waitFor(() => expect(settled).toHaveLength(1));
     // Tapped approve, server says denied — the real verdict wins.
-    expect(settled[0]).toEqual({ id: "a", status: "denied" });
+    expect(settled[0]).toEqual({ id: "a", outcome: "denied" });
   });
 
   it("settles the committed part of a partial batch and keeps the failed part for retry", async () => {

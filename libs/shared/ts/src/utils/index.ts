@@ -1,10 +1,9 @@
 export type { ApprovalSettlement } from "./approvalSettle";
 export {
-  isKnownApprovalStatus,
+  decidedEnd,
+  endAfterDecision,
   parseApprovalDecidedEvent,
   settleApprovalToolData,
-  statusAfterDecision,
-  TERMINAL_APPROVAL_STATUSES,
 } from "./approvalSettle";
 export type { ArgsPreviewRow, FlattenedArgs } from "./argsPreview";
 export { flattenArgsPreview } from "./argsPreview";

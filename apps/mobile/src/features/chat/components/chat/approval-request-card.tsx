@@ -1,10 +1,11 @@
 import type {
   ApprovalDecision,
+  ApprovalLabels,
   ApprovalRequestData,
   ApprovalScope,
-  ApprovalStatus,
 } from "@gaia/shared/chat";
-import { flattenArgsPreview, statusAfterDecision } from "@gaia/shared/utils";
+import { approvalLabel } from "@gaia/shared/chat";
+import { endAfterDecision, flattenArgsPreview } from "@gaia/shared/utils";
 import * as Haptics from "expo-haptics";
 import { Button, Chip } from "heroui-native";
 import { useRef, useState } from "react";
@@ -27,23 +28,23 @@ interface ApprovalRequestCardProps {
   data: ApprovalRequestData;
 }
 
-/**
- * Icons per resolved status; labels/colors live in APPROVAL_RESOLVED_META
- * (single source of truth, covers all nine ledger states).
- */
-const RESOLVED_ICONS: Record<
-  Exclude<ApprovalStatus, "pending">,
-  typeof Cancel01Icon
-> = {
-  auto_approved: CheckmarkCircle02Icon,
-  approved: CheckmarkCircle02Icon,
-  denied: Cancel01Icon,
-  timeout: Clock01Icon,
-  abandoned: Cancel01Icon,
-  executed: CheckmarkCircle02Icon,
-  failed: Cancel01Icon,
-  unknown: AlertCircleIcon,
-  revoked: Cancel01Icon,
+/** Icons for every way an approval ends; labels and colors live in APPROVAL_RESOLVED_META. */
+const RESOLVED_ICONS: ApprovalLabels<typeof Cancel01Icon> = {
+  pending: AlertCircleIcon,
+  autoApproved: CheckmarkCircle02Icon,
+  outcome: {
+    approved: CheckmarkCircle02Icon,
+    denied: Cancel01Icon,
+    expired: Clock01Icon,
+    cancelled: Cancel01Icon,
+    withdrawn: Cancel01Icon,
+  },
+  action: {
+    executing: CheckmarkCircle02Icon,
+    executed: CheckmarkCircle02Icon,
+    failed: Cancel01Icon,
+    unknown: AlertCircleIcon,
+  },
 };
 
 function ArgsPreview({ args }: { args: Record<string, unknown> }) {
@@ -111,10 +112,10 @@ export function ApprovalRequestCard({
   // best-effort and may never arrive. A real frame outranks it (executed/failed).
   const [settled, setSettled] = useState<Pick<
     ApprovalRequestData,
-    "status" | "feedback"
+    "outcome" | "decider" | "action" | "feedback"
   > | null>(null);
   const data: ApprovalRequestData =
-    incoming.status === "pending" && settled
+    incoming.outcome == null && settled
       ? { ...incoming, ...settled }
       : incoming;
   const [denyOpen, setDenyOpen] = useState(false);
@@ -140,8 +141,8 @@ export function ApprovalRequestCard({
           ? undefined
           : (data.ledger_version ?? undefined),
       });
-      const status = statusAfterDecision(decision, outcome);
-      if (status === null) {
+      const end = endAfterDecision(decision, outcome);
+      if (end === null) {
         versionConflict.current = true;
         setSubmitting(null);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -152,7 +153,7 @@ export function ApprovalRequestCard({
         return;
       }
       setSettled({
-        status,
+        ...end,
         feedback:
           outcome.success && decision === "deny"
             ? feedback.trim() || null
@@ -168,7 +169,7 @@ export function ApprovalRequestCard({
     }
   };
 
-  const isAuto = data.status === "auto_approved";
+  const isAuto = data.outcome === "approved" && data.decider === "auto";
 
   const shell = (children: React.ReactNode) => (
     <View
@@ -200,9 +201,9 @@ export function ApprovalRequestCard({
     </View>
   );
 
-  if (data.status !== "pending") {
-    const meta = APPROVAL_RESOLVED_META[data.status];
-    const icon = RESOLVED_ICONS[data.status];
+  const meta = approvalLabel(data, APPROVAL_RESOLVED_META);
+  if (meta !== null) {
+    const icon = approvalLabel(data, RESOLVED_ICONS);
     return shell(
       <View style={{ marginTop: 12, gap: 6 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  decidedEnd,
+  endAfterDecision,
   parseApprovalDecidedEvent,
   settleApprovalToolData,
-  statusAfterDecision,
-  TERMINAL_APPROVAL_STATUSES,
 } from "./approvalSettle";
 
 const frame = (data: Record<string, unknown>) => ({
@@ -11,9 +11,9 @@ const frame = (data: Record<string, unknown>) => ({
   data,
 });
 
-const approval = (approvalId: string, status = "pending") => ({
+const approval = (approvalId: string) => ({
   tool_name: "approval_request",
-  data: { approval_id: approvalId, status, feedback: null },
+  data: { approval_id: approvalId, outcome: null, feedback: null },
 });
 
 describe("parseApprovalDecidedEvent", () => {
@@ -23,7 +23,9 @@ describe("parseApprovalDecidedEvent", () => {
         frame({
           conversation_id: "c1",
           approval_id: "ap_1",
-          status: "approved",
+          outcome: "approved",
+          decider: "user",
+          action: null,
           feedback: "",
           version: 3,
         }),
@@ -31,9 +33,24 @@ describe("parseApprovalDecidedEvent", () => {
     ).toEqual({
       conversation_id: "c1",
       approval_id: "ap_1",
-      status: "approved",
+      outcome: "approved",
+      decider: "user",
+      action: null,
       feedback: null,
     });
+  });
+
+  it("carries an approved action's result beside the approval", () => {
+    expect(
+      parseApprovalDecidedEvent(
+        frame({
+          conversation_id: "c1",
+          approval_id: "ap_1",
+          outcome: "approved",
+          action: "failed",
+        }),
+      ),
+    ).toMatchObject({ outcome: "approved", action: "failed" });
   });
 
   it("rejects a frame without the data envelope", () => {
@@ -42,54 +59,68 @@ describe("parseApprovalDecidedEvent", () => {
         type: "hil_approval_decided",
         conversation_id: "c1",
         approval_id: "ap_1",
-        status: "approved",
+        outcome: "approved",
       }),
     ).toBeNull();
   });
 
-  it("treats every ledger-terminal state as terminal", () => {
-    expect([...TERMINAL_APPROVAL_STATUSES].sort()).toEqual(
-      ["approved", "denied", "executed", "failed", "revoked", "unknown"].sort(),
-    );
-  });
+  it.each(["withdrawn", "cancelled", "expired", "denied"])(
+    "settles a card %s",
+    (outcome) => {
+      expect(
+        parseApprovalDecidedEvent(
+          frame({ conversation_id: "c1", approval_id: "ap_1", outcome }),
+        ),
+      ).toMatchObject({ outcome, decider: null, action: null });
+    },
+  );
 
-  it("ignores a non-terminal status", () => {
-    expect(
-      parseApprovalDecidedEvent(
-        frame({
-          conversation_id: "c1",
-          approval_id: "ap_1",
-          status: "pending",
-        }),
-      ),
-    ).toBeNull();
+  it("ignores a frame naming no outcome, or a word from the old vocabulary", () => {
+    for (const outcome of [undefined, null, "pending", "revoked", "timeout"]) {
+      expect(
+        parseApprovalDecidedEvent(
+          frame({ conversation_id: "c1", approval_id: "ap_1", outcome }),
+        ),
+      ).toBeNull();
+    }
   });
 });
 
-describe("statusAfterDecision", () => {
+describe("endAfterDecision", () => {
   it("settles to the user's own verdict when the commit landed", () => {
-    expect(statusAfterDecision("approve", { success: true })).toBe("approved");
-    expect(statusAfterDecision("deny", { success: true })).toBe("denied");
+    expect(endAfterDecision("approve", { success: true })).toEqual(
+      decidedEnd("approve"),
+    );
+    expect(endAfterDecision("deny", { success: true })).toEqual({
+      outcome: "denied",
+      decider: "user",
+      action: null,
+    });
   });
 
-  it("settles to the verdict another device already committed", () => {
+  it("settles to what another device already committed, with its action", () => {
     expect(
-      statusAfterDecision("approve", { success: false, status: "denied" }),
-    ).toBe("denied");
+      endAfterDecision("approve", { success: false, outcome: "denied" }),
+    ).toEqual({
+      outcome: "denied",
+      decider: null,
+      action: null,
+    });
+    expect(
+      endAfterDecision("deny", {
+        success: false,
+        outcome: "approved",
+        action: "unknown",
+      }),
+    ).toEqual({ outcome: "approved", decider: null, action: "unknown" });
   });
 
-  it("asks for a retry when the refusal names no settled verdict", () => {
+  it("asks for a retry when the refusal names no outcome", () => {
     expect(
-      statusAfterDecision("approve", { success: false, reason: "not_found" }),
+      endAfterDecision("approve", { success: false, reason: "not_found" }),
     ).toBeNull();
     expect(
-      statusAfterDecision("approve", { success: false, status: "pending" }),
-    ).toBeNull();
-    expect(
-      statusAfterDecision("approve", { success: false, status: "unknown" }),
-    ).toBeNull();
-    expect(
-      statusAfterDecision("approve", { success: false, status: "bogus" }),
+      endAfterDecision("approve", { success: false, outcome: null }),
     ).toBeNull();
   });
 });
@@ -101,11 +132,21 @@ describe("settleApprovalToolData", () => {
     const sibling = approval("ap_2");
     const { entries, changed } = settleApprovalToolData(
       [other, target, sibling],
-      { approval_id: "ap_1", status: "revoked", feedback: null },
+      {
+        approval_id: "ap_1",
+        outcome: "approved",
+        decider: "user",
+        action: "failed",
+        feedback: null,
+      },
     );
     expect(changed).toBe(true);
     expect(entries?.[0]).toBe(other);
-    expect(entries?.[1]?.data).toMatchObject({ status: "revoked" });
+    expect(entries?.[1]?.data).toMatchObject({
+      outcome: "approved",
+      decider: "user",
+      action: "failed",
+    });
     expect(entries?.[2]).toBe(sibling);
   });
 
@@ -113,7 +154,7 @@ describe("settleApprovalToolData", () => {
     const input = [approval("ap_2")];
     const result = settleApprovalToolData(input, {
       approval_id: "ap_1",
-      status: "approved",
+      outcome: "approved",
       feedback: null,
     });
     expect(result).toEqual({ entries: input, changed: false });

@@ -9,12 +9,12 @@ import { Input } from "@heroui/input";
 import { MoreHorizontalIcon } from "@icons";
 import type {
   ApprovalDecision,
+  ApprovalEnd,
   ApprovalRequestData,
   ApprovalScope,
-  ApprovalStatus,
 } from "@shared/chat";
 import { formatApprovalAge, RECONFIRM_AGE_SECONDS } from "@shared/chat";
-import { flattenArgsPreview, statusAfterDecision } from "@shared/utils";
+import { endAfterDecision, flattenArgsPreview } from "@shared/utils";
 import { useMemo, useRef, useState } from "react";
 import { ShieldAlertIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
@@ -23,7 +23,7 @@ import { toast } from "@/lib/toast";
 
 interface ApprovalRequestSectionProps {
   data: ApprovalRequestData;
-  onDecided: (status: ApprovalStatus, feedback: string | null) => void;
+  onDecided: (end: ApprovalEnd, feedback: string | null) => void;
   /** A batch decision ("Approve all"/"Decline all") is in flight — lock this card
    * so a per-card click can't send a second, conflicting decision for the same id. */
   disabled?: boolean;
@@ -102,9 +102,9 @@ export default function ApprovalRequestSection({
           : (data.ledger_version ?? undefined),
       });
       // Settle locally: the resolved frame (websocket broadcast or reload) flips
-      // the card to the real outcome — executed, failed, unknown. Reaching the
+      // the card to the action's result — executed, failed, unknown. Reaching the
       // catch means the submit genuinely failed.
-      const settled = statusAfterDecision(decision, outcome);
+      const settled = endAfterDecision(decision, outcome);
       if (settled === null) {
         // Stale version: drop it so the next tap hits the CAS directly.
         versionConflict.current = true;
@@ -131,7 +131,7 @@ export default function ApprovalRequestSection({
     void submit("approve");
   };
 
-  if (data.status !== "pending") return null;
+  if (data.outcome != null) return null;
 
   if (phase === "reconfirm") {
     return (

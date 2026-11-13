@@ -395,7 +395,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     const byId = new Map<string, ApprovalRequestData>();
     for (const item of raw) {
       const prev = byId.get(item.approval_id);
-      if (!prev || prev.status === "pending" || item.status !== "pending") {
+      if (!prev || prev.outcome == null || item.outcome != null) {
         byId.set(item.approval_id, item);
       }
     }
