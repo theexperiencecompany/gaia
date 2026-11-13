@@ -79,9 +79,8 @@ spurious `isPending` could still exist where a custom prop was named `isLoading`
 
 ```bash
 cd ~/Projects/gaia.heroui-v3
-node tools/heroui-migration/visual/compare.mjs --a v2 --b v3
+(cd tools/heroui-migration && pnpm review after <v3-ref>)   # see README section 3a
 node tools/heroui-migration/bundle.mjs --compare v2 v3
-open tools/heroui-migration/visual-report.html
 open tools/heroui-migration/bundle-report.html
 ```
 
