@@ -228,66 +228,27 @@ class TestListSummaries:
         ]
 
 
-class TestLiveApprovalFlag:
-    async def test_marking_a_sourceless_run_stamps_background_and_the_flag(self, repo):
+class TestBackgroundSource:
+    async def test_marking_a_sourceless_run_stamps_background_and_hides_it(self, repo):
         doc = _doc()
         await repo.create(doc)
 
-        assert await repo.mark_background_with_live_approval(
-            doc.conversation_id, user_id=doc.user_id
-        )
+        assert await repo.mark_background(doc.conversation_id, user_id=doc.user_id)
 
         fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
         assert fetched is not None
-        assert fetched.has_live_approval is True
         assert fetched.source == ConversationSource.BACKGROUND
+        assert await repo.list_active_summaries(doc.user_id, skip=0, limit=10) == []
 
     async def test_marking_never_overwrites_a_real_channel(self, repo):
         doc = _doc(source=ConversationSource.WEB)
         await repo.create(doc)
 
-        await repo.mark_background_with_live_approval(doc.conversation_id, user_id=doc.user_id)
+        assert not await repo.mark_background(doc.conversation_id, user_id=doc.user_id)
 
         fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
         assert fetched is not None
         assert fetched.source == ConversationSource.WEB
-        assert fetched.has_live_approval is True
-
-    async def test_marked_background_run_surfaces_in_the_sidebar(self, repo):
-        doc = _doc()
-        await repo.create(doc)
-
-        await repo.mark_background_with_live_approval(doc.conversation_id, user_id=doc.user_id)
-
-        active = await repo.list_active_summaries(doc.user_id, skip=0, limit=10)
-        assert [s.conversation_id for s in active] == [doc.conversation_id]
-
-    async def test_marking_touches_only_the_named_conversation(self, repo):
-        user = _uid()
-        target, sibling = _doc(user_id=user), _doc(user_id=user)
-        await repo.create(target)
-        await repo.create(sibling)
-
-        await repo.mark_background_with_live_approval(target.conversation_id, user_id=user)
-
-        untouched = await repo.get(sibling.conversation_id, user_id=user)
-        assert untouched is not None
-        assert untouched.has_live_approval is False
-        assert untouched.source is None
-
-    async def test_marking_is_refused_for_another_user(self, repo):
-        doc = _doc()
-        await repo.create(doc)
-
-        marked = await repo.mark_background_with_live_approval(
-            doc.conversation_id, user_id="attacker"
-        )
-
-        assert marked is False
-        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert fetched is not None
-        assert fetched.has_live_approval is False
-        assert fetched.source is None
 
     async def test_marking_stamps_only_the_callers_row_of_a_shared_id(self, repo):
         shared = _cid()
@@ -295,58 +256,14 @@ class TestLiveApprovalFlag:
         await repo.create(theirs)
         await repo.create(mine)
 
-        await repo.mark_background_with_live_approval(shared, user_id=mine.user_id)
-        await repo.refresh_live_approval_flag(shared, user_id=mine.user_id, live=False)
+        await repo.mark_background(shared, user_id=mine.user_id)
 
         other = await repo.get(shared, user_id=theirs.user_id)
         assert other is not None
         assert other.source is None
-        assert other.has_live_approval is False
 
     async def test_marking_a_missing_conversation_reports_false(self, repo):
-        assert await repo.mark_background_with_live_approval(_cid(), user_id=_uid()) is False
-
-    async def test_refresh_rewrites_the_flag_both_ways(self, repo):
-        doc = _doc()
-        await repo.create(doc)
-
-        assert await repo.refresh_live_approval_flag(
-            doc.conversation_id, user_id=doc.user_id, live=True
-        )
-        raised = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert await repo.refresh_live_approval_flag(
-            doc.conversation_id, user_id=doc.user_id, live=False
-        )
-        lowered = await repo.get(doc.conversation_id, user_id=doc.user_id)
-
-        assert raised is not None and raised.has_live_approval is True
-        assert lowered is not None and lowered.has_live_approval is False
-
-    async def test_refresh_touches_only_the_named_conversation(self, repo):
-        user = _uid()
-        target, sibling = _doc(user_id=user), _doc(user_id=user)
-        await repo.create(target)
-        await repo.create(sibling)
-
-        await repo.refresh_live_approval_flag(target.conversation_id, user_id=user, live=True)
-
-        untouched = await repo.get(sibling.conversation_id, user_id=user)
-        assert untouched is not None and untouched.has_live_approval is False
-
-    async def test_refresh_is_refused_for_another_user(self, repo):
-        doc = _doc()
-        await repo.create(doc)
-
-        refreshed = await repo.refresh_live_approval_flag(
-            doc.conversation_id, user_id="attacker", live=True
-        )
-
-        assert refreshed is False
-        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert fetched is not None and fetched.has_live_approval is False
-
-    async def test_refresh_of_a_missing_conversation_reports_false(self, repo):
-        assert await repo.refresh_live_approval_flag(_cid(), user_id=_uid(), live=True) is False
+        assert await repo.mark_background(_cid(), user_id=_uid()) is False
 
 
 class _CachedConversationRepository(ConversationRepository):
@@ -361,31 +278,15 @@ class TestInPlaceWritesUnderACachePolicy:
         return _CachedConversationRepository()
 
     async def test_marking_evicts_the_cached_conversation(self, cached_repo):
-        # A real channel skips the source stamp, so the flag write's eviction stands alone.
-        doc = _doc(source=ConversationSource.WEB)
-        await cached_repo.create(doc)
-        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is not None
-
-        await cached_repo.mark_background_with_live_approval(
-            doc.conversation_id, user_id=doc.user_id
-        )
-
-        fetched = await cached_repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert fetched is not None
-        assert fetched.has_live_approval is True
-
-    async def test_refreshing_evicts_the_cached_conversation(self, cached_repo):
         doc = _doc()
         await cached_repo.create(doc)
         assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is not None
 
-        await cached_repo.refresh_live_approval_flag(
-            doc.conversation_id, user_id=doc.user_id, live=True
-        )
+        await cached_repo.mark_background(doc.conversation_id, user_id=doc.user_id)
 
         fetched = await cached_repo.get(doc.conversation_id, user_id=doc.user_id)
         assert fetched is not None
-        assert fetched.has_live_approval is True
+        assert fetched.source == ConversationSource.BACKGROUND
 
     async def test_extending_a_subagent_group_evicts_the_cached_conversation(self, cached_repo):
         doc = _doc()

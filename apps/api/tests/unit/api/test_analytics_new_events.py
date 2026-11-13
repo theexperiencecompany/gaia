@@ -686,7 +686,6 @@ class TestLedgerApprovalEvents:
         with (
             patch(f"{ledger}.approval_ledger_repository", new=repo),
             patch(f"{ledger}.publish_ledger_decision", new=AsyncMock()),
-            patch(f"{ledger}.sync_conversation_approval_flag", new=AsyncMock()),
             patch(f"{ledger}._deliver_verdict", new=AsyncMock()),
             patch(f"{ledger}.record_owner_deny", new=AsyncMock()),
             patch(f"{ledger}.reconcile_conversation_ledger", new=AsyncMock()),

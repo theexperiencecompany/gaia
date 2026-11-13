@@ -480,92 +480,42 @@ class TestBatchSyncConversations:
         assert result.conversations == []
         mock_repo.find_updated_since.assert_not_called()
 
-    async def test_reports_active_stream_of_an_up_to_date_conversation(self, mock_repo, test_user):
-        """A reloading client holding current history is sent no row, yet must still learn its turn is live."""
-        mock_repo.find_updated_since.return_value = []
-        mock_repo.owned_ids.return_value = {"conv_abc"}
-        resumable = AsyncMock(return_value="stream-1")
-        with patch.object(
-            conversation_service.stream_manager, "get_resumable_stream_id", new=resumable
-        ):
-            request = BatchSyncRequest(
-                conversations=[
-                    ConversationSyncItem(
-                        conversation_id="conv_abc", last_updated="2026-01-01T00:00:00+00:00"
-                    )
-                ]
-            )
-            result = await batch_sync_conversations(request, test_user)
-
-        assert result.conversations == []
-        assert result.active_streams == {"conv_abc": "stream-1"}
-        resumable.assert_awaited_once_with(USER_ID, "conv_abc")
-
-    async def test_returns_rows_and_active_streams(self, mock_repo, test_user):
+    async def test_returns_the_rows_without_internal_ids(self, mock_repo, test_user):
         mock_repo.find_updated_since.return_value = [_document(description="Updated Chat")]
         mock_repo.owned_ids.return_value = {"conv_abc"}
-        with patch.object(
-            conversation_service.stream_manager,
-            "get_resumable_stream_id",
-            new=AsyncMock(return_value="stream-1"),
-        ):
-            request = BatchSyncRequest(
-                conversations=[ConversationSyncItem(conversation_id="conv_abc")]
-            )
-            result = await batch_sync_conversations(request, test_user)
+        request = BatchSyncRequest(conversations=[ConversationSyncItem(conversation_id="conv_abc")])
+        result = await batch_sync_conversations(request, test_user)
 
         assert len(result.conversations) == 1
         row = result.conversations[0]
         assert row.conversation_id == "conv_abc"
-        assert result.active_streams == {"conv_abc": "stream-1"}
         # The internal user_id/_id must not leak into a serialized sync row.
         serialized = row.model_dump()
         assert "user_id" not in serialized and "_id" not in serialized
 
     async def test_flagged_row_reaches_the_client(self, mock_repo, test_user):
         """The sidebar dot reads batch-sync rows: a dropped flag here is a missing dot no frontend mapping can recover."""
-        mock_repo.find_updated_since = AsyncMock(return_value=[_document(has_live_approval=True)])
-        with patch.object(
-            conversation_service.stream_manager,
-            "get_resumable_stream_id",
-            new=AsyncMock(return_value=None),
-        ):
-            request = BatchSyncRequest(
-                conversations=[ConversationSyncItem(conversation_id="conv_abc")]
-            )
-            result = await batch_sync_conversations(request, test_user)
+        mock_repo.find_updated_since = AsyncMock(return_value=[_document(awaiting_approval=True)])
+        request = BatchSyncRequest(conversations=[ConversationSyncItem(conversation_id="conv_abc")])
+        result = await batch_sync_conversations(request, test_user)
 
         (row,) = result.conversations
-        assert row.has_live_approval is True
+        assert row.awaiting_approval is True
 
     async def test_unflagged_row_reads_unset(self, mock_repo, test_user):
         mock_repo.find_updated_since = AsyncMock(return_value=[_document()])
-        with patch.object(
-            conversation_service.stream_manager,
-            "get_resumable_stream_id",
-            new=AsyncMock(return_value=None),
-        ):
-            request = BatchSyncRequest(
-                conversations=[ConversationSyncItem(conversation_id="conv_abc")]
-            )
-            result = await batch_sync_conversations(request, test_user)
+        request = BatchSyncRequest(conversations=[ConversationSyncItem(conversation_id="conv_abc")])
+        result = await batch_sync_conversations(request, test_user)
 
-        assert result.conversations[0].has_live_approval in (None, False)
+        assert result.conversations[0].awaiting_approval is False
 
     async def test_a_todos_chat_tells_the_client_which_todo_it_belongs_to(
         self, mock_repo, test_user
     ):
         """A client that opened a todo's chat keeps it in its own store; this is how it keeps it out of the list."""
         mock_repo.find_updated_since = AsyncMock(return_value=[_document(todo_id="todo-1")])
-        with patch.object(
-            conversation_service.stream_manager,
-            "get_resumable_stream_id",
-            new=AsyncMock(return_value=None),
-        ):
-            request = BatchSyncRequest(
-                conversations=[ConversationSyncItem(conversation_id="conv_abc")]
-            )
-            result = await batch_sync_conversations(request, test_user)
+        request = BatchSyncRequest(conversations=[ConversationSyncItem(conversation_id="conv_abc")])
+        result = await batch_sync_conversations(request, test_user)
 
         assert result.conversations[0].todo_id == "todo-1"
 

@@ -34,7 +34,7 @@ describe("syncing a conversation GAIA reacted in", () => {
         },
       ],
       artifacts: [],
-      has_live_approval: null,
+      awaiting_approval: false,
       todo_id: null,
       source: null,
       starred: null,

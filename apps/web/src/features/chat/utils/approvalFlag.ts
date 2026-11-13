@@ -2,22 +2,22 @@ import type { ConversationSummary } from "@shared/api/generated";
 
 /**
  * The one field sync compares. Typed off the generated `ConversationSummary`
- * (which carries `has_live_approval`), optional so cached rows that predate
- * the field keep compiling — they read as no live approval until refetched.
+ * (which carries `awaiting_approval`), optional so cached rows that predate
+ * the field keep compiling — they read as awaiting nothing until refetched.
  */
-type ApprovalFlagRow = Partial<Pick<ConversationSummary, "has_live_approval">>;
+type ApprovalFlagRow = Partial<Pick<ConversationSummary, "awaiting_approval">>;
 
 export type { ApprovalFlagRow };
 
 /**
- * Reads the backend's `has_live_approval` off an API conversation row.
+ * Reads the backend's `awaiting_approval` off an API conversation row.
  *
  * Strict `=== true` so no truthy garbage ever lights the approval dot.
  */
-export function apiRowHasLiveApproval(
+export function apiRowAwaitsApproval(
   row: ApprovalFlagRow | null | undefined,
 ): boolean {
-  return row?.has_live_approval === true;
+  return row?.awaiting_approval === true;
 }
 
 /**
@@ -32,5 +32,5 @@ export function isApprovalFlagStale(
   localHasFlag: boolean | undefined,
   remoteRow: ApprovalFlagRow | null | undefined,
 ): boolean {
-  return apiRowHasLiveApproval(remoteRow) !== (localHasFlag ?? false);
+  return apiRowAwaitsApproval(remoteRow) !== (localHasFlag ?? false);
 }

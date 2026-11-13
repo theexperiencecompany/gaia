@@ -11,7 +11,7 @@ const toConversationRow = (conv: IConversation, messageCount: number) => ({
   is_system_generated: conv.isSystemGenerated,
   system_purpose: conv.systemPurpose,
   is_unread: conv.isUnread,
-  has_live_approval: conv.hasLiveApproval ?? false,
+  awaiting_approval: conv.awaitingApproval ?? false,
   todo_id: conv.todoId ?? null,
   user_id: conv.userId,
   created_at: conv.createdAt.toISOString(),

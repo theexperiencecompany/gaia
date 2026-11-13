@@ -81,7 +81,6 @@ async def test_an_approved_tool_streams_its_card_on_the_run_that_redeems_it() ->
     with (
         patch.object(ledger_decide, "approval_ledger_repository", new=repo),
         patch.object(ledger_decide, "_settle_terminal", new=AsyncMock()),
-        patch.object(ledger_decide, "sync_conversation_approval_flag", new=AsyncMock()),
         patch.object(
             dispatch_module,
             "resolve_tool",

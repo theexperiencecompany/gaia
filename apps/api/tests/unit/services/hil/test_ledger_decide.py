@@ -360,66 +360,6 @@ class TestDecisionSubmittedEvent:
 
 @pytest.mark.unit
 class TestConversationFlagSync:
-    async def test_decide_refreshes_the_sidebar_flag(self) -> None:
-        from app.services.hil import ledger_decide
-        from app.services.hil.ledger_decide import decide_ledger
-
-        repo = _repo(_row())
-        with (
-            patch.object(ledger_decide, "approval_ledger_repository", new=repo),
-            patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
-            patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
-            patch.object(ledger_decide, "capture"),
-            patch.object(ledger_decide, "sync_conversation_approval_flag", new=AsyncMock()) as sync,
-        ):
-            await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", v=3, via="card")
-
-        sync.assert_awaited_once_with("conv-1", USER_ID)
-
-    async def test_revoke_refreshes_the_sidebar_flag(self) -> None:
-        from app.services.hil import ledger_decide
-        from app.services.hil.ledger_decide import revoke_ticket
-
-        repo = _repo(_row())
-        repo.transition = AsyncMock(return_value=True)
-        with (
-            patch.object(ledger_decide, "approval_ledger_repository", new=repo),
-            patch.object(ledger_decide, "publish_ledger_revocation", new=AsyncMock()),
-            patch.object(ledger_decide, "capture"),
-            patch.object(ledger_decide, "sync_conversation_approval_flag", new=AsyncMock()) as sync,
-        ):
-            await revoke_ticket(
-                "ap_abc", user_id=USER_ID, conversation_id="conv-1", caller="executor_conv-1"
-            )
-
-        sync.assert_awaited_once_with("conv-1", USER_ID)
-
-    async def test_refused_revoke_syncs_nothing(self) -> None:
-        """A revoke that changed nothing must not touch the flag — the row's state (and any flag it implies) is exactly as it was."""
-        from app.services.hil import ledger_decide
-        from app.services.hil.ledger_decide import revoke_ticket
-        from app.services.hil.resolution import ApprovalRequestForbiddenError
-
-        repo = _repo(_row())
-        with (
-            patch.object(ledger_decide, "approval_ledger_repository", new=repo),
-            patch.object(ledger_decide, "publish_ledger_revocation", new=AsyncMock()),
-            patch.object(ledger_decide, "capture"),
-            patch.object(ledger_decide, "sync_conversation_approval_flag", new=AsyncMock()) as sync,
-            pytest.raises(ApprovalRequestForbiddenError),
-        ):
-            await revoke_ticket(
-                "ap_abc",
-                user_id="intruder",
-                conversation_id="conv-1",
-                caller="executor_conv-1",
-            )
-
-        sync.assert_not_called()
-
-
-@pytest.mark.unit
-class TestDecideHardening:
     async def test_empty_owner_never_matches_any_user(self) -> None:
         from app.services.hil.ledger_decide import decide_ledger
         from app.services.hil.resolution import ApprovalRequestForbiddenError
@@ -573,23 +513,6 @@ class TestRedeemExecution:
         assert result.ok is False
         assert result.state == LS.UNKNOWN
         assert "never auto-retried" in result.detail
-
-    async def test_redeem_terminal_syncs_the_sidebar_flag(self) -> None:
-        """A settled ticket must not leave its sidebar row behind."""
-        from app.services.hil import ledger_decide
-        from app.services.hil.ledger_decide import redeem_approved
-
-        ok_result = MagicMock(ok=True, output="sent", error=None)
-        repo = self._redeem_repo()
-        with (
-            patch.object(ledger_decide, "approval_ledger_repository", new=repo),
-            patch.object(ledger_decide, "dispatch_tool", new=AsyncMock(return_value=ok_result)),
-            patch.object(ledger_decide, "sync_conversation_approval_flag", new=AsyncMock()) as sync,
-        ):
-            result = await redeem_approved("ap_abc", **self._redeem_kwargs())
-
-        assert result.state.value == "executed"
-        sync.assert_awaited_once_with("conv-1", USER_ID)
 
     async def test_redeem_failed_transition_still_returns_state(self) -> None:
         from app.models.hil_models import LedgerState as LS
@@ -1398,7 +1321,6 @@ class LedgerSeams:
     log: MagicMock
     publish_entry: AsyncMock
     settle_frame: MagicMock
-    sync_flag: AsyncMock
     persist: AsyncMock
     broadcast: AsyncMock
     inbox: MagicMock
@@ -1435,7 +1357,6 @@ def seams() -> Iterator[LedgerSeams]:
         patch(f"{MODULE}.log") as log,
         patch(f"{MODULE}._publish_entry", new=AsyncMock()) as publish_entry,
         patch(f"{MODULE}.settle_session_approval_frame") as settle_frame,
-        patch(f"{MODULE}.sync_conversation_approval_flag", new=AsyncMock()) as sync_flag,
         patch(f"{MODULE}.conversation_repository", new=conversations),
         patch(f"{MODULE}.websocket_manager", new=websocket),
         patch(f"{MODULE}.ExecutorInbox", new=inbox),
@@ -1453,7 +1374,6 @@ def seams() -> Iterator[LedgerSeams]:
             log=log,
             publish_entry=publish_entry,
             settle_frame=settle_frame,
-            sync_flag=sync_flag,
             persist=conversations.set_message_approval_status,
             broadcast=websocket.broadcast_to_user,
             inbox=inbox,
@@ -1981,7 +1901,6 @@ class TestRedeemOutcomes:
         assert _warned(seams.log.error)[
             f"{LogTag.HIL} Ticket redeem raised; reconciled as UNKNOWN, never retried"
         ] == {"approval_id": "ap_1", "error_type": "RuntimeError"}
-        seams.sync_flag.assert_awaited_once_with("conv-1", USER_ID)
 
     async def test_a_provider_timeout_is_unknown_never_retried(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc(state=LedgerState.APPROVED)
@@ -2108,7 +2027,6 @@ class TestCancelLedgerApprovalsSweep:
             UserId(USER_ID),
             HilRevoked(approval_id="ap_1", ledger_version=8, revoker="cancelled-run"),
         )
-        seams.sync_flag.assert_awaited_once_with("conv-1", USER_ID)
 
 
 @pytest.mark.unit
@@ -2140,7 +2058,6 @@ class TestReconcileStalled:
                 AgentTag.HIL_DECISION,
             )
         ]
-        seams.sync_flag.assert_awaited_once_with("conv-1", THIRD_USER_ID)
 
 
 @pytest.mark.unit
@@ -2157,7 +2074,6 @@ class TestTheTicketReachesARunWhateverHeldTheConversation:
 
         with (
             patch.object(eq, "StreamManager", AsyncMock()),
-            patch.object(eq, "websocket_manager", AsyncMock()),
             patch.object(er, "_spawn_detached_run") as spawn,
             patch.object(er, "record_work_carried", AsyncMock(return_value=True)),
         ):

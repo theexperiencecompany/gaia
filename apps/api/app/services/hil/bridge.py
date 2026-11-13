@@ -198,9 +198,8 @@ async def publish_ledger_request(
     session = get_session(stream_id)
     held = live and session is not None and session.kind is RunKind.LIVE
     if owner_run_type and owner_id:
-        # Background owner parked here: surface its conversation in the
-        # sidebar while the approval lives (hidden otherwise).
-        await conversation_repository.mark_background_with_live_approval(
+        # A background owner's conversation is listed only while its work awaits approval.
+        await conversation_repository.mark_background(
             approval.conversation_id, user_id=approval.user_id
         )
     if not held:
@@ -214,29 +213,6 @@ async def publish_ledger_request(
         return
     frame = {"tool_data": entry.model_dump(), "_held_approval": True}
     session.tool_events.append(frame)
-
-
-async def sync_conversation_approval_flag(conversation_id: str, user_id: str) -> None:
-    """Rewrite one conversation's sidebar flag from its pending ledger rows.
-
-    Called wherever a row leaves the pending set (decide, revoke, cancel,
-    reconcile): the flag follows the ledger, never leads it. Pending-only, since
-    the flag tracks "needs the user" and a decided approval needs nothing.
-    Best-effort — a stale flag only mislists a conversation, never misdecides.
-    """
-    try:
-        rows = await approval_ledger_repository.list_open(conversation_id)
-        live = any(row.user_id == user_id and row.state is LedgerState.PENDING for row in rows)
-        await conversation_repository.refresh_live_approval_flag(
-            conversation_id, user_id=user_id, live=live
-        )
-    except Exception as e:
-        log.warning(
-            f"{LogTag.HIL} approval-flag sync failed",
-            conversation_id=conversation_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
 
 
 async def publish_decision(

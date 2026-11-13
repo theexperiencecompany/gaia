@@ -33,6 +33,7 @@ from app.constants.chat import (
 from app.db.repositories.base import UserScopedRepository
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversation_entries import (
+    AWAITING_APPROVAL,
     CONTENT_HASH_FIELD,
     DROP_EMBEDDED_STAGE,
     EMBEDDED_STATE_STAGE,
@@ -41,6 +42,7 @@ from app.db.repositories.conversation_entries import (
     MESSAGES_ONLY,
     OUTBOX_FIELD,
     REVISION_FIELD,
+    STATE_FIELD,
     UNMIGRATED_HEADS,
     EntryWindow,
     Head,
@@ -111,7 +113,7 @@ _SUMMARY_PROJECTION: dict[str, object] = {
     "system_purpose": 1,
     "is_unread": 1,
     "source": 1,
-    "has_live_approval": 1,
+    "awaiting_approval": AWAITING_APPROVAL,
     "createdAt": 1,
     "updatedAt": 1,
 }
@@ -265,26 +267,12 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return matched > 0
 
-    async def mark_background_with_live_approval(
-        self, conversation_id: str, *, user_id: str
-    ) -> bool:
-        """Flag a background run's conversation while it holds a live approval.
+    async def mark_background(self, conversation_id: str, *, user_id: str) -> bool:
+        """Stamp a background run's conversation with source BACKGROUND, only when it has no source.
 
-        Stamps source BACKGROUND only when unset (never overwrites a real
-        channel), and raises the sidebar flag. No-op when the conversation
-        does not exist yet — the later persist carries no source either way,
-        and the next register/publish for the same owner retries the stamp.
+        Never overwrites a real channel. False when the conversation does not exist yet.
         """
-        matched = await self._apply_raw_update_unfetched(
-            {"conversation_id": conversation_id},
-            {"$set": {"has_live_approval": True}},
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
-        )
-        if matched:
-            # pragma: no mutate start — scope/doc_id repeat the eviction the write above just
-            # made, so no read can observe them; mutmut cannot pragma a single argument.
+        return (
             await self._apply_raw_update_unfetched(
                 {"conversation_id": conversation_id, "source": {"$exists": False}},
                 {"$set": {"source": ConversationSource.BACKGROUND.value}},
@@ -292,25 +280,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 doc_id=conversation_id,
                 extra_filter={"user_id": user_id},
             )
-            # pragma: no mutate end
-        return matched > 0
-
-    async def refresh_live_approval_flag(
-        self, conversation_id: str, *, user_id: str, live: bool
-    ) -> bool:
-        """Rewrite the sidebar flag from a fresh live-rows read (ledger side).
-
-        Plain setter by design: the caller (bridge sync helper) owns the
-        ledger read, this owns the conversation write — one collection each.
-        """
-        matched = await self._apply_raw_update_unfetched(
-            {"conversation_id": conversation_id},
-            {"$set": {"has_live_approval": live}},
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
+            > 0
         )
-        return matched > 0
 
     # ---- the entry log: append, flush, read ----
 
@@ -1155,7 +1126,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return {"source": {"$nin": _BOT_SOURCE_VALUES}, "todo_id": None}
 
     def _active_filter(self, user_id: str) -> dict[str, object]:
-        # Background runs stay out of the sidebar unless one holds a live approval
+        # Background runs stay out of the sidebar unless their work awaits the user's approval
         # (its card is the only way to reach it). Sourceless legacy rows match $ne
         # and stay visible; {starred: null} matches a null AND a missing starred.
         return {
@@ -1170,7 +1141,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 {
                     "$or": [
                         {"source": {"$ne": ConversationSource.BACKGROUND.value}},
-                        {"has_live_approval": True},
+                        {f"{STATE_FIELD}.work.pending_approvals.0": {"$exists": True}},
                     ]
                 },
             ],

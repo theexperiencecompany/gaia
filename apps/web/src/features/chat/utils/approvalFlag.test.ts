@@ -2,32 +2,31 @@ import { describe, expect, it } from "vitest";
 
 import {
   type ApprovalFlagRow,
-  apiRowHasLiveApproval,
+  apiRowAwaitsApproval,
   isApprovalFlagStale,
 } from "./approvalFlag";
 
-describe("apiRowHasLiveApproval", () => {
+describe("apiRowAwaitsApproval", () => {
   it("lights only on an explicit true", () => {
-    expect(apiRowHasLiveApproval({ has_live_approval: true })).toBe(true);
+    expect(apiRowAwaitsApproval({ awaiting_approval: true })).toBe(true);
   });
 
   it("stays dark on false, missing, null, and undefined rows", () => {
-    expect(apiRowHasLiveApproval({ has_live_approval: false })).toBe(false);
-    expect(apiRowHasLiveApproval({})).toBe(false);
-    expect(apiRowHasLiveApproval({ has_live_approval: null })).toBe(false);
-    expect(apiRowHasLiveApproval(null)).toBe(false);
-    expect(apiRowHasLiveApproval(undefined)).toBe(false);
+    expect(apiRowAwaitsApproval({ awaiting_approval: false })).toBe(false);
+    expect(apiRowAwaitsApproval({})).toBe(false);
+    expect(apiRowAwaitsApproval(null)).toBe(false);
+    expect(apiRowAwaitsApproval(undefined)).toBe(false);
   });
 
   it("stays dark on runtime garbage — strict true survives untyped JSON", () => {
     expect(
-      apiRowHasLiveApproval({
-        has_live_approval: 1,
+      apiRowAwaitsApproval({
+        awaiting_approval: 1,
       } as unknown as ApprovalFlagRow),
     ).toBe(false);
     expect(
-      apiRowHasLiveApproval({
-        has_live_approval: "yes",
+      apiRowAwaitsApproval({
+        awaiting_approval: "yes",
       } as unknown as ApprovalFlagRow),
     ).toBe(false);
   });
@@ -35,19 +34,19 @@ describe("apiRowHasLiveApproval", () => {
 
 describe("isApprovalFlagStale", () => {
   it("refetches when the server gained a flag the cache lacks", () => {
-    expect(isApprovalFlagStale(undefined, { has_live_approval: true })).toBe(
+    expect(isApprovalFlagStale(undefined, { awaiting_approval: true })).toBe(
       true,
     );
-    expect(isApprovalFlagStale(false, { has_live_approval: true })).toBe(true);
+    expect(isApprovalFlagStale(false, { awaiting_approval: true })).toBe(true);
   });
 
   it("refetches when the server cleared a flag the cache holds", () => {
-    expect(isApprovalFlagStale(true, { has_live_approval: false })).toBe(true);
+    expect(isApprovalFlagStale(true, { awaiting_approval: false })).toBe(true);
     expect(isApprovalFlagStale(true, {})).toBe(true);
   });
 
   it("leaves matching rows alone", () => {
-    expect(isApprovalFlagStale(true, { has_live_approval: true })).toBe(false);
+    expect(isApprovalFlagStale(true, { awaiting_approval: true })).toBe(false);
     expect(isApprovalFlagStale(false, {})).toBe(false);
     expect(isApprovalFlagStale(undefined, {})).toBe(false);
   });

@@ -39,7 +39,6 @@ from app.services.hil.bridge import (
     recall_declined_call,
     remember_declined_call,
     settle_session_approval_frame,
-    sync_conversation_approval_flag,
 )
 from app.services.hil.utils import GatedApproval, GatedCall
 from app.utils.general_utils import ELLIPSIS
@@ -740,12 +739,12 @@ class TestCardShownEvent:
         assert capture.call_args.args[1].background is True
 
 
-class TestBackgroundFlagSync:
+class TestBackgroundSourceStamp:
     async def test_publish_with_owner_marks_the_conversation(self, bridge: dict) -> None:
         with (
             patch(f"{MODULE}.capture"),
             patch(
-                f"{MODULE}.conversation_repository.mark_background_with_live_approval",
+                f"{MODULE}.conversation_repository.mark_background",
                 new=AsyncMock(return_value=True),
             ) as mark,
         ):
@@ -765,11 +764,11 @@ class TestBackgroundFlagSync:
 
         mark.assert_awaited_once_with(CONVERSATION_ID, user_id=USER_ID)
 
-    async def test_publish_without_owner_touches_no_flag(self, bridge: dict) -> None:
+    async def test_publish_without_owner_stamps_nothing(self, bridge: dict) -> None:
         with (
             patch(f"{MODULE}.capture"),
             patch(
-                f"{MODULE}.conversation_repository.mark_background_with_live_approval",
+                f"{MODULE}.conversation_repository.mark_background",
                 new=AsyncMock(),
             ) as mark,
         ):
@@ -786,84 +785,6 @@ class TestBackgroundFlagSync:
             )
 
         mark.assert_not_called()
-
-    async def test_sync_sets_flag_from_live_rows(self) -> None:
-        from app.models.hil_models import LedgerState
-        from app.services.hil.bridge import sync_conversation_approval_flag
-
-        live = MagicMock()
-        live.user_id = USER_ID
-        live.state = LedgerState.PENDING
-        dead = MagicMock()
-        dead.user_id = USER_ID
-        dead.state = LedgerState.DENIED
-        foreign = MagicMock()
-        foreign.user_id = "someone-else"
-        foreign.state = LedgerState.PENDING
-        with (
-            patch(
-                f"{MODULE}.approval_ledger_repository.list_open",
-                new=AsyncMock(return_value=[live, dead, foreign]),
-            ),
-            patch(
-                f"{MODULE}.conversation_repository.refresh_live_approval_flag",
-                new=AsyncMock(),
-            ) as refresh,
-        ):
-            await sync_conversation_approval_flag(CONVERSATION_ID, USER_ID)
-
-        refresh.assert_awaited_once_with(CONVERSATION_ID, user_id=USER_ID, live=True)
-
-    async def test_sync_clears_flag_when_nothing_live(self) -> None:
-        from app.services.hil.bridge import sync_conversation_approval_flag
-
-        with (
-            patch(
-                f"{MODULE}.approval_ledger_repository.list_open",
-                new=AsyncMock(return_value=[]),
-            ),
-            patch(
-                f"{MODULE}.conversation_repository.refresh_live_approval_flag",
-                new=AsyncMock(),
-            ) as refresh,
-        ):
-            await sync_conversation_approval_flag(CONVERSATION_ID, USER_ID)
-
-        refresh.assert_awaited_once_with(CONVERSATION_ID, user_id=USER_ID, live=False)
-
-    async def test_approved_ticket_keeps_no_sidebar_row(self) -> None:
-        """Decided means nothing left to tap: the sidebar flag is PENDING-only."""
-        from app.models.hil_models import LedgerState
-        from app.services.hil.bridge import sync_conversation_approval_flag
-
-        approved = MagicMock()
-        approved.user_id = USER_ID
-        approved.state = LedgerState.APPROVED
-        with (
-            patch(
-                f"{MODULE}.approval_ledger_repository.list_open",
-                new=AsyncMock(return_value=[approved]),
-            ),
-            patch(
-                f"{MODULE}.conversation_repository.refresh_live_approval_flag",
-                new=AsyncMock(),
-            ) as refresh,
-        ):
-            await sync_conversation_approval_flag(CONVERSATION_ID, USER_ID)
-
-        refresh.assert_awaited_once_with(CONVERSATION_ID, user_id=USER_ID, live=False)
-
-    async def test_sync_failure_never_breaks_the_gate(self) -> None:
-        from app.services.hil.bridge import sync_conversation_approval_flag
-
-        with (
-            patch(
-                f"{MODULE}.approval_ledger_repository.list_open",
-                new=AsyncMock(side_effect=RuntimeError("mongo down")),
-            ),
-            patch(f"{MODULE}.log"),
-        ):
-            await sync_conversation_approval_flag(CONVERSATION_ID, USER_ID)
 
 
 async def publish_ledger(**overrides: Any) -> None:
@@ -915,53 +836,11 @@ class TestLedgerCardPublish:
     async def test_half_an_owner_never_marks_the_conversation(
         self, bridge: dict, owner: dict[str, str]
     ) -> None:
-        bridge["conversations"].mark_background_with_live_approval = AsyncMock()
+        bridge["conversations"].mark_background = AsyncMock()
 
         await publish_ledger(**owner)
 
-        bridge["conversations"].mark_background_with_live_approval.assert_not_awaited()
-
-
-class TestApprovalFlagSyncScope:
-    async def test_only_the_users_own_pending_rows_raise_the_flag(self) -> None:
-        foreign = ApprovalLedgerDocument(
-            approval_id="ap_x",
-            conversation_id=CONVERSATION_ID,
-            user_id="someone-else",
-            fingerprint="fp",
-            tool_name="send_email",
-        )
-        with (
-            patch(
-                f"{MODULE}.approval_ledger_repository.list_open",
-                new=AsyncMock(return_value=[foreign]),
-            ) as list_open,
-            patch(
-                f"{MODULE}.conversation_repository.refresh_live_approval_flag", new=AsyncMock()
-            ) as refresh,
-        ):
-            await sync_conversation_approval_flag(CONVERSATION_ID, USER_ID)
-
-        list_open.assert_awaited_once_with(CONVERSATION_ID)
-        refresh.assert_awaited_once_with(CONVERSATION_ID, user_id=USER_ID, live=False)
-
-    async def test_a_failed_sync_is_reported_on_the_wide_event(self) -> None:
-        with (
-            patch(
-                f"{MODULE}.approval_ledger_repository.list_open",
-                new=AsyncMock(side_effect=RuntimeError("mongo down")),
-            ),
-            patch(f"{MODULE}.log") as log,
-        ):
-            await sync_conversation_approval_flag(CONVERSATION_ID, USER_ID)
-
-        log.warning.assert_called_once()
-        assert "approval-flag sync failed" in log.warning.call_args.args[0]
-        assert log.warning.call_args.kwargs == {
-            "conversation_id": CONVERSATION_ID,
-            "error": "mongo down",
-            "error_type": "RuntimeError",
-        }
+        bridge["conversations"].mark_background.assert_not_awaited()
 
 
 class TestDeclineMemoryLegacyRecord:

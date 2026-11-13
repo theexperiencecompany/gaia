@@ -30,9 +30,9 @@ export interface IConversation {
   systemPurpose?: SystemPurpose | null;
   isUnread?: boolean;
   source?: string; // ConversationSource from backend (web, telegram, discord, etc.)
-  // Set while a background run holds a live approval here: the sidebar shows
-  // the conversation for its card, and the row lights the approval dot.
-  hasLiveApproval?: boolean;
+  // Live work here awaits the user's approval: the sidebar lists the
+  // conversation for its card, and the row lights the approval dot.
+  awaitingApproval?: boolean;
   // The tracked todo this is the chat of: opened from that todo, never listed.
   todoId?: string | null;
   // Conversation-level artifact registry: the single source of truth for this

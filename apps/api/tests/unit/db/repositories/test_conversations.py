@@ -16,9 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.db.repositories.cache import CachePolicy
-from app.db.repositories.conversation_entries import MESSAGES_ONLY
 from app.db.repositories.conversations import ConversationRepository
-from app.models.chat_models import MessageModel, ToolDataEntry
+from app.models.chat_models import ToolDataEntry
 
 CONVERSATION_ID = "conv-1"
 USER_ID = "user-1"
@@ -98,79 +97,31 @@ class TestBackgroundVisibility:
             is False
         )
 
-    async def test_background_run_surfaces_while_it_holds_approval(
-        self, repo: ConversationRepository
-    ) -> None:
-        assert (
-            self._matches(
-                repo,
-                {
-                    "user_id": USER_ID,
-                    "source": "background",
-                    "starred": False,
-                    "has_live_approval": True,
-                },
-            )
-            is True
-        )
-
     async def test_sourceless_legacy_row_stays_visible(self, repo: ConversationRepository) -> None:
         assert self._matches(repo, {"user_id": USER_ID, "starred": False}) is True
 
     async def test_null_starred_reads_as_unstarred(self, repo: ConversationRepository) -> None:
-        """Several write paths store explicit null: a null-starred background row with a live approval must surface, not vanish."""
-        assert (
-            self._matches(
-                repo,
-                {
-                    "user_id": USER_ID,
-                    "source": "background",
-                    "starred": None,
-                    "has_live_approval": True,
-                },
-            )
-            is True
-        )
-        assert (
-            self._matches(
-                repo,
-                {"user_id": USER_ID, "source": "background", "starred": None},
-            )
-            is False
-        )
+        """Several write paths store explicit null: a null-starred web row must stay listed."""
+        assert self._matches(repo, {"user_id": USER_ID, "source": "web", "starred": None}) is True
 
     async def test_web_conversation_ignores_the_flag(self, repo: ConversationRepository) -> None:
         assert self._matches(repo, {"user_id": USER_ID, "source": "web", "starred": False}) is True
 
-    async def test_mark_raises_flag_and_stamps_source_only_when_missing(
+    async def test_mark_stamps_the_background_source_only_when_missing(
         self, repo: ConversationRepository, collection: MagicMock
     ) -> None:
-        assert (
-            await repo.mark_background_with_live_approval(CONVERSATION_ID, user_id=USER_ID) is True
-        )
+        assert await repo.mark_background(CONVERSATION_ID, user_id=USER_ID) is True
 
-        first, second = collection.update_one.await_args_list
-        assert first.args[1] == {"$set": {"has_live_approval": True}}
-        assert second.args[0]["source"] == {"$exists": False}
-        assert second.args[1] == {"$set": {"source": "background"}}
+        [call] = collection.update_one.await_args_list
+        assert call.args[0]["source"] == {"$exists": False}
+        assert call.args[1] == {"$set": {"source": "background"}}
 
-    async def test_mark_on_missing_conversation_touches_nothing(
+    async def test_mark_on_missing_conversation_reports_false(
         self, repo: ConversationRepository, collection: MagicMock
     ) -> None:
         _matched(collection, 0)
 
-        assert (
-            await repo.mark_background_with_live_approval(CONVERSATION_ID, user_id=USER_ID) is False
-        )
-        collection.update_one.assert_awaited_once()
-
-    async def test_refresh_rewrites_the_flag(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        await repo.refresh_live_approval_flag(CONVERSATION_ID, user_id=USER_ID, live=False)
-
-        flt, update, _kwargs = _update_call(collection)
-        assert update == {"$set": {"has_live_approval": False}}
+        assert await repo.mark_background(CONVERSATION_ID, user_id=USER_ID) is False
 
 
 class TestOwnerIds:
@@ -186,33 +137,3 @@ class TestOwnerIds:
         args = collection.distinct.await_args.args
         assert args[0] == "user_id"
         assert args[1] == {"conversation_id": CONVERSATION_ID}
-
-
-class TestFillMessage:
-    async def test_the_opened_entry_takes_the_saved_reply_and_drops_its_in_progress_mark(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        reply = MessageModel(
-            type="bot", response="Done.", message_id="bot-1", tool_data=TOOL_DATA_ENTRIES
-        )
-
-        assert await repo.fill_message(CONVERSATION_ID, user_id=USER_ID, message=reply) is True
-
-        query, pipeline, _ = _update_call(collection)
-        assert isinstance(pipeline, list)
-        assert query == {
-            "user_id": USER_ID,
-            "conversation_id": CONVERSATION_ID,
-            "id": "bot-1",
-            **MESSAGES_ONLY,
-        }
-        [set_stage, unset_stage] = pipeline
-        assert set_stage["$set"]["response"] == {"$literal": "Done."}
-        cards = {
-            "$concatArrays": [{"$literal": TOOL_DATA_ENTRIES}, {"$ifNull": ["$tool_data", []]}]
-        }
-        assert set_stage["$set"]["tool_data"] == {
-            "$cond": [{"$eq": [cards, []]}, "$$REMOVE", cards]
-        }
-        assert "in_progress" in unset_stage["$unset"]
-        assert "pinned" not in unset_stage["$unset"]

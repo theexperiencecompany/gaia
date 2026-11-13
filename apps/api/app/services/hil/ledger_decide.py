@@ -52,7 +52,6 @@ from app.services.hil.bridge import (
     _approval_entry,
     _publish_entry,
     settle_session_approval_frame,
-    sync_conversation_approval_flag,
 )
 from app.services.hil.policy import asks_every_time, resolved_tool_key
 from app.services.hil.preferences import set_tool_override
@@ -224,7 +223,6 @@ async def _commit_decision(
         # Best-effort and claim-guarded — never fails the tap.
         await resume_owner_after_approval(row)
     await publish_ledger_decision(row, target, feedback=feedback)
-    await sync_conversation_approval_flag(row.conversation_id, row.user_id)
     if target is LedgerState.DENIED:
         # Denials schedule nothing, but the agent still needs the verdict and a
         # wake alone only reaches a running run — deliver, so an idle
@@ -440,7 +438,6 @@ async def redeem_approved(
             error_type=type(e).__name__,
         )
         await _settle_terminal(row, LedgerState.UNKNOWN)
-        await sync_conversation_approval_flag(row.conversation_id, row.user_id)
         return RedeemResult(
             ok=False, approval_id=approval_id, state=LedgerState.UNKNOWN, detail=cause
         )
@@ -483,7 +480,6 @@ async def redeem_approved(
             detail=f"Already {actual}; report that instead of retrying.",
         )
     await _settle_terminal(row, state)
-    await sync_conversation_approval_flag(row.conversation_id, row.user_id)
     return RedeemResult(ok=result.ok, approval_id=approval_id, state=state, detail=detail)
 
 
@@ -536,7 +532,6 @@ async def revoke_ticket(
     revoked_row = await approval_ledger_repository.get_by_approval_id(approval_id)
     if revoked_row is not None:
         await publish_ledger_revocation(revoked_row)
-    await sync_conversation_approval_flag(row.conversation_id, row.user_id)
     capture(
         UserId(user_id),
         HilRevoked(approval_id=approval_id, ledger_version=row.v + 1, revoker=caller),
@@ -570,7 +565,6 @@ async def cancel_ledger_approvals(conversation_id: str, user_id: str) -> list[st
             ),
         )
         cancelled.append(row.approval_id)
-    await sync_conversation_approval_flag(conversation_id, user_id)
     if cancelled:
         log.info(
             f"{LogTag.HIL} Withdrew pending ledger approvals for a cancelled run",
@@ -604,7 +598,6 @@ async def reconcile_conversation_ledger(conversation_id: str) -> None:
                 "stalled execution reconciled; never retried. The action may or may not "
                 "have run — verify before re-proposing, never blind-retry.",
             )
-            await sync_conversation_approval_flag(conversation_id, stalled.user_id)
 
 
 async def publish_ledger_decision(

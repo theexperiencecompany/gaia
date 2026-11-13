@@ -3939,11 +3939,6 @@
             "title": "Description",
             "type": "string"
           },
-          "has_live_approval": {
-            "default": false,
-            "title": "Has Live Approval",
-            "type": "boolean"
-          },
           "id": {
             "default": "",
             "title": "Id",
@@ -4600,6 +4595,11 @@
         "additionalProperties": true,
         "description": "The projected conversation-list row \u2014 every field the web list consumes,\nwithout the heavy ``messages`` array.",
         "properties": {
+          "awaiting_approval": {
+            "default": false,
+            "title": "Awaiting Approval",
+            "type": "boolean"
+          },
           "conversation_id": {
             "title": "Conversation Id",
             "type": "string"
@@ -4625,17 +4625,6 @@
               }
             ],
             "title": "Description"
-          },
-          "has_live_approval": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Has Live Approval"
           },
           "is_system_generated": {
             "anyOf": [
@@ -4716,7 +4705,7 @@
           "system_purpose",
           "is_unread",
           "source",
-          "has_live_approval",
+          "awaiting_approval",
           "createdAt",
           "updatedAt"
         ],
@@ -4758,6 +4747,11 @@
             "title": "Artifacts",
             "type": "array"
           },
+          "awaiting_approval": {
+            "default": false,
+            "title": "Awaiting Approval",
+            "type": "boolean"
+          },
           "conversation_id": {
             "title": "Conversation Id",
             "type": "string"
@@ -4776,17 +4770,6 @@
           "description": {
             "title": "Description",
             "type": "string"
-          },
-          "has_live_approval": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Has Live Approval"
           },
           "is_system_generated": {
             "anyOf": [
@@ -4883,7 +4866,7 @@
           "updatedAt",
           "messages",
           "artifacts",
-          "has_live_approval",
+          "awaiting_approval",
           "todo_id",
           "source"
         ],

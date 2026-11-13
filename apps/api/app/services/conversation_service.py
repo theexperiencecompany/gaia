@@ -490,7 +490,7 @@ async def batch_sync_conversations(
                 updatedAt=document.updatedAt,
                 messages=document.messages,
                 artifacts=document.artifacts,
-                has_live_approval=document.has_live_approval,
+                awaiting_approval=document.awaiting_approval,
                 todo_id=document.todo_id,
                 source=document.source,
             )

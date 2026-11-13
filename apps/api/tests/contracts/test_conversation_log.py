@@ -12,6 +12,7 @@ from hypothesis import HealthCheck, given, settings, strategies as st
 import pytest
 from redis.asyncio import Redis
 
+from app.constants.chat import ConversationSource
 from app.db.repositories import conversations as conversations_module
 from app.db.repositories.conversation_entries_migration import (
     ConversationEntriesMigration,
@@ -513,6 +514,40 @@ async def test_whole_conversation_reads_return_the_newest_messages_past_interlea
     assert {d.conversation_id: [m.message_id for m in d.messages] for d in synced} == {
         c: [f"{c}2", f"{c}3"] for c in chats
     }
+
+
+async def test_a_chat_shows_it_awaits_approval_exactly_while_its_work_waits_on_the_user(
+    raw_collection: Any,
+) -> None:
+    repo = ConversationRepository()
+    log = MongoConversationLog(ConversationLogRepository(), FakeClock())
+    user_id, background, web = f"u-{uuid.uuid4().hex}", "c-background", "c-web"
+    for conversation_id in (background, web):
+        await _create_head(conversation_id, user_id)
+        await log.append(conversation_id, user_id, user("u1"))
+        await log.append(conversation_id, user_id, started("w", "t1", 1))
+    await raw_collection.update_one(
+        {"conversation_id": background}, {"$set": {"source": ConversationSource.BACKGROUND}}
+    )
+
+    async def shown() -> tuple[dict[str, bool], dict[str, bool]]:
+        listed = await repo.list_active_summaries(user_id, skip=0, limit=10)
+        synced = await repo.find_updated_since(
+            user_id,
+            [ConversationSyncItem(conversation_id=c, last_updated=None) for c in (background, web)],
+        )
+        return (
+            {row.conversation_id: row.awaiting_approval for row in listed},
+            {doc.conversation_id: doc.awaiting_approval for doc in synced},
+        )
+
+    assert await shown() == ({web: False}, {background: False, web: False})
+    for conversation_id in (background, web):
+        await log.append(conversation_id, user_id, asked("a", "t1", "ap1"))
+    assert await shown() == ({background: True, web: True}, {background: True, web: True})
+    for conversation_id in (background, web):
+        await log.append(conversation_id, user_id, decided("d", "ap1"))
+    assert await shown() == ({web: False}, {background: False, web: False})
 
 
 async def test_a_migrated_conversation_reads_as_an_idle_log_at_its_message_count(

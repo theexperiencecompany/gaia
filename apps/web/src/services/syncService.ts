@@ -7,7 +7,7 @@ import {
 } from "@/features/chat/api/chatApi";
 import { MAX_SYNC_CONVERSATIONS } from "@/features/chat/constants";
 import {
-  apiRowHasLiveApproval,
+  apiRowAwaitsApproval,
   isApprovalFlagStale,
 } from "@/features/chat/utils/approvalFlag";
 import { isUnlistedConversation } from "@/features/chat/utils/unlistedConversation";
@@ -119,7 +119,7 @@ const toStoredConversation = (
   isSystemGenerated: conversation.is_system_generated ?? false,
   systemPurpose: conversation.system_purpose ?? null,
   isUnread: conversation.is_unread ?? false,
-  hasLiveApproval: apiRowHasLiveApproval(conversation),
+  awaitingApproval: apiRowAwaitsApproval(conversation),
   todoId: conversation.todo_id ?? null,
   source: conversation.source ?? undefined,
   artifacts,
@@ -140,7 +140,7 @@ const identifyStaleConversations = (
     ]),
   );
   const localFlagMap = new Map(
-    localConversations.map((conv) => [conv.id, conv.hasLiveApproval]),
+    localConversations.map((conv) => [conv.id, conv.awaitingApproval]),
   );
 
   const staleItems: ConversationSyncItem[] = [];

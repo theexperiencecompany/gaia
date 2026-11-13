@@ -90,9 +90,8 @@ class ConversationDocument(UserScopedDocument):
     source: ConversationSource | None = None
     is_onboarding_demo: bool = False
     starred: bool | None = None
-    # Set while a background run has a live approval parked here; the sidebar
-    # hides background conversations unless this is set (see _active_filter).
-    has_live_approval: bool = False
+    # Derived on read from the log's state (never stored): live work awaits the user's approval.
+    awaiting_approval: bool = Field(default=False, exclude=True)
     # The tracked todo whose chat this is: its runs execute here. Such a chat is
     # reached only from its todo, never listed (see _listed). Set once at creation.
     todo_id: str | None = None
@@ -134,7 +133,8 @@ class ConversationSummary(ResponseModel):
     system_purpose: SystemPurpose | None = None
     is_unread: bool | None = None
     source: ConversationSource | None = None
-    has_live_approval: bool | None = None
+    # Live work in the conversation awaits the user's approval: the sidebar's dot.
+    awaiting_approval: bool = False
     createdAt: str | None = None
     updatedAt: datetime | None = None
 
@@ -367,9 +367,8 @@ class ConversationSyncRow(ResponseModel):
     messages: list[ConversationEntry] = Field(default_factory=list)
     # Mirrored verbatim from the document (see ConversationDocument.artifacts).
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
-    # Whether a background run holds a live approval here — drives the
-    # sidebar dot. Missing on older rows reads as unset (no dot).
-    has_live_approval: bool | None = None
+    # Live work in the conversation awaits the user's approval: the sidebar's dot.
+    awaiting_approval: bool = False
     # The tracked todo this chat belongs to; clients keep such a chat out of their lists.
     todo_id: str | None = None
     # Where the chat originated; a bot chat is never listed, so clients need it to keep one cached.

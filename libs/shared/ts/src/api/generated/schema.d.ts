@@ -7695,11 +7695,6 @@ export interface components {
              */
             description?: string;
             /**
-             * Has Live Approval
-             * @default false
-             */
-            has_live_approval?: boolean;
-            /**
              * Id
              * @default
              */
@@ -7895,14 +7890,17 @@ export interface components {
          *     without the heavy ``messages`` array.
          */
         ConversationSummary: {
+            /**
+             * Awaiting Approval
+             * @default false
+             */
+            awaiting_approval: boolean;
             /** Conversation Id */
             conversation_id: string;
             /** Createdat */
             createdAt: string | null;
             /** Description */
             description: string | null;
-            /** Has Live Approval */
-            has_live_approval: boolean | null;
             /** Is System Generated */
             is_system_generated: boolean | null;
             /** Is Unread */
@@ -7936,14 +7934,17 @@ export interface components {
         ConversationSyncRow: {
             /** Artifacts */
             artifacts: components["schemas"]["ArtifactRegistryEntry"][];
+            /**
+             * Awaiting Approval
+             * @default false
+             */
+            awaiting_approval: boolean;
             /** Conversation Id */
             conversation_id: string;
             /** Createdat */
             createdAt: string | null;
             /** Description */
             description: string;
-            /** Has Live Approval */
-            has_live_approval: boolean | null;
             /** Is System Generated */
             is_system_generated: boolean | null;
             /** Is Unread */

@@ -68,13 +68,26 @@ UNMIGRATED_HEADS: dict[str, object] = {
         {"$expr": {"$ne": [EMBEDDED_FINGERPRINT, f"${MIGRATED_FINGERPRINT_FIELD}"]}},
     ],
 }
+#: Derived from the log's stored state: live work is paused on the user's approval.
+AWAITING_APPROVAL: dict[str, object] = {
+    "$anyElementTrue": [
+        {
+            "$map": {
+                "input": {"$ifNull": [f"${STATE_FIELD}.work", []]},
+                "as": "work",
+                "in": {"$gt": [{"$size": {"$ifNull": ["$$work.pending_approvals", []]}}, 0]},
+            }
+        }
+    ]
+}
 #: Added to every head read so the refusal below needs no second query and never ships the array.
 EMBEDDED_STATE_STAGE: dict[str, object] = {
     "$addFields": {
+        "awaiting_approval": AWAITING_APPROVAL,
         _EMBEDDED_FIELD: {
             "count": {"$size": {"$ifNull": ["$messages", []]}},
             "fingerprint": EMBEDDED_FINGERPRINT,
-        }
+        },
     }
 }
 DROP_EMBEDDED_STAGE: dict[str, object] = {"$project": {"messages": 0}}
