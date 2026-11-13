@@ -16,9 +16,9 @@ export function VoiceControlBarPending({
         <div
           role="status"
           aria-label="Preparing voice mode"
-          className="flex h-12 w-14 items-center justify-center"
+          className="flex h-12 w-14 items-center justify-center text-zinc-300"
         >
-          <Spinner size="sm" color="current" className="text-zinc-300" />
+          <Spinner size="sm" color="current" />
         </div>
         <EndCallButton onPress={onEndCall} />
       </VoiceControlPill>
