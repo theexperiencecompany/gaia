@@ -181,8 +181,8 @@ def _message(logged: LoggedEntry, beside: _Beside) -> ConversationEntry | None:
                 pinned=message.pinned or None,
                 todo_run_wake=message.todo_run_wake,
             )
-        # An imported reply with nothing in it is a folded emoji_ack that already held a seq.
-        case Reply() as reply if not reply.imported or reply.text or reply.tool_data or reply.image:
+        # An imported reply that never settled is a folded emoji_ack's placeholder at its old seq.
+        case Reply() as reply if not reply.imported or reply.reply_id in beside.settles:
             settled = beside.settles.get(reply.reply_id)
             target = reply.quote_target if settled is None else settled.quote_target
             return ConversationEntry(

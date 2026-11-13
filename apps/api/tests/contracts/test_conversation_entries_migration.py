@@ -306,6 +306,30 @@ async def test_verify_detects_a_corrupted_entry_and_a_write_since_the_pass(
     assert (await migration.verify(ref)).mismatches == ["written since its last pass: run --apply"]
 
 
+async def test_a_failed_or_stopped_reply_with_no_text_reads_back_in_the_arrays_order(
+    migration: ConversationEntriesMigration, raw_collection: Any
+) -> None:
+    later = datetime(2026, 1, 1, 9, 31, tzinfo=UTC).isoformat()
+    ref = await _legacy(
+        raw_collection,
+        [
+            _message(1),
+            _message(2, "bot"),
+            _message(3),
+            _message(4, "bot", response="", error="No tool output found", date=later),
+            _message(5, "bot"),
+            _message(6),
+            _message(7, "bot", response="", stopped=True),
+        ],
+    )
+    await migration.migrate(ref, apply=True)
+
+    report = await migration.verify(ref)
+
+    assert report.ok, report.mismatches
+    assert [m for _, m, _ in await _history(ref)] == ["m1", "m2", "m3", "m4", "m5", "m6", "m7"]
+
+
 async def test_a_generated_image_reads_back_as_stored_and_verify_catches_its_loss(
     migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
 ) -> None:
