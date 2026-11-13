@@ -182,7 +182,6 @@ class TestStopSession:
         mock_get_user.return_value = UserDocument(id=USER_ID)
         mock_stop.return_value = ConversationStopResponse(
             conversation_id="conv-1",
-            stream_ids=["s1"],
             work=WorkCancelled(executor_stopped=True, executor_task_id="t1"),
         )
 

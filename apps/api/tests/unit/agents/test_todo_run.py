@@ -110,7 +110,7 @@ class _Seams:
 def seams() -> Iterator[_Seams]:
     found = _Seams([])
     ports = SimpleNamespace(log=SimpleNamespace(state=found.state))
-    configurable = {"user_id": "user-1", "stream_id": "s", "work_on_log": True}
+    configurable = {"user_id": "user-1", "stream_id": "s"}
     with ExitStack() as stack:
         stack.enter_context(patch.object(todo_run, "reset_conversation_threads", found.reset))
         stack.enter_context(patch.object(todo_run, "release_lock_if_owned", found.release))
@@ -342,7 +342,6 @@ async def test_the_executor_config_is_a_background_run_bound_to_the_todo() -> No
     assert configurable == {
         "thread_id": "run-conv",
         "stream_id": "stream-1",
-        "work_on_log": True,
     }
     kwargs = built.await_args.kwargs
     assert kwargs["identity"].conversation_id == "run-conv"

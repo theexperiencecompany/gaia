@@ -4,9 +4,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.constants.chat import CONVERSATION_READ_LIMIT
 from app.models.conversation_models import (
     ConversationDocument,
     ConversationListResponse,
+    ConversationMessagesPage,
     CreateConversationResponse,
 )
 from tests.conftest import FAKE_USER
@@ -596,3 +598,29 @@ class TestConversationEndpoints:
         mock_unread.side_effect = Exception("DB error")
         response = await test_client.patch("/api/v1/conversations/conv-unread/unread")
         assert response.status_code == 500
+
+
+@pytest.mark.integration
+class TestOlderMessages:
+    @patch("app.api.v1.endpoints.conversations.get_messages_before", new_callable=AsyncMock)
+    async def test_pages_back_from_the_seq_it_is_given(self, page, test_client):
+        page.return_value = ConversationMessagesPage(messages=[], has_more=True)
+
+        response = await test_client.get(
+            "/api/v1/conversations/conv-1/messages", params={"before_seq": 40, "limit": 20}
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"messages": [], "has_more": True}
+        assert page.await_args.args[0] == "conv-1"
+        assert page.await_args.kwargs == {"before_seq": 40, "limit": 20}
+
+    @pytest.mark.parametrize(
+        "params", [{}, {"before_seq": 0}, {"before_seq": 5, "limit": CONVERSATION_READ_LIMIT + 1}]
+    )
+    @patch("app.api.v1.endpoints.conversations.get_messages_before", new_callable=AsyncMock)
+    async def test_a_missing_seq_or_an_oversized_page_is_refused(self, page, test_client, params):
+        response = await test_client.get("/api/v1/conversations/conv-1/messages", params=params)
+
+        assert response.status_code == 422
+        page.assert_not_awaited()

@@ -182,3 +182,31 @@ def test_a_spoken_turn_is_sent_as_voice_and_its_reply_is_followed() -> None:
         assert [chunk async for chunk in speech.text] == [FIRST]
 
     asyncio.run(scenario())
+
+
+def test_a_reply_is_spoken_but_shown_only_through_the_events_stream() -> None:
+    """Regression: the reply was also sent on the data channel, so the web voice screen showed it twice."""
+    sent: list[tuple[str, str]] = []
+
+    async def send_text(text: str, *, topic: str) -> None:
+        sent.append((topic, text))
+
+    async def scenario() -> None:
+        conversation = RecordingApi()
+        conversation.room = cast(
+            rtc.Room,
+            SimpleNamespace(
+                name="voice_u1", local_participant=SimpleNamespace(send_text=send_text)
+            ),
+        )
+        await follow(
+            conversation,
+            entry(2, "reply", "r1"),
+            delta("r1", 0, FIRST),
+            entry(3, "reply_settled", "r1"),
+        )
+        [speech] = spoken(conversation).speeches
+        assert [chunk async for chunk in speech.text] == [FIRST]
+
+    asyncio.run(scenario())
+    assert sent == []

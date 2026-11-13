@@ -886,7 +886,7 @@ class TestFinalizePausedRun:
             patch.object(er, "hold_run_alive", AsyncMock()) as alive,
             patch.object(er, "extend_lock_if_owned", AsyncMock(return_value=True)) as extend,
             patch.object(er, "signal_executor_done") as signal,
-            patch.object(er, "_close_queued_stream", AsyncMock()) as close,
+            patch.object(er, "_close_run_stream", AsyncMock()) as close,
             patch.object(er, "observe_executor_run_total") as total,
             patch.object(er, "log") as mock_log,
         ):
@@ -914,7 +914,7 @@ class TestFinalizePausedRun:
         with (
             patch.object(er, "extend_lock_if_owned", AsyncMock(return_value=True)),
             patch.object(er, "signal_executor_done"),
-            patch.object(er, "_close_queued_stream", AsyncMock()),
+            patch.object(er, "_close_run_stream", AsyncMock()),
         ):
             await er._finalize_paused_run(_run(RunKind.QUEUED))
 
@@ -927,7 +927,7 @@ class TestFinalizePausedRun:
             patch.object(er, "hold_run_alive", AsyncMock()),
             patch.object(er, "extend_lock_if_owned", AsyncMock(return_value=False)),
             patch.object(er, "signal_executor_done"),
-            patch.object(er, "_close_queued_stream", AsyncMock()),
+            patch.object(er, "_close_run_stream", AsyncMock()),
         ):
             async with captured_wide_event() as event:
                 await er._finalize_paused_run(run)
@@ -949,7 +949,7 @@ class TestFinalizePausedRun:
             patch.object(er, "hold_run_alive", AsyncMock()) as alive,
             patch.object(er, "extend_lock_if_owned", AsyncMock(return_value=True)),
             patch.object(er, "signal_executor_done"),
-            patch.object(er, "_close_queued_stream", AsyncMock()),
+            patch.object(er, "_close_run_stream", AsyncMock()),
         ):
             await er._finalize_paused_run(run)
 

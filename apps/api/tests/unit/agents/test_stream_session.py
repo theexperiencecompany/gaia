@@ -15,7 +15,6 @@ from app.agents.core.background.session import (
     RunKind,
     claim_tool_output,
     create_session,
-    get_or_create_session,
     get_session,
     mark_executor_spawned,
     note_tool_output_owner,
@@ -62,14 +61,17 @@ class TestSessionRegistry:
         teardown_session("s1")  # must not raise
         assert get_session("s1") is None
 
-    def test_get_or_create_auto_vivifies_missing_session(self) -> None:
-        # Parity with the old dicts' setdefault behavior: touching state for an
-        # unregistered stream must work (and not crash callers like handoff).
-        session = get_or_create_session("ghost")
-        assert get_session("ghost") is session
-
 
 class TestExecutorLifecycleFlags:
+    def test_spawning_opens_a_live_session_when_none_is_registered(self) -> None:
+        mark_executor_spawned("fresh")
+
+        session = get_session("fresh")
+        assert session is not None
+        assert session.kind is RunKind.LIVE
+        assert session.executor_spawned is True
+        teardown_session("fresh")
+
     def test_spawned_flag_lifecycle(self) -> None:
         session = create_session("s1", RunKind.LIVE)
         assert session.executor_spawned is False

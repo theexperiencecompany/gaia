@@ -33,7 +33,6 @@ from app.constants.hil import (
     ApprovalResolution,
 )
 from app.constants.log_tags import LogTag
-from app.models.agent_config import work_is_logged
 from app.models.agent_models import ExecutorRunItem
 from app.models.hil_models import ApprovalScope, HILApprovalRecord, HILApprovalStatus
 from app.schemas.hil_schemas import BatchDecisionOutcome
@@ -357,9 +356,8 @@ async def _resolve_record(
 
 
 def _dispatched_by_step(record: HILApprovalRecord) -> bool:
-    """Return whether the paused run was dispatched by the conversation step, which logs its approvals."""
-    configurable = (record.resume_item or {}).get("configurable")
-    return isinstance(configurable, dict) and work_is_logged(configurable)
+    """Return whether the paused run was work on the conversation's log, which logged its approval."""
+    return bool((record.resume_item or {}).get("task_id"))
 
 
 async def _dispatch_decided(record: HILApprovalRecord) -> None:

@@ -258,5 +258,4 @@ async def _todo_run_configurable(request: TodoRunRequest, stream_id: str) -> Age
     # Indexed, not read via agent_configurable: this bag is written to.
     configurable = cast(AgentConfigurable, config[CONF])
     configurable["stream_id"] = stream_id
-    configurable["work_on_log"] = True
     return configurable

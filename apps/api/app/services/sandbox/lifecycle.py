@@ -54,7 +54,6 @@ from app.services.providers.provider_credentials_service import (
     ProviderConfig,
     resolve as resolve_e2b_config,
 )
-from app.services.sandbox.artifact_watcher import start_watcher_for
 from app.services.sandbox.errors import (
     CodeExecutionDisabledError,
     SandboxAcquisitionError,
@@ -561,32 +560,6 @@ async def _liveness(sbx: AsyncSandbox) -> SandboxLiveness:
     return SandboxLiveness.ALIVE if alive else SandboxLiveness.GONE
 
 
-async def _ensure_watcher(user_id: str, entry: PooledSandbox) -> None:
-    """Start the artifact watcher if it isn't already running.
-
-    Best-effort: the watcher is a latency optimization for surfacing
-    artifacts/ artifacts; the host-side JuiceFS list is authoritative,
-    so a watcher failure must never block sandbox acquisition.
-    """
-    if entry.watcher is not None and entry.watcher.is_alive():
-        return
-    with contextlib.suppress(Exception):
-        entry.watcher = await start_watcher_for(user_id, entry.sandbox)
-    _record(watcher_active=entry.watcher is not None)
-
-
-async def _stop_watcher(entry: PooledSandbox) -> None:
-    """Stop and drop the watcher.
-
-    HTTP/2 streams to envd don't survive pause/kill, so we reopen on the next
-    acquire.
-    """
-    if entry.watcher is not None:
-        with contextlib.suppress(Exception):
-            await entry.watcher.stop()
-        entry.watcher = None
-
-
 async def _seed_user_subtrees(user_id: str) -> None:
     """Pre-create the per-user JuiceFS subtrees the sandbox's --subdir mounts need.
 
@@ -635,7 +608,6 @@ async def _reuse_cached_entry(
     if liveness == SandboxLiveness.PAUSED:
         _record(cache_evicted="paused")
         log.info(f"{LogTag.SANDBOX} cached sandbox paused; resuming from record", user_id=user_id)
-        await _stop_watcher(entry)
         pool.evict(user_id)
         return None
     if liveness == SandboxLiveness.GONE:
@@ -656,7 +628,6 @@ async def _reuse_cached_entry(
         await mark_sandbox_dead(user_id)
         return None
 
-    await _ensure_watcher(user_id, entry)
     return entry
 
 
@@ -782,7 +753,6 @@ async def _acquire_or_create(user_id: str, template_id: str) -> PooledSandbox:
         template_id=running_template_id,
     )
     pool.put(user_id, entry)
-    await _ensure_watcher(user_id, entry)
     if source == "create" and is_agent_lab_template(template_id):
         await _set_up_agents_home(
             user_id, sbx, replaced=doc is not None and doc.sandbox_id is not None
@@ -890,7 +860,6 @@ async def _hard_evict(user_id: str, entry: PooledSandbox) -> None:
     log.info(f"{LogTag.SANDBOX} evicting sandbox user", user_id=user_id)
     get_sandbox_pool().evict(user_id)
     await _cancel_pause_task(entry)
-    await _stop_watcher(entry)
     # Let the JuiceFS daemons close their metadata sessions before the kill so
     # dead sessions don't linger and get re-scanned by the volume's GC owner.
     await _release_juicefs_sessions(entry.sandbox)
@@ -928,7 +897,6 @@ async def renew_sandbox(user_id: str) -> None:
     async with pool.distributed_lock(user_id):
         entry = await _acquire_or_create(user_id, template_id)
         await _cancel_pause_task(entry)
-        await _stop_watcher(entry)
         sandbox_id = entry.sandbox.sandbox_id
         await entry.sandbox.beta_pause()
         resumed = await _connect_sandbox(sandbox_id, sandbox_lifetime_seconds(entry.template_id))
@@ -946,7 +914,6 @@ async def renew_sandbox(user_id: str) -> None:
         if doc is None:
             raise SandboxAcquisitionError(f"sandbox record for {user_id} vanished during renew")
         await _ensure_mounted(resumed, _mount_env(user_id, doc.shard_id))
-        await _ensure_watcher(user_id, entry)
         await e2b_sandbox_repository.touch_last_used(user_id, timestamp=_now())
         log.info(
             f"{LogTag.SANDBOX} renewed sandbox lifetime", user_id=user_id, sandbox_id=sandbox_id
@@ -977,7 +944,6 @@ async def pause_idle_sandbox(user_id: str) -> bool:
                 return False
             entry = PooledSandbox(sandbox=sbx, template_id=doc.template_id)
         await _cancel_pause_task(entry)
-        await _stop_watcher(entry)
         paused = await _pause_sandbox(user_id, entry)
         # The pooled handle points at a frozen sandbox; the next acquire resumes it from Mongo.
         pool.evict(user_id)

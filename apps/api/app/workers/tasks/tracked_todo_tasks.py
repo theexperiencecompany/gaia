@@ -124,7 +124,7 @@ async def _load_user_with_tz(user_id: str) -> tuple[AuthenticatedUser, Timezone]
     an unset zone as UTC.
     """
     # The full context: narrowing to the fields read here would drop
-    # onboarding, which construct_langchain_messages needs.
+    # onboarding, which the run's context needs.
     user_data = await require_owner(user_id)
     return user_data, Timezone.parse(user_data.timezone)
 

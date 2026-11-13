@@ -46,6 +46,7 @@ from app.agents.core.background.session import (
     executor_abandoned,
     get_session,
     signal_executor_done,
+    teardown_session,
 )
 from app.agents.core.outcome_review import NOT_REVIEWED, OutcomeReview, review_run
 from app.agents.core.subagents.subagent_runner import (
@@ -579,7 +580,7 @@ async def _finalize_executor_run(
     # exception would strand it for the full 30-min TTL. Ownership-checked.
     try:
         await release_lock_if_owned(run.conversation_id, run.stream_id, run.task_id)
-        await _close_queued_stream(run, was_cancelled)
+        await _close_run_stream(run, was_cancelled)
     except Exception as e:
         log.error(
             f"{LogTag.AGENT} Executor finalize lock release / stream close failed",
@@ -684,7 +685,7 @@ async def _finalize_paused_run(run: ExecutorRun) -> None:
             stream_id=run.stream_id,
         )
     signal_executor_done(run.stream_id)
-    await _close_queued_stream(run, was_cancelled=False)
+    await _close_run_stream(run, was_cancelled=False)
     observe_executor_run_total(status="paused", queued=run.queued)
     log.info(
         f"{LogTag.HIL} Executor paused on approval; busy lock retained",
@@ -743,15 +744,10 @@ async def _log_work_finished(
         )
 
 
-async def _close_queued_stream(run: ExecutorRun, was_cancelled: bool) -> None:
-    """Tear down a queued run's session and close the SSE stream it owns.
-
-    Only queued runs own a stream the frontend subscribed to via
-    executor.stream_started; live sessions are torn down by the chat path. A
-    cancelled queued stream closes silently — the cancel already told the client
-    — so no [DONE] / complete_stream.
-    """
+async def _close_run_stream(run: ExecutorRun, was_cancelled: bool) -> None:
+    """Tear down the run's session once its cards are drained; a queued run also closes the stream it owns."""
     if not run.is_queued:
+        teardown_session(run.stream_id)
         return
     await close_detached_stream(run.stream_id, cancelled=was_cancelled)
 
@@ -865,7 +861,6 @@ async def _prepare_executor_run(
                 "user_timezone": user.timezone,
                 "thread_id": conversation_id,
                 "execution_mode": "interactive",
-                "work_on_log": True,
             },
             identity=identity,
             workflow_execution_id=workflow_execution_id,

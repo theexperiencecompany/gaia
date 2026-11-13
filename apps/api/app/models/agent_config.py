@@ -131,9 +131,6 @@ class AgentConfigurable(TypedDict, total=False):
     #: The step attempt of a comms run the conversation runtime started, and of the
     #: executor it dispatched; absent on the legacy stream path.
     conversation_step: StepTurnRef
-    #: True on an executor run whose WorkStarted was logged where it started, outside a
-    #: step (a tracked todo's run, a carry run); its end is logged like a step-dispatched run's.
-    work_on_log: bool
     #: Onboarding preferences / writing style, established once at a run tree's
     #: root and inherited unchanged by every child agent. Absent when the root
     #: had none; the context sections that read them degrade to no section.
@@ -285,13 +282,6 @@ class AgentConfigurableView(BaseModel):
 def read_agent_configurable(config: AgentRunConfig | None) -> AgentConfigurableView:
     """Return agent_configurable, parsed into AgentConfigurableView."""
     return AgentConfigurableView.model_validate(agent_configurable(config))
-
-
-def work_is_logged(configurable: Mapping[str, object]) -> bool:
-    """Return whether a run's work is on its conversation's log: dispatched by the step, or logged where it started."""
-    return (
-        configurable.get("conversation_step") is not None or configurable.get("work_on_log") is True
-    )
 
 
 def run_analytics_context(configurable: AgentConfigurable) -> AnalyticsContext:

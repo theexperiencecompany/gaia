@@ -297,7 +297,7 @@ class TestBashRunContract:
                 await bash.ainvoke(
                     {"command": "sleep 99", "background": True}, config=SESSION_CONFIG
                 )
-        publish.assert_awaited_once_with(foreground, "u1", "conv1")
+        publish.assert_awaited_once_with(foreground, "conv1")
 
     async def test_the_background_started_event_carries_the_runs_id(self) -> None:
         sbx = _sbx()

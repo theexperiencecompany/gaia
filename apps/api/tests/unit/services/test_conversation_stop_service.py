@@ -1,4 +1,4 @@
-"""stop_conversation / press_stop: one Stop cancels the conversation's turns and all its work, and only its own."""
+"""stop_conversation / press_stop: one Stop cancels all the conversation's work, and only its own."""
 
 from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock
@@ -58,24 +58,11 @@ class TestStopConversation:
         result = await stop_conversation(CONVERSATION, USER, None)
 
         assert result.conversation_id == CONVERSATION
-        assert result.stream_ids == []
         assert result.work == WorkCancelled()
         assert await fake_redis.keys("*") == []
 
-    async def test_an_older_turn_the_caller_holds_is_cancelled_beside_the_live_one(self) -> None:
-        """Only the newest turn is indexed; an older concurrent one is reached only by name."""
-        await stream_manager.start_stream("older-turn", CONVERSATION, USER)
-        await stream_manager.start_stream("live-turn", CONVERSATION, USER)
-
-        result = await stop_conversation(CONVERSATION, USER, None, held_stream_id="older-turn")
-
-        assert result.stream_ids == ["older-turn", "live-turn"]
-        assert await stream_manager.is_cancelled("older-turn")
-        assert await stream_manager.is_cancelled("live-turn")
-
     async def test_a_subagent_the_turn_dispatched_is_counted_and_its_stop_announced(self) -> None:
-        """Cancelling the turn must leave its subagents to the sweep, which reports what it stopped."""
-        await stream_manager.start_stream("live-turn", CONVERSATION, USER)
+        """The sweep stops the subagents a run dispatched and reports what it stopped."""
         subagent_stream = await claim_subagent(CONVERSATION, "s1", dispatched_by="live-turn")
 
         result = await stop_conversation(CONVERSATION, USER, None)
@@ -89,14 +76,10 @@ class TestStopConversation:
     async def test_another_conversations_work_keeps_running(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
-        await stream_manager.start_stream("other-turn", OTHER_CONVERSATION, USER)
         await seed_live_work(OTHER_CONVERSATION)
-        await stream_manager.start_stream("live-turn", CONVERSATION, USER)
 
         await stop_conversation(CONVERSATION, USER, None)
 
-        assert await stream_manager.is_cancelled("live-turn")
-        assert not await stream_manager.is_cancelled("other-turn")
         assert not await stream_manager.is_cancelled(EXECUTOR_STREAM)
         assert await fake_redis.get(f"{EXECUTOR_BUSY_PREFIX}{OTHER_CONVERSATION}") is not None
         assert len(await ExecutorInbox(OTHER_CONVERSATION).read()) == 1
@@ -104,7 +87,6 @@ class TestStopConversation:
 
 class TestPressStop:
     async def test_a_press_counts_once_with_what_it_stopped(self, captured: MagicMock) -> None:
-        await stream_manager.start_stream("live-turn", CONVERSATION, USER)
         await seed_live_work(CONVERSATION)
 
         await press_stop(CONVERSATION, USER, None)
@@ -112,7 +94,6 @@ class TestPressStop:
         captured.assert_called_once_with(
             UserId(USER),
             ChatWorkStopped(
-                streams=1,
                 executor_stopped=True,
                 pending_tasks=1,
                 subagents=1,
@@ -130,7 +111,6 @@ class TestPressStop:
         captured.assert_called_once_with(
             UserId(USER),
             ChatWorkStopped(
-                streams=0,
                 executor_stopped=False,
                 pending_tasks=0,
                 subagents=0,
@@ -138,15 +118,6 @@ class TestPressStop:
                 browser_jobs=0,
             ),
         )
-
-    async def test_the_held_stream_reaches_the_stop(self, captured: MagicMock) -> None:
-        await stream_manager.start_stream("older-turn", CONVERSATION, USER)
-        await stream_manager.start_stream("live-turn", CONVERSATION, USER)
-
-        result = await press_stop(CONVERSATION, USER, None, held_stream_id="older-turn")
-
-        assert result.stream_ids == ["older-turn", "live-turn"]
-        assert await stream_manager.is_cancelled("older-turn")
 
     async def test_a_failed_cancel_is_not_counted(
         self, captured: MagicMock, monkeypatch: pytest.MonkeyPatch

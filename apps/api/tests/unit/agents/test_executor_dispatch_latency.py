@@ -222,7 +222,7 @@ class TestExecutorRunLatency:
             patch.object(er, "_finalize_paused_run", AsyncMock()),
             patch.object(er, "_deliver_terminal_outcome", AsyncMock()),
             patch.object(er, "release_lock_if_owned", AsyncMock()),
-            patch.object(er, "_close_queued_stream", AsyncMock()),
+            patch.object(er, "_close_run_stream", AsyncMock()),
             patch("app.services.analytics_service.capture") as mock_capture,
         ):
             await run_executor_background(
@@ -548,7 +548,7 @@ class TestBackgroundRunExactWiring:
             patch.object(er, "_finalize_paused_run", AsyncMock()),
             patch.object(er, "_deliver_terminal_outcome", AsyncMock()),
             patch.object(er, "release_lock_if_owned", AsyncMock()),
-            patch.object(er, "_close_queued_stream", AsyncMock()),
+            patch.object(er, "_close_run_stream", AsyncMock()),
             patch("app.services.analytics_service.capture", MagicMock()),
             patch.object(StreamManager, "is_cancelled", is_cancelled_mock),
             patch.object(time, "perf_counter", side_effect=list(perf_values)),
@@ -719,7 +719,7 @@ class TestResumeForwarding:
             patch.object(er, "_finalize_paused_run", AsyncMock()),
             patch.object(er, "_deliver_terminal_outcome", AsyncMock()),
             patch.object(er, "release_lock_if_owned", AsyncMock()),
-            patch.object(er, "_close_queued_stream", AsyncMock()),
+            patch.object(er, "_close_run_stream", AsyncMock()),
             patch.object(er, "release_resume_dispatch", AsyncMock()) as release,
             patch("app.services.analytics_service.capture"),
         ):
@@ -741,7 +741,7 @@ class TestResumeForwarding:
             ),
             patch.object(er, "_deliver_terminal_outcome", AsyncMock()),
             patch.object(er, "release_lock_if_owned", AsyncMock()),
-            patch.object(er, "_close_queued_stream", AsyncMock()),
+            patch.object(er, "_close_run_stream", AsyncMock()),
             patch.object(er, "release_resume_dispatch", AsyncMock()) as release,
             patch("app.services.analytics_service.capture"),
         ):

@@ -45,10 +45,9 @@ class WorkCancelled(ResponseModel):
 
 
 class ConversationStopResponse(ResponseModel):
-    """A conversation-level Stop: the live streams it cancelled and the work it stopped."""
+    """A conversation-level Stop: the work it stopped."""
 
     conversation_id: str | None = Field(
         default=None, description="The conversation stopped; None when a bot chat had none yet."
     )
-    stream_ids: list[str] = Field(default_factory=list, description="Live streams cancelled.")
     work: WorkCancelled

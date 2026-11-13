@@ -13,7 +13,7 @@ from app.schemas.outbound import OutboundAttachment, OutboundMessageEnvelope
 
 _ONE_SOURCE = "attachment requires exactly one of `url` or (`conversation_id` + `path`)"
 _HTTPS_ONLY = "attachment `url` must be an https URL"
-_NEEDS_BODY = "envelope requires text, text_parts, attachment, or reaction"
+_NEEDS_BODY = "envelope requires text, text_parts, or attachment"
 
 
 def _rejection(build: Callable[[], BaseModel]) -> str:

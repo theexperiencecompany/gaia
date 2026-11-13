@@ -13,7 +13,6 @@ import time
 from typing import Any, TypedDict, cast
 
 from app.constants.cache import (
-    STREAM_ACTIVE_PREFIX,
     STREAM_EVENTS_MAXLEN,
     STREAM_EVENTS_PREFIX,
     STREAM_LIVENESS_REFRESH_AFTER,
@@ -108,14 +107,6 @@ class StreamManager:
             ttl=STREAM_TTL,
         )
 
-        # Reverse index so a reloaded client can rediscover the in-flight turn
-        # for a conversation and re-attach with full replay.
-        await redis_cache.set(
-            f"{STREAM_ACTIVE_PREFIX}{user_id}:{conversation_id}",
-            stream_id,
-            ttl=STREAM_TTL,
-        )
-
         log.debug(
             f"{LogTag.STARTUP} Stream started for conversation",
             stream_id=stream_id,
@@ -136,58 +127,11 @@ class StreamManager:
         if progress_data:
             progress_data["is_complete"] = True
             await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
-            await cls._clear_active_index(progress_data)
 
         # Notify subscribers that stream is done
         await cls._publish(stream_id, STREAM_DONE_SIGNAL)
 
         log.debug(f"{LogTag.STARTUP} Stream completed", stream_id=stream_id)
-
-    @classmethod
-    async def _clear_active_index(cls, progress_data: StreamProgressRecord) -> None:
-        """Drop the conversation -> stream reverse index for a finished stream."""
-        user_id = progress_data.get("user_id")
-        conversation_id = progress_data.get("conversation_id")
-        if user_id and conversation_id:
-            await redis_cache.delete(f"{STREAM_ACTIVE_PREFIX}{user_id}:{conversation_id}")
-
-    @classmethod
-    async def _refresh_active_index(cls, progress_data: StreamProgressRecord) -> None:
-        """Extend the reverse index's TTL for a turn that is still streaming.
-
-        Without this it expires after STREAM_TTL even though turns often
-        outlive it (EXECUTOR_WAIT_TIMEOUT is 30 min). Uses EXPIRE, not SET:
-        SET would resurrect an index a finished turn already deleted; EXPIRE
-        on a missing key is a no-op.
-        """
-        user_id = progress_data.get("user_id")
-        conversation_id = progress_data.get("conversation_id")
-        if user_id and conversation_id and redis_cache.redis:
-            await redis_cache.redis.expire(
-                f"{STREAM_ACTIVE_PREFIX}{user_id}:{conversation_id}", STREAM_TTL
-            )
-
-    @classmethod
-    async def get_active_stream_id(cls, user_id: str, conversation_id: str) -> str | None:
-        """Stream id of the conversation's in-flight turn, or None."""
-        stream_id = await redis_cache.get(f"{STREAM_ACTIVE_PREFIX}{user_id}:{conversation_id}")
-        return stream_id if isinstance(stream_id, str) else None
-
-    @classmethod
-    async def get_resumable_stream_id(cls, user_id: str, conversation_id: str) -> str | None:
-        """Stream id a reloaded client can re-attach to, or None when idle.
-
-        Validates the reverse index against progress: an indexed turn that
-        already completed/cancelled (index clear still pending) is not
-        resumable, so absence is reported instead of a stale stream id.
-        """
-        stream_id = await cls.get_active_stream_id(user_id, conversation_id)
-        if not stream_id:
-            return None
-        progress: StreamProgressRecord | None = await cls.get_progress(stream_id)
-        if not progress or progress.get("is_complete") or progress.get("is_cancelled"):
-            return None
-        return stream_id
 
     # -------------------------------------------------------------------------
     # Event-log Communication
@@ -207,9 +151,9 @@ class StreamManager:
 
     @classmethod
     async def _touch_liveness(cls, stream_id: str) -> None:
-        """Keep the resume and cancel keys alive for as long as the turn emits frames.
+        """Keep the stream's progress key alive for as long as the run emits frames.
 
-        Frames extend STREAM_ACTIVE/SIGNAL/PROGRESS keys because update_progress
+        Frames extend the PROGRESS key because update_progress
         alone missed executor-parked turns (30 min). Uses EXPIRE, not SET, so a
         finished turn's deleted keys stay gone; the TTL read throttles refreshes.
         """
@@ -220,9 +164,6 @@ class StreamManager:
         if ttl < 0 or ttl > STREAM_LIVENESS_REFRESH_AFTER:
             return
         await redis_cache.redis.expire(progress_key, STREAM_TTL)
-        progress_data: StreamProgressRecord | None = await cls.get_progress(stream_id)
-        if progress_data:
-            await cls._refresh_active_index(progress_data)
 
     @classmethod
     async def _publish(cls, stream_id: str, message: str, error: str | None = None) -> None:
@@ -272,7 +213,6 @@ class StreamManager:
         if progress_data:
             progress_data["is_cancelled"] = True
             await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
-            await cls._clear_active_index(progress_data)
 
         # Notify subscribers
         await cls._publish(stream_id, STREAM_CANCELLED_SIGNAL)

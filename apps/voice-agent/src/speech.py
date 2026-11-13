@@ -17,9 +17,8 @@ from src.utils import has_open_openui_fence_at_tail, has_open_tag_at_tail, sanit
 
 @dataclass(frozen=True)
 class Flush:
-    """A slice of the reply's text handed on: raw for the screen, spoken (sanitised, maybe empty) for TTS."""
+    """A slice of the reply's text handed on, sanitised for TTS (empty when too short to speak)."""
 
-    raw: str
     spoken: str
 
 
@@ -104,7 +103,7 @@ class ReplySpeech:
         if spoken:
             self._spoken.append(_Spoken(spoken=spoken, raw_end=self._flushed_to))
             self._chunks.put_nowait(spoken)
-        return Flush(raw=raw, spoken=spoken)
+        return Flush(spoken=spoken)
 
 
 def _letters(text: str) -> int:

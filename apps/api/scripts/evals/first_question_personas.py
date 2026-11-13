@@ -87,8 +87,7 @@ DEFAULT_TURNS = 2
 TURN_OPTIONS = TurnOptions(
     timeout=FOLLOW_TIMEOUT_SECONDS,
     include_nested_tool_names=False,
-    drop_discarded_boundary=False,
-    poll_for_delivery=False,
+    wait_for_work=False,
 )
 
 PERSONAS: list[tuple[str, OnboardingPreferences, str | None]] = [
@@ -359,15 +358,10 @@ async def run_follow(rows: list[tuple[str, object]], api_url: str, turns: int) -
                     print("\n  --- chip: <empty> — skipped (degenerate composer output)")
                     continue
                 conversation_id = await open_conversation(client, api_url, chip)
-                history: list[dict[str, str]] = []
                 print(f"\n  --- chip: {chip}")
                 for turn_number in range(1, turns + 1):
                     message = chip if turn_number == 1 else ACCEPT_MESSAGE
-                    turn = await send_turn(
-                        client, api_url, message, conversation_id, history, TURN_OPTIONS
-                    )
-                    history.append({"role": "user", "content": message})
-                    history.append({"role": "assistant", "content": turn.reply})
+                    turn = await send_turn(client, api_url, message, conversation_id, TURN_OPTIONS)
                     collected.append(
                         Graded(
                             persona=label,

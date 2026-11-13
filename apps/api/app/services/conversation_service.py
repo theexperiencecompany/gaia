@@ -21,6 +21,7 @@ from app.models.conversation_models import (
     ConversationActionResponse,
     ConversationDocument,
     ConversationListResponse,
+    ConversationMessagesPage,
     ConversationSyncRow,
     CreateConversationResponse,
     DeleteAllConversationsResponse,
@@ -185,6 +186,21 @@ async def get_conversation(conversation_id: str, user: AuthenticatedUser) -> Con
             detail="Conversation not found or does not belong to the user",
         )
     return document
+
+
+async def get_messages_before(
+    conversation_id: str, user: AuthenticatedUser, *, before_seq: int, limit: int
+) -> ConversationMessagesPage:
+    """Return the conversation's newest limit messages before before_seq, for a client loading older history."""
+    page = await conversation_repository.read_messages_before(
+        conversation_id, user_id=user.user_id, before_seq=before_seq, limit=limit
+    )
+    if page is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found or does not belong to the user",
+        )
+    return page
 
 
 async def star_conversation(
@@ -489,6 +505,7 @@ async def batch_sync_conversations(
                 createdAt=document.createdAt,
                 updatedAt=document.updatedAt,
                 messages=document.messages,
+                has_older=document.has_older,
                 artifacts=document.artifacts,
                 awaiting_approval=document.awaiting_approval,
                 todo_id=document.todo_id,

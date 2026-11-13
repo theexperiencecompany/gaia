@@ -604,7 +604,6 @@ All of these call `_require_mount()` in `app/services/storage/juicefs.py`:
 - `write_session_file` — user file uploads from the chat UI
 - `ensure_user_workspace` — first-time workspace bootstrap for a user
 - `write_skill_file` / `ensure_user_skills_dir` — installing skills to the user's workspace
-- The artifact watcher in `app/services/sandbox/artifact_watcher.py` — needs to tail `/mnt/jfs/.accesslog`
 - Any service path under `app/services/storage/sessions/` that touches the FS
 
 If you hit `JuiceFSUnavailable` while running natively, **that is expected** — the fix is to switch to `mise dev:vm`, not to "fix" the error. Do not silence the exception, do not add a no-op fallback, do not stub `_is_mounted` to return `True`. The mount being missing is a load-bearing signal that JuiceFS-dependent features need the dockered API.

@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.middleware.client_type import request_client_source
+from app.constants.chat import CONVERSATION_READ_LIMIT
 from app.constants.general import MAX_PAGE_NUMBER
 from app.decorators import tiered_rate_limit
 from app.models.chat_models import (
@@ -18,6 +19,7 @@ from app.models.conversation_models import (
     ConversationActionResponse,
     ConversationDocument,
     ConversationListResponse,
+    ConversationMessagesPage,
     CreateConversationResponse,
     DeleteAllConversationsResponse,
     PinMessageResponse,
@@ -45,6 +47,7 @@ from app.services.conversation_service import (
     delete_conversation,
     get_conversation,
     get_conversations,
+    get_messages_before,
     get_starred_messages,
     mark_conversation_as_read,
     mark_conversation_as_unread,
@@ -152,6 +155,25 @@ async def get_conversation_endpoint(
     return await get_conversation(conversation_id, user)
 
 
+@router.get("/conversations/{conversation_id}/messages")
+async def get_messages_before_endpoint(
+    conversation_id: str,
+    before_seq: int = Query(ge=1, description="Return messages with a seq below this one"),
+    limit: int = Query(
+        default=CONVERSATION_READ_LIMIT, ge=1, le=CONVERSATION_READ_LIMIT, description="Page size"
+    ),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> ConversationMessagesPage:
+    """Page a conversation's history back from before_seq: the newest limit messages before it."""
+    log.set(
+        user={"id": user.user_id},
+        conversation={"operation": "messages_before", "id": conversation_id},
+    )
+    page = await get_messages_before(conversation_id, user, before_seq=before_seq, limit=limit)
+    log.set_ns("conversation", messages=len(page.messages), has_more=page.has_more)
+    return page
+
+
 @router.put("/conversations/{conversation_id}/messages")
 async def update_messages_endpoint(
     request: UpdateMessagesRequest, user: AuthenticatedUser = Depends(get_current_user)
@@ -253,18 +275,14 @@ async def stop_conversation_endpoint(
     conversation_id: str,
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> ConversationStopResponse:
-    """Stop everything running for a conversation: its live turn, executor, subagents, approvals and browser job."""
+    """Stop everything running for a conversation: its reply in flight, executor, subagents, approvals and browser job."""
     log.set(
         user={"id": user.user_id},
         conversation={"operation": "stop", "id": conversation_id},
     )
     await require_owned_conversation(conversation_id, user.user_id)
     result = await press_stop(conversation_id, user.user_id, None)
-    log.set_ns(
-        "conversation",
-        stopped_streams=len(result.stream_ids),
-        stopped_work=result.work.stopped_anything,
-    )
+    log.set_ns("conversation", stopped_work=result.work.stopped_anything)
     return result
 
 

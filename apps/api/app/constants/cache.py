@@ -145,7 +145,6 @@ STREAM_EVENTS_PREFIX = "stream:events:"
 STREAM_EVENTS_MAXLEN = 4096
 # Reverse index {user_id}:{conversation_id} -> stream_id for the in-flight chat
 # turn, so a reloaded client can rediscover and re-attach to a live stream.
-STREAM_ACTIVE_PREFIX = "stream:active:"
 STATE_KEY_PREFIX = "oauth_state"
 # Single-use login-free integration-connect codes: code -> {user_id, integration_id}.
 CONNECT_LINK_PREFIX = "connect_link"

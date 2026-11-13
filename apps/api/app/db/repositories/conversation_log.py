@@ -104,9 +104,18 @@ class ConversationLogRepository(ConversationRepository):
         return None if head is None else _log_head(head)
 
     async def commit_log_entry(
-        self, head: LogHead, logged: LoggedEntry, state: ConversationState, *, epoch: int | None
+        self,
+        head: LogHead,
+        logged: LoggedEntry,
+        state: ConversationState,
+        *,
+        epoch: int | None,
+        unread: bool = False,
     ) -> bool:
-        """Commit logged and the state after it, only while the head is as read (and held by epoch when given)."""
+        """Commit logged and the state after it, only while the head is as read (and held by epoch when given).
+
+        unread also marks the conversation unread and advances its sync clock, in the same write.
+        """
         expected: dict[str, object] = {
             "conversation_id": head.conversation_id,
             "user_id": head.user_id,
@@ -124,7 +133,9 @@ class ConversationLogRepository(ConversationRepository):
                         LOG_HEAD_FIELD: logged.seq,
                         f"{OUTBOX_FIELD}.{logged.seq}": document,
                         STATE_FIELD: state.model_dump(mode="json"),
-                    }
+                        **({"is_unread": True} if unread else {}),
+                    },
+                    **({"$currentDate": {"updatedAt": True}} if unread else {}),
                 },
             )
         if not result.matched_count:

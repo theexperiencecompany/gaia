@@ -23,6 +23,7 @@ from app.models.conversation_log_models import (
 from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.log import accept, publish_appended
 from app.services.conversation.ports import ClaimLost, EntryRejected
+from app.services.conversation.reply_analytics import capture_unanswered_stop, stopped_waking
 from app.services.conversation.runtime import runtime_ports
 from shared.py.wide_events import log
 
@@ -190,9 +191,10 @@ async def record_gaia_stop(
 
 async def record_user_stop(conversation_id: str, user_id: str, stop_id: str) -> None:
     """Log the user's Stop; its effects preempt the step and cancel the work it covers."""
-    await accept(
-        runtime_ports(),
-        conversation_id,
-        user_id,
-        StopRequested(id=f"stop:{stop_id}", by=StopBy.USER),
+    ports = runtime_ports()
+    accepted = await accept(
+        ports, conversation_id, user_id, StopRequested(id=f"stop:{stop_id}", by=StopBy.USER)
     )
+    if stopped := stopped_waking(accepted.appended):
+        logged = await ports.log.read_after(conversation_id, user_id, min(stopped) - 1)
+        capture_unanswered_stop(user_id, conversation_id, accepted.appended, logged)

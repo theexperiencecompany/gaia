@@ -15,12 +15,11 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import SourceCategory
 from app.models.user_models import AuthenticatedUser
 from shared.py.analytics import Dedupe
-from shared.py.wide_events import current_workflow_execution_id, log
+from shared.py.wide_events import current_workflow_execution_id
 
 
 class RunKind(StrEnum):
@@ -242,23 +241,6 @@ def get_session(stream_id: str) -> StreamSession | None:
     return _sessions.get(stream_id)
 
 
-def get_or_create_session(stream_id: str, kind: RunKind = RunKind.LIVE) -> StreamSession:
-    """Return the session, creating one if missing.
-
-    Implicit creation preserves the old dicts' auto-vivify behavior but is
-    logged: in a correctly ordered flow the session is always registered
-    (chat stream / silent agent / queue pop) before anything touches it.
-    """
-    session = _sessions.get(stream_id)
-    if session is None:
-        log.warning(
-            f"{LogTag.AGENT} Implicit session creation — registration ordering gap",
-            stream_id=stream_id,
-        )
-        session = create_session(stream_id, kind)
-    return session
-
-
 def teardown_session(stream_id: str) -> None:
     """Drop all orchestration state for a stream. Safe to call multiple times."""
     _sessions.pop(stream_id, None)
@@ -274,8 +256,8 @@ _abandoned: deque[str] = deque(maxlen=_ABANDONED_REMEMBERED)
 
 
 def mark_executor_spawned(stream_id: str) -> None:
-    """Record that call_executor spawned a background task for this stream."""
-    session = get_or_create_session(stream_id)
+    """Record that call_executor spawned a background task for this stream, opening its live session."""
+    session = _sessions.get(stream_id) or create_session(stream_id, RunKind.LIVE)
     session.executor_spawned = True
     session.executor_first_frame_perf = None  # new incarnation, new first frame
 

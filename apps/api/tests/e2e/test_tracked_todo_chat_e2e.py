@@ -13,19 +13,16 @@ real queue and run by the test), and the retry ladder (test_tracked_todo_tasks).
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from contextlib import (
-    AbstractAsyncContextManager,
     AbstractContextManager,
-    AsyncExitStack,
-    asynccontextmanager,
     contextmanager,
 )
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 import re
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from arq.connections import ArqRedis
@@ -33,21 +30,14 @@ from bson import ObjectId
 from fastapi import FastAPI
 from httpx import AsyncClient
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
-from langgraph.store.memory import InMemoryStore
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import PrivateAttr
 import pytest
 
 from app.agents.core.background.todo_run import TodoRunFailedError
-from app.agents.core.graph_builder import build_graph as build_graph_module
-from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
-from app.agents.core.graph_manager import GraphManager
-from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
-from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.constants.general import NEW_MESSAGE_BREAKER
-from app.constants.memory import ReconcileOutcome
 from app.constants.todos import (
     GAIA_TRACKED_LABEL,
     TodoActivityEvent,
@@ -55,11 +45,8 @@ from app.constants.todos import (
     WaitingOn,
 )
 from app.constants.triggers import GMAIL_NEW_MESSAGE_TRIGGER_NAME
-from app.core.websocket_manager import websocket_manager
-from app.db.mongodb import indexes
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.todos import todo_repository
-from app.memory.ingestion import RetainedMemory
 from app.models.chat_models import ConversationModel, ConversationSource
 from app.models.conversation_frame_models import EntryFrame
 from app.models.conversation_log_models import (
@@ -74,8 +61,6 @@ from app.models.conversation_log_models import (
 )
 from app.models.conversation_send_models import SendMessageRequest
 from app.models.hil_models import HILPreferences
-from app.models.integration_models import UserIntegrationCapabilities
-from app.models.memory_models import MemoryEntry
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import (
     ConditionOperator,
@@ -86,10 +71,8 @@ from app.models.trigger_subscription_models import (
     TriggerSubscription,
 )
 from app.models.user_models import AuthenticatedUser
-from app.services.conversation.composition import build_runtime_ports
 from app.services.conversation.event_stream import replay_from_log
 from app.services.conversation.mongo_log import MongoConversationLog
-from app.services.conversation.runtime import install_runtime_ports
 from app.services.conversation.send import submit_message
 from app.services.conversation_service import (
     create_conversation_service,
@@ -107,13 +90,14 @@ from app.workers.tasks.tracked_todo_tasks import (
 from tests.conftest import FAKE_USER, FAKE_USER_2
 from tests.e2e._harness.background import drain_background_runs
 from tests.e2e._harness.graph_run import StreamingScriptedModel, call, streaming_model
+from tests.e2e._harness.step_stack import OpenStack
 from tests.helpers import stored_conversation, worker_redis_url
 
-pytestmark = pytest.mark.e2e
+pytestmark = [
+    pytest.mark.e2e,
+    pytest.mark.usefixtures("conversation_indexes", "offline_todo_seams"),
+]
 
-FOLLOW_UP_NODE = "app.agents.core.nodes.follow_up_actions_node"
-RESET_MODULE = "app.services.checkpoint_thread_reset"
-CONVERSATIONS_MODULE = "app.services.conversation_service"
 TITLE = "Watch the staging deploy"
 REPORT = "Deploy is green: all 3 checks passed."
 SECOND_REPORT = "Still green on the second check."
@@ -122,13 +106,6 @@ FOLLOW_UP_REPLY = "It is still green; nothing has failed since the last run."
 #: Pure and outside the executor's initial tools: reaching it runs the real
 #: retrieve -> bind -> call hop, and its card is the tool's own real output.
 FLOWCHART = {"description": "the deploy's three checks", "direction": "LR"}
-OWNED_COLLECTIONS = (
-    "todos",
-    "conversations",
-    CONVERSATION_ENTRIES_COLLECTION,
-    "notifications",
-    "approval_ledger",
-)
 
 
 def executor_run(report: str) -> list[Any]:
@@ -140,98 +117,6 @@ def executor_run(report: str) -> list[Any]:
     ]
 
 
-@dataclass
-class Stack:
-    """The live pieces one test drives, and what they recorded."""
-
-    checkpointer: CheckpointerManager
-    executor_model: StreamingScriptedModel
-    comms_model: StreamingScriptedModel
-    #: Every WebSocket event a client of the user would have received, in order.
-    pushed: list[dict[str, Any]] = field(default_factory=list)
-
-    def pushed_of(self, kind: str) -> list[dict[str, Any]]:
-        return [event for event in self.pushed if event.get("type") == kind]
-
-    async def threads_of(self, conversation_id: str) -> dict[str, str]:
-        """Each Postgres checkpoint thread the conversation owns, by its oldest checkpoint id."""
-        assert self.checkpointer.pool is not None
-        async with self.checkpointer.pool.connection() as conn, conn.cursor() as cur:
-            await cur.execute(
-                "SELECT thread_id, min(checkpoint_id) FROM checkpoints "
-                "WHERE thread_id LIKE %s GROUP BY thread_id",
-                (f"%{conversation_id}%",),
-            )
-            return {row[0]: row[1] for row in await cur.fetchall()}
-
-    async def wipe_threads_of(self, conversation_id: str) -> None:
-        checkpointer = self.checkpointer.get_checkpointer()
-        for thread_id in await self.threads_of(conversation_id):
-            await checkpointer.adelete_thread(thread_id)
-
-
-@pytest.fixture
-async def checkpointer(postgres_url: str) -> AsyncIterator[CheckpointerManager]:
-    """Yield the app's own checkpointer manager on the real Postgres, as every graph and the reset reach it."""
-    manager = await CheckpointerManager(conninfo=postgres_url, max_pool_size=4).setup()
-    try:
-        yield manager
-    finally:
-        await manager.close()
-
-
-@pytest.fixture
-async def owner(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[AuthenticatedUser]:
-    """Yield the HTTP client's user as a real Mongo user, with nothing of theirs left from a previous run."""
-    user_id = FAKE_USER.user_id
-    for collection in OWNED_COLLECTIONS:
-        await mongo_db[collection].delete_many({"user_id": user_id})
-    await mongo_db["users"].update_one(
-        {"_id": ObjectId(user_id)},
-        {
-            "$set": {"email": FAKE_USER.email, "name": FAKE_USER.name, "timezone": "UTC"},
-            "$unset": {"hil_preferences": ""},
-        },
-        upsert=True,
-    )
-    yield FAKE_USER
-    for collection in OWNED_COLLECTIONS:
-        await mongo_db[collection].delete_many({"user_id": user_id})
-
-
-@pytest.fixture(autouse=True)
-async def _binding_index(mongo_db: AsyncIOMotorDatabase) -> None:
-    """Create the one-chat-per-todo index startup ships, from its shipped spec, on this test database.
-
-    Dropped first: the test database outlives a run, and an index left by an older
-    spec would otherwise stand in for the one under test.
-    """
-    collection = mongo_db["conversations"]
-    for spec in await collection.list_indexes().to_list(None):
-        if list(spec["key"].items()) == indexes.CONVERSATION_TODO_BINDING_KEYS:
-            await collection.drop_index(spec["name"])
-    await collection.create_index(
-        indexes.CONVERSATION_TODO_BINDING_KEYS, **indexes.CONVERSATION_TODO_BINDING_OPTIONS
-    )
-    for keys, options in indexes.CONVERSATION_ENTRY_INDEXES:
-        await mongo_db[CONVERSATION_ENTRIES_COLLECTION].create_index(keys, **options)
-
-
-@pytest.fixture(autouse=True)
-def _offline_seams() -> Iterator[None]:
-    """Double the todo's ChromaDB embeddings and VFS projection: off this path, never asserted on."""
-    with (
-        patch("app.services.todos.todo_service.store_todo_embedding", new_callable=AsyncMock),
-        patch("app.services.todos.todo_service.update_todo_embedding", new_callable=AsyncMock),
-        patch("app.services.todos.todo_service.delete_todo_embedding", new_callable=AsyncMock),
-        patch("app.services.todos.todo_service.delete_canvas_embedding", new_callable=AsyncMock),
-        patch("app.services.todos.todo_service.schedule_user_todos_sync"),
-        patch("app.services.tracked_todo_service.store_canvas_embedding", new_callable=AsyncMock),
-        patch("app.services.tracked_todo_service.schedule_gaia_tasks_sync"),
-    ):
-        yield
-
-
 class FailingModel(StreamingScriptedModel):
     """A model whose provider errors on every call, the way an outage does."""
 
@@ -241,92 +126,6 @@ class FailingModel(StreamingScriptedModel):
 
     async def _agenerate(self, *args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("the model provider is down")
-
-
-OpenStack = Callable[..., AbstractAsyncContextManager[Stack]]
-
-
-@pytest.fixture
-def open_stack(
-    checkpointer: CheckpointerManager,
-    real_redis: Any,
-    real_tool_registry: Any,
-    owner: AuthenticatedUser,
-) -> OpenStack:
-    """Open both real graphs on the real checkpointer, each tier's model scripted by the test."""
-
-    @asynccontextmanager
-    async def opened(
-        *,
-        executor: Sequence[Any] | StreamingScriptedModel,
-        comms: Sequence[Any] = (),
-    ) -> AsyncIterator[Stack]:
-        built = Stack(
-            checkpointer=checkpointer,
-            executor_model=executor
-            if isinstance(executor, StreamingScriptedModel)
-            else streaming_model(executor),
-            comms_model=streaming_model(comms),
-        )
-
-        async def record_push(_user_id: str, event: dict[str, Any]) -> None:
-            built.pushed.append(event)
-
-        memory = MagicMock()
-        memory.retain_single = AsyncMock(
-            return_value=RetainedMemory(
-                entry=MemoryEntry(id="mem-todo-chat", content="m", category_path="general"),
-                outcome=ReconcileOutcome.NEW,
-            )
-        )
-        memory.recall = AsyncMock(return_value=MagicMock(entries=[], episodes=[]))
-        memory.retain = AsyncMock()
-        the_checkpointer = AsyncMock(return_value=checkpointer)
-
-        async with AsyncExitStack() as stack:
-            for patcher in (
-                patch.object(
-                    build_graph_module, "get_tools_store", AsyncMock(return_value=InMemoryStore())
-                ),
-                patch.object(build_graph_module, "get_checkpointer_manager", the_checkpointer),
-                patch(f"{RESET_MODULE}.get_checkpointer_manager", the_checkpointer),
-                patch(f"{CONVERSATIONS_MODULE}.get_checkpointer_manager", the_checkpointer),
-                patch(
-                    f"{FOLLOW_UP_NODE}.ainvoke_structured",
-                    new=AsyncMock(return_value=FollowUpActions(actions=[])),
-                ),
-                patch(
-                    f"{FOLLOW_UP_NODE}.get_user_integration_capabilities",
-                    new=AsyncMock(return_value=UserIntegrationCapabilities(tool_names=[])),
-                ),
-                patch("app.agents.tools.memory_tools.memory_engine", memory),
-                patch("app.agents.core.nodes.memory_node.memory_engine", memory),
-                patch.object(websocket_manager, "broadcast_to_user", new=record_push),
-            ):
-                stack.enter_context(patcher)
-            graphs = {
-                "executor_agent": await stack.enter_async_context(
-                    build_graph_module.build_executor_graph(chat_llm=built.executor_model)
-                ),
-                "comms_agent": await stack.enter_async_context(
-                    build_graph_module.build_comms_graph(chat_llm=built.comms_model)
-                ),
-            }
-            stack.enter_context(
-                patch.object(
-                    GraphManager,
-                    "get_graph",
-                    new=AsyncMock(side_effect=lambda name="default_graph": graphs[name]),
-                )
-            )
-            install_runtime_ports(build_runtime_ports())
-            try:
-                yield built
-            finally:
-                # Inside the patches: nothing a run left going may reach the real services.
-                await drain_background_runs()
-
-    return opened
 
 
 def _daily_watch() -> TodoUpdate:
@@ -897,7 +696,7 @@ async def worker_pool(redis_url: str) -> AsyncIterator[ArqRedis]:
     await pool.aclose()
 
 
-async def _ask_before(mongo_db: AsyncIOMotorDatabase, tool_name: str) -> None:
+async def ask_before(mongo_db: AsyncIOMotorDatabase, tool_name: str) -> None:
     """Set the owner to be asked before every call of the tool, as their HIL settings would."""
     await mongo_db["users"].update_one(
         {"_id": ObjectId(FAKE_USER.user_id)},
@@ -952,7 +751,7 @@ class TestAnApprovalTheRunWaitsOnStaysInTheTodosChat:
         worker_pool: ArqRedis,
     ) -> None:
         """The ticket run is still going when the resume job lands, as with a real model: the resume waits its turn."""
-        await _ask_before(mongo_db, "create_flowchart")
+        await ask_before(mongo_db, "create_flowchart")
         todo_id = await _new_tracked_todo(owner)
         executor = gated_run([redeem(), DRAWN, RESUMED, NOTHING_PENDING])
 
@@ -1024,7 +823,7 @@ class TestAnApprovalTheRunWaitsOnStaysInTheTodosChat:
         client: AsyncClient,
         worker_pool: ArqRedis,
     ) -> None:
-        await _ask_before(mongo_db, "create_flowchart")
+        await ask_before(mongo_db, "create_flowchart")
         todo_id = await _new_tracked_todo(owner)
 
         async with open_stack(executor=gated_run([SKIPPED]), comms=[NARRATED] * 2):

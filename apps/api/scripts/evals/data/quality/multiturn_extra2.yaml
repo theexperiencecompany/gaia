@@ -1,6 +1,6 @@
 # One more long conversation. Read multiturn_extra.yaml's header for the turn
 # encoding — turns go in `prompt`, separated by a line containing exactly `---`,
-# which is what ChatStreamTransport splits on.
+# which is what ChatTransport splits on.
 #
 # What this case adds is a `communicate` gate that CANNOT be satisfied by any
 # turn's own words. The other multi-turn cases either gate nothing on content or

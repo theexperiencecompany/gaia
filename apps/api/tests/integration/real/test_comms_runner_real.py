@@ -56,7 +56,7 @@ from tests.e2e._harness.graph_run import RecordingFakeModel, comms_graph, memory
 from tests.unit.services.conversation.log_helpers import logged, stop, user
 from tests.unit.services.conversation.runtime_doubles import Runtime
 
-USER = "u-1"
+USER = "507f1f77bcf86cd799439011"
 CONFIRM_SECONDS = 0.05
 EntryT = TypeVar("EntryT")
 # The text streams, the translator closes the message, the model node returns, the run ends.
@@ -166,8 +166,8 @@ def batch(*entries: LoggedEntry) -> Batch:
     return Batch(start=entries[0].seq, end=entries[-1].seq, waking=entries, first_at=entries[0].at)
 
 
-def claim(conversation_id: str) -> StepClaim:
-    return StepClaim(conversation_id=conversation_id, user_id=USER, epoch=1)
+def claim(conversation_id: str, user_id: str = USER) -> StepClaim:
+    return StepClaim(conversation_id=conversation_id, user_id=user_id, epoch=1)
 
 
 async def _ignore(_event: RunEvent) -> None:
@@ -226,6 +226,24 @@ async def test_plain_answer_streams_text_then_finishes_replied(
     assert events[-1] == Finished(outcome=Replied(text="hello there"))
     assert run.task.done()
     assert humans(model.prompts[0]) == ["text of u1", "[clock]"]
+
+
+@pytest.mark.service
+async def test_a_run_that_fails_before_it_streams_raises_through_its_events(
+    manager: CheckpointerManager, conversation_id: str
+) -> None:
+    """Regression: a failure outside the stream (here the run's analytics lifecycle) left events() waiting forever."""
+    model = gated("never")
+    async with comms_graph([], model=model, checkpointer_manager=manager) as graph:
+        with patched_graph(graph):
+            run = await runner(conversation_id).start(
+                claim(conversation_id, user_id="not-an-object-id"), batch(logged(1, user("u1"))), ()
+            )
+            async with asyncio.timeout(10):
+                with pytest.raises(ValueError, match="ObjectId"):
+                    await collect(run)
+    assert run.task.done()
+    assert model.prompts == []
 
 
 @pytest.mark.service

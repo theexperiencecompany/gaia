@@ -149,7 +149,6 @@ class TestTheRealLockAndInbox:
 
         with (
             patch.object(eq, "StreamManager", AsyncMock()),
-            patch.object(eq, "websocket_manager", AsyncMock()),
             patch.object(er, "_spawn_detached_run") as spawn,
             patch.object(ExecutorInbox, "append", finalize_the_old_run_then_append),
         ):
@@ -177,7 +176,6 @@ def _real_lifecycle() -> Iterator[SimpleNamespace]:
     """Run the real busy lock and inbox over fakeredis, capturing only the spawned run."""
     with (
         patch.object(eq, "StreamManager", AsyncMock()),
-        patch.object(eq, "websocket_manager", AsyncMock()),
         patch.object(er, "_spawn_detached_run") as spawn,
     ):
         yield SimpleNamespace(spawn=spawn)
@@ -339,7 +337,6 @@ class TestARunTheLogRefuses:
         _carried_work_is_logged.return_value = False
         with (
             patch.object(eq, "StreamManager", AsyncMock()),
-            patch.object(eq, "websocket_manager", AsyncMock()),
             patch.object(er, "close_detached_stream", new_callable=AsyncMock) as closed,
             patch.object(er, "_spawn_detached_run") as spawn,
         ):
