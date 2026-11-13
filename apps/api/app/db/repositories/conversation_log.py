@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from bson import ObjectId
+from pydantic import ConfigDict, Field
 from pymongo import ReturnDocument
 
 from app.constants.chat import (
@@ -314,10 +315,8 @@ class ConversationLogRepository(ConversationRepository):
                 }
             )
             rows = [row async for row in cursor]
-        return [
-            (str(row["conversation_id"]), logged_of(StoredEntry.model_validate(row)))
-            for row in rows
-        ]
+        stored = [StoredEntry.model_validate(row) for row in rows]
+        return [(entry.conversation_id, logged_of(entry)) for entry in stored]
 
     async def take_runner(
         self, conversation_id: str, *, user_id: str, runner_epoch: int, alive_key: str
@@ -406,14 +405,20 @@ def _log_head(head: Head) -> LogHead:
 conversation_log_repository = ConversationLogRepository()
 
 
-def _sweep_head(row: Mapping[str, object]) -> SweepHead:
-    cursor = row["_id"]
-    if not isinstance(cursor, ObjectId):
-        raise TypeError(f"conversation head _id is a {type(cursor).__name__}, not an ObjectId")
+class _SweepRow(ConversationHead):
+    """A head as a sweep projects it, with the _id the next page resumes after."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True, arbitrary_types_allowed=True)
+
+    id: ObjectId = Field(alias="_id")
+
+
+def _sweep_head(raw: Mapping[str, object]) -> SweepHead:
+    row = _SweepRow.model_validate(raw)
     return SweepHead(
-        cursor=str(cursor),
-        conversation_id=str(row["conversation_id"]),
-        user_id=str(row["user_id"]),
-        has_outbox=bool(row.get(OUTBOX_FIELD)),
-        state=_state(row),
+        cursor=str(row.id),
+        conversation_id=row.conversation_id,
+        user_id=row.user_id,
+        has_outbox=bool(row.outbox),
+        state=_current(row),
     )

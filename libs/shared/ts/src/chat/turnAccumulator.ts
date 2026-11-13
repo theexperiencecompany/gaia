@@ -9,6 +9,8 @@ import type {
   ChatStreamEvent,
   StreamToolDataEntry,
   StreamToolOutput,
+  SubagentEndPayload,
+  SubagentStartPayload,
 } from "./streaming";
 import {
   mergeToolOutputIntoToolData,
@@ -273,15 +275,7 @@ const applyToolOutput = (
 
 const applySubagentStart = (
   acc: TurnAccumulator,
-  payload: {
-    subagent_id: string;
-    subagent_name: string;
-    agent_type: "handoff" | "spawned";
-    started_at: string;
-    icon_url?: string;
-    tool_category?: string;
-    parent_subagent_id?: string;
-  },
+  payload: SubagentStartPayload,
 ): TurnAccumulator => {
   const group: SubagentGroupData = {
     subagent_id: payload.subagent_id,
@@ -325,11 +319,7 @@ const applySubagentStart = (
 
 const applySubagentEnd = (
   acc: TurnAccumulator,
-  payload: {
-    subagent_id: string;
-    duration_ms: number | undefined;
-    token_count: number | null;
-  },
+  payload: SubagentEndPayload,
 ): TurnAccumulator => ({
   ...acc,
   toolData: updateSubagentInToolData(
@@ -337,8 +327,8 @@ const applySubagentEnd = (
     payload.subagent_id,
     (g) => ({
       ...g,
-      duration_ms: payload.duration_ms ?? null,
-      token_count: payload.token_count,
+      duration_ms: payload.duration_ms,
+      token_count: payload.token_count ?? null,
       completed_at: new Date().toISOString(),
     }),
   ),

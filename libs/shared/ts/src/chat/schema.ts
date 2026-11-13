@@ -1,5 +1,11 @@
 import { z } from "zod";
-import type { MessageReaction, ToolDataEntry } from "../api/generated";
+import type {
+  MessageReaction,
+  SubagentEndPayload,
+  SubagentStartPayload,
+  ToolDataEntry,
+  ToolOutputPayload,
+} from "../api/generated";
 
 /**
  * Zod mirror of the chat SSE event vocabulary; the source of truth is the backend at
@@ -15,9 +21,9 @@ import type { MessageReaction, ToolDataEntry } from "../api/generated";
 // Structured payloads
 // ---------------------------------------------------------------------------
 
-// The one payload here that is a documented API model, so the satisfies-check
-// makes the generated type the arbiter. It stays looser than the model on
-// purpose: a parse boundary may accept more than the model promises, never less.
+// The payloads that are documented API models carry a satisfies-check, so the
+// generated type is the arbiter. Each may stay looser than its model on purpose:
+// a parse boundary may accept more than the model promises, never less.
 export const ToolDataEntrySchema = z
   .object({
     tool_name: z.string(),
@@ -32,8 +38,8 @@ export const ToolDataEntrySchema = z
 const ToolOutputPayloadSchema = z.object({
   tool_call_id: z.string(),
   output: z.string(),
-  subagent_id: z.string().optional(),
-});
+  subagent_id: z.string().nullish(),
+}) satisfies z.ZodType<ToolOutputPayload>;
 
 const ReasoningPayloadSchema = z.object({
   content: z.string(),
@@ -43,18 +49,19 @@ const ReasoningPayloadSchema = z.object({
 const SubagentStartPayloadSchema = z.object({
   subagent_id: z.string(),
   subagent_name: z.string(),
-  agent_type: z.string(),
+  subagent: z.string().nullish(),
+  agent_type: z.enum(["handoff", "spawned"]),
   started_at: z.string(),
-  icon_url: z.string().optional(),
-  tool_category: z.string().optional(),
-  parent_subagent_id: z.string().optional(),
-});
+  icon_url: z.string().nullish(),
+  tool_category: z.string().nullish(),
+  parent_subagent_id: z.string().nullish(),
+}) satisfies z.ZodType<SubagentStartPayload>;
 
 const SubagentEndPayloadSchema = z.object({
   subagent_id: z.string(),
-  duration_ms: z.number().optional(),
+  duration_ms: z.number(),
   token_count: z.number().nullish(),
-});
+}) satisfies z.ZodType<SubagentEndPayload>;
 
 const DesktopToolRequestPayloadSchema = z.object({
   request_id: z.string(),

@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from langchain_core.messages import AnyMessage
 from langgraph.constants import CONF
+from langgraph.errors import GraphRecursionError
 from langgraph.types import StreamMode
 
 from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
@@ -41,7 +42,7 @@ from app.services.conversation.comms_input import (
     attempt_messages,
     entry_message_id,
 )
-from app.services.conversation.ports import CancelReason, Finished, RunEvent
+from app.services.conversation.ports import CancelReason, Finished, RunEvent, StepLimitReached
 from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.analytics.context import AnalyticsContext, analytics_context
 
@@ -136,6 +137,8 @@ class CommsGraphRun:
         """Run the attempt; any failure, the lifecycle's own included, reaches events() so the step settles it."""
         try:
             await self._drive_counted(state)
+        except GraphRecursionError as error:
+            self._out.put_nowait(StepLimitReached(str(error)))
         except Exception as error:  # the step settles a crashed run as failed
             self._out.put_nowait(error)
         finally:

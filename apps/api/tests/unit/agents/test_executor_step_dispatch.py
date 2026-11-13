@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agents.tools import executor_tool as et
+from app.db.redis import redis_cache
 from app.models.agent_config import StepTurnRef
 from app.models.agent_models import AgentConfigurable
 
@@ -97,7 +98,7 @@ def _busy(stack: ExitStack, order: list[str], joined: bool) -> AsyncMock:
         patch.object(et, "_acquire_lock_through_redirect", AsyncMock(return_value=False))
     )
     held = AsyncMock(return_value=b"other-stream:t-running")
-    stack.enter_context(patch.object(et.redis_cache.client, "get", held))
+    stack.enter_context(patch.object(redis_cache.client, "get", held))
     stack.enter_context(patch.object(et, "ExecutorInbox", inbox))
     return stack.enter_context(patch.object(et, "record_work_started", side_effect=logged))
 

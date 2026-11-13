@@ -659,8 +659,8 @@ async def test_whole_conversation_reads_return_only_the_newest_window(
     )
     windows = {d.conversation_id: [m.message_id for m in d.messages] for d in synced}
     assert windows == {cid: ["m3", "m4", "m5"], other: ["o1"]}
-    [recent, _] = await repo.recent_for_user(uid, limit=2)
-    assert len(recent.messages) <= 3
+    recent = await repo.recent_for_user(uid, limit=2)
+    assert {d.conversation_id: [m.message_id for m in d.messages] for d in recent} == windows
 
 
 async def test_a_read_says_whether_older_messages_exist_beyond_its_window(

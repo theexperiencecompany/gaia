@@ -575,6 +575,7 @@ class ConversationEntriesMigration(ConversationRepository):
                         {"$match": {**MESSAGE_SHAPED, "$expr": {"$eq": ["$user_id", "$$owner"]}}},
                         {"$limit": 1},
                         {"$project": {"_id": 1}},
+                        # pragma: no mutate end
                     ],
                     "as": _FOUND,
                 }

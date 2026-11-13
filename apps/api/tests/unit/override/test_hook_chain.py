@@ -143,14 +143,19 @@ class TestDeclaredChains:
             manage_system_prompts_node,
         ]
 
-    async def test_comms_filters_then_manages_prompts_and_nothing_else(self):
-        """Comms' live-work status rides the turn-start context, so no hook adds a per-call frame."""
+    async def test_comms_filters_drains_its_feed_then_manages_prompts_and_nothing_else(self):
+        """Comms' live-work status rides the turn-start context; only the step's absorbed messages join mid-turn."""
+        from app.agents.core.nodes.drain_conversation_log import drain_conversation_log_hook
         from app.agents.core.nodes.filter_messages import filter_messages_node
         from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 
         hooks = await self._hooks_for("build_comms_graph")
 
-        assert hooks == [filter_messages_node, manage_system_prompts_node]
+        assert hooks == [
+            filter_messages_node,
+            drain_conversation_log_hook,
+            manage_system_prompts_node,
+        ]
 
     async def test_comms_does_not_carry_the_executor_only_hooks(self):
         """Comms has no todos and no media lane; carrying those hooks would cost every chat turn unused work."""
@@ -159,7 +164,7 @@ class TestDeclaredChains:
         hooks = await self._hooks_for("build_comms_graph")
 
         assert adapt_media_node not in hooks
-        assert len(hooks) == 2
+        assert len(hooks) == 3
 
 
 class TestEndGraphHooks:

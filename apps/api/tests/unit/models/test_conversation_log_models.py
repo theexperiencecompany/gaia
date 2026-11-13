@@ -210,7 +210,7 @@ _PAYLOADS: list[StreamPayload] = [
     MessageBoundaryEvent(message_boundary=MessageBoundaryPayload(message_id="m1", discarded=True)),
     SubagentStartEvent(
         subagent_start=SubagentStartPayload(
-            subagent_id="s1", subagent_name="gmail", agent_type="mcp", started_at="now"
+            subagent_id="s1", subagent_name="gmail", agent_type="spawned", started_at="now"
         )
     ),
     SubagentEndEvent(subagent_end=SubagentEndPayload(subagent_id="s1", duration_ms=10)),

@@ -14561,8 +14561,11 @@ export interface components {
          * @description Lifecycle payload marking a delegated subagent beginning execution.
          */
         SubagentStartPayload: {
-            /** Agent Type */
-            agent_type: string;
+            /**
+             * Agent Type
+             * @enum {string}
+             */
+            agent_type: "handoff" | "spawned";
             /** Icon Url */
             icon_url?: string | null;
             /** Parent Subagent Id */

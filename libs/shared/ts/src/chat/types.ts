@@ -5,7 +5,7 @@
 // Core message types
 // ---------------------------------------------------------------------------
 
-import type { ToolDataEntry } from "../api/generated";
+import type { SubagentStartPayload, ToolDataEntry } from "../api/generated";
 
 export type {
   RecurrenceData,
@@ -747,16 +747,16 @@ export const SUBAGENT_GROUP_TOOL_NAME = "subagent_group";
 export const BROWSER_TASK_TOOL_NAME = "browser_task";
 export const BROWSER_TOOL_CATEGORY = "browser";
 
-export interface SubagentGroupData {
-  subagent_id: string;
-  subagent_name: string;
-  /** "handoff" = integration subagent (Gmail, GitHub etc); "spawned" = lightweight task agent */
-  agent_type: "handoff" | "spawned";
+/** A subagent's row as the client folds it from its start, tool calls and end frames. */
+export interface SubagentGroupData
+  extends Pick<
+    SubagentStartPayload,
+    "subagent_id" | "subagent_name" | "agent_type" | "started_at"
+  > {
   /** Accumulated tool calls from this subagent, in order of emission */
   tool_calls: ToolCallEntry[];
   duration_ms: number | null;
   token_count: number | null;
-  started_at: string;
   completed_at: string | null;
   /** Integration icon URL forwarded from the backend */
   icon_url: string | null;

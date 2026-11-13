@@ -124,6 +124,7 @@ apps/web/src/features/workflows/utils/creator.ts:ResolvableCreator=AuthorDetails
 # Owned by the concurrent lib/api migration, which deletes ErrorBody outright.
 apps/web/src/lib/blog.types.ts:Author=AuthorDetails
 apps/web/src/lib/db/chatDb.ts:IConversation=ConversationDocument
+apps/web/src/lib/db/chatDb.ts:IMessage=MessageAccepted
 apps/web/src/lib/seo.ts:PageMetadataOptions=SupportRequestCreate
 apps/web/src/stores/chatStore.ts:OptimisticMessage=ReplyToMessageData
 apps/web/src/types/api/aboutApiTypes.ts:Author=AuthorDetails

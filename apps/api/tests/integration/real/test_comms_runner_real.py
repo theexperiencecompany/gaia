@@ -46,6 +46,7 @@ from app.services.conversation.ports import (
     Replied,
     RunEvent,
     RuntimePorts,
+    StepLimitReached,
     Streamed,
 )
 from app.services.conversation.step import advance
@@ -119,7 +120,7 @@ async def conversation_id(manager: CheckpointerManager) -> AsyncIterator[str]:
     await manager.get_checkpointer().adelete_thread(thread)
 
 
-def _config(conversation_id: str) -> AgentRunnableConfig:
+def _config(conversation_id: str, recursion_limit: int = 25) -> AgentRunnableConfig:
     return cast(
         AgentRunnableConfig,
         {
@@ -130,7 +131,7 @@ def _config(conversation_id: str) -> AgentRunnableConfig:
                 "agent_name": "comms_agent",
             },
             "metadata": {"user_id": USER},
-            "recursion_limit": 25,
+            "recursion_limit": recursion_limit,
             "agent_name": "comms_agent",
         },
     )
@@ -142,10 +143,12 @@ TEST_ATTRIBUTION = Attribution(
 )
 
 
-def runner(conversation_id: str, history: Sequence[AnyMessage] = ()) -> CommsGraphRunner:
+def runner(
+    conversation_id: str, history: Sequence[AnyMessage] = (), recursion_limit: int = 25
+) -> CommsGraphRunner:
     async def build(claim: StepClaim, batch: Batch) -> CommsTurn:
         return CommsTurn(
-            config=_config(conversation_id),
+            config=_config(conversation_id, recursion_limit),
             opening=[
                 SystemMessage(content="STATIC PROMPT"),
                 mark(SystemMessage(content="DYNAMIC CONTEXT"), DYNAMIC_CONTEXT_MARKER),
@@ -610,3 +613,18 @@ async def test_step_a_model_that_raises_before_commit_leaves_a_failed_bubble(
             await advance(stepping(rt, conversation_id), conversation_id, USER)
     assert await kinds(rt, conversation_id) == ["user_message", "reply", "reply_settled"]
     assert await answered(rt, conversation_id) == [(ReplyOutcome.FAILED, ("u1",))]
+
+
+@pytest.mark.service
+async def test_a_run_out_of_steps_ends_with_the_step_limit(
+    manager: CheckpointerManager, conversation_id: str
+) -> None:
+    model = gated("hello there")
+    async with comms_graph([], model=model, checkpointer_manager=manager) as graph:
+        with patched_graph(graph):
+            run = await runner(conversation_id, recursion_limit=1).start(
+                claim(conversation_id), batch(logged(1, user("u1"))), ()
+            )
+            with pytest.raises(StepLimitReached, match="Recursion limit of 1"):
+                await collect(run)
+    assert run.task.done()

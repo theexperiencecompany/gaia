@@ -4,7 +4,6 @@ import asyncio
 from dataclasses import dataclass
 from typing import cast
 
-from langgraph.errors import GraphRecursionError
 import pytest
 
 from app.constants.chat import EMPTY_RESPONSE_FALLBACK, ConversationSource
@@ -42,6 +41,7 @@ from app.services.conversation.ports import (
     Reacted,
     Replied,
     Silent,
+    StepLimitReached,
     Streamed,
     Summarized,
 )
@@ -677,7 +677,7 @@ class StepScenarios:
         await assert_quiet(rt)
 
     async def test_a_run_that_hits_the_step_limit_says_so_on_its_settle(self, rt: Runtime) -> None:
-        rt.runner.script([text("half"), Fail(GraphRecursionError("limit"))])
+        rt.runner.script([text("half"), Fail(StepLimitReached("limit"))])
         await send(rt, user("u1"))
         await run(rt)
         assert [s.failure for s in await settles(rt)] == [FailureReason.STEP_LIMIT]
