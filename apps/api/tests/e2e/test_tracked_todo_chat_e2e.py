@@ -834,7 +834,9 @@ class TestAnApprovalTheRunWaitsOnStaysInTheTodosChat:
         await ask_before(mongo_db, "create_flowchart")
         todo_id = await _new_tracked_todo(owner)
 
-        async with open_stack(executor=gated_run([SKIPPED]), comms=[NARRATED] * 2):
+        # The completion nudge asks once more; without an answer the script would wrap around
+        # and propose the declined call again.
+        async with open_stack(executor=gated_run([SKIPPED, SKIPPED]), comms=[NARRATED] * 2):
             await _run(todo_id, owner)
             row = await _only_approval(mongo_db)
             decided = await client.post(

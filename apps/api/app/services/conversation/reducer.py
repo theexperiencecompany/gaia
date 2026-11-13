@@ -204,7 +204,7 @@ def _finish_work(state: ConversationState, seq: int, entry: WorkFinished) -> Tra
     live = _live(state, entry.task_id)
     if live is None:
         return Transition(state=state, effects=())
-    if live.pending_approvals and entry.outcome is WorkOutcome.DONE:
+    if entry.continued_by_decision and live.pending_approvals and entry.outcome is WorkOutcome.DONE:
         return Transition(state=_park(state, live), effects=())
     remaining = state.model_copy(
         update={"work": tuple(item for item in state.work if item.task_id != entry.task_id)}

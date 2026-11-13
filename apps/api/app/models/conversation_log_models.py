@@ -272,6 +272,9 @@ class WorkFinished(_Entry):
     nothing_for_user: bool = False
     # The image the work generated; the reply that narrates it carries it beside its cards.
     image: ImageData | None = None
+    # A chat run that left its proposals to the user: the decision starts the work that carries
+    # them out, so while one waits this work is not finished. Todo and workflow runs report instead.
+    continued_by_decision: bool = False
 
 
 class IntegrationNeeded(_Entry):

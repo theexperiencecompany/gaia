@@ -89,7 +89,13 @@ class WorkReport:
 
 
 async def record_work_finished(
-    conversation_id: str, user_id: str, task_id: str, outcome: WorkOutcome, report: WorkReport
+    conversation_id: str,
+    user_id: str,
+    task_id: str,
+    outcome: WorkOutcome,
+    report: WorkReport,
+    *,
+    continued_by_decision: bool = False,
 ) -> None:
     """Append WorkFinished; its kick wakes the step, which narrates the result and its cards in the task's own reply."""
     # A lost marker never shares the real result's id, so that result can never be dropped as its duplicate.
@@ -103,6 +109,7 @@ async def record_work_finished(
         note=report.note,
         nothing_for_user=report.nothing_for_user,
         image=report.image,
+        continued_by_decision=continued_by_decision,
     )
     await accept(runtime_ports(), conversation_id, user_id, entry)
 

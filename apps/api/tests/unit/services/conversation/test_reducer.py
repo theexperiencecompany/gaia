@@ -788,12 +788,16 @@ def _before_park() -> ConversationState:
     return state
 
 
+def _left_to_the_user(entry_id: str, task_id: str) -> WorkFinished:
+    return finished(entry_id, task_id).model_copy(update={"continued_by_decision": True})
+
+
 def _parked() -> ConversationState:
-    return _accept(_before_park(), 6, finished("f", "t1")).state
+    return _accept(_before_park(), 6, _left_to_the_user("f", "t1")).state
 
 
 def test_work_done_while_its_approval_is_pending_stays_live_and_narrates_nothing() -> None:
-    result = _accept(_before_park(), 6, finished("f", "t1"))
+    result = _accept(_before_park(), 6, _left_to_the_user("f", "t1"))
     assert [(item.task_id, item.pending_approvals) for item in result.state.work] == [
         ("t1", frozenset({"ap1"}))
     ]
@@ -823,6 +827,12 @@ def test_an_approval_nobody_decided_leaves_parked_work_for_its_finish_to_report(
     state = _accept(_parked(), 7, entry).state
     assert [(item.task_id, item.pending_approvals) for item in state.work] == [("t1", frozenset())]
     result = _accept(state, 8, finished("f2", "t1", WorkOutcome.FAILED))
+    assert result.state.work == ()
+    assert result.effects == (KickStep(),)
+
+
+def test_a_todo_or_workflow_run_waiting_on_an_approval_still_reports_its_finish() -> None:
+    result = _accept(_before_park(), 6, finished("f", "t1"))
     assert result.state.work == ()
     assert result.effects == (KickStep(),)
 

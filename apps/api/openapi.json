@@ -23004,6 +23004,11 @@
         "additionalProperties": false,
         "description": "Background work ended.",
         "properties": {
+          "continued_by_decision": {
+            "default": false,
+            "title": "Continued By Decision",
+            "type": "boolean"
+          },
           "id": {
             "description": "Producer-minted idempotency key",
             "minLength": 1,
@@ -23065,7 +23070,8 @@
           "tool_data",
           "note",
           "nothing_for_user",
-          "image"
+          "image",
+          "continued_by_decision"
         ],
         "title": "WorkFinished",
         "type": "object"

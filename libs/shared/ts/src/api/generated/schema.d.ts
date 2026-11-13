@@ -16772,6 +16772,11 @@ export interface components {
          */
         WorkFinished: {
             /**
+             * Continued By Decision
+             * @default false
+             */
+            continued_by_decision: boolean;
+            /**
              * Id
              * @description Producer-minted idempotency key
              */

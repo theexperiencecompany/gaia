@@ -741,6 +741,7 @@ async def _log_work_finished(
                 nothing_for_user=review.nothing_for_user,
                 image=outcome.image,
             ),
+            continued_by_decision=run.active_todo_id is None and run.workflow_execution_id is None,
         )
     except ConversationNotFoundError:
         # The user deleted the conversation while its work ran: the result has nowhere to land.
