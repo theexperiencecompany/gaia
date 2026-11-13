@@ -25,9 +25,12 @@ async def todo_runs_reported(
     log: ConversationLog, conversation_id: str, user_id: str, batch: Batch
 ) -> list[tuple[WorkFinished, TodoRun]]:
     """Return each finished work in batch that reports a todo run, with that run."""
+    works = [logged for logged in batch.waking if isinstance(logged.entry, WorkFinished)]
+    if not works:
+        return []
     state = await log.state(conversation_id, user_id)
     reported: list[tuple[WorkFinished, TodoRun]] = []
-    for logged in batch.waking:
+    for logged in works:
         finished = _finished(state, logged.seq)
         if not isinstance(logged.entry, WorkFinished) or finished is None:
             continue

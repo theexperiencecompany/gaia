@@ -39,6 +39,16 @@ class ConversationLogContract:
         assert [(item.seq, item.entry.id) for item in after] == [(2, "u2"), (3, "u3")]
         assert (await subject.log.state(CID, UID)).unsettled_waking == (1, 2, 3)
 
+    async def test_unsettled_reads_the_state_and_what_follows_its_stop_together(
+        self, subject: LogUnderTest
+    ) -> None:
+        for entry in (user("u1"), user("u2"), stop("s3", covers_through=2), user("u4")):
+            await subject.log.append(CID, UID, entry)
+        unsettled = await subject.log.unsettled(CID, UID)
+        assert unsettled.state == await subject.log.state(CID, UID)
+        assert unsettled.state.stopped_through == 2
+        assert [(item.seq, item.entry.id) for item in unsettled.entries] == [(3, "s3"), (4, "u4")]
+
     async def test_a_second_append_of_one_id_returns_the_stored_entry_and_changes_nothing(
         self, subject: LogUnderTest
     ) -> None:

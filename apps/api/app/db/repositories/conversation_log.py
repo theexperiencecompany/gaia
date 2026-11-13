@@ -169,6 +169,18 @@ class ConversationLogRepository(ConversationRepository):
         [(_, entries)] = await self._union_for(heads, window)
         return [logged_of(entry) for entry in entries]
 
+    async def read_unsettled(
+        self, conversation_id: str, *, user_id: str
+    ) -> tuple[ConversationState, list[LoggedEntry]] | None:
+        """Return the state at the head and the entries after what it settled or stopped, through that head; None for a missing conversation."""
+        heads = await self._read_heads({"conversation_id": conversation_id, "user_id": user_id})
+        if not heads:
+            return None
+        state = current_state(heads[0].document)
+        window = EntryWindow(after_seq=max(state.settled_through, state.stopped_through))
+        [(_, entries)] = await self._union_for(heads, window)
+        return state, [logged_of(entry) for entry in entries]
+
     async def stage_log_amend(
         self, conversation_id: str, *, user_id: str, epoch: int, amended: LoggedEntry
     ) -> bool:

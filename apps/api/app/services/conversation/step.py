@@ -69,9 +69,11 @@ from app.services.conversation.ports import (
     RuntimePorts,
     Streamed,
     Summarized,
+    Unsettled,
 )
 from app.services.conversation.reply_analytics import capture_reply_ended
 from app.services.conversation.reply_files import reply_files
+from app.services.conversation.step_view import StepView
 from app.services.conversation.todo_wake import nothing_to_report
 from app.services.conversation.verdict import merge_group, quote_target, verdict
 from app.utils.liveness import keep_proving
@@ -108,6 +110,9 @@ class _Attempt:
     covers: tuple[LoggedEntry, ...]
     # Highest seq examined for joiners.
     seen: int
+    view: StepView
+    # The log's head as the last verdict's hint read it: the view answers only while it reaches this.
+    hint_head: int = 0
     progress: _Quiet | _Showing | None = None
     # Waking entries after covers, of the batch's group, not past a Stop.
     joiners: tuple[LoggedEntry, ...] = ()
@@ -119,6 +124,11 @@ class _Attempt:
     work_image: ImageData | None = None
     # The reply as settled once the answer was final; the run only adds follow-up suggestions after.
     answered: LoggedEntry | None = None
+
+    def settled_view(self) -> StepView | None:
+        """Return the view when its newest entry is this attempt's own settle, so it holds everything through it."""
+        newest = self.view.entries[-1].entry if self.view.entries else None
+        return self.view if newest is not None and newest.id == _settle_id(self) else None
 
     @property
     def committed(self) -> CommitReason | None:
@@ -183,8 +193,10 @@ async def _hold(ports: RuntimePorts, claim: StepClaim) -> None:
     beating = _keep_claim_alive(ports, claim)
     try:
         await _recover(ports, claim)
+        known: StepView | None = None
         for number in itertools.count(1):
-            if await _serve(ports, claim, f"{claim.epoch}.{number}"):
+            served, known = await _serve(ports, claim, f"{claim.epoch}.{number}", known)
+            if served:
                 continue
             # Stopped first: a beat after the release deleted the key would cancel this step.
             beating.cancel()
@@ -254,19 +266,23 @@ def _started_work_unseen(state: ConversationState) -> bool:
     )
 
 
-async def _serve(ports: RuntimePorts, claim: StepClaim, attempt_id: str) -> bool:
-    """Answer the oldest waking batch; return False when nothing waking is left."""
+async def _serve(
+    ports: RuntimePorts, claim: StepClaim, attempt_id: str, known: StepView | None
+) -> tuple[bool, StepView | None]:
+    """Answer the oldest waking batch; False when nothing waking is left. Also returns the view the next serve may start from."""
     conversation_id = claim.conversation_id
-    state = await ports.log.state(conversation_id, claim.user_id)
     # Nothing a Stop covered reaches a run, even what no run ever saw.
-    since = max(state.settled_through, state.stopped_through)
-    entries = await ports.log.read_after(conversation_id, claim.user_id, since)
-    entries = await _cut_spoken_over(ports, claim, entries)
+    unsettled = await _unsettled(ports, claim, known)
+    state = unsettled.state
+    entries = await _cut_spoken_over(ports, claim, unsettled.entries)
+    view = StepView(
+        state=state, after=max(state.settled_through, state.stopped_through), entries=entries
+    )
     pending = [logged for logged in entries if logged.seq in state.unsettled_waking]
     if not pending:
-        return False
+        return False, None
     if await _answered_as_approval(ports, claim, state, pending[0], attempt_id):
-        return True
+        return True, None
     batch = _batch(pending)
     reply_id = _reply_id(batch, entries, attempt_id)
     work = _answered_work(batch, reply_id)
@@ -277,6 +293,8 @@ async def _serve(ports: RuntimePorts, claim: StepClaim, attempt_id: str) -> bool
         batch=batch,
         covers=batch.waking,
         seen=batch.end,
+        view=view,
+        hint_head=state.head,
         work_cards=work.tool_data if work else (),
         work_image=work.image if work else None,
     )
@@ -284,7 +302,7 @@ async def _serve(ports: RuntimePorts, claim: StepClaim, attempt_id: str) -> bool
         # The run said so itself, and its todo lets it: nothing is shown, its report stays on its WorkFinished.
         unshown = _empty_reply(attempt).model_copy(update={"tool_data": ()})
         await _conclude(ports, attempt, unshown, ReplyOutcome.SILENT)
-        return True
+        return True, attempt.settled_view()
     if isinstance(batch.waking[0].entry, WorkflowFired) and not state.work:
         # Under this claim no comms run writes the threads, and no live work runs on the executor's.
         await ports.effects.reset_workflow_threads(conversation_id)
@@ -295,7 +313,18 @@ async def _serve(ports: RuntimePorts, claim: StepClaim, attempt_id: str) -> bool
         if logged not in batch.waking and logged.seq not in state.unsettled_waking
     ]
     await _run_attempt(ports, attempt, context)
-    return True
+    return True, attempt.settled_view()
+
+
+async def _unsettled(ports: RuntimePorts, claim: StepClaim, known: StepView | None) -> Unsettled:
+    """Answer from the view the last attempt settled while the hint shows nothing logged after it, else read."""
+    if known is not None:
+        hint = await ports.log.hint(claim.conversation_id, claim.user_id)
+        since = max(known.state.settled_through, known.state.stopped_through)
+        entries = known.entries_after(since, hint.head)
+        if entries is not None:
+            return Unsettled(state=known.state, entries=entries)
+    return await ports.log.unsettled(claim.conversation_id, claim.user_id)
 
 
 def _batch(pending: Sequence[LoggedEntry]) -> Batch:
@@ -393,7 +422,7 @@ async def _answered_as_approval(
         through=first.seq,
         quote_target=await _quote(ports, claim, answers, first.seq - 1, shown.seq),
     )
-    await _settle(ports, claim, (first,), settled)
+    await _settle(ports, claim, (first,), settled, None)
     return True
 
 
@@ -401,7 +430,7 @@ async def _run_attempt(
     ports: RuntimePorts, attempt: _Attempt, context: Sequence[LoggedEntry]
 ) -> None:
     """Run one comms attempt to its end; the run is certainly dead when this returns or raises."""
-    await _set_comms(ports, attempt.claim, CommsPhase.THINKING)
+    attempt.view.phase_set(await _set_comms(ports, attempt.claim, CommsPhase.THINKING))
     try:
         run = await ports.runner.start(attempt.claim, attempt.batch, context)
     except Exception as error:  # a run that cannot start fails its inputs like one that crashed
@@ -502,6 +531,7 @@ async def _close(pump: _Pump) -> None:
 async def _decide(ports: RuntimePorts, attempt: _Attempt) -> Verdict:
     """Read the hint and decide, counting only newer inputs that would join this attempt."""
     hint = await ports.log.hint(attempt.claim.conversation_id, attempt.claim.user_id)
+    attempt.hint_head = hint.head
     if hint.head > attempt.seen and not attempt.closed:
         await _look_for_joiners(ports, attempt)
     joinable_head = attempt.joiners[-1].seq if attempt.joiners else attempt.batch.end
@@ -561,7 +591,7 @@ async def _show(ports: RuntimePorts, attempt: _Attempt, payload: StreamPayload) 
     """Open the reply on the first visible delta, then stream the delta into it."""
     if not isinstance(attempt.progress, _Showing):
         reply = await _opening_reply(ports, attempt, _empty_reply(attempt))
-        opened = await _append(ports, attempt.claim, reply)
+        opened = await _append_seen(ports, attempt, reply)
         attempt.progress = _Showing(reply=reply, seq=opened.seq)
         if opened.seq == attempt.seen + 1:
             # Its own entry: no need to read the log for joiners the next verdict.
@@ -611,13 +641,14 @@ async def _stop(ports: RuntimePorts, attempt: _Attempt) -> None:
         await _retract(ports, attempt)
         await _set_comms(ports, attempt.claim, CommsPhase.IDLE)
         return
-    await _amend(ports, attempt.claim, progress.reply)
+    await _amend_seen(ports, attempt, progress.reply)
     state = await ports.log.state(attempt.claim.conversation_id, attempt.claim.user_id)
     await _settle(
         ports,
         attempt.claim,
         attempt.covers,
         _settled(attempt, ReplyOutcome.STOPPED, (), state.stopped_through, None),
+        attempt.view,
     )
 
 
@@ -702,10 +733,8 @@ async def _add_follow_ups(
         return
     if not isinstance(reply, Reply) or not reply.text:
         return
-    await _amend(
-        ports,
-        attempt.claim,
-        reply.model_copy(update={"follow_up_actions": outcome.follow_up_actions}),
+    await _amend_seen(
+        ports, attempt, reply.model_copy(update={"follow_up_actions": outcome.follow_up_actions})
     )
 
 
@@ -738,7 +767,7 @@ async def _react(ports: RuntimePorts, attempt: _Attempt, emoji: str) -> None:
     if not messages:
         return
     reaction = Reaction(emoji=emoji, by=ReactionBy.CHAT_MODEL)
-    await _amend(ports, attempt.claim, messages[-1].model_copy(update={"reaction": reaction}))
+    await _amend_seen(ports, attempt, messages[-1].model_copy(update={"reaction": reaction}))
 
 
 async def _fail(ports: RuntimePorts, attempt: _Attempt, error: Exception) -> None:
@@ -775,8 +804,13 @@ async def _conclude(
         attempt.claim,
         attempt.covers,
         _settled(attempt, settled_as, answers, attempt.through, quote, failure),
+        attempt.view,
     )
     return stored
+
+
+def _settle_id(attempt: _Attempt) -> str:
+    return f"{attempt.attempt_id}:settled"
 
 
 def _settled(
@@ -788,7 +822,7 @@ def _settled(
     failure: FailureReason | None = None,
 ) -> ReplySettled:
     return ReplySettled(
-        id=f"{attempt.attempt_id}:settled",
+        id=_settle_id(attempt),
         reply_id=attempt.reply_id,
         outcome=outcome,
         answers=answers,
@@ -806,19 +840,30 @@ async def _answers_and_quote(
 ) -> tuple[tuple[str, ...], str | None]:
     """Answer every covered input, plus the user messages that caused covered finished work."""
     if state is None:
-        state = await ports.log.state(attempt.claim.conversation_id, attempt.claim.user_id)
+        state = await _state(ports, attempt)
     covered = {logged.seq for logged in attempt.covers}
     work = [item for item in state.finished_work if item.seq in covered]
     ids = [logged.entry.id for logged in attempt.covers]
     answers = tuple(dict.fromkeys([*ids, *(cause for item in work for cause in item.answers)]))
     since = min([attempt.covers[0].seq, *(item.cause_through for item in work)]) - 1
-    return answers, await _quote(ports, attempt.claim, answers, since, reply_seq)
+    known = attempt.view.entries_after(since, max(attempt.hint_head, reply_seq - 1))
+    if known is None:
+        known = await ports.log.read_after(
+            attempt.claim.conversation_id, attempt.claim.user_id, since
+        )
+    return answers, _quote_in(answers, reply_seq, known)
 
 
 async def _quote(
     ports: RuntimePorts, claim: StepClaim, answers: tuple[str, ...], since: int, reply_seq: int
 ) -> str | None:
     entries = await ports.log.read_after(claim.conversation_id, claim.user_id, since)
+    return _quote_in(answers, reply_seq, entries)
+
+
+def _quote_in(
+    answers: tuple[str, ...], reply_seq: int, entries: Sequence[LoggedEntry]
+) -> str | None:
     visible = [_visible(logged) for logged in entries]
     return quote_target(answers, reply_seq, [item for item in visible if item is not None])
 
@@ -861,15 +906,31 @@ def _base_reply(attempt: _Attempt) -> Reply:
 
 async def _put_reply(ports: RuntimePorts, attempt: _Attempt, reply: Reply) -> LoggedEntry:
     if isinstance(attempt.progress, _Showing):
-        return await _amend(ports, attempt.claim, reply)
-    return await _append(ports, attempt.claim, await _opening_reply(ports, attempt, reply))
+        return await _amend_seen(ports, attempt, reply)
+    return await _append_seen(ports, attempt, await _opening_reply(ports, attempt, reply))
 
 
 async def _opening_reply(ports: RuntimePorts, attempt: _Attempt, reply: Reply) -> Reply:
     """Stamp the reply about to open with the message it quotes, as if it took the next seq."""
-    state = await ports.log.state(attempt.claim.conversation_id, attempt.claim.user_id)
+    state = await _state(ports, attempt)
     _, quote = await _answers_and_quote(ports, attempt, state.head + 1, state)
     return reply.model_copy(update={"quote_target": quote})
+
+
+async def _state(ports: RuntimePorts, attempt: _Attempt) -> ConversationState:
+    """Return the state from the attempt's view while nothing newer was logged, else read it."""
+    known = attempt.view.state_at(attempt.hint_head)
+    if known is not None:
+        return known
+    return await ports.log.state(attempt.claim.conversation_id, attempt.claim.user_id)
+
+
+async def _append_seen(ports: RuntimePorts, attempt: _Attempt, entry: Entry) -> LoggedEntry:
+    """Append under the attempt's claim and take the entry into its view."""
+    appended = await ports.log.append_fenced(attempt.claim, entry)
+    await publish_appended(ports.frames, attempt.claim.conversation_id, appended)
+    attempt.view.appended(appended)
+    return appended.logged
 
 
 async def _append(ports: RuntimePorts, claim: StepClaim, entry: Entry) -> LoggedEntry:
@@ -879,14 +940,26 @@ async def _append(ports: RuntimePorts, claim: StepClaim, entry: Entry) -> Logged
 
 
 async def _settle(
-    ports: RuntimePorts, claim: StepClaim, covers: Sequence[LoggedEntry], settled: ReplySettled
+    ports: RuntimePorts,
+    claim: StepClaim,
+    covers: Sequence[LoggedEntry],
+    settled: ReplySettled,
+    view: StepView | None,
 ) -> None:
-    """Settle a reply on the inputs it covered, and count it the first time it lands."""
+    """Settle a reply on the inputs it covered, and count it the first time it lands; view takes the settle in."""
     appended = await ports.log.append_fenced(claim, settled)
     await publish_appended(ports.frames, claim.conversation_id, appended)
     if appended.duplicate:
         return
-    since = await ports.log.read_after(claim.conversation_id, claim.user_id, covers[0].seq)
+    known = None
+    if view is not None:
+        view.appended(appended)
+        known = view.entries_after(covers[0].seq, appended.logged.seq)
+    since = (
+        known
+        if known is not None
+        else await ports.log.read_after(claim.conversation_id, claim.user_id, covers[0].seq)
+    )
     capture_reply_ended(
         claim.user_id, claim.conversation_id, covers, settled, appended.logged.at, since
     )
@@ -900,6 +973,15 @@ async def _settle(
         await ports.effects.deliver_files(claim.conversation_id, claim.user_id, files)
 
 
+async def _amend_seen(
+    ports: RuntimePorts, attempt: _Attempt, entry: Reply | UserMessage
+) -> LoggedEntry:
+    """Amend under the attempt's claim and take the new content into its view."""
+    amended = await _amend(ports, attempt.claim, entry)
+    attempt.view.amended(amended)
+    return amended
+
+
 async def _amend(ports: RuntimePorts, claim: StepClaim, entry: Reply | UserMessage) -> LoggedEntry:
     amended = await ports.log.amend(claim, entry)
     await ports.frames.publish(
@@ -908,9 +990,10 @@ async def _amend(ports: RuntimePorts, claim: StepClaim, entry: Reply | UserMessa
     return amended
 
 
-async def _set_comms(ports: RuntimePorts, claim: StepClaim, phase: CommsPhase) -> None:
+async def _set_comms(ports: RuntimePorts, claim: StepClaim, phase: CommsPhase) -> ConversationState:
     state = await ports.log.set_comms(claim, phase)
     await ports.frames.publish(claim.conversation_id, state_frame(state))
+    return state
 
 
 async def _retract(ports: RuntimePorts, attempt: _Attempt) -> None:

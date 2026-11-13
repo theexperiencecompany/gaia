@@ -51,6 +51,14 @@ class Appended:
     duplicate: bool
 
 
+@dataclass(frozen=True)
+class Unsettled:
+    """The state at one head, and every entry after what it settled or stopped, through that head."""
+
+    state: ConversationState
+    entries: Sequence[LoggedEntry]
+
+
 class ConversationLog(Protocol):
     """One conversation's ordered record, its folded state, and the step's claim on it."""
 
@@ -74,6 +82,10 @@ class ConversationLog(Protocol):
 
     async def state(self, conversation_id: str, user_id: str) -> ConversationState:
         """Return the conversation's current state."""
+        ...
+
+    async def unsettled(self, conversation_id: str, user_id: str) -> Unsettled:
+        """Return the current state and the entries after max(settled_through, stopped_through), in one read of the head."""
         ...
 
     async def claim(self, conversation_id: str, user_id: str) -> StepClaim | None:

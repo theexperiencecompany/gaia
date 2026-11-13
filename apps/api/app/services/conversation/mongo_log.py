@@ -43,7 +43,7 @@ from app.models.conversation_log_models import (
     TodoWoke,
     UserMessage,
 )
-from app.services.conversation.ports import Appended, ClaimLost, EntryRejected
+from app.services.conversation.ports import Appended, ClaimLost, EntryRejected, Unsettled
 from app.services.conversation.reducer import reduce
 from app.utils.errors import (
     ConversationEntryNotFoundError,
@@ -144,6 +144,14 @@ class MongoConversationLog:
     async def state(self, conversation_id: str, user_id: str) -> ConversationState:
         """Return the conversation's current state."""
         return (await self._head(conversation_id, user_id)).state
+
+    async def unsettled(self, conversation_id: str, user_id: str) -> Unsettled:
+        """Return the current state and the entries after max(settled_through, stopped_through), in one read of the head."""
+        read = await self._repository.read_unsettled(conversation_id, user_id=user_id)
+        if read is None:
+            raise _not_found(conversation_id)
+        state, entries = read
+        return Unsettled(state=state, entries=entries)
 
     async def claim(self, conversation_id: str, user_id: str) -> StepClaim | None:
         """Take the step with a new epoch, or None while another holder is alive."""

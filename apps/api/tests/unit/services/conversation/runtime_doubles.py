@@ -35,6 +35,7 @@ from app.services.conversation.ports import (
     Finished,
     RunEvent,
     RuntimePorts,
+    Unsettled,
 )
 from app.services.conversation.reducer import reduce
 from app.services.conversation.reply_files import ReplyFile
@@ -118,6 +119,13 @@ class InMemoryConversationLog:
     async def state(self, conversation_id: str, user_id: str) -> ConversationState:
         await self.pause("state")
         return self._conv(conversation_id).state
+
+    async def unsettled(self, conversation_id: str, user_id: str) -> Unsettled:
+        await self.pause("unsettled")
+        conversation = self._conv(conversation_id)
+        since = max(conversation.state.settled_through, conversation.state.stopped_through)
+        entries = [item for item in conversation.entries if item.seq > since]
+        return Unsettled(state=conversation.state, entries=entries)
 
     async def claim(self, conversation_id: str, user_id: str) -> StepClaim | None:
         await self.pause("claim")
@@ -239,6 +247,10 @@ class PausingLog:
     async def state(self, conversation_id: str, user_id: str) -> ConversationState:
         await self.pause("state")
         return await self._inner.state(conversation_id, user_id)
+
+    async def unsettled(self, conversation_id: str, user_id: str) -> Unsettled:
+        await self.pause("unsettled")
+        return await self._inner.unsettled(conversation_id, user_id)
 
     async def claim(self, conversation_id: str, user_id: str) -> StepClaim | None:
         await self.pause("claim")
