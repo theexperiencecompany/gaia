@@ -71,22 +71,29 @@ function cspHeaderName(env) {
   return REPORT_ONLY_CSP;
 }
 
-/** Nonce every script in this response (cached HTML included) and add the nonce to script-src, so 'unsafe-inline' no longer applies. */
+const isScriptSrc = (directive) => directive.trim().startsWith("script-src ");
+
+/** The CSP header whose policy has script-src; a policy without one (the sandbox proxy's frame-ancestors) is never touched. */
+function scriptPolicyHeader(headers) {
+  return [REPORT_ONLY_CSP, ENFORCED_CSP].find((name) => (headers.get(name) ?? "").split(";").some(isScriptSrc));
+}
+
+/** Nonce every inline script in this response (cached HTML included) and add the nonce to script-src, so 'unsafe-inline' no longer applies; external scripts stay on the origin allowlist. */
 function withScriptNonce(html, init, env) {
   const { headers } = init;
-  const policy = headers.get(REPORT_ONLY_CSP) ?? headers.get(ENFORCED_CSP);
+  const header = scriptPolicyHeader(headers);
+  const policy = header && headers.get(header);
   // A response from WORKER_SELF_REFERENCE already passed through this wrapper and carries its nonce.
   if (!policy || policy.includes("'nonce-")) return new Response(html, init);
   const nonce = randomNonce();
   const noncedPolicy = policy
     .split(";")
-    .map((directive) => (directive.trim().startsWith("script-src ") ? directive + " 'nonce-" + nonce + "'" : directive))
+    .map((directive) => (isScriptSrc(directive) ? directive + " 'nonce-" + nonce + "'" : directive))
     .join(";");
-  headers.delete(REPORT_ONLY_CSP);
-  headers.delete(ENFORCED_CSP);
-  headers.set(cspHeaderName(env), noncedPolicy);
+  headers.delete(header);
+  headers.append(cspHeaderName(env), noncedPolicy);
   return new HTMLRewriter()
-    .on("script", { element: (script) => script.setAttribute("nonce", nonce) })
+    .on("script:not([src])", { element: (script) => script.setAttribute("nonce", nonce) })
     .transform(new Response(html, init));
 }
 

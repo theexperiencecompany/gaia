@@ -233,9 +233,10 @@ const nextConfig = {
     ...(process.env.NODE_ENV === "development" ? ["dev.ts", "dev.tsx"] : []),
   ],
   async headers() {
-    // Next sends public pages s-maxage only; browsers need max-age and a
-    // validator. Scope it to the public site (every (landing) route, the home
-    // page and /signup): app routes need their private/no-store headers.
+    // Next sends public pages s-maxage only; browsers need max-age and a validator.
+    // Hosted (landing) routes and home only: app routes stay private/no-store, and
+    // self-host /signup renders live setup status (see src/lib/selfhost.ts).
+    const isSelfhostWeb = process.env.NEXT_PUBLIC_GAIA_SELFHOST === "true";
     const publicHeaders = [
       {
         key: "Cache-Control",
@@ -243,17 +244,23 @@ const nextConfig = {
       },
       { key: "Last-Modified", value: new Date().toUTCString() },
     ];
-    const publicSections = [...landingSections(), "signup"];
+    const publicCacheRules = isSelfhostWeb
+      ? []
+      : [
+          {
+            source: `/:locale(de|es|fr|ja|ko|pt-br)?/(${landingSections().join("|")})/:path*`,
+            headers: publicHeaders,
+          },
+          // An optional segment alone does not match "/", so the home page needs its own rule.
+          { source: "/", headers: publicHeaders },
+          {
+            source: "/:locale(de|es|fr|ja|ko|pt-br)",
+            headers: publicHeaders,
+          },
+        ];
     return [
       ...NEXT_SECURITY_HEADER_RULES,
-      {
-        source: `/:locale(de|es|fr|ja|ko|pt-br)?/(${publicSections.join("|")})/:path*`,
-        headers: publicHeaders,
-      },
-      {
-        source: "/:locale(de|es|fr|ja|ko|pt-br)?",
-        headers: publicHeaders,
-      },
+      ...publicCacheRules,
       // /_next/static/*: intentionally NOT setting a custom Cache-Control here.
       // Next content-hashes chunk filenames in prod, so its default immutable
       // headers are correct; in dev, Turbopack reuses filenames across rebuilds, so a custom long-cache header would pin a stale bundle and break hot reloads.

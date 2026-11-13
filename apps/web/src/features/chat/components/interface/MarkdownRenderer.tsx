@@ -1,3 +1,4 @@
+import "./markdown.css";
 import Image from "next/image";
 import { useParams } from "next/navigation";
 import type React from "react";

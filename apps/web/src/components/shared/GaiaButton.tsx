@@ -5,13 +5,13 @@ import { Button, type ButtonProps } from "@heroui/react";
 import {
   type ButtonHoverTone,
   type ButtonInset,
-  type ButtonTone,
   type ButtonVariants,
   buttonOverlayVariants,
   buttonVariants,
   isGaiaButtonFill,
 } from "./buttonVariants";
 import type { Shape } from "./shape";
+import type { TextTone } from "./tone";
 
 /** HeroUI's button variants plus GAIA's, closed: a misspelt or v2 variant is a type error. */
 export type GaiaButtonVariant = NonNullable<ButtonVariants["variant"]>;
@@ -19,7 +19,7 @@ export type GaiaButtonVariant = NonNullable<ButtonVariants["variant"]>;
 type GaiaButtonProps = Omit<ButtonProps, "variant" | "className"> & {
   variant?: GaiaButtonVariant;
   shape?: Shape;
-  tone?: ButtonTone;
+  tone?: TextTone;
   hoverTone?: ButtonHoverTone;
   inset?: ButtonInset;
   className?: string;

@@ -1,6 +1,4 @@
-import "@/features/chat/components/interface/markdown.css";
-
-("use client");
+"use client";
 
 import {
   Chip,

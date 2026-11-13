@@ -31,28 +31,41 @@ export function ToolList({
     const keyOf = new Map<Element, string>();
     for (const [key, element] of descriptionRefs.current)
       keyOf.set(element, key);
-    // Measure a description the first time it scrolls into view; one
-    // observer for the whole list.
-    const observer = new IntersectionObserver(
+    // Measure each description again whenever its box resizes (a narrower
+    // viewport can clamp one that fit), so its toggle tracks the current width.
+    const resizeObserver = new ResizeObserver((entries) => {
+      const changes = new Map<string, boolean>();
+      for (const { target } of entries) {
+        const key = keyOf.get(target);
+        if (key) changes.set(key, target.scrollHeight > target.clientHeight);
+      }
+      setClamped((previous) => {
+        const next = new Set(previous);
+        for (const [key, isClamped] of changes) {
+          if (isClamped) next.add(key);
+          else next.delete(key);
+        }
+        return next;
+      });
+    });
+    // Start measuring a description once it nears the scroll box's viewport,
+    // so ~800 off-screen cards are never laid out up front.
+    const intersectionObserver = new IntersectionObserver(
       (entries) => {
-        const found: string[] = [];
         for (const entry of entries) {
           if (!entry.isIntersecting) continue;
-          observer.unobserve(entry.target);
-          const element = entry.target;
-          const key = keyOf.get(element);
-          if (key && element.scrollHeight > element.clientHeight)
-            found.push(key);
-        }
-        if (found.length > 0) {
-          setClamped((previous) => new Set([...previous, ...found]));
+          intersectionObserver.unobserve(entry.target);
+          resizeObserver.observe(entry.target);
         }
       },
       // Ahead of the box's edge, so a toggle is in place before its card shows.
       { root: scrollRef.current, rootMargin: "200px 0px" },
     );
-    for (const element of keyOf.keys()) observer.observe(element);
-    return () => observer.disconnect();
+    for (const element of keyOf.keys()) intersectionObserver.observe(element);
+    return () => {
+      intersectionObserver.disconnect();
+      resizeObserver.disconnect();
+    };
   }, []);
 
   const toggle = (key: string) =>

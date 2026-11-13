@@ -32,9 +32,9 @@ apps/web/src/features/browser/components/BrowserStatusChip.tsx:Chip:!text-[#00bb
 apps/web/src/features/chat/components/bubbles/bot/CodeExecutionSection.tsx:Accordion.Trigger:text-gray-300
 apps/web/src/features/chat/components/bubbles/bot/NotificationListSection.tsx:Chip:bg-blue-900/30
 apps/web/src/features/chat/components/bubbles/bot/NotificationListSection.tsx:Chip:text-blue-400
-apps/web/src/features/chat/components/voice-agent/agent-control-bar.tsx:GaiaButton:active:bg-red-500/25
-apps/web/src/features/chat/components/voice-agent/agent-control-bar.tsx:GaiaButton:bg-red-500/15
-apps/web/src/features/chat/components/voice-agent/agent-control-bar.tsx:GaiaButton:hover:bg-red-500/20
+apps/web/src/features/chat/components/voice-agent/VoiceCallControls.tsx:GaiaButton:active:bg-red-500/25
+apps/web/src/features/chat/components/voice-agent/VoiceCallControls.tsx:GaiaButton:bg-red-500/15
+apps/web/src/features/chat/components/voice-agent/VoiceCallControls.tsx:GaiaButton:hover:bg-red-500/20
 apps/web/src/features/notification/components/EnhancedNotificationCard.tsx:GaiaButton:bg-red-500/10
 apps/web/src/features/notification/components/EnhancedNotificationCard.tsx:GaiaButton:hover:bg-red-500/20
 apps/web/src/features/notification/components/EnhancedNotificationCard.tsx:GaiaButton:text-red-500

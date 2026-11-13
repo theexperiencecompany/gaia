@@ -3,7 +3,7 @@ import { tv, type VariantProps } from "tailwind-variants";
 
 import { SOFT_TINT_CLASSES } from "./controlVariants";
 import { SHAPE_CLASSES } from "./shape";
-import { TEXT_TONE_CLASSES, type TextTone } from "./tone";
+import { TEXT_TONE_CLASSES } from "./tone";
 
 /** The colour a quiet button's text takes on hover; v2 set it per button, so "none" keeps the tone. */
 export const BUTTON_HOVER_TONE_CLASSES = {
@@ -27,8 +27,6 @@ export const BUTTON_INSET_CLASSES = {
 } as const;
 
 export type ButtonInset = keyof typeof BUTTON_INSET_CLASSES;
-
-export type ButtonTone = TextTone;
 
 const GAIA_DIMENSIONS = {
   shape: SHAPE_CLASSES,
@@ -58,7 +56,7 @@ export const buttonOverlayVariants = tv({
  * warning-soft (their flat buttons; danger flat is HeroUI's danger-soft), and
  * text (the small inline text action, 4px by 8px, no fill).
  */
-export const GAIA_BUTTON_FILLS = {
+const GAIA_BUTTON_FILLS = {
   "default-solid":
     "bg-zinc-700 text-foreground hover:bg-zinc-600 active:bg-zinc-600",
   "default-soft":
@@ -72,7 +70,7 @@ export const GAIA_BUTTON_FILLS = {
   text: "h-auto min-h-0 min-w-0 bg-transparent px-2 py-1 hover:bg-transparent active:bg-transparent",
 } as const;
 
-export type GaiaButtonFill = keyof typeof GAIA_BUTTON_FILLS;
+type GaiaButtonFill = keyof typeof GAIA_BUTTON_FILLS;
 
 export function isGaiaButtonFill(variant: string): variant is GaiaButtonFill {
   return Object.hasOwn(GAIA_BUTTON_FILLS, variant);
