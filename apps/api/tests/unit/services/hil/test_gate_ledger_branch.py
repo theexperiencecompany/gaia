@@ -97,6 +97,40 @@ class TestLedgerBranch:
         assert "approve ticket" in str(result.content)
         assert result.additional_kwargs[HIL_STATUS_KWARG] == "pending"
 
+    async def test_the_approval_is_logged_on_the_work_its_run_belongs_to(
+        self, logged_work: AsyncMock
+    ) -> None:
+        ledger = _ledger()
+        with (
+            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
+            patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
+            patch(f"{MODULE}.approval_ledger_repository", new=ledger),
+            patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
+            patch(f"{MODULE}.publish_ledger_request", new=AsyncMock()),
+            patch(f"{MODULE}.interrupt"),
+        ):
+            await gate.decide_tool_call(_gated_request())
+
+        assert ledger.register.await_args.args[0].task_id == "t1"
+        (_, _, task_id, approval_id), _ = logged_work.await_args
+        assert (task_id, approval_id) == ("t1", "ap_abc1234567")
+
+    async def test_a_call_from_no_logged_work_is_refused_and_never_registered(self) -> None:
+        ledger = _ledger()
+        unlogged = AsyncMock(side_effect=LookupError("run s1 is no logged work"))
+        with (
+            patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
+            patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
+            patch(f"{MODULE}.approval_ledger_repository", new=ledger),
+            patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
+            patch(f"{MODULE}.publish_ledger_request", new=AsyncMock()),
+            patch(f"{MODULE}.work_of_run", new=unlogged),
+        ):
+            result = await gate.decide_tool_call(_gated_request())
+
+        ledger.register.assert_not_awaited()
+        assert result is not None and "NOT performed" in str(result.content)
+
     async def test_background_pending_points_at_the_approvals_tab(self) -> None:
         """A background run has no watcher: the approval lives in the Approvals tab, so the guidance must say so instead of "when this run ends"."""
         ledger = _ledger()
@@ -454,6 +488,7 @@ class TestLedgerRegistration:
                 preview='{"to": "b@x"}',
                 owner_agent="gmail_conv-1",
                 proposing_run_id=STREAM_ID,
+                task_id="t1",
             )
         )
         gate_seams.publish_ledger.assert_awaited_once_with(

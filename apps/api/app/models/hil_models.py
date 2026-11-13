@@ -194,8 +194,8 @@ class ApprovalProposal(BaseModel):
     owner_run_type: str = ""
     owner_id: str = ""
     proposing_run_id: str | None = None
-    # The conversation step's live task the approval holds, when the step started the
-    # proposing run; its request and decision are then conversation log entries too.
+    # The logged live work the approval holds; its request and every ending are log entries.
+    # None only on rows registered before every run was logged work.
     task_id: str | None = None
 
 

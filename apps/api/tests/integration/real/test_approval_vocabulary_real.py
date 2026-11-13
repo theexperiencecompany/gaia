@@ -115,7 +115,7 @@ def _event_outcome(edges: Edges) -> ApprovalOutcome:
         (_approve, ApprovalOutcome.APPROVED, ApprovalDecider.USER, True),
         (_deny, ApprovalOutcome.DENIED, ApprovalDecider.USER, True),
         (_stop, ApprovalOutcome.CANCELLED, None, False),
-        (_withdraw, ApprovalOutcome.WITHDRAWN, None, False),
+        (_withdraw, ApprovalOutcome.WITHDRAWN, None, True),
         (_expire, ApprovalOutcome.EXPIRED, None, False),
     ],
     ids=["approved-by-user", "denied", "cancelled-by-stop", "withdrawn", "expired"],

@@ -107,14 +107,17 @@ async def record_work_finished(
     await accept(runtime_ports(), conversation_id, user_id, entry)
 
 
-async def running_step_task(conversation_id: str, user_id: str) -> str | None:
-    """Return the task id of the executor running in the conversation when the step started it; else None."""
-    holder = await get_lock_holder(conversation_id)
-    if holder is None:
-        return None
-    task_id = parse_lock_value(holder)[1]
+async def work_of_run(conversation_id: str, user_id: str, stream_id: str) -> str:
+    """Return the task id of the logged live work a run belongs to: its own detached stream, else the executor holding the conversation."""
     state = await runtime_ports().log.state(conversation_id, user_id)
-    return task_id if any(work.task_id == task_id for work in state.work) else None
+    live = {work.task_id for work in state.work}
+    if stream_id in live:
+        return stream_id
+    holder = await get_lock_holder(conversation_id)
+    task_id = parse_lock_value(holder)[1] if holder is not None else None
+    if task_id is None or task_id not in live:
+        raise LookupError(f"run {stream_id} is no logged work in conversation {conversation_id}")
+    return task_id
 
 
 async def record_approval_requested(

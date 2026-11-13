@@ -161,7 +161,7 @@ from app.services.conversation.work_log import (
     record_work_carried,
     record_work_finished,
     record_work_started,
-    running_step_task,
+    work_of_run,
 )
 from app.services.conversation_stop_service import press_stop
 from app.services.delivery.chat_channel import ChatChannel
@@ -987,6 +987,51 @@ async def test_an_approved_action_that_failed_still_says_so_on_its_card_after_a_
 
 
 @pytest.mark.service
+async def test_an_agent_withdrawing_its_approval_reaches_the_log_and_every_device(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    """Regression: a revoke settled only the ledger row, so another device's card stayed open."""
+    model = gated("on it")
+    rig = await rig_for(model)
+    _during(model, 0, lambda: rig.start_work("t1"))
+    await rig.send("m1", "send the invoice")
+    await rig.settle()
+    approval_id = await approval_ledger_repository.register(
+        ApprovalProposal(
+            conversation_id=rig.conversation_id,
+            user_id=rig.user_id,
+            fingerprint=f"fp-{uuid4().hex}",
+            tool_name="GMAIL_SEND_EMAIL",
+            summary="Send the invoice",
+            owner_agent="gmail_agent",
+            task_id="t1",
+        )
+    )
+    await record_approval_requested(
+        rig.conversation_id, rig.user_id, "t1", approval_id, summary="Send it", expires_at=None
+    )
+
+    await ledger_decide.revoke_ticket(
+        approval_id,
+        user_id=rig.user_id,
+        conversation_id=rig.conversation_id,
+        caller="gmail_agent",
+    )
+
+    logged = [(d.approval_id, d.outcome, d.decider) for d in await rig.of(ApprovalDecided)]
+    assert logged == [(approval_id, ApprovalOutcome.WITHDRAWN, None)]
+    streamed = [
+        (f.frame.entry.approval_id, f.frame.entry.outcome)
+        for f in await read_frames(rig.conversation_id, "0", block_ms=1)
+        if isinstance(f.frame, EntryFrame) and isinstance(f.frame.entry, ApprovalDecided)
+    ]
+    assert streamed == [(approval_id, ApprovalOutcome.WITHDRAWN)]
+    state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+    assert [w.pending_approvals for w in state.work] == [frozenset()]
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
+
+
+@pytest.mark.service
 async def test_a_messages_attached_files_are_listed_to_the_model(
     rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
 ) -> None:
@@ -1047,20 +1092,25 @@ async def test_work_handed_to_running_work_is_logged_and_stopped_with_it(
 
 
 @pytest.mark.service
-async def test_a_ledger_approval_is_held_by_the_step_task_running_in_the_conversation(
+async def test_a_ledger_approval_is_held_by_the_logged_work_its_run_belongs_to(
     rig_for: RigFactory, real_redis: Redis
 ) -> None:
+    """Regression: a background subagent's approval was held by the executor's task, or by no work."""
     model = gated("on it")
     rig = await rig_for(model)
     _during(model, 0, lambda: rig.start_work("t1"))
     await rig.send("m1", "send the invoice")
     await rig.settle()
-    before_lock = await running_step_task(rig.conversation_id, rig.user_id)
+    with pytest.raises(LookupError):
+        await work_of_run(rig.conversation_id, rig.user_id, "stream-1")
     await real_redis.set(f"{EXECUTOR_BUSY_PREFIX}{rig.conversation_id}", "stream-1:t1")
-    held_by = await running_step_task(rig.conversation_id, rig.user_id)
+    held_by = await work_of_run(rig.conversation_id, rig.user_id, "stream-1")
+    assert await record_work_carried(rig.conversation_id, rig.user_id, "bg-1", detached=True)
+    detached = await work_of_run(rig.conversation_id, rig.user_id, "bg-1")
     await real_redis.set(f"{EXECUTOR_BUSY_PREFIX}{rig.conversation_id}", "stream-2:t-legacy")
-    legacy = await running_step_task(rig.conversation_id, rig.user_id)
-    assert (before_lock, held_by, legacy) == (None, "t1", None)
+    with pytest.raises(LookupError):
+        await work_of_run(rig.conversation_id, rig.user_id, "stream-2")
+    assert (held_by, detached) == ("t1", "bg-1")
 
 
 @pytest.mark.service

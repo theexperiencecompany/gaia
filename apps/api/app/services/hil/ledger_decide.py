@@ -195,10 +195,7 @@ async def _commit_decision(
         )
 
     log.set(hil={"approval_id": approval_id, "decision": kind, "tool": row.tool_name})
-    if row.task_id is not None:
-        await record_approval_decided(
-            row.conversation_id, user_id, approval_id, target, ApprovalDecider.USER
-        )
+    await _log_outcome(row, target, ApprovalDecider.USER)
     # Server-owned funnel event: exactly once per committed decision (stale-v
     # and lost-CAS returns above emit nothing). Explicit user_id: the decide
     # path resolves its user from the row, not a session.
@@ -511,6 +508,16 @@ async def _settle_terminal(row: ApprovalLedgerDocument, action: ActionResult) ->
     await _broadcast_decision(row, end)
 
 
+async def _log_outcome(
+    row: ApprovalLedgerDocument, outcome: ApprovalOutcome, decider: ApprovalDecider | None
+) -> None:
+    """Log how the approval ended where its work holds it; rows registered before work held approvals have no entry."""
+    if row.task_id is not None:
+        await record_approval_decided(
+            row.conversation_id, row.user_id, row.approval_id, outcome, decider
+        )
+
+
 async def revoke_ticket(
     approval_id: str, *, user_id: str, conversation_id: str, caller: str
 ) -> str:
@@ -542,6 +549,7 @@ async def revoke_ticket(
         current = await approval_ledger_repository.get_by_approval_id(approval_id)
         standing = current.standing if current else "gone"
         return f"Cannot revoke '{approval_id}': already {standing}."
+    await _log_outcome(row, ApprovalOutcome.WITHDRAWN, None)
     revoked_row = await approval_ledger_repository.get_by_approval_id(approval_id)
     if revoked_row is not None:
         await publish_ledger_revocation(revoked_row, ApprovalOutcome.WITHDRAWN)
