@@ -33,7 +33,7 @@ async function cacheControl(pathname: string): Promise<string | undefined> {
 }
 
 describe("public Cache-Control", () => {
-  it.each(["/signup", "/compare/notion"])(
+  it.each(["/", "/de", "/signup", "/compare/notion"])(
     "the hosted build lets shared caches hold %s",
     async (pathname) => {
       vi.stubEnv("NEXT_PUBLIC_GAIA_SELFHOST", "");
