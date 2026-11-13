@@ -45,13 +45,14 @@ export function StarterPromptsCard({ prompts }: StarterPromptsCardProps) {
               fullWidth
               variant="ghost"
               size="sm"
+              shape="md"
               onPress={() => {
                 appendToInput(prompt);
                 router.push("/c");
               }}
               tone="dim"
-              hoverTone="foreground"
-              className="h-11 justify-start gap-3 rounded-xl bg-zinc-900 text-sm font-normal hover:bg-zinc-700"
+              hoverTone="strong"
+              className="h-11 justify-start gap-3 bg-zinc-900 text-sm font-normal hover:bg-zinc-700"
             >
               <Icon size={18} className="shrink-0 text-zinc-500" />
               <span className="truncate text-left">{prompt}</span>

@@ -3,6 +3,7 @@
 import { Chip } from "@heroui/react";
 import type { DesktopPermissionStatus } from "@shared/desktop-tools";
 import { useCallback, useEffect, useState } from "react";
+import { chipVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { getElectronAPI } from "@/lib/electron/api";
@@ -57,7 +58,10 @@ function statusChip(granted: boolean, known: boolean) {
       size="sm"
       variant="soft"
       color="success"
-      className="bg-success/15 text-xs text-emerald-400"
+      className={chipVariants({
+        tint: "light",
+        className: "text-xs text-emerald-400",
+      })}
     >
       Granted
     </Chip>
@@ -146,8 +150,8 @@ export function DesktopPermissions() {
               {!granted && (
                 <GaiaButton
                   size="sm"
+                  shape="md"
                   variant="default-soft"
-                  className="rounded-xl"
                   onPress={() => {
                     handleRequest(row);
                   }}
@@ -159,7 +163,7 @@ export function DesktopPermissions() {
                 <GaiaButton
                   variant="accent-soft"
                   size="sm"
-                  className="rounded-xl"
+                  shape="md"
                   onPress={() => getElectronAPI()?.relaunchDesktopApp()}
                 >
                   Restart GAIA

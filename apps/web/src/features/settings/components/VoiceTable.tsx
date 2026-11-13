@@ -122,9 +122,9 @@ function VoiceCell({
               aria-label={
                 voice.starred ? `Unstar ${voice.name}` : `Star ${voice.name}`
               }
+              tone="subtle"
               hoverTone={voice.starred ? "none" : "dim"}
               className={cn(
-                "text-zinc-600",
                 voice.starred && "text-yellow-400 hover:text-yellow-300",
               )}
               onPress={() => onToggleStar(voice)}

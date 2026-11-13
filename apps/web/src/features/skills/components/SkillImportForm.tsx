@@ -163,7 +163,7 @@ export function SkillImportForm({
             <GaiaButton
               variant="accent-soft"
               size="sm"
-              className="rounded-xl"
+              shape="md"
               isPending={installingAll}
               isDisabled={installBusy && !installingAll}
               onPress={handleInstallAll}
@@ -187,7 +187,7 @@ export function SkillImportForm({
                 <GaiaButton
                   variant="accent-soft"
                   size="sm"
-                  className="rounded-xl"
+                  shape="md"
                   isPending={installingPath === skill.path}
                   isDisabled={installBusy && installingPath !== skill.path}
                   onPress={() => handleInstall(skill)}

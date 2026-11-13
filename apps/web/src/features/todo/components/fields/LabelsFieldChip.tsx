@@ -5,6 +5,7 @@ import { Cancel01Icon, PlusSignIcon, Tag01Icon } from "@icons";
 import { useState } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import BaseFieldChip from "./BaseFieldChip";
 import FieldChipOption from "./FieldChipOption";
 
@@ -71,15 +72,18 @@ export default function LabelsFieldChip({
                     aria-label="Add new label"
                     className={inputVariants({
                       size: "sm",
-                      className:
-                        "border-0 text-sm hover:bg-zinc-700 focus:bg-zinc-700",
+                      className: toneVariants({
+                        tone: "bright",
+                        className:
+                          "border-0 text-sm hover:bg-zinc-700 focus:bg-zinc-700",
+                      }),
                     })}
                   />
                 </div>
                 <GaiaButton
                   size="sm"
                   variant="tertiary"
-                  tone={canAddLabel ? "default" : "faint"}
+                  tone={canAddLabel ? "bright" : "subtle"}
                   isIconOnly
                   isDisabled={!canAddLabel}
                   onPress={() => {
@@ -105,7 +109,7 @@ export default function LabelsFieldChip({
                     <GaiaButton
                       variant="ghost"
                       tone="muted"
-                      hoverTone="foreground"
+                      hoverTone="bright"
                       size="sm"
                       isIconOnly
                       onPress={() => handleRemoveLabel(label)}

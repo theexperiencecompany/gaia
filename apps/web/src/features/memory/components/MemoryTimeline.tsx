@@ -145,8 +145,8 @@ export function MemoryTimeline() {
           <GaiaButton
             isIconOnly
             size="sm"
+            shape="md"
             variant="default-soft"
-            className="rounded-xl"
             aria-label="Previous two weeks"
             onPress={() => setRangeEnd(subDays(rangeEnd, JOURNAL_RANGE_DAYS))}
           >
@@ -155,8 +155,8 @@ export function MemoryTimeline() {
           <GaiaButton
             isIconOnly
             size="sm"
+            shape="md"
             variant="default-soft"
-            className="rounded-xl"
             aria-label="Next two weeks"
             isDisabled={atToday}
             onPress={() => {

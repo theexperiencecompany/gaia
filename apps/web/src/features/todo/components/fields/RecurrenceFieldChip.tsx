@@ -49,7 +49,7 @@ export default function RecurrenceFieldChip({
               <GaiaButton
                 key={option.value ?? "none"}
                 variant="ghost"
-                tone={isOptionSelected ? "default" : "faint"}
+                tone={isOptionSelected ? "bright" : "faint"}
                 fullWidth
                 aria-pressed={isOptionSelected}
                 className="justify-start gap-2 px-3 text-sm"

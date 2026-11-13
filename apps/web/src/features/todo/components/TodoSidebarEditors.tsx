@@ -2,7 +2,9 @@
 
 import { Checkbox, Input, TextArea } from "@heroui/react";
 import { useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { shapeVariants } from "@/components/shared/shape";
+import { toneVariants } from "@/components/shared/tone";
 
 interface TodoSidebarTitleProps {
   title: string;
@@ -56,7 +58,14 @@ export function TodoSidebarTitle({
             }}
             onBlur={(e) => save(e.target.value)}
             autoFocus
-            className="border-0 bg-transparent text-2xl font-medium text-zinc-100 shadow-none placeholder:text-zinc-500 hover:bg-transparent focus:bg-transparent"
+            className={inputVariants({
+              variant: "transparent",
+              placeholder: "faint",
+              className: toneVariants({
+                tone: "strong",
+                className: "border-0 text-2xl font-medium shadow-none",
+              }),
+            })}
           />
         ) : (
           <h1
@@ -106,7 +115,14 @@ export function TodoSidebarDescription({
         placeholder="Add a description..."
         rows={4}
         autoFocus
-        className="max-h-40 bg-zinc-800/30 text-zinc-200 shadow-none placeholder:text-zinc-500 hover:bg-zinc-800/50"
+        className={inputVariants({
+          variant: "subtle",
+          placeholder: "faint",
+          className: toneVariants({
+            tone: "bright",
+            className: "max-h-40 shadow-none",
+          }),
+        })}
       />
     );
   }

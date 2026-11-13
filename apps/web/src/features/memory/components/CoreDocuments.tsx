@@ -124,15 +124,15 @@ export function CoreDocuments() {
         <div className="flex justify-end gap-2">
           <GaiaButton
             size="sm"
+            shape="md"
             variant="ghost"
-            className="rounded-xl"
             onPress={() => setDraft(null)}
           >
             Cancel
           </GaiaButton>
           <GaiaButton
             size="sm"
-            className="rounded-xl"
+            shape="md"
             onPress={handleSave}
             isPending={isSaving}
             variant="primary"
@@ -207,8 +207,9 @@ export function CoreDocuments() {
               {draft === null && (
                 <GaiaButton
                   size="sm"
+                  shape="md"
                   variant="default-soft"
-                  className="shrink-0 rounded-xl"
+                  className="shrink-0"
                   onPress={() => setDraft(document.content)}
                 >
                   <PencilEdit02Icon className="size-4" />

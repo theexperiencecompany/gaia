@@ -26,6 +26,7 @@ import {
   ConfirmActionDialog,
 } from "@/components/shared/ConfirmActionDialog";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { ChevronRight, Github } from "@/components/shared/icons";
 import { toneVariants } from "@/components/shared/tone";
 import { getLinkByLabel } from "@/config/appConfig";
@@ -433,7 +434,10 @@ export default function SettingsMenu({
         <Dropdown.Popover
           placement="right"
           offset={21}
-          className="dark shadow-xl"
+          className={overlayVariants({
+            surface: "secondary",
+            className: "dark shadow-xl",
+          })}
         >
           <Dropdown.Menu aria-label="Settings Menu">
             {menuSections.map((section) => (

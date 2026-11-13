@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Components } from "streamdown";
 import { modalVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import {
@@ -171,7 +172,12 @@ export const IntegrationInstructionsModal = ({
                 />
               </div>
               <div className="flex min-w-0 flex-col gap-0.5">
-                <Modal.Heading className="text-lg font-semibold">
+                <Modal.Heading
+                  className={toneVariants({
+                    tone: "strong",
+                    className: "text-lg font-semibold",
+                  })}
+                >
                   Custom instructions for {integration.name}
                 </Modal.Heading>
                 <span className="text-sm font-light text-zinc-400">

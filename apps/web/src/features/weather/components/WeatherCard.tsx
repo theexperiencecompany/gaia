@@ -20,6 +20,7 @@ import type React from "react";
 import { useMemo, useState } from "react";
 import { accordionVariants } from "@/components/shared/accordionVariants";
 import { CloudFogIcon } from "@/components/shared/icons";
+import { toneVariants } from "@/components/shared/tone";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -351,7 +352,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
                 </div>
                 <Accordion.Indicator
                   className={accordionStyles.indicator({
-                    className: "text-white",
+                    className: toneVariants({ tone: "white" }),
                   })}
                 />
               </Accordion.Trigger>
@@ -385,7 +386,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
               </div>
               <Accordion.Indicator
                 className={accordionStyles.indicator({
-                  className: "text-white",
+                  className: toneVariants({ tone: "white" }),
                 })}
               />
             </Accordion.Trigger>

@@ -2,6 +2,7 @@
 
 import { Tooltip } from "@heroui/react";
 import type { ReactElement, ReactNode } from "react";
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 
 interface MenuItem {
@@ -56,7 +57,10 @@ export function NestedMenuTooltip({
       <Tooltip.Content
         placement="right top"
         offset={8}
-        className="border-0! p-0 outline-0!"
+        className={overlayVariants({
+          surface: "secondary",
+          className: "border-0! p-0 outline-0!",
+        })}
       >
         <div
           onMouseEnter={() => onOpenChange(true)}
@@ -78,7 +82,7 @@ export function NestedMenuTooltip({
                     variant="ghost"
                     size="sm"
                     tone="muted"
-                    hoverTone="foreground"
+                    hoverTone="white"
                     className="justify-start text-sm transition"
                     onPress={() => {
                       item.action();

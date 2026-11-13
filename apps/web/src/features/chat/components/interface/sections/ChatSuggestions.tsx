@@ -48,10 +48,11 @@ export const ChatSuggestions: React.FC = () => {
               fullWidth
               variant="ghost"
               size="sm"
+              shape="md"
               onPress={() => appendToInput(prompt)}
               tone="muted"
-              hoverTone="foreground"
-              className="h-10 justify-start gap-3 rounded-xl text-sm font-normal"
+              hoverTone="strong"
+              className="h-10 justify-start gap-3 text-sm font-normal"
             >
               <Icon size={18} className="shrink-0 text-zinc-500" />
               {prompt}

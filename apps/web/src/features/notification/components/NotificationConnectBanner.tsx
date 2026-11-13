@@ -87,7 +87,7 @@ export function NotificationConnectBanner({
               onPress={dismiss}
               aria-label="Dismiss"
               tone="faint"
-              hoverTone="foreground"
+              hoverTone="white"
               className="h-6 w-6 min-w-6"
             >
               <Cancel01Icon className="h-3 w-3" />
@@ -108,7 +108,7 @@ export function NotificationConnectBanner({
         onPress={dismiss}
         aria-label="Dismiss"
         tone="faint"
-        hoverTone="foreground"
+        hoverTone="white"
         className="absolute top-2 right-2 h-6 w-6 min-w-6"
       >
         <Cancel01Icon className="h-3 w-3" />

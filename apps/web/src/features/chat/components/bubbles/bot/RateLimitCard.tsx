@@ -84,9 +84,10 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
           <div className="p-3">
             <GaiaButton
               size="sm"
+              shape="md"
               variant={isUpgradeRequired ? "primary" : "accent-soft"}
               onPress={openPlans}
-              className="w-full rounded-xl font-medium"
+              className="w-full font-medium"
             >
               {isUpgradeRequired ? `Upgrade to ${planName}` : "View Plans"}
             </GaiaButton>

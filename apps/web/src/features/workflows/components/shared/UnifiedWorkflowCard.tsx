@@ -443,9 +443,10 @@ function WorkflowActionButton({
   return (
     <GaiaButton
       size={size}
+      shape="md"
       variant={variant}
       tone={variant === "secondary" ? "accent" : "default"}
-      className="rounded-xl font-medium"
+      className="font-medium"
       isPending={isPending}
       onPress={(e) => onPress(e as unknown as React.MouseEvent)}
     >

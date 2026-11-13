@@ -140,6 +140,7 @@ export function AgentControlBar({
             isDisabled={preConnectCapture}
             onPress={handleMicPress}
             variant="tertiary"
+            tone="white"
             className="h-12 w-14 transition-colors"
           >
             <MicStateIcon className="h-6 w-6" />
@@ -187,7 +188,7 @@ export function AgentControlBar({
             onPress={onLeave}
             isDisabled={isDisconnecting}
             variant="danger-soft"
-            className="h-12 w-14 transition-colors"
+            className="h-12 w-14 bg-red-500/15 transition-colors hover:bg-red-500/20 active:bg-red-500/25"
           >
             <CallEnd04Icon className="h-6 w-6 text-red-400" />
           </GaiaButton>

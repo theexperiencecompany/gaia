@@ -5,6 +5,7 @@ import { GlobalIcon } from "@icons";
 import Image from "next/image";
 import { memo, useMemo, useRef, useState } from "react";
 import tinycolor from "tinycolor2";
+import { toneVariants } from "@/components/shared/tone";
 import { type Tool, toolFaviconUrl } from "@/data/tools";
 
 interface ToolMetadata {
@@ -118,7 +119,10 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
       </Tooltip.Trigger>
       <Tooltip.Content
         showArrow
-        className="max-w-[320px] border-0 p-0 shadow-xl overflow-hidden"
+        className={toneVariants({
+          tone: "white",
+          className: "max-w-[320px] border-0 p-0 shadow-xl overflow-hidden",
+        })}
       >
         <div className="flex w-full flex-col rounded-3xl">
           {websiteImage && (
