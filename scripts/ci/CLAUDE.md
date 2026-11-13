@@ -99,10 +99,11 @@ themselves are written only by `verdict.py emit`, one per module, lane
 
 A survivor is read back through `mutation.py survivors <shard.verdict.json |
 record dir | shard.log> [--json]` (`mise mutation:survivors`), never by parsing
-`shard.log` or mutmut's own state. `mutation.py one <module> [tests]`
-(`mise mutation:one`) runs a single module locally, writes the same records to
-`verify-logs/mutation/one/`, and prints that view on failure — the local proof
-step, with no lane and nothing to poll.
+`shard.log` or mutmut's own state. `mutation.py local <module>`
+(`mise mutation:one`) runs a module locally through the lane's own `shard`
+path, writes its record to `verify-logs/mutation/<module>.verdict.json`, and
+prints that view on failure — the local proof step, with no lane and nothing
+to poll.
 
 The bots scanner and the three `mutation_*.py` modules live in `lib/` rather
 than inline because they are large bodies with their own tests and a second
