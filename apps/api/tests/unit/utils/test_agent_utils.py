@@ -75,7 +75,7 @@ class TestFormatToolCallEntry:
             result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
 
         assert result is not None
-        assert result["data"]["message"] == "Getting ready"
+        assert result["data"]["message"] == "Finding the right tools"
         assert result["data"]["show_category"] is False
 
     @pytest.mark.asyncio
