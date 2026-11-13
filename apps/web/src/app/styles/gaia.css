@@ -205,11 +205,13 @@
     font-size: var(--gaia-input-sm-font-size);
     border-radius: var(--gaia-radius-sm);
   }
-  /* v2's sm Select: a 32px trigger on an 8px radius. */
+  /* v2's sm Select: a 32px trigger on an 8px radius, its value centred on the
+     row (unpadded, HeroUI's stretched value would sit at the top). */
   .gaia-input-sm .select__trigger {
     min-height: var(--gaia-input-sm-height);
     height: var(--gaia-input-sm-height);
     padding-block: 0;
+    align-items: center;
     border-radius: var(--gaia-radius-sm);
   }
   .gaia-input-sm .input,
@@ -230,6 +232,13 @@
   .combo-box__input-group {
     border-radius: var(--gaia-radius-md);
     background-color: var(--field-background);
+  }
+  /* inputVariants({ size: "sm" }) on a ComboBox: v2's sm Autocomplete, the 32px row. */
+  .gaia-input-sm .combo-box__input-group {
+    min-height: var(--gaia-input-sm-height);
+    height: var(--gaia-input-sm-height);
+    font-size: var(--gaia-input-sm-font-size);
+    border-radius: var(--gaia-radius-sm);
   }
   .combo-box__input-group:hover,
   .combo-box__input-group:focus-within {
@@ -276,6 +285,15 @@
     --input-bg: transparent;
     --input-bg-hover: transparent;
     --input-bg-focus: transparent;
+  }
+
+  /* v2's bare textarea kept its field's 40px row with one line centred in it;
+     v3's textarea is 38px with the text at the top (the workflow description). */
+  .textarea.gaia-input-bare {
+    min-height: var(--gaia-field-height);
+    padding-block: calc(
+      (var(--gaia-field-height) - var(--gaia-field-line-height)) / 2
+    );
   }
 
   /* inputVariants({ variant: "underlined" }): v2's underlined field, a 2px foreground underline only while focused. */
