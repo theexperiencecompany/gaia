@@ -381,12 +381,13 @@ export function VoiceTable({
               key={voice.voice_id}
               id={voice.voice_id}
               textValue={voice.name}
+              columns={columns}
             >
-              {(columnKey) => (
+              {(column) => (
                 <Table.Cell>
                   <VoiceCell
                     voice={voice}
-                    columnKey={String(columnKey)}
+                    columnKey={column.key}
                     inlineGender={inlineGender}
                     wrapText={wrapText}
                     onToggleStar={toggleStar}

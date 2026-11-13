@@ -12,6 +12,7 @@ import {
 import { AlertCircleIcon, TaskAddIcon } from "@icons";
 import { format } from "date-fns";
 import { useEffect, useMemo } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
@@ -302,7 +303,7 @@ function TodoTextInputFields({
     <div className="flex flex-col">
       <Input
         placeholder="Title"
-        className="border-0 bg-transparent text-2xl font-semibold text-zinc-100 shadow-none placeholder:text-zinc-500 hover:bg-transparent focus:bg-transparent"
+        className={`${inputVariants({ variant: "underlined" })} text-2xl font-semibold text-zinc-100 placeholder:text-zinc-500`}
         value={title}
         onChange={(e) => onTitleChange(e.target.value)}
         required
@@ -315,7 +316,7 @@ function TodoTextInputFields({
         value={description}
         onChange={(e) => onDescriptionChange(e.target.value)}
         rows={1}
-        className="max-h-40 min-h-9 field-sizing-content border-0 bg-transparent text-zinc-200 shadow-none placeholder:text-zinc-500 hover:bg-transparent focus:bg-transparent"
+        className={`${inputVariants({ variant: "underlined" })} max-h-40 min-h-9 resize-none field-sizing-content text-zinc-200 placeholder:text-zinc-500`}
       />
     </div>
   );
@@ -465,7 +466,12 @@ export default function TodoModal({
                   variant="primary"
                 >
                   {mode === "edit" ? "Save Changes" : "Add Task"}
-                  {!loading && <Kbd>{`${modifierKeyName} enter`}</Kbd>}
+                  {!loading && (
+                    <Kbd>
+                      <Kbd.Abbr keyValue={modifierKeyName} />
+                      <Kbd.Abbr keyValue="enter" />
+                    </Kbd>
+                  )}
                 </Button>
               </Modal.Footer>
             </Modal.Dialog>

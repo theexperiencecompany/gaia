@@ -142,6 +142,7 @@
 @source "../../../components/shared/fieldVariants.ts";
 @source "../../../components/shared/FormError.tsx";
 @source "../../../components/shared/GaiaButton.tsx";
+@source "../../../components/shared/GaiaSelectValue.tsx";
 @source "../../../components/shared/icons.tsx";
 @source "../../../components/shared/IntegrationConnectCard.tsx";
 @source "../../../components/shared/KeyboardShortcutsModal.tsx";

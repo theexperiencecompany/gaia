@@ -237,7 +237,7 @@ export function InstallPageClient() {
           href={siteConfig.links.repo}
           target="_blank"
           rel="noopener noreferrer"
-          variant="secondary"
+          variant="outline"
         >
           View on GitHub
         </LinkButton>

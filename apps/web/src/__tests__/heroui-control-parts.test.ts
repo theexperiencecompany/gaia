@@ -40,4 +40,17 @@ describe("HeroUI v3 controls render their parts", () => {
     );
     expect(offenders).toEqual([]);
   });
+
+  // v3's Select.Value renders the whole item (title and description) in the
+  // trigger; GaiaSelectValue shows its textValue, as v2 did.
+  it("renders a Select trigger's value through GaiaSelectValue", () => {
+    const offenders = files.filter(
+      (file) =>
+        !file.endsWith("GaiaSelectValue.tsx") &&
+        readFileSync(path.join(SRC_DIR, file), "utf8").includes(
+          "<Select.Value",
+        ),
+    );
+    expect(offenders).toEqual([]);
+  });
 });

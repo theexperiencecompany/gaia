@@ -15,6 +15,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { modalVariants } from "@/components/shared/controlVariants";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { toast } from "@/lib/toast";
 import {
@@ -240,11 +241,11 @@ function SupportRequestModal({
               >
                 <Label>Request Type</Label>
                 <Select.Trigger>
-                  <Select.Value>
+                  <GaiaSelectValue>
                     {({ isPlaceholder, selectedText }) =>
                       isPlaceholder ? "Select a request type" : selectedText
                     }
-                  </Select.Value>
+                  </GaiaSelectValue>
                   <Select.Indicator />
                 </Select.Trigger>
                 <Select.Popover>

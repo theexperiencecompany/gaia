@@ -74,6 +74,7 @@ export function QuietHoursSettings() {
           aria-label="Quiet hours window"
           className={sliderVariants({
             size: "sm",
+            color: "indigo",
             className: cn(
               "mt-4 transition-opacity duration-200",
               !hours.enabled && "pointer-events-none opacity-40",
@@ -97,9 +98,9 @@ export function QuietHoursSettings() {
           }}
         >
           <Slider.Track>
-            <Slider.Fill className="bg-indigo-400/70" />
-            <Slider.Thumb className="bg-indigo-300" />
-            <Slider.Thumb className="bg-indigo-300" />
+            <Slider.Fill />
+            <Slider.Thumb index={0} />
+            <Slider.Thumb index={1} />
           </Slider.Track>
           <Slider.Marks className="pointer-events-none">
             {QUIET_AXIS_MARKS.map((value) => (

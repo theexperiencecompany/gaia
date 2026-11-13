@@ -17,6 +17,7 @@ import {
   modalVariants,
   tabsVariants,
 } from "@/components/shared/controlVariants";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { shapeVariants } from "@/components/shared/shape";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { toast } from "@/lib/toast";
@@ -252,6 +253,7 @@ function SkillEditorForm({
   const writeForm = (
     <div className="flex flex-col gap-4">
       <TextField
+        className={fieldVariants({ labelPlacement: "inside" })}
         value={name}
         onChange={setName}
         isDisabled={isEdit}
@@ -267,6 +269,7 @@ function SkillEditorForm({
         <FieldError>{nameError}</FieldError>
       </TextField>
       <TextField
+        className={fieldVariants({ labelPlacement: "inside" })}
         value={description}
         onChange={setDescription}
         isInvalid={!!descriptionError}

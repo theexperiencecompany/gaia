@@ -9,6 +9,7 @@ import {
 } from "@icons";
 import { useMemo } from "react";
 import { ComboBoxInput } from "@/components/shared/ComboBoxInput";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
 import {
   ALL_FILTER,
@@ -110,7 +111,7 @@ export function VoiceFilters({
           {genderFilter === ALL_FILTER ? null : (
             <GenderIcon gender={genderFilter} />
           )}
-          <Select.Value>{genderLabel}</Select.Value>
+          <GaiaSelectValue>{genderLabel}</GaiaSelectValue>
           <Select.Indicator />
         </Select.Trigger>
         <Select.Popover>

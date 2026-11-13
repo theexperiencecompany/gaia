@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, ButtonGroup, Chip, Dropdown, Menu } from "@heroui/react";
+import { ButtonGroup, Chip, Dropdown, Menu } from "@heroui/react";
 import { ArrowRight02Icon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
@@ -131,10 +131,8 @@ function DesktopDownloadButton({
 
   const meta = OS_META[os];
   const available = desktopDownloads[os].filter((v) => v.downloadUrl);
-  // v2 parity: the primary CTA was the dark default button, which is v3
-  // secondary (dark fill). v3 primary is the blue accent fill.
-  const buttonVariant = isPrimary ? "secondary" : "tertiary";
-  // Mac's apple.svg is dark; invert it on the light "tertiary" buttons.
+  const buttonVariant = isPrimary ? "default-solid" : "default-soft";
+  // Mac's apple.svg is dark; invert it on the light default-soft buttons.
   const invertIcon = os === "mac" && !isPrimary;
   const iconSize = getImageDimensions(meta.icon);
 
@@ -159,10 +157,10 @@ function DesktopDownloadButton({
 
   if (isDesktopReleaseLoading) {
     return (
-      <Button variant={buttonVariant} isPending>
+      <GaiaButton variant={buttonVariant} isPending>
         {icon}
         {baseLabel}
-      </Button>
+      </GaiaButton>
     );
   }
 
@@ -228,9 +226,9 @@ function DesktopDownloadButton({
     <ButtonGroup>
       {mainButton}
       <Dropdown>
-        <Button isIconOnly variant={buttonVariant}>
+        <GaiaButton isIconOnly variant={buttonVariant}>
           <ChevronDown width={17} height={17} />
-        </Button>
+        </GaiaButton>
         <Dropdown.Popover placement="bottom end">
           <Menu
             disallowEmptySelection

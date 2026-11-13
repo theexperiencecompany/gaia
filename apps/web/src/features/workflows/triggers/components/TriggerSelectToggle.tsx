@@ -10,6 +10,7 @@ import { Input, ListBox, Select } from "@heroui/react";
 import { useState } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { TriggerTagInput } from "./TriggerTagInput";
 import type { TriggerSelectToggleProps } from "./types";
 
@@ -73,7 +74,7 @@ export function TriggerSelectToggle({
           })}
         >
           <Select.Trigger className="w-full">
-            <Select.Value>{valueContent}</Select.Value>
+            <GaiaSelectValue>{valueContent}</GaiaSelectValue>
             <Select.Indicator />
           </Select.Trigger>
           <Select.Popover>

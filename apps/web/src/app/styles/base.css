@@ -1281,6 +1281,11 @@
 }
 
 .dark {
+  /* v2 flat field: default-100 (zinc-800) */
+  --field-background: var(--gaia-field-background);
+}
+
+.dark {
   --default-soft: color-mix(in oklab, #3f3f46 40%, transparent);
   --default-soft-hover: color-mix(in oklab, #3f3f46 60%, transparent);
 }
@@ -1339,6 +1344,14 @@ html {
   --gaia-input-sm-height: 2rem;
   --gaia-input-sm-padding-x: 0.5rem;
   --gaia-input-sm-font-size: 0.875rem;
+  --gaia-card-section-padding: 0.75rem;
+  --gaia-chip-sm-font-size: 0.75rem;
+  --gaia-chip-md-font-size: 0.875rem;
+  --gaia-chip-lg-font-size: 1rem;
+  --gaia-chip-lg-padding-x: 0.5rem;
+  --gaia-field-height: 2.5rem;
+  --gaia-field-font-size: 0.875rem;
+  --gaia-field-background: #27272a;
   --gaia-switch-track-off: #3f3f46;
   --gaia-switch-padding: 0.25rem;
   --gaia-switch-sm-width: 2.5rem;
@@ -1357,6 +1370,9 @@ html {
   --gaia-slider-sm-track: 0.25rem;
   --gaia-slider-sm-thumb: 1.25rem;
   --gaia-slider-sm-thumb-inner: 1rem;
+  /* tailwind indigo-300 and indigo-400 (quiet hours) */
+  --gaia-slider-indigo-thumb: oklch(78.5% 0.115 274.713);
+  --gaia-slider-indigo-fill: color-mix(in oklab, oklch(67.3% 0.182 276.935) 70%, transparent);
 }
 
 @layer gaia {
@@ -1421,6 +1437,67 @@ html {
     margin-inline-end: var(--gaia-checkbox-gap);
   }
 
+  /* Card: v2's unpadded root whose header, body and footer each carry 12px. */
+  .card {
+    gap: 0;
+    padding: 0;
+  }
+  .card__header,
+  .card__content,
+  .card__footer {
+    padding: var(--gaia-card-section-padding);
+  }
+
+  /* Chip type scale: v2's 12/14/16px for sm/md/lg (v3 runs a step smaller). */
+  .chip {
+    font-size: var(--gaia-chip-md-font-size);
+  }
+  .chip--sm {
+    font-size: var(--gaia-chip-sm-font-size);
+  }
+  .chip--lg {
+    font-size: var(--gaia-chip-lg-font-size);
+    padding-inline: var(--gaia-chip-lg-padding-x);
+  }
+
+  /* Fields: v2 filled the row (fullWidth by default), sat 40px tall on the
+     zinc-800 field fill. */
+  .textfield,
+  .select,
+  .search-field,
+  .combo-box {
+    width: 100%;
+  }
+  .input,
+  .input-group,
+  .select__trigger,
+  .search-field__group,
+  .combo-box__input-group {
+    min-height: var(--gaia-field-height);
+  }
+
+  /* Field text: v2's 14px at every width (v3 runs 16px below sm); a selected
+     value stays on one line and truncates, as v2's did. */
+  .input,
+  .textarea,
+  .input-group__input,
+  .search-field__input,
+  .number-field__input,
+  .select__value {
+    font-size: var(--gaia-field-font-size);
+  }
+  .select__value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ComboBoxInput's clear button: v2 showed it only on hover or focus. */
+  .combo-box__input-group:not(:hover, :focus-within) .gaia-combo-clear {
+    display: none;
+  }
+
   /* inputVariants({ size: "sm" }): v2's small field, 32px with an 8px inset. */
   .gaia-input-sm .input,
   .gaia-input-sm .input-group,
@@ -1437,6 +1514,39 @@ html {
   .gaia-input-sm .search-field__input {
     padding-block: 0;
     padding-inline: var(--gaia-input-sm-padding-x);
+  }
+
+  /* inputVariants({ variant: "bare" }): v2 flat fields whose wrapper was made transparent, unpadded and ringless. */
+  .input.gaia-input-bare,
+  .textarea.gaia-input-bare {
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+    box-shadow: none;
+    --input-bg: transparent;
+    --input-bg-hover: transparent;
+    --input-bg-focus: transparent;
+  }
+
+  /* inputVariants({ variant: "underlined" }): v2's underlined field, a 2px foreground underline only while focused. */
+  .input.gaia-input-underlined,
+  .textarea.gaia-input-underlined {
+    padding-inline: 0.25rem;
+    border-width: 0 0 2px;
+    border-color: transparent;
+    border-radius: 0;
+    background-color: transparent;
+    box-shadow: none;
+    --input-bg: transparent;
+    --input-bg-hover: transparent;
+    --input-bg-focus: transparent;
+  }
+  .input.gaia-input-underlined:focus,
+  .input.gaia-input-underlined[data-focused="true"],
+  .textarea.gaia-input-underlined:focus,
+  .textarea.gaia-input-underlined[data-focused="true"] {
+    border-color: var(--foreground);
   }
 
   /* Field placeholders: v2's zinc-500 at normal weight, in light and dark. */
@@ -1610,6 +1720,13 @@ html {
     height: var(--gaia-slider-md-thumb-inner);
     border-radius: var(--gaia-radius-pill);
     background-color: var(--background);
+  }
+  .slider.gaia-slider-indigo .slider__fill {
+    background-color: var(--gaia-slider-indigo-fill);
+  }
+  .slider.gaia-slider-indigo .slider__thumb,
+  .slider.gaia-slider-indigo .slider__thumb::after {
+    background-color: var(--gaia-slider-indigo-thumb);
   }
   .slider.gaia-slider-sm[data-orientation="horizontal"] .slider__track {
     height: var(--gaia-slider-sm-track);

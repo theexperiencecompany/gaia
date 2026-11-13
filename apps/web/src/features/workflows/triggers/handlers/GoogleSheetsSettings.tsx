@@ -10,6 +10,7 @@
 import { Description, Header, ListBox, Select } from "@heroui/react";
 import { useMemo } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
 import { TriggerSelectToggle } from "../components/TriggerSelectToggle";
@@ -236,7 +237,7 @@ export function GoogleSheetsSettings({
             isDisabled={spreadsheetIds.length === 0}
           >
             <Select.Trigger>
-              <Select.Value>
+              <GaiaSelectValue>
                 {({ selectedItems }) =>
                   renderSheetValue(
                     (
@@ -250,7 +251,7 @@ export function GoogleSheetsSettings({
                     })),
                   )
                 }
-              </Select.Value>
+              </GaiaSelectValue>
               <Select.Indicator />
             </Select.Trigger>
             <Description>

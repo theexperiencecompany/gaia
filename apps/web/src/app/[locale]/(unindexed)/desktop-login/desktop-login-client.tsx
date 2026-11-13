@@ -230,13 +230,13 @@ export function DesktopLoginClient({
                   <p className="text-center text-red-400">
                     Failed to open browser
                   </p>
-                  <Button
-                    variant="secondary"
+                  <GaiaButton
+                    variant="default-soft"
                     size="sm"
                     onPress={() => setStatus("ready")}
                   >
                     Try Again
-                  </Button>
+                  </GaiaButton>
                 </div>
               )}
 

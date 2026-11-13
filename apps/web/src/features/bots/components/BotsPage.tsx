@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { LinkButton } from "@/components/shared/LinkButton";
+import CopyButton from "@/components/ui/CopyButton";
 import { BOT_PLATFORM_ICONS } from "@/config/botPlatforms";
 import type { BotConfig } from "../constants";
 import { useBotCards } from "../hooks/useBotCards";
@@ -67,9 +68,12 @@ function BotCard({
           <p className="text-sm text-zinc-500">
             Not set up on this instance. On the server, run:
           </p>
-          <code className="block w-full truncate rounded-lg bg-zinc-800 px-3 py-2 font-mono text-xs text-zinc-200">
-            {setupCommand}
-          </code>
+          <div className="flex w-full items-center gap-2 rounded-lg bg-zinc-800 py-1 pr-1 pl-3 text-zinc-200">
+            <code className="min-w-0 flex-1 truncate font-mono text-xs">
+              {setupCommand}
+            </code>
+            <CopyButton textToCopy={setupCommand} variant="ghost" />
+          </div>
         </div>
       )}
       <div className="flex w-full flex-col gap-2 @min-[22rem]:flex-row @min-[22rem]:justify-end">

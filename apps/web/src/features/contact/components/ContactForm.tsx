@@ -13,6 +13,7 @@ import {
 import { Turnstile } from "@marsidev/react-turnstile";
 import type React from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import {
   CONTACT_FORM_MESSAGES,
@@ -107,7 +108,7 @@ function ContactRequestForm({
       >
         <Label>Request Type</Label>
         <Select.Trigger>
-          <Select.Value />
+          <GaiaSelectValue />
           <Select.Indicator />
         </Select.Trigger>
         <Select.Popover>
@@ -154,9 +155,8 @@ function ContactRequestForm({
         <Label>Description</Label>
         <TextArea
           placeholder="Please provide detailed information about your request..."
-          rows={4}
           maxLength={2000}
-          className="field-sizing-content max-h-60"
+          className="field-sizing-content min-h-[4lh] max-h-[10lh]"
         />
       </TextField>
 

@@ -128,6 +128,7 @@
 @source "../../../components/shared/fieldVariants.ts";
 @source "../../../components/shared/FormError.tsx";
 @source "../../../components/shared/GaiaButton.tsx";
+@source "../../../components/shared/GaiaSelectValue.tsx";
 @source "../../../components/shared/icons.tsx";
 @source "../../../components/shared/LinkButton.tsx";
 @source "../../../components/shared/LogoWithContextMenu.tsx";
@@ -181,6 +182,7 @@
 @source "../../../lib/docs-links/automate-links.ts";
 @source "../../../lib/docs-links/index.ts";
 @source "../../../lib/electron/api.ts";
+@source "../../../lib/heroui/accordionParity.ts";
 @source "../../../types/features/toolDataTypes.ts";
 @source "../../../utils/date/dateUtils.ts";
 @source "../../[locale]/(landing)/client.tsx";

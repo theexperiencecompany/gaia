@@ -1,5 +1,6 @@
 "use client";
 
+import { Pagination } from "@heroui/react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
@@ -205,45 +206,36 @@ export function IntegrationsPageClient() {
           {/* Pagination — community only */}
           {totalPages > 1 && (
             <div className="mt-12 flex justify-center">
-              <div className="flex cursor-pointer items-center gap-1">
-                <button
-                  type="button"
-                  aria-label="Previous page"
-                  disabled={currentPage <= 1}
-                  onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
-                  className="rounded-md px-2 py-1 text-sm text-zinc-400 disabled:opacity-40"
-                >
-                  Prev
-                </button>
-                {pageNumbers.map((pageNumber) => (
-                  <button
-                    key={pageNumber}
-                    type="button"
-                    aria-current={
-                      currentPage === pageNumber ? "page" : undefined
-                    }
-                    onClick={() => handlePageChange(pageNumber)}
-                    className={
-                      currentPage === pageNumber
-                        ? "rounded-md bg-zinc-700 px-3 py-1 text-sm text-white"
-                        : "rounded-md px-3 py-1 text-sm text-zinc-400 hover:text-white"
-                    }
-                  >
-                    {pageNumber}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  aria-label="Next page"
-                  disabled={currentPage >= totalPages}
-                  onClick={() =>
-                    handlePageChange(Math.min(totalPages, currentPage + 1))
-                  }
-                  className="rounded-md px-2 py-1 text-sm text-zinc-400 disabled:opacity-40"
-                >
-                  Next
-                </button>
-              </div>
+              <Pagination>
+                <Pagination.Content>
+                  <Pagination.Item>
+                    <Pagination.Previous
+                      isDisabled={currentPage <= 1}
+                      onPress={() => handlePageChange(currentPage - 1)}
+                    >
+                      <Pagination.PreviousIcon />
+                    </Pagination.Previous>
+                  </Pagination.Item>
+                  {pageNumbers.map((pageNumber) => (
+                    <Pagination.Item key={pageNumber}>
+                      <Pagination.Link
+                        isActive={currentPage === pageNumber}
+                        onPress={() => handlePageChange(pageNumber)}
+                      >
+                        {pageNumber}
+                      </Pagination.Link>
+                    </Pagination.Item>
+                  ))}
+                  <Pagination.Item>
+                    <Pagination.Next
+                      isDisabled={currentPage >= totalPages}
+                      onPress={() => handlePageChange(currentPage + 1)}
+                    >
+                      <Pagination.NextIcon />
+                    </Pagination.Next>
+                  </Pagination.Item>
+                </Pagination.Content>
+              </Pagination>
             </div>
           )}
         </>

@@ -9,6 +9,7 @@
 import { Input, ListBox, Select } from "@heroui/react";
 import { useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
 import {
@@ -97,7 +98,7 @@ export function LinearSettings({
             selectedKey={null}
           >
             <Select.Trigger>
-              <Select.Value>Loading teams...</Select.Value>
+              <GaiaSelectValue>Loading teams...</GaiaSelectValue>
               <Select.Indicator />
             </Select.Trigger>
             <Select.Popover>
@@ -124,12 +125,12 @@ export function LinearSettings({
               })}
             >
               <Select.Trigger>
-                <Select.Value>
+                <GaiaSelectValue>
                   {triggerData?.team_id
                     ? (teamOptions.find((o) => o.value === triggerData.team_id)
                         ?.label ?? triggerData.team_id)
                     : "Select a team"}
-                </Select.Value>
+                </GaiaSelectValue>
                 <Select.Indicator />
               </Select.Trigger>
               <Select.Popover>

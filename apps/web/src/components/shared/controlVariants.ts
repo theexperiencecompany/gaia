@@ -31,14 +31,24 @@ export const modalVariants = tv({
   },
 });
 
-/** v2's small slider (4px track, 20px thumb); md is the gaia-layer default. */
+/** v2's small slider (4px track, 20px thumb); md is the gaia-layer default. indigo paints fill and thumbs indigo (quiet hours). */
 export const sliderVariants = tv({
-  variants: { size: { sm: "gaia-slider-sm", md: "" } },
-  defaultVariants: { size: "md" },
+  variants: {
+    size: { sm: "gaia-slider-sm", md: "" },
+    color: { accent: "", indigo: "gaia-slider-indigo" },
+  },
+  defaultVariants: { size: "md", color: "accent" },
 });
 
-/** v2's small text field (32px, 8px inset); on a TextField root or a bare Input. */
+/** v2's small text field (32px, 8px inset) on a TextField root or Input; variant bare/underlined goes on the Input or TextArea itself. */
 export const inputVariants = tv({
-  variants: { size: { sm: "gaia-input-sm", md: "" } },
-  defaultVariants: { size: "md" },
+  variants: {
+    size: { sm: "gaia-input-sm", md: "" },
+    variant: {
+      default: "",
+      bare: "gaia-input-bare",
+      underlined: "gaia-input-underlined",
+    },
+  },
+  defaultVariants: { size: "md", variant: "default" },
 });

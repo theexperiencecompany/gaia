@@ -925,6 +925,63 @@ def test_an_aliased_heroui_import_is_still_checked(tmp_path: Path) -> None:
     assert f"{HERO_FILE}:Button:rounded-lg" in process.stdout
 
 
+WRAPPER_FILE = "apps/web/src/components/shared/GaiaThing.tsx"
+
+
+@pytest.mark.parametrize(
+    "wrapper",
+    [
+        "export function GaiaThing({ className, ...props }) {\n"
+        "  return <Button className={shapeVariants({ className })} {...props} />;\n}\n",
+        "export function GaiaThing(props) {\n  return <Chip {...props} />;\n}\n",
+        "export function GaiaThing({ className }) {\n"
+        "  return <NextLink className={buttonVariants({ className })} />;\n}\n",
+    ],
+)
+def test_a_gaia_wrapper_is_checked_like_heroui(tmp_path: Path, wrapper: str) -> None:
+    repo = _repo(tmp_path)
+    _add_text(
+        repo,
+        WRAPPER_FILE,
+        'import { Button, Chip } from "@heroui/react";\n'
+        'import { buttonVariants } from "./buttonVariants";\n'
+        'import { shapeVariants } from "./shape";\n' + wrapper,
+    )
+    _add_text(
+        repo,
+        HERO_FILE,
+        'import { GaiaThing } from "@/components/shared/GaiaThing";\n\n'
+        'export const Demo = () => <GaiaThing className="text-zinc-300 w-full" />;\n',
+    )
+
+    process = _run(repo, "heroui-style-overrides")
+
+    assert process.returncode == 1, process.stdout
+    assert f"{HERO_FILE}:GaiaThing:text-zinc-300" in process.stdout
+    assert "GaiaThing:w-full" not in process.stdout
+
+
+def test_a_shared_component_that_keeps_its_classname_is_not_a_wrapper(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _add_text(
+        repo,
+        WRAPPER_FILE,
+        'import { Button } from "@heroui/react";\n'
+        "export function GaiaThing({ className }) {\n"
+        '  return <div className={className}><Button variant="ghost">x</Button></div>;\n}\n',
+    )
+    _add_text(
+        repo,
+        HERO_FILE,
+        'import { GaiaThing } from "@/components/shared/GaiaThing";\n\n'
+        'export const Demo = () => <GaiaThing className="bg-zinc-800" />;\n',
+    )
+
+    process = _run(repo, "heroui-style-overrides")
+
+    assert process.returncode == 0, process.stdout
+
+
 @pytest.mark.parametrize(
     "jsx",
     [

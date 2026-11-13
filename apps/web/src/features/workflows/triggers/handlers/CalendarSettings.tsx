@@ -11,6 +11,7 @@
 import { ListBox, Select, Spinner } from "@heroui/react";
 import { useMemo } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { useCalendarsQuery } from "@/features/calendar/hooks/useCalendarsQuery";
 import { IntervalPicker } from "../components/IntervalPicker";
 import {
@@ -151,7 +152,7 @@ export function CalendarSettings({
           onChange={(keys) => handleSelectionChange(new Set(keys as string[]))}
         >
           <Select.Trigger>
-            {calendarsLoading ? <Spinner size="sm" /> : <Select.Value />}
+            {calendarsLoading ? <Spinner size="sm" /> : <GaiaSelectValue />}
             <Select.Indicator />
           </Select.Trigger>
           <Select.Popover>

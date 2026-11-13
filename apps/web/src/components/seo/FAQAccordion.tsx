@@ -1,6 +1,11 @@
 "use client";
 
 import { Accordion } from "@heroui/react";
+import {
+  ACCORDION_INDICATOR,
+  ACCORDION_PANEL,
+  ACCORDION_TRIGGER,
+} from "@/lib/heroui/accordionParity";
 
 interface FAQ {
   question: string;
@@ -18,15 +23,17 @@ export default function FAQAccordion({ faqs }: { faqs: FAQ[] }) {
       {faqs.map((faq) => (
         <Accordion.Item key={faq.question} id={faq.question}>
           <Accordion.Heading>
-            <Accordion.Trigger className="text-lg font-medium">
+            <Accordion.Trigger
+              className={`text-lg font-medium ${ACCORDION_TRIGGER}`}
+            >
               {faq.question}
-              <Accordion.Indicator />
+              <Accordion.Indicator className={ACCORDION_INDICATOR} />
             </Accordion.Trigger>
           </Accordion.Heading>
-          <Accordion.Panel>
-            <Accordion.Body className="pb-4 text-base font-light text-zinc-400">
-              {faq.answer}
-            </Accordion.Body>
+          <Accordion.Panel
+            className={`${ACCORDION_PANEL} pb-4 text-base font-light text-zinc-400`}
+          >
+            {faq.answer}
           </Accordion.Panel>
         </Accordion.Item>
       ))}

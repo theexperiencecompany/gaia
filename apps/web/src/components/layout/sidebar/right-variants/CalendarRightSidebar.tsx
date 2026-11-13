@@ -13,6 +13,7 @@ import { Delete02Icon, RepeatIcon, UserCircleIcon } from "@icons";
 import React, { useEffectEvent } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import {
   Accordion,
   AccordionContent,
@@ -181,7 +182,7 @@ const RecurrenceSelector: React.FC<RecurrenceSelectorProps> = ({
       <Label className="text-zinc-400">Repeat</Label>
       <Select.Trigger className="bg-zinc-800/30 shadow-none hover:bg-zinc-800/50">
         <RepeatIcon className="size-4 text-zinc-500" />
-        <Select.Value className="text-zinc-200" />
+        <GaiaSelectValue />
         <Select.Indicator />
       </Select.Trigger>
       <Select.Popover className="border border-zinc-800 bg-zinc-900">
@@ -268,7 +269,7 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({
             }}
           />
         )}
-        <Select.Value className="text-zinc-200" />
+        <GaiaSelectValue />
         <Select.Indicator />
       </Select.Trigger>
       <Select.Popover className="border border-zinc-800 bg-zinc-900">

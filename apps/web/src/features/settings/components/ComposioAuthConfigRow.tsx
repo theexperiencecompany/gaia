@@ -1,6 +1,7 @@
 import { Chip, Input, ListBox, Select, TextField } from "@heroui/react";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import type { ComposioIntegrationSetup } from "@/features/settings/api/composioSetupApi";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
@@ -68,7 +69,7 @@ export function ComposioAuthConfigRow({
             }}
           >
             <Select.Trigger>
-              <Select.Value />
+              <GaiaSelectValue />
               <Select.Indicator />
             </Select.Trigger>
             <Select.Popover>

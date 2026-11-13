@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowRight01Icon } from "@icons";
 import { useLocale } from "next-intl";
 
 import { getPathname } from "@/i18n/navigation";
@@ -33,14 +34,7 @@ export function PageBreadcrumbs({
           const isLast = index === items.length - 1;
 
           return (
-            <li
-              key={crumb.label}
-              className={
-                isLast
-                  ? "flex items-center"
-                  : "flex items-center after:ml-1.5 after:text-zinc-600 after:content-['/']"
-              }
-            >
+            <li key={crumb.label} className="flex items-center">
               {crumb.href ? (
                 <a href={localize(crumb.href)} className={LINK_CLASSES}>
                   {crumb.label}
@@ -52,6 +46,12 @@ export function PageBreadcrumbs({
                 >
                   {crumb.label}
                 </span>
+              )}
+              {!isLast && (
+                <ArrowRight01Icon
+                  aria-hidden="true"
+                  className="mx-1.5 size-3 text-zinc-600"
+                />
               )}
             </li>
           );

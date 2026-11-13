@@ -1,6 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/react";
+import { Chip, Tooltip } from "@heroui/react";
 import {
   Copy01Icon,
   LinkBackwardIcon,
@@ -25,6 +25,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { chipVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronRight } from "@/components/shared/icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -804,8 +805,12 @@ function ChatDemoWindow() {
               <Chip
                 key={useCase.id}
                 size="lg"
-                variant="primary"
-                className="cursor-pointer select-none"
+                variant={activeUseCase === i ? "primary" : "soft"}
+                color="default"
+                className={chipVariants({
+                  isSelected: activeUseCase === i,
+                  className: "cursor-pointer select-none",
+                })}
                 onClick={() => switchUseCase(i)}
               >
                 {useCase.label}
@@ -813,16 +818,19 @@ function ChatDemoWindow() {
             ))}
           </div>
 
-          <GaiaButton
-            shape="pill"
-            type="button"
-            aria-label="Retry"
-            onPress={handleRetry}
-            isIconOnly
-            variant="default-soft"
-          >
-            <RedoIcon width={20} height={20} />
-          </GaiaButton>
+          <Tooltip>
+            <GaiaButton
+              shape="pill"
+              type="button"
+              aria-label="Retry"
+              onPress={handleRetry}
+              isIconOnly
+              variant="default-soft"
+            >
+              <RedoIcon width={20} height={20} />
+            </GaiaButton>
+            <Tooltip.Content>Replay demo</Tooltip.Content>
+          </Tooltip>
         </div>
       )}
     </div>

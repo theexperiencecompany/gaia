@@ -2,6 +2,7 @@ import { Input, ListBox, Select, TextField } from "@heroui/react";
 import { Clock01Icon, InformationCircleIcon } from "@icons";
 import { useEffect, useMemo, useState } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { getTimezoneList, normalizeTimezone } from "@/utils/timezoneUtils";
 import { useCronValidation } from "../hooks/useCronValidation";
 import {
@@ -117,7 +118,7 @@ function CompactSelect({
       placeholder={placeholder}
     >
       <Select.Trigger>
-        <Select.Value />
+        <GaiaSelectValue />
         <Select.Indicator />
       </Select.Trigger>
       <Select.Popover className={SELECT_POPOVER_CLASSNAME}>

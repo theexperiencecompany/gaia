@@ -17,6 +17,7 @@ import type { AddOptions } from "@shared/bridge-core/config-builders";
 import { useState } from "react";
 import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 
 // Folder access is a one-switch toggle on the card (the built-in filesystem
 // server); this modal is only for the user's own MCP servers.
@@ -112,7 +113,7 @@ export function AddServerModal({ onAdd, isBusy }: AddServerModalProps) {
                 >
                   <Label>Type</Label>
                   <Select.Trigger>
-                    <Select.Value />
+                    <GaiaSelectValue />
                     <Select.Indicator />
                   </Select.Trigger>
                   <Select.Popover>

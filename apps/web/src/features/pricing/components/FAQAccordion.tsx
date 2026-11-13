@@ -4,6 +4,11 @@ import { Accordion } from "@heroui/react";
 import Link from "next/link";
 
 import { type FAQItem, getAllFAQs } from "@/lib/faq";
+import {
+  ACCORDION_INDICATOR,
+  ACCORDION_PANEL,
+  ACCORDION_TRIGGER,
+} from "@/lib/heroui/accordionParity";
 
 export function FAQAccordion({ faqs }: { faqs?: FAQItem[] }) {
   const faqItems = faqs ?? getAllFAQs();
@@ -46,15 +51,17 @@ export function FAQAccordion({ faqs }: { faqs?: FAQItem[] }) {
           {faqItems.map((item) => (
             <Accordion.Item key={item.question} id={item.question}>
               <Accordion.Heading className="font-normal">
-                <Accordion.Trigger className="cursor-pointer text-lg sm:text-2xl">
+                <Accordion.Trigger
+                  className={`cursor-pointer text-lg sm:text-2xl ${ACCORDION_TRIGGER}`}
+                >
                   {item.question}
-                  <Accordion.Indicator />
+                  <Accordion.Indicator className={ACCORDION_INDICATOR} />
                 </Accordion.Trigger>
               </Accordion.Heading>
-              <Accordion.Panel>
-                <Accordion.Body className="mb-6 max-w-full text-base font-light text-foreground-500 sm:max-w-[60%] sm:text-xl">
-                  <span className="select-text">{item.answer}</span>
-                </Accordion.Body>
+              <Accordion.Panel
+                className={`${ACCORDION_PANEL} mb-6 max-w-full text-base font-light text-foreground-500 sm:max-w-[60%] sm:text-xl`}
+              >
+                <span className="select-text">{item.answer}</span>
               </Accordion.Panel>
             </Accordion.Item>
           ))}
