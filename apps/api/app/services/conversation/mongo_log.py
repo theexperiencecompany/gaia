@@ -99,7 +99,10 @@ class MongoConversationLog:
                 message=f"no {entry.kind} entry {entry.id} in conversation {claim.conversation_id}",
                 meta={"conversation_id": claim.conversation_id, "entry_id": entry.id},
             )
-        revised = entry.model_copy(update={"revision": previous.revision + 1})
+        # A pin is the user's, set beside the step: a fill never takes it back.
+        revised = entry.model_copy(
+            update={"revision": previous.revision + 1, "pinned": previous.pinned}
+        )
         amended = stored.model_copy(update={"entry": revised})
         if not await self._repository.stage_log_amend(
             claim.conversation_id, user_id=claim.user_id, epoch=claim.epoch, amended=amended

@@ -477,7 +477,14 @@ class TestCreateConversationIndexes:
                 {"unique": True, "name": "user_conversation_id_unique"},
             ),
             (([("user_id", 1), ("id", 1)],), {"name": "user_entry_id"}),
-            (([("user_id", 1), ("type", 1)],), {"name": "user_entry_type"}),
+            (
+                ([("user_id", 1), ("reply_id", 1)],),
+                {
+                    "name": "user_entry_reply_id",
+                    "partialFilterExpression": {"reply_id": {"$type": "string"}},
+                },
+            ),
+            (([("user_id", 1), ("kind", 1)],), {"name": "user_entry_kind"}),
             (
                 ([("user_id", 1), ("at", 1)],),
                 {"name": "user_pinned_at", "partialFilterExpression": {"pinned": True}},

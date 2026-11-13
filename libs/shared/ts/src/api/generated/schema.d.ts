@@ -7786,6 +7786,7 @@ export interface components {
             replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
             /** Response */
             response: string;
+            selectedCalendarEvent?: components["schemas"]["SelectedCalendarEventData"] | null;
             /** Selectedtool */
             selectedTool?: string | null;
             selectedWorkflow?: components["schemas"]["SelectedWorkflowDataOutput"] | null;
@@ -11420,6 +11421,7 @@ export interface components {
             replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
             /** Response */
             response: string;
+            selectedCalendarEvent?: components["schemas"]["SelectedCalendarEventData"] | null;
             /** Selectedtool */
             selectedTool?: string | null;
             selectedWorkflow?: components["schemas"]["SelectedWorkflowDataInput"] | null;
@@ -13590,6 +13592,11 @@ export interface components {
              * @enum {string}
              */
             kind: "reply";
+            /**
+             * Pinned
+             * @default false
+             */
+            pinned?: boolean;
             /** Quote Target */
             quote_target?: string | null;
             /** Reply Id */
@@ -16446,6 +16453,11 @@ export interface components {
              * @enum {string}
              */
             kind: "user_message";
+            /**
+             * Pinned
+             * @default false
+             */
+            pinned?: boolean;
             /** Platform Message Id */
             platform_message_id?: string | null;
             /** Posthog Session Id */

@@ -1,9 +1,7 @@
 """The conversation log's half of the conversation repository: its entries, its fold, and the step's claim.
 
 A log entry is one conversation_entries document, {conversation_id, user_id, seq, at} plus
-the entry's own fields (id and kind among them), committed through the same outbox and seq
-allocator as a message. kind alone tells the two apart: is_log_entry and MESSAGES_ONLY keep
-every message reader to messages, and EntryWindow(log=True) keeps the log to its own kinds.
+the entry's own fields (id and kind among them), committed through the head's outbox.
 The head stores the log's fold (state), its step holder (runner) and the last epoch (runner_epoch).
 """
 
@@ -14,7 +12,6 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from bson import ObjectId
-from pydantic import TypeAdapter
 from pymongo import ReturnDocument
 
 from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
@@ -27,22 +24,19 @@ from app.db.repositories.conversation_entries import (
     EntryWindow,
     Head,
     at_log_head,
-    committed_at,
+    log_document,
+    logged_of,
     store_errors,
 )
 from app.db.repositories.conversations import ConversationRepository
 from app.models.conversation_log_models import (
     CommsPhase,
     ConversationState,
-    Entry,
     EntryKind,
     LoggedEntry,
 )
 from app.models.conversation_models import ConversationHead, StoredEntry
 
-_ENTRY: TypeAdapter[Entry] = TypeAdapter(Entry)
-#: A stored entry's keys beside the log entry's own fields; id is both, so it stays.
-_POSITION_KEYS = ("conversation_id", "user_id", "seq", "at", "content_hash", "migration_fields")
 _INTEGRATION_KINDS = (EntryKind.INTEGRATION_NEEDED, EntryKind.INTEGRATION_CONNECTED)
 #: A head the sweep must visit: unflushed entries, unsettled inputs or live work. A non-empty
 #: outbox sorts after {}. Also the sweep index's partial filter, so only these heads are indexed.
@@ -127,7 +121,7 @@ class ConversationLogRepository(ConversationRepository):
         }
         if epoch is not None:
             expected[f"{RUNNER_FIELD}.epoch"] = epoch
-        document = _document(head.conversation_id, head.user_id, logged)
+        document = log_document(head.conversation_id, head.user_id, logged)
         with store_errors("log append"):  # pragma: no mutate — error label
             result = await self._raw_collection().update_one(
                 expected,
@@ -160,9 +154,9 @@ class ConversationLogRepository(ConversationRepository):
         if not heads:
             return None
         before = None if through_seq is None else through_seq + 1
-        window = EntryWindow(after_seq=after_seq, before_seq=before, ids=ids, log=True)
+        window = EntryWindow(after_seq=after_seq, before_seq=before, ids=ids)
         [(_, entries)] = await self._union_for(heads, window)
-        return [_logged(entry) for entry in entries]
+        return [logged_of(entry) for entry in entries]
 
     async def stage_log_amend(
         self, conversation_id: str, *, user_id: str, epoch: int, amended: LoggedEntry
@@ -180,7 +174,7 @@ class ConversationLogRepository(ConversationRepository):
                 },
                 {
                     "$set": {
-                        f"{OUTBOX_FIELD}.{amended.seq}": _document(
+                        f"{OUTBOX_FIELD}.{amended.seq}": log_document(
                             conversation_id, user_id, amended
                         )
                     }
@@ -209,7 +203,7 @@ class ConversationLogRepository(ConversationRepository):
                         {f"{staged}.revision": after_revision},
                     ],
                 },
-                {"$set": {staged: _document(conversation_id, user_id, amended)}},
+                {"$set": {staged: log_document(conversation_id, user_id, amended)}},
             )
         if not result.matched_count:
             return False
@@ -268,7 +262,8 @@ class ConversationLogRepository(ConversationRepository):
             )
             rows = [row async for row in cursor]
         return [
-            (str(row["conversation_id"]), _logged(StoredEntry.model_validate(row))) for row in rows
+            (str(row["conversation_id"]), logged_of(StoredEntry.model_validate(row)))
+            for row in rows
         ]
 
     async def take_runner(
@@ -352,23 +347,6 @@ def _log_head(head: Head) -> LogHead:
         holder=None if document.runner is None else document.runner.epoch,
         runner_epoch=document.runner_epoch,
         known=head.known_seqs(),
-    )
-
-
-def _document(conversation_id: str, user_id: str, logged: LoggedEntry) -> dict[str, object]:
-    return {
-        **logged.entry.model_dump(),
-        "conversation_id": conversation_id,
-        "user_id": user_id,
-        "seq": logged.seq,
-        "at": logged.at,
-    }
-
-
-def _logged(stored: StoredEntry) -> LoggedEntry:
-    fields = {k: v for k, v in stored.document().items() if k not in _POSITION_KEYS}
-    return LoggedEntry(
-        seq=stored.seq, at=committed_at(stored), entry=_ENTRY.validate_python(fields)
     )
 
 

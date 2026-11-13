@@ -122,6 +122,7 @@ class UserMessage(_Entry):
     reaction: Reaction | None = None
     # The browser's PostHog session the message was sent from: what it causes is counted there.
     posthog_session_id: Identifier | None = None
+    pinned: bool = False
     # Bumped on each in-place update; a client applies an update only when it is newer.
     revision: int = Field(default=0, ge=0)
 
@@ -284,6 +285,7 @@ class Reply(_Entry):
     quote_target: str | None = None
     # Characters of the reply the user heard before a voice barge-in.
     heard_through: int | None = Field(default=None, ge=0)
+    pinned: bool = False
     # Bumped on each in-place fill; a client applies an update only when it is newer.
     revision: int = Field(default=0, ge=0)
 

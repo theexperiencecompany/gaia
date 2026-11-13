@@ -4266,6 +4266,16 @@
             "title": "Response",
             "type": "string"
           },
+          "selectedCalendarEvent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectedCalendarEventData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "selectedTool": {
             "anyOf": [
               {
@@ -11824,6 +11834,16 @@
             "title": "Response",
             "type": "string"
           },
+          "selectedCalendarEvent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectedCalendarEventData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "selectedTool": {
             "anyOf": [
               {
@@ -16357,6 +16377,11 @@
             "default": "reply",
             "title": "Kind",
             "type": "string"
+          },
+          "pinned": {
+            "default": false,
+            "title": "Pinned",
+            "type": "boolean"
           },
           "quote_target": {
             "anyOf": [
@@ -22385,6 +22410,11 @@
             "default": "user_message",
             "title": "Kind",
             "type": "string"
+          },
+          "pinned": {
+            "default": false,
+            "title": "Pinned",
+            "type": "boolean"
           },
           "platform_message_id": {
             "anyOf": [

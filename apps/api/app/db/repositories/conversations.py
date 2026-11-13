@@ -1,10 +1,11 @@
 """Repository for a conversation's head (the conversations collection) and its entry log (conversation_entries).
 
 Identity is the business key conversation_id scoped to user_id, never Mongo's
-ObjectId _id. Messages are entries, one document each, ordered by a seq that
-only one conditional head write allocates (append). A committed entry sits in
-the head's outbox until a flush copies it into conversation_entries; every
-message read unions the two through _read_entries, head first.
+ObjectId _id. The log's entries are one document each, ordered by a seq that
+only one conditional head write allocates. A committed entry sits in the
+head's outbox until a flush copies it into conversation_entries; every read
+unions the two through _union_for, head first. Messages are the log's
+entries projected (conversation_history.project), never stored as such.
 
 Caching is disabled (cache_policy = None). createdAt (ISO string) and
 updatedAt (BSON date) are a legacy camelCase pair; each mutating method that
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from datetime import datetime
 import random
 from typing import ClassVar
@@ -28,7 +30,6 @@ from app.constants.chat import (
     CONVERSATION_ENTRIES_COLLECTION,
     CONVERSATION_READ_LIMIT,
     SUBAGENT_GROUP_TOOL_NAME,
-    USER_MESSAGE_TYPE,
 )
 from app.db.repositories.base import UserScopedRepository
 from app.db.repositories.cache import CachePolicy
@@ -52,12 +53,12 @@ from app.db.repositories.conversation_entries import (
     at_log_head,
     committed_at,
     content_hash,
-    entry_of,
     every_outbox_entry_matching,
     head_fields,
     head_from_raw,
     head_with_existing,
     is_same_entry,
+    logged_of,
     newest,
     outbox_entries_matching,
     parked,
@@ -66,6 +67,14 @@ from app.db.repositories.conversation_entries import (
     stored_entries_matching,
     stored_message,
     stored_row,
+)
+from app.db.repositories.conversation_history import (
+    MESSAGE_KINDS,
+    PINNABLE_KINDS,
+    RELATED_KINDS,
+    TEXT_KINDS,
+    needed_beside,
+    project,
 )
 from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import (
@@ -76,6 +85,7 @@ from app.models.chat_models import (
     SavedSubagentGroup,
     SystemPurpose,
 )
+from app.models.conversation_log_models import EntryKind, LoggedEntry
 from app.models.conversation_models import (
     ConversationDescriptionHit,
     ConversationDocument,
@@ -215,7 +225,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         signal is a human typing, not an automation running.
         """
         sent = await self._first_entry(
-            user_id, {"type": USER_MESSAGE_TYPE}, excluding={"is_system_generated": True}
+            user_id,
+            {"kind": EntryKind.USER_MESSAGE.value},
+            excluding={"is_system_generated": True},
         )
         return sent is not None
 
@@ -550,8 +562,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         heads = await self._read_heads({"conversation_id": doc_id, "user_id": user_id})
         if not heads:
             return None
-        [(head, entries)] = await self._entries_for(heads, _newest_window())
-        return self._with_newest(head, entries)
+        [(head, messages)] = await self._histories(heads, _newest_window())
+        return self._with_newest(head, messages)
 
     async def read_messages_before(
         self, conversation_id: str, *, user_id: str, before_seq: int, limit: int
@@ -561,17 +573,19 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         if not heads:
             return None
         window = EntryWindow(before_seq=before_seq, limit=limit + 1)
-        [(_, entries)] = await self._entries_for(heads, window)
-        return ConversationMessagesPage(messages=entries[-limit:], has_more=len(entries) > limit)
+        [(_, messages)] = await self._histories(heads, window)
+        return ConversationMessagesPage(messages=messages[-limit:], has_more=len(messages) > limit)
 
     async def get_message(
         self, conversation_id: str, message_id: str, *, user_id: str
     ) -> ConversationEntry | None:
-        """Read one message by id, without reading the rest of the conversation."""
-        entries = await self._read_entries(
-            conversation_id, user_id=user_id, window=EntryWindow(ids=[message_id])
-        )
-        return entries[0] if entries else None
+        """Read one message by its message id (a reply's is its reply id), without the rest of the conversation."""
+        heads = await self._read_heads({"conversation_id": conversation_id, "user_id": user_id})
+        if not heads:
+            return None
+        window = EntryWindow(ids=[message_id], reply_ids=[message_id])
+        [(_, messages)] = await self._histories(heads, window)
+        return messages[0] if messages else None
 
     async def get_source(self, conversation_id: str, *, user_id: str) -> ConversationSource | None:
         """Return the conversation's source enum, or None when it doesn't exist."""
@@ -617,12 +631,12 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             and row.system_purpose == SystemPurpose.WORKFLOW_EXECUTION
         )
 
-    async def find_owner_of_message(
-        self, user_id: str, message_id: str, *, message_type: str = "bot"
-    ) -> str | None:
-        """Return the conversation id owning a message of message_type with this id."""
-        found = await self._first_entry(user_id, {"id": message_id, "type": message_type})
-        return None if found is None else found[0]
+    async def find_owner_of_message(self, user_id: str, reply_id: str) -> str | None:
+        """Return the conversation id owning GAIA's reply with this id."""
+        found = await self._first_entry(
+            user_id, {"kind": EntryKind.REPLY.value, "reply_id": reply_id}
+        )
+        return None if found is None else found.conversation_id
 
     async def find_workflow_conversation_id(self, user_id: str, workflow_id: str) -> str | None:
         """Return the id of the system-generated conversation a workflow's runs execute in."""
@@ -642,8 +656,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """Return the user's most recent conversations, each with its newest messages."""
         heads = await self._read_heads({"user_id": user_id}, sort={"createdAt": -1}, limit=limit)
         return [
-            self._with_messages(head, entries)
-            for head, entries in await self._entries_for(heads, _newest_window())
+            self._with_messages(head, messages)
+            for head, messages in await self._histories(heads, _newest_window())
         ]
 
     async def find_todo_conversation_id(self, user_id: str, todo_id: str) -> str | None:
@@ -764,18 +778,16 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             return []
         heads = await self._read_heads({"$or": conditions})
         return [
-            self._with_newest(head, entries)
-            for head, entries in await self._entries_for(heads, _newest_window())
+            self._with_newest(head, messages)
+            for head, messages in await self._histories(heads, _newest_window())
         ]
 
     # ---- search / pinned ----
 
     async def list_pinned_messages(self, user_id: str) -> list[ConversationMessageHit]:
         """Every pinned message across the user's conversations."""
-        return [
-            ConversationMessageHit(conversation_id=conversation_id, message=entry)
-            for conversation_id, entry in await self._find_entries(user_id, {"pinned": True})
-        ]
+        pinned = {"pinned": True, "kind": {"$in": sorted(PINNABLE_KINDS)}}
+        return await self._hits(user_id, await self._find_entries(user_id, pinned))
 
     async def search(self, user_id: str, *, pattern: str) -> ConversationSearchResults:
         """Regex search across message responses and conversation descriptions.
@@ -785,7 +797,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         regex = {"$regex": pattern, "$options": "i"}
         # A tracked todo's chat is reached from its todo, never from search.
         todo_chat = {"todo_id": {"$type": "string"}}
-        hits = await self._find_entries(user_id, {"response": regex}, excluding=todo_chat)
+        texts = {"text": regex, "kind": {"$in": sorted(TEXT_KINDS)}}
+        found = await self._find_entries(user_id, texts, excluding=todo_chat)
         described = await self._aggregate(
             [
                 {"$match": {"user_id": user_id, "todo_id": None, "description": regex}},
@@ -801,11 +814,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             ConversationDescriptionHit,
         )
         return ConversationSearchResults(
-            messages=[
-                ConversationMessageHit(conversation_id=conversation_id, message=entry)
-                for conversation_id, entry in hits
-            ],
-            conversations=described,
+            messages=await self._hits(user_id, found), conversations=described
         )
 
     # ---- bulk deletes / maintenance sweeps ----
@@ -965,24 +974,53 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 {**at_its_seq(entry), REVISION_FIELD: {"$lt": entry.revision}}, entry.document()
             )
 
-    async def _read_entries(
-        self, conversation_id: str, *, user_id: str, window: EntryWindow | None = None
-    ) -> list[ConversationEntry]:
-        """Read a conversation's entries in window (all, oldest first, by default); empty when it does not exist."""
-        heads = await self._read_heads({"conversation_id": conversation_id, "user_id": user_id})
-        if not heads:
-            return []
-        [(_, entries)] = await self._entries_for(heads, window)
-        return entries
-
-    async def _entries_for(
-        self, heads: Sequence[Head], window: EntryWindow | None = None
+    async def _histories(
+        self, heads: Sequence[Head], window: EntryWindow
     ) -> list[tuple[Head, list[ConversationEntry]]]:
-        """Each head's messages in window, read through _union_for."""
+        """Each head's messages in window: its message-shaping entries, projected with what they need beside them."""
+        windows = await self._union_for(heads, replace(window, kinds=MESSAGE_KINDS))
+        logged = [(head, [logged_of(entry) for entry in entries]) for head, entries in windows]
+        related = await asyncio.gather(*(self._related(head, read) for head, read in logged))
+        return [(head, project(read, beside)) for (head, read), beside in zip(logged, related)]
+
+    async def _related(self, head: Head, window: Sequence[LoggedEntry]) -> list[LoggedEntry]:
+        """Read the settles of the window's replies and the user messages it quotes from outside it."""
+        quoted, replies = needed_beside(window)
+        related = await self._lookup(head, quoted, replies) if quoted or replies else []
+        late, _ = needed_beside(window, related)
+        return related + (await self._lookup(head, late, []) if late else [])
+
+    async def _lookup(
+        self, head: Head, ids: Sequence[str], reply_ids: Sequence[str]
+    ) -> list[LoggedEntry]:
+        window = EntryWindow(ids=ids, reply_ids=reply_ids, kinds=RELATED_KINDS)
+        [(_, found)] = await self._union_for([head], window)
+        return [logged_of(entry) for entry in found]
+
+    async def _hits(self, user_id: str, rows: Sequence[StoredRow]) -> list[ConversationMessageHit]:
+        """Project cross-conversation rows one message apiece, with their settles and quotes."""
+        hits = [row.logged for row in rows]
+        quoted, replies = needed_beside(hits)
+        beside = await self._related_rows(user_id, quoted, replies) if quoted or replies else []
+        late, _ = needed_beside(hits, [row.logged for row in beside])
+        beside += await self._related_rows(user_id, late, []) if late else []
+        related: dict[str, list[LoggedEntry]] = {}
+        for row in [*rows, *beside]:
+            related.setdefault(row.conversation_id, []).append(row.logged)
         return [
-            (head, [entry_of(entry) for entry in entries])
-            for head, entries in await self._union_for(heads, window or EntryWindow())
+            ConversationMessageHit(conversation_id=row.conversation_id, message=message)
+            for row in rows
+            for message in project([row.logged], related.get(row.conversation_id, []))
         ]
+
+    async def _related_rows(
+        self, user_id: str, ids: Sequence[str], reply_ids: Sequence[str]
+    ) -> list[StoredRow]:
+        named = [
+            {"kind": EntryKind.REPLY_SETTLED.value, "reply_id": {"$in": list(reply_ids)}},
+            {"kind": EntryKind.USER_MESSAGE.value, "id": {"$in": list(ids)}},
+        ]
+        return await self._find_entries(user_id, {"$or": named})
 
     async def _union_for(
         self, heads: Sequence[Head], window: EntryWindow
@@ -1039,15 +1077,14 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         *,
         excluding: Mapping[str, object] | None = None,
         limit: int = 0,
-    ) -> list[tuple[str, ConversationEntry]]:
-        """Entries matching match across the user's conversations, outboxes first, then the collection.
+    ) -> list[StoredRow]:
+        """Log entries matching match across the user's conversations, outboxes first, then the collection.
 
         excluding names the heads whose entries never count; limit bounds the collection
         read for callers that need only whether one exists. Only entries under a live head
         count. A conversation the migration has not caught up with is left out and logged,
         so one such chat never blocks the user's other reads.
         """
-        match = {**match, **MESSAGES_ONLY}
         with store_errors("entry search"):  # pragma: no mutate — error label only
             behind = await self._distinct(
                 "conversation_id", {"user_id": user_id, **UNMIGRATED_HEADS}
@@ -1077,9 +1114,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             )
         found: dict[tuple[str, int], StoredRow] = {}
         for row in map(stored_row, [*pending, *rows]):
-            found.setdefault((row.conversation_id, row.entry.seq), row)
-        ordered = sorted(found.values(), key=lambda row: (row.at, row.entry.seq))
-        return [(row.conversation_id, row.entry) for row in ordered]
+            found.setdefault((row.conversation_id, row.logged.seq), row)
+        return sorted(found.values(), key=lambda row: (row.logged.at, row.logged.seq))
 
     async def _first_entry(
         self,
@@ -1087,8 +1123,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         match: Mapping[str, object],
         *,
         excluding: Mapping[str, object] | None = None,
-    ) -> tuple[str, ConversationEntry] | None:
-        """Return one (conversation id, entry) matching match across the user's conversations, or None."""
+    ) -> StoredRow | None:
+        """Return one log entry matching match across the user's conversations, or None."""
         # pragma: no mutate start — limit only bounds a read whose callers ask whether one exists
         found = await self._find_entries(user_id, match, excluding=excluding, limit=1)
         # pragma: no mutate end

@@ -291,10 +291,18 @@ CONVERSATION_ENTRY_INDEXES: list[tuple[IndexKeys, IndexOptions]] = [
         [("user_id", 1), ("conversation_id", 1), ("id", 1)],
         {"unique": True, "name": "user_conversation_id_unique"},
     ),
-    # find_owner_of_message
+    # the quoted user messages a cross-conversation read looks up
     ([("user_id", 1), ("id", 1)], {"name": "user_entry_id"}),
+    # find_owner_of_message and the settles a message read looks up beside its window
+    (
+        [("user_id", 1), ("reply_id", 1)],
+        {
+            "name": "user_entry_reply_id",
+            "partialFilterExpression": {"reply_id": {"$type": "string"}},
+        },
+    ),
     # has_sent_message
-    ([("user_id", 1), ("type", 1)], {"name": "user_entry_type"}),
+    ([("user_id", 1), ("kind", 1)], {"name": "user_entry_kind"}),
     # list_pinned_messages
     (
         [("user_id", 1), ("at", 1)],

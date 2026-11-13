@@ -16,13 +16,13 @@ from datetime import datetime
 import hashlib
 import json
 
+from pydantic import TypeAdapter
 from pymongo.errors import PyMongoError
 
 from app.constants.chat import CONVERSATION_ENTRIES_MIGRATION_SCRIPT
 from app.models.chat_models import MessageModel
-from app.models.conversation_log_models import EntryKind
+from app.models.conversation_log_models import Entry, EntryKind, LoggedEntry
 from app.models.conversation_models import (
-    ConversationEntry,
     ConversationHead,
     EntryKey,
     StoredEntry,
@@ -173,14 +173,17 @@ def newest(stored: StoredEntry | None, staged: StoredEntry) -> StoredEntry:
     return staged if stored.revision is None or staged.revision > stored.revision else stored
 
 
+_ENTRY: TypeAdapter[Entry] = TypeAdapter(Entry)
+#: A stored entry's keys beside the log entry's own fields; id is both, so it stays.
+_POSITION_KEYS = ("conversation_id", "user_id", "seq", "at", "content_hash", "migration_fields")
+
+
 @dataclass(frozen=True)
 class StoredRow:
-    """A stored entry with what places it across conversations: whose, which, and when it was committed."""
+    """A stored log entry with the conversation it belongs to."""
 
-    user_id: str
     conversation_id: str
-    at: datetime
-    entry: ConversationEntry
+    logged: LoggedEntry
 
 
 def head_from_raw(raw: Mapping[str, object]) -> Head:
@@ -311,11 +314,23 @@ def content_hash(stored: Mapping[str, object]) -> str:
     ).hexdigest()
 
 
-def entry_of(stored: StoredEntry) -> ConversationEntry:
-    """Read a stored entry (from the collection or an outbox) back as a seq-tagged message."""
-    return ConversationEntry.model_validate(
-        {**stored.message_fields(), "message_id": stored.id, "seq": stored.seq}
+def logged_of(stored: StoredEntry) -> LoggedEntry:
+    """Read a stored entry (from the collection or an outbox) back as the log entry it holds."""
+    fields = {k: v for k, v in stored.document().items() if k not in _POSITION_KEYS}
+    return LoggedEntry(
+        seq=stored.seq, at=committed_at(stored), entry=_ENTRY.validate_python(fields)
     )
+
+
+def log_document(conversation_id: str, user_id: str, logged: LoggedEntry) -> dict[str, object]:
+    """Return a log entry as its conversation_entries document stores it."""
+    return {
+        **logged.entry.model_dump(),
+        "conversation_id": conversation_id,
+        "user_id": user_id,
+        "seq": logged.seq,
+        "at": logged.at,
+    }
 
 
 def committed_at(stored: StoredEntry) -> datetime:
@@ -329,14 +344,9 @@ def committed_at(stored: StoredEntry) -> datetime:
 
 
 def stored_row(raw: Mapping[str, object]) -> StoredRow:
-    """Read a stored entry with its owner, conversation and commit time."""
+    """Read a stored entry with the conversation it belongs to."""
     stored = StoredEntry.model_validate(raw)
-    return StoredRow(
-        user_id=stored.user_id,
-        conversation_id=stored.conversation_id,
-        at=committed_at(stored),
-        entry=entry_of(stored),
-    )
+    return StoredRow(conversation_id=stored.conversation_id, logged=logged_of(stored))
 
 
 def at_its_seq(entry: StoredEntry) -> dict[str, object]:
@@ -369,9 +379,10 @@ def at_log_head(log_head: int) -> dict[str, object]:
 
 @dataclass(frozen=True)
 class EntryWindow:
-    """Which entries of a conversation a read asks for: a seq range, the newest limit, or these ids.
+    """Which log entries of a conversation a read asks for: a seq range, the newest limit, these ids or replies.
 
-    A window reads messages, or with log the conversation log's own entries; never both.
+    kinds narrows the read (every log kind by default); ids and reply_ids together match an
+    entry with one of the ids or carrying one of the reply ids.
     """
 
     after_seq: int = 0
@@ -379,7 +390,8 @@ class EntryWindow:
     limit: int | None = None
     newest_first: bool = False
     ids: Sequence[str] | None = None
-    log: bool = False
+    reply_ids: Sequence[str] | None = None
+    kinds: frozenset[str] | None = None
 
     def upper(self, log_head: int) -> int:
         return log_head if self.before_seq is None else min(log_head, self.before_seq - 1)
@@ -388,13 +400,16 @@ class EntryWindow:
         return {"$gt": self.after_seq, "$lte": self.upper(log_head)}
 
     def clauses(self) -> dict[str, object]:
-        kinds = LOG_ENTRIES_ONLY if self.log else MESSAGES_ONLY
-        return {**kinds, **({} if self.ids is None else {"id": {"$in": list(self.ids)}})}
+        named = [
+            *([{"id": {"$in": list(self.ids)}}] if self.ids is not None else []),
+            *([{"reply_id": {"$in": list(self.reply_ids)}}] if self.reply_ids is not None else []),
+        ]
+        return {"kind": {"$in": sorted(self._kinds())}, **({"$or": named} if named else {})}
 
     def admits(self, entry: StoredEntry, log_head: int) -> bool:
+        fields = entry.message_fields()
         in_range = self.after_seq < entry.seq <= self.upper(log_head)
-        wanted = is_log_entry(entry) is self.log
-        return in_range and wanted and (self.ids is None or entry.id in self.ids)
+        return in_range and fields.get("kind") in self._kinds() and self._names(entry.id, fields)
 
     def take(self, union: Mapping[int, StoredEntry]) -> list[StoredEntry]:
         seqs = sorted(union, reverse=True)
@@ -403,6 +418,14 @@ class EntryWindow:
         if not self.newest_first:
             seqs.reverse()
         return [union[seq] for seq in seqs]
+
+    def _kinds(self) -> frozenset[str]:
+        return self.kinds if self.kinds is not None else frozenset(LOG_KINDS)
+
+    def _names(self, entry_id: str, fields: Mapping[str, object]) -> bool:
+        if self.ids is None and self.reply_ids is None:
+            return True
+        return entry_id in (self.ids or ()) or fields.get("reply_id") in (self.reply_ids or ())
 
 
 def waiting_for(message_id: str) -> dict[str, object]:

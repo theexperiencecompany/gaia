@@ -10,6 +10,7 @@ from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource, Sou
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
+    SelectedCalendarEventData,
     SelectedWorkflowData,
 )
 from app.models.todo_wake_models import TodoRunWake
@@ -128,6 +129,7 @@ class MessageModel(BaseModel):
     selectedTool: str | None = None
     toolCategory: str | None = None
     selectedWorkflow: SelectedWorkflowData | None = None
+    selectedCalendarEvent: SelectedCalendarEventData | None = None
     # What woke a tracked todo's run, on the user's side of the todo's chat.
     todo_run_wake: TodoRunWake | None = None
     tool_data: list[ToolDataEntry] | None = None
