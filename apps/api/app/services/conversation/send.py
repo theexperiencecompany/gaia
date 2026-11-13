@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from uuid import uuid4
 
 from app.constants.chat import ConversationSource
-from app.db.repositories.conversations import conversation_repository
 from app.decorators import enforce_cost_budget
 from app.models.bot_models import BotChatRequest
 from app.models.chat_models import ConversationModel
@@ -31,7 +30,7 @@ from app.services.conversation.title import title_conversation
 from app.services.conversation_service import create_conversation_service
 from app.services.files import FileService
 from app.utils.background_tasks import spawn_background_task
-from app.utils.errors import ConversationAlreadyExistsError
+from app.utils.errors import ConversationAlreadyExistsError, ConversationNotFoundError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from shared.py.analytics.context import bound_analytics_context
@@ -52,18 +51,12 @@ class Sent:
 async def open_conversation(
     conversation_id: str, user: AuthenticatedUser, source: ConversationSource
 ) -> bool:
-    """Create the conversation when it is new; True when it was created here.
-
-    An existing conversation continues on the step as it is: its thread already holds its history.
-    """
-    if await conversation_repository.exists(conversation_id, user_id=user.user_id):
-        return False
+    """Create the conversation the accept found missing; True when this call created it, False when a concurrent first send did."""
     try:
         await create_conversation_service(
             ConversationModel(conversation_id=conversation_id, source=source), user
         )
     except ConversationAlreadyExistsError:
-        # A concurrent first send of this user's created it: one head, and this send joins it.
         return False
     return True
 
@@ -131,8 +124,14 @@ async def submit_message(
 ) -> MessageAccepted:
     """Charge the day's budget, open the conversation on the step, accept the message and count it."""
     await enforce_cost_budget(user.user_id, feature_key="chat_messages")
-    created = await open_conversation(conversation_id, user, surface)
-    sent = await send_message(conversation_id, user, body, surface)
+    # The accept's own head read is the existence check, so only a first send creates.
+    try:
+        sent = await send_message(conversation_id, user, body, surface)
+    except ConversationNotFoundError:
+        created = await open_conversation(conversation_id, user, surface)
+        sent = await send_message(conversation_id, user, body, surface)
+    else:
+        created = False
     if sent.duplicate:
         return sent.accepted
     if created:
