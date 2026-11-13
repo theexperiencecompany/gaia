@@ -3,10 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
-import {
-  integrationKeys,
-  toolKeys,
-} from "@/features/integrations/api/queryKeys";
+import { invalidateIntegrationCaches } from "@/features/integrations/api/queryKeys";
 import {
   ACCOUNT_OUTCOME_PARAM,
   AccountOutcome,
@@ -83,9 +80,7 @@ export function useOAuthSuccessToast() {
         toast.success(`Connected to ${displayName}`);
       }
 
-      // Invalidate integration-related queries so they refresh
-      queryClient.invalidateQueries({ queryKey: integrationKeys.all });
-      queryClient.invalidateQueries({ queryKey: toolKeys.all });
+      invalidateIntegrationCaches(queryClient);
 
       // Automatically send a message to continue the chat (only on chat routes)
       // Only send the message if we're on a chat page to avoid creating unwanted conversations

@@ -35,9 +35,6 @@ interface ComposerState {
   uploadedFiles: UploadedFilePreview[];
   uploadedFileData: AttachedFileData[];
 
-  // UI state
-  isSlashCommandDropdownOpen: boolean;
-
   // Selections attached to the next message
   selectedWorkflow: SelectedWorkflowData | null;
   workflowAutoSend: boolean;
@@ -78,9 +75,6 @@ interface ComposerActions {
   removeUploadedFileData: (fileId: string) => void;
   clearAllFiles: () => void;
 
-  // UI actions
-  setIsSlashCommandDropdownOpen: (open: boolean) => void;
-
   // Selection actions
   selectWorkflow: (
     workflow: SelectedWorkflowData,
@@ -118,9 +112,6 @@ const initialState: ComposerState = {
   // File management
   uploadedFiles: [],
   uploadedFileData: [],
-
-  // UI state
-  isSlashCommandDropdownOpen: false,
 
   // Selections attached to the next message
   selectedWorkflow: null,
@@ -322,14 +313,6 @@ export const useComposerStore = create<ComposerStore>()(
             "clearAllFiles",
           ),
 
-        // UI actions
-        setIsSlashCommandDropdownOpen: (isSlashCommandDropdownOpen) =>
-          set(
-            { isSlashCommandDropdownOpen },
-            false,
-            "setIsSlashCommandDropdownOpen",
-          ),
-
         // Selection actions
         selectWorkflow: (selectedWorkflow, options) =>
           set(
@@ -447,14 +430,6 @@ export const useComposerFiles = () =>
 export const useComposerIsUploading = () =>
   useComposerStore((state) =>
     state.uploadedFiles.some((file) => file.isUploading),
-  );
-
-export const useComposerUI = () =>
-  useComposerStore(
-    useShallow((state) => ({
-      isSlashCommandDropdownOpen: state.isSlashCommandDropdownOpen,
-      setIsSlashCommandDropdownOpen: state.setIsSlashCommandDropdownOpen,
-    })),
   );
 
 export const useComposerModelSelection = () =>

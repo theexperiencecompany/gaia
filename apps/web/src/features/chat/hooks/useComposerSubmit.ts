@@ -12,7 +12,6 @@ import {
   useComposerModeSelection,
   useComposerStore,
   useComposerTextActions,
-  useComposerUI,
   useInputText,
   useReplyToMessage,
 } from "@/stores/composerStore";
@@ -43,7 +42,6 @@ export function useComposerSubmit({
   } = useComposerModeSelection();
   const { uploadedFiles, uploadedFileData, clearAllFiles } = useComposerFiles();
   const isUploadingFiles = useComposerIsUploading();
-  const { isSlashCommandDropdownOpen } = useComposerUI();
   const { selectedWorkflow, clearSelectedWorkflow } = useWorkflowSelection();
   const { selectedCalendarEvent, clearSelectedCalendarEvent } =
     useCalendarEventSelection();
@@ -120,8 +118,8 @@ export function useComposerSubmit({
       handleFormSubmit();
     }
 
-    // Handle Escape key when slash command dropdown is closed
-    if (event.key === "Escape" && !isSlashCommandDropdownOpen) {
+    // ComposerInput only forwards keys the open slash-command dropdown did not consume
+    if (event.key === "Escape") {
       // If there's a selected tool, remove it
       if (selectedTool) {
         event.preventDefault();
