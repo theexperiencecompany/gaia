@@ -123,7 +123,7 @@ async def run_executor_background(
 ) -> None:
     """Run (or resume) the executor agent in background and hand its result to delivery.
 
-    Never raises — exceptions route through comms as an <executor_error> message.
+    Never raises: an exception ends the run failed, and comms hears it as the failed WorkFinished's note.
     A paused run (resume continuing a HIL approval) keeps the busy lock instead of
     delivering, since the thread has pending work until the approval resolves.
     Attributed to the turn that started the run tree, wherever it is resumed.
