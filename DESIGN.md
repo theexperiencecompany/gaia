@@ -674,7 +674,7 @@ v2's sizes on v3's components: each value is a `--gaia-*` token in `apps/web/src
 | Field height | 32px (`inputVariants({ size: "sm" })`) | 40px; 56px with the label inside | |
 | Checkbox control | 20px, 8px gap to its label | | |
 
-Buttons use font-weight 400. Field text is 14px at every width and field placeholders zinc-500 (`--field-placeholder`). List and menu items are 34px rows on an 8px radius. Overlays keep v2's radii: popover, select, dropdown and modal 14px, tooltip 12px. Dividers are the translucent `--separator` (white at 15%). Tables have 8px by 12px cells, no row rules, and the selected row on `--default-soft`. A danger menu item is red whether or not its text sits in a Label. Modals wider than 32rem take `modalVariants({ size })` on `Modal.Dialog` and no size on the Container.
+Buttons use font-weight 400. Field text is 14px at every width and field placeholders v2's foreground-500, zinc-400 in dark (`--field-placeholder`). List and menu items are 34px rows on an 8px radius. Overlays keep v2's radii: popover, select, dropdown and modal 14px, tooltip 12px. Dividers are the translucent `--separator` (white at 15%). Tables have 8px by 12px cells, no row rules, and the selected row on `--default-soft`. A danger menu item is red whether or not its text sits in a Label. Modals wider than 32rem take `modalVariants({ size })` on `Modal.Dialog` and no size on the Container.
 
 ### Overlay Hierarchy
 

@@ -8,15 +8,22 @@ export const SOFT_TINT_CLASSES = {
 
 /**
  * A selected chip lifts on a shadow tinted by its own fill (v2's Chip variant="shadow");
- * hue secondary repaints an accent chip as v2's purple secondary, a colour v3 dropped.
+ * hue secondary repaints an accent chip as v2's purple secondary, a colour v3 dropped;
+ * hasStartContent is v2's startContent inset for a chip led by an icon.
  */
 export const chipVariants = tv({
   variants: {
     isSelected: { true: "gaia-chip-selected", false: "" },
     tint: SOFT_TINT_CLASSES,
     hue: { default: "", secondary: "gaia-hue-secondary" },
+    hasStartContent: { true: "gaia-chip-start-content", false: "" },
   },
-  defaultVariants: { isSelected: false, tint: "default", hue: "default" },
+  defaultVariants: {
+    isSelected: false,
+    tint: "default",
+    hue: "default",
+    hasStartContent: false,
+  },
 });
 
 /** v2's Avatar isBordered: a 2px zinc-700 ring outside a 2px background gap; gaia-avatar-bordered in base.css. */

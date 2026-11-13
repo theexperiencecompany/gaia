@@ -4,7 +4,8 @@ import { tv } from "tailwind-variants";
  * v2's tabs on v3's Tabs parts, slot names as in HeroUI's own tabsVariants.
  * variant styles the list, indicator and panel (solid fills the list; light and
  * underlined do not); size styles each tab; shape pill rounds list, tabs and
- * indicator fully; color accent puts the selected tab on the accent; panel
+ * indicator fully; color accent puts the selected tab on the accent (an
+ * underlined one keeps its text and 2px rule in the accent); panel
  * flush drops the panel inset for content that lays itself out.
  */
 export const tabsVariants = tv({
@@ -34,7 +35,7 @@ export const tabsVariants = tv({
       },
       underlined: {
         base: "gap-0",
-        tabList: "w-fit min-w-0 gap-2 rounded-xl p-1",
+        tabList: "w-fit min-w-0 gap-2 rounded-xl bg-transparent p-1",
         tabIndicator:
           "start-[10%] top-auto bottom-0 h-[2px] w-[80%] rounded-none bg-foreground shadow-[0_1px_0px_0_rgba(0,0,0,0.05)]",
         tabPanel: "mt-0 px-1 py-3",
@@ -74,6 +75,16 @@ export const tabsVariants = tv({
       flush: { tabPanel: "p-0" },
     },
   },
+  compoundVariants: [
+    {
+      variant: "underlined",
+      color: "accent",
+      class: {
+        tab: "data-[selected=true]:text-accent",
+        tabIndicator: "rounded-none",
+      },
+    },
+  ],
   defaultVariants: {
     size: "md",
     shape: "default",
