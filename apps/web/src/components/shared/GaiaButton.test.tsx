@@ -24,6 +24,9 @@ describe("GAIA button variants", () => {
     const button = screen.getByRole("button", { name: "New chat" });
     expect(button.className).toContain("bg-accent-soft");
     expect(button.className).toContain("text-accent-soft-foreground");
+    // v2's flat hover: the same 20% tint, the button dimmed to 90%
+    expect(button.className).toContain("hover:opacity-90");
+    expect(button.className).not.toContain("hover:bg-accent-soft-hover");
     fireEvent.click(button);
     expect(onPress).toHaveBeenCalledTimes(1);
   });

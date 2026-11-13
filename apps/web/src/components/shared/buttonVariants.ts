@@ -65,8 +65,9 @@ const GAIA_BUTTON_FILLS = {
     "bg-success-soft text-success-soft-foreground hover:bg-success-soft-hover active:bg-success-soft-hover",
   "warning-soft":
     "bg-warning-soft text-warning-soft-foreground hover:bg-warning-soft-hover active:bg-warning-soft-hover",
+  // v2's flat hover kept the 20% tint and dimmed the whole button to 90%
   "accent-soft":
-    "bg-accent-soft text-accent-soft-foreground hover:bg-accent-soft-hover active:bg-accent-soft-hover",
+    "bg-accent-soft text-accent-soft-foreground hover:opacity-90 active:opacity-90",
   text: "h-auto min-h-0 min-w-0 bg-transparent px-2 py-1 hover:bg-transparent active:bg-transparent",
 } as const;
 
