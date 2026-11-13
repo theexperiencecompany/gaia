@@ -144,7 +144,7 @@ async def running() -> AsyncIterator[tuple[GatedModel, asyncio.Task[None]]]:
                 await asyncio.wait_for(task, WAIT_S)
 
 
-async def test_mid_run_comms_sees_the_plan_and_the_calls_with_their_inputs(
+async def test_mid_run_comms_sees_the_plan_and_the_steps_never_the_tools_or_their_inputs(
     fake_redis: fakeredis.aioredis.FakeRedis,
     running: tuple[GatedModel, asyncio.Task[None]],
 ) -> None:
@@ -157,7 +157,8 @@ async def test_mid_run_comms_sees_the_plan_and_the_calls_with_their_inputs(
     assert "Plan (executor):" in frame
     assert "- [in_progress] Find this week's promo emails" in frame
     assert "- [pending] Archive them" in frame
-    assert 'get_tool_schema(tool_name="GMAIL_FETCH_EMAILS")' in frame
+    assert "GMAIL_FETCH_EMAILS" not in frame
+    assert "get_tool_schema" not in frame
     # The plan is shown as the plan, never as a call.
     assert "plan_tasks(" not in frame
 

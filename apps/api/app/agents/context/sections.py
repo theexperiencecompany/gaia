@@ -29,7 +29,7 @@ from app.agents.context.fetchers import (
     build_tracked_todos_block,
     build_workspace_session_banner,
 )
-from app.agents.context.live_work import build_browser_task_block, build_executor_status_block
+from app.agents.context.live_work import build_browser_task_block
 from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import PromptSlot
 from app.agents.context.text import (
@@ -41,6 +41,7 @@ from app.agents.context.text import (
     MULTI_ACCOUNT_INSTRUCTION,
 )
 from app.agents.context.tiers import ALL_TIERS, WORKER_TIERS, AgentTier
+from app.agents.context.work_state import build_work_state_block
 from app.agents.prompts.user_instructions_prompts import render_user_instructions
 from app.agents.skills.discovery import get_available_skills_text
 from app.agents.workspace.skill_loader import target_to_subagent
@@ -75,7 +76,7 @@ class SectionId(StrEnum):
     MEMORY_RECALL = "memory_recall"
     GAIA_KNOWLEDGE = "gaia_knowledge"
     TRACKED_TODOS = "tracked_todos"
-    EXECUTOR_STATUS = "executor_status"
+    WORK_STATE = "work_state"
     BROWSER_TASK = "browser_task"
     BG_BANNER = "bg_banner"
     ACTIVE_TODO_BANNER = "active_todo_banner"
@@ -329,13 +330,13 @@ SECTIONS: tuple[Section, ...] = (
     Section(
         SectionId.TRACKED_TODOS, PromptSlot.MEMORY_RECALL, ALL_TIERS, 50, build_tracked_todos_block
     ),
-    # Live state of work running beside the chat, read once as the turn starts.
+    # What is going on for the user beside the chat, read once as the turn starts.
     Section(
-        SectionId.EXECUTOR_STATUS,
+        SectionId.WORK_STATE,
         PromptSlot.MEMORY_RECALL,
         frozenset({AgentTier.COMMS}),
         54,
-        build_executor_status_block,
+        build_work_state_block,
     ),
     Section(
         SectionId.BROWSER_TASK,

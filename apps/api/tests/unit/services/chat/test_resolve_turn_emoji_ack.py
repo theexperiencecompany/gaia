@@ -4,10 +4,19 @@ A comms REACT: <emoji> control line resolves the turn to a one-emoji acknowledgm
 message; anything else passes through as a plain text turn.
 """
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
+from app.constants.chat import ConversationSource
+from app.constants.comms import DISPATCH_ACK_EMOJI
 from app.models.chat_models import MessageKind
-from app.services.chat.stream import resolve_turn_emoji_ack
+from app.services.chat.stream import (
+    _save_reply,
+    _StreamState,
+    resolve_turn_emoji_ack,
+    silent_dispatch_ack,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -53,3 +62,71 @@ class TestResolveTurnEmojiAck:
         assert message == ""
         assert kind is MessageKind.TEXT
         assert reacts_to is None
+
+
+class TestSilentDispatchAck:
+    """A hand-off comms stays silent about is acknowledged by GAIA, per surface, never by comms' words."""
+
+    @pytest.mark.parametrize(
+        "source",
+        [ConversationSource.WHATSAPP, ConversationSource.TELEGRAM, ConversationSource.SLACK],
+    )
+    def test_a_chat_app_gets_a_reaction_on_the_users_message(
+        self, source: ConversationSource
+    ) -> None:
+        assert silent_dispatch_ack(source.value, "umsg_1") == (
+            DISPATCH_ACK_EMOJI,
+            MessageKind.EMOJI_ACK,
+            "umsg_1",
+        )
+
+    @pytest.mark.parametrize(
+        "source", [None, ConversationSource.WEB.value, ConversationSource.DESKTOP.value]
+    )
+    def test_an_app_surface_gets_the_accepted_chip_and_no_text(self, source: str | None) -> None:
+        assert silent_dispatch_ack(source, "umsg_1") == ("", MessageKind.ACCEPTED, None)
+
+
+class TestSavedSilentDispatch:
+    """A hand-off the turn stayed silent about is saved as the ack its surface shows, never as the empty-reply fallback."""
+
+    @staticmethod
+    async def _save(*, delegated: bool, source: str, reply: str) -> AsyncMock:
+        state = _StreamState(turn_id="umsg_1")
+        state.delegated, state.source, state.complete_message = delegated, source, reply
+        saved = AsyncMock()
+        with (
+            patch(
+                "app.services.chat.stream.recover_stream_state",
+                AsyncMock(return_value=(reply, state.tool_data)),
+            ),
+            patch("app.services.chat.stream.save_bot_reply", saved),
+            patch("app.services.chat.stream.capture"),
+        ):
+            await _save_reply(
+                "s1", AsyncMock(), AsyncMock(user_id="6812f0b3c9a14e2b7d5a91cc"), "c1", state
+            )
+        return saved
+
+    async def test_the_web_saves_the_accepted_stamp_with_no_text(self) -> None:
+        saved = await self._save(
+            delegated=True, source="web", reply="<SILENCE>handed off</SILENCE>"
+        )
+
+        reply = saved.await_args.kwargs["reply"]
+        assert (reply.complete_message, reply.kind) == ("", MessageKind.ACCEPTED)
+
+    async def test_a_chat_app_saves_the_reaction(self) -> None:
+        saved = await self._save(delegated=True, source="whatsapp", reply="")
+
+        reply = saved.await_args.kwargs["reply"]
+        assert (reply.complete_message, reply.kind, reply.reacts_to_message_id) == (
+            DISPATCH_ACK_EMOJI,
+            MessageKind.EMOJI_ACK,
+            "umsg_1",
+        )
+
+    async def test_a_silence_with_nothing_handed_off_is_not_acknowledged(self) -> None:
+        saved = await self._save(delegated=False, source="web", reply="<SILENCE>x</SILENCE>")
+
+        assert saved.await_args.kwargs["reply"].kind is MessageKind.TEXT

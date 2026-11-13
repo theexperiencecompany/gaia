@@ -49,6 +49,7 @@ from app.agents.tools.subagent_control_tool import (
 )
 from app.agents.tools.todo_tools import create_todo_tools
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
+from app.agents.tools.work_record_tool import read_work_record
 from app.constants.agents import EXECUTOR_SPAWN_EXCLUDED_TOOLS
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.general import FINISH_TASK_NAME
@@ -295,6 +296,7 @@ def comms_tools() -> dict[str, BaseTool]:
     return {
         "call_executor": call_executor,
         "cancel_executor": cancel_executor,
+        read_work_record.name: read_work_record,
         browser_step_done.name: browser_step_done,
         stop_browser_task.name: stop_browser_task,
         tell_browser_task.name: tell_browser_task,

@@ -113,12 +113,18 @@ async def _compose(
     items: list[OutboxItemDocument],
     *,
     requested_unavailable: ConversationSource | None = None,
+    leaks: list[list[str]] | None = None,
 ):
+    """Compose items; leaks lists what the internals guard finds in each answer's parts, in order (none by default)."""
     graph = SimpleNamespace(aget_state=AsyncMock(return_value=SimpleNamespace(values={})))
     with (
         patch(f"{MODULE}.ainvoke_structured", model),
         patch(f"{MODULE}.GraphManager.get_graph", AsyncMock(return_value=graph)),
         patch(f"{MODULE}.outbox_messages_repository.recent_sent", AsyncMock(return_value=[])),
+        patch(
+            f"{MODULE}.leaked_internals",
+            AsyncMock(side_effect=lambda *_: leaks.pop(0) if leaks else []),
+        ),
     ):
         return await compose(
             items,
@@ -170,6 +176,40 @@ async def test_two_broken_answers_send_the_plain_render_and_count_it() -> None:
     assert composed.included == ["must"] and composed.skipped == ["optional"]
     assert "Label must: fact must" in composed.parts[0]
     assert "fact optional" not in composed.parts[0]
+
+
+async def test_a_message_naming_internals_is_asked_again_with_what_leaked_stated() -> None:
+    model = _model(
+        _result(("must", "include"), parts=["the executor sent it"]),
+        _result(("must", "include"), parts=["it went out"]),
+    )
+
+    composed = await _compose(model, [MUST], leaks=[[], ["executor"], []])
+
+    assert composed.parts == ["it went out"] and composed.degraded is False
+    assert "names GAIA internals (executor)" in model.await_args_list[1].args[1][-1].content
+
+
+async def test_a_routine_message_that_keeps_naming_internals_is_dropped_loudly() -> None:
+    leaky = _result(("optional", "include"), parts=["task_id abc"])
+
+    composed = await _compose(
+        _model(leaky, leaky), [OPTIONAL], leaks=[[], ["task_id"], ["task_id"]]
+    )
+
+    assert composed.skip_reason is DropReason.LEAK_UNRESOLVED
+    assert composed.skipped == ["optional"] and composed.included == []
+
+
+async def test_a_must_say_message_that_keeps_naming_internals_is_told_from_the_facts_alone() -> (
+    None
+):
+    leaky = _result(("must", "include"), parts=["the executor did it"])
+
+    composed = await _compose(_model(leaky, leaky), [MUST], leaks=[[], ["executor"], ["executor"]])
+
+    assert composed.included == ["must"] and composed.degraded is True
+    assert "executor" not in " ".join(composed.parts)
 
 
 async def test_an_item_with_no_urgency_is_a_bug_not_a_default() -> None:

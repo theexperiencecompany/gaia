@@ -245,6 +245,16 @@ class EmojiAckFrame(BaseModel):
     emoji_ack: EmojiAckPayload
 
 
+class AcceptedFrame(BaseModel):
+    """The turn's request went to background work and comms said nothing.
+
+    Emitted on app surfaces, which show a status chip for it; chat apps get a reaction instead
+    (EmojiAckFrame). ``accepted`` is the id of the saved reply the chip belongs to.
+    """
+
+    accepted: str
+
+
 class TodoProgressFrame(BaseModel):
     """Envelope for a todo-progress snapshot."""
 

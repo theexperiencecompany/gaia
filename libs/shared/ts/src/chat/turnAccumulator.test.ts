@@ -75,6 +75,12 @@ describe("turnAccumulator golden replay", () => {
     ]);
   });
 
+  it("parses an accepted frame into the status-chip event", () => {
+    expect(
+      parseChatStreamEvent(JSON.stringify({ accepted: "bmsg_1" })),
+    ).toEqual([{ type: "accepted", messageId: "bmsg_1" }]);
+  });
+
   it("does not accumulate an emoji_ack into message state", () => {
     // Same contract as main_response_complete: a turn-session event, consumed
     // by the session, never content.

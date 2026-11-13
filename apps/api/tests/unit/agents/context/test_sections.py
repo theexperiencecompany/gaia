@@ -113,8 +113,8 @@ class TestTheTableIsWellFormed:
             "memory_recall",
             "gaia_knowledge",
             "tracked_todos",
-            # Live work beside the chat, comms-only: the executor IS that work.
-            "executor_status",
+            # Work beside the chat, comms-only: the executor IS that work.
+            "work_state",
             "browser_task",
             "bg_banner",
             "active_todo_banner",

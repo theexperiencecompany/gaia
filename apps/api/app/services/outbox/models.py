@@ -121,6 +121,8 @@ class DropReason(StrEnum):
     SUPERSEDED = "superseded"
     DUPLICATE = "duplicate"
     UNWANTED = "unwanted"
+    #: A routine message kept naming GAIA internals through every recompose, so none was sent.
+    LEAK_UNRESOLVED = "leak_unresolved"
 
 
 class ItemFailure(StrEnum):

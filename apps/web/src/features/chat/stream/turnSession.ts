@@ -88,6 +88,9 @@ export class TurnSession {
    *  handleEmojiAck. Stamped on the record so the fold badges the emoji onto
    *  the user's message instead of rendering the turn as a bubble. */
   private reactionAck: EmojiAckStamp | null = null;
+  /** The turn's request went to background work with comms silent: the record
+   *  is stamped `accepted` so the bubble shows the work chip, live and on reload. */
+  private accepted = false;
   /** Client cross-check clock. Server timing is the SLO; these deltas only
    *  validate it from the user's side. */
   private sendStartMs = 0;
@@ -366,6 +369,10 @@ export class TurnSession {
 
       case "emoji_ack":
         this.handleEmojiAck(event.emoji, event.reactsToMessageId);
+        return undefined;
+
+      case "accepted":
+        this.handleAccepted();
         return undefined;
 
       case "progress": {
@@ -648,6 +655,16 @@ export class TurnSession {
     });
   }
 
+  private handleAccepted(): void {
+    this.accepted = true;
+    const record = this.buildRecord("sending");
+    if (!record) return;
+    useChatStore.getState().updateMessageInPlace(record);
+    db.putMessage(record).catch((error) => {
+      console.error("Failed to persist accepted stamp:", error);
+    });
+  }
+
   private setSpinner(active: boolean): void {
     if (this.steering) return;
     const store = useStreamStore.getState();
@@ -723,6 +740,7 @@ export class TurnSession {
       error,
       this.reactionAck,
       stopped,
+      this.accepted,
     );
   }
 

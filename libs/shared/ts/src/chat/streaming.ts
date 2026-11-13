@@ -88,6 +88,9 @@ export type ChatStreamEvent =
   // text the server never streams: the client shows a badge on the user's
   // message (`reactsToMessageId`), never a bubble of its own.
   | { type: "emoji_ack"; emoji: string; reactsToMessageId: string }
+  // The turn's request went to background work and comms said nothing: the app
+  // shows a status chip on the saved reply `messageId` instead of any text.
+  | { type: "accepted"; messageId: string }
   | { type: "unknown"; payload: JsonObject };
 
 const isObject = (value: unknown): value is JsonObject =>
@@ -157,6 +160,12 @@ const extractEmojiAck = (payload: JsonObject): ChatStreamEvent[] => {
     },
   ];
 };
+
+// `accepted` arrives when comms stayed silent about a hand-off to background work.
+const extractAccepted = (payload: JsonObject): ChatStreamEvent[] =>
+  typeof payload.accepted === "string"
+    ? [{ type: "accepted", messageId: payload.accepted }]
+    : [];
 
 // The backend emits `{"model_fallback": {"model": "..."}}` at most once per
 // stream when the primary model failed and the backup answered. Modeled as a
@@ -445,6 +454,7 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
     ...extractError(payload),
     ...extractModelFallback(payload),
     ...extractEmojiAck(payload),
+    ...extractAccepted(payload),
     ...extractResponse(payload),
     ...extractMessageBoundary(payload),
     ...extractFollowUpActions(payload),

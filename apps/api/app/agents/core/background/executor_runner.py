@@ -751,8 +751,7 @@ async def _deliver_terminal_outcome(
     """
     if outcome.was_cancelled:
         # Regardless of who owns the tool_data, comms' context must record the
-        # cancellation: otherwise its last knowledge stays 'Handed to the executor...
-        # I'm on it' and later turns claim the task is still running or done.
+        # cancellation: otherwise its last knowledge stays 'Started...' and later turns claim the task is still running or done.
         await record_executor_cancellation(run.conversation_id, run.task_id, task)
         if outcome.tool_data is None:
             log.info(

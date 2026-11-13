@@ -139,6 +139,9 @@ class MessageKind(StrEnum):
 
     TEXT = "text"
     EMOJI_ACK = "emoji_ack"  # comms acknowledged a background update with a single emoji
+    ACCEPTED = (
+        "accepted"  # the request went to background work and comms said nothing: the chip's record
+    )
 
 
 class MessageModel(BaseModel):

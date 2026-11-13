@@ -5,12 +5,11 @@ run's final result stays its only answer. The record is part of the busy-lock
 holder's state, keyed by the holder like its liveness key: the holder's beat
 renews it, releasing or reclaiming the lock deletes it, and a new run is a new
 holder, so a record can neither outlive its run nor be read by the next one.
-Inputs only: a tool's output is never kept.
+Labels only: what a step was for in the user's words, never a tool name, its inputs or its output.
 """
 
 import asyncio
 from collections.abc import Callable
-import json
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -27,7 +26,6 @@ from shared.py.wide_events import log
 #: stream also carries comms' own hand-off card.
 _NOT_PROGRESS = frozenset({"plan_tasks", "update_tasks", CALL_EXECUTOR_NAME})
 _TOOL_CALL_ENTRY = "tool_calls_data"
-_MAX_VALUE_CHARS = 80
 
 StreamWriter = Callable[[dict[str, object]], None]
 
@@ -51,7 +49,6 @@ class _CallData(BaseModel):
 
     tool_name: str
     message: str | None = None
-    inputs: dict[str, object] = {}
 
 
 class _ToolEntry(BaseModel):
@@ -71,8 +68,9 @@ class _ProgressFrame(BaseModel):
 
 
 class RecordedCall(BaseModel):
+    """One step the run took, labelled the way the user would read it."""
+
     title: str
-    call: str
 
 
 class RunProgress(BaseModel):
@@ -86,17 +84,6 @@ def progress_key(conversation_id: str, lock_value: str) -> str:
     return f"{EXECUTOR_PROGRESS_PREFIX}{conversation_id}:{lock_value}"
 
 
-def format_call(name: str, inputs: dict[str, object]) -> str:
-    """Render a call as name(key="value", ...), each value cut short."""
-    args = []
-    for key, value in inputs.items():
-        rendered = json.dumps(value, ensure_ascii=False, default=str)
-        if len(rendered) > _MAX_VALUE_CHARS:
-            rendered = f"{rendered[:_MAX_VALUE_CHARS]}..."
-        args.append(f"{key}={rendered}")
-    return f"{name}({', '.join(args)})"
-
-
 def _calls_of(frame: _ProgressFrame) -> list[RecordedCall]:
     entries = frame.tool_data if isinstance(frame.tool_data, list) else [frame.tool_data]
     calls = []
@@ -104,13 +91,9 @@ def _calls_of(frame: _ProgressFrame) -> list[RecordedCall]:
         if entry is None or entry.tool_name != _TOOL_CALL_ENTRY:
             continue
         data = _CallData.model_validate(entry.data)
-        if data.tool_name in _NOT_PROGRESS:
+        if data.tool_name in _NOT_PROGRESS or not data.message:
             continue
-        calls.append(
-            RecordedCall(
-                title=data.message or data.tool_name, call=format_call(data.tool_name, data.inputs)
-            )
-        )
+        calls.append(RecordedCall(title=data.message))
     return calls
 
 
@@ -199,6 +182,6 @@ def describe_progress(progress: RunProgress) -> str:
         lines.append(f"Plan ({source}):")
         lines.extend(f"- [{item.status}] {item.content}" for item in items)
     if progress.calls:
-        lines.append("Latest tool calls (inputs only, results not shown):")
-        lines.extend(f"- {call.title}: {call.call}" for call in progress.calls)
+        lines.append("Latest steps:")
+        lines.extend(f"- {call.title}" for call in progress.calls)
     return "\n".join(lines)

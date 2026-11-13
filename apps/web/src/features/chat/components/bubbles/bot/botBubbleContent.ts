@@ -11,6 +11,8 @@ interface BotBubbleContentInput {
   emailProcessingPurpose: SystemPurpose;
   /** The user stopped this turn: the "Stopped" line is content on its own. */
   stopped?: boolean | null;
+  /** The turn handed work off and said nothing: the work chip is its content. */
+  accepted?: boolean;
 }
 
 /** What a bot bubble has to show: the quiet error bubble for a failed turn
@@ -26,6 +28,7 @@ export function describeBotBubbleContent({
   toolDataLength,
   emailProcessingPurpose,
   stopped,
+  accepted,
 }: BotBubbleContentInput): { hasError: boolean; hasContent: boolean } {
   const hasError = !showsTextBubble && !!error;
   const isEmailProcessing =
@@ -36,6 +39,7 @@ export function describeBotBubbleContent({
     hasError ||
     isEmailProcessing ||
     !!toolDataLength ||
-    !!stopped;
+    !!stopped ||
+    !!accepted;
   return { hasError, hasContent };
 }

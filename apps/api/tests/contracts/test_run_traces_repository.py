@@ -135,6 +135,17 @@ class TestRunsRepository:
         assert await repo.get("r1", user_id=OTHER) is None
         assert await repo.list_for_user(OTHER) == []
 
+    async def test_a_conversations_runs_list_newest_first_and_only_for_its_user(self) -> None:
+        repo = RunsRepository()
+        await repo.open_run(_run("old", started_at=T0))
+        await repo.open_run(_run("new", started_at=T0 + timedelta(hours=1)))
+        await repo.open_run(_run("elsewhere", conversation_id="conv-2"))
+
+        mine = await repo.list_for_conversation(USER, "conv-1", limit=10)
+
+        assert [r.run_id for r in mine] == ["new", "old"]
+        assert await repo.list_for_conversation(OTHER, "conv-1", limit=10) == []
+
     async def test_only_a_run_still_running_and_stale_is_abandoned_and_only_once(self) -> None:
         repo = RunsRepository()
         cutoff = T0 + timedelta(hours=1)
@@ -158,6 +169,22 @@ class TestRunsRepository:
 
 @pytest.mark.usefixtures("routed")
 class TestRunCallsRepository:
+    async def test_calls_of_a_run_list_in_start_order_and_a_call_is_found_only_in_its_own_run_and_user(
+        self,
+    ) -> None:
+        repo = RunCallsRepository()
+        await repo.create(_call("late", at=T0 + timedelta(minutes=2)))
+        await repo.create(_call("early", at=T0))
+        await repo.create(_call("other-run", run_id="r2"))
+        await repo.create(_call("other-user", user_id=OTHER))
+
+        calls = await repo.list_for_run(USER, "r1", limit=10)
+
+        assert [c.call_id for c in calls] == ["early", "late"]
+        assert await repo.get_in_run(USER, "r1", "early") is not None
+        assert await repo.get_in_run(USER, "r2", "early") is None
+        assert await repo.get_in_run(OTHER, "r1", "early") is None
+
     async def test_calls_finished_after_a_cutoff_are_the_ones_not_yet_logged(self) -> None:
         repo = RunCallsRepository()
         await repo.create(_call("a", at=T0))

@@ -473,9 +473,7 @@ class TestCommsToExecutor:
             executor=executor_flowchart_script(),
         )
 
-        assert run.transcript.result_for("call_executor").startswith(
-            "Handed to the executor (task_id:"
-        )
+        assert run.transcript.result_for("call_executor").startswith("Started (task_id:")
         assert run.transcript.final_text() == "On it."
 
     @pytest.mark.regression

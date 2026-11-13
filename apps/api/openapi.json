@@ -10568,7 +10568,8 @@
         "description": "What a bot message IS beyond its text, set when comms' intent is known at\ncreation and would otherwise be unrecoverable from the body alone (a deliberate\none-emoji acknowledgement reads identically to a coincidental one-emoji reply).",
         "enum": [
           "text",
-          "emoji_ack"
+          "emoji_ack",
+          "accepted"
         ],
         "title": "MessageKind",
         "type": "string"

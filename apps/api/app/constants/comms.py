@@ -20,6 +20,10 @@ REACTION_TAG_ALIASES = frozenset({LEGACY_REACT_KEYWORD, "REACTION"})
 SILENCE_DIRECTIVE = f"<{SILENCE_TAG}>brief reason</{SILENCE_TAG}>"
 EMOJI_DIRECTIVE = f"<{EMOJI_TAG}>one emoji</{EMOJI_TAG}>"
 
+#: The reaction GAIA itself puts on a message whose request was handed to background work, on
+#: surfaces with tap-backs. Comms writes no acknowledgment text for a hand-off.
+DISPATCH_ACK_EMOJI = "\N{EYES}"
+
 
 class CommsDirectiveKind(StrEnum):
     REPLY = "reply"

@@ -58,3 +58,12 @@ OUTBOX_JUDGE_INTERRUPT_CAPPED = _register_once(
         documentation="Interrupts the Judge asked for that the daily cap refused",
     ),
 )
+
+OUTBOX_INTERNALS_LEAKED = _register_once(
+    "outbox_internals_leaked_total",
+    lambda: Counter(
+        name="outbox_internals_leaked_total",
+        documentation="Texts found naming GAIA internals, by where: a producer's facts or composed parts",
+        labelnames=("where",),
+    ),
+)

@@ -8,7 +8,6 @@ run's stream writer emits (tool_calls_data entries, todo_progress snapshots).
 """
 
 import asyncio
-from datetime import UTC, datetime
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
@@ -24,7 +23,6 @@ from app.agents.core.background.executor_progress import (
     RunProgress,
     apply_frame,
     describe_progress,
-    format_call,
     progress_key,
     read_progress,
 )
@@ -55,10 +53,16 @@ LOCK_KEY = f"{EXECUTOR_BUSY_PREFIX}{CONV}"
 
 
 def _call(name: str, inputs: dict[str, Any], title: str | None = None) -> dict[str, object]:
+    """Build a tool-call frame labelled with title, or with the capitalized tool name when none is given."""
     return {
         "tool_data": {
             "tool_name": "tool_calls_data",
-            "data": {"tool_name": name, "message": title, "inputs": inputs, "tool_call_id": "c1"},
+            "data": {
+                "tool_name": name,
+                "message": name.capitalize() if title is None else title,
+                "inputs": inputs,
+                "tool_call_id": "c1",
+            },
         }
     }
 
@@ -91,7 +95,7 @@ async def _hold_live_lock(client: fakeredis.aioredis.FakeRedis, holder: str = HO
 
 
 class TestApplyFrame:
-    def test_a_tool_call_is_kept_with_its_title_and_inputs(self) -> None:
+    def test_a_tool_call_is_kept_as_its_label_and_never_its_tool_or_inputs(self) -> None:
         progress = RunProgress()
 
         changed = apply_frame(
@@ -99,16 +103,16 @@ class TestApplyFrame:
         )
 
         assert changed is True
-        assert describe_progress(progress) == (
-            "Latest tool calls (inputs only, results not shown):\n"
-            '- Fetch emails: GMAIL_FETCH_EMAILS(query="newer_than:30d")'
-        )
+        assert describe_progress(progress) == "Latest steps:\n- Fetch emails"
 
-    def test_a_call_without_a_title_is_named_by_its_tool(self) -> None:
+    def test_a_call_with_no_label_is_not_progress(self) -> None:
+        """Naming it by its tool would put the tool's name in front of comms."""
+        frame = _call("GMAIL_FETCH_EMAILS", {"query": "x"})
+        frame["tool_data"]["data"]["message"] = None  # type: ignore[index]
         progress = RunProgress()
-        apply_frame(progress, _call("search", {"q": "x"}))
 
-        assert progress.calls[0].title == "search"
+        assert apply_frame(progress, frame) is False
+        assert progress.calls == []
 
     def test_several_calls_in_one_frame_all_count(self) -> None:
         progress = RunProgress()
@@ -118,7 +122,7 @@ class TestApplyFrame:
 
         apply_frame(progress, frame)
 
-        assert [c.call for c in progress.calls] == ["a()", "b()"]
+        assert [c.title for c in progress.calls] == ["A", "B"]
 
     def test_the_plan_is_the_latest_snapshot_per_source(self) -> None:
         progress = RunProgress()
@@ -136,11 +140,11 @@ class TestApplyFrame:
     def test_only_the_latest_calls_are_kept(self) -> None:
         progress = RunProgress()
         for i in range(EXECUTOR_PROGRESS_MAX_CALLS + 5):
-            apply_frame(progress, _call("search", {"n": i}))
+            apply_frame(progress, _call("search", {"n": i}, f"step {i}"))
 
         assert len(progress.calls) == EXECUTOR_PROGRESS_MAX_CALLS
-        assert progress.calls[0].call == "search(n=5)"
-        assert progress.calls[-1].call == f"search(n={EXECUTOR_PROGRESS_MAX_CALLS + 4})"
+        assert progress.calls[0].title == "step 5"
+        assert progress.calls[-1].title == f"step {EXECUTOR_PROGRESS_MAX_CALLS + 4}"
 
     @pytest.mark.parametrize(
         "frame",
@@ -183,38 +187,13 @@ class TestApplyFrame:
         }
 
         assert apply_frame(progress, frame) is True
-        assert [c.call for c in progress.calls] == ['search(q="x")']
+        assert [c.title for c in progress.calls] == ["Search"]
 
     def test_a_plan_alone_counts_as_progress(self) -> None:
         assert apply_frame(RunProgress(), _plan([("step", "pending")])) is True
 
     def test_a_call_alone_counts_as_progress(self) -> None:
         assert apply_frame(RunProgress(), _call("search", {"q": "x"})) is True
-
-    def test_arguments_are_shown_in_order_comma_separated(self) -> None:
-        assert format_call("send", {"to": "a@b.c", "n": 2}) == 'send(to="a@b.c", n=2)'
-
-    def test_text_is_shown_as_written(self) -> None:
-        assert format_call("search", {"q": "café über"}) == 'search(q="café über")'
-
-    def test_a_value_json_cannot_hold_is_shown_as_text(self) -> None:
-        when = datetime(2026, 10, 21, tzinfo=UTC)
-
-        assert format_call("schedule", {"at": when}) == f'schedule(at="{when}")'
-
-    def test_a_value_exactly_at_the_limit_is_kept_whole(self) -> None:
-        at_limit = "x" * 78  # 80 characters once quoted
-        over = "x" * 79
-
-        assert format_call("f", {"v": at_limit}) == f'f(v="{at_limit}")'
-        assert format_call("f", {"v": over}).endswith("...)")
-
-    def test_long_values_are_cut_short(self) -> None:
-        rendered = format_call("send", {"body": "x" * 500})
-
-        assert rendered.startswith('send(body="xxx')
-        assert rendered.endswith("...)")
-        assert len(rendered) < 120
 
 
 # ── The recorder: pass-through and writes ────────────────────────────
@@ -239,7 +218,7 @@ class TestRecorder:
     ) -> None:
         await _record(HOLDER, _call("search", {"q": "x"}))
 
-        assert (await read_progress(CONV, HOLDER)).calls[0].call == 'search(q="x")'
+        assert (await read_progress(CONV, HOLDER)).calls[0].title == "Search"
         assert 0 < await fake_redis.ttl(progress_key(CONV, HOLDER)) <= EXECUTOR_ALIVE_TTL
 
     async def test_frames_with_no_progress_write_nothing(
@@ -256,12 +235,12 @@ class TestRecorder:
         writer = recorder.wrap(lambda _frame: None)
         for i in range(30):
             writer(_plan([("step", "completed" if i == 29 else "in_progress")]))
-            writer(_call("search", {"n": i}))
+            writer(_call("search", {"n": i}, f"step {i}"))
         await recorder.settle()
 
         stored = await read_progress(CONV, HOLDER)
         assert stored.plans["executor"][0].status == "completed"
-        assert stored.calls[-1].call == "search(n=29)"
+        assert stored.calls[-1].title == "step 29"
 
     async def test_an_unreadable_frame_still_reaches_the_stream_and_breaks_nothing(
         self, fake_redis: fakeredis.aioredis.FakeRedis
@@ -280,7 +259,7 @@ class TestRecorder:
         )
         assert logged["error_type"] == "ValidationError"
         assert "not-a-status" in logged["error"]
-        assert [c.call for c in (await read_progress(CONV, HOLDER)).calls] == ['search(q="x")']
+        assert [c.title for c in (await read_progress(CONV, HOLDER)).calls] == ["Search"]
 
     async def test_a_failed_write_does_not_fail_the_run(
         self, fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
@@ -455,7 +434,9 @@ class TestStatusNote:
         assert "running right now (task_id: task-1). Its result has not arrived yet." in frame
         assert "What it has done so far:\nPlan (executor):" in frame
         assert "[in_progress] archive them" in frame
-        assert 'Fetch emails: GMAIL_FETCH_EMAILS(query="promotions")' in frame
+        assert "- Fetch emails" in frame
+        assert "GMAIL_FETCH_EMAILS" not in frame
+        assert "promotions" not in frame
 
     async def test_a_running_executor_that_has_done_nothing_yet_shows_only_that_it_runs(
         self, fake_redis: fakeredis.aioredis.FakeRedis

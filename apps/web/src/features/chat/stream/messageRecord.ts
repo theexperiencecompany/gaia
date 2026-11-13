@@ -54,6 +54,7 @@ export const buildTurnMessageRecord = (
   error: string | null = null,
   emojiAck: EmojiAckStamp | null = null,
   stopped = false,
+  accepted = false,
 ): IMessage => ({
   id: meta.botMessageId,
   conversationId: meta.conversationId,
@@ -79,7 +80,7 @@ export const buildTurnMessageRecord = (
   pinned: false,
   isConvoSystemGenerated: false,
   error,
-  kind: emojiAck?.kind,
+  kind: emojiAck?.kind ?? (accepted ? "accepted" : undefined),
   reacts_to_message_id: emojiAck ? emojiAck.reactsToMessageId : undefined,
   stopped: stopped || null,
   replyToMessageId: meta.options.replyToMessage?.id ?? null,

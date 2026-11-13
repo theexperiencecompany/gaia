@@ -30,3 +30,10 @@ RUN_TRACE_LIST_DEFAULT_LIMIT: Final = 100
 RUNS_COLLECTION: Final = "executor_runs"
 RUN_CALLS_COLLECTION: Final = "executor_run_calls"
 CALL_PAYLOADS_COLLECTION: Final = "executor_call_payloads"
+
+#: What one read of the record by comms returns: runs listed, calls per run, and characters of one call's input or output.
+WORK_RECORD_RUNS: Final = 3
+WORK_RECORD_CALLS_PER_RUN: Final = 30
+WORK_RECORD_DETAIL_CHARS: Final = 8_000
+#: Runs searched for a call comms names; bounds the lookup of one call by its id.
+WORK_RECORD_SEARCH_RUNS: Final = 20

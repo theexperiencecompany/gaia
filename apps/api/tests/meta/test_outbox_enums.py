@@ -75,6 +75,7 @@ def test_the_closed_vocabularies_are_exactly_these() -> None:
         "superseded",
         "duplicate",
         "unwanted",
+        "leak_unresolved",
     }
     assert _values(ItemFailure) == {
         "no_destination",

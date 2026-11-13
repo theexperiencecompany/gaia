@@ -178,18 +178,16 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
         )
 
     async def list_unsettled(
-        self, user_id: str, *, exclude_report_id: str, limit: int
+        self, user_id: str, *, limit: int, exclude_report_id: str | None = None
     ) -> list[OutboxItemDocument]:
         """Return the user's items not yet told or settled, other than one report's, newest first."""
-        return await self._find(
-            {
-                "user_id": user_id,
-                "report_id": {"$ne": exclude_report_id},
-                "state": {"$in": [state.value for state in UNSENT_STATES]},
-            },
-            sort=[("created_at", -1)],
-            limit=limit,
-        )
+        filter_: dict[str, object] = {
+            "user_id": user_id,
+            "state": {"$in": [state.value for state in UNSENT_STATES]},
+        }
+        if exclude_report_id is not None:
+            filter_["report_id"] = {"$ne": exclude_report_id}
+        return await self._find(filter_, sort=[("created_at", -1)], limit=limit)
 
     async def count_raised_interrupts_since(self, user_id: str, since: datetime) -> int:
         """Return how many items the Judge raised to interrupt since the cutoff."""

@@ -54,6 +54,16 @@ class RunsRepository(UserScopedRepository[RunDocument, RunUpdate]):
             upsert=True,
         )
 
+    async def list_for_conversation(
+        self, user_id: str, conversation_id: str, *, limit: int
+    ) -> list[RunDocument]:
+        """Return a conversation's runs, newest first."""
+        return await self._find(
+            {"user_id": user_id, "conversation_id": conversation_id},
+            sort=[("started_at", -1)],
+            limit=limit,
+        )
+
     async def list_stale_running(
         self, last_active_before: datetime, *, limit: int
     ) -> list[RunDocument]:
@@ -88,6 +98,16 @@ class RunCallsRepository(UserScopedRepository[RunCallDocument, RunCallDocument])
     uses_object_id = True
     identity_field = "call_id"
     cache_policy = None
+
+    async def list_for_run(self, user_id: str, run_id: str, *, limit: int) -> list[RunCallDocument]:
+        """Return a run's calls in the order they started."""
+        return await self._find(
+            {"user_id": user_id, "run_id": run_id}, sort=[("started_at", 1)], limit=limit
+        )
+
+    async def get_in_run(self, user_id: str, run_id: str, call_id: str) -> RunCallDocument | None:
+        """Return one call of a run, or None when the run has no such call for this user."""
+        return await self._find_one({"user_id": user_id, "run_id": run_id, "call_id": call_id})
 
     async def list_finished_after(
         self, user_id: str, run_id: str, after: datetime | None

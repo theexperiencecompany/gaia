@@ -40,12 +40,13 @@ from app.constants.chat import (
     RECURSION_LIMIT_MESSAGE,
     TURN_REPLY_NOT_SAVED,
 )
-from app.constants.comms import CommsDirectiveKind
+from app.constants.comms import DISPATCH_ACK_EMOJI, CommsDirectiveKind
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_HISTORY_TURNS
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import (
+    BOT_CONVERSATION_SOURCES,
     ConversationSource,
     MessageKind,
     SourceCategory,
@@ -54,6 +55,7 @@ from app.models.chat_models import (
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.presence_models import PresenceSnapshot
 from app.models.stream_events import (
+    AcceptedFrame,
     ConversationDescriptionFrame,
     ConversationInitializedFrame,
     EmojiAckFrame,
@@ -240,6 +242,7 @@ class _StreamState:
         "queued",
         "reacts_to_message_id",
         "saved",
+        "source",
         "t0_perf",
         "todo_progress_accumulated",
         "tool_data",
@@ -297,6 +300,8 @@ class _StreamState:
         self.e2e_full_ms: float | None = None
         self.delegated: bool = False
         self.queued: bool = False
+        #: The surface the turn came from, which decides how a silent hand-off is acknowledged.
+        self.source: str | None = None
 
 
 async def _run_chat_stream(
@@ -308,6 +313,7 @@ async def _run_chat_stream(
     t0_perf: float | None = None,
 ) -> None:
     state = _StreamState(turn_id=body.turn_id)
+    state.source = source
     state.t0_perf = t0_perf if t0_perf is not None else time.perf_counter()
     is_new_conversation = body.conversation_id is None
     user_id = user.user_id
@@ -388,6 +394,7 @@ async def _run_chat_stream(
         )
         state.usage_metadata = usage_callback.usage_metadata or {}
         _log_usage_summary(state)
+        state.delegated, state.queued = _executor_delegation(stream_id)
         # Stamp turn completion BEFORE any executor wait so the user/comms
         # messages sort ahead of a delegated executor's mid-wait answer.
         state.turn_completed_at = datetime.now(UTC)
@@ -400,6 +407,7 @@ async def _run_chat_stream(
         # Before the executor wait: a reaction acknowledging a hand-off lands now,
         # not beside the result the work produces minutes later.
         await _publish_emoji_ack(stream_id, state)
+        await _publish_accepted(stream_id, state)
         await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
         # A stop pressed during the executor wait arrives after the consume
         # loop's check: re-read it here or the turn closes as completed.
@@ -969,6 +977,24 @@ async def _publish_emoji_ack(stream_id: str, state: _StreamState) -> None:
     )
 
 
+async def _publish_accepted(stream_id: str, state: _StreamState) -> None:
+    """Tell an app surface the request was taken on and comms is silent, so it shows its status chip."""
+    if state.message_kind is not MessageKind.ACCEPTED:
+        return
+    await stream_manager.publish_chunk(
+        stream_id, format_sse_data(AcceptedFrame(accepted=state.bot_message_id).model_dump())
+    )
+
+
+def silent_dispatch_ack(
+    source: str | None, user_message_id: str
+) -> tuple[str, MessageKind, str | None]:
+    """Return the stamp a silent hand-off's saved turn carries: a reaction in a chat app, else the accepted chip."""
+    if ConversationSource.coerce(source) in BOT_CONVERSATION_SOURCES:
+        return DISPATCH_ACK_EMOJI, MessageKind.EMOJI_ACK, user_message_id
+    return "", MessageKind.ACCEPTED, None
+
+
 def resolve_turn_emoji_ack(
     complete_message: str, user_message_id: str
 ) -> tuple[str, MessageKind, str | None]:
@@ -996,6 +1022,9 @@ async def _substitute_empty_completion(stream_id: str, state: _StreamState) -> N
     error, a cancellation, or tool cards are left alone.
     """
     if state.complete_message.strip() or state.error or state.is_cancelled:
+        return
+    # An accepted hand-off is silent on purpose: its chip is the reply.
+    if state.message_kind is MessageKind.ACCEPTED:
         return
     # Thinking alone is not an answer: only a real tool card stands in for the reply.
     entries = _PersistedToolData.model_validate(state.tool_data).tool_data
@@ -1078,6 +1107,10 @@ async def _save_reply(
     state.complete_message, state.message_kind, state.reacts_to_message_id = resolve_turn_emoji_ack(
         state.complete_message, state.user_message_id
     )
+    if state.delegated and not state.complete_message.strip():
+        state.complete_message, state.message_kind, state.reacts_to_message_id = (
+            silent_dispatch_ack(state.source, state.user_message_id)
+        )
     merge_tool_outputs(state.tool_data, state.tool_outputs)
     inject_todo_progress(state.tool_data, state.todo_progress_accumulated)
     reconstruct_subagent_groups(state.tool_data)

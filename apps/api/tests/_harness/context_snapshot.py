@@ -26,7 +26,6 @@ _MARKERS = (
     "memory_message",
     "memory_recall",
     "todo_context",
-    "executor_status",
     "time_context",
 )
 

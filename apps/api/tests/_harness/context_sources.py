@@ -213,5 +213,21 @@ def _patch_live_work(task_id: str | None, browser_tasks: ChatBrowserTasks) -> It
             "app.agents.context.live_work.chat_browser_tasks",
             AsyncMock(return_value=browser_tasks),
         ),
+        patch(
+            "app.agents.context.work_state.todo_repository.find_running_tracked_for_user",
+            AsyncMock(return_value=[]),
+        ),
+        patch(
+            "app.agents.context.work_state.approval_ledger_repository.list_open",
+            AsyncMock(return_value=[]),
+        ),
+        patch(
+            "app.agents.context.work_state.outbox_items_repository.list_unsettled",
+            AsyncMock(return_value=[]),
+        ),
+        patch(
+            "app.agents.context.work_state.outbox_messages_repository.sent_since",
+            AsyncMock(return_value=[]),
+        ),
     ):
         yield

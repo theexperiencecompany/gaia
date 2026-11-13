@@ -315,9 +315,9 @@ async def _flush(user: AuthenticatedUser, subject_id: str) -> None:
         )
         if composed.skipped:
             dropped = await outbox_items_repository.drop_composing(
-                user.user_id, attempt_id, composed.skipped, DropReason.COMPOSE_SKIPPED
+                user.user_id, attempt_id, composed.skipped, composed.skip_reason
             )
-            OUTBOX_ITEMS_DROPPED.labels(reason=DropReason.COMPOSE_SKIPPED.value).inc(dropped)
+            OUTBOX_ITEMS_DROPPED.labels(reason=composed.skip_reason.value).inc(dropped)
         if composed.included:
             await _send(user, items, destination, composed, attempt_id)
     except NoDestinationError:

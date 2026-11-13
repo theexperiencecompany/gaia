@@ -75,6 +75,7 @@ const EmojiAckFrameSchema = z.object({
     reacts_to_message_id: z.string(),
   }),
 });
+const AcceptedFrameSchema = z.object({ accepted: z.string() });
 const ModelFallbackFrameSchema = z.object({
   model_fallback: z.object({ model: z.string().optional() }).loose(),
 });
@@ -189,6 +190,7 @@ export const ChatStreamFrameSchema = z.union([
   ResponseFrameSchema,
   ErrorFrameSchema,
   EmojiAckFrameSchema,
+  AcceptedFrameSchema,
   ModelFallbackFrameSchema,
   KeepaliveFrameSchema,
   MainResponseCompleteFrameSchema,

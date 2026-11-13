@@ -286,10 +286,7 @@ async def _dispatch_executor(
                 stream_id=stream_id,
                 conversation_id=conversation_id,
             )
-            return (
-                "That task is already running from this same message, not "
-                "starting it again. The results are on the way."
-            )
+            return DUPLICATE_DISPATCH_RESULT
 
     if not acquired:
         # A same-turn redirect (cancel + call_executor together) races the
@@ -322,11 +319,7 @@ async def _dispatch_executor(
                 task_id=task_id,
                 conversation_id=conversation_id,
             )
-            return (
-                "It's been added to the work already in progress and will be "
-                "covered in the same answer. Acknowledge it with a reaction or a few plain "
-                "words; never mention runs, task ids, queues, or waiting."
-            )
+            return JOINED_RUNNING_WORK_RESULT
 
     # MCP tools load lazily inside each subagent's first use — the old eager
     # warmup hit get_all_connected_tools() on every executor call and
@@ -363,11 +356,21 @@ async def _dispatch_executor(
     return handoff_message(task_id)
 
 
+DUPLICATE_DISPATCH_RESULT = (
+    "That request is already running from this same message, so it was not started again. "
+    "Its result reaches the user by itself: add no words now."
+)
+JOINED_RUNNING_WORK_RESULT = (
+    "Added to the work already in progress; the same answer covers it and reaches the user "
+    "by itself: add no words now."
+)
+
+
 def handoff_message(task_id: str) -> str:
-    """What comms reads the moment work is handed off, before the executor has run a single tool."""
+    """Return what comms reads the moment work starts: a neutral record, no line to repeat to the user."""
     return (
-        f"Handed to the executor (task_id: {task_id}). If a step needs the user's approval, "
-        "it has not run yet and their decision releases it or skips it."
+        f"Started (task_id: {task_id}). Its result reaches the user by itself: add no words now. "
+        "If a step needs the user's approval, it has not run yet and their decision releases it or skips it."
     )
 
 
@@ -393,7 +396,7 @@ async def cancel_executor(
     - Specific task_ids = cancel only those (running or pending), keep rest.
       Use for: "cancel the search task" / "stop the second one".
       Match user intent to task_ids from call_executor responses in
-      conversation history (e.g. "Handed to the executor (task_id: abc-123)").
+      conversation history (e.g. "Started (task_id: abc-123)").
 
     For a redirect ("stop that, do X instead") pass ``message="X"``. The stop
     and the new instruction reach the executor together, so it cannot resume the

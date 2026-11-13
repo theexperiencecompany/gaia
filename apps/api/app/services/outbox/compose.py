@@ -35,12 +35,14 @@ from app.db.repositories.outbox_messages import outbox_messages_repository
 from app.models.chat_models import ConversationSource
 from app.models.outbox_models import OutboxItemDocument
 from app.schemas.outbound import OutboundAttachment
+from app.services.outbox.internals_guard import leaked_internals
 from app.services.outbox.judge_models import Moment
-from app.services.outbox.metrics import OUTBOX_COMPOSE_DEGRADED
+from app.services.outbox.metrics import OUTBOX_COMPOSE_DEGRADED, OUTBOX_INTERNALS_LEAKED
 from app.services.outbox.models import (
     ComposeMode,
     ComposeResult,
     Disposition,
+    DropReason,
     ItemState,
     NoticeOutcome,
     NoticeReport,
@@ -70,6 +72,8 @@ class Composed:
     attachments: list[OutboundAttachment] = field(default_factory=list)
     #: How long a chat app's queue holds the message before dropping it undelivered.
     ttl_seconds: int = OUTBOUND_TTL_SECONDS_DEFAULT
+    #: Why skipped items were not told, when it was not the composer's own judgement.
+    skip_reason: DropReason = DropReason.COMPOSE_SKIPPED
 
 
 class _ThreadValues(TypedDict, total=False):
@@ -315,7 +319,9 @@ async def _word(
         SystemMessage(content=get_comms_static_prompt(source.value) + COMPOSE_RULES),
         HumanMessage(content=json.dumps(context, ensure_ascii=False)),
     ]
+    await _flag_leaking_facts(items, user_id)
     violation: str | None = None
+    leaked: list[str] = []
     for _ in range(COMPOSE_MAX_ATTEMPTS):
         if violation is not None:
             messages.append(
@@ -323,8 +329,15 @@ async def _word(
             )
         result = await ainvoke_structured(ComposeResult, messages, label=OUTBOX_COMPOSE_LABEL)
         violation = _validate(result, items)
+        if violation is None and (leaked := await leaked_internals(user_id, result.parts)):
+            violation = (
+                f"the message names GAIA internals ({', '.join(leaked)}); "
+                "say what the user gets, never how it works"
+            )
         if violation is None:
             return _composed(result)
+    if leaked:
+        return _leak_unresolved(items, leaked, user_id=user_id, locale=locale)
     OUTBOX_COMPOSE_DEGRADED.inc()
     log.error(
         f"{LogTag.NOTIFICATION} Outbox compose broke its contract twice; sending the degraded render",
@@ -332,12 +345,44 @@ async def _word(
         item_count=len(items),
         violation=violation,
     )
+    return _degraded(items, locale)
+
+
+async def _flag_leaking_facts(items: list[OutboxItemDocument], user_id: str) -> None:
+    """Log and count a producer whose facts name internals; the words are still composed, never raised on."""
+    for item in items:
+        if leaked := await leaked_internals(user_id, facts_of(item.report)):
+            OUTBOX_INTERNALS_LEAKED.labels(where="facts").inc()
+            log.warning(
+                f"{LogTag.NOTIFICATION} A report's facts name GAIA internals (producer bug)",
+                user_id=user_id,
+                report_id=item.report_id,
+                producer=item.report.producer.value,
+                leaked=leaked,
+            )
+
+
+def _degraded(items: list[OutboxItemDocument], locale: str) -> Composed:
     return Composed(
         parts=_degraded_parts(items, locale),
         included=[item.report_id for item in items if _must_say(item)],
         skipped=[item.report_id for item in items if not _must_say(item)],
         degraded=True,
     )
+
+
+def _leak_unresolved(
+    items: list[OutboxItemDocument], leaked: list[str], *, user_id: str, locale: str
+) -> Composed:
+    """Say what must be said from the facts alone and drop the rest: the composer kept naming internals."""
+    OUTBOX_INTERNALS_LEAKED.labels(where="composed").inc()
+    log.error(
+        f"{LogTag.NOTIFICATION} Outbox compose kept naming GAIA internals through the recompose",
+        user_id=user_id,
+        item_count=len(items),
+        leaked=leaked,
+    )
+    return replace(_degraded(items, locale), skip_reason=DropReason.LEAK_UNRESOLVED)
 
 
 def _composed(result: ComposeResult) -> Composed:

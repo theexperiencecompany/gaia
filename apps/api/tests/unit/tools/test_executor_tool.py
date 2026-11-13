@@ -26,7 +26,13 @@ from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.session import get_session, teardown_session
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.agents.tools import executor_tool
-from app.agents.tools.executor_tool import call_executor, cancel_executor, tools
+from app.agents.tools.executor_tool import (
+    DUPLICATE_DISPATCH_RESULT,
+    JOINED_RUNNING_WORK_RESULT,
+    call_executor,
+    cancel_executor,
+    tools,
+)
 from app.constants.agents import (
     IRREVERSIBLE_APPROVED_BRIEF,
     IRREVERSIBLE_UNAPPROVED_BRIEF,
@@ -435,7 +441,7 @@ class TestCallExecutorDispatch:
 
         response = await call_executor_with(config=other, task="b")
 
-        assert response.startswith("Handed to the executor")
+        assert response.startswith("Started (task_id:")
         await drain_background_tasks()
         assert len(spawned_runs) == 2
         assert await fake_redis.get(f"{EXECUTOR_BUSY_PREFIX}conv-2") is not None
@@ -455,11 +461,8 @@ class TestCallExecutorLockContention:
         second = await call_executor_with(config=config_for(), task="research")
         await drain_background_tasks()
 
-        assert second == (
-            "That task is already running from this same message, not "
-            "starting it again. The results are on the way."
-        )
-        assert first.startswith("Handed to the executor")
+        assert second == DUPLICATE_DISPATCH_RESULT
+        assert first.startswith("Started (task_id:")
         assert await redis_cache.client.llen(INBOX_KEY) == 0
         assert await fake_redis.get(LOCK_KEY) == lock_before
         assert len(spawned_runs) == 1
@@ -481,12 +484,7 @@ class TestCallExecutorLockContention:
         )
         await drain_background_tasks()
 
-        handed_over = (
-            "It's been added to the work already in progress and will be "
-            "covered in the same answer. Acknowledge it with a reaction or a few plain "
-            "words; never mention runs, task ids, queues, or waiting."
-        )
-        assert response == handed_over
+        assert response == JOINED_RUNNING_WORK_RESULT
         assert len(spawned_runs) == 1  # handed-over work must NOT start its own run
         entries = await inbox().read()
         handed_id = entries[0].id
@@ -509,7 +507,7 @@ class TestCallExecutorLockContention:
         spawned_runs: list[dict[str, Any]],
         fast_redirect: None,
     ) -> None:
-        """Comms speaks this string to the user."""
+        """Comms reads this string and must not be led to promise a separate run."""
         await call_executor_with(config=config_for("stream-1"), task="first")
 
         response = await call_executor_with(config=config_for("stream-2"), task="second")
@@ -527,7 +525,7 @@ class TestCallExecutorLockContention:
         started = time.monotonic()
         response = await call_executor_with(config=config_for("stream-2"), task="b")
 
-        assert response.startswith("It's been added to the work already in progress")
+        assert response.startswith("Added to the work already in progress")
         assert time.monotonic() - started < 0.1
         assert await redis_cache.client.llen(INBOX_KEY) == 1
 
@@ -542,7 +540,7 @@ class TestCallExecutorLockContention:
         response = await call_executor_with(config=config_for("stream-2"), task="retry")
         await drain_background_tasks()
 
-        assert response.startswith("Handed to the executor")
+        assert response.startswith("Started (task_id:")
         assert len(spawned_runs) == 1
         assert await redis_cache.client.llen(INBOX_KEY) == 0
         assert (await fake_redis.get(LOCK_KEY) or "").startswith("stream-2:")
@@ -569,7 +567,7 @@ class TestRedirectAcquire:
         response = await call_executor_with(config=config_for("new-stream"), task="do Y")
         await drain_background_tasks()
 
-        assert response.startswith("Handed to the executor")
+        assert response.startswith("Started (task_id:")
         assert await redis_cache.client.llen(INBOX_KEY) == 0
         assert len(spawned_runs) == 1
         assert await fake_redis.get(LOCK_KEY) == f"new-stream:{task_id_from(response)}"
@@ -591,7 +589,7 @@ class TestRedirectAcquire:
         response = await call_executor_with(config=config_for("new-stream"), task="do Y")
         await drain_background_tasks()
 
-        assert response.startswith("Handed to the executor")
+        assert response.startswith("Started (task_id:")
         assert len(spawned_runs) == 1
 
     async def test_gives_up_at_the_detect_window_when_no_cancel_is_in_flight(
@@ -607,7 +605,7 @@ class TestRedirectAcquire:
         response = await call_executor_with(config=config_for("new-stream"), task="do Y")
         elapsed = time.monotonic() - started
 
-        assert response.startswith("It's been added to the work already in progress")
+        assert response.startswith("Added to the work already in progress")
         assert 0.1 <= elapsed < 0.4  # DETECT (0.1) reached, WAIT (0.5) not
         assert await redis_cache.client.llen(INBOX_KEY) == 1
 
@@ -624,7 +622,7 @@ class TestRedirectAcquire:
         response = await call_executor_with(config=config_for("new-stream"), task="do Y")
         elapsed = time.monotonic() - started
 
-        assert response.startswith("It's been added to the work already in progress")
+        assert response.startswith("Added to the work already in progress")
         assert elapsed >= 0.5  # waited the full budget because a cancel was seen
         assert await redis_cache.client.llen(INBOX_KEY) == 1
         assert spawned_runs == []
@@ -646,7 +644,7 @@ class TestRedirectAcquire:
         await drain_background_tasks()
 
         assert cancel_response == "Cancelled: old-task."
-        assert call_response.startswith("Handed to the executor")
+        assert call_response.startswith("Started (task_id:")
         assert len(spawned_runs) == 1
         # Ran live in this turn, so nothing of "do Y instead" was handed over —
         # the only thing left for the executor is the stop notice.
@@ -1489,24 +1487,22 @@ class TestStoppedReplayRecordReachesTheExecutor:
 
 
 @pytest.mark.unit
-class TestDispatchAcknowledgement:
-    """Comms writes its user-facing reply from this string, before the executor has run a single tool.
+class TestDispatchRecord:
+    """What comms reads at dispatch is a neutral record: no ack line to repeat, nothing claimed done.
 
-    It is the one place where the wording *is* the behaviour: it must not read as completion, and
-    it has to name the approval gate the user may be about to see. Asserted verbatim rather than by
-    substring — a reworded clause that quietly drops "Nothing has run yet" or the approval sentence
-    is exactly the regression that would ship a bot announcing work it has not done.
+    Asserted verbatim: a reworded clause that drops the approval sentence, or invites an ack,
+    is the regression that would ship a bot announcing work it has not done.
     """
 
-    async def test_the_acknowledgement_is_exact(
+    async def test_the_record_is_exact_and_invites_no_words(
         self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         response = await call_executor_with(config=config_for(), task="send the email")
         task_id = task_id_from(response)
 
         assert response == (
-            f"Handed to the executor (task_id: {task_id}). If a step needs the user's approval, "
-            "it has not run yet and their decision releases it or skips it."
+            f"Started (task_id: {task_id}). Its result reaches the user by itself: add no words now. "
+            "If a step needs the user's approval, it has not run yet and their decision releases it or skips it."
         )
 
 

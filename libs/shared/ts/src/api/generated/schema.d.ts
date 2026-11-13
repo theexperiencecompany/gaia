@@ -10931,7 +10931,7 @@ export interface components {
          *     one-emoji acknowledgement reads identically to a coincidental one-emoji reply).
          * @enum {string}
          */
-        MessageKind: "text" | "emoji_ack";
+        MessageKind: "text" | "emoji_ack" | "accepted";
         /**
          * MessageModel
          * @description A single chat message with its content, attachments and tool data.

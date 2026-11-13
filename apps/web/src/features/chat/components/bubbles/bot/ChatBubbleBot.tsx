@@ -10,12 +10,14 @@ import {
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
+import { ACCEPTED_MESSAGE_KIND } from "@/features/chat/utils/workChip";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import { BotBubbleAvatar, BotBubbleFooter } from "./BotBubbleChrome";
 import { describeBotBubbleContent } from "./botBubbleContent";
 import ImageBubble from "./ImageBubble";
 import TextBubble from "./TextBubble";
 import { useActionsHover } from "./useActionsHover";
+import WorkChip from "./WorkChip";
 
 export default function ChatBubbleBot(
   props: ChatBubbleBotProps & {
@@ -60,7 +62,10 @@ export default function ChatBubbleBot(
   // Not memoized on purpose: `props` is rebuilt by getMessageProps every
   // render, so a useMemo keyed on it never hits. Real render protection lives
   // one level up in ChatMessageItem's memo (stable idle message refs).
-  const renderedComponent = image_data ? (
+  const isSilentHandoff = props.kind === ACCEPTED_MESSAGE_KIND && !text;
+  const renderedComponent = isSilentHandoff ? (
+    <WorkChip messageId={message_id} />
+  ) : image_data ? (
     <ImageBubble {...props} image_data={image_data} />
   ) : (
     <TextBubble {...props} partChoreography={partChoreography} />
@@ -93,6 +98,7 @@ export default function ChatBubbleBot(
     systemPurpose,
     toolDataLength: props.tool_data?.length,
     stopped: props.stopped,
+    accepted: isSilentHandoff,
     emailProcessingPurpose: SystemPurpose.EMAIL_PROCESSING,
   });
 
