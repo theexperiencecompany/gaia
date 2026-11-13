@@ -22,6 +22,10 @@ const TITLE = "Sign Up for GAIA: Your Proactive Personal AI Assistant";
 const DESCRIPTION =
   "Create your GAIA account and get a proactive AI assistant that handles your email, calendar, tasks and workflows, and acts before you have to ask.";
 const PAGE_URL = `${siteConfig.url}/signup`;
+const BREADCRUMBS = [
+  { name: "Home", url: siteConfig.url },
+  { name: "Sign Up", url: PAGE_URL },
+];
 
 export const metadata: Metadata = generatePageMetadata({
   title: TITLE,
@@ -66,16 +70,12 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
     );
   }
 
-  const breadcrumbs = [
-    { name: "Home", url: siteConfig.url },
-    { name: "Sign Up", url: PAGE_URL },
-  ];
   return (
     <>
       <JsonLd
         data={[
-          generateWebPageSchema(TITLE, DESCRIPTION, PAGE_URL, breadcrumbs),
-          generateBreadcrumbSchema(breadcrumbs),
+          generateWebPageSchema(TITLE, DESCRIPTION, PAGE_URL, BREADCRUMBS),
+          generateBreadcrumbSchema(BREADCRUMBS),
         ]}
       />
       <AuthShell

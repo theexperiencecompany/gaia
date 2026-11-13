@@ -6,7 +6,9 @@ import JsonLd from "@/components/seo/JsonLd";
 import { relatedUseCases } from "@/features/use-cases/lib/relatedUseCases";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import {
+  COMMUNITY_PAGE_SIZE,
   getAllCommunityWorkflowsServer,
+  getCommunityWorkflowsServer,
   getExploreWorkflowsServer,
   getPublicWorkflowServer,
 } from "@/features/workflows/lib/serverWorkflowsApi";
@@ -25,7 +27,6 @@ import {
 const getExploreWorkflowsCached = cache((limit: number) =>
   getExploreWorkflowsServer(limit),
 );
-const getAllCommunityWorkflowsCached = cache(getAllCommunityWorkflowsServer);
 
 interface PageProps {
   params: Promise<{ readonly slug: string }>;
@@ -208,12 +209,12 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
   const structuredData = generateUseCaseStructuredData({ ...display, slug });
   const [explore, community] = await Promise.all([
     getExploreWorkflowsCached(200),
-    getAllCommunityWorkflowsCached(),
+    getCommunityWorkflowsServer(COMMUNITY_PAGE_SIZE),
   ]);
-  // Community workflows join the rotation so each is linked from its neighbours, not only the hub.
+  // The newest community workflows join the rotation, one request per page, so each is linked from its neighbours.
   const related = relatedUseCases({ slug: data.slug ?? slug }, [
     ...explore,
-    ...withoutTemplateCopies(community, explore),
+    ...withoutTemplateCopies(community.workflows, explore),
   ]);
 
   const breadcrumbSchema = generateBreadcrumbSchema([

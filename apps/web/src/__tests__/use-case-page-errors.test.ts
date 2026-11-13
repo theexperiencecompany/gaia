@@ -5,11 +5,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   getExploreWorkflowsServer,
   getPublicWorkflowServer,
-  getAllCommunityWorkflowsServer,
+  getCommunityWorkflowsServer,
 } = vi.hoisted(() => ({
   getExploreWorkflowsServer: vi.fn(),
   getPublicWorkflowServer: vi.fn(),
-  getAllCommunityWorkflowsServer: vi.fn(),
+  getCommunityWorkflowsServer: vi.fn(),
 }));
 
 vi.mock("@/app/[locale]/(landing)/use-cases/[slug]/client", () => ({
@@ -19,7 +19,9 @@ vi.mock("@/app/[locale]/(landing)/use-cases/[slug]/client", () => ({
 vi.mock("@/features/workflows/lib/serverWorkflowsApi", () => ({
   getExploreWorkflowsServer,
   getPublicWorkflowServer,
-  getAllCommunityWorkflowsServer,
+  getCommunityWorkflowsServer,
+  getAllCommunityWorkflowsServer: vi.fn(),
+  COMMUNITY_PAGE_SIZE: 100,
 }));
 
 import UseCaseDetailPage, {
@@ -31,7 +33,9 @@ const params = (slug: string) => ({ params: Promise.resolve({ slug }) });
 beforeEach(() => {
   getExploreWorkflowsServer.mockReset().mockResolvedValue([]);
   getPublicWorkflowServer.mockReset();
-  getAllCommunityWorkflowsServer.mockReset().mockResolvedValue([]);
+  getCommunityWorkflowsServer
+    .mockReset()
+    .mockResolvedValue({ workflows: [], total: 0 });
 });
 
 describe("use-case page resolution", () => {
