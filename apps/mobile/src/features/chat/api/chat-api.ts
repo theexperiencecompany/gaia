@@ -12,6 +12,7 @@ import type {
 export type { ImageData, ReplyToMessageData } from "@gaia/shared/api/generated";
 
 import type { ApprovalDecisionPayload, ToolDataEntry } from "@gaia/shared/chat";
+import type { HistoryPage } from "@gaia/shared/conversation";
 import { getAuthToken } from "@/features/auth/utils/auth-storage";
 import { ApiError, apiService } from "@/lib/api";
 import { API_BASE_URL } from "@/lib/constants";
@@ -46,6 +47,8 @@ export interface ApiMessage {
   response: string;
   date: string;
   message_id: string;
+  /** The message's place in its conversation's order. */
+  seq: number;
   fileIds: string[];
   fileData: ApiFileData[];
   tool_data?: ToolDataEntry[];
@@ -65,6 +68,8 @@ export interface ApiConversationDetail {
   is_system_generated: boolean;
   system_purpose: string | null;
   is_unread: boolean;
+  /** Messages older than the ones returned remain on the server. */
+  has_older: boolean;
   messages: ApiMessage[];
   createdAt: string;
   updatedAt?: string;
@@ -76,6 +81,8 @@ export interface MemoryData {
 
 export interface Message {
   id: string;
+  /** The saved message's place in its conversation's order; absent on live rows. */
+  seq?: number;
   text: string;
   isUser: boolean;
   timestamp: Date;
@@ -115,6 +122,7 @@ export interface ConversationDetail {
   createdAt: Date;
   updatedAt: Date;
   isUnread: boolean;
+  hasOlder: boolean;
 }
 
 function normalizeMessage(apiMsg: ApiMessage): Message {
@@ -125,6 +133,7 @@ function normalizeMessage(apiMsg: ApiMessage): Message {
 
   return {
     id: apiMsg.message_id,
+    seq: apiMsg.seq,
     text: apiMsg.response,
     isUser: apiMsg.type === "user",
     timestamp: new Date(apiMsg.date),
@@ -150,6 +159,7 @@ function normalizeConversationDetail(
     createdAt: new Date(apiConv.createdAt),
     updatedAt: new Date(apiConv.updatedAt || apiConv.createdAt),
     isUnread: apiConv.is_unread,
+    hasOlder: apiConv.has_older,
   };
 }
 
@@ -167,16 +177,19 @@ export async function fetchConversation(
   }
 }
 
-export async function fetchMessages(
+/** The page of saved messages before beforeSeq, oldest first. */
+export async function fetchMessagesBefore(
   conversationId: string,
-): Promise<Message[]> {
-  try {
-    const conversation = await fetchConversation(conversationId);
-    return conversation?.messages || [];
-  } catch (error) {
-    console.error("Error fetching messages:", error);
-    return [];
-  }
+  beforeSeq: number,
+  limit: number,
+): Promise<HistoryPage<Message>> {
+  const page = await apiService.get<HistoryPage<ApiMessage>>(
+    `/conversations/${encodeURIComponent(conversationId)}/messages?before_seq=${beforeSeq}&limit=${limit}`,
+  );
+  return {
+    messages: page.messages.map(normalizeMessage),
+    has_more: page.has_more,
+  };
 }
 
 export async function markConversationAsRead(
@@ -397,7 +410,7 @@ export async function submitMessageFeedback(
 
 export const chatApi = {
   fetchConversation,
-  fetchMessages,
+  fetchMessagesBefore,
   markConversationAsRead,
   markConversationAsUnread,
   deleteConversation,

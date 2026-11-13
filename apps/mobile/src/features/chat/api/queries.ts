@@ -1,4 +1,9 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { withNewestPage } from "@gaia/shared/conversation";
+import {
+  type QueryClient,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type { Conversation } from "@/features/chat/types";
 import { apiService } from "@/lib/api";
 import { chatDb } from "@/lib/db/chatDb";
@@ -55,15 +60,31 @@ export const chatKeys = {
   conversations: () => [...chatKeys.all, "conversations"] as const,
   conversation: (id: string) => [...chatKeys.all, "conversation", id] as const,
   messages: (id: string) => [...chatKeys.all, "messages", id] as const,
+  /** Whether the server holds messages older than the oldest one cached. */
+  hasOlder: (id: string) => [...chatKeys.all, "has-older", id] as const,
 };
 
 async function fetchMessagesFromApi(
+  queryClient: QueryClient,
   conversationId: string,
 ): Promise<Message[]> {
   // Always hit the API: cached messages (pre-warmed from AsyncStorage) stay on
   // screen while this background-revalidation fetch runs, and React Query swaps
   // in fresh data seamlessly; the new messages persist for the next launch.
-  const messages = await chatApi.fetchMessages(conversationId);
+  const conversation = await chatApi.fetchConversation(conversationId);
+  if (!conversation) {
+    throw new Error(`Conversation ${conversationId} could not be fetched`);
+  }
+  const cached =
+    queryClient.getQueryData<Message[]>(chatKeys.messages(conversationId)) ??
+    [];
+  const messages = withNewestPage(cached, conversation.messages);
+  if (messages.length === conversation.messages.length) {
+    queryClient.setQueryData(
+      chatKeys.hasOlder(conversationId),
+      conversation.hasOlder,
+    );
+  }
   if (messages.length > 0) {
     chatDb.saveMessages(conversationId, messages).catch((err) => {
       console.warn(
@@ -76,9 +97,10 @@ async function fetchMessagesFromApi(
 }
 
 export function useConversationQuery(conversationId: string | null) {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: chatKeys.messages(conversationId!),
-    queryFn: () => fetchMessagesFromApi(conversationId!),
+    queryFn: () => fetchMessagesFromApi(queryClient, conversationId!),
     enabled: !!conversationId && !conversationId.startsWith("temp-"),
     // Short staleness window: the cache-first seed still renders instantly,
     // but revisiting a conversation revalidates against the API quickly
@@ -109,14 +131,6 @@ export function useChatQueryClient() {
   const invalidateMessages = (conversationId: string) => {
     queryClient.invalidateQueries({
       queryKey: chatKeys.messages(conversationId),
-    });
-  };
-
-  const prefetchMessages = async (conversationId: string) => {
-    await queryClient.prefetchQuery({
-      queryKey: chatKeys.messages(conversationId),
-      queryFn: () => chatApi.fetchMessages(conversationId),
-      staleTime: 5 * 60 * 1000,
     });
   };
 
@@ -160,7 +174,6 @@ export function useChatQueryClient() {
     setMessagesCache,
     invalidateConversations,
     invalidateMessages,
-    prefetchMessages,
     updateConversationInCache,
     removeConversationFromCache,
   };

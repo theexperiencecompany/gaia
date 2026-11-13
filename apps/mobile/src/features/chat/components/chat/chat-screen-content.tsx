@@ -35,6 +35,7 @@ import type { Message } from "../../api/chat-api";
 import { pinMessage } from "../../api/chat-api";
 import { useChat } from "../../hooks/use-chat";
 import { useChatContext } from "../../hooks/use-chat-context";
+import { useOlderHistory } from "../../hooks/use-older-history";
 import {
   useComposerStore,
   usePendingPrompt,
@@ -230,7 +231,9 @@ export function ChatScreenContent({
     stop,
     scrollToBottom,
     refetch,
+    conversationId,
   } = useChat(activeChatId, { onNavigate });
+  const loadOlder = useOlderHistory(conversationId);
 
   const { spacing } = useResponsive();
   const { setActiveChatId } = useChatContext();
@@ -576,6 +579,7 @@ export function ChatScreenContent({
               keyboardDismissMode="on-drag"
               onScroll={handleScroll}
               scrollEventThrottle={16}
+              onStartReached={loadOlder}
               refreshControl={
                 <RefreshControl
                   refreshing={isRefreshing}
