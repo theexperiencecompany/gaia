@@ -212,6 +212,7 @@
 @source "../../../features/auth/api/authApi.ts";
 @source "../../../features/auth/api/serverSetupStatusApi.ts";
 @source "../../../features/auth/components/AuthShell.tsx";
+@source "../../../features/auth/components/HostedSignupActions.tsx";
 @source "../../../features/auth/components/LoginForm.tsx";
 @source "../../../features/auth/components/LoginModal.tsx";
 @source "../../../features/auth/components/RegistrationClosedNotice.tsx";
@@ -376,11 +377,11 @@
 @source "../../[locale]/(landing)/features/page.tsx";
 @source "../../[locale]/(landing)/for/page.tsx";
 @source "../../[locale]/(landing)/founders/FoundersClient.tsx";
-@source "../../[locale]/(landing)/manifesto/page.tsx";
 @source "../../[locale]/(landing)/pricing/page.tsx";
 @source "../../[locale]/(landing)/privacy/page.tsx";
 @source "../../[locale]/(landing)/product-managers/ProductManagerClient.tsx";
 @source "../../[locale]/(landing)/sales-professionals/SalesClient.tsx";
+@source "../../[locale]/(landing)/signup/page.tsx";
 @source "../../[locale]/(landing)/software-developers/SoftwareDevClient.tsx";
 @source "../../[locale]/(landing)/terms/page.tsx";
 @source "../../[locale]/(landing)/thanks/page.tsx";
@@ -391,7 +392,6 @@
 @source "../../[locale]/(unindexed)/desktop-login/page.tsx";
 @source "../../[locale]/(unindexed)/desktop-login/self-host-server-form.tsx";
 @source "../../[locale]/(unindexed)/login/page.tsx";
-@source "../../[locale]/(unindexed)/signup/page.tsx";
 @source "../../../features/landing/components/demo/ChatDemoSection.tsx";
 @source "../../../features/landing/components/demo/constants.ts";
 @source "../../../features/landing/components/demo/DemoChatHeader.tsx";
