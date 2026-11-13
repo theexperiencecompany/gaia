@@ -223,11 +223,11 @@ def _may_wait_for_run(
     )
 
 
-def _repeat_gap(history: FactHistory) -> timedelta:
-    """How long after GAIA last told a fact it may tell it again: 1d, then 3d, then 7d, then monthly."""
-    if history.times_told > len(REPEAT_BACKOFF_SECONDS):
+def repeat_gap(times_told: int) -> timedelta:
+    """How long after GAIA last said a thing it may say it again: 1d, then 3d, then 7d, then monthly."""
+    if times_told > len(REPEAT_BACKOFF_SECONDS):
         return _seconds(REPEAT_MUTE_SECONDS)
-    return _seconds(REPEAT_BACKOFF_SECONDS[history.times_told - 1])
+    return _seconds(REPEAT_BACKOFF_SECONDS[times_told - 1])
 
 
 def escalated(urgency: UrgencyClass, state: AttentionState) -> UrgencyClass:
@@ -291,7 +291,7 @@ def _unsolicited(
             DEADLINE_PROXIMITY_SECONDS
         )
         if not near_deadline and (
-            state.now - state.fact_history.last_told_at < _repeat_gap(state.fact_history)
+            state.now - state.fact_history.last_told_at < repeat_gap(state.fact_history.times_told)
         ):
             return Record(DropReason.REPEAT_BACKOFF)
     if verdict is not None and _may_wait_for_run(state, verdict, latest):

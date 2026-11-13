@@ -11,12 +11,13 @@ from langchain_core.messages import BaseMessage, HumanMessage
 
 from app.agents.llm.client import ainvoke_llm, metered_config, resolve_model
 from app.agents.prompts.todo_prompts import HEALTH_CHECK_VERDICT_ONLY
-from app.constants.outbox_attention import REPEAT_BACKOFF_SECONDS, REPEAT_MUTE_SECONDS
+from app.constants.outbox_attention import REPEAT_BACKOFF_SECONDS
 from app.constants.todos import BLOCKING_LABELS, TodoActivityEvent
 from app.db.repositories.outbox_items import outbox_items_repository
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.services.canvas_markdown import bounded_canvas
+from app.services.outbox.holds import repeat_gap
 from app.services.outbox.intake import submit
 from app.services.outbox.models import NoticeOutcome, ProducerKind, SubjectKind
 from app.services.outbox.system_notices import system_notice, system_report_id
@@ -146,13 +147,6 @@ def _notice_day(now: datetime) -> str:
     return now.date().isoformat()
 
 
-def _repeat_wait(times_filed: int) -> timedelta:
-    """How long after its last notice a todo is left alone: 1d, then 3d, then 7d, then a month."""
-    if times_filed > len(REPEAT_BACKOFF_SECONDS):
-        return timedelta(seconds=REPEAT_MUTE_SECONDS)
-    return timedelta(seconds=REPEAT_BACKOFF_SECONDS[times_filed - 1])
-
-
 async def _in_back_off(user_id: str, kind: str, key: str, now: datetime) -> bool:
     """Whether the ledger says a notice of one kind for key was filed too recently to check and say it again."""
     filed = await outbox_items_repository.list_filed_with_prefix(
@@ -161,7 +155,7 @@ async def _in_back_off(user_id: str, kind: str, key: str, now: datetime) -> bool
     if not filed:
         return False
     last_filed_at = as_utc(filed[0].created_at)
-    return last_filed_at is not None and now < last_filed_at + _repeat_wait(len(filed))
+    return last_filed_at is not None and now < last_filed_at + repeat_gap(len(filed))
 
 
 async def _classify_tracked_todos(
