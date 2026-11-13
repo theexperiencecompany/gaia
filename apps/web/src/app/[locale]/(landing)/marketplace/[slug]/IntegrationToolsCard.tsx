@@ -2,6 +2,8 @@ import { Card, ScrollShadow } from "@heroui/react";
 import { PackageOpenIcon } from "@icons";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
 import { ToolCard } from "./ToolCard";
+import { ToolDescription } from "./ToolDescription";
+import { displayToolDescription, displayToolName } from "./toolCopy";
 
 function EmptyTools() {
   return (
@@ -20,6 +22,7 @@ function EmptyTools() {
   );
 }
 
+/** Every tool, rendered on the server: the markdown parser never ships to the browser. */
 export function IntegrationToolsCard({
   integration,
 }: {
@@ -43,10 +46,17 @@ export function IntegrationToolsCard({
               {integration.tools?.map((tool) => (
                 <ToolCard
                   key={tool.name}
-                  name={tool.name}
-                  description={tool.description}
-                  integrationName={integration.name}
-                />
+                  label={displayToolName(tool.name, integration.name)}
+                >
+                  {tool.description ? (
+                    <ToolDescription
+                      markdown={displayToolDescription(
+                        tool.description,
+                        integration.name,
+                      )}
+                    />
+                  ) : null}
+                </ToolCard>
               ))}
             </div>
           </ScrollShadow>

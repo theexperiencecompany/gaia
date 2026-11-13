@@ -1,32 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
-import { formatToolName } from "@/features/chat/utils/chatUtils";
-import { ToolDescription } from "./ToolDescription";
-import { displayToolDescription, displayToolName } from "./toolCopy";
 
 interface ToolCardProps {
-  readonly name: string;
-  readonly description?: string | null;
-  readonly integrationName?: string;
+  readonly label: string;
+  /** The description, rendered from markdown on the server; omitted when the tool has none. */
+  readonly children?: ReactNode;
 }
 
-export function ToolCard({
-  name,
-  description,
-  integrationName,
-}: ToolCardProps) {
+export function ToolCard({ label, children }: ToolCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [isClamped, setIsClamped] = useState(false);
   const descriptionRef = useRef<HTMLDivElement>(null);
-  const label = integrationName
-    ? displayToolName(name, integrationName)
-    : formatToolName(name);
-  const copy =
-    description && integrationName
-      ? displayToolDescription(description, integrationName)
-      : description;
 
   // Detect whether the 2-line clamp actually truncates the description, so the
   // toggle only renders when there is hidden content to reveal.
@@ -34,18 +20,19 @@ export function ToolCard({
     const element = descriptionRef.current;
     if (!element) return;
     setIsClamped(element.scrollHeight > element.clientHeight);
-  }, [copy]);
+  }, []);
 
   return (
-    <div className="rounded-xl bg-zinc-800/50 p-3">
+    // content-visibility skips layout and paint for the cards scrolled out of the 400px box.
+    <div className="rounded-xl bg-zinc-800/50 p-3 [content-visibility:auto] [contain-intrinsic-size:auto_88px]">
       <p className="font-medium text-zinc-200">{label}</p>
-      {copy && (
+      {children && (
         <>
           <div
             ref={descriptionRef}
             className={`text-sm text-zinc-400 ${expanded ? "" : "line-clamp-2"}`}
           >
-            <ToolDescription markdown={copy} />
+            {children}
           </div>
           {(isClamped || expanded) && (
             <GaiaButton

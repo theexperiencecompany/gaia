@@ -40,6 +40,7 @@ import {
   siteConfig,
 } from "@/lib/seo";
 import { IntegrationDetailClient } from "./client";
+import { IntegrationToolsCard } from "./IntegrationToolsCard";
 import {
   generateIntegrationDescription,
   generateIntegrationTitle,
@@ -227,6 +228,7 @@ export default async function IntegrationPage({ params }: Props) {
       >
         <IntegrationDetailClient
           integration={integration}
+          toolsCard={<IntegrationToolsCard integration={integration} />}
           comparisonSlug={comparisonSlug}
           alternativeSlug={
             alternative && !isRedirectedPath(`/alternative-to/${slug}`)
