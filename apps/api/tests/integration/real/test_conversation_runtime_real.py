@@ -98,7 +98,7 @@ from app.schemas.browser import NewHandoff
 from app.services import analytics_service
 from app.services.browser.handoff import create_pending_handoff
 from app.services.browser.handoff_buttons import decide_handoff_by_button
-from app.services.conversation import mongo_log, reply_analytics, step as step_module
+from app.services.conversation import mongo_log, reply_analytics, step as step_module, sweeper
 from app.services.conversation.bot_followers import list_active_bot_conversations
 from app.services.conversation.comms_runner import (
     CommsGraphRunner,
@@ -1596,3 +1596,30 @@ async def test_a_sweep_leaves_live_chat_work_alone_and_its_result_is_narrated(
         ("t9", WorkOutcome.DONE)
     ]
     assert (await rig.of(Reply))[-1].text == "your inbox is clean"
+
+
+@pytest.mark.service
+async def test_one_failing_conversation_never_stops_the_sweep_reaching_every_due_one(
+    rig_for: RigFactory,
+) -> None:
+    first = await rig_for(gated("unused"))
+    first.effects.hold_kicks = True
+    await first.send("m1", "hello")
+    second = await rig_for(gated("unused"))
+    second.effects.hold_kicks = True
+    await second.send("m2", "hello again")
+    kicked: list[str] = []
+
+    async def kick(conversation_id: str, user_id: str) -> None:
+        kicked.append(conversation_id)
+        if len(kicked) == 1:
+            raise ConnectionError("redis down")
+
+    # One head a page: the second is reached only by paging past the first.
+    with (
+        patch.object(sweeper, "SWEEP_BATCH", 1),
+        patch.object(second.effects, "kick", kick),
+    ):
+        report = await sweep_conversations()
+    assert {first.conversation_id, second.conversation_id} <= set(kicked)
+    assert report.failed == 1

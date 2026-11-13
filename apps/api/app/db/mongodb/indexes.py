@@ -270,8 +270,8 @@ CONVERSATION_TODO_BINDING_OPTIONS: IndexOptions = {
 }
 
 
-# The sweeper's scan: only heads it has something to finish on, a few among every conversation.
-CONVERSATION_SWEEP_KEYS: IndexKeys = [("updatedAt", -1)]
+# The sweeper's scan, paged by _id: only heads it has something to finish on, a few among every conversation.
+CONVERSATION_SWEEP_KEYS: IndexKeys = [("_id", 1), ("conversation_id", 1)]
 CONVERSATION_SWEEP_OPTIONS: IndexOptions = {
     "name": SWEEP_INDEX_NAME,
     "partialFilterExpression": SWEEP_DUE_FILTER,
