@@ -66,6 +66,8 @@ apps/mobile/src/features/workflows/types/trigger-types.ts:TriggerSchema=Workflow
 apps/mobile/src/features/workflows/types/workflow-types.ts:UpdateWorkflowPayload=CreateWorkflowRequest
 apps/mobile/src/features/workflows/types/workflow-types.ts:WorkflowExecutionsListResponse=WorkflowExecutionsResponse
 apps/mobile/src/lib/analytics.ts:UserTraits=AuthenticatedUserResponse
+# A server-rendered view model: its description is a rendered ReactNode, three generic names match.
+apps/web/src/app/[locale]/(landing)/marketplace/[slug]/ToolList.tsx:ToolListItem=UserFeatureFlagResponse
 apps/web/src/app/[locale]/(landing)/thanks/page.tsx:ToolMetadata=URLResponse
 apps/web/src/app/api/og/integration/route.tsx:OgIntegration=CommunityIntegrationItem
 apps/web/src/app/api/og/use-case/route.tsx:OgWorkflow=PersonalizationWorkflow

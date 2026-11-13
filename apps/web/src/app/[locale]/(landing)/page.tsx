@@ -42,6 +42,16 @@ export const metadata: Metadata = generatePageMetadata({
   ],
 });
 
+/** The explore workflows whose icons the homepage server-renders; none when the API fails, so the cards draw client icons. */
+async function getExploreWorkflowsForIcons() {
+  try {
+    return await getExploreWorkflowsServer(EXPLORE_WORKFLOWS_LIMIT);
+  } catch (error) {
+    console.error("Loading explore workflows for homepage icons failed", error);
+    return [];
+  }
+}
+
 export default async function LandingPage() {
   const latestRelease = getLatestRelease();
   const webPageSchema = generateWebPageSchema(
@@ -54,9 +64,7 @@ export default async function LandingPage() {
     { name: "Home", url: siteConfig.url },
   ]);
   const faqSchema = generateFAQSchema(homepageFAQs);
-  const exploreWorkflows = await getExploreWorkflowsServer(
-    EXPLORE_WORKFLOWS_LIMIT,
-  );
+  const exploreWorkflows = await getExploreWorkflowsForIcons();
 
   return (
     <>

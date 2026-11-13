@@ -15,6 +15,7 @@ import { DeviceOnboardingPrompt } from "@/features/chat/components/bubbles/bot/D
 import EmailThreadCard from "@/features/chat/components/bubbles/bot/EmailThreadCard";
 import IntegrationConnectionPrompt from "@/features/chat/components/bubbles/bot/IntegrationConnectionPrompt";
 import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResultsTabs";
+import { MCPAppLoading } from "@/features/chat/components/tools/MCPAppLoading";
 import type { DeviceApprovalRequiredData } from "@/features/devices/types";
 import { IntegrationListSection } from "@/features/integrations/components/IntegrationListSection";
 import type {
@@ -69,12 +70,13 @@ import TwitterSearchSection from "../TwitterSearchSection";
 import TwitterUserSection from "../TwitterUserSection";
 
 // @mcp-ui/client ships its own zod, whose eval probe the CSP reports; load it only when an MCP app renders.
+// Its own loading card keeps the suspend local instead of blanking the surrounding messages.
 const MCPAppRenderer = dynamic(
   () =>
     import("@/features/chat/components/tools/MCPAppRenderer").then(
       (m) => m.MCPAppRenderer,
     ),
-  { ssr: false },
+  { ssr: false, loading: MCPAppLoading },
 );
 
 // Utility type: union of all possible tool_name/data pairs

@@ -11,10 +11,17 @@ const PREFETCH_TIMEOUT_MS = 4000;
 
 // tiptap + prosemirror (~90 KB gzip) stay out of the route's initial JS.
 if (typeof window !== "undefined") {
-  whenIdle(loadMentionEditor, {
-    timeoutMs: PREFETCH_TIMEOUT_MS,
-    fallbackDelayMs: PREFETCH_TIMEOUT_MS,
-  });
+  // Only the warm-up logs and drops a failed fetch; opening the editor loads it again and fails loud.
+  whenIdle(
+    () =>
+      loadMentionEditor().catch((error: unknown) =>
+        console.error("Prefetching the mention editor chunk failed", error),
+      ),
+    {
+      timeoutMs: PREFETCH_TIMEOUT_MS,
+      fallbackDelayMs: PREFETCH_TIMEOUT_MS,
+    },
+  );
 }
 
 /** MentionEditor, loaded off the critical path; only modals render it. */
