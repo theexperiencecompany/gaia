@@ -20,7 +20,7 @@ from app.helpers.agent_helpers import (
     background_authorization,
     build_agent_config,
 )
-from app.models.agent_config import AgentConfigurable, StepTurnRef
+from app.models.agent_config import AgentConfigurable
 from app.models.agent_models import agent_user_context
 from app.models.conversation_log_models import (
     Batch,
@@ -31,7 +31,7 @@ from app.models.conversation_log_models import (
     WorkflowRun,
 )
 from app.services.chat.workspace import schedule_last_active_touch
-from app.services.conversation.comms_runner import CommsTurn
+from app.services.conversation.comms_runner import CommsTurn, step_turn_ref
 from app.services.conversation.reply_analytics import spoken_context
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.todo_wake import todo_runs_reported
@@ -191,17 +191,3 @@ def _analytics(said: list[UserMessage], fired: WorkflowRun | None) -> AnalyticsC
 def _source(said: list[UserMessage]) -> str:
     """Answer on the surface of the newest message; work with no message behind it answers in the background."""
     return said[-1].surface.value if said else ConversationSource.BACKGROUND.value
-
-
-def step_turn_ref(claim: StepClaim, batch: Batch) -> StepTurnRef:
-    """Return what the attempt's run and the work it dispatches carry of the attempt."""
-    return {
-        "epoch": claim.epoch,
-        "batch_start": batch.start,
-        "cause_through": batch.end,
-        "answers": [
-            logged.entry.id
-            for logged in batch.waking
-            if isinstance(logged.entry, UserMessage | WorkflowFired)
-        ],
-    }

@@ -143,11 +143,12 @@ def test_a_stop_whose_inputs_never_reached_the_thread_is_said() -> None:
 
 
 def test_absorbing_stops_at_the_first_stop() -> None:
-    messages, stopped = absorbed_messages(
-        [logged(2, user("u2")), logged(3, stop("s3", 2)), logged(4, user("u4"))], AS_TYPED
+    u2, u5 = logged(2, user("u2")), logged(5, user("u5"))
+    messages, joined = absorbed_messages(
+        [u2, logged(3, stop("s3", 2)), logged(4, user("u4"))], AS_TYPED
     )
-    assert (ids(messages), stopped) == (["log:u2"], True)
-    assert absorbed_messages([logged(5, user("u5"))], AS_TYPED)[1] is False
+    assert (ids(messages), joined) == (["log:u2"], (u2,))
+    assert absorbed_messages([u5], AS_TYPED)[1] == (u5,)
 
 
 def test_a_user_message_reads_as_its_reframed_content_when_it_has_one() -> None:

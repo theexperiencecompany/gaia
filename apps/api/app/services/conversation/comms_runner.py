@@ -25,6 +25,7 @@ from app.constants.conversation import (
     WORKFLOW_RUN_REQUEST,
 )
 from app.constants.graphs import GraphName
+from app.models.agent_config import StepTurnRef
 from app.models.agent_models import AgentConfigurable, AgentRunnableConfig, agent_configurable
 from app.models.conversation_log_models import (
     Batch,
@@ -116,9 +117,11 @@ class CommsGraphRun:
         if self._sealed or self.task.done():
             return
         said = await reframed_messages(self._claim, entries)
-        messages, stopped = absorbed_messages(entries, said)
+        messages, joined = absorbed_messages(entries, said)
         feed(self._run_id, messages)
-        self._sealed = stopped
+        if (step := agent_configurable(self._config).get("conversation_step")) is not None:
+            _join(step, joined)
+        self._sealed = len(joined) < len(entries)
 
     async def cancel(self, reason: CancelReason) -> None:
         """Cancel until the task is done, then record a Stop in the thread; any other reason leaves no trace."""
@@ -207,6 +210,31 @@ class CommsGraphRunner:
         return CommsGraphRun(
             claim, graph, config, turn, {**turn.state, "messages": messages}, self._confirm
         )
+
+
+def step_turn_ref(claim: StepClaim, batch: Batch) -> StepTurnRef:
+    """Return what the attempt's run and the work it dispatches carry of the attempt."""
+    return {
+        "epoch": claim.epoch,
+        "batch_start": batch.start,
+        "cause_through": batch.end,
+        "answers": _answered(batch.waking),
+    }
+
+
+def _join(step: StepTurnRef, joined: Sequence[LoggedEntry]) -> None:
+    """Extend the run's own step ref in place, so work its tools dispatch from now on answers the joiners too."""
+    if joined:
+        step["cause_through"] = joined[-1].seq
+        step["answers"] = [*step["answers"], *_answered(joined)]
+
+
+def _answered(entries: Sequence[LoggedEntry]) -> list[str]:
+    return [
+        logged.entry.id
+        for logged in entries
+        if isinstance(logged.entry, UserMessage | WorkflowFired)
+    ]
 
 
 async def reframed_messages(claim: StepClaim, entries: Sequence[LoggedEntry]) -> dict[str, str]:

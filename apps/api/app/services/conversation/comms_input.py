@@ -72,14 +72,16 @@ def attempt_messages(
 
 def absorbed_messages(
     entries: Sequence[LoggedEntry], said: Mapping[str, str]
-) -> tuple[list[AnyMessage], bool]:
-    """Render entries absorbed into a running attempt up to the first Stop; True when a Stop was reached."""
+) -> tuple[list[AnyMessage], tuple[LoggedEntry, ...]]:
+    """Render entries absorbed into a running attempt up to the first Stop, with the entries that joined it."""
     messages: list[AnyMessage] = []
+    joined: list[LoggedEntry] = []
     for logged in entries:
         if isinstance(logged.entry, StopRequested):
-            return messages, True
+            break
         messages.extend(entry_messages(logged, said))
-    return messages, False
+        joined.append(logged)
+    return messages, tuple(joined)
 
 
 def entry_messages(logged: LoggedEntry, said: Mapping[str, str] = AS_TYPED) -> list[AnyMessage]:

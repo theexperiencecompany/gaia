@@ -66,7 +66,8 @@ class StepTurnRef(TypedDict):
     epoch: int
     #: The oldest log seq the attempt answers; a stop it asks for covers everything before it.
     batch_start: int
-    #: The newest log seq the attempt answers; work it starts is caused through here.
+    #: The newest log seq the attempt answers; work it starts is caused through here. The run
+    #: moves it, and answers, forward in place as later inputs join the attempt.
     cause_through: int
     #: The ids of the user messages the attempt answers.
     answers: list[str]

@@ -24,6 +24,7 @@ from langchain_core.messages import (
     SystemMessage,
 )
 from langchain_core.outputs import ChatGenerationChunk
+from langgraph.config import get_config
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 from redis.asyncio import Redis
@@ -64,7 +65,7 @@ from app.db.redis import redis_cache
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
-from app.models.agent_config import AgentConfigurable, StepTurnRef
+from app.models.agent_config import AgentConfigurable, StepTurnRef, agent_configurable
 from app.models.agent_models import AgentRunnableConfig
 from app.models.conversation_frame_models import (
     EntryFrame,
@@ -115,8 +116,9 @@ from app.services.conversation.comms_runner import (
     CommsGraphRunner,
     CommsTurn,
     CommsTurnBuilder,
+    step_turn_ref,
 )
-from app.services.conversation.comms_turn import build_comms_turn, step_turn_ref
+from app.services.conversation.comms_turn import build_comms_turn
 from app.services.conversation.composition import RuntimeEffects, running_steps
 from app.services.conversation.event_stream import (
     RedisStreamFrames,
@@ -178,6 +180,7 @@ from tests.integration.real.test_comms_runner_real import (
     gated,
     humans,
     patched_graph,
+    recall_call,
 )
 from tests.unit.services.conversation.log_helpers import workflow_run
 from tests.unit.services.conversation.runtime_doubles import ScriptedApprovals
@@ -251,9 +254,10 @@ class Rig:
         return [(s.outcome, s.answers) for s in await self.of(ReplySettled)]
 
     def step(self) -> StepTurnRef:
-        """Return what the attempt running now hands the work it dispatches."""
-        claim, batch = self.turns[-1]
-        return step_turn_ref(claim, batch)
+        """Return what the attempt running now hands the work it dispatches, read from its run as call_executor does."""
+        step = agent_configurable(get_config()).get("conversation_step")
+        assert step is not None
+        return step
 
     async def start_work(self, task_id: str) -> bool:
         """Do what call_executor does inside the attempt running now."""
@@ -372,6 +376,13 @@ async def rig_for(
             task.cancel()
 
 
+@pytest.fixture
+def tool_registry() -> None:
+    """Register the real tool registry: tool cards resolve their categories through it."""
+    if not providers.is_initialized("tool_registry"):
+        init_tool_registry()
+
+
 def _during(model: GatedModel, call: int, action: Callable[[], Awaitable[object]]) -> None:
     model._during[call] = action
 
@@ -414,6 +425,33 @@ async def test_a_side_question_during_work_is_answered_while_the_work_runs(
         (ReplyOutcome.ANSWERED, ("m1",)),
         (ReplyOutcome.ANSWERED, ("m2",)),
     ]
+
+
+@pytest.mark.service
+@pytest.mark.usefixtures("tool_registry")
+async def test_work_started_after_a_message_joined_the_attempt_answers_that_message_too(
+    rig_for: RigFactory,
+) -> None:
+    model = gated(recall_call("c1"), recall_call("c2"), "on it", "both done")
+    rig = await rig_for(model)
+    # m2 lands after the first tool call committed the attempt, so it joins rather than restarts.
+    _during(model, 1, lambda: rig.send("m2", "and a hotel"))
+    _during(model, 2, lambda: rig.start_work("t1"))
+    await rig.send("m1", "find me flights")
+    await rig.settle()
+    await record_work_finished(
+        rig.conversation_id, rig.user_id, "t1", WorkOutcome.DONE, WorkReport("booked both")
+    )
+    await rig.settle()
+    write_up = (await rig.of(ReplySettled))[-1]
+    [m2_seq] = [e.seq for e in await rig.entries() if e.entry.id == "m2"]
+    assert len(rig.turns) == 2
+    assert [(w.task_id, w.cause_through, w.answers) for w in await rig.of(WorkStarted)] == [
+        ("t1", m2_seq, ("m1", "m2"))
+    ]
+    assert {"m1", "m2"} <= set(write_up.answers)
+    # m2 is answered too, so nothing unanswered sits between the write-up and what it answers.
+    assert write_up.quote_target is None
 
 
 @pytest.mark.service
@@ -1153,13 +1191,11 @@ async def test_a_todo_run_that_found_nothing_for_the_user_settles_silent_and_sen
 
 
 @pytest.mark.service
+@pytest.mark.usefixtures("tool_registry")
 async def test_a_playbook_replay_reads_back_from_its_conversations_log_with_its_cards(
     rig_for: RigFactory,
 ) -> None:
     rig = await rig_for(gated())
-    # Cards resolve their categories through the real tool registry.
-    if not providers.is_initialized("tool_registry"):
-        init_tool_registry()
     now = datetime.now(UTC)
     playbook = PlaybookDocument(
         playbook_id="pb-1",
