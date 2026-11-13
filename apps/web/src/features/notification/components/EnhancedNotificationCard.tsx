@@ -115,6 +115,7 @@ export const EnhancedNotificationCard = ({
               <Tooltip delay={300}>
                 <Tooltip.Trigger>
                   <GaiaButton
+                    aria-label="Mark as read"
                     size="sm"
                     onPress={handleMarkAsRead}
                     variant="tertiary"

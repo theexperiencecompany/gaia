@@ -278,6 +278,7 @@ export default function UseCaseSection({
             className="pl-2"
           >
             <GaiaButton
+              aria-label="Hide use cases"
               shape="pill"
               isIconOnly
               size="sm"

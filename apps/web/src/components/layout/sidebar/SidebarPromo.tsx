@@ -53,6 +53,7 @@ export function SidebarPromo({
           <div className="flex w-full justify-between items-center gap-1">
             <div className="font-medium text-sm">{copy.heading}</div>
             <GaiaButton
+              aria-label="Dismiss"
               shape="pill"
               isIconOnly
               variant="ghost"

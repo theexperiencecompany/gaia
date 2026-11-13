@@ -42,6 +42,7 @@ const StandardCodeBlock: React.FC<StandardCodeBlockProps> = ({
               language={match ? match[1] : undefined}
             />
             <GaiaButton
+              aria-label="Copy code"
               className="text-xs"
               tone="muted"
               hoverTone="dim"

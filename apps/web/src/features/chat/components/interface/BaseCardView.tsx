@@ -80,6 +80,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
           {onRefresh && isConnected && (
             <Tooltip>
               <GaiaButton
+                aria-label="Refresh"
                 isIconOnly
                 size="sm"
                 variant="ghost"

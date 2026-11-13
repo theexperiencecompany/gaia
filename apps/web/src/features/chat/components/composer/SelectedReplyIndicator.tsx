@@ -152,6 +152,7 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
             <div className="absolute right-2">
               {onRemove && (
                 <GaiaButton
+                  aria-label="Remove reply"
                   variant="default-solid"
                   shape="pill"
                   type="button"

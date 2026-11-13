@@ -97,6 +97,7 @@ export default function ChatBubble_Actions({
         <div className="flex w-fit items-center">
           <Tooltip>
             <GaiaButton
+              aria-label="Reply"
               isIconOnly
               className="aspect-square size-7.5 min-w-7.5 rounded-md"
               variant="ghost"
@@ -115,6 +116,7 @@ export default function ChatBubble_Actions({
 
           <Tooltip>
             <GaiaButton
+              aria-label="Copy to clipboard"
               isIconOnly
               className="aspect-square size-7.5 min-w-7.5 rounded-md"
               variant="ghost"
@@ -131,6 +133,7 @@ export default function ChatBubble_Actions({
 
           <Tooltip>
             <GaiaButton
+              aria-label="Pin message"
               isIconOnly
               className="aspect-square size-7.5 min-w-7.5 rounded-md"
               variant="ghost"
@@ -146,6 +149,7 @@ export default function ChatBubble_Actions({
           {messageRole === "assistant" && (
             <Tooltip>
               <GaiaButton
+                aria-label="Helpful response"
                 isIconOnly
                 className="aspect-square size-7.5 min-w-7.5 rounded-md"
                 variant="ghost"
@@ -168,6 +172,7 @@ export default function ChatBubble_Actions({
           {messageRole === "assistant" && (
             <Tooltip>
               <GaiaButton
+                aria-label="Not helpful"
                 isIconOnly
                 className="aspect-square size-7.5 min-w-7.5 rounded-md"
                 variant="ghost"
@@ -188,6 +193,7 @@ export default function ChatBubble_Actions({
           {onRetry && (
             <Tooltip>
               <GaiaButton
+                aria-label="Retry"
                 isIconOnly
                 isDisabled={isRetrying}
                 className="aspect-square size-7.5 min-w-7.5 rounded-md"
