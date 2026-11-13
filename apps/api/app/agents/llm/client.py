@@ -42,6 +42,7 @@ from app.agents.llm.exceptions import (
     MalformedStructuredOutputError,
 )
 from app.agents.llm.types import LLMFallback, LLMProvider, ProviderLLM
+from app.agents.llm.workers_ai import ChatWorkersAI
 from app.config.settings import settings
 from app.constants.llm import (
     AUX_SESSION_SUFFIX,
@@ -504,7 +505,7 @@ def init_cloudflare_llm() -> LanguageModelLike:
         return _sim_llm()
     config: ProviderConfig = _require_provider_config(LLMProviderName.CLOUDFLARE)
     llm = without_sdk_retry(
-        ChatOpenAI(
+        ChatWorkersAI(
             model=chat_model(LLMProviderName.CLOUDFLARE),
             reasoning_effort=CLOUDFLARE_REASONING_EFFORT,
             temperature=DEFAULT_LLM_TEMPERATURE,
@@ -837,6 +838,8 @@ def resolve_model(
                 base_url=_cloudflare_openai_url(config),
                 # Workers AI takes OpenAI's none/low for this model, and no "minimal".
                 reasoning_effort=OPENAI_REASONING_EFFORT[reasoning or ReasoningLevel.OFF],
+                # A one-shot streams too under astream_events, onto the same doubled usage.
+                chat_class=ChatWorkersAI,
             )
         case LLMProviderName.CUSTOM:
             return build_custom_chat_model(
@@ -890,9 +893,10 @@ def _build_openai_wire_one_shot(
     api_key: str,
     base_url: str | None,
     reasoning_effort: str | None,
+    chat_class: type[ChatOpenAI] = ChatOpenAI,
 ) -> BaseChatModel:
     """Build a one-shot client for OpenAI itself (base_url None) or another OpenAI-wire API."""
-    llm = ChatOpenAI(
+    llm = chat_class(
         model=model,
         temperature=temperature,
         max_completion_tokens=HELPER_MAX_OUTPUT_TOKENS,

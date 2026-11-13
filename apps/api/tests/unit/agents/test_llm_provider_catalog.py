@@ -38,6 +38,7 @@ from app.agents.llm.client import (
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.llm.lane import AgentRole, resolve_lane
 from app.agents.llm.types import ProviderLLM
+from app.agents.llm.workers_ai import ChatWorkersAI
 from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_MAX_TOKENS,
@@ -307,7 +308,7 @@ class TestCloudflareOverridesProduction:
     def test_a_one_shot_talks_to_the_account_endpoint_with_reasoning_off(self) -> None:
         model = resolve_model(ModelUse.HELPER)
 
-        assert isinstance(model, ChatOpenAI)
+        assert isinstance(model, ChatWorkersAI)
         assert model.openai_api_base == _CLOUDFLARE_URL
         assert model.model_name == _CLOUDFLARE_MODEL
         assert model.reasoning_effort == "none"
@@ -320,7 +321,7 @@ class TestCloudflareOverridesProduction:
         assert model.reasoning_effort == "low"
 
     def test_the_chat_client_streams_from_the_account_endpoint(self) -> None:
-        chat = _default_client(init_cloudflare_llm(), ChatOpenAI)
+        chat = _default_client(init_cloudflare_llm(), ChatWorkersAI)
 
         assert chat.openai_api_base == _CLOUDFLARE_URL
         assert chat.model_name == _CLOUDFLARE_MODEL

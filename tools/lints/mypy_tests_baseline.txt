@@ -257,7 +257,6 @@ apps/api/tests/unit/patches/test_langchain_merge_dicts_model_name_patch.py	attr-
 apps/api/tests/unit/patches/test_openrouter_cumulative_usage_patch.py	arg-type
 apps/api/tests/unit/patches/test_openrouter_cumulative_usage_patch.py	method-assign
 apps/api/tests/unit/patches/test_openrouter_cumulative_usage_patch.py	override
-apps/api/tests/unit/patches/test_openrouter_provider_name_patch.py	attr-defined
 apps/api/tests/unit/sandbox/test_artifact_watcher.py	attr-defined
 apps/api/tests/unit/sandbox/test_artifact_watcher.py	return-value
 apps/api/tests/unit/sandbox/test_legacy_workspace_migration.py	attr-defined
