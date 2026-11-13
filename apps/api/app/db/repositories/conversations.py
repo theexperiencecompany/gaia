@@ -117,6 +117,23 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             ConversationSummary,
         )
 
+    async def latest_app_conversation_id(self, user_id: str) -> str | None:
+        """Return the app conversation the user touched last, starred or not; None when they have none.
+
+        A bot chat or a todo's chat is not an app conversation, and a background run is only one
+        while it holds a live approval.
+        """
+        latest = await self._aggregate(
+            [
+                {"$match": self._app_filter(user_id)},
+                {"$sort": {"updatedAt": -1, "createdAt": -1}},
+                {"$limit": 1},
+                {"$project": _SUMMARY_PROJECTION},
+            ],
+            ConversationSummary,
+        )
+        return latest[0].conversation_id if latest else None
+
     async def recent_messages(
         self, user_id: str, *, since: datetime, conversations: int, per_conversation: int
     ) -> list[ConversationMessageRow]:
@@ -919,27 +936,23 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         # todo: neither is listed. {todo_id: None} matches a null AND a missing field.
         return {"source": {"$nin": _BOT_SOURCE_VALUES}, "todo_id": None}
 
-    def _active_filter(self, user_id: str) -> dict[str, object]:
-        # Background runs stay out of the sidebar unless one holds a live approval
-        # (its card is the only way to reach it). Sourceless legacy rows match $ne
-        # and stay visible; {starred: null} matches a null AND a missing starred.
+    def _app_filter(self, user_id: str) -> dict[str, object]:
+        # Background runs stay out unless one holds a live approval (its card is the only
+        # way to reach it). Sourceless legacy rows match $ne and stay visible.
         return {
             "user_id": user_id,
-            "$and": [
-                {
-                    "$or": [
-                        {"starred": False},
-                        {"starred": None},
-                    ]
-                },
-                {
-                    "$or": [
-                        {"source": {"$ne": ConversationSource.BACKGROUND.value}},
-                        {"has_live_approval": True},
-                    ]
-                },
+            "$or": [
+                {"source": {"$ne": ConversationSource.BACKGROUND.value}},
+                {"has_live_approval": True},
             ],
             **self._listed(),
+        }
+
+    def _active_filter(self, user_id: str) -> dict[str, object]:
+        # {starred: null} matches a null AND a missing starred.
+        return {
+            **self._app_filter(user_id),
+            "$and": [{"$or": [{"starred": False}, {"starred": None}]}],
         }
 
     async def _set_fields(

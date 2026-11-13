@@ -34,6 +34,22 @@ OUTBOX_ITEMS_FAILED = _register_once(
     ),
 )
 
+OUTBOX_ATTACHMENTS_FAILED = _register_once(
+    "outbox_attachments_failed_total",
+    lambda: Counter(
+        name="outbox_attachments_failed_total",
+        documentation="Attachments the chat app's queue refused, whether or not their caption was told instead",
+    ),
+)
+
+OUTBOX_TRANSPORT_RETRIES = _register_once(
+    "outbox_transport_retries_total",
+    lambda: Counter(
+        name="outbox_transport_retries_total",
+        documentation="Messages handed back to the queue because the chat apps' broker could not take them",
+    ),
+)
+
 OUTBOX_COMPOSE_DEGRADED = _register_once(
     "outbox_compose_degraded_total",
     lambda: Counter(

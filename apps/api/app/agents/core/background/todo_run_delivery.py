@@ -212,6 +212,7 @@ def _todo_report(finished: FinishedTodoRun, todo: TodoDocument) -> RunReport:
         subject=Subject(
             kind=SubjectKind.TODO_RUN,
             id=f"{finished.todo_id}:{finished.run_id}",
+            owner_conversation_id=finished.conversation_id,
             series=f"{TODO_REPORT_PREFIX}{finished.todo_id}",
             label=todo.title,
         ),

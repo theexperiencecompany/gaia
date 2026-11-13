@@ -178,6 +178,48 @@ class TestListSummaries:
         starred_list = await repo.list_starred_summaries(user)
         assert {s.conversation_id for s in starred_list} == {starred.conversation_id}
 
+    async def test_the_latest_app_conversation_is_the_last_touched_one_starred_or_not(self, repo):
+        user = _uid()
+        base = datetime(2026, 1, 1, tzinfo=UTC)
+        docs = {
+            "old": _doc(user_id=user, source=ConversationSource.WEB, createdAt=base.isoformat()),
+            "touched": _doc(
+                user_id=user,
+                source=ConversationSource.WEB,
+                starred=True,
+                createdAt=(base - timedelta(days=30)).isoformat(),
+            ),
+            "newest_bot": _doc(
+                user_id=user,
+                source=ConversationSource.WHATSAPP,
+                createdAt=(base + timedelta(days=30)).isoformat(),
+            ),
+            "newest_todo": _doc(
+                user_id=user,
+                todo_id="todo-1",
+                createdAt=(base + timedelta(days=30)).isoformat(),
+            ),
+        }
+        for doc in docs.values():
+            await repo.create(doc)
+        await repo.set_unread(docs["old"].conversation_id, user_id=user, unread=False)
+        await repo.set_unread(docs["touched"].conversation_id, user_id=user, unread=False)
+
+        assert await repo.latest_app_conversation_id(user) == docs["touched"].conversation_id
+
+    async def test_a_user_with_only_starred_app_chats_still_has_a_latest_one(self, repo):
+        user = _uid()
+        only = _doc(user_id=user, source=ConversationSource.WEB, starred=True)
+        await repo.create(only)
+
+        assert await repo.latest_app_conversation_id(user) == only.conversation_id
+
+    async def test_a_user_with_only_bot_chats_has_no_latest_app_conversation(self, repo):
+        user = _uid()
+        await repo.create(_doc(user_id=user, source=ConversationSource.TELEGRAM))
+
+        assert await repo.latest_app_conversation_id(user) is None
+
     async def test_active_pagination(self, repo):
         user = _uid()
         for _ in range(3):

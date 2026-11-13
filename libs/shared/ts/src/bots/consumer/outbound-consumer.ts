@@ -40,7 +40,12 @@ import {
 } from "../utils/logger";
 import { chunkResponse } from "../utils/text";
 import { wideLog, withWideEvent } from "../utils/wide-events";
-import { DEDUPE_STATE, dedupeKey, OutboundDedupeStore } from "./dedupe";
+import {
+  DEDUPE_STATE,
+  dedupeKey,
+  fileNoticeKey,
+  OutboundDedupeStore,
+} from "./dedupe";
 import {
   OUTBOUND_ENVELOPE_VERSION,
   type OutboundAttachment,
@@ -645,9 +650,7 @@ export class OutboundConsumer {
       );
       if (notifications) {
         wideLog.set({ outbound_mode: "notification" });
-        await sendHonouringRateLimit(() =>
-          notifications.deliver(destinationId, FILE_WAITING_NOTICE),
-        );
+        await this.noticeOncePerMessage(notifications, attempt);
       } else {
         await sendHonouringRateLimit(() =>
           this.deliverFile(destinationId, attachment, env.is_channel),
@@ -676,6 +679,26 @@ export class OutboundConsumer {
         attempt,
       );
     }
+  }
+
+  /**
+   * One closed-window notice per outbox message: its other files wait behind the
+   * same notice, and are acked without a second one.
+   */
+  private async noticeOncePerMessage(
+    notifications: OutboundNotifications,
+    attempt: Attempt,
+  ): Promise<void> {
+    const { env, routing } = attempt;
+    const noticeKey = routing ? fileNoticeKey(routing.outboxMessageId) : null;
+    if (noticeKey && this.dedupe.state(noticeKey)) {
+      wideLog.set({ file_notice_already_sent: true });
+      return;
+    }
+    await sendHonouringRateLimit(() =>
+      notifications.deliver(env.destination_id, FILE_WAITING_NOTICE),
+    );
+    if (noticeKey) this.dedupe.markSent(noticeKey);
   }
 
   /**

@@ -117,7 +117,7 @@ async def _decide(context: JudgeContext, user_id: str, clock_: UserClock) -> Jud
 async def judge_report(report: OutboxReport) -> JudgeVerdict | None:
     """Return what one report means for its user now; None, loudly, when the Judge could not be asked.
 
-    Raises when the context cannot be read from a source the user has: the intake job retries.
+    Raises when the context cannot be read from a source the user has: the outbox job retries, bounded.
     """
     user = await load_user_context(report.recipient)
     if user is None:

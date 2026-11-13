@@ -16,6 +16,7 @@ from app.constants.log_tags import LogTag
 from app.constants.outbox import (
     DEFAULT_LOCALE,
     OUTBOX_MESSAGE_RETENTION_SECONDS,
+    OUTBOX_TRANSPORT_MAX_RETRIES,
     OUTBOX_USER_LOCK_ACQUIRE_TIMEOUT_SECONDS,
     OUTBOX_USER_LOCK_LEASE_SECONDS,
     OUTBOX_USER_LOCK_MAX_HOLD_SECONDS,
@@ -35,7 +36,12 @@ from app.services.outbox import compose as compose_module
 from app.services.outbox.approvals import approval_id_of_report, is_approval_open
 from app.services.outbox.compose import Composed
 from app.services.outbox.judge_models import Sensitivity
-from app.services.outbox.metrics import OUTBOX_ITEMS_DROPPED, OUTBOX_ITEMS_FAILED
+from app.services.outbox.metrics import (
+    OUTBOX_ATTACHMENTS_FAILED,
+    OUTBOX_ITEMS_DROPPED,
+    OUTBOX_ITEMS_FAILED,
+    OUTBOX_TRANSPORT_RETRIES,
+)
 from app.services.outbox.models import (
     ComposeMode,
     DropReason,
@@ -70,6 +76,14 @@ PUSH_PREVIEW_HIDDEN_SENSITIVITIES = frozenset(
 
 class OutboxUserNotFoundError(RuntimeError):
     """A report names a recipient that is not a user: there is no one to tell."""
+
+
+#: A message's text is its part 0; its attachments are the parts after it.
+TEXT_PART_COUNT = 1
+
+
+class OutboxBrokerUnavailableError(RuntimeError):
+    """The chat apps' broker took none of a message: it went back to the queue, and the job retries."""
 
 
 def _locale_of(user: AuthenticatedUser) -> str:
@@ -133,12 +147,23 @@ async def _fail_items(user_id: str, attempt_id: str, failure: ItemFailure) -> No
 
 
 async def _publish_attachment(
-    target: ChatChannel, user_id: str, attachment: OutboundAttachment
+    target: ChatChannel,
+    user_id: str,
+    attachment: OutboundAttachment,
+    *,
+    attempt_id: str,
+    part_index: int,
 ) -> bool:
-    """Hand one file to the chat app's queue: a photo the bot fetches by URL, or an artifact by reference."""
+    """Hand one file to the chat app's queue under its ledger message: a photo the bot fetches by URL, or an artifact by reference."""
     if attachment.url is not None:
         return await publish_outbound_photo(
-            target.source, user_id, attachment.url, attachment.filename, attachment.caption
+            target.source,
+            user_id,
+            attachment.url,
+            attachment.filename,
+            attachment.caption,
+            outbox_message_id=attempt_id,
+            part_index=part_index,
         )
     if attachment.conversation_id is not None and attachment.path is not None:
         return await publish_outbound_file(
@@ -149,6 +174,8 @@ async def _publish_attachment(
             attachment.filename,
             content_type=attachment.content_type,
             caption=attachment.caption,
+            outbox_message_id=attempt_id,
+            part_index=part_index,
         )
     raise ValueError("an outbound attachment names a URL or an artifact")
 
@@ -162,38 +189,74 @@ class _SentAs:
     push_body: str
 
 
-async def _alert(
+def _attachment_note(attachment: OutboundAttachment) -> str:
+    """Name a file handed to a chat app, with where it is kept when it is an artifact."""
+    kept = f" (artifact {attachment.path})" if attachment.path is not None else ""
+    return f"[Attached file: {attachment.filename}{kept}]"
+
+
+async def _degrade_attachment(
+    target: ChatChannel, user_id: str, attachment: OutboundAttachment
+) -> bool:
+    """Say an attachment the chat app's queue refused as its caption; False when it has none or that fails too."""
+    OUTBOX_ATTACHMENTS_FAILED.inc()
+    log.error(
+        f"{LogTag.NOTIFICATION} Outbox attachment not delivered",
+        user_id=user_id,
+        platform=target.source.value,
+        has_caption=attachment.caption is not None,
+    )
+    if attachment.caption is None:
+        return False
+    told = await publish_outbound_message(
+        target.source,
+        user_id,
+        [attachment.caption],
+        destination_override=target.platform_user_id,
+    )
+    return told is OutboundResult.PUBLISHED
+
+
+async def _deliver_to_chat_app(
+    target: ChatChannel, user_id: str, composed: Composed, attempt_id: str
+) -> ItemFailure | None:
+    """Hand the message to the chat app's queue; return why none of it landed, or None when something did.
+
+    A refused attachment degrades to its caption and never undoes the text before it.
+    Raises OutboxBrokerUnavailableError when the broker took none of the text.
+    """
+    if composed.parts:
+        result = await publish_outbound_message(
+            target.source,
+            user_id,
+            composed.parts,
+            destination_override=target.platform_user_id,
+            ttl_seconds=composed.ttl_seconds,
+            outbox_message_id=attempt_id,
+        )
+        if result is OutboundResult.FAILED:
+            raise OutboxBrokerUnavailableError(user_id)
+        if result is OutboundResult.SKIPPED:
+            return ItemFailure.TRANSPORT_SKIPPED
+    delivered = bool(composed.parts)
+    for part_index, attachment in enumerate(composed.attachments, start=TEXT_PART_COUNT):
+        if await _publish_attachment(
+            target, user_id, attachment, attempt_id=attempt_id, part_index=part_index
+        ) or await _degrade_attachment(target, user_id, attachment):
+            delivered = True
+    if delivered or not composed.attachments:
+        return None
+    return ItemFailure.TRANSPORT_FAILED
+
+
+async def _alert_in_app(
     user_id: str,
     destination: Route,
-    composed: Composed,
     saved: dict[str, list[MessageModel]],
     sent: _SentAs,
-) -> ItemFailure | None:
-    """Alert the one destination; return why it did not land, or None when it did.
-
-    An app alert that asks about an approval also pushes to a backgrounded phone.
-    """
-    target = destination.target
-    if isinstance(target, ChatChannel):
-        if composed.parts:
-            result = await publish_outbound_message(
-                target.source,
-                user_id,
-                composed.parts,
-                destination_override=target.platform_user_id,
-                ttl_seconds=composed.ttl_seconds,
-                outbox_message_id=sent.attempt_id,
-            )
-            if result is not OutboundResult.PUBLISHED:
-                return (
-                    ItemFailure.TRANSPORT_SKIPPED
-                    if result is OutboundResult.SKIPPED
-                    else ItemFailure.TRANSPORT_FAILED
-                )
-        for attachment in composed.attachments:
-            if not await _publish_attachment(target, user_id, attachment):
-                return ItemFailure.TRANSPORT_FAILED
-        return None
+    has_text: bool,
+) -> None:
+    """Show the recorded message in the app; an approval's ask also pushes to a backgrounded phone."""
     for message in saved[destination.alert_conversation_id]:
         await publish_conversation_message(
             user_id,
@@ -206,11 +269,22 @@ async def _alert(
                 "kind": message.kind.value,
             },
         )
-    if sent.approval_id is not None and composed.parts:
+    if sent.approval_id is not None and has_text:
         await push_approval_pending(
             user_id, destination.alert_conversation_id, sent.approval_id, sent.push_body
         )
-    return None
+
+
+async def _hand_back_for_retry(user_id: str, attempt_id: str) -> None:
+    """Return a message the broker took none of to the queue, so the retried job composes and sends it again."""
+    await outbox_items_repository.release_sending(user_id, attempt_id)
+    await outbox_messages_repository.finish_send(user_id, attempt_id, MessageState.FAILED)
+    OUTBOX_TRANSPORT_RETRIES.inc()
+    log.warning(
+        f"{LogTag.NOTIFICATION} Chat apps' broker refused the message; handed back for a retry",
+        user_id=user_id,
+        compose_attempt_id=attempt_id,
+    )
 
 
 async def _send(
@@ -249,10 +323,24 @@ async def _send(
         await _fail_items(user_id, attempt_id, ItemFailure.TRANSPORT_FAILED)
         return
 
+    target = destination.target
+    failure: ItemFailure | None = None
+    if isinstance(target, ChatChannel):
+        try:
+            failure = await _deliver_to_chat_app(target, user_id, composed, attempt_id)
+        except OutboxBrokerUnavailableError:
+            await _hand_back_for_retry(user_id, attempt_id)
+            raise
+    # A chat app's own chat is recorded only when that chat app got the message.
+    recorded_in = (
+        destination.recorded_in
+        if not isinstance(target, ChatChannel) or failure is None
+        else destination.recorded_in[1:]
+    )
     try:
         saved = {
             conversation_id: await _save_messages(conversation_id, user, composed.parts)
-            for conversation_id in destination.recorded_in
+            for conversation_id in recorded_in
         }
         # Recorded where it was asked, not alerted there: the chat shows it as unread.
         if composed.parts:
@@ -263,32 +351,40 @@ async def _send(
     except Exception:
         await _fail_items(user_id, attempt_id, ItemFailure.RECORD_FAILED)
         raise
-    failure = await _alert(
-        user_id,
-        destination,
-        composed,
-        saved,
-        _SentAs(
-            attempt_id=attempt_id,
-            approval_id=next(
-                (
-                    approval_id
-                    for item in included
-                    if (approval_id := approval_id_of_report(item.report_id)) is not None
+    if not isinstance(target, ChatChannel):
+        await _alert_in_app(
+            user_id,
+            destination,
+            saved,
+            _SentAs(
+                attempt_id=attempt_id,
+                approval_id=next(
+                    (
+                        approval_id
+                        for item in included
+                        if (approval_id := approval_id_of_report(item.report_id)) is not None
+                    ),
+                    None,
                 ),
-                None,
+                push_body=_push_body(included, composed, _locale_of(user)),
             ),
-            push_body=_push_body(included, composed, _locale_of(user)),
-        ),
-    )
+            has_text=bool(composed.parts),
+        )
     if failure is not None:
         await _fail_items(user_id, attempt_id, failure)
     else:
         await _settle_sent(user_id, attempt_id, message, included)
 
-    # A chat app's thread holds only what that chat app received.
-    if composed.parts:
-        thread_text = "\n\n".join(composed.parts)
+    # A chat app's thread holds only what that chat app received. A file it holds back until
+    # the user writes is noted, so the thread can answer "send it".
+    notes = (
+        [_attachment_note(attachment) for attachment in composed.attachments]
+        if isinstance(target, ChatChannel)
+        else []
+    )
+    thread_parts = [*composed.parts, *notes]
+    if thread_parts:
+        thread_text = "\n\n".join(thread_parts)
         for conversation_id in destination.recorded_in:
             if failure is None or conversation_id != destination.alert_conversation_id:
                 await compose_module.record_in_thread(conversation_id, thread_text)
@@ -385,7 +481,12 @@ async def _flush(
         items = await _drop_answered_approvals(user.user_id, attempt_id, items)
         if not items:
             return
-        destination = await route(user, items)
+        destination = await route(
+            user,
+            items,
+            chat_apps_down=max(item.transport_retries for item in items)
+            >= OUTBOX_TRANSPORT_MAX_RETRIES,
+        )
         composed = await compose_module.compose(
             items,
             user_id=user.user_id,

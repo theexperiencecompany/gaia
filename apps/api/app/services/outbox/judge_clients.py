@@ -12,7 +12,7 @@ import httpx
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, field_validator
 
 from app.agents.llm.client import LLMInvokeOptions, ainvoke_llm
 from app.constants.outbox_judge import (
@@ -120,13 +120,18 @@ class _DecisionsResponse(BaseModel):
     def _keyed_by_question(cls, answers: object) -> object:
         """Accept the answers as a list of named answers as well as a map by name."""
         if isinstance(answers, list):
+            if not all(isinstance(answer, dict) and "name" in answer for answer in answers):
+                raise ValueError("a listed answer names its question")
             return {answer["name"]: answer for answer in answers}
         return answers
 
 
 def read_decisions(body: object, runs: OfferedRuns) -> PassAnswers:
-    """Read a Decisions response body; raise JudgeAnswerError when it misses a question or answers outside the choices."""
-    response = _DecisionsResponse.model_validate(body)
+    """Read a Decisions response body; raise JudgeAnswerError when it is malformed, misses a question or answers outside the choices."""
+    try:
+        response = _DecisionsResponse.model_validate(body)
+    except ValidationError as e:
+        raise JudgeAnswerError(f"the Decisions answer is not in the shape asked for: {e}") from e
     answers: dict[JudgeQuestion, ChoiceAnswer] = {}
     for question in asked_questions(runs):
         answer = response.answers.get(question.value)

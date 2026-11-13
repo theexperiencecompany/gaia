@@ -38,6 +38,8 @@ class OutboxItemDocument(UserScopedDocument):
     failure: ItemFailure | None = None
     #: Set while a compose owns the item, and kept after, so the message it produced is findable.
     compose_attempt_id: str | None = None
+    #: How many times the chat apps' broker refused a message carrying this item, which went back to the queue.
+    transport_retries: int = 0
     #: The report_id of the item that replaced this one.
     superseded_by: str | None = None
     expires_at: datetime

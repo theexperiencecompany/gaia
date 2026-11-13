@@ -83,3 +83,8 @@ export class OutboundDedupeStore {
 export function dedupeKey(outboxMessageId: string, partIndex: number): string {
   return `${outboxMessageId}:${partIndex}`;
 }
+
+/** The record that a closed-window notice already went out for an outbox message, however many files it held. */
+export function fileNoticeKey(outboxMessageId: string): string {
+  return `${outboxMessageId}:file_notice`;
+}

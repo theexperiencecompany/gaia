@@ -19,6 +19,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+from arq import Retry
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from redis.asyncio.lock import Lock
@@ -67,6 +68,7 @@ class FakeClock:
 class _Job:
     run_at: datetime
     args: tuple[Any, ...]
+    tries: int = 1
 
 
 class FakeArq:
@@ -94,7 +96,7 @@ class FakeArq:
         return SimpleNamespace(job_id=key)
 
     async def run_due(self) -> list[str]:
-        """Run every job due now, oldest first; a job's exception propagates, as the worker would log it."""
+        """Run every job due now, oldest first; a job asking for a retry runs again once it is due, any other exception propagates, as the worker would log it."""
         ran: list[str] = []
         due = sorted(
             (key for key, job in self.jobs.items() if job.run_at <= self._clock.now()),
@@ -103,7 +105,12 @@ class FakeArq:
         for key in due:
             job = self.jobs.pop(key)
             task = outbox_flush if key.startswith(OUTBOX_FLUSH_JOB_ID_PREFIX) else outbox_intake
-            await task({}, *job.args)
+            try:
+                await task({"job_try": job.tries}, *job.args)
+            except Retry as retry:
+                run_at = self._clock.now() + timedelta(milliseconds=retry.defer_score or 0)
+                self.jobs[key] = _Job(run_at=run_at, args=job.args, tries=job.tries + 1)
+                continue
             ran.append(key)
         return ran
 
@@ -219,6 +226,8 @@ class Sinks:
     bot_ttls: list[int | None] = field(default_factory=list)
     #: (platform, what the bot fetches: a URL or an artifact path, caption) for each file sent.
     files: list[tuple[str, str, str | None]] = field(default_factory=list)
+    #: The (outbox message id, part index) each file was published under, parallel to `files`.
+    file_parts: list[tuple[str | None, int]] = field(default_factory=list)
     ws: list[tuple[str, str]] = field(default_factory=list)
     #: (approval id, body) of each approval push to a backgrounded phone.
     push: list[tuple[str, str]] = field(default_factory=list)
@@ -327,9 +336,8 @@ def _patched(
     async def get_source(conversation_id: str, *, user_id: str) -> ConversationSource | None:
         return ConversationSource.coerce(world.conversations.get(conversation_id))
 
-    async def list_active(user_id: str, *, skip: int, limit: int) -> list[SimpleNamespace]:
-        app_chats = [c for c, source in world.conversations.items() if source is None]
-        return [SimpleNamespace(conversation_id=c) for c in app_chats[skip : skip + limit]]
+    async def latest_app(user_id: str) -> str | None:
+        return next((c for c, source in world.conversations.items() if source is None), None)
 
     async def session_of(conversation_id: str) -> SimpleNamespace | None:
         session = world.sessions.get(conversation_id)
@@ -374,8 +382,12 @@ def _patched(
         url: str,
         filename: str,
         caption: str | None = None,
+        *,
+        outbox_message_id: str | None = None,
+        part_index: int = 0,
     ) -> bool:
         sinks.files.append((platform.value, url, caption))
+        sinks.file_parts.append((outbox_message_id, part_index))
         return True
 
     async def publish_file(
@@ -384,9 +396,13 @@ def _patched(
         conversation_id: str,
         path: str,
         filename: str,
+        *,
+        outbox_message_id: str | None = None,
+        part_index: int = 0,
         **options: str | None,
     ) -> bool:
         sinks.files.append((platform.value, path, options.get("caption")))
+        sinks.file_parts.append((outbox_message_id, part_index))
         return True
 
     async def publish_ws(user_id: str, conversation_id: str, message: dict[str, Any]) -> None:
@@ -403,7 +419,7 @@ def _patched(
         enter(patch(f"{ROUTER}.user_repository.get", get_user))
         enter(patch(f"{ROUTER}.conversation_repository.exists", exists))
         enter(patch(f"{ROUTER}.conversation_repository.get_source", get_source))
-        enter(patch(f"{ROUTER}.conversation_repository.list_active_summaries", list_active))
+        enter(patch(f"{ROUTER}.conversation_repository.latest_app_conversation_id", latest_app))
         enter(patch(f"{ROUTER}.bot_session_repository.get_by_conversation_id", session_of))
         enter(patch(f"{ROUTER}.BotService.get_or_create_session", get_or_create_session))
         enter(patch(f"{DELIVER}.update_messages", update_messages))

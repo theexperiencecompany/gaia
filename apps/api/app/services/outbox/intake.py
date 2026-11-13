@@ -4,7 +4,7 @@ submit is durable: it enqueues an ARQ job keyed by the report id and raises when
 enqueue fails, so a producer never believes a report it lost. The job body is
 process_report: insert the item once (a second submit of the same report finds it),
 let the latest report of a replace subject stand, have the Judge read what it means for
-the user (unless the policy decides it without one), apply the policy, and send what is to
+the user (unless the Rails decide it without one), apply the policy, and send what is to
 be told. The verdict is kept on the item either way. A report that waits for its user's
 other reports is handed back to the queue deferred by the batch window, so no worker sleeps.
 """
@@ -41,8 +41,8 @@ from app.services.outbox.policy import (
     Decision,
     DecisionKind,
     decide,
+    is_judge_free,
     is_progress,
-    record_only_reason,
     waits_for_batch,
 )
 from app.services.outbox.watching import is_watched_live
@@ -76,7 +76,7 @@ async def _judge_and_decide(
     report: OutboxReport, *, watched_live: bool
 ) -> tuple[Decision, ItemJudgement | None]:
     """Have the Judge read the report unless the policy needs no one to, and decide with the Rails."""
-    if record_only_reason(report, watched_live=watched_live) is not None:
+    if is_judge_free(report, watched_live=watched_live):
         return decide(report, None, watched_live=watched_live), None
     verdict = await judge_report(report)
     raised = await outbox_items_repository.count_raised_interrupts_since(
@@ -199,7 +199,7 @@ async def _queue_if_to_be_told(report: OutboxReport, *, batched: bool) -> bool:
     if (
         not batched
         and waits_for_batch(report)
-        and record_only_reason(report, watched_live=watched_live) is None
+        and not is_judge_free(report, watched_live=watched_live)
     ):
         await _enqueue(report, batched=True)
         return False

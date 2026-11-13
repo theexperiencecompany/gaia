@@ -216,6 +216,16 @@ async def test_b4_nothing_new_is_recorded_and_never_alerted(tl: OutboxTimeline) 
     assert tl.sinks.bot == [] and tl.sinks.ws == []
 
 
+async def test_nothing_new_the_user_asked_about_is_told(tl: OutboxTimeline) -> None:
+    await tl.submit(_run("run-1", OutcomeState.NOTHING_NEW, initiative=Initiative.ASKED))
+    await tl.drain()
+
+    [item] = await tl.items()
+    assert item.state is ItemState.SENT
+    assert len(await tl.ledger()) == 1
+    assert len(tl.sinks.bot) + len(tl.sinks.ws) == 1
+
+
 async def test_b8_a_newer_report_of_a_replace_subject_supersedes_the_one_not_yet_told(
     tl: OutboxTimeline, mongo_db
 ) -> None:
@@ -362,10 +372,10 @@ async def test_a_composer_that_breaks_the_contract_twice_gets_the_plain_render_s
     assert tl.sinks.analytics[0].degraded is True
 
 
-async def test_a_chat_app_that_refuses_the_message_fails_the_item_and_logs_it(
+async def test_a_chat_app_that_skips_the_message_fails_the_item_and_logs_it(
     tl: OutboxTimeline,
 ) -> None:
-    tl.sinks.bot_result = OutboundResult.FAILED
+    tl.sinks.bot_result = OutboundResult.SKIPPED
     await tl.active_on(ConversationSource.TELEGRAM)
     await tl.submit(_reminder(owner=None))
     await tl.drain()
@@ -376,6 +386,69 @@ async def test_a_chat_app_that_refuses_the_message_fails_the_item_and_logs_it(
     assert message.state is MessageState.FAILED
     assert tl.sinks.analytics == []
     assert tl.graph.writes == []
+    assert tl.world.saved == {}
+
+
+async def test_a_broker_that_comes_back_is_retried_and_the_message_goes_out_once(
+    tl: OutboxTimeline,
+) -> None:
+    tl.sinks.bot_result = OutboundResult.FAILED
+    await tl.active_on(ConversationSource.TELEGRAM)
+    await tl.submit(_reminder(owner=None))
+    await tl.drain()
+
+    [item] = await tl.items()
+    assert item.state is ItemState.QUEUED
+    assert tl.world.saved == {}
+
+    tl.sinks.bot_result = OutboundResult.PUBLISHED
+    await tl.at(5)
+    await tl.drain()
+
+    [item] = await tl.items()
+    assert item.state is ItemState.SENT
+    assert tl.world.saved == {"tg-dm": ["Standup: said"]}
+    assert sorted(m.state for m in await tl.ledger()) == [MessageState.FAILED, MessageState.SENT]
+
+
+async def test_a_broker_that_stays_down_gets_the_message_in_the_app_instead_of_failing_it(
+    tl: OutboxTimeline,
+) -> None:
+    tl.sinks.bot_result = OutboundResult.FAILED
+    await tl.active_on(ConversationSource.TELEGRAM)
+    await tl.submit(_reminder(owner=None))
+    for minute in range(8):
+        await tl.at(minute)
+        await tl.drain()
+
+    [item] = await tl.items()
+    assert item.state is ItemState.SENT
+    assert tl.sinks.ws == [("web-1", "Standup: said")]
+    assert tl.world.saved == {"web-1": ["Standup: said"]}
+
+
+async def test_a_photo_a_chat_app_refuses_does_not_undo_the_text_that_was_sent(
+    tl: OutboxTimeline,
+) -> None:
+    await tl.active_on(ConversationSource.TELEGRAM)
+    photo = OutboundAttachment(
+        url="https://cdn.example.com/1.jpg", filename="1.jpg", caption="Step 1"
+    )
+
+    async def refuse(*_: object, **__: object) -> bool:
+        return False
+
+    await _park_queued(tl, _browser_notice("done", NoticeOutcome.INFO))
+    await _park_queued(tl, _browser_notice("shot", NoticeOutcome.INFO, artifacts=[photo]))
+    with patch(f"{DELIVER}.publish_outbound_photo", refuse):
+        await flush_subject(USER, "job-1")
+
+    assert {i.state for i in await tl.items()} == {ItemState.SENT}
+    [message] = await tl.ledger()
+    assert message.state is MessageState.SENT
+    assert tl.world.saved == {"tg-dm": ["Browser task: said"]}
+    assert [thread for thread, _, _ in tl.graph.writes] == ["tg-dm"]
+    assert ("telegram", ["Step 1"]) in tl.sinks.bot
 
 
 async def test_two_flushers_on_one_queued_item_send_one_message(tl: OutboxTimeline) -> None:
@@ -600,9 +673,14 @@ async def test_a_file_the_agent_writes_reaches_the_bot_user_by_reference_with_no
     await tl.drain()
 
     assert tl.sinks.files == [("telegram", "out/report.pdf", None)]
-    assert (tl.sinks.bot, tl.compose.calls, tl.graph.writes) == ([], [], [])
+    assert (tl.sinks.bot, tl.compose.calls) == ([], [])
+    assert [thread for thread, _, _ in tl.graph.writes] == ["tg-dm"]
+    assert "[Attached file: report.pdf (artifact out/report.pdf)]" in str(
+        tl.graph.threads["tg-dm"][-1].content
+    )
     [message] = await tl.ledger()
     assert (message.state, message.parts) == (MessageState.SENT, [])
+    assert tl.sinks.file_parts == [(message.compose_attempt_id, 1)]
 
 
 async def test_a_file_a_chat_app_refuses_fails_the_item_loudly(tl: OutboxTimeline) -> None:
@@ -1014,7 +1092,9 @@ class TestATrackedTodoRunsReportsThroughTheOutbox:
             labels=["gaia-tracked"],
         )
 
-    async def _attempt(self, run_id: str, outcome: RunOutcome, result_type: str) -> None:
+    async def _attempt(
+        self, run_id: str, outcome: RunOutcome, result_type: str, *, runs_once: bool = True
+    ) -> None:
         run = ExecutorRun(
             stream_id=run_id,
             conversation_id="todo-chat",
@@ -1032,7 +1112,9 @@ class TestATrackedTodoRunsReportsThroughTheOutbox:
             await deliver_todo_run_result(
                 run,
                 TodoRun(
-                    todo_id=self.TODO_ID, trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True
+                    todo_id=self.TODO_ID,
+                    trigger_type=TriggerType.SCHEDULED_TODO,
+                    runs_once=runs_once,
                 ),
                 outcome,
                 outcome.result,
@@ -1068,7 +1150,7 @@ class TestATrackedTodoRunsReportsThroughTheOutbox:
             "x",
         )
 
-        await self._attempt("run-1", nothing, "final")
+        await self._attempt("run-1", nothing, "final", runs_once=False)
         await tl.drain()
 
         [item] = await tl.items()
@@ -1089,7 +1171,7 @@ class TestATrackedTodoRunsReportsThroughTheOutbox:
         await self._attempt("run-1", self._done("Deploy failed on migration 42."), "final")
         await tl.drain()
         await tl.at(60)
-        await self._attempt("run-2", nothing, "final")
+        await self._attempt("run-2", nothing, "final", runs_once=False)
         await tl.drain()
 
         await tl.at(120)

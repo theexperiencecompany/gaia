@@ -67,6 +67,13 @@ def test_a_run_with_nothing_to_tell_is_recorded_only(
     assert (decision.kind, decision.drop_reason) == (DecisionKind.RECORD_ONLY, reason)
 
 
+@pytest.mark.parametrize("outcome", [OutcomeState.NOTHING_NEW, OutcomeState.CANCELLED])
+def test_a_user_asked_run_with_nothing_to_tell_is_still_told(outcome: OutcomeState) -> None:
+    decision = decide(_run(outcome, Initiative.ASKED), None)
+
+    assert (decision.kind, decision.drop_reason) == (DecisionKind.SEND_NOW, None)
+
+
 @pytest.mark.parametrize("outcome", [OutcomeState.DONE, OutcomeState.NO_ACTION_NEEDED])
 def test_a_run_with_a_result_is_sent(outcome: OutcomeState) -> None:
     decision = decide(_run(outcome), None)

@@ -25,6 +25,7 @@ from app.services.outbox.models import (
     DropReason,
     Initiative,
     ItemState,
+    NoticeOutcome,
     ProducerKind,
     RunReport,
     Subject,
@@ -32,6 +33,7 @@ from app.services.outbox.models import (
     SubjectMerge,
     UrgencyClass,
 )
+from app.services.outbox.prerendered import PrerenderedKind, PrerenderedMessage
 from tests._harness.judge import NOW, notice, verdict
 
 MODULE = "app.services.outbox.intake"
@@ -220,4 +222,33 @@ async def test_a_report_that_does_not_wait_is_judged_at_once() -> None:
 
     world.enqueue.assert_not_awaited()
     world.judge.assert_awaited_once()
+    world.flush.assert_awaited_once()
+
+
+async def test_progress_someone_is_watching_is_told_at_once_without_the_judge_or_the_batch() -> (
+    None
+):
+    progress = notice(outcome=NoticeOutcome.PROGRESS, facts=["Reading the second file."])
+    with _intake() as world, patch(f"{MODULE}.is_watched_live", AsyncMock(return_value=True)):
+        await process_report(progress)
+
+    world.judge.assert_not_awaited()
+    world.enqueue.assert_not_awaited()
+    world.repo.queue.assert_awaited_once()
+    world.flush.assert_awaited_once()
+
+
+async def test_a_prerendered_message_is_told_at_once_without_the_judge_or_the_batch() -> None:
+    hello = notice(
+        facts=[],
+        prerendered=PrerenderedMessage(
+            kind=PrerenderedKind.FIRST_CONTACT, bubbles=["Hi, I am GAIA."]
+        ),
+    )
+    with _intake() as world:
+        await process_report(hello)
+
+    world.judge.assert_not_awaited()
+    world.enqueue.assert_not_awaited()
+    world.repo.queue.assert_awaited_once()
     world.flush.assert_awaited_once()

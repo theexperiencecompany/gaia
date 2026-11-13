@@ -235,11 +235,15 @@ async def publish_outbound_file(
     filename: str,
     content_type: str | None = None,
     caption: str | None = None,
+    *,
+    outbox_message_id: str | None = None,
+    part_index: int = 0,
 ) -> bool:
     """Enqueue a file (artifact) for the bot to deliver to user_id.
 
     The bytes are not enqueued — the envelope references the artifact by
-    (conversation_id, path) and the bot fetches + uploads it. Best-effort:
+    (conversation_id, path) and the bot fetches + uploads it. outbox_message_id and
+    part_index file it under the ledger message it belongs to. Best-effort:
     unknown platform, unlinked account, unavailable broker, and publish errors
     all return False without raising.
     """
@@ -251,6 +255,8 @@ async def publish_outbound_file(
     envelope = OutboundMessageEnvelope(
         platform=platform.value,
         destination_id=destination_id,
+        outbox_message_id=outbox_message_id,
+        part_index=part_index,
         attachment=OutboundAttachment(
             conversation_id=conversation_id,
             path=path,
@@ -290,7 +296,14 @@ async def publish_outbound_file(
 
 
 async def publish_outbound_photo(
-    platform: ConversationSource, user_id: str, url: str, filename: str, caption: str | None = None
+    platform: ConversationSource,
+    user_id: str,
+    url: str,
+    filename: str,
+    caption: str | None = None,
+    *,
+    outbox_message_id: str | None = None,
+    part_index: int = 0,
 ) -> bool:
     """Enqueue a CDN-hosted image (e.g. a browser-automation step screenshot) for the bot to deliver as a photo.
 
@@ -308,6 +321,8 @@ async def publish_outbound_photo(
         envelope = OutboundMessageEnvelope(
             platform=platform.value,
             destination_id=destination_id,
+            outbox_message_id=outbox_message_id,
+            part_index=part_index,
             attachment=OutboundAttachment(url=url, filename=filename, caption=caption),
         )
     except ValidationError:

@@ -97,6 +97,12 @@ class TestTheRunIsReportedOnceUnderItsOwnId:
         assert seams.entry() == "reported to the outbox: done (summary='report')"
         seams.report.assert_awaited_once_with("run-conv", "report", "final")
 
+    async def test_the_report_is_owned_by_the_chat_the_run_ran_in(self) -> None:
+        with _seams(todo=_todo()) as seams:
+            await _deliver()
+
+        assert seams.filed().subject.owner_conversation_id == "run-conv"
+
     async def test_the_report_is_the_todos_owners_not_the_runs_user(self) -> None:
         with _seams(todo=_todo(user_id=OWNER_ID)) as seams:
             await _deliver()

@@ -15,7 +15,7 @@ from app.constants.delivery_alerts import (
 )
 from app.constants.email import SIGNUP_EMAIL_TASK
 from app.constants.onboarding import INTELLIGENCE_TASK
-from app.constants.outbox import OUTBOX_INTAKE_TASK
+from app.constants.outbox import OUTBOX_INTAKE_TASK, OUTBOX_TASK_MAX_TRIES
 from app.constants.outbox_attention import FLUSH_SWEEP_INTERVAL_MINUTES, OUTBOX_FLUSH_TASK
 from app.constants.payments import PAID_PERSON_SYNC_TASK, SUBSCRIPTION_WORKFLOW_SYNC_TASK
 from app.constants.run_trace import RUN_REAP_EVERY_MINUTES
@@ -118,8 +118,12 @@ _prune_checkpoint_versions = arq_task(prune_checkpoint_versions)
 # Named from the constant its per-occurrence job ids are built from.
 _execute_tracked_todo = func(arq_task(execute_tracked_todo), name=EXECUTE_TRACKED_TODO_TASK)
 _provision_inbox_desk = func(arq_task(provision_inbox_desk_task), name=PROVISION_INBOX_DESK_TASK)
-_outbox_intake = func(arq_task(outbox_intake), name=OUTBOX_INTAKE_TASK)
-_outbox_flush = func(arq_task(outbox_flush), name=OUTBOX_FLUSH_TASK)
+_outbox_intake = func(
+    arq_task(outbox_intake), name=OUTBOX_INTAKE_TASK, max_tries=OUTBOX_TASK_MAX_TRIES
+)
+_outbox_flush = func(
+    arq_task(outbox_flush), name=OUTBOX_FLUSH_TASK, max_tries=OUTBOX_TASK_MAX_TRIES
+)
 _outbox_flush_sweep = arq_task(outbox_flush_sweep)
 _resume_tracked_todo = arq_task(resume_tracked_todo)
 _dispatch_todo_subscriptions = arq_task(dispatch_todo_subscriptions)

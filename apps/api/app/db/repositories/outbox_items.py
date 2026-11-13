@@ -413,6 +413,22 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
         )
         return result.modified_count
 
+    async def release_sending(self, user_id: str, attempt_id: str) -> int:
+        """Give an attempt's sending items back to the queue after nothing reached the user, counting the refusal."""
+        result = await self._raw_collection().update_many(
+            {
+                "user_id": user_id,
+                "compose_attempt_id": attempt_id,
+                "state": ItemState.SENDING.value,
+            },
+            {
+                "$set": {"state": ItemState.QUEUED.value, "updated_at": clock.now()},
+                "$unset": {"compose_attempt_id": ""},
+                "$inc": {"transport_retries": 1},
+            },
+        )
+        return result.modified_count
+
     async def _advance_attempt(
         self, user_id: str, attempt_id: str, from_state: ItemState, changes: dict[str, object]
     ) -> int:

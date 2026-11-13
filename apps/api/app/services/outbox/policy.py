@@ -137,18 +137,32 @@ def is_progress(report: OutboxReport) -> bool:
 def record_only_reason(report: OutboxReport, *, watched_live: bool) -> DropReason | None:
     """Return why a report is recorded and never alerted whatever anyone thinks of it, or None.
 
-    These are the Judge-free decisions: nothing for the Judge to read. watched_live says whether
+    These are the Judge-free decisions: nothing for the Judge to read. A run the user asked for is
+    always told, even when it found nothing or was cancelled: they are waiting to hear. watched_live says whether
     the user is on the surface the report's subject lives on now; only progress depends on it.
     """
     if is_progress(report) and not watched_live:
         return DropReason.NOT_WATCHING
-    if isinstance(report, RunReport):
+    if isinstance(report, RunReport) and report.initiative is not Initiative.ASKED:
         reason = _RECORD_ONLY_OUTCOMES.get(report.report.outcome)
         if reason is not None:
             return reason
     if not report.delivery_policy.notify and not _requires_user_action(report):
         return DropReason.USER_MUTED
     return None
+
+
+def is_judge_free(report: OutboxReport, *, watched_live: bool) -> bool:
+    """Whether the Rails decide a report alone, without the Judge or the batch window.
+
+    Recorded-only reports have nothing to read; progress someone is watching and fixed
+    prerendered copy are worth nothing late, so no model call and no wait stands in their way.
+    """
+    return (
+        record_only_reason(report, watched_live=watched_live) is not None
+        or is_progress(report)
+        or (isinstance(report, NoticeReport) and report.prerendered is not None)
+    )
 
 
 def is_security_notice(verdict: JudgeVerdict) -> bool:

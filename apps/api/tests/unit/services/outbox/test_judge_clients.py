@@ -154,9 +154,15 @@ def test_a_choice_that_was_not_offered_raises() -> None:
         read_decisions(body, {})
 
 
-def test_a_malformed_body_raises() -> None:
-    with pytest.raises(ValueError):
+def test_a_malformed_body_is_an_unreadable_answer() -> None:
+    with pytest.raises(JudgeAnswerError):
         read_decisions({"nothing": 1}, {})
+
+
+@pytest.mark.parametrize("entry", [{"choice": "now"}, "urgency"])
+def test_a_listed_answer_without_a_name_is_an_unreadable_answer(entry: object) -> None:
+    with pytest.raises(JudgeAnswerError):
+        read_decisions({"answers": [entry]}, {})
 
 
 class _Client:

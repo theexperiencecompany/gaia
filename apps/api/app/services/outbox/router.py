@@ -220,10 +220,10 @@ async def _owner_dm_channel(owner: _Owner) -> ChatChannel | None:
 
 
 async def _latest_app_conversation_id(user_id: str) -> str:
-    summaries = await conversation_repository.list_active_summaries(user_id, skip=0, limit=1)
-    if not summaries:
+    conversation_id = await conversation_repository.latest_app_conversation_id(user_id)
+    if conversation_id is None:
         raise NoDestinationError(user_id)
-    return summaries[0].conversation_id
+    return conversation_id
 
 
 async def _in_app_owner_ids(
@@ -240,8 +240,12 @@ async def _in_app_owner_ids(
     return [owner.conversation_id for owner in owners if owner.in_app]
 
 
-async def route(user: AuthenticatedUser, items: list[OutboxItemDocument]) -> Route:
+async def route(
+    user: AuthenticatedUser, items: list[OutboxItemDocument], *, chat_apps_down: bool = False
+) -> Route:
     """Decide where one message covering items goes; the first item's conversation is the owner it may go back to.
+
+    chat_apps_down keeps the alert in the app: the chat apps' queue could not take the message.
 
     A message that covers several subjects is also recorded in each other subject's app chat.
 
@@ -249,11 +253,16 @@ async def route(user: AuthenticatedUser, items: list[OutboxItemDocument]) -> Rou
     """
     owner = await _find_owner(user.user_id, items[0].report.subject.owner_conversation_id)
     requested = items[0].report.delivery_policy.channel
-    requested_target = await _requested_chat_channel(user.user_id, requested)
-    target: ProactiveTarget = requested_target or await resolve_proactive_target(user.user_id)
-    if requested_target is None and owner is not None and not is_active_place(target):
-        if any(is_answer(item.report) for item in items):
-            target = await _owner_dm_channel(owner) or target
+    requested_target: ChatChannel | None = None
+    target: ProactiveTarget
+    if chat_apps_down:
+        target = InApp(reason="no_chat_app")
+    else:
+        requested_target = await _requested_chat_channel(user.user_id, requested)
+        target = requested_target or await resolve_proactive_target(user.user_id)
+        if requested_target is None and owner is not None and not is_active_place(target):
+            if any(is_answer(item.report) for item in items):
+                target = await _owner_dm_channel(owner) or target
 
     if isinstance(target, ChatChannel):
         if owner is not None and target.basis == "owner_chat":

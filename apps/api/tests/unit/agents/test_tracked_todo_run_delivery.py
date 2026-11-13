@@ -196,8 +196,7 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
             USER.user_id,
             "Watch the staging deploy",
         )
-        # The run's chat keeps its own record; the message is told where the user is, not there.
-        assert report.subject.owner_conversation_id is None
+        assert report.subject.owner_conversation_id == "run-conv-1"
         assert report.subject.series == f"todo:{TODO_ID}"
         assert (report.report.outcome, report.result) == (OutcomeState.DONE, EXECUTOR_REPORT)
         # No schedule and no watch: it exists to answer what the user asked.

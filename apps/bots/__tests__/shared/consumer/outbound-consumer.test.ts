@@ -1012,6 +1012,44 @@ describe("OutboundConsumer attachments and reactions outside a messaging window"
     expect(channel.ack).toHaveBeenCalledWith(msg);
   });
 
+  it("sends one notice for all the files of one outbox message while the window is closed", async () => {
+    const notifications = notificationsWith(true);
+    const { handle, deliverFile } = await boot(notifications);
+    const files = [1, 2, 3].map((part) =>
+      msgFor({
+        ...attachmentEnvelope,
+        id: `env-file-${part}`,
+        outbox_message_id: "out-1",
+        part_index: part,
+      }),
+    );
+
+    for (const msg of files) await deliverMessage(handle, msg);
+
+    expect(deliverFile).not.toHaveBeenCalled();
+    expect(notifications.deliver).toHaveBeenCalledOnce();
+    for (const msg of files) expect(channel.ack).toHaveBeenCalledWith(msg);
+  });
+
+  it("sends a notice for each outbox message whose files are held", async () => {
+    const notifications = notificationsWith(true);
+    const { handle } = await boot(notifications);
+
+    for (const outbox of ["out-1", "out-2"]) {
+      await deliverMessage(
+        handle,
+        msgFor({
+          ...attachmentEnvelope,
+          id: `env-${outbox}`,
+          outbox_message_id: outbox,
+          part_index: 1,
+        }),
+      );
+    }
+
+    expect(notifications.deliver).toHaveBeenCalledTimes(2);
+  });
+
   it("dead-letters the attachment when the template notice fails", async () => {
     const notifications = notificationsWith(true);
     notifications.deliver.mockRejectedValue(new Error("template rejected"));
