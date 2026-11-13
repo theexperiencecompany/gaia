@@ -307,7 +307,7 @@ def format_browser_action_entry(
 # Special tools with custom display names and categories
 # Format: (category, display_name, show_category)
 _SPECIAL_TOOLS: dict[str, tuple[str, str, bool]] = {
-    "retrieve_tools": ("retrieve_tools", "Getting ready", False),
+    "retrieve_tools": ("retrieve_tools", "Finding the right tools", False),
     "call_executor": ("executor", "Working on it", False),
     "cancel_executor": ("cancel_executor", "Stopping that", False),
     "browser_step_done": (BROWSER_TOOL_CATEGORY, "Continuing the browser task", False),
