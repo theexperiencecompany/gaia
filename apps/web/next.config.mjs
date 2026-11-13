@@ -251,8 +251,10 @@ const nextConfig = {
             source: `/:locale(de|es|fr|ja|ko|pt-br)?/(${landingSections().join("|")})/:path*`,
             headers: publicHeaders,
           },
+          // An optional segment alone does not match "/", so the home page needs its own rule.
+          { source: "/", headers: publicHeaders },
           {
-            source: "/:locale(de|es|fr|ja|ko|pt-br)?",
+            source: "/:locale(de|es|fr|ja|ko|pt-br)",
             headers: publicHeaders,
           },
         ];
