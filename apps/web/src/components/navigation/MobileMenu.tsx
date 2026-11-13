@@ -22,6 +22,10 @@ import {
   resources,
 } from "@/config/appConfig";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
+import {
+  signupCtaDestination,
+  signupCtaHref,
+} from "@/features/auth/utils/signupCta";
 import { track } from "@/lib/analytics";
 
 const LINK_CLASS =
@@ -106,15 +110,16 @@ export default function MobileMenu() {
         </button>,
       );
     } else {
+      const isSignup = link.href === "/signup";
       authLinks.push(
         <Link
           key={link.href}
-          href={link.href}
+          href={isSignup ? signupCtaHref() : link.href}
           className="text-sm font-semibold text-accent transition-colors hover:text-accent"
           onClick={() => {
             track("navigation:cta_clicked", {
               is_logged_in: Boolean(isAuthenticated),
-              destination: link.href,
+              destination: isSignup ? signupCtaDestination() : link.href,
             });
             closeSheet();
           }}

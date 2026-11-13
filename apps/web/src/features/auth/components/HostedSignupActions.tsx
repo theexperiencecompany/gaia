@@ -4,13 +4,14 @@ import Link from "next/link";
 
 import { LinkButton } from "@/components/shared/LinkButton";
 import { apiBaseUrl } from "@/lib/api/client";
+import { WORKOS_SIGNUP_URL } from "../utils/signupCta";
 
 /** The hosted sign-up page's actions: WorkOS on its sign-up screen, or on sign-in as the navbar opens it. */
 export function HostedSignupActions() {
   return (
     <>
       <LinkButton
-        href={`${apiBaseUrl}/oauth/login/workos?screen_hint=sign-up`}
+        href={WORKOS_SIGNUP_URL}
         variant="primary"
         shape="pill"
         fullWidth
