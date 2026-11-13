@@ -1053,6 +1053,7 @@ class TestTheFetchedViewReadsThePayload:
             }
         ]
 
+    @pytest.mark.regression
     def test_an_attachment_carried_inline_without_an_id_is_still_listed(self) -> None:
         """Gmail puts a small attachment's bytes in body.data and gives it no attachmentId."""
         payload = {
@@ -1072,6 +1073,7 @@ class TestTheFetchedViewReadsThePayload:
             {"filename": "note.txt", "mimeType": "text/plain", "size": 3, "attachmentId": None}
         ]
 
+    @pytest.mark.regression
     def test_no_view_claims_a_message_has_no_attachment(self) -> None:
         """Gmail sets no HAS_ATTACHMENT label, so a flag read from labels was always false."""
         message = RelayedGmailMessage.model_validate(
