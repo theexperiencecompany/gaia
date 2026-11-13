@@ -33,6 +33,7 @@ export default function CalendarSidebar() {
       <Tooltip>
         <GaiaButton
           variant="accent-soft"
+          tone="accent"
           size="sm"
           fullWidth
           onPress={handleCreateEvent}

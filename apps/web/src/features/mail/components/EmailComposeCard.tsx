@@ -25,6 +25,7 @@ import {
   inputVariants,
   modalVariants,
 } from "@/components/shared/controlVariants";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronRight, Gmail } from "@/components/shared/icons";
 import { toneVariants } from "@/components/shared/tone";
@@ -339,7 +340,10 @@ function EditEmailModal({
               {/* Subject Field */}
               <div className="mb-1">
                 <TextField
-                  className={inputVariants({ size: "sm" })}
+                  className={fieldVariants({
+                    labelPlacement: "inside",
+                    className: inputVariants({ size: "sm" }),
+                  })}
                   value={draft.subject}
                   onChange={(value) =>
                     setDraft((d) => ({ ...d, subject: value }))
@@ -354,7 +358,10 @@ function EditEmailModal({
               {/* Body Field */}
               <div>
                 <TextField
-                  className={inputVariants({ size: "sm" })}
+                  className={fieldVariants({
+                    labelPlacement: "inside",
+                    className: inputVariants({ size: "sm" }),
+                  })}
                   value={draft.body}
                   onChange={(value) => setDraft((d) => ({ ...d, body: value }))}
                   isInvalid={!!errors.body}
@@ -363,7 +370,7 @@ function EditEmailModal({
                   <TextArea
                     placeholder="Your message"
                     rows={5}
-                    className="resize-none field-sizing-content max-h-40 text-sm"
+                    className="field-sizing-content max-h-[calc(10rem+var(--gaia-field-inside-textarea-padding-top)+var(--gaia-field-inside-textarea-padding-bottom))] text-sm"
                   />
                   <FieldError>{errors.body}</FieldError>
                 </TextField>

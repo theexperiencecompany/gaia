@@ -13,6 +13,7 @@ import type { Easing, Variants } from "motion/react";
 import * as m from "motion/react-m";
 import Link from "next/link";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { chipVariants } from "@/components/shared/controlVariants";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
@@ -78,7 +79,12 @@ export function FeaturesGrid({ children }: { children?: ReactNode }) {
           transition={{ duration: 0.5, ease }}
           className="relative z-10 mb-6"
         >
-          <Chip variant="soft" color="accent" size="md">
+          <Chip
+            variant="soft"
+            color="accent"
+            size="md"
+            className={chipVariants({ hue: "brand" })}
+          >
             Features
           </Chip>
         </m.div>

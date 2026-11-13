@@ -92,6 +92,13 @@ html {
   background-color: var(--background);
 }
 
+/* v2's Tooltip defaults (delay 0, closeDelay 500); v3's theme waits 1500ms before
+   opening, so a tooltip without its own delay looked like it never opened. */
+:root {
+  --tooltip-delay: 0ms;
+  --tooltip-close-delay: 500ms;
+}
+
 /* GAIA control dimensions: v2's sizes on v3's components, which ship pill radii,
    a 36px desktop button and font-weight 500. Read only by gaia.css. */
 :root {
@@ -156,6 +163,11 @@ html {
   --gaia-field-inside-padding-top: 1.5rem;
   --gaia-field-inside-padding-bottom: 0.5rem;
   --gaia-field-inside-padding-x: 0.75rem;
+  --gaia-field-inside-content-gap: 0.375rem;
+  --gaia-field-inside-sm-height: 3rem;
+  --gaia-field-inside-sm-label-top: 0.375rem;
+  --gaia-field-inside-sm-padding-top: 1.25rem;
+  --gaia-field-inside-sm-textarea-padding-top: 1.75rem;
   --gaia-field-inside-textarea-padding-top: 1.875rem;
   --gaia-field-inside-textarea-padding-bottom: 0.625rem;
   --gaia-field-label-inside-color: var(--color-zinc-300);
@@ -176,6 +188,7 @@ html {
   --gaia-modal-close-size: 2rem;
   --gaia-modal-close-inset: 0.25rem;
   --gaia-modal-close-padding: 0.5rem;
+  --gaia-close-button-hover: var(--color-zinc-800);
   --gaia-modal-body-gap: 0.75rem;
   --gaia-modal-footer-padding-y: 1rem;
   --gaia-input-sm-height: 2rem;
@@ -190,6 +203,10 @@ html {
   --gaia-chip-lg-padding-x: 0.875rem;
   --gaia-chip-start-inset: 0.25rem;
   --gaia-chip-lg-start-inset: 0.5rem;
+  --gaia-tooltip-padding-y: 0.25rem;
+  --gaia-tooltip-padding-x: 0.625rem;
+  --gaia-tooltip-font-size: 0.875rem;
+  --gaia-tooltip-line-height: 1.25rem;
   --gaia-field-height: 2.5rem;
   --gaia-field-font-size: 0.875rem;
   --gaia-field-line-height: 1.25rem;

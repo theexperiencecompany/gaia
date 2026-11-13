@@ -3,7 +3,6 @@
 import { FieldError, InputGroup, Label, TextField } from "@heroui/react";
 import { Github01Icon, PlusSignIcon } from "@icons";
 import { useMemo, useState } from "react";
-import { inputVariants } from "@/components/shared/controlVariants";
 import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toast } from "@/lib/toast";
@@ -117,10 +116,7 @@ export function SkillImportForm({
         onChange={setTarget}
       />
       <TextField
-        className={inputVariants({
-          size: "sm",
-          className: fieldVariants({ labelPlacement: "inside" }),
-        })}
+        className={fieldVariants({ labelPlacement: "inside" })}
         isInvalid={!!repoError}
       >
         <Label>GitHub repository</Label>

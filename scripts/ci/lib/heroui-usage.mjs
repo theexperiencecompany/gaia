@@ -51,6 +51,14 @@ const BOX_SPACING = /^-?(p|m)[xytrblse]?-|^space-[xy]-/;
 // v3 renders only the parts a Switch or Checkbox is given: self-closing, it renders an empty div.
 const PART_CONTROLS = new Set(["Switch", "Checkbox"]);
 
+// v3's Tooltip opens only for a child that takes React Aria's trigger props (FocusableContext): a HeroUI
+// button or link, a GAIA wrapper around one, Focusable, or Tooltip.Trigger around anything else. A plain
+// element, a Next.js link or a shadcn button never receives them, so the tooltip never opens.
+const TOOLTIP_PARTS = new Set(["Tooltip.Content", "Tooltip.Trigger", "Tooltip.Arrow"]);
+const HERO_TOOLTIP_TRIGGERS = new Set(["Button", "Link", "ToggleButton", "CloseButton"]);
+const WRAPPER_TOOLTIP_TRIGGERS = new Set(["GaiaButton", "LinkButton"]);
+const RAC = "react-aria-components";
+
 const V2_ONLY_EXPORTS = new Set(["useDisclosure", "HeroUIProvider"]);
 const V2_BUTTON_PROPS = new Set([
   "isLoading",
@@ -409,6 +417,37 @@ function isUnlabelledIconButton(node, module) {
   return !attrs.some((a) => a.type === "JSXSpreadAttribute" || NAME_ATTRS.has(a.name?.name));
 }
 
+/** Each child of a HeroUI Tooltip that can never open it, as `{ line, message }`. */
+function invalidTooltipTriggers(element, module) {
+  const found = [];
+  for (const child of element.children) {
+    if (child.type !== "JSXElement") continue;
+    const opening = child.openingElement;
+    const line = opening.loc.start.line;
+    const tag = heroTag(opening.name, module, new Map());
+    if (tag === "Tooltip.Trigger") {
+      const classAttr = opening.attributes.find((a) => a.type === "JSXAttribute" && a.name.name === "className");
+      const classes = classStrings(module, classAttr?.value, []).flatMap((c) => c.split(/\s+/));
+      if (classes.some((token) => utilityOf(token) === "contents")) {
+        found.push({ line, message: "<Tooltip.Trigger className=\"contents\">: a box-less trigger anchors the tooltip at 0,0; use Focusable around an interactive child" });
+      }
+      continue;
+    }
+    if (TOOLTIP_PARTS.has(tag) || HERO_TOOLTIP_TRIGGERS.has(tag)) continue;
+    const local = opening.name.type === "JSXIdentifier" ? opening.name.name : null;
+    const binding = local ? module.imports.get(local) : null;
+    if (binding?.source === RAC && binding.imported === "Focusable") continue;
+    if (binding && WRAPPER_TOOLTIP_TRIGGERS.has(binding.imported) && importTarget(module.file, binding.source)?.startsWith(HEROUI_WRAPPER_DIR)) continue;
+    const name = tag ?? jsxName(opening.name);
+    found.push({ line, message: `<Tooltip> around <${name}>: it never receives React Aria's trigger props, so the tooltip never opens; wrap it in Focusable (interactive) or Tooltip.Trigger` });
+  }
+  return found;
+}
+
+function jsxName(name) {
+  return name.type === "JSXMemberExpression" ? `${jsxName(name.object)}.${name.property.name}` : name.name;
+}
+
 /** Each v2 leftover, missing control part or bare component a GAIA wrapper replaces, as `{ line, message }`. */
 export function heroUsageIn(file, src) {
   const module = Module.load(file, src);
@@ -428,6 +467,11 @@ export function heroUsageIn(file, src) {
   let firstColumnLine = null;
   let hasRowHeader = false;
   traverse.default(module.ast, {
+    JSXElement(nodePath) {
+      if (heroTag(nodePath.node.openingElement.name, module, new Map()) === "Tooltip") {
+        found.push(...invalidTooltipTriggers(nodePath.node, module));
+      }
+    },
     JSXOpeningElement(nodePath) {
       if (isUnlabelledIconButton(nodePath.node, module)) {
         found.push({

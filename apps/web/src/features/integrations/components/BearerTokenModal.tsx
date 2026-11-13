@@ -10,6 +10,7 @@ import {
 } from "@heroui/react";
 import { KeyIcon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 
@@ -108,6 +109,7 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
 
             <Modal.Body>
               <TextField
+                className={fieldVariants({ labelPlacement: "inside" })}
                 name="bearerToken"
                 value={bearerToken}
                 onChange={setBearerToken}

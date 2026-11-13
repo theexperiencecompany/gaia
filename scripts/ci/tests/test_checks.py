@@ -1147,6 +1147,25 @@ V2_VARIANT_NAMES = [
             (_hero_component(f'<Chip variant="{v}">x</Chip>'), f'<Chip variant="{v}">')
             for v in V2_VARIANT_NAMES
         ],
+        (
+            _hero_component(
+                "<Tooltip><div>x</div><Tooltip.Content>t</Tooltip.Content></Tooltip>", "Tooltip"
+            ),
+            "<Tooltip> around <div>: it never receives React Aria's trigger props",
+        ),
+        (
+            'import { Tooltip } from "@heroui/react";\n'
+            'import Link from "next/link";\n\n'
+            'export const Demo = () => <Tooltip><Link href="/">x</Link><Tooltip.Content>t</Tooltip.Content></Tooltip>;\n',
+            "<Tooltip> around <Link>",
+        ),
+        (
+            _hero_component(
+                '<Tooltip><Tooltip.Trigger className="contents"><i /></Tooltip.Trigger></Tooltip>',
+                "Tooltip",
+            ),
+            '<Tooltip.Trigger className="contents">',
+        ),
     ],
 )
 def test_a_heroui_usage_error_fails(tmp_path: Path, source: str, message: str) -> None:
@@ -1190,11 +1209,17 @@ def test_v3_usage_and_each_wrapper_in_its_own_file_pass(tmp_path: Path) -> None:
     _add_text(
         repo,
         HERO_FILE,
-        'import { Accordion, Chip, Switch } from "@heroui/react";\n'
+        'import { Accordion, Chip, Switch, Tooltip } from "@heroui/react";\n'
         'import { buttonVariants } from "@heroui/styles";\n'
+        'import { Focusable } from "react-aria-components";\n'
         'import { GaiaButton } from "@/components/shared/GaiaButton";\n'
+        'import { LinkButton } from "@/components/shared/LinkButton";\n'
         "export const A = () => (\n"
         "  <>\n"
+        "  <Tooltip><GaiaButton>x</GaiaButton><Tooltip.Content>t</Tooltip.Content></Tooltip>\n"
+        '  <Tooltip><LinkButton href="/">x</LinkButton><Tooltip.Content>t</Tooltip.Content></Tooltip>\n'
+        "  <Tooltip><Focusable><button /></Focusable><Tooltip.Content>t</Tooltip.Content></Tooltip>\n"
+        "  <Tooltip><Tooltip.Trigger><span>i</span></Tooltip.Trigger><Tooltip.Content>t</Tooltip.Content></Tooltip>\n"
         '  <GaiaButton variant="primary" isPending onPress={go}>x</GaiaButton>\n'
         '  <Chip variant="soft" color="accent">x</Chip>\n'
         "  <Switch><Switch.Control><Switch.Thumb /></Switch.Control></Switch>\n"

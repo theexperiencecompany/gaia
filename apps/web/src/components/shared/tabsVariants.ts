@@ -13,7 +13,8 @@ export const tabsVariants = tv({
     base: "",
     // v2's tab list scrolled sideways once it outgrew its box instead of spilling past it
     tabList: "no-scrollbar overflow-x-auto",
-    tab: "",
+    // v2 kept a tab label on one line; v3 wraps an icon + label tab inside a fit-width list
+    tab: "whitespace-nowrap",
     tabIndicator: "",
     tabPanel: "",
   },

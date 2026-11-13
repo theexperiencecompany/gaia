@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { Tooltip } from "@heroui/react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -23,6 +24,9 @@ describe("GAIA button variants", () => {
     const button = screen.getByRole("button", { name: "New chat" });
     expect(button.className).toContain("bg-accent-soft");
     expect(button.className).toContain("text-accent-soft-foreground");
+    // v2's flat hover: the same 20% tint, the button dimmed to 90%
+    expect(button.className).toContain("hover:opacity-90");
+    expect(button.className).not.toContain("hover:bg-accent-soft-hover");
     fireEvent.click(button);
     expect(onPress).toHaveBeenCalledTimes(1);
   });
@@ -70,5 +74,42 @@ describe("GAIA button variants", () => {
       </GaiaButton>,
     );
     expect(screen.getByRole("button", { name: "Go" }).className).toContain(cls);
+  });
+});
+
+// v2's flat primary text was #66aaf9 unless the site added text-primary; tone
+// accent is how those sites (the sidebar New buttons) keep #00bbff.
+describe("an accent-soft button with the accent tone", () => {
+  it("paints its text in the brand accent, not the soft foreground", () => {
+    render(
+      <GaiaButton variant="accent-soft" tone="accent">
+        New Chat
+      </GaiaButton>,
+    );
+    const classes = screen
+      .getByRole("button", { name: "New Chat" })
+      .className.split(/\s+/);
+    expect(classes).toContain("text-accent");
+    expect(classes).not.toContain("text-accent-soft-foreground");
+  });
+});
+
+// v3's Tooltip opens only for a child that takes React Aria's trigger props; a
+// bare Next.js link never did, so every tooltip around a LinkButton stayed shut.
+describe("a tooltip around a link button", () => {
+  it("opens on hover", async () => {
+    render(
+      <Tooltip delay={0} closeDelay={0}>
+        <LinkButton href="/c">New Chat</LinkButton>
+        <Tooltip.Content>Start a chat</Tooltip.Content>
+      </Tooltip>,
+    );
+    const link = screen.getByRole("link", { name: "New Chat" });
+    // React Aria opens a hover tooltip only once a pointer has moved (interaction modality "pointer").
+    fireEvent.pointerMove(link, { pointerType: "mouse" });
+    fireEvent.pointerEnter(link, { pointerType: "mouse" });
+    expect((await screen.findByRole("tooltip")).textContent).toContain(
+      "Start a chat",
+    );
   });
 });
