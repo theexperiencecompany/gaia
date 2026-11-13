@@ -2792,6 +2792,43 @@ class TestTriggerConfiguredWaits:
         else:
             report.assert_not_awaited()
 
+    @pytest.mark.parametrize("queued", [True, False])
+    @patch("app.services.workflow.service.log")
+    @patch(
+        "app.services.workflow.service.WorkflowQueueService.queue_workflow_generation",
+        new_callable=AsyncMock,
+    )
+    @patch("app.services.workflow.service.workflow_scheduler")
+    @patch("app.services.workflow.service.ChromaClient")
+    @patch(f"{_REPO}.mark_activated_with_triggers", new_callable=AsyncMock)
+    @patch(f"{_REPO}.create", new_callable=AsyncMock)
+    async def test_steps_left_for_later_are_queued_and_a_failed_queue_is_logged(
+        self,
+        _mock_create: AsyncMock,
+        _mock_activate: AsyncMock,
+        mock_chroma: MagicMock,
+        _mock_scheduler: MagicMock,
+        mock_queue: AsyncMock,
+        mock_log: MagicMock,
+        queued: bool,
+    ) -> None:
+        mock_chroma.get_langchain_client = AsyncMock(return_value=MagicMock())
+        mock_queue.return_value = queued
+        request = _make_create_request().model_copy(
+            update={"generate_immediately": False, "steps": None}
+        )
+
+        with patch("app.utils.auth_utils.user_repository.get", new=users_get):
+            created = await WorkflowService.create_workflow(request, USER_ID)
+
+        mock_queue.assert_awaited_once_with(created.id, USER_ID)
+        failed_logs = [
+            c
+            for c in mock_log.error.call_args_list
+            if "Failed to queue workflow generation" in c.args[0]
+        ]
+        assert len(failed_logs) == (0 if queued else 1)
+
     @patch("app.services.workflow.service.report_wait_met", new_callable=AsyncMock)
     @patch(
         "app.services.workflow.service.WorkflowQueueService.queue_workflow_generation",
@@ -2830,7 +2867,9 @@ class TestTriggerConfiguredWaits:
         with patch("app.utils.auth_utils.user_repository.get", new=users_get):
             await WorkflowService.create_workflow(request, USER_ID)
 
-        mock_generate.assert_awaited_once()
+        workflow_id, user_id = mock_generate.await_args.args
+        assert workflow_id and user_id == USER_ID
+        _mock_get.assert_awaited_once_with(workflow_id, USER_ID)
         mock_queue.assert_not_awaited()
         report.assert_awaited_once_with(
             USER_ID, WaitCondition.WORKFLOW_TRIGGER_CONFIGURED, "draft-1"

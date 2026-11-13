@@ -611,6 +611,7 @@ class TestTriggeredExecutionPrompt:
         prompt = _prompt(_doc(title="Chase Acme"), origin=origin, coalesced=coalesced)
 
         fenced = prompt.split("UNTRUSTED", 1)[1]
+        assert "Execute this task: Chase Acme" in prompt
         assert prompt.startswith("The user just connected Gmail. Only read and search.")
         assert "Only read and search" not in fenced
         assert "alice@acme.com" in fenced

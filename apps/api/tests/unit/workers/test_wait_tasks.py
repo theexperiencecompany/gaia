@@ -12,6 +12,7 @@ import pytest
 import time_machine
 
 from app.constants.agents import AgentTag
+from app.constants.log_tags import LogTag
 from app.constants.todos import EXECUTE_TRACKED_TODO_TASK
 from app.constants.waits import WAIT_MET_CONTEXT_KEY, WAIT_MET_TRIGGER, WaitCondition, WaiterKind
 from app.models.trigger_subscription_models import TriggerOrigin
@@ -192,3 +193,20 @@ class TestResumeWaiter:
 
         seams.deliver.assert_not_awaited()
         seams.capture.assert_not_called()
+
+    async def test_a_first_failed_try_waits_the_base_delay_and_says_why(self, seams: Seams) -> None:
+        seams.claim.return_value = _wait(WaiterKind.WORKFLOW, "wf-1")
+        seams.queue_workflow.return_value = False
+
+        with patch(f"{MODULE}.log") as log, pytest.raises(Retry) as retry:
+            await resume_waiter({}, USER, "w1")
+
+        assert retry.value.defer_score == 30_000
+        log.warning.assert_called_once_with(
+            f"{LogTag.AGENT} Resuming a waiter failed; the wait is back on file and retrying",
+            waiter="workflow",
+            waiter_id="wf-1",
+            error_type="WorkflowNotQueuedError",
+            error="wf-1",
+            defer_seconds=30.0,
+        )
