@@ -27,7 +27,12 @@ import {
   workStarted,
 } from "./testing";
 import type { ConversationFrame, ConversationView } from "./types";
-import { addPendingSend, applyFrame, EMPTY_CONVERSATION_VIEW } from "./view";
+import {
+  addPendingDecision,
+  addPendingSend,
+  applyFrame,
+  EMPTY_CONVERSATION_VIEW,
+} from "./view";
 
 const fold = (
   frames: ConversationFrame[],
@@ -391,6 +396,48 @@ describe("approval cards read their end from the log", () => {
         entryFrame(6, workFinished("t1", "done", [approvalCard("ap1")])),
       ]),
     ).toEqual({ outcome: "approved", decider: "user", action: "failed" });
+  });
+
+  it("shows an agent's withdrawal on a device that never touched the card", () => {
+    const withdrawn: ConversationFrame = entryFrame(4, {
+      ...approvalDecided("ap1"),
+      outcome: "withdrawn",
+      decider: null,
+    });
+    expect(
+      cardEnd([
+        ...asked,
+        entryFrame(5, workFinished("t1", "done", [approvalCard("ap1")])),
+        withdrawn,
+      ]),
+    ).toEqual({ outcome: "withdrawn", decider: null, action: null });
+  });
+
+  it("shows this device's decision until the log's decision replaces it", () => {
+    const shown = (view: ConversationView) => {
+      const row = visibleBubbles(view).find((bubble) => bubble.kind === "work");
+      const card = row?.kind === "work" ? row.toolData[0] : undefined;
+      return (card?.data as Record<string, unknown> | undefined)?.outcome;
+    };
+    const before = fold([
+      ...asked,
+      entryFrame(4, workFinished("t1", "done", [approvalCard("ap1")])),
+    ]);
+    const tapped = addPendingDecision(before, "ap1", {
+      outcome: "denied",
+      decider: "user",
+      action: null,
+    });
+    const logged = applyFrame(
+      tapped,
+      entryFrame(5, approvalDecided("ap1")),
+    ).view;
+    expect([shown(before), shown(tapped), shown(logged)]).toEqual([
+      null,
+      "denied",
+      "approved",
+    ]);
+    expect(logged.pendingDecisions).toEqual({});
   });
 
   it("shows an approval whose work stopped undecided as cancelled", () => {

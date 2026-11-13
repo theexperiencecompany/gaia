@@ -6,12 +6,12 @@ import {
   type ApprovalRequestData,
 } from "@shared/chat";
 import { REPLY_CUT_SHORT } from "@shared/conversation";
-import { useApprovalSettlementStore } from "@shared/conversation/live";
 import { parseOpenUISegments, splitMessageByBreaks } from "@shared/utils";
 import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
+import { useLiveConversationStore } from "@/features/chat/live/liveConversationStore";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
   DEFAULT_PART_CHOREOGRAPHY,
@@ -20,6 +20,7 @@ import {
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
+import { useChatStore } from "@/stores/chatStore";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import MarkdownRenderer from "../../../interface/MarkdownRenderer";
 import {
@@ -375,14 +376,15 @@ export default function TextBubble({
   // Settle the card on this device's own decision at once; the log's decision follows on the stream.
   const resolveApproval = React.useCallback<ApprovalResolver>(
     (approvalId, resolved) => {
-      if (resolved.outcome == null) return;
-      useApprovalSettlementStore.getState().settle({
-        approval_id: approvalId,
-        outcome: resolved.outcome,
-        decider: resolved.decider ?? null,
-        action: resolved.action ?? null,
-        feedback: resolved.feedback ?? null,
-      });
+      const conversationId = useChatStore.getState().activeConversationId;
+      if (resolved.outcome == null || !conversationId) return;
+      useLiveConversationStore
+        .getState()
+        .decideApproval(conversationId, approvalId, {
+          outcome: resolved.outcome,
+          decider: resolved.decider ?? null,
+          action: resolved.action ?? null,
+        });
     },
     [],
   );

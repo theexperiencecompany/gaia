@@ -30,7 +30,6 @@ from app.constants.agents import AgentTag
 from app.constants.general import EXECUTOR_THREAD_PREFIX
 from app.constants.hil import ApprovalDecision
 from app.constants.log_tags import LogTag
-from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.models.execute_models import DispatchErrorKind
@@ -493,9 +492,8 @@ async def redeem_approved(
 async def _settle_terminal(row: ApprovalLedgerDocument, action: ActionResult) -> None:
     """Show the approved card's action result (executed/failed/unknown).
 
-    Without this the card never says whether the approved action went through. Same
-    triple as every other settle here (persisted frame, broadcast, session
-    flip); feedback stays None so the card collapses to the outcome chip.
+    Without this the card never says whether the approved action went through: the
+    session frame flips and the log restates the approval with its action.
     """
     end = CardEnd(ApprovalOutcome.APPROVED, decider=ApprovalDecider.USER, action=action)
     if row.proposing_run_id:
@@ -505,7 +503,6 @@ async def _settle_terminal(row: ApprovalLedgerDocument, action: ActionResult) ->
         await record_approved_action_ended(
             row.conversation_id, row.user_id, row.approval_id, action
         )
-    await _broadcast_decision(row, end)
 
 
 async def _log_outcome(
@@ -642,8 +639,8 @@ async def publish_ledger_decision(
 
     Best-effort delivery, never fails the decision: the ledger row is the
     truth and every render re-reads it. Publishes the settled frame to the
-    proposing stream when it is still live, persists the settled status for
-    reload, and broadcasts so listening clients refresh.
+    proposing stream when it is still live and flips the session's frame; every
+    other device settles from the logged decision.
     """
     card = SettledApprovalCard(
         approval_id=row.approval_id,
@@ -667,49 +664,16 @@ async def publish_ledger_decision(
         # the session holds, and without this a later drain resurrects the
         # unsettled card over the persisted decision.
         settle_session_approval_frame(row.proposing_run_id, row.approval_id, end)
-    await _broadcast_decision(row, end)
 
 
 async def publish_ledger_revocation(row: ApprovalLedgerDocument, outcome: ApprovalOutcome) -> None:
-    """Surface an agent-side revoke: tombstone, not a silent row change.
-
-    Without this, a revoked card stays actionable in every open client
-    forever — the tombstone UI would be unreachable. Best-effort like every
-    other delivery here: the row is the truth, frames are hints.
-    """
+    """Flip the proposing run's frame to the revoke's tombstone; other devices read the logged ending."""
     if row.proposing_run_id:
         # A revoke before the run ends drops the unshown frame (a held card
         # never went live, so there is nothing to explain); a frame already
         # live still flips to the tombstone.
         settle_session_approval_frame(
             row.proposing_run_id, row.approval_id, CardEnd(outcome), drop_if_unpublished=True
-        )
-    await _broadcast_decision(row, CardEnd(outcome))
-
-
-async def _broadcast_decision(row: ApprovalLedgerDocument, end: CardEnd) -> None:
-    """Tell listening clients a card settled — same shape for decide + revoke."""
-    try:
-        await websocket_manager.broadcast_to_user(
-            user_id=row.user_id,
-            message={
-                "type": "hil_approval_decided",
-                "data": {
-                    "conversation_id": row.conversation_id,
-                    "approval_id": row.approval_id,
-                    "outcome": end.outcome,
-                    "decider": end.decider,
-                    "action": end.action,
-                    "feedback": end.feedback,
-                    "version": row.v + 1,
-                },
-            },
-        )
-    except Exception as e:
-        log.warning(
-            f"{LogTag.HIL} Ledger decision broadcast missed",
-            approval_id=row.approval_id,
-            error_type=type(e).__name__,
         )
 
 

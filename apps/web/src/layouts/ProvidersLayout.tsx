@@ -6,7 +6,6 @@ import { type ReactNode, Suspense } from "react";
 import { ElectronRouteGuard } from "@/components/electron/ElectronRouteGuard";
 import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
 import { Toaster } from "@/components/ui/Toaster";
-import { useApprovalDecisionWebSocket } from "@/features/chat/hooks/useApprovalDecisionWebSocket";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
@@ -40,10 +39,6 @@ function PaidSessionEffects() {
 
   // Subscribe to notification events — writes the shared query cache
   useNotificationWebSocket();
-
-  // Subscribe to ledger approval decisions — settles open cards (and raises
-  // revoke tombstones) decided anywhere but this tab, with no reload
-  useApprovalDecisionWebSocket();
 
   // Subscribe to workflow generation events — updates todo store globally
   useTodoWorkflowGlobalListener();

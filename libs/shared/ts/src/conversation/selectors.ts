@@ -112,7 +112,7 @@ const draftContent = (content: TurnAccumulator) => ({
 
 const STOPPED_WORK: ReadonlySet<string> = new Set(["cancelled", "lost"]);
 
-/** Each logged approval's end as the log has it: its decision, cancelled once the work that asked stopped undecided, else open. */
+/** Each approval's end as the log has it: its decision, cancelled once the work that asked stopped undecided, else this device's pending decision, else open. */
 function approvalEnds(
   view: ConversationView,
 ): ReadonlyMap<string, ApprovalEnd> {
@@ -146,6 +146,8 @@ function approvalEnds(
         action: null,
       });
   }
+  for (const [approvalId, end] of Object.entries(view.pendingDecisions))
+    if (ends.get(approvalId)?.outcome == null) ends.set(approvalId, end);
   return ends;
 }
 

@@ -3,7 +3,6 @@ import {
   DISPLAY_STATUS_TEXT,
   sendingLoadingRow,
 } from "@gaia/shared/conversation";
-import { useApprovalSettlementStore } from "@gaia/shared/conversation/live";
 import { getRandomThinkingMessage } from "@gaia/shared/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -40,11 +39,7 @@ export function useOpenConversation(conversationId: string | null): void {
 /** The conversation's rows from its event stream, in the shape the chat bubbles render. */
 export function useLiveMessages(conversationId: string | null): Message[] {
   const { view, sends } = useLiveConversation(conversationId);
-  const verdicts = useApprovalSettlementStore((state) => state.settled);
-  return useMemo(
-    () => liveMessages(view, sends, new Date(), verdicts),
-    [view, sends, verdicts],
-  );
+  return useMemo(() => liveMessages(view, sends, new Date()), [view, sends]);
 }
 
 export interface LiveLoading {

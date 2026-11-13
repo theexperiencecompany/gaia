@@ -1,3 +1,4 @@
+import type { ApprovalEnd } from "../chat/approvals";
 import {
   applyStreamEvent,
   createTurnAccumulator,
@@ -23,6 +24,7 @@ export const EMPTY_CONVERSATION_VIEW: ConversationView = {
   closedAttempts: {},
   closedTasks: {},
   pending: [],
+  pendingDecisions: {},
   display: DISPLAY_STATE.IDLE,
   work: [],
   head: 0,
@@ -51,6 +53,15 @@ const revisionOf = (entry: Entry): number | null =>
   entry.kind === ENTRY_KIND.USER_MESSAGE || entry.kind === ENTRY_KIND.REPLY
     ? entry.revision
     : null;
+
+function withoutKey<T>(
+  record: Readonly<Record<string, T>>,
+  key: string,
+): Readonly<Record<string, T>> {
+  if (!(key in record)) return record;
+  const { [key]: _dropped, ...rest } = record;
+  return rest;
+}
 
 const withRecord = (record: Readonly<Record<string, true>>, key: string) =>
   record[key] ? record : { ...record, [key]: true as const };
@@ -113,6 +124,10 @@ function applyEntry(
     ...view,
     entries,
     pending: pending.length === view.pending.length ? view.pending : pending,
+    pendingDecisions:
+      logged.entry.kind === ENTRY_KIND.APPROVAL_DECIDED
+        ? withoutKey(view.pendingDecisions, logged.entry.approval_id)
+        : view.pendingDecisions,
   };
   return logged.entry.kind === ENTRY_KIND.REPLY_SETTLED
     ? settle(next, logged.entry.reply_id)
@@ -238,4 +253,23 @@ export function addPendingSend(
     view.pending.some((pending) => pending.id === send.id) ||
     view.entries.some((logged) => logged.entry.id === send.id);
   return known ? view : { ...view, pending: [...view.pending, send] };
+}
+
+/** Show this device's decision on an approval until the log's decision for it arrives; one the log already decided is not added. */
+export function addPendingDecision(
+  view: ConversationView,
+  approvalId: string,
+  end: ApprovalEnd,
+): ConversationView {
+  const logged = view.entries.some(
+    ({ entry }) =>
+      entry.kind === ENTRY_KIND.APPROVAL_DECIDED &&
+      entry.approval_id === approvalId,
+  );
+  return logged
+    ? view
+    : {
+        ...view,
+        pendingDecisions: { ...view.pendingDecisions, [approvalId]: end },
+      };
 }

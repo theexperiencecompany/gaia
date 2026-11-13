@@ -379,7 +379,6 @@ export {
   WorkflowStatus,
 } from "./types";
 export type {
-  ApprovalSettlement,
   ArgsPreviewRow,
   ConnectionPromptState,
   ContentSegment,
@@ -435,7 +434,6 @@ export {
   OPENUI_SAMPLES,
   PLAYFUL_THINKING_MESSAGES,
   PROMPT_ACTION_LABEL,
-  parseApprovalDecidedEvent,
   parseCronToHuman,
   parseJwt,
   parseOpenUISegments,
@@ -444,7 +442,6 @@ export {
   parseThinkingFromText,
   rateLimitResetInfo,
   reconcileIntegrationStatus,
-  settleApprovalToolData,
   shouldRefreshToken,
   splitMessageByBreaks,
   truncateText,

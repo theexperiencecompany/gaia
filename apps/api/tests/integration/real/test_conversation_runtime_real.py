@@ -944,7 +944,6 @@ async def test_an_approved_action_that_failed_still_says_so_on_its_card_after_a_
     )
     failed = MagicMock(ok=False, output=None, error=None)
     with (
-        patch.object(ledger_decide, "websocket_manager", MagicMock(broadcast_to_user=AsyncMock())),
         patch.object(ledger_decide, "_deliver_ticket", AsyncMock()),
         patch.object(ledger_decide, "_wake_agent", AsyncMock()),
         patch.object(ledger_decide, "resume_owner_after_approval", AsyncMock()),

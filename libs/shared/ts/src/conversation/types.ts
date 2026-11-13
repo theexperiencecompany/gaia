@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import type { ApprovalEnd } from "../chat/approvals";
 import type { TurnAccumulator } from "../chat/turnAccumulator";
 import type {
   EntrySchema,
@@ -70,6 +71,8 @@ export interface ConversationView {
   closedTasks: Readonly<Record<string, true>>;
   /** In send order. */
   pending: readonly PendingSend[];
+  /** This device's own approval decisions, shown until the log's ApprovalDecided arrives. */
+  pendingDecisions: Readonly<Record<string, ApprovalEnd>>;
   display: DisplayState;
   work: readonly LiveTask[];
   head: number;

@@ -7,7 +7,6 @@ import {
   type UserMessage,
   visibleBubbles,
 } from "@shared/conversation";
-import { type ApprovalVerdicts, withVerdicts } from "@shared/conversation/live";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { LocalSend } from "./liveConversationStore";
@@ -70,11 +69,10 @@ interface RowContext {
   sends: Readonly<Record<string, LocalSend>>;
   userMessages: ReadonlyMap<string, UserMessage>;
   dates: ReadonlyMap<number, string>;
-  verdicts: ApprovalVerdicts;
 }
 
 function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
-  const { view, sends, userMessages, dates, verdicts } = context;
+  const { view, sends, userMessages, dates } = context;
   switch (bubble.kind) {
     case "user": {
       const { message } = bubble;
@@ -128,7 +126,6 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
         [
           bubble.text,
           bubble.toolData,
-          verdicts,
           bubble.followUpActions,
           bubble.streaming,
           bubble.image,
@@ -143,10 +140,7 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
           seq: bubble.seq ?? undefined,
           date: bubble.seq === null ? undefined : dates.get(bubble.seq),
           // The bubble's registry narrows tool entries by name at render.
-          tool_data: withVerdicts(
-            bubble.toolData as TypedToolDataEntry[],
-            verdicts,
-          ),
+          tool_data: bubble.toolData as TypedToolDataEntry[],
           follow_up_actions: [...bubble.followUpActions],
           image_data: bubble.image ?? undefined,
           pinned: bubble.pinned,
@@ -162,40 +156,25 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
       );
     }
     case "work":
-      return stableRow(
-        bubble.key,
-        [bubble.toolData, bubble.status, verdicts],
-        () => ({
-          type: "bot",
-          response: "",
-          message_id: bubble.messageId,
-          seq: bubble.seq ?? undefined,
-          tool_data: withVerdicts(
-            bubble.toolData as TypedToolDataEntry[],
-            verdicts,
-          ),
-          in_progress:
-            bubble.status === "running" ||
-            bubble.status === "awaiting_approval",
-          stopped: STOPPED_WORK.has(bubble.status),
-        }),
-      );
+      return stableRow(bubble.key, [bubble.toolData, bubble.status], () => ({
+        type: "bot",
+        response: "",
+        message_id: bubble.messageId,
+        seq: bubble.seq ?? undefined,
+        tool_data: bubble.toolData as TypedToolDataEntry[],
+        in_progress:
+          bubble.status === "running" || bubble.status === "awaiting_approval",
+        stopped: STOPPED_WORK.has(bubble.status),
+      }));
     case "notice":
-      return stableRow(
-        bubble.key,
-        [bubble.text, bubble.toolData, verdicts],
-        () => ({
-          type: "bot",
-          response: bubble.text,
-          message_id: bubble.messageId,
-          seq: bubble.seq,
-          date: dates.get(bubble.seq),
-          tool_data: withVerdicts(
-            bubble.toolData as TypedToolDataEntry[],
-            verdicts,
-          ),
-        }),
-      );
+      return stableRow(bubble.key, [bubble.text, bubble.toolData], () => ({
+        type: "bot",
+        response: bubble.text,
+        message_id: bubble.messageId,
+        seq: bubble.seq,
+        date: dates.get(bubble.seq),
+        tool_data: bubble.toolData as TypedToolDataEntry[],
+      }));
     // The run's side of the chat: its card alone, as a message with no text.
     case "workflow_fired":
       return stableRow(bubble.key, [bubble.workflow], () => ({
@@ -226,7 +205,6 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
 export function liveMessages(
   view: ConversationView,
   sends: Readonly<Record<string, LocalSend>>,
-  verdicts: ApprovalVerdicts = {},
 ): MessageType[] {
   const userMessages = new Map<string, UserMessage>();
   const dates = new Map<number, string>();
@@ -235,7 +213,7 @@ export function liveMessages(
     if (entry.kind === ENTRY_KIND.USER_MESSAGE)
       userMessages.set(entry.id, entry);
   }
-  const context = { view, sends, userMessages, dates, verdicts };
+  const context = { view, sends, userMessages, dates };
   return visibleBubbles(view).flatMap(
     (bubble) => rowFor(bubble, context) ?? [],
   );

@@ -42,4 +42,9 @@ export type {
   StreamDraft,
   UserMessage,
 } from "./types";
-export { addPendingSend, applyFrame, EMPTY_CONVERSATION_VIEW } from "./view";
+export {
+  addPendingDecision,
+  addPendingSend,
+  applyFrame,
+  EMPTY_CONVERSATION_VIEW,
+} from "./view";

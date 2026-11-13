@@ -254,10 +254,7 @@ class TestLedgerPublishHold:
             row = MagicMock()
             row.approval_id = "ap_drop"
             row.proposing_run_id = stream_id
-            with (
-                patch.object(ledger_decide, "_broadcast_decision", new=AsyncMock()),
-            ):
-                await ledger_decide.publish_ledger_revocation(row, ApprovalOutcome.WITHDRAWN)
+            await ledger_decide.publish_ledger_revocation(row, ApprovalOutcome.WITHDRAWN)
             from app.agents.core.background.session import get_session
 
             assert get_session(stream_id).tool_events == []

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { ApprovalEnd } from "../chat/approvals";
 import { type ConversationPage, hydrate, olderBefore } from "./history";
 import type {
   ConversationFrame,
@@ -6,7 +7,12 @@ import type {
   FrameGap,
   LoggedEntry,
 } from "./types";
-import { addPendingSend, applyFrame, EMPTY_CONVERSATION_VIEW } from "./view";
+import {
+  addPendingDecision,
+  addPendingSend,
+  applyFrame,
+  EMPTY_CONVERSATION_VIEW,
+} from "./view";
 
 /** A message this device sent: the request it POSTs (resent unchanged on retry, so the server's dedup holds). */
 export interface QueuedSend {
@@ -40,6 +46,12 @@ export interface LiveConversationState<Send extends QueuedSend> {
     frames: readonly ConversationFrame[],
   ) => FrameGap | null;
   queueSend: (conversationId: string, send: Send) => void;
+  /** Show this device's decision on an approval until the log's decision reaches the view. */
+  decideApproval: (
+    conversationId: string,
+    approvalId: string,
+    end: ApprovalEnd,
+  ) => void;
   setSendFailed: (
     conversationId: string,
     messageId: string,
@@ -126,6 +138,18 @@ export function createLiveConversationStore<Send extends QueuedSend>() {
           }));
         }
         return gap;
+      },
+
+      decideApproval: (conversationId, approvalId, end) => {
+        const live = get().conversations[conversationId] ?? empty;
+        const view = addPendingDecision(live.view, approvalId, end);
+        if (view === live.view) return;
+        set((state) => ({
+          conversations: {
+            ...state.conversations,
+            [conversationId]: { ...live, view },
+          },
+        }));
       },
 
       queueSend: (conversationId, send) => {

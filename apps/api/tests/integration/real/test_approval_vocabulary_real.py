@@ -30,9 +30,8 @@ pytestmark = [pytest.mark.integration, pytest.mark.service]
 
 @dataclass
 class Edges:
-    """What left the ledger path: the card frames, the log entries and the analytics events."""
+    """What left the ledger path: the log entries and the analytics events."""
 
-    frames: AsyncMock
     logged: AsyncMock
     events: MagicMock
     dispatch: AsyncMock
@@ -42,9 +41,7 @@ class Edges:
 @pytest.fixture
 async def edges(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[Edges]:
     await mongo_db["approval_ledger"].delete_many({})
-    websocket = MagicMock(broadcast_to_user=AsyncMock())
     with (
-        patch.object(ledger_decide, "websocket_manager", new=websocket),
         patch.object(ledger_decide, "record_approval_decided", new=AsyncMock()) as logged,
         patch.object(ledger_decide, "record_approved_action_ended", new=AsyncMock()) as acted,
         patch.object(ledger_decide, "capture") as events,
@@ -57,7 +54,7 @@ async def edges(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[Edges]:
         patch.object(ledger_decide, "dispatch_tool", new=AsyncMock()) as dispatch,
         patch.object(ledger_decide, "dispatch_config_for", return_value={}),
     ):
-        yield Edges(websocket.broadcast_to_user, logged, events, dispatch, acted)
+        yield Edges(logged, events, dispatch, acted)
     await mongo_db["approval_ledger"].delete_many({})
 
 
@@ -99,10 +96,6 @@ async def _expire(approval_id: str) -> None:
     )
 
 
-def _frame(edges: Edges) -> dict[str, object]:
-    return edges.frames.await_args.kwargs["message"]["data"]
-
-
 def _event_outcome(edges: Edges) -> ApprovalOutcome:
     (_, event), _ = edges.events.call_args
     assert isinstance(event, HilDecisionSubmitted | HilRevoked)
@@ -134,11 +127,6 @@ async def test_each_ending_reads_the_same_everywhere(
 
     row = await mongo_db["approval_ledger"].find_one({"approval_id": approval_id})
     assert row is not None and (row["outcome"], row["action"]) == (outcome, None)
-    assert (_frame(edges)["outcome"], _frame(edges)["decider"], _frame(edges)["action"]) == (
-        outcome,
-        decider,
-        None,
-    )
     assert _event_outcome(edges) is outcome
     if logged:
         edges.logged.assert_awaited_once_with(
@@ -166,7 +154,6 @@ async def test_an_approved_action_that_fails_says_so_beside_the_approval(
 
     row = await mongo_db["approval_ledger"].find_one({"approval_id": approval_id})
     assert row is not None and (row["outcome"], row["action"]) == ("approved", "failed")
-    assert (_frame(edges)["outcome"], _frame(edges)["action"]) == ("approved", "failed")
     edges.acted.assert_awaited_once_with(CONVERSATION_ID, USER_ID, approval_id, "failed")
 
 

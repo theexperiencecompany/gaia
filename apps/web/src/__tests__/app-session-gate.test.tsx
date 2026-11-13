@@ -39,9 +39,6 @@ vi.mock("@/features/notification/hooks/useNotifications", () => ({
 vi.mock("@/features/notification/hooks/useNotificationWebSocket", () => ({
   useNotificationWebSocket: () => paidSessionHook("notification_ws"),
 }));
-vi.mock("@/features/chat/hooks/useApprovalDecisionWebSocket", () => ({
-  useApprovalDecisionWebSocket: () => paidSessionHook("approvals"),
-}));
 vi.mock("@/features/todo/hooks/useTodoWorkflowGlobalListener", () => ({
   useTodoWorkflowGlobalListener: () => paidSessionHook("todo_listener"),
 }));

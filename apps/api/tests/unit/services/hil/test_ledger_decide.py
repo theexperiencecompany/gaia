@@ -1218,7 +1218,7 @@ class TestCancelLedgerApprovals:
 @pytest.mark.unit
 class TestRevokeSettlesSessionFrame:
     async def test_revoke_flips_pending_frame_in_proposing_session(self) -> None:
-        # BUG: revoke settled mongo + broadcast but never touched the proposing
+        # BUG: revoke settled mongo but never touched the proposing
         # session's in-memory frame; the drain later persisted the stale PENDING
         # frame back over it (production ap_d455 stuck pending post-revoke).
         from app.agents.core.background.session import (
@@ -1256,10 +1256,7 @@ class TestRevokeSettlesSessionFrame:
                     ),
                 )
             row = _row(proposing_run_id=stream_id, outcome=ApprovalOutcome.WITHDRAWN, action=None)
-            with (
-                patch.object(ledger_decide, "_broadcast_decision", new=AsyncMock()),
-            ):
-                await ledger_decide.publish_ledger_revocation(row, ApprovalOutcome.WITHDRAWN)
+            await ledger_decide.publish_ledger_revocation(row, ApprovalOutcome.WITHDRAWN)
             frames = get_session(stream_id).tool_events
             assert len(frames) == 1
             assert frames[0]["tool_data"]["data"]["outcome"] == "withdrawn"
@@ -1276,7 +1273,7 @@ class TestRedeemSettlesTerminalFrame:
         from app.services.hil import ledger_decide
         from app.services.hil.ledger_decide import redeem_approved
 
-        repo = _repo(_row(outcome=ApprovalOutcome.APPROVED, action=None))
+        repo = _repo(_row(outcome=ApprovalOutcome.APPROVED, action=None, task_id="t1"))
         repo.claim_executing = AsyncMock(return_value=True)
         repo.settle = AsyncMock(return_value=True)
         repo.finish_action = AsyncMock(return_value=True)
@@ -1284,7 +1281,7 @@ class TestRedeemSettlesTerminalFrame:
         with (
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
             patch.object(ledger_decide, "dispatch_tool", new=AsyncMock(return_value=ok_result)),
-            patch.object(ledger_decide, "_broadcast_decision", new=AsyncMock()) as broadcast,
+            patch.object(ledger_decide, "record_approved_action_ended", new=AsyncMock()) as acted,
         ):
             result = await redeem_approved(
                 "ap_abc",
@@ -1296,10 +1293,7 @@ class TestRedeemSettlesTerminalFrame:
 
         assert result.ok is True
         assert result.action == ActionResult.EXECUTED
-        broadcast.assert_awaited_once()
-        assert broadcast.await_args.args[1] == CardEnd(
-            ApprovalOutcome.APPROVED, decider=ApprovalDecider.USER, action=ActionResult.EXECUTED
-        )
+        acted.assert_awaited_once_with("conv-1", USER_ID, "ap_abc", ActionResult.EXECUTED)
 
     async def test_failed_settles_card_as_failed(self) -> None:
         from app.services.hil import ledger_decide
@@ -1310,14 +1304,14 @@ class TestRedeemSettlesTerminalFrame:
             output=None,
             error=DispatchError(kind=DispatchErrorKind.INVALID_ARGS, detail="bad", hint="x"),
         )
-        repo = _repo(_row(outcome=ApprovalOutcome.APPROVED, action=None))
+        repo = _repo(_row(outcome=ApprovalOutcome.APPROVED, action=None, task_id="t1"))
         repo.claim_executing = AsyncMock(return_value=True)
         repo.settle = AsyncMock(return_value=True)
         repo.finish_action = AsyncMock(return_value=True)
         with (
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
             patch.object(ledger_decide, "dispatch_tool", new=AsyncMock(return_value=failed)),
-            patch.object(ledger_decide, "_broadcast_decision", new=AsyncMock()) as broadcast,
+            patch.object(ledger_decide, "record_approved_action_ended", new=AsyncMock()) as acted,
         ):
             result = await redeem_approved(
                 "ap_abc",
@@ -1328,11 +1322,8 @@ class TestRedeemSettlesTerminalFrame:
             )
 
         assert result.ok is False
-        broadcast.assert_awaited_once()
         # Approved, but it didn't go through: the card reads both facts, never a third status.
-        assert broadcast.await_args.args[1] == CardEnd(
-            ApprovalOutcome.APPROVED, decider=ApprovalDecider.USER, action=ActionResult.FAILED
-        )
+        acted.assert_awaited_once_with("conv-1", USER_ID, "ap_abc", ActionResult.FAILED)
 
 
 def _doc(**overrides: Any) -> ApprovalLedgerDocument:
@@ -1361,7 +1352,6 @@ class LedgerSeams:
     log: MagicMock
     publish_entry: AsyncMock
     settle_frame: MagicMock
-    broadcast: AsyncMock
     inbox: MagicMock
     redis: MagicMock
     resume_owner: AsyncMock
@@ -1387,15 +1377,12 @@ def seams() -> Iterator[LedgerSeams]:
     inbox = MagicMock()
     inbox.return_value.append = AsyncMock()
     redis = MagicMock()
-    websocket = MagicMock()
-    websocket.broadcast_to_user = AsyncMock()
     with (
         patch(f"{MODULE}.approval_ledger_repository", new=repo),
         patch(f"{MODULE}.capture") as capture,
         patch(f"{MODULE}.log") as log,
         patch(f"{MODULE}._publish_entry", new=AsyncMock()) as publish_entry,
         patch(f"{MODULE}.settle_session_approval_frame") as settle_frame,
-        patch(f"{MODULE}.websocket_manager", new=websocket),
         patch(f"{MODULE}.ExecutorInbox", new=inbox),
         patch(f"{MODULE}.redis_cache", new=redis),
         patch(f"{MODULE}.resume_owner_after_approval", new=AsyncMock()) as resume_owner,
@@ -1411,7 +1398,6 @@ def seams() -> Iterator[LedgerSeams]:
             log=log,
             publish_entry=publish_entry,
             settle_frame=settle_frame,
-            broadcast=websocket.broadcast_to_user,
             inbox=inbox,
             redis=redis,
             resume_owner=resume_owner,
@@ -1646,7 +1632,7 @@ class TestDecideLedgerOutcomes:
 
 @pytest.mark.unit
 class TestPublishLedgerDecision:
-    """A committed decision settles the card on the proposing stream and every client; history derives it from the log."""
+    """A committed decision settles the card on the proposing stream; every other device reads the logged decision."""
 
     @pytest.mark.parametrize("outcome", [ApprovalOutcome.APPROVED, ApprovalOutcome.DENIED])
     async def test_the_settled_card_reaches_every_surface(
@@ -1675,28 +1661,12 @@ class TestPublishLedgerDecision:
             "ap_1",
             CardEnd(outcome, decider=ApprovalDecider.USER, feedback="stored words"),
         )
-        seams.broadcast.assert_awaited_once_with(
-            user_id=USER_ID,
-            message={
-                "type": "hil_approval_decided",
-                "data": {
-                    "conversation_id": "conv-1",
-                    "approval_id": "ap_1",
-                    "outcome": outcome,
-                    "decider": ApprovalDecider.USER,
-                    "action": None,
-                    "feedback": "stored words",
-                    "version": 4,
-                },
-            },
-        )
 
     async def test_fresh_feedback_wins_over_the_stored_words(self, seams: LedgerSeams) -> None:
         await publish_ledger_decision(_doc(feedback="old"), ApprovalOutcome.DENIED, feedback="new")
 
         assert seams.publish_entry.await_args.args[1].data.feedback == "new"
         assert seams.settle_frame.call_args.args[2].feedback == "new"
-        assert seams.broadcast.await_args.kwargs["message"]["data"]["feedback"] == "new"
 
     async def test_no_proposing_stream_skips_the_live_card(self, seams: LedgerSeams) -> None:
         await publish_ledger_decision(_doc(proposing_run_id=None), ApprovalOutcome.APPROVED)
@@ -1718,28 +1688,13 @@ class TestPublishLedgerDecision:
             }
         }
         seams.settle_frame.assert_called_once()
-        seams.broadcast.assert_awaited_once()
 
-    async def test_a_broadcast_failure_is_reported_not_raised(self, seams: LedgerSeams) -> None:
-        seams.broadcast.side_effect = ConnectionError("ws down")
-
-        await publish_ledger_decision(_doc(), ApprovalOutcome.APPROVED)
-
-        assert _warned(seams.log.warning) == {
-            f"{LogTag.HIL} Ledger decision broadcast missed": {
-                "approval_id": "ap_1",
-                "error_type": "ConnectionError",
-            },
-        }
-
-    async def test_a_revocation_tombstones_everywhere(self, seams: LedgerSeams) -> None:
+    async def test_a_revocation_tombstones_the_proposing_stream(self, seams: LedgerSeams) -> None:
         await publish_ledger_revocation(_doc(), ApprovalOutcome.WITHDRAWN)
 
         seams.settle_frame.assert_called_once_with(
             "stream-1", "ap_1", CardEnd(ApprovalOutcome.WITHDRAWN), drop_if_unpublished=True
         )
-        message = seams.broadcast.await_args.kwargs["message"]
-        assert (message["data"]["outcome"], message["data"]["feedback"]) == ("withdrawn", None)
 
 
 @pytest.mark.unit
