@@ -26,6 +26,7 @@ from app.models.conversation_frame_models import (
     RetractFrame,
     StreamPayload,
     ToolDataEvent,
+    state_frame,
 )
 from app.models.conversation_log_models import (
     BargeIn,
@@ -53,7 +54,7 @@ from app.models.conversation_log_models import (
 )
 from app.models.message_models import MessageDict
 from app.models.tool_data_models import ToolDataEntry
-from app.services.conversation.log import publish_appended, state_frame
+from app.services.conversation.log import publish_appended
 from app.services.conversation.ports import (
     CancelReason,
     ClaimLost,

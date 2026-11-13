@@ -1,4 +1,4 @@
-"""The one projection of a conversation's log into the messages a client receives.
+"""The projection of log entries into flat messages, for the screens that list them: search and pins.
 
 A UserMessage is a user message, a Reply with its ReplySettled a bot message carrying its
 outcome, a Notice a bot message, a TodoWoke or WorkflowFired the user-side message that woke
@@ -36,11 +36,12 @@ from app.models.hil_models import HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
 from app.models.tool_data_models import ToolDataEntry
 
-#: The kinds a history window counts: each can shape one message.
-MESSAGE_KINDS: frozenset[str] = frozenset(
+#: The kinds whose append advances a conversation's sync clock: each adds or ends a row a client shows.
+SYNCED_KINDS: frozenset[str] = frozenset(
     {
         EntryKind.USER_MESSAGE,
         EntryKind.REPLY,
+        EntryKind.REPLY_SETTLED,
         EntryKind.NOTICE,
         EntryKind.TODO_WOKE,
         EntryKind.WORKFLOW_FIRED,
@@ -48,8 +49,6 @@ MESSAGE_KINDS: frozenset[str] = frozenset(
         EntryKind.WORK_FINISHED,
     }
 )
-#: The kinds whose append advances a conversation's sync clock: each changes what history shows.
-SYNCED_KINDS: frozenset[str] = MESSAGE_KINDS | {EntryKind.REPLY_SETTLED}
 #: The kinds a message read looks up beside its window.
 RELATED_KINDS: frozenset[str] = frozenset(
     {

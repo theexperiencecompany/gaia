@@ -188,6 +188,7 @@ from shared.py.analytics.context import (
 )
 from shared.py.wide_events import _spawned_tasks
 from tests.e2e._harness.graph_run import comms_graph
+from tests.helpers import shown_messages
 from tests.integration.real.test_comms_runner_real import (
     TEST_ATTRIBUTION,
     GatedModel,
@@ -1680,7 +1681,7 @@ async def test_a_delivered_reminder_is_one_notice_shown_once_with_its_cards(
     stored = await conversation_repository.get(rig.conversation_id, user_id=rig.user_id)
     assert (notice.text, notice.tool_data) == ("time to stretch", (card,))
     assert stored is not None
-    assert [(m.type, m.response, m.tool_data) for m in stored.messages] == [
+    assert [(m.type, m.response, m.tool_data) for m in shown_messages(stored)] == [
         ("bot", "time to stretch", [card])
     ]
     to_platform.assert_not_awaited()

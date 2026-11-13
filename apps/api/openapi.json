@@ -3908,147 +3908,43 @@
         "title": "ConversationDescriptionHit",
         "type": "object"
       },
-      "ConversationDocument": {
-        "additionalProperties": true,
-        "description": "A conversation as the repository returns it: its head fields and, where read, its entries.\n\n``extra=\"allow\"`` preserves stray/legacy top-level fields (e.g. ``artifacts``,\n``metadata``) so a full-document read returns them verbatim, matching the\npre-repository behaviour.",
+      "ConversationEntriesPage": {
+        "description": "A run of the log's entries, oldest first, as the event stream's entry frames carry them.\n\nA page never starts inside an open span: it reaches back to the Reply, WorkStarted or\nApprovalRequested of every settle, finish, join or decision it holds. state is the head's,\nso a page alone shows the loading row, live work and approvals; cursor is the seq an\nolder page is read before, set exactly when has_older.",
         "properties": {
-          "artifacts": {
-            "items": {
-              "$ref": "#/components/schemas/ArtifactRegistryEntry"
-            },
-            "title": "Artifacts",
-            "type": "array"
-          },
-          "conversation_id": {
-            "title": "Conversation Id",
-            "type": "string"
-          },
-          "createdAt": {
+          "cursor": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Createdat"
+            "title": "Cursor"
           },
-          "description": {
-            "default": "New Chat",
-            "title": "Description",
-            "type": "string"
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/LoggedEntry"
+            },
+            "title": "Entries",
+            "type": "array"
           },
           "has_older": {
             "default": false,
             "title": "Has Older",
             "type": "boolean"
           },
-          "id": {
-            "default": "",
-            "title": "Id",
-            "type": "string"
-          },
-          "is_onboarding_demo": {
-            "default": false,
-            "title": "Is Onboarding Demo",
-            "type": "boolean"
-          },
-          "is_system_generated": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": false,
-            "title": "Is System Generated"
-          },
-          "is_unread": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": false,
-            "title": "Is Unread"
-          },
-          "messages": {
-            "items": {
-              "$ref": "#/components/schemas/ConversationEntry"
-            },
-            "title": "Messages",
-            "type": "array"
-          },
-          "source": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConversationSource"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "starred": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Starred"
-          },
-          "system_purpose": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SystemPurpose"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "todo_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Todo Id"
-          },
-          "updatedAt": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updatedat"
-          },
-          "user_id": {
-            "title": "User Id",
-            "type": "string"
+          "state": {
+            "$ref": "#/components/schemas/StateFrame"
           }
         },
         "required": [
-          "user_id",
-          "conversation_id"
+          "entries",
+          "state",
+          "has_older",
+          "cursor"
         ],
-        "title": "ConversationDocument",
+        "title": "ConversationEntriesPage",
         "type": "object"
       },
       "ConversationEntry": {
@@ -4486,28 +4382,6 @@
         "title": "ConversationMessageHit",
         "type": "object"
       },
-      "ConversationMessagesPage": {
-        "description": "The newest messages before a seq, oldest first; has_more when older ones remain.",
-        "properties": {
-          "has_more": {
-            "title": "Has More",
-            "type": "boolean"
-          },
-          "messages": {
-            "items": {
-              "$ref": "#/components/schemas/ConversationEntry"
-            },
-            "title": "Messages",
-            "type": "array"
-          }
-        },
-        "required": [
-          "messages",
-          "has_more"
-        ],
-        "title": "ConversationMessagesPage",
-        "type": "object"
-      },
       "ConversationModel": {
         "description": "A chat conversation and its display/system metadata.",
         "properties": {
@@ -4766,7 +4640,7 @@
         "type": "object"
       },
       "ConversationSyncRow": {
-        "description": "One batch-sync row \u2014 the conversation's client-visible fields plus its full\nmessage history and artifact registry.",
+        "description": "One batch-sync row: the conversation's client-visible fields, its newest page of entries and its artifacts.",
         "properties": {
           "artifacts": {
             "items": {
@@ -4795,9 +4669,27 @@
             ],
             "title": "Createdat"
           },
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor"
+          },
           "description": {
             "title": "Description",
             "type": "string"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/LoggedEntry"
+            },
+            "title": "Entries",
+            "type": "array"
           },
           "has_older": {
             "default": false,
@@ -4826,13 +4718,6 @@
             ],
             "title": "Is Unread"
           },
-          "messages": {
-            "items": {
-              "$ref": "#/components/schemas/ConversationEntry"
-            },
-            "title": "Messages",
-            "type": "array"
-          },
           "source": {
             "anyOf": [
               {
@@ -4853,6 +4738,9 @@
               }
             ],
             "title": "Starred"
+          },
+          "state": {
+            "$ref": "#/components/schemas/StateFrame"
           },
           "system_purpose": {
             "anyOf": [
@@ -4889,6 +4777,10 @@
           }
         },
         "required": [
+          "entries",
+          "state",
+          "has_older",
+          "cursor",
           "conversation_id",
           "description",
           "starred",
@@ -4897,8 +4789,6 @@
           "is_unread",
           "createdAt",
           "updatedAt",
-          "messages",
-          "has_older",
           "artifacts",
           "awaiting_approval",
           "todo_id",
@@ -10065,6 +9955,268 @@
           "expires_in"
         ],
         "title": "LiveViewTokenResponse",
+        "type": "object"
+      },
+      "LoadedConversation": {
+        "additionalProperties": true,
+        "description": "A conversation as a load returns it: its head's fields and the newest page of its log.",
+        "properties": {
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactRegistryEntry"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          },
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "createdAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdat"
+          },
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor"
+          },
+          "description": {
+            "default": "New Chat",
+            "title": "Description",
+            "type": "string"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/LoggedEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "has_older": {
+            "default": false,
+            "title": "Has Older",
+            "type": "boolean"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_onboarding_demo": {
+            "default": false,
+            "title": "Is Onboarding Demo",
+            "type": "boolean"
+          },
+          "is_system_generated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": false,
+            "title": "Is System Generated"
+          },
+          "is_unread": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": false,
+            "title": "Is Unread"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversationSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "starred": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starred"
+          },
+          "state": {
+            "$ref": "#/components/schemas/StateFrame"
+          },
+          "system_purpose": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SystemPurpose"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "todo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Todo Id"
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updatedat"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entries",
+          "state",
+          "has_older",
+          "cursor",
+          "id",
+          "user_id",
+          "conversation_id",
+          "description",
+          "is_system_generated",
+          "system_purpose",
+          "is_unread",
+          "source",
+          "is_onboarding_demo",
+          "starred",
+          "todo_id",
+          "artifacts",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "LoadedConversation",
+        "type": "object"
+      },
+      "LoggedEntry": {
+        "additionalProperties": false,
+        "description": "An entry at its position in the conversation's order.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "entry": {
+            "discriminator": {
+              "mapping": {
+                "approval_decided": "#/components/schemas/ApprovalDecided",
+                "approval_requested": "#/components/schemas/ApprovalRequested",
+                "barge_in": "#/components/schemas/BargeIn",
+                "integration_connected": "#/components/schemas/IntegrationConnected",
+                "integration_needed": "#/components/schemas/IntegrationNeeded",
+                "notice": "#/components/schemas/Notice",
+                "reply": "#/components/schemas/Reply",
+                "reply_settled": "#/components/schemas/ReplySettled",
+                "stop_requested": "#/components/schemas/StopRequested",
+                "todo_woke": "#/components/schemas/TodoWoke",
+                "user_message": "#/components/schemas/UserMessage",
+                "work_finished": "#/components/schemas/WorkFinished",
+                "work_started": "#/components/schemas/WorkStarted",
+                "workflow_fired": "#/components/schemas/WorkflowFired"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserMessage"
+              },
+              {
+                "$ref": "#/components/schemas/StopRequested"
+              },
+              {
+                "$ref": "#/components/schemas/BargeIn"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowFired"
+              },
+              {
+                "$ref": "#/components/schemas/TodoWoke"
+              },
+              {
+                "$ref": "#/components/schemas/Notice"
+              },
+              {
+                "$ref": "#/components/schemas/WorkStarted"
+              },
+              {
+                "$ref": "#/components/schemas/ApprovalRequested"
+              },
+              {
+                "$ref": "#/components/schemas/ApprovalDecided"
+              },
+              {
+                "$ref": "#/components/schemas/WorkFinished"
+              },
+              {
+                "$ref": "#/components/schemas/Reply"
+              },
+              {
+                "$ref": "#/components/schemas/ReplySettled"
+              },
+              {
+                "$ref": "#/components/schemas/IntegrationNeeded"
+              },
+              {
+                "$ref": "#/components/schemas/IntegrationConnected"
+              }
+            ],
+            "title": "Entry"
+          },
+          "seq": {
+            "minimum": 1.0,
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "at",
+          "entry"
+        ],
+        "title": "LoggedEntry",
         "type": "object"
       },
       "LoginRequest": {
@@ -20223,6 +20375,7 @@
         "type": "object"
       },
       "ToolDataEntry": {
+        "additionalProperties": false,
         "description": "Unified structure for tool execution data.\n\nEvery key an emitter can stamp must be declared here. This TypedDict is the\nelement type of ``MessageModel.tool_data``, and Pydantic drops undeclared\nkeys on ``model_dump()`` \u2014 which is how a message reaches Mongo. An emitted\nkey missing from this shape therefore survives the live SSE frame (the\nfrontend parses those against its own loose schema) and silently vanishes\nfrom the stored turn, so the bug only ever appears on reload.\n\n``data`` is deliberately open: every tool owns the shape it puts here (a\ncalendar option list, an email thread, a rendered artifact), so the only\nhonest constraint is \"JSON the frontend's per-tool card knows how to read\".\nEverything around it is closed.\n\nThe frontend mirror is ``ToolDataEntrySchema`` in\n``libs/shared/ts/src/chat/schema.ts``.",
         "properties": {
           "data": {
@@ -27651,7 +27804,7 @@
         ]
       },
       "get": {
-        "description": "Retrieve a specific conversation by its ID.\n\nThe stored document itself: ``ConversationDocument`` is ``extra=\"allow\"``,\nso stray/legacy top-level fields the row carries still reach the client\nverbatim, while the declared fields give the schema its shape.",
+        "description": "Retrieve a conversation with the newest page of its log, as the events stream's entries.\n\nThe head's own fields: ``ConversationDocument`` is ``extra=\"allow\"``,\nso stray/legacy top-level fields the row carries still reach the client\nverbatim, while the declared fields give the schema its shape.",
         "operationId": "conversations_get_conversation_endpoint",
         "parameters": [
           {
@@ -27669,7 +27822,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConversationDocument"
+                  "$ref": "#/components/schemas/LoadedConversation"
                 }
               }
             },
@@ -27858,6 +28011,95 @@
         ]
       }
     },
+    "/api/v1/conversations/{conversation_id}/entries": {
+      "get": {
+        "description": "Page a conversation's log back from before_seq, never starting inside an open reply, task or approval.",
+        "operationId": "conversations_get_entries_before_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Return entries with a seq below this one",
+            "in": "query",
+            "name": "before_seq",
+            "required": true,
+            "schema": {
+              "description": "Return entries with a seq below this one",
+              "minimum": 1,
+              "title": "Before Seq",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Page size",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 600,
+              "description": "Page size",
+              "maximum": 600,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationEntriesPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Entries Before Endpoint",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
     "/api/v1/conversations/{conversation_id}/events": {
       "get": {
         "description": "Stream the conversation's frames as SSE: everything after the cursor, then live.",
@@ -27935,93 +28177,6 @@
       }
     },
     "/api/v1/conversations/{conversation_id}/messages": {
-      "get": {
-        "description": "Page a conversation's history back from before_seq: the newest limit messages before it.",
-        "operationId": "conversations_get_messages_before_endpoint",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "conversation_id",
-            "required": true,
-            "schema": {
-              "title": "Conversation Id",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Return messages with a seq below this one",
-            "in": "query",
-            "name": "before_seq",
-            "required": true,
-            "schema": {
-              "description": "Return messages with a seq below this one",
-              "minimum": 1,
-              "title": "Before Seq",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Page size",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 600,
-              "description": "Page size",
-              "maximum": 600,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConversationMessagesPage"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Get Messages Before Endpoint",
-        "tags": [
-          "Conversations"
-        ]
-      },
       "post": {
         "description": "Accept a message into a conversation the step runs; its reply arrives on the events stream.",
         "operationId": "conversations_send_message_endpoint",

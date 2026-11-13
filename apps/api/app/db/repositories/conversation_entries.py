@@ -17,7 +17,19 @@ from pydantic import TypeAdapter
 from pymongo.errors import PyMongoError
 
 from app.constants.chat import CONVERSATION_ENTRIES_MIGRATION_SCRIPT
-from app.models.conversation_log_models import Entry, EntryKind, LoggedEntry
+from app.models.conversation_log_models import (
+    ApprovalDecided,
+    ApprovalRequested,
+    CommsPhase,
+    ConversationState,
+    Entry,
+    EntryKind,
+    LoggedEntry,
+    Reply,
+    ReplySettled,
+    WorkFinished,
+    WorkStarted,
+)
 from app.models.conversation_models import (
     ConversationHead,
     EntryKey,
@@ -49,6 +61,21 @@ HEAD_INTERNAL_FIELDS = (
 )
 #: The kinds the conversation log appends; a stored entry with any other kind, or none, is a message.
 LOG_KINDS: list[str] = [kind.value for kind in EntryKind]
+
+#: The fold of a log with no entries yet: what a head that stores no state holds.
+EMPTY_LOG_STATE = ConversationState(
+    head=0,
+    settled_through=0,
+    stopped_through=0,
+    unsettled_waking=(),
+    comms=CommsPhase.IDLE,
+    open_reply=None,
+    work=(),
+)
+#: The kinds that open what a later entry completes: a reply its settle, a task its finish, an approval its decision.
+OPENER_KINDS: frozenset[str] = frozenset(
+    {EntryKind.REPLY, EntryKind.WORK_STARTED, EntryKind.APPROVAL_REQUESTED}
+)
 
 #: Derived from the log's stored state: live work is paused on the user's approval.
 AWAITING_APPROVAL: dict[str, object] = {
@@ -125,6 +152,43 @@ class Head:
         """Every entry id this head's reads saw, outbox and collection both, by seq."""
         stored = {row.id: row.seq for row in self.document.existing}
         return {**stored, **{entry.id: seq for seq, entry in self.outbox.items()}}
+
+
+def current_state(head: ConversationHead) -> ConversationState:
+    """Return the stored fold at log_head: a seq holding a message folds as an entry that changes nothing."""
+    stored = head.state or EMPTY_LOG_STATE
+    return stored.model_copy(update={"head": head.log_head or 0})
+
+
+def openers_outside(page: Sequence[LoggedEntry]) -> dict[str, list[str]]:
+    """Return, by the field that names them, the openers page's entries complete but page lacks."""
+    replies: set[str] = set()
+    tasks: set[str] = set()
+    approvals: set[str] = set()
+    held: dict[str, set[str]] = {"reply_id": set(), "task_id": set(), "approval_id": set()}
+    for logged in page:
+        match logged.entry:
+            case Reply(reply_id=reply_id):
+                held["reply_id"].add(reply_id)
+            case WorkStarted(task_id=task_id, joins=joined):
+                held["task_id"].add(task_id)
+                if joined is not None:
+                    tasks.add(joined)
+            case ApprovalRequested(task_id=task_id, approval_id=approval_id):
+                held["approval_id"].add(approval_id)
+                tasks.add(task_id)
+            case ReplySettled(reply_id=reply_id):
+                replies.add(reply_id)
+            case WorkFinished(task_id=task_id):
+                tasks.add(task_id)
+            case ApprovalDecided(approval_id=approval_id):
+                approvals.add(approval_id)
+            case _:
+                pass
+    wanted = {"reply_id": replies, "task_id": tasks, "approval_id": approvals}
+    return {
+        field: sorted(names - held[field]) for field, names in wanted.items() if names - held[field]
+    }
 
 
 def newest(stored: StoredEntry | None, staged: StoredEntry) -> StoredEntry:
@@ -323,8 +387,8 @@ def at_log_head(log_head: int) -> dict[str, object]:
 class EntryWindow:
     """Which log entries of a conversation a read asks for: a seq range, the newest limit, these ids or replies.
 
-    kinds narrows the read (every log kind by default); ids and reply_ids together match an
-    entry with one of the ids or carrying one of the reply ids.
+    kinds narrows the read (every log kind by default); ids, reply_ids and named together match
+    an entry with one of the ids, one of the reply ids, or one of a named field's values.
     """
 
     after_seq: int = 0
@@ -333,6 +397,8 @@ class EntryWindow:
     newest_first: bool = False
     ids: Sequence[str] | None = None
     reply_ids: Sequence[str] | None = None
+    # An entry whose field holds one of the names, as openers_outside names them.
+    named: Mapping[str, Sequence[str]] | None = None
     kinds: frozenset[str] | None = None
 
     def upper(self, log_head: int) -> int:
@@ -345,6 +411,7 @@ class EntryWindow:
         named = [
             *([{"id": {"$in": list(self.ids)}}] if self.ids is not None else []),
             *([{"reply_id": {"$in": list(self.reply_ids)}}] if self.reply_ids is not None else []),
+            *({field: {"$in": list(names)}} for field, names in (self.named or {}).items()),
         ]
         return {"kind": {"$in": sorted(self._kinds())}, **({"$or": named} if named else {})}
 
@@ -365,6 +432,10 @@ class EntryWindow:
         return self.kinds if self.kinds is not None else frozenset(LOG_KINDS)
 
     def _names(self, entry_id: str, fields: Mapping[str, object]) -> bool:
-        if self.ids is None and self.reply_ids is None:
+        if self.ids is None and self.reply_ids is None and self.named is None:
             return True
-        return entry_id in (self.ids or ()) or fields.get("reply_id") in (self.reply_ids or ())
+        return (
+            entry_id in (self.ids or ())
+            or fields.get("reply_id") in (self.reply_ids or ())
+            or any(fields.get(field) in names for field, names in (self.named or {}).items())
+        )

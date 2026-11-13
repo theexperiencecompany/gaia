@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from app.models.conversation_log_models import DisplayState, Entry
+from app.models.conversation_log_models import ConversationState, DisplayState, Entry
 from app.models.stream_events import (
     FollowUpActionsFrame,
     MessageBoundaryPayload,
@@ -212,6 +212,15 @@ class StateFrame(BaseModel):
     head: int = Field(ge=0)
     display: DisplayState
     work: tuple[LiveTask, ...]
+
+
+def state_frame(state: ConversationState) -> StateFrame:
+    """Return the frame a client shows the conversation's status from."""
+    work = tuple(
+        LiveTask(task_id=item.task_id, awaiting_approval=bool(item.pending_approvals))
+        for item in state.work
+    )
+    return StateFrame(head=state.head, display=state.display, work=work)
 
 
 class ConversationUpdatedFrame(BaseModel):

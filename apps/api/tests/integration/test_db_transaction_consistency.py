@@ -108,7 +108,6 @@ class TestConversationCreationConsistency:
         document = captured["document"]
         assert document.user_id == USER_ID
         assert document.conversation_id == conv_id
-        assert document.messages == []
         assert document.createdAt is not None
 
     async def test_create_conversation_unacknowledged_raises(self) -> None:

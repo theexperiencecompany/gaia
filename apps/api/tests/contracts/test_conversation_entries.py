@@ -17,10 +17,17 @@ from app.db.repositories.conversation_entries import EntryWindow
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import ConversationSyncItem
-from app.models.conversation_log_models import Entry, Reply, UserMessage
+from app.models.conversation_log_models import (
+    Entry,
+    Reply,
+    ReplyOutcome,
+    ReplySettled,
+    UserMessage,
+)
 from app.models.conversation_models import (
     ConversationDescriptionHit,
     ConversationDocument,
+    ConversationEntriesPage,
 )
 from app.services.conversation import mongo_log as mongo_log_module
 from app.services.conversation.mongo_log import MongoConversationLog
@@ -76,6 +83,14 @@ async def _append(conversation_id: str, user_id: str, messages: list[Entry]) -> 
     return [
         (await _log().append(conversation_id, user_id, message)).logged.seq for message in messages
     ]
+
+
+async def _read(conversation_id: str, user_id: str, entry_id: str) -> list[Entry]:
+    logged = await conversation_log_repository.read_log(
+        conversation_id, user_id=user_id, ids=[entry_id]
+    )
+    assert logged is not None
+    return [entry.entry for entry in logged]
 
 
 async def _ids(repo: ConversationRepository, doc: ConversationDocument) -> list[tuple[int, str]]:
@@ -199,8 +214,8 @@ async def test_an_update_to_an_entry_still_in_the_outbox_is_applied(
 
     await repo.flush_outbox(cid, user_id=uid)
     assert await _outbox(raw_collection, conversation) == {}
-    saved = await repo.get_message(cid, "m1", user_id=uid)
-    assert saved is not None and saved.pinned
+    [saved] = await _read(cid, uid, "m1")
+    assert isinstance(saved, UserMessage) and saved.pinned
     assert not await _pin(cid, uid, "nope")
 
 
@@ -474,8 +489,8 @@ async def test_one_id_twice_in_a_batch_is_one_entry_holding_its_first_copy(
     seqs = await _append(cid, uid, [_message("d", "first"), _message("d", "second")])
 
     assert seqs == [1, 1]
-    saved = await repo.get_message(cid, "d", user_id=uid)
-    assert saved is not None and saved.response == "first"
+    [saved] = await _read(cid, uid, "d")
+    assert isinstance(saved, UserMessage) and saved.text == "first"
     assert await _ids(repo, conversation) == [(1, "d")]
 
 
@@ -571,8 +586,8 @@ async def test_pinning_a_stored_message_bumps_updated_at_and_leaves_the_outbox_t
     head = await raw_collection.find_one({"conversation_id": cid})
     assert head is not None and head["updatedAt"].year > stale.year
     assert sorted(await _outbox(raw_collection, conversation)) == ["1", "2"]
-    saved = await repo.get_message(cid, "m1", user_id=uid)
-    assert saved is not None and saved.pinned is True
+    [saved] = await _read(cid, uid, "m1")
+    assert isinstance(saved, UserMessage) and saved.pinned is True
 
 
 async def test_pinning_an_unknown_message_is_refused_and_leaves_updated_at(
@@ -588,7 +603,7 @@ async def test_pinning_an_unknown_message_is_refused_and_leaves_updated_at(
     assert head is not None and head["updatedAt"].year == stale.year
 
 
-async def test_recent_conversations_are_the_newest_limit_with_their_messages(
+async def test_recent_conversations_are_the_newest_limit_with_their_entries(
     repo: ConversationRepository, held: HeldFlushes
 ) -> None:
     uid = f"u-{uuid.uuid4().hex}"
@@ -601,7 +616,7 @@ async def test_recent_conversations_are_the_newest_limit_with_their_messages(
     recent = await repo.recent_for_user(uid, limit=2)
 
     assert [doc.conversation_id for doc in recent] == [newest, middle]
-    assert [m.message_id for m in recent[0].messages] == ["m1"]
+    assert [logged.entry.id for logged in recent[0].entries] == ["m1"]
 
 
 async def _orphaned(
@@ -632,7 +647,11 @@ async def test_a_deleted_conversations_leftover_entries_never_reach_search_or_pi
     assert await repo.find_owner_of_message(uid, "old-1") is None
 
 
-async def test_whole_conversation_reads_return_only_the_newest_window(
+def _seqs(page: ConversationEntriesPage) -> list[int]:
+    return [logged.seq for logged in page.entries]
+
+
+async def test_whole_conversation_reads_return_only_the_newest_page(
     repo: ConversationRepository,
     conversation: ConversationDocument,
     held: HeldFlushes,
@@ -649,7 +668,8 @@ async def test_whole_conversation_reads_return_only_the_newest_window(
 
     doc = await repo.get(cid, user_id=uid)
     assert doc is not None
-    assert [m.message_id for m in doc.messages] == ["m3", "m4", "m5"]
+    assert [logged.entry.id for logged in doc.entries] == ["m3", "m4", "m5"]
+    assert (doc.state.head, doc.has_older, doc.cursor) == (5, True, 3)
     synced = await repo.find_updated_since(
         uid,
         [
@@ -657,13 +677,13 @@ async def test_whole_conversation_reads_return_only_the_newest_window(
             ConversationSyncItem(conversation_id=other, last_updated=None),
         ],
     )
-    windows = {d.conversation_id: [m.message_id for m in d.messages] for d in synced}
-    assert windows == {cid: ["m3", "m4", "m5"], other: ["o1"]}
+    pages = {d.conversation_id: [logged.entry.id for logged in d.entries] for d in synced}
+    assert pages == {cid: ["m3", "m4", "m5"], other: ["o1"]}
     [recent, _] = await repo.recent_for_user(uid, limit=2)
-    assert len(recent.messages) <= 3
+    assert len(recent.entries) <= 3
 
 
-async def test_a_read_says_whether_older_messages_exist_beyond_its_window(
+async def test_a_read_says_whether_older_entries_exist_beyond_its_page(
     repo: ConversationRepository,
     conversation: ConversationDocument,
     monkeypatch: pytest.MonkeyPatch,
@@ -674,10 +694,7 @@ async def test_a_read_says_whether_older_messages_exist_beyond_its_window(
 
     exactly = await repo.get(cid, user_id=uid)
     assert exactly is not None
-    assert ([m.message_id for m in exactly.messages], exactly.has_older) == (
-        ["m1", "m2", "m3"],
-        False,
-    )
+    assert (_seqs(exactly), exactly.has_older, exactly.cursor) == ([1, 2, 3], False, None)
 
     await _append(cid, uid, [_message("m4")])
     over = await repo.get(cid, user_id=uid)
@@ -685,22 +702,52 @@ async def test_a_read_says_whether_older_messages_exist_beyond_its_window(
         uid, [ConversationSyncItem(conversation_id=cid, last_updated=None)]
     )
     assert over is not None
-    assert ([m.message_id for m in over.messages], over.has_older) == (["m2", "m3", "m4"], True)
-    assert synced.has_older is True
+    assert (_seqs(over), over.has_older, over.cursor) == ([2, 3, 4], True, 2)
+    assert (synced.has_older, synced.cursor) == (True, 2)
 
 
-async def test_messages_before_a_seq_page_back_to_the_first(
+async def test_entries_before_a_seq_page_back_to_the_first(
     repo: ConversationRepository, conversation: ConversationDocument
 ) -> None:
     cid, uid = conversation.conversation_id, conversation.user_id
     await _append(cid, uid, [_message(f"m{n}") for n in range(1, 6)])
 
-    page = await repo.read_messages_before(cid, user_id=uid, before_seq=5, limit=2)
-    last = await repo.read_messages_before(cid, user_id=uid, before_seq=3, limit=2)
-    exact = await repo.read_messages_before(cid, user_id=uid, before_seq=3, limit=3)
+    page = await repo.read_entries_before(cid, user_id=uid, before_seq=5, limit=2)
+    last = await repo.read_entries_before(cid, user_id=uid, before_seq=3, limit=2)
+    exact = await repo.read_entries_before(cid, user_id=uid, before_seq=3, limit=3)
 
     assert page is not None and last is not None and exact is not None
-    assert ([m.message_id for m in page.messages], page.has_more) == (["m3", "m4"], True)
-    assert ([m.message_id for m in last.messages], last.has_more) == (["m1", "m2"], False)
-    assert ([m.message_id for m in exact.messages], exact.has_more) == (["m1", "m2"], False)
-    assert await repo.read_messages_before("missing", user_id=uid, before_seq=3, limit=2) is None
+    assert (_seqs(page), page.has_older, page.cursor) == ([3, 4], True, 3)
+    assert (_seqs(last), last.has_older, last.cursor) == ([1, 2], False, None)
+    assert (_seqs(exact), exact.has_older) == ([1, 2], False)
+    assert page.state.head == 5
+    assert await repo.read_entries_before("missing", user_id=uid, before_seq=3, limit=2) is None
+
+
+async def test_a_page_never_splits_a_reply_from_the_settle_that_completes_it(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(conversations_module, "CONVERSATION_READ_LIMIT", 2)
+    cid, uid = conversation.conversation_id, conversation.user_id
+    settle = ReplySettled(
+        id="settle-r1",
+        reply_id="r1",
+        outcome=ReplyOutcome.ANSWERED,
+        answers=("m1",),
+        through=1,
+        quote_target=None,
+    )
+    await _append(
+        cid, uid, [_message("m1"), _reply("r1", "on it"), _message("m2"), _message("m3"), settle]
+    )
+
+    doc = await repo.get(cid, user_id=uid)
+    older = await repo.read_entries_before(cid, user_id=uid, before_seq=6, limit=2)
+
+    assert doc is not None and older is not None
+    assert (_seqs(doc), doc.has_older, doc.cursor) == ([2, 3, 4, 5], True, 2)
+    assert _seqs(older) == [2, 3, 4, 5]
+    rest = await repo.read_entries_before(cid, user_id=uid, before_seq=2, limit=2)
+    assert rest is not None and (_seqs(rest), rest.has_older) == ([1], False)

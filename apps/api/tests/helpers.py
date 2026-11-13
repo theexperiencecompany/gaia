@@ -60,6 +60,7 @@ from app.constants.chat import ConversationSource
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
 from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateKind
+from app.db.repositories.conversation_history import project
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
 from app.models.conversation_log_models import (
@@ -69,6 +70,7 @@ from app.models.conversation_log_models import (
     ReplySettled,
     UserMessage,
 )
+from app.models.conversation_models import ConversationEntriesPage, ConversationEntry
 from app.models.email_verdict_models import EmailVerdictDocument
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.user_models import AuthenticatedUser, UserDocument
@@ -371,8 +373,13 @@ async def stored_conversation(
     if head is None:
         return None
     doc = await conversation_repository.get(conversation_id, user_id=head["user_id"])
-    messages = [] if doc is None else [m.model_dump(exclude_none=True) for m in doc.messages]
+    messages = [] if doc is None else [m.model_dump(exclude_none=True) for m in shown_messages(doc)]
     return {**head, "messages": messages}
+
+
+def shown_messages(doc: ConversationEntriesPage) -> list[ConversationEntry]:
+    """Project a loaded page of entries into messages, as search and pins show a message."""
+    return project(doc.entries)
 
 
 def worker_mongo_db_name(base_name: str | None = None) -> str:

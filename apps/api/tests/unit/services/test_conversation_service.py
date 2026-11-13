@@ -24,9 +24,9 @@ from app.models.chat_models import (
     SystemPurpose,
 )
 from app.models.conversation_models import (
-    ConversationDocument,
     ConversationMessageHit,
     ConversationSummary,
+    LoadedConversation,
 )
 from app.models.user_models import AuthenticatedUser
 from app.services import conversation_service
@@ -89,14 +89,15 @@ def _no_analytics():
         yield
 
 
-def _document(**overrides) -> ConversationDocument:
+def _document(**overrides) -> LoadedConversation:
     data = {
         "user_id": USER_ID,
         "conversation_id": "conv_abc",
         "createdAt": "2026-01-01T00:00:00+00:00",
+        "state": {"head": 0, "display": "idle", "work": []},
     }
     data.update(overrides)
-    return ConversationDocument.model_validate(data)
+    return LoadedConversation.model_validate(data)
 
 
 class TestCreateConversationService:

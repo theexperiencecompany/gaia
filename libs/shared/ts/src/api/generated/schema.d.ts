@@ -994,9 +994,9 @@ export interface paths {
         };
         /**
          * Get Conversation Endpoint
-         * @description Retrieve a specific conversation by its ID.
+         * @description Retrieve a conversation with the newest page of its log, as the events stream's entries.
          *
-         *     The stored document itself: ``ConversationDocument`` is ``extra="allow"``,
+         *     The head's own fields: ``ConversationDocument`` is ``extra="allow"``,
          *     so stray/legacy top-level fields the row carries still reach the client
          *     verbatim, while the declared fields give the schema its shape.
          */
@@ -1053,6 +1053,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/conversations/{conversation_id}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Entries Before Endpoint
+         * @description Page a conversation's log back from before_seq, never starting inside an open reply, task or approval.
+         */
+        get: operations["conversations_get_entries_before_endpoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/conversations/{conversation_id}/events": {
         parameters: {
             query?: never;
@@ -1080,11 +1100,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Messages Before Endpoint
-         * @description Page a conversation's history back from before_seq: the newest limit messages before it.
-         */
-        get: operations["conversations_get_messages_before_endpoint"];
+        get?: never;
         put?: never;
         /**
          * Send Message Endpoint
@@ -7675,64 +7691,25 @@ export interface components {
             description?: string | null;
         };
         /**
-         * ConversationDocument
-         * @description A conversation as the repository returns it: its head fields and, where read, its entries.
+         * ConversationEntriesPage
+         * @description A run of the log's entries, oldest first, as the event stream's entry frames carry them.
          *
-         *     ``extra="allow"`` preserves stray/legacy top-level fields (e.g. ``artifacts``,
-         *     ``metadata``) so a full-document read returns them verbatim, matching the
-         *     pre-repository behaviour.
+         *     A page never starts inside an open span: it reaches back to the Reply, WorkStarted or
+         *     ApprovalRequested of every settle, finish, join or decision it holds. state is the head's,
+         *     so a page alone shows the loading row, live work and approvals; cursor is the seq an
+         *     older page is read before, set exactly when has_older.
          */
-        ConversationDocument: {
-            /** Artifacts */
-            artifacts?: components["schemas"]["ArtifactRegistryEntry"][];
-            /** Conversation Id */
-            conversation_id: string;
-            /** Createdat */
-            createdAt?: string | null;
-            /**
-             * Description
-             * @default New Chat
-             */
-            description?: string;
+        ConversationEntriesPage: {
+            /** Cursor */
+            cursor: number | null;
+            /** Entries */
+            entries: components["schemas"]["LoggedEntry"][];
             /**
              * Has Older
              * @default false
              */
-            has_older?: boolean;
-            /**
-             * Id
-             * @default
-             */
-            id?: string;
-            /**
-             * Is Onboarding Demo
-             * @default false
-             */
-            is_onboarding_demo?: boolean;
-            /**
-             * Is System Generated
-             * @default false
-             */
-            is_system_generated?: boolean | null;
-            /**
-             * Is Unread
-             * @default false
-             */
-            is_unread?: boolean | null;
-            /** Messages */
-            messages?: components["schemas"]["ConversationEntry"][];
-            source?: components["schemas"]["ConversationSource"] | null;
-            /** Starred */
-            starred?: boolean | null;
-            system_purpose?: components["schemas"]["SystemPurpose"] | null;
-            /** Todo Id */
-            todo_id?: string | null;
-            /** Updatedat */
-            updatedAt?: string | null;
-            /** User Id */
-            user_id: string;
-        } & {
-            [key: string]: unknown;
+            has_older: boolean;
+            state: components["schemas"]["StateFrame"];
         };
         /**
          * ConversationEntry
@@ -7838,16 +7815,6 @@ export interface components {
             message: components["schemas"]["ConversationEntry"];
         };
         /**
-         * ConversationMessagesPage
-         * @description The newest messages before a seq, oldest first; has_more when older ones remain.
-         */
-        ConversationMessagesPage: {
-            /** Has More */
-            has_more: boolean;
-            /** Messages */
-            messages: components["schemas"]["ConversationEntry"][];
-        };
-        /**
          * ConversationModel
          * @description A chat conversation and its display/system metadata.
          */
@@ -7939,8 +7906,7 @@ export interface components {
         };
         /**
          * ConversationSyncRow
-         * @description One batch-sync row — the conversation's client-visible fields plus its full
-         *     message history and artifact registry.
+         * @description One batch-sync row: the conversation's client-visible fields, its newest page of entries and its artifacts.
          */
         ConversationSyncRow: {
             /** Artifacts */
@@ -7954,8 +7920,12 @@ export interface components {
             conversation_id: string;
             /** Createdat */
             createdAt: string | null;
+            /** Cursor */
+            cursor: number | null;
             /** Description */
             description: string;
+            /** Entries */
+            entries: components["schemas"]["LoggedEntry"][];
             /**
              * Has Older
              * @default false
@@ -7965,11 +7935,10 @@ export interface components {
             is_system_generated: boolean | null;
             /** Is Unread */
             is_unread: boolean | null;
-            /** Messages */
-            messages: components["schemas"]["ConversationEntry"][];
             source: components["schemas"]["ConversationSource"] | null;
             /** Starred */
             starred: boolean | null;
+            state: components["schemas"]["StateFrame"];
             system_purpose: components["schemas"]["SystemPurpose"] | null;
             /** Todo Id */
             todo_id: string | null;
@@ -10528,6 +10497,80 @@ export interface components {
             expires_in: number;
             /** Token */
             token: string;
+        };
+        /**
+         * LoadedConversation
+         * @description A conversation as a load returns it: its head's fields and the newest page of its log.
+         */
+        LoadedConversation: {
+            /** Artifacts */
+            artifacts: components["schemas"]["ArtifactRegistryEntry"][];
+            /** Conversation Id */
+            conversation_id: string;
+            /** Createdat */
+            createdAt: string | null;
+            /** Cursor */
+            cursor: number | null;
+            /**
+             * Description
+             * @default New Chat
+             */
+            description: string;
+            /** Entries */
+            entries: components["schemas"]["LoggedEntry"][];
+            /**
+             * Has Older
+             * @default false
+             */
+            has_older: boolean;
+            /**
+             * Id
+             * @default
+             */
+            id: string;
+            /**
+             * Is Onboarding Demo
+             * @default false
+             */
+            is_onboarding_demo: boolean;
+            /**
+             * Is System Generated
+             * @default false
+             */
+            is_system_generated: boolean | null;
+            /**
+             * Is Unread
+             * @default false
+             */
+            is_unread: boolean | null;
+            source: components["schemas"]["ConversationSource"] | null;
+            /** Starred */
+            starred: boolean | null;
+            state: components["schemas"]["StateFrame"];
+            system_purpose: components["schemas"]["SystemPurpose"] | null;
+            /** Todo Id */
+            todo_id: string | null;
+            /** Updatedat */
+            updatedAt: string | null;
+            /** User Id */
+            user_id: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * LoggedEntry
+         * @description An entry at its position in the conversation's order.
+         */
+        LoggedEntry: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Entry */
+            entry: components["schemas"]["UserMessage"] | components["schemas"]["StopRequested"] | components["schemas"]["BargeIn"] | components["schemas"]["WorkflowFired"] | components["schemas"]["TodoWoke"] | components["schemas"]["Notice"] | components["schemas"]["WorkStarted"] | components["schemas"]["ApprovalRequested"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["WorkFinished"] | components["schemas"]["Reply"] | components["schemas"]["ReplySettled"] | components["schemas"]["IntegrationNeeded"] | components["schemas"]["IntegrationConnected"];
+            /** Seq */
+            seq: number;
         };
         /**
          * LoginRequest
@@ -17501,12 +17544,11 @@ export type ConnectIntegrationRequest = components['schemas']['ConnectIntegratio
 export type ConnectIntegrationResponse = components['schemas']['ConnectIntegrationResponse'];
 export type ConversationActionResponse = components['schemas']['ConversationActionResponse'];
 export type ConversationDescriptionHit = components['schemas']['ConversationDescriptionHit'];
-export type ConversationDocument = components['schemas']['ConversationDocument'];
+export type ConversationEntriesPage = components['schemas']['ConversationEntriesPage'];
 export type ConversationEntry = components['schemas']['ConversationEntry'];
 export type ConversationEvent = components['schemas']['ConversationEvent'];
 export type ConversationListResponse = components['schemas']['ConversationListResponse'];
 export type ConversationMessageHit = components['schemas']['ConversationMessageHit'];
-export type ConversationMessagesPage = components['schemas']['ConversationMessagesPage'];
 export type ConversationModel = components['schemas']['ConversationModel'];
 export type ConversationSource = components['schemas']['ConversationSource'];
 export type ConversationStopResponse = components['schemas']['ConversationStopResponse'];
@@ -17660,6 +17702,8 @@ export type LinkPlatformResponse = components['schemas']['LinkPlatformResponse']
 export type LinkTokenInfoResponse = components['schemas']['LinkTokenInfoResponse'];
 export type LiveTask = components['schemas']['LiveTask'];
 export type LiveViewTokenResponse = components['schemas']['LiveViewTokenResponse'];
+export type LoadedConversation = components['schemas']['LoadedConversation'];
+export type LoggedEntry = components['schemas']['LoggedEntry'];
 export type LoginRequest = components['schemas']['LoginRequest'];
 export type LogoutResponse = components['schemas']['LogoutResponse'];
 export type ManagedAt = components['schemas']['ManagedAt'];
@@ -20820,7 +20864,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ConversationDocument"];
+                    "application/json": components["schemas"]["LoadedConversation"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -20989,6 +21033,60 @@ export interface operations {
             };
         };
     };
+    conversations_get_entries_before_endpoint: {
+        parameters: {
+            query: {
+                /** @description Return entries with a seq below this one */
+                before_seq: number;
+                /** @description Page size */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationEntriesPage"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     conversations_conversation_events_endpoint: {
         parameters: {
             query?: {
@@ -21029,60 +21127,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ConversationEvent"];
                     "text/event-stream": unknown;
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    conversations_get_messages_before_endpoint: {
-        parameters: {
-            query: {
-                /** @description Return messages with a seq below this one */
-                before_seq: number;
-                /** @description Page size */
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                conversation_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ConversationMessagesPage"];
                 };
             };
             /** @description Unprocessable Entity */

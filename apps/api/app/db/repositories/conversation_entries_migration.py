@@ -28,6 +28,7 @@ from app.constants.chat import (
     ConversationSource,
 )
 from app.db.repositories.conversation_entries import (
+    EMPTY_LOG_STATE,
     LOG_HEAD_FIELD,
     MIGRATED_FINGERPRINT_FIELD,
     MIGRATION_FIELDS_FIELD,
@@ -38,10 +39,9 @@ from app.db.repositories.conversation_entries import (
     store_errors,
     unmigrated,
 )
-from app.db.repositories.conversation_history import PINNABLE_KINDS, TEXT_KINDS
-from app.db.repositories.conversation_log import EMPTY_LOG_STATE
+from app.db.repositories.conversation_history import PINNABLE_KINDS, TEXT_KINDS, project
 from app.db.repositories.conversations import ConversationRepository
-from app.models.chat_models import ConversationSyncItem, ReactionBy
+from app.models.chat_models import ReactionBy
 from app.models.conversation_log_models import (
     ConversationState,
     Entry,
@@ -697,15 +697,10 @@ class ConversationEntriesMigration(ConversationRepository):
             ]
 
         heads = await self._read_heads(_of(ref))
-        [history] = await self._histories(heads, EntryWindow(), limit=None)
-        if shown(history.messages) != expected:
-            report.mismatches.append(_difference("history", shown(history.messages), expected))
-        synced = await self.find_updated_since(
-            ref.user_id, [ConversationSyncItem(conversation_id=ref.conversation_id)]
-        )
-        tail = shown(synced[0].messages) if synced else []
-        if tail != expected[len(expected) - len(tail) :] or (not tail and expected):
-            report.mismatches.append(_difference("sync", tail, expected[-len(tail) :]))
+        [(_, entries)] = await self._union_for(heads, EntryWindow())
+        history = shown(project([logged_of(entry) for entry in entries]))
+        if history != expected:
+            report.mismatches.append(_difference("history", history, expected))
         for name, match, wanted in (
             ("search", {"kind": {"$in": sorted(TEXT_KINDS)}, "text": {"$ne": ""}}, "response"),
             ("pinned", {"kind": {"$in": sorted(PINNABLE_KINDS)}, "pinned": True}, "pinned"),

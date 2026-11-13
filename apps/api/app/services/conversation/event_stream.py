@@ -20,10 +20,9 @@ from app.constants.conversation import (
     EVENTS_STREAM_TTL_SECONDS,
 )
 from app.db.redis import redis_cache
-from app.models.conversation_frame_models import EntryFrame, OutputFrame
+from app.models.conversation_frame_models import EntryFrame, OutputFrame, state_frame
 from app.models.conversation_log_models import Reply, ReplySettled
 from app.models.conversation_send_models import ConversationEvent
-from app.services.conversation.log import state_frame
 from app.services.conversation.ports import ConversationLog
 
 _FRAME: TypeAdapter[OutputFrame] = TypeAdapter(OutputFrame)

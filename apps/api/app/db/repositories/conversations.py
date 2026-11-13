@@ -4,8 +4,8 @@ Identity is the business key conversation_id scoped to user_id, never Mongo's
 ObjectId _id. The log's entries are one document each, ordered by a seq that
 only one conditional head write allocates. A committed entry sits in the
 head's outbox until a flush copies it into conversation_entries; every read
-unions the two through _union_for, head first. Messages are the log's
-entries projected (conversation_history.project), never stored as such.
+unions the two through _union_for, head first. A conversation reads as pages of
+its entries (_page); only search and pins project entries into messages.
 
 Caching is disabled (cache_policy = None). createdAt (ISO string) and
 updatedAt (BSON date) are a legacy camelCase pair; each mutating method that
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
 from datetime import datetime
 import random
 from typing import ClassVar
@@ -35,6 +34,7 @@ from app.db.repositories.conversation_entries import (
     AWAITING_APPROVAL_STAGE,
     DROP_EMBEDDED_STAGE,
     LOG_HEAD_FIELD,
+    OPENER_KINDS,
     OUTBOX_FIELD,
     REVISION_FIELD,
     STATE_FIELD,
@@ -43,19 +43,20 @@ from app.db.repositories.conversation_entries import (
     StoredRow,
     at_its_seq,
     committed_at,
+    current_state,
     head_fields,
     head_from_raw,
     head_with_existing,
     is_same_entry,
     logged_of,
     newest,
+    openers_outside,
     outbox_entries_matching,
     store_errors,
     stored_entries_matching,
     stored_row,
 )
 from app.db.repositories.conversation_history import (
-    MESSAGE_KINDS,
     PINNABLE_KINDS,
     RELATED_KINDS,
     TEXT_KINDS,
@@ -69,17 +70,18 @@ from app.models.chat_models import (
     ConversationSyncItem,
     SystemPurpose,
 )
+from app.models.conversation_frame_models import state_frame
 from app.models.conversation_log_models import EntryKind, LoggedEntry
 from app.models.conversation_models import (
     ConversationDescriptionHit,
     ConversationDocument,
-    ConversationEntry,
+    ConversationEntriesPage,
     ConversationHead,
     ConversationMessageHit,
-    ConversationMessagesPage,
     ConversationSearchResults,
     ConversationSummary,
     ConversationUpdate,
+    LoadedConversation,
     StoredEntry,
     _ConversationIdRow,
     _ConversationOwnerRow,
@@ -115,15 +117,6 @@ _SUMMARY_PROJECTION: dict[str, object] = {
     "createdAt": 1,
     "updatedAt": 1,
 }
-
-
-@dataclass(frozen=True)
-class _History:
-    """A head with the messages a read projected from it, and whether older ones exist."""
-
-    head: Head
-    messages: list[ConversationEntry]
-    older: bool
 
 
 class ConversationRepository(UserScopedRepository[ConversationDocument, ConversationUpdate]):
@@ -342,35 +335,21 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
     # ---- targeted / projected reads ----
 
-    async def get(self, doc_id: str, *, user_id: str) -> ConversationDocument | None:
-        """Read the conversation with its newest CONVERSATION_READ_LIMIT messages, oldest first."""
+    async def get(self, doc_id: str, *, user_id: str) -> LoadedConversation | None:
+        """Read the conversation with its newest page of entries."""
         heads = await self._read_heads({"conversation_id": doc_id, "user_id": user_id})
         if not heads:
             return None
-        [history] = await self._histories(heads, EntryWindow(), limit=CONVERSATION_READ_LIMIT)
-        return self._with_history(history)
+        return await self._with_page(heads[0])
 
-    async def read_messages_before(
+    async def read_entries_before(
         self, conversation_id: str, *, user_id: str, before_seq: int, limit: int
-    ) -> ConversationMessagesPage | None:
-        """Read the newest limit messages before before_seq, oldest first; None for a missing conversation."""
+    ) -> ConversationEntriesPage | None:
+        """Read the page of entries before before_seq; None for a missing conversation."""
         heads = await self._read_heads({"conversation_id": conversation_id, "user_id": user_id})
         if not heads:
             return None
-        window = EntryWindow(before_seq=before_seq)
-        [history] = await self._histories(heads, window, limit=limit)
-        return ConversationMessagesPage(messages=history.messages, has_more=history.older)
-
-    async def get_message(
-        self, conversation_id: str, message_id: str, *, user_id: str
-    ) -> ConversationEntry | None:
-        """Read one message by its message id (a reply's is its reply id), without the rest of the conversation."""
-        heads = await self._read_heads({"conversation_id": conversation_id, "user_id": user_id})
-        if not heads:
-            return None
-        window = EntryWindow(ids=[message_id], reply_ids=[message_id])
-        [history] = await self._histories(heads, window)
-        return history.messages[0] if history.messages else None
+        return await self._page(heads[0], before_seq=before_seq, limit=limit)
 
     async def get_source(self, conversation_id: str, *, user_id: str) -> ConversationSource | None:
         """Return the conversation's source enum, or None when it doesn't exist."""
@@ -437,14 +416,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return None if row is None else row.conversation_id
 
-    async def recent_for_user(self, user_id: str, *, limit: int) -> list[ConversationDocument]:
-        """Return the user's most recent conversations, each with its newest messages."""
+    async def recent_for_user(self, user_id: str, *, limit: int) -> list[LoadedConversation]:
+        """Return the user's most recent conversations, each with its newest page of entries."""
         heads = await self._read_heads({"user_id": user_id}, sort={"createdAt": -1}, limit=limit)
-        window = EntryWindow()
-        return [
-            self._with_history(history)
-            for history in await self._histories(heads, window, limit=CONVERSATION_READ_LIMIT)
-        ]
+        return list(await asyncio.gather(*(self._with_page(head) for head in heads)))
 
     async def find_todo_conversation_id(self, user_id: str, todo_id: str) -> str | None:
         """Return the id of the chat bound to a tracked todo, or None before its first open or run."""
@@ -466,18 +441,18 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return None if row is None else row.todo_id
 
-    async def create(self, doc: ConversationDocument) -> ConversationDocument:
+    async def create(self, doc: ConversationDocument) -> LoadedConversation:
         """Insert the conversation's head at an empty log; raises ValueError if doc carries messages.
 
         conversation_id is unique across every user: an id this user already holds raises
         ConversationAlreadyExistsError (a concurrent first send lost the race), one another
         user holds raises ConversationIdTakenError.
         """
-        if doc.messages:
+        if (doc.model_extra or {}).get("messages"):
             raise ValueError(
                 "create() writes only the head; messages are log entries appended to its log"
             )
-        head = doc.model_dump(exclude={"id", "messages", "has_older"}, exclude_none=True)
+        head = doc.model_dump(exclude={"id"}, exclude_none=True)
         head[LOG_HEAD_FIELD] = 0
         try:
             await self._raw_collection().insert_one(head)
@@ -539,8 +514,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
     async def find_updated_since(
         self, user_id: str, items: list[ConversationSyncItem]
-    ) -> list[ConversationDocument]:
-        """Batch-fetch conversations updated since each item's last-seen timestamp, with their newest messages.
+    ) -> list[LoadedConversation]:
+        """Batch-fetch conversations updated since each item's last-seen timestamp, with their newest entries.
 
         A missing/unparseable timestamp includes that conversation unconditionally.
         """
@@ -563,11 +538,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         if not conditions:
             return []
         heads = await self._read_heads({"$or": conditions})
-        window = EntryWindow()
-        return [
-            self._with_history(history)
-            for history in await self._histories(heads, window, limit=CONVERSATION_READ_LIMIT)
-        ]
+        return list(await asyncio.gather(*(self._with_page(head) for head in heads)))
 
     # ---- search / pinned ----
 
@@ -728,48 +699,40 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     message="an outbox entry conflicts with a stored entry", why=str(exc)
                 ) from exc
 
-    async def _histories(
-        self, heads: Sequence[Head], window: EntryWindow, *, limit: int | None = None
-    ) -> list[_History]:
-        """Each head's messages in window: the newest limit of them, and whether older ones exist."""
-        if limit is None:
-            windows = await self._union_for(heads, replace(window, kinds=MESSAGE_KINDS))
-            return list(
-                await asyncio.gather(
-                    *(self._history(head, entries, older=False) for head, entries in windows)
-                )
-            )
-        return list(await asyncio.gather(*(self._newest(head, window, limit) for head in heads)))
+    async def _page(
+        self, head: Head, *, before_seq: int | None, limit: int
+    ) -> ConversationEntriesPage:
+        """Read the newest limit entries before before_seq, reaching back to every opener they complete."""
+        [(_, stored)] = await self._union_for(
+            [head], EntryWindow(before_seq=before_seq, limit=limit)
+        )
+        page = await self._with_openers(head, [logged_of(entry) for entry in stored])
+        older = bool(page) and await self._holds_before(head, page[0].seq)
+        return ConversationEntriesPage(
+            entries=page,
+            state=state_frame(current_state(head.document)),
+            has_older=older,
+            cursor=page[0].seq if older else None,
+        )
 
-    async def _newest(self, head: Head, window: EntryWindow, limit: int) -> _History:
-        """Read back one chunk at a time until limit messages show: finished work a reply took shows none."""
-        shown: list[ConversationEntry] = []
-        before = window.before_seq
-        while True:
-            chunk = replace(window, kinds=MESSAGE_KINDS, before_seq=before, limit=limit + 1)
-            [(_, entries)] = await self._union_for([head], chunk)
-            more = len(entries) > limit
-            page = entries[-limit:] if more else entries
-            shown = (await self._history(head, page, older=False)).messages + shown
-            if len(shown) > limit or not more:
-                return _History(head, shown[-limit:], len(shown) > limit)
-            before = page[0].seq
+    async def _with_openers(self, head: Head, page: list[LoggedEntry]) -> list[LoggedEntry]:
+        """Extend page back until it holds the opener of everything it completes that the log has."""
+        while page:
+            missing = openers_outside(page)
+            if not missing:
+                return page
+            named = EntryWindow(before_seq=page[0].seq, named=missing, kinds=OPENER_KINDS)
+            [(_, openers)] = await self._union_for([head], named)
+            if not openers:
+                return page
+            span = EntryWindow(after_seq=openers[0].seq - 1, before_seq=page[0].seq)
+            [(_, earlier)] = await self._union_for([head], span)
+            page = [*(logged_of(entry) for entry in earlier), *page]
+        return page
 
-    async def _history(
-        self, head: Head, entries: Sequence[StoredEntry], *, older: bool
-    ) -> _History:
-        logged = [logged_of(entry) for entry in entries]
-        return _History(head, project(logged, await self._related(head, logged)), older)
-
-    async def _related(self, head: Head, window: Sequence[LoggedEntry]) -> list[LoggedEntry]:
-        """Read what the window's messages need from outside it: settles, quotes, approvals, answering replies."""
-
-        async def lookup(ids: Sequence[str], reply_ids: Sequence[str]) -> list[LoggedEntry]:
-            found = EntryWindow(ids=ids, reply_ids=reply_ids, kinds=RELATED_KINDS)
-            [(_, entries)] = await self._union_for([head], found)
-            return [logged_of(entry) for entry in entries]
-
-        return await _read_beside(window, lookup)
+    async def _holds_before(self, head: Head, seq: int) -> bool:
+        [(_, stored)] = await self._union_for([head], EntryWindow(before_seq=seq, limit=1))
+        return bool(stored)
 
     async def _hits(self, user_id: str, rows: Sequence[StoredRow]) -> list[ConversationMessageHit]:
         """Project cross-conversation rows one message apiece, with their settles and quotes."""
@@ -929,11 +892,11 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             await self._raw_collection().delete_many(query)
         return ids
 
-    def _with_history(self, history: _History) -> ConversationDocument:
-        doc = self._to_model(history.head.fields)
-        doc.messages = history.messages
-        doc.has_older = history.older
-        return doc
+    async def _with_page(self, head: Head) -> LoadedConversation:
+        page = await self._page(head, before_seq=None, limit=CONVERSATION_READ_LIMIT)
+        return LoadedConversation.model_validate(
+            {**dict(self._to_model(head.fields)), **dict(page)}
+        )
 
     def _listed(self) -> dict[str, object]:
         # Bot conversations live on their platform and a tracked todo's chat on its

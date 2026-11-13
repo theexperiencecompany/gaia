@@ -20,11 +20,12 @@ from app.models.conversation_models import (
     BatchSyncResponse,
     ConversationActionResponse,
     ConversationDocument,
+    ConversationEntriesPage,
     ConversationListResponse,
-    ConversationMessagesPage,
     ConversationSyncRow,
     CreateConversationResponse,
     DeleteAllConversationsResponse,
+    LoadedConversation,
     PinMessageResponse,
     PinnedMessagesResponse,
     StarConversationResponse,
@@ -169,8 +170,8 @@ async def get_conversations(
     )
 
 
-async def get_conversation(conversation_id: str, user: AuthenticatedUser) -> ConversationDocument:
-    """Fetch a specific conversation by ID (messages already normalized on read)."""
+async def get_conversation(conversation_id: str, user: AuthenticatedUser) -> LoadedConversation:
+    """Fetch a conversation with the newest page of its log."""
     user_id = user.user_id
     document = await conversation_repository.get(conversation_id, user_id=user_id)
     if document is None:
@@ -181,11 +182,11 @@ async def get_conversation(conversation_id: str, user: AuthenticatedUser) -> Con
     return document
 
 
-async def get_messages_before(
+async def get_entries_before(
     conversation_id: str, user: AuthenticatedUser, *, before_seq: int, limit: int
-) -> ConversationMessagesPage:
-    """Return the conversation's newest limit messages before before_seq, for a client loading older history."""
-    page = await conversation_repository.read_messages_before(
+) -> ConversationEntriesPage:
+    """Return the page of the conversation's entries before before_seq, for a client loading older history."""
+    page = await conversation_repository.read_entries_before(
         conversation_id, user_id=user.user_id, before_seq=before_seq, limit=limit
     )
     if page is None:
@@ -463,8 +464,10 @@ async def batch_sync_conversations(
                 is_unread=document.is_unread,
                 createdAt=document.createdAt,
                 updatedAt=document.updatedAt,
-                messages=document.messages,
+                entries=document.entries,
+                state=document.state,
                 has_older=document.has_older,
+                cursor=document.cursor,
                 artifacts=document.artifacts,
                 awaiting_approval=document.awaiting_approval,
                 todo_id=document.todo_id,

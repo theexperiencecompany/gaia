@@ -5,11 +5,13 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.constants.chat import CONVERSATION_READ_LIMIT
+from app.models.conversation_frame_models import StateFrame
+from app.models.conversation_log_models import DisplayState
 from app.models.conversation_models import (
-    ConversationDocument,
+    ConversationEntriesPage,
     ConversationListResponse,
-    ConversationMessagesPage,
     CreateConversationResponse,
+    LoadedConversation,
 )
 from tests.conftest import FAKE_USER
 
@@ -104,17 +106,17 @@ class TestConversationEndpoints:
     )
     async def test_get_single_conversation_returns_200(self, mock_get_convo, test_client):
         """GET /api/v1/conversations/{id} should return 200."""
-        mock_get_convo.return_value = ConversationDocument(
+        mock_get_convo.return_value = LoadedConversation(
             conversation_id="conv-456",
             user_id=FAKE_USER.user_id,
             description="A conversation",
-            messages=[],
+            state=StateFrame(head=0, display=DisplayState.IDLE, work=()),
         )
         response = await test_client.get("/api/v1/conversations/conv-456")
         assert response.status_code == 200
         data = response.json()
         assert data["conversation_id"] == "conv-456"
-        assert "messages" in data
+        assert (data["entries"], data["state"]["head"], data["cursor"]) == ([], 0, None)
 
     @patch(
         "app.api.v1.endpoints.conversations.get_conversation",
@@ -535,26 +537,36 @@ class TestConversationEndpoints:
 
 
 @pytest.mark.integration
-class TestOlderMessages:
-    @patch("app.api.v1.endpoints.conversations.get_messages_before", new_callable=AsyncMock)
+class TestOlderEntries:
+    @patch("app.api.v1.endpoints.conversations.get_entries_before", new_callable=AsyncMock)
     async def test_pages_back_from_the_seq_it_is_given(self, page, test_client):
-        page.return_value = ConversationMessagesPage(messages=[], has_more=True)
+        page.return_value = ConversationEntriesPage(
+            entries=[],
+            state=StateFrame(head=41, display=DisplayState.IDLE, work=()),
+            has_older=True,
+            cursor=1,
+        )
 
         response = await test_client.get(
-            "/api/v1/conversations/conv-1/messages", params={"before_seq": 40, "limit": 20}
+            "/api/v1/conversations/conv-1/entries", params={"before_seq": 40, "limit": 20}
         )
 
         assert response.status_code == 200
-        assert response.json() == {"messages": [], "has_more": True}
+        assert response.json() == {
+            "entries": [],
+            "state": {"kind": "state", "head": 41, "display": "idle", "work": []},
+            "has_older": True,
+            "cursor": 1,
+        }
         assert page.await_args.args[0] == "conv-1"
         assert page.await_args.kwargs == {"before_seq": 40, "limit": 20}
 
     @pytest.mark.parametrize(
         "params", [{}, {"before_seq": 0}, {"before_seq": 5, "limit": CONVERSATION_READ_LIMIT + 1}]
     )
-    @patch("app.api.v1.endpoints.conversations.get_messages_before", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.conversations.get_entries_before", new_callable=AsyncMock)
     async def test_a_missing_seq_or_an_oversized_page_is_refused(self, page, test_client, params):
-        response = await test_client.get("/api/v1/conversations/conv-1/messages", params=params)
+        response = await test_client.get("/api/v1/conversations/conv-1/entries", params=params)
 
         assert response.status_code == 422
         page.assert_not_awaited()

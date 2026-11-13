@@ -23,6 +23,7 @@ from app.db.repositories.conversation_entries_migration import (
 from app.db.repositories.conversations import ConversationRepository
 from app.scripts import migrate_conversation_entries as script
 from app.utils.errors import UnmigratedConversationError
+from tests.helpers import shown_messages
 
 pytestmark = pytest.mark.usefixtures("entries_collection")
 
@@ -110,7 +111,7 @@ async def _head(raw_collection: Any, ref: HeadRef) -> dict[str, Any]:
 async def _history(ref: HeadRef) -> list[tuple[str, str | None, str]]:
     doc = await ConversationRepository().get(ref.conversation_id, user_id=ref.user_id)
     assert doc is not None
-    return [(m.type, m.message_id, m.response) for m in doc.messages]
+    return [(m.type, m.message_id, m.response) for m in shown_messages(doc)]
 
 
 async def test_every_old_shape_becomes_log_entries_that_read_back_as_the_old_array(
@@ -164,7 +165,7 @@ async def test_every_old_shape_becomes_log_entries_that_read_back_as_the_old_arr
     assert report.messages == len(expected_messages(array)) == 11
     doc = await ConversationRepository().get(ref.conversation_id, user_id=ref.user_id)
     assert doc is not None
-    shown = {m.message_id: m for m in doc.messages}
+    shown = {m.message_id: m for m in shown_messages(doc)}
     assert shown["m6"].error == "model_error" and shown["m4"].stopped is True
     assert (
         shown["m6"].replyToMessage is not None and shown["m6"].replyToMessage.content == "message 5"
@@ -316,7 +317,7 @@ async def test_a_generated_image_reads_back_as_stored_and_verify_catches_its_los
 
     doc = await ConversationRepository().get(ref.conversation_id, user_id=ref.user_id)
     assert doc is not None
-    shown = {m.message_id: m for m in doc.messages}
+    shown = {m.message_id: m for m in shown_messages(doc)}
     assert shown["m2"].image_data is not None
     assert shown["m2"].image_data.model_dump() == image
     assert shown["m3"].image_data is not None and shown["m3"].response == "message 3"

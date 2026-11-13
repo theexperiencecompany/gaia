@@ -239,13 +239,14 @@ async def _read_welcome(client: httpx.AsyncClient, api_url: str) -> tuple[str, W
     ).json()
     convo = payload.get("conversation", payload)
     welcome = Welcome()
-    for message in convo.get("messages") or []:
-        if message.get("type") != "bot":
+    for logged in convo.get("entries") or []:
+        entry = logged.get("entry") or {}
+        if entry.get("kind") not in ("reply", "notice"):
             continue
-        text = (message.get("response") or "").strip()
+        text = (entry.get("text") or "").strip()
         if text:
             welcome.bubbles.extend(part.strip() for part in text.split("<NEW_MESSAGE_BREAK>"))
-        welcome.chips.extend(message.get("follow_up_actions") or [])
+        welcome.chips.extend(entry.get("follow_up_actions") or [])
     return conversation_id, welcome
 
 

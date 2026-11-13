@@ -29,6 +29,7 @@ from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.memory.consolidation import cancel_consolidation
 from app.memory.engine import memory_engine
+from app.models.conversation_log_models import EntryKind
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -147,13 +148,16 @@ async def backfill_user_memories(ctx: dict[str, Any], user_id: str) -> str:  # n
     return f"backfilled {user_id}: {processed} conversations, {facts} facts"
 
 
+_ROLE_BY_KIND: dict[str, str] = {EntryKind.USER_MESSAGE: "user", EntryKind.REPLY: "assistant"}
+
+
 def _conversation_to_messages(doc: dict[str, Any]) -> list[dict[str, str]]:
-    """Map a stored conversation's embedded messages to extraction format."""
-    role_map = {"user": "user", "bot": "assistant"}
+    """Map a loaded conversation's user messages and replies to extraction format."""
     messages: list[dict[str, str]] = []
-    for msg in doc.get("messages", []):
-        role = role_map.get(msg.get("type", ""))
-        content = (msg.get("response") or "").strip()
+    for logged in doc.get("entries", []):
+        entry = logged.get("entry", {})
+        role = _ROLE_BY_KIND.get(entry.get("kind", ""))
+        content = (entry.get("text") or "").strip()
         if role and content:
             messages.append({"role": role, "content": content})
     return messages

@@ -16,11 +16,11 @@ from app.models.chat_models import (
 from app.models.conversation_models import (
     BatchSyncResponse,
     ConversationActionResponse,
-    ConversationDocument,
+    ConversationEntriesPage,
     ConversationListResponse,
-    ConversationMessagesPage,
     CreateConversationResponse,
     DeleteAllConversationsResponse,
+    LoadedConversation,
     PinMessageResponse,
     PinnedMessagesResponse,
     StarConversationResponse,
@@ -45,7 +45,7 @@ from app.services.conversation_service import (
     delete_conversation,
     get_conversation,
     get_conversations,
-    get_messages_before,
+    get_entries_before,
     get_starred_messages,
     mark_conversation_as_read,
     mark_conversation_as_unread,
@@ -137,11 +137,11 @@ async def batch_sync_conversations_endpoint(
 @router.get("/conversations/{conversation_id}", response_model_exclude={"id"})
 async def get_conversation_endpoint(
     conversation_id: str, user: AuthenticatedUser = Depends(get_current_user)
-) -> ConversationDocument:
+) -> LoadedConversation:
     """
-    Retrieve a specific conversation by its ID.
+    Retrieve a conversation with the newest page of its log, as the events stream's entries.
 
-    The stored document itself: ``ConversationDocument`` is ``extra="allow"``,
+    The head's own fields: ``ConversationDocument`` is ``extra="allow"``,
     so stray/legacy top-level fields the row carries still reach the client
     verbatim, while the declared fields give the schema its shape.
     """
@@ -152,22 +152,22 @@ async def get_conversation_endpoint(
     return await get_conversation(conversation_id, user)
 
 
-@router.get("/conversations/{conversation_id}/messages")
-async def get_messages_before_endpoint(
+@router.get("/conversations/{conversation_id}/entries")
+async def get_entries_before_endpoint(
     conversation_id: str,
-    before_seq: int = Query(ge=1, description="Return messages with a seq below this one"),
+    before_seq: int = Query(ge=1, description="Return entries with a seq below this one"),
     limit: int = Query(
         default=CONVERSATION_READ_LIMIT, ge=1, le=CONVERSATION_READ_LIMIT, description="Page size"
     ),
     user: AuthenticatedUser = Depends(get_current_user),
-) -> ConversationMessagesPage:
-    """Page a conversation's history back from before_seq: the newest limit messages before it."""
+) -> ConversationEntriesPage:
+    """Page a conversation's log back from before_seq, never starting inside an open reply, task or approval."""
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": "messages_before", "id": conversation_id},
+        conversation={"operation": "entries_before", "id": conversation_id},
     )
-    page = await get_messages_before(conversation_id, user, before_seq=before_seq, limit=limit)
-    log.set_ns("conversation", messages=len(page.messages), has_more=page.has_more)
+    page = await get_entries_before(conversation_id, user, before_seq=before_seq, limit=limit)
+    log.set_ns("conversation", entries=len(page.entries), has_older=page.has_older)
     return page
 
 

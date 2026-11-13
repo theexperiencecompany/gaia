@@ -19,6 +19,7 @@ from app.constants.chat import (
     CONVERSATION_ENTRIES_COLLECTION,
 )
 from app.db.repositories.conversation_entries import (
+    EMPTY_LOG_STATE,
     LOG_HEAD_FIELD,
     OUTBOX_FIELD,
     RUNNER_EPOCH_FIELD,
@@ -27,6 +28,7 @@ from app.db.repositories.conversation_entries import (
     EntryWindow,
     Head,
     at_log_head,
+    current_state,
     log_document,
     logged_of,
     store_errors,
@@ -56,16 +58,6 @@ SWEEP_DUE_FILTER: dict[str, object] = {
 }
 SWEEP_INDEX_NAME = "conversation_sweep_due_by_id"
 _SWEEP_PROJECTION = {"_id": 1, "conversation_id": 1, "user_id": 1, OUTBOX_FIELD: 1, STATE_FIELD: 1}
-#: The fold of a log with no entries yet: what a head that stores no state holds.
-EMPTY_LOG_STATE = ConversationState(
-    head=0,
-    settled_through=0,
-    stopped_through=0,
-    unsettled_waking=(),
-    comms=CommsPhase.IDLE,
-    open_reply=None,
-    work=(),
-)
 _EMPTY_STATE: dict[str, object] = EMPTY_LOG_STATE.model_dump(mode="json")
 
 
@@ -379,14 +371,8 @@ def _comms_as_read(comms: CommsPhase | None) -> dict[str, object]:
     return {f"{STATE_FIELD}.comms": comms.value}
 
 
-def _current(head: ConversationHead) -> ConversationState:
-    """Return the stored fold at log_head: a seq holding a message folds as an entry that changes nothing."""
-    stored = head.state or EMPTY_LOG_STATE
-    return stored.model_copy(update={"head": head.log_head or 0})
-
-
 def _state(raw: Mapping[str, object]) -> ConversationState:
-    return _current(ConversationHead.model_validate(raw))
+    return current_state(ConversationHead.model_validate(raw))
 
 
 def _log_head(head: Head) -> LogHead:
@@ -395,7 +381,7 @@ def _log_head(head: Head) -> LogHead:
         conversation_id=head.conversation_id,
         user_id=head.user_id,
         log_head=head.log_head,
-        state=_current(document),
+        state=current_state(document),
         stored_comms=None if document.state is None else document.state.comms,
         holder=None if document.runner is None else document.runner.epoch,
         runner_epoch=document.runner_epoch,

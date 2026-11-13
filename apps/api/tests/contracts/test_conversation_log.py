@@ -18,6 +18,7 @@ from app.db.repositories import conversations as conversations_module
 from app.db.repositories.conversation_log import ConversationLogRepository
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import ConversationSyncItem, MessageModel
+from app.models.conversation_frame_models import state_frame
 from app.models.conversation_log_models import (
     CommsPhase,
     ConversationState,
@@ -36,6 +37,7 @@ from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import ClaimLost, EntryRejected
 from app.services.conversation.reducer import reduce
 from tests.contracts.conftest import HeldFlushes
+from tests.helpers import shown_messages
 from tests.unit.services.conversation.log_helpers import (
     EMPTY,
     asked,
@@ -513,47 +515,48 @@ async def _mixed_chat(log: MongoConversationLog) -> tuple[str, str]:
     return user_id, conversation_id
 
 
-async def test_history_sync_and_lookups_are_the_log_projected_into_messages(
+async def test_a_load_a_sync_and_recent_reads_are_the_entries_the_events_stream_sends(
     raw_collection: Any, log: MongoConversationLog
 ) -> None:
     repo = ConversationRepository()
     user_id, conversation_id = await _mixed_chat(log)
+    logged = await log.read_after(conversation_id, user_id, 0)
+    state = state_frame(await log.state(conversation_id, user_id))
 
     doc = await repo.get(conversation_id, user_id=user_id)
     assert doc is not None
-    assert (_rows(doc.messages), doc.has_older) == (_HISTORY, False)
-    [reply] = [m for m in doc.messages if m.message_id == "r1"]
-    assert (reply.follow_up_actions, reply.stopped, reply.error) == (["pay it"], None, None)
+    assert (doc.entries, doc.state, doc.has_older, doc.cursor) == (logged, state, False, None)
+    assert _rows(shown_messages(doc)) == _HISTORY
     [synced] = await repo.find_updated_since(
         user_id, [ConversationSyncItem(conversation_id=conversation_id, last_updated=None)]
     )
-    assert _rows(synced.messages) == _HISTORY
+    assert (synced.entries, synced.state) == (logged, state)
     [recent] = await repo.recent_for_user(user_id, limit=1)
-    assert _rows(recent.messages) == _HISTORY
-    one = await repo.get_message(conversation_id, "r1", user_id=user_id)
-    assert one is not None
-    assert _rows([one]) == [_HISTORY[1]]
+    assert recent.entries == logged
     assert await repo.find_owner_of_message(user_id, "r1") == conversation_id
     assert await repo.find_owner_of_message(user_id, "u1") is None
     assert await repo.has_sent_message(user_id)
 
 
-async def test_a_page_reads_the_settle_and_the_quote_that_lie_outside_it(
+async def test_a_page_reaches_back_to_the_task_and_the_reply_its_entries_complete(
     raw_collection: Any, log: MongoConversationLog
 ) -> None:
     repo = ConversationRepository()
     user_id, conversation_id = await _mixed_chat(log)
-    notice_seq = 8
+    finished_seq, settled_seq = 7, 6
 
-    page = await repo.read_messages_before(
-        conversation_id, user_id=user_id, before_seq=notice_seq, limit=1
+    work = await repo.read_entries_before(
+        conversation_id, user_id=user_id, before_seq=finished_seq + 1, limit=1
     )
-    assert page is not None
-    assert (_rows(page.messages), page.has_more) == ([_HISTORY[1]], True)
-    [first] = (
-        await repo.read_messages_before(conversation_id, user_id=user_id, before_seq=5, limit=5)
-    ).messages
-    assert _rows([first]) == [_HISTORY[0]]
+    reply = await repo.read_entries_before(
+        conversation_id, user_id=user_id, before_seq=settled_seq + 1, limit=1
+    )
+
+    assert work is not None and reply is not None
+    assert [logged.entry.id for logged in work.entries] == ["w", "a", "d", "o", "s", "f"]
+    assert (work.has_older, work.cursor) == (True, 2)
+    assert [logged.entry.id for logged in reply.entries] == ["o", "s"]
+    assert (reply.has_older, reply.cursor) == (True, 5)
 
 
 async def test_an_unsettled_reply_reads_in_progress_and_a_failed_one_names_why(
@@ -573,7 +576,7 @@ async def test_an_unsettled_reply_reads_in_progress_and_a_failed_one_names_why(
 
     doc = await repo.get(conversation_id, user_id=user_id)
     assert doc is not None
-    assert [(m.message_id, m.in_progress, m.error) for m in doc.messages] == [
+    assert [(m.message_id, m.in_progress, m.error) for m in shown_messages(doc)] == [
         ("u1", None, None),
         ("r1", None, "server_restart"),
         ("u2", None, None),
@@ -598,7 +601,7 @@ async def test_search_reads_the_text_of_messages_replies_and_notices_only(
     assert (await repo.search(user_id, pattern="Watch the Acme")).messages == []
 
 
-async def test_the_newest_window_counts_messages_past_interleaved_log_entries(
+async def test_the_newest_page_is_the_newest_entries_when_none_completes_an_older_one(
     raw_collection: Any, log: MongoConversationLog, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(conversations_module, "CONVERSATION_READ_LIMIT", 2)
@@ -607,7 +610,8 @@ async def test_the_newest_window_counts_messages_past_interleaved_log_entries(
 
     doc = await repo.get(conversation_id, user_id=user_id)
     assert doc is not None
-    assert (_rows(doc.messages), doc.has_older) == (_HISTORY[-2:], True)
+    assert [logged.entry.id for logged in doc.entries] == ["tw", "u2"]
+    assert (doc.has_older, doc.cursor) == (True, 10)
 
 
 async def test_a_chat_shows_it_awaits_approval_exactly_while_its_work_waits_on_the_user(

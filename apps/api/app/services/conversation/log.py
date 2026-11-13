@@ -2,10 +2,9 @@
 
 from dataclasses import dataclass, field
 
-from app.models.conversation_frame_models import EntryFrame, LiveTask, StateFrame
+from app.models.conversation_frame_models import EntryFrame, state_frame
 from app.models.conversation_log_models import (
     CancelWork,
-    ConversationState,
     Effect,
     Entry,
     KickStep,
@@ -67,15 +66,6 @@ async def publish_appended(frames: Frames, conversation_id: str, appended: Appen
     before, after = state_frame(appended.previous), state_frame(appended.state)
     if (before.display, before.work) != (after.display, after.work):
         await frames.publish(conversation_id, after)
-
-
-def state_frame(state: ConversationState) -> StateFrame:
-    """Return the frame a client shows the conversation's status from."""
-    work = tuple(
-        LiveTask(task_id=item.task_id, awaiting_approval=bool(item.pending_approvals))
-        for item in state.work
-    )
-    return StateFrame(head=state.head, display=state.display, work=work)
 
 
 async def _run(

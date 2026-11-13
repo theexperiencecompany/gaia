@@ -33,7 +33,8 @@ from app.models.chat_models import (
     MessageModel,
     SystemPurpose,
 )
-from app.models.conversation_log_models import ConversationState
+from app.models.conversation_frame_models import StateFrame
+from app.models.conversation_log_models import ConversationState, LoggedEntry
 from app.models.document_models import UserScopedDocument
 from app.schemas.common import ResponseModel
 from app.utils.tool_data_utils import convert_legacy_tool_data
@@ -85,10 +86,6 @@ class ConversationDocument(UserScopedDocument):
     # The tracked todo whose chat this is: its runs execute here. Such a chat is
     # reached only from its todo, never listed (see _listed). Set once at creation.
     todo_id: str | None = None
-    # Assembled from conversation_entries by the reads that need history; never stored on the head.
-    messages: list[ConversationEntry] = Field(default_factory=list)
-    # Derived on read (never stored): messages older than the ones read exist; page them by seq.
-    has_older: bool = False
     # Conversation-level artifact registry: one entry per agent-written file,
     # deduped by path; services/chat/artifacts_registry.py owns every write.
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
@@ -331,11 +328,27 @@ class ConversationListResponse(ResponseModel):
     total_pages: int
 
 
-class ConversationSyncRow(ResponseModel):
-    """One batch-sync row — the conversation's client-visible fields plus its full
-    message history and artifact registry.
+class ConversationEntriesPage(ResponseModel):
+    """A run of the log's entries, oldest first, as the event stream's entry frames carry them.
 
+    A page never starts inside an open span: it reaches back to the Reply, WorkStarted or
+    ApprovalRequested of every settle, finish, join or decision it holds. state is the head's,
+    so a page alone shows the loading row, live work and approvals; cursor is the seq an
+    older page is read before, set exactly when has_older.
     """
+
+    entries: list[LoggedEntry] = Field(default_factory=list)
+    state: StateFrame
+    has_older: bool = False
+    cursor: int | None = None
+
+
+class LoadedConversation(ConversationDocument, ConversationEntriesPage):
+    """A conversation as a load returns it: its head's fields and the newest page of its log."""
+
+
+class ConversationSyncRow(ConversationEntriesPage):
+    """One batch-sync row: the conversation's client-visible fields, its newest page of entries and its artifacts."""
 
     conversation_id: str
     description: str
@@ -345,9 +358,6 @@ class ConversationSyncRow(ResponseModel):
     is_unread: bool | None = None
     createdAt: str | None = None
     updatedAt: datetime | None = None
-    messages: list[ConversationEntry] = Field(default_factory=list)
-    # Messages older than these exist: GET /conversations/{id}/messages?before_seq= pages them.
-    has_older: bool = False
     # Mirrored verbatim from the document (see ConversationDocument.artifacts).
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
     # Live work in the conversation awaits the user's approval: the sidebar's dot.
@@ -356,13 +366,6 @@ class ConversationSyncRow(ResponseModel):
     todo_id: str | None = None
     # Where the chat originated; a bot chat is never listed, so clients need it to keep one cached.
     source: ConversationSource | None = None
-
-
-class ConversationMessagesPage(ResponseModel):
-    """The newest messages before a seq, oldest first; has_more when older ones remain."""
-
-    messages: list[ConversationEntry]
-    has_more: bool
 
 
 class BatchSyncResponse(ResponseModel):

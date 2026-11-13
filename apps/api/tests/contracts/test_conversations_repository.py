@@ -26,6 +26,7 @@ from app.models.chat_models import (
 from app.models.conversation_log_models import Entry, Reply, UserMessage
 from app.models.conversation_models import ConversationDocument, ConversationSearchResults
 from app.services.conversation.mongo_log import MongoConversationLog
+from tests.helpers import shown_messages
 
 # Every test here writes entries, so each needs the collection with its unique indexes.
 pytestmark = pytest.mark.usefixtures("entries_collection")
@@ -299,12 +300,12 @@ class TestMessages:
 
         fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
         assert fetched is not None
-        assert [(m.message_id, m.response) for m in fetched.messages] == [
+        assert [(m.message_id, m.response) for m in shown_messages(fetched)] == [
             (asked.id, "hi"),
             (replied.reply_id, "hello"),
         ]
 
-    async def test_pin_and_list_and_get_message(self, repo):
+    async def test_pin_and_list(self, repo):
         doc = _doc()
         await repo.create(doc)
         replied = _replied("pin me")
@@ -313,8 +314,10 @@ class TestMessages:
         assert await conversation_log_repository.set_pinned(
             doc.conversation_id, user_id=doc.user_id, message_id=mid, pinned=True
         )
-        one = await repo.get_message(doc.conversation_id, mid, user_id=doc.user_id)
-        assert one is not None and one.pinned is True
+        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert fetched is not None
+        [one] = [m for m in shown_messages(fetched) if m.message_id == mid]
+        assert one.pinned is True
 
         pinned = await repo.list_pinned_messages(doc.user_id)
         assert [(h.conversation_id, h.message.message_id) for h in pinned] == [
@@ -337,8 +340,10 @@ class TestMessages:
         replied = _replied("r", cards=(card,))
         await _say(doc, _asked("send it"), replied)
 
-        stored = await repo.get_message(doc.conversation_id, replied.reply_id, user_id=doc.user_id)
-        assert stored is not None and stored.tool_data is not None
+        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert fetched is not None
+        [stored] = [m for m in shown_messages(fetched) if m.message_id == replied.reply_id]
+        assert stored.tool_data is not None
         entry = stored.tool_data[0]
         assert entry.get("tool_category") == "gmail"
         assert entry.get("subagent_id") == "sa-1"

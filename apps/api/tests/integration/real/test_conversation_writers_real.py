@@ -42,6 +42,7 @@ from app.services.conversation.work_log import record_user_stop
 from app.services.onboarding.first_conversation import FirstConversation
 from app.utils.seeding_utils import seed_first_conversation
 from tests.conftest import FAKE_USER
+from tests.helpers import shown_messages
 from tests.unit.services.conversation.log_helpers import asked, finished, started
 from tests.unit.services.conversation.runtime_doubles import (
     RecordingEffects,
@@ -115,7 +116,7 @@ def _turn(text: str, *, cards: tuple[ToolDataEntry, ...] = ()) -> list[Entry]:
 async def _messages(user_id: str, conversation_id: str) -> list[tuple[object, ...]]:
     doc = await conversation_repository.get(conversation_id, user_id=user_id)
     assert doc is not None
-    return [(m.type, m.message_id, m.response) for m in doc.messages]
+    return [(m.type, m.message_id, m.response) for m in shown_messages(doc)]
 
 
 async def test_a_seeded_first_conversation_is_gaias_notices_with_their_cards_and_chips(
@@ -134,12 +135,12 @@ async def test_a_seeded_first_conversation_is_gaias_notices_with_their_cards_and
     assert conversation_id is not None
     doc = await conversation_repository.get(conversation_id, user_id=user_id)
     assert doc is not None
-    assert [(m.type, bool(m.tool_data), m.follow_up_actions) for m in doc.messages] == [
+    assert [(m.type, bool(m.tool_data), m.follow_up_actions) for m in shown_messages(doc)] == [
         ("bot", False, None),
         ("bot", True, None),
         ("bot", False, ["Plan my day"]),
     ]
-    assert doc.messages[2].response == "What first?"
+    assert shown_messages(doc)[2].response == "What first?"
     state = await mongo_log.state(conversation_id, user_id)
     assert state.unsettled_waking == ()
 
@@ -181,7 +182,7 @@ async def test_a_pin_survives_reload_and_lists_until_unpinned(
     assert (await client.put(pin, json={"pinned": True})).status_code == 200
     doc = await conversation_repository.get(conversation_id, user_id=FAKE_USER.user_id)
     assert doc is not None
-    assert [(m.message_id, m.pinned) for m in doc.messages] == [("u1", None), ("r1", True)]
+    assert [(m.message_id, m.pinned) for m in shown_messages(doc)] == [("u1", None), ("r1", True)]
     listed = await conversation_repository.list_pinned_messages(FAKE_USER.user_id)
     assert [(hit.conversation_id, hit.message.message_id) for hit in listed] == [
         (conversation_id, "r1")
@@ -208,7 +209,7 @@ async def test_a_detached_runs_cards_sit_where_it_started_until_a_reply_answers_
 
     doc = await conversation_repository.get(conversation_id, user_id=user_id)
     assert doc is not None
-    assert [(m.message_id, m.tool_data) for m in doc.messages[2:]] == [
+    assert [(m.message_id, m.tool_data) for m in shown_messages(doc)[2:]] == [
         ("work:job-1", cards),
         ("u2", None),
     ]
@@ -254,7 +255,7 @@ async def _card_status(user_id: str, conversation_id: str) -> object:
     assert doc is not None
     [card] = [
         e
-        for m in doc.messages
+        for m in shown_messages(doc)
         for e in m.tool_data or []
         if e["tool_name"] == APPROVAL_REQUEST_TOOL_NAME
     ]

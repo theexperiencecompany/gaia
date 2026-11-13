@@ -21,7 +21,9 @@ from app.constants.memory import (
     MEMORY_BACKFILL_MAX_USERS_PER_RUN,
     MemorySourceType,
 )
-from app.models.conversation_models import ConversationDocument, ConversationEntry
+from app.models.conversation_frame_models import StateFrame
+from app.models.conversation_log_models import Entry, LoggedEntry, Notice, Reply, UserMessage
+from app.models.conversation_models import LoadedConversation
 from app.models.user_models import UserDocument
 from app.workers.tasks.memory_backfill_tasks import (
     _conversation_date,
@@ -51,17 +53,21 @@ def _conversation(
     conversation_id: str = "conv-1",
     *,
     created_at: str = "2026-01-01T10:00:00+00:00",
-    messages: list[dict] | None = None,
-) -> ConversationDocument:
-    msgs = messages or [
-        {"type": "user", "response": "Remember I prefer morning meetings"},
-        {"type": "bot", "response": "Got it."},
+    entries: list[Entry] | None = None,
+) -> LoadedConversation:
+    logged = entries or [
+        UserMessage(id="m1", text="Remember I prefer morning meetings", surface="web"),
+        Reply(id="r1", reply_id="r1", attempt_id="a1", text="Got it."),
     ]
-    return ConversationDocument(
+    return LoadedConversation(
         user_id=USER_ID,
         conversation_id=conversation_id,
         createdAt=created_at,
-        messages=[ConversationEntry(**m, seq=n) for n, m in enumerate(msgs, 1)],
+        entries=[
+            LoggedEntry(seq=n, at=datetime(2026, 1, 1, tzinfo=UTC), entry=entry)
+            for n, entry in enumerate(logged, 1)
+        ],
+        state=StateFrame(head=len(logged), display="idle", work=()),
     )
 
 
@@ -79,9 +85,9 @@ def _pool() -> MagicMock:
 class TestConversationToMessages:
     def test_maps_user_and_bot_roles(self):
         doc = _conversation(
-            messages=[
-                {"type": "user", "response": "hello"},
-                {"type": "bot", "response": "hi there"},
+            entries=[
+                UserMessage(id="m1", text="hello", surface="web"),
+                Reply(id="r1", reply_id="r1", attempt_id="a1", text="hi there"),
             ]
         ).model_dump(mode="json")
         assert _conversation_to_messages(doc) == [
@@ -89,18 +95,18 @@ class TestConversationToMessages:
             {"role": "assistant", "content": "hi there"},
         ]
 
-    def test_drops_empty_and_unknown_message_types(self):
-        doc = {
-            "messages": [
-                {"type": "user", "response": "  "},
-                {"type": "system", "response": "not mapped"},
-                {"type": "user", "response": "kept"},
+    def test_drops_empty_messages_and_entries_that_are_not_messages(self):
+        doc = _conversation(
+            entries=[
+                UserMessage(id="m1", text="  ", surface="web"),
+                Notice(id="n1", text="not mapped", origin="todo"),
+                UserMessage(id="m2", text="kept", surface="web"),
             ]
-        }
+        ).model_dump(mode="json")
         assert _conversation_to_messages(doc) == [{"role": "user", "content": "kept"}]
 
-    def test_no_messages_yields_empty_list(self):
-        assert _conversation_to_messages({"messages": []}) == []
+    def test_no_entries_yields_empty_list(self):
+        assert _conversation_to_messages({"entries": []}) == []
 
 
 class TestConversationDate:
@@ -310,7 +316,7 @@ class TestBackfillUserMemories:
     async def test_conversation_without_extractable_messages_is_a_no_op(self):
         with self._patches() as mocks:
             mocks["recent"].return_value = [
-                _conversation(messages=[{"type": "system", "response": "x"}])
+                _conversation(entries=[Notice(id="n1", text="x", origin="todo")])
             ]
             result = await backfill_user_memories({}, USER_ID)
 
