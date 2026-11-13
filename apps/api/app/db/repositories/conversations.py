@@ -553,7 +553,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             return 0
         for user_id, conversation_id in sorted(owners):
             await self.flush_outbox(conversation_id, user_id=user_id)
-        with store_errors("unfinished reply sweep"):
+        with store_errors("unfinished reply sweep"):  # pragma: no mutate — error label only
             result = await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).update_many(
                 {
                     "in_progress": True,
@@ -563,7 +563,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                         for user_id, conversation_id in sorted(owners)
                     ],
                 },
-                {"$set": {"error": error}, "$unset": {"in_progress": ""}},
+                {
+                    "$set": {"error": error},
+                    "$unset": {"in_progress": ""},
+                },  # pragma: no mutate — $unset ignores its value
             )
         return result.modified_count
 
@@ -575,8 +578,12 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         Reads the outboxes as well as the collection. Intentionally unscoped (a maintenance sweep).
         """
         unfinished = {"in_progress": True, "at": {"$lt": opened_before}}
-        owner = {"_id": 0, "user_id": 1, "conversation_id": 1}
-        with store_errors("unfinished reply sweep"):
+        owner = {
+            "_id": 0,
+            "user_id": 1,  # pragma: no mutate — projection reads truthiness, not the value
+            "conversation_id": 1,  # pragma: no mutate — projection reads truthiness, not the value
+        }
+        with store_errors("unfinished reply sweep"):  # pragma: no mutate — error label only
             stored = await (
                 self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
                 .find(unfinished, owner)
