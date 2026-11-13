@@ -16,7 +16,7 @@ from app.constants.conversation import (
     RUNNER_ALIVE_TTL_SECONDS,
 )
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED
-from app.models.chat_models import ReactionBy
+from app.models.chat_models import ImageData, ReactionBy
 from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
@@ -112,8 +112,9 @@ class _Attempt:
     # A Stop or another group's input ended the run of joinable entries.
     closed: bool = False
     deltas: int = 0
-    # The cards of the work whose reply this is (reply_id = task_id); the reply opens with them.
+    # The cards and image of the work whose reply this is (reply_id = task_id); the reply opens with them.
     work_cards: tuple[ToolDataEntry, ...] = ()
+    work_image: ImageData | None = None
 
     @property
     def committed(self) -> CommitReason | None:
@@ -261,6 +262,7 @@ async def _serve(ports: RuntimePorts, claim: StepClaim, attempt_id: str) -> bool
         return True
     batch = _batch(pending)
     reply_id = _reply_id(batch, entries, attempt_id)
+    work = _answered_work(batch, reply_id)
     attempt = _Attempt(
         claim=claim,
         attempt_id=attempt_id,
@@ -268,7 +270,8 @@ async def _serve(ports: RuntimePorts, claim: StepClaim, attempt_id: str) -> bool
         batch=batch,
         covers=batch.waking,
         seen=batch.end,
-        work_cards=_work_cards(batch, reply_id),
+        work_cards=work.tool_data if work else (),
+        work_image=work.image if work else None,
     )
     if await nothing_to_report(ports.log, conversation_id, claim.user_id, batch):
         # The run said so itself, and its todo lets it: nothing is shown, its report stays on its WorkFinished.
@@ -320,15 +323,15 @@ def _reply_id(batch: Batch, entries: Sequence[LoggedEntry], attempt_id: str) -> 
     return next((task for task in tasks if task not in used), f"r{attempt_id}")
 
 
-def _work_cards(batch: Batch, reply_id: str) -> tuple[ToolDataEntry, ...]:
-    """Return the cards of the finished work this reply answers in its own reply."""
+def _answered_work(batch: Batch, reply_id: str) -> WorkFinished | None:
+    """Return the finished work this reply answers in its own reply, whose cards and image it opens with."""
     return next(
         (
-            logged.entry.tool_data
+            logged.entry
             for logged in batch.waking
             if isinstance(logged.entry, WorkFinished) and logged.entry.task_id == reply_id
         ),
-        (),
+        None,
     )
 
 
@@ -800,6 +803,7 @@ def _empty_reply(attempt: _Attempt) -> Reply:
         reply_id=attempt.reply_id,
         attempt_id=attempt.attempt_id,
         tool_data=attempt.work_cards,
+        image=attempt.work_image,
     )
 
 

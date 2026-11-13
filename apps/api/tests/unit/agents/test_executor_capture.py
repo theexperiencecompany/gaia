@@ -14,7 +14,10 @@ from unittest.mock import AsyncMock, call, patch
 import pytest
 
 from app.agents.core.background import redis_writer as rw, session as sess
-from app.agents.core.background.executor_capture import drain_executor_tool_data
+from app.agents.core.background.executor_capture import (
+    drain_executor_image,
+    drain_executor_tool_data,
+)
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.session import (
     RunKind,
@@ -22,7 +25,7 @@ from app.agents.core.background.session import (
     get_session,
 )
 from app.constants.browser import BROWSER_TASK_EVENT, BROWSER_TOOL_CATEGORY
-from app.models.chat_models import ToolDataEntry
+from app.models.chat_models import ImageData, ToolDataEntry
 from app.models.stream_events import ToolOutputPayload
 from app.services.chat.chunks import normalize_custom_event
 from app.utils.agent_utils import (
@@ -41,6 +44,30 @@ def _tool_call_event(tool_call_id: str, subagent_id: str | None = None) -> dict:
     if subagent_id:
         entry["subagent_id"] = subagent_id
     return {"tool_data": entry}
+
+
+class TestTheGeneratedImage:
+    """Regression: a generated image showed live and was gone on reload; its event never reached the work's finish."""
+
+    def test_the_last_image_the_run_generated_is_drained_as_written(self) -> None:
+        session = create_session("s-img", RunKind.QUEUED)
+        first = ImageData(url="https://img.example/1.png", prompt="a fox")
+        last = ImageData(
+            url="https://img.example/2.png", prompt="a fox", improved_prompt="a red fox"
+        )
+        session.tool_events.append({"status": "generating_image"})
+        session.tool_events.append({"image_data": first.model_dump()})
+        session.tool_events.append(_tool_call_event("tc-1"))
+        session.tool_events.append({"image_data": last.model_dump()})
+
+        assert drain_executor_image("s-img") == last
+        assert drain_executor_image("s-img") == last, "the drain must not consume the image"
+
+    def test_a_run_that_made_no_image_drains_none(self) -> None:
+        create_session("s-none", RunKind.QUEUED).tool_events.append(_tool_call_event("tc-1"))
+
+        assert drain_executor_image("s-none") is None
+        assert drain_executor_image("missing") is None
 
 
 class TestDrain:
