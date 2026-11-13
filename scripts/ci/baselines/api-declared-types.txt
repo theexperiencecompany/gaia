@@ -75,7 +75,6 @@ libs/shared/ts/src/chat/approvals.types.ts:ApprovalDecision
 libs/shared/ts/src/chat/approvals.types.ts:ApprovalDecisionPayload
 libs/shared/ts/src/chat/approvals.types.ts:ApprovalRequestData
 libs/shared/ts/src/chat/approvals.types.ts:ApprovalScope
-libs/shared/ts/src/chat/approvals.types.ts:ApprovalStatus
 libs/shared/ts/src/chat/approvals.types.ts:BatchApprovalDecisionPayload
 libs/shared/ts/src/chat/approvals.types.ts:HilMode
 libs/shared/ts/src/chat/fixtures.ts:ToolFixture

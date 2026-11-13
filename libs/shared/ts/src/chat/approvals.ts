@@ -1,6 +1,8 @@
 import type {
   ApprovalEnd,
   ApprovalLabels,
+} from "../utils/approvalLabels.types";
+import type {
   ApprovalRequestData,
   HilMode,
   HilPreferences,
@@ -8,12 +10,14 @@ import type {
 import type { StreamToolDataEntry } from "./streaming";
 
 export type {
+  ApprovalEnd,
+  ApprovalLabels,
+} from "../utils/approvalLabels.types";
+export type {
   ActionResult,
   ApprovalDecider,
   ApprovalDecision,
   ApprovalDecisionPayload,
-  ApprovalEnd,
-  ApprovalLabels,
   ApprovalOutcome,
   ApprovalRequestData,
   ApprovalScope,
