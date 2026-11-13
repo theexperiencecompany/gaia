@@ -35,7 +35,6 @@ from app.models.hil_models import (
     DecisionAction,
     DecisionResult,
     HILApprovalRecord,
-    LedgerState,
 )
 from app.models.message_models import MessageDict
 from app.services.feature_flags import is_jev_reply_enabled
@@ -55,24 +54,31 @@ from app.services.hil.resolution import (
     resolve_approval,
 )
 from app.utils.general_utils import clip_text
+from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
 from shared.py.wide_events import log
 
-# Ground truth for a settled ledger row in the bot reply's words. Lives here, not
-# result_delivery (which only knows barrier statuses), so the bot path can narrate
-# executed/failed/unknown/revoked without depending on that module.
-LEDGER_OUTCOME_TEXT: dict[LedgerState, str] = {
-    LedgerState.APPROVED: "approved by the user; the agent runs it from the ticket",
-    LedgerState.DENIED: "denied by the user; the action did NOT run",
-    LedgerState.EXECUTED: "approved by the user and executed",
-    LedgerState.FAILED: "approved by the user but execution failed",
-    LedgerState.UNKNOWN: "approved by the user but the outcome is unknown; never retried",
-    LedgerState.REVOKED: "withdrawn by the agent; the action did NOT run",
+# Ground truth for a settled ledger row in the bot reply's words: the action's
+# result when one ran, else how the approval ended.
+LEDGER_OUTCOME_TEXT: dict[ApprovalOutcome, str] = {
+    ApprovalOutcome.APPROVED: "approved by the user; the agent runs it from the ticket",
+    ApprovalOutcome.DENIED: "denied by the user; the action did NOT run",
+    ApprovalOutcome.EXPIRED: "expired unanswered; the action did NOT run",
+    ApprovalOutcome.CANCELLED: "cancelled when the user stopped the work; the action did NOT run",
+    ApprovalOutcome.WITHDRAWN: "withdrawn by the agent; the action did NOT run",
+}
+LEDGER_ACTION_TEXT: dict[ActionResult, str] = {
+    ActionResult.EXECUTING: "approved by the user and running now",
+    ActionResult.EXECUTED: "approved by the user and executed",
+    ActionResult.FAILED: "approved by the user but execution failed",
+    ActionResult.UNKNOWN: "approved by the user but the outcome is unknown; never retried",
 }
 
 
-def ledger_outcome_text(state: LedgerState) -> str:
-    """One line of ground truth for a settled ledger row."""
-    return LEDGER_OUTCOME_TEXT.get(state, state.value)
+def ledger_outcome_text(outcome: ApprovalOutcome | None, action: ActionResult | None) -> str:
+    """One line of ground truth for a ledger row."""
+    if action is not None:
+        return LEDGER_ACTION_TEXT[action]
+    return "still pending" if outcome is None else LEDGER_OUTCOME_TEXT[outcome]
 
 
 def classifier_history(prior: Sequence[MessageDict]) -> list[MessageDict]:
@@ -370,11 +376,11 @@ async def _safe_resolve(
 
 
 async def _list_pending_ledger(conversation_id: str) -> list[ApprovalLedgerDocument]:
-    """Ledger-enabled users' decidable rows: list_open covers live states, only PENDING decides here."""
+    """Ledger-enabled users' decidable rows: list_open covers live rows, only pending ones decide here."""
     return [
         row
         for row in await approval_ledger_repository.list_open(conversation_id)
-        if row.state is LedgerState.PENDING
+        if row.outcome is None
     ]
 
 
@@ -395,8 +401,7 @@ async def _safe_resolve_ledger(
         log.warning(
             f"{LogTag.HIL} Ledger bot decision lost the race",
             approval_id=approval_id,
-            state=result.state.value,
-            outcome=ledger_outcome_text(result.state),
+            outcome=ledger_outcome_text(result.outcome, result.action),
         )
 
 

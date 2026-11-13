@@ -19,11 +19,11 @@ from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.hil_models import (
     HILApprovalRecord,
-    HILApprovalStatus,
     HILApprovalUpdate,
     HILToolRiskRecord,
     HILToolRiskUpdate,
 )
+from shared.py.analytics.catalog.hil import DECIDED_OUTCOMES, ApprovalDecider, ApprovalOutcome
 
 
 class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate]):
@@ -51,23 +51,25 @@ class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate
     async def mark_decided(
         self,
         approval_id: str,
-        status: HILApprovalStatus,
+        outcome: ApprovalOutcome,
         *,
         feedback: str | None,
         scope: str,
         decided_by: str | None,
     ) -> bool:
-        """Transition a pending record to a terminal status, exactly once.
+        """Give a pending record its outcome, exactly once.
 
-        Conditional on the current status so a duplicate or racing decision
+        Conditional on the record still being pending so a duplicate or racing decision
         cannot double-resolve: only the call that performed the transition
         returns True.
         """
         updated = await self._apply_raw_update(
-            {"_id": approval_id, "status": HILApprovalStatus.PENDING},
+            {"_id": approval_id, "outcome": None},
             {
                 "$set": {
-                    "status": status,
+                    "outcome": outcome,
+                    # Auto mode's approvals are written decided; only a user decides here.
+                    "decider": ApprovalDecider.USER if outcome in DECIDED_OUTCOMES else None,
                     "feedback": feedback,
                     "scope": scope,
                     "decided_by": decided_by,
@@ -94,18 +96,18 @@ class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate
 
     async def list_expired_pending(self) -> list[HILApprovalRecord]:
         """Pending approvals past expires_at — the timeout sweep's work list."""
-        return await self._find(
-            {"status": HILApprovalStatus.PENDING, "expires_at": {"$lt": datetime.now(UTC)}}
-        )
+        return await self._find({"outcome": None, "expires_at": {"$lt": datetime.now(UTC)}})
 
-    async def list_decided_unresumed(
-        self, statuses: list[str], grace_seconds: float
-    ) -> list[HILApprovalRecord]:
-        """Decided records whose resume never dispatched (a crash after deciding but before the run spawn)."""
+    async def list_decided_unresumed(self, grace_seconds: float) -> list[HILApprovalRecord]:
+        """List ended records whose resume never dispatched (a crash after deciding but before the run spawn).
+
+        Auto mode's approvals never paused, so they have no run to resume.
+        """
         cutoff = datetime.now(UTC) - timedelta(seconds=grace_seconds)
         return await self._find(
             {
-                "status": {"$in": statuses},
+                "outcome": {"$ne": None},
+                "decider": {"$ne": ApprovalDecider.AUTO},
                 "resumed_at": None,
                 # An executor pause or a parked background subagent: each resumes.
                 "$or": [{"resume_item": {"$ne": None}}, {"subagent_resume": {"$ne": None}}],
@@ -116,7 +118,7 @@ class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate
     async def list_pending_for_conversation(self, conversation_id: str) -> list[HILApprovalRecord]:
         """Every still-pending approval in a conversation, oldest first."""
         return await self._find(
-            {"conversation_id": conversation_id, "status": HILApprovalStatus.PENDING},
+            {"conversation_id": conversation_id, "outcome": None},
             sort=[("created_at", 1)],
         )
 

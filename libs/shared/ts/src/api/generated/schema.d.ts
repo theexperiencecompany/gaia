@@ -5919,6 +5919,12 @@ export interface components {
             success: boolean;
         };
         /**
+         * ActionResult
+         * @description What happened to an approved action; none until it starts.
+         * @enum {string}
+         */
+        ActionResult: "executing" | "executed" | "failed" | "unknown";
+        /**
          * ActionStyle
          * @description Visual emphasis for a notification action button.
          * @enum {string}
@@ -6076,16 +6082,12 @@ export interface components {
         };
         /**
          * ApprovalDecided
-         * @description A pending approval resolved.
+         * @description A pending approval ended; decider names who approved or denied it (None when nobody did).
          */
         ApprovalDecided: {
             /** Approval Id */
             approval_id: string;
-            /**
-             * Decision
-             * @enum {string}
-             */
-            decision: "approve" | "deny" | "timeout" | "abandon";
+            decider?: components["schemas"]["ApprovalDecider"] | null;
             /**
              * Id
              * @description Producer-minted idempotency key
@@ -6096,7 +6098,14 @@ export interface components {
              * @enum {string}
              */
             kind: "approval_decided";
+            outcome: components["schemas"]["ApprovalOutcome"];
         };
+        /**
+         * ApprovalDecider
+         * @description Who approved or denied: the user, or auto mode's intent judge.
+         * @enum {string}
+         */
+        ApprovalDecider: "user" | "auto";
         /**
          * ApprovalDecisionRequest
          * @description Body for a button approval decision (approve/deny, with scope and feedback).
@@ -6123,13 +6132,19 @@ export interface components {
          * @description Result of relaying an approval decision to the awaiting gate.
          */
         ApprovalDecisionResponse: {
+            action?: components["schemas"]["ActionResult"] | null;
+            outcome?: components["schemas"]["ApprovalOutcome"] | null;
             /** Reason */
             reason?: string | null;
-            /** Status */
-            status?: string | null;
             /** Success */
             success: boolean;
         };
+        /**
+         * ApprovalOutcome
+         * @description How an approval ended; an approval with no outcome is still pending.
+         * @enum {string}
+         */
+        ApprovalOutcome: "approved" | "denied" | "expired" | "cancelled" | "withdrawn";
         /**
          * ApprovalRequested
          * @description Live work paused on the user's approval.
@@ -6455,14 +6470,14 @@ export interface components {
          * @description Per-approval outcome of a batch decision.
          */
         BatchDecisionOutcome: {
+            action?: components["schemas"]["ActionResult"] | null;
             /** Approval Id */
             approval_id: string;
+            outcome?: components["schemas"]["ApprovalOutcome"] | null;
             /** Reason */
             reason?: string | null;
             /** Resolved */
             resolved: boolean;
-            /** Status */
-            status?: string | null;
         };
         /**
          * BatchEventCreateFailure
@@ -17373,6 +17388,7 @@ export interface components {
 }
 export type ActionConfig = components['schemas']['ActionConfig'];
 export type ActionExecutionResponse = components['schemas']['ActionExecutionResponse'];
+export type ActionResult = components['schemas']['ActionResult'];
 export type ActionStyle = components['schemas']['ActionStyle'];
 export type ActionType = components['schemas']['ActionType'];
 export type ActiveBotConversation = components['schemas']['ActiveBotConversation'];
@@ -17384,8 +17400,10 @@ export type AddUserIntegrationResponse = components['schemas']['AddUserIntegrati
 export type AgentType = components['schemas']['AgentType'];
 export type ApiCallConfig = components['schemas']['ApiCallConfig'];
 export type ApprovalDecided = components['schemas']['ApprovalDecided'];
+export type ApprovalDecider = components['schemas']['ApprovalDecider'];
 export type ApprovalDecisionRequest = components['schemas']['ApprovalDecisionRequest'];
 export type ApprovalDecisionResponse = components['schemas']['ApprovalDecisionResponse'];
+export type ApprovalOutcome = components['schemas']['ApprovalOutcome'];
 export type ApprovalRequested = components['schemas']['ApprovalRequested'];
 export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest'];
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];

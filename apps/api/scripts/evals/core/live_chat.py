@@ -58,21 +58,16 @@ TOOL_CALLS_CARD = "tool_calls_data"
 APPROVAL_CARD = "approval_request"
 SSE_DATA_PREFIX = "data:"
 
-#: The card status an approval decision settles to, as the approval card words it.
-DECISION_STATUS = {
-    "approve": "approved",
-    "deny": "denied",
-    "timeout": "timeout",
-    "abandon": "abandoned",
-}
+#: How the eval names an approval no outcome has ended yet.
 PENDING = "pending"
 
 
 class ApprovalSeen(BaseModel):
-    """One status an approval was seen in: requested (pending), decided, or a card's own status."""
+    """One outcome an approval was seen with: requested (pending), ended, or a card's own outcome."""
 
     approval_id: str
-    status: str
+    outcome: str
+    decider: str | None = None
 
 
 class Turn(BaseModel):
@@ -110,7 +105,7 @@ class Turn(BaseModel):
 
     @property
     def awaiting_approval(self) -> bool:
-        latest = {seen.approval_id: seen.status for seen in self.approvals}
+        latest = {seen.approval_id: seen.outcome for seen in self.approvals}
         return PENDING in latest.values()
 
 
@@ -235,12 +230,13 @@ class TurnReader:
         self._cards.setdefault(json.dumps(entry, sort_keys=True, default=str), entry)
         data = entry["data"]
         if entry["tool_name"] == APPROVAL_CARD and isinstance(data, dict):
-            approval_id, status = data.get("approval_id"), data.get("status")
-            if isinstance(approval_id, str) and isinstance(status, str):
-                self._approval(approval_id, status)
+            approval_id, outcome = data.get("approval_id"), data.get("outcome") or PENDING
+            decider = data.get("decider")
+            if isinstance(approval_id, str) and isinstance(outcome, str):
+                self._approval(approval_id, outcome, decider if isinstance(decider, str) else None)
 
-    def _approval(self, approval_id: str, status: str) -> None:
-        seen = ApprovalSeen(approval_id=approval_id, status=status)
+    def _approval(self, approval_id: str, outcome: str, decider: str | None = None) -> None:
+        seen = ApprovalSeen(approval_id=approval_id, outcome=outcome, decider=decider)
         if seen not in self._turn.approvals:
             self._turn.approvals.append(seen)
 
@@ -273,7 +269,7 @@ class TurnReader:
             case ApprovalDecided() if any(
                 seen.approval_id == entry.approval_id for seen in self._turn.approvals
             ):
-                self._approval(entry.approval_id, DECISION_STATUS[entry.decision])
+                self._approval(entry.approval_id, entry.outcome, entry.decider)
             case WorkFinished() if entry.task_id in self._live_tasks:
                 self._live_tasks.discard(entry.task_id)
                 self._unreported.add(entry.id)

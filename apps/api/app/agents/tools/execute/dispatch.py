@@ -338,7 +338,7 @@ async def _dispatch_ticket(
             run_config=config,
         )
         text = (
-            f"Executed '{approval_id}' ({result.state.value}): {result.detail}"
+            f"Executed '{approval_id}' ({result.action}): {result.detail}"
             if result.ok
             else f"Could not run '{approval_id}': {result.detail}"
         )

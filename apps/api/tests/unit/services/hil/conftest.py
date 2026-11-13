@@ -116,7 +116,6 @@ def make_record(**overrides: Any) -> HILApprovalRecord:
         "tool_call_id": "call-1",
         "args": {"to": "bob@example.com"},
         "summary": "Send email — to: bob@example.com",
-        "status": "pending",
         "created_at": now,
         "expires_at": now + timedelta(seconds=900),
         "resume_item": {"run": "item"},

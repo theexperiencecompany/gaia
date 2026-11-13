@@ -36,7 +36,7 @@ from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.hil import HIL_RESUME_CONFIG_KEY, LANGGRAPH_INTERRUPT_KEY
-from app.models.hil_models import HILApprovalStatus, HILPreferences
+from app.models.hil_models import HILPreferences
 from app.services.hil.approvals_store import list_pending_for_conversation, mark_decided
 from tests.helpers import PassthroughFakeLLM
 
@@ -222,8 +222,7 @@ class SpawnDriver:
         )
         for target in targets:
             await mark_decided(
-                target,
-                HILApprovalStatus(decision["status"]),
+                target(decision["status"]),
                 feedback=decision.get("feedback"),
                 scope=decision.get("scope", "once"),
                 decided_by=self._user_id,

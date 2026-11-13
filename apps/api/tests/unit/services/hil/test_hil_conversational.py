@@ -32,7 +32,6 @@ from app.models.hil_models import (
     BatchDecisionResult,
     BatchItemDecision,
     DecisionResult,
-    LedgerState,
 )
 from app.models.message_models import MessageDict
 from app.services.hil.bridge import build_action_detail
@@ -50,6 +49,8 @@ from app.services.hil.resolution import (
     ApprovalRequestForbiddenError,
     ApprovalRequestNotFoundError,
 )
+from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
+from tests.helpers import ledger_facts
 
 from .conftest import CONVERSATION_ID, USER_ID, jev_reply_body, make_record, serve_jev
 
@@ -639,7 +640,7 @@ class TestTheClassifierSeesTheReplyAndItsContext:
 
 
 def _ledger_row(
-    approval_id: str, state: LedgerState = LedgerState.PENDING
+    approval_id: str, state: ApprovalOutcome | ActionResult | None = None
 ) -> ApprovalLedgerDocument:
     return ApprovalLedgerDocument(
         approval_id=approval_id,
@@ -648,14 +649,12 @@ def _ledger_row(
         fingerprint=f"fp-{approval_id}",
         tool_name="send_email",
         summary=f"Send email {approval_id}",
-        state=state,
+        **ledger_facts(state),
     )
 
 
-def _committed(approval_id: str, state: LedgerState) -> LedgerDecision:
-    return LedgerDecision(
-        committed=True, approval_id=approval_id, prior_state=LedgerState.PENDING, state=state
-    )
+def _committed(approval_id: str, state: ApprovalOutcome | ActionResult | None) -> LedgerDecision:
+    return LedgerDecision(committed=True, approval_id=approval_id, **ledger_facts(state))
 
 
 def decided(decide: AsyncMock) -> list[tuple[str, str, str | None]]:
@@ -684,7 +683,8 @@ class TestLedgerRows:
         ):
             repo.list_open = AsyncMock(return_value=[])
             decide.side_effect = lambda approval_id, **kw: _committed(
-                approval_id, LedgerState.APPROVED if kw["kind"] == "approve" else LedgerState.DENIED
+                approval_id,
+                ApprovalOutcome.APPROVED if kw["kind"] == "approve" else ApprovalOutcome.DENIED,
             )
             yield {"list_open": repo.list_open, "decide": decide, **resolver}
 
@@ -694,7 +694,7 @@ class TestLedgerRows:
     ) -> None:
         ledger["list_open"].return_value = [
             _ledger_row("ap_1"),
-            _ledger_row("ap_q", LedgerState.APPROVED),
+            _ledger_row("ap_q", ApprovalOutcome.APPROVED),
         ]
         ledger["llm"].return_value = DecisionResult(action="approve")
 
@@ -729,7 +729,7 @@ class TestLedgerRows:
     ) -> None:
         ledger["list_open"].return_value = [
             _ledger_row("ap_1"),
-            _ledger_row("ap_q", LedgerState.APPROVED),
+            _ledger_row("ap_q", ApprovalOutcome.APPROVED),
         ]
         ledger["llm"].return_value = DecisionResult(action="unrelated")
 
@@ -784,7 +784,7 @@ class TestLedgerRows:
     async def test_nothing_pending_in_the_ledger_costs_no_llm_call(
         self, ledger: dict[str, AsyncMock]
     ) -> None:
-        ledger["list_open"].return_value = [_ledger_row("ap_q", LedgerState.APPROVED)]
+        ledger["list_open"].return_value = [_ledger_row("ap_q", ApprovalOutcome.APPROVED)]
 
         assert await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "hey") is None
         ledger["llm"].assert_not_awaited()
@@ -801,7 +801,7 @@ class TestLedgerRows:
         ledger["llm"].return_value = BatchDecisionResult(unrelated=True)
         ledger["decide"].side_effect = [
             error,
-            _committed("ap_2", LedgerState.DENIED),
+            _committed("ap_2", ApprovalOutcome.DENIED),
         ]
 
         assert (
@@ -832,8 +832,8 @@ class TestLedgerRows:
         ledger["decide"].return_value = LedgerDecision(
             committed=False,
             approval_id="ap_1",
-            prior_state=LedgerState.DENIED,
-            state=LedgerState.DENIED,
+            outcome=ApprovalOutcome.DENIED,
+            action=None,
         )
 
         with patch(f"{MODULE}.log") as log:
@@ -843,8 +843,7 @@ class TestLedgerRows:
         assert "lost the race" in log.warning.call_args.args[0]
         assert log.warning.call_args.kwargs == {
             "approval_id": "ap_1",
-            "state": "denied",
-            "outcome": LEDGER_OUTCOME_TEXT[LedgerState.DENIED],
+            "outcome": LEDGER_OUTCOME_TEXT[ApprovalOutcome.DENIED],
         }
 
     async def test_a_committed_decision_reports_nothing(self, ledger: dict[str, AsyncMock]) -> None:
@@ -858,13 +857,18 @@ class TestLedgerRows:
 
 
 class TestLedgerOutcomeText:
-    def test_a_settled_state_reads_as_its_ground_truth(self) -> None:
+    def test_an_action_result_wins_over_the_approval_that_allowed_it(self) -> None:
         assert (
-            ledger_outcome_text(LedgerState.EXECUTED) == LEDGER_OUTCOME_TEXT[LedgerState.EXECUTED]
+            ledger_outcome_text(ApprovalOutcome.APPROVED, ActionResult.FAILED)
+            == "approved by the user but execution failed"
         )
 
-    def test_a_state_with_no_narration_falls_back_to_its_name(self) -> None:
-        assert ledger_outcome_text(LedgerState.EXECUTING) == "executing"
+    @pytest.mark.parametrize("outcome", list(ApprovalOutcome))
+    def test_every_outcome_with_no_action_reads_as_itself(self, outcome: ApprovalOutcome) -> None:
+        assert ledger_outcome_text(outcome, None) == LEDGER_OUTCOME_TEXT[outcome]
+
+    def test_a_pending_row_says_so(self) -> None:
+        assert ledger_outcome_text(None, None) == "still pending"
 
 
 class TestNoHistory:
@@ -1106,7 +1110,7 @@ class TestJevClassifiesTheReply:
             serve_jev(jev_reply_body(("deny", 0.9))),
         ):
             repo.list_open = AsyncMock(return_value=[_ledger_row("ap_1")])
-            decide.return_value = _committed("ap_1", LedgerState.DENIED)
+            decide.return_value = _committed("ap_1", ApprovalOutcome.DENIED)
             action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "not now")
 
         assert action == "deny"

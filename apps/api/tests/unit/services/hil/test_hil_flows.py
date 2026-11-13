@@ -21,11 +21,11 @@ from langgraph.errors import GraphInterrupt
 import pytest
 
 from app.constants.hil import HIL_STATUS_KWARG
-from app.models.hil_models import HILApprovalStatus
 from app.services.hil.approvals_store import approval_id_for
 from app.services.hil.bridge import build_summary
 from app.services.hil.intent import IntentDecision
 from app.services.hil.utils import GatedApproval, GatedCall, approval_window_label
+from shared.py.analytics.catalog.hil import ApprovalOutcome
 
 from .conftest import (
     CONVERSATION_ID,
@@ -117,7 +117,7 @@ async def asks(gate: dict, request: Any) -> None:
         await run_through_gate(request, Handler([]))
 
 
-def decides(gate: dict, *, status: str, scope: str = "once", feedback: str | None = None) -> None:
+def decides(gate: dict, *, outcome: str, scope: str = "once", feedback: str | None = None) -> None:
     """Set the gate's stored decision to a SETTLED RECORD, never a resume payload.
 
     resolve_approval writes the decision to Mongo and the Command(resume=...) that
@@ -125,7 +125,7 @@ def decides(gate: dict, *, status: str, scope: str = "once", feedback: str | Non
     would be exercising a path production no longer has.
     """
     gate["approval"].return_value = make_record(
-        status=HILApprovalStatus(status), scope=scope, feedback=feedback
+        outcome=ApprovalOutcome(outcome), scope=scope, feedback=feedback
     )
 
 
@@ -137,7 +137,7 @@ class TestApproveJourney:
     async def test_an_approval_actually_reaches_the_tool(self, gate: dict) -> None:
         handler = Handler(gate["log"])
         await asks(gate, make_request())
-        decides(gate, status="approved", scope="once")
+        decides(gate, outcome="approved", scope="once")
 
         result = await run_through_gate(make_request(), handler)
 
@@ -151,7 +151,7 @@ class TestApproveJourney:
         # something they can never see.
         handler = Handler(gate["log"])
         await asks(gate, make_request())
-        decides(gate, status="approved")
+        decides(gate, outcome="approved")
 
         await run_through_gate(make_request(), handler)
 
@@ -161,7 +161,7 @@ class TestApproveJourney:
     async def test_always_allow_this_tool_writes_the_override(self, gate: dict) -> None:
         handler = Handler(gate["log"])
         await asks(gate, make_request())
-        decides(gate, status="approved", scope="always_tool")
+        decides(gate, outcome="approved", scope="always_tool")
 
         await run_through_gate(make_request(), handler)
 
@@ -180,7 +180,7 @@ class TestApproveJourney:
         )
         request = make_request(name="posthog_delete_item", tool=tool)
         await asks(gate, request)
-        decides(gate, status="approved", scope="always_tool")
+        decides(gate, outcome="approved", scope="always_tool")
 
         await run_through_gate(request, Handler(gate["log"]))
 
@@ -190,7 +190,7 @@ class TestApproveJourney:
         # Approving once must not silently disarm the gate for every future call.
         handler = Handler(gate["log"])
         await asks(gate, make_request())
-        decides(gate, status="approved", scope="once")
+        decides(gate, outcome="approved", scope="once")
 
         await run_through_gate(make_request(), handler)
 
@@ -199,7 +199,7 @@ class TestApproveJourney:
     async def test_an_approval_is_not_remembered_as_a_decline(self, gate: dict) -> None:
         handler = Handler(gate["log"])
         await asks(gate, make_request())
-        decides(gate, status="approved")
+        decides(gate, outcome="approved")
 
         await run_through_gate(make_request(), handler)
 
@@ -210,7 +210,7 @@ class TestDenyJourney:
     async def test_a_denial_stops_the_tool_and_says_so(self, gate: dict) -> None:
         handler = Handler(gate["log"])
         await asks(gate, make_request())
-        decides(gate, status="denied", feedback="wrong recipient")
+        decides(gate, outcome="denied", feedback="wrong recipient")
 
         result = await run_through_gate(make_request(), handler)
 
@@ -225,7 +225,7 @@ class TestDenyJourney:
         # thing a decline must not license. The refusal has to say so explicitly.
         handler = Handler(gate["log"])
         await asks(gate, make_request())
-        decides(gate, status="denied", feedback=None)
+        decides(gate, outcome="denied", feedback=None)
 
         result = await run_through_gate(make_request(), handler)
 
@@ -237,7 +237,7 @@ class TestDenyJourney:
         # the user for the same call is the loop this kills.
         handler = Handler(gate["log"])
         await asks(gate, make_request())
-        decides(gate, status="denied", feedback="no")
+        decides(gate, outcome="denied", feedback="no")
 
         await run_through_gate(make_request(), handler)
 
@@ -253,7 +253,7 @@ class TestExpiryJourney:
         # report a refusal the user never made.
         handler = Handler(gate["log"])
         await asks(gate, make_request())
-        decides(gate, status="timeout")
+        decides(gate, outcome="expired")
 
         result = await run_through_gate(make_request(), handler)
 
@@ -264,7 +264,7 @@ class TestExpiryJourney:
     async def test_the_model_is_told_how_long_it_waited(self, gate: dict) -> None:
         handler = Handler(gate["log"])
         await asks(gate, make_request())
-        decides(gate, status="timeout")
+        decides(gate, outcome="expired")
 
         result = await run_through_gate(make_request(), handler)
 
@@ -275,7 +275,7 @@ class TestExpiryJourney:
         # every later retry in the turn without ever asking them again.
         handler = Handler(gate["log"])
         await asks(gate, make_request())
-        decides(gate, status="timeout")
+        decides(gate, outcome="expired")
 
         await run_through_gate(make_request(), handler)
 
@@ -354,7 +354,7 @@ class TestAutoJourney:
             outcome="ask", reason="you never asked for this"
         )
         await asks(gate, make_request())
-        decides(gate, status="approved")
+        decides(gate, outcome="approved")
         handler = Handler(gate["log"])
 
         await run_through_gate(make_request(), handler)
@@ -368,7 +368,7 @@ class TestAutoJourney:
         # nothing, so paying for it would be pure latency.
         gate["policy"].return_value = "ask"
         await asks(gate, make_request())
-        decides(gate, status="approved")
+        decides(gate, outcome="approved")
 
         await run_through_gate(make_request(), Handler(gate["log"]))
 

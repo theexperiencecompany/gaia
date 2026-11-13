@@ -29,7 +29,7 @@ from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, sil
 from app.constants.hil import HIL_JUDGE_MIN_QUOTE_WORDS, HIL_LLM_TIMEOUT_SECONDS
 from app.constants.llm import ModelUse
 from app.constants.log_tags import LogTag
-from app.models.hil_models import ApprovalLedgerDocument, LedgerState
+from app.models.hil_models import ApprovalLedgerDocument
 from app.services.hil.prompts import INTENT_JUDGE_PROMPT
 from app.services.hil.utils import (
     PriorCall,
@@ -40,6 +40,7 @@ from app.services.hil.utils import (
     untrusted_fence,
 )
 from app.utils.log_identifiers import user_text_shape
+from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
 from shared.py.wide_events import log
 
 _NO_REQUEST_REASON = "Could not check this against anything you asked for."
@@ -151,10 +152,8 @@ class _Verdict(BaseModel):
     reason: str = Field(default="", description="One short sentence, shown to the user.")
 
 
-# States that read as "the user let this run" when counting history.
-_APPROVED_LEDGER_STATES = frozenset(
-    {LedgerState.APPROVED, LedgerState.EXECUTING, LedgerState.EXECUTED}
-)
+# An approved action that then failed or vanished is not counted as a vote to let it run.
+_UNCOUNTED_ACTIONS = frozenset({ActionResult.FAILED, ActionResult.UNKNOWN})
 
 
 def summarize_history(rows: list[ApprovalLedgerDocument]) -> AutoHistory:
@@ -164,8 +163,13 @@ def summarize_history(rows: list[ApprovalLedgerDocument]) -> AutoHistory:
     decided rows count — pendings were never answered, revokes and failures
     were never approved-or-denied.
     """
-    approved = sum(1 for row in rows if row.state in _APPROVED_LEDGER_STATES)
-    denies = [row for row in rows if row.state is LedgerState.DENIED]
+    let_run = [
+        row
+        for row in rows
+        if row.outcome is ApprovalOutcome.APPROVED and row.action not in _UNCOUNTED_ACTIONS
+    ]
+    approved = len(let_run)
+    denies = [row for row in rows if row.outcome is ApprovalOutcome.DENIED]
     # Timestamps, not datetimes: round-tripped rows may be naive while
     # hand-built ones are aware, and mixed comparison raises.
     latest = max(
@@ -179,12 +183,7 @@ def summarize_history(rows: list[ApprovalLedgerDocument]) -> AutoHistory:
         last_deny_feedback=latest.feedback if latest else None,
         last_deny_at=latest.decided_at if latest else None,
         known_targets=tuple(
-            dict.fromkeys(
-                target
-                for row in rows
-                if row.state in _APPROVED_LEDGER_STATES
-                for target in _target_values(row.args)
-            )
+            dict.fromkeys(target for row in let_run for target in _target_values(row.args))
         )[:20],
     )
 

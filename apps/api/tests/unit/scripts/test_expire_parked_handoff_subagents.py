@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.hil_models import HILApprovalStatus
 from scripts import expire_parked_handoff_subagents as script
 
 
@@ -33,8 +32,8 @@ class TestUnclassifiedExecutorPauses:
             assert query["resumed_at"] is None
             assert query["resume_item"] == {"$ne": None}
             assert query["subagent_resume"] is None
-        assert pending_query["status"] == HILApprovalStatus.PENDING.value
-        assert decided_query["status"] == {"$ne": HILApprovalStatus.PENDING.value}
+        assert pending_query["outcome"] is None
+        assert decided_query["outcome"] == {"$ne": None}
 
     async def test_the_report_names_the_check_that_classifies_them(
         self, capsys: pytest.CaptureFixture[str]

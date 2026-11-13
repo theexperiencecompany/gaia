@@ -13,10 +13,11 @@ from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.tools import BaseTool
 import pytest
 
-from app.models.hil_models import ApprovalProposal, HILApprovalStatus
+from app.models.hil_models import ApprovalProposal
 from app.services.hil import gate
 from app.services.hil.intent import AutoContext, IntentDecision, JudgedCall
 from app.services.hil.utils import GatedCall, unpack_tool_call
+from shared.py.analytics.catalog.hil import ApprovalOutcome
 
 from .conftest import (
     CONVERSATION_ID,
@@ -152,7 +153,7 @@ class TestLivePathResolvesForTheRunsUser:
         assert publish.await_args.args[0].integration_name == INTEGRATION_NAME
 
     async def test_always_allow_stores_the_rule_under_the_servers_key(self) -> None:
-        record = make_record(status=HILApprovalStatus.APPROVED, scope="always_tool")
+        record = make_record(outcome=ApprovalOutcome.APPROVED, scope="always_tool")
         with (
             patch(f"{MODULE}.publish_decision", new=AsyncMock()),
             patch(f"{MODULE}.set_tool_override", new=AsyncMock()) as store,

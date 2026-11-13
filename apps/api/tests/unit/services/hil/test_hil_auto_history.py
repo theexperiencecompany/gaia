@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
-from app.models.hil_models import ApprovalLedgerDocument, LedgerState
+from app.models.hil_models import ApprovalLedgerDocument
 from app.services.hil.intent import (
     AutoContext,
     AutoHistory,
@@ -20,12 +20,14 @@ from app.services.hil.intent import (
     judge_intent,
     summarize_history,
 )
+from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
+from tests.helpers import ledger_facts
 
 MODULE = "app.services.hil.intent"
 USER_TURNS = ["draft an email to bob about the deck", "looks good, send it"]
 
 
-def _row(state: LedgerState, **overrides: Any) -> ApprovalLedgerDocument:
+def _row(state: ApprovalOutcome | ActionResult | None, **overrides: Any) -> ApprovalLedgerDocument:
     return ApprovalLedgerDocument(
         **{
             "approval_id": "ap_x",
@@ -35,7 +37,7 @@ def _row(state: LedgerState, **overrides: Any) -> ApprovalLedgerDocument:
             "tool_name": "send_email",
             "args": {},
             "summary": "s",
-            "state": state,
+            **ledger_facts(state),
             "decided_at": datetime.now(UTC),
             **overrides,
         }
@@ -45,9 +47,9 @@ def _row(state: LedgerState, **overrides: Any) -> ApprovalLedgerDocument:
 def test_counts_and_last_deny_come_from_the_rows() -> None:
     now = datetime.now(UTC)
     rows = [
-        _row(LedgerState.DENIED, feedback="too pricey", decided_at=now),
-        _row(LedgerState.EXECUTED, decided_at=now - timedelta(days=1)),
-        _row(LedgerState.DENIED, feedback="older", decided_at=now - timedelta(days=2)),
+        _row(ApprovalOutcome.DENIED, feedback="too pricey", decided_at=now),
+        _row(ActionResult.EXECUTED, decided_at=now - timedelta(days=1)),
+        _row(ApprovalOutcome.DENIED, feedback="older", decided_at=now - timedelta(days=2)),
     ]
     h = summarize_history(rows)
     assert (h.approved_recent, h.denied_recent) == (1, 2)
@@ -112,9 +114,9 @@ async def test_a_single_deny_blocks_accept_until_an_approval_lands() -> None:
 def test_the_newest_deny_wins_whatever_the_row_order() -> None:
     now = datetime.now(UTC)
     rows = [
-        _row(LedgerState.DENIED, feedback="undated", decided_at=None),
-        _row(LedgerState.DENIED, feedback="older", decided_at=now - timedelta(days=2)),
-        _row(LedgerState.DENIED, feedback="newest", decided_at=now),
+        _row(ApprovalOutcome.DENIED, feedback="undated", decided_at=None),
+        _row(ApprovalOutcome.DENIED, feedback="older", decided_at=now - timedelta(days=2)),
+        _row(ApprovalOutcome.DENIED, feedback="newest", decided_at=now),
     ]
 
     h = summarize_history(rows)
@@ -123,8 +125,8 @@ def test_the_newest_deny_wins_whatever_the_row_order() -> None:
 
 
 def test_known_targets_come_only_from_approved_runs_capped_at_twenty() -> None:
-    approved = [_row(LedgerState.EXECUTED, args={"to": f"friend{i}@x.com"}) for i in range(25)]
-    denied = _row(LedgerState.DENIED, args={"to": "stranger@x.com"})
+    approved = [_row(ActionResult.EXECUTED, args={"to": f"friend{i}@x.com"}) for i in range(25)]
+    denied = _row(ApprovalOutcome.DENIED, args={"to": "stranger@x.com"})
 
     h = summarize_history([denied, *approved])
 

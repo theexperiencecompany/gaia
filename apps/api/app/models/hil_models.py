@@ -1,7 +1,6 @@
 """HIL preference + custom-tool classification documents."""
 
 from datetime import UTC, datetime
-from enum import StrEnum
 from typing import Any, Literal, NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -9,30 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.constants.hil import ApprovalDecision
 from app.models.agent_config import ExecutorRunItem, SubagentResumeItem
 from app.models.document_models import MongoDocument
-
-
-class HILApprovalStatus(StrEnum):
-    """Where one approval stands. ``StrEnum`` because these values are already written
-    to Mongo and streamed to the client as plain strings — the enum names them without
-    changing a single stored document.
-
-    ``AUTO_APPROVED`` means *decided without asking*, and nothing more. It does not mean
-    the call ran: approvals are settled in their own graph node, and every tool — auto
-    or not — is executed afterwards by the tool node.
-    """
-
-    PENDING = "pending"
-    APPROVED = "approved"
-    DENIED = "denied"
-    TIMEOUT = "timeout"
-    ABANDONED = "abandoned"
-    AUTO_APPROVED = "auto_approved"
-
-    @property
-    def settled(self) -> bool:
-        """Whether the decision is final. Every status but ``PENDING`` is."""
-        return self is not HILApprovalStatus.PENDING
-
+from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider, ApprovalOutcome
 
 # The three global approval modes. Launch switch: the default stays
 # ``always_allow`` (HIL off — nothing gated) until we flip it post-launch.
@@ -72,7 +48,7 @@ class HilInterruptPayload(TypedDict, total=False):
 class HilResumeDecision(TypedDict, total=False):
     """The Command(resume=...) value a decided approval wakes its gate with (resolution.py)."""
 
-    status: str
+    outcome: ApprovalOutcome
     feedback: str | None
     scope: str
     approval_id: str
@@ -126,7 +102,9 @@ class HILApprovalRecord(MongoDocument):
     args: dict[str, Any] = Field(default_factory=dict)
     summary: str = ""
     integration_name: str | None = None
-    status: HILApprovalStatus = HILApprovalStatus.PENDING
+    # None while pending.
+    outcome: ApprovalOutcome | None = None
+    decider: ApprovalDecider | None = None
     scope: str = "once"
     feedback: str | None = None
     # Why auto mode ran this without asking (the intent judge's own words). Empty for
@@ -152,14 +130,12 @@ class HILApprovalRecord(MongoDocument):
     def resume_payload(self) -> HilResumeDecision:
         """The Command(resume=...) value this decided record wakes its gate with.
 
-        Abandoned resumes as a denial: the user moved on, the agent must not act.
         approval_id lets a gate sequence match its own decision on replay.
         """
-        status = self.status
+        if self.outcome is None:
+            raise ValueError(f"approval {self.approval_id} is still pending")
         return {
-            "status": HILApprovalStatus.DENIED.value
-            if status is HILApprovalStatus.ABANDONED
-            else status.value,
+            "outcome": self.outcome,
             "feedback": self.feedback,
             "scope": self.scope,
             "approval_id": self.approval_id,
@@ -171,7 +147,7 @@ class HILApprovalUpdate(BaseModel):
 
     Covers the post-creation stamps only — the decision transition itself goes
     through ``HilApprovalRepository.mark_decided`` because it is conditional on
-    ``status == "pending"``, which a plain ``$set`` model cannot express.
+    the record still being pending, which a plain ``$set`` model cannot express.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -192,24 +168,6 @@ class HILToolRiskUpdate(BaseModel):
     is_destructive: bool | None = None
     rationale: str | None = None
     classified_at: datetime | None = None
-
-
-class LedgerState(StrEnum):
-    """Where one ledger approval stands. Separate enum from ``HILApprovalStatus``:
-    the ledger has no expiry/timeout states and adds execution tracking — reusing
-    the old enum would let timeout machinery read ledger rows and vice versa."""
-
-    PENDING = "pending"
-    APPROVED = "approved"
-    DENIED = "denied"
-    REVOKED = "revoked"
-    EXECUTING = "executing"
-    EXECUTED = "executed"
-    FAILED = "failed"
-    UNKNOWN = "unknown"
-
-
-LIVE_LEDGER_STATES = frozenset({LedgerState.PENDING, LedgerState.APPROVED})
 
 
 class ApprovalProposal(BaseModel):
@@ -253,15 +211,30 @@ class ApprovalLedgerDocument(MongoDocument, ApprovalProposal):
     # share it, so exactly one resume per approval. Every further resume needs a
     # fresh user approval (the human is the loop breaker).
     owner_resumed: bool = False
-    state: LedgerState = LedgerState.PENDING
+    # None while pending; written explicitly so the live partial index can match null.
+    outcome: ApprovalOutcome | None = None
+    # What became of an approved action; None until it starts.
+    action: ActionResult | None = None
     feedback: str | None = None
     decided_by: str | None = None
     decided_at: datetime | None = None
     v: int = 0
     created_at: datetime | None = None
-    # When this row entered EXECUTING. The lazy reconciler treats EXECUTING
-    # older than the cutoff as crashed (UNKNOWN) — never blind-retried.
+    # When the action started executing. The lazy reconciler treats an action still
+    # executing past the cutoff as crashed (unknown) — never blind-retried.
     executing_started_at: datetime | None = None
+
+    @property
+    def standing(self) -> str:
+        """Where the row stands in one word, for the model and logs; never stored."""
+        return str(self.action or self.outcome or "pending")
+
+    @property
+    def live(self) -> bool:
+        """Whether the row still holds its call: undecided, or approved and not yet started."""
+        return self.outcome is None or (
+            self.outcome is ApprovalOutcome.APPROVED and self.action is None
+        )
 
 
 # What a bot user's chat reply to pending approvals resolves to (services/hil/conversational.py).

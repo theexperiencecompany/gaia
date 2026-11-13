@@ -106,7 +106,7 @@ from app.models.conversation_log_models import (
     WorkStarted,
 )
 from app.models.conversation_send_models import SendMessageRequest
-from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
+from app.models.hil_models import HILApprovalRecord
 from app.models.message_models import ReplyToMessageData
 from app.models.playbook_models import PlaybookDocument, ToolStep
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
@@ -179,6 +179,7 @@ from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.chat import ChatMessageCancelled, ChatMessageCompleted
+from shared.py.analytics.catalog.hil import ApprovalOutcome
 from shared.py.analytics.catalog.workflows import WorkflowExecuted
 from shared.py.analytics.context import (
     AnalyticsContext,
@@ -758,7 +759,7 @@ async def test_work_waiting_on_an_expired_approval_is_settled_once_and_its_recor
     record = await hil_approval_repository.get("a1")
     assert [(d.approval_id, d.decision) for d in decided] == [("a1", "timeout")]
     assert [(f.task_id, f.outcome) for f in finished] == [("t1", WorkOutcome.FAILED)]
-    assert record is not None and record.status is not HILApprovalStatus.PENDING
+    assert record is not None and record.outcome is not None
 
 
 @pytest.mark.service
@@ -2074,7 +2075,7 @@ async def test_a_resumed_run_carries_the_identity_the_approval_gate_needs(
         conversation_id=rig.conversation_id,
         stream_id=paused_with["stream_id"],
         tool_name="send_email",
-        status=HILApprovalStatus.APPROVED,
+        outcome=ApprovalOutcome.APPROVED,
         expires_at=datetime.now(UTC) + timedelta(minutes=15),
         resume_item=dict(
             build_run_item(

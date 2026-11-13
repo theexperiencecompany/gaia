@@ -199,7 +199,7 @@ PENDING_EMAIL = GatedApproval(
 class TestTheAutoApprovalReceipt:
     """auto mode ALREADY RAN the action without asking, so its record is born decided.
 
-    The repository contract test proves a record with status="auto_approved" resists
+    The repository contract test proves a record auto mode approved resists
     every decision and every sweep — but it builds that record itself, with the status
     hardcoded in the test; nothing checked that the service writes one. Born pending, an
     irreversible action that already happened would show a live Approve/Deny card, be
@@ -215,7 +215,9 @@ class TestTheAutoApprovalReceipt:
             )
 
         record = written_record(repository)
-        assert record.status == "auto_approved", "a pending receipt is a card for a done action"
+        assert (record.outcome, record.decider) == ("approved", "auto"), (
+            "a pending receipt is a card for a done action"
+        )
         assert record.decided_at is not None, "no decision is coming; it must already be stamped"
         assert record.auto_reason == "you said send the deck to bob", (
             "the receipt is the only place the user learns WHY this ran unasked"
@@ -234,7 +236,7 @@ class TestThePendingApprovalRecord:
             )
 
         record = written_record(repository)
-        assert record.status == "pending"
+        assert record.outcome is None
         assert record.expires_at > datetime.now(UTC), "born expired"
         window = (record.expires_at - record.created_at).total_seconds()
         assert window == pytest.approx(HIL_APPROVAL_TIMEOUT_SECONDS, abs=1)

@@ -51,10 +51,11 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
-from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
+from app.models.hil_models import HILApprovalRecord
 from app.services.conversation.runtime import install_runtime_ports
 from app.utils import background_tasks
 from app.utils.agent_utils import IntegrationMetadata
+from shared.py.analytics.catalog.hil import ApprovalOutcome
 from shared.py.wide_events import log
 from tests.helpers import WideEventRecorder, captured_wide_event
 from tests.unit.services.conversation.log_helpers import user
@@ -474,7 +475,7 @@ class TestABackgroundRunThatParks:
     async def test_a_decision_that_beat_the_park_resumes_it_at_once(
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:
-        decided = make_record(approval_id="appr-1", status=HILApprovalStatus.APPROVED)
+        decided = make_record(approval_id="appr-1", outcome=ApprovalOutcome.APPROVED)
         execute = AsyncMock(side_effect=[self._paused(), SubagentOutcome(text="sent")])
         with (
             patch(f"{MODULE}.execute_subagent_stream", new=execute),
@@ -967,7 +968,7 @@ class TestWhatAParkedRunSays:
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:
         pending = make_record(approval_id="a1")
-        decided = make_record(approval_id="a2", status=HILApprovalStatus.APPROVED)
+        decided = make_record(approval_id="a2", outcome=ApprovalOutcome.APPROVED)
 
         execute, resumed = await self._park({"approval_ids": ["a1", "a2"]}, pending, decided)
 

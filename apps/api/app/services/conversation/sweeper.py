@@ -21,11 +21,9 @@ from app.constants.conversation import (
     SWEEP_BATCH,
     WORK_LOST_REPORT,
 )
-from app.constants.hil import ApprovalResolution
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.conversation_log import SweepHead, conversation_log_repository
 from app.models.conversation_log_models import ApprovalRequested, LiveWork, WorkOutcome
-from app.models.hil_models import HILApprovalStatus, LedgerState
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.work_log import (
@@ -36,6 +34,7 @@ from app.services.conversation.work_log import (
 from app.services.hil.approvals_store import get_approval
 from app.services.hil.ledger_decide import cancel_ledger_approvals
 from app.services.hil.resolution import cancel_conversation_approvals
+from shared.py.analytics.catalog.hil import ApprovalOutcome, UndecidedOutcome
 from shared.py.wide_events import log
 
 
@@ -119,10 +118,10 @@ async def _settle_undecidable(
     for approval_id in sorted(work.pending_approvals):
         expires_at = expiries.get(approval_id)
         expired = expires_at is not None and expires_at + APPROVAL_EXPIRY_GRACE < clock()
-        decision = await _undecidable_as(conversation_id, user_id, approval_id, expired=expired)
-        if decision is None:
+        outcome = await _undecidable_as(conversation_id, user_id, approval_id, expired=expired)
+        if outcome is None:
             continue
-        await record_approval_decided(conversation_id, user_id, approval_id, decision)
+        await record_approval_decided(conversation_id, user_id, approval_id, outcome, None)
         settled += 1
     report.undecidable_approvals += settled
     if settled == len(work.pending_approvals):
@@ -137,12 +136,15 @@ async def _settle_undecidable(
 
 async def _undecidable_as(
     conversation_id: str, user_id: str, approval_id: str, *, expired: bool
-) -> ApprovalResolution | None:
-    """Return how an approval nobody can decide settles, closing its record; None while one still can."""
+) -> UndecidedOutcome | None:
+    """Return how an approval nobody can decide ends, closing its record; None while one still can.
+
+    Expired when it ran out of time; withdrawn when neither store holds it, so its run is gone.
+    """
     barrier = await get_approval(approval_id)
     ledger = await approval_ledger_repository.get_by_approval_id(approval_id)
-    pending = (barrier is not None and barrier.status is HILApprovalStatus.PENDING) or (
-        ledger is not None and ledger.state is LedgerState.PENDING
+    pending = (barrier is not None and barrier.outcome is None) or (
+        ledger is not None and ledger.outcome is None
     )
     if pending and not expired:
         return None
@@ -150,6 +152,11 @@ async def _undecidable_as(
         if not pending:
             # Decided in its store: that decision's own path logs it and resumes the work.
             return None
-        await cancel_conversation_approvals(conversation_id, user_id, [approval_id])
-        await cancel_ledger_approvals(conversation_id, user_id, [approval_id])
-    return "timeout" if expired else "abandon"
+        await cancel_conversation_approvals(
+            conversation_id, user_id, [approval_id], ApprovalOutcome.EXPIRED
+        )
+        await cancel_ledger_approvals(
+            conversation_id, user_id, [approval_id], ApprovalOutcome.EXPIRED
+        )
+        return ApprovalOutcome.EXPIRED
+    return ApprovalOutcome.EXPIRED if expired else ApprovalOutcome.WITHDRAWN

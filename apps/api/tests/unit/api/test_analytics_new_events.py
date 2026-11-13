@@ -17,7 +17,7 @@ from starlette.requests import Request
 from app.agents.skills.models import Skill, SkillAuthor, SkillSource
 from app.constants.memory import MemoryDocType
 from app.models.files_models import FileDocument
-from app.models.hil_models import ApprovalLedgerDocument, LedgerState
+from app.models.hil_models import ApprovalLedgerDocument
 from app.models.integration_models import Integration
 from app.models.memory_models import MemoryDocument
 from app.models.notification.notification_models import NotificationRecord
@@ -41,7 +41,10 @@ from shared.py.analytics.catalog.chat import (
     ImageGenerated,
 )
 from shared.py.analytics.catalog.devices import DeviceApproved, DeviceRevoked
-from shared.py.analytics.catalog.hil import ApprovalDecided
+from shared.py.analytics.catalog.hil import (
+    ApprovalDecided,
+    ApprovalOutcome,
+)
 from shared.py.analytics.catalog.integrations import (
     IntegrationConnectInitiated,
     IntegrationCustomDeleted,
@@ -649,8 +652,8 @@ def _ledger_decision(*, committed: bool, stale: bool = False) -> LedgerDecision:
     return LedgerDecision(
         committed=committed,
         approval_id="ap_1",
-        prior_state=LedgerState.PENDING,
-        state=LedgerState.APPROVED if committed else LedgerState.PENDING,
+        outcome=ApprovalOutcome.APPROVED if committed else None,
+        action=None,
         stale=stale,
     )
 

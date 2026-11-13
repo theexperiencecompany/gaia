@@ -11,11 +11,14 @@ from typing import Final, Literal
 
 from app.constants.cache import EXECUTOR_BUSY_TTL
 from app.constants.general import FINISH_TASK_NAME
+from shared.py.analytics.catalog.hil import ApprovalOutcome, DecidedOutcome
 
-# What a user decides on a pending approval.
+# What a user decides on a pending approval, and the outcome each decision ends it with.
 ApprovalDecision = Literal["approve", "deny"]
-# How a pending approval closes: the user's decision, or a timeout or abandon the system assigns.
-ApprovalResolution = Literal[ApprovalDecision, "timeout", "abandon"]
+DECISION_OUTCOME: Final[dict[ApprovalDecision, DecidedOutcome]] = {
+    "approve": ApprovalOutcome.APPROVED,
+    "deny": ApprovalOutcome.DENIED,
+}
 
 # The launch switch is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (the
 # default mode is a HILPreferences field default, so it lives with the model).
@@ -107,11 +110,6 @@ class ReplyChoice(StrEnum):
     LEAVE = "leave"
     UNRELATED = "unrelated"
 
-
-# Statuses meaning "decided, so the paused run must be re-dispatched" — the
-# sweep's crashed-resume pass matches on these. "auto_approved" is absent: it
-# never paused, so it has no run to resume.
-HIL_UNRESUMED_SWEEP_STATUSES: tuple[str, ...] = ("approved", "denied", "timeout", "abandoned")
 
 # How much of a call's arguments the deterministic one-line summary shows.
 HIL_SUMMARY_MAX_ARGS = 2

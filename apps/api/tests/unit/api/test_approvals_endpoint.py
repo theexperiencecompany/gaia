@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.models.hil_models import HILMode, HILPreferences, LedgerState
+from app.models.hil_models import HILMode, HILPreferences
 from app.schemas.hil_schemas import ApprovalDecisionRequest, BatchDecisionOutcome
 from app.services.hil import resolution
 from app.services.hil.ledger_decide import LedgerDecision
@@ -19,6 +19,8 @@ from app.services.hil.resolution import (
     ApprovalRequestForbiddenError,
     ApprovalRequestNotFoundError,
 )
+from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
+from tests.helpers import ledger_facts
 
 APPROVALS_BASE = "/api/v1/approvals"
 USER_ID = "507f1f77bcf86cd799439011"
@@ -47,7 +49,7 @@ class TestPostApprovalDecision:
             json={"decision": "approve", "feedback": "looks good", "scope": "always_tool"},
         )
         assert resp.status_code == 200
-        assert resp.json() == {"success": True, "reason": None, "status": None}
+        assert resp.json() == {"success": True, "reason": None, "outcome": None, "action": None}
         mock_resolve.assert_awaited_once_with(
             approval_id="a1",
             user_id=USER_ID,
@@ -60,7 +62,7 @@ class TestPostApprovalDecision:
     async def test_deny_decision_is_relayed(self, mock_resolve: AsyncMock, client: AsyncClient):
         resp = await client.post(f"{APPROVALS_BASE}/a1/decision", json={"decision": "deny"})
         assert resp.status_code == 200
-        assert resp.json() == {"success": True, "reason": None, "status": None}
+        assert resp.json() == {"success": True, "reason": None, "outcome": None, "action": None}
         mock_resolve.assert_awaited_once_with(
             approval_id="a1",
             user_id=USER_ID,
@@ -164,7 +166,8 @@ class TestPostBatchDecision:
             "approval_id": "a2",
             "resolved": False,
             "reason": "not_found",
-            "status": None,
+            "outcome": None,
+            "action": None,
         }
 
     async def test_empty_decisions_is_rejected(self, client: AsyncClient):
@@ -381,8 +384,8 @@ class TestLedgerDecisionRouting:
         mock_decide.return_value = LedgerDecision(
             committed=True,
             approval_id="ap_1",
-            prior_state=LedgerState.PENDING,
-            state=LedgerState.APPROVED,
+            outcome=ApprovalOutcome.APPROVED,
+            action=None,
         )
         with patch("app.api.v1.endpoints.approvals.log") as log:
             resp = await client.post(
@@ -390,7 +393,12 @@ class TestLedgerDecisionRouting:
                 json={"decision": "approve", "feedback": "go ahead", "v": 3},
             )
         assert resp.status_code == 200
-        assert resp.json() == {"success": True, "reason": None, "status": "approved"}
+        assert resp.json() == {
+            "success": True,
+            "reason": None,
+            "outcome": "approved",
+            "action": None,
+        }
         mock_flag.assert_awaited_once_with(USER_ID)
         mock_decide.assert_awaited_once_with(
             "ap_1",
@@ -432,14 +440,14 @@ class TestLedgerDecisionRouting:
             LedgerDecision(
                 committed=True,
                 approval_id="ap_1",
-                prior_state=LedgerState.PENDING,
-                state=LedgerState.APPROVED,
+                outcome=ApprovalOutcome.APPROVED,
+                action=None,
             ),
             LedgerDecision(
                 committed=False,
                 approval_id="ap_2",
-                prior_state=LedgerState.APPROVED,
-                state=LedgerState.APPROVED,
+                outcome=ApprovalOutcome.APPROVED,
+                action=None,
             ),
         ]
         with patch("app.api.v1.endpoints.approvals.log") as log:
@@ -480,15 +488,20 @@ class TestLedgerAutoPolicyParity:
         mock_decide.return_value = LedgerDecision(
             committed=False,
             approval_id="ap_1",
-            prior_state=LedgerState.APPROVED,
-            state=LedgerState.APPROVED,
+            outcome=ApprovalOutcome.APPROVED,
+            action=None,
             stale=True,
         )
         resp = await client.post(
             f"{APPROVALS_BASE}/ap_1/decision", json={"decision": "approve", "v": 0}
         )
         assert resp.status_code == 200
-        assert resp.json() == {"success": False, "reason": "stale", "status": "approved"}
+        assert resp.json() == {
+            "success": False,
+            "reason": "stale",
+            "outcome": "approved",
+            "action": None,
+        }
         mock_resolve.assert_not_awaited()
 
 
@@ -504,20 +517,25 @@ class TestLedgerStaleVersionHonesty:
         mock_decide.return_value = LedgerDecision(
             committed=False,
             approval_id="ap_1",
-            prior_state=LedgerState.APPROVED,
-            state=LedgerState.APPROVED,
+            outcome=ApprovalOutcome.APPROVED,
+            action=None,
         )
         resp = await client.post(
             f"{APPROVALS_BASE}/ap_1/decision", json={"decision": "approve", "v": 0}
         )
         assert resp.status_code == 200
-        assert resp.json() == {"success": False, "reason": "not_found", "status": "approved"}
+        assert resp.json() == {
+            "success": False,
+            "reason": "not_found",
+            "outcome": "approved",
+            "action": None,
+        }
 
 
-def _decision(state: LedgerState, *, committed: bool = True) -> LedgerDecision:
-    return LedgerDecision(
-        committed=committed, approval_id="ap_1", prior_state=LedgerState.PENDING, state=state
-    )
+def _decision(
+    state: ApprovalOutcome | ActionResult | None, *, committed: bool = True
+) -> LedgerDecision:
+    return LedgerDecision(committed=committed, approval_id="ap_1", **ledger_facts(state))
 
 
 @patch("app.api.v1.endpoints.approvals.decide_ledger_card", new_callable=AsyncMock)
@@ -532,12 +550,17 @@ class TestLedgerAlwaysToolScope:
     async def test_the_scope_reaches_the_ledger_decision(
         self, mock_flag: AsyncMock, mock_decide: AsyncMock, client: AsyncClient
     ):
-        mock_decide.return_value = _decision(LedgerState.APPROVED)
+        mock_decide.return_value = _decision(ApprovalOutcome.APPROVED)
         resp = await client.post(
             f"{APPROVALS_BASE}/ap_1/decision",
             json={"decision": "approve", "scope": "always_tool", "v": 0},
         )
-        assert resp.json() == {"success": True, "reason": None, "status": "approved"}
+        assert resp.json() == {
+            "success": True,
+            "reason": None,
+            "outcome": "approved",
+            "action": None,
+        }
         mock_decide.assert_awaited_once_with(
             "ap_1",
             user_id=USER_ID,

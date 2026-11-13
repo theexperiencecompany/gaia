@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain.agents.middleware.types import ToolCallRequest
 
 from app.constants.hil import HIL_STATUS_KWARG
-from app.models.hil_models import HILApprovalStatus, HILPreferences
+from app.models.hil_models import HILPreferences
 from app.services.hil import gate
-from app.services.hil.bridge import ApprovalOutcome
+from app.services.hil.bridge import GateVerdict
 from app.services.hil.intent import (
     AutoContext,
     AutoHistory,
@@ -24,6 +24,7 @@ from app.services.hil.intent import (
     judge_intent,
 )
 from app.services.hil.utils import PriorCall, unpack_tool_call
+from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
 
 from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_request, make_tool
 
@@ -284,7 +285,9 @@ async def test_ask_carries_auto_mode_reason_to_card_and_model() -> None:
 
 async def test_remembered_auto_reject_refuses_a_retry_without_rejudge_or_card() -> None:
     ledger = _auto_ledger()
-    declined = ApprovalOutcome(status=HILApprovalStatus.DENIED, feedback="stop spamming", auto=True)
+    declined = GateVerdict(
+        outcome=ApprovalOutcome.DENIED, feedback="stop spamming", decider=ApprovalDecider.AUTO
+    )
     with (
         patch("app.services.hil.gate.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
         patch("app.services.hil.gate.resolve_policy", new=AsyncMock(return_value="auto")),

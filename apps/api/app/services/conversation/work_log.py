@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from app.agents.core.background.executor_queue import get_lock_holder, parse_lock_value
-from app.constants.hil import ApprovalResolution
 from app.models.agent_config import StepTurnRef
 from app.models.conversation_log_models import (
     ApprovalDecided,
@@ -26,6 +25,7 @@ from app.services.conversation.log import accept, publish_appended
 from app.services.conversation.ports import ClaimLost, EntryRejected
 from app.services.conversation.reply_analytics import capture_unanswered_stop, stopped_waking
 from app.services.conversation.runtime import runtime_ports
+from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
 from shared.py.wide_events import log
 
 
@@ -154,11 +154,18 @@ async def approvals_awaited_by(
 
 
 async def record_approval_decided(
-    conversation_id: str, user_id: str, approval_id: str, decision: ApprovalResolution
+    conversation_id: str,
+    user_id: str,
+    approval_id: str,
+    outcome: ApprovalOutcome,
+    decider: ApprovalDecider | None,
 ) -> None:
     """Append ApprovalDecided: it releases live work waiting on it, and causes the work a decision starts later."""
     entry = ApprovalDecided(
-        id=f"approval:{approval_id}:decided", approval_id=approval_id, decision=decision
+        id=f"approval:{approval_id}:decided",
+        approval_id=approval_id,
+        outcome=outcome,
+        decider=decider,
     )
     await accept(runtime_ports(), conversation_id, user_id, entry)
 

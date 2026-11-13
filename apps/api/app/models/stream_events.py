@@ -54,7 +54,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.models.chat_models import MessageReaction
-from app.models.hil_models import HILApprovalStatus
+from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider, ApprovalOutcome
 
 # ---------------------------------------------------------------------------
 # Structured payloads (wrapped in a one-word envelope key at the emit site)
@@ -100,7 +100,11 @@ class ApprovalRequestEntryData(BaseModel):
     summary: str
     # The gated call's own arguments — arbitrary LLM-authored JSON, no fixed schema.
     args_preview: dict[str, Any]
-    status: HILApprovalStatus
+    # How the approval ended (None while pending), who decided, and what the action did.
+    # The card's label is read from these; nothing stores a label.
+    outcome: ApprovalOutcome | None
+    decider: ApprovalDecider | None = None
+    action: ActionResult | None = None
     feedback: str | None
     auto_reason: str | None
     timeout_seconds: int

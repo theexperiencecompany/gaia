@@ -1,7 +1,7 @@
 """Durable persistence for HIL approval records (Mongo hil_approvals).
 
 The decision source of truth. A pending record is written when the gate asks for
-approval and transitioned to a terminal status exactly once when a decision
+approval and given its outcome exactly once when a decision
 arrives — the one-time guarantee is a conditional pending -> decided update,
 so a duplicate or racing decision cannot double-resolve the same request.
 
@@ -14,12 +14,13 @@ creates a second record nor resets a decided one.
 from datetime import UTC, datetime, timedelta
 from uuid import NAMESPACE_URL, uuid5
 
-from app.constants.hil import HIL_APPROVAL_TIMEOUT_SECONDS, HIL_UNRESUMED_SWEEP_STATUSES
+from app.constants.hil import HIL_APPROVAL_TIMEOUT_SECONDS
 from app.db.repositories.hil import hil_approval_repository
 from app.models.agent_config import SubagentResumeItem
 from app.models.agent_models import ExecutorRunItem
-from app.models.hil_models import HILApprovalRecord, HILApprovalStatus, HILApprovalUpdate
+from app.models.hil_models import HILApprovalRecord, HILApprovalUpdate
 from app.services.hil.utils import GatedApproval
+from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
 
 
 def approval_id_for(conversation_id: str, tool_call_id: str) -> str:
@@ -82,7 +83,8 @@ async def record_auto_approval(approval: GatedApproval, *, reason: str) -> None:
         args=approval.tool_call.args,
         summary=approval.summary,
         integration_name=approval.integration_name,
-        status=HILApprovalStatus.AUTO_APPROVED,
+        outcome=ApprovalOutcome.APPROVED,
+        decider=ApprovalDecider.AUTO,
         auto_reason=reason,
         decided_at=now,
         created_at=now,
@@ -98,20 +100,20 @@ async def get_approval(approval_id: str) -> HILApprovalRecord | None:
 
 async def mark_decided(
     approval_id: str,
-    status: HILApprovalStatus,
+    outcome: ApprovalOutcome,
     *,
     feedback: str | None,
     scope: str,
     decided_by: str | None,
 ) -> bool:
-    """Transition a pending record to a terminal status, exactly once.
+    """Give a pending record its outcome, exactly once.
 
     Returns True if this call performed the transition, False if the
     record was missing or already decided — the caller uses this to enforce
     one-time resolution before resuming the paused run.
     """
     return await hil_approval_repository.mark_decided(
-        approval_id, status, feedback=feedback, scope=scope, decided_by=decided_by
+        approval_id, outcome, feedback=feedback, scope=scope, decided_by=decided_by
     )
 
 
@@ -158,9 +160,7 @@ async def list_decided_unresumed(grace_seconds: float) -> list[HILApprovalRecord
 
     Covers a crash between the decided transition and the run spawn.
     """
-    return await hil_approval_repository.list_decided_unresumed(
-        list(HIL_UNRESUMED_SWEEP_STATUSES), grace_seconds
-    )
+    return await hil_approval_repository.list_decided_unresumed(grace_seconds)
 
 
 async def list_pending_for_conversation(conversation_id: str) -> list[HILApprovalRecord]:

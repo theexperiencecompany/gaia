@@ -25,6 +25,7 @@ from app.agents.tools.execute.execute_tool import build_execute_tool, execute
 from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.constants.execute import EXECUTE_TOOL_NAME
 from app.models.execute_models import DispatchError, DispatchErrorKind
+from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
 
 MODULE = "app.agents.tools.execute.execute_tool"
 SENT_AT = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)
@@ -58,11 +59,14 @@ class TestDispatchTicketNames:
     async def test_approve_routes_to_redeem_not_resolve(self) -> None:
         from app.agents.tools.execute import dispatch as dispatch_module
         from app.agents.tools.execute.dispatch import dispatch_tool
-        from app.models.hil_models import LedgerState
         from app.services.hil.ledger_decide import RedeemResult
 
         redeemed = RedeemResult(
-            ok=True, approval_id="ap_1", state=LedgerState.EXECUTED, detail="sent"
+            ok=True,
+            approval_id="ap_1",
+            outcome=ApprovalOutcome.APPROVED,
+            action=ActionResult.EXECUTED,
+            detail="sent",
         )
         with (
             patch.object(dispatch_module, "resolve_tool", new=AsyncMock()) as resolve,
@@ -159,11 +163,14 @@ class TestDispatchTicketNames:
         """Control-plane ops belong to no provider space: a scoped subagent redeems its own ticket even though 'approve' is in no registry."""
         from app.agents.tools.execute import dispatch as dispatch_module
         from app.agents.tools.execute.dispatch import dispatch_tool
-        from app.models.hil_models import LedgerState
         from app.services.hil.ledger_decide import RedeemResult
 
         redeemed = RedeemResult(
-            ok=True, approval_id="ap_1", state=LedgerState.EXECUTED, detail="sent"
+            ok=True,
+            approval_id="ap_1",
+            outcome=ApprovalOutcome.APPROVED,
+            action=ActionResult.EXECUTED,
+            detail="sent",
         )
         with (
             patch(

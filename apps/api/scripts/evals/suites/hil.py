@@ -34,9 +34,9 @@ and multi-step requests where the agent has to restate what it is about to do, o
 ask one question, before acting. Those run with mode: always_allow and are
 gated on what was said and on what was NOT called.
 
-The approval statuses a case gates on (cards) are what the events showed, in
-order: pending when requested, then the decision, or a card's own status when the
-gate settled it without asking (auto_approved).
+The approval outcomes a case gates on (cards) are what the events showed, in
+order: pending when requested, then how it ended, or a card's own outcome when the
+gate settled it without asking (auto_decided counts those).
 """
 
 from __future__ import annotations
@@ -258,8 +258,8 @@ class HilTransport:
             return
         reader = waiting[-1]
         turn = reader.turn()
-        latest = {seen.approval_id: seen.status for seen in turn.approvals}
-        pending = next(ap for ap, status in latest.items() if status == PENDING)
+        latest = {seen.approval_id: seen.outcome for seen in turn.approvals}
+        pending = next(ap for ap, outcome in latest.items() if outcome == PENDING)
         resp = await client.post(
             _url(f"/approvals/{pending}/decision"),
             json={
@@ -315,7 +315,15 @@ class HilTransport:
         projected: dict[str, Any] = {}
         for key in wanted:
             if key == "cards":
-                projected[key] = [str(card.get("status")) for card in cards]
+                projected[key] = [str(card.get("outcome")) for card in cards]
+            elif key == "auto_decided":
+                projected[key] = len(
+                    {
+                        str(card.get("approval_id"))
+                        for card in cards
+                        if card.get("decider") == "auto"
+                    }
+                )
             elif key == "approvals":
                 projected[key] = len({str(card.get("approval_id")) for card in cards})
             elif key == "todos_containing":

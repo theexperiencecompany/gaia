@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from app.constants.hil import ApprovalDecision
 from app.models.hil_models import ApprovalScope, HILMode, HILPreferences
 from app.schemas.common import ResponseModel
+from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
 
 
 class ApprovalDecisionRequest(BaseModel):
@@ -22,11 +23,12 @@ class ApprovalDecisionResponse(BaseModel):
     """Result of relaying an approval decision to the awaiting gate."""
 
     success: bool
-    # Ledger path only: why success is False ("stale" — refresh the row from
-    # status instead of retrying) and the row's current state. Old path leaves
-    # both unset; a committed ledger tap sets status to the decided state.
+    # Ledger path only: why success is False ("stale" — refresh the row instead of
+    # retrying) and the row's outcome and action. Old path leaves them unset; a
+    # committed ledger tap carries the outcome it committed.
     reason: str | None = None
-    status: str | None = None
+    outcome: ApprovalOutcome | None = None
+    action: ActionResult | None = None
 
 
 class BatchDecisionItem(BaseModel):
@@ -53,9 +55,10 @@ class BatchDecisionOutcome(BaseModel):
     # Set when resolved is False: "not_found" (already decided/expired),
     # "forbidden", or "not_resumable".
     reason: str | None = None
-    # Current ledger state when a ledger item did not commit (stale client
-    # refreshes the row instead of retrying blind). Old path leaves it unset.
-    status: str | None = None
+    # The row's outcome and action when a ledger item did not commit (a stale
+    # client refreshes the row instead of retrying blind). Old path leaves them unset.
+    outcome: ApprovalOutcome | None = None
+    action: ActionResult | None = None
 
 
 class BatchApprovalDecisionResponse(BaseModel):

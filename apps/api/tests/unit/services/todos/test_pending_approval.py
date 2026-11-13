@@ -9,7 +9,6 @@ from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.models.hil_models import LedgerState
 from app.models.todo_models import TodoDocument
 
 MODULE = "app.services.todos.todo_service"
@@ -32,7 +31,8 @@ def _row(owner_id: str = "todo-1", **overrides: Any) -> MagicMock:
     row.approval_id = "ap_1"
     row.conversation_id = "conv-9"
     row.owner_id = owner_id
-    row.state = LedgerState.PENDING
+    row.outcome = None
+    row.action = None
     for key, value in overrides.items():
         setattr(row, key, value)
     return row
