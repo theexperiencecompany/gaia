@@ -37,22 +37,29 @@ from app.agents.core.background import (
     todo_run,
     todo_run_delivery,
 )
+from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_lock_value,
+    build_run_item,
     keep_alive,
     try_acquire_lock,
 )
-from app.agents.core.background.executor_runner import deliver_to_executor
+from app.agents.core.background.executor_runner import (
+    deliver_to_executor,
+    wake_executor_for_inbox,
+)
 from app.agents.core.background.result_delivery import deliver_message_to_conversation
-from app.agents.core.background.session import ExecutorRun
+from app.agents.core.background.session import ExecutorRun, RunIdentity, RunKind
 from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_executor
 from app.agents.core.background.todo_run_delivery import report_form_of
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.agents.core.graph_manager import GraphManager
+from app.agents.core.subagents.subagent_runner import prepare_executor_execution
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.run_record import append_call
 from app.config.settings import settings
+from app.constants.agents import AgentTag
 from app.constants.browser import HandoffDecision, HandoffStatus
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
@@ -155,6 +162,8 @@ from app.services.conversation.work_log import (
 )
 from app.services.conversation_stop_service import press_stop
 from app.services.delivery.chat_channel import ChatChannel
+from app.services.hil import resolution
+from app.services.hil.gate import GateContext, read_gate_context
 from app.services.workflow import thread_reset
 from app.services.workflow.conversation_service import log_playbook_run
 from app.services.workflow.execution_service import WorkflowFireOverlapped, WorkflowTurnFailed
@@ -189,6 +198,7 @@ from tests.integration.real.test_comms_runner_real import (
 )
 from tests.unit.services.conversation.log_helpers import workflow_run
 from tests.unit.services.conversation.runtime_doubles import ScriptedApprovals
+from tests.unit.services.hil.conftest import make_request
 
 EntryT = TypeVar("EntryT")
 _SETTLE_SECONDS = 30.0
@@ -1945,6 +1955,135 @@ async def test_every_comms_run_carries_the_identity_the_approval_gate_needs(
     assert configurable.get("stream_id")
     assert configurable.get("user_id") == rig.user_id
     assert configurable.get("conversation_id") == rig.conversation_id
+
+
+@dataclass
+class _Runs:
+    """The executor runs a path started, by the configurable each was handed."""
+
+    configurables: list[AgentConfigurable] = field(default_factory=list)
+
+    async def run(
+        self,
+        run: ExecutorRun,
+        task: str,
+        configurable: AgentConfigurable,
+        resume: object = None,
+    ) -> None:
+        self.configurables.append(configurable)
+
+    def spawn(self, prepared: PreparedQueuedTask, conversation_id: str) -> None:
+        self.configurables.append(prepared.configurable)
+
+
+async def _executor_gate_context(configurable: AgentConfigurable) -> GateContext | None:
+    """Return what the approval gate reads inside the executor run built from configurable."""
+    ctx, error = await prepare_executor_execution(
+        task="carry on", configurable=configurable, stream_id=configurable.get("stream_id")
+    )
+    assert ctx is not None, error
+    return read_gate_context(make_request(configurable=dict(agent_configurable(ctx.config))))
+
+
+async def _ticket(rig: Rig) -> None:
+    await deliver_to_executor(
+        rig.conversation_id, AuthenticatedUser(user_id=rig.user_id), "APPROVAL_READY a1"
+    )
+
+
+async def _subagent_landing(rig: Rig) -> None:
+    await deliver_to_executor(
+        rig.conversation_id,
+        AuthenticatedUser(user_id=rig.user_id),
+        "the subagent found 3 flights",
+        tag=AgentTag.SUBAGENT_RESULT,
+    )
+
+
+async def _browser_wake(rig: Rig) -> None:
+    await ExecutorInbox(rig.conversation_id).append("job-1", "the browser task finished")
+    await wake_executor_for_inbox(rig.conversation_id, AuthenticatedUser(user_id=rig.user_id))
+
+
+@pytest.mark.service
+@pytest.mark.parametrize(
+    "start",
+    [_ticket, _subagent_landing, _browser_wake],
+    ids=["approved_ticket", "subagent_landing", "browser_wake"],
+)
+async def test_every_post_turn_run_carries_the_identity_the_approval_gate_needs(
+    rig_for: RigFactory, start: Callable[[Rig], Awaitable[None]]
+) -> None:
+    rig = await rig_for(gated("ok"))
+    await rig.send("m1", "find me flights")
+    await rig.settle()
+    runs = _Runs()
+    with patch.object(executor_runner, "_spawn_detached_run", runs.spawn):
+        await start(rig)
+    [configurable] = runs.configurables
+    context = await _executor_gate_context(configurable)
+    assert context is not None
+    assert (context.user_id, context.conversation_id) == (rig.user_id, rig.conversation_id)
+    assert context.stream_id
+
+
+@pytest.mark.service
+async def test_a_todo_run_carries_the_identity_the_approval_gate_needs(
+    rig_for: RigFactory,
+) -> None:
+    runs = _Runs()
+    todo = _todo_doc("owner")
+    async with _todo_rig(rig_for, gated("ok"), todo, runs.run) as (rig, _delivery):
+        await run_todo_on_executor(_todo_request(rig, todo))
+    [configurable] = runs.configurables
+    context = await _executor_gate_context(configurable)
+    assert context is not None
+    assert (context.user_id, context.conversation_id) == (rig.user_id, rig.conversation_id)
+    assert context.stream_id
+
+
+@pytest.mark.service
+async def test_a_resumed_run_carries_the_identity_the_approval_gate_needs(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated("ok"))
+    await rig.send("m1", "send the invoice")
+    await rig.settle()
+    paused = _Runs()
+    with patch.object(executor_runner, "_spawn_detached_run", paused.spawn):
+        await _ticket(rig)
+    [paused_with] = paused.configurables
+    record = HILApprovalRecord(
+        approval_id="a1",
+        user_id=rig.user_id,
+        conversation_id=rig.conversation_id,
+        stream_id=paused_with["stream_id"],
+        tool_name="send_email",
+        status=HILApprovalStatus.APPROVED,
+        expires_at=datetime.now(UTC) + timedelta(minutes=15),
+        resume_item=dict(
+            build_run_item(
+                task="send the invoice",
+                configurable=paused_with,
+                identity=RunIdentity(
+                    stream_id=paused_with["stream_id"],
+                    conversation_id=rig.conversation_id,
+                    kind=RunKind.QUEUED,
+                    task_id="t-paused",
+                    user_message_id=None,
+                ),
+            )
+        ),
+    )
+    resumed = _Runs()
+    with patch.object(resolution, "run_executor_background", resumed.run):
+        await resolution._dispatch_resume(record)
+        await asyncio.gather(*resolution._resume_tasks)
+    [configurable] = resumed.configurables
+    context = await _executor_gate_context(configurable)
+    assert context is not None
+    assert (context.user_id, context.conversation_id) == (rig.user_id, rig.conversation_id)
+    assert context.stream_id
 
 
 async def _read_all(conversation_id: str) -> list[StreamedFrame]:
