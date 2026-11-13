@@ -47,7 +47,7 @@ The **only** agent the user talks to. Owns the conversation thread, narrates pro
 
 ### Where it lives
 
-- `apps/api/app/agents/core/agent.py` — `call_agent()`, the per-turn SSE stream. A workflow fire is not a chat turn: `execute_workflow_as_chat` (`apps/api/app/workers/tasks/workflow_tasks.py`) appends a `WorkflowFired` entry, the conversation step answers it, and the job reads the outcome off the log (`apps/api/app/services/conversation/outcome.py`).
+- `apps/api/app/services/conversation/` — the conversation runtime: `send.py` accepts a message (`POST /conversations/{id}/messages`), `step.py` answers it, `event_stream.py` serves `GET /conversations/{id}/events`. A workflow fire is not a chat turn: `execute_workflow_as_chat` (`apps/api/app/workers/tasks/workflow_tasks.py`) appends a `WorkflowFired` entry, the conversation step answers it, and the job reads the outcome off the log (`apps/api/app/services/conversation/outcome.py`).
 - `apps/api/app/agents/core/graph_builder/build_graph.py` — `build_comms_graph()` / `build_comms_agent()`. Comms is built with `disable_retrieve_tools=True` and end-graph hooks `[follow_up_actions_node, memory_node]`.
 - `apps/api/app/override/langgraph_bigtool/utils.py` — `State`, the graph state every tier runs on: `messages` (a `DeltaChannel`, not a plain snapshot channel), `todos`, `intent`, `integration_usernames`, `remaining_steps`. Per-run values like `user_id`, `active_todo_id` and `execution_mode` live in `config["configurable"]` (`AgentConfigurable`), not in state.
 - `apps/api/app/agents/core/messages.py` — `construct_langchain_messages` builds the message array with per-turn context (calendar, reply-to, file refs, timezone).
@@ -108,7 +108,6 @@ One rule governs it:
 - `apps/api/app/agents/core/background/result_delivery.py` — `deliver_result()` and `persist_cancelled_run()`. Finished text → narrate and deliver as new bot message; cancelled → persist `tool_data` only if `executor_owns_tool_data`.
 - `apps/api/app/agents/core/background/session.py` — `StreamSession`, `ExecutorRun`, `RunKind` (LIVE shares comms' stream / QUEUED owns its own). **One session per `stream_id`** replaces the old module-level dict soup.
 - `apps/api/app/agents/core/background/redis_writer.py` — `make_redis_stream_writer(stream_id)` routes executor tool events back to the SSE consumer.
-- `apps/api/app/agents/core/background/comms_narrator.py` — comm-side re-narration of the executor's terminal message.
 
 ### Pre-model hooks (shared by comms + executor + subagents)
 
@@ -119,7 +118,7 @@ One rule governs it:
 
 ### Helper layer
 
-- `apps/api/app/helpers/agent_helpers.py` — `build_agent_config`, `build_initial_state`, `execute_graph_streaming`, `execute_graph_silent`.
+- `apps/api/app/helpers/agent_helpers.py` — `build_agent_config`, `build_initial_state`, `frames_for_stream_event`.
 - `apps/api/app/core/lazy_loader.py` — `lazy_provider` / `providers.aget()` for on-demand graph creation.
 - `apps/api/app/core/stream_manager.py` — Redis-backed SSE stream + cancel signaling.
 
@@ -231,7 +230,7 @@ All five bots live in `apps/bots/`, share a unified command system in `libs/shar
 
 ### How a bot message reaches the agent
 
-Bot receives message → adapter builds `CommandContext` → unified `BotCommand` (`gaia.ts` etc.) → `GaiaClient` HTTP call to API → `apps/api/app/agents/core/agent.py::call_agent()` → comms graph → executor → SSE stream back through `outbound-consumer.ts`.
+Bot receives message → adapter builds `CommandContext` → unified `BotCommand` (`gaia.ts` etc.) → `GaiaClient` posts the message (`/bot` send route) → the conversation step runs comms → executor → the bot follows the conversation's events stream; files and notifications arrive through `outbound-consumer.ts`.
 
 ---
 

@@ -705,7 +705,7 @@ def _json_safe_tool_result(content: MessageContent) -> object:
 
 @dataclass
 class StreamAccumulators:
-    """The per-run state execute_graph_streaming threads through its stream handlers."""
+    """The per-run state frames_for_stream_event threads through its stream handlers."""
 
     complete_message: str = ""
     # Emit the model-fallback notice at most once per stream

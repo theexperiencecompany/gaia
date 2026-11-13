@@ -204,12 +204,8 @@ class TestBrowserStepDone:
         assert record is not None
         assert record.status is HandoffStatus.PENDING
 
-    @pytest.mark.parametrize(
-        "turn",
-        [_turn(is_result_narration=True), _turn(execution_mode="background")],
-        ids=["narration", "background"],
-    )
-    async def test_a_turn_with_no_user_message_settles_nothing(self, turn: dict[str, Any]) -> None:
+    async def test_a_background_turn_settles_nothing(self) -> None:
+        turn = _turn(execution_mode="background")
         await _running("job-1", CONVERSATION)
         handoff_id = await _paused("job-1", CONVERSATION)
 
@@ -283,13 +279,6 @@ class TestStopBrowserTask:
             True,
         )
 
-    async def test_a_narration_turn_stops_nothing(self) -> None:
-        await _running("job-1", CONVERSATION)
-
-        await _say(stop_browser_task, {}, _turn(is_result_narration=True))
-
-        assert await done_state("job-1") is None
-
     async def test_another_chats_job_is_out_of_reach(self) -> None:
         await _running("job-1", "conv-other")
 
@@ -330,10 +319,3 @@ class TestTellBrowserTask:
         record = await get_handoff(handoff_id)
         assert record is not None
         assert record.status is HandoffStatus.PENDING
-
-    async def test_a_narration_turn_tells_the_job_nothing(self) -> None:
-        await _running("job-1", CONVERSATION)
-
-        await _say(tell_browser_task, {"text": "use the blue one"}, _turn(is_result_narration=True))
-
-        assert await take_job_messages("job-1") == []

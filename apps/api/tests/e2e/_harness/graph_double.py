@@ -1,6 +1,6 @@
 """A compiled-graph stand-in that replays a scripted LangGraph event stream.
 
-execute_graph_streaming is the translator between LangGraph's three stream
+frames_for_stream_event is the translator between LangGraph's three stream
 modes and the chat SSE vocabulary. Driving it needs a graph whose astream
 emits an exact, chosen sequence of events — including sequences a real run only
 produces under conditions a test cannot arrange (a pre-model hook replaying a

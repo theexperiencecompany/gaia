@@ -160,20 +160,6 @@ async def call_executor(
     if not conversation_id:
         log.error(f"{LogTag.TOOL} call_executor: missing thread_id in configurable")
         return "Internal error: conversation context unavailable. Please try again."
-    if base_configurable.get("is_result_narration"):
-        # A result-narration turn must not start work: the run it narrates still
-        # holds the busy lock, so a dispatch here queues a duplicate of the task
-        # that just finished (one user message, two browser runs).
-        log.info(
-            f"{LogTag.TOOL} call_executor refused during result narration",
-            conversation_id=conversation_id,
-        )
-        return (
-            "Not dispatched. This turn only reports a result that already came back; it "
-            "cannot start new work. Report what happened, including the failure and its "
-            "reason if it failed, and ask the user whether they want it retried."
-        )
-
     task_id = str(uuid4())
     # Read off the configurable, never a tool argument: asking the comms model to
     # re-transcribe the request corrupted 3 of 4 recipient addresses on a pasted

@@ -41,13 +41,6 @@ The agent system uses two compiled LangGraph graphs registered via `GraphManager
 
 Both graphs are built in `app/agents/core/graph_builder/build_graph.py` and registered during startup via `build_graphs()`.
 
-### Agent Execution Modes
-
-`app/agents/core/agent.py` exposes two entry points that share `_core_agent_logic()`:
-
-- `call_agent()` — returns `AsyncGenerator` for SSE streaming (chat endpoint)
-- `call_agent_silent()` — returns `(message, tool_data)` tuple (workflows, background tasks)
-
 ### Conversation runtime
 
 A conversation is an append-only log run by one step (`app/services/conversation/`, design in the plan `conversation-runtime.md`):

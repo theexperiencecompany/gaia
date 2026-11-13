@@ -61,19 +61,13 @@ class ChatBrowserTasks:
 
 
 def user_message_turn(configurable: AgentConfigurable) -> ChatTurn | None:
-    """Return the turn when it answers the user's own message; None for a narration or background run.
+    """Return the turn when it answers the user's own message; None for a background run.
 
-    A narration re-voices a result and a background run has nobody typing, so
-    neither may read the user's word into their browser task.
+    A background run has nobody typing, so it may not read the user's word into their browser task.
     """
     conversation_id = configurable.get("thread_id")
     user_id = configurable.get("user_id")
-    if (
-        configurable.get("is_result_narration")
-        or configurable.get("execution_mode") == "background"
-        or not conversation_id
-        or not user_id
-    ):
+    if configurable.get("execution_mode") == "background" or not conversation_id or not user_id:
         return None
     return ChatTurn(
         conversation_id=conversation_id,

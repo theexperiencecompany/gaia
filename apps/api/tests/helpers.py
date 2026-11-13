@@ -407,7 +407,7 @@ GraphStreamEvent = tuple[tuple[str, ...], str, Any]
 class ScriptedGraph:
     """A graph whose astream replays exactly the events handed to it.
 
-    Drives the real graph drivers (execute_graph_streaming / _silent) over shapes a
+    Drives the real stream translator (frames_for_stream_event) over shapes a
     real model wire never produces: an id-less message, a tool call announced
     before its text, arguments that never parse, a retraction mid-node.
     """

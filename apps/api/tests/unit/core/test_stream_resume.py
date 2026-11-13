@@ -1,11 +1,8 @@
 """The resume verdict: can a reloading client re-attach to an in-flight turn?
 
-get_resumable_stream_id is the authoritative answer. conversation_service
-exposes it as active_stream_id, and the web client treats it as final: on a
-null verdict turnManager runs markDeadSendsFailed and the user's own
-message flips to FAILED. A wrong answer in either direction is user-visible —
-a false null kills a live turn's tab, a false positive attaches the client to a
-dead stream.
+get_resumable_stream_id is the authoritative answer, and Stop reads it to
+cancel a conversation's live stream: a false null leaves that stream running
+after the user stopped it, a false positive cancels a dead one.
 
 Redis is real (fakeredis) rather than mocked because TTL expiry *is* the
 behaviour under test; a mocked client would happily report whatever the test

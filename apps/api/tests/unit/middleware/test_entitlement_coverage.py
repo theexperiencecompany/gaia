@@ -42,7 +42,7 @@ GATED_METHODS = ("get", "post", "put", "patch", "delete")
 # handler logic runs, so a PRO caller can be checked against a real paid route
 # without the test needing Mongo, Redis or an LLM.
 PRO_SAMPLE: tuple[tuple[str, str], ...] = (
-    ("POST", "/api/v1/chat-stream"),
+    ("POST", "/api/v1/conversations/c1/messages"),
     ("POST", "/api/v1/image/generate"),
     ("POST", "/api/v1/mcp/proxy/tool-call"),
     ("POST", "/api/v1/reminders"),
@@ -136,7 +136,7 @@ async def test_block_body_matches_the_documented_wire_contract(
     gated_client: AsyncClient,
 ) -> None:
     """The web's 402 interceptor matches on these four keys — all must be present."""
-    response = await gated_client.post("/api/v1/chat-stream")
+    response = await gated_client.post("/api/v1/conversations/c1/messages")
 
     assert response.status_code == 402
     body = response.json()
