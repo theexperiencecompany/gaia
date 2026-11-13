@@ -14,7 +14,7 @@
  * Exits 0 only when the tree is clean, HEAD matches, and the build output is
  * newer than the last source change.
  */
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -22,13 +22,13 @@ const ROOT = path.resolve(import.meta.dirname, "..");
 const expected = process.argv[2] ?? null;
 const problems = [];
 
-const git = (cmd) => execSync(`git ${cmd}`, { cwd: ROOT, encoding: "utf8" }).trim();
+const git = (...args) => execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();
 
-const head = git("rev-parse HEAD");
+const head = git("rev-parse", "HEAD");
 const short = head.slice(0, 10);
 
 // 1. A dirty tree means the build may contain uncommitted edits.
-const dirty = git("status --porcelain");
+const dirty = git("status", "--porcelain");
 if (dirty) {
   problems.push(
     `working tree is dirty, so the build is not any single commit:\n` +
@@ -42,7 +42,7 @@ if (dirty) {
 
 // 2. The requested revision must be the one checked out.
 if (expected) {
-  const want = git(`rev-parse ${expected}`).slice(0, 10);
+  const want = git("rev-parse", "--verify", "--end-of-options", `${expected}^{commit}`).slice(0, 10);
   if (want !== short) {
     problems.push(
       `HEAD is ${short} but ${expected} is ${want} — the build is the wrong revision`,
@@ -56,7 +56,7 @@ const buildStamp = path.join(ROOT, ".next", "BUILD_ID");
 if (fs.existsSync(buildStamp)) {
   const built = fs.statSync(buildStamp).mtimeMs;
   const newest = Number(
-    git("log -1 --format=%ct HEAD") * 1000,
+    git("log", "-1", "--format=%ct", "HEAD") * 1000,
   );
   if (newest > built) {
     problems.push(

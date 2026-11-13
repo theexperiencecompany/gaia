@@ -6,7 +6,15 @@
  * matches production; this exits non-zero with the reason when the target is not that.
  * Usage: node scripts/verify-worker-preview.mjs [base-url]
  */
-const BASE = process.argv[2] ?? process.env.SMOKE_BASE_URL ?? "http://localhost:8788";
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+const BASE_INPUT = process.argv[2] ?? process.env.SMOKE_BASE_URL ?? "http://localhost:8788";
+const BASE_URL = new URL(BASE_INPUT);
+// It checks a local `pnpm preview`; refusing other hosts keeps it from fetching an arbitrary URL.
+if (!["http:", "https:"].includes(BASE_URL.protocol) || !LOOPBACK_HOSTS.has(BASE_URL.hostname)) {
+  console.error(`[verify-worker-preview] ${BASE_INPUT} is not a local preview (http(s)://localhost:<port>)`);
+  process.exit(2);
+}
+const BASE = BASE_URL.origin;
 
 const failures = [];
 

@@ -459,6 +459,7 @@
 @source "../../../features/integrations/components/IntegrationIcon.tsx";
 @source "../../../features/integrations/components/IntegrationInstructionsEditor.tsx";
 @source "../../../features/integrations/components/IntegrationInstructionsModal.tsx";
+@source "../../../features/integrations/components/IntegrationListRows.tsx";
 @source "../../../features/integrations/components/IntegrationListSection.tsx";
 @source "../../../features/integrations/components/IntegrationPermissionsModal.tsx";
 @source "../../../features/integrations/components/IntegrationRelatedWorkflows.tsx";
@@ -687,6 +688,7 @@
 @source "../../../features/settings/hooks/useProviderConfigs.ts";
 @source "../../../features/settings/hooks/useProviderConnect.ts";
 @source "../../../features/settings/hooks/useQuietHours.ts";
+@source "../../../features/settings/hooks/useSettingsMenuSections.tsx";
 @source "../../../features/settings/hooks/useSetupStatus.ts";
 @source "../../../features/settings/hooks/useUsage.ts";
 @source "../../../features/settings/hooks/useVoicePreview.ts";

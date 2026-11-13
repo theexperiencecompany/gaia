@@ -1194,11 +1194,13 @@ def test_v3_usage_and_each_wrapper_in_its_own_file_pass(tmp_path: Path) -> None:
         'import { buttonVariants } from "@heroui/styles";\n'
         'import { GaiaButton } from "@/components/shared/GaiaButton";\n'
         "export const A = () => (\n"
+        "  <>\n"
         '  <GaiaButton variant="primary" isPending onPress={go}>x</GaiaButton>\n'
         '  <Chip variant="soft" color="accent">x</Chip>\n'
         "  <Switch><Switch.Control><Switch.Thumb /></Switch.Control></Switch>\n"
         '  <Accordion.Panel className="text-sm"><div className="py-2">x</div></Accordion.Panel>\n'
         '  <button onClick={go} color="red" type="button" />\n'
+        "  </>\n"
         ");\n",
     )
     _add_text(
