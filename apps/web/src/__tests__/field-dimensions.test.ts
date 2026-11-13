@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import postcss from "postcss";
+import postcss, { Rule } from "postcss";
 import { describe, expect, it } from "vitest";
 
 const GAIA_CSS = postcss.parse(
@@ -64,5 +64,21 @@ describe("v2's chrome-free controls", () => {
     expect(valuesFor(".close-button--default", "background-color")).toContain(
       "transparent",
     );
+  });
+});
+
+// shape="pill" on the New skill modal's Tabs set --field-radius on the Tabs root,
+// and every field in its panels inherited it and rounded into a pill.
+describe("a shape class", () => {
+  it("sets the field radius only on a field, never on a container", () => {
+    const leaking: string[] = [];
+    GAIA_CSS.walkDecls("--field-radius", (decl) => {
+      const rule = decl.parent;
+      if (!(rule instanceof Rule)) return;
+      for (const selector of rule.selectors) {
+        if (!selector.startsWith(":is(.textfield")) leaking.push(selector);
+      }
+    });
+    expect(leaking).toEqual([]);
   });
 });

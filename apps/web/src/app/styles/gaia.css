@@ -890,8 +890,9 @@
   }
 
   /* shape="pill" (components/shared/shape.ts): v2's radius="full", one class for
-     every control. Field controls round through their own --field-radius. */
-  .gaia-pill {
+     every control. Field controls round through their own --field-radius, set only
+     on a field: set on a container (pill Tabs) it reached every field in its panels. */
+  :is(.textfield, .select, .combo-box, .search-field, .number-field, .input, .textarea, .input-group).gaia-pill {
     --field-radius: var(--gaia-radius-pill);
   }
   .button.gaia-pill,
@@ -905,19 +906,19 @@
     border-radius: var(--gaia-radius-pill);
   }
   /* shape sharp/sm/md/xl: a fixed radius whatever the control's size (v2's radius prop). */
-  .gaia-sharp {
+  :is(.textfield, .select, .combo-box, .search-field, .number-field, .input, .textarea, .input-group).gaia-sharp {
     --field-radius: var(--gaia-radius-xs);
   }
-  .gaia-radius-sm {
+  :is(.textfield, .select, .combo-box, .search-field, .number-field, .input, .textarea, .input-group).gaia-radius-sm {
     --field-radius: var(--gaia-radius-sm);
   }
-  .gaia-radius-md {
+  :is(.textfield, .select, .combo-box, .search-field, .number-field, .input, .textarea, .input-group).gaia-radius-md {
     --field-radius: var(--gaia-radius-md);
   }
-  .gaia-radius-lg {
+  :is(.textfield, .select, .combo-box, .search-field, .number-field, .input, .textarea, .input-group).gaia-radius-lg {
     --field-radius: var(--gaia-radius-lg);
   }
-  .gaia-radius-xl {
+  :is(.textfield, .select, .combo-box, .search-field, .number-field, .input, .textarea, .input-group).gaia-radius-xl {
     --field-radius: var(--gaia-radius-xl);
   }
   .button.gaia-sharp,
