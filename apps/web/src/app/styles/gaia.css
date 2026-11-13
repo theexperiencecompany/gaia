@@ -692,6 +692,16 @@
     padding: 0;
   }
 
+  /* Modal close: v2's 32px round button 4px from the corner (v3: 24px, 16px in). */
+  .modal__close-trigger {
+    top: var(--gaia-modal-close-inset);
+    inset-inline-end: var(--gaia-modal-close-inset);
+    width: var(--gaia-modal-close-size);
+    height: var(--gaia-modal-close-size);
+    padding: var(--gaia-modal-close-padding);
+    border-radius: var(--gaia-radius-pill);
+  }
+
   /* Modal: v2's section rhythm. The dialog has no padding of its own; the
      header, body and footer carry it, and the body is a column of 12px gaps in
      the dialog's own text colour (v3 mutes and shrinks it). */

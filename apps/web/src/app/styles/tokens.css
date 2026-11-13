@@ -170,6 +170,9 @@ html {
   --gaia-modal-padding-x: 1.5rem;
   --gaia-modal-header-padding-y: 1rem;
   --gaia-modal-body-padding-y: 0.5rem;
+  --gaia-modal-close-size: 2rem;
+  --gaia-modal-close-inset: 0.25rem;
+  --gaia-modal-close-padding: 0.5rem;
   --gaia-modal-body-gap: 0.75rem;
   --gaia-modal-footer-padding-y: 1rem;
   --gaia-input-sm-height: 2rem;
