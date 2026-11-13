@@ -40,6 +40,7 @@ from app.models.conversation_log_models import (
     ReplyOutcome,
     ReplySettled,
     StepClaim,
+    TodoWoke,
     UserMessage,
 )
 from app.services.conversation.ports import Appended, ClaimLost, EntryRejected
@@ -243,7 +244,10 @@ class MongoConversationLog:
         )
 
     async def _marks_unread(self, conversation_id: str, user_id: str, entry: Entry) -> bool:
-        """Return whether entry is news the user did not ask for here: a Notice, or a reply answering no message of theirs."""
+        """Return whether entry is news the user did not ask for here: a Notice, or a reply answering no message of theirs.
+
+        A todo's write-up never is: its chat is reached from the todo, so it carries no unread dot.
+        """
         match entry:
             case Notice():
                 return True
@@ -251,7 +255,9 @@ class MongoConversationLog:
                 answered = await self._repository.read_log(
                     conversation_id, user_id=user_id, ids=list(answers)
                 )
-                return not any(isinstance(logged.entry, UserMessage) for logged in answered or ())
+                return not any(
+                    isinstance(logged.entry, UserMessage | TodoWoke) for logged in answered or ()
+                )
             case _:
                 return False
 

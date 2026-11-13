@@ -1300,6 +1300,8 @@ async def test_a_todo_wake_gets_one_write_up_in_its_chat_and_that_write_up_is_wh
     )
     assert delivery.finished.await_args.args[2] == "run_acme"
     assert "result sent on telegram" in delivery.finished.await_args.args[3]
+    # The todo's chat is reached from the todo: its write-up leaves no unread dot.
+    assert await _unread(rig) is False
 
 
 @pytest.mark.service
