@@ -4004,12 +4004,50 @@
             "title": "Has Older",
             "type": "boolean"
           },
+          "items": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "notice": "#/components/schemas/NoticeItem",
+                  "reply": "#/components/schemas/ReplyItem",
+                  "todo_woke": "#/components/schemas/TodoWokeItem",
+                  "user": "#/components/schemas/UserItem",
+                  "work": "#/components/schemas/WorkItem",
+                  "workflow_fired": "#/components/schemas/WorkflowFiredItem"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/UserItem"
+                },
+                {
+                  "$ref": "#/components/schemas/ReplyItem"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkItem"
+                },
+                {
+                  "$ref": "#/components/schemas/NoticeItem"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkflowFiredItem"
+                },
+                {
+                  "$ref": "#/components/schemas/TodoWokeItem"
+                }
+              ]
+            },
+            "title": "Items",
+            "type": "array"
+          },
           "state": {
             "$ref": "#/components/schemas/StateFrame"
           }
         },
         "required": [
           "entries",
+          "items",
           "state",
           "has_older",
           "cursor"
@@ -4338,16 +4376,17 @@
         "type": "object"
       },
       "ConversationEvent": {
-        "description": "One frame on a conversation's events stream; stream_id is the cursor to resume after, None for a log replay.",
+        "description": "One frame on a conversation's events stream: the screen, a patch to it, or a live delta.",
         "properties": {
           "frame": {
             "discriminator": {
               "mapping": {
                 "conversation_updated": "#/components/schemas/ConversationUpdatedFrame",
-                "entry": "#/components/schemas/EntryFrame",
-                "entry_updated": "#/components/schemas/EntryUpdatedFrame",
                 "reply_delta": "#/components/schemas/ReplyDeltaFrame",
                 "retract": "#/components/schemas/RetractFrame",
+                "screen": "#/components/schemas/ScreenFrame",
+                "screen_insert": "#/components/schemas/ScreenInsertFrame",
+                "screen_update": "#/components/schemas/ScreenUpdateFrame",
                 "state": "#/components/schemas/StateFrame",
                 "work_delta": "#/components/schemas/WorkDeltaFrame"
               },
@@ -4355,10 +4394,13 @@
             },
             "oneOf": [
               {
-                "$ref": "#/components/schemas/EntryFrame"
+                "$ref": "#/components/schemas/ScreenFrame"
               },
               {
-                "$ref": "#/components/schemas/EntryUpdatedFrame"
+                "$ref": "#/components/schemas/ScreenInsertFrame"
+              },
+              {
+                "$ref": "#/components/schemas/ScreenUpdateFrame"
               },
               {
                 "$ref": "#/components/schemas/ReplyDeltaFrame"
@@ -4377,21 +4419,9 @@
               }
             ],
             "title": "Frame"
-          },
-          "stream_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Stream Id"
           }
         },
         "required": [
-          "stream_id",
           "frame"
         ],
         "title": "ConversationEvent",
@@ -4788,6 +4818,43 @@
             ],
             "title": "Is Unread"
           },
+          "items": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "notice": "#/components/schemas/NoticeItem",
+                  "reply": "#/components/schemas/ReplyItem",
+                  "todo_woke": "#/components/schemas/TodoWokeItem",
+                  "user": "#/components/schemas/UserItem",
+                  "work": "#/components/schemas/WorkItem",
+                  "workflow_fired": "#/components/schemas/WorkflowFiredItem"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/UserItem"
+                },
+                {
+                  "$ref": "#/components/schemas/ReplyItem"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkItem"
+                },
+                {
+                  "$ref": "#/components/schemas/NoticeItem"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkflowFiredItem"
+                },
+                {
+                  "$ref": "#/components/schemas/TodoWokeItem"
+                }
+              ]
+            },
+            "title": "Items",
+            "type": "array"
+          },
           "source": {
             "anyOf": [
               {
@@ -4848,6 +4915,7 @@
         },
         "required": [
           "entries",
+          "items",
           "state",
           "has_older",
           "cursor",
@@ -6759,96 +6827,6 @@
         ],
         "title": "EntrySurface",
         "type": "string"
-      },
-      "EntryUpdatedFrame": {
-        "additionalProperties": false,
-        "description": "An entry changed in place; a client applies it only when entry.revision is newer than its own.",
-        "properties": {
-          "entry": {
-            "discriminator": {
-              "mapping": {
-                "approval_decided": "#/components/schemas/ApprovalDecided",
-                "approval_requested": "#/components/schemas/ApprovalRequested",
-                "barge_in": "#/components/schemas/BargeIn",
-                "integration_connected": "#/components/schemas/IntegrationConnected",
-                "integration_needed": "#/components/schemas/IntegrationNeeded",
-                "notice": "#/components/schemas/Notice",
-                "reply": "#/components/schemas/Reply",
-                "reply_settled": "#/components/schemas/ReplySettled",
-                "stop_requested": "#/components/schemas/StopRequested",
-                "todo_woke": "#/components/schemas/TodoWoke",
-                "user_message": "#/components/schemas/UserMessage",
-                "work_finished": "#/components/schemas/WorkFinished",
-                "work_started": "#/components/schemas/WorkStarted",
-                "workflow_fired": "#/components/schemas/WorkflowFired"
-              },
-              "propertyName": "kind"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/UserMessage"
-              },
-              {
-                "$ref": "#/components/schemas/StopRequested"
-              },
-              {
-                "$ref": "#/components/schemas/BargeIn"
-              },
-              {
-                "$ref": "#/components/schemas/WorkflowFired"
-              },
-              {
-                "$ref": "#/components/schemas/TodoWoke"
-              },
-              {
-                "$ref": "#/components/schemas/Notice"
-              },
-              {
-                "$ref": "#/components/schemas/WorkStarted"
-              },
-              {
-                "$ref": "#/components/schemas/ApprovalRequested"
-              },
-              {
-                "$ref": "#/components/schemas/ApprovalDecided"
-              },
-              {
-                "$ref": "#/components/schemas/WorkFinished"
-              },
-              {
-                "$ref": "#/components/schemas/Reply"
-              },
-              {
-                "$ref": "#/components/schemas/ReplySettled"
-              },
-              {
-                "$ref": "#/components/schemas/IntegrationNeeded"
-              },
-              {
-                "$ref": "#/components/schemas/IntegrationConnected"
-              }
-            ],
-            "title": "Entry"
-          },
-          "kind": {
-            "const": "entry_updated",
-            "default": "entry_updated",
-            "title": "Kind",
-            "type": "string"
-          },
-          "seq": {
-            "minimum": 1.0,
-            "title": "Seq",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "kind",
-          "seq",
-          "entry"
-        ],
-        "title": "EntryUpdatedFrame",
-        "type": "object"
       },
       "ErrorEnvelope": {
         "additionalProperties": true,
@@ -10121,6 +10099,43 @@
             "default": false,
             "title": "Is Unread"
           },
+          "items": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "notice": "#/components/schemas/NoticeItem",
+                  "reply": "#/components/schemas/ReplyItem",
+                  "todo_woke": "#/components/schemas/TodoWokeItem",
+                  "user": "#/components/schemas/UserItem",
+                  "work": "#/components/schemas/WorkItem",
+                  "workflow_fired": "#/components/schemas/WorkflowFiredItem"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/UserItem"
+                },
+                {
+                  "$ref": "#/components/schemas/ReplyItem"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkItem"
+                },
+                {
+                  "$ref": "#/components/schemas/NoticeItem"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkflowFiredItem"
+                },
+                {
+                  "$ref": "#/components/schemas/TodoWokeItem"
+                }
+              ]
+            },
+            "title": "Items",
+            "type": "array"
+          },
           "source": {
             "anyOf": [
               {
@@ -10185,6 +10200,7 @@
         },
         "required": [
           "entries",
+          "items",
           "state",
           "has_older",
           "cursor",
@@ -12265,6 +12281,60 @@
           "follow_up_actions"
         ],
         "title": "Notice",
+        "type": "object"
+      },
+      "NoticeItem": {
+        "description": "A proactive message delivered outside a reply.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "follow_up_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Follow Up Actions",
+            "type": "array"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "notice",
+            "default": "notice",
+            "title": "Kind",
+            "type": "string"
+          },
+          "seq": {
+            "minimum": 1.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "tool_data": {
+            "items": {
+              "$ref": "#/components/schemas/ToolDataEntry"
+            },
+            "title": "Tool Data",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "seq",
+          "at",
+          "text",
+          "tool_data",
+          "follow_up_actions"
+        ],
+        "title": "NoticeItem",
         "type": "object"
       },
       "NotificationAction": {
@@ -16362,6 +16432,117 @@
         "title": "ReplyDeltaFrame",
         "type": "object"
       },
+      "ReplyItem": {
+        "description": "GAIA's reply: its text and own cards; outcome is None while it is still being written.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FailureReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "follow_up_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Follow Up Actions",
+            "type": "array"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "const": "reply",
+            "default": "reply",
+            "title": "Kind",
+            "type": "string"
+          },
+          "narrates": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Narrates",
+            "type": "array"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplyOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pinned": {
+            "title": "Pinned",
+            "type": "boolean"
+          },
+          "quote": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplyToMessageData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "seq": {
+            "minimum": 1.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "tool_data": {
+            "items": {
+              "$ref": "#/components/schemas/ToolDataEntry"
+            },
+            "title": "Tool Data",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "seq",
+          "at",
+          "text",
+          "tool_data",
+          "follow_up_actions",
+          "image",
+          "pinned",
+          "quote",
+          "outcome",
+          "failure",
+          "narrates"
+        ],
+        "title": "ReplyItem",
+        "type": "object"
+      },
       "ReplyOutcome": {
         "description": "How a finished reply ended.",
         "enum": [
@@ -16711,6 +16892,171 @@
         ],
         "title": "ScheduledTaskStatus",
         "type": "string"
+      },
+      "ScreenFrame": {
+        "additionalProperties": false,
+        "description": "The newest page of the screen; a client replaces what it holds from the first item's seq on.",
+        "properties": {
+          "items": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "notice": "#/components/schemas/NoticeItem",
+                  "reply": "#/components/schemas/ReplyItem",
+                  "todo_woke": "#/components/schemas/TodoWokeItem",
+                  "user": "#/components/schemas/UserItem",
+                  "work": "#/components/schemas/WorkItem",
+                  "workflow_fired": "#/components/schemas/WorkflowFiredItem"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/UserItem"
+                },
+                {
+                  "$ref": "#/components/schemas/ReplyItem"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkItem"
+                },
+                {
+                  "$ref": "#/components/schemas/NoticeItem"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkflowFiredItem"
+                },
+                {
+                  "$ref": "#/components/schemas/TodoWokeItem"
+                }
+              ]
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "kind": {
+            "const": "screen",
+            "default": "screen",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "items"
+        ],
+        "title": "ScreenFrame",
+        "type": "object"
+      },
+      "ScreenInsertFrame": {
+        "additionalProperties": false,
+        "description": "An item became visible; position is its index in the screen once inserted.",
+        "properties": {
+          "item": {
+            "discriminator": {
+              "mapping": {
+                "notice": "#/components/schemas/NoticeItem",
+                "reply": "#/components/schemas/ReplyItem",
+                "todo_woke": "#/components/schemas/TodoWokeItem",
+                "user": "#/components/schemas/UserItem",
+                "work": "#/components/schemas/WorkItem",
+                "workflow_fired": "#/components/schemas/WorkflowFiredItem"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserItem"
+              },
+              {
+                "$ref": "#/components/schemas/ReplyItem"
+              },
+              {
+                "$ref": "#/components/schemas/WorkItem"
+              },
+              {
+                "$ref": "#/components/schemas/NoticeItem"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowFiredItem"
+              },
+              {
+                "$ref": "#/components/schemas/TodoWokeItem"
+              }
+            ],
+            "title": "Item"
+          },
+          "kind": {
+            "const": "screen_insert",
+            "default": "screen_insert",
+            "title": "Kind",
+            "type": "string"
+          },
+          "position": {
+            "minimum": 0.0,
+            "title": "Position",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "position",
+          "item"
+        ],
+        "title": "ScreenInsertFrame",
+        "type": "object"
+      },
+      "ScreenUpdateFrame": {
+        "additionalProperties": false,
+        "description": "An item already shown changed in place; it keeps its position.",
+        "properties": {
+          "item": {
+            "discriminator": {
+              "mapping": {
+                "notice": "#/components/schemas/NoticeItem",
+                "reply": "#/components/schemas/ReplyItem",
+                "todo_woke": "#/components/schemas/TodoWokeItem",
+                "user": "#/components/schemas/UserItem",
+                "work": "#/components/schemas/WorkItem",
+                "workflow_fired": "#/components/schemas/WorkflowFiredItem"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserItem"
+              },
+              {
+                "$ref": "#/components/schemas/ReplyItem"
+              },
+              {
+                "$ref": "#/components/schemas/WorkItem"
+              },
+              {
+                "$ref": "#/components/schemas/NoticeItem"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowFiredItem"
+              },
+              {
+                "$ref": "#/components/schemas/TodoWokeItem"
+              }
+            ],
+            "title": "Item"
+          },
+          "kind": {
+            "const": "screen_update",
+            "default": "screen_update",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "item"
+        ],
+        "title": "ScreenUpdateFrame",
+        "type": "object"
       },
       "SearchIntegrationItem": {
         "description": "Integration item in search results.",
@@ -20236,6 +20582,43 @@
         "title": "TodoWoke",
         "type": "object"
       },
+      "TodoWokeItem": {
+        "description": "What woke a tracked todo's run; its write-up is its own item.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "todo_woke",
+            "default": "todo_woke",
+            "title": "Kind",
+            "type": "string"
+          },
+          "seq": {
+            "minimum": 1.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "wake": {
+            "$ref": "#/components/schemas/TodoRunWake"
+          }
+        },
+        "required": [
+          "id",
+          "seq",
+          "at",
+          "wake"
+        ],
+        "title": "TodoWokeItem",
+        "type": "object"
+      },
       "TodoWorkflowGenerationResponse": {
         "description": "Result of asking for a todo's workflow to be generated.",
         "properties": {
@@ -22199,6 +22582,43 @@
         "title": "UserFeatureFlagResponse",
         "type": "object"
       },
+      "UserItem": {
+        "description": "A message the user sent, with GAIA's reaction to it.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "user",
+            "default": "user",
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "$ref": "#/components/schemas/UserMessage"
+          },
+          "seq": {
+            "minimum": 1.0,
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "seq",
+          "at",
+          "message"
+        ],
+        "title": "UserItem",
+        "type": "object"
+      },
       "UserMessage": {
         "additionalProperties": false,
         "description": "A message the user sent from any surface.",
@@ -23098,6 +23518,78 @@
         "title": "WorkFinished",
         "type": "object"
       },
+      "WorkItem": {
+        "description": "One piece of work from its hand-off to its result, with every task handed to it.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "handoff": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ToolDataEntry"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "const": "work",
+            "default": "work",
+            "title": "Kind",
+            "type": "string"
+          },
+          "seq": {
+            "minimum": 1.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkStatus"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          },
+          "tool_data": {
+            "items": {
+              "$ref": "#/components/schemas/ToolDataEntry"
+            },
+            "title": "Tool Data",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "seq",
+          "at",
+          "task_id",
+          "status",
+          "handoff",
+          "tool_data",
+          "image"
+        ],
+        "title": "WorkItem",
+        "type": "object"
+      },
       "WorkOutcome": {
         "description": "How a piece of background work ended.",
         "enum": [
@@ -23188,6 +23680,19 @@
         ],
         "title": "WorkStarted",
         "type": "object"
+      },
+      "WorkStatus": {
+        "description": "Where a piece of work stands: live, or how it ended.",
+        "enum": [
+          "running",
+          "awaiting_approval",
+          "done",
+          "failed",
+          "cancelled",
+          "lost"
+        ],
+        "title": "WorkStatus",
+        "type": "string"
       },
       "WorkflowCreator": {
         "description": "The public-facing creator card built by ``format_creator``.\n\nA ``TypedDict``, not a model: it rides inside the untyped card dicts of\n``PublicWorkflowsResponse.workflows`` as well as ``Workflow.creator``, so it\nhas to stay a plain dict on the wire for both.",
@@ -23453,6 +23958,43 @@
           "run"
         ],
         "title": "WorkflowFired",
+        "type": "object"
+      },
+      "WorkflowFiredItem": {
+        "description": "The workflow card that started a run; the run's reply is its own item.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "workflow_fired",
+            "default": "workflow_fired",
+            "title": "Kind",
+            "type": "string"
+          },
+          "seq": {
+            "minimum": 1.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "workflow": {
+            "$ref": "#/components/schemas/SelectedWorkflowDataOutput"
+          }
+        },
+        "required": [
+          "id",
+          "seq",
+          "at",
+          "workflow"
+        ],
+        "title": "WorkflowFiredItem",
         "type": "object"
       },
       "WorkflowListResponse": {
@@ -28207,7 +28749,7 @@
     },
     "/api/v1/conversations/{conversation_id}/events": {
       "get": {
-        "description": "Stream the conversation's frames as SSE: everything after the cursor, then live.",
+        "description": "Stream the conversation's screen as SSE: the newest page, then patches and live deltas.",
         "operationId": "conversations_conversation_events_endpoint",
         "parameters": [
           {
@@ -28216,18 +28758,6 @@
             "required": true,
             "schema": {
               "title": "Conversation Id",
-              "type": "string"
-            }
-          },
-          {
-            "description": "A seq to replay the log after, or a stream id to resume after",
-            "in": "query",
-            "name": "after",
-            "required": false,
-            "schema": {
-              "default": "0",
-              "description": "A seq to replay the log after, or a stream id to resume after",
-              "title": "After",
               "type": "string"
             }
           }

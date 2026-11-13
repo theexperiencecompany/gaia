@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 
@@ -17,7 +18,7 @@ from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
-    LoggedEntry,
+    Entry,
     Notice,
     Reply,
     ReplyOutcome,
@@ -54,6 +55,17 @@ class _CardData(BaseModel):
     tool_name: str | None = None
     tool_call_id: str | None = None
     approval_id: str | None = None
+
+
+class Positioned(Protocol):
+    """An entry at its position in the log: a LoggedEntry, or the frame that carries one."""
+
+    @property
+    def seq(self) -> int: ...
+    @property
+    def at(self) -> AwareDatetime: ...
+    @property
+    def entry(self) -> Entry: ...
 
 
 def _card_data(card: ToolDataEntry) -> _CardData:
@@ -93,7 +105,7 @@ class _Log:
     handoffs: dict[str, ToolDataEntry] = field(default_factory=dict)
 
     @classmethod
-    def of(cls, entries: Iterable[LoggedEntry]) -> _Log:
+    def of(cls, entries: Iterable[Positioned]) -> _Log:
         read = cls()
         for logged in entries:
             match logged.entry:
@@ -171,7 +183,7 @@ class _Log:
         return WorkStatus.AWAITING_APPROVAL if awaiting else WorkStatus.RUNNING
 
 
-def project_screen(entries: Sequence[LoggedEntry]) -> list[ScreenItem]:
+def project_screen(entries: Sequence[Positioned]) -> list[ScreenItem]:
     """Return the screen for entries (ascending by seq): every visible item, at the seq it became visible."""
     read = _Log.of(entries)
     items: list[ScreenItem] = []
@@ -184,7 +196,7 @@ def project_screen(entries: Sequence[LoggedEntry]) -> list[ScreenItem]:
     return items
 
 
-def _item(logged: LoggedEntry, read: _Log) -> ScreenItem | None:
+def _item(logged: Positioned, read: _Log) -> ScreenItem | None:
     seq, at = logged.seq, logged.at
     match logged.entry:
         case UserMessage() as message:

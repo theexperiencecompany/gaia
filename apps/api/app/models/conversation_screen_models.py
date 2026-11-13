@@ -6,7 +6,20 @@ from typing import Annotated, Literal
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from app.models.chat_models import ImageData
-from app.models.conversation_log_models import FailureReason, ReplyOutcome, UserMessage
+from app.models.conversation_frame_models import (
+    ConversationUpdatedFrame,
+    FrameKind,
+    ReplyDeltaFrame,
+    RetractFrame,
+    StateFrame,
+    WorkDeltaFrame,
+)
+from app.models.conversation_log_models import (
+    WIRE_CONFIG,
+    FailureReason,
+    ReplyOutcome,
+    UserMessage,
+)
 from app.models.message_models import ReplyToMessageData, SelectedWorkflowData
 from app.models.todo_wake_models import TodoRunWake
 from app.models.tool_data_models import ToolDataEntry
@@ -102,5 +115,49 @@ class TodoWokeItem(_Item):
 
 ScreenItem = Annotated[
     UserItem | ReplyItem | WorkItem | NoticeItem | WorkflowFiredItem | TodoWokeItem,
+    Field(discriminator="kind"),
+]
+
+
+class ScreenFrame(BaseModel):
+    """The newest page of the screen; a client replaces what it holds from the first item's seq on."""
+
+    model_config = WIRE_CONFIG
+
+    kind: Literal[FrameKind.SCREEN] = FrameKind.SCREEN
+    items: tuple[ScreenItem, ...]
+
+
+class ScreenInsertFrame(BaseModel):
+    """An item became visible; position is its index in the screen once inserted."""
+
+    model_config = WIRE_CONFIG
+
+    kind: Literal[FrameKind.SCREEN_INSERT] = FrameKind.SCREEN_INSERT
+    position: int = Field(ge=0)
+    item: ScreenItem
+
+
+class ScreenUpdateFrame(BaseModel):
+    """An item already shown changed in place; it keeps its position."""
+
+    model_config = WIRE_CONFIG
+
+    kind: Literal[FrameKind.SCREEN_UPDATE] = FrameKind.SCREEN_UPDATE
+    item: ScreenItem
+
+
+ScreenPatch = ScreenInsertFrame | ScreenUpdateFrame
+
+# What a client receives: the screen, its patches, and the raw deltas of what is still being written.
+ScreenStreamFrame = Annotated[
+    ScreenFrame
+    | ScreenInsertFrame
+    | ScreenUpdateFrame
+    | ReplyDeltaFrame
+    | WorkDeltaFrame
+    | RetractFrame
+    | StateFrame
+    | ConversationUpdatedFrame,
     Field(discriminator="kind"),
 ]

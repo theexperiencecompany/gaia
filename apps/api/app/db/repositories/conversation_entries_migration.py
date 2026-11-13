@@ -37,6 +37,7 @@ from app.db.repositories.conversation_entries import (
     log_document,
     logged_of,
     store_errors,
+    stored_at,
     unmigrated,
 )
 from app.db.repositories.conversation_history import PINNABLE_KINDS, TEXT_KINDS, project
@@ -215,9 +216,8 @@ class _Plan:
         self, ref: HeadRef, logged: LoggedEntry, prior: StoredEntry | None, *, in_place: int | None
     ) -> None:
         """Place one entry: update what a pass wrote before, rewrite a message-shaped entry, or insert."""
-        # Mongo keeps milliseconds: hash what a later read returns.
-        at = logged.at.replace(microsecond=logged.at.microsecond // 1000 * 1000)
-        logged = logged.model_copy(update={"at": at})
+        # Hash what a later read returns.
+        logged = logged.model_copy(update={"at": stored_at(logged.at)})
         self.log[logged.seq] = logged
         document = log_document(ref.conversation_id, ref.user_id, logged)
         document = {**document, MIGRATION_FIELDS_FIELD: field_hashes(document)}
@@ -457,9 +457,7 @@ def _normalized(payload: Mapping[str, object], *, dated: bool) -> dict[str, obje
         if key == "date":
             if not dated or (at := entry_at(value)) is None:
                 continue
-            value = (
-                at.astimezone(UTC).replace(microsecond=at.microsecond // 1000 * 1000).isoformat()
-            )
+            value = stored_at(at.astimezone(UTC)).isoformat()
         shown[key] = value
     return shown
 

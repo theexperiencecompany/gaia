@@ -4,8 +4,10 @@ from dataclasses import dataclass, field
 import itertools
 
 from hypothesis import given, settings, strategies as st
+import pytest
 
 from app.constants.general import CALL_EXECUTOR_NAME
+from app.models.conversation_frame_models import EntryFrame, EntryUpdatedFrame
 from app.models.conversation_log_models import (
     Entry,
     FailureReason,
@@ -17,9 +19,16 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
-from app.models.conversation_screen_models import ScreenItem, ScreenItemKind, WorkStatus
+from app.models.conversation_screen_models import (
+    ScreenInsertFrame,
+    ScreenItem,
+    ScreenItemKind,
+    ScreenPatch,
+    WorkStatus,
+)
 from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.screen import TOOL_CALL_CARD, project_screen
+from app.services.conversation.screen_patches import ScreenItemMoved, ScreenTracker, screen_patches
 from tests.unit.services.conversation.log_helpers import asked, decided, logged, notice, user
 
 
@@ -42,22 +51,41 @@ def _ids(screen: list[ScreenItem]) -> list[str]:
     return [item.id for item in screen]
 
 
+def _apply(screen: list[ScreenItem], patches: list[ScreenPatch]) -> list[ScreenItem]:
+    """Apply patches the way a client does: insert at the position, replace by id."""
+    patched = list(screen)
+    for patch in patches:
+        if isinstance(patch, ScreenInsertFrame):
+            patched.insert(patch.position, patch.item)
+        else:
+            patched = [patch.item if item.id == patch.item.id else item for item in patched]
+    return patched
+
+
 @dataclass
 class _Log:
     """A log growing as the step writes it: appends take the next seq, fills replace a reply in place."""
 
     entries: list[LoggedEntry] = field(default_factory=list)
     screens: list[list[ScreenItem]] = field(default_factory=list)
+    tracker: ScreenTracker = field(default_factory=lambda: ScreenTracker([]))
+    patched: list[ScreenItem] = field(default_factory=list)
 
     def append(self, entry: Entry) -> int:
         seq = len(self.entries) + 1
-        self.entries.append(logged(seq, entry))
-        self.screens.append(project_screen(self.entries))
+        self.entries.append(written := logged(seq, entry))
+        self._shown(EntryFrame(seq=seq, at=written.at, entry=entry))
         return seq
 
     def fill(self, seq: int, entry: Reply) -> None:
         self.entries[seq - 1] = logged(seq, entry)
+        self._shown(EntryUpdatedFrame(seq=seq, entry=entry))
+
+    def _shown(self, frame: EntryFrame | EntryUpdatedFrame) -> None:
+        """Project the log, and check the client patched from empty shows exactly that screen."""
         self.screens.append(project_screen(self.entries))
+        self.patched = _apply(self.patched, self.tracker.take(frame))
+        assert self.patched == self.screens[-1]
 
 
 def _assert_nothing_moves(screens: list[list[ScreenItem]]) -> None:
@@ -392,3 +420,11 @@ def test_any_conversation_only_grows_at_the_end_and_reloads_to_what_was_shown(
     for item in final:
         if item.kind is ScreenItemKind.REPLY:
             assert all(card["data"]["tool_name"] != CALL_EXECUTOR_NAME for card in item.tool_data)
+
+
+def test_a_projection_that_moves_a_shown_item_fails_loudly() -> None:
+    first, second = project_screen([logged(1, user("u1")), logged(2, user("u2"))])
+    with pytest.raises(ScreenItemMoved):
+        screen_patches([first, second], [second, first])
+    with pytest.raises(ScreenItemMoved):
+        screen_patches([first, second], [second])

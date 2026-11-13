@@ -34,6 +34,7 @@ from app.models.conversation_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
+from app.services.conversation.screen import project_screen
 from app.services.storage import JuiceFSUnavailable, delete_session_dir
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
@@ -179,7 +180,7 @@ async def get_conversation(conversation_id: str, user: AuthenticatedUser) -> Loa
             status_code=404,
             detail="Conversation not found or does not belong to the user",
         )
-    return document
+    return document.model_copy(update={"items": project_screen(document.entries)})
 
 
 async def get_entries_before(
@@ -194,7 +195,7 @@ async def get_entries_before(
             status_code=404,
             detail="Conversation not found or does not belong to the user",
         )
-    return page
+    return page.model_copy(update={"items": project_screen(page.entries)})
 
 
 async def star_conversation(
@@ -465,6 +466,7 @@ async def batch_sync_conversations(
                 createdAt=document.createdAt,
                 updatedAt=document.updatedAt,
                 entries=document.entries,
+                items=project_screen(document.entries),
                 state=document.state,
                 has_older=document.has_older,
                 cursor=document.cursor,

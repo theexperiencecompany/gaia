@@ -119,6 +119,11 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
+from app.models.conversation_screen_models import (
+    ScreenFrame,
+    ScreenInsertFrame,
+    ScreenUpdateFrame,
+)
 from app.models.conversation_send_models import SendMessageRequest
 from app.models.hil_models import ApprovalProposal, HILApprovalRecord
 from app.models.message_models import ReplyToMessageData
@@ -170,6 +175,7 @@ from app.services.conversation.log import Accepted, accept
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import EntryRejected, RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports
+from app.services.conversation.screen import project_screen
 from app.services.conversation.send import send_message, submit_message
 from app.services.conversation.step import advance
 from app.services.conversation.sweeper import sweep_conversations
@@ -692,7 +698,7 @@ async def test_the_events_stream_sends_only_json_data_lines_and_comment_keepaliv
     await rig.send("m1", "hi")
     await rig.settle()
     lines = event_stream.event_lines(
-        rig.ports.log, rig.conversation_id, rig.user_id, "0", _never_disconnected, asyncio.Event()
+        rig.ports.log, rig.conversation_id, rig.user_id, _never_disconnected, asyncio.Event()
     )
     blocks: list[str] = []
     with patch.object(event_stream, "read_frames", partial(read_frames, block_ms=1)):
@@ -713,16 +719,44 @@ async def test_an_open_events_stream_ends_at_once_when_the_process_is_stopping(
     rig = await rig_for(gated("hello there"))
     stopping = asyncio.Event()
     lines = event_stream.event_lines(
-        rig.ports.log, rig.conversation_id, rig.user_id, "0", _never_disconnected, stopping
+        rig.ports.log, rig.conversation_id, rig.user_id, _never_disconnected, stopping
     )
     await anext(lines)
-    # The state frame is sent; the next read blocks in XREAD for EVENTS_BLOCK_MS.
+    await anext(lines)
+    # The screen and state frames are sent; the next read blocks in XREAD for EVENTS_BLOCK_MS.
     waiting = asyncio.ensure_future(anext(lines))
     await asyncio.sleep(0.2)
     stopping.set()
     async with asyncio.timeout(1):
         with pytest.raises(StopAsyncIteration):
             await waiting
+
+
+@pytest.mark.service
+async def test_the_events_stream_opens_on_the_screen_and_patches_it_to_the_log_projection(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated("first answer", "second answer"))
+    await rig.send("m1", "hi")
+    await rig.settle()
+    with patch.object(event_stream, "read_frames", partial(read_frames, block_ms=1)):
+        frames = event_stream.follow_screen(rig.ports.log, rig.conversation_id, rig.user_id)
+        opened = await anext(frames)
+        assert isinstance(opened, ScreenFrame)
+        assert list(opened.items) == project_screen(await rig.entries())
+        shown = list(opened.items)
+        while await anext(frames) is not None:
+            pass
+        await rig.send("m2", "and again")
+        await rig.settle()
+        while (frame := await anext(frames)) is not None:
+            if isinstance(frame, ScreenInsertFrame):
+                shown.insert(frame.position, frame.item)
+            elif isinstance(frame, ScreenUpdateFrame):
+                shown = [frame.item if item.id == frame.item.id else item for item in shown]
+        await frames.aclose()
+    assert shown == project_screen(await rig.entries())
+    assert [item.id for item in shown][: len(opened.items)] == [item.id for item in opened.items]
 
 
 def _settles(frame: OutputFrame) -> bool:
