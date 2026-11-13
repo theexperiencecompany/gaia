@@ -63,6 +63,7 @@ from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.agents.core.subagents.subagent_runner import prepare_executor_execution
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.run_record import append_call
+from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
 from app.config.settings import settings
 from app.constants.agents import AgentTag
 from app.constants.browser import HandoffDecision, HandoffStatus
@@ -275,6 +276,15 @@ class Rig:
             ConversationSource.WEB,
         )
         return sent.accepted.seq
+
+    async def submit(self, message_id: str, text: str) -> int:
+        accepted = await submit_message(
+            self.conversation_id,
+            AuthenticatedUser(user_id=self.user_id),
+            SendMessageRequest(message_id=message_id, text=text),
+            ConversationSource.WEB,
+        )
+        return accepted.seq
 
     async def settle(self) -> None:
         """Wait until no step runs here; a step's appends may kick another, so wait again."""
@@ -698,14 +708,21 @@ async def test_one_append_streams_one_entry_frame_and_at_most_one_state_frame(
     assert len(states) <= len(entry_seqs)
 
 
-# The step's own path, no HTTP or auth (was 49 and 20). Per append: head read, head write, two-op
-# flush; plus claim, one unsettled read per batch, comms phase, amend, metering. ~123 ms each in prod.
-PLAIN_TURN_MONGO_OPS = 28
-# 12 to 14: the background flush and metering row race the reply's commit.
-FIRST_DELTA_MONGO_OPS = 14
-# Round trips, a pipeline counting as one: hint raises, frame publishes, claim keys, budget reads.
-PLAIN_TURN_REDIS_TRIPS = 23
-FIRST_DELTA_REDIS_TRIPS = 10
+@dataclass(frozen=True)
+class _Budget:
+    """Mongo operations and Redis round trips (a pipeline is one), before the reply opened and in all."""
+
+    mongo: int
+    mongo_before_text: int
+    redis: int
+    redis_before_text: int
+
+
+# Through submit_message: before the reply opens, accept 2, claim 1, unsettled 1, comms 1, reply head 1
+# (+ its own commit in the same ms). Was 29/14 Mongo, 27/14 Redis; work turn 46/23, 28/16.
+PLAIN_TURN = _Budget(mongo=24, mongo_before_text=7, redis=30, redis_before_text=17)
+# The same turn with the attempt also logging the work it hands the executor before any text.
+WORK_TURN = _Budget(mongo=43, mongo_before_text=15, redis=31, redis_before_text=19)
 
 
 @dataclass(frozen=True)
@@ -755,6 +772,63 @@ def _count_redis_trips(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     return trips
 
 
+@dataclass(frozen=True)
+class _Turn:
+    spent: _Budget
+    ops: list[_MongoOp]
+    opened_at: datetime
+
+
+async def _measured_turn(
+    rig: Rig,
+    mongo_db: AsyncIOMotorDatabase[dict[str, object]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> _Turn:
+    """Submit a second message, settle, and count what its turn cost before the reply opened and in all."""
+    await rig.send("m1", "hi")
+    await rig.settle()
+    trips: list[float] = []
+
+    async def turn() -> None:
+        counted = _count_redis_trips(monkeypatch)
+        with patch("app.services.conversation.send.capture"):
+            await rig.submit("m2", "and again")
+        await rig.settle()
+        trips.extend(counted)
+
+    ops = await _profiled(mongo_db, turn)
+    opened = next(
+        logged for logged in reversed(await rig.entries()) if isinstance(logged.entry, Reply)
+    )
+    spent = _Budget(
+        mongo=len(ops),
+        mongo_before_text=len([op for op in ops if op.at <= opened.at]),
+        redis=len(trips),
+        redis_before_text=len([at for at in trips if at <= opened.at.timestamp()]),
+    )
+    return _Turn(spent=spent, ops=ops, opened_at=opened.at)
+
+
+async def _all_flushed(rig: Rig, mongo_db: AsyncIOMotorDatabase[dict[str, object]]) -> list[str]:
+    """Wait for the turn's spawned flushes to empty the outbox, then return the stored entry ids in seq order."""
+    head_filter = {"conversation_id": rig.conversation_id, "user_id": rig.user_id}
+    async with asyncio.timeout(_SETTLE_SECONDS):
+        while True:
+            head = await mongo_db["conversations"].find_one(head_filter)
+            if not (head or {}).get("outbox"):
+                break
+            await asyncio.sleep(0.01)
+    rows = mongo_db["conversation_entries"].find(head_filter).sort("seq", 1)
+    return [str(row["id"]) async for row in rows]
+
+
+def _within(spent: _Budget, budget: _Budget) -> None:
+    assert spent.mongo <= budget.mongo, spent
+    assert spent.mongo_before_text <= budget.mongo_before_text, spent
+    assert spent.redis <= budget.redis, spent
+    assert spent.redis_before_text <= budget.redis_before_text, spent
+
+
 @pytest.mark.service
 async def test_a_plain_turn_stays_within_its_mongo_and_redis_budget(
     rig_for: RigFactory,
@@ -762,28 +836,50 @@ async def test_a_plain_turn_stays_within_its_mongo_and_redis_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     rig = await rig_for(gated("first answer", "second answer"))
+    turn = await _measured_turn(rig, mongo_db, monkeypatch)
+    _within(turn.spent, PLAIN_TURN)
+    # The optional writes wait for the first text and still happen exactly once.
+    ledger = [op for op in turn.ops if op.collection == "llm_calls"]
+    assert [op.op for op in ledger] == ["insert"]
+    assert all(op.at >= turn.opened_at for op in ledger)
+    assert await _all_flushed(rig, mongo_db) == [logged.entry.id for logged in await rig.entries()]
+
+
+@pytest.mark.service
+async def test_a_message_over_the_budget_is_refused_before_it_is_logged_or_answered(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated("first answer", "never said"))
     await rig.send("m1", "hi")
     await rig.settle()
+    before = await rig.entries()
+    refused = AsyncMock(side_effect=CostBudgetExceededException(feature="chat_messages"))
+    with (
+        patch("app.services.conversation.send.enforce_cost_budget", refused),
+        pytest.raises(CostBudgetExceededException),
+    ):
+        await rig.submit("m2", "and again")
+    await rig.settle()
+    assert await rig.entries() == before
 
-    trips: list[float] = []
 
-    async def turn() -> None:
-        counted = _count_redis_trips(monkeypatch)
-        await rig.send("m2", "and again")
-        await rig.settle()
-        trips.extend(counted)
+@pytest.mark.service
+async def test_a_turn_that_hands_off_work_stays_within_its_mongo_and_redis_budget(
+    rig_for: RigFactory,
+    mongo_db: AsyncIOMotorDatabase[dict[str, object]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = gated("first answer", "on it")
+    rig = await rig_for(model)
+    started: list[bool] = []
 
-    ops = await _profiled(mongo_db, turn)
+    async def dispatch() -> None:
+        started.append(await rig.start_work("t1"))
 
-    opened = next(
-        logged for logged in reversed(await rig.entries()) if isinstance(logged.entry, Reply)
-    )
-    before_first_delta = [op for op in ops if op.at <= opened.at]
-    assert len(ops) <= PLAIN_TURN_MONGO_OPS, ops
-    assert len(before_first_delta) <= FIRST_DELTA_MONGO_OPS, before_first_delta
-    shown_at = opened.at.timestamp()
-    assert len(trips) <= PLAIN_TURN_REDIS_TRIPS
-    assert len([at for at in trips if at <= shown_at]) <= FIRST_DELTA_REDIS_TRIPS
+    _during(model, 1, dispatch)
+    turn = await _measured_turn(rig, mongo_db, monkeypatch)
+    assert started == [True]
+    _within(turn.spent, WORK_TURN)
 
 
 @pytest.mark.service
