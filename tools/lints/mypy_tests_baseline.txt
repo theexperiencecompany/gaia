@@ -56,9 +56,6 @@ apps/api/tests/integration/agents/test_llm_call_analytics.py	attr-defined
 apps/api/tests/integration/agents/test_spawn_sibling_replay.py	arg-type
 apps/api/tests/integration/agents/test_spawn_sibling_replay.py	attr-defined
 apps/api/tests/integration/agents/test_spawn_sibling_replay.py	call-overload
-apps/api/tests/integration/agents/test_summarization_real_graph.py	arg-type
-apps/api/tests/integration/agents/test_summarization_real_graph.py	attr-defined
-apps/api/tests/integration/agents/test_summarization_state_update.py	attr-defined
 apps/api/tests/integration/agents/test_thread_writes_carry_ids.py	call-overload
 apps/api/tests/integration/agents/test_ticket_redeem.py	call-overload
 apps/api/tests/integration/agents/test_tool_execution.py	attr-defined
@@ -117,11 +114,6 @@ apps/api/tests/unit/agents/test_executor_channel.py	var-annotated
 apps/api/tests/unit/agents/test_executor_queue.py	attr-defined
 apps/api/tests/unit/agents/test_executor_queue.py	misc
 apps/api/tests/unit/agents/test_executor_queue.py	typeddict-item
-apps/api/tests/unit/agents/test_executor_runner_delivery.py	arg-type
-apps/api/tests/unit/agents/test_executor_runner_delivery.py	attr-defined
-apps/api/tests/unit/agents/test_executor_runner_delivery.py	func-returns-value
-apps/api/tests/unit/agents/test_executor_runner_delivery.py	list-item
-apps/api/tests/unit/agents/test_executor_runner_delivery.py	return-value
 apps/api/tests/unit/agents/test_github_discovery.py	arg-type
 apps/api/tests/unit/agents/test_held_replies.py	arg-type
 apps/api/tests/unit/agents/test_hil_approval_middleware.py	arg-type
@@ -132,7 +124,6 @@ apps/api/tests/unit/agents/test_llm_runtime_config.py	attr-defined
 apps/api/tests/unit/agents/test_llm_runtime_config.py	index
 apps/api/tests/unit/agents/test_openui_prompts.py	assignment
 apps/api/tests/unit/agents/test_profile_crawler.py	return-value
-apps/api/tests/unit/agents/test_stream_session.py	arg-type
 apps/api/tests/unit/agents/test_subagent_channel.py	arg-type
 apps/api/tests/unit/agents/test_subagent_landing_wake.py	arg-type
 apps/api/tests/unit/agents/test_subagent_landing_wake.py	attr-defined
@@ -193,8 +184,6 @@ apps/api/tests/unit/config/test_settings_hermetic.py	attr-defined
 apps/api/tests/unit/config/test_token_repository.py	arg-type
 apps/api/tests/unit/config/test_workos.py	attr-defined
 apps/api/tests/unit/core/test_lazy_loader.py	var-annotated
-apps/api/tests/unit/core/test_middleware.py	arg-type
-apps/api/tests/unit/core/test_middleware.py	attr-defined
 apps/api/tests/unit/db/repositories/test_base_repository.py	unused-ignore
 apps/api/tests/unit/db/repositories/test_playbooks.py	call-overload
 apps/api/tests/unit/db/test_chroma_store.py	arg-type
@@ -347,9 +336,6 @@ apps/api/tests/unit/services/test_chat_stream_attach.py	attr-defined
 apps/api/tests/unit/services/test_chat_stream_attach.py	typeddict-item
 apps/api/tests/unit/services/test_composio_service.py	assignment
 apps/api/tests/unit/services/test_connect_link_service.py	attr-defined
-apps/api/tests/unit/services/test_conversation_service.py	arg-type
-apps/api/tests/unit/services/test_conversation_service.py	attr-defined
-apps/api/tests/unit/services/test_conversation_service.py	call-arg
 apps/api/tests/unit/services/test_desktop_releases.py	attr-defined
 apps/api/tests/unit/services/test_device_manifest_cache.py	operator
 apps/api/tests/unit/services/test_device_self_pair_service.py	attr-defined
@@ -381,7 +367,6 @@ apps/api/tests/unit/services/test_share_fetcher_compat.py	misc
 apps/api/tests/unit/services/test_share_fetcher_compat.py	str-bytes-safe
 apps/api/tests/unit/services/test_social_profile_service.py	arg-type
 apps/api/tests/unit/services/test_startup_validation.py	func-returns-value
-apps/api/tests/unit/services/test_todo_canvas_storage.py	arg-type
 apps/api/tests/unit/services/test_trigger_handlers.py	union-attr
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	arg-type
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	attr-defined

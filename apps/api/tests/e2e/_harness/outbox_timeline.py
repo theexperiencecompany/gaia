@@ -207,26 +207,17 @@ class Sinks:
     bot_result: OutboundResult = OutboundResult.PUBLISHED
 
 
+@dataclass
 class OutboxTimeline:
     """Steps of (minutes since T0, event) played through the real outbox."""
 
-    def __init__(
-        self,
-        db: AsyncIOMotorDatabase[Any],
-        world: World,
-        fake_clock: FakeClock,
-        arq: FakeArq,
-        compose: ScriptedCompose,
-        graph: FakeThreadGraph,
-        sinks: Sinks,
-    ) -> None:
-        self.db = db
-        self.world = world
-        self.clock = fake_clock
-        self.arq = arq
-        self.compose = compose
-        self.graph = graph
-        self.sinks = sinks
+    db: AsyncIOMotorDatabase[Any]
+    world: World
+    clock: FakeClock
+    arq: FakeArq
+    compose: ScriptedCompose
+    graph: FakeThreadGraph
+    sinks: Sinks
 
     async def at(self, minutes: float) -> None:
         self.clock.current = T0 + timedelta(minutes=minutes)

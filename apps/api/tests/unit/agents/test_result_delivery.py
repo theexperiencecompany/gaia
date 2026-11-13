@@ -317,7 +317,7 @@ def _todo_run() -> ExecutorRun:
         task_id="task-1",
         user_message_id=None,
         bot_message_id="placeholder-1",
-        todo_run=TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO),
+        todo_run=TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True),
     )
 
 

@@ -433,6 +433,44 @@ def test_files_off_ci_counts_uncommitted_and_untracked_edits(repo: Path) -> None
     assert _local_files(repo) == ["app.py", "new.py"]
 
 
+def _origin_master(repo: Path) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "origin/master"],
+        check=True,
+        env=GIT_ENV,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+
+def test_files_off_ci_never_fetches_the_remote(repo: Path, tmp_path: Path) -> None:
+    """A commit hook calls this on every commit; a network fetch there stalls it on a slow link."""
+    other = tmp_path / "other"
+    _git(tmp_path, "clone", "-q", str(tmp_path / "origin.git"), str(other))
+    (other / "later.py").write_text("z = 1\n")
+    _git(other, "add", "-A")
+    _git(other, "commit", "-qm", "later")
+    _git(other, "push", "-q", "origin", "master")
+    # macOS ships no `timeout`, which would hide a fetch there; Linux has one.
+    shims = tmp_path / "bin"
+    shims.mkdir()
+    (shims / "timeout").write_text('#!/bin/sh\nshift\nexec "$@"\n')
+    (shims / "timeout").chmod(0o755)
+    before = _origin_master(repo)
+
+    env = {k: v for k, v in GIT_ENV.items() if k != "GITHUB_ACTIONS"}
+    subprocess.run(
+        ["bash", str(SCRIPT), "files", "py"],
+        cwd=repo,
+        env={**env, "GAIA_PR_BASE": "master", "PATH": f"{shims}:{GIT_ENV['PATH']}"},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert _origin_master(repo) == before
+
+
 def test_files_in_ci_counts_only_the_commits(repo: Path) -> None:
     # A CI step that regenerated a tracked file did not change the PR.
     (repo / "app.py").write_text("x = 2\n")

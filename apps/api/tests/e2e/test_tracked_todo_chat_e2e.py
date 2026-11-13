@@ -52,7 +52,9 @@ from app.constants.todos import (
     TODO_CONVERSATION_MAX_MESSAGES,
     TodoActivityEvent,
     TodoWakeKind,
+    WaitingOn,
 )
+from app.constants.triggers import GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.core.stream_manager import stream_manager
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb import indexes
@@ -63,7 +65,15 @@ from app.models.hil_models import HILPreferences
 from app.models.integration_models import UserIntegrationCapabilities
 from app.models.memory_models import MemoryEntry
 from app.models.message_models import MessageRequestWithHistory
-from app.models.todo_models import TodoDocument, TodoUpdate
+from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument, TodoUpdate
+from app.models.trigger_subscription_models import (
+    ConditionOperator,
+    SubscriptionAction,
+    SubscriptionCondition,
+    SubscriptionResolution,
+    TriggerOrigin,
+    TriggerSubscription,
+)
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
 from app.services.conversation_service import (
@@ -306,7 +316,7 @@ async def _new_tracked_todo(owner: AuthenticatedUser, title: str = TITLE) -> str
     created = await TrackedTodoService.create_tracked_todo(
         owner.user_id, title, schedule=_daily_watch()
     )
-    return created.id
+    return created.todo.id
 
 
 async def _new_due_tracked_todo(owner: AuthenticatedUser, due: datetime) -> str:
@@ -615,6 +625,89 @@ class TestWhatTheUserSeesOutlivesTheExecutionState:
         ]
 
 
+THREAD_ID = "19a6c1f0d2e3b4a5"
+RESOLVED_REPORT = (
+    "Mads · single-user self-hosting licence · aryan@heygaia.io\n"
+    "Aryan's reply confirmed the described setup is fine and Mads may proceed. "
+    "No further reply or follow-up is needed; the thread is resolved."
+)
+
+
+async def _watching_thread_todo(owner: AuthenticatedUser) -> tuple[str, TriggerSubscription]:
+    """Open a Gmail-thread todo watching its thread, as the inbox desk does.
+
+    Its watch is stored as the real registration stores it; only the Composio call is skipped.
+    """
+    with patch("app.services.tracked_todo_service.watch_external_ref", new=AsyncMock()):
+        todo_id = (
+            await TrackedTodoService.create_tracked_todo(
+                owner.user_id,
+                "Mads · single-user self-hosting licence",
+                external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id=THREAD_ID),
+                schedule=TodoUpdate(
+                    waiting_on=WaitingOn.EVENT,
+                    scheduled_at=datetime.now(UTC) + timedelta(days=3),
+                ),
+            )
+        ).todo.id
+    watch = TriggerSubscription(
+        trigger_name=GMAIL_NEW_MESSAGE_TRIGGER_NAME,
+        action=SubscriptionAction.EXECUTE,
+        resolution=SubscriptionResolution.ACCOUNT,
+        conditions=[
+            SubscriptionCondition(
+                field_name="thread_id", operator=ConditionOperator.EQUALS, value=THREAD_ID
+            )
+        ],
+    )
+    await todo_repository.add_trigger_subscription(
+        todo_id, user_id=owner.user_id, subscription=watch
+    )
+    return todo_id, watch
+
+
+@pytest.mark.usefixtures("mongo_db")
+class TestAThreadTodoThatResolvesItself:
+    @pytest.mark.regression
+    async def test_its_report_is_judged_as_a_watchers_not_sent_as_a_one_time_answer(
+        self, open_stack: OpenStack, owner: AuthenticatedUser, mongo_db: AsyncIOMotorDatabase
+    ) -> None:
+        """Regression: completing a todo tore its watch down before delivery read it."""
+        todo_id, watch = await _watching_thread_todo(owner)
+        doc = await todo_repository.get_by_id(todo_id)
+        assert doc is not None and doc.trigger_subscriptions
+        reply = TriggerOrigin(
+            subscription_id=watch.id,
+            trigger_name=GMAIL_NEW_MESSAGE_TRIGGER_NAME,
+            payload={"thread_id": THREAD_ID, "from_address": "aryan@heygaia.io"},
+        )
+        executor = [
+            call(
+                "retrieve_tools", {"exact_tool_names": ["complete_tracked_todo"]}, call_id="tc_find"
+            ),
+            call(
+                "complete_tracked_todo",
+                {"todo_id": todo_id, "summary": "Aryan confirmed; nothing left to answer."},
+                call_id="tc_done",
+            ),
+            RESOLVED_REPORT,
+        ]
+
+        async with open_stack(executor=executor, comms=[RESOLVED_REPORT]) as stack:
+            await _execute_on_executor(doc, user_tz=Timezone.utc(), user_data=owner, origin=reply)
+
+        # The run closed the todo and, with it, its watch: what delivery reads afterwards.
+        closed = await todo_repository.get_by_id(todo_id)
+        assert closed is not None and closed.completed
+        assert closed.trigger_subscriptions == []
+        assert closed.activity_content is not None
+        assert "stopped watching gmail_new_message (completed)" in closed.activity_content
+        # Comms decided under the watcher's rule, which lets it keep quiet.
+        delivery = " ".join(str(m.content) for m in stack.comms_model.chat_messages_log[-1])
+        assert "Nobody asked for it just now" in delivery
+        assert "This todo runs once" not in delivery
+
+
 @pytest.mark.usefixtures("mongo_db")
 class TestAFollowUpKnowsTheRunsAboveIt:
     @pytest.mark.parametrize("notify_on_run", [True, False], ids=["told", "not-told"])
@@ -630,7 +723,7 @@ class TestAFollowUpKnowsTheRunsAboveIt:
             await TrackedTodoService.create_tracked_todo(
                 owner.user_id, TITLE, notify_on_run=notify_on_run, schedule=_daily_watch()
             )
-        ).id
+        ).todo.id
         comms = [NARRATED, FOLLOW_UP_REPLY] if notify_on_run else [FOLLOW_UP_REPLY]
 
         async with open_stack(executor=executor_run(REPORT), comms=comms) as stack:
@@ -685,7 +778,11 @@ class TestDeletingTheTodoDeletesItsChat:
             "/api/v1/conversations/batch-sync",
             json={"conversations": [{"conversation_id": conversation_id}]},
         )
-        assert synced.json() == {"conversations": [], "missing": [conversation_id]}
+        assert synced.json() == {
+            "conversations": [],
+            "missing": [conversation_id],
+            "active_streams": {},
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -1140,10 +1237,10 @@ class TestTheChatFollowsItsTodo:
         )
 
         async with open_stack(executor=executor_run(REPORT), comms=[NARRATED]):
-            await _run(created.id, owner)
+            await _run(created.todo.id, owner)
 
         assert [
-            m["response"] for m in _reports((await _chat_of(mongo_db, created.id))["messages"])
+            m["response"] for m in _reports((await _chat_of(mongo_db, created.todo.id))["messages"])
         ] == [REPORT]
         assert await mongo_db["notifications"].count_documents({"user_id": owner.user_id}) == 0
 
@@ -1177,7 +1274,7 @@ class TestNoChatOutlivesItsTodo:
                 parent_todo_id=parent,
                 schedule=_daily_watch(),
             )
-        ).id
+        ).todo.id
         for todo_id in (parent, child):
             assert (await client.post(f"/api/v1/todos/{todo_id}/conversation")).status_code == 200
 

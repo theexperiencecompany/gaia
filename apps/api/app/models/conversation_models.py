@@ -276,8 +276,6 @@ class ConversationSyncRow(ResponseModel):
     """One batch-sync row — the conversation's client-visible fields plus its full
     message history and artifact registry.
 
-    ``active_stream_id`` is the stream of an in-flight turn (``None`` when idle),
-    carried here so a reloading client re-attaches without a discovery request.
     """
 
     conversation_id: str
@@ -291,12 +289,13 @@ class ConversationSyncRow(ResponseModel):
     messages: list[MessageModel] = Field(default_factory=list)
     # Mirrored verbatim from the document (see ConversationDocument.artifacts).
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
-    active_stream_id: str | None = None
     # Whether a background run holds a live approval here — drives the
     # sidebar dot. Missing on older rows reads as unset (no dot).
     has_live_approval: bool | None = None
     # The tracked todo this chat belongs to; clients keep such a chat out of their lists.
     todo_id: str | None = None
+    # Where the chat originated; a bot chat is never listed, so clients need it to keep one cached.
+    source: ConversationSource | None = None
 
 
 class BatchSyncResponse(ResponseModel):
@@ -306,6 +305,9 @@ class BatchSyncResponse(ResponseModel):
     # Requested ids the user has no conversation for: a client drops them, as it
     # cannot learn of a deleted chat that is never listed (a tracked todo's).
     missing: list[str] = Field(default_factory=list)
+    # Stream id of each requested conversation's in-flight turn, stale or not, so a
+    # reloading client re-attaches without refetching a history it already holds.
+    active_streams: dict[str, str] = Field(default_factory=dict)
 
 
 class ConversationActionResponse(BaseModel):
