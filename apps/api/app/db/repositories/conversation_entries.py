@@ -33,6 +33,7 @@ from app.models.conversation_log_models import (
 from app.models.conversation_models import (
     ConversationHead,
     EntryKey,
+    MessageShape,
     StoredEntry,
 )
 from app.utils.errors import ConversationStoreError, UnmigratedConversationError
@@ -167,17 +168,19 @@ def openers_outside(page: Sequence[LoggedEntry]) -> dict[str, list[str]]:
     replies: set[str] = set()
     tasks: set[str] = set()
     approvals: set[str] = set()
-    held: dict[str, set[str]] = {"reply_id": set(), "task_id": set(), "approval_id": set()}
+    held_replies: set[str] = set()
+    held_tasks: set[str] = set()
+    held_approvals: set[str] = set()
     for logged in page:
         match logged.entry:
             case Reply(reply_id=reply_id):
-                held["reply_id"].add(reply_id)
+                held_replies.add(reply_id)
             case WorkStarted(task_id=task_id, joins=joined):
-                held["task_id"].add(task_id)
+                held_tasks.add(task_id)
                 if joined is not None:
                     tasks.add(joined)
             case ApprovalRequested(task_id=task_id, approval_id=approval_id):
-                held["approval_id"].add(approval_id)
+                held_approvals.add(approval_id)
                 tasks.add(task_id)
             case ReplySettled(reply_id=reply_id):
                 replies.add(reply_id)
@@ -187,10 +190,12 @@ def openers_outside(page: Sequence[LoggedEntry]) -> dict[str, list[str]]:
                 approvals.add(approval_id)
             case _:
                 pass
-    wanted = {"reply_id": replies, "task_id": tasks, "approval_id": approvals}
-    return {
-        field: sorted(names - held[field]) for field, names in wanted.items() if names - held[field]
+    wanted = {
+        "reply_id": (replies, held_replies),
+        "task_id": (tasks, held_tasks),
+        "approval_id": (approvals, held_approvals),
     }
+    return {field: sorted(names - held) for field, (names, held) in wanted.items() if names - held}
 
 
 def newest(stored: StoredEntry | None, staged: StoredEntry) -> StoredEntry:
@@ -450,9 +455,12 @@ class EntryWindow:
         return {"kind": {"$in": sorted(self._kinds())}, **({"$or": named} if named else {})}
 
     def admits(self, entry: StoredEntry, log_head: int) -> bool:
-        fields = entry.message_fields()
         in_range = self.after_seq < entry.seq <= self.upper(log_head)
-        return in_range and fields.get("kind") in self._kinds() and self._names(entry.id, fields)
+        return (
+            in_range
+            and entry.shape().kind in self._kinds()
+            and self._names(entry.id, entry.shape())
+        )
 
     def take(self, union: Mapping[int, StoredEntry]) -> list[StoredEntry]:
         seqs = sorted(union, reverse=True)
@@ -465,11 +473,11 @@ class EntryWindow:
     def _kinds(self) -> frozenset[str]:
         return self.kinds if self.kinds is not None else frozenset(LOG_KINDS)
 
-    def _names(self, entry_id: str, fields: Mapping[str, object]) -> bool:
+    def _names(self, entry_id: str, shape: MessageShape) -> bool:
         if self.ids is None and self.reply_ids is None and self.named is None:
             return True
         return (
             entry_id in (self.ids or ())
-            or fields.get("reply_id") in (self.reply_ids or ())
-            or any(fields.get(field) in names for field, names in (self.named or {}).items())
+            or shape.reply_id in (self.reply_ids or ())
+            or any(getattr(shape, field) in names for field, names in (self.named or {}).items())
         )

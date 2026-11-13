@@ -120,7 +120,8 @@ class CommsGraphRun:
         said = await reframed_messages(self._claim, entries)
         messages, joined = absorbed_messages(entries, said)
         feed(self._run_id, messages)
-        if (step := agent_configurable(self._config).get("conversation_step")) is not None:
+        configurable: AgentConfigurable = agent_configurable(self._config)
+        if (step := configurable.get("conversation_step")) is not None:
             _join(step, joined)
         self._sealed = len(joined) < len(entries)
 

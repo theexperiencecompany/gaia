@@ -10,6 +10,8 @@ grouped tool_data, and tear it down. Centralizing it here keeps one
 implementation so chat and workflow runs render identically.
 """
 
+from pydantic import BaseModel, ConfigDict
+
 from app.agents.core.background.session import (
     get_session,
 )
@@ -23,13 +25,19 @@ from app.utils.stream_utils import (
 )
 
 
+class _ImageEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    image_data: ImageData | None = None
+
+
 def drain_executor_image(stream_id: str) -> ImageData | None:
     """Return the last image the session's run generated, as its image tool wrote it; None when it made none."""
     session = get_session(stream_id)
     images = [
-        ImageData.model_validate(event["image_data"])
+        image
         for event in (session.tool_events if session is not None else [])
-        if event.get("image_data") is not None
+        if (image := _ImageEvent.model_validate(event).image_data) is not None
     ]
     return images[-1] if images else None
 

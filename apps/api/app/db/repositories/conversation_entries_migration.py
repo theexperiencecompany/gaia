@@ -59,7 +59,10 @@ from app.models.conversation_models import (
     EmbeddedHead,
     HeadRefRow,
     LegacyMessage,
+    MessageShape,
+    NotKeptFields,
     StoredEntry,
+    _ConversationIdRow,
 )
 from app.services.conversation.reducer import reduce
 
@@ -81,15 +84,8 @@ NEVER_MIGRATED_HEADS: dict[str, object] = {
 #: Message-shaped entries carry the old type field (user or bot); no log entry has one.
 MESSAGE_SHAPED: dict[str, object] = {"type": {"$exists": True}}
 _ACK_KIND = "emoji_ack"
-#: Old message fields no client renders, so the log keeps them nowhere; a pass counts the messages that carry one.
-NOT_KEPT_FIELDS = (
-    "disclaimer",
-    "subtype",
-    "file",
-    "filename",
-    "filetype",
-    "metadata",
-)
+#: The old message fields the log keeps nowhere; a pass counts the messages that carry one.
+NOT_KEPT_FIELDS = tuple(NotKeptFields.model_fields)
 #: What verify compares of each message a client reads.
 _SHOWN_FIELDS = frozenset(
     {
@@ -186,7 +182,7 @@ class _Element:
 
     @property
     def is_user(self) -> bool:
-        return self.fields.get("type") == USER_MESSAGE_TYPE
+        return MessageShape.model_validate(self.fields).type == USER_MESSAGE_TYPE
 
 
 @dataclass(frozen=True)
@@ -204,7 +200,7 @@ class _Plan:
     """A conversation's writes: entries to insert, rewrite in place or update, and the head after them."""
 
     inserts: list[dict[str, object]] = field(default_factory=list)
-    replaces: list[dict[str, object]] = field(default_factory=list)
+    replaces: list[tuple[int, dict[str, object]]] = field(default_factory=list)
     updates: list[tuple[str, dict[str, object]]] = field(default_factory=list)
     log: dict[int, LoggedEntry] = field(default_factory=dict)
     folded: int = 0
@@ -229,7 +225,7 @@ class _Plan:
             if update := _changed(prior, document):
                 self.updates.append((logged.entry.id, update))
         elif in_place is not None:
-            self.replaces.append(document)
+            self.replaces.append((logged.seq, document))
         else:
             self.inserts.append(document)
 
@@ -273,11 +269,12 @@ def entry_at(date: object) -> datetime | None:
 
 def _ack_target(element: _Element, users: set[str]) -> tuple[str, str] | None:
     """Return (target id, emoji) of an emoji_ack whose emoji and target both exist."""
-    if element.fields.get("kind") != _ACK_KIND:
+    shape = MessageShape.model_validate(element.fields)
+    if shape.kind != _ACK_KIND:
         return None
-    target = element.fields.get("reacts_to_message_id")
-    emoji = str(element.fields.get("response") or "").strip()
-    return (str(target), emoji) if emoji and target in users else None
+    emoji = (shape.response or "").strip()
+    target = shape.reacts_to_message_id
+    return (target, emoji) if emoji and target in users else None
 
 
 def _settle_outcome(message: ConversationEntry) -> tuple[ReplyOutcome, FailureReason | None]:
@@ -322,7 +319,7 @@ def _element_entries(
 ) -> list[_Planned]:
     """Return the entries one old message becomes: none for a folded ack, a reply's settle after it."""
     message = ConversationEntry.model_validate({**element.fields, "seq": 0})
-    at = entry_at(element.fields.get("date"))
+    at = entry_at(MessageShape.model_validate(element.fields).date)
     if element.is_user:
         return [_Planned(_user_message(message, surface, reactions), element.seq, at)]
     folded_ack = _ack_target(element, users) is not None
@@ -412,7 +409,7 @@ def _sources(
         fields = legacy.stored()
         if minted is not None and minted[n] is not None:
             fields[_ID_FIELD] = minted[n]
-        if str(fields.get(_ID_FIELD)) not in shaped_ids:
+        if MessageShape.model_validate(fields).message_id not in shaped_ids:
             elements.append(_Element(fields))
     return elements, existing, shaped
 
@@ -480,14 +477,15 @@ def expected_messages(elements: Sequence[Mapping[str, object]]) -> list[dict[str
     reactions: dict[str, str] = {}
     folded: set[str] = set()
     for raw, m in parsed:
-        target, emoji = raw.get("reacts_to_message_id"), str(m.response).strip()
-        if raw.get("kind") == _ACK_KIND and emoji and target in users:
+        shape = MessageShape.model_validate(raw)
+        target, emoji = shape.reacts_to_message_id, str(m.response).strip()
+        if shape.kind == _ACK_KIND and emoji and target in users:
             reactions[str(target)] = emoji
             folded.add(str(m.message_id))
     expected: list[dict[str, object]] = []
     for raw, m in parsed:
         payload = m.model_dump(mode="json")
-        dated = entry_at(raw.get("date")) is not None
+        dated = entry_at(MessageShape.model_validate(raw).date) is not None
         if m.type == USER_MESSAGE_TYPE:
             if m.message_id in reactions:
                 payload["reaction"] = {"emoji": reactions[str(m.message_id)], "by": "chat_model"}
@@ -597,11 +595,11 @@ class ConversationEntriesMigration(ConversationRepository):
                 NEVER_MIGRATED_HEADS, {"_id": 0, "conversation_id": 1}
             )
             if head is not None:
-                return str(head["conversation_id"])
+                return _ConversationIdRow.model_validate(head).conversation_id
             entry = await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).find_one(
                 MESSAGE_SHAPED, {"_id": 0, "conversation_id": 1}
             )
-        return None if entry is None else str(entry["conversation_id"])
+        return None if entry is None else _ConversationIdRow.model_validate(entry).conversation_id
 
     async def migrate(self, ref: HeadRef, *, apply: bool) -> MigrationOutcome:
         """Rewrite one conversation's old messages as log entries (report only unless apply)."""
@@ -690,7 +688,8 @@ class ConversationEntriesMigration(ConversationRepository):
         self, ref: HeadRef, elements: Sequence[Mapping[str, object]], report: VerifyReport
     ) -> None:
         expected = expected_messages(elements)
-        dated = {str(e.get(_ID_FIELD)) for e in elements if entry_at(e.get("date")) is not None}
+        shapes = [MessageShape.model_validate(e) for e in elements]
+        dated = {str(shape.message_id) for shape in shapes if entry_at(shape.date) is not None}
         report.messages = len(expected)
 
         def shown(messages: Sequence[ConversationEntry]) -> list[dict[str, object]]:
@@ -729,9 +728,7 @@ class ConversationEntriesMigration(ConversationRepository):
         elements, existing, shaped = _sources(head, stored, minted)
         planned, folded = _planned(elements, _surface(head.source))
         plan = _Plan(folded=folded)
-        plan.not_kept = sum(
-            any(e.fields.get(k) is not None for k in NOT_KEPT_FIELDS) for e in elements
-        )
+        plan.not_kept = sum(NotKeptFields.model_validate(e.fields).carried() for e in elements)
         plan.log = {row.seq: logged_of(row) for row in existing.values()}
         next_seq = head.log_head or 0
         seq_of: dict[str, int] = {}
@@ -779,8 +776,8 @@ class ConversationEntriesMigration(ConversationRepository):
             marks[MIGRATED_FINGERPRINT_FIELD] = head.fingerprint
         with store_errors("migration write"):  # pragma: no mutate — error label only
             await entries.delete_many({**_of(ref), "seq": {"$gt": read_head}})
-            for document in plan.replaces:
-                await entries.replace_one({**_of(ref), "seq": document["seq"]}, document)
+            for seq, document in plan.replaces:
+                await entries.replace_one({**_of(ref), "seq": seq}, document)
             for entry_id, update in plan.updates:
                 await entries.update_one({**_of(ref), "id": entry_id}, update)
             if plan.inserts:

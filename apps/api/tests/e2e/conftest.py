@@ -42,12 +42,12 @@ from app.memory.ingestion import RetainedMemory
 from app.models.integration_models import UserIntegrationCapabilities
 from app.models.memory_models import MemoryEntry
 from app.models.user_models import AuthenticatedUser
-from app.override.langgraph_bigtool.create_agent import (
+from app.override.langgraph_bigtool.agent_config import (
     AgentConfig,
     HookConfig,
     ToolRetrievalConfig,
-    create_agent,
 )
+from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from app.services.conversation.composition import build_runtime_ports
 from app.services.conversation.runtime import install_runtime_ports

@@ -14,7 +14,7 @@ path — is the real production function.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Sequence
 from typing import Any
 
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolMessage
@@ -112,7 +112,7 @@ class ScriptedGraph:
         # each one actually passed.
         self.astream_kwargs = {"initial_state": initial_state, **kwargs}
 
-        async def _gen() -> AsyncIterator[Event]:
+        async def _gen() -> AsyncGenerator[Event, None]:
             for event in self.events:
                 self.yielded += 1
                 yield event

@@ -191,6 +191,38 @@ class _ConversationOwnerRow(_ConversationIdRow):
     user_id: str
 
 
+class MessageShape(BaseModel):
+    """The fields that say what a stored message is and what it points at, read once from its raw fields."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    kind: str | None = None
+    type: str | None = None
+    reply_id: str | None = None
+    task_id: str | None = None
+    approval_id: str | None = None
+    reacts_to_message_id: str | None = None
+    response: str | None = None
+    date: object = None
+    message_id: str | None = None
+
+
+class NotKeptFields(BaseModel):
+    """Old message fields no client renders, so the log keeps them nowhere."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    disclaimer: object = None
+    subtype: object = None
+    file: object = None
+    filename: object = None
+    filetype: object = None
+    metadata: object = None
+
+    def carried(self) -> bool:
+        return any(value is not None for value in self.model_dump().values())
+
+
 class StoredEntry(BaseModel):
     """One conversation_entries document, or one value of a head's outbox: its keys, then the message as stored."""
 
@@ -209,11 +241,46 @@ class StoredEntry(BaseModel):
         """Return the stored message's own fields: everything but the entry's keys and Mongo's _id."""
         return {key: value for key, value in (self.model_extra or {}).items() if key != "_id"}
 
+    def shape(self) -> MessageShape:
+        """Return the stored message's identifying fields."""
+        return MessageShape.model_validate(self.message_fields())
+
     def document(self) -> dict[str, object]:
         """Return the entry exactly as it was read, to write it elsewhere unchanged."""
         return {
             key: value for key, value in self.model_dump(exclude_unset=True).items() if key != "_id"
         }
+
+
+class BulkWriteFault(BaseModel):
+    """One failed operation of a Mongo bulk write: its position in the batch and the server's error code."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    index: int
+    code: int | None = None
+    errmsg: str | None = None
+
+
+class BulkWriteDetails(BaseModel):
+    """The per-operation failures a BulkWriteError carries."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    write_errors: list[BulkWriteFault] = Field(default_factory=list, alias="writeErrors")
+
+
+class EntryAddress(BaseModel):
+    """Where a stored entry sits: its conversation and seq, projected."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    conversation_id: str
+    seq: int
+
+    @property
+    def key(self) -> tuple[str, int]:
+        return (self.conversation_id, self.seq)
 
 
 class EntryKey(BaseModel):

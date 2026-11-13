@@ -42,6 +42,7 @@ from app.constants.browser import (
 from app.core.stream_manager import StreamManager
 from app.models.agent_models import InboxEntry
 from app.models.hil_models import HILPreferences
+from app.models.tool_data_models import ToolDataEntry
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.exceptions import BrowserSessionGone
 from app.services.browser.tools import EngineSwitchFn, TakeoverFn
@@ -353,7 +354,7 @@ class JobWorld:
         #: Each executor run woken to tell an ending landed in its inbox, by conversation.
         self.woken: list[str] = []
         #: What the job's logged work finished with: (task id, cards).
-        self.saved: list[tuple[str, list[dict[str, Any]]]] = []
+        self.saved: list[tuple[str, list[ToolDataEntry]]] = []
         #: The conversation's executor inbox once the job settled: how its ending was told.
         self.told: list[InboxEntry] = []
         self.jobs: list[asyncio.Task[Any]] = []

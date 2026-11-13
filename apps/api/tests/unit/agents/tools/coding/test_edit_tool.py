@@ -17,12 +17,13 @@ this file only checks how edit routes through them.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 import contextlib
-from typing import Any
+from contextlib import AbstractAsyncContextManager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from e2b import NotFoundException
+from langchain_core.runnables import RunnableConfig
 import pytest
 
 from app.agents.tools.coding._artifacts import WrittenFile
@@ -41,6 +42,7 @@ from app.agents.tools.coding.edit_tool import (
 from app.agents.workspace.paths import MountRole
 from app.models.payment_models import PlanType
 from app.services import gaia_task_files
+from app.services.gaia_task_files import RootFile
 from app.services.sandbox import SandboxAcquisitionError
 
 MODULE = "app.agents.tools.coding.edit_tool"
@@ -48,7 +50,7 @@ MODULE = "app.agents.tools.coding.edit_tool"
 USER_ID = "user-1"
 SESSION_ID = "conv-1"
 
-CONFIG: dict[str, Any] = {
+CONFIG: RunnableConfig = {
     "configurable": {"user_id": USER_ID, "conversation_id": SESSION_ID},
     "metadata": {"user_id": USER_ID, "conversation_id": SESSION_ID},
 }
@@ -72,7 +74,7 @@ def _patch(old_string: str, new_string: str, replace_all: bool = False) -> EditP
 
 
 @pytest.fixture(autouse=True)
-def _rate_limit_passes() -> None:
+def _rate_limit_passes() -> Iterator[None]:
     """Fix the @with_rate_limiting seam (not under test) to pass.
 
     edit is invoked with a chat-shaped config, so the wrapper's user-context
@@ -101,7 +103,7 @@ def _sbx(content: bytes = b"", *, read_error: Exception | None = None) -> AsyncM
     return sbx
 
 
-def _sandbox_cm(sbx: AsyncMock) -> Callable[[str], AsyncIterator[AsyncMock]]:
+def _sandbox_cm(sbx: AsyncMock) -> Callable[[str], AbstractAsyncContextManager[AsyncMock]]:
     """Stand-in for acquire_sandbox: yields a fixed sandbox for the config's user."""
 
     @contextlib.asynccontextmanager
@@ -498,7 +500,7 @@ TASK_ABS = f"/workspace/{TASK_REL}"
 
 async def test_maybe_edit_task_file_resolves_and_forwards_exact_args() -> None:
     target = _target(TASK_ABS)
-    task_ref = object()
+    task_ref = RootFile(name="index.md")
     patch_obj = _patch("a", "b")
     with (
         patch(
@@ -574,7 +576,7 @@ async def test_maybe_edit_task_file_logs_unexpected_failure_exactly() -> None:
 
 
 async def test_edit_task_file_forwards_exact_args_and_emits() -> None:
-    task_ref = object()
+    task_ref = RootFile(name="index.md")
     target = _target(TASK_ABS)
     patch_obj = _patch("old", "new")
     with (

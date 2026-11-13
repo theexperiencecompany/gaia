@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 from arq.constants import abort_jobs_ss, in_progress_key_prefix
 import fakeredis.aioredis
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 import pytest
 
@@ -47,6 +48,7 @@ from app.services.browser.jobs import (
     set_latest_job,
     take_job_messages,
 )
+from app.utils.redis_utils import RedisPoolManager
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.browser import BrowserHandoffResolved
 from tests.browser_factories import make_browser_job_state
@@ -68,15 +70,15 @@ def arq(
     fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
 ) -> fakeredis.aioredis.FakeRedis:
     """ARQ's pool on the same fake Redis."""
-    monkeypatch.setattr(job_stop.RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
+    monkeypatch.setattr(RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
     return fake_redis
 
 
-def _turn(conversation_id: str = CONVERSATION, **extra: Any) -> dict[str, Any]:
+def _turn(conversation_id: str = CONVERSATION, **extra: Any) -> RunnableConfig:
     return {"configurable": {"thread_id": conversation_id, "user_id": USER, **extra}}
 
 
-async def _say(chat_tool: BaseTool, args: dict[str, Any], config: dict[str, Any]) -> str:
+async def _say(chat_tool: BaseTool, args: dict[str, Any], config: RunnableConfig) -> str:
     return str(await chat_tool.ainvoke(args, config=config))
 
 

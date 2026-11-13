@@ -416,13 +416,13 @@ class TestDecisionSemantics:
                 user_id=USER_ID,
                 kind="approve",
                 feedback="looks good",
-                scope="always",
+                scope="always_tool",
             )
 
         assert decided is not record
         assert decided.outcome == "denied"
         assert decided.feedback == "looks good"
-        assert decided.scope == "always"
+        assert decided.scope == "always_tool"
         assert decided.decided_by == USER_ID
         assert decided.decided_at is not None
         # The pending snapshot the caller loaded is not mutated in place.

@@ -89,7 +89,7 @@ class TestConversationToMessages:
                 UserMessage(id="m1", text="hello", surface="web"),
                 Reply(id="r1", reply_id="r1", attempt_id="a1", text="hi there"),
             ]
-        ).model_dump(mode="json")
+        )
         assert _conversation_to_messages(doc) == [
             {"role": "user", "content": "hello"},
             {"role": "assistant", "content": "hi there"},
@@ -102,30 +102,28 @@ class TestConversationToMessages:
                 Notice(id="n1", text="not mapped", origin="todo"),
                 UserMessage(id="m2", text="kept", surface="web"),
             ]
-        ).model_dump(mode="json")
+        )
         assert _conversation_to_messages(doc) == [{"role": "user", "content": "kept"}]
 
     def test_no_entries_yields_empty_list(self):
-        assert _conversation_to_messages({"entries": []}) == []
+        assert _conversation_to_messages(_conversation().model_copy(update={"entries": []})) == []
 
 
 class TestConversationDate:
-    def test_aware_datetime_is_kept(self):
-        dt = datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
-        assert _conversation_date({"createdAt": dt}) == dt
-
-    def test_naive_datetime_is_assumed_utc(self):
-        dt = datetime(2026, 1, 1, 10, 0)
-        assert _conversation_date({"createdAt": dt}) == dt.replace(tzinfo=UTC)
-
     def test_iso_string_is_parsed(self):
-        assert _conversation_date({"createdAt": "2026-01-01T10:00:00+00:00"}) == datetime(
-            2026, 1, 1, 10, 0, tzinfo=UTC
+        assert _conversation_date(
+            _conversation(created_at="2026-01-01T10:00:00+00:00")
+        ) == datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
+
+    def test_a_missing_created_at_reads_the_updated_at_as_utc(self):
+        conversation = _conversation().model_copy(
+            update={"createdAt": None, "updatedAt": datetime(2026, 1, 1, 10, 0)}
         )
+        assert _conversation_date(conversation) == datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
 
     def test_garbage_falls_back_to_now(self):
         before = datetime.now(UTC)
-        result = _conversation_date({"createdAt": "not-a-date"})
+        result = _conversation_date(_conversation(created_at="not-a-date"))
         after = datetime.now(UTC)
         assert before <= result <= after
 

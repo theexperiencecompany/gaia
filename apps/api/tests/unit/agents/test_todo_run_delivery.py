@@ -68,6 +68,7 @@ class _Seams:
     capture: MagicMock
     in_app: AsyncMock
     target: AsyncMock
+    read_todo: AsyncMock
     #: The note the run's write-up was written under, as the turn builder reads it.
     note: str = ""
 
@@ -90,9 +91,10 @@ def _seams(
         capture=MagicMock(),
         in_app=AsyncMock(),
         target=AsyncMock(return_value=InApp(reason="no_chat_app")),
+        read_todo=AsyncMock(return_value=todo),
     )
     repo = MagicMock()
-    repo.get_by_id = AsyncMock(return_value=todo)
+    repo.get_by_id = seams.read_todo
     with (
         patch.object(trd, "deliver_result_to_platforms", seams.send),
         patch.object(trd, "resolve_proactive_target", seams.target),
@@ -649,7 +651,7 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
             _seams(todo=_todo(), sent_on=ConversationSource.TELEGRAM) as seams,
             _job_seams() as enqueue,
         ):
-            repo_read = trd.todo_repository.get_by_id
+            repo_read = seams.read_todo
             repo_read.side_effect = PyMongoError("primary stepped down")
             undone = await finish_todo_run(_finished(), USER)
             assert undone is not None

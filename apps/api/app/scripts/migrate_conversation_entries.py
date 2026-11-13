@@ -38,6 +38,7 @@ import argparse
 import asyncio
 from collections import Counter
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from dataclasses import dataclass
 
 from app.db.repositories.conversation_entries_migration import (
     NOT_KEPT_FIELDS,
@@ -50,6 +51,15 @@ from app.db.repositories.conversation_entries_migration import (
 _BATCH = 200
 _Scan = Callable[[str | None], Awaitable[list[HeadRef]]]
 _FAILED = (MigrationAction.RACED, MigrationAction.REFUSED)
+
+
+@dataclass
+class _Totals:
+    written: int = 0
+    rewritten: int = 0
+    identified: int = 0
+    folded: int = 0
+    not_kept: int = 0
 
 
 async def _heads(scan: _Scan) -> AsyncIterator[HeadRef]:
@@ -78,18 +88,16 @@ def _scans(*, every_embedded: bool) -> tuple[_Scan, _Scan]:
 
 async def _migrate(args: argparse.Namespace) -> int:
     actions: Counter[MigrationAction] = Counter()
-    totals: Counter[str] = Counter()
+    totals = _Totals()
     for scan in _scans(every_embedded=False):
         async for ref in _heads(scan):
             outcome = await conversation_entries_migration.migrate(ref, apply=args.apply)
             actions[outcome.action] += 1
-            totals.update(
-                written=outcome.written,
-                rewritten=outcome.rewritten,
-                identified=outcome.identified,
-                folded=outcome.folded,
-                not_kept=outcome.not_kept,
-            )
+            totals.written += outcome.written
+            totals.rewritten += outcome.rewritten
+            totals.identified += outcome.identified
+            totals.folded += outcome.folded
+            totals.not_kept += outcome.not_kept
             if outcome.action in _FAILED:
                 print(f"  [{outcome.action}] {ref.conversation_id}: {outcome.reason or 're-run'}")
             elif outcome.action is not MigrationAction.UNCHANGED:
@@ -99,13 +107,13 @@ async def _migrate(args: argparse.Namespace) -> int:
                 )
     counts = ", ".join(f"{n} {a}" for a, n in sorted(actions.items())) or "nothing to migrate"
     print(
-        f"Summary: {counts}; {totals['written']} entries written, {totals['rewritten']} "
-        f"rewritten; {totals['identified']} messages given an id; {totals['folded']} "
+        f"Summary: {counts}; {totals.written} entries written, {totals.rewritten} "
+        f"rewritten; {totals.identified} messages given an id; {totals.folded} "
         "emoji_ack messages folded into reactions."
     )
-    if totals["not_kept"]:
+    if totals.not_kept:
         print(
-            f"  {totals['not_kept']} messages carry fields the log does not keep "
+            f"  {totals.not_kept} messages carry fields the log does not keep "
             f"({', '.join(NOT_KEPT_FIELDS)})."
         )
     if not args.apply:

@@ -1005,7 +1005,9 @@ class StepScenarios:
         await send(rt, user("u1"))
         await run(rt)
         reacted = [e for e in posthog_turns if e["event"] == "chat:turn_reacted"]
-        assert [(e["distinct_id"], e["properties"]["emoji"]) for e in reacted] == [(USER, "👍")]
+        assert [
+            (e["distinct_id"], cast(dict[str, object], e["properties"])["emoji"]) for e in reacted
+        ] == [(USER, "👍")]
         props = cast(dict[str, object], reacted[0]["properties"])
         assert (props["actor"], props["trigger"], props["surface"]) == (
             "user",

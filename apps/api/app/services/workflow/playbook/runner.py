@@ -496,7 +496,8 @@ async def _call_step(
     # A raise out of the graph is a stopped step, not a dead run: the steps
     # before it already had their side effects, and only a result that carries
     # the trace lets the worker hand the rest to the agent without repeating them.
-    if await stream_manager.is_cancelled(run.configurable["stream_id"]):
+    configurable: AgentConfigurable = run.configurable
+    if await stream_manager.is_cancelled(configurable["stream_id"]):
         run.stopped = True
         return _StepFailure(call.position, call.tool_name, "the replay was stopped")
     if run.dry_run is not None and not run.dry_run.runs(call.tool_name, call.args):
