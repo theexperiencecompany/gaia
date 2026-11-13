@@ -746,6 +746,56 @@ class TestConnectLinkEndpoint:
         )
         assert initiate.call_args.args[1].integration_id == "gmail"
 
+    async def test_a_code_bound_to_a_malformed_user_id_bounces_without_a_lookup(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                f"{_MODULE}.resolve_and_consume_connect_code",
+                new_callable=AsyncMock,
+                return_value=ConnectLinkBinding(
+                    user_id="not-an-object-id", integration_id="notion", account_id=None
+                ),
+            ),
+            patch(f"{_MODULE}.user_repository.get", new_callable=AsyncMock) as get_user,
+            patch(f"{_MODULE}.initiate_integration_connection", new_callable=AsyncMock) as initiate,
+        ):
+            resp = await client.post(
+                f"{API}/connect-link", data={"code": "somecode"}, follow_redirects=False
+            )
+        assert "connect_error=invalid_or_expired_link" in resp.headers["location"]
+        get_user.assert_not_awaited()
+        initiate.assert_not_awaited()
+
+    async def test_a_link_for_a_user_with_no_record_starts_with_an_empty_login_hint(
+        self, client: AsyncClient
+    ) -> None:
+        result = MagicMock(status="redirect", redirect_url="https://oauth.example/go", error=None)
+        with (
+            patch(
+                f"{_MODULE}.resolve_and_consume_connect_code",
+                new_callable=AsyncMock,
+                return_value=ConnectLinkBinding(
+                    user_id=_VALID_UID, integration_id="notion", account_id=None
+                ),
+            ),
+            patch(
+                f"{_MODULE}.user_repository.get", new_callable=AsyncMock, return_value=None
+            ) as get_user,
+            patch(
+                f"{_MODULE}.initiate_integration_connection",
+                new_callable=AsyncMock,
+                return_value=result,
+            ) as initiate,
+            patch(f"{_MODULE}.capture"),
+        ):
+            resp = await client.post(
+                f"{API}/connect-link", data={"code": "somecode"}, follow_redirects=False
+            )
+        assert resp.status_code == 303
+        get_user.assert_awaited_once_with(_VALID_UID)
+        assert initiate.call_args.kwargs["user_email"] == ""
+
     async def test_a_link_to_an_unknown_integration_cannot_start(self, client: AsyncClient) -> None:
         with (
             patch(

@@ -1,7 +1,7 @@
 """Unit tests for app/services/system_workflows/provisioner.py.
 
 Covers:
-- provision_system_workflows: no entries, idempotent skip, success, DuplicateKeyError, generic error
+- provision_system_workflows: no entries, idempotent skip, success, AlreadyExistsError, generic error
 - _notify_workflows_provisioned: single vs multiple workflows, notification failure
 - reset_system_workflow_to_default: not found, no registry key, success with trigger re-registration,
   trigger registration failure, old trigger unregister failure (non-fatal)
@@ -10,10 +10,10 @@ Covers:
 from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.log_tags import LogTag
+from app.db.repositories.errors import AlreadyExistsError
 from app.models.payment_models import PlanType
 from app.models.user_models import UserDocument
 from app.models.workflow_models import TriggerConfig, TriggerType
@@ -152,7 +152,7 @@ class TestProvisionSystemWorkflows:
         mock_notify: AsyncMock,
     ) -> None:
         mock_repo.find_system_workflow = AsyncMock(return_value=None)
-        mock_workflow_svc.create_workflow = AsyncMock(side_effect=DuplicateKeyError("dup"))
+        mock_workflow_svc.create_workflow = AsyncMock(side_effect=AlreadyExistsError("dup"))
         factory = _make_factory()
 
         with patch.dict(
@@ -163,10 +163,12 @@ class TestProvisionSystemWorkflows:
                 provision_system_workflows,
             )
 
-            await provision_system_workflows("user-1", "gmail", "Gmail")
+            with patch(f"{MODULE}.log") as log:
+                await provision_system_workflows("user-1", "gmail", "Gmail")
 
-        # No notification because nothing was created
+        # No notification because nothing was created, and a concurrent create is no failure
         mock_notify.assert_not_awaited()
+        log.error.assert_not_called()
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)

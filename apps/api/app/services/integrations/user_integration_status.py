@@ -7,12 +7,11 @@ oauth_service.py and integration_service.py.
 
 from collections.abc import Awaitable
 
-from pymongo.errors import PyMongoError
-
 from app.constants.cache import USER_INTEGRATION_CACHE_PATTERNS
 from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
+from app.db.repositories.errors import RepositoryError
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.caching import CacheInvalidator
 from app.models.integration_models import UserIntegrationStatus
@@ -86,7 +85,7 @@ async def reconnect_or_unknown(
     """
     try:
         return await connected_before
-    except PyMongoError as e:
+    except RepositoryError as e:
         log.warning(
             f"{LogTag.INTEGRATION} Could not tell whether the connect is a reconnect",
             integration_id=integration_id,

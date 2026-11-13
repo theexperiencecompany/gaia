@@ -13,10 +13,10 @@ import uuid
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pydantic import ValidationError
-from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.trigger_gates import SystemGatePreset
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.workflows import WorkflowsRepository
 from app.models.scheduler_models import (
     DeactivationReason,
@@ -726,7 +726,7 @@ class TestScheduledWorkflowToolPayloadJsonSafety:
 
 
 class TestWorkflowsUniqueIndexSurface:
-    """Recreate the real concurrency-guard indexes to prove the exact DuplicateKeyError surface the provisioner/publish paths depend on."""
+    """Recreate the real concurrency-guard indexes to prove the exact AlreadyExistsError surface the provisioner/publish paths depend on."""
 
     async def _create_indexes(self, raw_collection) -> None:
         # Mirrors app/db/mongodb/indexes.py::create_workflow_indexes.
@@ -750,7 +750,7 @@ class TestWorkflowsUniqueIndexSurface:
             _workflow(user_id=owner, is_system_workflow=True, system_workflow_key=key)
         )
         # Same (user_id, system_workflow_key) → the provisioner relies on this raising.
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await repo.create(
                 _workflow(user_id=owner, is_system_workflow=True, system_workflow_key=key)
             )
@@ -762,7 +762,7 @@ class TestWorkflowsUniqueIndexSurface:
         b = await repo.create(_workflow(is_public=False))
         assert await repo.publish(a.id, created_by=a.user_id, slug=slug) is not None
         # Second publish onto the same public slug → the endpoint retries on this.
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await repo.publish(b.id, created_by=b.user_id, slug=slug)
 
     async def test_backfill_duplicate_public_slug_raises(self, repo, raw_collection):
@@ -771,7 +771,7 @@ class TestWorkflowsUniqueIndexSurface:
         # An existing public workflow already holds the slug.
         await repo.create(_workflow(is_public=True, slug=slug))
         pending = await repo.create(_workflow(is_public=True, slug=None))
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await repo.backfill_public_slug(pending.id, slug)
 
 

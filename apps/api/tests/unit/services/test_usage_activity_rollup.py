@@ -8,18 +8,17 @@ import os
 import time
 from unittest.mock import AsyncMock, patch
 
-from pymongo.errors import PyMongoError
 import pytest
 import time_machine
 
 from app.db.redis import redis_cache
+from app.db.repositories.errors import RepositoryError
 from app.db.repositories.usage_daily import (
     UsageDailyDocument,
     UsageDailyIncrement,
     usage_daily_repository,
 )
-from app.services import usage_activity
-from app.services.usage_activity import get_activity, record_cost
+from app.services.usage_activity import get_activity, record_activity, record_cost
 
 USER = "user-activity-1"
 TODAY = "2026-03-04"
@@ -27,7 +26,7 @@ FROZEN = "2026-03-04T09:30:00+00:00"
 
 
 def _row(date: str, **fields: object) -> UsageDailyDocument:
-    return UsageDailyDocument(user_id=USER, date=date, **fields)
+    return UsageDailyDocument.model_validate({"user_id": USER, "date": date, **fields})
 
 
 @pytest.fixture(autouse=True)
@@ -184,9 +183,9 @@ class TestRecordCost:
         # record_cost runs after a model call has already completed and been
         # billed by the provider; raising here would fail a request the user
         # has already paid for.
-        increment.side_effect = PyMongoError("rollup write failed")
+        increment.side_effect = RepositoryError("rollup write failed")
 
-        with patch.object(usage_activity.log, "warning") as warned:
+        with patch("app.services.usage_activity.log.warning") as warned:
             await record_cost(USER, _spend(0.02, 300), charged=True)
 
         increment.assert_awaited_once()
@@ -195,7 +194,21 @@ class TestRecordCost:
         # missing and what actually failed — otherwise the loss is invisible.
         assert warned.call_args.kwargs["user"] == {"id": USER}
         assert warned.call_args.kwargs["error"] == "rollup write failed"
-        assert warned.call_args.kwargs["error_type"] == "PyMongoError"
+        assert warned.call_args.kwargs["error_type"] == "RepositoryError"
+
+
+class TestRecordActivity:
+    async def test_a_store_failure_is_logged_and_never_reaches_the_caller(
+        self, increment: AsyncMock
+    ) -> None:
+        increment.side_effect = RepositoryError("rollup write failed")
+
+        with patch("app.services.usage_activity.log.warning") as warned:
+            await record_activity(USER, 2)
+
+        increment.assert_awaited_once()
+        assert warned.call_args.kwargs["user"] == {"id": USER}
+        assert warned.call_args.kwargs["error_type"] == "RepositoryError"
 
 
 @pytest.fixture

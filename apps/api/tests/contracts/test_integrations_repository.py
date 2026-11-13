@@ -5,13 +5,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import uuid
 
-from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.db.mongodb.indexes import (
     CUSTOM_SERVER_URL_DEDUP_KEYS,
     CUSTOM_SERVER_URL_DEDUP_OPTIONS,
 )
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.integrations import IntegrationsRepository
 from app.models.integration_models import Integration, StoredIntegrationTool
 from app.models.mcp_config import MCPConfig
@@ -433,7 +433,7 @@ class TestCustomServerUrlDedup:
                 f"d1-{uuid.uuid4().hex}", "First", owner, "https://host/mcp/", "https://host/mcp"
             )
         )
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await repo.create(
                 _keyed_integration(
                     f"d2-{uuid.uuid4().hex}",
@@ -469,7 +469,7 @@ class TestCustomServerUrlDedup:
                 f"l3-{uuid.uuid4().hex}", "Keyed", owner, "https://host/mcp", "https://host/mcp"
             )
         )
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await repo.create(
                 _keyed_integration(
                     f"l4-{uuid.uuid4().hex}",

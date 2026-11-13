@@ -3,22 +3,24 @@
 Public methods accept and return typed Pydantic models only — raw dicts,
 ObjectId, Mongo filters, and cache calls never cross this boundary. The
 subclass primitives (leading underscore) are the internal seam where dict-shaped
-Mongo data is allowed. See app/db/repositories/CLAUDE.md.
+Mongo data is allowed. A driver error escaping a public method surfaces as the
+RepositoryError of errors.py. See app/db/repositories/CLAUDE.md.
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from contextvars import ContextVar
 from datetime import UTC, datetime
 import functools
 import inspect
-from typing import Any, ClassVar, Generic, TypeVar, cast
+from typing import Any, ClassVar, Generic, ParamSpec, TypeVar, cast
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pydantic import BaseModel, ConfigDict, ValidationError
 from pymongo import ReturnDocument, UpdateOne
-from pymongo.errors import BulkWriteError
+from pymongo.errors import BulkWriteError, DuplicateKeyError, PyMongoError
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.mongodb.collections import get_async_collection
@@ -29,6 +31,7 @@ from app.db.repositories.cache import (
     query_arg_hash,
     read_generation,
 )
+from app.db.repositories.errors import AlreadyExistsError, RepositoryError
 from app.utils.errors import AppError, EmptyUpdateError, RepositoryMisconfiguredError
 from shared.py.wide_events import log
 
@@ -60,6 +63,82 @@ TResult = TypeVar("TResult", bound=BaseModel)
 _TFinder = TypeVar("_TFinder", bound=Callable[..., Awaitable[Any]])
 
 _REQUIRED_CLASSVARS = ("collection_name", "document_model", "update_model", "uses_object_id")
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+_DUPLICATE_KEY_CODE = 11000
+_TRANSLATES_DRIVER_ERRORS = "__translates_driver_errors__"
+# Set while a public repository call runs, so only the outermost one translates:
+# repository bodies keep catching the driver's own errors (DuplicateKeyError) from nested calls.
+_inside_repository_call: ContextVar[bool] = ContextVar("_inside_repository_call", default=False)
+
+
+def _is_duplicate_key(error: PyMongoError) -> bool:
+    if isinstance(error, DuplicateKeyError):
+        return True
+    # An ordered bulk write stops at its first failed write, so writeErrors names that one.
+    return isinstance(error, BulkWriteError) and any(
+        write_error.get("code") == _DUPLICATE_KEY_CODE
+        for write_error in error.details.get("writeErrors", [])
+    )
+
+
+def _repository_error(error: PyMongoError) -> RepositoryError:
+    message = f"{type(error).__name__}: {error}"
+    return AlreadyExistsError(message) if _is_duplicate_key(error) else RepositoryError(message)
+
+
+def _translating_driver_errors(method: Callable[_P, Awaitable[_R]]) -> Callable[_P, Awaitable[_R]]:
+    """Raise a driver failure escaping a public repository call as a RepositoryError."""
+
+    @functools.wraps(method)
+    async def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        if _inside_repository_call.get():
+            return await method(*args, **kwargs)
+        token = _inside_repository_call.set(True)
+        try:
+            return await method(*args, **kwargs)
+        except PyMongoError as error:
+            translated = _repository_error(error)
+            log.set(
+                repository_error={
+                    "operation": f"{type(args[0]).__name__}.{method.__name__}",
+                    "error_type": type(translated).__name__,
+                    "cause_type": type(error).__name__,
+                }
+            )
+            raise translated from error
+        finally:
+            _inside_repository_call.reset(token)
+
+    setattr(wrapper, _TRANSLATES_DRIVER_ERRORS, True)
+    return wrapper
+
+
+def _translate_public_methods(cls: type) -> None:
+    """Wrap every public coroutine method cls defines or inherits unwrapped.
+
+    Refuses a public async generator or static/class coroutine: the wrapper cannot
+    cover them, so a driver error would escape them untranslated.
+    """
+    for name in dir(cls):
+        if name.startswith("_"):
+            continue
+        method = inspect.getattr_static(cls, name)
+        target = method.__func__ if isinstance(method, (staticmethod, classmethod)) else method
+        escapes = inspect.isasyncgenfunction(target) or (
+            target is not method and inspect.iscoroutinefunction(target)
+        )
+        if escapes:
+            raise RepositoryMisconfiguredError(
+                message=f"{cls.__name__}.{name} would escape driver-error translation",
+                why="only public async instance methods are wrapped to raise RepositoryError",
+                fix=f"make {name} an async instance method returning a list, or prefix it with _",
+            )
+        if inspect.iscoroutinefunction(method) and not getattr(
+            method, _TRANSLATES_DRIVER_ERRORS, False
+        ):
+            setattr(cls, name, _translating_driver_errors(method))
 
 
 def cached_query(result_model: type[Any]) -> Callable[[_TFinder], _TFinder]:
@@ -103,7 +182,12 @@ def cached_query(result_model: type[Any]) -> Callable[[_TFinder], _TFinder]:
 
 
 class _BaseRepository(Generic[TDoc, TUpdate]):
-    """Shared CRUD + cache machinery; subclass MongoRepository or UserScopedRepository, not this."""
+    """Shared CRUD + cache machinery; subclass MongoRepository or UserScopedRepository, not this.
+
+    Every subclass's public async methods are wrapped at class creation: a driver error
+    leaving the outermost repository call becomes RepositoryError or AlreadyExistsError,
+    while nested repository calls still see the driver's own errors. Never hand-write that try.
+    """
 
     collection_name: ClassVar[str]
     document_model: type[TDoc]
@@ -121,6 +205,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
 
     def __init_subclass__(cls, abstract: bool = False, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
+        _translate_public_methods(cls)
         if abstract:
             return
         missing = [name for name in _REQUIRED_CLASSVARS if getattr(cls, name, None) is None]

@@ -46,6 +46,16 @@ is harmless (e.g. `last_active_at`). Every use must be justified in the calling
 method's docstring. If you are not certain a stale value is harmless, use the
 normal `update` path.
 
+**Errors are the repository's, not the driver's.** A driver error escaping a
+public repository method is raised as `RepositoryError`, or `AlreadyExistsError`
+when a unique index refused the write (`errors.py`). The base wraps every public
+coroutine method in `__init_subclass__`, and only the outermost repository call
+translates, so a repository body still catches `DuplicateKeyError` from its own
+nested calls. The translation stamps `repository_error.cause_type` (the driver class)
+on the wide event. A public async generator or static/class coroutine is refused at
+class creation, because the wrapper cannot cover it. Callers catch the repository
+types; `TRANSIENT_MONGO_RETRY` retries `RepositoryError`.
+
 ## Caching (automatic — do not reimplement)
 
 Each cache-enabled repository declares a `CachePolicy(prefix, entity_ttl,
@@ -83,7 +93,7 @@ layers hold it, each catching what the others cannot:
 
 2. **The `repository-boundaries` lint** (`tools/lints/`), because mypy strictness
    can be satisfied while types still leak. It bans `collections` imports outside
-   this directory, `bson`/`ObjectId` outside `app/db/`, and `Any`/`dict[str, Any]`
+   this directory, `bson`/`ObjectId` and `pymongo`/`motor` outside `app/db/`, and `Any`/`dict[str, Any]`
    /missing annotations in **public** repository signatures (underscore-prefixed
    subclass primitives are the exempt internal seam). Its allowlist is a ratchet:
    entries are removed as each domain is migrated, never added.

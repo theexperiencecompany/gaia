@@ -141,9 +141,6 @@ apps/api/tests/unit/agents/tools/coding/test_write_tool.py	return-value
 apps/api/tests/unit/agents/tools/execute/test_dispatch.py	arg-type
 apps/api/tests/unit/agents/tools/execute/test_schema_notation.py	dict-item
 apps/api/tests/unit/agents/tools/execute/test_schema_notation.py	list-item
-apps/api/tests/unit/agents/tools/execute/test_schema_tool.py	arg-type
-apps/api/tests/unit/agents/tools/execute/test_schema_tool.py	call-overload
-apps/api/tests/unit/agents/tools/execute/test_schema_tool.py	index
 apps/api/tests/unit/agents/tools/test_integration_account_tools.py	arg-type
 apps/api/tests/unit/agents/tools/test_integration_account_tools.py	assignment
 apps/api/tests/unit/agents/tools/test_manage_linked_account_tool.py	arg-type
@@ -186,7 +183,6 @@ apps/api/tests/unit/config/test_settings_hermetic.py	attr-defined
 apps/api/tests/unit/config/test_token_repository.py	arg-type
 apps/api/tests/unit/config/test_workos.py	attr-defined
 apps/api/tests/unit/core/test_lazy_loader.py	var-annotated
-apps/api/tests/unit/db/repositories/test_base_repository.py	unused-ignore
 apps/api/tests/unit/db/repositories/test_playbooks.py	call-overload
 apps/api/tests/unit/db/test_chroma_store.py	arg-type
 apps/api/tests/unit/db/test_chroma_store.py	attr-defined
@@ -388,8 +384,6 @@ apps/api/tests/unit/services/test_trigger_handlers.py	union-attr
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	arg-type
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	attr-defined
 apps/api/tests/unit/services/test_turnstile_service.py	arg-type
-apps/api/tests/unit/services/test_usage_activity_rollup.py	arg-type
-apps/api/tests/unit/services/test_usage_activity_rollup.py	attr-defined
 apps/api/tests/unit/services/test_usage_summary.py	attr-defined
 apps/api/tests/unit/services/test_user_instructions_service.py	misc
 apps/api/tests/unit/services/test_user_todos_fs.py	arg-type
@@ -485,7 +479,6 @@ apps/api/tests/unit/workers/test_checkpoint_retention_tasks.py	arg-type
 apps/api/tests/unit/workers/test_cleanup_tasks.py	arg-type
 apps/api/tests/unit/workers/test_memory_sweep_tasks.py	attr-defined
 apps/api/tests/unit/workers/test_memory_sweep_tasks.py	func-returns-value
-apps/api/tests/unit/workers/test_paid_person_tasks.py	arg-type
 apps/api/tests/unit/workers/test_reminder_tasks.py	unused-ignore
 apps/api/tests/unit/workers/test_tracked_todo_recurrence.py	arg-type
 apps/api/tests/unit/workers/test_worker_lifecycle.py	arg-type
