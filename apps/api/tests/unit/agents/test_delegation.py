@@ -51,10 +51,11 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
-from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
+from app.models.hil_models import HILApprovalRecord
 from app.services.conversation.runtime import install_runtime_ports
 from app.utils import background_tasks
 from app.utils.agent_utils import IntegrationMetadata
+from shared.py.analytics.catalog.hil import ApprovalOutcome
 from shared.py.wide_events import log
 from tests.helpers import WideEventRecorder, captured_wide_event
 from tests.unit.services.conversation.log_helpers import user
@@ -221,7 +222,7 @@ def _blocking(outcomes: list[Any], recovered: SubagentOutcome | None = None) -> 
         patch(f"{MODULE}.current_stream_writer", return_value=writer),
         patch(f"{MODULE}.execute_subagent_stream", new=execute),
         patch(f"{MODULE}.recover_from_checkpoint", new=AsyncMock(return_value=recovered)),
-        patch(f"{MODULE}.resume_for_gate", return_value={"status": "approved"}),
+        patch(f"{MODULE}.resume_for_gate", return_value={"outcome": "approved"}),
     ):
         yield SimpleNamespace(writer=writer, execute=execute)
 
@@ -474,7 +475,7 @@ class TestABackgroundRunThatParks:
     async def test_a_decision_that_beat_the_park_resumes_it_at_once(
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:
-        decided = make_record(approval_id="appr-1", status=HILApprovalStatus.APPROVED)
+        decided = make_record(approval_id="appr-1", outcome=ApprovalOutcome.APPROVED)
         execute = AsyncMock(side_effect=[self._paused(), SubagentOutcome(text="sent")])
         with (
             patch(f"{MODULE}.execute_subagent_stream", new=execute),
@@ -487,7 +488,7 @@ class TestABackgroundRunThatParks:
         assert execute.await_count == 2
         resume = execute.await_args_list[1].kwargs["resume"]
         assert resume.resume == {
-            "status": "approved",
+            "outcome": "approved",
             "feedback": None,
             "scope": "once",
             "approval_id": "appr-1",
@@ -523,7 +524,7 @@ class TestABlockingRunDrivesItsGraph:
             assert segment["stream_writer"] is h.writer
             assert segment["integration_metadata"] is metadata
             assert segment["subagent_id"] == "row-1"
-        assert second["resume"] == Command(resume={"status": "approved"})
+        assert second["resume"] == Command(resume={"outcome": "approved"})
 
     async def test_a_replay_probes_its_own_thread_before_running(self, redis: Any) -> None:
         run = _delegation()
@@ -643,7 +644,7 @@ class TestResumingABackgroundRun:
         await RunningSubagents(CONVERSATION).claim(_running())
         execute = AsyncMock()
         with patch(f"{MODULE}.execute_subagent_stream", new=execute):
-            resumed = await delegation.resume_background(_delegation(), {"status": "approved"})
+            resumed = await delegation.resume_background(_delegation(), {"outcome": "approved"})
             await _drain()
 
         assert resumed is False
@@ -659,7 +660,7 @@ class TestResumingABackgroundRun:
             return SubagentOutcome(text="sent")
 
         with patch(f"{MODULE}.execute_subagent_stream", new=_run):
-            assert await delegation.resume_background(_delegation(), {"status": "approved"})
+            assert await delegation.resume_background(_delegation(), {"outcome": "approved"})
             await _drain()
 
         assert seen[0] is not None
@@ -679,7 +680,7 @@ class TestResumingABackgroundRun:
             return SubagentOutcome(text="sent")
 
         with patch(f"{MODULE}.execute_subagent_stream", new=_run):
-            assert await delegation.resume_background(_delegation(), {"status": "approved"})
+            assert await delegation.resume_background(_delegation(), {"outcome": "approved"})
             await _drain()
 
         ((own_stream_id, _),) = own_stream.items()
@@ -695,7 +696,7 @@ class TestResumingABackgroundRun:
             f"{MODULE}.execute_subagent_stream",
             new=AsyncMock(return_value=SubagentOutcome(text="")),
         ):
-            await delegation.resume_background(_delegation(), {"status": "approved"})
+            await delegation.resume_background(_delegation(), {"outcome": "approved"})
             await _drain()
 
         client_edges.deliver.assert_not_awaited()
@@ -967,7 +968,7 @@ class TestWhatAParkedRunSays:
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:
         pending = make_record(approval_id="a1")
-        decided = make_record(approval_id="a2", status=HILApprovalStatus.APPROVED)
+        decided = make_record(approval_id="a2", outcome=ApprovalOutcome.APPROVED)
 
         execute, resumed = await self._park({"approval_ids": ["a1", "a2"]}, pending, decided)
 

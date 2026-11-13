@@ -12,7 +12,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.constants.hil import HIL_UNRESUMED_SWEEP_STATUSES
 from app.db.repositories.hil import HilApprovalRepository, HilToolRiskRepository
 from app.models.hil_models import HILApprovalRecord, HILApprovalUpdate, HILToolRiskRecord
 
@@ -67,7 +66,7 @@ class TestHilApprovalRepository:
         await repo.create_if_absent(_record("a1"))
 
         got = await repo.get("a1")
-        assert got is not None and got.status == "approved"
+        assert got is not None and got.outcome == "approved"
 
     async def test_mark_decided_transitions_exactly_once(self, repo):
         await repo.create_if_absent(_record("a1"))
@@ -82,7 +81,7 @@ class TestHilApprovalRepository:
         assert first is True
         assert second is False, "a racing duplicate decision must not double-resolve"
         got = await repo.get("a1")
-        assert got is not None and got.status == "approved" and got.decided_at is not None
+        assert got is not None and got.outcome == "approved" and got.decided_at is not None
 
     async def test_mark_decided_on_a_missing_record_is_false(self, repo):
         assert (
@@ -158,7 +157,7 @@ class TestHilApprovalRepository:
             return_document=False,
         )
 
-        stale = await repo.list_decided_unresumed(["approved"], grace_seconds=120)
+        stale = await repo.list_decided_unresumed(grace_seconds=120)
 
         assert [r.approval_id for r in stale] == ["parked"]
 
@@ -193,7 +192,7 @@ class TestHilApprovalRepository:
             HILApprovalUpdate(resume_item={"task": "t"}, resumed_at=datetime.now(UTC)),
         )
 
-        stale = await repo.list_decided_unresumed(["approved", "denied"], grace_seconds=120)
+        stale = await repo.list_decided_unresumed(grace_seconds=120)
 
         assert [r.approval_id for r in stale] == ["crashed"]
 
@@ -219,7 +218,8 @@ class TestAutoApprovalRecords:
         await repo.create_if_absent(
             _record(
                 approval_id,
-                status="auto_approved",
+                outcome="approved",
+                decider="auto",
                 auto_reason="you said send the deck to bob",
                 decided_at=now,
                 expires_at=now,
@@ -237,7 +237,7 @@ class TestAutoApprovalRecords:
         )
         got = await repo.get("auto-1")
         assert got is not None
-        assert got.status == "auto_approved"
+        assert (got.outcome, got.decider) == ("approved", "auto")
         assert got.auto_reason == "you said send the deck to bob"
 
     async def test_the_timeout_sweep_never_picks_it_up(self, repo):
@@ -249,7 +249,7 @@ class TestAutoApprovalRecords:
     async def test_the_crashed_resume_sweep_ignores_it(self, repo):
         # auto_approved never called interrupt(), so it has no run to re-dispatch —
         # re-dispatching would replay an action that already happened. The service's
-        # real status list is what must exclude it.
+        # repository's own filter is what must exclude it.
         await self._auto_record(repo)
         await repo.update("auto-1", HILApprovalUpdate(resume_item={"task": "t"}))
         await repo._apply_raw_update(
@@ -259,13 +259,9 @@ class TestAutoApprovalRecords:
             return_document=False,
         )
 
-        stale = await repo.list_decided_unresumed(
-            list(HIL_UNRESUMED_SWEEP_STATUSES), grace_seconds=120
-        )
+        stale = await repo.list_decided_unresumed(grace_seconds=120)
 
         assert stale == []
-        assert "auto_approved" not in HIL_UNRESUMED_SWEEP_STATUSES
-        assert "pending" not in HIL_UNRESUMED_SWEEP_STATUSES
 
     async def test_it_never_appears_as_a_pending_approval(self, repo):
         await self._auto_record(repo)

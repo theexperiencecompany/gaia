@@ -23,7 +23,10 @@ from langgraph.types import Command
 from langsmith import traceable
 
 from app.agents.core.background.confirmation_gate import record_confirmation_asked
-from app.agents.core.background.executor_capture import drain_executor_tool_data
+from app.agents.core.background.executor_capture import (
+    drain_executor_image,
+    drain_executor_tool_data,
+)
 from app.agents.core.background.executor_channel import ExecutorInbox, decide_drain
 from app.agents.core.background.executor_progress import ProgressRecorder, StreamWriter
 from app.agents.core.background.executor_queue import (
@@ -77,7 +80,7 @@ from app.models.agent_models import (
     AgentConfigurableView,
     run_analytics_context,
 )
-from app.models.chat_models import ToolDataEntry
+from app.models.chat_models import ImageData, ToolDataEntry
 from app.models.conversation_log_models import WorkOutcome
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
@@ -523,6 +526,7 @@ async def _finalize_executor_run(
     # Snapshot the cards WorkFinished carries BEFORE signalling done: a waiting todo
     # run tears the session down the moment done_event fires.
     tool_data = drain_executor_tool_data(run.stream_id)
+    image = drain_executor_image(run.stream_id)
 
     # Held approval cards go live here, before the done signal so the session is
     # still alive; failure only skips the live push, never finalize — the drain
@@ -572,6 +576,7 @@ async def _finalize_executor_run(
             result_type=result_type,
             was_cancelled=was_cancelled,
             tool_data=tool_data,
+            image=image,
             review=review,
         )
 
@@ -703,6 +708,7 @@ class TerminalOutcome:
     result_type: str
     was_cancelled: bool
     tool_data: list[ToolDataEntry]
+    image: ImageData | None = None
     review: OutcomeReview = NOT_REVIEWED
 
 
@@ -733,6 +739,7 @@ async def _log_work_finished(
                 outcome.tool_data,
                 note=outcome_delivery_note(review.declared, review.problem),
                 nothing_for_user=review.nothing_for_user,
+                image=outcome.image,
             ),
         )
     except ConversationNotFoundError:

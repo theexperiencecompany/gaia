@@ -294,7 +294,12 @@ const ApprovalDecidedSchema = z.object({
   kind: z.literal(ENTRY_KIND.APPROVAL_DECIDED),
   id,
   approval_id: z.string(),
-  decision: z.enum(["approve", "deny", "timeout", "abandon"]),
+  outcome: z.enum(["approved", "denied", "expired", "cancelled", "withdrawn"]),
+  decider: z.enum(["user", "auto"]).nullable().default(null),
+  action: z
+    .enum(["executing", "executed", "failed", "unknown"])
+    .nullable()
+    .default(null),
 }) satisfies z.ZodType<ApprovalDecided>;
 
 const WorkFinishedSchema = z.object({

@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from app.agents.core.background.executor_queue import get_lock_holder, parse_lock_value
-from app.constants.hil import ApprovalResolution
 from app.models.agent_config import StepTurnRef
+from app.models.chat_models import ImageData
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
@@ -26,6 +26,7 @@ from app.services.conversation.log import accept, publish_appended
 from app.services.conversation.ports import ClaimLost, EntryRejected
 from app.services.conversation.reply_analytics import capture_unanswered_stop, stopped_waking
 from app.services.conversation.runtime import runtime_ports
+from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider, ApprovalOutcome
 from shared.py.wide_events import log
 
 
@@ -78,12 +79,13 @@ async def record_work_started(
 
 @dataclass(frozen=True)
 class WorkReport:
-    """What finished work hands its reply: the report, the cards it showed, the review's note and its own declaration."""
+    """What finished work hands its reply: the report, the cards and image it showed, the review's note, its own word."""
 
     text: str
     tool_data: Sequence[ToolDataEntry] = ()
     note: str = ""
     nothing_for_user: bool = False
+    image: ImageData | None = None
 
 
 async def record_work_finished(
@@ -100,6 +102,7 @@ async def record_work_finished(
         tool_data=tuple(report.tool_data),
         note=report.note,
         nothing_for_user=report.nothing_for_user,
+        image=report.image,
     )
     await accept(runtime_ports(), conversation_id, user_id, entry)
 
@@ -154,11 +157,32 @@ async def approvals_awaited_by(
 
 
 async def record_approval_decided(
-    conversation_id: str, user_id: str, approval_id: str, decision: ApprovalResolution
+    conversation_id: str,
+    user_id: str,
+    approval_id: str,
+    outcome: ApprovalOutcome,
+    decider: ApprovalDecider | None,
 ) -> None:
     """Append ApprovalDecided: it releases live work waiting on it, and causes the work a decision starts later."""
     entry = ApprovalDecided(
-        id=f"approval:{approval_id}:decided", approval_id=approval_id, decision=decision
+        id=f"approval:{approval_id}:decided",
+        approval_id=approval_id,
+        outcome=outcome,
+        decider=decider,
+    )
+    await accept(runtime_ports(), conversation_id, user_id, entry)
+
+
+async def record_approved_action_ended(
+    conversation_id: str, user_id: str, approval_id: str, action: ActionResult
+) -> None:
+    """Restate the user's approval with what its action came to, so the card keeps it after a reload."""
+    entry = ApprovalDecided(
+        id=f"approval:{approval_id}:acted",
+        approval_id=approval_id,
+        outcome=ApprovalOutcome.APPROVED,
+        decider=ApprovalDecider.USER,
+        action=action,
     )
     await accept(runtime_ports(), conversation_id, user_id, entry)
 
@@ -170,17 +194,22 @@ async def record_work_carried(
     cause: LoggedEntry | None = None,
     *,
     detached: bool = False,
+    exclusive: bool = False,
 ) -> bool:
     """Append WorkStarted for work started outside a step, answering cause, else caused by everything logged so far.
 
-    False when a Stop since refuses it, so nothing dispatches; the step narrates its WorkFinished
-    unless the work is detached (a background subagent, a browser job), whose result lands elsewhere.
+    False when a Stop since refuses it, or other work refuses exclusive work, so nothing dispatches; the
+    step narrates its WorkFinished unless the work is detached (a subagent, a browser job, a replay).
     """
     ports = runtime_ports()
     if cause is None:
         state = await ports.log.state(conversation_id, user_id)
         entry = WorkStarted(
-            id=f"work:{task_id}", task_id=task_id, cause_through=state.head, detached=detached
+            id=f"work:{task_id}",
+            task_id=task_id,
+            cause_through=state.head,
+            detached=detached,
+            exclusive=exclusive,
         )
     else:
         entry = WorkStarted(
@@ -189,6 +218,7 @@ async def record_work_carried(
             cause_through=cause.seq,
             answers=(cause.entry.id,),
             detached=detached,
+            exclusive=exclusive,
         )
     try:
         await accept(ports, conversation_id, user_id, entry)

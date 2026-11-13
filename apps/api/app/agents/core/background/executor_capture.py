@@ -13,7 +13,7 @@ implementation so chat and workflow runs render identically.
 from app.agents.core.background.session import (
     get_session,
 )
-from app.models.chat_models import ToolDataEntry
+from app.models.chat_models import ImageData, ToolDataEntry
 from app.services.chat.chunks import normalize_custom_event
 from app.utils.stream_utils import (
     ToolDataEnvelope,
@@ -21,6 +21,17 @@ from app.utils.stream_utils import (
     apply_outputs_to_tool_data,
     reconstruct_subagent_groups,
 )
+
+
+def drain_executor_image(stream_id: str) -> ImageData | None:
+    """Return the last image the session's run generated, as its image tool wrote it; None when it made none."""
+    session = get_session(stream_id)
+    images = [
+        ImageData.model_validate(event["image_data"])
+        for event in (session.tool_events if session is not None else [])
+        if event.get("image_data") is not None
+    ]
+    return images[-1] if images else None
 
 
 def drain_executor_tool_data(stream_id: str) -> list[ToolDataEntry]:

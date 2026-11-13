@@ -1,21 +1,39 @@
 // @vitest-environment jsdom
 
+import { decidedEnd } from "@shared/utils";
 import { describe, expect, it } from "vitest";
-import { resolveBatchOutcomeStatus } from "@/features/chat/utils/batchOutcome";
+import { resolveBatchOutcome } from "@/features/chat/utils/batchOutcome";
 
-describe("resolveBatchOutcomeStatus", () => {
-  it("prefers the server state over the tapped button", () => {
-    expect(resolveBatchOutcomeStatus("denied", "approved")).toBe("denied");
-    expect(resolveBatchOutcomeStatus("revoked", "approved")).toBe("revoked");
-    expect(resolveBatchOutcomeStatus("executed", "approved")).toBe("executed");
+const tapped = decidedEnd("approve");
+const lost = { approval_id: "a", resolved: false, reason: "not_found" };
+
+describe("resolveBatchOutcome", () => {
+  it("prefers how the server says the row ended over the tapped button", () => {
+    expect(resolveBatchOutcome({ ...lost, outcome: "denied" }, tapped)).toEqual(
+      {
+        outcome: "denied",
+        decider: null,
+        action: null,
+      },
+    );
+    expect(
+      resolveBatchOutcome({ ...lost, outcome: "withdrawn" }, tapped).outcome,
+    ).toBe("withdrawn");
+  });
+
+  it("keeps an approved row's action result beside its outcome", () => {
+    expect(
+      resolveBatchOutcome(
+        { ...lost, outcome: "approved", action: "failed" },
+        tapped,
+      ),
+    ).toEqual({ outcome: "approved", decider: null, action: "failed" });
   });
 
   it("falls back to the tapped verdict when the server sent nothing", () => {
-    expect(resolveBatchOutcomeStatus(null, "approved")).toBe("approved");
-    expect(resolveBatchOutcomeStatus(undefined, "denied")).toBe("denied");
-  });
-
-  it("falls back on unknown server states instead of painting garbage", () => {
-    expect(resolveBatchOutcomeStatus("executing", "approved")).toBe("approved");
+    expect(resolveBatchOutcome(lost, tapped)).toBe(tapped);
+    expect(resolveBatchOutcome({ ...lost, outcome: null }, tapped)).toBe(
+      tapped,
+    );
   });
 });

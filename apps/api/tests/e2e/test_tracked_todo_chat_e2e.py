@@ -783,11 +783,19 @@ class TestAnApprovalTheRunWaitsOnStaysInTheTodosChat:
             todo_id,
         )
         assert parked == {"approval_id": row["approval_id"], "conversation_id": conversation_id}
-        assert decided.json() == {"success": True, "reason": None, "status": "approved"}
+        assert decided.json() == {
+            "success": True,
+            "reason": None,
+            "outcome": "approved",
+            "action": None,
+        }
 
         # The approved call ran once, redeemed in the chat by the run the approval started.
         ledger = await mongo_db["approval_ledger"].find_one({"approval_id": row["approval_id"]})
-        assert ledger is not None and ledger["state"] == "executed"
+        assert ledger is not None and (ledger["outcome"], ledger["action"]) == (
+            "approved",
+            "executed",
+        )
         # The resume that landed while that run held the chat waited instead of failing.
         assert landed_mid_ticket_run == f"resume_deferred:{todo_id} (executor busy)"
         assert deferred == (todo_id, conversation_id, row["approval_id"], row["summary"], 1)
@@ -835,9 +843,9 @@ class TestAnApprovalTheRunWaitsOnStaysInTheTodosChat:
             )
             await drain_background_runs()
 
-        assert decided.json()["status"] == "denied"
+        assert decided.json()["outcome"] == "denied"
         ledger = await mongo_db["approval_ledger"].find_one({"approval_id": row["approval_id"]})
-        assert ledger is not None and ledger["state"] == "denied"
+        assert ledger is not None and (ledger["outcome"], ledger["action"]) == ("denied", None)
         assert await worker_pool.queued_jobs() == []
         # The run the verdict started told the chat what was skipped.
         shown = await _shown(mongo_db, todo_id)

@@ -17,7 +17,6 @@ from langchain_core.tools import tool
 from app.agents.core.background.confirmation_gate import spend_confirmation
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import (
-    adopt_lock,
     build_lock_value,
     decode_raw_item,
     parse_lock_value,
@@ -243,12 +242,7 @@ async def _dispatch_executor(
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
     lock_value = build_lock_value(stream_id, task_id)
 
-    # A workflow fire reserves its conversation up front, so a held lock here
-    # is its own claim. Adopting it turns the reservation into a hand-off
-    # rather than a self-inflicted queue.
     acquired = await try_acquire_lock(lock_key, lock_value)
-    if not acquired and (reserved := configurable.get("executor_lock_reservation")):
-        acquired = await adopt_lock(conversation_id, reserved, lock_value)
     # A holder whose process died (a restart mid-run) keeps the lock, but no run
     # will ever drain the inbox: reclaim it as deliver_to_executor does, or this
     # request is handed to nobody for the lock's whole TTL.

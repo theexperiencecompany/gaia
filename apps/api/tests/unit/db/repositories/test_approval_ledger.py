@@ -1,8 +1,8 @@
 """Hermetic unit tests for ApprovalLedgerRepository.
 
 Real-Mongo proof belongs in the contracts tier; this tier pins the exact
-filters and update documents handed to the driver — especially the CAS filter
-(state == expected), which is the whole safety story, and the live-only
+filters and update documents handed to the driver — especially the CAS filters
+(still pending, still executing), which are the whole safety story, and the live-only
 dedup scope (terminal fingerprints must re-register fresh).
 """
 
@@ -16,10 +16,12 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.db.repositories.approval_ledger import (
+    LIVE_ROW_FILTER,
     ApprovalLedgerRepository,
     approval_ledger_repository,
 )
-from app.models.hil_models import ApprovalProposal, LedgerState
+from app.models.hil_models import ApprovalProposal
+from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
 
 _PROPOSAL = ApprovalProposal(
     conversation_id="c1", fingerprint="fp", tool_name="T", args={}, summary="s"
@@ -27,7 +29,10 @@ _PROPOSAL = ApprovalProposal(
 
 
 def _doc(
-    state: str = "pending", approval_id: str = "ap_1", fingerprint: str = "fp"
+    outcome: str | None = None,
+    action: str | None = None,
+    approval_id: str = "ap_1",
+    fingerprint: str = "fp",
 ) -> dict[str, Any]:
     return {
         "_id": "oid",
@@ -41,7 +46,8 @@ def _doc(
         "preview": "",
         "owner_agent": "executor",
         "blocked_by": [],
-        "state": state,
+        "outcome": outcome,
+        "action": action,
         "v": 0,
     }
 
@@ -74,7 +80,12 @@ def _find_returns(collection: MagicMock, *pages: list[dict[str, Any]]) -> MagicM
     return cursor
 
 
-_LIVE_STATES_IN = {"$in": ["approved", "pending"]}
+_LIVE = {
+    "$or": [
+        {"outcome": {"$type": "null"}},
+        {"outcome": "approved", "action": {"$type": "null"}},
+    ]
+}
 
 
 @pytest.mark.unit
@@ -86,7 +97,9 @@ class TestRegister:
 
         assert re.fullmatch(r"ap_[0-9a-f]{12}", ap_id)
         inserted = collection.insert_one.await_args.args[0]
-        assert inserted["state"] == "pending"
+        # Explicit nulls, not missing fields: the live unique index matches on them.
+        assert ("outcome", None) in inserted.items()
+        assert ("action", None) in inserted.items()
         assert inserted["approval_id"] == ap_id
 
     async def test_live_duplicate_returns_existing_id_without_insert(
@@ -94,7 +107,7 @@ class TestRegister:
     ) -> None:
         cursor = MagicMock()
         cursor.sort = MagicMock(return_value=cursor)
-        cursor.to_list = AsyncMock(return_value=[_doc(state="approved")])
+        cursor.to_list = AsyncMock(return_value=[_doc(outcome="approved")])
         collection.find = MagicMock(return_value=cursor)
 
         ap_id = await repo.register(_PROPOSAL)
@@ -104,7 +117,7 @@ class TestRegister:
         assert collection.find.call_args.args[0] == {
             "fingerprint": "fp",
             "conversation_id": "c1",
-            "state": _LIVE_STATES_IN,
+            **_LIVE,
         }
 
     async def test_lost_insert_race_returns_the_winners_id(
@@ -136,7 +149,7 @@ class TestRegister:
     ) -> None:
         cursor = MagicMock()
         cursor.sort = MagicMock(return_value=cursor)
-        cursor.to_list = AsyncMock(return_value=[_doc(state="revoked")])
+        cursor.to_list = AsyncMock(return_value=[_doc(outcome="withdrawn")])
         collection.find = MagicMock(return_value=cursor)
 
         ap_id = await repo.register(_PROPOSAL)
@@ -146,32 +159,31 @@ class TestRegister:
 
 
 @pytest.mark.unit
-class TestTransition:
-    async def test_matching_state_transitions_and_bumps_version(
+class TestSettle:
+    async def test_a_pending_row_takes_its_outcome_and_bumps_version(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
     ) -> None:
-        assert await repo.transition("ap_1", LedgerState.PENDING, LedgerState.APPROVED) is True
+        assert await repo.settle("ap_1", ApprovalOutcome.APPROVED) is True
 
         flt, update = collection.update_one.await_args.args
-        assert flt == {"approval_id": "ap_1", "state": "pending"}
-        assert update["$set"] == {"state": "approved"}
+        assert flt == {"approval_id": "ap_1", "outcome": {"$type": "null"}}
+        assert update["$set"] == {"outcome": "approved"}
         assert update["$inc"] == {"v": 1}
 
-    async def test_mismatched_state_is_a_quiet_false(
+    async def test_an_already_ended_row_is_a_quiet_false(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
     ) -> None:
         collection.update_one = AsyncMock(return_value=MagicMock(modified_count=0))
 
-        assert await repo.transition("ap_1", LedgerState.PENDING, LedgerState.DENIED) is False
+        assert await repo.settle("ap_1", ApprovalOutcome.DENIED) is False
 
     async def test_decision_stamp_rides_in_the_same_write(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
     ) -> None:
         assert (
-            await repo.transition(
+            await repo.settle(
                 "ap_1",
-                LedgerState.PENDING,
-                LedgerState.DENIED,
+                ApprovalOutcome.DENIED,
                 decided_by="u1",
                 feedback="nope",
             )
@@ -179,7 +191,7 @@ class TestTransition:
         )
 
         _, update = collection.update_one.await_args.args
-        assert update["$set"]["state"] == "denied"
+        assert update["$set"]["outcome"] == "denied"
         assert update["$set"]["decided_by"] == "u1"
         assert update["$set"]["feedback"] == "nope"
         decided_at = update["$set"]["decided_at"]
@@ -192,10 +204,29 @@ class TestTransition:
     async def test_either_stamp_alone_still_records_decided_at(
         self, repo: ApprovalLedgerRepository, collection: MagicMock, stamp: dict[str, str]
     ) -> None:
-        await repo.transition("ap_1", LedgerState.PENDING, LedgerState.DENIED, **stamp)
+        await repo.settle("ap_1", ApprovalOutcome.DENIED, **stamp)
 
         _, update = collection.update_one.await_args.args
         assert update["$set"]["decided_at"].tzinfo is UTC
+
+
+@pytest.mark.unit
+class TestFinishAction:
+    async def test_an_executing_action_takes_its_result_and_bumps_version(
+        self, repo: ApprovalLedgerRepository, collection: MagicMock
+    ) -> None:
+        assert await repo.finish_action("ap_1", ActionResult.FAILED) is True
+
+        flt, update = collection.update_one.await_args.args
+        assert flt == {"approval_id": "ap_1", "action": "executing"}
+        assert update == {"$set": {"action": "failed"}, "$inc": {"v": 1}}
+
+    async def test_an_action_that_already_finished_is_a_quiet_false(
+        self, repo: ApprovalLedgerRepository, collection: MagicMock
+    ) -> None:
+        collection.update_one = AsyncMock(return_value=MagicMock(modified_count=0))
+
+        assert await repo.finish_action("ap_1", ActionResult.UNKNOWN) is False
 
 
 @pytest.mark.unit
@@ -222,8 +253,8 @@ class TestClaims:
         assert await repo.claim_executing("ap_1") is True
 
         flt, update = collection.update_one.await_args.args
-        assert flt == {"approval_id": "ap_1", "state": "approved"}
-        assert update["$set"]["state"] == "executing"
+        assert flt == {"approval_id": "ap_1", "outcome": "approved", "action": {"$type": "null"}}
+        assert update["$set"]["action"] == "executing"
         assert update["$set"]["executing_started_at"].tzinfo is UTC
         assert update["$inc"] == {"v": 1}
 
@@ -249,7 +280,7 @@ class TestReads:
 
         flt = collection.find.call_args.args[0]
         assert flt["conversation_id"] == "c1"
-        assert set(flt["state"]["$in"]) == {"pending", "approved"}
+        assert flt["$or"] == LIVE_ROW_FILTER["$or"]
         cursor.sort.assert_called_once_with("created_at", 1)
         cursor.to_list.assert_awaited_once_with(length=200)
         assert len(docs) == 1 and docs[0].approval_id == "ap_1"
@@ -257,14 +288,14 @@ class TestReads:
     async def test_find_live_queries_live_rows_newest_first(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
     ) -> None:
-        cursor = _find_returns(collection, [_doc(state="approved")])
+        cursor = _find_returns(collection, [_doc(outcome="approved")])
 
         doc = await repo.find_live("fp", "c1")
 
         assert collection.find.call_args.args[0] == {
             "fingerprint": "fp",
             "conversation_id": "c1",
-            "state": _LIVE_STATES_IN,
+            **_LIVE,
         }
         cursor.sort.assert_called_once_with("created_at", -1)
         cursor.to_list.assert_awaited_once_with(length=50)
@@ -273,7 +304,7 @@ class TestReads:
     async def test_find_live_skips_a_terminal_row_and_returns_none(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
     ) -> None:
-        _find_returns(collection, [_doc(state="revoked")])
+        _find_returns(collection, [_doc(outcome="withdrawn")])
 
         assert await repo.find_live("fp", "c1") is None
 
@@ -291,19 +322,19 @@ class TestReads:
     async def test_list_stalled_executing_scopes_to_the_conversation_oldest_first(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
     ) -> None:
-        cursor = _find_returns(collection, [_doc(state="executing")])
+        cursor = _find_returns(collection, [_doc(outcome="approved", action="executing")])
         cutoff = datetime(2026, 1, 1, tzinfo=UTC)
 
         docs = await repo.list_stalled_executing(cutoff, conversation_id="c1")
 
         assert collection.find.call_args.args[0] == {
-            "state": "executing",
+            "action": "executing",
             "executing_started_at": {"$lt": cutoff},
             "conversation_id": "c1",
         }
         cursor.sort.assert_called_once_with("executing_started_at", 1)
         cursor.to_list.assert_awaited_once_with(length=200)
-        assert [d.state for d in docs] == [LedgerState.EXECUTING]
+        assert [d.action for d in docs] == [ActionResult.EXECUTING]
 
     async def test_list_stalled_executing_without_conversation_scans_all(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
@@ -317,7 +348,7 @@ class TestReads:
     async def test_recent_tool_outcomes_reads_decided_rows_newest_first(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
     ) -> None:
-        cursor = _find_returns(collection, [_doc(state="approved")])
+        cursor = _find_returns(collection, [_doc(outcome="approved")])
         expected_cutoff = datetime.now(UTC) - timedelta(days=7)
 
         docs = await repo.recent_tool_outcomes("u1", "T", limit=3, since_days=7)
@@ -344,14 +375,14 @@ class TestReads:
     async def test_find_latest_denied_queries_denied_newest_first(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
     ) -> None:
-        collection.find_one = AsyncMock(return_value=_doc(state="denied"))
+        collection.find_one = AsyncMock(return_value=_doc(outcome="denied"))
 
         doc = await repo.find_latest_denied("fp", "c1")
 
         flt = collection.find_one.await_args.args[0]
-        assert flt == {"fingerprint": "fp", "conversation_id": "c1", "state": "denied"}
+        assert flt == {"fingerprint": "fp", "conversation_id": "c1", "outcome": "denied"}
         assert collection.find_one.await_args.kwargs == {"sort": [("created_at", -1)]}
-        assert doc is not None and doc.state == LedgerState.DENIED
+        assert doc is not None and doc.outcome == ApprovalOutcome.DENIED
 
     async def test_singleton_exists(self) -> None:
         assert isinstance(approval_ledger_repository, ApprovalLedgerRepository)
@@ -370,7 +401,7 @@ class TestReads:
         flt = collection.find.call_args.args[0]
         assert flt["owner_run_type"] == "todo"
         assert flt["owner_id"] == {"$in": ["todo-1", "todo-2"]}
-        assert set(flt["state"]["$in"]) == {"pending", "approved"}
+        assert flt["$or"] == LIVE_ROW_FILTER["$or"]
         cursor.sort.assert_called_once_with("created_at", 1)
         cursor.to_list.assert_awaited_once_with(length=200)
         assert len(docs) == 1

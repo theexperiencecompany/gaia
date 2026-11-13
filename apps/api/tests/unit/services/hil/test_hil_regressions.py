@@ -22,9 +22,7 @@ from app.constants.hil import (
     HIL_EXEMPT_TOOLS,
     HIL_PAUSING_TOOLS,
     HIL_STATUS_KWARG,
-    HIL_UNRESUMED_SWEEP_STATUSES,
 )
-from app.models.hil_models import HILApprovalStatus
 from app.services.hil.approvals_store import clear_resume_item
 from app.services.hil.intent import IntentDecision
 from app.services.hil.policy import has_pausing_sibling
@@ -34,6 +32,7 @@ from app.services.hil.resolution import (
     sweep_approvals,
 )
 from app.utils.errors import AppError
+from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
 
 from .conftest import (
     CONVERSATION_ID,
@@ -294,7 +293,11 @@ class TestAnAutoApprovedRecordStillHasToRun:
             patch(f"{GATE}._integration_name_for", new=AsyncMock(return_value=None)),
             patch(
                 f"{GATE}.get_approval",
-                new=AsyncMock(return_value=make_record(status=HILApprovalStatus.AUTO_APPROVED)),
+                new=AsyncMock(
+                    return_value=make_record(
+                        outcome=ApprovalOutcome.APPROVED, decider=ApprovalDecider.AUTO
+                    )
+                ),
             ),
             patch(f"{GATE}.publish_approval_request", new=AsyncMock()) as card,
             patch(f"{GATE}.publish_auto_approval", new=AsyncMock()) as receipt,
@@ -421,7 +424,7 @@ class TestAResumeWithNoDecisionFailsClosed:
             for ctx in self._edges(make_record()):
                 stack.enter_context(ctx)
             # Returns rather than raises: this IS the replay.
-            stack.enter_context(patch(f"{GATE}.interrupt", return_value={"status": "approved"}))
+            stack.enter_context(patch(f"{GATE}.interrupt", return_value={"outcome": "approved"}))
             result = await run_through_gate(make_request(), handler)
 
         handler.assert_not_awaited()  # no record decision means no execution, ever
@@ -434,9 +437,9 @@ class TestAResumeWithNoDecisionFailsClosed:
         # were broken into refusing everything.
         handler = AsyncMock()
         with ExitStack() as stack:
-            for ctx in self._edges(make_record(status=HILApprovalStatus.APPROVED)):
+            for ctx in self._edges(make_record(outcome=ApprovalOutcome.APPROVED)):
                 stack.enter_context(ctx)
-            stack.enter_context(patch(f"{GATE}.interrupt", return_value={"status": "approved"}))
+            stack.enter_context(patch(f"{GATE}.interrupt", return_value={"outcome": "approved"}))
             await run_through_gate(make_request(), handler)
 
         handler.assert_awaited_once()
@@ -445,9 +448,9 @@ class TestAResumeWithNoDecisionFailsClosed:
         # The reverse direction: the payload is not the decision in EITHER direction.
         handler = AsyncMock()
         with ExitStack() as stack:
-            for ctx in self._edges(make_record(status=HILApprovalStatus.APPROVED)):
+            for ctx in self._edges(make_record(outcome=ApprovalOutcome.APPROVED)):
                 stack.enter_context(ctx)
-            stack.enter_context(patch(f"{GATE}.interrupt", return_value={"status": "denied"}))
+            stack.enter_context(patch(f"{GATE}.interrupt", return_value={"outcome": "denied"}))
             await run_through_gate(make_request(), handler)
 
         handler.assert_awaited_once()
@@ -472,15 +475,15 @@ class _ApprovalStore:
         return [
             r
             for r in self.records.values()
-            if r.conversation_id == conversation_id and r.status == "pending"
+            if r.conversation_id == conversation_id and r.outcome is None
         ]
 
-    async def mark_decided(self, approval_id: str, status: str, **kwargs: Any) -> bool:
+    async def mark_decided(self, approval_id: str, outcome: str, **kwargs: Any) -> bool:
         record = self.records.get(approval_id)
-        if record is None or record.status != "pending":
+        if record is None or record.outcome is not None:
             return False
         self.records[approval_id] = record.model_copy(
-            update={"status": status, "decided_at": datetime.now(UTC), **kwargs}
+            update={"outcome": outcome, "decided_at": datetime.now(UTC), **kwargs}
         )
         return True
 
@@ -493,7 +496,8 @@ class _ApprovalStore:
         return [
             r
             for r in self.records.values()
-            if r.status in HIL_UNRESUMED_SWEEP_STATUSES
+            if r.outcome is not None
+            and r.decider is not ApprovalDecider.AUTO
             and r.resumed_at is None
             and r.resume_item is not None
         ]
@@ -548,7 +552,7 @@ class TestCancelledRunIsNotResurrectedByItsApproval:
             await drain_spawned_tasks()
 
         assert runner.await_count == 0
-        assert store.records["a1"].status == "abandoned"
+        assert store.records["a1"].outcome == "cancelled"
 
     async def test_the_timeout_sweep_does_not_bring_the_cancelled_run_back(self) -> None:
         # No user involved at all: the sweep re-dispatches decided-but-unresumed records
@@ -593,7 +597,7 @@ class TestCancelledRunIsNotResurrectedByItsApproval:
             await drain_spawned_tasks()
 
         assert runner.await_count == 1
-        assert runner.await_args.kwargs["resume"].resume["status"] == "approved"
+        assert runner.await_args.kwargs["resume"].resume["outcome"] == "approved"
         # The id is what routes this decision to its own gate; a wrong one is discarded
         # by the matcher and the approved action never runs.
         assert runner.await_args.kwargs["resume"].resume["approval_id"] == "a1"

@@ -137,6 +137,8 @@ def _start_work(state: ConversationState, seq: int, entry: WorkStarted) -> Trans
         return Rejected(reason=RejectReason.CAUSE_STOPPED)
     if _live(state, entry.task_id) is not None:
         return Rejected(reason=RejectReason.TASK_ALREADY_LIVE)
+    if _overlaps_a_replay(state, entry):
+        return Rejected(reason=RejectReason.FIRE_OVERLAPS)
     if entry.joins is not None:
         return _join_work(state, entry, entry.joins)
     work = LiveWork(
@@ -145,8 +147,16 @@ def _start_work(state: ConversationState, seq: int, entry: WorkStarted) -> Trans
         answers=entry.answers,
         pending_approvals=frozenset(),
         detached=entry.detached,
+        exclusive=entry.exclusive,
     )
     return Transition(state=state.model_copy(update={"work": (*state.work, work)}), effects=())
+
+
+def _overlaps_a_replay(state: ConversationState, entry: WorkStarted) -> bool:
+    """Return whether the work would run beside a replay, or the replay beside other work or an unanswered fire."""
+    if entry.exclusive:
+        return bool(state.work or state.unsettled_fires)
+    return any(item.exclusive for item in state.work)
 
 
 def _join_work(state: ConversationState, entry: WorkStarted, joins: str) -> Transition | Rejected:

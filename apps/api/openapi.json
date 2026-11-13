@@ -69,6 +69,17 @@
         "title": "ActionExecutionResponse",
         "type": "object"
       },
+      "ActionResult": {
+        "description": "What happened to an approved action; none until it starts.",
+        "enum": [
+          "executing",
+          "executed",
+          "failed",
+          "unknown"
+        ],
+        "title": "ActionResult",
+        "type": "string"
+      },
       "ActionStyle": {
         "description": "Visual emphasis for a notification action button.",
         "enum": [
@@ -399,21 +410,31 @@
       },
       "ApprovalDecided": {
         "additionalProperties": false,
-        "description": "A pending approval resolved.",
+        "description": "A pending approval ended; decider names who approved or denied it (None when nobody did).\n\nAn approved action's end is logged as the same decision restated with action set; the latest\none for an approval is its card's state.",
         "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActionResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "approval_id": {
             "title": "Approval Id",
             "type": "string"
           },
-          "decision": {
-            "enum": [
-              "approve",
-              "deny",
-              "timeout",
-              "abandon"
-            ],
-            "title": "Decision",
-            "type": "string"
+          "decider": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalDecider"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "id": {
             "description": "Producer-minted idempotency key",
@@ -426,15 +447,27 @@
             "default": "approval_decided",
             "title": "Kind",
             "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ApprovalOutcome"
           }
         },
         "required": [
           "id",
           "approval_id",
-          "decision"
+          "outcome"
         ],
         "title": "ApprovalDecided",
         "type": "object"
+      },
+      "ApprovalDecider": {
+        "description": "Who approved or denied: the user, or auto mode's intent judge.",
+        "enum": [
+          "user",
+          "auto"
+        ],
+        "title": "ApprovalDecider",
+        "type": "string"
       },
       "ApprovalDecisionRequest": {
         "description": "Body for a button approval decision (approve/deny, with scope and feedback).",
@@ -489,6 +522,26 @@
       "ApprovalDecisionResponse": {
         "description": "Result of relaying an approval decision to the awaiting gate.",
         "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActionResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reason": {
             "anyOf": [
               {
@@ -500,17 +553,6 @@
             ],
             "title": "Reason"
           },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status"
-          },
           "success": {
             "title": "Success",
             "type": "boolean"
@@ -521,6 +563,18 @@
         ],
         "title": "ApprovalDecisionResponse",
         "type": "object"
+      },
+      "ApprovalOutcome": {
+        "description": "How an approval ended; an approval with no outcome is still pending.",
+        "enum": [
+          "approved",
+          "denied",
+          "expired",
+          "cancelled",
+          "withdrawn"
+        ],
+        "title": "ApprovalOutcome",
+        "type": "string"
       },
       "ApprovalRequested": {
         "additionalProperties": false,
@@ -1356,9 +1410,29 @@
       "BatchDecisionOutcome": {
         "description": "Per-approval outcome of a batch decision.",
         "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActionResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "approval_id": {
             "title": "Approval Id",
             "type": "string"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "reason": {
             "anyOf": [
@@ -1374,17 +1448,6 @@
           "resolved": {
             "title": "Resolved",
             "type": "boolean"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status"
           }
         },
         "required": [
@@ -22771,6 +22834,14 @@
             "title": "Pending Task Ids",
             "type": "array"
           },
+          "replay_ids": {
+            "description": "Workflow playbook replays stopped, by stream id.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Replay Ids",
+            "type": "array"
+          },
           "subagent_ids": {
             "description": "Running subagents stopped.",
             "items": {
@@ -22787,7 +22858,8 @@
           "pending_task_ids",
           "subagent_ids",
           "approval_ids",
-          "browser_jobs"
+          "browser_jobs",
+          "replay_ids"
         ],
         "title": "WorkCancelled",
         "type": "object"
@@ -22876,6 +22948,16 @@
             "title": "Id",
             "type": "string"
           },
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "kind": {
             "const": "work_finished",
             "default": "work_finished",
@@ -22952,6 +23034,11 @@
           "detached": {
             "default": false,
             "title": "Detached",
+            "type": "boolean"
+          },
+          "exclusive": {
+            "default": false,
+            "title": "Exclusive",
             "type": "boolean"
           },
           "id": {
@@ -23318,11 +23405,6 @@
             "title": "Execution Id",
             "type": "string"
           },
-          "reservation": {
-            "minLength": 1,
-            "title": "Reservation",
-            "type": "string"
-          },
           "timezone": {
             "minLength": 1,
             "title": "Timezone",
@@ -23339,7 +23421,6 @@
           "workflow",
           "execution_id",
           "timezone",
-          "reservation",
           "trigger",
           "attribution"
         ],

@@ -16,8 +16,8 @@ import pytest
 from app.agents.tools.execute import dispatch as dispatch_module
 from app.agents.tools.execute.dispatch import ToolExecutionResult, dispatch_tool
 from app.agents.tools.execute.resolver import ResolvedTool
-from app.models.hil_models import LedgerState
 from app.services.hil import ledger_decide
+from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 CARD_FRAME = {"integration_connection_required": {"integration_id": "gmail"}}
@@ -50,7 +50,8 @@ def _approved_row() -> MagicMock:
     row.tool_name = "show_card"
     row.args = {}
     row.account = None
-    row.state = LedgerState.APPROVED
+    row.outcome = ApprovalOutcome.APPROVED
+    row.action = None
     row.owner_agent = "executor_conv-1"
     return row
 
@@ -62,7 +63,8 @@ async def test_an_approved_tool_streams_its_card_on_the_run_that_redeems_it() ->
     repo = MagicMock()
     repo.get_by_approval_id = AsyncMock(return_value=_approved_row())
     repo.claim_executing = AsyncMock(return_value=True)
-    repo.transition = AsyncMock(return_value=True)
+    repo.settle = AsyncMock(return_value=True)
+    repo.finish_action = AsyncMock(return_value=True)
     graph = (
         StateGraph(_State)
         .add_node("redeem", _redeem_node)
@@ -95,4 +97,4 @@ async def test_an_approved_tool_streams_its_card_on_the_run_that_redeems_it() ->
     assert ("custom", CARD_FRAME) in chunks
     final = chunks[-1][1]["result"]
     assert final.output == "Executed 'ap_card' (executed): card shown"
-    repo.transition.assert_awaited_once_with("ap_card", LedgerState.EXECUTING, LedgerState.EXECUTED)
+    repo.finish_action.assert_awaited_once_with("ap_card", ActionResult.EXECUTED)

@@ -42,15 +42,13 @@ from app.models.hil_models import (
     ApprovalLedgerDocument,
     ApprovalProposal,
     HILApprovalRecord,
-    HILApprovalStatus,
-    LedgerState,
 )
 from app.services.analytics_service import capture
 from app.services.conversation.work_log import record_approval_requested, running_step_task
 from app.services.feature_flags import is_hil_ledger_enabled, is_jev_judge_enabled
 from app.services.hil.approvals_store import approval_id_for, get_approval
 from app.services.hil.bridge import (
-    ApprovalOutcome,
+    GateVerdict,
     build_summary,
     publish_approval_request,
     publish_auto_approval,
@@ -99,7 +97,7 @@ from app.services.hil.utils import (
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.utils.general_utils import clip_text
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.hil import HilDecisionSubmitted
+from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome, HilDecisionSubmitted
 from shared.py.wide_events import log
 
 Handler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]]
@@ -243,7 +241,7 @@ async def _decide_ledger(
             log.info(f"{LogTag.HIL} auto-denying : declined earlier this turn", name=call.name)
             return (
                 _auto_reject_message(call, declined.feedback or "")
-                if declined.auto
+                if declined.decider is ApprovalDecider.AUTO
                 else _refusal_message(call, declined)
             )
         auto = await _auto_ledger_verdict(request, context, call, policy)
@@ -416,7 +414,7 @@ async def _decide(
         # unlike decline memory (keyed by name+args) — reading it second would let a
         # decline shadow the very decision the user just gave.
         record = await get_approval(approval_id)
-        if record is not None and record.status.settled:
+        if record is not None and record.outcome is not None:
             return await _apply(record, request, context, call)
 
         # A RETRY of something the user already declined this turn. Re-asking is the loop
@@ -425,7 +423,7 @@ async def _decide(
         declined = await recall_declined_call(context.stream_id, call.name, call.args)
         if declined is not None:
             log.info(f"{LogTag.HIL} auto-denying : declined earlier this turn", name=call.name)
-            if declined.auto:
+            if declined.decider is ApprovalDecider.AUTO:
                 return _auto_reject_message(call, declined.feedback or "")
             return _refusal_message(call, declined)
 
@@ -499,11 +497,11 @@ async def _apply(
 
     The record is the decision — never the resume payload, which is only a wake-up.
     """
-    outcome = _outcome_from_record(record)
+    outcome = _verdict_from_record(record)
     await publish_decision(
-        record, outcome.status, stream_id=context.stream_id, feedback=outcome.feedback
+        record, outcome.outcome, stream_id=context.stream_id, feedback=outcome.feedback
     )
-    if outcome.status == HILApprovalStatus.APPROVED:
+    if outcome.outcome is ApprovalOutcome.APPROVED:
         if outcome.scope == "always_tool":
             tool_key = await gated_tool_key(request, context.user_id, call.name)
             await set_tool_override(context.user_id, tool_key, False)
@@ -511,7 +509,7 @@ async def _apply(
 
     # Remember an explicit decline so a retry of the same call this turn is auto-denied
     # without prompting again. Timeouts are not remembered — the user may just be away.
-    if outcome.status == HILApprovalStatus.DENIED:
+    if outcome.outcome is ApprovalOutcome.DENIED:
         await remember_declined_call(context.stream_id, call.name, call.args, outcome.feedback)
     return _refusal_message(call, outcome)
 
@@ -571,7 +569,9 @@ async def _judge(
         capture(
             UserId(context.user_id),
             HilDecisionSubmitted(
-                decision="approved" if decision.outcome == "accept" else "denied",
+                outcome=ApprovalOutcome.APPROVED
+                if decision.outcome == "accept"
+                else ApprovalOutcome.DENIED,
                 tool_name=call.name,
                 via="auto",
             ),
@@ -616,20 +616,14 @@ async def _auto_history(user_id: str, tool_name: str) -> AutoHistory:
     return summarize_history(rows)
 
 
-def _outcome_from_record(record: HILApprovalRecord) -> ApprovalOutcome:
+def _verdict_from_record(record: HILApprovalRecord) -> GateVerdict:
     """Return the decision as the record holds it — the one durable copy.
 
-    AUTO_APPROVED reads as a plain approval: it means the user was not asked, not
-    that anything happened. ABANDONED reads as a denial — the user moved on, so the
-    agent must not act.
+    Anything but approved blocks the call: a cancelled or withdrawn approval must not act.
     """
-    if record.status is HILApprovalStatus.AUTO_APPROVED:
-        status = HILApprovalStatus.APPROVED
-    elif record.status is HILApprovalStatus.ABANDONED:
-        status = HILApprovalStatus.DENIED
-    else:
-        status = record.status
-    return ApprovalOutcome(status=status, feedback=record.feedback, scope=record.scope)
+    if record.outcome is None:
+        raise ValueError(f"approval {record.approval_id} is still pending")
+    return GateVerdict(outcome=record.outcome, feedback=record.feedback, scope=record.scope)
 
 
 # --- what a blocked call tells the model (text lives in prompts.py) ---------------------
@@ -658,9 +652,9 @@ async def _auto_reject(context: GateContext, call: GatedCall, reason: str) -> To
     return _auto_reject_message(call, reason)
 
 
-def _refusal_message(call: GatedCall, outcome: ApprovalOutcome) -> ToolMessage:
-    """Tell the model a denied or timed-out call did not run, and why."""
-    timed_out = outcome.status is HILApprovalStatus.TIMEOUT
+def _refusal_message(call: GatedCall, outcome: GateVerdict) -> ToolMessage:
+    """Tell the model a denied or expired call did not run, and why."""
+    timed_out = outcome.outcome is ApprovalOutcome.EXPIRED
     template = TIMEOUT_TEMPLATE if timed_out else DENIED_TEMPLATE
     feedback = f" The user said: {outcome.feedback!r}." if outcome.feedback else ""
     status: HILToolMessageStatus = "timeout" if timed_out else "denied"
@@ -717,7 +711,7 @@ def _live_envelope_message(
     call: GatedCall, context: GateContext, live: ApprovalLedgerDocument
 ) -> ToolMessage:
     """Point the model at the live envelope this call collapsed into."""
-    if live.state is LedgerState.APPROVED:
+    if live.outcome is ApprovalOutcome.APPROVED:
         return _tool_message(
             call,
             f"APPROVED {live.approval_id}: {live.summary} already approved, "

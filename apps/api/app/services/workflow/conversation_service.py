@@ -68,24 +68,13 @@ def build_selected_workflow_data(workflow: Workflow) -> SelectedWorkflowData:
 
 
 async def log_playbook_run(
-    conversation_id: str,
-    user_id: str,
-    workflow: Workflow,
-    response: str,
-    trace: Sequence[RecordedCall],
-    playbook: PlaybookDocument,
+    conversation_id: str, user_id: str, workflow: Workflow, response: str
 ) -> None:
-    """Log a replayed run in the workflow's conversation as what it delivered, with its cards.
-
-    The calls render exactly as the live path renders them, led by a Run
-    playbook card so the reader can tell WHY the run finished in seconds: the
-    steps were replayed from the workflow's playbook, not reasoned out.
-    """
+    """Log what a replayed run delivered in the workflow's conversation; its cards are on its WorkFinished."""
     notice = Notice(
         id=f"playbook:{uuid4()}",
         text=response,
         origin=f'workflow "{workflow.title}" (id {workflow.id}), replayed from its playbook',
-        tool_data=tuple(await build_playbook_tool_data(trace, user_id, playbook)),
     )
     await accept(runtime_ports(), conversation_id, user_id, notice)
 
@@ -98,12 +87,9 @@ def _playbook_plan(steps: Sequence[PlaybookStep]) -> list[str]:
 async def build_playbook_tool_data(
     trace: Sequence[RecordedCall], user_id: str, playbook: PlaybookDocument
 ) -> list[ToolDataEntry]:
-    """Replayed calls in the shape drain_executor_tool_data yields.
+    """Replayed calls in the shape drain_executor_tool_data yields, led by a Run playbook card.
 
-    Built through format_tool_call_entry rather than by hand so a card's
-    category, icon and display name are resolved by the one function the live
-    stream uses. The synthetic call ids exist only to carry each result back
-    onto its own entry through the same backfill the live path runs.
+    Built by format_tool_call_entry, the live stream's formatter; synthetic call ids carry results back.
     """
     entries: list[ToolDataEntry] = []
     outputs: dict[str, str] = {}

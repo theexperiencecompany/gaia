@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Protocol
 
-from app.constants.hil import ApprovalDecision
+from app.constants.hil import DECISION_OUTCOME, ApprovalDecision
 from app.models.conversation_frame_models import OutputFrame
 from app.models.conversation_log_models import (
     ApprovalDecided,
@@ -37,6 +37,7 @@ from app.services.conversation.ports import (
 )
 from app.services.conversation.reducer import reduce
 from app.services.conversation.reply_files import ReplyFile
+from shared.py.analytics.catalog.hil import ApprovalDecider
 from tests.unit.services.conversation.log_helpers import EMPTY, T0
 
 LIVENESS = timedelta(seconds=10)
@@ -519,7 +520,10 @@ class ScriptedApprovals:
         decisions = [self.each.get(approval, self.decision) for approval in pending]
         for approval_id, decision in zip(pending, decisions, strict=True):
             entry = ApprovalDecided(
-                id=f"decided:{approval_id}", approval_id=approval_id, decision=decision
+                id=f"decided:{approval_id}",
+                approval_id=approval_id,
+                outcome=DECISION_OUTCOME[decision],
+                decider=ApprovalDecider.USER,
             )
             await self.log.append(conversation_id, user_id, entry)
         return "approve" if "approve" in decisions else "deny"

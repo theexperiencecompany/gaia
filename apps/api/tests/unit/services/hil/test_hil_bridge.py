@@ -26,9 +26,10 @@ from app.constants.hil import (
     HIL_SUMMARY_MAX_ARG_CHARS,
     HIL_SUMMARY_MAX_ARGS,
 )
-from app.models.hil_models import ApprovalLedgerDocument, HILApprovalStatus, LedgerState
+from app.models.hil_models import ApprovalLedgerDocument
 from app.services.hil.bridge import (
-    ApprovalOutcome,
+    CardEnd,
+    GateVerdict,
     build_summary,
     flush_held_approval_cards,
     publish_approval_request,
@@ -42,7 +43,13 @@ from app.services.hil.bridge import (
 from app.services.hil.utils import GatedApproval, GatedCall
 from app.utils.general_utils import ELLIPSIS
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.hil import HilCardShown
+from shared.py.analytics.catalog.hil import (
+    ActionResult,
+    ApprovalDecider,
+    ApprovalOutcome,
+    HilCardShown,
+)
+from tests.helpers import ledger_facts
 
 from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_record, tools_that_always_ask
 
@@ -143,7 +150,7 @@ class TestPublishExactlyOnce:
         await publish(bridge, auto_reason="Sends mail to someone outside your contacts")
 
         data = published_frame(bridge)["data"]
-        assert data["status"] == "pending"
+        assert (data["outcome"], data["decider"], data["action"]) == (None, None, None)
         assert data["auto_reason"] == "Sends mail to someone outside your contacts"
 
     async def test_a_resume_replay_publishes_nothing_and_wakes_nobody(self, bridge: dict) -> None:
@@ -207,12 +214,18 @@ class TestTheAutoApprovalReceipt:
             "call-1",
             "Gmail",
         )
-        assert (record.status, record.auto_reason) == (
-            HILApprovalStatus.AUTO_APPROVED,
+        assert (record.outcome, record.decider, record.auto_reason) == (
+            ApprovalOutcome.APPROVED,
+            ApprovalDecider.AUTO,
             "you said send it",
         )
         data = published_frame(bridge)["data"]
-        assert (data["status"], data["auto_reason"]) == ("auto_approved", "you said send it")
+        # The same outcome as a user's approval; only the decider says auto mode ran it.
+        assert (data["outcome"], data["decider"], data["auto_reason"]) == (
+            "approved",
+            "auto",
+            "you said send it",
+        )
 
 
 class TestDualDelivery:
@@ -240,7 +253,7 @@ class TestDualDelivery:
 
         data = published_frame(bridge)["data"]
         assert data["approval_id"] == "appr-1"
-        assert data["status"] == "pending"
+        assert data["outcome"] is None
         assert data["gated_tool_name"] == "send_email"
         assert data["tool_call_id"] == "call-1"
         assert data["timeout_seconds"] > 0
@@ -287,8 +300,10 @@ class TestTheOutcomeSettlesTheCard:
     a NEW stream, which is why this is a fresh publish rather than an edit in place.
     """
 
-    async def settle(self, outcome: ApprovalOutcome) -> None:
+    async def settle(self, outcome: GateVerdict) -> None:
         record = make_record(
+            outcome=outcome.outcome,
+            decider=outcome.decider,
             approval_id="appr-1",
             tool_name=TOOL_CALL.name,
             tool_call_id=TOOL_CALL.id,
@@ -300,7 +315,7 @@ class TestTheOutcomeSettlesTheCard:
         # STREAM_ID explicitly, never record.stream_id: a resumed run publishes to a
         # NEW stream, and the card has to settle where the user is now watching.
         await publish_decision(
-            record, outcome.status, stream_id=STREAM_ID, feedback=outcome.feedback
+            record, outcome.outcome, stream_id=STREAM_ID, feedback=outcome.feedback
         )
 
     async def test_the_card_settles_on_the_stream_the_user_is_watching_now(
@@ -308,14 +323,14 @@ class TestTheOutcomeSettlesTheCard:
     ) -> None:
         # The request's own stream closed when the run paused. Settling there resolves
         # the card where nobody is looking, leaving a live Approve/Deny prompt on screen.
-        await self.settle(ApprovalOutcome(status=HILApprovalStatus.APPROVED))
+        await self.settle(GateVerdict(outcome=ApprovalOutcome.APPROVED))
 
         assert bridge["stream"].publish_chunk.await_args.args[0] == STREAM_ID
 
     async def test_the_settled_card_carries_the_original_calls_identity(self, bridge: dict) -> None:
         # The settled card replaces the pending one by these fields; rebuilt from the
         # stored record, so a dropped field renders a second, anonymous card instead.
-        await self.settle(ApprovalOutcome(status=HILApprovalStatus.APPROVED))
+        await self.settle(GateVerdict(outcome=ApprovalOutcome.APPROVED))
 
         data = published_frame(bridge)["data"]
         assert data["integration_name"] == "Gmail"
@@ -325,29 +340,27 @@ class TestTheOutcomeSettlesTheCard:
         assert data["args_preview"] == TOOL_CALL.args
 
     async def test_an_approval_settles_the_card(self, bridge: dict) -> None:
-        await self.settle(ApprovalOutcome(status=HILApprovalStatus.APPROVED))
+        await self.settle(GateVerdict(outcome=ApprovalOutcome.APPROVED))
 
         data = published_frame(bridge)["data"]
-        assert data["status"] == "approved"
+        assert (data["outcome"], data["decider"], data["action"]) == ("approved", "user", None)
         assert data["approval_id"] == "appr-1", "the settled card must replace the right one"
 
     async def test_a_denial_settles_the_card_and_shows_why(self, bridge: dict) -> None:
-        await self.settle(
-            ApprovalOutcome(status=HILApprovalStatus.DENIED, feedback="wrong recipient")
-        )
+        await self.settle(GateVerdict(outcome=ApprovalOutcome.DENIED, feedback="wrong recipient"))
 
         data = published_frame(bridge)["data"]
-        assert data["status"] == "denied"
+        assert (data["outcome"], data["decider"]) == ("denied", "user")
         assert data["feedback"] == "wrong recipient"
 
     async def test_the_settled_card_is_persisted_as_well_as_streamed(self, bridge: dict) -> None:
         # Same dual-delivery contract as the pending card: stream-only means the card
         # reverts to "pending" on reload, which is the confusing state all over again.
-        await self.settle(ApprovalOutcome(status=HILApprovalStatus.APPROVED))
+        await self.settle(GateVerdict(outcome=ApprovalOutcome.APPROVED))
 
         bridge["stream"].publish_chunk.assert_awaited_once()
         assert len(bridge["session"].tool_events) == 1
-        assert bridge["session"].tool_events[0]["tool_data"]["data"]["status"] == "approved"
+        assert bridge["session"].tool_events[0]["tool_data"]["data"]["outcome"] == "approved"
 
 
 class TestDeclineMemory:
@@ -376,7 +389,7 @@ class TestDeclineMemory:
         outcome = await recall_declined_call(STREAM_ID, "send_email", args)
 
         assert outcome is not None
-        assert outcome.status == "denied"
+        assert outcome.outcome == "denied"
         assert outcome.feedback == "wrong person"
 
     async def test_a_corrected_retry_is_not_auto_denied(self) -> None:
@@ -432,7 +445,7 @@ class TestDeclineMemory:
         outcome = await recall_declined_call(STREAM_ID, "send_email", {"to": "bob@example.com"})
 
         assert outcome is not None
-        assert outcome.auto is True
+        assert outcome.decider is ApprovalDecider.AUTO
         assert outcome.feedback == "stop spamming"
 
     async def test_a_user_decline_still_reads_as_user_made(self) -> None:
@@ -441,7 +454,7 @@ class TestDeclineMemory:
         outcome = await recall_declined_call(STREAM_ID, "send_email", {"to": "bob@example.com"})
 
         assert outcome is not None
-        assert outcome.auto is False
+        assert outcome.decider is ApprovalDecider.USER
 
     async def test_unserializable_arguments_do_not_crash_the_gate(self) -> None:
         # Tool args come from an LLM and are only loosely typed. A key derivation that
@@ -787,7 +800,7 @@ class TestDeclineMemoryLegacyRecord:
             outcome = await recall_declined_call(STREAM_ID, "send_email", {"to": "bob"})
 
         assert outcome is not None
-        assert outcome.auto is False
+        assert outcome.decider is ApprovalDecider.USER
         assert outcome.feedback == "no"
 
 
@@ -795,7 +808,7 @@ def _card_frame(approval_id: str, *, held: bool = False, **data: object) -> dict
     frame: dict[str, object] = {
         "tool_data": {
             "tool_name": APPROVAL_REQUEST_TOOL_NAME,
-            "data": {"approval_id": approval_id, "status": "pending", **data},
+            "data": {"approval_id": approval_id, "outcome": None, **data},
         }
     }
     if held:
@@ -804,7 +817,7 @@ def _card_frame(approval_id: str, *, held: bool = False, **data: object) -> dict
 
 
 def _ledger_row(
-    approval_id: str, state: LedgerState = LedgerState.PENDING
+    approval_id: str, state: ApprovalOutcome | ActionResult | None = None
 ) -> ApprovalLedgerDocument:
     return ApprovalLedgerDocument(
         approval_id=approval_id,
@@ -813,7 +826,7 @@ def _ledger_row(
         fingerprint=f"fp-{approval_id}",
         tool_name="send_email",
         summary=f"summary {approval_id}",
-        state=state,
+        **ledger_facts(state),
     )
 
 
@@ -829,7 +842,11 @@ class TestSettleSessionApprovalFrame:
         events: list[object] = [other_event, other_tool, dataless_card, other_card, target]
         bridge["session"].tool_events = events
 
-        settled = settle_session_approval_frame(STREAM_ID, "ap_1", "denied", "wrong person")
+        settled = settle_session_approval_frame(
+            STREAM_ID,
+            "ap_1",
+            CardEnd(ApprovalOutcome.DENIED, decider=ApprovalDecider.USER, feedback="wrong person"),
+        )
 
         assert settled is True
         assert bridge["session"].tool_events == [
@@ -837,19 +854,32 @@ class TestSettleSessionApprovalFrame:
             {"tool_data": {"tool_name": "web_search", "data": {"q": "x"}}},
             {"tool_data": {"tool_name": APPROVAL_REQUEST_TOOL_NAME}},
             _card_frame("ap_other"),
-            _card_frame("ap_1", held=True, status="denied", feedback="wrong person"),
+            _card_frame(
+                "ap_1",
+                held=True,
+                outcome="denied",
+                decider="user",
+                action=None,
+                feedback="wrong person",
+            ),
         ]
 
     def test_settling_without_feedback_adds_no_feedback(self, bridge: dict) -> None:
         bridge["session"].tool_events = [_card_frame("ap_1")]
 
-        assert settle_session_approval_frame(STREAM_ID, "ap_1", "approved") is True
+        end = CardEnd(ApprovalOutcome.APPROVED, decider=ApprovalDecider.USER)
+        assert settle_session_approval_frame(STREAM_ID, "ap_1", end) is True
 
         assert bridge["session"].tool_events == [
             {
                 "tool_data": {
                     "tool_name": APPROVAL_REQUEST_TOOL_NAME,
-                    "data": {"approval_id": "ap_1", "status": "approved"},
+                    "data": {
+                        "approval_id": "ap_1",
+                        "outcome": "approved",
+                        "decider": "user",
+                        "action": None,
+                    },
                 }
             }
         ]
@@ -859,31 +889,43 @@ class TestSettleSessionApprovalFrame:
     ) -> None:
         bridge["session"].tool_events = [_card_frame("ap_1", held=True), _card_frame("ap_2")]
 
+        withdrawn = CardEnd(ApprovalOutcome.WITHDRAWN)
         dropped = settle_session_approval_frame(
-            STREAM_ID, "ap_1", "revoked", drop_if_unpublished=True
+            STREAM_ID, "ap_1", withdrawn, drop_if_unpublished=True
         )
         settled = settle_session_approval_frame(
-            STREAM_ID, "ap_2", "revoked", drop_if_unpublished=True
+            STREAM_ID, "ap_2", withdrawn, drop_if_unpublished=True
         )
 
         assert (dropped, settled) == (True, True)
-        assert bridge["session"].tool_events == [_card_frame("ap_2", status="revoked")]
+        assert bridge["session"].tool_events == [
+            _card_frame("ap_2", outcome="withdrawn", decider=None, action=None)
+        ]
 
     def test_no_matching_card_settles_nothing(self, bridge: dict) -> None:
         bridge["session"].tool_events = [_card_frame("ap_other")]
 
-        assert settle_session_approval_frame(STREAM_ID, "ap_1", "approved") is False
+        assert (
+            settle_session_approval_frame(STREAM_ID, "ap_1", CardEnd(ApprovalOutcome.APPROVED))
+            is False
+        )
         assert bridge["session"].tool_events == [_card_frame("ap_other")]
 
     def test_no_session_settles_nothing(self, bridge: dict) -> None:
         bridge["get_session"].return_value = None
 
-        assert settle_session_approval_frame(STREAM_ID, "ap_1", "approved") is False
+        assert (
+            settle_session_approval_frame(STREAM_ID, "ap_1", CardEnd(ApprovalOutcome.APPROVED))
+            is False
+        )
 
     def test_a_settle_failure_is_reported_and_reads_as_unsettled(self, bridge: dict) -> None:
         bridge["get_session"].side_effect = RuntimeError("session store gone")
 
-        assert settle_session_approval_frame(STREAM_ID, "ap_1", "approved") is False
+        assert (
+            settle_session_approval_frame(STREAM_ID, "ap_1", CardEnd(ApprovalOutcome.APPROVED))
+            is False
+        )
         bridge["log"].warning.assert_called_once()
         assert "Approval frame settle failed" in bridge["log"].warning.call_args.args[0]
         assert bridge["log"].warning.call_args.kwargs == {
@@ -920,8 +962,8 @@ class TestFlushHeldApprovalCardsDelivery:
         self, bridge: dict, rows: dict[str, ApprovalLedgerDocument]
     ) -> None:
         rows["ap_1"] = _ledger_row("ap_1")
-        rows["ap_2"] = _ledger_row("ap_2", LedgerState.APPROVED)
-        rows["ap_gone"] = _ledger_row("ap_gone", LedgerState.REVOKED)
+        rows["ap_2"] = _ledger_row("ap_2", ApprovalOutcome.APPROVED)
+        rows["ap_gone"] = _ledger_row("ap_gone", ApprovalOutcome.WITHDRAWN)
         bridge["session"].tool_events = [
             "not-a-frame",
             {"text": "hello"},

@@ -196,6 +196,10 @@ RUN_RECORD_TTL = ONE_DAY_TTL * 2
 RUN_BLOCKED_INTEGRATIONS_PREFIX = "run_blocked_integrations:"
 
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
+# A workflow fire's admission to its conversation: taken before the fire spends quota, given back
+# when it ends. Short on purpose: the conversation log keeps the fire's run apart from other work.
+WORKFLOW_FIRE_ADMISSION_PREFIX = "workflow:fire_admission:"
+WORKFLOW_FIRE_ADMISSION_TTL = 120
 # Set when an executor run ends asking the user to confirm; only then may the
 # next call_executor carry irreversible_approved (confirmation_gate.py).
 AWAITING_CONFIRMATION_PREFIX = "executor:awaiting_confirmation:"

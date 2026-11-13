@@ -126,31 +126,6 @@ async def try_acquire_lock(lock_key: str, lock_value: str) -> bool:
     )
 
 
-async def adopt_lock(conversation_id: str, reserved_value: str, lock_value: str) -> bool:
-    """Take over a lock this run's own reservation holds; return whether it did.
-
-    Compare-and-set under WATCH, not a plain SET: a reservation can lapse on TTL
-    and be re-taken by a different run, and overwriting that would put two
-    executors on one conversation. Falls back to True (allow execution) when
-    Redis is unavailable, like try_acquire_lock.
-    """
-    if not redis_cache.client:
-        return True
-    lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
-    async with redis_cache.client.pipeline() as pipe:
-        await pipe.watch(lock_key)
-        if await pipe.get(lock_key) != reserved_value:
-            return False
-        pipe.multi()
-        pipe.set(lock_key, lock_value, ex=EXECUTOR_BUSY_TTL)
-        try:
-            await pipe.execute()
-        except WatchError:
-            # Someone wrote the key between the read and the set; they own it now.
-            return False
-    return True
-
-
 async def break_holder_lock(conversation_id: str, expected_value: str) -> bool:
     """Delete the busy lock only while it still carries expected_value.
 

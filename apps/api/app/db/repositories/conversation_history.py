@@ -13,7 +13,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
 from app.constants.chat import BOT_MESSAGE_TYPE, USER_MESSAGE_TYPE
-from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME, ApprovalResolution
+from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.chat_models import MessageReaction
 from app.models.conversation_log_models import (
     ApprovalDecided,
@@ -32,9 +32,9 @@ from app.models.conversation_log_models import (
     WorkStarted,
 )
 from app.models.conversation_models import ConversationEntry
-from app.models.hil_models import HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
 from app.models.tool_data_models import ToolDataEntry
+from shared.py.analytics.catalog.hil import ApprovalOutcome
 
 #: The kinds whose append advances a conversation's sync clock: each adds or ends a row a client shows.
 SYNCED_KINDS: frozenset[str] = frozenset(
@@ -64,15 +64,7 @@ RELATED_KINDS: frozenset[str] = frozenset(
 #: The kinds whose text search reads and a pin marks.
 TEXT_KINDS: frozenset[str] = frozenset({EntryKind.USER_MESSAGE, EntryKind.REPLY, EntryKind.NOTICE})
 PINNABLE_KINDS: frozenset[str] = frozenset({EntryKind.USER_MESSAGE, EntryKind.REPLY})
-#: How a decided approval's card reads.
-_DECIDED_LABEL: dict[ApprovalResolution, HILApprovalStatus] = {
-    "approve": HILApprovalStatus.APPROVED,
-    "deny": HILApprovalStatus.DENIED,
-    "timeout": HILApprovalStatus.TIMEOUT,
-    "abandon": HILApprovalStatus.ABANDONED,
-}
 _STOPPED_WORK = frozenset({WorkOutcome.CANCELLED, WorkOutcome.LOST})
-_CANCELLED_LABEL = "cancelled"
 
 
 @dataclass
@@ -101,7 +93,10 @@ class _Beside:
                     beside.replies.add(reply_id)
                 case ApprovalRequested() as request:
                     beside.requests[request.approval_id] = request
-                case ApprovalDecided() as decision:
+                # Read order is not seq order: the restatement that carries the action's end wins.
+                case ApprovalDecided() as decision if (
+                    decision.action is not None or decision.approval_id not in beside.decisions
+                ):
                     beside.decisions[decision.approval_id] = decision
                 case WorkFinished() as work:
                     beside.finished[work.task_id] = work
@@ -125,7 +120,11 @@ def needed_beside(
     wanted = {target for logged in read if (target := _quote_target(logged.entry)) is not None}
     for logged in window:
         for approval_id in _card_approvals(logged.entry):
-            wanted |= {f"approval:{approval_id}", f"approval:{approval_id}:decided"}
+            wanted |= {
+                f"approval:{approval_id}",
+                f"approval:{approval_id}:decided",
+                f"approval:{approval_id}:acted",
+            }
     for request in beside.requests.values():
         wanted |= {f"work:{request.task_id}:finished", f"work:{request.task_id}:lost"}
     for logged in window:
@@ -269,29 +268,27 @@ def _approval_of(card: ToolDataEntry) -> str | None:
 
 
 def _cards(cards: Sequence[ToolDataEntry], beside: _Beside) -> list[ToolDataEntry] | None:
-    """Return the cards with each logged approval's status as the log has it."""
+    """Return the cards with each logged approval's outcome as the log has it."""
     shown: list[ToolDataEntry] = []
     for card in cards:
         approval_id = _approval_of(card)
-        status = None if approval_id is None else _approval_status(approval_id, beside)
-        shown.append(
-            card if status is None else {**card, "data": {**card["data"], "status": status}}
-        )
+        ended = None if approval_id is None else _approval_end(approval_id, beside)
+        shown.append(card if ended is None else {**card, "data": {**card["data"], **ended}})
     return shown or None
 
 
-def _approval_status(approval_id: str, beside: _Beside) -> str | None:
-    """Return a logged approval's card status; None leaves an approval the log never asked as created."""
+def _approval_end(approval_id: str, beside: _Beside) -> dict[str, str | None] | None:
+    """Return a logged approval's outcome and decider; None leaves an approval the log never asked as created."""
     decision = beside.decisions.get(approval_id)
     if decision is not None:
-        return _DECIDED_LABEL[decision.decision].value
+        return {"outcome": decision.outcome, "decider": decision.decider, "action": decision.action}
     request = beside.requests.get(approval_id)
     if request is None:
         return None
     work = beside.finished.get(request.task_id)
     if work is not None and work.outcome in _STOPPED_WORK:
-        return _CANCELLED_LABEL
-    return HILApprovalStatus.PENDING.value
+        return {"outcome": ApprovalOutcome.CANCELLED, "decider": None}
+    return {"outcome": None, "decider": None}
 
 
 def _quote_target(entry: object) -> str | None:

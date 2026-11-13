@@ -42,12 +42,7 @@ from app.db.redis import redis_cache
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.conversations import conversation_repository
 from app.models.agent_config import SubagentResumeItem
-from app.models.hil_models import (
-    DeclinedCallRecord,
-    HILApprovalRecord,
-    HILApprovalStatus,
-    LedgerState,
-)
+from app.models.hil_models import DeclinedCallRecord, HILApprovalRecord
 from app.models.stream_events import ApprovalRequestEntry, ApprovalRequestEntryData
 from app.services.analytics_service import capture
 from app.services.hil.approvals_store import record_auto_approval, upsert_pending_approval
@@ -57,7 +52,12 @@ from app.services.hil.utils import GatedApproval, GatedCall
 from app.services.latency_metrics import observe_hil_pause
 from app.utils.general_utils import clip_text
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.hil import HilCardShown
+from shared.py.analytics.catalog.hil import (
+    ActionResult,
+    ApprovalDecider,
+    ApprovalOutcome,
+    HilCardShown,
+)
 from shared.py.wide_events import log, spawn_logged_task
 
 
@@ -77,20 +77,32 @@ class _ApprovalFrameData(TypedDict, total=False):
     """An approval_request frame's data object, mutated in place when its card settles."""
 
     approval_id: object
-    status: str
+    outcome: str
+    decider: str | None
+    action: str | None
     feedback: str
 
 
 @dataclass
-class ApprovalOutcome:
-    """The resolved result of an approval request: status, optional feedback, and scope."""
+class GateVerdict:
+    """What a paused gate wakes with: how its approval ended, optional feedback, and scope."""
 
-    status: HILApprovalStatus
+    outcome: ApprovalOutcome
     feedback: str | None = None
     scope: str = "once"
-    # True when the refusal came from auto mode, never from the user — the
+    # AUTO when the refusal came from auto mode, never from the user — the
     # retry message must not claim the user declined something they never saw.
-    auto: bool = False
+    decider: ApprovalDecider = ApprovalDecider.USER
+
+
+@dataclass(frozen=True)
+class CardEnd:
+    """What a settled card shows: how its approval ended, who decided, and what the action did."""
+
+    outcome: ApprovalOutcome
+    decider: ApprovalDecider | None = None
+    action: ActionResult | None = None
+    feedback: str | None = None
 
 
 class ApprovalCard(Protocol):
@@ -216,7 +228,11 @@ async def publish_ledger_request(
 
 
 async def publish_decision(
-    record: HILApprovalRecord, status: HILApprovalStatus, *, stream_id: str, feedback: str | None
+    record: HILApprovalRecord,
+    outcome: ApprovalOutcome,
+    *,
+    stream_id: str,
+    feedback: str | None,
 ) -> None:
     """Settle this approval's card, on the stream the user is watching NOW.
 
@@ -231,7 +247,8 @@ async def publish_decision(
         summary=record.summary,
         integration_name=record.integration_name,
     )
-    await _publish_entry(stream_id, _approval_entry(card, status, feedback=feedback))
+    entry = _approval_entry(card, outcome, decider=record.decider, feedback=feedback)
+    await _publish_entry(stream_id, entry)
 
 
 async def publish_auto_approval(approval: GatedApproval, *, reason: str) -> None:
@@ -244,7 +261,9 @@ async def publish_auto_approval(approval: GatedApproval, *, reason: str) -> None
     await record_auto_approval(approval, reason=reason)
     await _publish_entry(
         approval.stream_id,
-        _approval_entry(approval, HILApprovalStatus.AUTO_APPROVED, auto_reason=reason),
+        _approval_entry(
+            approval, ApprovalOutcome.APPROVED, decider=ApprovalDecider.AUTO, auto_reason=reason
+        ),
     )
 
 
@@ -268,7 +287,7 @@ async def remember_declined_call(
 
 async def recall_declined_call(
     stream_id: str, tool_name: str, args: Mapping[str, object]
-) -> ApprovalOutcome | None:
+) -> GateVerdict | None:
     """Return the prior decline for this exact call in this turn, if any.
 
     Lets the gate auto-deny a retry with the user's original feedback and never re-prompt.
@@ -280,10 +299,10 @@ async def recall_declined_call(
         return None
     # Correct by construction: the only writer is ``remember_declined_call`` above.
     record: DeclinedCallRecord = cast(DeclinedCallRecord, raw)
-    return ApprovalOutcome(
-        status=HILApprovalStatus.DENIED,
+    return GateVerdict(
+        outcome=ApprovalOutcome.DENIED,
         feedback=record.get("feedback"),
-        auto=record.get("auto", False),
+        decider=ApprovalDecider.AUTO if record.get("auto", False) else ApprovalDecider.USER,
     )
 
 
@@ -378,12 +397,11 @@ async def _publish_entry(stream_id: str, entry: ApprovalRequestEntry) -> None:
 def settle_session_approval_frame(
     stream_id: str,
     approval_id: str,
-    status: str,
-    feedback: str | None = None,
+    end: CardEnd,
     *,
     drop_if_unpublished: bool = False,
 ) -> bool:
-    """Flip an already-recorded card frame to its terminal status, in place.
+    """Flip an already-recorded card frame to its outcome (and action result), in place.
 
     Mutating in place keeps the drain upsert a no-op safety net, not a path that
     resurrects a settled card from a stale PENDING frame. With drop_if_unpublished
@@ -411,9 +429,11 @@ def settle_session_approval_frame(
             if drop_if_unpublished and _is_held(event):
                 settled = True
                 continue
-            data["status"] = status
-            if feedback is not None:
-                data["feedback"] = feedback
+            data["outcome"] = end.outcome
+            data["decider"] = end.decider
+            data["action"] = end.action
+            if end.feedback is not None:
+                data["feedback"] = end.feedback
             kept.append(event)
             settled = True
         session.tool_events[:] = kept
@@ -461,10 +481,7 @@ async def flush_held_approval_cards(stream_id: str) -> int:
             )
             kept.append(event)
             continue
-        if row is None or row.state not in (
-            LedgerState.PENDING,
-            LedgerState.APPROVED,
-        ):
+        if row is None or not row.live:
             # Decided, revoked, or gone: a card the user never saw needs
             # no tombstone — drop it so the drain cannot resurrect it.
             continue
@@ -515,15 +532,17 @@ def _is_held(event: object) -> bool:
 
 
 async def _pending_entry(card: ApprovalCard, *, auto_reason: str | None) -> ApprovalRequestEntry:
-    """Build a PENDING card, stamped with whether its call asks every time."""
-    entry = _approval_entry(card, HILApprovalStatus.PENDING, auto_reason=auto_reason)
+    """Build a pending card, stamped with whether its call asks every time."""
+    entry = _approval_entry(card, None, auto_reason=auto_reason)
     entry.data.always_asks = await asks_every_time(card.tool_call.name, card.tool_call.args)
     return entry
 
 
 def _approval_entry(
     card: ApprovalCard,
-    status: HILApprovalStatus,
+    outcome: ApprovalOutcome | None,
+    *,
+    decider: ApprovalDecider | None = None,
     feedback: str | None = None,
     auto_reason: str | None = None,
 ) -> ApprovalRequestEntry:
@@ -538,7 +557,8 @@ def _approval_entry(
             integration_name=card.integration_name,
             summary=card.summary,
             args_preview=tool_call.args,
-            status=status,
+            outcome=outcome,
+            decider=decider,
             feedback=feedback,
             auto_reason=auto_reason,
             timeout_seconds=int(HIL_APPROVAL_TIMEOUT_SECONDS),

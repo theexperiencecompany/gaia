@@ -1,4 +1,8 @@
-import type { FailureReason, ToolDataEntry } from "../api/generated";
+import type {
+  ActionResult,
+  FailureReason,
+  ToolDataEntry,
+} from "../api/generated";
 import { FAILURE_REASON } from "./entries";
 import type {
   ConversationFrame,
@@ -121,11 +125,16 @@ export const approvalRequested = (
   expires_at: expiresAt,
 });
 
-export const approvalDecided = (approvalId: string): Entry => ({
+export const approvalDecided = (
+  approvalId: string,
+  action: ActionResult | null = null,
+): Entry => ({
   kind: "approval_decided",
-  id: `decided-${approvalId}`,
+  id: action ? `acted-${approvalId}` : `decided-${approvalId}`,
   approval_id: approvalId,
-  decision: "approve",
+  outcome: "approved",
+  decider: "user",
+  action,
 });
 
 export const stopRequested = (

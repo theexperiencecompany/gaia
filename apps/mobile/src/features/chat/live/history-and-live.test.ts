@@ -59,7 +59,7 @@ const IMAGE = { url: "https://img.test/cat.png", prompt: "a cat" };
 const APPROVAL_CARD = {
   tool_name: "approval_request",
   tool_category: "gmail",
-  data: { approval_id: "ap1", status: "pending", summary: "Send the email" },
+  data: { approval_id: "ap1", outcome: null, summary: "Send the email" },
   timestamp: AT,
 };
 const WORK_CARD = toolCallCard("c2", "Checked the invoice");
@@ -149,7 +149,7 @@ describe("a mobile conversation loaded from history, then continued live", () =>
     ]);
     const byId = new Map(shown.map((message) => [message.id, message]));
     expect(byId.get("t1")?.toolData?.[0]?.data).toMatchObject({
-      status: "approved",
+      outcome: "approved",
     });
     expect(byId.get("r2")?.imageData).toEqual(IMAGE);
     expect(byId.get("f1")?.firedWorkflow?.title).toBe("Morning brief");

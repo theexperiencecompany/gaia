@@ -78,6 +78,7 @@ from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.runtime.secrets_store import fernet_key_from
 from app.utils.timezone import Timezone
+from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
 from shared.py.wide_events import log, log_context
 
 #: A well-formed user id with no users row behind it.
@@ -157,6 +158,15 @@ _TEST_REDIS_STRIPE_BASE = _TEST_REDIS_DB_BLOCK_START - (
     _TEST_REDIS_DB_BLOCK_START % _TEST_REDIS_STRIPE
 )
 _TEST_REDIS_DB_BLOCK_SIZE = _TEST_REDIS_STRIPE - (_TEST_REDIS_DB_BLOCK_START % _TEST_REDIS_STRIPE)
+
+
+def ledger_facts(
+    ended: ApprovalOutcome | ActionResult | None,
+) -> dict[str, ApprovalOutcome | ActionResult | None]:
+    """Return a ledger row's outcome and action for one fact: an action result implies approved."""
+    if isinstance(ended, ActionResult):
+        return {"outcome": ApprovalOutcome.APPROVED, "action": ended}
+    return {"outcome": ended, "action": None}
 
 
 def worker_redis_url(base_url: str) -> str:

@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.constants.hil import DECISION_OUTCOME
 from app.models.user_models import AuthenticatedUser
 from app.schemas.hil_schemas import (
     ApprovalDecisionRequest,
@@ -61,11 +62,14 @@ async def post_approval_decision(
         # client must refresh the row instead of believing its tap landed.
         # "stale" (row may still be live) is never "not_found" (row is gone).
         if outcome.committed:
-            return ApprovalDecisionResponse(success=True, status=outcome.state.value)
+            return ApprovalDecisionResponse(
+                success=True, outcome=outcome.outcome, action=outcome.action
+            )
         return ApprovalDecisionResponse(
             success=False,
             reason="stale" if outcome.stale else "not_found",
-            status=outcome.state.value,
+            outcome=outcome.outcome,
+            action=outcome.action,
         )
     await resolve_approval(
         approval_id=approval_id,
@@ -75,7 +79,7 @@ async def post_approval_decision(
         scope=payload.scope,
     )
     log.set(hil={"resolved": True})
-    capture(UserId(user_id), ApprovalDecided(decision=payload.decision))
+    capture(UserId(user_id), ApprovalDecided(outcome=DECISION_OUTCOME[payload.decision]))
     return ApprovalDecisionResponse(success=True)
 
 

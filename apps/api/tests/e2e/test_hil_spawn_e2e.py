@@ -36,8 +36,9 @@ from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.hil import HIL_RESUME_CONFIG_KEY, LANGGRAPH_INTERRUPT_KEY
-from app.models.hil_models import HILApprovalStatus, HILPreferences
+from app.models.hil_models import HILPreferences
 from app.services.hil.approvals_store import list_pending_for_conversation, mark_decided
+from shared.py.analytics.catalog.hil import ApprovalOutcome
 from tests.helpers import PassthroughFakeLLM
 
 pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("hil_barrier_mode")]
@@ -223,7 +224,7 @@ class SpawnDriver:
         for target in targets:
             await mark_decided(
                 target,
-                HILApprovalStatus(decision["status"]),
+                ApprovalOutcome(decision["outcome"]),
                 feedback=decision.get("feedback"),
                 scope=decision.get("scope", "once"),
                 decided_by=self._user_id,
@@ -332,7 +333,7 @@ class TestGatedToolInsideASpawn:
         )
 
         events = await spawn_driver.run(
-            conv, [(SLACK_TASK, "parent-tc-1")], resume={"status": "approved", "scope": "once"}
+            conv, [(SLACK_TASK, "parent-tc-1")], resume={"outcome": "approved", "scope": "once"}
         )
 
         assert side_effects["send_slack"] == 1, "the approved action runs exactly once"
@@ -352,7 +353,7 @@ class TestGatedToolInsideASpawn:
 
         await spawn_driver.run(conv, [(SLACK_TASK, "parent-tc-1")])
         events = await spawn_driver.run(
-            conv, [(SLACK_TASK, "parent-tc-1")], resume={"status": "denied", "scope": "once"}
+            conv, [(SLACK_TASK, "parent-tc-1")], resume={"outcome": "denied", "scope": "once"}
         )
 
         assert side_effects["send_slack"] == 0, "a denied action never runs"
@@ -388,7 +389,9 @@ class TestSiblingReplay:
         ), "sibling A's finished thread is retained"
         alpha_calls_before_resume = stub_llm.alpha_invocations
 
-        events = await spawn_driver.run(conv, tasks, resume={"status": "approved", "scope": "once"})
+        events = await spawn_driver.run(
+            conv, tasks, resume={"outcome": "approved", "scope": "once"}
+        )
 
         assert side_effects["record_note"] == 1, (
             "the replay must recover sibling A from its checkpoint, not re-run it"
@@ -416,7 +419,7 @@ class TestConcurrentGatedSiblings:
 
         # Approve A: A runs, then B's gate parks.
         events = await spawn_driver.run(
-            conv, tasks, resume={"status": "approved", "scope": "once", "approval_id": approval_a}
+            conv, tasks, resume={"outcome": "approved", "scope": "once", "approval_id": approval_a}
         )
         assert side_effects["send_slack"] == 1, "the approved sibling A ran exactly once"
         approval_b = approval_id_of(events)
@@ -424,7 +427,7 @@ class TestConcurrentGatedSiblings:
 
         # Deny B: the replayed approval-A decision must NOT reach B's gate.
         events = await spawn_driver.run(
-            conv, tasks, resume={"status": "denied", "scope": "once", "approval_id": approval_b}
+            conv, tasks, resume={"outcome": "denied", "scope": "once", "approval_id": approval_b}
         )
         assert side_effects["send_slack"] == 1, (
             "the denied sibling B never ran — its gate got B's denial, not A's approval"

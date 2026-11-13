@@ -7,7 +7,7 @@ import type {
 } from "../api/generated";
 import {
   APPROVAL_REQUEST_TOOL_NAME,
-  type ApprovalStatus,
+  type ApprovalEnd,
 } from "../chat/approvals";
 import { extractToolProgressMessage } from "../chat/streaming";
 import type { TurnAccumulator } from "../chat/turnAccumulator";
@@ -16,7 +16,6 @@ import { DISPLAY_STATE } from "./frames";
 import type {
   ConversationView,
   DisplayState,
-  Entry,
   LoggedEntry,
   PendingSend,
   Reaction,
@@ -111,47 +110,43 @@ const draftContent = (content: TurnAccumulator) => ({
   followUpActions: content.followUpActions ?? [],
 });
 
-type ApprovalDecision = Extract<
-  Entry,
-  { kind: "approval_decided" }
->["decision"];
-
-const DECIDED_STATUS = {
-  approve: "approved",
-  deny: "denied",
-  timeout: "timeout",
-  abandon: "abandoned",
-} as const satisfies Record<ApprovalDecision, ApprovalStatus>;
-
 const STOPPED_WORK: ReadonlySet<string> = new Set(["cancelled", "lost"]);
 
-/** Each logged approval's status: its decision, abandoned once the work that asked stopped, else pending. */
-function approvalStatuses(
+/** Each logged approval's end as the log has it: its decision, cancelled once the work that asked stopped undecided, else open. */
+function approvalEnds(
   view: ConversationView,
-): ReadonlyMap<string, ApprovalStatus> {
+): ReadonlyMap<string, ApprovalEnd> {
   const stopped = new Set<string>();
-  const decided = new Map<string, ApprovalStatus>();
+  const ends = new Map<string, ApprovalEnd>();
   for (const { entry } of view.entries) {
     if (
       entry.kind === ENTRY_KIND.WORK_FINISHED &&
       STOPPED_WORK.has(entry.outcome)
     )
       stopped.add(entry.task_id);
-    if (entry.kind === ENTRY_KIND.APPROVAL_DECIDED)
-      decided.set(entry.approval_id, DECIDED_STATUS[entry.decision]);
+    // The restatement that carries the approved action's result wins over the bare decision.
+    if (
+      entry.kind === ENTRY_KIND.APPROVAL_DECIDED &&
+      (entry.action != null || !ends.has(entry.approval_id))
+    )
+      ends.set(entry.approval_id, {
+        outcome: entry.outcome,
+        decider: entry.decider,
+        action: entry.action,
+      });
   }
-  const statuses = new Map(decided);
   for (const { entry } of view.entries) {
     if (
       entry.kind === ENTRY_KIND.APPROVAL_REQUESTED &&
-      !decided.has(entry.approval_id)
+      !ends.has(entry.approval_id)
     )
-      statuses.set(
-        entry.approval_id,
-        stopped.has(entry.task_id) ? "abandoned" : "pending",
-      );
+      ends.set(entry.approval_id, {
+        outcome: stopped.has(entry.task_id) ? "cancelled" : null,
+        decider: null,
+        action: null,
+      });
   }
-  return statuses;
+  return ends;
 }
 
 const approvalIdOf = (card: ToolDataEntry): string | null => {
@@ -160,34 +155,41 @@ const approvalIdOf = (card: ToolDataEntry): string | null => {
   return typeof data?.approval_id === "string" ? data.approval_id : null;
 };
 
-// Cards keep their identity unless the log changed an approval's status, so memoized rows stay put.
+const endSignature = (end: Partial<ApprovalEnd>): string =>
+  `${end.outcome ?? ""}/${end.decider ?? ""}/${end.action ?? ""}`;
+
+// Cards keep their identity unless the log changed an approval's end, so memoized rows stay put.
 const shownCards = new WeakMap<
   readonly ToolDataEntry[],
-  { statuses: string; cards: readonly ToolDataEntry[] }
+  { ends: string; cards: readonly ToolDataEntry[] }
 >();
 
-/** The cards with each logged approval's status as the log has it; a card the log never asked keeps its own. */
-function withApprovalStatus(
+/** The cards with each logged approval's end as the log has it; a card the log never asked keeps its own. */
+function withApprovalEnds(
   cards: readonly ToolDataEntry[],
-  statuses: ReadonlyMap<string, ApprovalStatus>,
+  ends: ReadonlyMap<string, ApprovalEnd>,
 ): readonly ToolDataEntry[] {
   const changes = cards.map((card) => {
     const approvalId = approvalIdOf(card);
-    const status = approvalId === null ? undefined : statuses.get(approvalId);
-    const own = (card.data as { status?: unknown } | null)?.status;
-    return status === undefined || status === own ? null : status;
+    const end = approvalId === null ? undefined : ends.get(approvalId);
+    const own = (card.data ?? {}) as Partial<ApprovalEnd>;
+    return end === undefined || endSignature(end) === endSignature(own)
+      ? null
+      : end;
   });
-  if (changes.every((status) => status === null)) return cards;
-  const signature = changes.join(",");
+  if (changes.every((end) => end === null)) return cards;
+  const signature = changes
+    .map((end) => (end === null ? "" : endSignature(end)))
+    .join(",");
   const cached = shownCards.get(cards);
-  if (cached?.statuses === signature) return cached.cards;
+  if (cached?.ends === signature) return cached.cards;
   const shown = cards.map((card, at) => {
-    const status = changes[at];
-    return status === null
+    const end = changes[at];
+    return end === null
       ? card
-      : { ...card, data: { ...(card.data as object), status } };
+      : { ...card, data: { ...(card.data as object), ...end } };
   });
-  shownCards.set(cards, { statuses: signature, cards: shown });
+  shownCards.set(cards, { ends: signature, cards: shown });
   return shown;
 }
 
@@ -393,10 +395,10 @@ export function visibleBubbles(view: ConversationView): LiveBubble[] {
       send,
     }),
   );
-  const statuses = approvalStatuses(view);
+  const ends = approvalEnds(view);
   const shown = (bubble: LiveBubble): LiveBubble =>
     "toolData" in bubble
-      ? { ...bubble, toolData: withApprovalStatus(bubble.toolData, statuses) }
+      ? { ...bubble, toolData: withApprovalEnds(bubble.toolData, ends) }
       : bubble;
   return [
     ...bySeq.map(shown),

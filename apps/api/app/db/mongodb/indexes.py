@@ -15,6 +15,7 @@ from app.constants.desk_buckets import EMAIL_VERDICT_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.constants.payments import CLAIMED_STATUS
 from app.db.mongodb.collections import get_async_collection
+from app.db.repositories.approval_ledger import LIVE_ROW_FILTER, LIVE_ROW_INDEX_NAME
 from app.db.repositories.conversation_log import SWEEP_DUE_FILTER, SWEEP_INDEX_NAME
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.local_credentials import local_credentials_repository
@@ -957,9 +958,9 @@ async def create_approval_ledger_indexes() -> None:
     """Create indexes for the approval_ledger collection.
 
     Unique on approval_id (the CAS filter keys on it). Partial unique on
-    (conversation_id, fingerprint) over live states IS the dedup atomicity —
+    (conversation_id, fingerprint) over live rows IS the dedup atomicity —
     the loser of a concurrent propose reads the winner's id. (conversation_id,
-    state) serves OPEN PENDINGS; (state, executing_started_at) the reconciler.
+    outcome) serves open pendings; (action, executing_started_at) the reconciler.
     """
     approval_ledger_collection = get_async_collection("approval_ledger")
     try:
@@ -968,13 +969,11 @@ async def create_approval_ledger_indexes() -> None:
             approval_ledger_collection.create_index(
                 [("conversation_id", 1), ("fingerprint", 1)],
                 unique=True,
-                partialFilterExpression={
-                    "state": {"$in": ["pending", "approved"]},
-                },
-                name="conv_fingerprint_live_unique",
+                partialFilterExpression=LIVE_ROW_FILTER,
+                name=LIVE_ROW_INDEX_NAME,
             ),
-            approval_ledger_collection.create_index([("conversation_id", 1), ("state", 1)]),
-            approval_ledger_collection.create_index([("state", 1), ("executing_started_at", 1)]),
+            approval_ledger_collection.create_index([("conversation_id", 1), ("outcome", 1)]),
+            approval_ledger_collection.create_index([("action", 1), ("executing_started_at", 1)]),
         )
     except Exception as e:
         log.error(
@@ -1532,17 +1531,17 @@ async def create_installed_skills_indexes() -> None:
 async def create_hil_approvals_indexes() -> None:
     """Create indexes for the hil_approvals collection.
 
-    (status, resumed_at, decided_at) serves the crashed-resume sweep: the resumed_at=null
+    (outcome, resumed_at, decided_at) serves the crashed-resume sweep: the resumed_at=null
     bound keeps it off the majority-resumed audit trail, which must never scan the full
     collection.
     """
     hil_approvals_collection = get_async_collection("hil_approvals")
     try:
         await asyncio.gather(
-            hil_approvals_collection.create_index([("conversation_id", 1), ("status", 1)]),
-            hil_approvals_collection.create_index([("status", 1), ("expires_at", 1)]),
+            hil_approvals_collection.create_index([("conversation_id", 1), ("outcome", 1)]),
+            hil_approvals_collection.create_index([("outcome", 1), ("expires_at", 1)]),
             hil_approvals_collection.create_index(
-                [("status", 1), ("resumed_at", 1), ("decided_at", 1)]
+                [("outcome", 1), ("resumed_at", 1), ("decided_at", 1)]
             ),
         )
     except Exception as e:

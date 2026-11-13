@@ -26,7 +26,7 @@ const card = (
   integration_name: "gmail",
   summary: "Send email",
   args_preview: { to: "b@x" },
-  status: "pending",
+  outcome: null,
   feedback: null,
   timeout_seconds: 300,
   ...overrides,
@@ -104,7 +104,7 @@ describe("ApprovalRequestSection ledger UX", () => {
   it("drops the version on the retry after a stale-v conflict", async () => {
     vi.mocked(chatApi.postApprovalDecision)
       .mockReset()
-      .mockResolvedValueOnce({ success: false, status: "pending" })
+      .mockResolvedValueOnce({ success: false, outcome: null })
       .mockResolvedValueOnce({ success: true });
     render(
       <ApprovalRequestSection
@@ -150,7 +150,10 @@ describe("ApprovalRequestSection ledger UX", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
     await vi.waitFor(() =>
-      expect(onDecided).toHaveBeenCalledWith("approved", null),
+      expect(onDecided).toHaveBeenCalledWith(
+        { outcome: "approved", decider: "user", action: null },
+        null,
+      ),
     );
     // No spinner, no running row, no waiting room anywhere.
     expect(screen.queryByText(/running/i)).toBeNull();

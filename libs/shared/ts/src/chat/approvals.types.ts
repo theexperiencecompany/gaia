@@ -12,12 +12,18 @@
  *   and pauses for approval on anything that deviates or is unclear.
  */
 import type {
+  ActionResult,
+  ApprovalDecider,
+  ApprovalOutcome,
   BatchDecisionItem,
   HILPreferencesResponse,
   UpdateHILPreferencesRequest,
 } from "../api/generated";
 
 export type {
+  ActionResult,
+  ApprovalDecider,
+  ApprovalOutcome,
   BatchApprovalDecisionResponse,
   BatchDecisionItem,
   BatchDecisionOutcome,
@@ -35,18 +41,6 @@ export type HilPreferences = HILPreferencesResponse;
 
 /** Body of PUT /approvals/preferences; omitted fields are left unchanged. */
 export type HilPreferencesUpdate = UpdateHILPreferencesRequest;
-
-export type ApprovalStatus =
-  | "pending"
-  | "approved"
-  | "denied"
-  | "timeout"
-  | "abandoned"
-  | "auto_approved"
-  | "revoked"
-  | "executed"
-  | "failed"
-  | "unknown";
 
 export type ApprovalDecision = "approve" | "deny";
 export type ApprovalScope = "once" | "always_tool";
@@ -73,9 +67,14 @@ export interface ApprovalRequestData {
   integration_name: string | null;
   summary: string;
   args_preview: Record<string, unknown>;
-  status: ApprovalStatus;
+  /** How the approval ended; null while it is pending. */
+  outcome: ApprovalOutcome | null;
+  /** Who approved or denied it; null when nobody decided. */
+  decider?: ApprovalDecider | null;
+  /** What the approved action did; null until it starts. */
+  action?: ActionResult | null;
   feedback: string | null;
-  /** Why auto mode ran this without asking. Only set on `auto_approved`. */
+  /** Why auto mode ran this without asking. Only set when auto mode approved it. */
   auto_reason?: string | null;
   timeout_seconds: number;
   /** Ledger-backed approvals: the agent's one-line why. Absent on old-path cards. */
@@ -86,4 +85,20 @@ export interface ApprovalRequestData {
   ledger_version?: number | null;
   /** The call asks in every mode; "always allow" must not be offered on it. */
   always_asks?: boolean;
+}
+
+/** The three facts a card's label is read from; nothing stores the label itself. */
+export type ApprovalEnd = Pick<
+  ApprovalRequestData,
+  "outcome" | "decider" | "action"
+>;
+
+/** One client's words for every card state, keyed by the facts that pick it. */
+export interface ApprovalLabels<T> {
+  pending: T;
+  /** Approved by auto mode, before the action has a result. */
+  autoApproved: T;
+  outcome: Record<ApprovalOutcome, T>;
+  /** An approved action's result wins over the approval that allowed it. */
+  action: Record<ActionResult, T>;
 }

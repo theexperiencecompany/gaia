@@ -32,9 +32,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.hil import hil_approval_repository
-from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
+from app.models.hil_models import HILApprovalRecord
 from app.services.hil.approvals_store import clear_resume_item, mark_decided
 from app.services.hil.bridge import publish_decision
+from shared.py.analytics.catalog.hil import ApprovalOutcome
 
 #: The retired ``SubagentKind.MCP`` value a handoff subagent's resume recipe carries.
 HANDOFF_SUBAGENT_KIND = "mcp"
@@ -55,12 +56,8 @@ async def unclassified_executor_pauses() -> tuple[int, int]:
     """Count the executor-level approvals not yet resumed, (pending, decided); a handoff pause is among them."""
     collection = get_async_collection(hil_approval_repository.collection_name)
     executor_paused = {"resumed_at": None, "resume_item": {"$ne": None}, "subagent_resume": None}
-    pending = await collection.count_documents(
-        {**executor_paused, "status": HILApprovalStatus.PENDING.value}
-    )
-    decided = await collection.count_documents(
-        {**executor_paused, "status": {"$ne": HILApprovalStatus.PENDING.value}}
-    )
+    pending = await collection.count_documents({**executor_paused, "outcome": None})
+    decided = await collection.count_documents({**executor_paused, "outcome": {"$ne": None}})
     return pending, decided
 
 
@@ -68,7 +65,7 @@ async def expire(record: HILApprovalRecord) -> bool:
     """Close one pending record as timed out and settle its card; False when it was decided meanwhile."""
     if not await mark_decided(
         record.approval_id,
-        HILApprovalStatus.TIMEOUT,
+        ApprovalOutcome.EXPIRED,
         feedback=EXPIRED_FEEDBACK,
         scope="once",
         decided_by=None,
@@ -78,21 +75,21 @@ async def expire(record: HILApprovalRecord) -> bool:
     # No live stream follows a parked run's card; what reaches the user is the
     # persisted frame publish_decision settles in the stored conversation.
     await publish_decision(
-        record, HILApprovalStatus.TIMEOUT, stream_id=record.stream_id, feedback=EXPIRED_FEEDBACK
+        record, ApprovalOutcome.EXPIRED, stream_id=record.stream_id, feedback=EXPIRED_FEEDBACK
     )
     return True
 
 
 async def main(apply: bool) -> None:
     records = await parked_handoff_records()
-    pending = [r for r in records if r.status is HILApprovalStatus.PENDING]
-    decided = [r for r in records if r.status is not HILApprovalStatus.PENDING]
+    pending = [r for r in records if r.outcome is None]
+    decided = [r for r in records if r.outcome is not None]
     print(
         f"parked handoff approvals: {len(records)} ({len(pending)} pending, {len(decided)} decided)"
     )
     for record in decided:
         print(
-            f"  DECIDED, NEVER RESUMED  {record.approval_id} ({record.status.value}, "
+            f"  DECIDED, NEVER RESUMED  {record.approval_id} ({record.outcome}, "
             f"tool {record.tool_name}, conversation {record.conversation_id}): the action "
             "did not run; tell the user to ask again"
         )

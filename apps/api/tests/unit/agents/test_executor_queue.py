@@ -28,7 +28,6 @@ from app.agents.core.background.executor_queue import (
     QUEUED_STREAM_ID_PREFIX,
     LockClaim,
     LockState,
-    adopt_lock,
     break_holder_lock,
     build_lock_value,
     build_run_item,
@@ -177,65 +176,6 @@ class TestAcquireLock:
         assert await redis.ttl(BUSY_KEY) == EXECUTOR_BUSY_TTL
 
 
-class TestAdoptingAReservation:
-    """A workflow fire claims its conversation before the turn that dispatches the executor, so the lock that executor finds held is its OWN fire's claim.
-
-    Adopting it is what makes the claim a hand-off. Without it the fire would queue its own
-    dispatch into the inbox of a live run that does not exist, and report a clean success with
-    nothing in it.
-    """
-
-    async def test_the_reservation_is_taken_over_and_the_value_becomes_the_runs_own(
-        self, redis
-    ) -> None:
-        reserved = build_lock_value(None, "fire-1")
-        await try_acquire_lock(BUSY_KEY, reserved)
-
-        assert await adopt_lock(CONVERSATION, reserved, build_lock_value("s1", "t1")) is True
-        assert await redis.get(BUSY_KEY) == build_lock_value("s1", "t1")
-
-    async def test_a_lock_somebody_else_took_is_never_stolen(self, redis) -> None:
-        """The reservation can lapse on TTL and be re-taken by a genuinely different run."""
-        await try_acquire_lock(BUSY_KEY, build_lock_value("other", "t9"))
-
-        adopted = await adopt_lock(
-            CONVERSATION, build_lock_value(None, "fire-1"), build_lock_value("s1", "t1")
-        )
-
-        assert adopted is False
-        assert await redis.get(BUSY_KEY) == build_lock_value("other", "t9")
-
-    async def test_an_expired_reservation_is_not_resurrected(self, redis) -> None:
-        """Nobody holds the lock: adopting would write a lock this run never acquired, past the NX check that is supposed to grant it."""
-        adopted = await adopt_lock(
-            CONVERSATION, build_lock_value(None, "fire-1"), build_lock_value("s1", "t1")
-        )
-
-        assert adopted is False
-        assert await redis.get(BUSY_KEY) is None
-
-    async def test_the_adopted_lock_carries_a_full_ttl(self, redis) -> None:
-        """The reservation's TTL has been counting down since the fire started; the run that adopts it gets its own full window."""
-        reserved = build_lock_value(None, "fire-1")
-        await redis.set(BUSY_KEY, reserved, ex=5)
-
-        await adopt_lock(CONVERSATION, reserved, build_lock_value("s1", "t1"))
-
-        assert await redis.ttl(BUSY_KEY) == EXECUTOR_BUSY_TTL
-
-    async def test_a_run_that_writes_between_the_read_and_the_set_keeps_the_lock(
-        self, redis
-    ) -> None:
-        reserved = build_lock_value(None, "fire-1")
-        await try_acquire_lock(BUSY_KEY, reserved)
-
-        with patch.object(redis, "pipeline", new=_racing_pipeline(redis, "other:t9")):
-            adopted = await adopt_lock(CONVERSATION, reserved, build_lock_value("s1", "t1"))
-
-        assert adopted is False
-        assert await redis.get(BUSY_KEY) == "other:t9"
-
-
 class TestLockOwnership:
     """The ownership contract behind safe finalize handoffs.
 
@@ -316,10 +256,6 @@ class TestWithoutRedis:
     async def test_extend_reports_that_it_did_not_re_arm(self) -> None:
         with _no_redis():
             assert await extend_lock_if_owned(CONVERSATION, "s1", "t1", 900) is False
-
-    async def test_adopting_a_reservation_allows_execution(self) -> None:
-        with _no_redis():
-            assert await adopt_lock(CONVERSATION, "fire-1", "s1:t1") is True
 
     async def test_breaking_a_holders_lock_reports_it_is_not_gone(self) -> None:
         with _no_redis():

@@ -18,20 +18,21 @@ import pytest
 
 from app.constants.hil import HIL_STATUS_KWARG, SUBAGENT_RESUME_CONFIG_KEY
 from app.models.agent_config import SubagentKind, SubagentResumeItem
-from app.models.hil_models import HILApprovalStatus
 from app.services.hil.approvals_store import approval_id_for
-from app.services.hil.bridge import ApprovalOutcome
+from app.services.hil.bridge import GateVerdict
 from app.services.hil.gate import (
     GateContext,
     _integration_name_for,
     _judge,
-    _outcome_from_record,
+    _refusal_message,
+    _verdict_from_record,
     decide_tool_call,
     read_gate_context,
 )
 from app.services.hil.intent import IntentDecision, JudgedCall
 from app.services.hil.prompts import AUTO_REJECT_TEMPLATE
 from app.services.hil.utils import GatedCall
+from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
 
 from .conftest import (
     CONVERSATION_ID,
@@ -93,44 +94,40 @@ class TestTheDecisionComesFromTheRecord:
 
     def test_an_approval_is_honoured(self) -> None:
         # The positive control: if this fails, nothing can ever be approved.
-        outcome = _outcome_from_record(make_record(status=HILApprovalStatus.APPROVED))
-        assert outcome.status is HILApprovalStatus.APPROVED
+        outcome = _verdict_from_record(make_record(outcome=ApprovalOutcome.APPROVED))
+        assert outcome.outcome is ApprovalOutcome.APPROVED
 
     def test_auto_approved_reads_as_approved_so_the_call_still_runs(self) -> None:
         # It means "the user was not asked", NOT "the action already happened". Reading it
         # as anything else strands every auto-approved call unexecuted.
-        outcome = _outcome_from_record(make_record(status=HILApprovalStatus.AUTO_APPROVED))
-        assert outcome.status is HILApprovalStatus.APPROVED
+        outcome = _verdict_from_record(
+            make_record(outcome=ApprovalOutcome.APPROVED, decider=ApprovalDecider.AUTO)
+        )
+        assert outcome.outcome is ApprovalOutcome.APPROVED
 
-    def test_abandoned_reads_as_denied(self) -> None:
-        # The user moved on. Treating it as anything but a refusal would act on a request
-        # they walked away from.
-        outcome = _outcome_from_record(make_record(status=HILApprovalStatus.ABANDONED))
-        assert outcome.status is HILApprovalStatus.DENIED
+    @pytest.mark.parametrize("ended", [ApprovalOutcome.CANCELLED, ApprovalOutcome.WITHDRAWN])
+    def test_a_cancelled_or_withdrawn_approval_refuses_the_call(
+        self, ended: ApprovalOutcome
+    ) -> None:
+        # The user moved on, or GAIA withdrew it. Treating it as anything but a refusal
+        # would act on a request nobody approved.
+        verdict = _verdict_from_record(make_record(outcome=ended))
+        message = _refusal_message(GatedCall(name="send_email", id="call-1", args={}), verdict)
+        assert (verdict.outcome, message.additional_kwargs[HIL_STATUS_KWARG]) == (ended, "denied")
 
     def test_a_timeout_stays_a_timeout(self) -> None:
         # Not a denial: the user was away, not opposed, and the model is told so.
-        outcome = _outcome_from_record(make_record(status=HILApprovalStatus.TIMEOUT))
-        assert outcome.status is HILApprovalStatus.TIMEOUT
+        outcome = _verdict_from_record(make_record(outcome=ApprovalOutcome.EXPIRED))
+        assert outcome.outcome is ApprovalOutcome.EXPIRED
 
     def test_scope_and_feedback_ride_along(self) -> None:
-        outcome = _outcome_from_record(
+        outcome = _verdict_from_record(
             make_record(
-                status=HILApprovalStatus.DENIED, scope="always_tool", feedback="wrong recipient"
+                outcome=ApprovalOutcome.DENIED, scope="always_tool", feedback="wrong recipient"
             )
         )
         assert outcome.feedback == "wrong recipient"
         assert outcome.scope == "always_tool"
-
-    def test_only_pending_is_unsettled(self) -> None:
-        # ``settled`` is what decides whether the gate reads a decision or asks for one,
-        # so a status wrongly counted as settled would run an unapproved call.
-        assert not HILApprovalStatus.PENDING.settled
-        assert all(
-            status.settled
-            for status in HILApprovalStatus
-            if status is not HILApprovalStatus.PENDING
-        )
 
 
 class TestGateContext:
@@ -350,7 +347,7 @@ class TestDeclineMemory:
         # The retry loop: the executor never learns its subagent was declined, so it
         # tries again. Re-prompting the user for the same thing is the bug.
         handler = _Handler()
-        declined = ApprovalOutcome(status=HILApprovalStatus.DENIED, feedback="wrong person")
+        declined = GateVerdict(outcome=ApprovalOutcome.DENIED, feedback="wrong person")
         with (
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
             patch(f"{MODULE}.recall_declined_call", new=AsyncMock(return_value=declined)),
@@ -450,8 +447,8 @@ class TestBarrierAutoMode:
     async def test_an_auto_refusal_without_words_is_repeated_as_auto(
         self, barrier: GateSeams
     ) -> None:
-        barrier.recall.return_value = ApprovalOutcome(
-            status=HILApprovalStatus.DENIED, feedback=None, auto=True
+        barrier.recall.return_value = GateVerdict(
+            outcome=ApprovalOutcome.DENIED, feedback=None, decider=ApprovalDecider.AUTO
         )
 
         result = await decide_tool_call(gated_request())

@@ -2,7 +2,7 @@
 
 The single entry point for every decision source — approval buttons, a bot's
 interactive component, the conversational resolver, and the timeout sweep. Each
-supplies an ApprovalResolution; everything else is identical.
+supplies an ApprovalOutcome; everything else is identical.
 
 Two guarantees:
 
@@ -30,12 +30,13 @@ from app.agents.core.background.executor_queue import (
 from app.agents.core.background.executor_runner import run_executor_background
 from app.agents.core.subagents.parked_resume import resume_parked_subagent
 from app.constants.hil import (
+    DECISION_OUTCOME,
     HIL_DECIDED_UNRESUMED_GRACE_SECONDS,
-    ApprovalResolution,
+    ApprovalDecision,
 )
 from app.constants.log_tags import LogTag
 from app.models.agent_models import ExecutorRunItem
-from app.models.hil_models import ApprovalScope, HILApprovalRecord, HILApprovalStatus
+from app.models.hil_models import ApprovalScope, HILApprovalRecord
 from app.schemas.hil_schemas import BatchDecisionOutcome
 from app.services.conversation.work_log import approval_is_logged, record_approval_decided
 from app.services.hil.approvals_store import (
@@ -52,6 +53,12 @@ from app.services.hil.policy import asks_every_time
 from app.services.hil.resume_slot import claim_resume_dispatch, release_resume_dispatch
 from app.services.latency_metrics import observe_hil_dispatch_lag, observe_hil_user_wait
 from app.utils.errors import AppError
+from shared.py.analytics.catalog.hil import (
+    DECIDED_OUTCOMES,
+    ApprovalDecider,
+    ApprovalOutcome,
+    UndecidedOutcome,
+)
 from shared.py.wide_events import log
 
 
@@ -66,14 +73,6 @@ class SweepCounts(TypedDict):
 # No run ever reads it back (there is nothing left to resume) — it is the audit trail.
 CANCELLED_FEEDBACK = "The user cancelled this task; the action was never performed."
 
-# What the record audits. The paused gate receives the same status, except
-# "abandoned" resumes as a denial — the user moved on, the agent must not act.
-_TERMINAL_STATUS: dict[ApprovalResolution, HILApprovalStatus] = {
-    "approve": HILApprovalStatus.APPROVED,
-    "deny": HILApprovalStatus.DENIED,
-    "timeout": HILApprovalStatus.TIMEOUT,
-    "abandon": HILApprovalStatus.ABANDONED,
-}
 
 # Prevent GC of resume tasks spawned here (create_task keeps only a weak ref).
 _resume_tasks: set[asyncio.Task[None]] = set()
@@ -128,19 +127,25 @@ async def resolve_approval(
     *,
     approval_id: str,
     user_id: str,
-    kind: ApprovalResolution,
+    kind: ApprovalDecision,
     feedback: str | None = None,
     scope: ApprovalScope = "once",
 ) -> HILApprovalRecord:
-    """Record the decision, then resume the run waiting on it."""
+    """Record the user's decision, then resume the run waiting on it."""
     record = await get_approval(approval_id)
     if record is None:
         raise ApprovalRequestNotFoundError()
-    return await _resolve_record(record, user_id=user_id, kind=kind, feedback=feedback, scope=scope)
+    # An approval with feedback is conditional; the stored call carries none.
+    # Same conversion as ledger and chat paths: record as denied with the note.
+    if kind == "approve" and feedback is not None and feedback.strip() != "":
+        kind = "deny"
+    return await _resolve_record(
+        record, user_id=user_id, outcome=DECISION_OUTCOME[kind], feedback=feedback, scope=scope
+    )
 
 
 async def resolve_approvals_batch(
-    user_id: str, decisions: list[tuple[str, ApprovalResolution, str | None]]
+    user_id: str, decisions: list[tuple[str, ApprovalDecision, str | None]]
 ) -> list[BatchDecisionOutcome]:
     """Apply several decisions in one submission — the web batch review's backend.
 
@@ -189,7 +194,7 @@ async def resolve_approvals_batch(
 async def abandon_conversation_approvals(
     conversation_id: str, user_id: str, feedback: str
 ) -> list[str]:
-    """Resolve every pending approval in a conversation as abandoned.
+    """Resolve every pending approval in a conversation as cancelled.
 
     Used when the user moves on to an unrelated request: each paused run resumes,
     sees a refusal, wraps up, and releases the conversation's executor lock so the
@@ -198,7 +203,9 @@ async def abandon_conversation_approvals(
     abandoned: list[str] = []
     for record in await list_pending_for_conversation(conversation_id):
         try:
-            await _resolve_or_close(record, user_id=user_id, kind="abandon", feedback=feedback)
+            await _resolve_or_close(
+                record, user_id=user_id, outcome=ApprovalOutcome.CANCELLED, feedback=feedback
+            )
             abandoned.append(record.approval_id)
         except (ApprovalRequestNotFoundError, ApprovalRequestForbiddenError):
             # Already decided, or not this user's to decide. Keep going: one record must
@@ -208,9 +215,12 @@ async def abandon_conversation_approvals(
 
 
 async def cancel_conversation_approvals(
-    conversation_id: str, user_id: str, approval_ids: Collection[str]
+    conversation_id: str,
+    user_id: str,
+    approval_ids: Collection[str],
+    outcome: UndecidedOutcome = ApprovalOutcome.CANCELLED,
 ) -> list[str]:
-    """Close these of a cancelled run's pending approvals so nothing can restart it.
+    """Close these of a stopped run's pending approvals so nothing can restart it.
 
     Left pending, a later "Approve" or the timeout sweep would re-dispatch the very run the
     user stopped, on a fresh stream the cancel flag doesn't cover. Deliberately does NOT
@@ -223,8 +233,8 @@ async def cancel_conversation_approvals(
             continue
         if not await mark_decided(
             record.approval_id,
-            HILApprovalStatus.ABANDONED,
-            feedback=CANCELLED_FEEDBACK,
+            outcome,
+            feedback=CANCELLED_FEEDBACK if outcome is ApprovalOutcome.CANCELLED else None,
             scope="once",
             decided_by=user_id,
         ):
@@ -244,7 +254,7 @@ async def _resolve_or_close(
     record: HILApprovalRecord,
     *,
     user_id: str,
-    kind: ApprovalResolution,
+    outcome: ApprovalOutcome,
     feedback: str | None,
 ) -> None:
     """Resolve a record, or close it in place when no run can be resumed.
@@ -264,23 +274,23 @@ async def _resolve_or_close(
         decided_at = datetime.now(UTC)
         await mark_decided(
             record.approval_id,
-            _TERMINAL_STATUS[kind],
+            outcome,
             feedback=feedback,
             scope="once",
             decided_by=None,
         )
         # Closed with no run to resume, but still a decision the user served.
         _observe_hil_user_wait(record.model_copy(update={"decided_at": decided_at}))
-        await _log_decision(record, user_id, kind)
+        await _log_decision(record, user_id, outcome)
         return
-    await _resolve_record(record, user_id=user_id, kind=kind, feedback=feedback)
+    await _resolve_record(record, user_id=user_id, outcome=outcome, feedback=feedback)
 
 
 async def _resolve_record(
     record: HILApprovalRecord,
     *,
     user_id: str,
-    kind: ApprovalResolution,
+    outcome: ApprovalOutcome,
     feedback: str | None,
     scope: ApprovalScope = "once",
 ) -> HILApprovalRecord:
@@ -289,25 +299,21 @@ async def _resolve_record(
         raise ApprovalRequestForbiddenError()
     if scope == "always_tool" and await asks_every_time(record.tool_name, record.args):
         raise ToolAlwaysAsksError()
-    # An approval with feedback is conditional; the stored call carries none.
-    # Same conversion as ledger and chat paths: record as denied with the note.
-    if kind == "approve" and feedback is not None and feedback.strip() != "":
-        kind = "deny"
     # A decision we cannot act on must fail (record stays pending for the sweep),
     # never report success for an action that will not run. A background subagent's
     # record carries its resume recipe from creation, so it is always resumable.
     if record.resume_item is None and record.subagent_resume is None:
         # An APPROVE with no run to carry it out is a false "going ahead", so fail loudly
-        # and let the sweep expire it. A deny/timeout/abandon needs no run at all, since
+        # and let the sweep expire it. Any other outcome needs no run at all, since
         # its whole point is that the action does NOT happen, so it's safe to record.
-        if kind == "approve":
+        if outcome is ApprovalOutcome.APPROVED:
             log.error(f"{LogTag.HIL} No resume context on record", approval_id=record.approval_id)
             # Settle the card without touching the record (stays pending for the
             # sweep timeout); a failed settle must not mask the refusal below.
             try:
                 await publish_decision(
                     record,
-                    HILApprovalStatus.ABANDONED,
+                    ApprovalOutcome.WITHDRAWN,
                     stream_id=record.stream_id,
                     feedback="The paused task cannot be resumed.",
                 )
@@ -320,11 +326,11 @@ async def _resolve_record(
                 )
             raise ApprovalNotResumableError()
 
-    decided_by = None if kind == "timeout" else user_id
+    decided_by = None if outcome is ApprovalOutcome.EXPIRED else user_id
     decided_at = datetime.now(UTC)
     transitioned = await mark_decided(
         record.approval_id,
-        _TERMINAL_STATUS[kind],
+        outcome,
         feedback=feedback,
         scope=scope,
         decided_by=decided_by,
@@ -336,7 +342,8 @@ async def _resolve_record(
     # the resume dispatch (and the caller) see the decision, not the pending snapshot.
     record = record.model_copy(
         update={
-            "status": _TERMINAL_STATUS[kind],
+            "outcome": outcome,
+            "decider": ApprovalDecider.USER if outcome in DECIDED_OUTCOMES else None,
             "feedback": feedback,
             "scope": scope,
             "decided_by": decided_by,
@@ -344,11 +351,11 @@ async def _resolve_record(
         }
     )
     _observe_hil_user_wait(record)
-    await _log_decision(record, user_id, kind)
+    await _log_decision(record, user_id, outcome)
 
-    log.set(hil={"approval_id": record.approval_id, "decision": kind, "tool": record.tool_name})
+    log.set(hil={"approval_id": record.approval_id, "outcome": outcome, "tool": record.tool_name})
     if record.resume_item is None and record.subagent_resume is None:
-        # An un-resumable deny/timeout/abandon closed in place: nothing to resume.
+        # An un-resumable refusal closed in place: nothing to resume.
         log.info(
             f"{LogTag.HIL} Decision recorded without a resume dispatch",
             approval_id=record.approval_id,
@@ -358,10 +365,13 @@ async def _resolve_record(
     return record
 
 
-async def _log_decision(record: HILApprovalRecord, user_id: str, kind: ApprovalResolution) -> None:
-    """Log the decision wherever the conversation's live work waits on this approval, however it was decided."""
+async def _log_decision(record: HILApprovalRecord, user_id: str, outcome: ApprovalOutcome) -> None:
+    """Log the outcome wherever the conversation's live work waits on this approval, however it ended."""
     if await approval_is_logged(record.conversation_id, user_id, record.approval_id):
-        await record_approval_decided(record.conversation_id, user_id, record.approval_id, kind)
+        decider = ApprovalDecider.USER if outcome in DECIDED_OUTCOMES else None
+        await record_approval_decided(
+            record.conversation_id, user_id, record.approval_id, outcome, decider
+        )
 
 
 async def _dispatch_decided(record: HILApprovalRecord) -> None:
@@ -487,7 +497,9 @@ async def sweep_approvals() -> SweepCounts:
     expired = 0
     for record in await list_expired_pending():
         try:
-            await _resolve_or_close(record, user_id=record.user_id, kind="timeout", feedback=None)
+            await _resolve_or_close(
+                record, user_id=record.user_id, outcome=ApprovalOutcome.EXPIRED, feedback=None
+            )
             expired += 1
         except ApprovalRequestNotFoundError:
             continue

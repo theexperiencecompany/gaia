@@ -22,7 +22,14 @@ describe("StepRow approval outcome", () => {
         pendingApprovalToolCallIds={new Set()}
         approvalOutcomeByToolCallId={
           new Map([
-            ["call-1", { status: "approved", feedback: "Done: deleted xyz" }],
+            [
+              "call-1",
+              {
+                outcome: "approved",
+                decider: "user",
+                feedback: "Done: deleted xyz",
+              },
+            ],
           ])
         }
       />,
@@ -38,7 +45,9 @@ describe("StepRow approval outcome", () => {
         isLast
         pendingApprovalToolCallIds={new Set()}
         approvalOutcomeByToolCallId={
-          new Map([["call-1", { status: "denied", feedback: null }]])
+          new Map([
+            ["call-1", { outcome: "denied", decider: "user", feedback: null }],
+          ])
         }
       />,
     );
@@ -49,14 +58,37 @@ describe("StepRow approval outcome", () => {
     ["executed", "Executed"],
     ["failed", "Failed"],
     ["unknown", "Unknown"],
-  ] as const)("collapses a %s outcome to the small chip", (status, label) => {
+  ] as const)(
+    "collapses an approved action that %s to the small chip",
+    (action, label) => {
+      render(
+        <StepRow
+          call={call()}
+          isLast
+          pendingApprovalToolCallIds={new Set()}
+          approvalOutcomeByToolCallId={
+            new Map([
+              ["call-1", { outcome: "approved", action, feedback: null }],
+            ])
+          }
+        />,
+      );
+      expect(screen.getByText(label)).toBeDefined();
+    },
+  );
+  it.each([
+    [{ outcome: "approved", decider: "auto" }, "Auto-approved"],
+    [{ outcome: "expired" }, "Expired"],
+    [{ outcome: "cancelled" }, "Cancelled"],
+    [{ outcome: "withdrawn" }, "Withdrawn"],
+  ] as const)("labels an approval that ended %o", (end, label) => {
     render(
       <StepRow
         call={call()}
         isLast
         pendingApprovalToolCallIds={new Set()}
         approvalOutcomeByToolCallId={
-          new Map([["call-1", { status, feedback: null }]])
+          new Map([["call-1", { ...end, feedback: null }]])
         }
       />,
     );

@@ -2,7 +2,8 @@
 
 from datetime import UTC, datetime
 
-from app.db.repositories.conversation_entries import openers_outside, stored_row
+from app.constants.chat import ConversationSource
+from app.db.repositories.conversation_entries import log_document, openers_outside, stored_row
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
@@ -11,29 +12,23 @@ from app.models.conversation_log_models import (
     Reply,
     ReplyOutcome,
     ReplySettled,
+    UserMessage,
     WorkFinished,
     WorkOutcome,
     WorkStarted,
 )
+from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
 
 
 def test_a_stored_row_carries_its_commit_time() -> None:
     at = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
-
-    row = stored_row(
-        {
-            "conversation_id": "c1",
-            "user_id": "u1",
-            "seq": 4,
-            "id": "m1",
-            "type": "user",
-            "response": "hi",
-            "at": at,
-        }
+    logged = LoggedEntry(
+        seq=4, at=at, entry=UserMessage(id="m1", text="hi", surface=ConversationSource.WEB)
     )
 
-    assert (row.user_id, row.conversation_id, row.at) == ("u1", "c1", at)
-    assert (row.entry.seq, row.entry.message_id) == (4, "m1")
+    row = stored_row(log_document("c1", "u1", logged))
+
+    assert (row.conversation_id, row.logged) == ("c1", logged)
 
 
 _AT = datetime(2026, 1, 2, tzinfo=UTC)
@@ -59,7 +54,12 @@ def test_a_page_names_the_opener_of_everything_it_completes() -> None:
         _settle("r1"),
         WorkFinished(id="work:t1:finished", task_id="t1", outcome=WorkOutcome.DONE, report=""),
         ApprovalRequested(id="approval:p1", task_id="t2", approval_id="p1"),
-        ApprovalDecided(id="approval:p2:decided", approval_id="p2", decision="approve"),
+        ApprovalDecided(
+            id="approval:p2:decided",
+            approval_id="p2",
+            outcome=ApprovalOutcome.APPROVED,
+            decider=ApprovalDecider.USER,
+        ),
         WorkStarted(id="work:t3", task_id="t3", cause_through=1, joins="t4"),
     )
 
@@ -75,7 +75,12 @@ def test_a_page_holding_its_openers_names_none() -> None:
         Reply(id="o-r1", reply_id="r1", attempt_id="a1"),
         WorkStarted(id="work:t1", task_id="t1", cause_through=1),
         ApprovalRequested(id="approval:p1", task_id="t1", approval_id="p1"),
-        ApprovalDecided(id="approval:p1:decided", approval_id="p1", decision="deny"),
+        ApprovalDecided(
+            id="approval:p1:decided",
+            approval_id="p1",
+            outcome=ApprovalOutcome.DENIED,
+            decider=ApprovalDecider.USER,
+        ),
         WorkFinished(id="work:t1:finished", task_id="t1", outcome=WorkOutcome.DONE, report=""),
         _settle("r1"),
     )

@@ -136,7 +136,8 @@ describe("parseConversationEvent", () => {
         kind: "approval_decided",
         id: "ad",
         approval_id: "ap",
-        decision: "approve",
+        outcome: "approved",
+        decider: "user",
       },
       {
         kind: "work_finished",

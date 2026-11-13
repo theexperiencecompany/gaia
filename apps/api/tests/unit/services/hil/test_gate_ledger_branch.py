@@ -15,17 +15,16 @@ from app.constants.log_tags import LogTag
 from app.models.hil_models import (
     ApprovalLedgerDocument,
     ApprovalProposal,
-    HILApprovalStatus,
-    LedgerState,
 )
 from app.services.hil import gate
-from app.services.hil.bridge import ApprovalOutcome
+from app.services.hil.bridge import GateVerdict
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import AutoContext, IntentDecision, JudgedCall, summarize_history
 from app.services.hil.jev_judge import JevIntentJudge
 from app.services.hil.prompts import AUTO_REJECT_TEMPLATE, DENIED_TEMPLATE, GATE_ERROR_TEMPLATE
 from app.services.hil.utils import GatedApproval, GatedCall
 from app.utils.general_utils import ELLIPSIS
+from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
 
 from .conftest import (
     CONVERSATION_ID,
@@ -218,7 +217,8 @@ class TestLedgerBranch:
 
     async def test_live_duplicate_returns_existing_id_without_register(self) -> None:
         live = MagicMock(approval_id="ap_live", summary="Send it")
-        live.state = LedgerState.PENDING
+        live.outcome = None
+        live.action = None
         ledger = _ledger(live=live)
         with (
             patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
@@ -236,7 +236,8 @@ class TestLedgerBranch:
 
     async def test_live_approved_row_is_not_called_awaiting_decision(self) -> None:
         live = MagicMock(approval_id="ap_live", summary="Send it")
-        live.state = LedgerState.APPROVED
+        live.outcome = ApprovalOutcome.APPROVED
+        live.action = None
         ledger = _ledger(live=live)
         with (
             patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
@@ -520,7 +521,8 @@ class TestLedgerRegistration:
         self, gate_seams: GateSeams
     ) -> None:
         gate_seams.ledger.find_latest_denied.return_value = _row(
-            state=LedgerState.DENIED,
+            outcome=ApprovalOutcome.DENIED,
+            action=None,
             proposing_run_id="other-stream",
             feedback="wrong day",
             decided_at=datetime(2026, 9, 1, 12, 0, tzinfo=UTC),
@@ -536,7 +538,7 @@ class TestLedgerRegistration:
         self, gate_seams: GateSeams
     ) -> None:
         gate_seams.ledger.find_latest_denied.return_value = _row(
-            state=LedgerState.DENIED, proposing_run_id="other-stream"
+            outcome=ApprovalOutcome.DENIED, action=None, proposing_run_id="other-stream"
         )
 
         result = await gate.decide_tool_call(gated_request())
@@ -566,7 +568,7 @@ class TestLedgerRegistration:
 class TestLedgerCollapsesIntoExistingRows:
     async def test_an_approved_twin_points_at_its_redeem(self, gate_seams: GateSeams) -> None:
         gate_seams.ledger.find_live.return_value = _row(
-            approval_id="ap_live", state=LedgerState.APPROVED
+            approval_id="ap_live", outcome=ApprovalOutcome.APPROVED, action=None
         )
 
         result = await gate.decide_tool_call(gated_request())
@@ -606,7 +608,10 @@ class TestLedgerCollapsesIntoExistingRows:
         self, gate_seams: GateSeams, feedback: str | None, said: str
     ) -> None:
         gate_seams.ledger.find_latest_denied.return_value = _row(
-            state=LedgerState.DENIED, proposing_run_id=STREAM_ID, feedback=feedback
+            outcome=ApprovalOutcome.DENIED,
+            action=None,
+            proposing_run_id=STREAM_ID,
+            feedback=feedback,
         )
 
         result = await gate.decide_tool_call(gated_request())
@@ -622,8 +627,8 @@ class TestLedgerCollapsesIntoExistingRows:
 @pytest.mark.unit
 class TestLedgerDeclineMemory:
     async def test_a_users_decline_this_turn_is_repeated_back(self, gate_seams: GateSeams) -> None:
-        gate_seams.recall.return_value = ApprovalOutcome(
-            status=HILApprovalStatus.DENIED, feedback="wrong person"
+        gate_seams.recall.return_value = GateVerdict(
+            outcome=ApprovalOutcome.DENIED, feedback="wrong person"
         )
 
         result = await gate.decide_tool_call(gated_request())
@@ -638,8 +643,8 @@ class TestLedgerDeclineMemory:
     async def test_an_auto_refusal_without_words_is_repeated_as_auto(
         self, gate_seams: GateSeams
     ) -> None:
-        gate_seams.recall.return_value = ApprovalOutcome(
-            status=HILApprovalStatus.DENIED, feedback=None, auto=True
+        gate_seams.recall.return_value = GateVerdict(
+            outcome=ApprovalOutcome.DENIED, feedback=None, decider=ApprovalDecider.AUTO
         )
 
         result = await gate.decide_tool_call(gated_request())
@@ -687,7 +692,14 @@ class TestLedgerAutoMode:
         self, gate_seams: GateSeams
     ) -> None:
         gate_seams.policy.return_value = "auto"
-        rows = [_row(state=LedgerState.DENIED, feedback="no", decided_at=datetime(2026, 9, 1))]
+        rows = [
+            _row(
+                outcome=ApprovalOutcome.DENIED,
+                action=None,
+                feedback="no",
+                decided_at=datetime(2026, 9, 1),
+            )
+        ]
         gate_seams.ledger.recent_tool_outcomes.side_effect = lambda uid, tool: (
             rows if (uid, tool) == (USER_ID, GATED_TOOL) else []
         )
@@ -752,8 +764,8 @@ class TestLedgerAutoMode:
 
         [sent] = [c.kwargs for c in posthog.capture.call_args_list]
         assert (sent["event"], sent["distinct_id"]) == ("hil:decision_submitted", USER_ID)
-        decided = {key: sent["properties"].get(key) for key in ("decision", "tool_name", "via")}
-        assert decided == {"decision": decision, "tool_name": GATED_TOOL, "via": "auto"}
+        decided = {key: sent["properties"].get(key) for key in ("outcome", "tool_name", "via")}
+        assert decided == {"outcome": decision, "tool_name": GATED_TOOL, "via": "auto"}
 
     async def test_an_unsure_judge_decides_nothing(self, gate_seams: GateSeams) -> None:
         gate_seams.policy.return_value = "auto"

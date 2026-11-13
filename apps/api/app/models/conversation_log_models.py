@@ -6,7 +6,6 @@ from typing import Annotated, Literal
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.chat import ConversationSource
-from app.constants.hil import ApprovalResolution
 from app.models.chat_models import ImageData, ReactionBy
 from app.models.message_models import (
     FileData,
@@ -19,6 +18,7 @@ from app.models.tool_data_models import ToolDataEntry
 from app.models.workflow_models import TriggerType
 from app.models.workflow_trigger_models import WorkflowTriggerContext
 from shared.py.analytics.catalog.attribution import Attribution
+from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider, ApprovalOutcome
 from shared.py.analytics.catalog.properties import Identifier
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
@@ -160,8 +160,6 @@ class WorkflowRun(BaseModel):
     execution_id: str = Field(min_length=1)
     # The zone the run's clock reads, resolved by the fire.
     timezone: str = Field(min_length=1)
-    # The busy-lock value the fire reserved the conversation with; the run's executor adopts it.
-    reservation: str = Field(min_length=1)
     trigger: WorkflowTriggerContext
     # Who fired it, so the run that answers the fire is attributed to its schedule, trigger or user.
     attribution: Attribution
@@ -227,6 +225,8 @@ class WorkStarted(_Entry):
     joins: str | None = None
     # A background subagent or browser job: its result lands in another run, so its finish wakes nothing.
     detached: bool = False
+    # A workflow's playbook replay: it runs alone, so it never starts beside other work or a fire, nor they beside it.
+    exclusive: bool = False
 
 
 class ApprovalRequested(_Entry):
@@ -241,11 +241,17 @@ class ApprovalRequested(_Entry):
 
 
 class ApprovalDecided(_Entry):
-    """A pending approval resolved."""
+    """A pending approval ended; decider names who approved or denied it (None when nobody did).
+
+    An approved action's end is logged as the same decision restated with action set; the latest
+    one for an approval is its card's state.
+    """
 
     kind: Literal[EntryKind.APPROVAL_DECIDED] = EntryKind.APPROVAL_DECIDED
     approval_id: str
-    decision: ApprovalResolution
+    outcome: ApprovalOutcome
+    decider: ApprovalDecider | None = None
+    action: ActionResult | None = None
 
 
 class WorkFinished(_Entry):
@@ -261,6 +267,8 @@ class WorkFinished(_Entry):
     note: str = ""
     # The run's own word that its report holds nothing for the user.
     nothing_for_user: bool = False
+    # The image the work generated; the reply that narrates it carries it beside its cards.
+    image: ImageData | None = None
 
 
 class IntegrationNeeded(_Entry):
@@ -388,6 +396,7 @@ class LiveWork(BaseModel):
     # Tasks handed to this work while it ran (WorkStarted.joins); a Stop that ends it ends them.
     joined: tuple[str, ...] = ()
     detached: bool = False
+    exclusive: bool = False
 
 
 class FinishedWork(BaseModel):

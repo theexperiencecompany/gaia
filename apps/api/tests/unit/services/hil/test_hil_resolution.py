@@ -17,7 +17,6 @@ from prometheus_client import REGISTRY
 import pytest
 
 from app.agents.core.background.executor_queue import LockClaim
-from app.models.hil_models import HILApprovalStatus
 from app.schemas.hil_schemas import BatchDecisionOutcome
 from app.services.hil import resolution
 from app.services.hil.resolution import (
@@ -29,6 +28,7 @@ from app.services.hil.resolution import (
     _observe_hil_dispatch_lag,
     _observe_hil_user_wait,
     _resolve_or_close,
+    _resolve_record,
     abandon_conversation_approvals,
     cancel_conversation_approvals,
     resolve_approval,
@@ -36,6 +36,7 @@ from app.services.hil.resolution import (
     sweep_approvals,
 )
 from app.services.hil.resume_slot import claim_resume_dispatch, release_resume_dispatch
+from shared.py.analytics.catalog.hil import ApprovalOutcome
 
 from .conftest import CONVERSATION_ID, USER_ID, make_record, tools_that_always_ask
 
@@ -146,7 +147,10 @@ class TestAlwaysToolScope:
     async def test_an_abandoned_approval_is_recorded_for_this_call_only(self, resume: Any) -> None:
         with patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided:
             await _resolve_or_close(
-                make_record(), user_id=USER_ID, kind="abandon", feedback="moved on"
+                make_record(),
+                user_id=USER_ID,
+                outcome=ApprovalOutcome.CANCELLED,
+                feedback="moved on",
             )
         assert decided.await_args.kwargs["scope"] == "once"
 
@@ -190,7 +194,7 @@ class TestExactlyOnce:
 
         assert resume.runner.call_count == 1
         command = resume.runner.call_args.kwargs["resume"]
-        assert command.resume["status"] == "approved"
+        assert command.resume["outcome"] == "approved"
         assert command.resume["approval_id"] == "appr-1"
 
     async def test_the_resume_names_the_approval_that_was_actually_decided(
@@ -284,13 +288,13 @@ class TestUnresumableRecords:
         assert resume.prepare.await_count == 0
         # ...but the card settles so the user stops staring at a live Approve button.
         settle.assert_awaited_once()
-        assert settle.await_args.args[1] == HILApprovalStatus.ABANDONED
+        # GAIA withdrew it: no run is left to carry the approval out.
+        assert settle.await_args.args[1] == ApprovalOutcome.WITHDRAWN
 
     async def test_approve_with_feedback_records_denied_old_path(self, resume: Any) -> None:
         # Same permission-scope conversion as the ledger path and the chat
         # classifier: the stored call carries no conditions, so "approve +
         # note" records as denied with the note instead of running.
-        from app.models.hil_models import HILApprovalStatus
 
         record = make_record()
         with (
@@ -302,7 +306,7 @@ class TestUnresumableRecords:
             )
 
         decided.assert_awaited_once()
-        assert decided.await_args.args[1] == HILApprovalStatus.DENIED
+        assert decided.await_args.args[1] == ApprovalOutcome.DENIED
         assert decided.await_args.kwargs["feedback"] == "cc finance"
 
     async def test_a_failed_run_preparation_leaves_the_record_unstamped_for_the_sweep(
@@ -357,7 +361,7 @@ class TestDecisionsReachTheLog:
         ):
             await resolution.sweep_approvals()
         logged_approvals.recorded.assert_awaited_once_with(
-            CONVERSATION_ID, record.user_id, record.approval_id, "timeout"
+            CONVERSATION_ID, record.user_id, record.approval_id, ApprovalOutcome.EXPIRED, None
         )
 
 
@@ -365,14 +369,13 @@ class TestDecisionSemantics:
     async def test_a_timeout_is_not_attributed_to_the_user(self, resume: Any) -> None:
         # decided_by must be None: nobody decided this, the clock did.
         record = make_record()
-        with (
-            patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
-            patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided,
-        ):
-            await resolve_approval(approval_id="appr-1", user_id=USER_ID, kind="timeout")
+        with patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided:
+            await _resolve_record(
+                record, user_id=USER_ID, outcome=ApprovalOutcome.EXPIRED, feedback=None
+            )
 
         assert decided.await_args.kwargs["decided_by"] is None
-        assert decided.await_args.args[1] == "timeout"
+        assert decided.await_args.args[1] == "expired"
 
     async def test_a_user_decision_is_attributed_to_them(self, resume: Any) -> None:
         record = make_record()
@@ -385,21 +388,19 @@ class TestDecisionSemantics:
         assert decided.await_args.kwargs["decided_by"] == USER_ID
         assert decided.await_args.args[1] == "denied"
 
-    async def test_an_abandoned_approval_is_audited_as_abandoned_but_resumes_as_a_denial(
+    async def test_a_cancelled_approval_resumes_its_run_with_the_cancellation(
         self, resume: Any
     ) -> None:
-        # The user moved on. The audit trail must say "abandoned", but the agent must be
-        # told "denied" — if it resumed as anything else it would perform the action the
-        # user walked away from.
+        # The user moved on: the record and the wake-up both say cancelled, and the gate
+        # refuses anything but approved, so the action the user walked away from never runs.
         record = make_record()
-        with (
-            patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=record)),
-            patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided,
-        ):
-            await resolve_approval(approval_id="appr-1", user_id=USER_ID, kind="abandon")
+        with patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided:
+            await _resolve_record(
+                record, user_id=USER_ID, outcome=ApprovalOutcome.CANCELLED, feedback=None
+            )
 
-        assert decided.await_args.args[1] == "abandoned"
-        assert resume.runner.call_args.kwargs["resume"].resume["status"] == "denied"
+        assert decided.await_args.args[1] == "cancelled"
+        assert resume.runner.call_args.kwargs["resume"].resume["outcome"] == "cancelled"
 
     async def test_the_returned_record_carries_the_full_decision_forward(self, resume: Any) -> None:
         # The caller and resume dispatch must see the decided image, not the pending
@@ -419,13 +420,13 @@ class TestDecisionSemantics:
             )
 
         assert decided is not record
-        assert decided.status == "denied"
+        assert decided.outcome == "denied"
         assert decided.feedback == "looks good"
         assert decided.scope == "always"
         assert decided.decided_by == USER_ID
         assert decided.decided_at is not None
         # The pending snapshot the caller loaded is not mutated in place.
-        assert record.status == "pending"
+        assert record.outcome is None
         assert record.feedback is None
         assert record.scope == "once"
         assert record.decided_by is None
@@ -523,7 +524,7 @@ class TestAbandonConversation:
             abandoned = await abandon_conversation_approvals("conv-1", USER_ID, "moved on")
 
         assert abandoned == ["a1"]
-        assert decided.await_args.args[1] == "abandoned"
+        assert decided.await_args.args[1] == "cancelled"
         assert resume.prepare.await_count == 0
 
     async def test_foreign_records_are_skipped_not_closed(self, resume: Any) -> None:
@@ -551,13 +552,13 @@ class TestSweep:
             counts = await sweep_approvals()
 
         assert counts == {"expired": 1, "redispatched": 0}
-        assert decided.await_args.args[1] == "timeout"
-        assert resume.runner.call_args.kwargs["resume"].resume["status"] == "timeout"
+        assert decided.await_args.args[1] == "expired"
+        assert resume.runner.call_args.kwargs["resume"].resume["outcome"] == "expired"
 
     async def test_a_crashed_resume_is_redispatched(self, resume: Any) -> None:
         # Decided, but the process died before the run spawned. Without this the user
         # clicked approve and nothing ever happened.
-        stranded = make_record(approval_id="a2", status="approved", resumed_at=None)
+        stranded = make_record(approval_id="a2", outcome="approved", resumed_at=None)
         with (
             patch(f"{MODULE}.list_expired_pending", new=AsyncMock(return_value=[])),
             patch(f"{MODULE}.list_decided_unresumed", new=AsyncMock(return_value=[stranded])),
@@ -565,19 +566,20 @@ class TestSweep:
             counts = await sweep_approvals()
 
         assert counts == {"expired": 0, "redispatched": 1}
-        assert resume.runner.call_args.kwargs["resume"].resume["status"] == "approved"
+        assert resume.runner.call_args.kwargs["resume"].resume["outcome"] == "approved"
 
-    async def test_a_stranded_abandoned_record_redispatches_as_a_denial(self, resume: Any) -> None:
-        # "abandoned" is not a resumable status — the gate would read it as malformed and
-        # deny anyway, but relying on that is luck. It must be mapped explicitly.
-        stranded = make_record(approval_id="a3", status="abandoned", resumed_at=None)
+    async def test_a_stranded_cancelled_record_redispatches_with_its_outcome(
+        self, resume: Any
+    ) -> None:
+        # The gate reads the record, which refuses anything but approved; the wake-up carries it.
+        stranded = make_record(approval_id="a3", outcome="cancelled", resumed_at=None)
         with (
             patch(f"{MODULE}.list_expired_pending", new=AsyncMock(return_value=[])),
             patch(f"{MODULE}.list_decided_unresumed", new=AsyncMock(return_value=[stranded])),
         ):
             await sweep_approvals()
 
-        assert resume.runner.call_args.kwargs["resume"].resume["status"] == "denied"
+        assert resume.runner.call_args.kwargs["resume"].resume["outcome"] == "cancelled"
 
     async def test_an_expired_record_already_decided_by_the_user_is_not_double_resolved(
         self, resume: Any
@@ -630,10 +632,10 @@ class TestSweep:
         # claiming the resume slot) is retried next sweep — it must not stop the pass
         # from redispatching the other stranded records.
         bad = make_record(
-            approval_id="a-bad", conversation_id="conv-bad", status="approved", resumed_at=None
+            approval_id="a-bad", conversation_id="conv-bad", outcome="approved", resumed_at=None
         )
         good = make_record(
-            approval_id="a-good", conversation_id="conv-good", status="approved", resumed_at=None
+            approval_id="a-good", conversation_id="conv-good", outcome="approved", resumed_at=None
         )
 
         async def claim(conversation_id: str) -> bool:
@@ -672,7 +674,7 @@ class TestCancelledRunApprovals:
             closed = await cancel_conversation_approvals(CONVERSATION_ID, USER_ID, ["a1"])
 
         assert closed == ["a1"]
-        assert decided.await_args.args == ("a1", "abandoned")
+        assert decided.await_args.args == ("a1", "cancelled")
         assert decided.await_args.kwargs["feedback"] == CANCELLED_FEEDBACK
         assert decided.await_args.kwargs["decided_by"] == USER_ID
         # Without this the decided-unresumed sweep re-dispatches the cancelled run.
@@ -783,7 +785,7 @@ class TestBackgroundSubagentApprovals:
 
         assert decided.await_count == 1
         resumed_record = resume_subagent.await_args.args[0]
-        assert resumed_record.status == HILApprovalStatus.APPROVED
+        assert resumed_record.outcome == ApprovalOutcome.APPROVED
         assert resumed_record.resume_payload()["approval_id"] == "appr-1"
         resume.mark_resumed.assert_awaited_once_with("appr-1")
         # The executor is not what paused, so it is not what resumes.
@@ -832,7 +834,7 @@ class TestBackgroundSubagentApprovals:
         }
 
     async def test_the_sweep_redispatches_a_decided_subagent_record(self) -> None:
-        record = _subagent_record(approval_id="appr-9", status="approved")
+        record = _subagent_record(approval_id="appr-9", outcome="approved")
         with (
             patch(f"{MODULE}.list_expired_pending", new=AsyncMock(return_value=[])),
             patch(f"{MODULE}.list_decided_unresumed", new=AsyncMock(return_value=[record])),
@@ -849,7 +851,7 @@ class TestBackgroundSubagentApprovals:
 
     async def test_executor_gate_pauses_still_dispatch_the_executor(self, resume: Any) -> None:
         with patch(f"{MODULE}.resume_parked_subagent", new=AsyncMock()) as resume_subagent:
-            await _dispatch_decided(make_record(status="approved"))
+            await _dispatch_decided(make_record(outcome="approved"))
             await asyncio.sleep(0)
 
         resume_subagent.assert_not_awaited()
@@ -910,7 +912,9 @@ class TestHILWaitBenchmarks:
             patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.log") as log_mock,
         ):
-            await _resolve_or_close(record, user_id=USER_ID, kind="deny", feedback="no")
+            await _resolve_or_close(
+                record, user_id=USER_ID, outcome=ApprovalOutcome.DENIED, feedback="no"
+            )
 
         assert REGISTRY.get_sample_value("hil_user_wait_seconds_count", {}) == wait_before + 1
         assert "user_wait_s" in log_mock.set.call_args.kwargs["hil"]
@@ -968,7 +972,7 @@ class TestResolutionEdges:
                 approval_id="appr-1", user_id=USER_ID, kind="approve", feedback="   "
             )
 
-        assert decided.await_args.args[1] == HILApprovalStatus.APPROVED
+        assert decided.await_args.args[1] == ApprovalOutcome.APPROVED
 
     async def test_an_unresumable_approve_settles_its_card_on_the_request_stream(
         self, resume: Any
@@ -983,7 +987,7 @@ class TestResolutionEdges:
 
         settle.assert_awaited_once_with(
             record,
-            HILApprovalStatus.ABANDONED,
+            ApprovalOutcome.WITHDRAWN,
             stream_id="stream-original",
             feedback="The paused task cannot be resumed.",
         )
@@ -1036,8 +1040,8 @@ class TestSweepAccounting:
         [
             ([], [], False),
             ([make_record(approval_id="appr-e")], [], True),
-            ([], [make_record(approval_id="appr-r", status="approved")], True),
-            ([], [make_record(status="approved", subagent_thread_id="t")], True),
+            ([], [make_record(approval_id="appr-r", outcome="approved")], True),
+            ([], [make_record(outcome="approved", subagent_thread_id="t")], True),
         ],
         ids=["idle", "expired-only", "redispatched-only", "deferred-only"],
     )

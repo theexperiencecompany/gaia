@@ -1,4 +1,4 @@
-"""What stopping a conversation's work came to: the executor run, its inbox, subagents, approvals, browser jobs."""
+"""What stopping a conversation's work came to: the executor run, its inbox, subagents, approvals, browser jobs, replays."""
 
 from pydantic import Field
 
@@ -29,6 +29,9 @@ class WorkCancelled(ResponseModel):
     browser_jobs: dict[str, BrowserStopOutcome] = Field(
         default_factory=dict, description="Browser jobs reached, with what each stop came to."
     )
+    replay_ids: list[str] = Field(
+        default_factory=list, description="Workflow playbook replays stopped, by stream id."
+    )
 
     def combined_with(self, other: "WorkCancelled") -> "WorkCancelled":
         """Return both cancels as one: what a Stop's logged and unlogged halves came to."""
@@ -40,6 +43,7 @@ class WorkCancelled(ResponseModel):
             subagent_ids=list(dict.fromkeys([*self.subagent_ids, *other.subagent_ids])),
             approval_ids=[*self.approval_ids, *other.approval_ids],
             browser_jobs={**self.browser_jobs, **other.browser_jobs},
+            replay_ids=[*self.replay_ids, *other.replay_ids],
         )
 
     @property
@@ -51,6 +55,7 @@ class WorkCancelled(ResponseModel):
             or self.subagent_ids
             or self.approval_ids
             or self.browser_jobs
+            or self.replay_ids
         )
 
 

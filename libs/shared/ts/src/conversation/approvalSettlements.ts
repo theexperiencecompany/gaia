@@ -15,9 +15,10 @@ interface ApprovalSettlementState {
 }
 
 /**
- * Approval verdicts that reach this device outside the conversation's log: its own
- * decision's response, and the `hil_approval_decided` push (which also carries
- * revoked, executed and failed). Rows lay these over the cards the log shows.
+ * Approval verdicts that reach this device before or instead of the log: its own
+ * decision's response, and the `hil_approval_decided` push (which alone carries an
+ * agent's withdrawal and an action result the log has no work for). Rows lay these
+ * over the cards the log shows.
  */
 export const useApprovalSettlementStore = create<ApprovalSettlementState>()(
   (set) => ({

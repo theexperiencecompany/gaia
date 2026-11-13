@@ -430,7 +430,7 @@ class StepScenarios:
         decided = [
             item.entry for item in await rt.entries() if isinstance(item.entry, ApprovalDecided)
         ]
-        assert [(item.approval_id, item.decision) for item in decided] == [("ap1", "approve")]
+        assert [(item.approval_id, item.outcome) for item in decided] == [("ap1", "approved")]
         assert (await replies(rt))[-1].text == HIL_ACK_APPROVED
         assert (await answered(rt))[-1] == (ReplyOutcome.ANSWERED, ("u6",))
         state = await rt.log.state(CONVERSATION, USER)
@@ -449,9 +449,9 @@ class StepScenarios:
         decided = [
             item.entry for item in await rt.entries() if isinstance(item.entry, ApprovalDecided)
         ]
-        assert sorted((item.approval_id, item.decision) for item in decided) == [
-            ("ap1", "approve"),
-            ("ap2", "deny"),
+        assert sorted((item.approval_id, item.outcome, item.decider) for item in decided) == [
+            ("ap1", "approved", "user"),
+            ("ap2", "denied", "user"),
         ]
         await assert_quiet(rt)
 

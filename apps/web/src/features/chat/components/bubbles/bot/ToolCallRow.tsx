@@ -2,7 +2,8 @@
 
 import { Chip } from "@heroui/chip";
 import { PuzzleIcon, ToolsIcon } from "@icons";
-import type { ApprovalStatus } from "@shared/chat";
+import type { ApprovalEnd, ApprovalLabels } from "@shared/chat";
+import { approvalLabel } from "@shared/chat";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useState } from "react";
@@ -30,30 +31,37 @@ export function WaitingForApprovalPill() {
 // A settled decision rides its tool's own row — one place tells the whole story.
 // The receipt (execution outcome, denial reason) travels as feedback so the row
 // shows not just "Approved" but what the approval did.
-export interface ApprovalOutcome {
-  status: ApprovalStatus;
+export interface ApprovalReceipt extends ApprovalEnd {
   feedback: string | null;
 }
 
-const APPROVAL_CHIP: Record<
-  string,
-  { label: string; color: "success" | "danger" | "warning" }
-> = {
-  approved: { label: "Approved", color: "success" },
-  auto_approved: { label: "Auto-approved", color: "success" },
-  denied: { label: "Denied", color: "danger" },
-  revoked: { label: "Withdrawn", color: "warning" },
-  timeout: { label: "Expired", color: "warning" },
-  abandoned: { label: "Expired", color: "warning" },
-  executed: { label: "Executed", color: "success" },
-  failed: { label: "Failed", color: "danger" },
-  unknown: { label: "Unknown", color: "warning" },
+interface ApprovalChip {
+  label: string;
+  color: "success" | "danger" | "warning";
+}
+
+const APPROVAL_CHIP: ApprovalLabels<ApprovalChip | null> = {
+  pending: null,
+  autoApproved: { label: "Auto-approved", color: "success" },
+  outcome: {
+    approved: { label: "Approved", color: "success" },
+    denied: { label: "Denied", color: "danger" },
+    expired: { label: "Expired", color: "warning" },
+    cancelled: { label: "Cancelled", color: "warning" },
+    withdrawn: { label: "Withdrawn", color: "warning" },
+  },
+  action: {
+    executing: { label: "Approved", color: "success" },
+    executed: { label: "Executed", color: "success" },
+    failed: { label: "Failed", color: "danger" },
+    unknown: { label: "Unknown", color: "warning" },
+  },
 };
 
 function ApprovalOutcomeChip({
   outcome,
-}: Readonly<{ outcome: ApprovalOutcome }>) {
-  const chip = APPROVAL_CHIP[outcome.status];
+}: Readonly<{ outcome: ApprovalReceipt }>) {
+  const chip = approvalLabel(outcome, APPROVAL_CHIP);
   if (!chip) return null;
   return (
     <span className="ml-2 inline-flex min-w-0 items-center gap-1.5">
@@ -113,7 +121,7 @@ function ToolCallHeader({
   expanded: boolean;
   onToggle: () => void;
   awaitingApproval: boolean;
-  approvalOutcome?: ApprovalOutcome;
+  approvalOutcome?: ApprovalReceipt;
 }>) {
   const { hasCategoryText, hasDetails } = display;
   return (
@@ -200,7 +208,7 @@ export function ToolCallRow({
   call: ToolCallEntry;
   isLast: boolean;
   awaitingApproval: boolean;
-  approvalOutcome?: ApprovalOutcome;
+  approvalOutcome?: ApprovalReceipt;
 }>) {
   const [expanded, setExpanded] = useState(false);
   const display = deriveToolCallDisplay(call);

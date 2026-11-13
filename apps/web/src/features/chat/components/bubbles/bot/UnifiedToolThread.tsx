@@ -9,7 +9,7 @@ import type {
   ToolCallEntry,
 } from "@/config/registries/toolRegistry";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { type ApprovalOutcome, StepRow, SubagentRow } from "./SubagentRow";
+import { type ApprovalReceipt, StepRow, SubagentRow } from "./SubagentRow";
 import { deriveTimelineItemKeys } from "./TextBubble/useSubagentSynthesis";
 
 /**
@@ -38,7 +38,7 @@ interface UnifiedToolThreadProps {
    *  "Waiting for approval" instead of a running spinner. */
   pendingApprovalToolCallIds: Set<string>;
   /** Settled decisions keyed by tool_call_id — the row carries the outcome chip. */
-  approvalOutcomeByToolCallId: Map<string, ApprovalOutcome>;
+  approvalOutcomeByToolCallId: Map<string, ApprovalReceipt>;
 }
 
 const SHOW_ICONS = 10;

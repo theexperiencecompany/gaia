@@ -11,14 +11,14 @@ import type { ToolCallEntry } from "@/config/registries/toolRegistry";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { deriveStepKeys } from "./TextBubble/useSubagentSynthesis";
 import {
-  type ApprovalOutcome,
+  type ApprovalReceipt,
   ToolCallRow,
   WaitingForApprovalPill,
 } from "./ToolCallRow";
 import { expandTransition } from "./toolCallDisplay";
 import type { EnrichedSubagentGroup } from "./UnifiedToolThread";
 
-export type { ApprovalOutcome };
+export type { ApprovalReceipt };
 
 // A step where the model reasoned (ToolCallEntry carrying `reasoning`).
 // Mirrors ToolCallRow's layout so thinking sits naturally between tool steps.
@@ -80,7 +80,7 @@ interface StepCallbacks {
   /** tool_call_ids blocked on a pending HIL approval. */
   pendingApprovalToolCallIds: Set<string>;
   /** Settled HIL outcomes (status + receipt/feedback) keyed by tool_call_id. */
-  approvalOutcomeByToolCallId?: Map<string, ApprovalOutcome>;
+  approvalOutcomeByToolCallId?: Map<string, ApprovalReceipt>;
 }
 
 // One timeline step: a thinking block when the entry carries `reasoning`, else a

@@ -349,20 +349,22 @@ describe("quoteFor", () => {
   });
 });
 
-describe("approval cards read their status from the log", () => {
+describe("approval cards read their end from the log", () => {
   const approvalCard = (approvalId: string) => ({
     tool_name: "approval_request",
-    data: { approval_id: approvalId, status: "pending" },
+    data: { approval_id: approvalId, outcome: null },
     timestamp: "2026-11-12T10:00:00+00:00",
   });
-  const cardStatus = (frames: ConversationFrame[]) => {
+  const cardEnd = (frames: ConversationFrame[]) => {
     const view = frames.reduce(
       (current, frame) => applyFrame(current, frame).view,
       EMPTY_CONVERSATION_VIEW,
     );
     const row = visibleBubbles(view).find((bubble) => bubble.kind === "work");
     const card = row?.kind === "work" ? row.toolData[0] : undefined;
-    return card ? (card.data as { status: string }).status : null;
+    if (!card) return null;
+    const { outcome, decider, action } = card.data as Record<string, unknown>;
+    return { outcome, decider, action };
   };
   const asked = [
     entryFrame(1, userMessage("u1")),
@@ -372,20 +374,31 @@ describe("approval cards read their status from the log", () => {
 
   it("shows a decided approval as its decision", () => {
     expect(
-      cardStatus([
+      cardEnd([
         ...asked,
         entryFrame(4, approvalDecided("ap1")),
         entryFrame(5, workFinished("t1", "done", [approvalCard("ap1")])),
       ]),
-    ).toBe("approved");
+    ).toEqual({ outcome: "approved", decider: "user", action: null });
   });
 
-  it("shows an approval whose work stopped undecided as abandoned", () => {
+  it("keeps the approved action's result over the bare decision", () => {
     expect(
-      cardStatus([
+      cardEnd([
+        ...asked,
+        entryFrame(4, approvalDecided("ap1", "failed")),
+        entryFrame(5, approvalDecided("ap1")),
+        entryFrame(6, workFinished("t1", "done", [approvalCard("ap1")])),
+      ]),
+    ).toEqual({ outcome: "approved", decider: "user", action: "failed" });
+  });
+
+  it("shows an approval whose work stopped undecided as cancelled", () => {
+    expect(
+      cardEnd([
         ...asked,
         entryFrame(4, workFinished("t1", "cancelled", [approvalCard("ap1")])),
       ]),
-    ).toBe("abandoned");
+    ).toEqual({ outcome: "cancelled", decider: null, action: null });
   });
 });

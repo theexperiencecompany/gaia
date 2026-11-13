@@ -21,6 +21,7 @@ from app.models.conversation_log_models import (
     StartAck,
     StopBy,
     Transition,
+    WorkFinished,
     WorkOutcome,
     WorkStarted,
 )
@@ -215,6 +216,41 @@ def test_a_fire_while_work_still_runs_in_its_conversation_is_refused() -> None:
         [fired("f1", "ex_1"), started("w", "t1", 1), opened("o"), settled("s", ("f1",), 1)]
     )
     assert _reason(state, 5, fired("f2", "ex_2")) is RejectReason.FIRE_OVERLAPS
+
+
+def _replay(entry_id: str, task_id: str, cause_through: int) -> WorkStarted:
+    return WorkStarted(
+        id=entry_id, task_id=task_id, cause_through=cause_through, detached=True, exclusive=True
+    )
+
+
+def test_a_replay_is_refused_while_other_work_runs_in_its_conversation() -> None:
+    state, _ = fold([user("u1"), started("w", "t1", 1)])
+    assert _reason(state, 3, _replay("p", "playbook_1", 2)) is RejectReason.FIRE_OVERLAPS
+
+
+def test_a_replay_is_refused_while_a_fire_is_unanswered() -> None:
+    state, _ = fold([fired("f1", "ex_1")])
+    assert _reason(state, 2, _replay("p", "playbook_1", 1)) is RejectReason.FIRE_OVERLAPS
+
+
+def test_no_work_starts_while_a_replay_runs_in_its_conversation() -> None:
+    state, _ = fold([user("u1"), _replay("p", "playbook_1", 1), user("u2")])
+    assert _reason(state, 4, started("w", "t1", 3)) is RejectReason.FIRE_OVERLAPS
+
+
+def test_a_replay_starts_as_exclusive_detached_work_and_its_end_wakes_nothing() -> None:
+    state, _ = fold([user("u1"), opened("o"), settled("s", ("u1",), 1)])
+    started_replay = _accept(state, 4, _replay("p", "playbook_1", 3))
+    assert [(w.task_id, w.exclusive, w.detached) for w in started_replay.state.work] == [
+        ("playbook_1", True, True)
+    ]
+    ended = _accept(
+        started_replay.state,
+        5,
+        WorkFinished(id="pf", task_id="playbook_1", outcome=WorkOutcome.DONE, report="done"),
+    )
+    assert (ended.state.work, ended.state.unsettled_waking, ended.effects) == ((), (), ())
 
 
 def test_a_fire_after_the_previous_one_was_answered_and_its_work_ended_wakes() -> None:

@@ -1,17 +1,22 @@
 import type {
+  ApprovalEnd,
+  ApprovalLabels,
   ApprovalRequestData,
-  ApprovalStatus,
   HilMode,
   HilPreferences,
 } from "./approvals.types";
 import type { StreamToolDataEntry } from "./streaming";
 
 export type {
+  ActionResult,
+  ApprovalDecider,
   ApprovalDecision,
   ApprovalDecisionPayload,
+  ApprovalEnd,
+  ApprovalLabels,
+  ApprovalOutcome,
   ApprovalRequestData,
   ApprovalScope,
-  ApprovalStatus,
   BatchApprovalDecisionPayload,
   BatchApprovalDecisionResponse,
   BatchDecisionItem,
@@ -40,9 +45,41 @@ export function formatApprovalAge(
 }
 
 /** A decided approval — no longer actionable, kept as a receipt. */
-export function isSettled(status: ApprovalStatus): boolean {
-  return status !== "pending";
+export function isSettled(end: ApprovalEnd): boolean {
+  return end.outcome != null;
 }
+
+/** Pick a card's words from its outcome, decider and action: the one rule every client reads. */
+export function approvalLabel<T>(
+  end: ApprovalEnd,
+  labels: ApprovalLabels<T>,
+): T {
+  if (end.outcome == null) return labels.pending;
+  if (end.outcome === "approved" && end.action)
+    return labels.action[end.action];
+  if (end.outcome === "approved" && end.decider === "auto")
+    return labels.autoApproved;
+  return labels.outcome[end.outcome];
+}
+
+const OUTCOME_LINES: ApprovalLabels<(data: ApprovalRequestData) => string> = {
+  pending: () => "",
+  autoApproved: (data) =>
+    data.auto_reason?.trim() || "Matched what you asked for",
+  outcome: {
+    approved: () => "You approved this",
+    denied: (data) => data.feedback?.trim() || "You declined this",
+    expired: () => "Expired without a response",
+    cancelled: () => "Cancelled before you decided",
+    withdrawn: () => "Agent withdrew this",
+  },
+  action: {
+    executing: () => "You approved this",
+    executed: () => "The approved action ran",
+    failed: () => "Approved, but it didn't go through",
+    unknown: () => "Outcome unknown",
+  },
+};
 
 /**
  * Whether a tool needs approval — i.e. is in the gated set the mode acts on.
@@ -67,24 +104,9 @@ export function toolOverrideValue(
   return ask === destructive ? null : ask;
 }
 
-/** One line explaining how a settled approval was decided. */
+/** One line explaining how a settled approval ended, and what its action did. */
 export function approvalOutcomeLabel(data: ApprovalRequestData): string {
-  switch (data.status) {
-    case "auto_approved":
-      return data.auto_reason?.trim() || "Matched what you asked for";
-    case "approved":
-      return "You approved this";
-    case "denied":
-      return data.feedback?.trim() || "You declined this";
-    case "timeout":
-      return "Expired without a response";
-    case "abandoned":
-      return "Dropped when you moved on";
-    case "revoked":
-      return "Agent withdrew this";
-    default:
-      return "";
-  }
+  return approvalLabel(data, OUTCOME_LINES)(data);
 }
 
 const approvalId = (entry: StreamToolDataEntry): string | null => {

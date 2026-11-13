@@ -161,7 +161,7 @@ def _workflow_authorization(run: WorkflowRun) -> list[str]:
 
 
 def _stamp_workflow_run(configurable: AgentConfigurable, run: WorkflowRun) -> None:
-    """Carry the fire onto the run: its record, its reservation, and how its result is delivered.
+    """Carry the fire onto the run: its record, and how its result is delivered.
 
     The executor inherits all of it; its tool calls land in the run record keyed by the execution id.
     """
@@ -170,7 +170,6 @@ def _stamp_workflow_run(configurable: AgentConfigurable, run: WorkflowRun) -> No
     configurable["workflow_title"] = run.workflow.title
     configurable["workflow_notify_on_completion"] = run.trigger.workflow_notify_on_completion
     configurable["playbook_fallback"] = run.trigger.playbook_fallback
-    configurable["executor_lock_reservation"] = run.reservation
 
 
 #: Work that finished, or an integration the work waited on, wakes comms with no one asking.

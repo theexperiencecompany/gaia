@@ -37,7 +37,7 @@ const card = (approval_id: string) => ({
     integration_name: "gmail",
     summary: `Send ${approval_id}`,
     args_preview: {},
-    status: "pending",
+    outcome: null,
     feedback: null,
     auto_reason: null,
     timeout_seconds: 300,
@@ -53,13 +53,13 @@ const VIEW = applyFrame(
   } as Entry),
 ).view;
 
-const shownStatus = (approvalId: string) =>
+const shown = (approvalId: string) =>
   (
     liveMessages(VIEW, {}, useApprovalSettlementStore.getState().settled)[0]
       ?.tool_data ?? []
   )
     .map((entry) => entry.data as ApprovalRequestData)
-    .find((data) => data.approval_id === approvalId)?.status;
+    .find((data) => data.approval_id === approvalId);
 
 function handler(): WsHandler {
   const call = harness.wsManager.on.mock.calls.find(
@@ -69,12 +69,18 @@ function handler(): WsHandler {
   return call?.[1] as WsHandler;
 }
 
-const decided = (approval_id: string, status: string, version = 1) => ({
+const decided = (
+  approval_id: string,
+  outcome: string,
+  action: string | null = null,
+  version = 1,
+) => ({
   type: "hil_approval_decided",
   data: {
     conversation_id: "conv-1",
     approval_id,
-    status,
+    outcome,
+    action,
     feedback: null,
     version,
   },
@@ -90,21 +96,21 @@ describe("useApprovalDecisionWebSocket", () => {
   it("settles the matching card on screen and leaves siblings alone", () => {
     handler()(decided("ap_1", "approved"));
 
-    expect(shownStatus("ap_1")).toBe("approved");
-    expect(shownStatus("ap_2")).toBe("pending");
+    expect(shown("ap_1")?.outcome).toBe("approved");
+    expect(shown("ap_2")?.outcome).toBeNull();
   });
 
-  it("raises revoked tombstones and ignores unknown ids and statuses", () => {
+  it("raises withdrawn tombstones and ignores unknown ids and outcomes", () => {
     const h = handler();
-    h(decided("ap_2", "revoked", 2));
+    h(decided("ap_2", "withdrawn", null, 2));
     h(decided("ap_nope", "approved"));
     h(decided("ap_1", "executing"));
-    h(decided("ap_3", "executed", 2));
-    h(decided("ap_4", "unknown", 3));
+    h(decided("ap_3", "approved", "executed", 2));
+    h(decided("ap_4", "approved", "unknown", 3));
 
-    expect(shownStatus("ap_2")).toBe("revoked");
-    expect(shownStatus("ap_1")).toBe("pending");
-    expect(shownStatus("ap_3")).toBe("executed");
-    expect(shownStatus("ap_4")).toBe("unknown");
+    expect(shown("ap_2")?.outcome).toBe("withdrawn");
+    expect(shown("ap_1")?.outcome).toBeNull();
+    expect(shown("ap_3")?.action).toBe("executed");
+    expect(shown("ap_4")?.action).toBe("unknown");
   });
 });

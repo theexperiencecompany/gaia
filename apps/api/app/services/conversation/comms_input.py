@@ -109,6 +109,9 @@ def _note_text(logged: LoggedEntry) -> str | None:
     """Return the note a non-message entry leaves the model, or None for one it never sees."""
     note: str | None = None
     match logged.entry:
+        # Detached work that delivered its own result (a subagent, a browser job, a replay) says nothing.
+        case WorkFinished(report="", note="", nothing_for_user=True):
+            pass
         case WorkFinished(outcome=WorkOutcome.DONE) as finished:
             note = WORK_DONE_NOTE.format(report=_reported(finished))
         case WorkFinished(outcome=outcome) as finished if outcome is not WorkOutcome.CANCELLED:

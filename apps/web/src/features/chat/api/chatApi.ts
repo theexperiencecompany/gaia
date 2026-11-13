@@ -1,5 +1,6 @@
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import type {
+  ApprovalDecisionResponse,
   ConversationSummary,
   ConversationSyncItem,
   ConversationSyncRow,
@@ -314,11 +315,7 @@ export const chatApi = {
   postApprovalDecision: async (
     approvalId: string,
     decision: ApprovalDecisionPayload,
-  ): Promise<{
-    success: boolean;
-    reason?: string | null;
-    status?: string | null;
-  }> => {
+  ): Promise<ApprovalDecisionResponse> => {
     try {
       return await api.post("/api/v1/approvals/{approval_id}/decision", {
         path: { approval_id: approvalId },

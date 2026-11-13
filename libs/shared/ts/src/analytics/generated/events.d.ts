@@ -325,7 +325,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "decision"?: "approve" | "deny";
+    "outcome"?: "approved" | "denied";
     "batch"?: boolean;
     "decisions"?: number;
     "resolved"?: number;
@@ -740,7 +740,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "decision": "approved" | "denied";
+    "outcome": "approved" | "denied";
     "tool_name": string;
     "via": "card" | "batch" | "chat" | "auto";
     "approval_id"?: string;
@@ -761,6 +761,7 @@ export interface EventProperties {
     "approval_id": string;
     "ledger_version": number;
     "revoker": string;
+    "outcome": "expired" | "cancelled" | "withdrawn";
   };
   "image:described": {
     "actor": "user" | "agent";

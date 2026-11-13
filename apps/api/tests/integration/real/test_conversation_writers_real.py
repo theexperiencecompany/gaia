@@ -41,6 +41,7 @@ from app.services.conversation.runtime import install_runtime_ports, runtime_por
 from app.services.conversation.work_log import record_user_stop
 from app.services.onboarding.first_conversation import FirstConversation
 from app.utils.seeding_utils import seed_first_conversation
+from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
 from tests.conftest import FAKE_USER
 from tests.helpers import shown_messages
 from tests.unit.services.conversation.log_helpers import asked, finished, started
@@ -259,36 +260,36 @@ async def _card_status(user_id: str, conversation_id: str) -> object:
         for e in m.tool_data or []
         if e["tool_name"] == APPROVAL_REQUEST_TOOL_NAME
     ]
-    return card["data"]["status"]
+    data = card["data"]
+    return data.get("outcome"), data.get("decider")
+
+
+def _ended(outcome: ApprovalOutcome, decider: ApprovalDecider | None = None) -> ApprovalDecided:
+    return ApprovalDecided(
+        id="approval:ap1:decided", approval_id="ap1", outcome=outcome, decider=decider
+    )
 
 
 @pytest.mark.parametrize(
     ("ending", "label"),
     [
-        (
-            ApprovalDecided(id="approval:ap1:decided", approval_id="ap1", decision="approve"),
-            "approved",
-        ),
-        (ApprovalDecided(id="approval:ap1:decided", approval_id="ap1", decision="deny"), "denied"),
-        (
-            ApprovalDecided(id="approval:ap1:decided", approval_id="ap1", decision="timeout"),
-            "timeout",
-        ),
-        (
-            ApprovalDecided(id="approval:ap1:decided", approval_id="ap1", decision="abandon"),
-            "abandoned",
-        ),
-        (finished("work:t1:finished", "t1", WorkOutcome.CANCELLED), "cancelled"),
+        (_ended(ApprovalOutcome.APPROVED, ApprovalDecider.USER), ("approved", "user")),
+        (_ended(ApprovalOutcome.APPROVED, ApprovalDecider.AUTO), ("approved", "auto")),
+        (_ended(ApprovalOutcome.DENIED, ApprovalDecider.USER), ("denied", "user")),
+        (_ended(ApprovalOutcome.EXPIRED), ("expired", None)),
+        (_ended(ApprovalOutcome.CANCELLED), ("cancelled", None)),
+        (_ended(ApprovalOutcome.WITHDRAWN), ("withdrawn", None)),
+        (finished("work:t1:finished", "t1", WorkOutcome.CANCELLED), ("cancelled", None)),
     ],
 )
-async def test_an_approval_cards_label_follows_the_log(
-    mongo_log: MongoConversationLog, ending: Entry, label: str
+async def test_an_approval_cards_outcome_follows_the_log(
+    mongo_log: MongoConversationLog, ending: Entry, label: tuple[str, str | None]
 ) -> None:
     user_id = str(ObjectId())
     work = [started("work:t1", "t1", 1), asked("approval:ap1", "t1", "ap1")]
     turn = _turn("send the mail", cards=(_card("ap1"),))
     conversation_id = await _chat(user_id, [turn[0], *work, *turn[1:]])
 
-    assert await _card_status(user_id, conversation_id) == "pending"
+    assert await _card_status(user_id, conversation_id) == (None, None)
     await mongo_log.append(conversation_id, user_id, ending)
     assert await _card_status(user_id, conversation_id) == label

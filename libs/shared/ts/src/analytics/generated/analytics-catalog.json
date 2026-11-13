@@ -694,19 +694,19 @@
       "class": "ApprovalDecided",
       "owner": "server",
       "domain": "approval",
-      "description": "A user decided one pending approval (decision) or a batch of them (batch, decisions, resolved).",
+      "description": "A user decided one pending approval (outcome) or a batch of them (batch, decisions, resolved).",
       "previous_names": [],
       "budget_per_user_day": 10,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A user decided one pending approval (decision) or a batch of them (batch, decisions, resolved).",
+        "description": "A user decided one pending approval (outcome) or a batch of them (batch, decisions, resolved).",
         "properties": {
-          "decision": {
+          "outcome": {
             "anyOf": [
               {
-                "enum": ["approve", "deny"],
+                "enum": ["approved", "denied"],
                 "type": "string"
               },
               {
@@ -714,7 +714,7 @@
               }
             ],
             "default": null,
-            "title": "Decision"
+            "title": "Outcome"
           },
           "batch": {
             "anyOf": [
@@ -3343,9 +3343,9 @@
         "additionalProperties": false,
         "description": "A gated call was decided: a committed ledger decision, or auto mode's judge settling it with no card.",
         "properties": {
-          "decision": {
+          "outcome": {
             "enum": ["approved", "denied"],
-            "title": "Decision",
+            "title": "Outcome",
             "type": "string"
           },
           "tool_name": {
@@ -3396,7 +3396,7 @@
             "title": "Card Age Seconds"
           }
         },
-        "required": ["decision", "tool_name", "via"],
+        "required": ["outcome", "tool_name", "via"],
         "title": "HilDecisionSubmitted",
         "type": "object"
       }
@@ -3436,14 +3436,14 @@
       "class": "HilRevoked",
       "owner": "server",
       "domain": "hil",
-      "description": "A pending ledger approval was withdrawn by its proposer, the executor, or a cancelled run.",
+      "description": "A pending ledger approval was closed undecided: withdrawn, cancelled by a Stop, or expired.",
       "previous_names": [],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A pending ledger approval was withdrawn by its proposer, the executor, or a cancelled run.",
+        "description": "A pending ledger approval was closed undecided: withdrawn, cancelled by a Stop, or expired.",
         "properties": {
           "approval_id": {
             "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
@@ -3458,9 +3458,14 @@
             "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Revoker",
             "type": "string"
+          },
+          "outcome": {
+            "enum": ["expired", "cancelled", "withdrawn"],
+            "title": "Outcome",
+            "type": "string"
           }
         },
-        "required": ["approval_id", "ledger_version", "revoker"],
+        "required": ["approval_id", "ledger_version", "revoker", "outcome"],
         "title": "HilRevoked",
         "type": "object"
       }

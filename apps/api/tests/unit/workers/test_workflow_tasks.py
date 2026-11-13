@@ -4,7 +4,7 @@ import asyncio
 from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, call, patch
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from bson import ObjectId
 import pytest
@@ -59,10 +59,6 @@ from shared.py.analytics.context import (
     current_analytics_context,
 )
 from tests.helpers import UNKNOWN_USER_ID, users_get
-
-#: The busy-lock value a fire reserves its conversation with. Tests that drive
-#: ``execute_workflow_as_chat`` directly stand in for the fire that took it.
-RESERVATION = ":fire-task-1"
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
@@ -390,14 +386,11 @@ class TestExecuteWorkflowById:
             result = await execute_workflow_by_id(ctx, workflow.id, context=context)
 
         assert "executed successfully" in result
-        # The reservation is minted per fire, so it is asserted by shape: what
-        # matters is that the run is handed the claim its own fire took.
         assert execute_chat.await_args.args == (
             workflow,
             AuthenticatedUser(user_id=workflow.user_id),
             context,
         )
-        assert UUID(execute_chat.await_args.kwargs["reservation"].lstrip(":")).version == 4
         complete_exec.assert_awaited_once_with(
             execution_id=execution_id,
             status="success",
@@ -1024,7 +1017,6 @@ class TestExecuteWorkflowAsChat:
             self._make_workflow(),
             AuthenticatedUser(user_id=USER_ID, timezone="Europe/Paris"),
             context or {},
-            reservation=RESERVATION,
             execution_id="exec_1",
         )
 
@@ -1037,11 +1029,7 @@ class TestExecuteWorkflowAsChat:
         fired: WorkflowFired = boundaries["accept"].await_args.args[3]
         assert fired.id == "workflow:exec_1"
         assert fired.run.workflow == build_selected_workflow_data(self._make_workflow())
-        assert (fired.run.execution_id, fired.run.reservation, fired.run.timezone) == (
-            "exec_1",
-            RESERVATION,
-            "Europe/Paris",
-        )
+        assert (fired.run.execution_id, fired.run.timezone) == ("exec_1", "Europe/Paris")
         assert (fired.run.trigger.type, fired.run.trigger.workflow_id) == ("gmail", "wf_morning")
         # A caller that fires quietly lowers the workflow's own default.
         assert fired.run.trigger.workflow_notify_on_completion is False
@@ -1054,7 +1042,6 @@ class TestExecuteWorkflowAsChat:
             self._make_workflow(),
             AuthenticatedUser(user_id=USER_ID),
             {},
-            reservation=RESERVATION,
             execution_id="exec_1",
             replayed=[RecordedCall(tool_name="REPLAYED")],
         )

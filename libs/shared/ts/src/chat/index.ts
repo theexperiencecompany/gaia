@@ -1,9 +1,13 @@
 export type {
+  ActionResult,
+  ApprovalDecider,
   ApprovalDecision,
   ApprovalDecisionPayload,
+  ApprovalEnd,
+  ApprovalLabels,
+  ApprovalOutcome,
   ApprovalRequestData,
   ApprovalScope,
-  ApprovalStatus,
   BatchApprovalDecisionPayload,
   BatchApprovalDecisionResponse,
   BatchDecisionItem,
@@ -14,6 +18,7 @@ export type {
 } from "./approvals";
 export {
   APPROVAL_REQUEST_TOOL_NAME,
+  approvalLabel,
   approvalOutcomeLabel,
   DEFAULT_HIL_MODE,
   formatApprovalAge,

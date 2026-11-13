@@ -1,4 +1,4 @@
-"""Stop a conversation's background work: the executor run, its inbox, subagents, approvals, browser jobs.
+"""Stop a conversation's background work: the executor run, its inbox, subagents, approvals, browser jobs, replays.
 
 cancel_named_work cancels exactly the tasks it is given: a logged Stop's CancelWork
 names the work it covers, and the cancel_executor tool names the one task the user
@@ -11,8 +11,10 @@ from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_progress import drop_progress
 from app.agents.core.background.executor_queue import decode_raw_item, parse_lock_value
 from app.agents.core.background.running_registry import RunningSubagents, stop_stream
+from app.constants.agents import PLAYBOOK_REPLAY_STREAM_ID_PREFIX
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
+from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import RunningSubagent
 from app.models.work_cancel_models import WorkCancelled
@@ -62,6 +64,7 @@ async def cancel_named_work(
     # Detached work is logged under its own stream: a background subagent's, or a browser job's relay.
     subagents.extend(await RunningSubagents(conversation_id).stop_streams(task_ids))
     browser_jobs = await stop_named_jobs(task_ids)
+    replays = await _stop_named_replays(task_ids)
     # Only once a running named task is gone: closing first would let it ask again.
     approvals = await _close_approvals(conversation_id, user_id, approval_ids)
     work = WorkCancelled(
@@ -72,9 +75,20 @@ async def cancel_named_work(
         subagent_ids=[subagent.subagent_id for subagent in subagents],
         approval_ids=approvals,
         browser_jobs=browser_jobs,
+        replay_ids=replays,
     )
     await _settle(conversation_id, work, redirect)
     return work
+
+
+async def _stop_named_replays(task_ids: Collection[str]) -> list[str]:
+    """Cancel the playbook replays these logged task ids name; each stops before its next call."""
+    replays = [
+        task_id for task_id in task_ids if task_id.startswith(PLAYBOOK_REPLAY_STREAM_ID_PREFIX)
+    ]
+    for stream_id in replays:
+        await stream_manager.cancel_stream(stream_id)
+    return replays
 
 
 async def _held_lock(conversation_id: str) -> str | None:

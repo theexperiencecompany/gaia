@@ -58,8 +58,8 @@ from app.constants.integrations import (
 )
 from app.core.provider_registration import boot_process
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, MongoDB
+from app.db.repositories.approval_ledger import LIVE_ROW_FILTER
 from app.db.repositories.user_integrations import user_integration_repository
-from app.models.hil_models import LIVE_LEDGER_STATES
 from app.models.integration_models import IntegrationAccount, new_account_id
 from app.models.oauth_models import OAuthIntegration
 from app.services.composio.auth_config_resolver import (
@@ -260,7 +260,7 @@ async def migrate_connect_approvals(approvals: AsyncIOMotorCollection, *, apply:
     cursor = approvals.find(
         {
             "tool_name": CONNECT_INTEGRATION_TOOL,
-            "state": {"$in": sorted(str(s) for s in LIVE_LEDGER_STATES)},
+            **LIVE_ROW_FILTER,
             f"args.{_RETIRED_CONNECT_ARG}": {"$exists": True},
         }
     )

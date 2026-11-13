@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.core.stream_manager import stream_manager
-from app.models.hil_models import LedgerState
+from shared.py.analytics.catalog.hil import ApprovalOutcome
 
 from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_request
 
@@ -67,7 +67,8 @@ class TestLedgerPublish:
         from app.services.hil import gate
 
         live = MagicMock(approval_id="ap_live", summary="Send it")
-        live.state = LedgerState.PENDING
+        live.outcome = None
+        live.action = None
         with (
             patch(f"{MODULE}.is_hil_ledger_enabled", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
@@ -130,7 +131,7 @@ class TestLedgerPublishHold:
             frames = get_session(stream_id).tool_events
             assert len(frames) == 1
             assert frames[0]["tool_data"]["data"]["approval_id"] == "ap_hold"
-            assert frames[0]["tool_data"]["data"]["status"] == "pending"
+            assert frames[0]["tool_data"]["data"]["outcome"] is None
         finally:
             self._teardown(stream_id)
 
@@ -254,10 +255,9 @@ class TestLedgerPublishHold:
             row.approval_id = "ap_drop"
             row.proposing_run_id = stream_id
             with (
-                patch.object(ledger_decide, "_persist_decision_status", new=AsyncMock()),
                 patch.object(ledger_decide, "_broadcast_decision", new=AsyncMock()),
             ):
-                await ledger_decide.publish_ledger_revocation(row)
+                await ledger_decide.publish_ledger_revocation(row, ApprovalOutcome.WITHDRAWN)
             from app.agents.core.background.session import get_session
 
             assert get_session(stream_id).tool_events == []
@@ -273,7 +273,7 @@ class TestFlushHeldCards:
         return {
             "tool_data": {
                 "tool_name": "approval_request",
-                "data": {"approval_id": approval_id, "status": "pending"},
+                "data": {"approval_id": approval_id, "outcome": None},
             },
             "_held_approval": True,
         }
@@ -321,7 +321,7 @@ class TestFlushHeldCards:
         stream_id = "stream-flush-drop-test"
         session = self._session_with_held(stream_id)
         row = MagicMock()
-        row.state = "revoked"
+        row.live = False
         try:
             with (
                 patch.object(bridge, "approval_ledger_repository") as repo,

@@ -35,7 +35,7 @@ const IMAGE = { url: "https://img.test/cat.png", prompt: "a cat" };
 const APPROVAL_CARD = {
   tool_name: "approval_request",
   tool_category: "gmail",
-  data: { approval_id: "ap1", status: "pending", summary: "Send the email" },
+  data: { approval_id: "ap1", outcome: null, summary: "Send the email" },
   timestamp: AT,
 };
 const WORK_CARD = toolCallCard("c2", "Checked the invoice");
@@ -134,7 +134,7 @@ describe("a conversation loaded from history, then continued live", () => {
     const byId = new Map(shown.map((row) => [row.message_id, row]));
     expect(byId.get("t1")?.tool_data?.[0]?.data).toMatchObject({
       approval_id: "ap1",
-      status: "approved",
+      outcome: "approved",
     });
     expect(byId.get("r2")?.image_data).toEqual(IMAGE);
     expect(byId.get("r2")?.pinned).toBe(true);
