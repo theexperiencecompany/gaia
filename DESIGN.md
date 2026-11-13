@@ -470,7 +470,8 @@ The shape language is **soft and rounded**. Cards default to `rounded-2xl` (16px
 | Dark cards — outer | `rounded-2xl` (16px) |
 | Dark cards — inner items | `rounded-2xl` or `rounded-xl` (12px) |
 | Images | `rounded-3xl` (24px) |
-| HeroUI buttons, fields, chips | no class: the size's radius; `shape` (`sm`, `md`, `lg`, `xl`, `pill`, `sharp`) to fix it |
+| HeroUI buttons and fields | no class: the size's radius; `shape` (`sm`, `md`, `lg`, `xl`, `pill`, `sharp`) to fix it |
+| HeroUI chips | no class: a pill at weight 400, v2's chip default; `shape` (`sm`, `md`, `lg`) where v2 set `radius` |
 | Badges, pills | `rounded-full` |
 | Context menus | `rounded-xl` (12px) |
 
