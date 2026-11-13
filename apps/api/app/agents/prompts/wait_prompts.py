@@ -5,6 +5,7 @@ to the user as-is.
 """
 
 from types import MappingProxyType
+from typing import Final
 
 from app.constants.waits import WaitCondition
 
@@ -29,4 +30,9 @@ WAIT_MET_ENTRY = (
     "exactly what you would do and ask the user to confirm first.\n"
     "Report what you found the way a person would: lead with the point, in plain words, "
     "without announcing what they did at length."
+)
+
+#: Why a tracked todo woke when the user did what it was waiting on; the note at the top says what.
+WAIT_MET_WAKE_REASON: Final = (
+    "The user did what this todo was waiting on, as the note at the top says."
 )

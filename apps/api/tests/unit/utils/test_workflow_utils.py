@@ -309,6 +309,21 @@ class TestApplyWorkflowEdit:
             run, USER_ID, WaitCondition.WORKFLOW_TRIGGER_CONFIGURED, workflow.id, workflow.title
         )
 
+    async def test_an_edit_the_agent_applies_itself_keeps_nothing_waiting(self) -> None:
+        workflow = _workflow(TriggerConfig(type=TriggerType.MANUAL))
+        draft = _draft(title="Renamed")
+        run = AgentConfigurableView(conversation_id="conv-1", execution_mode="interactive")
+
+        with (
+            patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock),
+            patch("app.utils.workflow_utils.wait_for_user", new_callable=AsyncMock) as wait,
+        ):
+            await apply_workflow_edit(
+                draft=draft, workflow=workflow, user_id=USER_ID, writer=MagicMock(), run=run
+            )
+
+        wait.assert_not_awaited()
+
     async def test_an_integration_trigger_change_alone_is_sent_to_the_editor(self) -> None:
         current = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_email")
         workflow = _workflow(current)

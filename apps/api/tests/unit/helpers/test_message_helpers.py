@@ -629,6 +629,23 @@ class TestWorkflowExecutionMessageBranches:
         assert result.endswith(note)
 
     @pytest.mark.asyncio
+    async def test_a_met_wait_note_keeps_the_replay_evidence_before_it(self) -> None:
+        evidence = "<already_ran>archived 3 threads</already_ran>"
+        note = "The user just connected Gmail."
+
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={
+                    PLAYBOOK_FALLBACK_CONTEXT_KEY: evidence,
+                    WAIT_MET_CONTEXT_KEY: note,
+                },
+            )
+
+        assert result.endswith(f"{evidence}\n\n{note}")
+
+    @pytest.mark.asyncio
     async def test_the_same_evidence_reaches_an_email_triggered_fallback(self) -> None:
         note = "<already_ran>archived 3 threads</already_ran>"
 

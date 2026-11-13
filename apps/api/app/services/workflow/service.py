@@ -406,11 +406,7 @@ class WorkflowService:
                         repeat=trigger_config.cron_expression,  # Enable recurring if cron exists
                     )
 
-            if request.draft_id:
-                await report_wait_met(
-                    user_id, WaitCondition.WORKFLOW_TRIGGER_CONFIGURED, request.draft_id
-                )
-
+            created = workflow
             # Generate steps only if not provided
             if not request.steps:
                 # Generate steps
@@ -419,10 +415,8 @@ class WorkflowService:
                     # integration_ids, so the queued path grounds identically.
                     await WorkflowService._generate_workflow_steps(workflow.id, user_id)
                     # Fetch the updated workflow with generated steps
-                    updated_workflow = await WorkflowService.get_workflow(workflow.id, user_id)
-                    return updated_workflow or workflow
-                success = await WorkflowQueueService.queue_workflow_generation(workflow.id, user_id)
-                if not success:
+                    created = await WorkflowService.get_workflow(workflow.id, user_id) or workflow
+                elif not await WorkflowQueueService.queue_workflow_generation(workflow.id, user_id):
                     log.error(
                         f"{LogTag.WORKFLOW} Failed to queue workflow generation for",
                         id=workflow.id,
@@ -434,8 +428,6 @@ class WorkflowService:
                     id=workflow.id,
                     steps_count=len(request.steps),
                 )
-
-            return workflow
 
         except TriggerRegistrationError as e:
             # Saga compensation: delete the pending workflow
@@ -490,6 +482,13 @@ class WorkflowService:
                         user_id=user_id,
                     )
             raise
+
+        # Outside the try: once the draft's waiter is released, no later failure may roll the workflow back.
+        if request.draft_id:
+            await report_wait_met(
+                user_id, WaitCondition.WORKFLOW_TRIGGER_CONFIGURED, request.draft_id
+            )
+        return created
 
     @staticmethod
     async def get_workflow(workflow_id: str, user_id: str) -> WorkflowWithIntegrations | None:

@@ -1,5 +1,6 @@
 """Waits: something GAIA asked the user to do, and who to pick back up once it is done."""
 
+from datetime import timedelta
 from enum import StrEnum
 from typing import Final
 
@@ -30,6 +31,10 @@ class WaiterKind(StrEnum):
 WAIT_TTL_SECONDS: Final = 7 * ONE_DAY_TTL
 #: The worker job that picks one waiter back up.
 RESUME_WAITER_TASK: Final = "resume_waiter"
+#: Tries before a resume that keeps failing gives up, leaving its wait for the next report.
+RESUME_WAITER_MAX_TRIES: Final = 5
+#: First retry delay of a failed resume; each later try doubles it.
+RESUME_WAITER_RETRY_DELAY: Final = timedelta(seconds=30)
 #: The synthetic trigger name a woken tracked todo run sees as its origin.
 WAIT_MET_TRIGGER: Final = "gaia_wait_met"
 #: The workflow run context key carrying why the run was started.

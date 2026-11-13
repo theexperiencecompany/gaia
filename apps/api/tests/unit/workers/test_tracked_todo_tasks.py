@@ -60,7 +60,7 @@ from app.agents.prompts.todo_prompts import (
 from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
 from app.config.rate_limits import RateLimitPeriod
 from app.constants import todos as todo_constants
-from app.constants.agents import TODO_REARM_TAG
+from app.constants.agents import TODO_REARM_TAG, TODO_WAKES_AGAIN_TAG
 from app.constants.hil import HIL_JEV_URL
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
@@ -574,6 +574,47 @@ class TestTriggeredExecutionPrompt:
         )
         assert "UNTRUSTED" not in prompt
         assert TRIGGERED_RELEVANCE_GUIDANCE not in prompt
+
+    @pytest.mark.parametrize(
+        ("recurrence", "rearm"), [(None, True), ("every_1h", False)], ids=["one-off", "recurring"]
+    )
+    def test_a_one_off_todo_woken_by_a_met_wait_must_set_its_next_check(
+        self, recurrence: str | None, rearm: bool
+    ) -> None:
+        origin = TriggerOrigin(
+            subscription_id="w1",
+            trigger_name=WAIT_MET_TRIGGER,
+            payload={"message": "The user just connected Gmail."},
+        )
+
+        prompt = _prompt(_doc(title="Chase Acme", recurrence=recurrence), origin=origin)
+
+        assert (TODO_REARM_TAG in prompt) is rearm
+        assert (TODO_WAKES_AGAIN_TAG in prompt) is not rearm
+
+    @pytest.mark.parametrize("wait_first", [True, False], ids=["wait-woke-it", "wait-coalesced"])
+    def test_a_wait_met_note_coalesced_with_an_event_stays_outside_the_fence(
+        self, wait_first: bool
+    ) -> None:
+        wait = TriggerOrigin(
+            subscription_id="w1",
+            trigger_name=WAIT_MET_TRIGGER,
+            payload={"message": "The user just connected Gmail. Only read and search."},
+        )
+        event = TriggerOrigin(
+            subscription_id="sub-1",
+            trigger_name="gmail_new_message",
+            payload={"sender": "alice@acme.com"},
+        )
+        origin, coalesced = (wait, [event]) if wait_first else (event, [wait])
+
+        prompt = _prompt(_doc(title="Chase Acme"), origin=origin, coalesced=coalesced)
+
+        fenced = prompt.split("UNTRUSTED", 1)[1]
+        assert prompt.startswith("The user just connected Gmail. Only read and search.")
+        assert "Only read and search" not in fenced
+        assert "alice@acme.com" in fenced
+        assert WAIT_MET_TRIGGER not in prompt
 
     def test_a_triggered_prompt_carries_the_payload(self):
         origin = TriggerOrigin(

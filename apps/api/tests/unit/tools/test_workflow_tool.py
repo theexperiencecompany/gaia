@@ -2,6 +2,7 @@
 
 from typing import Any, Literal, cast
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
 
 import pytest
 
@@ -163,8 +164,10 @@ class TestCreateWorkflow:
             )
 
         (draft_id,) = draft.to_stream_payload.call_args.args
+        assert UUID(draft_id).version == 4
         if waits:
-            _run, user_id, condition, subject_id, name = wait.await_args.args
+            run, user_id, condition, subject_id, name = wait.await_args.args
+            assert run.thread_id == "thread-123"
             assert (user_id, condition, subject_id, name) == (
                 FAKE_USER_ID,
                 WaitCondition.WORKFLOW_TRIGGER_CONFIGURED,

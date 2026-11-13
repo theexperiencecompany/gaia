@@ -321,6 +321,18 @@ async def test_the_agent_runs_when_the_workflow_has_no_playbook() -> None:
     harness.chat.assert_awaited_once()
 
 
+async def test_a_fire_carrying_a_wait_met_note_runs_on_the_agent_that_reads_it() -> None:
+    workflow = _workflow()
+    harness = _Harness(workflow)
+    harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+
+    await _fire_with_context(harness, {"wait_met": "The user just connected Gmail."})
+
+    harness.playbook_run.assert_not_awaited()
+    harness.chat.assert_awaited_once()
+    assert harness.chat.await_args.args[2]["wait_met"] == "The user just connected Gmail."
+
+
 @pytest.mark.parametrize("status", [PlaybookRunStatus.SUSPECT, PlaybookRunStatus.FAILED])
 async def test_a_distrusted_playbook_sends_the_fire_to_the_agent_to_heal(
     status: PlaybookRunStatus,

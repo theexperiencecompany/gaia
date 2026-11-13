@@ -22,7 +22,7 @@ from app.constants.todos import (
     TODO_RUN_FINISH_MAX_TRIES,
     TODO_RUN_FINISH_TASK,
 )
-from app.constants.waits import RESUME_WAITER_TASK
+from app.constants.waits import RESUME_WAITER_MAX_TRIES, RESUME_WAITER_TASK
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before the patched SDKs are used
 from app.workers.browser_worker import browser_reaper_cron
 from app.workers.config.worker_settings import WorkerFunction, WorkerSettings
@@ -114,7 +114,9 @@ _prune_checkpoint_versions = arq_task(prune_checkpoint_versions)
 # Named from the constant its per-occurrence job ids are built from.
 _execute_tracked_todo = func(arq_task(execute_tracked_todo), name=EXECUTE_TRACKED_TODO_TASK)
 _provision_inbox_desk = func(arq_task(provision_inbox_desk_task), name=PROVISION_INBOX_DESK_TASK)
-_resume_waiter = func(arq_task(resume_waiter), name=RESUME_WAITER_TASK)
+_resume_waiter = func(
+    arq_task(resume_waiter), name=RESUME_WAITER_TASK, max_tries=RESUME_WAITER_MAX_TRIES
+)
 _resume_tracked_todo = arq_task(resume_tracked_todo)
 _dispatch_todo_subscriptions = arq_task(dispatch_todo_subscriptions)
 _safety_net_check_orphaned_todos = arq_task(safety_net_check_orphaned_todos)

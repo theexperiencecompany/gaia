@@ -18,9 +18,9 @@ USER = "6812f0b3c9a14e2b7d5a91cc"
 CONNECTED = WaitCondition.INTEGRATION_CONNECTED
 
 
-def _wait(waiter: WaiterKind, waiter_id: str) -> WaitDocument:
+def _wait(waiter: WaiterKind, waiter_id: str, wait_id: str) -> WaitDocument:
     return WaitDocument(
-        id="w1",
+        id=wait_id,
         user_id=USER,
         condition=CONNECTED,
         subject_id="gmail",
@@ -104,25 +104,25 @@ class TestWaitForUser:
 
 
 class TestReportWaitMet:
-    async def test_each_waiter_gets_its_own_resume_job(self) -> None:
-        waits = [_wait(WaiterKind.CHAT, "conv-1"), _wait(WaiterKind.TODO, "todo-1")]
+    async def test_each_waiter_gets_its_own_resume_job_naming_its_wait(self) -> None:
+        waits = [_wait(WaiterKind.CHAT, "conv-1", "w1"), _wait(WaiterKind.TODO, "todo-1", "w2")]
         pool = MagicMock()
         with (
-            patch(f"{MODULE}.wait_repository.take_met", AsyncMock(return_value=waits)) as take,
+            patch(f"{MODULE}.wait_repository.find_met", AsyncMock(return_value=waits)) as find,
             patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
             patch(f"{MODULE}.enqueue_worker_job", AsyncMock()) as enqueue,
         ):
             await report_wait_met(USER, CONNECTED, "gmail")
 
-        take.assert_awaited_once_with(USER, CONNECTED, "gmail")
+        find.assert_awaited_once_with(USER, CONNECTED, "gmail")
         assert [call.args for call in enqueue.await_args_list] == [
-            (pool, RESUME_WAITER_TASK, waits[0].model_dump_json()),
-            (pool, RESUME_WAITER_TASK, waits[1].model_dump_json()),
+            (pool, RESUME_WAITER_TASK, USER, "w1"),
+            (pool, RESUME_WAITER_TASK, USER, "w2"),
         ]
 
     async def test_a_condition_nobody_waited_on_queues_nothing(self) -> None:
         with (
-            patch(f"{MODULE}.wait_repository.take_met", AsyncMock(return_value=[])),
+            patch(f"{MODULE}.wait_repository.find_met", AsyncMock(return_value=[])),
             patch(f"{MODULE}.enqueue_worker_job", AsyncMock()) as enqueue,
         ):
             await report_wait_met(USER, CONNECTED, "gmail")
@@ -132,15 +132,17 @@ class TestReportWaitMet:
     async def test_a_failure_is_logged_and_never_fails_the_change_that_met_it(self) -> None:
         with (
             patch(
-                f"{MODULE}.wait_repository.take_met",
+                f"{MODULE}.wait_repository.find_met",
                 AsyncMock(side_effect=ConnectionError("mongo down")),
             ),
             patch(f"{MODULE}.log") as log,
         ):
             await report_wait_met(USER, CONNECTED, "gmail")
 
-        log.error.assert_called_once()
-        assert log.error.call_args.args == (
+        log.error.assert_called_once_with(
             f"{LogTag.AGENT} Failed to queue the waiters on a met condition",
+            condition="integration_connected",
+            subject_id="gmail",
+            error="mongo down",
+            error_type="ConnectionError",
         )
-        assert log.error.call_args.kwargs["subject_id"] == "gmail"

@@ -1,7 +1,7 @@
 """Waits: remember who to pick back up when GAIA asks the user to do something, and queue them once done.
 
 An ask site calls wait_for_user with the run that asked; the site where the thing gets done
-calls report_wait_met. Each claimed wait becomes one resume_waiter job (wait_tasks), which
+calls report_wait_met. Each wait becomes one resume_waiter job (wait_tasks), which claims it and
 picks the waiter back up however its kind resumes: a chat, a tracked todo or a workflow.
 """
 
@@ -53,14 +53,18 @@ async def wait_for_user(
 
 
 async def report_wait_met(user_id: str, condition: WaitCondition, subject_id: str) -> None:
-    """Queue every waiter on the subject; never fails the caller, whose change already committed."""
+    """Queue a resume for every waiter on the subject; never fails the caller, whose change already committed.
+
+    The waits stay on file until their job claims them, so one that could not be queued is
+    picked up by the next report instead of being lost.
+    """
     try:
-        waits = await wait_repository.take_met(user_id, condition, subject_id)
+        waits = await wait_repository.find_met(user_id, condition, subject_id)
         if not waits:
             return
         pool = await RedisPoolManager.get_pool()
         for wait in waits:
-            await enqueue_worker_job(pool, RESUME_WAITER_TASK, wait.model_dump_json())
+            await enqueue_worker_job(pool, RESUME_WAITER_TASK, user_id, wait.id)
     except Exception as e:
         log.error(
             f"{LogTag.AGENT} Failed to queue the waiters on a met condition",

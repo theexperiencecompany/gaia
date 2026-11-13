@@ -117,3 +117,10 @@ class TestReplyParsing:
 
         assert result.mode == "clarifying"
         assert result.message == reply
+
+
+def test_the_stream_payload_carries_the_draft_id_the_create_sends_back() -> None:
+    result = parse_subagent_response(_reply())
+
+    assert result.draft is not None
+    assert result.draft.to_stream_payload("draft-1")["workflow_draft"]["draft_id"] == "draft-1"
