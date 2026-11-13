@@ -38,6 +38,7 @@ from app.models.workflow_models import TriggerType
 from app.models.workflow_trigger_models import WorkflowTriggerContext
 from app.services.conversation.reducer import reduce
 from shared.py.analytics.catalog.attribution import Trigger
+from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
 from shared.py.analytics.context import worker_context
 
 EMPTY = ConversationState(
@@ -123,7 +124,12 @@ def asked(entry_id: str, task_id: str, approval_id: str) -> ApprovalRequested:
 
 
 def decided(entry_id: str, approval_id: str) -> ApprovalDecided:
-    return ApprovalDecided(id=entry_id, approval_id=approval_id, decision="approve")
+    return ApprovalDecided(
+        id=entry_id,
+        approval_id=approval_id,
+        outcome=ApprovalOutcome.APPROVED,
+        decider=ApprovalDecider.USER,
+    )
 
 
 def finished(entry_id: str, task_id: str, outcome: WorkOutcome = WorkOutcome.DONE) -> WorkFinished:

@@ -179,7 +179,7 @@ from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.chat import ChatMessageCancelled, ChatMessageCompleted
-from shared.py.analytics.catalog.hil import ApprovalOutcome
+from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
 from shared.py.analytics.catalog.workflows import WorkflowExecuted
 from shared.py.analytics.context import (
     AnalyticsContext,
@@ -727,7 +727,7 @@ async def test_work_waiting_on_an_approval_no_store_holds_is_settled_once(
     decided, finished = await _settled_by_sweeps(rig)
 
     state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
-    assert [(d.approval_id, d.decision) for d in decided] == [("a1", "abandon")]
+    assert [(d.approval_id, d.outcome) for d in decided] == [("a1", "withdrawn")]
     assert [(f.task_id, f.outcome) for f in finished] == [("t1", WorkOutcome.FAILED)]
     assert state.work == ()
     assert state.display is DisplayState.IDLE
@@ -757,9 +757,10 @@ async def test_work_waiting_on_an_expired_approval_is_settled_once_and_its_recor
     decided, finished = await _settled_by_sweeps(rig)
 
     record = await hil_approval_repository.get("a1")
-    assert [(d.approval_id, d.decision) for d in decided] == [("a1", "timeout")]
+    assert [(d.approval_id, d.outcome) for d in decided] == [("a1", "expired")]
     assert [(f.task_id, f.outcome) for f in finished] == [("t1", WorkOutcome.FAILED)]
-    assert record is not None and record.outcome is not None
+    # The record ends the way the log says it did, not as a Stop.
+    assert record is not None and record.outcome == "expired"
 
 
 @pytest.mark.service
@@ -775,8 +776,12 @@ async def test_an_approval_holds_the_work_until_the_user_decides(
         rig.conversation_id, rig.user_id, "t1", "a1", summary="Send the invoice", expires_at=None
     )
     waiting = await rig.ports.log.state(rig.conversation_id, rig.user_id)
-    await record_approval_decided(rig.conversation_id, rig.user_id, "a1", "approve")
-    await record_approval_decided(rig.conversation_id, rig.user_id, "a1", "approve")
+    await record_approval_decided(
+        rig.conversation_id, rig.user_id, "a1", ApprovalOutcome.APPROVED, ApprovalDecider.USER
+    )
+    await record_approval_decided(
+        rig.conversation_id, rig.user_id, "a1", ApprovalOutcome.APPROVED, ApprovalDecider.USER
+    )
     decided = await rig.ports.log.state(rig.conversation_id, rig.user_id)
     assert [work.pending_approvals for work in waiting.work] == [frozenset({"a1"})]
     assert waiting.display is DisplayState.AWAITING_APPROVAL
@@ -1125,7 +1130,9 @@ class _Spawned:
 
 async def _approve_after_the_turn(rig: Rig, spawned: _Spawned) -> int:
     """Decide a ledger approval once its turn is over, as decide_ledger does; return the decision's seq."""
-    await record_approval_decided(rig.conversation_id, rig.user_id, "a1", "approve")
+    await record_approval_decided(
+        rig.conversation_id, rig.user_id, "a1", ApprovalOutcome.APPROVED, ApprovalDecider.USER
+    )
     with patch.object(executor_runner, "_spawn_detached_run", spawned.spawn):
         await deliver_to_executor(
             rig.conversation_id,

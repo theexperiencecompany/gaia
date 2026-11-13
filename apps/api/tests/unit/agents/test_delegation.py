@@ -222,7 +222,7 @@ def _blocking(outcomes: list[Any], recovered: SubagentOutcome | None = None) -> 
         patch(f"{MODULE}.current_stream_writer", return_value=writer),
         patch(f"{MODULE}.execute_subagent_stream", new=execute),
         patch(f"{MODULE}.recover_from_checkpoint", new=AsyncMock(return_value=recovered)),
-        patch(f"{MODULE}.resume_for_gate", return_value={"status": "approved"}),
+        patch(f"{MODULE}.resume_for_gate", return_value={"outcome": "approved"}),
     ):
         yield SimpleNamespace(writer=writer, execute=execute)
 
@@ -488,7 +488,7 @@ class TestABackgroundRunThatParks:
         assert execute.await_count == 2
         resume = execute.await_args_list[1].kwargs["resume"]
         assert resume.resume == {
-            "status": "approved",
+            "outcome": "approved",
             "feedback": None,
             "scope": "once",
             "approval_id": "appr-1",
@@ -524,7 +524,7 @@ class TestABlockingRunDrivesItsGraph:
             assert segment["stream_writer"] is h.writer
             assert segment["integration_metadata"] is metadata
             assert segment["subagent_id"] == "row-1"
-        assert second["resume"] == Command(resume={"status": "approved"})
+        assert second["resume"] == Command(resume={"outcome": "approved"})
 
     async def test_a_replay_probes_its_own_thread_before_running(self, redis: Any) -> None:
         run = _delegation()
@@ -644,7 +644,7 @@ class TestResumingABackgroundRun:
         await RunningSubagents(CONVERSATION).claim(_running())
         execute = AsyncMock()
         with patch(f"{MODULE}.execute_subagent_stream", new=execute):
-            resumed = await delegation.resume_background(_delegation(), {"status": "approved"})
+            resumed = await delegation.resume_background(_delegation(), {"outcome": "approved"})
             await _drain()
 
         assert resumed is False
@@ -660,7 +660,7 @@ class TestResumingABackgroundRun:
             return SubagentOutcome(text="sent")
 
         with patch(f"{MODULE}.execute_subagent_stream", new=_run):
-            assert await delegation.resume_background(_delegation(), {"status": "approved"})
+            assert await delegation.resume_background(_delegation(), {"outcome": "approved"})
             await _drain()
 
         assert seen[0] is not None
@@ -680,7 +680,7 @@ class TestResumingABackgroundRun:
             return SubagentOutcome(text="sent")
 
         with patch(f"{MODULE}.execute_subagent_stream", new=_run):
-            assert await delegation.resume_background(_delegation(), {"status": "approved"})
+            assert await delegation.resume_background(_delegation(), {"outcome": "approved"})
             await _drain()
 
         ((own_stream_id, _),) = own_stream.items()
@@ -696,7 +696,7 @@ class TestResumingABackgroundRun:
             f"{MODULE}.execute_subagent_stream",
             new=AsyncMock(return_value=SubagentOutcome(text="")),
         ):
-            await delegation.resume_background(_delegation(), {"status": "approved"})
+            await delegation.resume_background(_delegation(), {"outcome": "approved"})
             await _drain()
 
         client_edges.deliver.assert_not_awaited()

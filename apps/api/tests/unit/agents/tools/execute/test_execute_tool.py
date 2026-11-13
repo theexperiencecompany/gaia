@@ -25,7 +25,7 @@ from app.agents.tools.execute.execute_tool import build_execute_tool, execute
 from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.constants.execute import EXECUTE_TOOL_NAME
 from app.models.execute_models import DispatchError, DispatchErrorKind
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
+from shared.py.analytics.catalog.hil import ActionResult
 
 MODULE = "app.agents.tools.execute.execute_tool"
 SENT_AT = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)
@@ -64,7 +64,6 @@ class TestDispatchTicketNames:
         redeemed = RedeemResult(
             ok=True,
             approval_id="ap_1",
-            outcome=ApprovalOutcome.APPROVED,
             action=ActionResult.EXECUTED,
             detail="sent",
         )
@@ -168,7 +167,6 @@ class TestDispatchTicketNames:
         redeemed = RedeemResult(
             ok=True,
             approval_id="ap_1",
-            outcome=ApprovalOutcome.APPROVED,
             action=ActionResult.EXECUTED,
             detail="sent",
         )

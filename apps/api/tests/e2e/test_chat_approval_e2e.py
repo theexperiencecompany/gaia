@@ -59,10 +59,12 @@ def _comms() -> list[Any]:
     return [call("call_executor", {"task": ASK}, call_id="tc_exec"), "On it.", NARRATED, NARRATED]
 
 
-async def _ledger(mongo_db: AsyncIOMotorDatabase, approval_id: str) -> str:
+async def _ledger(
+    mongo_db: AsyncIOMotorDatabase, approval_id: str
+) -> tuple[str | None, str | None]:
     row = await mongo_db["approval_ledger"].find_one({"approval_id": approval_id})
     assert row is not None
-    return str(row["state"])
+    return row["outcome"], row["action"]
 
 
 async def _ask_and_park(
@@ -98,7 +100,7 @@ class TestAnApprovalAChatMessagesWorkAsksFor:
         assert "flowchart" in requested.summary.lower()
         # The gated call did not run: the work ended on the proposal, and the ledger waits.
         assert finished.report == WAITING
-        assert await _ledger(mongo_db, requested.approval_id) == "pending"
+        assert await _ledger(mongo_db, requested.approval_id) == (None, None)
         assert entries_of(parked, ApprovalDecided) == []
 
     async def test_approving_logs_the_decision_and_resumes_the_work(
@@ -118,12 +120,17 @@ class TestAnApprovalAChatMessagesWorkAsksFor:
             )
             await drain_background_runs()
 
-        assert decided.json()["status"] == "approved"
+        assert decided.json()["outcome"] == "approved"
         shown = await replayed(conversation_id, owner.user_id)
         (decision,) = entries_of(shown, ApprovalDecided)
-        assert (decision.approval_id, decision.decision) == (requested.approval_id, "approve")
+        assert (decision.approval_id, decision.outcome, decision.decider) == (
+            requested.approval_id,
+            "approved",
+            "user",
+        )
         assert [finished.report for finished in entries_of(shown, WorkFinished)] == [WAITING, DRAWN]
-        assert await _ledger(mongo_db, requested.approval_id) == "executed"
+        # The same outcome on the ledger row, and the action's result beside it.
+        assert await _ledger(mongo_db, requested.approval_id) == ("approved", "executed")
 
     async def test_denying_logs_the_decision_and_tells_the_model(
         self,
@@ -145,11 +152,11 @@ class TestAnApprovalAChatMessagesWorkAsksFor:
             )
             await drain_background_runs()
 
-        assert decided.json()["status"] == "denied"
+        assert decided.json()["outcome"] == "denied"
         shown = await replayed(conversation_id, owner.user_id)
         (decision,) = entries_of(shown, ApprovalDecided)
-        assert decision.decision == "deny"
-        assert await _ledger(mongo_db, requested.approval_id) == "denied"
+        assert (decision.outcome, decision.decider) == ("denied", "user")
+        assert await _ledger(mongo_db, requested.approval_id) == ("denied", None)
         told = " ".join(str(m.content) for prompt in executor.prompts[before:] for m in prompt)
         assert FEEDBACK in told
         assert entries_of(shown, WorkFinished)[-1].report.startswith(SKIPPED)

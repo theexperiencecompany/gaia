@@ -51,6 +51,7 @@ from app.models.conversation_log_models import (
 )
 from app.models.conversation_send_models import ConversationEvent
 from app.models.tool_data_models import ToolDataEntry
+from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
 
 pytestmark = pytest.mark.unit
 
@@ -254,22 +255,36 @@ class TestApprovals:
         reader = read(user(), work_started(2), entry(3, requested))
         assert reader.awaiting_approval
 
-        reader.feed(entry(4, ApprovalDecided(id="ad", approval_id="ap1", decision="approve")))
+        reader.feed(
+            entry(
+                4,
+                ApprovalDecided(
+                    id="ad",
+                    approval_id="ap1",
+                    outcome=ApprovalOutcome.APPROVED,
+                    decider=ApprovalDecider.USER,
+                ),
+            )
+        )
         assert not reader.awaiting_approval
         assert reader.turn().approvals == [
-            ApprovalSeen(approval_id="ap1", status="pending"),
-            ApprovalSeen(approval_id="ap1", status="approved"),
+            ApprovalSeen(approval_id="ap1", outcome="pending"),
+            ApprovalSeen(approval_id="ap1", outcome="approved", decider="user"),
         ]
 
     def test_an_auto_approved_card_is_seen_without_a_request(self) -> None:
-        auto = card("approval_request", {"approval_id": "ap2", "status": "auto_approved"})
+        auto = card(
+            "approval_request", {"approval_id": "ap2", "outcome": "approved", "decider": "auto"}
+        )
         reader = read(
             user(),
             work_started(2),
             WorkDeltaFrame(task_id=TASK, index=0, payload=ToolDataEvent(tool_data=auto)),
         )
 
-        assert reader.turn().approvals == [ApprovalSeen(approval_id="ap2", status="auto_approved")]
+        assert reader.turn().approvals == [
+            ApprovalSeen(approval_id="ap2", outcome="approved", decider="auto")
+        ]
         assert not reader.awaiting_approval
 
 

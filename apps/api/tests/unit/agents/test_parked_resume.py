@@ -45,7 +45,8 @@ def _recipe(kind: SubagentKind) -> SubagentResumeItem:
 
 def _decided(recipe: SubagentResumeItem, thread: str | None = THREAD) -> HILApprovalRecord:
     return make_record(
-        status="approved",
+        outcome="approved",
+        decider="user",
         resume_item=None,
         subagent_thread_id=thread,
         subagent_resume=recipe,
@@ -83,7 +84,7 @@ class TestResumeParkedSubagent:
         )
         resume.assert_awaited_once_with(
             rebuilt,
-            {"status": "approved", "feedback": None, "scope": "once", "approval_id": "appr-1"},
+            {"outcome": "approved", "feedback": None, "scope": "once", "approval_id": "appr-1"},
         )
 
     async def test_a_retired_handoff_recipe_is_refused_rather_than_rebuilt_as_a_spawn(

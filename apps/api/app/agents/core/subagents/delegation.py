@@ -414,7 +414,7 @@ async def _park(delegation: Delegation, interrupt: HilInterruptPayload) -> None:
         return
     for approval_id in approval_ids:
         record = await get_approval(approval_id)
-        if record is None or not record.status.settled or record.resumed_at is not None:
+        if record is None or record.outcome is None or record.resumed_at is not None:
             continue
         if await resume_background(delegation, record.resume_payload()):
             await mark_resumed(approval_id)
