@@ -41,6 +41,8 @@ const CANONICAL_REDIRECT_PAIRS = [
   ["/learn/embedding", "/learn/embeddings"],
   ["/learn/vector-embeddings", "/learn/embeddings"],
   ["/learn/large-language-model", "/learn/llm"],
+  // /manifesto rendered the same About component as /about
+  ["/manifesto", "/about"],
   // /automate reverse-order combos, wave-2 extension (alphabetical canonical):
   ["/automate/drive-asana", "/automate/asana-drive"],
   ["/automate/figma-asana", "/automate/asana-figma"],

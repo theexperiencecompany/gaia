@@ -140,6 +140,7 @@ const AUTHOR = { name: "Aryan", role: "Founder", avatar: "/a.png" };
 const blog = (slug: string, featured: boolean): BlogPostMeta => ({
   slug,
   title: `Post ${slug}`,
+  description: `What post ${slug} covers.`,
   date: "2026-01-01",
   authors: [AUTHOR],
   category: "Engineering",

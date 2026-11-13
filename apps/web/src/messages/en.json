@@ -138,7 +138,7 @@
     "all_category_terms": "All {count} {category} terms",
     "category_page_subtitle": "{count} {category} terms explained in plain English, and how GAIA puts each one to work.",
     "category_meta_title": "{category} Glossary: {count} Terms Explained",
-    "category_meta_description": "{count} {category} terms explained in plain English, with how each one powers a proactive AI assistant like GAIA."
+    "category_meta_description": "{count} {category} terms explained in plain English, with examples of how each one powers a proactive AI assistant like GAIA."
   },
   "marketplace": {
     "breadcrumb": "Marketplace"

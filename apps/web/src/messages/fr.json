@@ -108,7 +108,7 @@
     "app_page_title": "Automatisations {app}",
     "app_page_subtitle": "Toutes les façons dont GAIA relie {app} à vos autres outils, et le travail qu'il fait pour vous entre eux.",
     "app_meta_title": "Automatisations {app} : {count, plural, one {# workflow} other {# workflows}} avec GAIA",
-    "app_meta_description": "Toutes les façons dont GAIA relie {app} à vos autres outils : {count, plural, one {# automatisation} other {# automatisations}}, sans écrire de code."
+    "app_meta_description": "Toutes les façons dont GAIA relie {app} à vos autres outils : {count, plural, one {# automatisation} other {# automatisations}}, chacune prête à travailler pour vous, sans code."
   },
   "glossary": {
     "breadcrumb": "Glossaire",

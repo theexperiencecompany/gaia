@@ -10,7 +10,10 @@ import {
   getExploreWorkflowsServer,
   getPublicWorkflowServer,
 } from "@/features/workflows/lib/serverWorkflowsApi";
-import { findCopiedTemplate } from "@/features/workflows/lib/templateCopies";
+import {
+  findCopiedTemplate,
+  withoutTemplateCopies,
+} from "@/features/workflows/lib/templateCopies";
 import { prerenderedMarketingParams } from "@/lib/selfhost";
 import { generateBreadcrumbSchema, siteConfig } from "@/lib/seo";
 import type { UseCase } from "@/types/features/workflowTypes";
@@ -22,6 +25,7 @@ import {
 const getExploreWorkflowsCached = cache((limit: number) =>
   getExploreWorkflowsServer(limit),
 );
+const getAllCommunityWorkflowsCached = cache(getAllCommunityWorkflowsServer);
 
 interface PageProps {
   params: Promise<{ readonly slug: string }>;
@@ -202,10 +206,15 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
 
   const display = displayFromResolved(useCase, communityWorkflow);
   const structuredData = generateUseCaseStructuredData({ ...display, slug });
-  const related = relatedUseCases(
-    { slug: data.slug ?? slug },
-    await getExploreWorkflowsCached(200),
-  );
+  const [explore, community] = await Promise.all([
+    getExploreWorkflowsCached(200),
+    getAllCommunityWorkflowsCached(),
+  ]);
+  // Community workflows join the rotation so each is linked from its neighbours, not only the hub.
+  const related = relatedUseCases({ slug: data.slug ?? slug }, [
+    ...explore,
+    ...withoutTemplateCopies(community, explore),
+  ]);
 
   const breadcrumbSchema = generateBreadcrumbSchema([
     { name: "Home", url: siteConfig.url },

@@ -559,7 +559,7 @@ export const AI_INTELLIGENCE_FEATURES: FeatureData[] = [
       "Charts, tables, timelines, and other interactive components inline",
     headline: "AI answers that look like dashboards.",
     subheadline:
-      "GAIA generates 36 types of interactive components inline (bar charts, timelines, comparison tables, file trees, status cards, and more) directly in the conversation.",
+      "GAIA generates 36 types of interactive components (bar charts, timelines, comparison tables, file trees, status cards and more) right in the conversation.",
     benefits: [
       {
         icon: "GridViewIcon",

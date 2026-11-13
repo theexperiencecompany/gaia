@@ -8,8 +8,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { appConfig, footerSections } from "@/config/appConfig";
 import { defaultLocale, locales } from "@/i18n/config";
 import { canonicalHref, isRedirectedPath } from "@/lib/canonicalLinks";
+import { MARKETING_PAGES } from "@/lib/marketingPages";
+import { siteConfig } from "@/lib/seo";
+import { getSitemapEntries, SITEMAP_IDS } from "@/lib/sitemapData";
 
 import {
   CANONICAL_REDIRECT_PAIRS,
@@ -121,5 +125,35 @@ describe("canonical redirects", () => {
         permanent: true,
       });
     }
+  });
+
+  it("308s /manifesto, the About page under a second URL, to /about in every locale", () => {
+    const rows = expandCanonicalRedirects();
+    expect(rows).toContainEqual({
+      source: "/manifesto",
+      destination: "/about",
+      permanent: true,
+    });
+    for (const locale of locales.filter((l) => l !== defaultLocale)) {
+      expect(rows).toContainEqual({
+        source: `/${locale}/manifesto`,
+        destination: `/${locale}/about`,
+        permanent: true,
+      });
+    }
+  });
+
+  it("never lists a redirected path in the nav, footer, marketing pages or static sitemap", async () => {
+    const navLinks = Object.values(appConfig.links).flat();
+    const footerLinks = footerSections.flatMap((section) => section.links);
+    const sitemapPaths = (await getSitemapEntries(SITEMAP_IDS.STATIC)).map(
+      (entry) => entry.url.replace(siteConfig.url, "") || "/",
+    );
+    const listed = [
+      ...[...navLinks, ...footerLinks].map((link) => link.href),
+      ...MARKETING_PAGES.map((page) => page.path),
+      ...sitemapPaths,
+    ];
+    expect(listed.filter(isRedirectedPath)).toEqual([]);
   });
 });

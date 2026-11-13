@@ -13,7 +13,7 @@ import AiChiefOfStaffClient from "./AiChiefOfStaffClient";
 export const metadata: Metadata = generatePageMetadata({
   title: "AI Chief of Staff: Your Proactive AI That Runs Your Day",
   description:
-    "GAIA is your AI chief of staff: it reads your inbox, prepares briefings, schedules meetings, tracks follow-ups, and manages your day proactively, before you ask.",
+    "GAIA is your AI chief of staff: it reads your inbox, prepares briefings, schedules meetings, tracks follow-ups and manages your day proactively, before you ask.",
   path: "/ai-chief-of-staff",
   keywords: [
     "AI chief of staff",
@@ -55,7 +55,7 @@ const faqs = [
 export default function AiChiefOfStaffPage() {
   const webPageSchema = generateWebPageSchema(
     "AI Chief of Staff: Your Proactive AI That Runs Your Day | GAIA",
-    "GAIA is your AI chief of staff: it reads your inbox, prepares briefings, schedules meetings, tracks follow-ups, and manages your day proactively, before you ask.",
+    "GAIA is your AI chief of staff: it reads your inbox, prepares briefings, schedules meetings, tracks follow-ups and manages your day proactively, before you ask.",
     `${siteConfig.url}/ai-chief-of-staff`,
     [
       { name: "Home", url: siteConfig.url },
