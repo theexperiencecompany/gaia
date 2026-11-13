@@ -40,24 +40,22 @@ interface Gate {
   open: () => void;
 }
 
-/** Marked fulfilled so `use` reads it synchronously instead of suspending for a microtask. */
-const OPEN_GATE: Gate = {
-  promise: Object.assign(Promise.resolve(), {
-    status: "fulfilled",
-    value: undefined,
-  }),
-  open: () => undefined,
-};
+/** Mark a promise fulfilled so `use` reads it synchronously instead of suspending for a microtask. */
+function markFulfilled(promise: TrackedPromise): void {
+  promise.status = "fulfilled";
+  promise.value = undefined;
+}
+
+const OPEN_GATE: Gate = { promise: Promise.resolve(), open: () => undefined };
+markFulfilled(OPEN_GATE.promise);
 
 /** Opening marks the promise fulfilled first, so a hydration React runs synchronously inside an event reads it. */
 function createClosedGate(): Gate {
   const { promise, resolve } = Promise.withResolvers<void>();
-  const tracked: TrackedPromise = promise;
   return {
-    promise: tracked,
+    promise,
     open: () => {
-      tracked.status = "fulfilled";
-      tracked.value = undefined;
+      markFulfilled(promise);
       resolve();
     },
   };
