@@ -251,6 +251,33 @@ async def notify_account_linked(platform: str, user_id: str) -> OutboundResult:
     )
 
 
+async def publish_outbound_file(
+    platform: ConversationSource,
+    user_id: str,
+    conversation_id: str,
+    path: str,
+    filename: str,
+    content_type: str | None = None,
+    caption: str | None = None,
+) -> bool:
+    """Enqueue a session artifact for the bot to deliver to user_id; it fetches the bytes by (conversation_id, path).
+
+    Best-effort: unknown platform, unlinked account, unavailable broker, and
+    publish errors all return False without raising.
+    """
+    prep = await _prepare(platform, user_id, "publish_outbound_file")
+    if isinstance(prep, OutboundResult):
+        return False
+    attachment = OutboundAttachment(
+        conversation_id=conversation_id,
+        path=path,
+        filename=filename,
+        content_type=content_type,
+        caption=caption,
+    )
+    return await _enqueue_attachment(platform, user_id, "publish_outbound_file", prep, attachment)
+
+
 async def publish_outbound_photo(
     platform: ConversationSource, user_id: str, url: str, filename: str, caption: str | None = None
 ) -> bool:
@@ -264,14 +291,8 @@ async def publish_outbound_photo(
     prep = await _prepare(platform, user_id, "publish_outbound_photo")
     if isinstance(prep, OutboundResult):
         return False
-    queue_name, destination_id, publisher = prep
-
     try:
-        envelope = OutboundMessageEnvelope(
-            platform=platform.value,
-            destination_id=destination_id,
-            attachment=OutboundAttachment(url=url, filename=filename, caption=caption),
-        )
+        attachment = OutboundAttachment(url=url, filename=filename, caption=caption)
     except ValidationError:
         # A rejected URL (non-https, non-own-API origin) must degrade to the
         # caption text, never to silence: the caller falls back on False.
@@ -279,17 +300,32 @@ async def publish_outbound_photo(
             "publish_outbound_photo: attachment URL rejected",
             platform=platform.value,
             user_id=user_id,
-            destination_hash=hash_platform_user_id(destination_id),
+            destination_hash=hash_platform_user_id(prep[1]),
             filename=filename,
         )
         return False
+    return await _enqueue_attachment(platform, user_id, "publish_outbound_photo", prep, attachment)
+
+
+async def _enqueue_attachment(
+    platform: ConversationSource,
+    user_id: str,
+    operation: str,
+    prep: tuple[str, str, RabbitMQPublisher],
+    attachment: OutboundAttachment,
+) -> bool:
+    queue_name, destination_id, publisher = prep
+    envelope = OutboundMessageEnvelope(
+        platform=platform.value, destination_id=destination_id, attachment=attachment
+    )
     try:
         await publisher.publish_outbound(
             queue_name, envelope.model_dump_json().encode(), expiration=OUTBOUND_TTL_SECONDS_DEFAULT
         )
     except Exception as e:
         log.error(
-            "publish_outbound_photo: publish failed",
+            "outbound attachment publish failed",
+            operation=operation,
             **_envelope_fields(envelope, user_id),
             error=str(e),
             error_type=type(e).__name__,
@@ -305,9 +341,10 @@ async def publish_outbound_photo(
         return False
 
     log.info(
-        "outbound_photo_published",
+        "outbound_attachment_published",
+        operation=operation,
         **_envelope_fields(envelope, user_id),
         queue=queue_name,
-        filename=filename,
+        filename=attachment.filename,
     )
     return True

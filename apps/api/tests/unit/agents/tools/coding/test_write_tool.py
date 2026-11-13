@@ -22,6 +22,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.agents.tools.coding._artifacts import WrittenFile
 from app.agents.tools.coding.write_tool import (
     MAX_CONTENT_BYTES,
     _maybe_write_task_file,
@@ -112,7 +113,7 @@ async def test_writes_session_scratch_file_with_exact_payloads(content: str, n_b
         session_id=SESSION_ID,
     )
     mock_publish.assert_awaited_once_with(
-        USER_ID, MountRole.SCRATCH, SESSION_ID, SCRATCH_PATH, content, n_bytes, mtime
+        WrittenFile(USER_ID, MountRole.SCRATCH, SESSION_ID, SCRATCH_PATH), content, n_bytes, mtime
     )
 
 
@@ -131,7 +132,7 @@ async def test_writes_absolute_path_without_session_conv() -> None:
 
     assert result == "Wrote 2 bytes to /workspace/notes.md"
     mock_publish.assert_awaited_once_with(
-        USER_ID, MountRole.UNKNOWN, None, abs_path, "hi", 2, mtime
+        WrittenFile(USER_ID, MountRole.UNKNOWN, None, abs_path), "hi", 2, mtime
     )
 
 

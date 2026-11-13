@@ -18,14 +18,17 @@ from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
 from app.models.bot_models import BotChatRequest
-from app.models.chat_models import MessageModel
+from app.models.chat_models import ConversationSource, MessageModel
 from app.models.conversation_frame_models import ConversationUpdatedFrame, StateFrame
 from app.models.conversation_log_models import BargeIn, DisplayState, UserMessage
 from app.models.user_models import AuthenticatedUser
 from app.services.bot_service import BotService
+from app.services.conversation.composition import RuntimeEffects
+from app.services.conversation.event_stream import RedisStreamFrames
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
-from app.services.conversation.runtime import install_runtime_ports
+from app.services.conversation.reply_files import ReplyFile
+from app.services.conversation.runtime import install_runtime_ports, runtime_ports
 from app.services.conversation.send import submit_bot_message
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from shared.py.wide_events import _spawned_tasks
@@ -249,6 +252,34 @@ async def test_a_bot_message_is_counted_once_after_it_is_accepted_and_never_on_a
     assert sends.captured.call_count == 1
     assert isinstance(event, ChatMessageSubmitted)
     assert (event.source, event.stream_id, event.is_retry) == ("telegram", "telegram:902", False)
+
+
+async def test_a_reply_file_is_queued_to_the_bot_platform_and_never_for_a_web_chat(
+    sends: Sends,
+) -> None:
+    user = AuthenticatedUser(user_id=FAKE_USER.user_id)
+    bot_chat = await BotService.get_or_create_session(
+        "telegram", f"tg-{uuid4().hex[:8]}", None, user, is_dm=True
+    )
+    effects = RuntimeEffects(
+        MongoConversationLog(conversation_log_repository, lambda: datetime.now(UTC)),
+        RedisStreamFrames(),
+        runtime_ports,
+    )
+    files = (ReplyFile("out/report.pdf", "application/pdf"),)
+    with patch(
+        "app.services.conversation.composition.publish_outbound_file", new_callable=AsyncMock
+    ) as queued:
+        await effects.deliver_files(bot_chat, user.user_id, files)
+        await effects.deliver_files(f"web-{uuid4().hex[:8]}", user.user_id, files)
+    queued.assert_awaited_once_with(
+        ConversationSource.TELEGRAM,
+        user.user_id,
+        bot_chat,
+        "out/report.pdf",
+        "report.pdf",
+        content_type="application/pdf",
+    )
 
 
 async def test_a_sent_messages_files_are_stored_on_its_entry_for_every_device(

@@ -33,6 +33,7 @@ from app.services.conversation.ports import (
     RuntimePorts,
 )
 from app.services.conversation.reducer import reduce
+from app.services.conversation.reply_files import ReplyFile
 from tests.unit.services.conversation.log_helpers import EMPTY, T0
 
 LIVENESS = timedelta(seconds=10)
@@ -473,6 +474,11 @@ class RecordingEffects:
 
     async def start_ack(self, conversation_id: str, user_id: str, message_id: str) -> None:
         self._record(EffectCall("start_ack", message_id))
+
+    async def deliver_files(
+        self, conversation_id: str, user_id: str, files: tuple[ReplyFile, ...]
+    ) -> None:
+        self._record(EffectCall("deliver_files", tuple(file.path for file in files)))
 
     def _record(self, call: EffectCall) -> None:
         self.calls.append(call)

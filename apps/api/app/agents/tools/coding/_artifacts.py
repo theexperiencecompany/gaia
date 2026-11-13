@@ -11,7 +11,9 @@ can't drift between the three.
 from __future__ import annotations
 
 import contextlib
+from dataclasses import dataclass
 
+from app.agents.tools.coding._context import safe_emit
 from app.agents.workspace.paths import (
     INLINE_ARTIFACT_MAX_BYTES,
     MountRole,
@@ -19,6 +21,7 @@ from app.agents.workspace.paths import (
     is_inlineable_content_type,
     session_artifacts,
 )
+from app.constants.chat import ARTIFACT_CARD
 from app.services.artifact_events import publish_artifact_event, upsert_event
 from app.services.storage import ArtifactInfo
 
@@ -37,30 +40,34 @@ async def publish_artifact(
     must be the real post-write value (the ``(event, path, size_bytes, mtime)``
     dedup signature depends on it). The single owner of the event shape.
     """
+    event = upsert_event(
+        conv_id,
+        ArtifactInfo(
+            path=rel,
+            size_bytes=size_bytes,
+            mtime=mtime,
+            content_type=detect_content_type(rel),
+        ),
+        body=inline_body,
+    )
+    # The run's card saves the file on its reply for every device; the body is fetched, not stored.
+    safe_emit({ARTIFACT_CARD: {k: v for k, v in event.items() if k != "body"}})
     with contextlib.suppress(Exception):
-        await publish_artifact_event(
-            user_id,
-            upsert_event(
-                conv_id,
-                ArtifactInfo(
-                    path=rel,
-                    size_bytes=size_bytes,
-                    mtime=mtime,
-                    content_type=detect_content_type(rel),
-                ),
-                body=inline_body,
-            ),
-        )
+        await publish_artifact_event(user_id, event)
+
+
+@dataclass(frozen=True)
+class WrittenFile:
+    """A file a coding tool wrote: whose, the mount it landed in, and where."""
+
+    user_id: str
+    role: MountRole
+    role_conv: str | None
+    abs_path: str
 
 
 async def publish_artifact_write(
-    user_id: str,
-    role: MountRole,
-    role_conv: str | None,
-    abs_path: str,
-    content: str,
-    size_bytes: int,
-    mtime: float,
+    written: WrittenFile, content: str, size_bytes: int, mtime: float
 ) -> None:
     """Publish an artifact upsert when a write/edit lands under ``artifacts/``.
 
@@ -68,7 +75,8 @@ async def publish_artifact_write(
     as a string, so the inline body is decided here and the rest is delegated to
     :func:`publish_artifact`.
     """
-    if role != MountRole.ARTIFACTS or not role_conv:
+    user_id, role_conv, abs_path = written.user_id, written.role_conv, written.abs_path
+    if written.role != MountRole.ARTIFACTS or not role_conv:
         return
     artifacts_root = session_artifacts(role_conv) + "/"
     rel = (

@@ -23,6 +23,7 @@ from app.models.conversation_log_models import (
 )
 from app.models.message_models import MessageDict
 from app.models.tool_data_models import ToolDataEntry
+from app.services.conversation.reply_files import ReplyFile
 
 
 class EntryRejected(Exception):
@@ -205,6 +206,12 @@ class Effects(Protocol):
 
     async def start_ack(self, conversation_id: str, user_id: str, message_id: str) -> None:
         """React to a just-accepted user message."""
+        ...
+
+    async def deliver_files(
+        self, conversation_id: str, user_id: str, files: tuple[ReplyFile, ...]
+    ) -> None:
+        """Send the files a settled reply carries where the reply cannot show them: a bot's platform."""
         ...
 
 

@@ -65,6 +65,7 @@ from app.services.conversation.ports import (
     Summarized,
 )
 from app.services.conversation.reply_analytics import capture_reply_ended
+from app.services.conversation.reply_files import reply_files
 from app.services.conversation.todo_wake import nothing_to_report
 from app.services.conversation.verdict import merge_group, quote_target, verdict
 from shared.py.wide_events import log
@@ -775,6 +776,14 @@ async def _settle(
     capture_reply_ended(
         claim.user_id, claim.conversation_id, covers, settled, appended.logged.at, since
     )
+    replies = [
+        logged.entry
+        for logged in since
+        if isinstance(logged.entry, Reply) and logged.entry.reply_id == settled.reply_id
+    ]
+    files = reply_files(replies[-1]) if replies else ()
+    if files:
+        await ports.effects.deliver_files(claim.conversation_id, claim.user_id, files)
 
 
 async def _amend(ports: RuntimePorts, claim: StepClaim, entry: Reply | UserMessage) -> LoggedEntry:

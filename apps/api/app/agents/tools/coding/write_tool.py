@@ -8,7 +8,7 @@ from typing import Annotated
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
-from app.agents.tools.coding._artifacts import publish_artifact_write
+from app.agents.tools.coding._artifacts import WrittenFile, publish_artifact_write
 from app.agents.tools.coding._context import (
     atomic_write,
     canonical_path,
@@ -137,11 +137,9 @@ async def write(
         session_id=session_id,
     )
 
-    # Real-time artifact push: the chat stream's forwarder relays this as an
-    # SSE `artifact_data` chunk during the active turn, so the card renders
-    # immediately — no polling, no dependence on the sandbox-side watcher.
+    # The file's card rides this run's reply, so every device shows it and bots receive it.
     await publish_artifact_write(
-        user_id, role, role_conv, abs_path, content, len(encoded), real_mtime
+        WrittenFile(user_id, role, role_conv, abs_path), content, len(encoded), real_mtime
     )
 
     return f"Wrote {len(encoded)} bytes to {abs_path}"

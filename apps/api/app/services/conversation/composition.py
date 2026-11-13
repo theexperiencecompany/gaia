@@ -11,8 +11,9 @@ from datetime import UTC, datetime
 
 from app.agents.core.background.work_cancel import cancel_named_work
 from app.constants.conversation import STEP_DRAIN_GRACE_SECONDS, STEP_TICK_SECONDS
+from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
-from app.models.chat_models import ReactionBy
+from app.models.chat_models import ConversationSource, ReactionBy
 from app.models.conversation_frame_models import EntryUpdatedFrame
 from app.models.conversation_log_models import (
     LoggedEntry,
@@ -27,8 +28,10 @@ from app.services.conversation.comms_turn import build_comms_turn
 from app.services.conversation.event_stream import RedisStreamFrames
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
+from app.services.conversation.reply_files import ReplyFile
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.step import advance
+from app.services.outbound_delivery import publish_outbound_file
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
@@ -89,6 +92,23 @@ class RuntimeEffects:
         spawn_background_task(
             self._react(conversation_id, user_id, message_id), name="conversation_instant_reaction"
         )
+
+    async def deliver_files(
+        self, conversation_id: str, user_id: str, files: tuple[ReplyFile, ...]
+    ) -> None:
+        """Queue each file to the bot session's platform; a web or voice conversation shows them on the reply."""
+        session = await bot_session_repository.get_by_conversation_id(conversation_id)
+        if session is None:
+            return
+        for file in files:
+            await publish_outbound_file(
+                ConversationSource(session.platform),
+                user_id,
+                conversation_id,
+                file.path,
+                file.path.rsplit("/", 1)[-1],
+                content_type=file.content_type,
+            )
 
     async def _react(self, conversation_id: str, user_id: str, message_id: str) -> None:
         state = await self._log.state(conversation_id, user_id)

@@ -11,7 +11,11 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 from app.agents.tools.coding import _artifacts
-from app.agents.tools.coding._artifacts import publish_artifact, publish_artifact_write
+from app.agents.tools.coding._artifacts import (
+    WrittenFile,
+    publish_artifact,
+    publish_artifact_write,
+)
 from app.agents.workspace.paths import INLINE_ARTIFACT_MAX_BYTES, MountRole
 
 
@@ -40,6 +44,30 @@ async def test_publish_artifact_builds_upsert_event_with_content_type() -> None:
     assert ev["body"] == "hello"
 
 
+async def test_publish_artifact_puts_the_file_on_the_run_as_a_card_without_its_body() -> None:
+    written: list[dict[str, object]] = []
+    with (
+        patch.object(_artifacts, "publish_artifact_event", AsyncMock()),
+        patch(
+            "app.agents.tools.coding._context.current_stream_writer", return_value=written.append
+        ),
+    ):
+        await publish_artifact("u1", "c1", "report.md", 12, 1_700_000_000.0, "hello")
+
+    assert written == [
+        {
+            "artifact_data": {
+                "event": "upsert",
+                "session_id": "c1",
+                "path": "report.md",
+                "size_bytes": 12,
+                "mtime": 1_700_000_000.0,
+                "content_type": "text/markdown",
+            }
+        }
+    ]
+
+
 async def test_publish_artifact_never_raises_into_caller() -> None:
     # Best-effort: a Redis failure must not break the tool.
     mock = AsyncMock(side_effect=RuntimeError("redis down"))
@@ -51,10 +79,9 @@ async def test_write_path_strips_artifacts_prefix_to_relative() -> None:
     mock, events = _capture()
     with patch.object(_artifacts, "publish_artifact_event", mock):
         await publish_artifact_write(
-            "u1",
-            MountRole.ARTIFACTS,
-            "c1",
-            "/workspace/sessions/c1/artifacts/sub/deep.txt",
+            WrittenFile(
+                "u1", MountRole.ARTIFACTS, "c1", "/workspace/sessions/c1/artifacts/sub/deep.txt"
+            ),
             "data",
             4,
             1.0,
@@ -67,7 +94,10 @@ async def test_write_path_noop_for_non_artifact_roles() -> None:
     mock, events = _capture()
     with patch.object(_artifacts, "publish_artifact_event", mock):
         await publish_artifact_write(
-            "u1", MountRole.SCRATCH, "c1", "/workspace/sessions/c1/scratch/x", "d", 1, 1.0
+            WrittenFile("u1", MountRole.SCRATCH, "c1", "/workspace/sessions/c1/scratch/x"),
+            "d",
+            1,
+            1.0,
         )
     assert events == [], "scratch writes must not publish artifact events"
 
@@ -75,7 +105,9 @@ async def test_write_path_noop_for_non_artifact_roles() -> None:
 async def test_write_path_noop_when_conv_missing() -> None:
     mock, events = _capture()
     with patch.object(_artifacts, "publish_artifact_event", mock):
-        await publish_artifact_write("u1", MountRole.ARTIFACTS, None, "/workspace/x", "d", 1, 1.0)
+        await publish_artifact_write(
+            WrittenFile("u1", MountRole.ARTIFACTS, None, "/workspace/x"), "d", 1, 1.0
+        )
     assert events == []
 
 
@@ -83,10 +115,7 @@ async def test_small_textual_file_is_inlined() -> None:
     mock, events = _capture()
     with patch.object(_artifacts, "publish_artifact_event", mock):
         await publish_artifact_write(
-            "u1",
-            MountRole.ARTIFACTS,
-            "c1",
-            "/workspace/sessions/c1/artifacts/a.md",
+            WrittenFile("u1", MountRole.ARTIFACTS, "c1", "/workspace/sessions/c1/artifacts/a.md"),
             "tiny",
             4,
             1.0,
@@ -100,10 +129,7 @@ async def test_large_textual_file_is_not_inlined() -> None:
     big = INLINE_ARTIFACT_MAX_BYTES + 1
     with patch.object(_artifacts, "publish_artifact_event", mock):
         await publish_artifact_write(
-            "u1",
-            MountRole.ARTIFACTS,
-            "c1",
-            "/workspace/sessions/c1/artifacts/a.md",
+            WrittenFile("u1", MountRole.ARTIFACTS, "c1", "/workspace/sessions/c1/artifacts/a.md"),
             "x" * big,
             big,
             1.0,
@@ -116,10 +142,9 @@ async def test_binary_content_type_is_not_inlined() -> None:
     mock, events = _capture()
     with patch.object(_artifacts, "publish_artifact_event", mock):
         await publish_artifact_write(
-            "u1",
-            MountRole.ARTIFACTS,
-            "c1",
-            "/workspace/sessions/c1/artifacts/img.png",
+            WrittenFile(
+                "u1", MountRole.ARTIFACTS, "c1", "/workspace/sessions/c1/artifacts/img.png"
+            ),
             "rawbytes",
             8,
             1.0,
@@ -135,10 +160,7 @@ async def test_write_and_bash_produce_identical_event_for_same_file() -> None:
     mock, events = _capture()
     with patch.object(_artifacts, "publish_artifact_event", mock):
         await publish_artifact_write(
-            "u1",
-            MountRole.ARTIFACTS,
-            "c1",
-            "/workspace/sessions/c1/artifacts/r.md",
+            WrittenFile("u1", MountRole.ARTIFACTS, "c1", "/workspace/sessions/c1/artifacts/r.md"),
             "hello",
             5,
             1_700_000_000.0,
