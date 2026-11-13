@@ -7,8 +7,13 @@ from typing import Any, cast
 from langchain_core.messages import ToolCall
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.agents.core.subagents.integration_resolution import get_integration_target
 from app.agents.tools.core.registry import UNKNOWN_TOOL_CATEGORY, ToolRegistry, get_tool_registry
-from app.agents.tools.execute.unwrap import ExecuteCallArgs, unwrap_execute_call
+from app.agents.tools.execute.unwrap import (
+    ExecuteCallArgs,
+    execute_call_account,
+    unwrap_execute_call,
+)
 from app.config.oauth_config import get_integration_by_id, get_integration_by_tool_slug
 from app.constants.agents import INTERNAL_AGENT_TAG_PATTERN
 from app.constants.browser import BROWSER_TOOL_CATEGORY
@@ -182,16 +187,20 @@ async def format_tool_call_entry(
         execute_args: ExecuteCallArgs = cast(ExecuteCallArgs, call_args)
         raw_description = execute_args.get("task_description")
         task_description = raw_description if isinstance(raw_description, str) else None
+        account = execute_call_account(tool_name_raw, call_args)
         tool_name_raw = unwrapped_name
-        call_args = unwrapped_args
+        # The account the call acted as is part of what it did, so a wrong one is visible.
+        call_args = {**unwrapped_args, "account": account} if account else unwrapped_args
 
     is_core_tool = False  # set inside the non-special branch; safe default for short-circuits below
 
     if tool_name_raw in _SPECIAL_TOOLS:
         tool_category, tool_display_name, show_category = _SPECIAL_TOOLS[tool_name_raw]
         if tool_name_raw == ACTIVATE_INTEGRATION_TOOL_NAME and not integration_id:
-            # The card names the integration being activated, custom MCPs included.
-            integration_id = ActivateIntegrationCallArgs.model_validate(call_args).integration_id
+            # The card names the integration the activation resolves, by id or by name.
+            requested = ActivateIntegrationCallArgs.model_validate(call_args).integration_id
+            target = await get_integration_target(requested) if requested else None
+            integration_id = target.id if target else requested
     else:
         tool_category, integration_id, is_core_tool = await _general_tool_category(
             tool_registry, tool_name_raw, integration_id, user_id

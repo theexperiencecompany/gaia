@@ -121,6 +121,11 @@ class TestFormatToolCallEntry:
                 new_callable=AsyncMock,
                 return_value=(None, "Bundle Weather"),
             ),
+            patch(
+                "app.utils.agent_utils.get_integration_target",
+                new_callable=AsyncMock,
+                return_value=MagicMock(id="int_weather"),
+            ),
         ):
             result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
 
