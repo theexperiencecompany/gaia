@@ -2,14 +2,20 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { ToolCard } from "@/app/[locale]/(landing)/marketplace/[slug]/ToolCard";
 import { ToolDescription } from "@/app/[locale]/(landing)/marketplace/[slug]/ToolDescription";
+import { ToolList } from "@/app/[locale]/(landing)/marketplace/[slug]/ToolList";
 
 function renderDescription(description: string): string {
   return renderToStaticMarkup(
-    <ToolCard label="Add a meeting registrant">
-      <ToolDescription markdown={description} />
-    </ToolCard>,
+    <ToolList
+      items={[
+        {
+          key: "ZOOM_ADD_A_MEETING_REGISTRANT",
+          label: "Add a meeting registrant",
+          description: <ToolDescription markdown={description} />,
+        },
+      ]}
+    />,
   );
 }
 

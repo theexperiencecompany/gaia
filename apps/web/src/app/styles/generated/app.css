@@ -80,6 +80,7 @@
 @source "../../../lib/chunkErrorRecovery.ts";
 @source "../../../lib/clipboard.ts";
 @source "../../../lib/environment.ts";
+@source "../../../lib/firstInteraction.ts";
 @source "../../../lib/hubPagination.ts";
 @source "../../../lib/imageDimensions.ts";
 @source "../../../lib/privateBlob.ts";
@@ -464,6 +465,7 @@
 @source "../../../features/integrations/components/IntegrationSection.tsx";
 @source "../../../features/integrations/components/IntegrationsList.tsx";
 @source "../../../features/integrations/components/IntegrationsSearchInput.tsx";
+@source "../../../features/integrations/components/LazyMentionEditor.tsx";
 @source "../../../features/integrations/components/MCPIntegrationModal.tsx";
 @source "../../../features/integrations/components/MentionChip.tsx";
 @source "../../../features/integrations/components/MentionEditor.tsx";
@@ -496,6 +498,7 @@
 @source "../../../features/integrations/utils/permissionCopy.ts";
 @source "../../../features/integrations/utils/toolMentions.ts";
 @source "../../../features/landing/components/LazyMotionProvider.tsx";
+@source "../../../features/landing/components/motionFeatures.ts";
 @source "../../../features/mail/api/mailApi.ts";
 @source "../../../features/mail/components/ContactListCard.tsx";
 @source "../../../features/mail/components/EmailComposeCard.tsx";
@@ -785,10 +788,12 @@
 @source "../../../features/workflows/components/WorkflowModal.tsx";
 @source "../../../features/workflows/components/WorkflowPage.tsx";
 @source "../../../features/workflows/components/WorkflowSkeletons.tsx";
+@source "../../../features/workflows/constants/explore.ts";
 @source "../../../features/workflows/constants/gates.ts";
 @source "../../../features/workflows/constants/regeneration.ts";
 @source "../../../features/workflows/constants/workflowIconCatalog.data.ts";
 @source "../../../features/workflows/constants/workflowIconCatalog.ts";
+@source "../../../features/workflows/constants/workflowIconStyle.ts";
 @source "../../../features/workflows/hooks/useCronValidation.ts";
 @source "../../../features/workflows/hooks/useExploreWorkflows.ts";
 @source "../../../features/workflows/hooks/useTriggerFilter.ts";
@@ -946,10 +951,13 @@
 @source "../../../features/todo/components/fields/ScheduledFieldChip.tsx";
 @source "../../../features/todo/components/shared/SubtaskManager.tsx";
 @source "../../../features/todo/components/shared/TodoFieldsRow.tsx";
+@source "../../../features/workflows/components/shared/CatalogWorkflowIcons.tsx";
 @source "../../../features/workflows/components/shared/UnifiedWorkflowCard.tsx";
 @source "../../../features/workflows/components/shared/useWorkflowCardActions.ts";
 @source "../../../features/workflows/components/shared/WorkflowCardComponents.tsx";
 @source "../../../features/workflows/components/shared/workflowCardHelpers.ts";
+@source "../../../features/workflows/components/shared/WorkflowIconElements.tsx";
+@source "../../../features/workflows/components/shared/WorkflowIconParts.tsx";
 @source "../../../features/workflows/components/shared/WorkflowIcons.tsx";
 @source "../../../features/workflows/components/shared/WorkflowStep.tsx";
 @source "../../../features/workflows/components/shared/WorkflowSteps.tsx";

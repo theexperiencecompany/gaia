@@ -1,8 +1,8 @@
-import { Card, ScrollShadow } from "@heroui/react";
+import { Card } from "@heroui/react";
 import { PackageOpenIcon } from "@icons";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
-import { ToolCard } from "./ToolCard";
 import { ToolDescription } from "./ToolDescription";
+import { ToolList } from "./ToolList";
 import { displayToolDescription, displayToolName } from "./toolCopy";
 
 function EmptyTools() {
@@ -41,25 +41,20 @@ export function IntegrationToolsCard({
       )}
       <Card.Content>
         {hasTools ? (
-          <ScrollShadow className="max-h-100">
-            <div className="grid grid-cols-2 gap-4">
-              {integration.tools?.map((tool) => (
-                <ToolCard
-                  key={tool.name}
-                  label={displayToolName(tool.name, integration.name)}
-                >
-                  {tool.description ? (
-                    <ToolDescription
-                      markdown={displayToolDescription(
-                        tool.description,
-                        integration.name,
-                      )}
-                    />
-                  ) : null}
-                </ToolCard>
-              ))}
-            </div>
-          </ScrollShadow>
+          <ToolList
+            items={(integration.tools ?? []).map((tool) => ({
+              key: tool.name,
+              label: displayToolName(tool.name, integration.name),
+              description: tool.description ? (
+                <ToolDescription
+                  markdown={displayToolDescription(
+                    tool.description,
+                    integration.name,
+                  )}
+                />
+              ) : null,
+            }))}
+          />
         ) : (
           <EmptyTools />
         )}

@@ -58,6 +58,7 @@
 @source "../../../lib/circularNeighbours.ts";
 @source "../../../lib/clipboard.ts";
 @source "../../../lib/feature-data.ts";
+@source "../../../lib/firstInteraction.ts";
 @source "../../../lib/hubMetadata.ts";
 @source "../../../lib/hubPagination.ts";
 @source "../../../lib/imageDimensions.ts";
@@ -138,6 +139,7 @@
 @source "../../../components/shared/fieldVariants.ts";
 @source "../../../components/shared/GaiaButton.tsx";
 @source "../../../components/shared/GaiaSelectValue.tsx";
+@source "../../../components/shared/HydrateOnVisible.tsx";
 @source "../../../components/shared/icons.tsx";
 @source "../../../components/shared/LinkButton.tsx";
 @source "../../../components/shared/LogoWithContextMenu.tsx";
@@ -255,6 +257,7 @@
 @source "../../../features/integrations/lib/serverMarketplaceApi.ts";
 @source "../../../features/integrations/utils/catalog.ts";
 @source "../../../features/landing/components/LazyMotionProvider.tsx";
+@source "../../../features/landing/components/motionFeatures.ts";
 @source "../../../features/pricing/api/pricingApi.ts";
 @source "../../../features/pricing/api/queries.ts";
 @source "../../../features/pricing/hooks/useCheckoutResume.ts";
@@ -272,7 +275,9 @@
 @source "../../../features/workflows/api/workflowApi.ts";
 @source "../../../features/workflows/constants/workflowIconCatalog.data.ts";
 @source "../../../features/workflows/constants/workflowIconCatalog.ts";
+@source "../../../features/workflows/constants/workflowIconStyle.ts";
 @source "../../../features/workflows/hooks/useWorkflowCreation.ts";
+@source "../../../features/workflows/lib/workflowIconElements.tsx";
 @source "../../../features/workflows/triggers/utils.ts";
 @source "../../../features/workflows/utils/creator.ts";
 @source "../../../features/workflows/utils/cronUtils.ts";
@@ -323,10 +328,13 @@
 @source "../../../features/landing/components/shared/GetStartedButton.tsx";
 @source "../../../features/landing/components/shared/NumberedSteps.tsx";
 @source "../../../features/landing/components/shared/TextSoftBlurIn.tsx";
+@source "../../../features/workflows/components/shared/CatalogWorkflowIcons.tsx";
 @source "../../../features/workflows/components/shared/UnifiedWorkflowCard.tsx";
 @source "../../../features/workflows/components/shared/useWorkflowCardActions.ts";
 @source "../../../features/workflows/components/shared/WorkflowCardComponents.tsx";
 @source "../../../features/workflows/components/shared/workflowCardHelpers.ts";
+@source "../../../features/workflows/components/shared/WorkflowIconElements.tsx";
+@source "../../../features/workflows/components/shared/WorkflowIconParts.tsx";
 @source "../../../features/workflows/components/shared/WorkflowIcons.tsx";
 @source "../../../features/workflows/triggers/types/index.ts";
 @source "../../[locale]/(landing)/alternative-to/[slug]/page.tsx";
@@ -347,9 +355,9 @@
 @source "../../[locale]/(landing)/marketplace/[slug]/IntegrationToolsCard.tsx";
 @source "../../[locale]/(landing)/marketplace/[slug]/IntegrationUseCases.tsx";
 @source "../../[locale]/(landing)/marketplace/[slug]/page.tsx";
-@source "../../[locale]/(landing)/marketplace/[slug]/ToolCard.tsx";
 @source "../../[locale]/(landing)/marketplace/[slug]/toolCopy.ts";
 @source "../../[locale]/(landing)/marketplace/[slug]/ToolDescription.tsx";
+@source "../../[locale]/(landing)/marketplace/[slug]/ToolList.tsx";
 @source "../../[locale]/(landing)/marketplace/[slug]/useAddIntegration.ts";
 @source "../../../features/chat/components/bubbles/bot/SearchedImageDialog.tsx";
 @source "../../../features/landing/components/demo/founders-demo/IntegrationStrip.tsx";
