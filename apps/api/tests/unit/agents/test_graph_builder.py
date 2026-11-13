@@ -433,6 +433,7 @@ class TestBuildCommsGraph:
             assert kwargs["agent_config"].agent_name == "comms_agent"
             assert kwargs["tools_config"].disable_retrieve_tools is True
             from app.agents.tools import memory_tools
+            from app.agents.tools.weather_tool import get_weather
             from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 
             # Comms binds these statically: retrieval is off, so a tool absent
@@ -447,6 +448,7 @@ class TestBuildCommsGraph:
                 "search_public_workflows",
                 web_search_tool.name,
                 fetch_webpages.name,
+                get_weather.name,
                 *[memory_tool.name for memory_tool in memory_tools.tools],
             ]
 

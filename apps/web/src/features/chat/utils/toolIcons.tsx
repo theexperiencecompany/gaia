@@ -169,6 +169,9 @@ const AutoInvertIcon: React.FC<{
   // Border radius scales with the icon size (percentage radius) so small icons
   // aren't disproportionately rounded. object-contain keeps the logo intact.
   const imgClassName = `${className ?? ""} aspect-square rounded-[18%] object-contain`;
+  // Eager: a lazy logo inside a clipped scroller (the slash menu's category
+  // tabs) is not fetched until scrolled into view, so it showed up blank.
+  const loading = "eager";
 
   // Use next/image in unoptimized mode for SVG URLs — SVGs can't pass through
   // the Next.js optimizer (they'd require dangerouslyAllowSVG), so they ship
@@ -181,6 +184,7 @@ const AutoInvertIcon: React.FC<{
         width={displayWidth}
         height={displayHeight}
         className={imgClassName}
+        loading={loading}
         src={src}
         unoptimized
       />
@@ -196,6 +200,7 @@ const AutoInvertIcon: React.FC<{
       height={displayHeight * 3}
       className={imgClassName}
       style={{ width: displayWidth, height: displayHeight }}
+      loading={loading}
       src={src}
     />
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { Chip } from "@heroui/chip";
-import { PuzzleIcon, ToolsIcon } from "@icons";
+import { PuzzleIcon } from "@icons";
 import type { ApprovalStatus } from "@shared/chat";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
@@ -9,7 +9,7 @@ import { useState } from "react";
 import { ChevronDown, ShieldAlertIcon } from "@/components/shared/icons";
 import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
 import type { ToolCallEntry } from "@/config/registries/toolRegistry";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import {
   deriveToolCallDisplay,
   displayToolOutput,
@@ -90,15 +90,12 @@ function ToolCallIcon({
     );
   }
   return (
-    getToolCategoryIcon(
-      call.tool_category || "general",
-      { size: 21, width: 21, height: 21 },
-      call.icon_url,
-    ) || (
-      <div className="p-1 bg-zinc-800 rounded-lg">
-        <ToolsIcon width={21} height={21} />
-      </div>
-    )
+    <IntegrationIcon
+      integrationId={call.tool_category || "general"}
+      iconUrl={call.icon_url}
+      size={21}
+      showBackground
+    />
   );
 }
 

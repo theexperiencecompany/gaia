@@ -1,14 +1,13 @@
 "use client";
 
 import { Spinner } from "@heroui/spinner";
-import { ToolsIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useState } from "react";
 import { BrainIcon, ChevronDown } from "@/components/shared/icons";
 import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
 import type { ToolCallEntry } from "@/config/registries/toolRegistry";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { deriveStepKeys } from "./TextBubble/useSubagentSynthesis";
 import {
   type ApprovalOutcome,
@@ -136,15 +135,12 @@ function deriveSubagentSteps(
 
 function SubagentIcon({ group }: Readonly<{ group: EnrichedSubagentGroup }>) {
   return (
-    getToolCategoryIcon(
-      group.tool_category ?? "subagent",
-      { width: 21, height: 21 },
-      group.icon_url ?? undefined,
-    ) || (
-      <div className="p-1 bg-zinc-800 rounded-lg">
-        <ToolsIcon width={21} height={21} />
-      </div>
-    )
+    <IntegrationIcon
+      integrationId={group.tool_category ?? "subagent"}
+      iconUrl={group.icon_url}
+      size={21}
+      showBackground
+    />
   );
 }
 

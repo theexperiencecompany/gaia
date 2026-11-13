@@ -1,6 +1,6 @@
 "use client";
 
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import {
   WORKFLOW_ICON_BG_ALPHA,
@@ -79,16 +79,7 @@ export default function WorkflowIcons({
   return (
     <div className={`flex min-h-8 items-center ${spacing} ${className}`}>
       {displayIcons.map((category, index) => {
-        const IconComponent = getToolCategoryIcon(
-          category,
-          {
-            width: iconSize,
-            height: iconSize,
-            showBackground: showBackground,
-          },
-          getIntegrationIconUrl(category),
-        );
-        return IconComponent ? (
+        return (
           <div
             key={category}
             className="relative flex min-w-8 items-center justify-center"
@@ -102,9 +93,14 @@ export default function WorkflowIcons({
               zIndex: index,
             }}
           >
-            {IconComponent}
+            <IntegrationIcon
+              integrationId={category}
+              iconUrl={getIntegrationIconUrl(category)}
+              size={iconSize}
+              showBackground={showBackground}
+            />
           </div>
-        ) : null;
+        );
       })}
       {categories.length > maxIcons && (
         <div
