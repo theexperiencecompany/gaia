@@ -26,7 +26,7 @@ from redis.asyncio.client import Pipeline
 from redis.exceptions import ResponseError
 
 from app.agents.core.background.executor_queue import decode_raw_item
-from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.agents import NON_WAKING_TAGS, AgentTag, wrap_agent_payload
 from app.constants.cache import EXECUTOR_INBOX_PREFIX
 from app.constants.executor import INBOX_ENTRY_ID, INTERRUPTION_NOTICE
 from app.constants.hil import EXECUTOR_INBOX_TTL
@@ -147,12 +147,12 @@ class ExecutorInbox(RedisInbox):
         super().__init__(f"{EXECUTOR_INBOX_PREFIX}{conversation_id}")
 
     async def clear(self) -> int:
-        """Drop everything pending; return how many entries went.
+        """Drop all pending work, keeping the notices a stop left; return how much work went.
 
-        Atomically DETACHES the current list before measuring and deleting it, so
-        a steering append that lands mid-cancel is not swept away. RENAME moves
-        the list in one atomic step; any later append starts a fresh list under
-        the live key and survives. A count-then-delete would lose such an append.
+        RENAME detaches the list in one atomic step, so a steering append that lands
+        mid-cancel starts a fresh list under the live key and survives; a
+        count-then-delete would sweep it away. Non-waking notices go back to the
+        head of the live list: they are not work.
         """
         client = redis_cache.client
         if not client:
@@ -162,12 +162,21 @@ class ExecutorInbox(RedisInbox):
             await client.rename(self._key, detached)
         except ResponseError:
             return 0  # RENAME raises "no such key" only when the inbox is empty
+        raw_entries = await client.lrange(detached, 0, -1)
+        notices = [
+            entry
+            for raw in raw_entries
+            if (entry := _decode(raw)) is not None and entry.tag in NON_WAKING_TAGS
+        ]
         # Mutating transaction= is equivalent: the detached uuid key has no other writer.
         async with client.pipeline(transaction=True) as pipe:  # pragma: no mutate
-            pipe.llen(detached)
             pipe.delete(detached)
-            pending, _ = await pipe.execute()
-        return cast(int, pending)
+            for notice in reversed(notices):
+                pipe.lpush(self._key, self._encode(notice))
+            if notices:
+                pipe.expire(self._key, self.ttl)
+            await pipe.execute()
+        return len(raw_entries) - len(notices)
 
     async def announce_interruption(self, message: str | None = None) -> list[InboxEntry]:
         """Tell the next run that the one before it was force-stopped.

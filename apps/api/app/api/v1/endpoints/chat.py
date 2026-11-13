@@ -15,7 +15,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import TypeAdapter
 
-from app.agents.core.background.running_registry import stop_stream
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_id,
@@ -32,9 +31,9 @@ from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.stream_events import ErrorFrame
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
-from app.services.browser.job_stop import stop_chat_jobs
 from app.services.chat.stream import run_chat_stream_background
 from app.services.conversation_service import require_owned_conversation
+from app.services.conversation_stop_service import press_stop
 from app.services.latency_metrics import observe_sse_delivery
 from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
@@ -265,16 +264,12 @@ async def cancel_stream_endpoint(
             detail="Not authorized to cancel this stream",
         )
 
-    stopped = await stop_stream(progress.conversation_id, stream_id)
-    # A browser run outlives the turn that started it: Stop reaches the job itself,
-    # whichever of the conversation's turns the button was pressed on.
-    # The web's Stop: its conversation's run; a bot user's own chat is not this surface.
-    browser_jobs = await stop_chat_jobs(progress.conversation_id, None)
-    log.info(
-        f"{LogTag.CHAT} Cancel stream request",
-        stream_id=stream_id,
-        stopped_subagents=len(stopped),
-        browser={"stopped": {job: outcome.value for job, outcome in browser_jobs.items()}},
+    # The mobile app's Stop names its turn's stream; it stops the conversation like the web's.
+    result = await press_stop(progress.conversation_id, user_id, None, held_stream_id=stream_id)
+    log.set_ns(
+        "chat",
+        stopped_streams=len(result.stream_ids),
+        stopped_work=result.work.stopped_anything,
     )
 
     return CancelStreamResponse(success=True, stream_id=stream_id)

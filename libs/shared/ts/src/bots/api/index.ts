@@ -1,5 +1,8 @@
 import axios, { type AxiosInstance } from "axios";
-import type { DeliveryFailureReport } from "../../api/generated";
+import type {
+  ConversationStopResponse,
+  DeliveryFailureReport,
+} from "../../api/generated";
 import type {
   AuthStatus,
   BotConversation,
@@ -530,6 +533,37 @@ export class GaiaClient {
           },
         },
       );
+    });
+  }
+
+  /**
+   * Stops everything the chat's conversation is running (its reply, background
+   * work, approvals, browser task), keeping the session.
+   */
+  async stopConversation(
+    platform: string,
+    platformUserId: string,
+    channelId?: string,
+    isDm?: boolean,
+  ): Promise<ConversationStopResponse> {
+    return this.request(async () => {
+      const { data } = await this.client.post<ConversationStopResponse>(
+        "/api/v1/bot/stop",
+        {
+          platform,
+          platform_user_id: platformUserId,
+          channel_id: channelId ?? null,
+          is_dm: isDm ?? false,
+        },
+        {
+          headers: {
+            "X-Bot-API-Key": this.apiKey,
+            "X-Bot-Platform": platform,
+            "X-Bot-Platform-User-Id": platformUserId,
+          },
+        },
+      );
+      return data;
     });
   }
 

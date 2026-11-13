@@ -24,6 +24,7 @@ import {
   extractSubcommandArgs,
   handleStreamingChat,
   type OutboundFile,
+  PerUserInboundQueue,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -68,6 +69,8 @@ export class HarnessAdapter extends BaseBotAdapter {
   private readonly transcript: TranscriptRecorder;
   private readonly adapterLogger: BotLogger;
   private nextMessageId = 1;
+  /** The real adapters' per-user queue, used when the emulated platform has one; see `serializesInbound`. */
+  private readonly inbound = new PerUserInboundQueue();
 
   protected override readonly consumesOutbound: boolean;
 
@@ -180,12 +183,12 @@ export class HarnessAdapter extends BaseBotAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Injects one inbound message as `userId`, routing it through the real shared
-   * pipeline exactly as the Telegram/WhatsApp adapters route inbound text:
-   * a `/command` (other than `/gaia`) dispatches through the unified command
-   * system; everything else (including `/gaia <text>`) streams a chat turn.
+   * Injects one inbound message as `userId`, recorded the moment it arrives. On
+   * a platform whose adapter handles messages one at a time it is handled only
+   * after the messages before it (a /stop at once), as the real adapter does;
+   * elsewhere at once.
    */
-  async simulateMessage(
+  simulateMessage(
     userId: string,
     text: string,
     options: SimulateOptions = {},
@@ -199,7 +202,27 @@ export class HarnessAdapter extends BaseBotAdapter {
       messageId,
       text,
     });
+    const handle = () =>
+      this.handleInbound(userId, channelId, messageId, text, options);
+    if (!this.emulation.serializesInbound) {
+      return handle();
+    }
+    return this.inbound.enqueue(userId, text, handle);
+  }
 
+  /**
+   * Routes one inbound message through the real shared pipeline exactly as the
+   * Telegram/WhatsApp adapters route inbound text: a `/command` (other than
+   * `/gaia`) dispatches through the unified command system; everything else
+   * (including `/gaia <text>`) streams a chat turn.
+   */
+  private async handleInbound(
+    userId: string,
+    channelId: string,
+    messageId: string,
+    text: string,
+    options: SimulateOptions,
+  ): Promise<void> {
     if (text.startsWith("/")) {
       const withoutSlash = text.slice(1);
       const spaceIndex = withoutSlash.indexOf(" ");

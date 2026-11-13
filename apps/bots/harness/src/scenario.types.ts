@@ -17,12 +17,45 @@ export interface ScenarioAssertion {
   maxBubbleLength?: number;
   /** The turn's transcript contains at least one event of each listed type. */
   eventTypes?: string[];
+  /**
+   * Everything the turn delivered, in the order it first appeared: entry N is a
+   * substring of the Nth delivered message's final text (a bubble after its
+   * last edit, a proactive delivery, an attachment's caption), and the counts
+   * are equal.
+   */
+  delivered?: string[];
+  /**
+   * {@link delivered} for the bubbles the turn's replies opened alone, without
+   * proactive deliveries — whose place among the replies can depend on timing.
+   */
+  bubbles?: string[];
+  /**
+   * Exactly which of the turn's inbound messages received a reaction, by their
+   * 1-based position in the turn (a burst's order). `[]` asserts none did.
+   */
+  reactedTo?: number[];
 }
 
-/** One inbound message and the assertions on the reply it produces. */
+/** One message of a {@link ScenarioTurn.burst}. */
+export interface BurstMessage {
+  send: string;
+  /** Milliseconds after the previous message of the burst arrived (0 for the first). */
+  afterMs?: number;
+}
+
+/**
+ * One inbound message, or a burst of them, and the assertions on what the turn
+ * produced. Exactly one of `send` and `burst` is set.
+ */
 export interface ScenarioTurn {
   /** The message to inject as the scenario user. */
-  send: string;
+  send?: string;
+  /**
+   * Messages that arrive at the given gaps without waiting for each other's
+   * replies; the turn ends once every one has been handled. The emulated
+   * platform decides whether they are handled one at a time.
+   */
+  burst?: BurstMessage[];
   /** Optional channel/conversation id (defaults to the user's platform id). */
   channelId?: string;
   /** Assertions on the transcript this turn generated. */
