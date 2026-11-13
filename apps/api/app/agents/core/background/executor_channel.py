@@ -265,10 +265,10 @@ async def drain_inbox_hook(state: State, config: RunnableConfig, store: BaseStor
         drained, injected = await apply_drain(
             ExecutorInbox(conversation_id), state, log_key="executor_inbox_injected"
         )
-        # The user spoke again into this run: what it does from here serves that
-        # new turn, so it gets a whole request ceiling of its own.
+        user_spoke = any(entry.tag is AgentTag.USER_INTERJECTION for entry in injected)
         root_request_id = configurable.get("root_request_id")
-        if root_request_id and any(e.tag is AgentTag.USER_INTERJECTION for e in injected):
+        if user_spoke and root_request_id:
+            # A message absorbed mid-run is a new user turn: give it a fresh token ceiling.
             await restart_request_tokens(root_request_id)
             log.set(request_ceiling_restarted=True)
         return drained

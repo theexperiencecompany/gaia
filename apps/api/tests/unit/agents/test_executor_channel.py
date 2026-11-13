@@ -19,6 +19,7 @@ import fakeredis.aioredis
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 import pytest
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.agents.core.background import executor_channel as channel
 from app.agents.core.background.executor_channel import (
@@ -492,6 +493,20 @@ class TestAnAbsorbedUserTurnGetsItsOwnRequestCeiling:
 
         assert await get_request_tokens(FIRST_TURN_REQUEST) == 1_000
         assert "request_ceiling_restarted" not in event
+
+    async def test_a_failed_restart_keeps_the_message_for_the_next_step(
+        self, inbox: ExecutorInbox, redis: AsyncRedisCommands
+    ) -> None:
+        """The entry stays in the inbox, so the next model call injects it and restarts again."""
+        await self._first_turn_spent(1_000)
+        await inbox.append("t2", "now do the same for my work account")
+
+        with patch.object(redis, "delete", AsyncMock(side_effect=RedisConnectionError("gone"))):
+            assert await drain_inbox_hook(_state(), RUN_CONFIG, None) == _state()
+        retried = await drain_inbox_hook(_state(), RUN_CONFIG, None)
+
+        assert [m.additional_kwargs[INBOX_ENTRY_ID] for m in retried["messages"]] == ["t2"]
+        assert await get_request_tokens(FIRST_TURN_REQUEST) == 0
 
     async def test_a_message_already_in_the_thread_does_not_restart_it_again(
         self, inbox: ExecutorInbox

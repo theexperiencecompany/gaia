@@ -17,11 +17,9 @@ from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
 import pytest
-from redis.exceptions import ConnectionError as RedisConnectionError
 import time_machine
 
 from app.config.rate_limits import RateLimitPeriod
-from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.services import cost_budget
@@ -33,7 +31,6 @@ from app.services.cost_budget import (
 )
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
-from tests.helpers import captured_wide_event
 
 USER = "u-metering"
 REQUEST = "root-req-1"
@@ -266,32 +263,6 @@ class TestRequestCeilingRestart:
         await restart_request_tokens(REQUEST)
 
         assert await get_request_tokens("root-req-other") == 4_000
-
-    async def test_redis_being_down_is_reported_not_raised(self) -> None:
-        with patch.object(redis_cache, "redis", None):
-            async with captured_wide_event() as event:
-                await restart_request_tokens(REQUEST)
-
-        assert event["warnings"] == [
-            {"msg": f"{LogTag.STORAGE} Redis unavailable — request ceiling not restarted."}
-        ]
-
-    async def test_a_failed_delete_is_reported_not_raised(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
-    ) -> None:
-        with patch.object(
-            fake_redis, "delete", AsyncMock(side_effect=RedisConnectionError("gone"))
-        ):
-            async with captured_wide_event() as event:
-                await restart_request_tokens(REQUEST)
-
-        assert event["warnings"] == [
-            {
-                "msg": f"{LogTag.STORAGE} Request ceiling restart failed",
-                "error": "gone",
-                "error_type": "ConnectionError",
-            }
-        ]
 
 
 @pytest.mark.unit
