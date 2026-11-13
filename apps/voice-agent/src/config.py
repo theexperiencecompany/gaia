@@ -4,8 +4,10 @@ from functools import lru_cache
 from pathlib import Path
 
 from dotenv import load_dotenv
+from pydantic import Field
 
 from shared.py.settings import BaseAppSettings
+from shared.py.voice import DEVELOPMENT_VOICE_AGENT_NAME, PRODUCTION_VOICE_AGENT_NAME
 from shared.py.wide_events import log
 from src.constants import LogTag
 
@@ -25,6 +27,17 @@ class VoiceAgentSettings(BaseAppSettings):
     ELEVENLABS_API_KEY: str | None = None
     ELEVENLABS_VOICE_ID: str | None = None
     ELEVENLABS_TTS_MODEL: str = "eleven_turbo_v2_5"
+
+    # Must equal the API's VOICE_AGENT_NAME for the same environment — rooms are
+    # dispatched to it by name. Development gets its own name so a local worker
+    # never competes with staging's on the shared LiveKit project.
+    VOICE_AGENT_NAME: str = Field(
+        default_factory=lambda data: (
+            DEVELOPMENT_VOICE_AGENT_NAME
+            if data["ENV"] == "development"
+            else PRODUCTION_VOICE_AGENT_NAME
+        )
+    )
 
     # Consumed by livekit-plugins-deepgram via env var — not passed explicitly in code
     DEEPGRAM_API_KEY: str | None = None

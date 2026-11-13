@@ -29,6 +29,7 @@ from app.constants.search import (
     CRAWL4AI_DEFAULT_MAX_BROWSERS,
     CRAWL4AI_MIN_MAX_BROWSERS,
 )
+from shared.py.voice import DEVELOPMENT_VOICE_AGENT_NAME, PRODUCTION_VOICE_AGENT_NAME
 from shared.py.wide_events import log
 
 load_dotenv()
@@ -365,6 +366,9 @@ class ProductionSettings(CommonSettings):
     # agent on its boot-time GAIA_BACKEND_URL — set it in multi-backend
     # deployments like staging previews (one agent, many preview APIs).
     VOICE_AGENT_BACKEND_URL: str | None = None
+    # LiveKit agent every voice room is explicitly dispatched to; the worker
+    # registers under the same name (shared.py.voice).
+    VOICE_AGENT_NAME: str = PRODUCTION_VOICE_AGENT_NAME
 
     # ----------------------------------------------
     # Webhook Secrets & Security
@@ -586,6 +590,7 @@ class DevelopmentSettings(CommonSettings):
     GAIA_BACKEND_URL: str | None = "http://host.docker.internal:8000"
     ELEVENLABS_VOICE_ID: str | None = None
     VOICE_AGENT_BACKEND_URL: str | None = None
+    VOICE_AGENT_NAME: str = DEVELOPMENT_VOICE_AGENT_NAME
 
     # ----------------------------------------------
     # Content Management

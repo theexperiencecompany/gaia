@@ -9,7 +9,7 @@ from pathlib import Path
 import time
 from typing import Any
 
-from livekit import rtc  # type: ignore[attr-defined]  # livekit __init__ untyped upstream
+from livekit import rtc
 from livekit.agents import (
     Agent,
     AgentFalseInterruptionEvent,
@@ -32,7 +32,7 @@ from shared.py.analytics import PostHogAnalytics, VoiceAnalyticsEvents
 from shared.py.logging import configure_file_logging
 from shared.py.secrets import inject_infisical_secrets
 from shared.py.wide_events import ModelContext, VoiceContext, get_trace_id, log, log_context
-from src.config import bootstrap_settings
+from src.config import bootstrap_settings, get_settings
 from src.constants import (
     BACKEND_REQUEST_TIMEOUT_S,
     MIN_ENDPOINTING_DELAY_S,
@@ -525,6 +525,9 @@ def _run_worker_cli() -> None:
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
+            # Named → explicit dispatch only: the worker joins just the rooms
+            # its API minted for this name, never another environment's.
+            agent_name=get_settings().VOICE_AGENT_NAME,
             # Worker metrics (lk_agents_active_job_count, lk_agents_worker_load,
             # ...) at :{port}/metrics for the Prometheus scrape job. The
             # multiproc dir aggregates metrics from forked job processes.

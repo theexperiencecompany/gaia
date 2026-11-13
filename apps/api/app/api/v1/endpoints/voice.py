@@ -98,6 +98,11 @@ async def get_token(
                     can_update_own_metadata=True,
                 )
             )
+            .with_room_config(
+                api.RoomConfiguration(
+                    agents=[api.RoomAgentDispatch(agent_name=settings.VOICE_AGENT_NAME)]
+                )
+            )
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate voice token: {e!s}") from e

@@ -99,6 +99,26 @@ class TestGetVoiceToken:
         mock_get_voice.assert_awaited_once_with(USER_ID)
 
     @patch("app.api.v1.endpoints.voice.get_user_voice", new_callable=AsyncMock)
+    @pytest.mark.regression
+    async def test_token_dispatches_only_the_configured_agent(
+        self, mock_get_voice: AsyncMock, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The room must request its own environment's agent by name.
+
+        Without an explicit dispatch, every worker registered on the LiveKit
+        project auto-joins — a dev room was taken by another environment's
+        worker that never answered.
+        """
+        self._enable_livekit(monkeypatch)
+        monkeypatch.setattr(settings, "VOICE_AGENT_NAME", "gaia-voice-test")
+        mock_get_voice.return_value = None
+        resp = await client.get(VOICE_BASE + "/token")
+        assert resp.status_code == 200
+        claims = _decode_token(resp.json()["participantToken"])
+        agents = claims["roomConfig"]["agents"]
+        assert [a["agentName"] for a in agents] == ["gaia-voice-test"]
+
+    @patch("app.api.v1.endpoints.voice.get_user_voice", new_callable=AsyncMock)
     async def test_token_fails_when_livekit_keys_are_missing(
         self, mock_get_voice: AsyncMock, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ):
