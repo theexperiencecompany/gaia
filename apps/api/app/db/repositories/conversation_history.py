@@ -182,7 +182,7 @@ def _message(logged: LoggedEntry, beside: _Beside) -> ConversationEntry | None:
                 todo_run_wake=message.todo_run_wake,
             )
         # An imported reply with nothing in it is a folded emoji_ack that already held a seq.
-        case Reply() as reply if not reply.imported or reply.text or reply.tool_data:
+        case Reply() as reply if not reply.imported or reply.text or reply.tool_data or reply.image:
             settled = beside.settles.get(reply.reply_id)
             target = reply.quote_target if settled is None else settled.quote_target
             return ConversationEntry(
@@ -193,6 +193,7 @@ def _message(logged: LoggedEntry, beside: _Beside) -> ConversationEntry | None:
                 message_id=reply.reply_id,
                 tool_data=_cards(reply.tool_data, beside),
                 follow_up_actions=list(reply.follow_up_actions) or None,
+                image_data=reply.image,
                 replyToMessage=_quote(beside, target),
                 in_progress=True if settled is None else None,
                 stopped=True if settled and settled.outcome is ReplyOutcome.STOPPED else None,

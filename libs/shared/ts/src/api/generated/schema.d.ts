@@ -13511,6 +13511,7 @@ export interface components {
              * @description Producer-minted idempotency key
              */
             id: string;
+            image?: components["schemas"]["ImageData"] | null;
             /**
              * Imported
              * @default false

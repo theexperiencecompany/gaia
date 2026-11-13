@@ -81,9 +81,8 @@ NEVER_MIGRATED_HEADS: dict[str, object] = {
 #: Message-shaped entries carry the old type field (user or bot); no log entry has one.
 MESSAGE_SHAPED: dict[str, object] = {"type": {"$exists": True}}
 _ACK_KIND = "emoji_ack"
-#: Old message fields the log keeps nowhere; a pass counts the messages that carry one.
+#: Old message fields no client renders, so the log keeps them nowhere; a pass counts the messages that carry one.
 NOT_KEPT_FIELDS = (
-    "image_data",
     "disclaimer",
     "subtype",
     "file",
@@ -107,6 +106,7 @@ _SHOWN_FIELDS = frozenset(
         "todo_run_wake",
         "tool_data",
         "follow_up_actions",
+        "image_data",
         "replyToMessage",
         "error",
         "stopped",
@@ -374,6 +374,7 @@ def _reply(message: ConversationEntry, users: set[str], *, blank: bool) -> Reply
         text="" if blank else message.response,
         tool_data=tuple(message.tool_data or ()),
         follow_up_actions=tuple(message.follow_up_actions or ()),
+        image=message.image_data,
         quote_target=quoted if quoted in users else None,
         pinned=bool(message.pinned),
         imported=True,

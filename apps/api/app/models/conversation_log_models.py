@@ -7,7 +7,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from app.constants.chat import ConversationSource
 from app.constants.hil import ApprovalResolution
-from app.models.chat_models import ReactionBy
+from app.models.chat_models import ImageData, ReactionBy
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -290,6 +290,8 @@ class Reply(_Entry):
     text: str = ""
     tool_data: tuple[ToolDataEntry, ...] = ()
     follow_up_actions: tuple[str, ...] = ()
+    # A generated image the reply shows, as history the entries migration rewrote stored it.
+    image: ImageData | None = None
     # The user message the reply quotes, known when it opens so a first bubble can quote it.
     quote_target: str | None = None
     # Characters of the reply the user heard before a voice barge-in.

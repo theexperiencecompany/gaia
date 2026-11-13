@@ -299,6 +299,34 @@ async def test_verify_detects_a_corrupted_entry_and_a_write_since_the_pass(
     assert (await migration.verify(ref)).mismatches == ["written since its last pass: run --apply"]
 
 
+async def test_a_generated_image_reads_back_as_stored_and_verify_catches_its_loss(
+    migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
+) -> None:
+    image = {"url": "https://x/cat.png", "prompt": "a cat", "improved_prompt": "a cat, lit"}
+    ref = await _legacy(
+        raw_collection,
+        [
+            _message(1),
+            _message(2, "bot", response="", image_data=image),
+            _message(3, "bot", image_data=image),
+        ],
+    )
+
+    await migration.migrate(ref, apply=True)
+
+    doc = await ConversationRepository().get(ref.conversation_id, user_id=ref.user_id)
+    assert doc is not None
+    shown = {m.message_id: m for m in doc.messages}
+    assert shown["m2"].image_data is not None
+    assert shown["m2"].image_data.model_dump() == image
+    assert shown["m3"].image_data is not None and shown["m3"].response == "message 3"
+    assert (await migration.verify(ref)).ok
+    entry_of = {"user_id": USER, "conversation_id": ref.conversation_id, "id": "m3"}
+    await entries_collection.update_one(entry_of, {"$unset": {"image": ""}})
+    report = await migration.verify(ref)
+    assert not report.ok and report.mismatches[0].startswith("history differs at message 2")
+
+
 async def _cli(capsys: pytest.CaptureFixture[str], *argv: str) -> tuple[int, list[str]]:
     code = await script._run(script._parser().parse_args(argv))
     return code, capsys.readouterr().out.splitlines()
