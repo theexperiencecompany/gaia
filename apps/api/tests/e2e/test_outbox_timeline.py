@@ -38,7 +38,12 @@ from app.constants.outbox import (
     OUTBOX_RECOVERY_AFTER_SECONDS,
     OUTBOX_RECOVERY_MAX_ATTEMPTS,
 )
-from app.constants.outbox_attention import FLUSH_MAX_ITEMS_PER_RUN, HoldReason
+from app.constants.outbox_attention import (
+    DIGEST_MAX_ATTEMPTS,
+    DIGEST_RETRY_DELAY_SECONDS,
+    FLUSH_MAX_ITEMS_PER_RUN,
+    HoldReason,
+)
 from app.constants.task_report import FactKind, NeedsYouKind
 from app.constants.websocket import ReportSettledOutcome
 from app.db.repositories.attention_settings import attention_settings_repository
@@ -60,6 +65,7 @@ from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.schemas.outbound import OutboundAttachment
 from app.services.attention_settings_service import set_attention_settings
+from app.services.email.models import EmailRejectedError
 from app.services.outbox.approvals import ApprovalAsk, ApprovalNoticeState, approval_notice
 from app.services.outbox.deliver import flush_subject
 from app.services.outbox.flush import release_on_return, sweep_lost_flushes
@@ -2121,6 +2127,121 @@ async def test_a_dormant_users_return_tells_what_waited_as_one_catch_up(
     assert (message.destination, message.mode.value) == ("chat_app", "unsolicited")
     assert sorted(message.report_ids) == ["run-1", "run-2"]
     assert "has just come back" in str(tl.compose.calls[-1][0].content)
+    assert tl.sinks.emails == []
+
+
+async def test_a_user_who_opened_the_app_today_is_not_dormant_though_they_have_not_typed_in_weeks(
+    tl: OutboxTimeline,
+) -> None:
+    tl.world.go_away()
+    await tl.focus_on(ConversationSource.WEB)
+    await tl.focus_off(ConversationSource.WEB)
+    _judged_routine(tl, "run-1")
+
+    await _told_at(tl, _routine("run-1", "todo-1", 1), 1)
+
+    assert [event.reason for event in tl.sinks.held] != ["dormant"]
+
+
+async def test_a_call_ending_is_the_dormant_users_return_and_tells_what_waited(
+    tl: OutboxTimeline,
+) -> None:
+    await _dormant_routine(tl)
+
+    await tl.at(10)
+    await tl.call_starts(ROOM)
+    await tl.at(20)
+    await tl.call_ends(ROOM)
+    await tl.at(21)
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.SENT}
+    assert tl.sinks.emails == []
+
+
+async def _dormant_routine_and_an_answer_due_at_the_digest(tl: OutboxTimeline) -> None:
+    """Hold a dormant user's routine for the digest and an answer they asked for until that same minute."""
+    await _dormant_routine(tl)
+    answer = _run(
+        "ask-1", OutcomeState.DONE, subject_id="todo-2", minutes=5, initiative=Initiative.ASKED
+    )
+    due_at = T0 + timedelta(minutes=DIGEST_MINUTES)
+    answer = answer.model_copy(update={"delivery_policy": DeliveryPolicy(not_before=due_at)})
+    await _told_at(tl, answer, 5)
+
+
+async def test_a_digest_that_fails_to_send_never_keeps_the_users_other_due_items_untold(
+    tl: OutboxTimeline,
+) -> None:
+    await _dormant_routine_and_an_answer_due_at_the_digest(tl)
+    tl.sinks.email_failure = RuntimeError("provider down")
+
+    await tl.at(DIGEST_MINUTES)
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.HELD, "ask-1": ItemState.SENT}
+    [message] = await tl.ledger()
+    assert message.report_ids == ["ask-1"]
+    item = next(i for i in await tl.items() if i.report_id == "run-1")
+    assert item.hold is not None
+    assert item.hold.digest_failures == 1
+    assert item.hold.until == tl.clock.current + timedelta(seconds=DIGEST_RETRY_DELAY_SECONDS)
+
+
+async def test_a_failing_digest_is_retried_a_bounded_number_of_times_then_failed_loudly(
+    tl: OutboxTimeline,
+) -> None:
+    await _dormant_routine(tl)
+    tl.sinks.email_failure = RuntimeError("provider down")
+    minute = DIGEST_MINUTES
+
+    for _ in range(DIGEST_MAX_ATTEMPTS):
+        await tl.at(minute)
+        await tl.drain()
+        minute += DIGEST_RETRY_DELAY_SECONDS // 60 + 1
+
+    [item] = await tl.items()
+    assert (item.state, item.failure) == (ItemState.FAILED, ItemFailure.DIGEST_FAILED)
+    tl.sinks.email_failure = None
+    await tl.at(minute + 7 * 24 * 60)
+    await tl.drain()
+    assert tl.sinks.emails == []
+
+
+async def test_a_digest_the_provider_refuses_is_tried_again_at_the_next_slot_not_in_an_hour(
+    tl: OutboxTimeline,
+) -> None:
+    await _dormant_routine(tl)
+    tl.sinks.email_failure = EmailRejectedError("domain not verified")
+
+    await tl.at(DIGEST_MINUTES)
+    await tl.drain()
+
+    [item] = await tl.items()
+    assert item.state is ItemState.HELD
+    assert item.hold is not None and item.hold.digest_failures == 1
+    assert item.hold.until > tl.clock.current + timedelta(days=6)
+
+
+async def test_an_item_whose_deadline_passes_before_the_digest_is_recorded_not_emailed_late(
+    tl: OutboxTimeline,
+) -> None:
+    tl.world.go_away()
+    _judged_routine(tl, "run-1")
+    report = _routine("run-1", "todo-1", 0)
+    report = report.model_copy(
+        update={"delivery_policy": DeliveryPolicy(by=T0 + timedelta(days=2))}
+    )
+    await _told_at(tl, report, 0)
+
+    [held] = await tl.items()
+    assert held.hold is not None and held.hold.until < T0 + timedelta(days=2)
+
+    await tl.at(DIGEST_MINUTES)
+    await tl.drain()
+
+    [item] = await tl.items()
+    assert (item.state, item.drop_reason) == (ItemState.DROPPED, DropReason.EXPIRED)
     assert tl.sinks.emails == []
 
 

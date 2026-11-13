@@ -9,6 +9,7 @@ from app.constants.notifications import (
     CALL_PRESENCE_TTL_SECONDS,
     FOCUS_HEARTBEAT_SECONDS,
     FOCUS_PRESENCE_TTL_SECONDS,
+    POST_CALL_ACTIVE_WINDOW_SECONDS,
     PRESENCE_ACTIVE_WINDOW_SECONDS,
     PRESENCE_RETENTION_SECONDS,
 )
@@ -240,6 +241,10 @@ def _focus_key(surface: str) -> str:
     return f"user_focus_presence:{USER_ID}:{surface}"
 
 
+LAST_SEEN_KEY = f"user_last_seen:{USER_ID}"
+TAB = "tab-1"
+
+
 class TestFocusPresence:
     async def test_nobody_is_looking_at_an_app_until_it_says_so(
         self, fake_redis: fakeredis.aioredis.FakeRedis
@@ -249,27 +254,61 @@ class TestFocusPresence:
     async def test_a_beat_marks_its_surface_for_two_missed_heartbeats_and_each_beat_renews_it(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
-        await presence_module.mark_focused(USER_ID, ConversationSource.WEB)
+        await presence_module.mark_focused(USER_ID, ConversationSource.WEB, TAB)
 
         assert set(await presence_module.read_focus(USER_ID)) == {ConversationSource.WEB}
         assert 0 < await fake_redis.ttl(_focus_key("web")) <= FOCUS_PRESENCE_TTL_SECONDS
         assert FOCUS_PRESENCE_TTL_SECONDS > 2 * FOCUS_HEARTBEAT_SECONDS
 
+    async def test_a_client_that_stopped_beating_is_no_longer_looked_at(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        stale = _epoch() - FOCUS_PRESENCE_TTL_SECONDS - 5
+        await fake_redis.zadd(_focus_key("web"), {TAB: stale})
+
+        assert await presence_module.read_focus(USER_ID) == {}
+
     async def test_web_and_desktop_are_looked_at_independently(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
-        await presence_module.mark_focused(USER_ID, ConversationSource.WEB)
-        await presence_module.mark_focused(USER_ID, ConversationSource.DESKTOP)
-        await presence_module.clear_focus(USER_ID, ConversationSource.WEB)
+        await presence_module.mark_focused(USER_ID, ConversationSource.WEB, TAB)
+        await presence_module.mark_focused(USER_ID, ConversationSource.DESKTOP, TAB)
+        await presence_module.clear_focus(USER_ID, ConversationSource.WEB, TAB)
 
         assert set(await presence_module.read_focus(USER_ID)) == {ConversationSource.DESKTOP}
+
+    async def test_one_tab_leaving_does_not_clear_another_that_is_still_in_view(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        await presence_module.mark_focused(USER_ID, ConversationSource.WEB, "tab-a")
+        await presence_module.mark_focused(USER_ID, ConversationSource.WEB, "tab-b")
+
+        await presence_module.clear_focus(USER_ID, ConversationSource.WEB, "tab-a")
+
+        assert set(await presence_module.read_focus(USER_ID)) == {ConversationSource.WEB}
+
+        await presence_module.clear_focus(USER_ID, ConversationSource.WEB, "tab-b")
+
+        assert await presence_module.read_focus(USER_ID) == {}
+
+    async def test_a_beat_after_none_of_their_apps_was_in_view_is_their_return(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        assert await presence_module.mark_focused(USER_ID, ConversationSource.WEB, TAB) is True
+        assert await presence_module.mark_focused(USER_ID, ConversationSource.WEB, TAB) is False
+        assert await presence_module.mark_focused(USER_ID, ConversationSource.DESKTOP, TAB) is False
+
+        await presence_module.clear_focus(USER_ID, ConversationSource.WEB, TAB)
+        await presence_module.clear_focus(USER_ID, ConversationSource.DESKTOP, TAB)
+
+        assert await presence_module.mark_focused(USER_ID, ConversationSource.WEB, TAB) is True
 
     async def test_the_beat_carries_the_instant_it_was_sent(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
         start = _epoch()
 
-        await presence_module.mark_focused(USER_ID, ConversationSource.DESKTOP)
+        await presence_module.mark_focused(USER_ID, ConversationSource.DESKTOP, TAB)
 
         beat = (await presence_module.read_focus(USER_ID))[ConversationSource.DESKTOP]
         assert start <= beat <= _epoch()
@@ -277,12 +316,31 @@ class TestFocusPresence:
     async def test_focus_is_a_sign_of_presence_that_a_chat_app_turn_can_be_older_than(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
-        await fake_redis.hset(KEY, mapping={"whatsapp": str(_epoch() - 7200)})
+        with patch.object(presence_module, "_now_epoch", return_value=_epoch() - 7200):
+            await record_turn_presence(USER_ID, ConversationSource.WHATSAPP)
         assert await presence_module.read_last_active(USER_ID) == _epoch() - 7200
 
-        await presence_module.mark_focused(USER_ID, ConversationSource.WEB)
+        await presence_module.mark_focused(USER_ID, ConversationSource.WEB, TAB)
 
         assert await presence_module.read_last_active(USER_ID) >= _epoch() - 5
+
+    async def test_a_user_who_opens_the_app_but_has_not_typed_in_weeks_was_still_last_seen_when_they_left(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        with patch.object(presence_module, "_now_epoch", return_value=_epoch() - 14 * 86400):
+            await record_turn_presence(USER_ID, ConversationSource.WEB)
+        await presence_module.mark_focused(USER_ID, ConversationSource.WEB, TAB)
+        await presence_module.clear_focus(USER_ID, ConversationSource.WEB, TAB)
+
+        assert await presence_module.read_last_active(USER_ID) >= _epoch() - 5
+
+    async def test_the_last_seen_stamp_outlives_the_focus_beat_for_the_retention_window(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        await presence_module.mark_focused(USER_ID, ConversationSource.WEB, TAB)
+
+        ttl = await fake_redis.ttl(LAST_SEEN_KEY)
+        assert PRESENCE_RETENTION_SECONDS - 5 <= ttl <= PRESENCE_RETENTION_SECONDS
 
     async def test_a_user_seen_nowhere_has_no_last_active(
         self, fake_redis: fakeredis.aioredis.FakeRedis
@@ -292,7 +350,7 @@ class TestFocusPresence:
     async def test_a_live_call_is_the_user_being_active_now(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
-        await fake_redis.hset(KEY, mapping={"telegram": str(_epoch() - 30 * 86400)})
+        await fake_redis.set(LAST_SEEN_KEY, str(_epoch() - 30 * 86400))
         await presence_module.mark_call_live(USER_ID, ROOM)
 
         assert await presence_module.read_last_active(USER_ID) >= _epoch() - 5
@@ -351,3 +409,15 @@ class TestCallPresence:
         recent = _snapshot(voice=NOW - 30, telegram=NOW - 600)
 
         assert active_surface(recent, {}, NOW) is ConversationSource.VOICE
+
+    def test_a_call_that_ended_a_while_ago_no_longer_keeps_a_chat_app_message_in_the_app(
+        self,
+    ) -> None:
+        old = _snapshot(voice=NOW - POST_CALL_ACTIVE_WINDOW_SECONDS - 1, telegram=NOW - 3600)
+
+        assert active_surface(old, {}, NOW) is ConversationSource.TELEGRAM
+
+    def test_a_call_ended_at_the_window_edge_still_counts(self) -> None:
+        edge = _snapshot(voice=NOW - POST_CALL_ACTIVE_WINDOW_SECONDS)
+
+        assert active_surface(edge, {}, NOW) is ConversationSource.VOICE

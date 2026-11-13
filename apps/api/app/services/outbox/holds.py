@@ -195,6 +195,12 @@ def _deadline(report: OutboxReport, verdict: JudgeVerdict | None) -> datetime | 
     return min(candidates, default=None)
 
 
+def latest_telling(report: OutboxReport, verdict: JudgeVerdict | None) -> datetime | None:
+    """Return the last instant telling the item is still worth it: its deadline less the lead a timely item gets."""
+    deadline = _deadline(report, verdict)
+    return deadline - _seconds(TIMELY_LEAD_SECONDS) if deadline is not None else None
+
+
 def _may_wait_for_run(
     state: AttentionState, verdict: JudgeVerdict, latest: datetime | None
 ) -> bool:
@@ -319,15 +325,16 @@ def place(
     own kind, so it is not held again for the budget, the gap or a check-in; silence, the user's
     own timing and the hold-age cap apply either way.
     """
+    latest = latest_telling(report, verdict)
     if state.dormant and urgency <= UrgencyClass.ROUTINE and not is_answer(report):
-        return Hold(next_digest(state.user_id, state.clock, state.now), HoldReason.DORMANT)
+        until = _bounded(next_digest(state.user_id, state.clock, state.now), latest)
+        if until <= state.now:
+            return Record(DropReason.EXPIRED)
+        return Hold(until, HoldReason.DORMANT)
     prior = state.prior_hold
     if prior is not None and state.now - prior.since >= _seconds(MAX_HOLD_AGE_SECONDS):
         return Tell()
     urgency = escalated(urgency, state)
-    latest = _deadline(report, verdict)
-    if latest is not None:
-        latest -= _seconds(TIMELY_LEAD_SECONDS)
     not_before = report.delivery_policy.not_before
     if not_before is not None and not_before > state.now:
         return Hold(not_before, HoldReason.NOT_BEFORE)

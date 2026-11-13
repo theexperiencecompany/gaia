@@ -312,6 +312,17 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
             },
         )
 
+    async def fail_held(
+        self, user_id: str, report_id: str, failure: ItemFailure
+    ) -> OutboxItemDocument | None:
+        """Fail a held item that could not be told; None when it was told or settled meanwhile."""
+        return await self._transition(
+            user_id,
+            {"report_id": report_id},
+            from_states=[ItemState.HELD],
+            changes={"state": ItemState.FAILED.value, "failure": failure.value},
+        )
+
     async def requeue_composing(self, user_id: str, report_id: str) -> OutboxItemDocument | None:
         """Give an item a dead compose left composing back to the queue; None when it was not composing."""
         return await self._apply_raw_update(

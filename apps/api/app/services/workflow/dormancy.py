@@ -25,6 +25,7 @@ from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.scheduler_models import DeactivationReason
 from app.models.workflow_models import WorkflowDocument
+from app.services.delivery.presence import read_last_active
 from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
 
@@ -61,10 +62,14 @@ async def _is_really_dormant(user_id: str, cutoff: datetime) -> bool:
     """Return whether user_id shows no activity on ANY signal since cutoff.
 
     users.last_active_at alone only reports "hasn't opened the web app", so
-    messages the user wrote and metered feature use are checked too — any one
-    of them being recent keeps the user's workflows running. GAIA's own
-    messages never count: they move a conversation's updatedAt.
+    messages the user wrote, metered feature use and presence (the app in view,
+    a call) are checked too — any one of them being recent keeps the user's
+    workflows running. GAIA's own messages never count: they move a
+    conversation's updatedAt.
     """
+    last_seen = await read_last_active(user_id)
+    if last_seen is not None and last_seen >= cutoff.timestamp():
+        return False
     if await conversation_repository.has_user_message_since(user_id, cutoff):
         return False
     # Sum, not truthiness: a pure-automation day writes a usage_daily row with

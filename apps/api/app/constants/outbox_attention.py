@@ -69,6 +69,10 @@ DORMANT_AFTER_SECONDS: Final = 14 * ONE_DAY_TTL
 #: What a dormant user missed is emailed once a week, on this weekday (Monday is 0) at this hour of their own clock.
 DIGEST_WEEKDAY: Final = 0
 DIGEST_HOUR: Final = 9
+#: A digest that cannot be sent is tried this many times in all, then its items are failed, loudly.
+DIGEST_MAX_ATTEMPTS: Final = 3
+#: A digest that failed for a reason that may pass (an outage, a rate limit) is tried again after this.
+DIGEST_RETRY_DELAY_SECONDS: Final = ONE_HOUR_TTL
 
 # --- Flush ---
 

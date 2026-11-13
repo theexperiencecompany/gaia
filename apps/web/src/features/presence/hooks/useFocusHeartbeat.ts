@@ -18,11 +18,13 @@ function reportFailure(action: string) {
  * pointer was used lately, so a tab left open in the background, or a focused
  * window nobody is at, is never reported. The server forgets the app one missed
  * beat after the last one, so leaving is also said at once rather than waited out.
+ * Each tab names itself, so one tab leaving never clears another still in view.
  */
 export function useFocusHeartbeat(enabled: boolean): void {
   useEffect(() => {
     if (!enabled) return;
 
+    const clientId = crypto.randomUUID();
     let lastInputAt = Date.now();
     let reporting = false;
 
@@ -34,10 +36,12 @@ export function useFocusHeartbeat(enabled: boolean): void {
     const evaluate = () => {
       if (isLooking()) {
         reporting = true;
-        presenceApi.holdFocus().catch(reportFailure("report focus"));
+        presenceApi.holdFocus(clientId).catch(reportFailure("report focus"));
       } else if (reporting) {
         reporting = false;
-        presenceApi.releaseFocus().catch(reportFailure("release focus"));
+        presenceApi
+          .releaseFocus(clientId)
+          .catch(reportFailure("release focus"));
       }
     };
 
@@ -64,7 +68,9 @@ export function useFocusHeartbeat(enabled: boolean): void {
         window.removeEventListener(event, onInput);
       }
       if (reporting) {
-        presenceApi.releaseFocus().catch(reportFailure("release focus"));
+        presenceApi
+          .releaseFocus(clientId)
+          .catch(reportFailure("release focus"));
       }
     };
   }, [enabled]);

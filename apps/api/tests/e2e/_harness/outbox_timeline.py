@@ -64,6 +64,8 @@ ROUTER = "app.services.outbox.router"
 DELIVER = "app.services.outbox.deliver"
 COMPOSE = "app.services.outbox.compose"
 DIGEST = "app.services.outbox.digest"
+#: The tab whose focus heartbeats the timeline reports.
+CLIENT = "tab-1"
 
 
 class FakeClock:
@@ -253,6 +255,8 @@ class Sinks:
     voice: list[tuple[str, list[str]]] = field(default_factory=list)
     #: (subject, parts) of each weekly digest email.
     emails: list[tuple[str, list[str]]] = field(default_factory=list)
+    #: Raised by the weekly digest's email transport instead of sending, while set.
+    email_failure: Exception | None = None
     #: (approval id, body) of each approval push to a backgrounded phone.
     push: list[tuple[str, str]] = field(default_factory=list)
     #: The outbox message id each bot message was published under, parallel to `bot`.
@@ -290,10 +294,10 @@ class OutboxTimeline:
 
     async def focus_on(self, source: ConversationSource) -> None:
         """Report the user visible, focused and in use in the app on source, as its heartbeat does."""
-        await mark_focused(self.world.user_id, source)
+        await mark_focused(self.world.user_id, source, CLIENT)
 
     async def focus_off(self, source: ConversationSource) -> None:
-        await clear_focus(self.world.user_id, source)
+        await clear_focus(self.world.user_id, source, CLIENT)
 
     async def call_starts(self, room: str = "voice_session_room") -> None:
         await mark_call_live(self.world.user_id, room)
@@ -365,6 +369,8 @@ def _dormancy_doubles(world: World, sinks: Sinks) -> Iterator[None]:
     async def send_email(
         address: str, user_id: str, subject: str, parts: list[str], idempotency_key: str
     ) -> None:
+        if sinks.email_failure is not None:
+            raise sinks.email_failure
         sinks.emails.append((subject, list(parts)))
 
     def capture_digest(

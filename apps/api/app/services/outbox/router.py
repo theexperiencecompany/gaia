@@ -194,9 +194,17 @@ async def _requested_chat_channel(
 
 
 def is_spoken_in_call(item: OutboxItemDocument) -> bool:
-    """Whether a live call may hear the item: the user's own answer or an interrupt, and nothing private."""
-    private = item.judgement is not None and item.judgement.sensitivity in PRIVATE_SENSITIVITIES
-    return not private and (is_answer(item.report) or item.urgency is UrgencyClass.INTERRUPT)
+    """Whether a live call may hear the item: the user's own answer or an interrupt, judged and not private.
+
+    An item the Judge never read, or could not, has no known sensitivity, so it is shown, not said.
+    """
+    judgement = item.judgement
+    judged_safe = (
+        judgement is not None
+        and judgement.verdict is not None
+        and judgement.sensitivity not in PRIVATE_SENSITIVITIES
+    )
+    return judged_safe and (is_answer(item.report) or item.urgency is UrgencyClass.INTERRUPT)
 
 
 async def _call_target(user_id: str, items: list[OutboxItemDocument]) -> InApp | None:

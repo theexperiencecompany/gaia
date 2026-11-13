@@ -133,7 +133,21 @@ def _item(
     )
 
 
+def _unread(judgement: ItemJudgement | None) -> OutboxItemDocument:
+    return _item(Initiative.ASKED, UrgencyClass.ROUTINE).model_copy(update={"judgement": judgement})
+
+
 class TestIsSpokenInCall:
+    @pytest.mark.parametrize(
+        "judgement",
+        [None, ItemJudgement(judge_unavailable=True)],
+        ids=["never_judged", "judge_down"],
+    )
+    def test_nothing_is_said_aloud_whose_sensitivity_nobody_read(
+        self, judgement: ItemJudgement | None
+    ) -> None:
+        assert router.is_spoken_in_call(_unread(judgement)) is False
+
     @pytest.mark.parametrize(
         ("item", "heard"),
         [

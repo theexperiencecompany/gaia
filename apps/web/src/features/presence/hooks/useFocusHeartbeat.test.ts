@@ -10,8 +10,8 @@ const releaseFocus = vi.fn();
 
 vi.mock("../api/presenceApi", () => ({
   presenceApi: {
-    holdFocus: () => holdFocus(),
-    releaseFocus: () => releaseFocus(),
+    holdFocus: (clientId: string) => holdFocus(clientId),
+    releaseFocus: (clientId: string) => releaseFocus(clientId),
   },
 }));
 
@@ -59,6 +59,20 @@ describe("useFocusHeartbeat", () => {
     }
 
     expect(holdFocus).toHaveBeenCalledTimes(3);
+  });
+
+  it("names the tab on every beat and on leaving, and a second tab names itself differently", () => {
+    const first = renderHook(() => useFocusHeartbeat(true));
+    advance(FOCUS_HEARTBEAT_INTERVAL_MS);
+    first.unmount();
+    renderHook(() => useFocusHeartbeat(true));
+
+    const [firstBeat, secondBeat, secondTabBeat] = holdFocus.mock.calls.map(
+      ([clientId]) => clientId,
+    );
+    expect(firstBeat).toEqual(secondBeat);
+    expect(releaseFocus).toHaveBeenCalledWith(firstBeat);
+    expect(secondTabBeat).not.toEqual(firstBeat);
   });
 
   it("never reports a tab open in the background", () => {

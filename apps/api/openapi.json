@@ -33731,6 +33731,21 @@
       "delete": {
         "description": "Record that the user stopped looking at this app: it was hidden or lost focus.",
         "operationId": "presence_release_focus",
+        "parameters": [
+          {
+            "description": "Names the tab or window reporting, so one closing never clears another.",
+            "in": "query",
+            "name": "client_id",
+            "required": true,
+            "schema": {
+              "description": "Names the tab or window reporting, so one closing never clears another.",
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Client Id",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "Successful Response"
@@ -33782,8 +33797,23 @@
         ]
       },
       "put": {
-        "description": "Keep the user marked as looking at this app; the client calls it on every heartbeat while visible, focused and in use.",
+        "description": "Keep the user marked as looking at this app; the client calls it on every heartbeat while visible, focused and in use.\n\nThe first beat after none of their apps was in view is their return: what waited for it is released.",
         "operationId": "presence_hold_focus",
+        "parameters": [
+          {
+            "description": "Names the tab or window reporting, so one closing never clears another.",
+            "in": "query",
+            "name": "client_id",
+            "required": true,
+            "schema": {
+              "description": "Names the tab or window reporting, so one closing never clears another.",
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Client Id",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "Successful Response"

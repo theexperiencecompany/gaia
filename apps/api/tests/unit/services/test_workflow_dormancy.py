@@ -1,9 +1,11 @@
 """Unit tests for app.services.workflow.dormancy — the dormant-user workflow sweep."""
 
 from datetime import UTC, datetime, timedelta
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import fakeredis.aioredis
 import pytest
 
 from app.models.scheduler_models import DeactivationReason
@@ -67,6 +69,7 @@ def _patches(
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures("fake_redis")
 class TestSweepDormantWorkflows:
     async def test_dry_run_reports_the_cohort_without_writing(self):
         deactivate = AsyncMock()
@@ -191,6 +194,33 @@ class TestSweepDormantWorkflows:
 
         assert result.candidates == []
         deactivate.assert_not_awaited()
+
+    async def test_a_user_seen_in_the_app_lately_keeps_their_workflows_though_they_never_wrote(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ):
+        await fake_redis.set("user_last_seen:web_only", str(int(time.time()) - 3600))
+        deactivate = AsyncMock()
+        p = _patches(
+            users=[_user("web_only")],
+            workflows_by_user={"web_only": [_workflow("wf_a")]},
+            deactivate=deactivate,
+        )
+        with p[0], p[1], p[2], p[3], p[4]:
+            result = await sweep_dormant_workflows()
+
+        assert result.candidates == []
+        deactivate.assert_not_awaited()
+
+    async def test_presence_older_than_the_threshold_does_not_keep_a_user_awake(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ):
+        stale = int(time.time()) - int(DORMANCY_THRESHOLD.total_seconds()) - 3600
+        await fake_redis.set("user_last_seen:gone", str(stale))
+        p = _patches(users=[_user("gone")], workflows_by_user={"gone": [_workflow("wf_a")]})
+        with p[0], p[1], p[2], p[3], p[4]:
+            result = await sweep_dormant_workflows()
+
+        assert [c.user_id for c in result.candidates] == ["gone"]
 
     async def test_automation_only_usage_rows_do_not_mask_dormancy(self):
         """A pure-automation usage_daily row has cost but count 0, which truthiness alone misreads as "active"."""

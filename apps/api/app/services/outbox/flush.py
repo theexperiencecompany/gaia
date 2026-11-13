@@ -140,9 +140,14 @@ async def release_on_return(user_id: str) -> None:
 
 
 async def release_on_call_end(user_id: str) -> None:
-    """End the holds a live call put on the user's items and flush them once it has closed."""
+    """End the holds a live call put on the user's items, and a dormant user's, and flush them once it has closed.
+
+    A call is a sign of presence like any message: a user who was away and called is back.
+    """
     await release_and_flush(
-        user_id, (HoldReason.IN_CALL,), delay=timedelta(seconds=CALL_END_FLUSH_DELAY_SECONDS)
+        user_id,
+        (HoldReason.IN_CALL, HoldReason.DORMANT),
+        delay=timedelta(seconds=CALL_END_FLUSH_DELAY_SECONDS),
     )
 
 

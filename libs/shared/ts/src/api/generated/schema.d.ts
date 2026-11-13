@@ -3492,6 +3492,8 @@ export interface paths {
         /**
          * Hold Focus
          * @description Keep the user marked as looking at this app; the client calls it on every heartbeat while visible, focused and in use.
+         *
+         *     The first beat after none of their apps was in view is their return: what waited for it is released.
          */
         put: operations["presence_hold_focus"];
         post?: never;
@@ -26069,7 +26071,10 @@ export interface operations {
     };
     presence_hold_focus: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Names the tab or window reporting, so one closing never clears another. */
+                client_id: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -26123,7 +26128,10 @@ export interface operations {
     };
     presence_release_focus: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Names the tab or window reporting, so one closing never clears another. */
+                client_id: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;

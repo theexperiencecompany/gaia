@@ -3,6 +3,10 @@
 from pydantic import BaseModel
 
 
+class EmailRejectedError(Exception):
+    """The provider refused the message for what it is (an address, a domain, the account); sending it again will not change that."""
+
+
 class EmailMessage(BaseModel):
     """One outbound email, provider-agnostic; headers carry e.g. List-Unsubscribe."""
 

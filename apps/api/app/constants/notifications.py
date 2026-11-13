@@ -41,6 +41,10 @@ DEFAULT_CHAT_CHANNEL_PRIORITY: tuple[str, ...] = (
 # inside this window a proactive message follows them there instead of the order above.
 PRESENCE_ACTIVE_WINDOW_SECONDS = 3 * 60 * 60
 
+# How long after a call ends the user still counts as in the app they took it in: a call is no
+# message in a chat app, so it moves where proactive messages go only for the minutes right after it.
+POST_CALL_ACTIVE_WINDOW_SECONDS = 10 * 60
+
 # How long the per-surface "last wrote here" stamps are kept, so the agent can
 # still say "last seen on WhatsApp 6 days ago". The window above decides delivery.
 PRESENCE_RETENTION_SECONDS = 30 * 24 * 60 * 60

@@ -105,8 +105,10 @@ LAST_ACTIVE_GATE_PREFIX = "last_active_gate"
 USER_PRESENCE_PREFIX = "user_presence"
 # Redis string per user, present while a voice call is live: the LiveKit room the call is in.
 USER_CALL_PRESENCE_PREFIX = "user_call_presence"
-# Redis string per user and surface, present while the user looks at a GAIA app there: epoch seconds of its last heartbeat.
+# Redis sorted set per user and surface: each GAIA app client (tab) that looks at the app, scored by the epoch seconds of its last heartbeat.
 USER_FOCUS_PRESENCE_PREFIX = "user_focus_presence"
+# Redis string per user: epoch seconds of the latest sign of presence anywhere (a message, an app in view, a call's end), kept for the retention window.
+USER_LAST_SEEN_PREFIX = "user_last_seen"
 
 # Cache key prefixes
 TEAM_CACHE_PREFIX = "team"

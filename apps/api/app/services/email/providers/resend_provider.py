@@ -1,16 +1,26 @@
 """Resend adapter (https://resend.com)."""
 
 import asyncio
+from http import HTTPStatus
 
 import resend
+from resend.exceptions import ResendError
 
 from app.config.settings import settings
 from app.constants.providers import CredentialProviderName
-from app.services.email.models import EmailMessage
+from app.services.email.models import EmailMessage, EmailRejectedError
 from app.services.providers.provider_credentials_service import (
     ProviderConfig,
     resolve as resolve_resend_config,
 )
+
+
+def _is_rejection(error: ResendError) -> bool:
+    """Whether Resend refused the message itself: a client error that is not a rate limit."""
+    status = int(error.code)
+    return HTTPStatus.BAD_REQUEST <= status < HTTPStatus.INTERNAL_SERVER_ERROR and (
+        status != HTTPStatus.TOO_MANY_REQUESTS
+    )
 
 
 class ResendEmailProvider:
@@ -48,7 +58,12 @@ class ResendEmailProvider:
             {"idempotency_key": message.idempotency_key} if message.idempotency_key else None
         )
         # The Resend SDK is synchronous — run it in a thread to keep the event loop free.
-        await asyncio.to_thread(resend.Emails.send, params, options)
+        try:
+            await asyncio.to_thread(resend.Emails.send, params, options)
+        except ResendError as error:
+            if _is_rejection(error):
+                raise EmailRejectedError(error.message) from error
+            raise
 
     async def add_contact(self, user_email: str, user_name: str | None = None) -> None:
         """Add a contact to the Resend audience. No-op when RESEND_AUDIENCE_ID is unset."""

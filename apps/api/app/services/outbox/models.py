@@ -143,6 +143,8 @@ class ItemFailure(StrEnum):
     TRANSPORT_FAILED = "transport_failed"
     #: The recovery sweep drove the item again and again and it never left the queue.
     RECOVERY_EXHAUSTED = "recovery_exhausted"
+    #: The weekly email kept failing, so the item was given up on.
+    DIGEST_FAILED = "digest_failed"
 
 
 class MessageState(StrEnum):
@@ -162,6 +164,7 @@ class ItemHold(BaseModel):
     until: datetime
     since: datetime = Field(description="When the item was first held.")
     deferrals: int = Field(default=0, description="Times it was held to wait for a run.")
+    digest_failures: int = Field(default=0, description="Times its weekly email could not be sent.")
 
 
 class Subject(BaseModel):
