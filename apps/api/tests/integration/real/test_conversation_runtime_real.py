@@ -6,8 +6,8 @@ context slots, and the instant reaction, which is never asked for.
 """
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
-from contextlib import AsyncExitStack, asynccontextmanager
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
+from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol, TypeVar, cast
@@ -22,6 +22,7 @@ from langchain_core.messages import (
     BaseMessage,
     HumanMessage,
     SystemMessage,
+    ToolMessage,
 )
 from langchain_core.outputs import ChatGenerationChunk
 from langgraph.config import get_config
@@ -75,6 +76,7 @@ from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.hil import hil_approval_repository
 from app.models.agent_config import AgentConfigurable, StepTurnRef, agent_configurable
 from app.models.agent_models import AgentRunnableConfig
+from app.models.chat_models import ImageData
 from app.models.conversation_frame_models import (
     EntryFrame,
     ReplyDeltaFrame,
@@ -136,7 +138,6 @@ from app.services.conversation.event_stream import (
     StreamedFrame,
     follow,
     read_frames,
-    replay_from_log,
 )
 from app.services.conversation.integration_log import (
     continue_after_connect,
@@ -144,7 +145,7 @@ from app.services.conversation.integration_log import (
 )
 from app.services.conversation.log import Accepted, accept
 from app.services.conversation.mongo_log import MongoConversationLog
-from app.services.conversation.ports import RuntimePorts
+from app.services.conversation.ports import EntryRejected, RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports
 from app.services.conversation.send import send_message, submit_message
 from app.services.conversation.step import advance
@@ -167,13 +168,17 @@ from app.services.hil.gate import GateContext, read_gate_context
 from app.services.workflow import thread_reset
 from app.services.workflow.conversation_service import log_playbook_run
 from app.services.workflow.execution_service import WorkflowFireOverlapped, WorkflowTurnFailed
+from app.services.workflow.playbook import runner as playbook_runner
+from app.services.workflow.playbook.runner import PlaybookNarration
+from app.services.workflow.playbook.scripted_model import ScriptedCall
 from app.utils.errors import ConversationIdTakenError
 from app.workers.tasks import workflow_tasks
 from app.workers.tasks.workflow_tasks import (
+    _admit_fire_to_conversation,
     _Fire,
-    _reserve_conversation,
     _run_and_record_success,
     execute_workflow_as_chat,
+    execute_workflow_as_playbook,
 )
 from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
@@ -878,6 +883,34 @@ async def test_executor_cards_stream_as_work_deltas_and_land_on_the_tasks_reply(
 
 
 @pytest.mark.service
+async def test_an_image_the_work_generated_rides_its_reply_and_survives_a_reload(
+    rig_for: RigFactory,
+) -> None:
+    """Regression: a generated image showed live and was gone on reload; no log entry carried it."""
+    model = gated("drawing it", "Here is your fox")
+    rig = await rig_for(model)
+    _during(model, 0, lambda: rig.start_work("t1"))
+    await rig.send("m1", "draw me a fox")
+    await rig.settle()
+    image = ImageData(
+        url="https://img.example/fox.png", prompt="a fox", improved_prompt="a red fox"
+    )
+    await record_work_finished(
+        rig.conversation_id,
+        rig.user_id,
+        "t1",
+        WorkOutcome.DONE,
+        WorkReport("drew a red fox", image=image),
+    )
+    await rig.settle()
+    [task_reply] = [reply for reply in await rig.of(Reply) if reply.reply_id == "t1"]
+    reloaded = await conversation_repository.get(rig.conversation_id, user_id=rig.user_id)
+    assert reloaded is not None
+    assert (task_reply.text, task_reply.image) == ("Here is your fox", image)
+    assert [m.image_data for m in reloaded.messages if m.message_id == "t1"] == [image]
+
+
+@pytest.mark.service
 async def test_a_messages_attached_files_are_listed_to_the_model(
     rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
 ) -> None:
@@ -1337,39 +1370,130 @@ async def test_a_todo_run_that_found_nothing_for_the_user_settles_silent_and_sen
 
 @pytest.mark.service
 @pytest.mark.usefixtures("tool_registry")
-async def test_a_playbook_replay_reads_back_from_its_conversations_log_with_its_cards(
+async def test_a_playbook_replay_is_logged_work_whose_finish_carries_its_cards(
     rig_for: RigFactory,
 ) -> None:
     rig = await rig_for(gated())
+    workflow = _workflow(rig.user_id)
+    await _the_run_that_wrote_the_playbook(rig, workflow)
+    replay = _GatedReplay()
+    replay.release.set()
+    with _replay_seams(rig, replay):
+        conversation_id, result = await execute_workflow_as_playbook(
+            workflow, AuthenticatedUser(user_id=rig.user_id), {}, _playbook(rig.user_id)
+        )
+        await log_playbook_run(conversation_id, rig.user_id, workflow, result.text)
+    [started] = await rig.of(WorkStarted)
+    [finished] = await rig.of(WorkFinished)
+    notice = (await rig.of(Notice))[-1]
+    assert (started.detached, started.exclusive) == (True, True)
+    assert (finished.task_id, finished.outcome) == (started.task_id, WorkOutcome.DONE)
+    assert [card["data"]["tool_name"] for card in finished.tool_data] == [
+        "run_playbook",
+        "GMAIL_FETCH_EMAILS",
+        "GMAIL_SEND_EMAIL",
+    ]
+    assert (notice.text, notice.tool_data) == ("Two sent", ())
+    assert (await rig.ports.log.state(rig.conversation_id, rig.user_id)).work == ()
+    assert running_steps() == ()
+
+
+@pytest.mark.service
+@pytest.mark.usefixtures("tool_registry")
+async def test_a_replay_holds_its_conversation_against_fires_and_a_stop_cancels_it(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated())
+    workflow = _workflow(rig.user_id)
+    await _the_run_that_wrote_the_playbook(rig, workflow)
+    replay = _GatedReplay()
+    with _replay_seams(rig, replay):
+        running = asyncio.create_task(
+            execute_workflow_as_playbook(
+                workflow, AuthenticatedUser(user_id=rig.user_id), {}, _playbook(rig.user_id)
+            )
+        )
+        await replay.entered.wait()
+        [live] = (await rig.ports.log.state(rig.conversation_id, rig.user_id)).work
+        with pytest.raises(WorkflowFireOverlapped, match=live.task_id):
+            await _admit_fire_to_conversation(workflow, workflow.id)
+        with pytest.raises(EntryRejected):
+            await accept(
+                rig.ports,
+                rig.conversation_id,
+                rig.user_id,
+                WorkflowFired(id="workflow:exec_x", run=workflow_run("exec_x")),
+            )
+        cancelled = await record_user_stop(rig.conversation_id, rig.user_id, "stop-replay")
+        replay.release.set()
+        _conversation_id, result = await running
+    assert cancelled.replay_ids == [live.task_id]
+    assert (result.stopped, replay.called) == (True, ["GMAIL_FETCH_EMAILS"])
+    [finished] = await rig.of(WorkFinished)
+    assert (finished.task_id, finished.outcome) == (live.task_id, WorkOutcome.CANCELLED)
+    assert [card["data"]["tool_name"] for card in finished.tool_data] == [
+        "run_playbook",
+        "GMAIL_FETCH_EMAILS",
+    ]
+    assert await rig.of(WorkflowFired) == []
+
+
+@dataclass
+class _GatedReplay:
+    """Each replayed call waits on release, answering as the tool would; entered is set by the first."""
+
+    entered: asyncio.Event = field(default_factory=asyncio.Event)
+    release: asyncio.Event = field(default_factory=asyncio.Event)
+    called: list[str] = field(default_factory=list)
+
+    async def call(self, call: ScriptedCall, run: object, space: object) -> ToolMessage:
+        self.called.append(call.name)
+        self.entered.set()
+        await self.release.wait()
+        return ToolMessage(content='{"sent": 2}', tool_call_id=f"call_{len(self.called)}")
+
+
+def _playbook(user_id: str) -> PlaybookDocument:
     now = datetime.now(UTC)
-    playbook = PlaybookDocument(
+    return PlaybookDocument(
         playbook_id="pb-1",
         workflow_id="wf-1",
-        user_id=rig.user_id,
+        user_id=user_id,
         workflow_hash="h",
-        description="Fetch unread mail",
-        steps=[ToolStep(id="fetch", tool="GMAIL_FETCH_EMAILS", args={})],
+        description="Fetch unread mail and send a digest",
+        steps=[
+            ToolStep(id="fetch", tool="GMAIL_FETCH_EMAILS", args={}),
+            ToolStep(id="send", tool="GMAIL_SEND_EMAIL", args={}),
+        ],
         result_brief="s",
         created_at=now,
         updated_at=now,
     )
-    await log_playbook_run(
-        rig.conversation_id, rig.user_id, _workflow(rig.user_id), "3 unread", [_CALL], playbook
-    )
-    replayed = await replay_from_log(rig.ports.log, rig.conversation_id, rig.user_id, 0)
-    notices = [
-        f.frame.entry
-        for f in replayed
-        if isinstance(f.frame, EntryFrame) and isinstance(f.frame.entry, Notice)
-    ]
-    [notice] = notices
-    assert notice.text == "3 unread"
-    assert [card["data"]["tool_name"] for card in notice.tool_data] == [
-        "run_playbook",
-        "GMAIL_FETCH_EMAILS",
-    ]
-    assert len(notice.tool_data) == 2
-    assert running_steps() == ()
+
+
+async def _the_run_that_wrote_the_playbook(rig: Rig, workflow: Workflow) -> None:
+    """Log the earlier agent run's delivery: a playbook is only ever written by a run in this conversation."""
+    await log_playbook_run(rig.conversation_id, rig.user_id, workflow, "Last run: 1 sent")
+
+
+@contextmanager
+def _replay_seams(rig: Rig, replay: _GatedReplay) -> Iterator[None]:
+    """Replay against the rig's conversation; the tools answer through replay, the narration says Two sent."""
+    with (
+        patch.object(
+            workflow_tasks,
+            "get_or_create_workflow_conversation",
+            AsyncMock(return_value=rig.conversation_id),
+        ),
+        patch.object(playbook_runner, "_replay_call", replay.call),
+        patch.object(playbook_runner, "tool_space_denial", MagicMock(return_value=None)),
+        patch.object(
+            playbook_runner,
+            "ainvoke_structured",
+            AsyncMock(return_value=PlaybookNarration(result="Two sent", outcome="ok")),
+        ),
+    ):
+        yield
 
 
 # ---- workflow fires on the step ----
@@ -1453,7 +1577,6 @@ async def test_a_fire_gets_one_reply_in_its_conversation_and_the_job_sees_succes
             workflow,
             AuthenticatedUser(user_id=rig.user_id),
             {"trigger_type": TriggerType.SCHEDULE.value},
-            reservation=":fire-a",
             execution_id="exec_a",
         )
         await rig.settle()
@@ -1468,7 +1591,6 @@ async def test_a_fire_gets_one_reply_in_its_conversation_and_the_job_sees_succes
     assert notified.await_args.args[3] == "Three unread: rent, dentist, flights"
     fired_turn = turns.configurable(0)
     assert fired_turn["stream_id"] == "exec_a"
-    assert fired_turn["executor_lock_reservation"] == ":fire-a"
     assert fired_turn["workflow_id"] == workflow.id
     assert fired_turn["execution_mode"] == "background"
     assert any("Scheduled workflow: Morning inbox" in m for m in fired_turn["user_messages"])
@@ -1488,7 +1610,6 @@ async def test_a_run_whose_work_fails_reports_failure_and_delivers_nothing(
                 _workflow(rig.user_id),
                 AuthenticatedUser(user_id=rig.user_id),
                 {},
-                reservation=":fire-b",
                 execution_id="exec_b",
             )
         await rig.settle()
@@ -1505,25 +1626,19 @@ async def test_a_second_fire_of_the_same_workflow_is_refused_while_the_first_is_
     turns = _Turns()
     async with _fire_rig(rig_for, model, turns) as (rig, _notified):
         workflow = _workflow(rig.user_id)
-        conversation_id, lock_task = await _reserve_conversation(workflow, workflow.id)
         first = asyncio.create_task(
             execute_workflow_as_chat(
                 workflow,
                 AuthenticatedUser(user_id=rig.user_id),
                 {},
-                reservation=build_lock_value(None, lock_task),
                 execution_id="exec_c",
             )
         )
         await model.entered(0).wait()
-        with pytest.raises(WorkflowFireOverlapped):
-            await _reserve_conversation(workflow, workflow.id)
+        with pytest.raises(WorkflowFireOverlapped, match="an unanswered fire"):
+            await _admit_fire_to_conversation(workflow, workflow.id)
         first.cancel()
         await asyncio.wait({first})
-    assert conversation_id == rig.conversation_id
-    assert not await try_acquire_lock(
-        f"{EXECUTOR_BUSY_PREFIX}{conversation_id}", build_lock_value(None, "intruder")
-    )
     assert len(await rig.of(WorkflowFired)) == 1
 
 
@@ -1551,7 +1666,6 @@ async def test_a_fire_during_a_users_chat_turn_is_answered_after_it_never_merged
                 workflow,
                 AuthenticatedUser(user_id=rig.user_id),
                 {},
-                reservation=":fire-d",
                 execution_id="exec_d",
             )
             fire_task.append(asyncio.create_task(fire))
@@ -1587,7 +1701,6 @@ async def test_a_successful_fire_records_success_and_emits_workflow_executed_onc
             workflow_id=workflow.id,
             context={},
             user=AuthenticatedUser(user_id=rig.user_id),
-            reservation=":fire-e",
             execution_id="exec_e",
         )
         captured = AsyncMock()
@@ -1899,7 +2012,6 @@ async def test_a_fire_resets_its_threads_inside_the_step_that_answers_it(
                 _workflow(rig.user_id),
                 AuthenticatedUser(user_id=rig.user_id),
                 {},
-                reservation=":fire-r",
                 execution_id="exec_r",
             )
             await rig.settle()
@@ -1919,7 +2031,6 @@ async def test_a_fire_that_timed_out_is_never_answered_later(rig_for: RigFactory
                 _workflow(rig.user_id),
                 AuthenticatedUser(user_id=rig.user_id),
                 {},
-                reservation=":fire-t",
                 execution_id="exec_t",
             )
         state = await rig.ports.log.state(rig.conversation_id, rig.user_id)

@@ -191,9 +191,6 @@ class AgentConfigurable(TypedDict, total=False):
     #: replay's own record of what already ran, carried verbatim to the
     #: executor since comms can't be trusted to transcribe it into its task.
     playbook_fallback: str | None
-    #: A pre-taken executor busy-lock the dispatch adopts instead of racing for
-    #: a fresh one, so a workflow fire hands its reservation to the run it starts.
-    executor_lock_reservation: str | None
 
     # --- tracing ------------------------------------------------------------
     #: Stashed here so child agents spawned via ``asyncio.create_task`` re-emit

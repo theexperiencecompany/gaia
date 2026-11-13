@@ -6,6 +6,7 @@ from datetime import datetime
 
 from app.agents.core.background.executor_queue import get_lock_holder, parse_lock_value
 from app.models.agent_config import StepTurnRef
+from app.models.chat_models import ImageData
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
@@ -78,12 +79,13 @@ async def record_work_started(
 
 @dataclass(frozen=True)
 class WorkReport:
-    """What finished work hands its reply: the report, the cards it showed, the review's note and its own declaration."""
+    """What finished work hands its reply: the report, the cards and image it showed, the review's note, its own word."""
 
     text: str
     tool_data: Sequence[ToolDataEntry] = ()
     note: str = ""
     nothing_for_user: bool = False
+    image: ImageData | None = None
 
 
 async def record_work_finished(
@@ -100,6 +102,7 @@ async def record_work_finished(
         tool_data=tuple(report.tool_data),
         note=report.note,
         nothing_for_user=report.nothing_for_user,
+        image=report.image,
     )
     await accept(runtime_ports(), conversation_id, user_id, entry)
 
@@ -177,17 +180,22 @@ async def record_work_carried(
     cause: LoggedEntry | None = None,
     *,
     detached: bool = False,
+    exclusive: bool = False,
 ) -> bool:
     """Append WorkStarted for work started outside a step, answering cause, else caused by everything logged so far.
 
-    False when a Stop since refuses it, so nothing dispatches; the step narrates its WorkFinished
-    unless the work is detached (a background subagent, a browser job), whose result lands elsewhere.
+    False when a Stop since refuses it, or other work refuses exclusive work, so nothing dispatches; the
+    step narrates its WorkFinished unless the work is detached (a subagent, a browser job, a replay).
     """
     ports = runtime_ports()
     if cause is None:
         state = await ports.log.state(conversation_id, user_id)
         entry = WorkStarted(
-            id=f"work:{task_id}", task_id=task_id, cause_through=state.head, detached=detached
+            id=f"work:{task_id}",
+            task_id=task_id,
+            cause_through=state.head,
+            detached=detached,
+            exclusive=exclusive,
         )
     else:
         entry = WorkStarted(
@@ -196,6 +204,7 @@ async def record_work_carried(
             cause_through=cause.seq,
             answers=(cause.entry.id,),
             detached=detached,
+            exclusive=exclusive,
         )
     try:
         await accept(ports, conversation_id, user_id, entry)

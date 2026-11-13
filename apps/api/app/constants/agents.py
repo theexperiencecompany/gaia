@@ -84,6 +84,8 @@ def leading_agent_tag(text: str) -> AgentTag | None:
 # agent run that takes over. Named once here because a drift between the
 # writer (workflow worker) and reader (format_workflow_execution_message) is silent.
 PLAYBOOK_FALLBACK_CONTEXT_KEY = "playbook_fallback"
+# A replay's stream id, which is also the task id its logged work carries, so a Stop can name it.
+PLAYBOOK_REPLAY_STREAM_ID_PREFIX = "playbook_"
 #: Calls a playbook never replays: delegation, whose children are in the run
 #: record themselves, and tool discovery and binding, which do no work.
 PLAYBOOK_UNPICKABLE_TOOLS = frozenset(

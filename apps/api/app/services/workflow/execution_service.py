@@ -33,14 +33,12 @@ class WorkflowFireTimedOut(Exception):
 
 
 class WorkflowFireOverlapped(Exception):
-    """A fire that found this workflow's conversation already busy.
+    """A fire that found this workflow's conversation already busy when it asked for admission.
 
-    A workflow owns one conversation across all runs, and a fire claims its
-    executor lock first, so two fires never run at once. The overlapped fire
-    is dropped, not handed over: the run holding the lock delivers the
-    workflow's one result, and this fire is neither a success to record nor
-    a failure to notify. holder is the in-flight run's lock value, kept for
-    the record and the log.
+    A workflow owns one conversation across all runs. The overlapped fire is dropped
+    before it spends anything, not handed over: the run in flight delivers the
+    workflow's one result, and this fire is neither a success to record nor a
+    failure to notify. holder names what is in flight, for the record and the log.
     """
 
     def __init__(self, *, user_id: str, conversation_id: str, holder: str) -> None:
@@ -50,6 +48,16 @@ class WorkflowFireOverlapped(Exception):
         self.user_id = user_id
         self.conversation_id = conversation_id
         self.holder = holder
+
+
+class PlaybookReplayRefused(Exception):
+    """The conversation log refused to start a replay: other work or a fire got there after admission."""
+
+    def __init__(self, conversation_id: str) -> None:
+        super().__init__(
+            f"conversation {conversation_id} refused the replay: other work runs there"
+        )
+        self.conversation_id = conversation_id
 
 
 class WorkflowRunFailed(Exception):

@@ -84,7 +84,6 @@ def workflow_run(execution_id: str = "ex_1") -> WorkflowRun:
         ),
         execution_id=execution_id,
         timezone="Asia/Kolkata",
-        reservation=f":{execution_id}-reservation",
         trigger=WorkflowTriggerContext(workflow_id="wf_1"),
         attribution=worker_context(Trigger.SCHEDULE).attribution,
     )

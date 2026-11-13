@@ -160,8 +160,6 @@ class WorkflowRun(BaseModel):
     execution_id: str = Field(min_length=1)
     # The zone the run's clock reads, resolved by the fire.
     timezone: str = Field(min_length=1)
-    # The busy-lock value the fire reserved the conversation with; the run's executor adopts it.
-    reservation: str = Field(min_length=1)
     trigger: WorkflowTriggerContext
     # Who fired it, so the run that answers the fire is attributed to its schedule, trigger or user.
     attribution: Attribution
@@ -227,6 +225,8 @@ class WorkStarted(_Entry):
     joins: str | None = None
     # A background subagent or browser job: its result lands in another run, so its finish wakes nothing.
     detached: bool = False
+    # A workflow's playbook replay: it runs alone, so it never starts beside other work or a fire, nor they beside it.
+    exclusive: bool = False
 
 
 class ApprovalRequested(_Entry):
@@ -262,6 +262,8 @@ class WorkFinished(_Entry):
     note: str = ""
     # The run's own word that its report holds nothing for the user.
     nothing_for_user: bool = False
+    # The image the work generated; the reply that narrates it carries it beside its cards.
+    image: ImageData | None = None
 
 
 class IntegrationNeeded(_Entry):
@@ -389,6 +391,7 @@ class LiveWork(BaseModel):
     # Tasks handed to this work while it ran (WorkStarted.joins); a Stop that ends it ends them.
     joined: tuple[str, ...] = ()
     detached: bool = False
+    exclusive: bool = False
 
 
 class FinishedWork(BaseModel):

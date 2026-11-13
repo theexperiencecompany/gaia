@@ -22760,6 +22760,14 @@
             "title": "Pending Task Ids",
             "type": "array"
           },
+          "replay_ids": {
+            "description": "Workflow playbook replays stopped, by stream id.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Replay Ids",
+            "type": "array"
+          },
           "subagent_ids": {
             "description": "Running subagents stopped.",
             "items": {
@@ -22776,7 +22784,8 @@
           "pending_task_ids",
           "subagent_ids",
           "approval_ids",
-          "browser_jobs"
+          "browser_jobs",
+          "replay_ids"
         ],
         "title": "WorkCancelled",
         "type": "object"
@@ -22865,6 +22874,16 @@
             "title": "Id",
             "type": "string"
           },
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "kind": {
             "const": "work_finished",
             "default": "work_finished",
@@ -22941,6 +22960,11 @@
           "detached": {
             "default": false,
             "title": "Detached",
+            "type": "boolean"
+          },
+          "exclusive": {
+            "default": false,
+            "title": "Exclusive",
             "type": "boolean"
           },
           "id": {
@@ -23307,11 +23331,6 @@
             "title": "Execution Id",
             "type": "string"
           },
-          "reservation": {
-            "minLength": 1,
-            "title": "Reservation",
-            "type": "string"
-          },
           "timezone": {
             "minLength": 1,
             "title": "Timezone",
@@ -23328,7 +23347,6 @@
           "workflow",
           "execution_id",
           "timezone",
-          "reservation",
           "trigger",
           "attribution"
         ],

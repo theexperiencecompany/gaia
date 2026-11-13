@@ -276,6 +276,7 @@ async def _run(
             playbook,
             user=USER,
             conversation_id="conv_1",
+            stream_id="playbook_test",
             trigger={"to": "team@example.com"},
             dry_run=seams.dry_run,
         )

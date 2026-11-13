@@ -16707,6 +16707,11 @@ export interface components {
              */
             pending_task_ids: string[];
             /**
+             * Replay Ids
+             * @description Workflow playbook replays stopped, by stream id.
+             */
+            replay_ids: string[];
+            /**
              * Subagent Ids
              * @description Running subagents stopped.
              */
@@ -16739,6 +16744,7 @@ export interface components {
              * @description Producer-minted idempotency key
              */
             id: string;
+            image?: components["schemas"]["ImageData"] | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -16953,8 +16959,6 @@ export interface components {
             attribution: components["schemas"]["Attribution"];
             /** Execution Id */
             execution_id: string;
-            /** Reservation */
-            reservation: string;
             /** Timezone */
             timezone: string;
             trigger: components["schemas"]["WorkflowTriggerContext"];
@@ -17337,6 +17341,11 @@ export interface components {
              * @default false
              */
             detached?: boolean;
+            /**
+             * Exclusive
+             * @default false
+             */
+            exclusive?: boolean;
             /**
              * Id
              * @description Producer-minted idempotency key
