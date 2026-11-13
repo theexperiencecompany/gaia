@@ -39,7 +39,7 @@ export function ToolList({
         for (const entry of entries) {
           if (!entry.isIntersecting) continue;
           observer.unobserve(entry.target);
-          const element = entry.target as HTMLElement;
+          const element = entry.target;
           const key = keyOf.get(element);
           if (key && element.scrollHeight > element.clientHeight)
             found.push(key);
