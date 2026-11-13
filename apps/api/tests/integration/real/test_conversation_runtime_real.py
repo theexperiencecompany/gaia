@@ -14,6 +14,7 @@ from typing import Any, Protocol, TypeVar, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from bson import ObjectId
 from langchain_core.callbacks import AsyncCallbackManagerForLLMRun
 from langchain_core.messages import (
     AIMessage,
@@ -56,6 +57,7 @@ from app.constants.conversation import STEP_TICK_SECONDS
 from app.constants.graphs import GraphName
 from app.constants.todos import TodoWakeKind
 from app.core.lazy_loader import providers
+from app.db.mongodb.indexes import CONVERSATION_ID_UNIQUE_KEYS, CONVERSATION_ID_UNIQUE_OPTIONS
 from app.db.redis import redis_cache
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
@@ -139,6 +141,7 @@ from app.services.conversation.work_log import (
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.workflow.conversation_service import log_playbook_run
 from app.services.workflow.execution_service import WorkflowFireOverlapped, WorkflowTurnFailed
+from app.utils.errors import ConversationIdTakenError
 from app.workers.tasks import workflow_tasks
 from app.workers.tasks.workflow_tasks import (
     _Fire,
@@ -312,6 +315,10 @@ async def rig_for(
     real_redis: Redis,
 ) -> AsyncIterator[RigFactory]:
     """Build a step-run conversation whose comms graph answers with model."""
+    # The identity the runtime keys threads, streams and locks on, as production declares it.
+    await conversation_repository._raw_collection().create_index(
+        CONVERSATION_ID_UNIQUE_KEYS, **CONVERSATION_ID_UNIQUE_OPTIONS
+    )
     async with AsyncExitStack() as stack:
 
         async def build(
@@ -1623,3 +1630,48 @@ async def test_one_failing_conversation_never_stops_the_sweep_reaching_every_due
         report = await sweep_conversations()
     assert {first.conversation_id, second.conversation_id} <= set(kicked)
     assert report.failed == 1
+
+
+def _submit(conversation_id: str, user_id: str, message_id: str) -> Awaitable[object]:
+    return submit_message(
+        conversation_id,
+        AuthenticatedUser(user_id=user_id),
+        SendMessageRequest(message_id=message_id, text="hello"),
+        ConversationSource.WEB,
+    )
+
+
+@pytest.mark.service
+async def test_two_concurrent_first_sends_make_one_conversation_holding_both(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated("hi", "hi again"))
+    rig.effects.hold_kicks = True
+    fresh = f"convrt-{uuid4().hex[:10]}"
+    with (
+        patch("app.services.conversation.send.enforce_cost_budget", new_callable=AsyncMock),
+        patch("app.services.conversation.send.capture"),
+    ):
+        await asyncio.gather(*(_submit(fresh, rig.user_id, f"m{n}") for n in range(4)))
+    heads = await conversation_repository._raw_collection().count_documents(
+        {"conversation_id": fresh}
+    )
+    entries = await rig.ports.log.read_after(fresh, rig.user_id, 0)
+    assert heads == 1
+    assert sorted(logged.entry.id for logged in entries) == ["m0", "m1", "m2", "m3"]
+
+
+@pytest.mark.service
+async def test_another_users_conversation_id_is_refused(rig_for: RigFactory) -> None:
+    rig = await rig_for(gated("hi"))
+    rig.effects.hold_kicks = True
+    with (
+        patch("app.services.conversation.send.enforce_cost_budget", new_callable=AsyncMock),
+        patch("app.services.conversation.send.capture"),
+        pytest.raises(ConversationIdTakenError),
+    ):
+        await _submit(rig.conversation_id, str(ObjectId()), "x1")
+    heads = await conversation_repository._raw_collection().count_documents(
+        {"conversation_id": rig.conversation_id}
+    )
+    assert heads == 1

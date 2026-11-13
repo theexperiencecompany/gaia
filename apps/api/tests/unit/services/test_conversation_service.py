@@ -51,7 +51,7 @@ from app.services.conversation_service import (
     update_conversation_description,
     update_messages,
 )
-from app.utils.errors import AppError
+from app.utils.errors import AppError, ConversationIdTakenError, ConversationStoreError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import (
     ChatConversationCreated,
@@ -125,11 +125,11 @@ class TestCreateConversationService:
             )
         assert exc_info.value.status_code == 403
 
-    async def test_raises_500_on_repository_error(self, mock_repo, test_user):
-        mock_repo.create.side_effect = Exception("DB connection failed")
-        with pytest.raises(HTTPException) as exc_info:
+    async def test_an_id_another_user_holds_is_refused_as_a_conflict(self, mock_repo, test_user):
+        mock_repo.create.side_effect = ConversationIdTakenError(message="taken")
+        with pytest.raises(ConversationIdTakenError) as exc_info:
             await create_conversation_service(ConversationModel(conversation_id="c"), test_user)
-        assert exc_info.value.status_code == 500
+        assert exc_info.value.status_code == 409
 
     async def test_captures_conversation_created(self, mock_repo, test_user):
         mock_repo.create.return_value = _document()
@@ -144,9 +144,9 @@ class TestCreateConversationService:
         )
 
     async def test_no_capture_on_repository_error(self, mock_repo, test_user):
-        mock_repo.create.side_effect = Exception("DB connection failed")
+        mock_repo.create.side_effect = ConversationStoreError(message="DB connection failed")
         with (
-            pytest.raises(HTTPException),
+            pytest.raises(ConversationStoreError),
             patch("app.services.conversation_service.capture") as mock_capture,
         ):
             await create_conversation_service(ConversationModel(conversation_id="c"), test_user)

@@ -94,6 +94,8 @@ from app.models.conversation_models import (
     _TodoBindingRow,
 )
 from app.utils.errors import (
+    ConversationAlreadyExistsError,
+    ConversationIdTakenError,
     ConversationNotFoundError,
     ConversationStoreError,
 )
@@ -667,8 +669,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def create(self, doc: ConversationDocument) -> ConversationDocument:
         """Insert the conversation's head at an empty log; raises ValueError if doc carries messages.
 
-        A delete that died after removing the head leaves its entries behind; a head
-        recreated under the same id clears them first, so its log starts clean.
+        conversation_id is unique across every user: an id this user already holds raises
+        ConversationAlreadyExistsError (a concurrent first send lost the race), one another
+        user holds raises ConversationIdTakenError.
         """
         if doc.messages:
             raise ValueError(
@@ -676,12 +679,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             )
         head = doc.model_dump(exclude={"id", "messages", "has_older"}, exclude_none=True)
         head[LOG_HEAD_FIELD] = 0
-        key = {"user_id": doc.user_id, "conversation_id": doc.conversation_id}
-        with store_errors("create"):  # pragma: no mutate — error label only
-            if not await self._raw_collection().count_documents(key, limit=1):
-                await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(key)
-        # Outside store_errors: try_create reads a DuplicateKeyError as a lost creation race.
-        await self._raw_collection().insert_one(head)
+        try:
+            await self._raw_collection().insert_one(head)
+        except DuplicateKeyError as e:
+            await self._raise_held(doc, e)
         created = await self.get(doc.conversation_id, user_id=doc.user_id)
         if created is None:
             # pragma: no mutate start — error text only
@@ -697,9 +698,27 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """
         try:
             await self.create(doc)
-        except DuplicateKeyError:
+        except (DuplicateKeyError, ConversationAlreadyExistsError):
             return False
         return True
+
+    async def _raise_held(self, doc: ConversationDocument, error: DuplicateKeyError) -> None:
+        """Say who already holds doc's conversation id; re-raise when another unique key refused it."""
+        with store_errors("create"):  # pragma: no mutate — error label only
+            holder = await self._raw_collection().find_one(
+                {"conversation_id": doc.conversation_id}, {"_id": 0, "user_id": 1}
+            )
+        meta: dict[str, object] = {"conversation_id": doc.conversation_id}
+        if holder is None:
+            raise error
+        if holder["user_id"] != doc.user_id:
+            raise ConversationIdTakenError(
+                message=f"conversation id {doc.conversation_id} belongs to another user",
+                meta=meta,
+            ) from error
+        raise ConversationAlreadyExistsError(
+            message=f"conversation {doc.conversation_id} already exists", meta=meta
+        ) from error
 
     async def delete(self, doc_id: str, *, user_id: str) -> bool:
         """Delete the conversation and every one of its entries."""
@@ -1118,11 +1137,13 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         if not ids:
             return []
         with store_errors("delete"):  # pragma: no mutate — error label only
-            # Conversations are uncached (cache_policy None): there is no cache entry to evict.
-            await self._raw_collection().delete_many(query)
+            # Entries first: a delete that dies between the two leaves the head, which the user can
+            # delete again, never entries a later head under the same id would inherit.
             await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(
                 {"user_id": user_id, "conversation_id": {"$in": ids}}
             )
+            # Conversations are uncached (cache_policy None): there is no cache entry to evict.
+            await self._raw_collection().delete_many(query)
         return ids
 
     def _with_newest(
