@@ -4,13 +4,15 @@
   "type": "commonjs",
   "scripts": {
     "inventory": "node inventory.mjs",
-    "report": "node report.mjs"
+    "report": "node report.mjs",
+    "review": "bash review/run.sh"
   },
   "devDependencies": {
     "jscodeshift": "^0.15.2"
   },
   "dependencies": {
-    "pixelmatch": "^8.0.0",
-    "pngjs": "^7.0.0"
+    "pixelmatch": "8.0.0",
+    "playwright": "1.62.1",
+    "pngjs": "7.0.0"
   }
 }

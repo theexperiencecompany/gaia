@@ -11,3 +11,4 @@ bundle-report.html
 bundle-*.json
 shots/
 variants-report.html
+pnpm-lock.yaml
