@@ -7,7 +7,7 @@ Substituted: both tiers' model (scripted), the tool store, the memory engine, th
 chips, ChromaDB embeddings, the WebSocket fan-out and the outbox's own intake (the filed
 report is captured, then stored through the real repository).
 
-Not exercised: a real LLM, the executor graph's own trace writes (the trace the follow-up reads is seeded through the real recorder), an ARQ worker (the enqueued job is read back, not run), the
+Not exercised: a real LLM,  an ARQ worker (the enqueued job is read back, not run), the
 outbox's judge, compose and delivery of the report, and Postgres checkpointing.
 """
 
@@ -39,7 +39,6 @@ from app.memory.ingestion import RetainedMemory
 from app.models.integration_models import UserIntegrationCapabilities
 from app.models.memory_models import MemoryEntry
 from app.models.user_models import AuthenticatedUser
-from app.services.executor_trace.recorder import RunOwner, TracedCall, begin_run, record_call
 from app.services.outbox.models import Initiative, ProducerKind, RunReport, SubjectKind
 from app.utils.occurrence import occurrence_stamp
 from app.utils.timezone import Timezone
@@ -74,6 +73,12 @@ async def _owner(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[None]:
     yield
     for collection in ("todos", "conversations", "outbox_items", "executor_runs"):
         await mongo_db[collection].delete_many({"user_id": USER.user_id})
+
+
+@pytest.fixture(autouse=True)
+def _run_trace_store() -> Iterator[None]:
+    """Override the e2e default that stubs the run trace's store: here the real recorder writes it."""
+    return
 
 
 @pytest.fixture(autouse=True)
@@ -266,15 +271,6 @@ class TestARequestBecomesATask:
             assert doc is not None
             await _execute_on_executor(doc, user_tz=Timezone.utc(), user_data=USER)
             (filed,) = stack.submitted
-            owner = RunOwner(USER.user_id, "task-chat", "run-1", task_id)
-            await begin_run(owner)
-            at = datetime.now(UTC)
-            await record_call(
-                owner,
-                TracedCall(
-                    "GMAIL_SEND_EMAIL", "tc1", {"to": "priya@example.com"}, "sent", False, at, at
-                ),
-            )
             await outbox_items_repository.insert_if_new(
                 filed, expires_at=datetime.now(UTC) + timedelta(days=1)
             )
@@ -303,7 +299,7 @@ class TestARequestBecomesATask:
         assert "observed" in record
         assert not run.ran("start_task") and not run.ran("message_task")
         assert len(stack.enqueued) == 1
-        assert "GMAIL_SEND_EMAIL" in (traced.result_for("read_task") or "")
+        assert "complete_tracked_todo" in (traced.result_for("read_task") or "")
 
 
 class TestTheFlagSelectsTheSurface:
