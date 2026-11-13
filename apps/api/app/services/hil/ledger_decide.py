@@ -14,6 +14,7 @@ judge at redeem; redeem's APPROVED -> EXECUTING claim is single-use; and crash
 recovery runs lazily via reconcile_conversation_ledger, with no daemon.
 """
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -539,8 +540,10 @@ async def revoke_ticket(
     return f"Revoked '{approval_id}' ({row.summary}). It will never be asked."
 
 
-async def cancel_ledger_approvals(conversation_id: str, user_id: str) -> list[str]:
-    """Withdraw a cancelled run's pending ledger approvals so nothing revives them.
+async def cancel_ledger_approvals(
+    conversation_id: str, user_id: str, approval_ids: Collection[str]
+) -> list[str]:
+    """Withdraw these of a cancelled run's pending ledger approvals so nothing revives them.
 
     Ledger twin of resolution.cancel_conversation_approvals: without it a later
     Approve (stale card, another tab, a bot "yes") redeems a ticket for stopped
@@ -549,7 +552,11 @@ async def cancel_ledger_approvals(conversation_id: str, user_id: str) -> list[st
     """
     cancelled: list[str] = []
     for row in await approval_ledger_repository.list_open(conversation_id):
-        if row.state is not LedgerState.PENDING or row.user_id != user_id:
+        if (
+            row.state is not LedgerState.PENDING
+            or row.user_id != user_id
+            or row.approval_id not in approval_ids
+        ):
             continue
         if not await approval_ledger_repository.transition(
             row.approval_id, LedgerState.PENDING, LedgerState.REVOKED

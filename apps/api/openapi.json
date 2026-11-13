@@ -23028,12 +23028,6 @@
             "title": "Pending Task Ids",
             "type": "array"
           },
-          "pending_tasks": {
-            "default": 0,
-            "description": "Queued executor requests dropped wholesale.",
-            "title": "Pending Tasks",
-            "type": "integer"
-          },
           "subagent_ids": {
             "description": "Running subagents stopped.",
             "items": {
@@ -23047,7 +23041,6 @@
           "executor_stopped",
           "executor_task_id",
           "executor_spared",
-          "pending_tasks",
           "pending_task_ids",
           "subagent_ids",
           "approval_ids",

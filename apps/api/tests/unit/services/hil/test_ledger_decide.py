@@ -1149,13 +1149,31 @@ class TestCancelLedgerApprovals:
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
             patch.object(ledger_decide, "publish_ledger_revocation", new=AsyncMock()) as tombstone,
         ):
-            cancelled = await cancel_ledger_approvals("conv-1", USER_ID)
+            cancelled = await cancel_ledger_approvals(
+                "conv-1", USER_ID, ["ap_mine", "ap_ticket", "ap_theirs"]
+            )
 
         assert cancelled == ["ap_mine"]
         repo.transition.assert_awaited_once_with(
             "ap_mine", LedgerState.PENDING, LedgerState.REVOKED
         )
         tombstone.assert_awaited_once()
+
+    async def test_a_pending_row_the_cancel_does_not_name_stays_pending(self) -> None:
+        from app.services.hil import ledger_decide
+        from app.services.hil.ledger_decide import cancel_ledger_approvals
+
+        repo = _repo()
+        repo.list_open = AsyncMock(return_value=[_row(approval_id="ap_later")])
+        repo.transition = AsyncMock(return_value=True)
+        with (
+            patch.object(ledger_decide, "approval_ledger_repository", new=repo),
+            patch.object(ledger_decide, "publish_ledger_revocation", new=AsyncMock()),
+        ):
+            cancelled = await cancel_ledger_approvals("conv-1", USER_ID, ["ap_mine"])
+
+        assert cancelled == []
+        repo.transition.assert_not_awaited()
 
     async def test_cancel_lost_race_skips_quietly(self) -> None:
         from app.services.hil import ledger_decide
@@ -1168,7 +1186,7 @@ class TestCancelLedgerApprovals:
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
             patch.object(ledger_decide, "publish_ledger_revocation", new=AsyncMock()) as tombstone,
         ):
-            cancelled = await cancel_ledger_approvals("conv-1", USER_ID)
+            cancelled = await cancel_ledger_approvals("conv-1", USER_ID, ["ap_abc"])
 
         assert cancelled == []
         tombstone.assert_not_awaited()
@@ -2016,7 +2034,9 @@ class TestCancelLedgerApprovalsSweep:
         seams.rows["ap_1"] = _doc(v=8, state=LedgerState.REVOKED, proposing_run_id="stream-2")
         seams.repo.transition.side_effect = lambda approval_id, *_: approval_id == "ap_1"
 
-        cancelled = await cancel_ledger_approvals("conv-1", USER_ID)
+        cancelled = await cancel_ledger_approvals(
+            "conv-1", USER_ID, ["ap_ok", "ap_other", "ap_lost", "ap_1"]
+        )
 
         assert cancelled == ["ap_1"]
         seams.repo.list_open.assert_awaited_once_with("conv-1")

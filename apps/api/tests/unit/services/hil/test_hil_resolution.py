@@ -669,7 +669,7 @@ class TestCancelledRunApprovals:
             patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided,
             patch(f"{MODULE}.clear_resume_item", new=AsyncMock()) as cleared,
         ):
-            closed = await cancel_conversation_approvals(CONVERSATION_ID, USER_ID)
+            closed = await cancel_conversation_approvals(CONVERSATION_ID, USER_ID, ["a1"])
 
         assert closed == ["a1"]
         assert decided.await_args.args == ("a1", "abandoned")
@@ -691,7 +691,7 @@ class TestCancelledRunApprovals:
             patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=False)),
             patch(f"{MODULE}.clear_resume_item", new=AsyncMock()) as cleared,
         ):
-            closed = await cancel_conversation_approvals(CONVERSATION_ID, USER_ID)
+            closed = await cancel_conversation_approvals(CONVERSATION_ID, USER_ID, ["a1"])
 
         assert closed == []
         assert cleared.await_count == 0
@@ -703,7 +703,7 @@ class TestCancelledRunApprovals:
             patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided,
             patch(f"{MODULE}.clear_resume_item", new=AsyncMock()) as cleared,
         ):
-            closed = await cancel_conversation_approvals(CONVERSATION_ID, USER_ID)
+            closed = await cancel_conversation_approvals(CONVERSATION_ID, USER_ID, ["a1"])
 
         assert closed == []
         assert decided.await_count == 0
@@ -718,17 +718,31 @@ class TestCancelledRunApprovals:
             patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.clear_resume_item", new=AsyncMock()) as cleared,
         ):
-            closed = await cancel_conversation_approvals(CONVERSATION_ID, USER_ID)
+            closed = await cancel_conversation_approvals(
+                CONVERSATION_ID, USER_ID, ["a1", "a2", "a3"]
+            )
 
         assert closed == ["a1", "a2", "a3"]
         assert [call.args[0] for call in cleared.await_args_list] == ["a1", "a2", "a3"]
+
+    async def test_an_approval_the_cancel_does_not_name_stays_pending(self, resume: Any) -> None:
+        records = [make_record(approval_id="a1"), make_record(approval_id="later")]
+        with (
+            patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=records)),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided,
+            patch(f"{MODULE}.clear_resume_item", new=AsyncMock()),
+        ):
+            closed = await cancel_conversation_approvals(CONVERSATION_ID, USER_ID, ["a1"])
+
+        assert closed == ["a1"]
+        assert [call.args[0] for call in decided.await_args_list] == ["a1"]
 
     async def test_a_conversation_with_no_pending_approvals_is_a_no_op(self, resume: Any) -> None:
         with (
             patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=[])),
             patch(f"{MODULE}.mark_decided", new=AsyncMock()) as decided,
         ):
-            assert await cancel_conversation_approvals(CONVERSATION_ID, USER_ID) == []
+            assert await cancel_conversation_approvals(CONVERSATION_ID, USER_ID, ["a1"]) == []
         assert decided.await_count == 0
 
 

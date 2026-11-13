@@ -19,7 +19,6 @@ class WorkCancelled(ResponseModel):
     executor_spared: bool = Field(
         default=False, description="An executor task kept running because the stop did not name it."
     )
-    pending_tasks: int = Field(default=0, description="Queued executor requests dropped wholesale.")
     pending_task_ids: list[str] = Field(
         default_factory=list, description="Queued executor requests dropped by id."
     )
@@ -31,12 +30,23 @@ class WorkCancelled(ResponseModel):
         default_factory=dict, description="Browser jobs reached, with what each stop came to."
     )
 
+    def combined_with(self, other: "WorkCancelled") -> "WorkCancelled":
+        """Return both cancels as one: what a Stop's logged and unlogged halves came to."""
+        return WorkCancelled(
+            executor_stopped=self.executor_stopped or other.executor_stopped,
+            executor_task_id=self.executor_task_id or other.executor_task_id,
+            executor_spared=self.executor_spared or other.executor_spared,
+            pending_task_ids=[*self.pending_task_ids, *other.pending_task_ids],
+            subagent_ids=list(dict.fromkeys([*self.subagent_ids, *other.subagent_ids])),
+            approval_ids=[*self.approval_ids, *other.approval_ids],
+            browser_jobs={**self.browser_jobs, **other.browser_jobs},
+        )
+
     @property
     def stopped_anything(self) -> bool:
         """Whether the stop reached any work at all."""
         return bool(
             self.executor_stopped
-            or self.pending_tasks
             or self.pending_task_ids
             or self.subagent_ids
             or self.approval_ids

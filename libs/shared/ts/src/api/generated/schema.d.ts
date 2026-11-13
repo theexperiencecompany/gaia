@@ -16761,12 +16761,6 @@ export interface components {
              */
             pending_task_ids: string[];
             /**
-             * Pending Tasks
-             * @description Queued executor requests dropped wholesale.
-             * @default 0
-             */
-            pending_tasks: number;
-            /**
              * Subagent Ids
              * @description Running subagents stopped.
              */

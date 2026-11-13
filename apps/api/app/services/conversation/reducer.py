@@ -108,19 +108,18 @@ def _stop(state: ConversationState, seq: int, entry: StopRequested) -> Transitio
     covers = seq - 1 if entry.covers_through is None else entry.covers_through
     if covers >= seq:
         return Rejected(reason=RejectReason.STOP_COVERS_FUTURE)
-    cancelled = tuple(
-        task_id
-        for item in state.work
-        if item.cause_through <= covers
-        for task_id in (item.task_id, *item.joined)
-    )
+    covered = [item for item in state.work if item.cause_through <= covers]
+    cancelled = tuple(task_id for item in covered for task_id in (item.task_id, *item.joined))
+    approvals = tuple(sorted(approval for item in covered for approval in item.pending_approvals))
     stopped = _drop_waking_through(state, covers).model_copy(
         update={
             "stopped_through": max(state.stopped_through, covers),
             "work": tuple(item for item in state.work if item.cause_through > covers),
         }
     )
-    cancel: tuple[Effect, ...] = (CancelWork(task_ids=cancelled),) if cancelled else ()
+    cancel: tuple[Effect, ...] = (
+        (CancelWork(task_ids=cancelled, approval_ids=approvals),) if cancelled else ()
+    )
     return Transition(state=stopped, effects=(Preempt(stop_through=covers), *cancel))
 
 

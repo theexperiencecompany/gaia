@@ -16,6 +16,7 @@ Two guarantees:
 """
 
 import asyncio
+from collections.abc import Collection
 from datetime import UTC, datetime
 from http import HTTPStatus
 from typing import Any, TypedDict, cast
@@ -206,8 +207,10 @@ async def abandon_conversation_approvals(
     return abandoned
 
 
-async def cancel_conversation_approvals(conversation_id: str, user_id: str) -> list[str]:
-    """Close a cancelled run's pending approvals so nothing can restart it.
+async def cancel_conversation_approvals(
+    conversation_id: str, user_id: str, approval_ids: Collection[str]
+) -> list[str]:
+    """Close these of a cancelled run's pending approvals so nothing can restart it.
 
     Left pending, a later "Approve" or the timeout sweep would re-dispatch the very run the
     user stopped, on a fresh stream the cancel flag doesn't cover. Deliberately does NOT
@@ -216,7 +219,7 @@ async def cancel_conversation_approvals(conversation_id: str, user_id: str) -> l
     """
     cancelled: list[str] = []
     for record in await list_pending_for_conversation(conversation_id):
-        if record.user_id != user_id:
+        if record.user_id != user_id or record.approval_id not in approval_ids:
             continue
         if not await mark_decided(
             record.approval_id,

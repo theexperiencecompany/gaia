@@ -16,8 +16,8 @@ from langchain_core.tools import BaseTool
 import pytest
 
 from app.agents.core.background.executor_channel import decide_drain
+from app.agents.core.background.work_cancel import stop_unlogged_work
 from app.agents.tools.browser_chat_tools import browser_step_done, stop_browser_task
-from app.agents.tools.executor_tool import cancel_executor
 from app.constants.agents import AgentTag
 from app.constants.browser import (
     BROWSER_RUN_SESSION_LOST_SUMMARY,
@@ -28,6 +28,7 @@ from app.constants.browser import (
 )
 from app.constants.chat import SourceCategory
 from app.models.chat_models import ConversationSource
+from app.services.browser.chat_task import stop_report
 from app.services.browser.handoff import get_handoff
 from app.services.browser.jobs import get_conversation_slot
 from tests.e2e._harness.browser_job import (
@@ -197,9 +198,7 @@ async def test_a_second_browser_task_in_one_turn_is_refused_by_name() -> None:
             run = await run_graph(
                 graph, "book me a table", thread_id=CONVERSATION, user_id=USER, **_configurable()
             )
-            await cancel_executor.ainvoke(
-                {"task_ids": []}, config={"configurable": {"thread_id": CONVERSATION}}
-            )
+            await stop_unlogged_work(CONVERSATION, None)
             await world.settle()
 
     assert len(world.enqueued) == 1
@@ -224,14 +223,13 @@ async def test_a_stop_reaches_the_browser_and_releases_the_conversation() -> Non
             )
             assert world.enqueued, "the job never reached the worker"
 
-            reply = await cancel_executor.ainvoke(
-                {"task_ids": []}, config={"configurable": {"thread_id": CONVERSATION}}
-            )
+            # The part of a Stop that reaches a browser job, which is never log work.
+            stopped = await stop_unlogged_work(CONVERSATION, None)
             await world.settle()
         assert await get_conversation_slot(CONVERSATION) is None
 
     assert world.aborted == [world.enqueued[0].job_id]
-    assert reply == "Stopped the browser task."
+    assert stop_report(stopped.browser_jobs.values()) == "Stopped the browser task."
     assert world.cards()[-1]["status"] == BrowserSessionStatus.CANCELLED.value
     # The stop already told the user: nobody is woken, and the thread only learns it ended.
     assert [entry.tag for entry in world.told] == [AgentTag.BROWSER_STOPPED]
@@ -552,7 +550,7 @@ def _block_holding(slot: str, text: str) -> str:
 async def _executor_thread_remembering_the_last_login(brief: str) -> list[Any]:
     """Seed the executor's thread the way prepare_executor_execution does, with the login remembered."""
     from datetime import UTC, datetime
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from unittest.mock import MagicMock, patch
 
     from app.agents.context.tiers import AgentTier
     from app.agents.core.subagents.subagent_runner import ThreadSeed, build_initial_messages
@@ -674,32 +672,24 @@ async def test_a_stop_while_the_user_is_asked_to_sign_in_ends_the_run_stopped_at
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Regression: a stop during a handoff waited out the handoff window, and the run then read as timed out, not stopped."""
-    from app.agents.tools import executor_tool
     from app.config.settings import settings
 
     # Short, so a stop the wait never hears ends as the timeout it once was, not a hang.
     monkeypatch.setattr(settings, "BROWSER_USE_HANDOFF_TIMEOUT_SECONDS", 5)
-    # A stop-everything also clears the conversation's approvals, which live in Mongo:
-    # stand in for them, as the executor tool's own tests do, so this journey only
-    # exercises the browser stop and never reaches the process-wide Mongo client.
-    monkeypatch.setattr(executor_tool, "cancel_conversation_approvals", AsyncMock(return_value=[]))
-    monkeypatch.setattr(executor_tool, "cancel_ledger_approvals", AsyncMock(return_value=[]))
     async with browser_job_world(STREAM, steps=[SIGN_IN, BOOK_SIGNED_IN]) as world:
         async with executor_graph([RETRIEVE, START, "Started."]) as graph:
             await run_graph(
                 graph, "book me a table", thread_id=CONVERSATION, user_id=USER, **_configurable()
             )
             handoff_id = await _wait_for_pending_handoff(world)
-            reply = await cancel_executor.ainvoke(
-                {"task_ids": []}, config={"configurable": {"thread_id": CONVERSATION}}
-            )
+            stopped = await stop_unlogged_work(CONVERSATION, None)
             await world.settle()
         record = await get_handoff(handoff_id)
         # Read inside the world: outside it the fake Redis is gone and this would reach
         # the process-wide client, bound to an earlier test's closed loop.
         slot = await get_conversation_slot(CONVERSATION)
 
-    assert reply == "Stopped the browser task."
+    assert stop_report(stopped.browser_jobs.values()) == "Stopped the browser task."
     assert record is not None
     assert record.status is HandoffStatus.CANCELLED
     handoffs = [card["status"] for card in world.cards() if card["kind"] == "handoff"]

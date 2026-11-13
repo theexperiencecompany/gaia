@@ -78,6 +78,7 @@ from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
     Batch,
+    CancelWork,
     DisplayState,
     Entry,
     IntegrationConnected,
@@ -103,10 +104,11 @@ from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.todo_wake_models import TodoRunWake
 from app.models.tool_data_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
+from app.models.work_cancel_models import WorkCancelled
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
 from app.schemas.browser import NewHandoff
-from app.services import analytics_service
+from app.services import analytics_service, conversation_stop_service
 from app.services.browser.handoff import create_pending_handoff
 from app.services.browser.handoff_buttons import decide_handoff_by_button
 from app.services.checkpoint_thread_reset import ThreadReset
@@ -149,6 +151,7 @@ from app.services.conversation.work_log import (
     record_work_started,
     running_step_task,
 )
+from app.services.conversation_stop_service import press_stop
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.workflow import thread_reset
 from app.services.workflow.conversation_service import log_playbook_run
@@ -210,10 +213,10 @@ class _Effects(RuntimeEffects):
             await super().kick(conversation_id, user_id)
 
     async def cancel_work(
-        self, conversation_id: str, user_id: str, task_ids: tuple[str, ...]
-    ) -> None:
-        self.cancelled.append(task_ids)
-        await super().cancel_work(conversation_id, user_id, task_ids)
+        self, conversation_id: str, user_id: str, cancel: CancelWork
+    ) -> WorkCancelled:
+        self.cancelled.append(cancel.task_ids)
+        return await super().cancel_work(conversation_id, user_id, cancel)
 
     async def start_ack(self, conversation_id: str, user_id: str, message_id: str) -> None:
         return None
@@ -470,6 +473,51 @@ async def test_stop_mid_work_cancels_that_work_and_wakes_nothing(
     assert state.work == ()
     assert len(await rig.of(StopRequested)) == 1
     assert len(await rig.of(Reply)) == 1
+
+
+@pytest.mark.service
+async def test_a_stop_cancels_only_the_work_before_it_and_reports_what_it_cancelled(
+    rig_for: RigFactory, real_redis: Redis
+) -> None:
+    model = gated("on it")
+    rig = await rig_for(model)
+    lock = f"{EXECUTOR_BUSY_PREFIX}{rig.conversation_id}"
+    _during(model, 0, lambda: rig.start_work("t1"))
+    await rig.send("m1", "find me flights")
+    await rig.settle()
+    await real_redis.set(lock, "stream-1:t1")
+    await record_approval_requested(
+        rig.conversation_id, rig.user_id, "t1", "a1", summary="Book it", expires_at=None
+    )
+    cancel_work = rig.effects.cancel_work
+    asked: list[CancelWork] = []
+
+    async def then_new_work_starts(
+        conversation_id: str, user_id: str, cancel: CancelWork
+    ) -> WorkCancelled:
+        asked.append(cancel)
+        cancelled = await cancel_work(conversation_id, user_id, cancel)
+        # Work the user asks for right after the Stop starts and takes the executor.
+        assert await record_work_carried(rig.conversation_id, rig.user_id, "t2")
+        await real_redis.set(lock, "stream-2:t2")
+        return cancelled
+
+    captured: list[ServerEvent] = []
+
+    def record(_user: object, event: ServerEvent, *_args: object, **_kwargs: object) -> None:
+        captured.append(event)
+
+    with (
+        patch.object(rig.effects, "cancel_work", side_effect=then_new_work_starts),
+        patch.object(conversation_stop_service, "capture", side_effect=record),
+    ):
+        stopped = await press_stop(rig.conversation_id, rig.user_id, None)
+    state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+    assert asked == [CancelWork(task_ids=("t1",), approval_ids=("a1",))]
+    assert (stopped.work.executor_stopped, stopped.work.executor_task_id) == (True, "t1")
+    assert await real_redis.get(lock) == "stream-2:t2"
+    assert [work.task_id for work in state.work] == ["t2"]
+    assert [(e.executor_stopped, e.pending_tasks, e.approvals) for e in captured] == [(True, 0, 0)]
 
 
 @pytest.mark.service

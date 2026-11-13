@@ -431,11 +431,12 @@ class Preempt(BaseModel):
 
 
 class CancelWork(BaseModel):
-    """Cancel exactly these tasks."""
+    """Cancel exactly these tasks, and close the approvals they wait on."""
 
     model_config = _FROZEN
 
     task_ids: tuple[str, ...] = Field(min_length=1)
+    approval_ids: tuple[str, ...] = ()
 
 
 class StartAck(BaseModel):

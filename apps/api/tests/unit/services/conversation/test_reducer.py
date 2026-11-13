@@ -518,7 +518,10 @@ def test_approval_requested_then_stop_cancels_the_waiting_task() -> None:
         open_reply=None,
         work=(),
     )
-    assert effects[-2:] == [Preempt(stop_through=3), CancelWork(task_ids=("t1",))]
+    assert effects[-2:] == [
+        Preempt(stop_through=3),
+        CancelWork(task_ids=("t1",), approval_ids=("ap1",)),
+    ]
 
 
 def test_result_arriving_while_a_reply_is_open_stays_waking_past_that_reply() -> None:
