@@ -1383,20 +1383,21 @@ COMPACT_TAIL_LINES = 12
 def compact_report(report: dict) -> dict:
     """Return only what a reader must act on: red lanes, their verdicts, their modules.
 
-    The full `--json` report also carries passing checks, every lane's sources,
-    the stack and the whole log-tail window. An agent that already knows what to
-    do with a red lane pays for all of it on every poll. `mise ci:status` is
-    this object: same PR state, same findings, nothing to scroll past.
+    This is what mise ci:status prints. The full JSON report also carries passing
+    checks, every lane's sources, the stack and the whole log-tail window.
     """
     red = [c for c in report["checks"] if c["status"] in FAILING]
+    explained = red + early_failures(report)
+    # The failing verdicts no check claims are printed by render_failures too.
+    orphans = [v for v in report["verdicts"] if v.get("status") in VERDICT_BAD]
     verdicts: list[dict] = []
     seen: set[tuple[str, str]] = set()
-    for check in red:
-        for verdict in explaining_verdicts(check, report["verdicts"]):
-            key = (str(verdict.get("lane")), str(verdict.get("artifact")))
-            if key not in seen:
-                seen.add(key)
-                verdicts.append(verdict)
+    candidates = [v for c in explained for v in explaining_verdicts(c, report["verdicts"])]
+    for verdict in candidates + orphans:
+        key = (str(verdict.get("lane")), str(verdict.get("artifact")))
+        if key not in seen:
+            seen.add(key)
+            verdicts.append(verdict)
     shards = []
     for check in red:
         shard = shard_for_check(check, report["shards"])
@@ -1471,7 +1472,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--compact",
         action="store_true",
-        help="with --json, drop passing lanes and tails: the actionable red-lane report",
+        help="with --json, keep only red lanes, their findings and the last log lines",
     )
     parser.add_argument(
         "--verbose", action="store_true", help="full finding details + passing lanes"

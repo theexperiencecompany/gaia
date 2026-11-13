@@ -531,7 +531,7 @@ def test_json_prints_nothing_but_json(
 def test_compact_json_drops_passing_checks_and_keeps_the_red_findings(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """`mise ci:status` is the actionable core, not a smaller copy of everything."""
+    """The ci:status read is the actionable core, not a smaller copy of everything."""
     wire(
         FakeGh(
             checks=[FAILED_CHECK, PASSED_CHECK],
@@ -556,9 +556,54 @@ def test_compact_json_drops_passing_checks_and_keeps_the_red_findings(
     }
     for dropped in ("checks", "sources", "stack", "runner_health"):
         assert dropped not in report, f"--compact kept {dropped}"
-    # Shards stay, filtered to their failing modules: that is the mutation answer.
-    assert report["shards"] == []
     assert report["pr"]["number"] == 7
+
+
+def test_compact_json_keeps_a_still_running_lanes_failing_verdict(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Right after a push the red lane is still running; its uploaded findings are the answer."""
+    running = dict(FAILED_CHECK, status="in_progress", conclusion=None)
+    wire(
+        FakeGh(
+            checks=[running],
+            artifacts=[{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}],
+            zip_blobs={None: verdict_zip(VERDICT)},
+        )
+    )
+    assert run_cli(monkeypatch, ["--json", "--compact", "--no-stack"]) == 1
+    report = json.loads(capsys.readouterr().out)
+
+    assert report["early_failures"] == [FAILED_CHECK["name"]]
+    assert [verdict["lane"] for verdict in report["verdicts"]] == ["mutation-shard-3"]
+
+
+def test_compact_json_keeps_only_the_failing_modules_of_a_red_shard(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    clean = dict(SURVIVOR_MODULE, module="app/services/z.py", status="pass", survivors=[])
+    wire_shard_record(wire, [SURVIVOR_MODULE, clean], SURVIVOR_LOG)
+    assert run_cli(monkeypatch, ["--json", "--compact", "--no-stack"]) == 1
+    report = json.loads(capsys.readouterr().out)
+
+    (shard,) = report["shards"]
+    assert [module["module"] for module in shard["modules"]] == ["app/services/y.py"]
+
+
+def test_compact_json_trims_a_red_lanes_log_tail_to_its_last_lines(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    log = "".join(f"2026-09-10T21:39:{i:02d}.0000000Z step {i}\n" for i in range(40))
+    wire(
+        FakeGh(checks=[FAILED_CHECK], job_log=log + "2026-09-10T21:40:00.0000000Z ##[error]boom\n")
+    )
+    assert run_cli(monkeypatch, ["--json", "--no-stack"]) == 1
+    full = json.loads(capsys.readouterr().out)["fallback_tails"][FAILED_CHECK["name"]]
+    assert run_cli(monkeypatch, ["--json", "--compact", "--no-stack"]) == 1
+    compact = json.loads(capsys.readouterr().out)["fallback_tails"][FAILED_CHECK["name"]]
+
+    assert len(full) > ci_remote.COMPACT_TAIL_LINES
+    assert compact == full[-ci_remote.COMPACT_TAIL_LINES :]
 
 
 def test_compact_only_applies_to_json(
