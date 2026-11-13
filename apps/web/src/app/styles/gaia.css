@@ -11,6 +11,8 @@
     border-radius: var(--gaia-radius-md);
     /* v2 clipped every button; it also drops an inline button's baseline gap (32px row, not 34) */
     overflow: hidden;
+    /* v2 set no width, so a button stretched in a column or grid cell (v3 pins w-fit) */
+    width: auto;
   }
   /* ghost is v2's light: its hover was the default colour at 40%, not v3's solid --default */
   .button--ghost {
@@ -609,10 +611,11 @@
     overflow-y: auto;
   }
 
-  /* Table: v2's rows, 8px by 12px unfilled cells with no row rules, and the
-     selected row on zinc-700 at 60%, rounded 8px at its ends. */
+  /* Table: v2's rows, 8px by 12px unfilled start-aligned cells with no row
+     rules, and the selected row on zinc-700 at 60%, rounded 8px at its ends. */
   .table__cell {
     padding: var(--gaia-table-cell-padding-y) var(--gaia-table-cell-padding-x);
+    text-align: start;
     border-bottom-width: 0;
     border-radius: 0;
     background-color: transparent;
