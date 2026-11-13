@@ -6,12 +6,7 @@ import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import type { SystemPurpose } from "@/features/chat/api/chatApi";
 import type { LocalSend } from "@/features/chat/live/liveConversationStore";
 import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
-import type { TodoProgressData } from "@/types/features/todoProgressTypes";
-import type {
-  ArtifactData,
-  ImageData,
-  MemoryData,
-} from "@/types/features/toolDataTypes";
+import type { ArtifactData, ImageData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
 import {
@@ -65,7 +60,6 @@ export interface IMessage {
   // Tool/workflow data
   toolName?: string | null;
   toolCategory?: string | null;
-  workflowId?: string | null;
   selectedWorkflow?: WorkflowData | null;
   selectedCalendarEvent?: SelectedCalendarEventData | null;
   todoRunWake?: TodoRunWake | null;
@@ -74,15 +68,11 @@ export interface IMessage {
   tool_data?: TypedToolDataEntry[] | null;
   follow_up_actions?: string[] | null;
   image_data?: ImageData | null;
-  memory_data?: MemoryData | null;
-  todo_progress?: TodoProgressData | null;
 
   // Message metadata
   pinned?: boolean;
-  isConvoSystemGenerated?: boolean;
   // Present when a bot turn died with no response text (persisted server-side).
   error?: string | null;
-  metadata?: Record<string, unknown>;
   optimistic?: boolean; // Temporary message waiting for backend ID
 
   // Reply data
