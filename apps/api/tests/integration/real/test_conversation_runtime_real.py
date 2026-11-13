@@ -751,7 +751,8 @@ async def test_the_events_stream_opens_on_the_screen_and_patches_it_to_the_log_p
         await rig.settle()
         while (frame := await anext(frames)) is not None:
             if isinstance(frame, ScreenInsertFrame):
-                shown.insert(frame.position, frame.item)
+                later = [at for at, item in enumerate(shown) if item.seq > frame.item.seq]
+                shown.insert(later[0] if later else len(shown), frame.item)
             elif isinstance(frame, ScreenUpdateFrame):
                 shown = [frame.item if item.id == frame.item.id else item for item in shown]
         await frames.aclose()

@@ -1,17 +1,15 @@
-import type { ApprovalEnd } from "../chat/approvals";
 import {
   applyStreamEvent,
   createTurnAccumulator,
 } from "../chat/turnAccumulator";
-import { ENTRY_KIND } from "./entries";
+import { SCREEN_ITEM_KIND, WORK_STATUS } from "./entries";
 import { DISPLAY_STATE, FRAME_KIND } from "./frames";
 import type {
   ConversationFrame,
   ConversationView,
-  Entry,
   FrameOutcome,
-  LoggedEntry,
   PendingSend,
+  ScreenItem,
   StreamDraft,
 } from "./types";
 
@@ -21,13 +19,16 @@ type DeltaFrame = Extract<
   { kind: "reply_delta" | "work_delta" }
 >;
 
+const LIVE_WORK: ReadonlySet<string> = new Set([
+  WORK_STATUS.RUNNING,
+  WORK_STATUS.AWAITING_APPROVAL,
+]);
+
 export const EMPTY_CONVERSATION_VIEW: ConversationView = {
-  entries: [],
+  items: [],
   drafts: [],
-  closedAttempts: {},
-  closedTasks: {},
+  closed: {},
   pending: [],
-  pendingDecisions: {},
   display: DISPLAY_STATE.IDLE,
   work: [],
   head: 0,
@@ -38,113 +39,52 @@ const applied = (view: ConversationView): FrameOutcome => ({
   view,
 });
 
-// Index of seq in entries, or the insertion point encoded as -(point + 1).
-function findSeq(entries: readonly LoggedEntry[], seq: number): number {
-  let low = 0;
-  let high = entries.length - 1;
-  while (low <= high) {
-    const middle = (low + high) >> 1;
-    const found = entries[middle].seq;
-    if (found === seq) return middle;
-    if (found < seq) low = middle + 1;
-    else high = middle - 1;
+const isDev = () => process.env.NODE_ENV !== "production";
+
+/** The id whose stream an item's arrival ends: a settled reply's, or finished work's task. */
+function endedStream(item: ScreenItem): string | null {
+  if (item.kind === SCREEN_ITEM_KIND.REPLY)
+    return item.outcome === null ? null : item.id;
+  if (item.kind === SCREEN_ITEM_KIND.WORK)
+    return LIVE_WORK.has(item.status) ? null : item.task_id;
+  return null;
+}
+
+/** Take the server's items: each replaces the one it updates, and every item sits at its seq. */
+function withItems(
+  view: ConversationView,
+  incoming: readonly ScreenItem[],
+): ConversationView {
+  const byId = new Map(view.items.map((item) => [item.id, item]));
+  for (const item of incoming) {
+    const held = byId.get(item.id);
+    // The server never moves an item; this firing means the projection broke that rule.
+    if (held && held.seq !== item.seq && isDev())
+      console.warn("[conversation] item moved", item.id, held.seq, item.seq);
+    byId.set(item.id, item);
   }
-  return -(low + 1);
-}
-
-const revisionOf = (entry: Entry): number | null =>
-  entry.kind === ENTRY_KIND.USER_MESSAGE || entry.kind === ENTRY_KIND.REPLY
-    ? entry.revision
-    : null;
-
-function withoutKey<T>(
-  record: Readonly<Record<string, T>>,
-  key: string,
-): Readonly<Record<string, T>> {
-  if (!(key in record)) return record;
-  const { [key]: _dropped, ...rest } = record;
-  return rest;
-}
-
-const withRecord = (record: Readonly<Record<string, true>>, key: string) =>
-  record[key] ? record : { ...record, [key]: true as const };
-
-// C1 and C2: a settled reply ends its attempt's draft and, when keyed by a task, that task's cards.
-function settle(view: ConversationView, replyId: string): ConversationView {
-  const opened = view.entries.find(
-    ({ entry }) =>
-      entry.kind === ENTRY_KIND.REPLY && entry.reply_id === replyId,
-  )?.entry;
-  const attempts = view.drafts.flatMap((draft) =>
-    draft.source === "reply" && draft.replyId === replyId
-      ? [draft.attemptId]
-      : [],
-  );
-  if (opened?.kind === ENTRY_KIND.REPLY) attempts.push(opened.attempt_id);
-  let closedAttempts = view.closedAttempts;
-  for (const attemptId of attempts)
-    closedAttempts = withRecord(closedAttempts, attemptId);
-  // Closed whether or not its deltas arrived yet: a stream resumed onto a loaded page replays them late.
-  const closedTasks = withRecord(view.closedTasks, replyId);
-  const drafts = view.drafts.filter((draft) =>
-    draft.source === "reply"
-      ? !closedAttempts[draft.attemptId]
-      : !closedTasks[draft.taskId],
-  );
-  return { ...view, drafts, closedAttempts, closedTasks };
-}
-
-// A held entry changes only to a higher revision, so a replayed original never undoes a later fill.
-function upgradeEntry(
-  view: ConversationView,
-  index: number,
-  entry: Entry,
-): ConversationView {
-  const held = view.entries[index];
-  const incoming = revisionOf(entry);
-  const current = revisionOf(held.entry);
-  if (incoming === null || current === null || incoming <= current) return view;
-  const entries = view.entries.map((logged, at) =>
-    at === index ? { ...held, entry } : logged,
-  );
-  return { ...view, entries };
-}
-
-function applyEntry(
-  view: ConversationView,
-  logged: LoggedEntry,
-): ConversationView {
-  const index = findSeq(view.entries, logged.seq);
-  if (index >= 0) return upgradeEntry(view, index, logged.entry);
-  const point = -(index + 1);
-  const entries = [
-    ...view.entries.slice(0, point),
-    logged,
-    ...view.entries.slice(point),
-  ];
-  const pending = view.pending.filter((send) => send.id !== logged.entry.id);
-  const next = {
+  const items = [...byId.values()].sort((a, b) => a.seq - b.seq);
+  const ended = incoming.flatMap((item) => endedStream(item) ?? []);
+  const closed = { ...view.closed };
+  for (const id of ended) closed[id] = true;
+  const shown = new Set(items.map((item) => item.id));
+  return {
     ...view,
-    entries,
-    pending: pending.length === view.pending.length ? view.pending : pending,
-    pendingDecisions:
-      logged.entry.kind === ENTRY_KIND.APPROVAL_DECIDED
-        ? withoutKey(view.pendingDecisions, logged.entry.approval_id)
-        : view.pendingDecisions,
+    items,
+    closed,
+    drafts: view.drafts.filter((draft) =>
+      draft.source === "reply"
+        ? !(draft.replyId && closed[draft.replyId])
+        : !closed[draft.taskId],
+    ),
+    pending: view.pending.filter((send) => !shown.has(send.id)),
   };
-  return logged.entry.kind === ENTRY_KIND.REPLY_SETTLED
-    ? settle(next, logged.entry.reply_id)
-    : next;
 }
 
-function applyEntryUpdated(
-  view: ConversationView,
-  seq: number,
-  entry: Entry,
-): FrameOutcome {
-  const index = findSeq(view.entries, seq);
-  if (index < 0) return { status: "unknown_seq", seq, view };
-  return applied(upgradeEntry(view, index, entry));
+/** An update for an item older than everything held belongs to history not loaded here. */
+function update(view: ConversationView, item: ScreenItem): ConversationView {
+  const oldest = view.items[0];
+  return oldest && item.seq < oldest.seq ? view : withItems(view, [item]);
 }
 
 const sameStream = (frame: DeltaFrame) => (draft: StreamDraft) =>
@@ -164,12 +104,17 @@ function newDraft(frame: DeltaFrame): StreamDraft {
     : { source: "work", taskId: frame.task_id, ...fresh };
 }
 
+function isClosed(view: ConversationView, frame: DeltaFrame): boolean {
+  if (frame.kind === FRAME_KIND.WORK_DELTA)
+    return Boolean(view.closed[frame.task_id]);
+  return Boolean(
+    view.closed[frame.attempt_id] ||
+      (frame.reply_id && view.closed[frame.reply_id]),
+  );
+}
+
 function applyDelta(view: ConversationView, frame: DeltaFrame): FrameOutcome {
-  const closed =
-    frame.kind === FRAME_KIND.REPLY_DELTA
-      ? view.closedAttempts[frame.attempt_id]
-      : view.closedTasks[frame.task_id];
-  if (closed) return applied(view);
+  if (isClosed(view, frame)) return applied(view);
   const existing = view.drafts.find(sameStream(frame));
   const draft = existing ?? newDraft(frame);
   if (frame.index < draft.nextIndex) return applied(view);
@@ -191,49 +136,45 @@ function applyDelta(view: ConversationView, frame: DeltaFrame): FrameOutcome {
 }
 
 function retract(view: ConversationView, attemptId: string): ConversationView {
-  if (view.closedAttempts[attemptId]) return view;
+  if (view.closed[attemptId]) return view;
   return {
     ...view,
-    closedAttempts: withRecord(view.closedAttempts, attemptId),
+    closed: { ...view.closed, [attemptId]: true },
     drafts: view.drafts.filter(
       (draft) => draft.source !== "reply" || draft.attemptId !== attemptId,
     ),
   };
 }
 
-function applyState(
-  view: ConversationView,
-  frame: Extract<ConversationFrame, { kind: "state" }>,
-): ConversationView {
-  if (frame.head < view.head) return view;
-  return {
-    ...view,
-    head: frame.head,
-    display: frame.display,
-    work: frame.work,
-  };
-}
-
-/** Fold one frame into the view; a duplicated or replayed frame of any kind changes nothing. */
+/** Fold one frame into the view; a repeated frame of any kind changes nothing. */
 export function applyFrame(
   view: ConversationView,
   frame: ConversationFrame,
 ): FrameOutcome {
   switch (frame.kind) {
-    case FRAME_KIND.ENTRY:
-      return applied(
-        applyEntry(view, { seq: frame.seq, at: frame.at, entry: frame.entry }),
-      );
-    case FRAME_KIND.ENTRY_UPDATED:
-      return applyEntryUpdated(view, frame.seq, frame.entry);
+    case FRAME_KIND.SCREEN:
+      return applied(withItems(view, frame.items));
+    case FRAME_KIND.SCREEN_INSERT:
+      return applied(withItems(view, [frame.item]));
+    case FRAME_KIND.SCREEN_UPDATE:
+      return applied(update(view, frame.item));
     case FRAME_KIND.REPLY_DELTA:
     case FRAME_KIND.WORK_DELTA:
       return applyDelta(view, frame);
     case FRAME_KIND.RETRACT:
       return applied(retract(view, frame.attempt_id));
     case FRAME_KIND.STATE:
-      return applied(applyState(view, frame));
-    // The title is the conversation's metadata, held with the conversation list, not in the log's view.
+      return applied(
+        frame.head < view.head
+          ? view
+          : {
+              ...view,
+              head: frame.head,
+              display: frame.display,
+              work: frame.work,
+            },
+      );
+    // The title is the conversation's metadata, held with the conversation list, not in the screen.
     case FRAME_KIND.CONVERSATION_UPDATED:
       return applied(view);
     default: {
@@ -243,32 +184,23 @@ export function applyFrame(
   }
 }
 
-/** Show a send optimistically until its entry arrives; a send the log already holds is not added. */
+/** Take a page of the server's screen (a load, a sync or a page back) and its state. */
+export function applyPage(
+  view: ConversationView,
+  items: readonly ScreenItem[],
+  state: Extract<ConversationFrame, { kind: "state" }>,
+): ConversationView {
+  const outcome = applyFrame(withItems(view, items), state);
+  return outcome.view;
+}
+
+/** Show this device's own send until the server's screen inserts it; a send already shown is not added. */
 export function addPendingSend(
   view: ConversationView,
   send: PendingSend,
 ): ConversationView {
   const known =
     view.pending.some((pending) => pending.id === send.id) ||
-    view.entries.some((logged) => logged.entry.id === send.id);
+    view.items.some((item) => item.id === send.id);
   return known ? view : { ...view, pending: [...view.pending, send] };
-}
-
-/** Show this device's decision on an approval until the log's decision for it arrives; one the log already decided is not added. */
-export function addPendingDecision(
-  view: ConversationView,
-  approvalId: string,
-  end: ApprovalEnd,
-): ConversationView {
-  const logged = view.entries.some(
-    ({ entry }) =>
-      entry.kind === ENTRY_KIND.APPROVAL_DECIDED &&
-      entry.approval_id === approvalId,
-  );
-  return logged
-    ? view
-    : {
-        ...view,
-        pendingDecisions: { ...view.pendingDecisions, [approvalId]: end },
-      };
 }

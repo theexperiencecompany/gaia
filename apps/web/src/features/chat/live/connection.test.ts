@@ -1,19 +1,18 @@
 // @vitest-environment jsdom
 
 import { ApiError } from "@shared/api";
-import type { Entry, LoggedEntry } from "@shared/conversation";
-import { reply, replySettled, userMessage } from "@shared/conversation/testing";
+import type { ScreenItem } from "@shared/conversation";
+import { replyItem, userItem } from "@shared/conversation/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatStore } from "@/stores/chatStore";
 
 /**
  * A fake events endpoint: each subscription is a stream the test feeds frames to
- * and then ends, drops, or refuses with 404, recording the `after` it opened with.
+ * and then ends, drops, or refuses with 404.
  */
 interface OpenStream {
   conversationId: string;
-  after: number;
-  push: (frame: unknown, streamId?: string | null) => void;
+  push: (frame: unknown) => void;
   end: () => void;
   drop: (error: Error) => void;
   aborted: () => boolean;
@@ -40,7 +39,6 @@ vi.mock("@/features/chat/api/chatApi", () => {
     chatApi: {
       subscribeToConversationEvents: (
         conversationId: string,
-        after: number,
         onData: (raw: string) => void,
         signal: AbortSignal,
       ) =>
@@ -52,9 +50,7 @@ vi.mock("@/features/chat/api/chatApi", () => {
           signal.addEventListener("abort", () => resolve());
           server.streams.push({
             conversationId,
-            after,
-            push: (frame, streamId = null) =>
-              onData(JSON.stringify({ stream_id: streamId, frame })),
+            push: (frame) => onData(JSON.stringify({ frame })),
             end: resolve,
             drop: reject,
             aborted: () => signal.aborted,
@@ -107,12 +103,9 @@ import { sendMessage } from "./sendMessage";
 const AT = "2026-11-12T10:00:00+00:00";
 const CONVERSATION = "conv-1";
 
-const entry = (seq: number, logged: Entry) => ({
-  kind: "entry",
-  seq,
-  at: AT,
-  entry: logged,
-});
+const insert = (item: ScreenItem) => ({ kind: "screen_insert", item });
+const screenOf = (...items: ScreenItem[]) => ({ kind: "screen", items });
+const ids = () => view().items.map((item) => item.id);
 const state = (head: number, display: string) => ({
   kind: "state",
   head,
@@ -151,17 +144,17 @@ afterEach(() => {
 });
 
 describe("following a conversation's events", () => {
-  it("folds every frame into the view, from the log's start for a conversation never seen", async () => {
+  it("takes the screen it opens on, then its patches and live deltas", async () => {
     release = openConversation(CONVERSATION);
     await flush();
-    expect(lastStream().after).toBe(0);
 
-    lastStream().push(entry(1, userMessage("m1", "hi")));
+    lastStream().push(screenOf(userItem("m1", 1, "hi")));
     lastStream().push(state(1, "thinking"));
+    lastStream().push(insert(replyItem("r1", 2, "Hel")));
     lastStream().push(replyText("a1", 0, "Hel"));
     lastStream().push(replyText("a1", 1, "lo"));
 
-    expect(view().entries.map((logged) => logged.seq)).toEqual([1]);
+    expect(ids()).toEqual(["m1", "r1"]);
     expect(view().display).toBe("thinking");
     expect(view().drafts[0]?.content.responseText).toBe("Hello");
   });
@@ -169,7 +162,7 @@ describe("following a conversation's events", () => {
   it("titles the conversation from its title update, leaving the view as it was", async () => {
     release = openConversation(CONVERSATION);
     await flush();
-    lastStream().push(entry(1, userMessage("m1", "plan q3")));
+    lastStream().push(insert(userItem("m1", 1, "plan q3")));
     const before = view();
 
     lastStream().push({
@@ -186,29 +179,27 @@ describe("following a conversation's events", () => {
     expect(view()).toBe(before);
   });
 
-  it("reconnects after a dropped socket from before what can still change, not from the start", async () => {
+  it("reconnects after a dropped socket and takes the fresh screen it opens on", async () => {
     vi.useFakeTimers();
     release = openConversation(CONVERSATION);
     await vi.advanceTimersByTimeAsync(0);
-    const first = lastStream();
-    first.push(entry(1, userMessage("m1")));
-    first.push(entry(2, reply("r1", "a1")));
-    first.push(entry(3, replySettled("r1", ["m1"], 1)));
-    first.push(entry(4, userMessage("m2")));
-    first.drop(new Error("socket lost"));
+    lastStream().push(insert(userItem("m1", 1)));
+    lastStream().drop(new Error("socket lost"));
 
     await vi.advanceTimersByTimeAsync(1_000);
 
     expect(server.streams).toHaveLength(2);
-    // m2 has no settled reply yet, so its reaction may still land in place.
-    expect(lastStream().after).toBe(3);
+    lastStream().push(
+      screenOf(userItem("m1", 1), replyItem("r1", 2, "done", "answered")),
+    );
+    expect(ids()).toEqual(["m1", "r1"]);
   });
 
-  it("reopens from the log when a delta skips an index, and the replay fills the gap", async () => {
+  it("reopens when a delta skips an index, and the fresh stream fills the gap", async () => {
     release = openConversation(CONVERSATION);
     await flush();
     const first = lastStream();
-    first.push(entry(1, userMessage("m1")));
+    first.push(insert(userItem("m1", 1)));
     first.push(replyText("a1", 0, "one "));
     first.push(replyText("a1", 2, "three"));
     await flush();
@@ -216,30 +207,10 @@ describe("following a conversation's events", () => {
     expect(first.aborted()).toBe(true);
     const replay = lastStream();
     expect(server.streams).toHaveLength(2);
-    expect(replay.after).toBe(0);
-    replay.push(entry(1, userMessage("m1")));
-    replay.push(replyText("a1", 0, "one "));
+    replay.push(screenOf(userItem("m1", 1)));
     replay.push(replyText("a1", 1, "two "));
     replay.push(replyText("a1", 2, "three"));
     expect(view().drafts[0]?.content.responseText).toBe("one two three");
-  });
-
-  it("reopens before an entry it never held when that entry is updated in place", async () => {
-    release = openConversation(CONVERSATION);
-    await flush();
-    const first = lastStream();
-    first.push(entry(1, userMessage("m1")));
-    first.push(entry(2, reply("r1", "a1")));
-    first.push(entry(3, replySettled("r1", ["m1"], 1)));
-    first.push(entry(5, userMessage("m3")));
-    first.push({
-      kind: "entry_updated",
-      seq: 4,
-      entry: userMessage("m2", "text", { emoji: "👍", by: "jev" }, 1),
-    });
-    await flush();
-
-    expect(lastStream().after).toBe(3);
   });
 
   it("waits on a conversation the server does not have yet and connects once a send lands", async () => {
@@ -318,7 +289,7 @@ describe("sending", () => {
     expect(sendResult.calls).toHaveLength(1);
   });
 
-  it("shows the message at once and hands it to the log entry with the same id", async () => {
+  it("shows the message at once and hands it to the server's item with the same id", async () => {
     release = openConversation(CONVERSATION);
     await flush();
     const sending = sendMessage("hello", { conversationId: CONVERSATION });
@@ -326,10 +297,10 @@ describe("sending", () => {
     expect(pending).toHaveLength(1);
     await sending;
 
-    lastStream().push(entry(1, userMessage(pending[0].id, "hello")));
+    lastStream().push(insert(userItem(pending[0].id, 1, "hello")));
 
     expect(view().pending).toEqual([]);
-    expect(view().entries[0].entry.id).toBe(pending[0].id);
+    expect(ids()).toEqual([pending[0].id]);
   });
 
   it("marks a send the server refused as failed, and a retry resends the same message", async () => {
@@ -401,15 +372,14 @@ describe("sending", () => {
 });
 
 describe("reload", () => {
-  it("shows the saved log before the stream reconnects, resumes after it, and resends what never landed", async () => {
-    const savedEntries: LoggedEntry[] = [
-      { seq: 1, at: AT, entry: userMessage("m1", "first") },
-      { seq: 2, at: AT, entry: reply("r1", "a1", "answer", 1) },
-      { seq: 3, at: AT, entry: replySettled("r1", ["m1"], 1) },
-    ];
+  it("shows the saved screen before the stream reconnects, and resends what never landed", async () => {
     saved.set(CONVERSATION, {
       conversationId: CONVERSATION,
-      entries: savedEntries,
+      items: [
+        userItem("m1", 1, "first"),
+        replyItem("r1", 2, "answer", "answered"),
+      ],
+      head: 3,
       sends: {
         "m-unsent": {
           body: { message_id: "m-unsent", text: "second" },
@@ -422,27 +392,27 @@ describe("reload", () => {
     release = openConversation(CONVERSATION);
     await flush();
 
-    expect(view().entries.map((logged) => logged.seq)).toEqual([1, 2, 3]);
+    expect(ids()).toEqual(["m1", "r1"]);
+    expect(view().head).toBe(3);
     expect(view().pending.map((pending) => pending.id)).toEqual(["m-unsent"]);
-    expect(lastStream().after).toBe(3);
     expect(sendResult.calls).toHaveLength(1);
 
     // A reply mid-stream at reload: its draft is rebuilt from the stream's replay.
-    lastStream().push(entry(4, userMessage("m-unsent", "second")));
+    lastStream().push(insert(userItem("m-unsent", 4, "second")));
     lastStream().push(replyText("a2", 0, "on it"));
     expect(view().pending).toEqual([]);
     expect(view().drafts[0]?.content.responseText).toBe("on it");
   });
 
-  it("saves the log and the sends it holds", async () => {
+  it("saves the screen and the sends it holds", async () => {
     release = openConversation(CONVERSATION);
     await flush();
-    lastStream().push(entry(1, userMessage("m1")));
+    lastStream().push(insert(userItem("m1", 1)));
     persistConversation(CONVERSATION, { immediately: true });
     await flush();
 
     expect(
-      (saved.get(CONVERSATION) as { entries: LoggedEntry[] }).entries,
+      (saved.get(CONVERSATION) as { items: ScreenItem[] }).items,
     ).toHaveLength(1);
   });
 });

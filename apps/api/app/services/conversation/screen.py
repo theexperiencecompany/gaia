@@ -7,7 +7,7 @@ screens are this same function of the same log.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -85,6 +85,17 @@ def _is_handoff(card: ToolDataEntry) -> bool:
     return card["tool_name"] == TOOL_CALL_CARD and _card_data(card).tool_name == CALL_EXECUTOR_NAME
 
 
+def work_root(started: Mapping[str, WorkStarted], task_id: str) -> str:
+    """Return the task whose item task_id belongs to, through any chain of hand-overs."""
+    seen = {task_id}
+    while (work := started.get(task_id)) and work.joins in started:
+        task_id = work.joins
+        if task_id in seen:
+            break
+        seen.add(task_id)
+    return task_id
+
+
 @dataclass(frozen=True)
 class _Settle:
     seq: int
@@ -133,14 +144,7 @@ class _Log:
             self.decisions[decision.approval_id] = decision
 
     def root(self, task_id: str) -> str:
-        """Return the task whose bubble task_id belongs to, through any chain of hand-overs."""
-        seen = {task_id}
-        while (started := self.started.get(task_id)) and started.joins in self.started:
-            task_id = started.joins
-            if task_id in seen:
-                break
-            seen.add(task_id)
-        return task_id
+        return work_root(self.started, task_id)
 
     def approval_end(self, approval_id: str) -> dict[str, str | None] | None:
         """Return a logged approval's end; None leaves an approval the log never asked as created."""

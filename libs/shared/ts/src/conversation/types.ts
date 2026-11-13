@@ -1,36 +1,26 @@
 import type { z } from "zod";
-import type { DisplayState, EntryFrame, LiveTask } from "../api/generated";
-import type { ApprovalEnd } from "../chat/approvals";
+import type { DisplayState, LiveTask } from "../api/generated";
 import type { TurnAccumulator } from "../chat/turnAccumulator";
-import type { ConversationFrameSchema } from "./frames";
+import type { ScreenItemSchema } from "./entries";
 
 export type {
   DisplayState,
   LiveTask,
   Reaction,
-  Reply,
   StateFrame,
   UserMessage,
 } from "../api/generated";
+export type { ConversationFrame } from "./frames";
 
-export type Entry = EntryFrame["entry"];
+/** One item of the screen the server projects from the log, as the stream delivers it. */
+export type ScreenItem = z.infer<typeof ScreenItemSchema>;
 
-/** An entry at its position in the log, as an entry frame delivers it. */
-export type LoggedEntry = Omit<EntryFrame, "kind">;
-
-export type ConversationFrame = z.infer<typeof ConversationFrameSchema>;
-/** One event of the stream: the frame, and the stream id to resume after (null when replayed from the log). */
-export interface ConversationStreamEvent {
-  streamId: string | null;
-  frame: ConversationFrame;
-}
-
-/** What one reply attempt or one task has streamed and the log has not saved yet. */
+/** What one reply attempt or one piece of work has streamed and its item does not show yet. */
 export type StreamDraft =
   | {
       source: "reply";
       attemptId: string;
-      /** Null until the attempt's Reply entry exists. */
+      /** Null until the server names the reply the attempt writes. */
       replyId: string | null;
       nextIndex: number;
       content: TurnAccumulator;
@@ -42,25 +32,22 @@ export type StreamDraft =
       content: TurnAccumulator;
     };
 
-/** A message this device sent that the log has not given a seq yet. */
+/** A message this device sent that the server's screen does not show yet. */
 export interface PendingSend {
   id: string;
   text: string;
 }
 
-/** Everything a client knows about one conversation, folded from its event stream. */
+/** A client's copy of one conversation's screen: the server's items, what is streaming into them, and its own sends. */
 export interface ConversationView {
-  /** Ascending by seq, one entry per seq. */
-  entries: readonly LoggedEntry[];
+  /** Ascending by seq; the server's items, never reordered here. */
+  items: readonly ScreenItem[];
   /** In the order their first delta arrived. */
   drafts: readonly StreamDraft[];
-  /** Attempts retracted or settled, and tasks whose cards a settled reply took over. */
-  closedAttempts: Readonly<Record<string, true>>;
-  closedTasks: Readonly<Record<string, true>>;
+  /** Attempts, replies and work whose streams ended: a late delta for one is dropped. */
+  closed: Readonly<Record<string, true>>;
   /** In send order. */
   pending: readonly PendingSend[];
-  /** This device's own approval decisions, shown until the log's ApprovalDecided arrives. */
-  pendingDecisions: Readonly<Record<string, ApprovalEnd>>;
   display: DisplayState;
   work: readonly LiveTask[];
   head: number;
@@ -68,8 +55,7 @@ export interface ConversationView {
 
 export type FrameOutcome =
   | { status: "applied"; view: ConversationView }
-  | { status: "unknown_seq"; seq: number; view: ConversationView }
   | { status: "index_gap"; expected: number; view: ConversationView };
 
-/** A frame the view could not apply, after which the stream must be reopened from the log. */
+/** A frame the view could not apply, after which the stream must be reopened for a fresh screen. */
 export type FrameGap = Exclude<FrameOutcome, { status: "applied" }>;

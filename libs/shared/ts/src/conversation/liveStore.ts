@@ -1,16 +1,15 @@
 import { create } from "zustand";
-import type { ApprovalEnd } from "../chat/approvals";
-import { type ConversationPage, hydrate, olderBefore } from "./history";
+import { type ConversationPage, olderBefore } from "./history";
 import type {
   ConversationFrame,
   ConversationView,
   FrameGap,
-  LoggedEntry,
+  ScreenItem,
 } from "./types";
 import {
-  addPendingDecision,
   addPendingSend,
   applyFrame,
+  applyPage,
   EMPTY_CONVERSATION_VIEW,
 } from "./view";
 
@@ -27,9 +26,10 @@ export interface LiveConversation<Send extends QueuedSend> {
   olderBefore: number | null;
 }
 
-/** What a device keeps of a conversation between sessions: its log, its cursor and its sends. */
+/** What a device keeps of a conversation between sessions: the server's last screen, its head, its cursor and its sends. */
 export interface SavedConversation<Send extends QueuedSend> {
-  entries: readonly LoggedEntry[];
+  items: readonly ScreenItem[];
+  head: number;
   olderBefore: number | null;
   sends: Readonly<Record<string, Send>>;
 }
@@ -38,7 +38,7 @@ export interface LiveConversationState<Send extends QueuedSend> {
   conversations: Readonly<Record<string, LiveConversation<Send>>>;
   /** Seed a conversation from what this device saved; a conversation already live keeps what it has. */
   restore: (conversationId: string, saved: SavedConversation<Send>) => void;
-  /** Fold a page of the server's log (a load, a sync, a page back) into the view. */
+  /** Take a page of the server's screen (a load, a sync, a page back) into the view. */
   applyPage: (conversationId: string, page: ConversationPage) => void;
   /** Fold frames in order; returns the first gap, after which nothing more is applied. */
   applyFrames: (
@@ -46,12 +46,6 @@ export interface LiveConversationState<Send extends QueuedSend> {
     frames: readonly ConversationFrame[],
   ) => FrameGap | null;
   queueSend: (conversationId: string, send: Send) => void;
-  /** Show this device's decision on an approval until the log's decision reaches the view. */
-  decideApproval: (
-    conversationId: string,
-    approvalId: string,
-    end: ApprovalEnd,
-  ) => void;
   setSendFailed: (
     conversationId: string,
     messageId: string,
@@ -88,16 +82,10 @@ export function createLiveConversationStore<Send extends QueuedSend>() {
     (set, get) => ({
       conversations: {},
 
-      restore: (conversationId, { entries, olderBefore, sends }) => {
+      restore: (conversationId, { items, head, olderBefore, sends }) => {
         if (get().conversations[conversationId]) return;
-        const restored = fold(
-          EMPTY_CONVERSATION_VIEW,
-          entries.map(
-            (logged): ConversationFrame => ({ kind: "entry", ...logged }),
-          ),
-        ).view;
-        // The saved log is as far as this device knew the state; a replayed state frame moves it on.
-        const known = { ...restored, head: restored.entries.at(-1)?.seq ?? 0 };
+        // The saved screen is as far as this device knew it; the stream's screen frame moves it on.
+        const known = { ...EMPTY_CONVERSATION_VIEW, items, head };
         const view = Object.entries(sends).reduce(
           (current, [id, send]) =>
             addPendingSend(current, { id, text: send.body.text }),
@@ -113,7 +101,7 @@ export function createLiveConversationStore<Send extends QueuedSend>() {
 
       applyPage: (conversationId, page) => {
         const live = get().conversations[conversationId] ?? empty;
-        const view = hydrate(live.view, page);
+        const view = applyPage(live.view, page.items, page.state);
         set((state) => ({
           conversations: {
             ...state.conversations,
@@ -138,18 +126,6 @@ export function createLiveConversationStore<Send extends QueuedSend>() {
           }));
         }
         return gap;
-      },
-
-      decideApproval: (conversationId, approvalId, end) => {
-        const live = get().conversations[conversationId] ?? empty;
-        const view = addPendingDecision(live.view, approvalId, end);
-        if (view === live.view) return;
-        set((state) => ({
-          conversations: {
-            ...state.conversations,
-            [conversationId]: { ...live, view },
-          },
-        }));
       },
 
       queueSend: (conversationId, send) => {

@@ -2,21 +2,12 @@
 
 import { Button } from "@heroui/button";
 import { ShieldIcon } from "@icons";
-import type {
-  ApprovalDecision,
-  ApprovalEnd,
-  ApprovalRequestData,
-} from "@shared/chat";
-import { decidedEnd } from "@shared/utils";
+import type { ApprovalDecision, ApprovalRequestData } from "@shared/chat";
 import { useEffect, useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
-import {
-  BATCH_OUTCOME_REASON,
-  resolveBatchOutcome,
-} from "@/features/chat/utils/batchOutcome";
+import { BATCH_OUTCOME_REASON } from "@/features/chat/utils/batchOutcome";
 import { toast } from "@/lib/toast";
 import ApprovalRequestSection from "./ApprovalRequestSection";
-import { useApprovalResolver } from "./ApprovalResolveContext";
 import ApprovalReviewSheet from "./ApprovalReviewSheet";
 
 /** A withdrawn approval stays visible just long enough to prove the agent
@@ -53,22 +44,12 @@ interface ApprovalRequestGroupProps {
 export default function ApprovalRequestGroup({
   items,
 }: ApprovalRequestGroupProps) {
-  const resolveApproval = useApprovalResolver();
   const [batchSubmitting, setBatchSubmitting] =
     useState<ApprovalDecision | null>(null);
 
   const pending = items.filter((item) => item.outcome == null);
   const revoked = items.filter((item) => item.outcome === "withdrawn");
   const [sheetOpen, setSheetOpen] = useState(false);
-
-  const settle = (
-    approvalId: string,
-    end: ApprovalEnd,
-    feedback: string | null,
-  ) => {
-    const item = items.find((i) => i.approval_id === approvalId);
-    if (item) resolveApproval?.(approvalId, { ...item, ...end, feedback });
-  };
 
   const decideAll = async (decision: ApprovalDecision) => {
     setBatchSubmitting(decision);
@@ -79,21 +60,7 @@ export default function ApprovalRequestGroup({
           decision,
         })),
       });
-      const tapped = decidedEnd(decision);
-      for (const outcome of response.outcomes) {
-        // Settle to the server's state, not the tapped button: not_found means
-        // the row was decided elsewhere. Falls back to the tap when the server
-        // sent no state.
-        if (outcome.resolved) {
-          settle(outcome.approval_id, tapped, null);
-        } else if (outcome.reason === BATCH_OUTCOME_REASON.NOT_FOUND) {
-          settle(
-            outcome.approval_id,
-            resolveBatchOutcome(outcome, tapped),
-            null,
-          );
-        }
-      }
+      // A decided card ends when the server's screen updates its item.
       if (
         response.outcomes.some(
           (o) => !o.resolved && o.reason !== BATCH_OUTCOME_REASON.NOT_FOUND,
@@ -155,9 +122,6 @@ export default function ApprovalRequestGroup({
               key={item.approval_id}
               data={item}
               disabled={batchSubmitting !== null}
-              onDecided={(end, feedback) =>
-                settle(item.approval_id, end, feedback)
-              }
             />
           ))}
         </div>
@@ -169,7 +133,6 @@ export default function ApprovalRequestGroup({
         items={pending}
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
-        onSettled={settle}
       />
     </div>
   );

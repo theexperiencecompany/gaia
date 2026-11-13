@@ -2,12 +2,19 @@
 
 from dataclasses import dataclass, field
 import itertools
+import json
+from pathlib import Path
 
 from hypothesis import given, settings, strategies as st
 import pytest
 
 from app.constants.general import CALL_EXECUTOR_NAME
-from app.models.conversation_frame_models import EntryFrame, EntryUpdatedFrame
+from app.models.conversation_frame_models import (
+    EntryFrame,
+    EntryUpdatedFrame,
+    ToolDataEvent,
+    WorkDeltaFrame,
+)
 from app.models.conversation_log_models import (
     Entry,
     FailureReason,
@@ -26,6 +33,7 @@ from app.models.conversation_screen_models import (
     ScreenPatch,
     WorkStatus,
 )
+from app.models.conversation_send_models import ConversationEvent
 from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.screen import TOOL_CALL_CARD, project_screen
 from app.services.conversation.screen_patches import ScreenItemMoved, ScreenTracker, screen_patches
@@ -52,11 +60,12 @@ def _ids(screen: list[ScreenItem]) -> list[str]:
 
 
 def _apply(screen: list[ScreenItem], patches: list[ScreenPatch]) -> list[ScreenItem]:
-    """Apply patches the way a client does: insert at the position, replace by id."""
+    """Apply patches the way a client does: insert before the first later seq, replace by id."""
     patched = list(screen)
     for patch in patches:
         if isinstance(patch, ScreenInsertFrame):
-            patched.insert(patch.position, patch.item)
+            later = [at for at, item in enumerate(patched) if item.seq > patch.item.seq]
+            patched.insert(later[0] if later else len(patched), patch.item)
         else:
             patched = [patch.item if item.id == patch.item.id else item for item in patched]
     return patched
@@ -70,6 +79,7 @@ class _Log:
     screens: list[list[ScreenItem]] = field(default_factory=list)
     tracker: ScreenTracker = field(default_factory=lambda: ScreenTracker([]))
     patched: list[ScreenItem] = field(default_factory=list)
+    patches: list[ScreenPatch] = field(default_factory=list)
 
     def append(self, entry: Entry) -> int:
         seq = len(self.entries) + 1
@@ -84,7 +94,9 @@ class _Log:
     def _shown(self, frame: EntryFrame | EntryUpdatedFrame) -> None:
         """Project the log, and check the client patched from empty shows exactly that screen."""
         self.screens.append(project_screen(self.entries))
-        self.patched = _apply(self.patched, self.tracker.take(frame))
+        patches = self.tracker.take(frame)
+        self.patches.extend(patches)
+        self.patched = _apply(self.patched, patches)
         assert self.patched == self.screens[-1]
 
 
@@ -428,3 +440,29 @@ def test_a_projection_that_moves_a_shown_item_fails_loudly() -> None:
         screen_patches([first, second], [second, first])
     with pytest.raises(ScreenItemMoved):
         screen_patches([first, second], [second])
+
+
+def test_a_handed_over_tasks_delta_streams_into_the_work_item_it_joined() -> None:
+    tracker = ScreenTracker(
+        [
+            logged(1, user("u1")),
+            logged(2, WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))),
+        ]
+    )
+    joined = WorkStarted(id="work:t2", task_id="t2", cause_through=1, answers=(), joins="t1")
+    tracker.take(EntryFrame(seq=3, at=logged(3, joined).at, entry=joined))
+    delta = WorkDeltaFrame(task_id="t2", index=0, payload=ToolDataEvent(tool_data=_card("x")))
+    assert tracker.on_its_item(delta).task_id == "t1"
+    assert [item.id for item in tracker.items] == ["u1", "work:t1"]
+
+
+# The clients' tests replay these frames: the server's own serialization of the founder's conversation.
+_FOUNDER_FRAMES = (
+    Path(__file__).parents[6] / "libs/shared/ts/src/conversation/fixtures/c41f18c5.frames.json"
+)
+
+
+def test_the_founder_conversations_patches_are_the_frames_the_clients_replay() -> None:
+    log = _founder_log(legacy=False)
+    frames = [ConversationEvent(frame=patch).model_dump(mode="json") for patch in log.patches]
+    assert json.loads(_FOUNDER_FRAMES.read_text()) == frames

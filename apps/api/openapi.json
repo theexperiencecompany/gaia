@@ -16950,7 +16950,7 @@
       },
       "ScreenInsertFrame": {
         "additionalProperties": false,
-        "description": "An item became visible; position is its index in the screen once inserted.",
+        "description": "An item became visible; its seq is its position, before every item with a higher one.",
         "properties": {
           "item": {
             "discriminator": {
@@ -16991,16 +16991,10 @@
             "default": "screen_insert",
             "title": "Kind",
             "type": "string"
-          },
-          "position": {
-            "minimum": 0.0,
-            "title": "Position",
-            "type": "integer"
           }
         },
         "required": [
           "kind",
-          "position",
           "item"
         ],
         "title": "ScreenInsertFrame",

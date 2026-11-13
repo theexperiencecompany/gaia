@@ -129,12 +129,11 @@ class ScreenFrame(BaseModel):
 
 
 class ScreenInsertFrame(BaseModel):
-    """An item became visible; position is its index in the screen once inserted."""
+    """An item became visible; its seq is its position, before every item with a higher one."""
 
     model_config = WIRE_CONFIG
 
     kind: Literal[FrameKind.SCREEN_INSERT] = FrameKind.SCREEN_INSERT
-    position: int = Field(ge=0)
     item: ScreenItem
 
 

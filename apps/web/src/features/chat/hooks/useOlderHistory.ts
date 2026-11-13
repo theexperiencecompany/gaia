@@ -25,7 +25,7 @@ export const useOlderHistory = (): void => {
     });
   }, [conversationId]);
 
-  const held = view.entries.length;
+  const held = view.items.length;
   useEffect(() => {
     if (!loadOlder || olderBefore === null || canScrollUp || held === 0) return;
     loadOlder().catch((error: unknown) => {

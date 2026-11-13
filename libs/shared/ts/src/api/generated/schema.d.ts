@@ -13865,7 +13865,7 @@ export interface components {
         };
         /**
          * ScreenInsertFrame
-         * @description An item became visible; position is its index in the screen once inserted.
+         * @description An item became visible; its seq is its position, before every item with a higher one.
          */
         ScreenInsertFrame: {
             /** Item */
@@ -13875,8 +13875,6 @@ export interface components {
              * @enum {string}
              */
             kind: "screen_insert";
-            /** Position */
-            position: number;
         };
         /**
          * ScreenUpdateFrame

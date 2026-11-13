@@ -11,8 +11,10 @@ import type {
   IntegrationConnected,
   IntegrationNeeded,
   Notice,
+  NoticeItem,
   Reaction,
   Reply,
+  ReplyItem,
   ReplySettled,
   ReplyToMessageData,
   SelectedCalendarEventData,
@@ -21,11 +23,15 @@ import type {
   TodoRun,
   TodoRunWake,
   TodoWoke,
+  TodoWokeItem,
+  UserItem,
   UserMessage,
   WorkFinished,
   WorkflowFired,
+  WorkflowFiredItem,
   WorkflowRun,
   WorkflowTriggerContext,
+  WorkItem,
   WorkStarted,
 } from "../api/generated";
 import { ToolDataEntrySchema } from "../chat/schema";
@@ -408,4 +414,105 @@ export const EntrySchema = z.discriminatedUnion("kind", [
   ReplySettledSchema,
   IntegrationNeededSchema,
   IntegrationConnectedSchema,
+]);
+
+export const SCREEN_ITEM_KIND = {
+  USER: "user",
+  REPLY: "reply",
+  WORK: "work",
+  NOTICE: "notice",
+  WORKFLOW_FIRED: "workflow_fired",
+  TODO_WOKE: "todo_woke",
+} as const;
+
+export const WORK_STATUS = {
+  RUNNING: "running",
+  AWAITING_APPROVAL: "awaiting_approval",
+  DONE: "done",
+  FAILED: "failed",
+  CANCELLED: "cancelled",
+  LOST: "lost",
+} as const satisfies Record<string, WorkItem["status"]>;
+
+const itemPlace = { id, seq: z.number().int().min(1), at: z.string() };
+
+const UserItemSchema = z.object({
+  kind: z.literal(SCREEN_ITEM_KIND.USER),
+  ...itemPlace,
+  message: UserMessageSchema,
+}) satisfies z.ZodType<UserItem>;
+
+const ReplyItemSchema = z.object({
+  kind: z.literal(SCREEN_ITEM_KIND.REPLY),
+  ...itemPlace,
+  text: z.string(),
+  tool_data: z.array(ToolDataEntrySchema),
+  follow_up_actions: z.array(z.string()),
+  image: ImageDataSchema.nullable(),
+  pinned: z.boolean(),
+  quote: ReplyToMessageSchema.nullable(),
+  outcome: z
+    .enum([
+      REPLY_OUTCOME.ANSWERED,
+      REPLY_OUTCOME.STOPPED,
+      REPLY_OUTCOME.TRUNCATED,
+      REPLY_OUTCOME.FAILED,
+      REPLY_OUTCOME.SILENT,
+    ])
+    .nullable(),
+  failure: z
+    .enum([
+      FAILURE_REASON.MODEL_ERROR,
+      FAILURE_REASON.STEP_LIMIT,
+      FAILURE_REASON.SERVER_RESTART,
+    ])
+    .nullable(),
+  narrates: z.array(z.string()),
+}) satisfies z.ZodType<ReplyItem>;
+
+const WorkItemSchema = z.object({
+  kind: z.literal(SCREEN_ITEM_KIND.WORK),
+  ...itemPlace,
+  task_id: z.string(),
+  status: z.enum([
+    WORK_STATUS.RUNNING,
+    WORK_STATUS.AWAITING_APPROVAL,
+    WORK_STATUS.DONE,
+    WORK_STATUS.FAILED,
+    WORK_STATUS.CANCELLED,
+    WORK_STATUS.LOST,
+  ]),
+  handoff: ToolDataEntrySchema.nullable(),
+  tool_data: z.array(ToolDataEntrySchema),
+  image: ImageDataSchema.nullable(),
+}) satisfies z.ZodType<WorkItem>;
+
+const NoticeItemSchema = z.object({
+  kind: z.literal(SCREEN_ITEM_KIND.NOTICE),
+  ...itemPlace,
+  text: z.string(),
+  tool_data: z.array(ToolDataEntrySchema),
+  follow_up_actions: z.array(z.string()),
+}) satisfies z.ZodType<NoticeItem>;
+
+const WorkflowFiredItemSchema = z.object({
+  kind: z.literal(SCREEN_ITEM_KIND.WORKFLOW_FIRED),
+  ...itemPlace,
+  workflow: SelectedWorkflowSchema,
+}) satisfies z.ZodType<WorkflowFiredItem>;
+
+const TodoWokeItemSchema = z.object({
+  kind: z.literal(SCREEN_ITEM_KIND.TODO_WOKE),
+  ...itemPlace,
+  wake: TodoRunWakeSchema,
+}) satisfies z.ZodType<TodoWokeItem>;
+
+/** One item of the screen the server projects from the log. */
+export const ScreenItemSchema = z.discriminatedUnion("kind", [
+  UserItemSchema,
+  ReplyItemSchema,
+  WorkItemSchema,
+  NoticeItemSchema,
+  WorkflowFiredItemSchema,
+  TodoWokeItemSchema,
 ]);

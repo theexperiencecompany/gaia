@@ -1,19 +1,19 @@
 import { z } from "zod";
 import type {
   ConversationUpdatedFrame,
-  EntryFrame,
-  EntryUpdatedFrame,
   LiveTask,
   ReplyDeltaFrame,
   RetractFrame,
+  ScreenFrame,
+  ScreenInsertFrame,
+  ScreenUpdateFrame,
   StateFrame,
   WorkDeltaFrame,
 } from "../api/generated";
 import { ToolDataEntrySchema } from "../chat/schema";
 import type { ChatStreamEvent } from "../chat/streaming";
 import type { TodoProgressSnapshot } from "../chat/types";
-import { EntrySchema } from "./entries";
-import type { ConversationStreamEvent } from "./types";
+import { ScreenItemSchema } from "./entries";
 
 /**
  * Zod mirror of the conversation event stream's frames, each tied to its generated
@@ -22,8 +22,9 @@ import type { ConversationStreamEvent } from "./types";
  */
 
 export const FRAME_KIND = {
-  ENTRY: "entry",
-  ENTRY_UPDATED: "entry_updated",
+  SCREEN: "screen",
+  SCREEN_INSERT: "screen_insert",
+  SCREEN_UPDATE: "screen_update",
   REPLY_DELTA: "reply_delta",
   WORK_DELTA: "work_delta",
   RETRACT: "retract",
@@ -137,7 +138,6 @@ function toStreamEvent(payload: StreamPayload): ChatStreamEvent {
   }
 }
 
-const seq = z.number().int().min(1);
 const index = z.number().int().min(0);
 const deltaPayload = StreamPayloadSchema.transform(toStreamEvent);
 
@@ -146,18 +146,20 @@ const LiveTaskSchema = z.object({
   awaiting_approval: z.boolean(),
 }) satisfies z.ZodType<LiveTask>;
 
-export const EntryFrameSchema = z.object({
-  kind: z.literal(FRAME_KIND.ENTRY),
-  seq,
-  at: z.iso.datetime({ offset: true }),
-  entry: EntrySchema,
-}) satisfies z.ZodType<EntryFrame>;
+const ScreenFrameSchema = z.object({
+  kind: z.literal(FRAME_KIND.SCREEN),
+  items: z.array(ScreenItemSchema),
+}) satisfies z.ZodType<ScreenFrame>;
 
-const EntryUpdatedFrameSchema = z.object({
-  kind: z.literal(FRAME_KIND.ENTRY_UPDATED),
-  seq,
-  entry: EntrySchema,
-}) satisfies z.ZodType<EntryUpdatedFrame>;
+const ScreenInsertFrameSchema = z.object({
+  kind: z.literal(FRAME_KIND.SCREEN_INSERT),
+  item: ScreenItemSchema,
+}) satisfies z.ZodType<ScreenInsertFrame>;
+
+const ScreenUpdateFrameSchema = z.object({
+  kind: z.literal(FRAME_KIND.SCREEN_UPDATE),
+  item: ScreenItemSchema,
+}) satisfies z.ZodType<ScreenUpdateFrame>;
 
 // The payload is checked against its generated union above; these tie the rest of each delta frame.
 const ReplyDeltaFields = z.object({
@@ -196,8 +198,9 @@ const ConversationUpdatedFrameSchema = z.object({
 }) satisfies z.ZodType<ConversationUpdatedFrame>;
 
 export const ConversationFrameSchema = z.discriminatedUnion("kind", [
-  EntryFrameSchema,
-  EntryUpdatedFrameSchema,
+  ScreenFrameSchema,
+  ScreenInsertFrameSchema,
+  ScreenUpdateFrameSchema,
   ReplyDeltaFields.extend({ payload: deltaPayload }),
   WorkDeltaFields.extend({ payload: deltaPayload }),
   RetractFrameSchema,
@@ -205,17 +208,16 @@ export const ConversationFrameSchema = z.discriminatedUnion("kind", [
   ConversationUpdatedFrameSchema,
 ]);
 
-const ConversationEventSchema = z.object({
-  stream_id: z.string().nullable(),
-  frame: ConversationFrameSchema,
-});
+const ConversationEventSchema = z.object({ frame: ConversationFrameSchema });
+
+export type ConversationFrame = z.infer<typeof ConversationFrameSchema>;
 
 export type FrameParseError =
   | { kind: "invalid_json"; raw: string }
   | { kind: "invalid_frame"; raw: string; issues: string[] };
 
 export type FrameParseResult =
-  | { ok: true; event: ConversationStreamEvent }
+  | { ok: true; frame: ConversationFrame }
   | { ok: false; error: FrameParseError };
 
 const readJson = (
@@ -239,8 +241,5 @@ export function parseConversationEvent(raw: string): FrameParseResult {
     );
     return { ok: false, error: { kind: "invalid_frame", raw, issues } };
   }
-  return {
-    ok: true,
-    event: { streamId: parsed.data.stream_id, frame: parsed.data.frame },
-  };
+  return { ok: true, frame: parsed.data.frame };
 }

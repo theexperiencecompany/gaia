@@ -238,6 +238,8 @@ async def follow_screen(
         if isinstance(frame, EntryFrame | EntryUpdatedFrame):
             for patch in tracker.take(frame):
                 yield patch
+        elif isinstance(frame, WorkDeltaFrame):
+            yield tracker.on_its_item(frame)
         else:
             yield frame
 

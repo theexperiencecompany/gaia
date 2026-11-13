@@ -8,15 +8,15 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from app.models.conversation_frame_models import EntryFrame, EntryUpdatedFrame
-from app.models.conversation_log_models import LoggedEntry
+from app.models.conversation_frame_models import EntryFrame, EntryUpdatedFrame, WorkDeltaFrame
+from app.models.conversation_log_models import LoggedEntry, WorkStarted
 from app.models.conversation_screen_models import (
     ScreenInsertFrame,
     ScreenItem,
     ScreenPatch,
     ScreenUpdateFrame,
 )
-from app.services.conversation.screen import project_screen
+from app.services.conversation.screen import project_screen, work_root
 
 
 class ScreenItemMoved(Exception):
@@ -33,10 +33,10 @@ def screen_patches(shown: Sequence[ScreenItem], screen: Sequence[ScreenItem]) ->
     if kept != [item.id for item in shown]:
         raise ScreenItemMoved(f"shown {[item.id for item in shown]}, projected {kept}")
     patches: list[ScreenPatch] = []
-    for position, item in enumerate(screen):
+    for item in screen:
         old = before.get(item.id)
         if old is None:
-            patches.append(ScreenInsertFrame(position=position, item=item))
+            patches.append(ScreenInsertFrame(item=item))
         elif old != item:
             patches.append(ScreenUpdateFrame(item=item))
     return patches
@@ -47,12 +47,24 @@ class ScreenTracker:
 
     def __init__(self, entries: Sequence[LoggedEntry]) -> None:
         self._entries = {logged.seq: logged for logged in entries}
+        self._started = {
+            logged.entry.task_id: logged.entry
+            for logged in entries
+            if isinstance(logged.entry, WorkStarted)
+        }
         self.items = project_screen(entries)
+
+    def on_its_item(self, delta: WorkDeltaFrame) -> WorkDeltaFrame:
+        """Return delta addressed to the work item it streams into: the task's, or the one it was handed to."""
+        root = work_root(self._started, delta.task_id)
+        return delta if root == delta.task_id else delta.model_copy(update={"task_id": root})
 
     def take(self, frame: EntryFrame | EntryUpdatedFrame) -> list[ScreenPatch]:
         """Take a logged or amended entry and return the patches it makes to the screen."""
         at = frame.at if isinstance(frame, EntryFrame) else self._entries[frame.seq].at
         self._entries[frame.seq] = LoggedEntry(seq=frame.seq, at=at, entry=frame.entry)
+        if isinstance(frame.entry, WorkStarted):
+            self._started[frame.entry.task_id] = frame.entry
         screen = project_screen([self._entries[seq] for seq in sorted(self._entries)])
         patches = screen_patches(self.items, screen)
         self.items = screen

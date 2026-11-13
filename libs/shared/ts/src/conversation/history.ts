@@ -1,43 +1,27 @@
 import { z } from "zod";
 import type { ConversationEntriesPage } from "../api/generated";
-import { EntryFrameSchema, StateFrameSchema } from "./frames";
-import type { ConversationFrame, ConversationView } from "./types";
-import { applyFrame } from "./view";
+import { ScreenItemSchema } from "./entries";
+import { StateFrameSchema } from "./frames";
+import type { ConversationView } from "./types";
 
-/** Entries asked for per page when a reader scrolls past the oldest one loaded. */
+/** Entries asked for per page when a reader scrolls past the oldest item loaded. */
 export const HISTORY_PAGE_SIZE = 50;
 
-/** A page of the log as a load, a sync or a page back returns it: the stream's own entries and the head's state. */
+/** A page of the screen as a load, a sync or a page back returns it, with the head's state. */
 export const ConversationPageSchema = z.object({
-  entries: z.array(EntryFrameSchema),
+  items: z.array(ScreenItemSchema),
   state: StateFrameSchema,
   has_older: z.boolean(),
   cursor: z.number().int().min(1).nullable(),
-}) satisfies z.ZodType<ConversationEntriesPage>;
+}) satisfies z.ZodType<
+  Pick<ConversationEntriesPage, "items" | "state" | "has_older" | "cursor">
+>;
 
 export type ConversationPage = z.infer<typeof ConversationPageSchema>;
 
 /**
- * Fold a page into the view through the reducer, as the stream would have: its entry
- * frames (a held seq changes only to a newer revision), then the state.
- */
-export function hydrate(
-  view: ConversationView,
-  page: ConversationPage,
-): ConversationView {
-  const frames: ConversationFrame[] = [...page.entries, page.state];
-  return frames.reduce((current, frame) => {
-    const outcome = applyFrame(current, frame);
-    // Entry and state frames always apply; only deltas and in-place updates can gap.
-    if (outcome.status !== "applied")
-      throw new Error(`a page frame did not apply: ${outcome.status}`);
-    return outcome.view;
-  }, view);
-}
-
-/**
- * The seq the next older page is read before once page is folded into view; null when
- * nothing older exists. Entries the view already held from before the page keep the
+ * The seq the next older page is read before once page is taken into view; null when
+ * nothing older exists. Items the view already held from before the page keep the
  * cursor it had.
  */
 export function olderBefore(
@@ -45,9 +29,8 @@ export function olderBefore(
   page: ConversationPage,
   held: number | null,
 ): number | null {
-  const first = page.entries[0]?.seq;
-  if (first === undefined || (view.entries[0]?.seq ?? first) < first)
-    return held;
+  const first = page.items[0]?.seq;
+  if (first === undefined || (view.items[0]?.seq ?? first) < first) return held;
   return page.cursor;
 }
 
