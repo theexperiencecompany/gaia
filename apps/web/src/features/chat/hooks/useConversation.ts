@@ -1,3 +1,4 @@
+import { replyFailureMessage, withLiveRows } from "@shared/conversation";
 import { useMemo } from "react";
 import { useLiveMessages } from "@/features/chat/live/useLiveChat";
 import type { IMessage } from "@/lib/db/chatDb";
@@ -20,6 +21,7 @@ export const mapStoredMessageToConversationMessage = (
     type: message.role === "user" ? "user" : "bot",
     response: message.content,
     message_id: message.messageId ?? message.id,
+    seq: message.seq,
     date: message.createdAt?.toISOString(),
     fileIds: message.fileIds,
     fileData: message.fileData,
@@ -38,7 +40,8 @@ export const mapStoredMessageToConversationMessage = (
     todo_progress: message.todo_progress ?? undefined,
     pinned: message.pinned ?? undefined,
     isConvoSystemGenerated: message.isConvoSystemGenerated ?? undefined,
-    error: message.error ?? undefined,
+    // History carries a failure reason code; the bubble shows its wording.
+    error: message.error ? replyFailureMessage(message.error) : undefined,
     replyToMessage: message.replyToMessageData ?? undefined,
     stopped: message.stopped ?? undefined,
     reaction: message.reaction ?? undefined,
@@ -81,7 +84,7 @@ export const useConversation = () => {
   );
   // Get single optimistic message for new conversations (before conversation ID exists)
   const optimisticMessage = useChatStore((state) => state.optimisticMessage);
-  // The conversation's event stream; saved messages above are the history written before it.
+  // The conversation's event stream: the same log as the saved history, under the same ids.
   const liveMessages = useLiveMessages(activeConversationId);
 
   const convoMessages = useMemo(() => {
@@ -106,7 +109,7 @@ export const useConversation = () => {
       ];
     }
 
-    return liveMessages.length > 0 ? [...messages, ...liveMessages] : messages;
+    return withLiveRows(messages, liveMessages, (row) => row.message_id);
   }, [
     activeConversationId,
     messagesByConversation,

@@ -4,6 +4,7 @@ import {
   HISTORY_PAGE_SIZE,
   type HistoryPage,
   oldestSeq,
+  withLiveRows,
   withNewestPage,
 } from "./history";
 
@@ -153,5 +154,54 @@ describe("withNewestPage", () => {
 
   it("takes the newest page as-is when it has no placed message", () => {
     expect(withNewestPage(rows(1, 5), [])).toEqual([]);
+  });
+});
+
+describe("withLiveRows", () => {
+  const idOf = (row: Row) => row.id;
+
+  it("shows a row the history and the live view both hold once, from the live view", () => {
+    const saved = [...rows(1, 3), { id: "r4", seq: 4, text: "partial" }];
+    const live = [
+      { id: "r4", seq: 4, text: "finished" },
+      { id: "m5", seq: 5 },
+    ];
+    const merged = withLiveRows<Row & { text?: string }>(saved, live, idOf);
+    expect(merged.map(idOf)).toEqual(["m1", "m2", "m3", "r4", "m5"]);
+    expect(merged[3]?.text).toBe("finished");
+  });
+
+  it("places a live row by its seq among saved rows, and unplaced live rows last", () => {
+    const saved = [
+      { id: "m1", seq: 1 },
+      { id: "m3", seq: 3 },
+    ];
+    const live = [
+      { id: "draft:a1" },
+      { id: "work:t1", seq: 2 },
+      { id: "pending:m9" },
+    ];
+    expect(withLiveRows(saved, live, idOf).map(idOf)).toEqual([
+      "m1",
+      "work:t1",
+      "m3",
+      "draft:a1",
+      "pending:m9",
+    ]);
+  });
+
+  it("keeps a saved row cached before seq existed ahead of every placed row", () => {
+    const saved = [{ id: "legacy" }, { id: "m2", seq: 2 }];
+    expect(withLiveRows(saved, [{ id: "m1", seq: 1 }], idOf).map(idOf)).toEqual(
+      ["legacy", "m1", "m2"],
+    );
+  });
+
+  it("joins an older page loaded across the boundary with the newest page and the live view", () => {
+    const loaded = withNewestPage(rows(1, 4), rows(5, 8));
+    const live = [...rows(7, 9)];
+    expect(withLiveRows(loaded, live, idOf).map(idOf)).toEqual(
+      rows(1, 9).map(idOf),
+    );
   });
 });

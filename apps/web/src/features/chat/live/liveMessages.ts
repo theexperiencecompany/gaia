@@ -1,10 +1,9 @@
 import {
   type ConversationView,
   ENTRY_KIND,
-  FAILURE_REASON,
   type LiveBubble,
   quoteFor,
-  REPLY_FAILURE_MESSAGE,
+  replyFailureMessage,
   type UserMessage,
   visibleBubbles,
 } from "@shared/conversation";
@@ -84,7 +83,7 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
         () => ({
           type: "user",
           response: message.text,
-          message_id: message.id,
+          message_id: bubble.messageId,
           seq: bubble.seq,
           date: dates.get(bubble.seq),
           fileIds: message.file_ids,
@@ -97,6 +96,8 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
             message.reply_to_message ??
             quotedUserMessage(userMessages, replyTo),
           reaction: bubble.reaction,
+          pinned: message.pinned,
+          todo_run_wake: message.todo_run_wake ?? undefined,
         }),
       );
     }
@@ -105,7 +106,7 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
       return stableRow(bubble.key, [bubble.send, send], () => ({
         type: "user",
         response: bubble.send.text,
-        message_id: bubble.send.id,
+        message_id: bubble.messageId,
         fileIds: send?.body.file_ids ?? [],
         fileData: send?.fileData,
         selectedTool: send?.body.selected_tool,
@@ -127,26 +128,28 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
           bubble.toolData,
           bubble.followUpActions,
           bubble.streaming,
+          bubble.image,
+          bubble.pinned,
           settled,
           quoted && userMessages.get(quoted),
         ],
         () => ({
           type: "bot",
           response: bubble.text,
-          message_id: bubble.replyId ?? bubble.key,
+          message_id: bubble.messageId,
           seq: bubble.seq ?? undefined,
           date: bubble.seq === null ? undefined : dates.get(bubble.seq),
           // The bubble's registry narrows tool entries by name at render.
           tool_data: bubble.toolData as TypedToolDataEntry[],
           follow_up_actions: [...bubble.followUpActions],
+          image_data: bubble.image ?? undefined,
+          pinned: bubble.pinned,
           in_progress: bubble.streaming,
           stopped: settled?.outcome === "stopped",
           // With text shown, the bubble words this as the cut-short strip under it.
           error:
             settled?.outcome === "failed"
-              ? REPLY_FAILURE_MESSAGE[
-                  settled.failure ?? FAILURE_REASON.MODEL_ERROR
-                ]
+              ? replyFailureMessage(settled.failure)
               : undefined,
           replyToMessage: quotedUserMessage(userMessages, quoted),
         }),
@@ -156,7 +159,7 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
       return stableRow(bubble.key, [bubble.toolData, bubble.status], () => ({
         type: "bot",
         response: "",
-        message_id: bubble.key,
+        message_id: bubble.messageId,
         seq: bubble.seq ?? undefined,
         tool_data: bubble.toolData as TypedToolDataEntry[],
         in_progress:
@@ -167,7 +170,7 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
       return stableRow(bubble.key, [bubble.text, bubble.toolData], () => ({
         type: "bot",
         response: bubble.text,
-        message_id: bubble.key,
+        message_id: bubble.messageId,
         seq: bubble.seq,
         date: dates.get(bubble.seq),
         tool_data: bubble.toolData as TypedToolDataEntry[],
@@ -177,7 +180,7 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
       return stableRow(bubble.key, [bubble.workflow], () => ({
         type: "user",
         response: "",
-        message_id: bubble.key,
+        message_id: bubble.messageId,
         seq: bubble.seq,
         date: dates.get(bubble.seq),
         selectedWorkflow: bubble.workflow,
@@ -186,7 +189,7 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
       return stableRow(bubble.key, [bubble.wake], () => ({
         type: "user",
         response: "",
-        message_id: bubble.key,
+        message_id: bubble.messageId,
         seq: bubble.seq,
         date: dates.get(bubble.seq),
         todo_run_wake: bubble.wake,

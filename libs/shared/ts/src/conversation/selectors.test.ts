@@ -103,6 +103,7 @@ describe("visibleBubbles", () => {
       {
         kind: "notice",
         key: "notice:n1",
+        messageId: "n1",
         seq: 1,
         text: "Rain at 5",
         toolData: [card],

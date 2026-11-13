@@ -11,6 +11,15 @@ export const REPLY_FAILURE_MESSAGE: Record<FailureReason, string> = {
   server_restart: "GAIA restarted while answering. It will answer again.",
 };
 
+const isFailureReason = (reason: string): reason is FailureReason =>
+  Object.hasOwn(REPLY_FAILURE_MESSAGE, reason);
+
+/** A failed reply's message from its reason code; a code this build does not word reads as a model error. */
+export const replyFailureMessage = (reason: string | null): string =>
+  REPLY_FAILURE_MESSAGE[
+    reason !== null && isFailureReason(reason) ? reason : "model_error"
+  ];
+
 /** The label under a send that never reached the server, next to its retry. */
 export const SEND_NOT_DELIVERED = "Not delivered";
 

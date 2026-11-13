@@ -7,6 +7,9 @@ export interface HistoryPage<M> {
   has_more: boolean;
 }
 
+// Below every server seq (they start at 1).
+const UNPLACED_SEQ = 0;
+
 interface Sequenced {
   seq?: number | null;
 }
@@ -63,4 +66,26 @@ export const createOlderHistoryLoader = <M>(
       });
     return inFlight;
   };
+};
+
+/**
+ * The chat screen's rows: saved history and the live view, one row per message id.
+ * The server's history and its events project the same log under the same ids, so a
+ * live row replaces the saved row it shares an id with. Rows read in seq order; live
+ * rows the server has not placed yet (a streaming draft, a pending send) come last.
+ */
+export const withLiveRows = <M extends Sequenced>(
+  saved: readonly M[],
+  live: readonly M[],
+  idOf: (row: M) => string,
+): M[] => {
+  if (live.length === 0) return [...saved];
+  const liveIds = new Set(live.map(idOf));
+  const placed = [
+    ...saved.filter((row) => !liveIds.has(idOf(row))),
+    ...live.filter((row) => row.seq != null),
+  ];
+  // Saved rows cached before seq existed keep their place ahead of every placed row.
+  placed.sort((a, b) => (a.seq ?? UNPLACED_SEQ) - (b.seq ?? UNPLACED_SEQ));
+  return [...placed, ...live.filter((row) => row.seq == null)];
 };

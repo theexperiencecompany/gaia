@@ -48,11 +48,12 @@ const mergeMessageLists = (
   return Array.from(messageMap.values()).toSorted(compareMessageOrder);
 };
 
-const mapApiMessagesToStored = (
-  messages: MessageType[],
+/** The server's history rows as this device stores them. */
+export const storedMessagesFromHistory = (
+  history: ConversationEntry[],
   conversationId: string,
 ): IMessage[] =>
-  messages.map((message, index) => {
+  toClientMessages(history).map((message, index) => {
     const createdAt = message.date ? new Date(message.date) : new Date();
     const role = mapMessageRole(message.type);
     const messageId =
@@ -344,7 +345,7 @@ export const batchSyncConversations = async (
     await Promise.allSettled(
       freshConversations.map(async (conversation) => {
         const conversationId = conversation.conversation_id;
-        const messages = toClientMessages(conversation.messages);
+        const { messages } = conversation;
         const artifacts = fromRegistryEntries(
           conversation.artifacts,
           conversationId,
@@ -362,7 +363,10 @@ export const batchSyncConversations = async (
           .getState()
           .setConversationArtifacts(conversationId, artifacts);
 
-        const remoteMessages = mapApiMessagesToStored(messages, conversationId);
+        const remoteMessages = storedMessagesFromHistory(
+          messages,
+          conversationId,
+        );
         const localMessages =
           await db.getMessagesForConversation(conversationId);
         const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
@@ -391,7 +395,7 @@ export const applySyncedConversation = async (
   conversationId: string,
   conversation: SyncedConversation,
 ): Promise<void> => {
-  const messages = toClientMessages(conversation.messages);
+  const { messages } = conversation;
   const artifacts = fromRegistryEntries(conversation.artifacts, conversationId);
   const mappedConversation = toStoredConversation(conversation, artifacts);
 
@@ -400,7 +404,7 @@ export const applySyncedConversation = async (
   useChatStore.getState().setConversationArtifacts(conversationId, artifacts);
 
   // Map messages
-  const remoteMessages = mapApiMessagesToStored(messages, conversationId);
+  const remoteMessages = storedMessagesFromHistory(messages, conversationId);
   const localMessages = await db.getMessagesForConversation(conversationId);
 
   const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
@@ -423,8 +427,8 @@ export const applyOlderMessagesPage = async (
   conversationId: string,
   page: HistoryPage<ConversationEntry>,
 ): Promise<void> => {
-  const olderMessages = mapApiMessagesToStored(
-    toClientMessages(page.messages),
+  const olderMessages = storedMessagesFromHistory(
+    page.messages,
     conversationId,
   );
   const [localMessages, conversation] = await Promise.all([

@@ -56,6 +56,8 @@ describe("parseConversationEvent", () => {
         reply_to_message: null,
         voice: false,
         reaction: null,
+        todo_run_wake: null,
+        pinned: false,
         revision: 0,
       },
     });

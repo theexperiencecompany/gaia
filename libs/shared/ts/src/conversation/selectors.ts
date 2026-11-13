@@ -1,4 +1,5 @@
 import type {
+  ImageData,
   SelectedWorkflowDataOutput,
   TodoRunWake,
   ToolDataEntry,
@@ -21,11 +22,15 @@ import type {
 
 export type WorkStatus = "running" | "awaiting_approval" | WorkOutcome;
 
-/** One row of the chat screen, in the order visibleBubbles returns them. */
+/**
+ * One row of the chat screen, in the order visibleBubbles returns them. messageId is
+ * the id the server's history gives the same row, so a saved copy is recognised.
+ */
 export type LiveBubble =
   | {
       kind: "user";
       key: string;
+      messageId: string;
       seq: number;
       message: UserMessage;
       reaction: Reaction | null;
@@ -33,17 +38,21 @@ export type LiveBubble =
   | {
       kind: "reply";
       key: string;
+      messageId: string;
       /** Null while the attempt streams before its Reply entry is appended. */
       seq: number | null;
       replyId: string | null;
       text: string;
       toolData: readonly ToolDataEntry[];
       followUpActions: readonly string[];
+      image: ImageData | null;
+      pinned: boolean;
       streaming: boolean;
     }
   | {
       kind: "notice";
       key: string;
+      messageId: string;
       seq: number;
       text: string;
       toolData: readonly ToolDataEntry[];
@@ -52,21 +61,29 @@ export type LiveBubble =
   | {
       kind: "workflow_fired";
       key: string;
+      messageId: string;
       seq: number;
       workflow: SelectedWorkflowDataOutput;
     }
   /** What woke a tracked todo's run; its write-up reply is its own row. */
-  | { kind: "todo_woke"; key: string; seq: number; wake: TodoRunWake }
+  | {
+      kind: "todo_woke";
+      key: string;
+      messageId: string;
+      seq: number;
+      wake: TodoRunWake;
+    }
   | {
       kind: "work";
       key: string;
+      messageId: string;
       /** Null when the task's WorkStarted entry is not in the view. */
       seq: number | null;
       taskId: string;
       status: WorkStatus;
       toolData: readonly ToolDataEntry[];
     }
-  | { kind: "pending"; key: string; send: PendingSend };
+  | { kind: "pending"; key: string; messageId: string; send: PendingSend };
 
 export interface LoadingRow {
   visible: boolean;
@@ -107,9 +124,12 @@ function replyBubble(
   return {
     kind: "reply",
     key: `reply:${entry.reply_id}`,
+    messageId: entry.reply_id,
     seq,
     replyId: entry.reply_id,
     ...content,
+    image: entry.image,
+    pinned: entry.pinned,
     streaming: draft !== undefined,
   };
 }
@@ -123,6 +143,7 @@ function entryBubble(
       return {
         kind: "user",
         key: `user:${entry.id}`,
+        messageId: entry.id,
         seq,
         message: entry,
         reaction: entry.reaction,
@@ -133,6 +154,7 @@ function entryBubble(
       return {
         kind: "notice",
         key: `notice:${entry.id}`,
+        messageId: entry.id,
         seq,
         text: entry.text,
         toolData: entry.tool_data,
@@ -141,6 +163,7 @@ function entryBubble(
       return {
         kind: "workflow_fired",
         key: `workflow:${entry.id}`,
+        messageId: entry.id,
         seq,
         workflow: entry.run.workflow,
       };
@@ -148,6 +171,7 @@ function entryBubble(
       return {
         kind: "todo_woke",
         key: `todo:${entry.id}`,
+        messageId: entry.id,
         seq,
         wake: entry.run.wake,
       };
@@ -231,6 +255,7 @@ function workBubbles(view: ConversationView): LiveBubble[] {
   return taskIds.map((taskId) => ({
     kind: "work",
     key: `work:${taskId}`,
+    messageId: `work:${taskId}`,
     seq:
       view.entries.find(
         ({ entry }) =>
@@ -258,9 +283,12 @@ export function visibleBubbles(view: ConversationView): LiveBubble[] {
           {
             kind: "reply",
             key: `draft:${draft.attemptId}`,
+            messageId: draft.replyId ?? `draft:${draft.attemptId}`,
             seq: null,
             replyId: draft.replyId,
             ...draftContent(draft.content),
+            image: null,
+            pinned: false,
             streaming: true,
           },
         ]
@@ -276,6 +304,7 @@ export function visibleBubbles(view: ConversationView): LiveBubble[] {
     (send): LiveBubble => ({
       kind: "pending",
       key: `pending:${send.id}`,
+      messageId: send.id,
       send,
     }),
   );

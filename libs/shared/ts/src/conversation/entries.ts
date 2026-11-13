@@ -7,6 +7,7 @@ import type {
   ConversationSource,
   FailureReason,
   FileData,
+  ImageData,
   IntegrationConnected,
   IntegrationNeeded,
   Notice,
@@ -105,6 +106,12 @@ const FileDataSchema = z.object({
   type: optionalString,
 }) satisfies z.ZodType<FileData>;
 
+const ImageDataSchema = z.object({
+  url: z.string(),
+  prompt: z.string(),
+  improved_prompt: optionalString,
+}) satisfies z.ZodType<ImageData>;
+
 const SelectedWorkflowSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -163,6 +170,8 @@ export const UserMessageSchema = z.object({
   reply_to_message: ReplyToMessageSchema.nullable().default(null),
   voice: z.boolean().default(false),
   reaction: ReactionSchema.nullable().default(null),
+  todo_run_wake: TodoRunWakeSchema.nullable().default(null),
+  pinned: z.boolean().default(false),
   revision,
 }) satisfies z.ZodType<UserMessage>;
 
@@ -307,6 +316,8 @@ export const ReplySchema = z.object({
   follow_up_actions: z.array(z.string()).default([]),
   heard_through: z.number().int().min(0).nullable().default(null),
   quote_target: nullableString,
+  image: ImageDataSchema.nullable().default(null),
+  pinned: z.boolean().default(false),
   revision,
 }) satisfies z.ZodType<Reply>;
 
