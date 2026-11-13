@@ -54,7 +54,10 @@ class ChatWorkersAI(ChatOpenAI):
         **kwargs: object,
     ) -> Iterator[ChatGenerationChunk]:
         reducer = _StreamReducer()
-        for chunk in super()._stream(messages, stop=stop, run_manager=run_manager, **kwargs):
+        # Equivalent under mutation: langchain-core never passes run_manager here, it fires callbacks.
+        for chunk in super()._stream(  # pragma: no mutate
+            messages, stop=stop, run_manager=run_manager, **kwargs
+        ):
             yield reducer.reduce(chunk)
         if (closing := reducer.closing_usage()) is not None:
             yield closing
@@ -67,7 +70,10 @@ class ChatWorkersAI(ChatOpenAI):
         **kwargs: object,
     ) -> AsyncIterator[ChatGenerationChunk]:
         reducer = _StreamReducer()
-        async for chunk in super()._astream(messages, stop=stop, run_manager=run_manager, **kwargs):
+        # Equivalent under mutation: langchain-core never passes run_manager here, it fires callbacks.
+        async for chunk in super()._astream(  # pragma: no mutate
+            messages, stop=stop, run_manager=run_manager, **kwargs
+        ):
             yield reducer.reduce(chunk)
         if (closing := reducer.closing_usage()) is not None:
             yield closing

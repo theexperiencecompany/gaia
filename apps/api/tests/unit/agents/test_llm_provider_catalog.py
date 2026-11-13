@@ -41,6 +41,8 @@ from app.agents.llm.types import ProviderLLM
 from app.agents.llm.workers_ai import ChatWorkersAI
 from app.config.settings import settings
 from app.constants.llm import (
+    CLOUDFLARE_MAX_OUTPUT_TOKENS,
+    DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
     HELPER_MAX_OUTPUT_TOKENS,
     LLMProviderName,
@@ -314,6 +316,14 @@ class TestCloudflareOverridesProduction:
         assert model.reasoning_effort == "none"
         assert model.max_tokens == HELPER_MAX_OUTPUT_TOKENS
 
+    def test_a_one_shot_carries_its_temperature_and_the_token(self) -> None:
+        model = resolve_model(ModelUse.HELPER, temperature=0.3)
+
+        assert isinstance(model, ChatWorkersAI)
+        assert model.temperature == 0.3
+        assert isinstance(model.openai_api_key, SecretStr)
+        assert model.openai_api_key.get_secret_value() == "cf-token"
+
     def test_a_light_reasoning_one_shot_asks_for_low(self) -> None:
         model = resolve_model(ModelUse.HELPER, reasoning=ReasoningLevel.LIGHT)
 
@@ -330,6 +340,15 @@ class TestCloudflareOverridesProduction:
         assert chat.reasoning_effort == "low"
         assert chat.streaming
         assert chat.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
+
+    def test_the_chat_client_reports_usage_and_leaves_retries_to_the_lane(self) -> None:
+        """stream_usage feeds metering; max_retries=0 keeps retries with with_llm_retry, not the SDK."""
+        chat = _default_client(init_cloudflare_llm(), ChatWorkersAI)
+
+        assert chat.temperature == DEFAULT_LLM_TEMPERATURE
+        assert chat.stream_usage is True
+        assert chat.max_tokens == CLOUDFLARE_MAX_OUTPUT_TOKENS
+        assert chat.max_retries == 0
 
     @pytest.mark.parametrize("missing", ["CLOUDFLARE_AI_ACCOUNT_ID", "CLOUDFLARE_AI_API_TOKEN"])
     async def test_half_a_credential_leaves_production_routing_alone(
@@ -430,6 +449,20 @@ class TestGeminiOnly:
 
     def test_a_configured_memory_provider_makes_the_lane_available(self) -> None:
         assert memory_lane_available() is True
+
+    async def test_a_pro_user_runs_the_instances_own_lane_not_the_hosted_paid_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Self-host enforces no plans, and the paid lane is OpenRouter, which this instance lacks."""
+
+        async def _pro(_user_id: str) -> PlanType:
+            return PlanType.PRO
+
+        monkeypatch.setattr(payment_service, "get_cached_plan_type", _pro)
+
+        lane, plan = await resolve_lane("u1", AgentRole.EXECUTOR)
+
+        assert (lane.provider, plan) == ("gemini", PlanType.PRO)
 
     def test_the_chat_client_runs_a_stored_model(self) -> None:
         resolved_configs[CredentialProviderName.GEMINI] = _config(api_key="g-key", model="gemini-x")
