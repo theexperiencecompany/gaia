@@ -1,0 +1,43 @@
+# gaia-comms-reply-runaway — fires on the first comms model call over 60s in
+# the last 15 minutes.
+#
+# llm_call_seconds{model,agent} is the histogram LLMAccountingMiddleware observes
+# per model call (app/services/latency_metrics.py, buckets _TURN_BUCKETS).
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-comms-reply-runaway fires on one comms call over a minute
+    interval: 1m
+    input_series:
+      - series: 'llm_call_seconds_count{agent="comms_agent",model="m"}'
+        values: '0+2x20 41x10'
+      - series: 'llm_call_seconds_bucket{agent="comms_agent",model="m",le="60.0"}'
+        values: '0+2x20 40x10'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: gaia-comms-reply-runaway
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: api
+            exp_annotations:
+              description: >-
+                The front chat model took over a minute on one reply, which in practice means it generated to its output limit (a loop of repeated text or bubble breaks) while the user waited. Find the call in the llm_calls ledger (comms_agent, duration_ms over 60000) and read its output tokens and finish reason.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-comms-reply-runaway
+
+  - name: gaia-comms-reply-runaway stays quiet on fast comms calls and slow executor calls
+    interval: 1m
+    input_series:
+      - series: 'llm_call_seconds_count{agent="comms_agent",model="m"}'
+        values: '0+2x30'
+      - series: 'llm_call_seconds_bucket{agent="comms_agent",model="m",le="60.0"}'
+        values: '0+2x30'
+      - series: 'llm_call_seconds_count{agent="executor_agent",model="m"}'
+        values: '0+1x30'
+      - series: 'llm_call_seconds_bucket{agent="executor_agent",model="m",le="60.0"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-comms-reply-runaway
+        exp_alerts: []

@@ -67,6 +67,32 @@ PARTIAL_MESSAGE_BREAK_RE = re.compile(
 )
 
 
+#: A streamed tail that may still turn into a bubble break, down to a lone ``<``.
+STREAMING_BREAK_TAIL_RE = re.compile(
+    rf"{PARTIAL_MESSAGE_BREAK_RE.pattern}|[<\[]\s*/?\s*$", re.IGNORECASE
+)
+
+_EDGE_BREAKS_RE = re.compile(
+    rf"^(?:\s*{MESSAGE_BREAK_SENTINEL_RE.pattern})+\s*|(?:\s*{MESSAGE_BREAK_SENTINEL_RE.pattern})+\s*$",
+    re.IGNORECASE,
+)
+
+
+def is_only_message_breaks(text: str) -> bool:
+    """Return whether text, possibly still streaming, holds nothing yet but breaks and whitespace."""
+    return not STREAMING_BREAK_TAIL_RE.sub("", MESSAGE_BREAK_SENTINEL_RE.sub("", text)).strip()
+
+
+def count_message_breaks(text: str) -> int:
+    """Return how many complete sentinels text contains."""
+    return len(MESSAGE_BREAK_SENTINEL_RE.findall(text))
+
+
+def strip_edge_message_breaks(text: str) -> str:
+    """Drop the run of sentinels a text opens or closes with, keeping the ones between bubbles."""
+    return _EDGE_BREAKS_RE.sub("", text)
+
+
 def strip_partial_message_break(text: str) -> str:
     """Drop a sentinel that a chunk boundary cut in half at the end of text."""
     return PARTIAL_MESSAGE_BREAK_RE.sub("", text)

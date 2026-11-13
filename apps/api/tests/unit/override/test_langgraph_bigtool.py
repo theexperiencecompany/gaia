@@ -586,6 +586,25 @@ class TestCallModel:
 
         assert result["messages"][-1].content == blocks
 
+    @pytest.mark.regression
+    def test_sync_call_model_comms_agent_keeps_no_text_of_a_breaks_only_block_reply(self) -> None:
+        """Regression: a fallback lane's block reply of bare breaks reached the thread verbatim, for later turns to copy."""
+        reasoning = {"type": "reasoning", "reasoning": "nothing to add"}
+        llm = _make_llm()
+        llm.with_config.return_value.bind_tools.return_value.invoke.return_value = AIMessage(
+            content=[reasoning, {"type": "text", "text": NEW_MESSAGE_BREAKER * 3998}]
+        )
+        builder = create_agent(
+            llm,
+            _make_tool_registry(),
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(agent_name="comms_agent"),
+        )
+
+        result = _agent_runnable(builder).func(_make_state(), _make_config(), store=MagicMock())
+
+        assert result["messages"][-1].content == [reasoning]
+
 
 class TestAcallModel:
     @pytest.mark.asyncio

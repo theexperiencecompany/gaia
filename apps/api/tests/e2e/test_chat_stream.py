@@ -13,15 +13,24 @@ replays last turn's tool calls into this turn's stream.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Any
 from uuid import uuid4
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage
+from langchain_core.outputs import ChatGenerationChunk
+from pydantic import PrivateAttr
 import pytest
 
-from app.helpers.agent_helpers import AgentIdentity, build_agent_config, execute_graph_streaming
+from app.constants.general import NEW_MESSAGE_BREAKER
+from app.helpers.agent_helpers import (
+    AgentIdentity,
+    build_agent_config,
+    execute_graph_silent,
+    execute_graph_streaming,
+)
 from tests.e2e._harness import Transcript
-from tests.e2e._harness.graph_run import comms_graph
+from tests.e2e._harness.graph_run import RecordingFakeModel, comms_graph
 
 pytestmark = pytest.mark.e2e
 
@@ -185,3 +194,89 @@ class TestAcrossTurns:
 
         assert first.complete_message() == "First reply."
         assert second.complete_message() == "Second reply."
+
+
+# ---------------------------------------------------------------------------
+# Scenario 4 — the model streams nothing but bubble breaks
+# ---------------------------------------------------------------------------
+
+#: How many bare breaks one production runaway streamed before the output limit ended it.
+OUTPUT_LIMIT_BREAKS = 3998
+#: Far below the output limit and above any sane leading-break bound.
+STOPPED_EARLY = 20
+RUNAWAY_REPLY = "you have two meetings today."
+
+
+class RunawayBreaksModel(RecordingFakeModel):
+    """Streams bare breaks to the output limit on its first runaway_calls calls, then RUNAWAY_REPLY."""
+
+    runaway_calls: int = 1
+    _streamed: list[int] = PrivateAttr(default_factory=list)
+
+    @property
+    def streamed(self) -> list[int]:
+        """Breaks each runaway call got to stream before it ended."""
+        return self._streamed
+
+    async def _astream(
+        self, messages: list[BaseMessage], *args: Any, **kwargs: Any
+    ) -> AsyncIterator[ChatGenerationChunk]:
+        self._prompts.append(list(messages))
+        if len(self._prompts) > self.runaway_calls:
+            yield ChatGenerationChunk(message=AIMessageChunk(content=RUNAWAY_REPLY))
+            return
+        self._streamed.append(0)
+        for _ in range(OUTPUT_LIMIT_BREAKS):
+            self._streamed[-1] += 1
+            yield ChatGenerationChunk(message=AIMessageChunk(content=NEW_MESSAGE_BREAKER))
+
+
+class TestARunawayOfBareBreaks:
+    """Regression: six turns streamed 3,998 bare breaks for ~100 s each, and the saved garbage poisoned every later turn."""
+
+    @pytest.mark.regression
+    async def test_the_runaway_is_stopped_early_and_a_changed_retry_answers(self):
+        model = RunawayBreaksModel(responses=[], runaway_calls=1)
+        async with comms_graph([], model=model) as graph:
+            transcript = await stream_turn(graph, "what's on today?", f"t-{uuid4()}", "u1")
+
+        assert model.streamed[0] < STOPPED_EARLY
+        assert transcript.final_text() == RUNAWAY_REPLY
+        assert transcript.complete_message() == RUNAWAY_REPLY
+        first, retry = model.prompts
+        assert retry[:-1] == first
+        assert isinstance(retry[-1], HumanMessage)
+
+    @pytest.mark.regression
+    async def test_a_silent_run_is_stopped_early_too(self):
+        """Narration and workflow runs drive the same comms model through execute_graph_silent."""
+        model = RunawayBreaksModel(responses=[], runaway_calls=1)
+        thread = f"t-{uuid4()}"
+        async with comms_graph([], model=model) as graph:
+            config = await build_agent_config(
+                identity=AgentIdentity(
+                    conversation_id=thread,
+                    user={"user_id": "u1", "email": "u1@test.local", "name": "Test User"},
+                    agent_name="comms_agent",
+                ),
+            )
+            reply, _ = await execute_graph_silent(
+                graph, {"messages": [HumanMessage(content="hi")]}, config
+            )
+
+        assert model.streamed[0] < STOPPED_EARLY
+        assert reply == RUNAWAY_REPLY
+
+    @pytest.mark.regression
+    async def test_a_runaway_surviving_the_retry_leaves_no_breaks_in_the_thread(self):
+        model = RunawayBreaksModel(responses=[], runaway_calls=2)
+        thread = f"t-{uuid4()}"
+        async with comms_graph([], model=model) as graph:
+            transcript = await stream_turn(graph, "hi", thread, "u1")
+            snapshot = await graph.aget_state({"configurable": {"thread_id": thread}})
+
+        assert len(model.streamed) == 2
+        assert max(model.streamed) < STOPPED_EARLY
+        [reply] = [m for m in snapshot.values["messages"] if isinstance(m, AIMessage)]
+        assert NEW_MESSAGE_BREAKER not in str(reply.content)
+        assert transcript.final_text() == ""
