@@ -48,13 +48,15 @@ from app.agents.tools.subagent_control_tool import (
     list_running_subagents,
     message_subagent,
 )
+from app.agents.tools.task_tools import tools as task_tools
 from app.agents.tools.todo_tools import create_todo_tools
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
-from app.agents.tools.work_record_tool import read_work_record
+from app.agents.tools.work_record_tool import read_task, read_work_record
 from app.constants.agents import EXECUTOR_SPAWN_EXCLUDED_TOOLS
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.log_tags import LogTag
+from app.constants.tasks import TASKS_ONLY_COMMS_GRAPH_NAME
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.agent_config import (
     AgentConfig,
@@ -237,12 +239,13 @@ async def build_executor_agent() -> CompiledAgentGraph:
 async def build_comms_graph(
     chat_llm: LanguageModelLike | None = None,
     in_memory_checkpointer: bool = False,
+    tasks_only: bool = False,
 ) -> AsyncIterator[CompiledAgentGraph]:
-    """Build the comms agent graph with only the executor tool."""
+    """Build the comms agent graph with only the executor tool, or the task tools when tasks_only."""
     if chat_llm is None:
         chat_llm = init_llm()
 
-    tool_registry = comms_tools()
+    tool_registry = comms_tools(tasks_only=tasks_only)
     store = await get_tools_store()
 
     middleware = create_comms_middleware(chat_llm=chat_llm)
@@ -287,14 +290,16 @@ async def build_comms_graph(
         yield graph
 
 
-def comms_tools() -> dict[str, BaseTool]:
+def comms_tools(*, tasks_only: bool = False) -> dict[str, BaseTool]:
     """Return the comms agent's whole tool set, by name; all bound from the start.
 
     The discovery pair are read-only catalogue lookups, so they do not breach
     "delegate every real ask". Connecting an integration is a real ask and
     goes to the executor. The browser trio acts on a task already running.
+    With tasks_only, work goes through the task tools (a tracked todo per ask) and
+    comms reads a task's record with read_task, never call_executor.
     """
-    return {
+    tools: dict[str, BaseTool] = {
         "call_executor": call_executor,
         "cancel_executor": cancel_executor,
         adjust_attention.name: adjust_attention,
@@ -308,6 +313,11 @@ def comms_tools() -> dict[str, BaseTool]:
         fetch_webpages.name: fetch_webpages,
         **{memory_tool.name: memory_tool for memory_tool in memory_tools.tools},
     }
+    if tasks_only:
+        for executor_tool_name in ("call_executor", "cancel_executor", read_work_record.name):
+            del tools[executor_tool_name]
+        tools.update({t.name: t for t in (*task_tools, read_task)})
+    return tools
 
 
 @lazy_provider(
@@ -325,11 +335,27 @@ async def build_comms_agent() -> CompiledAgentGraph:
     return graph
 
 
+@lazy_provider(
+    name=TASKS_ONLY_COMMS_GRAPH_NAME,
+    required_keys=[],
+    strategy=MissingKeyStrategy.WARN,
+    auto_initialize=False,
+)
+async def build_tasks_only_comms_agent() -> CompiledAgentGraph:
+    """Build the comms agent users on the TASKS_ONLY flag talk to."""
+    log.debug(f"{LogTag.AGENT} Building tasks-only comms agent with lazy providers")
+
+    async with build_comms_graph(tasks_only=True) as graph:
+        log.info(f"{LogTag.AGENT} Tasks-only comms agent built successfully")
+    return graph
+
+
 def build_graphs() -> None:
     """Build the comms and executor agents."""
     log.info(f"{LogTag.AGENT} Building core agent graphs...")
 
     build_executor_agent()
     build_comms_agent()
+    build_tasks_only_comms_agent()
 
     log.info(f"{LogTag.AGENT} Core agent graphs built and registered successfully")

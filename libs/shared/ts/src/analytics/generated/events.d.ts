@@ -121,6 +121,11 @@ export type ServerEventName =
   | "subscription:lapsed"
   | "subscription:renewed"
   | "support:form_submitted"
+  | "task:cancelled"
+  | "task:found"
+  | "task:messaged"
+  | "task:read"
+  | "task:started"
   | "todos:chat_opened"
   | "todos:created"
   | "todos:deleted"
@@ -1346,6 +1351,42 @@ export interface EventProperties {
     "title_length": number;
     "description_length": number;
     "attachment_count": number;
+  };
+  "task:cancelled": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "was_running": boolean;
+  };
+  "task:found": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "results": number;
+    "cross_conversation": number;
+  };
+  "task:messaged": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "running": boolean;
+    "cross_conversation": boolean;
+  };
+  "task:read": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "level": "report" | "trace";
+    "cross_conversation": boolean;
+    "report_age_seconds"?: number;
+  };
+  "task:started": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "timing": "now" | "scheduled";
+    "visible": boolean;
+    "open_tasks": number;
   };
   "thanks:page_viewed": Record<string, never>;
   "todos:chat_opened": {

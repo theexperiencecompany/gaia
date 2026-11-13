@@ -6,6 +6,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.context.slots import TIME_CONTEXT_MARKER
+from app.agents.prompts.comms_prompts import TASKS_ONLY_ADDENDUM
 from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
     SIGNAL_MATCHING_INSTRUCTIONS,
@@ -39,6 +40,7 @@ def create_system_message(
     user_name: str | None = None,
     agent_type: Literal["comms", "executor"] = "comms",
     source: str | None = None,
+    tasks_only: bool = False,
 ) -> SystemMessage:
     """Return the STATIC main system prompt for the given agent.
 
@@ -50,7 +52,8 @@ def create_system_message(
     del user_id, user_name  # intentionally unused — static prefix only
     if agent_type == "executor":
         return SystemMessage(content=EXECUTOR_PROMPT_TEMPLATE)
-    return SystemMessage(content=get_comms_static_prompt(source))
+    prompt = get_comms_static_prompt(source)
+    return SystemMessage(content=prompt + TASKS_ONLY_ADDENDUM if tasks_only else prompt)
 
 
 def build_current_time_message(

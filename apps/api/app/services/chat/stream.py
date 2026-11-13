@@ -856,7 +856,7 @@ def _executor_delegation(stream_id: str) -> tuple[bool, bool]:
     session = get_session(stream_id)
     if session is None:
         return False, False
-    return session.executor_spawned, False
+    return session.executor_spawned or session.task_handed_off, False
 
 
 def _close_turn_timings(

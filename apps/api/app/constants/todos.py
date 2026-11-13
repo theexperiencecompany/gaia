@@ -207,6 +207,7 @@ class TodoActivityEvent(StrEnum):
     SANDBOX_EVENT = "sandbox_event"
     COMPLETED = "completed"
     REOPENED = "reopened"
+    USER_MESSAGE = "user_message"
 
 
 # The activity detail of a reopen made from the todos page, as completion's is "Completed via UI".
@@ -236,6 +237,7 @@ CANVAS_KEY_DETAILS_SECTION: Final[str] = "Key Details"
 CANVAS_DONE_WHEN_SECTION: Final[str] = "Done when"
 CANVAS_EVIDENCE_SECTION: Final[str] = "Evidence"
 CANVAS_CURRENT_STATE_SECTION: Final[str] = "Current State"
+CANVAS_CONTEXT_SECTION: Final[str] = "Context"
 CANVAS_LEARNINGS_SECTION: Final[str] = "Learnings"
 CANVAS_SECTIONS: Final[tuple[str, ...]] = (
     CANVAS_STANDING_RULES_SECTION,
@@ -243,7 +245,7 @@ CANVAS_SECTIONS: Final[tuple[str, ...]] = (
     CANVAS_EVIDENCE_SECTION,
     CANVAS_KEY_DETAILS_SECTION,
     CANVAS_CURRENT_STATE_SECTION,
-    "Context",
+    CANVAS_CONTEXT_SECTION,
     CANVAS_LEARNINGS_SECTION,
 )
 # The Inbox desk's canvas section from before observations.md; its run moves it there.

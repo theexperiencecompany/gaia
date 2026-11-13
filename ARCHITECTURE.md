@@ -53,6 +53,15 @@ The **only** agent the user talks to. Owns the conversation thread, narrates pro
 - `apps/api/app/agents/core/messages.py` — `construct_langchain_messages` builds the message array with per-turn context (calendar, reply-to, file refs, timezone).
 - `apps/api/app/agents/core/graph_manager.py` — `GraphManager.get_graph(name)` resolves graphs via lazy providers.
 
+### Tasks-only comms (flag `TASKS_ONLY`, experimental)
+
+For users the PostHog flag targets (`FeatureFlag.TASKS_ONLY`, evaluated per interactive turn in `agent.py`; off by default, `ENABLE_TASKS_ONLY` is the fallback), comms runs the `comms_agent_tasks_only` graph (`build_comms_graph(tasks_only=True)`, `comms_tools(tasks_only=True)`) and the prompt gains `TASKS_ONLY_ADDENDUM`. It has no `call_executor`, `cancel_executor` or `read_work_record`: every piece of work is a tracked todo.
+
+- `app/agents/tools/task_tools.py`: `start_task` (hidden tracked todo, `HIDDEN_TASK_LABEL`, armed to run now or at `start_at`), `message_task` (joins the running run's inbox, or reopens and re-runs a finished task), `cancel_task`, `find_tasks`. The run is the ordinary tracked-todo run (`todo_run.py`), and its report reaches the user through the outbox as the todo run's report.
+- `read_task` (`work_record_tool.py`, beside `read_work_record`, same helpers): level `report` renders the todo and its latest run report with its age (`task_record.py`), level `trace` reads the todo's runs and calls (`list_todo_runs`). Level 3 is `message_task`. Freshness windows: `FACT_FRESHNESS_SECONDS`.
+- Hidden tasks are left out of the user's todo list, stats, counts and label list. Workflow and scheduled comms turns stay on the executor path.
+- Measures (`task:*` events, `libs/shared/py/analytics/catalog/tasks.py`) compare it with the current path.
+
 ### Comms tool surface (deliberately tiny)
 
 - `call_executor` — the **only** way to do work. Non-blocking; returns `Task accepted (task_id: ...)` immediately. Besides `task` and `acceptance_criteria`, comms states the intent (`desired_outcome`, `time_horizon`, `defaults_assumed`, `irreversible_approved`), rendered into the brief by `compose_executor_brief` (`ExecutorIntent`, `app/models/ownership_models.py`). Comms picks its move by the ambiguity ladder in `comms_prompts.py` ("Before you act").

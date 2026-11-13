@@ -49,6 +49,8 @@ class StreamSession:
     stream_id: str
     kind: RunKind
     executor_spawned: bool = False
+    #: A comms turn handed its work to a tracked task: the turn is a hand-off, though it spawned no run to wait for.
+    task_handed_off: bool = False
     done_event: asyncio.Event = field(default_factory=asyncio.Event)
     #: Set with ``done_event`` when the executor's run ended in an error rather
     #: than a result. The silent path reads it so a fire whose executor died is
@@ -319,6 +321,11 @@ def mark_executor_spawned(stream_id: str) -> None:
     session = get_or_create_session(stream_id)
     session.executor_spawned = True
     session.executor_first_frame_perf = None  # new incarnation, new first frame
+
+
+def mark_task_handed_off(stream_id: str) -> None:
+    """Record that this comms turn started a task, so a silent reply reads as an accepted hand-off."""
+    get_or_create_session(stream_id).task_handed_off = True
 
 
 def signal_executor_done(

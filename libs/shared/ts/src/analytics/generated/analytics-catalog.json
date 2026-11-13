@@ -6756,6 +6756,160 @@
       }
     },
     {
+      "event": "task:cancelled",
+      "class": "TaskCancelled",
+      "owner": "server",
+      "domain": "task",
+      "description": "Comms stopped a task at the user's request.",
+      "previous_names": [],
+      "budget_per_user_day": 100,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Comms stopped a task at the user's request.",
+        "properties": {
+          "was_running": {
+            "title": "Was Running",
+            "type": "boolean"
+          }
+        },
+        "required": ["was_running"],
+        "title": "TaskCancelled",
+        "type": "object"
+      }
+    },
+    {
+      "event": "task:found",
+      "class": "TaskFound",
+      "owner": "server",
+      "domain": "task",
+      "description": "Comms searched the user's tasks; cross_conversation counts the matches that started in another chat.",
+      "previous_names": [],
+      "budget_per_user_day": 200,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Comms searched the user's tasks; cross_conversation counts the matches that started in another chat.",
+        "properties": {
+          "results": {
+            "title": "Results",
+            "type": "integer"
+          },
+          "cross_conversation": {
+            "title": "Cross Conversation",
+            "type": "integer"
+          }
+        },
+        "required": ["results", "cross_conversation"],
+        "title": "TaskFound",
+        "type": "object"
+      }
+    },
+    {
+      "event": "task:messaged",
+      "class": "TaskMessaged",
+      "owner": "server",
+      "domain": "task",
+      "description": "Comms steered a task: running joins the run in flight, otherwise the finished task ran again (a re-run).",
+      "previous_names": [],
+      "budget_per_user_day": 200,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Comms steered a task: running joins the run in flight, otherwise the finished task ran again (a re-run).",
+        "properties": {
+          "running": {
+            "title": "Running",
+            "type": "boolean"
+          },
+          "cross_conversation": {
+            "title": "Cross Conversation",
+            "type": "boolean"
+          }
+        },
+        "required": ["running", "cross_conversation"],
+        "title": "TaskMessaged",
+        "type": "object"
+      }
+    },
+    {
+      "event": "task:read",
+      "class": "TaskRead",
+      "owner": "server",
+      "domain": "task",
+      "description": "Comms answered a follow-up from a task's record instead of running it again; level is report or trace.",
+      "previous_names": [],
+      "budget_per_user_day": 200,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Comms answered a follow-up from a task's record instead of running it again; level is report or trace.",
+        "properties": {
+          "level": {
+            "enum": ["report", "trace"],
+            "title": "Level",
+            "type": "string"
+          },
+          "cross_conversation": {
+            "title": "Cross Conversation",
+            "type": "boolean"
+          },
+          "report_age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Report Age Seconds"
+          }
+        },
+        "required": ["level", "cross_conversation"],
+        "title": "TaskRead",
+        "type": "object"
+      }
+    },
+    {
+      "event": "task:started",
+      "class": "TaskStarted",
+      "owner": "server",
+      "domain": "task",
+      "description": "Comms turned a request into a task; open_tasks is how many others were open, the continue-or-new context.",
+      "previous_names": [],
+      "budget_per_user_day": 200,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Comms turned a request into a task; open_tasks is how many others were open, the continue-or-new context.",
+        "properties": {
+          "timing": {
+            "enum": ["now", "scheduled"],
+            "title": "Timing",
+            "type": "string"
+          },
+          "visible": {
+            "title": "Visible",
+            "type": "boolean"
+          },
+          "open_tasks": {
+            "title": "Open Tasks",
+            "type": "integer"
+          }
+        },
+        "required": ["timing", "visible", "open_tasks"],
+        "title": "TaskStarted",
+        "type": "object"
+      }
+    },
+    {
       "event": "thanks:page_viewed",
       "class": "ThanksPageViewed",
       "owner": "web",

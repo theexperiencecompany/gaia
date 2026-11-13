@@ -58,3 +58,10 @@ async def list_conversation_runs(
     return await run_repository.list_for_conversation(
         user_id, conversation_id, limit=_bounded(limit)
     )
+
+
+async def list_todo_runs(
+    user_id: str, todo_id: str, *, limit: int = RUN_TRACE_LIST_DEFAULT_LIMIT
+) -> list[RunDocument]:
+    """List the runs of one tracked todo, newest first."""
+    return await run_repository.list_for_todo(user_id, todo_id, limit=_bounded(limit))

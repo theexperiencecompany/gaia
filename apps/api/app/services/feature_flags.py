@@ -305,3 +305,8 @@ async def is_trigger_gates_enforced(user_id: str | None) -> bool:
 async def is_agent_lab_enabled(user_id: str | None) -> bool:
     """Whether the user can run private agent lab sessions inside their sandbox."""
     return await is_enabled(FeatureFlag.AGENT_LAB, user_id)
+
+
+async def is_tasks_only_enabled(user_id: str | None) -> bool:
+    """Whether the user's comms turns hand every piece of work to a tracked task instead of the executor."""
+    return await is_enabled(FeatureFlag.TASKS_ONLY, user_id)

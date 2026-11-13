@@ -17,6 +17,7 @@ from bson import ObjectId
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.cache import TODO_CACHE_PREFIX
+from app.constants.tasks import HIDDEN_TASK_LABEL
 from app.constants.todos import BLOCKING_LABEL, GAIA_TRACKED_LABEL, ONBOARDING_LABEL
 from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT
 from app.db.repositories.base import UserScopedRepository, cached_query
@@ -141,7 +142,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         inbox_project_id is resolved by the caller (it may create the Inbox);
         when provided it is the default scope for the unfiltered main list.
         """
-        query: dict[str, object] = {"user_id": user_id}
+        query: dict[str, object] = {"user_id": user_id, "labels": {"$ne": HIDDEN_TASK_LABEL}}
 
         if params.q and params.mode == SearchMode.TEXT:
             query["$or"] = [
@@ -166,7 +167,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         if params.priority:
             query["priority"] = params.priority.value
         if params.labels:
-            query["labels"] = {"$in": params.labels}
+            query["labels"] = {"$in": params.labels, "$ne": HIDDEN_TASK_LABEL}
         if params.parent_todo_id:
             query["parent_todo_id"] = params.parent_todo_id
 
@@ -214,7 +215,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         """Aggregate todo statistics for a user (totals, buckets, top labels)."""
         now = datetime.now(UTC)
         pipeline: list[dict[str, object]] = [
-            {"$match": {"user_id": user_id}},
+            {"$match": {"user_id": user_id, "labels": {"$ne": HIDDEN_TASK_LABEL}}},
             {
                 "$facet": {
                     "total": [{"$count": "count"}],
@@ -263,7 +264,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         today_end = datetime.combine(today, datetime.max.time()).replace(tzinfo=UTC)
         upcoming_end = now + timedelta(days=7)
         pipeline: list[dict[str, object]] = [
-            {"$match": {"user_id": user_id}},
+            {"$match": {"user_id": user_id, "labels": {"$ne": HIDDEN_TASK_LABEL}}},
             {
                 "$facet": {
                     "inbox": [
@@ -312,7 +313,13 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     async def top_labels(self, *, user_id: str, limit: int) -> list[TodoLabelCount]:
         """Most-used labels across a user's incomplete todos."""
         pipeline: list[dict[str, object]] = [
-            {"$match": {"user_id": user_id, "completed": False}},
+            {
+                "$match": {
+                    "user_id": user_id,
+                    "completed": False,
+                    "labels": {"$ne": HIDDEN_TASK_LABEL},
+                }
+            },
             {"$unwind": "$labels"},
             {"$group": {"_id": "$labels", "count": {"$sum": 1}}},
             {"$sort": {"count": -1}},

@@ -46,6 +46,8 @@ class MessageScope:
     presence: PresenceSnapshot | None = None
     #: The turn starts a conversation, so its thread has never been told where the user is.
     opens_thread: bool = False
+    #: The user is on the TASKS_ONLY flag: comms works through tasks, not the executor.
+    tasks_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -87,6 +89,7 @@ async def construct_langchain_messages(
         user_name=user_name,
         agent_type=scope.agent_type,
         source=source,
+        tasks_only=scope.tasks_only,
     )
 
     user_timezone = user_dict.timezone if user_dict else None

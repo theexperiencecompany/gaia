@@ -433,7 +433,7 @@ async def cancel_executor(
     # A browser run outlives the turn that started it, so a stop-everything stops
     # the job itself. A targeted cancel names one executor task and leaves it running.
     # After the pending work is cleared: the stop's notice in the inbox must survive it.
-    executor = await _cancel_executor_work(configurable, conversation_id, task_ids, message)
+    executor = await cancel_executor_work(configurable, conversation_id, task_ids, message)
     browser = await _stop_the_browser(configurable, conversation_id) if not task_ids else None
     if browser is None:
         return executor
@@ -456,7 +456,7 @@ async def _stop_the_browser(configurable: AgentConfigurable, conversation_id: st
     return stop_report(outcomes.values()) if outcomes else None
 
 
-async def _cancel_executor_work(
+async def cancel_executor_work(
     configurable: AgentConfigurable, conversation_id: str, task_ids: list[str], message: str | None
 ) -> str:
     """Cancel the running executor task, its pending work and its subagents, as task_ids names them."""

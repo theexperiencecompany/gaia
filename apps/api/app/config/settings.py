@@ -169,6 +169,10 @@ class Settings(BrowserHostSettings):
     # per-user E2B sandbox, controllable from chat. Off by default; PostHog
     # targeting enables it for specific users.
     ENABLE_AGENT_LAB: bool = False
+    # Tasks-only comms (experimental): comms has no direct executor, every piece of work is
+    # a tracked todo whose run reports through the outbox. Off by default; PostHog
+    # targeting enables it for specific users.
+    ENABLE_TASKS_ONLY: bool = False
 
     @field_validator("HOST", "FRONTEND_URL", mode="after")
     @classmethod

@@ -36,6 +36,7 @@ from app.config.settings import settings
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY, WORKFLOW_LOCK_CONTEXT_KEY
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
 from app.constants.log_tags import LogTag
+from app.constants.tasks import TASKS_ONLY_COMMS_GRAPH_NAME
 from app.db.repositories.conversations import conversation_repository
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -66,6 +67,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
 from app.services.chat.state import aggregate_usage_metadata
 from app.services.delivery.presence import read_presence
+from app.services.feature_flags import is_tasks_only_enabled
 from app.utils.timezone import Timezone
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.analytics.catalog.agents import AgentRunStarted
@@ -174,6 +176,9 @@ async def _core_agent_logic(
     # start without a turn of their own (carry runs, approval tickets).
     turn_timezone = Timezone.try_parse(user.timezone)
 
+    # Interactive turns only: a workflow or scheduled run's comms turn waits on the executor it spawns.
+    tasks_only = execution_mode == "interactive" and await is_tasks_only_enabled(user_id)
+
     # Build langchain messages and get graph concurrently
     history, graph, _recorded = await asyncio.gather(
         construct_langchain_messages(
@@ -188,6 +193,7 @@ async def _core_agent_logic(
                 execution_mode=execution_mode,
                 presence=presence,
                 opens_thread=opens_thread(request.messages, request.message),
+                tasks_only=tasks_only,
             ),
             attachments=MessageAttachments(
                 selected_tool=request.selectedTool,
@@ -199,7 +205,7 @@ async def _core_agent_logic(
                 trigger_context=trigger_context,
             ),
         ),
-        GraphManager.get_graph("comms_agent"),
+        GraphManager.get_graph(TASKS_ONLY_COMMS_GRAPH_NAME if tasks_only else "comms_agent"),
         conversation_repository.set_run_context(
             conversation_id,
             user_id=user_id,

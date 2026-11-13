@@ -29,6 +29,7 @@ class FeatureFlag(StrEnum):
     AGENT_LAB = "AGENT_LAB"
     BROWSER_OBSCURA = "BROWSER_OBSCURA"
     BROWSER_JEV = "BROWSER_JEV"
+    TASKS_ONLY = "TASKS_ONLY"
 
 
 # A separate boolean flag, not a value of the rollout flag: stored choices beat the
@@ -145,5 +146,14 @@ FEATURE_FLAGS: dict[FeatureFlag, FlagSpec] = {
             ),
             stage=FeatureStage.EXPERIMENTAL,
         ),
+    ),
+    FeatureFlag.TASKS_ONLY: FlagSpec(
+        description=(
+            "Tasks-only comms: comms has no direct executor; every piece of work becomes a "
+            "tracked todo whose run reports through the outbox, and follow-ups are answered "
+            "from the task's record. Target users in the release conditions. Off by default "
+            "(see ENABLE_TASKS_ONLY)."
+        ),
+        default=lambda: settings.ENABLE_TASKS_ONLY,
     ),
 }

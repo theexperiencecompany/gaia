@@ -16,6 +16,7 @@ from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.constants.tasks import HIDDEN_TASK_LABEL
 from app.constants.todos import BLOCKING_LABEL, GAIA_TRACKED_LABEL
 from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT, GateAuthor, SystemGatePreset
 from app.db.mongodb import indexes
@@ -371,6 +372,34 @@ class TestTodosRepository(UserScopedRepositoryContract):
         await repo.create(make_doc(user_id="u", labels=["a"]))
         labels = await repo.top_labels(user_id="u", limit=10)
         assert labels[0].name == "a" and labels[0].count == 2
+
+    # ---- hidden tasks ------------------------------------------------------
+
+    async def test_a_hidden_task_is_in_no_list_count_or_label_the_user_sees(self, repo, make_doc):
+        await repo.create(make_doc(user_id="u", title="mine", project_id="inbox-1", labels=["a"]))
+        hidden = await repo.create(
+            make_doc(
+                user_id="u",
+                title="task",
+                project_id="inbox-1",
+                labels=[GAIA_TRACKED_LABEL, HIDDEN_TASK_LABEL, "a"],
+            )
+        )
+
+        page = await repo.list_page(user_id="u", params=_all_params(), inbox_project_id="inbox-1")
+        by_label = await repo.list_page(
+            user_id="u", params=_all_params(labels=["a"]), inbox_project_id=None
+        )
+        stats = await repo.compute_stats(user_id="u")
+        counts = await repo.compute_counts(user_id="u", inbox_project_id="inbox-1")
+        labels = await repo.top_labels(user_id="u", limit=10)
+
+        assert [t.title for t in page.items] == ["mine"]
+        assert [t.title for t in by_label.items] == ["mine"]
+        assert stats.total == 1
+        assert counts.inbox == 1
+        assert {label.name: label.count for label in labels} == {"a": 1}
+        assert [t.id for t in await repo.list_active_tracked("u", limit=10)] == [hidden.id]
 
     # ---- tracked / system finders -----------------------------------------
 

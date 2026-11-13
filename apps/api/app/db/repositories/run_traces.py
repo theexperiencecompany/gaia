@@ -64,6 +64,12 @@ class RunsRepository(UserScopedRepository[RunDocument, RunUpdate]):
             limit=limit,
         )
 
+    async def list_for_todo(self, user_id: str, todo_id: str, *, limit: int) -> list[RunDocument]:
+        """Return a tracked todo's runs, newest first."""
+        return await self._find(
+            {"user_id": user_id, "todo_id": todo_id}, sort=[("started_at", -1)], limit=limit
+        )
+
     async def list_stale_running(
         self, last_active_before: datetime, *, limit: int
     ) -> list[RunDocument]:

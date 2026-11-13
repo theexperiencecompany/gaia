@@ -104,6 +104,16 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
             limit=limit,
         )
 
+    async def list_of_series(
+        self, user_id: str, series: str, *, limit: int
+    ) -> list[OutboxItemDocument]:
+        """Return the latest items of a series in any state, newest first."""
+        return await self._find(
+            {"user_id": user_id, "report.subject.series": series},
+            sort=[("report.occurred_at", -1)],
+            limit=limit,
+        )
+
     async def apply_replace(self, report: OutboxReport) -> bool:
         """Let the latest report of a subject stand: supersede its older unsent ones, or itself if outranked.
 

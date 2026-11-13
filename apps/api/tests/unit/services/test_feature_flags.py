@@ -29,6 +29,7 @@ from app.services.feature_flags import (
     is_code_mode_enabled,
     is_enabled,
     is_hil_ledger_enabled,
+    is_tasks_only_enabled,
     is_trigger_gates_enforced,
     set_user_flag,
 )
@@ -336,12 +337,32 @@ FLAG_KILL_SWITCHES = {
     FeatureFlag.HIL_JEV_REPLY: "ENABLE_HIL_JEV_REPLY",
     FeatureFlag.AGENT_LAB: "ENABLE_AGENT_LAB",
     FeatureFlag.TRIGGER_GATES: "ENABLE_TRIGGER_GATES",
+    FeatureFlag.TASKS_ONLY: "ENABLE_TASKS_ONLY",
 }
 
 
 class TestAgentLab:
     async def test_agent_lab_flag_defaults_off(self, no_client: None) -> None:
         assert await is_agent_lab_enabled(USER_ID) is False
+
+
+class TestTasksOnly:
+    async def test_tasks_only_flag_defaults_off(
+        self, no_client: None, evaluated: MagicMock
+    ) -> None:
+        assert await is_tasks_only_enabled(USER_ID) is False
+
+    async def test_tasks_only_helper_forwards_flag_and_user(self, evaluated: MagicMock) -> None:
+        with patch("app.services.feature_flags.is_enabled", return_value=True) as enabled:
+            assert await is_tasks_only_enabled("u5") is True
+            enabled.assert_called_once_with(FeatureFlag.TASKS_ONLY, "u5")
+
+    async def test_posthog_targeting_decides_per_user(
+        self, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        mock_client.get_feature_flag.side_effect = lambda key, user: user == "targeted"
+        assert await is_tasks_only_enabled("targeted") is True
+        assert await is_tasks_only_enabled("other") is False
 
 
 class TestTriggerGates:

@@ -380,6 +380,7 @@ async def comms_graph(
     store: InMemoryStore | None = None,
     model: RecordingFakeModel | None = None,
     checkpointer_manager: Any | None = None,
+    tasks_only: bool = False,
 ) -> AsyncIterator[Any]:
     """Build the REAL comms graph, with only the model and the external edges replaced.
 
@@ -447,7 +448,9 @@ async def comms_graph(
         ),
     ):
         async with _build_graph.build_comms_graph(
-            chat_llm=llm, in_memory_checkpointer=checkpointer_manager is None
+            chat_llm=llm,
+            in_memory_checkpointer=checkpointer_manager is None,
+            tasks_only=tasks_only,
         ) as graph:
             _SCRIPTED_MODELS[id(graph)] = llm
             _MEMORY_DOUBLES[id(graph)] = memory
