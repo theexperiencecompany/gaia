@@ -210,6 +210,9 @@ class Settings(BrowserHostSettings):
     # ----------------------------------------------
     POSTHOG_PROJECT_TOKEN: str | None = None
     POSTHOG_HOST: str | None = None
+    # A PostHog personal or project secret API key. With it flag definitions are polled and
+    # evaluated in-process; without it every flag check is a network call per user.
+    POSTHOG_SECRET_KEY: str | None = None
 
     # Secret token Prometheus sends as "Authorization: Bearer <token>" when
     # scraping /metrics. Generate with: openssl rand -hex 32

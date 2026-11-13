@@ -9,6 +9,7 @@ from bson import ObjectId
 from langchain_core.documents import Document
 import pytest
 
+from app.constants.tasks import HIDDEN_TASK_LABEL
 from app.models.todo_models import Priority, TodoDocument, TodoResponse
 from app.utils.todo_vector_utils import (
     TodoSearchFilters,
@@ -431,6 +432,22 @@ class TestSemanticSearchTodos:
         assert len(results) == 1
         assert isinstance(results[0], TodoResponse)
         assert results[0].title == "Matched todo"
+
+    async def test_a_hidden_task_the_index_matches_is_never_returned(self) -> None:
+        visible, hidden = str(ObjectId()), str(ObjectId())
+        self.mock_collection.similarity_search_with_score.return_value = [
+            self._make_search_result(hidden, 0.99),
+            self._make_search_result(visible, 0.9),
+        ]
+        docs = {
+            hidden: self._todo_doc(hidden, labels=[HIDDEN_TASK_LABEL]),
+            visible: self._todo_doc(visible),
+        }
+        self.mock_repo.get = AsyncMock(side_effect=lambda todo_id, user_id: docs[todo_id])
+
+        results = await semantic_search_todos("flights", USER_ID)
+
+        assert [todo.id for todo in results] == [visible]
 
     async def test_no_results_returns_empty_list(self) -> None:
         self.mock_collection.similarity_search_with_score.return_value = []

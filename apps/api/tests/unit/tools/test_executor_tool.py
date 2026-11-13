@@ -31,6 +31,7 @@ from app.agents.tools.executor_tool import (
     JOINED_RUNNING_WORK_RESULT,
     call_executor,
     cancel_executor,
+    stop_executor_work,
     tools,
 )
 from app.constants.agents import (
@@ -818,6 +819,18 @@ class TestCancelExecutorStopsTheBrowser:
         await run_cancel_executor(config=config_for(), task_ids=["q1"])
 
         assert await job_cancel_requested("job-1") is False
+
+    async def test_stopping_a_chats_work_stops_its_browser_job_for_any_caller(
+        self, fake_redis: AsyncRedisCommands
+    ) -> None:
+        await _a_running_browser_job()
+
+        response = await stop_executor_work(
+            {"user_id": "u1", "thread_id": CONVERSATION_ID}, CONVERSATION_ID, [], None
+        )
+
+        assert response == "Stopped the browser task."
+        assert await job_cancel_requested("job-1") is True
 
     async def test_a_stop_with_nothing_running_anywhere_still_reports_nothing(
         self, fake_redis: AsyncRedisCommands

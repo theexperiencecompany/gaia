@@ -346,17 +346,19 @@ def background_authorization(
     workflow_title: str = "",
     workflow_description: str = "",
     todo_title: str = "",
+    asked: str = "",
 ) -> list[str]:
     """Append a background run's schedule text as standing authorization.
 
     A scheduled workflow/todo is a standing directive, so its human-written
     display fields (title, description ONLY) authorize like a live turn's words —
-    the judge grounds calls against them verbatim. Step lists and execution
-    prompts may be LLM-generated and never authorize; interactive runs pass through.
+    the judge grounds calls against them verbatim, as it does the user's own words
+    that asked a todo to run. Step lists and execution prompts may be LLM-generated
+    and never authorize; interactive runs pass through.
     """
     if execution_mode != "background":
         return turns
-    extra: list[str] = []
+    extra: list[str] = [asked.strip()] if asked.strip() else []
     title = workflow_title.strip()
     description = workflow_description.strip()
     if title or description:

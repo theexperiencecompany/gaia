@@ -205,6 +205,9 @@ def _todo_report(finished: FinishedTodoRun, todo: TodoDocument) -> RunReport:
     Completing a todo tears its watches down, so reading that at delivery would call a thread todo that resolved itself a one-time answer.
     """
     owns_form = todo.external_ref is not None and todo.external_ref.source.owns_report_form
+    owner_conversation_id, turn_message_id = todo.answer_location(
+        runs_once=finished.runs_once, own_chat=finished.conversation_id
+    )
     return RunReport(
         report_id=f"{TODO_REPORT_PREFIX}{finished.todo_id}:{finished.run_id}",
         recipient=todo.user_id,
@@ -212,11 +215,12 @@ def _todo_report(finished: FinishedTodoRun, todo: TodoDocument) -> RunReport:
         subject=Subject(
             kind=SubjectKind.TODO_RUN,
             id=f"{finished.todo_id}:{finished.run_id}",
-            owner_conversation_id=finished.conversation_id,
+            owner_conversation_id=owner_conversation_id,
             series=f"{TODO_REPORT_PREFIX}{finished.todo_id}",
             label=todo.title,
         ),
         occurred_at=clock.now(),
+        turn_message_id=turn_message_id,
         initiative=Initiative.ASKED if finished.runs_once else Initiative.SELF_INITIATED,
         delivery_policy=interrupting_policy(
             notify=todo.notify_on_run, reason=finished.interrupt_reason

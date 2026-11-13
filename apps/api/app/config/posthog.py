@@ -20,5 +20,6 @@ def init_posthog() -> Posthog:
     return Posthog(
         settings.POSTHOG_PROJECT_TOKEN,
         host=settings.POSTHOG_HOST,
+        secret_key=settings.POSTHOG_SECRET_KEY,
         enable_exception_autocapture=True,
     )

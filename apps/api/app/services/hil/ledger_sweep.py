@@ -45,7 +45,7 @@ async def sweep_ledger_approvals() -> LedgerSweepCounts:
     reminded = 0
     for row in await approval_ledger_repository.list_pending_reminders_due(now):
         try:
-            await submit(ledger_approval_notice(row, ApprovalNoticeState.REMINDER, now=now))
+            await submit(await ledger_approval_notice(row, ApprovalNoticeState.REMINDER, now=now))
         except Exception as e:
             log.error(
                 f"{LogTag.HIL} Sweep could not file an approval reminder",

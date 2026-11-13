@@ -92,6 +92,11 @@ def _first_count(buckets: list[_FacetCount]) -> int:
     return buckets[0].count if buckets else 0
 
 
+def _shown_to_user(user_id: str) -> dict[str, object]:
+    """Filter for the todos a user's own views show: theirs, with hidden tasks left out."""
+    return {"user_id": user_id, "labels": {"$ne": HIDDEN_TASK_LABEL}}
+
+
 class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     """The todos collection repository (user-scoped, cached)."""
 
@@ -131,8 +136,8 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._count({"user_id": user_id, "project_id": project_id})
 
     async def count_for_user(self, user_id: str) -> int:
-        """Total todos a user has — the feature-usage signal."""
-        return await self._count({"user_id": user_id})
+        """Total todos a user can see — the feature-usage signal."""
+        return await self._count(_shown_to_user(user_id))
 
     def _list_filter(
         self, user_id: str, params: TodoSearchParams, inbox_project_id: str | None
@@ -142,7 +147,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         inbox_project_id is resolved by the caller (it may create the Inbox);
         when provided it is the default scope for the unfiltered main list.
         """
-        query: dict[str, object] = {"user_id": user_id, "labels": {"$ne": HIDDEN_TASK_LABEL}}
+        query: dict[str, object] = _shown_to_user(user_id)
 
         if params.q and params.mode == SearchMode.TEXT:
             query["$or"] = [
@@ -215,7 +220,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         """Aggregate todo statistics for a user (totals, buckets, top labels)."""
         now = datetime.now(UTC)
         pipeline: list[dict[str, object]] = [
-            {"$match": {"user_id": user_id, "labels": {"$ne": HIDDEN_TASK_LABEL}}},
+            {"$match": _shown_to_user(user_id)},
             {
                 "$facet": {
                     "total": [{"$count": "count"}],
@@ -264,7 +269,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         today_end = datetime.combine(today, datetime.max.time()).replace(tzinfo=UTC)
         upcoming_end = now + timedelta(days=7)
         pipeline: list[dict[str, object]] = [
-            {"$match": {"user_id": user_id, "labels": {"$ne": HIDDEN_TASK_LABEL}}},
+            {"$match": _shown_to_user(user_id)},
             {
                 "$facet": {
                     "inbox": [
@@ -313,13 +318,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     async def top_labels(self, *, user_id: str, limit: int) -> list[TodoLabelCount]:
         """Most-used labels across a user's incomplete todos."""
         pipeline: list[dict[str, object]] = [
-            {
-                "$match": {
-                    "user_id": user_id,
-                    "completed": False,
-                    "labels": {"$ne": HIDDEN_TASK_LABEL},
-                }
-            },
+            {"$match": {**_shown_to_user(user_id), "completed": False}},
             {"$unwind": "$labels"},
             {"$group": {"_id": "$labels", "count": {"$sum": 1}}},
             {"$sort": {"count": -1}},

@@ -1,5 +1,6 @@
 """The TASKS_ONLY flag seam: which comms graph, tools and prompt a turn gets, and that flag off is the current path."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import HumanMessage
@@ -118,6 +119,26 @@ class TestGraphSelection:
 
         get_graph.assert_awaited_once_with("comms_agent")
         assert construct.call_args.kwargs["scope"].tasks_only is False
+
+    async def test_the_flag_check_does_not_wait_on_the_presence_read(self, turn) -> None:
+        """Each read starts only once the other has, so serialising them times out instead of passing."""
+        _, _, flag = turn
+        presence_started, flag_started = asyncio.Event(), asyncio.Event()
+
+        async def read_presence(_user_id: str) -> None:
+            presence_started.set()
+            await asyncio.wait_for(flag_started.wait(), timeout=1)
+
+        async def is_enabled(_user_id: str) -> bool:
+            flag_started.set()
+            await asyncio.wait_for(presence_started.wait(), timeout=1)
+            return False
+
+        flag.side_effect = is_enabled
+        with patch("app.agents.core.agent.read_presence", read_presence):
+            await _core_agent_logic(_request(), "c1", _user())
+
+        flag.assert_awaited_once_with(USER_ID)
 
     async def test_a_background_run_never_leaves_the_current_path_even_when_the_flag_is_on(
         self, turn

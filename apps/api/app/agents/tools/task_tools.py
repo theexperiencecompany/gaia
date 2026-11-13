@@ -18,7 +18,7 @@ from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import read_executor_activity
 from app.agents.core.background.session import mark_task_handed_off
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
-from app.agents.tools.executor_tool import cancel_executor_work, handoff_message
+from app.agents.tools.executor_tool import handoff_message, stop_executor_work
 from app.agents.tools.tracked_todo_formatting import format_canvas_match
 from app.constants.agents import TimeHorizon
 from app.constants.tasks import (
@@ -32,7 +32,7 @@ from app.db.repositories.todos import todo_repository
 from app.models.agent_models import agent_configurable, get_user_id, read_agent_configurable
 from app.models.executor_activity_models import ExecutorActivity
 from app.models.ownership_models import ExecutorIntent
-from app.models.todo_models import TodoDocument, TodoUpdate, TodoUpdateRequest
+from app.models.todo_models import AskOrigin, TodoDocument, TodoUpdate, TodoUpdateRequest
 from app.services.analytics_service import capture
 from app.services.canvas_markdown import with_section_appended
 from app.services.conversation_service import get_or_create_todo_conversation
@@ -40,6 +40,7 @@ from app.services.todo_activity import TodoActivityEvent, record_activity
 from app.services.todos.todo_service import TodoService
 from app.services.tracked_todo_service import CANVAS_TEMPLATE, tracked_todo_service
 from app.utils.canvas_vector_utils import search_canvas_context
+from app.utils.timezone import home_timezone_from_config
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.tasks import (
     TaskCancelled,
@@ -53,6 +54,16 @@ NO_SUCH_TASK = "You have no task with that id. Find it with find_tasks."
 
 async def _owned_task(config: RunnableConfig, task_id: str) -> TodoDocument | None:
     return await todo_repository.get(task_id, user_id=get_user_id(config))
+
+
+def _ask_origin(config: RunnableConfig) -> AskOrigin:
+    """The turn asking now: the conversation its answer returns to, the message it settles, the user's own words."""
+    configurable = read_agent_configurable(config)
+    return AskOrigin(
+        conversation_id=configurable.thread_id or "",
+        message_id=agent_configurable(config).get("bot_message_id"),
+        user_request=configurable.user_request,
+    )
 
 
 def _in_another_conversation(task: TodoDocument, config: RunnableConfig) -> bool:
@@ -107,8 +118,9 @@ async def start_task(
     ] = False,
     start_at: Annotated[
         datetime | None,
-        "When the user asked it to start later ('tomorrow at 9', 'Friday'): the instant, with their "
-        "offset. Omit to start now. For 'when X happens', start now and say the condition in "
+        "When the user asked it to start later ('tomorrow at 9', 'Friday'): the time as an ISO "
+        "datetime, with their offset when they named a timezone and without it for their own "
+        "clock. Omit to start now. For 'when X happens', start now and say the condition in "
         "request: the task sets its own watch.",
     ] = None,
     visible: Annotated[
@@ -127,6 +139,8 @@ async def start_task(
     configurable = read_agent_configurable(config)
     conversation_id = configurable.thread_id or ""
     now = datetime.now(UTC)
+    if start_at is not None and start_at.tzinfo is None:
+        start_at = start_at.replace(tzinfo=home_timezone_from_config(config).tzinfo)
     first_fire = start_at if start_at is not None else now + TASK_START_DELAY
     if first_fire <= now:
         return "start_at is in the past. Give the instant it should start, or omit it to start now."
@@ -155,6 +169,7 @@ async def start_task(
         ),
         labels=None if visible else [HIDDEN_TASK_LABEL],
         source_conversation_id=conversation_id,
+        ask_origin=_ask_origin(config),
         schedule=TodoUpdate(scheduled_at=first_fire, waiting_on=WaitingOn.TIME),
         done_when=acceptance_criteria,
     )
@@ -194,6 +209,9 @@ async def message_task(
         return NO_SUCH_TASK
     chat_id = await get_or_create_todo_conversation(task.user_id, task.id, task.title)
     running = (await read_executor_activity(chat_id)).activity is ExecutorActivity.RUNNING
+    await todo_repository.update(
+        task.id, user_id=task.user_id, update=TodoUpdate(ask_origin=_ask_origin(config))
+    )
     if running:
         await ExecutorInbox(chat_id).append(str(uuid4()), text)
     else:
@@ -226,10 +244,9 @@ async def cancel_task(
         return "That task has already finished; there is nothing to stop."
     chat_id = await get_or_create_todo_conversation(task.user_id, task.id, task.title)
     was_running = (await read_executor_activity(chat_id)).activity is ExecutorActivity.RUNNING
-    if was_running:
-        await cancel_executor_work(
-            {**agent_configurable(config), "thread_id": chat_id}, chat_id, [], None
-        )
+    await stop_executor_work(
+        {**agent_configurable(config), "thread_id": chat_id}, chat_id, [], None
+    )
     await tracked_todo_service.complete_tracked_todo(task.id, task.user_id, "Stopped by the user.")
     capture(UserId(task.user_id), TaskCancelled(was_running=was_running))
     return "Stopped." if was_running else "Closed; it will not run."

@@ -36,6 +36,7 @@ from app.constants.todos import (
 from app.db.repositories.todos import todo_repository
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
+    AskOrigin,
     ExternalRef,
     Priority,
     TodoDocument,
@@ -287,6 +288,7 @@ class TrackedTodoService:
         labels: list[str] | None = None,
         initial_canvas: str | None = None,
         source_conversation_id: str | None = None,
+        ask_origin: AskOrigin | None = None,
         notify_on_run: bool | None = None,
         external_ref: ExternalRef | None = None,
         references: list[str] | None = None,
@@ -407,6 +409,7 @@ class TrackedTodoService:
                 activity_content=activity_content,
                 log_content=log_content,
                 source_conversation_id=source_conversation_id,
+                ask_origin=ask_origin,
                 waiting_on=schedule.waiting_on,
                 question=schedule.question,
                 if_no_reply=schedule.if_no_reply,

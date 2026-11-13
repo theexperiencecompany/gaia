@@ -1,6 +1,6 @@
 """The task tools comms works through when it has no direct executor."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -16,7 +16,7 @@ from app.agents.tools.task_tools import (
 from app.constants.tasks import HIDDEN_TASK_LABEL, TASK_START_DELAY
 from app.constants.todos import TodoActivityEvent, WaitingOn
 from app.models.executor_activity_models import ExecutorActivity
-from app.models.todo_models import TodoDocument, TodoUpdate
+from app.models.todo_models import AskOrigin, TodoDocument, TodoUpdate
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.tasks import (
     TaskCancelled,
@@ -38,6 +38,8 @@ CONFIG = {
         "user_id": USER,
         "stream_id": "s1",
         "user_request": "find me flights to Lisbon",
+        "bot_message_id": "bot-msg-1",
+        "user_timezone": "+05:30",
     },
     "metadata": {"user_id": USER},
 }
@@ -131,6 +133,26 @@ class TestStartTask:
         assert self.service.schedule.await_args.kwargs["defer_until"] <= datetime.now(UTC)
         assert TASK in result
 
+    async def test_the_task_remembers_the_turn_that_asked_for_it_in_the_users_words(self) -> None:
+        await start_task.ainvoke(START_ARGS, config=CONFIG)
+
+        assert self.service.create.await_args.kwargs["ask_origin"] == AskOrigin(
+            conversation_id=CHAT, message_id="bot-msg-1", user_request="find me flights to Lisbon"
+        )
+
+    async def test_a_start_time_with_no_offset_is_the_users_own_clock(self) -> None:
+        tomorrow_nine = (datetime.now(UTC) + timedelta(days=1)).replace(
+            hour=9, minute=0, second=0, microsecond=0, tzinfo=None
+        )
+
+        await start_task.ainvoke({**START_ARGS, "start_at": tomorrow_nine}, config=CONFIG)
+
+        expected = tomorrow_nine.replace(tzinfo=timezone(timedelta(hours=5, minutes=30)))
+        assert self.service.schedule.await_args.args[1] == expected
+        assert self.service.schedule.await_args.args[1].utcoffset() == timedelta(
+            hours=5, minutes=30
+        )
+
     async def test_a_visible_task_carries_no_hidden_label(self) -> None:
         await start_task.ainvoke({**START_ARGS, "visible": True}, config=CONFIG)
 
@@ -220,6 +242,34 @@ class TestMessageTask:
         reopen.assert_not_awaited()
         self.service.schedule.assert_awaited_once()
 
+    async def test_the_message_makes_this_turn_the_one_the_answer_comes_back_to(self) -> None:
+        with (
+            patch(f"{MODULE}.record_activity", AsyncMock()),
+            patch(f"{MODULE}.TodoService.update_todo", AsyncMock()),
+        ):
+            await message_task.ainvoke({"task_id": TASK, "text": "check again"}, CONFIG)
+
+        origins = [
+            call.kwargs["update"].ask_origin
+            for call in self.todos.update.await_args_list
+            if call.kwargs["update"].ask_origin is not None
+        ]
+        assert origins == [
+            AskOrigin(
+                conversation_id=CHAT,
+                message_id="bot-msg-1",
+                user_request="find me flights to Lisbon",
+            )
+        ]
+
+    async def test_a_message_into_a_running_task_also_moves_where_its_answer_goes(self) -> None:
+        self.run_state.activity = ExecutorActivity.RUNNING
+        with patch(f"{MODULE}.ExecutorInbox") as inbox_class:
+            inbox_class.return_value.append = AsyncMock()
+            await message_task.ainvoke({"task_id": TASK, "text": "also cc Jonah"}, CONFIG)
+
+        assert self.todos.update.await_args.kwargs["update"].ask_origin.message_id == "bot-msg-1"
+
     async def test_a_task_in_another_chat_is_steered_and_measured_as_such(self) -> None:
         self.todos.get.return_value = _task().model_copy(
             update={"source_conversation_id": "telegram-chat"}
@@ -251,7 +301,7 @@ class TestCancelTask:
 
     async def test_a_running_task_is_cancelled_in_its_own_chat_and_closed(self) -> None:
         self.run_state.activity = ExecutorActivity.RUNNING
-        with patch(f"{MODULE}.cancel_executor_work", AsyncMock()) as stop:
+        with patch(f"{MODULE}.stop_executor_work", AsyncMock()) as stop:
             result = await cancel_task.ainvoke({"task_id": TASK}, CONFIG)
 
         assert stop.await_args.args[1:] == (TASK_CHAT, [], None)
@@ -259,11 +309,11 @@ class TestCancelTask:
         assert result == "Stopped."
         assert self.captured.call_args.args[1] == TaskCancelled(was_running=True)
 
-    async def test_an_open_idle_task_is_closed_without_touching_the_executor(self) -> None:
-        with patch(f"{MODULE}.cancel_executor_work", AsyncMock()) as stop:
+    async def test_an_open_idle_task_is_closed_and_its_browser_job_still_stopped(self) -> None:
+        with patch(f"{MODULE}.stop_executor_work", AsyncMock()) as stop:
             result = await cancel_task.ainvoke({"task_id": TASK}, CONFIG)
 
-        stop.assert_not_awaited()
+        assert stop.await_args.args[1:] == (TASK_CHAT, [], None)
         self.service.complete.assert_awaited_once()
         assert "will not run" in result
 

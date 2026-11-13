@@ -231,7 +231,7 @@ async def semantic_search_todos(
         todos = []
         for todo_id in todo_ids:
             todo_doc = await todo_repository.get(todo_id, user_id=user_id)
-            if todo_doc:
+            if todo_doc and not todo_doc.is_hidden:
                 todos.append(TodoResponse.from_document(todo_doc))
 
         log.info(

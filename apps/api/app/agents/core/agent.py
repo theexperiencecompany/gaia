@@ -136,6 +136,20 @@ class StreamMessageIds:
     bot_message_id: str | None = None
 
 
+async def _resolve_presence(
+    given: PresenceSnapshot | None, user_id: str | None
+) -> PresenceSnapshot | None:
+    """Return the presence the caller captured, else read it; no user means none."""
+    if given or not user_id:
+        return given
+    return await read_presence(user_id)
+
+
+async def _resolve_tasks_only(execution_mode: ExecutionMode, user_id: str | None) -> bool:
+    """Whether this turn hands its work to tasks; interactive turns only, since a background run's comms turn waits on the executor."""
+    return execution_mode == "interactive" and await is_tasks_only_enabled(user_id)
+
+
 async def _core_agent_logic(
     request: MessageRequestWithHistory,
     conversation_id: str,
@@ -167,17 +181,17 @@ async def _core_agent_logic(
         if trigger.execution_mode == "background":
             execution_mode = "background"
 
-    # Read once here, not left to build_agent_config: the comms context below
-    # renders it too, and a workflow fire arrives without one. A voice call
-    # captures none either; note_is_due keeps its turns noteless by entry surface.
-    presence = options.presence or (await read_presence(user_id) if user_id else None)
-
     # The surface and zone this turn is in, left on the conversation for the runs that
     # start without a turn of their own (carry runs, approval tickets).
     turn_timezone = Timezone.try_parse(user.timezone)
 
-    # Interactive turns only: a workflow or scheduled run's comms turn waits on the executor it spawns.
-    tasks_only = execution_mode == "interactive" and await is_tasks_only_enabled(user_id)
+    # Presence is read once here, not left to build_agent_config: the comms context below
+    # renders it too, and a workflow fire arrives without one. The flag is a PostHog round trip
+    # for every user, so it overlaps the presence read instead of queueing behind it.
+    presence, tasks_only = await asyncio.gather(
+        _resolve_presence(options.presence, user_id),
+        _resolve_tasks_only(execution_mode, user_id),
+    )
 
     # Build langchain messages and get graph concurrently
     history, graph, _recorded = await asyncio.gather(

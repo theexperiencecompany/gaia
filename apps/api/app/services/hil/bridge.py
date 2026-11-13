@@ -446,7 +446,7 @@ async def _file_ledger_notice(approval_id: str) -> None:
     row = await approval_ledger_repository.get_by_approval_id(approval_id)
     if row is None:
         raise LookupError(f"ledger approval {approval_id} vanished before its notice was filed")
-    await submit(ledger_approval_notice(row, ApprovalNoticeState.PENDING, now=clock.now()))
+    await submit(await ledger_approval_notice(row, ApprovalNoticeState.PENDING, now=clock.now()))
 
 
 async def _publish_entry(stream_id: str, entry: ApprovalRequestEntry) -> None:

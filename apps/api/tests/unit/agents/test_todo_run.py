@@ -341,3 +341,15 @@ async def test_the_executor_config_is_a_background_run_bound_to_the_todo() -> No
     assert turn.user_messages == ["Tracked todo: Watch the deploy"]
     assert turn.user_preferences == {"profession": "engineer"}
     assert turn.writing_style == {"summary": "terse"}
+
+
+async def test_a_run_a_user_asked_for_is_authorized_by_their_own_words() -> None:
+    request = replace(REQUEST, user_request="email Bob the deck, then archive the thread")
+    built = AsyncMock(return_value={"configurable": {"thread_id": "run-conv"}})
+    with patch.object(todo_run, "build_agent_config", built):
+        await _todo_run_configurable(request, "stream-1")
+
+    assert built.await_args.kwargs["turn"].user_messages == [
+        "email Bob the deck, then archive the thread",
+        "Tracked todo: Watch the deploy",
+    ]

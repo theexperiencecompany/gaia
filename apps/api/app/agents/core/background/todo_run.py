@@ -95,6 +95,8 @@ class TodoRunRequest:
     #: Awaited once the chat's executor lock is this run's, so a run that finds
     #: the chat busy never reads as started.
     on_started: Callable[[], Awaitable[object]] | None = None
+    #: The user's own words that asked this run of a task, when a chat turn did.
+    user_request: str | None = None
 
 
 async def run_todo_on_executor(request: TodoRunRequest) -> None:
@@ -209,10 +211,13 @@ async def _todo_run_configurable(request: TodoRunRequest, stream_id: str) -> Age
         turn=AgentTurn(
             active_todo_id=request.todo_run.todo_id,
             execution_mode="background",
-            # The todo's own title authorizes its gated calls the way a live
-            # turn's words would; the run brief is generated and never does.
+            # The user's words that asked for the run and the todo's own title authorize
+            # its gated calls the way a live turn's words would; the run brief never does.
             user_messages=background_authorization(
-                [], execution_mode="background", todo_title=request.todo_title
+                [],
+                execution_mode="background",
+                todo_title=request.todo_title,
+                asked=request.user_request or "",
             ),
             user_preferences=user_preferences,
             writing_style=writing_style,

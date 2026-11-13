@@ -11,6 +11,7 @@ from app.models.hil_models import (
     HILApprovalStatus,
     LedgerState,
 )
+from app.models.todo_models import AskOrigin, TodoDocument
 from app.services.outbox.approvals import (
     ApprovalNoticeState,
     approval_id_of_report,
@@ -38,8 +39,10 @@ def _row(**overrides: object) -> ApprovalLedgerDocument:
 
 
 class TestApprovalNotice:
-    def test_the_ask_is_a_needs_you_notice_on_its_own_subject_valid_until_it_lapses(self) -> None:
-        report = ledger_approval_notice(_row(), ApprovalNoticeState.PENDING, now=NOW)
+    async def test_the_ask_is_a_needs_you_notice_on_its_own_subject_valid_until_it_lapses(
+        self,
+    ) -> None:
+        report = await ledger_approval_notice(_row(), ApprovalNoticeState.PENDING, now=NOW)
 
         assert report.outcome is NoticeOutcome.NEEDS_YOU
         assert report.report_id == "hil:ap_1:pending"
@@ -49,35 +52,63 @@ class TestApprovalNotice:
         assert "Send the deck to Bob" in report.facts[0]
         assert report.prerendered is None
 
-    def test_a_reminder_is_a_second_report_that_says_they_were_already_asked(self) -> None:
-        pending = ledger_approval_notice(_row(), ApprovalNoticeState.PENDING, now=NOW)
-        reminder = ledger_approval_notice(_row(), ApprovalNoticeState.REMINDER, now=NOW)
+    async def test_a_reminder_is_a_second_report_that_says_they_were_already_asked(self) -> None:
+        pending = await ledger_approval_notice(_row(), ApprovalNoticeState.PENDING, now=NOW)
+        reminder = await ledger_approval_notice(_row(), ApprovalNoticeState.REMINDER, now=NOW)
 
         assert reminder.report_id != pending.report_id
         assert reminder.subject == pending.subject
         assert any("already asked" in fact for fact in reminder.facts)
         assert not any("already asked" in fact for fact in pending.facts)
 
-    def test_an_ask_from_work_the_user_scheduled_is_an_answer_to_their_own_wish(self) -> None:
-        asked = ledger_approval_notice(_row(), ApprovalNoticeState.PENDING, now=NOW)
-        scheduled = ledger_approval_notice(
+    async def test_an_ask_from_work_the_user_scheduled_is_an_answer_to_their_own_wish(self) -> None:
+        asked = await ledger_approval_notice(_row(), ApprovalNoticeState.PENDING, now=NOW)
+        scheduled = await ledger_approval_notice(
             _row(owner_run_type="workflow", owner_id="wf-1"), ApprovalNoticeState.PENDING, now=NOW
         )
 
         assert asked.initiative is Initiative.ASKED
         assert scheduled.initiative is Initiative.USER_SCHEDULED
 
-    def test_an_ask_with_no_deadline_states_none(self) -> None:
-        report = ledger_approval_notice(_row(expires_at=None), ApprovalNoticeState.PENDING, now=NOW)
+    async def test_an_ask_with_no_deadline_states_none(self) -> None:
+        report = await ledger_approval_notice(
+            _row(expires_at=None), ApprovalNoticeState.PENDING, now=NOW
+        )
 
         assert report.valid_until is None
         assert not any("lapses" in fact for fact in report.facts)
 
 
+class TestWhereATodoRunsApprovalIsTold:
+    async def test_a_task_asks_where_it_was_asked_not_in_its_own_chat(self) -> None:
+        todo = TodoDocument(
+            id="t1", user_id="u", title="x", ask_origin=AskOrigin(conversation_id="web-chat")
+        )
+        row = _row(owner_run_type="todo", owner_id="t1", conversation_id="task-chat")
+        with patch(f"{MODULE}.todo_repository.get_by_id", AsyncMock(return_value=todo)):
+            report = await ledger_approval_notice(row, ApprovalNoticeState.PENDING, now=NOW)
+
+        assert report.subject.owner_conversation_id == "web-chat"
+
+    async def test_a_todo_that_runs_again_asks_in_its_own_chat(self) -> None:
+        todo = TodoDocument(
+            id="t1",
+            user_id="u",
+            title="x",
+            recurrence="FREQ=DAILY",
+            ask_origin=AskOrigin(conversation_id="web-chat"),
+        )
+        row = _row(owner_run_type="todo", owner_id="t1", conversation_id="task-chat")
+        with patch(f"{MODULE}.todo_repository.get_by_id", AsyncMock(return_value=todo)):
+            report = await ledger_approval_notice(row, ApprovalNoticeState.PENDING, now=NOW)
+
+        assert report.subject.owner_conversation_id == "task-chat"
+
+
 class TestApprovalIdOfReport:
     @pytest.mark.parametrize("state", list(ApprovalNoticeState))
-    def test_the_id_comes_back_out_of_each_notice(self, state: ApprovalNoticeState) -> None:
-        report = ledger_approval_notice(_row(approval_id="ap_9"), state, now=NOW)
+    async def test_the_id_comes_back_out_of_each_notice(self, state: ApprovalNoticeState) -> None:
+        report = await ledger_approval_notice(_row(approval_id="ap_9"), state, now=NOW)
 
         assert approval_id_of_report(report.report_id) == "ap_9"
 

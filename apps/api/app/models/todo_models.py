@@ -6,6 +6,7 @@ from typing import Annotated, NamedTuple
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.general import MAX_PAGE_NUMBER
+from app.constants.tasks import HIDDEN_TASK_LABEL
 from app.constants.todos import (
     GAIA_TRACKED_LABEL,
     TODO_RECURRENCE_SHORTCUTS,
@@ -54,6 +55,18 @@ class ExternalRefSource(StrEnum):
     def speaks_under_parent(self) -> bool:
         """Whether a sub-todo of this kind still tells the user itself: a thread's news cannot wait for its parent."""
         return self is ExternalRefSource.GMAIL_THREAD
+
+
+class AskOrigin(BaseModel):
+    """The turn a task's latest ask came from: where its answer is recorded and what authorizes its gated calls."""
+
+    model_config = ConfigDict(frozen=True)
+
+    conversation_id: str
+    #: The asking turn's bot message, whose chip the answer settles; None for an ask with no live turn.
+    message_id: str | None = None
+    #: The user's words exactly as typed, never the comms agent's paraphrase.
+    user_request: str | None = None
 
 
 class ExternalRef(BaseModel):
@@ -575,10 +588,34 @@ class TodoDocument(UserScopedDocument):
     # The chat that created this tracked todo, captured at creation. None for todos
     # created outside a chat (onboarding/REST).
     source_conversation_id: str | None = None
+    # The latest turn that asked a task to run; None for a todo nobody asked of in a chat.
+    ask_origin: AskOrigin | None = None
     # Set only at insert, never updated: the unique index keys on it while the todo is open.
     external_ref: ExternalRef | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    @property
+    def is_hidden(self) -> bool:
+        """Whether this is a hidden task: found by find_tasks, never listed to the user."""
+        return HIDDEN_TASK_LABEL in self.labels
+
+    @property
+    def asked_words(self) -> str | None:
+        """The user's own words behind the latest ask of this todo, when a chat turn asked."""
+        return self.ask_origin.user_request if self.ask_origin else None
+
+    def answer_location(self, *, runs_once: bool, own_chat: str) -> tuple[str, str | None]:
+        """Return the conversation this todo's run speaks in and the asking turn's message it settles.
+
+        A run-once todo answers an ask, so it answers where it was asked; one that
+        runs again speaks in its own chat, where its series lives.
+        """
+        if not runs_once:
+            return own_chat, None
+        if self.ask_origin is not None:
+            return self.ask_origin.conversation_id, self.ask_origin.message_id
+        return self.source_conversation_id or own_chat, None
 
     @property
     def runs_once(self) -> bool:
@@ -622,6 +659,7 @@ class TodoUpdate(BaseModel):
     observations_content: str | None = None
     log_content: str | None = None
     source_conversation_id: str | None = None
+    ask_origin: AskOrigin | None = None
 
 
 class ProjectDocument(UserScopedDocument):

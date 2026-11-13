@@ -7,7 +7,7 @@ to this module runs end to end in tests/unit/agents/test_tracked_todo_run_delive
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -102,6 +102,29 @@ class TestTheRunIsReportedOnceUnderItsOwnId:
             await _deliver()
 
         assert seams.filed().subject.owner_conversation_id == "run-conv"
+
+    async def test_a_run_once_todo_answers_in_the_conversation_that_asked_it(self) -> None:
+        with _seams(todo=_todo(source_conversation_id="web-chat")) as seams:
+            await _deliver()
+
+        assert seams.filed().subject.owner_conversation_id == "web-chat"
+
+    async def test_a_task_answers_the_turn_that_last_asked_it_and_settles_its_chip(self) -> None:
+        asked = todo_models.AskOrigin(conversation_id="tg-chat", message_id="bot-msg-2")
+        with _seams(todo=_todo(source_conversation_id="web-chat", ask_origin=asked)) as seams:
+            await _deliver()
+
+        report = seams.filed()
+        assert report.subject.owner_conversation_id == "tg-chat"
+        assert report.turn_message_id == "bot-msg-2"
+
+    async def test_a_todo_that_runs_again_reports_in_its_own_chat(self) -> None:
+        recurring = _todo(source_conversation_id="web-chat", recurrence="FREQ=DAILY")
+        with _seams(todo=recurring) as seams:
+            await _deliver(todo_run=replace(SCHEDULED, runs_once=False))
+
+        assert seams.filed().subject.owner_conversation_id == "run-conv"
+        assert seams.filed().turn_message_id is None
 
     async def test_the_report_is_the_todos_owners_not_the_runs_user(self) -> None:
         with _seams(todo=_todo(user_id=OWNER_ID)) as seams:

@@ -12,6 +12,7 @@ from enum import StrEnum
 
 from app.constants.outbox import APPROVAL_REPORT_PREFIX, APPROVAL_SUBJECT_PREFIX
 from app.db.repositories.approval_ledger import approval_ledger_repository
+from app.db.repositories.todos import todo_repository
 from app.models.hil_models import ApprovalLedgerDocument, HILApprovalStatus, LedgerState
 from app.services.hil.approvals_store import get_approval
 from app.services.outbox.models import (
@@ -82,19 +83,34 @@ def approval_notice(ask: ApprovalAsk, state: ApprovalNoticeState, *, now: dateti
     )
 
 
-def ledger_approval_notice(
+async def ledger_approval_notice(
     row: ApprovalLedgerDocument, state: ApprovalNoticeState, *, now: datetime
 ) -> NoticeReport:
-    """Return the notice for a ledger approval; work a background owner parked on was set up by the user."""
+    """Return the notice for a ledger approval; work a background owner parked on was set up by the user.
+
+    A todo run's approval is told where the todo was asked, since its own chat is one the user never opens.
+    """
     ask = ApprovalAsk(
         approval_id=row.approval_id,
         user_id=row.user_id,
-        conversation_id=row.conversation_id,
+        conversation_id=await _told_in_conversation(row),
         summary=row.summary,
         expires_at=row.expires_at,
         set_up_by_user=bool(row.owner_run_type),
     )
     return approval_notice(ask, state, now=now)
+
+
+async def _told_in_conversation(row: ApprovalLedgerDocument) -> str:
+    if row.owner_run_type != "todo" or not row.owner_id:
+        return row.conversation_id
+    todo = await todo_repository.get_by_id(row.owner_id)
+    if todo is None:
+        return row.conversation_id
+    conversation_id, _ = todo.answer_location(
+        runs_once=todo.runs_once, own_chat=row.conversation_id
+    )
+    return conversation_id
 
 
 async def is_approval_open(approval_id: str) -> bool:

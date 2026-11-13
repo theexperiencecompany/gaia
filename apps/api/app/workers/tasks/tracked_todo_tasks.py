@@ -811,6 +811,7 @@ async def _execute_on_executor(
                     ),
                 ),
                 todo_title=doc.title,
+                user_request=doc.asked_words,
                 task=prompt,
                 conversation_id=conversation_id,
                 fresh_thread=True,
@@ -950,6 +951,7 @@ async def _resume_holding_lock(
                     todo_id=todo_id, trigger_type=_trigger_type(None), runs_once=doc.runs_once
                 ),
                 todo_title=doc.title,
+                user_request=doc.asked_words,
                 task=message,
                 conversation_id=conversation_id,
                 fresh_thread=False,

@@ -95,6 +95,7 @@ from app.models.message_models import TodoRunWake
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
+    AskOrigin,
     ExternalRef,
     ExternalRefSource,
     TodoDocument,
@@ -3477,6 +3478,15 @@ class TestExecuteOnExecutor:
             )
         return user
 
+    async def test_the_users_words_that_asked_for_the_run_reach_the_executor(self):
+        await self._execute(
+            _doc(
+                ask_origin=AskOrigin(conversation_id="web-chat", user_request="email Bob the deck")
+            )
+        )
+
+        assert self._request().user_request == "email Bob the deck"
+
     async def test_the_executor_gets_the_todo_brief_as_its_task(self):
         user = await self._execute(
             _doc(
@@ -4067,6 +4077,15 @@ class TestResumeTrackedTodo:
             todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True
         )
         assert request.todo_title == "Check the deploy"
+
+    async def test_a_resume_keeps_the_users_words_that_authorize_the_parked_call(self) -> None:
+        asked = AskOrigin(conversation_id="web-chat", user_request="email Bob the deck")
+
+        run = await self._resume(
+            _ResumeJob("conv-parked", "Send briefing"), doc=_doc(user_id="user-7", ask_origin=asked)
+        )
+
+        assert run.agent.await_args.args[0].user_request == "email Bob the deck"
 
     async def test_a_resume_says_the_approval_woke_it(self) -> None:
         run = await self._resume(_ResumeJob("conv-parked", "Send briefing"))
