@@ -110,6 +110,17 @@ const toTimestamp = (timestamp?: string): number => {
   return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
 };
 
+/** Activity in the conversation on screen is already seen: mark it read on the server instead of lighting the dot. */
+const unreadUnlessViewed = (conversation: SyncedConversation): boolean => {
+  if (!conversation.is_unread) return false;
+  const { conversation_id: conversationId } = conversation;
+  if (useChatStore.getState().activeConversationId !== conversationId) {
+    return true;
+  }
+  chatApi.markAsRead(conversationId).catch(console.error);
+  return false;
+};
+
 const toStoredConversation = (
   conversation: SyncedConversation,
   artifacts: IConversation["artifacts"],
@@ -120,7 +131,7 @@ const toStoredConversation = (
   starred: conversation.starred ?? false,
   isSystemGenerated: conversation.is_system_generated ?? false,
   systemPurpose: conversation.system_purpose ?? null,
-  isUnread: conversation.is_unread ?? false,
+  isUnread: unreadUnlessViewed(conversation),
   hasOlder: conversation.has_older,
   awaitingApproval: apiRowAwaitsApproval(conversation),
   todoId: conversation.todo_id ?? null,

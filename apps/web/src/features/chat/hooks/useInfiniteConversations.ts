@@ -4,6 +4,7 @@ import { type Conversation, chatApi } from "@/features/chat/api/chatApi";
 import { CONVERSATIONS_PAGE_SIZE } from "@/features/chat/constants";
 import { apiRowAwaitsApproval } from "@/features/chat/utils/approvalFlag";
 import { db } from "@/lib/db/chatDb";
+import { useChatStore } from "@/stores/chatStore";
 
 interface InfiniteConversationsState {
   isLoadingMore: boolean;
@@ -39,9 +40,14 @@ export const useInfiniteConversations = () => {
       );
 
       if (response.conversations.length > 0) {
-        // Convert API conversations to IConversation format and store in IndexedDB
+        // Convert API conversations to IConversation format and store in IndexedDB,
+        // keeping what only a sync row carries (hasOlder, artifacts, todoId).
+        const stored = new Map(
+          useChatStore.getState().conversations.map((conv) => [conv.id, conv]),
+        );
         const mappedConversations = response.conversations.map(
           (conv: Conversation) => ({
+            ...stored.get(conv.conversation_id),
             id: conv.conversation_id,
             title: conv.description || "Untitled conversation",
             description: conv.description ?? "",

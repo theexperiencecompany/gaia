@@ -6,7 +6,12 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { chatDb } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chat-store";
 import { chatApi, type Message } from "../api/chat-api";
-import { chatKeys, useConversationQuery } from "../api/queries";
+import {
+  chatKeys,
+  useChatQueryClient,
+  useConversationQuery,
+  useConversationsQuery,
+} from "../api/queries";
 import type { AttachmentFile } from "../components/composer/attachment-preview";
 import { useLiveConversation } from "../live/live-conversation-store";
 import { retryMessage, sendMessage } from "../live/send-message";
@@ -93,11 +98,18 @@ export function useChat(
     return liveRows.length > 0 ? [...saved, ...liveRows] : saved;
   }, [history, liveRows]);
 
+  // Opening a conversation the list shows unread reads it, including one that
+  // turns unread while it is on screen.
+  const { data: conversations } = useConversationsQuery();
+  const { updateConversationInCache } = useChatQueryClient();
+  const unread =
+    conversations?.find((conversation) => conversation.id === conversationId)
+      ?.is_unread ?? false;
   useEffect(() => {
-    if (history && history.length > 0 && conversationId) {
-      chatApi.markConversationAsRead(conversationId);
-    }
-  }, [history, conversationId]);
+    if (!conversationId || !unread) return;
+    updateConversationInCache(conversationId, { is_unread: false });
+    chatApi.markConversationAsRead(conversationId);
+  }, [conversationId, unread, updateConversationInCache]);
 
   const scrollToBottom = useCallback(() => {
     flatListRef.current?.scrollToEnd({ animated: true });
