@@ -22,6 +22,13 @@ const READ_ONLY_POSTS = [/\/conversations\/batch-sync$/, /\/calendar\/events\/qu
 const THIRD_PARTY_BLOCK = /(posthog|google-analytics|googletagmanager|doubleclick|rybbit|sentry|clarity\.ms|fastlane|hotjar|intercom|crisp\.chat)/;
 const ANON_USER = "anonymous@review.invalid";
 const THIRD_PARTY_KEEP = new Set(["image", "font", "stylesheet", "script"]);
+/**
+ * API reads the local API answers from a live third party (GitHub releases), so the answer would depend on
+ * the network at capture time. Both builds get the same recorded payload (review/fixtures/, from prod).
+ */
+const API_FIXTURES = {
+  "/api/v1/desktop/releases/latest": readFileSync(join(HERE, "fixtures", "desktop-releases-latest.json"), "utf8"),
+};
 
 /** Applied before any page script: every CSS animation lands on its end frame, nothing transitions. */
 const FREEZE_CSS = `*,*::before,*::after{animation-duration:0s!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:0s!important;transition-delay:0s!important;caret-color:transparent!important;scroll-behavior:auto!important}`;
@@ -91,6 +98,8 @@ export async function newContext(browser, { vp, user, seed, cacheDir, log }) {
     const type = req.resourceType();
     if (type === "media" || type === "eventsource") return route.abort();
     if (url.origin === API_ORIGIN) {
+      const fixture = API_FIXTURES[url.pathname];
+      if (fixture && req.method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: fixture });
       const method = req.method();
       if (!["GET", "HEAD", "OPTIONS"].includes(method) && !READ_ONLY_POSTS.some((re) => re.test(url.pathname))) {
         log.blocked.add(`${method} ${url.pathname}`);
