@@ -138,8 +138,8 @@ async def write(
     )
 
     # The file's card rides this run's reply, so every device shows it and bots receive it.
-    await publish_artifact_write(
-        WrittenFile(user_id, role, role_conv, abs_path), content, len(encoded), real_mtime
+    publish_artifact_write(
+        WrittenFile(user_id, role, role_conv, abs_path), len(encoded), real_mtime
     )
 
     return f"Wrote {len(encoded)} bytes to {abs_path}"

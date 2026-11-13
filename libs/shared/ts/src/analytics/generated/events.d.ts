@@ -615,7 +615,6 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "streams": number;
     "executor_stopped": boolean;
     "pending_tasks": number;
     "subagents": number;

@@ -1,9 +1,9 @@
 """Tests for StreamManager — Redis Streams event-log lifecycle.
 
-Covers: start (progress + active-stream reverse index), complete, cleanup,
+Covers: start (progress), complete, cleanup,
 publish (XADD to the replayable event log), subscribe (replay with SSE id
 lines, cursor resume, control signals, keepalives), cancel, is_cancelled,
-get_active_stream_id, progress tracking, and error recording.
+progress tracking, and error recording.
 """
 
 from collections.abc import Generator
@@ -15,7 +15,6 @@ from prometheus_client import REGISTRY
 import pytest
 
 from app.constants.cache import (
-    STREAM_ACTIVE_PREFIX,
     STREAM_EVENTS_MAXLEN,
     STREAM_EVENTS_PREFIX,
     STREAM_LIVENESS_REFRESH_AFTER,
@@ -31,7 +30,6 @@ from app.core.stream_manager import StreamManager, StreamProgress
 # ---------------------------------------------------------------------------
 
 EVENTS_KEY = f"{STREAM_EVENTS_PREFIX}s1"
-ACTIVE_KEY = f"{STREAM_ACTIVE_PREFIX}user-1:conv-1"
 PROGRESS_KEY = f"{STREAM_PROGRESS_PREFIX}s1"
 
 XReadBatch = list[tuple[str, list[tuple[str, dict[str, str]]]]]
@@ -139,15 +137,6 @@ class TestStartStream:
         assert data["is_cancelled"] is False
         assert progress_call[1]["ttl"] == STREAM_TTL
 
-    async def test_stores_active_stream_reverse_index(self) -> None:
-        await StreamManager.start_stream("s1", "conv-1", "user-1")
-
-        assert self.mock_set.await_count == 2
-        active_call = self.mock_set.call_args_list[1]
-        assert active_call[0][0] == ACTIVE_KEY
-        assert active_call[0][1] == "s1"
-        assert active_call[1]["ttl"] == STREAM_TTL
-
 
 # ---------------------------------------------------------------------------
 # complete_stream
@@ -182,9 +171,6 @@ class TestCompleteStream:
         set_call = self.mock_set.call_args
         data = set_call[0][1]
         assert data["is_complete"] is True
-
-        # Active-stream reverse index cleared
-        self.mock_delete.assert_awaited_once_with(ACTIVE_KEY)
 
         # DONE signal appended to the event log with retention + TTL
         self.mock_redis_client.xadd.assert_awaited_once_with(
@@ -226,44 +212,6 @@ class TestCleanup:
         patcher.start()
         yield
         patcher.stop()
-
-
-# ---------------------------------------------------------------------------
-# get_active_stream_id
-# ---------------------------------------------------------------------------
-
-
-class TestGetActiveStreamId:
-    async def test_returns_stream_id(self) -> None:
-        mock_get = AsyncMock(return_value="s1")
-        with patch(
-            "app.core.stream_manager.redis_cache",
-            new=MagicMock(get=mock_get),
-        ):
-            result = await StreamManager.get_active_stream_id("user-1", "conv-1")
-
-        assert result == "s1"
-        mock_get.assert_awaited_once_with(ACTIVE_KEY)
-
-    async def test_returns_none_when_missing(self) -> None:
-        mock_get = AsyncMock(return_value=None)
-        with patch(
-            "app.core.stream_manager.redis_cache",
-            new=MagicMock(get=mock_get),
-        ):
-            result = await StreamManager.get_active_stream_id("user-1", "conv-1")
-
-        assert result is None
-
-    async def test_returns_none_for_non_string_value(self) -> None:
-        mock_get = AsyncMock(return_value={"unexpected": "shape"})
-        with patch(
-            "app.core.stream_manager.redis_cache",
-            new=MagicMock(get=mock_get),
-        ):
-            result = await StreamManager.get_active_stream_id("user-1", "conv-1")
-
-        assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -380,11 +328,6 @@ class TestCancelStream:
         # Second call: progress with is_cancelled=True
         progress_call = self.mock_set.call_args_list[1]
         assert progress_call[0][1]["is_cancelled"] is True
-
-    async def test_clears_active_index(self) -> None:
-        await StreamManager.cancel_stream("s1")
-
-        self.mock_delete.assert_awaited_once_with(ACTIVE_KEY)
 
     async def test_appends_cancelled_signal(self) -> None:
         await StreamManager.cancel_stream("s1")

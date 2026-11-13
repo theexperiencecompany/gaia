@@ -253,18 +253,14 @@ async def stop_conversation_endpoint(
     conversation_id: str,
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> ConversationStopResponse:
-    """Stop everything running for a conversation: its live turn, executor, subagents, approvals and browser job."""
+    """Stop everything running for a conversation: its reply in flight, executor, subagents, approvals and browser job."""
     log.set(
         user={"id": user.user_id},
         conversation={"operation": "stop", "id": conversation_id},
     )
     await require_owned_conversation(conversation_id, user.user_id)
     result = await press_stop(conversation_id, user.user_id, None)
-    log.set_ns(
-        "conversation",
-        stopped_streams=len(result.stream_ids),
-        stopped_work=result.work.stopped_anything,
-    )
+    log.set_ns("conversation", stopped_work=result.work.stopped_anything)
     return result
 
 

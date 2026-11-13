@@ -30,7 +30,6 @@ from tests.work_cancel_fakes import (
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis", "logged_stops")]
 
 CONVERSATION = "conv-stop"
-TURN = "turn-stream"
 STOP_URL = f"/api/v1/conversations/{CONVERSATION}/stop"
 
 
@@ -64,10 +63,9 @@ class TestStopConversation:
         logged_stops.assert_awaited_once()
         assert logged_stops.await_args.args[:2] == (CONVERSATION, FAKE_USER.user_id)
 
-    async def test_the_stop_cancels_the_turn_and_the_full_set_of_work(
+    async def test_the_stop_cancels_the_full_set_of_work(
         self, client: AsyncClient, pending_approvals: ApprovalSeams
     ) -> None:
-        await stream_manager.start_stream(TURN, CONVERSATION, FAKE_USER.user_id)
         await seed_live_work(CONVERSATION)
 
         response = await client.post(STOP_URL)
@@ -75,7 +73,6 @@ class TestStopConversation:
         assert response.status_code == 200
         assert response.json() == {
             "conversation_id": CONVERSATION,
-            "stream_ids": [TURN],
             "work": {
                 "executor_stopped": True,
                 "executor_task_id": EXECUTOR_TASK,
@@ -87,9 +84,8 @@ class TestStopConversation:
                 "browser_jobs": {BROWSER_JOB: "stopped"},
             },
         }
-        for stream_id in (TURN, EXECUTOR_STREAM, SUBAGENT_STREAM):
+        for stream_id in (EXECUTOR_STREAM, SUBAGENT_STREAM):
             assert await stream_manager.is_cancelled(stream_id)
-        assert await stream_manager.get_active_stream_id(FAKE_USER.user_id, CONVERSATION) is None
         assert [entry.tag for entry in await ExecutorInbox(CONVERSATION).read()] == [
             AgentTag.BROWSER_STOPPED,
             AgentTag.EXECUTOR_INTERRUPTED,
@@ -100,7 +96,6 @@ class TestStopConversation:
         self, client: AsyncClient, pending_approvals: ApprovalSeams
     ) -> None:
         """Regression: the web Stop cancelled the turn's stream and left approval cards live and the executor running."""
-        await stream_manager.start_stream(TURN, CONVERSATION, FAKE_USER.user_id)
         await seed_live_work(CONVERSATION)
 
         await client.post(STOP_URL)
@@ -123,8 +118,6 @@ class TestStopConversation:
     async def test_the_stop_is_recorded_on_the_wide_event(
         self, client: AsyncClient, no_approvals: ApprovalSeams
     ) -> None:
-        await stream_manager.start_stream(TURN, CONVERSATION, FAKE_USER.user_id)
-
         with patch("app.api.v1.endpoints.conversations.log") as conversation_log:
             await client.post(STOP_URL)
 
@@ -134,9 +127,7 @@ class TestStopConversation:
                 conversation={"operation": "stop", "id": CONVERSATION},
             )
         ]
-        conversation_log.set_ns.assert_called_once_with(
-            "conversation", stopped_streams=1, stopped_work=False
-        )
+        conversation_log.set_ns.assert_called_once_with("conversation", stopped_work=False)
 
     async def test_stopping_an_idle_conversation_is_an_empty_summary(
         self, client: AsyncClient, no_approvals: ApprovalSeams, fake_redis
@@ -145,7 +136,6 @@ class TestStopConversation:
 
         assert response.status_code == 200
         body = response.json()
-        assert body["stream_ids"] == []
         assert body["work"]["executor_stopped"] is False
         assert body["work"]["browser_jobs"] == {}
         assert await fake_redis.keys("*") == []

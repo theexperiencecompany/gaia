@@ -98,12 +98,11 @@ class ChatMessageCancelled(_ChatTurnEnded):
 
 
 class ChatWorkStopped(ServerEvent):
-    """The user stopped a conversation: its live turn and the background work it had running."""
+    """The user stopped a conversation: its reply in flight and the background work it had running."""
 
     event: ClassVar[str] = "chat:work_stopped"
     budget_per_user_day: ClassVar[int] = 20
 
-    streams: int
     executor_stopped: bool
     pending_tasks: int
     subagents: int

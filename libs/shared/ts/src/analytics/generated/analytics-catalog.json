@@ -2540,19 +2540,15 @@
       "class": "ChatWorkStopped",
       "owner": "server",
       "domain": "chat",
-      "description": "The user stopped a conversation: its live turn and the background work it had running.",
+      "description": "The user stopped a conversation: its reply in flight and the background work it had running.",
       "previous_names": [],
       "budget_per_user_day": 20,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "The user stopped a conversation: its live turn and the background work it had running.",
+        "description": "The user stopped a conversation: its reply in flight and the background work it had running.",
         "properties": {
-          "streams": {
-            "title": "Streams",
-            "type": "integer"
-          },
           "executor_stopped": {
             "title": "Executor Stopped",
             "type": "boolean"
@@ -2575,7 +2571,6 @@
           }
         },
         "required": [
-          "streams",
           "executor_stopped",
           "pending_tasks",
           "subagents",

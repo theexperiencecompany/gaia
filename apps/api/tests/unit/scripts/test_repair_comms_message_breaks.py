@@ -71,25 +71,16 @@ def _graph(*, parent_checkpoint: str, created_at: datetime = LONG_AGO) -> MagicM
 async def test_an_idle_thread_is_repaired_on_the_checkpoint_it_read() -> None:
     graph = _graph(parent_checkpoint="cp-read")
 
-    report = await repair_thread(graph, THREAD, apply=True, now=NOW, live=frozenset())
+    report = await repair_thread(graph, THREAD, apply=True, now=NOW)
 
     graph.aupdate_state.assert_awaited_once()
     assert (report.rewritten, report.removed, report.skipped_busy) == (1, 0, False)
 
 
-async def test_a_thread_with_a_turn_in_flight_is_not_written() -> None:
-    graph = _graph(parent_checkpoint="cp-read")
-
-    report = await repair_thread(graph, THREAD, apply=True, now=NOW, live=frozenset({THREAD}))
-
-    graph.aupdate_state.assert_not_awaited()
-    assert report.skipped_busy
-
-
 async def test_a_recently_written_thread_is_not_written() -> None:
     graph = _graph(parent_checkpoint="cp-read", created_at=NOW - timedelta(minutes=1))
 
-    report = await repair_thread(graph, THREAD, apply=True, now=NOW, live=frozenset())
+    report = await repair_thread(graph, THREAD, apply=True, now=NOW)
 
     graph.aupdate_state.assert_not_awaited()
     assert report.skipped_busy
@@ -99,12 +90,12 @@ async def test_a_write_that_landed_on_a_newer_checkpoint_fails_loudly() -> None:
     graph = _graph(parent_checkpoint="cp-someone-else")
 
     with pytest.raises(RuntimeError, match="changed during the repair"):
-        await repair_thread(graph, THREAD, apply=True, now=NOW, live=frozenset())
+        await repair_thread(graph, THREAD, apply=True, now=NOW)
 
 
 async def test_a_dry_run_never_writes() -> None:
     graph = _graph(parent_checkpoint="cp-read")
 
-    await repair_thread(graph, THREAD, apply=False, now=NOW, live=frozenset())
+    await repair_thread(graph, THREAD, apply=False, now=NOW)
 
     graph.aupdate_state.assert_not_awaited()

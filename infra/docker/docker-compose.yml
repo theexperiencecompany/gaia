@@ -81,10 +81,6 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       CHROMADB_HOST: chromadb
       CHROMADB_PORT: "8000"
-      # E2B's watch_dir (inotify) cannot watch the FUSE-mounted JuiceFS
-      # ("cannot watch path on network filesystem"). Use the JuiceFS-native
-      # .accesslog tail instead — the Phase 0 verdict for this stack.
-      ARTIFACT_DETECTION_MODE: accesslog
       # Dev overrides the Infisical/cloud JUICEFS_META_URL_TEMPLATE (redis DB
       # numbers, {shard} = the DB index) with the local jfs-meta-redis service.
       # Prod keeps the cloud meta so the API host and the E2B sandboxes share

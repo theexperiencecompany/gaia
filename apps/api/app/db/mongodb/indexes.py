@@ -298,7 +298,7 @@ CONVERSATION_ENTRY_INDEXES: list[tuple[IndexKeys, IndexOptions]] = [
         [("user_id", 1), ("at", 1)],
         {"name": "user_pinned_at", "partialFilterExpression": {"pinned": True}},
     ),
-    # sweep_unfinished_replies
+    # scripts/migrate_unfinished_legacy_replies.py
     (
         [("at", 1)],
         {"name": "in_progress_at", "partialFilterExpression": {"in_progress": True}},

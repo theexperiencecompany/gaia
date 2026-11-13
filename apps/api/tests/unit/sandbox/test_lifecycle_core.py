@@ -1,4 +1,4 @@
-"""Layer 3 — lifecycle core: create/resume/acquire, mount script, canary, watcher.
+"""Layer 3 — lifecycle core: create/resume/acquire, mount script, canary.
 
 The sibling files cover death-eviction (test_lifecycle_eviction), pause
 scheduling (test_lifecycle_pause) and cached-entry reuse
@@ -40,7 +40,6 @@ from app.constants.sandbox import SANDBOX_LIFETIME_SECONDS
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.sandbox import lifecycle, pool as pool_module
-from app.services.sandbox.artifact_watcher import ArtifactWatcher
 from app.services.sandbox.pool import PooledSandbox, SandboxPool, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for
 from app.services.storage import JuiceFSUnavailable
@@ -72,14 +71,6 @@ def _fake_sandbox(sandbox_id: str = "sbx-1") -> AsyncMock:
     sbx.kill = AsyncMock()
     sbx.beta_pause = AsyncMock()
     return sbx
-
-
-def _fake_watcher(alive: bool = True, stop_error: Exception | None = None) -> ArtifactWatcher:
-    """Duck-typed stand-in: lifecycle only ever calls is_alive() and stop()."""
-    return cast(
-        ArtifactWatcher,
-        SimpleNamespace(is_alive=lambda: alive, stop=AsyncMock(side_effect=stop_error)),
-    )
 
 
 def _sandbox_class(sbx: AsyncMock) -> MagicMock:
@@ -677,55 +668,6 @@ async def test_an_unreachable_control_plane_is_logged_and_a_longer_probe_decides
 
 
 # --------------------------------------------------------------------------
-# watcher lifecycle
-# --------------------------------------------------------------------------
-
-
-async def test_a_watcher_that_fails_to_start_never_blocks_sandbox_acquisition() -> None:
-    # The watcher is a latency optimization; the host-side JuiceFS listing is
-    # authoritative. Letting its failure escape would make every tool call fail
-    # whenever envd's stream setup hiccups.
-    entry = PooledSandbox(sandbox=_fake_sandbox(), last_canary_ts="x")
-    with patch.object(
-        lifecycle, "start_watcher_for", AsyncMock(side_effect=RuntimeError("envd stream refused"))
-    ):
-        await lifecycle._ensure_watcher("u1", entry)
-    assert entry.watcher is None
-
-
-async def test_a_live_watcher_is_not_restarted_on_every_acquire() -> None:
-    # Restarting leaks the previous HTTP/2 stream to envd and duplicates every
-    # artifact event in the chat UI.
-    watcher = _fake_watcher(alive=True)
-    entry = PooledSandbox(sandbox=_fake_sandbox(), last_canary_ts="x", watcher=watcher)
-    start = AsyncMock(return_value=_fake_watcher())
-    with patch.object(lifecycle, "start_watcher_for", start):
-        await lifecycle._ensure_watcher("u1", entry)
-    start.assert_not_awaited()
-    assert entry.watcher is watcher
-
-
-async def test_a_dead_watcher_is_replaced_so_artifacts_keep_surfacing() -> None:
-    # A watcher whose stream died after a pause/resume reports is_alive() False;
-    # keeping it means agent-written files never appear in the UI again.
-    dead = _fake_watcher(alive=False)
-    fresh = _fake_watcher(alive=True)
-    entry = PooledSandbox(sandbox=_fake_sandbox(), last_canary_ts="x", watcher=dead)
-    with patch.object(lifecycle, "start_watcher_for", AsyncMock(return_value=fresh)):
-        await lifecycle._ensure_watcher("u1", entry)
-    assert entry.watcher is fresh
-
-
-async def test_stopping_a_watcher_clears_the_handle_even_when_stop_raises() -> None:
-    # A stale handle left behind would make the next _ensure_watcher believe a
-    # watcher is running (is_alive on a half-stopped watcher) and never reopen.
-    watcher = _fake_watcher(stop_error=RuntimeError("stream already gone"))
-    entry = PooledSandbox(sandbox=_fake_sandbox(), last_canary_ts="x", watcher=watcher)
-    await lifecycle._stop_watcher(entry)
-    assert entry.watcher is None
-
-
-# --------------------------------------------------------------------------
 # _seed_user_subtrees
 # --------------------------------------------------------------------------
 
@@ -864,7 +806,6 @@ def _acquire_patches(sbx: AsyncMock, repo: AsyncMock, *, lab: bool = False) -> l
         patch.object(lifecycle, "enforce_rate_limit", AsyncMock(return_value={})),
         patch.object(lifecycle, "ensure_user_workspace", AsyncMock()),
         patch.object(lifecycle, "ensure_user_skills_dir", AsyncMock()),
-        patch.object(lifecycle, "start_watcher_for", AsyncMock(return_value=_fake_watcher())),
         patch.object(lifecycle, "_run_mount_script", AsyncMock()),
         patch.object(lifecycle, "report_sandbox_event", AsyncMock()),
     ]
@@ -1455,12 +1396,11 @@ def _idle_repo(
     return repo
 
 
-async def test_an_idle_sandbox_is_paused_its_watcher_stopped_and_its_handle_dropped() -> None:
-    # Pausing with the watcher attached leaks its envd stream; a surviving
-    # idle-pause task would fire again; a pooled handle would point at a frozen sandbox.
+async def test_an_idle_sandbox_is_paused_and_its_handle_dropped() -> None:
+    # A surviving idle-pause task would fire again; a pooled handle would point at a frozen sandbox.
     uid = _uid()
     sbx = _fake_sandbox("sbx-1")
-    entry = PooledSandbox(sandbox=sbx, last_canary_ts="x", watcher=_fake_watcher())
+    entry = PooledSandbox(sandbox=sbx, last_canary_ts="x")
     entry.pause_task = asyncio.create_task(asyncio.sleep(30))
     pending = entry.pause_task
     pool = get_sandbox_pool()
@@ -1476,7 +1416,6 @@ async def test_an_idle_sandbox_is_paused_its_watcher_stopped_and_its_handle_drop
     assert repo.get_for_user.await_args_list == [call(uid), call(uid)]
     sbx.beta_pause.assert_awaited_once()
     repo.mark_paused.assert_awaited_once_with(uid, timestamp=NOW)
-    assert entry.watcher is None
     assert pending.done()
     assert get_sandbox_pool().get(uid) is None
 
@@ -1877,12 +1816,10 @@ async def test_a_renew_resumes_on_the_recorded_shard_and_restamps_the_users_reco
         return_value=_doc("sbx-1", shard_id=3, template_id="gaia-coder-8gb")
     )
     ensure = AsyncMock()
-    watcher = AsyncMock(return_value=_fake_watcher())
     patches = [
         *patches,
         patch.object(lifecycle.settings, "JUICEFS_META_URL_TEMPLATE", "postgres://db/jfs{shard}"),
         patch.object(lifecycle, "_ensure_mounted", ensure),
-        patch.object(lifecycle, "start_watcher_for", watcher),
         patch.object(lifecycle, "_now", return_value=NOW),
     ]
     for p in patches:
@@ -1893,7 +1830,6 @@ async def test_a_renew_resumes_on_the_recorded_shard_and_restamps_the_users_reco
         assert get_sandbox_pool().get(uid).timeout_refreshed_at >= renew_started
         repo.get_for_user.assert_awaited_once_with(uid)
         assert ensure.await_args == call(resumed, lifecycle._mount_env(uid, 3))
-        assert watcher.await_args == call(uid, resumed)
         repo.touch_last_used.assert_awaited_once_with(uid, timestamp=NOW)
     finally:
         for p in reversed(patches):

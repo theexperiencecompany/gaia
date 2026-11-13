@@ -1168,7 +1168,7 @@ export interface paths {
         put?: never;
         /**
          * Stop Conversation Endpoint
-         * @description Stop everything running for a conversation: its live turn, executor, subagents, approvals and browser job.
+         * @description Stop everything running for a conversation: its reply in flight, executor, subagents, approvals and browser job.
          */
         post: operations["conversations_stop_conversation_endpoint"];
         delete?: never;
@@ -7869,7 +7869,7 @@ export interface components {
         ConversationSource: "web" | "mobile" | "desktop" | "telegram" | "discord" | "slack" | "whatsapp" | "imessage" | "workflow_system" | "background";
         /**
          * ConversationStopResponse
-         * @description A conversation-level Stop: the live streams it cancelled and the work it stopped.
+         * @description A conversation-level Stop: the work it stopped.
          */
         ConversationStopResponse: {
             /**
@@ -7877,11 +7877,6 @@ export interface components {
              * @description The conversation stopped; None when a bot chat had none yet.
              */
             conversation_id: string | null;
-            /**
-             * Stream Ids
-             * @description Live streams cancelled.
-             */
-            stream_ids: string[];
             work: components["schemas"]["WorkCancelled"];
         };
         /**

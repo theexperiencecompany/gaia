@@ -4557,7 +4557,7 @@
         "type": "string"
       },
       "ConversationStopResponse": {
-        "description": "A conversation-level Stop: the live streams it cancelled and the work it stopped.",
+        "description": "A conversation-level Stop: the work it stopped.",
         "properties": {
           "conversation_id": {
             "anyOf": [
@@ -4571,21 +4571,12 @@
             "description": "The conversation stopped; None when a bot chat had none yet.",
             "title": "Conversation Id"
           },
-          "stream_ids": {
-            "description": "Live streams cancelled.",
-            "items": {
-              "type": "string"
-            },
-            "title": "Stream Ids",
-            "type": "array"
-          },
           "work": {
             "$ref": "#/components/schemas/WorkCancelled"
           }
         },
         "required": [
           "conversation_id",
-          "stream_ids",
           "work"
         ],
         "title": "ConversationStopResponse",
@@ -28586,7 +28577,7 @@
     },
     "/api/v1/conversations/{conversation_id}/stop": {
       "post": {
-        "description": "Stop everything running for a conversation: its live turn, executor, subagents, approvals and browser job.",
+        "description": "Stop everything running for a conversation: its reply in flight, executor, subagents, approvals and browser job.",
         "operationId": "conversations_stop_conversation_endpoint",
         "parameters": [
           {

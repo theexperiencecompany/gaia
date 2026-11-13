@@ -1,170 +1,83 @@
-"""Layer 2 — artifact event publishing (write/edit/bash share one owner).
-
-Mocks only publish_artifact_event (the Redis wire boundary) and asserts on
-the actual event dict the production code constructs — path stripping, the
-inline-body rule, and that write and bash produce IDENTICAL events for the
-same logical file (the #8 unification).
-"""
+"""The artifact card the coding tools put on their run: one owner of its shape for write, edit and bash."""
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from app.agents.tools.coding import _artifacts
+from app.agents.tools.coding import bash_tool
 from app.agents.tools.coding._artifacts import (
     WrittenFile,
     publish_artifact,
     publish_artifact_write,
 )
-from app.agents.workspace.paths import INLINE_ARTIFACT_MAX_BYTES, MountRole
+from app.agents.workspace.paths import MountRole
+
+WRITER = "app.agents.tools.coding._context.current_stream_writer"
+MTIME = 1_700_000_000.0
 
 
-def _capture() -> tuple[AsyncMock, list]:
-    """Patch publish_artifact_event; return (mock, captured_events)."""
-    events: list = []
-    mock = AsyncMock(side_effect=lambda uid, ev: events.append((uid, ev)))
-    return mock, events
-
-
-async def test_publish_artifact_builds_upsert_event_with_content_type() -> None:
-    mock, events = _capture()
-    with patch.object(_artifacts, "publish_artifact_event", mock):
-        await publish_artifact("u1", "c1", "report.md", 12, 1_700_000_000.0, "hello")
-
-    assert len(events) == 1
-    uid, ev = events[0]
-    assert uid == "u1"
-    assert ev["event"] == "upsert"
-    assert ev["session_id"] == "c1"
-    assert ev["path"] == "report.md"
-    assert ev["size_bytes"] == 12
-    # NOSONAR python:S1244 — deterministic epoch passed in must round-trip verbatim
-    assert ev["mtime"] == 1_700_000_000.0  # NOSONAR python:S1244
-    assert ev["content_type"] == "text/markdown"
-    assert ev["body"] == "hello"
-
-
-async def test_publish_artifact_puts_the_file_on_the_run_as_a_card_without_its_body() -> None:
+def _cards(emit: object) -> list[dict[str, object]]:
     written: list[dict[str, object]] = []
-    with (
-        patch.object(_artifacts, "publish_artifact_event", AsyncMock()),
-        patch(
-            "app.agents.tools.coding._context.current_stream_writer", return_value=written.append
-        ),
-    ):
-        await publish_artifact("u1", "c1", "report.md", 12, 1_700_000_000.0, "hello")
+    with patch(WRITER, return_value=written.append):
+        emit()  # type: ignore[operator]
+    return written
 
-    assert written == [
+
+def test_publish_artifact_puts_the_file_on_the_run_as_a_card() -> None:
+    cards = _cards(lambda: publish_artifact("c1", "report.md", 12, MTIME))
+
+    assert cards == [
         {
             "artifact_data": {
                 "event": "upsert",
                 "session_id": "c1",
                 "path": "report.md",
                 "size_bytes": 12,
-                "mtime": 1_700_000_000.0,
+                "mtime": MTIME,
                 "content_type": "text/markdown",
             }
         }
     ]
 
 
-async def test_publish_artifact_never_raises_into_caller() -> None:
-    # Best-effort: a Redis failure must not break the tool.
-    mock = AsyncMock(side_effect=RuntimeError("redis down"))
-    with patch.object(_artifacts, "publish_artifact_event", mock):
-        await publish_artifact("u1", "c1", "x.md", 1, 1.0, None)  # must not raise
+def test_a_write_under_artifacts_is_carded_relative_to_the_artifacts_root() -> None:
+    written = WrittenFile(
+        "u1", MountRole.ARTIFACTS, "c1", "/workspace/sessions/c1/artifacts/a/b.md"
+    )
+
+    (card,) = _cards(lambda: publish_artifact_write(written, 3, MTIME))
+
+    assert card["artifact_data"]["path"] == "a/b.md"  # type: ignore[index]
 
 
-async def test_write_path_strips_artifacts_prefix_to_relative() -> None:
-    mock, events = _capture()
-    with patch.object(_artifacts, "publish_artifact_event", mock):
-        await publish_artifact_write(
-            WrittenFile(
-                "u1", MountRole.ARTIFACTS, "c1", "/workspace/sessions/c1/artifacts/sub/deep.txt"
-            ),
-            "data",
-            4,
-            1.0,
+def test_a_write_outside_artifacts_puts_no_card() -> None:
+    written = WrittenFile("u1", MountRole.SCRATCH, "c1", "/workspace/sessions/c1/scratch/x.md")
+
+    assert _cards(lambda: publish_artifact_write(written, 3, MTIME)) == []
+
+
+def test_write_and_bash_put_the_same_card_for_the_same_file() -> None:
+    written = WrittenFile("u1", MountRole.ARTIFACTS, "c1", "/workspace/sessions/c1/artifacts/r.md")
+
+    by_write = _cards(lambda: publish_artifact_write(written, 5, MTIME))
+    by_bash = _cards(lambda: publish_artifact("c1", "r.md", 5, MTIME))
+
+    assert by_write == by_bash
+
+
+async def test_bash_cards_every_file_find_lists_in_one_round_trip() -> None:
+    sandbox = SimpleNamespace(
+        commands=SimpleNamespace(
+            run=AsyncMock(
+                return_value=SimpleNamespace(stdout="a.md\x005\x001.5\x00b/c.txt\x0010\x00")
+            )
         )
-    _, ev = events[0]
-    assert ev["path"] == "sub/deep.txt", "must publish path relative to artifacts/ root"
+    )
+    written: list[dict[str, object]] = []
+    with patch(WRITER, return_value=written.append):
+        await bash_tool._publish_artifacts(sandbox, "c1")
 
-
-async def test_write_path_noop_for_non_artifact_roles() -> None:
-    mock, events = _capture()
-    with patch.object(_artifacts, "publish_artifact_event", mock):
-        await publish_artifact_write(
-            WrittenFile("u1", MountRole.SCRATCH, "c1", "/workspace/sessions/c1/scratch/x"),
-            "d",
-            1,
-            1.0,
-        )
-    assert events == [], "scratch writes must not publish artifact events"
-
-
-async def test_write_path_noop_when_conv_missing() -> None:
-    mock, events = _capture()
-    with patch.object(_artifacts, "publish_artifact_event", mock):
-        await publish_artifact_write(
-            WrittenFile("u1", MountRole.ARTIFACTS, None, "/workspace/x"), "d", 1, 1.0
-        )
-    assert events == []
-
-
-async def test_small_textual_file_is_inlined() -> None:
-    mock, events = _capture()
-    with patch.object(_artifacts, "publish_artifact_event", mock):
-        await publish_artifact_write(
-            WrittenFile("u1", MountRole.ARTIFACTS, "c1", "/workspace/sessions/c1/artifacts/a.md"),
-            "tiny",
-            4,
-            1.0,
-        )
-    _, ev = events[0]
-    assert ev.get("body") == "tiny"
-
-
-async def test_large_textual_file_is_not_inlined() -> None:
-    mock, events = _capture()
-    big = INLINE_ARTIFACT_MAX_BYTES + 1
-    with patch.object(_artifacts, "publish_artifact_event", mock):
-        await publish_artifact_write(
-            WrittenFile("u1", MountRole.ARTIFACTS, "c1", "/workspace/sessions/c1/artifacts/a.md"),
-            "x" * big,
-            big,
-            1.0,
-        )
-    _, ev = events[0]
-    assert "body" not in ev, "files over the inline cap must not carry a body"
-
-
-async def test_binary_content_type_is_not_inlined() -> None:
-    mock, events = _capture()
-    with patch.object(_artifacts, "publish_artifact_event", mock):
-        await publish_artifact_write(
-            WrittenFile(
-                "u1", MountRole.ARTIFACTS, "c1", "/workspace/sessions/c1/artifacts/img.png"
-            ),
-            "rawbytes",
-            8,
-            1.0,
-        )
-    _, ev = events[0]
-    assert "body" not in ev, "non-inlineable content-type must not carry a body"
-
-
-async def test_write_and_bash_produce_identical_event_for_same_file() -> None:
-    # The #8 contract: write (via publish_artifact_write) and bash (via the core
-    # publish_artifact with the same rel/size/mtime/inline) must emit byte-equal
-    # events, so the dedup signature coalesces them.
-    mock, events = _capture()
-    with patch.object(_artifacts, "publish_artifact_event", mock):
-        await publish_artifact_write(
-            WrittenFile("u1", MountRole.ARTIFACTS, "c1", "/workspace/sessions/c1/artifacts/r.md"),
-            "hello",
-            5,
-            1_700_000_000.0,
-        )
-        await publish_artifact("u1", "c1", "r.md", 5, 1_700_000_000.0, "hello")
-
-    assert events[0] == events[1], "write-path and bash-path events must be identical"
+    sandbox.commands.run.assert_awaited_once()
+    # The trailing record is cut short (no mtime), so only the complete one is carded.
+    assert [card["artifact_data"]["path"] for card in written] == ["a.md"]  # type: ignore[index]
