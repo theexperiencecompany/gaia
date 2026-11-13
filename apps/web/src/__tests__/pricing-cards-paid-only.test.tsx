@@ -226,7 +226,11 @@ describe("a monthly and a yearly row in different currencies", () => {
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
     mockPlans = [{ ...EUR_PRO_MONTHLY, currency: "USD" }, EUR_PRO_YEARLY];
-    render(<BillingPeriodTabs isYearly={false} onChange={vi.fn()} />);
+    render(
+      <BillingPeriodTabs isYearly={false} onChange={vi.fn()}>
+        cards
+      </BillingPeriodTabs>,
+    );
 
     expect(screen.queryByText(/months? free|Save/)).toBeNull();
     expect(error).toHaveBeenCalled();

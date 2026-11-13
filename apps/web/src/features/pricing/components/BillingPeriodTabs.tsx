@@ -1,6 +1,7 @@
 "use client";
 
 import { Chip, Tabs } from "@heroui/react";
+import type { ReactNode } from "react";
 import { tabsVariants } from "@/components/shared/tabsVariants";
 import type { Plan } from "../api/pricingApi";
 import {
@@ -13,6 +14,8 @@ interface BillingPeriodTabsProps {
   onChange: (isYearly: boolean) => void;
   /** Server-fetched plans, so the chip renders with the page. */
   initialPlans?: Plan[];
+  /** The pricing cards: the panel the selected period controls. */
+  children: ReactNode;
 }
 
 /** "2 months free" reads as a gift; "Save 17%" reads as a sum. Falls back to
@@ -21,6 +24,7 @@ const tabsStyles = tabsVariants({
   variant: "solid",
   size: "lg",
   shape: "pill",
+  panel: "flush",
 });
 
 function annualSavingsLabel({ percent, monthsFree }: AnnualSavings): string {
@@ -36,13 +40,17 @@ export function BillingPeriodTabs({
   isYearly,
   onChange,
   initialPlans,
+  children,
 }: BillingPeriodTabsProps) {
   const savings = useAnnualSavings({ initialPlans });
+  const period = isYearly ? "yearly" : "monthly";
 
   return (
     <Tabs
-      className={tabsStyles.base()}
-      selectedKey={isYearly ? "yearly" : "monthly"}
+      className={tabsStyles.base({
+        class: "flex w-full flex-col items-center gap-6",
+      })}
+      selectedKey={period}
       onSelectionChange={(key) => onChange(key === "yearly")}
       aria-label="Billing period"
     >
@@ -65,6 +73,10 @@ export function BillingPeriodTabs({
           </Tabs.Tab>
         </Tabs.List>
       </Tabs.ListContainer>
+      {/* One panel whose id follows the selection, so the cards stay mounted across a switch. */}
+      <Tabs.Panel id={period} className={tabsStyles.tabPanel()}>
+        {children}
+      </Tabs.Panel>
     </Tabs>
   );
 }

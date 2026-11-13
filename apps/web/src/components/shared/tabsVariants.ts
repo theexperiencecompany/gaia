@@ -4,7 +4,8 @@ import { tv } from "tailwind-variants";
  * v2's tabs on v3's Tabs parts, slot names as in HeroUI's own tabsVariants.
  * variant styles the list, indicator and panel (solid fills the list; light and
  * underlined do not); size styles each tab; shape pill rounds list, tabs and
- * indicator fully; color accent puts the selected tab on the accent.
+ * indicator fully; color accent puts the selected tab on the accent; panel
+ * flush drops the panel inset for content that lays itself out.
  */
 export const tabsVariants = tv({
   slots: { base: "", tabList: "", tab: "", tabIndicator: "", tabPanel: "" },
@@ -61,6 +62,15 @@ export const tabsVariants = tv({
         tabIndicator: "rounded-full",
       },
     },
+    panel: {
+      default: {},
+      flush: { tabPanel: "p-0" },
+    },
   },
-  defaultVariants: { size: "md", shape: "default", color: "default" },
+  defaultVariants: {
+    size: "md",
+    shape: "default",
+    color: "default",
+    panel: "default",
+  },
 });
