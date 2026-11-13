@@ -5,6 +5,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.middleware.client_type import request_client_source
 from app.constants.chat import CONVERSATION_READ_LIMIT
 from app.constants.general import MAX_PAGE_NUMBER
+from app.core.shutdown_signal import shutdown_requested
 from app.decorators import tiered_rate_limit
 from app.models.chat_models import (
     BatchSyncRequest,
@@ -224,7 +225,12 @@ async def conversation_events_endpoint(
     )
     await require_owned_conversation(conversation_id, user.user_id)
     lines = event_lines(
-        runtime_ports().log, conversation_id, user.user_id, after, request.is_disconnected
+        runtime_ports().log,
+        conversation_id,
+        user.user_id,
+        after,
+        request.is_disconnected,
+        shutdown_requested(),
     )
     return StreamingResponse(
         lines,

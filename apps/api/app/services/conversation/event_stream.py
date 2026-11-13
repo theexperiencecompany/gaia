@@ -5,7 +5,8 @@ reader may replay a frame it already applied; it must never miss one. The stream
 capped, and anything older than what it retains is replayed from the log.
 """
 
-from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+import asyncio
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass
 
 from pydantic import BaseModel, TypeAdapter
@@ -150,7 +151,7 @@ def _log_frames(entries: Sequence[LoggedEntry], state: ConversationState) -> lis
 
 async def follow(
     log: ConversationLog, conversation_id: str, user_id: str, after: str
-) -> AsyncIterator[StreamedFrame | None]:
+) -> AsyncGenerator[StreamedFrame | None]:
     """Yield every frame after the cursor once, then follow live; after is a stream id or a seq.
 
     None follows every read that drained or timed out, so the caller can check its client is still there.
@@ -225,9 +226,14 @@ async def event_lines(
     user_id: str,
     after: str,
     disconnected: Callable[[], Awaitable[bool]],
+    stopping: asyncio.Event,
 ) -> AsyncIterator[str]:
-    """Render the conversation's frames as SSE until the client goes; a stream frame carries its id to resume after."""
-    async for streamed in follow(log, conversation_id, user_id, after):
+    """Render the conversation's frames as SSE until the client goes or the process stops.
+
+    A stream frame carries its id to resume after, so a client cut off by a stopping process
+    resumes on the next one; the keepalive is an SSE comment, never a data line.
+    """
+    async for streamed in _until(stopping, follow(log, conversation_id, user_id, after)):
         if await disconnected():
             return
         if streamed is None:
@@ -236,3 +242,28 @@ async def event_lines(
         event = ConversationEvent(stream_id=streamed.stream_id, frame=streamed.frame)
         cursor = f"id: {streamed.stream_id}\n" if streamed.stream_id is not None else ""
         yield f"{cursor}data: {event.model_dump_json()}\n\n"
+
+
+async def _until(
+    stopping: asyncio.Event, frames: AsyncGenerator[StreamedFrame | None]
+) -> AsyncIterator[StreamedFrame | None]:
+    """Yield frames until stopping is set, cutting off the read it is blocked in."""
+    stopped = asyncio.ensure_future(stopping.wait())
+    try:
+        while True:
+            following = asyncio.ensure_future(anext(frames))
+            await asyncio.wait({following, stopped}, return_when=asyncio.FIRST_COMPLETED)
+            if not following.done():
+                following.cancel()
+                await asyncio.wait({following})
+                if not following.cancelled():
+                    following.result()
+                return
+            try:
+                streamed = following.result()
+            except StopAsyncIteration:
+                return
+            yield streamed
+    finally:
+        stopped.cancel()
+        await frames.aclose()

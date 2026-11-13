@@ -16,6 +16,7 @@ from app.core.runtime_config_subscriber import (
     start_runtime_config_subscriber,
     stop_runtime_config_subscriber,
 )
+from app.core.shutdown_signal import install_shutdown_signal, remove_shutdown_signal
 from app.services.conversation.composition import (
     build_runtime_ports,
     drain_conversation_steps,
@@ -56,6 +57,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
                     f"{LogTag.STARTUP} PostHog not configured — analytics captures will no-op",
                     missing_var=missing_var,
                 )
+            install_shutdown_signal()
             await unified_startup("main_app")
             install_runtime_ports(build_runtime_ports())
             if settings.POSTHOG_PROJECT_TOKEN and settings.POSTHOG_HOST:
@@ -72,6 +74,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     finally:
         # First, while Mongo and Redis are still up: running steps settle, none start.
         await drain_conversation_steps()
+        remove_shutdown_signal()
         await stop_up_listener()
         await stop_revoke_listener()
         await stop_runtime_config_subscriber()

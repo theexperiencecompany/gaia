@@ -11,6 +11,7 @@ from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from functools import partial
+import json
 import time
 from typing import Any, Protocol, TypeVar, cast
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -677,6 +678,51 @@ async def test_a_client_resuming_from_a_seq_replays_what_it_missed(
     resumed = [streamed.frame for streamed in await _frames_until_settled(rig)]
     entries = [frame.entry.kind.value for frame in resumed if isinstance(frame, EntryFrame)]
     assert entries[:3] == ["user_message", "reply", "reply_settled"]
+
+
+async def _never_disconnected() -> bool:
+    return False
+
+
+@pytest.mark.service
+async def test_the_events_stream_sends_only_json_data_lines_and_comment_keepalives(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated("hello there"))
+    await rig.send("m1", "hi")
+    await rig.settle()
+    lines = event_stream.event_lines(
+        rig.ports.log, rig.conversation_id, rig.user_id, "0", _never_disconnected, asyncio.Event()
+    )
+    blocks: list[str] = []
+    with patch.object(event_stream, "read_frames", partial(read_frames, block_ms=1)):
+        async for block in lines:
+            blocks.append(block)
+            if block.startswith(":"):
+                break
+    await lines.aclose()
+    data = [line for block in blocks for line in block.splitlines() if line.startswith("data:")]
+    assert blocks[-1] == ": keepalive\n\n"
+    assert data and all(json.loads(line.removeprefix("data: ")) for line in data)
+
+
+@pytest.mark.service
+async def test_an_open_events_stream_ends_at_once_when_the_process_is_stopping(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated("hello there"))
+    stopping = asyncio.Event()
+    lines = event_stream.event_lines(
+        rig.ports.log, rig.conversation_id, rig.user_id, "0", _never_disconnected, stopping
+    )
+    await anext(lines)
+    # The state frame is sent; the next read blocks in XREAD for EVENTS_BLOCK_MS.
+    waiting = asyncio.ensure_future(anext(lines))
+    await asyncio.sleep(0.2)
+    stopping.set()
+    async with asyncio.timeout(1):
+        with pytest.raises(StopAsyncIteration):
+            await waiting
 
 
 def _settles(frame: OutputFrame) -> bool:
