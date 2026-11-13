@@ -131,14 +131,6 @@ async def latest_frame_id(conversation_id: str) -> str:
     return newest[0][0] if newest else EVENTS_STREAM_START
 
 
-async def replay_from_log(
-    log: ConversationLog, conversation_id: str, user_id: str, after_seq: int
-) -> list[StreamedFrame]:
-    """Return the entries after after_seq and the current state, as the frames that announced them."""
-    entries, state = await _log_after(log, conversation_id, user_id, after_seq)
-    return _log_frames(entries, state)
-
-
 async def _log_after(
     log: ConversationLog, conversation_id: str, user_id: str, after_seq: int
 ) -> tuple[Sequence[LoggedEntry], ConversationState]:

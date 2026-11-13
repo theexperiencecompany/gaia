@@ -20,6 +20,7 @@ from httpx import AsyncClient
 import pytest
 
 from app.models.conversation_frame_models import StateFrame
+from app.models.conversation_log_models import DisplayState
 from app.models.conversation_models import (
     ConversationActionResponse,
     ConversationEntry,
@@ -143,7 +144,7 @@ class TestGetConversation:
                 "conversation_id": "conv_123",
                 "user_id": "user_1",
                 "metadata": {"legacy": True},
-                "state": StateFrame(head=0, display="idle", work=()),
+                "state": StateFrame(head=0, display=DisplayState.IDLE, work=()),
             }
         )
         with (

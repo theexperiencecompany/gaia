@@ -27,7 +27,7 @@ from app.agents.core.background.todo_run import (
 )
 from app.agents.llm.lane import AgentRole
 from app.constants.log_tags import LogTag
-from app.db.repositories.conversation_log import EMPTY_LOG_STATE
+from app.db.repositories.conversation_entries import EMPTY_LOG_STATE
 from app.models.conversation_log_models import (
     ConversationState,
     LiveWork,

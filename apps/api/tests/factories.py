@@ -1,5 +1,6 @@
 """Test data factories for GAIA API tests."""
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import MagicMock
@@ -11,6 +12,9 @@ import composio_client
 from composio_client.types.tool_list_response import ItemDeprecated, ItemToolkit
 import httpx
 
+from app.models.conversation_frame_models import EntryFrame, StateFrame
+from app.models.conversation_log_models import DisplayState, Entry
+from app.models.conversation_models import LoadedConversation
 from app.models.user_models import AuthenticatedUser
 
 
@@ -34,6 +38,26 @@ def make_authenticated_user(**overrides: Any) -> AuthenticatedUser:
     }
     defaults.update(overrides)
     return AuthenticatedUser(**defaults)
+
+
+def make_loaded_conversation(
+    conversation_id: str,
+    user_id: str,
+    entries: Sequence[Entry],
+    *,
+    created_at: str = "2026-01-01T10:00:00+00:00",
+) -> LoadedConversation:
+    """Build a conversation as a load returns it: its entries in log order under a settled head."""
+    return LoadedConversation(
+        user_id=user_id,
+        conversation_id=conversation_id,
+        createdAt=created_at,
+        entries=[
+            EntryFrame(seq=seq, at=datetime(2026, 1, 1, tzinfo=UTC), entry=entry)
+            for seq, entry in enumerate(entries, 1)
+        ],
+        state=StateFrame(head=len(entries), display=DisplayState.IDLE, work=()),
+    )
 
 
 def make_user(**overrides) -> dict:

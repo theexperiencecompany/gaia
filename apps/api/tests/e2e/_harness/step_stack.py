@@ -14,9 +14,7 @@ from typing import Any, TypeVar
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.db.repositories.conversation_log import conversation_log_repository
-from app.models.conversation_frame_models import EntryFrame
 from app.models.conversation_log_models import Entry
-from app.services.conversation.event_stream import replay_from_log
 from app.services.conversation.mongo_log import MongoConversationLog
 from tests.e2e._harness.graph_run import StreamingScriptedModel
 
@@ -71,8 +69,7 @@ _E = TypeVar("_E")
 async def replayed(conversation_id: str, user_id: str) -> list[Entry]:
     """Return what a device connecting to the conversation's events receives: the log's replay."""
     log = MongoConversationLog(conversation_log_repository, lambda: datetime.now(UTC))
-    frames = await replay_from_log(log, conversation_id, user_id, 0)
-    return [frame.frame.entry for frame in frames if isinstance(frame.frame, EntryFrame)]
+    return [logged.entry for logged in await log.read_after(conversation_id, user_id, 0)]
 
 
 def entries_of(shown: list[Entry], kind: type[_E]) -> list[_E]:

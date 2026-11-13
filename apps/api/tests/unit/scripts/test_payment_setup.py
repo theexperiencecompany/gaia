@@ -18,8 +18,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from dodopayments.types.price import OneTimePrice, RecurringPrice
 import pytest
 from scripts.payment_setup import (
-    ProductPrice,
-    build_plan_catalogue,
     catalogue_fields,
     deactivate_free_plan,
     fetch_product_price,
@@ -27,6 +25,7 @@ from scripts.payment_setup import (
     reconcile_plan,
     setup_payment_plans,
 )
+from scripts.plan_catalogue import ProductPrice, build_plan_catalogue
 
 from app.models.payment_models import PlanDocument, PlanDuration, PlanTier
 

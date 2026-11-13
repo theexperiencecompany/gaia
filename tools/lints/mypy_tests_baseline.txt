@@ -27,10 +27,6 @@ apps/api/tests/e2e/test_executor_channel_matrix.py	arg-type
 apps/api/tests/e2e/test_executor_channel_matrix.py	return-value
 apps/api/tests/e2e/test_executor_interaction_scale.py	return-value
 apps/api/tests/e2e/test_executor_interjection.py	return-value
-apps/api/tests/e2e/test_hil_spawn_e2e.py	arg-type
-apps/api/tests/e2e/test_hil_spawn_e2e.py	attr-defined
-apps/api/tests/e2e/test_hil_spawn_e2e.py	call-overload
-apps/api/tests/e2e/test_hil_spawn_e2e.py	var-annotated
 apps/api/tests/e2e/test_memory_context_e2e.py	arg-type
 apps/api/tests/e2e/test_memory_context_e2e.py	attr-defined
 apps/api/tests/e2e/test_reminder_dispatch_e2e.py	arg-type
@@ -169,7 +165,6 @@ apps/api/tests/unit/decorators/test_timing.py	var-annotated
 apps/api/tests/unit/evals/test_capability_canvas_activity.py	arg-type
 apps/api/tests/unit/evals/test_infra_failure_not_graded.py	attr-defined
 apps/api/tests/unit/evals/test_infra_fault_classification.py	attr-defined
-apps/api/tests/unit/evals/test_prompt_contracts_wiring.py	attr-defined
 apps/api/tests/unit/evals/test_token_attribution.py	arg-type
 apps/api/tests/unit/evals/test_tool_call_any_of_gate.py	arg-type
 apps/api/tests/unit/evals/test_tool_call_args_gate.py	arg-type
@@ -179,10 +174,6 @@ apps/api/tests/unit/memory/pg_store/test_memories.py	arg-type
 apps/api/tests/unit/memory/test_chroma_store.py	abstract
 apps/api/tests/unit/memory/test_consolidation.py	attr-defined
 apps/api/tests/unit/memory/test_consolidation.py	misc
-apps/api/tests/unit/memory/test_embeddings.py	attr-defined
-apps/api/tests/unit/memory/test_embeddings.py	func-returns-value
-apps/api/tests/unit/memory/test_embeddings.py	misc
-apps/api/tests/unit/memory/test_embeddings.py	valid-type
 apps/api/tests/unit/memory/test_ingestion.py	arg-type
 apps/api/tests/unit/memory/test_ingestion.py	attr-defined
 apps/api/tests/unit/memory/test_ingestion.py	typeddict-item

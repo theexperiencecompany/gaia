@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 import uuid
 
@@ -166,6 +166,10 @@ async def test_of_many_concurrent_claimers_exactly_one_wins(
     won = [claim for claim in claims if claim is not None]
     assert len(won) == 1
     assert (await log.hint(conversation, UID)).epoch == won[0].epoch
+
+
+async def _set_hint_epoch(redis: Redis, hint_key: str, epoch: int) -> None:
+    await cast(Awaitable[int], redis.hset(hint_key, "epoch", str(epoch)))
 
 
 class _ReadThenPause(ConversationLogRepository):
@@ -366,7 +370,7 @@ async def test_a_stale_hint_epoch_never_takes_a_live_step_and_loses_no_entry(
     await log.append(conversation, UID, user("u1"))
     hint_key = f"conv:hint:{UID}:{conversation}"
     for stale in (holder.epoch, holder.epoch - 1, holder.epoch + 5):
-        await redis.hset(hint_key, "epoch", str(stale))
+        await _set_hint_epoch(redis, hint_key, stale)
         assert await log.claim(conversation, UID) is None
         assert await redis.exists(f"conv:alive:{UID}:{conversation}:{stale + 1}") == (
             stale + 1 == holder.epoch
@@ -374,7 +378,7 @@ async def test_a_stale_hint_epoch_never_takes_a_live_step_and_loses_no_entry(
         head = await raw_collection.find_one({"conversation_id": conversation})
         assert (head["runner_epoch"], head["runner"]["epoch"]) == (holder.epoch, holder.epoch)
     await redis.delete(f"conv:alive:{UID}:{conversation}:{holder.epoch}")
-    await redis.hset(hint_key, "epoch", str(holder.epoch - 1))
+    await _set_hint_epoch(redis, hint_key, holder.epoch - 1)
     taker = await log.claim(conversation, UID)
     assert taker is not None and (taker.epoch, taker.took_over) == (holder.epoch + 1, True)
     with pytest.raises(ClaimLost):

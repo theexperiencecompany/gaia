@@ -16,16 +16,19 @@ and hand-made pause; this proves it with the real gate and Postgres checkpoint.
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 from bson import ObjectId
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.language_models import LanguageModelLike
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool as make_tool
+from langchain_core.tools import BaseTool, StructuredTool, tool as make_tool
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, START, MessagesState, StateGraph
-from langgraph.types import Command
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Command, StreamMode
 import pytest
 
 from app.agents.core.subagents import spawn_agent
@@ -36,6 +39,7 @@ from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.hil import HIL_RESUME_CONFIG_KEY, LANGGRAPH_INTERRUPT_KEY
+from app.models.agent_models import AnyAgentMiddleware
 from app.models.hil_models import HILPreferences
 from app.services.hil.approvals_store import list_pending_for_conversation, mark_decided
 from shared.py.analytics.catalog.hil import ApprovalOutcome
@@ -182,17 +186,27 @@ class SpawnDriver:
             include_subagents_in_retrieve=False,
         )
 
-    async def _provider(self, **kwargs: Any) -> Any:
+    async def _provider(
+        self,
+        llm: LanguageModelLike,
+        registry: Mapping[str, BaseTool],
+        excluded_tool_names: set[str],
+        tool_space: str,
+        runtime: ToolRuntimeConfig,
+        middleware_factory: Callable[[], Sequence[AnyAgentMiddleware]],
+    ) -> CompiledStateGraph:
         # The real spawn graph; only its checkpointer is pinned to this connection
         # so the test can inspect the thread afterwards.
-        graph = await get_spawn_graph(**kwargs)
+        graph = await get_spawn_graph(
+            llm, registry, excluded_tool_names, tool_space, runtime, middleware_factory
+        )
         graph.checkpointer = self._saver
         return graph
 
     def _middleware(self) -> SubagentMiddleware:
         middleware = SubagentMiddleware(
             SubagentMiddlewareConfig(
-                llm=self._llm,
+                llm=cast(LanguageModelLike, self._llm),
                 tool_registry=self._tools,
                 tool_space="general",
                 tool_runtime_config=self._runtime,
@@ -236,11 +250,16 @@ class SpawnDriver:
         if resume is not None:
             await self._settle(conv, resume)
 
-        async def tool_node(_state: MessagesState, config: RunnableConfig) -> dict:
+        spawn_tool = cast(StructuredTool, middleware.tools[0])
+        spawn = spawn_tool.coroutine
+        assert spawn is not None
+
+        async def tool_node(state: MessagesState, config: RunnableConfig) -> MessagesState:
+            del state
             texts = [
                 str(
                     (
-                        await middleware.tools[0].coroutine(
+                        await spawn(
                             task=task,
                             tool_call_id=tool_call_id,
                             selected_tool_ids=[],
@@ -253,9 +272,12 @@ class SpawnDriver:
                 )
                 for task, tool_call_id in tasks
             ]
-            return {"messages": [AIMessage(content=" | ".join(texts))]}
+            summary: list[AnyMessage] = [AIMessage(content=" | ".join(texts))]
+            return {"messages": summary}
 
-        builder = StateGraph(MessagesState)
+        builder: StateGraph[MessagesState, None, MessagesState, MessagesState] = StateGraph(
+            MessagesState
+        )
         builder.add_node("tools", tool_node)
         builder.add_edge(START, "tools")
         builder.add_edge("tools", END)
@@ -273,17 +295,13 @@ class SpawnDriver:
             # and it is what arms the finished/parked checkpoint probe.
             configurable[HIL_RESUME_CONFIG_KEY] = True
 
-        payload = (
-            Command(resume=resume)
-            if resume is not None
-            else {"messages": [HumanMessage(content="go")]}
+        start: MessagesState = {"messages": [HumanMessage(content="go")]}
+        payload: Command[Any] | MessagesState = (
+            Command(resume=resume) if resume is not None else start
         )
-        return [
-            event
-            async for event in parent.astream(
-                payload, config={"configurable": configurable}, stream_mode=["updates", "custom"]
-            )
-        ]
+        config: RunnableConfig = {"configurable": configurable}
+        modes: list[StreamMode] = ["updates", "custom"]
+        return [event async for event in parent.astream(payload, config=config, stream_mode=modes)]
 
 
 @pytest.fixture

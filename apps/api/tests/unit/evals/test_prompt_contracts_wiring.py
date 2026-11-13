@@ -40,6 +40,7 @@ from scripts.evals.suites.quality import (
 
 from app.config.oauth_config import get_integration_by_id
 from app.constants.hil_destructive_tools import GMAIL_DESTRUCTIVE_TOOLS
+from app.models.mcp_config import SubAgentConfig
 
 NEVER_IN_CONVERSATION = "openui.never_openui_in_conversation"
 
@@ -79,7 +80,7 @@ def _ship_edited_prompt(
         cache.cache_clear()
 
 
-def _gmail_subagent_config() -> object:
+def _gmail_subagent_config() -> SubAgentConfig:
     integration = get_integration_by_id("gmail")
     assert integration is not None, "the gmail integration is gone; re-anchor this suite"
     return integration.subagent_config

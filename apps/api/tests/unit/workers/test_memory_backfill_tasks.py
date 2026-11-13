@@ -21,7 +21,7 @@ from app.constants.memory import (
     MEMORY_BACKFILL_MAX_USERS_PER_RUN,
     MemorySourceType,
 )
-from app.models.conversation_frame_models import EntryFrame, StateFrame
+from app.models.chat_models import ConversationSource
 from app.models.conversation_log_models import Entry, Notice, Reply, UserMessage
 from app.models.conversation_models import LoadedConversation
 from app.models.user_models import UserDocument
@@ -32,6 +32,7 @@ from app.workers.tasks.memory_backfill_tasks import (
     backfill_active_users,
     backfill_user_memories,
 )
+from tests.factories import make_loaded_conversation
 from tests.helpers import captured_wide_event
 
 MODULE = "app.workers.tasks.memory_backfill_tasks"
@@ -55,19 +56,17 @@ def _conversation(
     created_at: str = "2026-01-01T10:00:00+00:00",
     entries: list[Entry] | None = None,
 ) -> LoadedConversation:
-    logged = entries or [
-        UserMessage(id="m1", text="Remember I prefer morning meetings", surface="web"),
-        Reply(id="r1", reply_id="r1", attempt_id="a1", text="Got it."),
-    ]
-    return LoadedConversation(
-        user_id=USER_ID,
-        conversation_id=conversation_id,
-        createdAt=created_at,
-        entries=[
-            EntryFrame(seq=n, at=datetime(2026, 1, 1, tzinfo=UTC), entry=entry)
-            for n, entry in enumerate(logged, 1)
+    return make_loaded_conversation(
+        conversation_id,
+        USER_ID,
+        entries
+        or [
+            UserMessage(
+                id="m1", text="Remember I prefer morning meetings", surface=ConversationSource.WEB
+            ),
+            Reply(id="r1", reply_id="r1", attempt_id="a1", text="Got it."),
         ],
-        state=StateFrame(head=len(logged), display="idle", work=()),
+        created_at=created_at,
     )
 
 
@@ -86,7 +85,7 @@ class TestConversationToMessages:
     def test_maps_user_and_bot_roles(self):
         doc = _conversation(
             entries=[
-                UserMessage(id="m1", text="hello", surface="web"),
+                UserMessage(id="m1", text="hello", surface=ConversationSource.WEB),
                 Reply(id="r1", reply_id="r1", attempt_id="a1", text="hi there"),
             ]
         )
@@ -98,9 +97,9 @@ class TestConversationToMessages:
     def test_drops_empty_messages_and_entries_that_are_not_messages(self):
         doc = _conversation(
             entries=[
-                UserMessage(id="m1", text="  ", surface="web"),
+                UserMessage(id="m1", text="  ", surface=ConversationSource.WEB),
                 Notice(id="n1", text="not mapped", origin="todo"),
-                UserMessage(id="m2", text="kept", surface="web"),
+                UserMessage(id="m2", text="kept", surface=ConversationSource.WEB),
             ]
         )
         assert _conversation_to_messages(doc) == [{"role": "user", "content": "kept"}]

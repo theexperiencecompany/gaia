@@ -20,9 +20,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.memory.ingestion import RetainResult
-from app.models.conversation_models import ConversationDocument, ConversationEntry
+from app.models.chat_models import ConversationSource
+from app.models.conversation_log_models import Reply, UserMessage
+from app.models.conversation_models import LoadedConversation
 from app.models.user_models import UserDocument
 from app.workers.tasks.memory_backfill_tasks import backfill_user_memories
+from tests.factories import make_loaded_conversation
 
 pytestmark = pytest.mark.stress
 
@@ -66,21 +69,21 @@ class _Backend:
         self.consolidate = consolidate
 
 
-def _conversation(cid: str, content: str) -> ConversationDocument:
-    return ConversationDocument(
-        conversation_id=cid,
-        user_id="user-1",
-        messages=[
-            ConversationEntry(type="user", response=content, seq=1),
-            ConversationEntry(type="bot", response=f"answer: {content}", seq=2),
+def _conversation(cid: str, content: str) -> LoadedConversation:
+    return make_loaded_conversation(
+        cid,
+        "user-1",
+        [
+            UserMessage(id="m1", text=content, surface=ConversationSource.WEB),
+            Reply(id="r1", reply_id="r1", attempt_id="a1", text=f"answer: {content}"),
         ],
-        createdAt="2025-06-01T10:00:00Z",
+        created_at="2025-06-01T10:00:00Z",
     )
 
 
 @contextmanager
 def _backend(
-    user: UserDocument, conversations: list[ConversationDocument], *, facts: int = 2
+    user: UserDocument, conversations: list[LoadedConversation], *, facts: int = 2
 ) -> Iterator[_Backend]:
     user_repo = _FakeUserRepository(user)
     convo_repo = MagicMock()

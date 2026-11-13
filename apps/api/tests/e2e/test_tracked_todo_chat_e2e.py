@@ -45,10 +45,8 @@ from app.constants.todos import (
     WaitingOn,
 )
 from app.constants.triggers import GMAIL_NEW_MESSAGE_TRIGGER_NAME
-from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.todos import todo_repository
 from app.models.chat_models import ConversationModel, ConversationSource
-from app.models.conversation_frame_models import EntryFrame
 from app.models.conversation_log_models import (
     Entry,
     Reply,
@@ -71,8 +69,6 @@ from app.models.trigger_subscription_models import (
     TriggerSubscription,
 )
 from app.models.user_models import AuthenticatedUser
-from app.services.conversation.event_stream import replay_from_log
-from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.send import submit_message
 from app.services.conversation_service import (
     create_conversation_service,
@@ -90,7 +86,7 @@ from app.workers.tasks.tracked_todo_tasks import (
 from tests.conftest import FAKE_USER, FAKE_USER_2
 from tests.e2e._harness.background import drain_background_runs
 from tests.e2e._harness.graph_run import StreamingScriptedModel, call, streaming_model
-from tests.e2e._harness.step_stack import OpenStack
+from tests.e2e._harness.step_stack import OpenStack, replayed
 from tests.helpers import stored_conversation, worker_redis_url
 
 pytestmark = [
@@ -173,9 +169,7 @@ async def _follow_up(conversation_id: str, owner: AuthenticatedUser, message: st
 async def _shown(mongo_db: AsyncIOMotorDatabase, todo_id: str) -> list[Entry]:
     """Return what a device opening the todo's chat receives: the events route's replay of its log."""
     (chat,) = await mongo_db["conversations"].find({"todo_id": todo_id}).to_list(None)
-    log = MongoConversationLog(conversation_log_repository, lambda: datetime.now(UTC))
-    frames = await replay_from_log(log, chat["conversation_id"], chat["user_id"], 0)
-    return [f.frame.entry for f in frames if isinstance(f.frame, EntryFrame)]
+    return await replayed(chat["conversation_id"], chat["user_id"])
 
 
 def _finished(shown: Sequence[Entry]) -> list[WorkFinished]:
