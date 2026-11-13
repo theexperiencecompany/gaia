@@ -100,8 +100,10 @@ async def resume_waiter(ctx: ArqJobContext, user_id: str, wait_id: str) -> str:
         return f"resume_waiter {wait_id}: already picked up or expired"
     try:
         await _resume(wait)
-    except Exception as e:  # recovered: the wait goes back on file and the job retries
+    except BaseException as e:  # recovered: the wait goes back on file, then the job retries
         await wait_repository.restore(wait)
+        if not isinstance(e, Exception):
+            raise  # cancelled or shutting down: the wait is back, let the interruption through
         defer = RESUME_WAITER_RETRY_DELAY * 2 ** (ctx.get("job_try", 1) - 1)
         log.warning(
             f"{LogTag.AGENT} Resuming a waiter failed; the wait is back on file and retrying",

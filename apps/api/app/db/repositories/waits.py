@@ -72,6 +72,8 @@ class WaitsRepository(UserScopedRepository[WaitDocument, WaitUpdate]):
         on_insert = {
             **WaitUpdate(subject_name=wait.subject_name, stream_id=wait.stream_id).model_dump(),
             "created_at": wait.created_at,
+            # Same identity, so a duplicate job for this wait can still claim it.
+            **self._identity_filter(wait.id),
         }
         await self._apply_raw_update(
             key.model_dump(), {"$setOnInsert": on_insert}, scope=None, upsert=True

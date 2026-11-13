@@ -139,6 +139,7 @@ class TestRestore:
                     "subject_name": "Gmail",
                     "stream_id": "stream-1",
                     "created_at": NOW,
+                    "_id": ObjectId(WAIT_ID),
                 }
             },
             array_filters=None,

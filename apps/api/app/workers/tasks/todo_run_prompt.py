@@ -221,7 +221,8 @@ def build_execution_prompt(
     watched = origin is not None and any(
         wake.trigger_name != WAIT_MET_TRIGGER for wake in [origin, *coalesced]
     )
-    if doc.recurrence or watched:
+    # A wait-met run of a todo that also has a watch still has that watch to wake it.
+    if doc.recurrence or watched or (origin is not None and not doc.runs_once):
         prompt_parts.append(TODO_WAKES_AGAIN_BRIEF)
     else:
         why = wake_text(doc) if origin is None else WAIT_MET_WAKE_REASON

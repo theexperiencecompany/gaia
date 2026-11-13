@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from typing import Any, TypeAlias
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
@@ -20,10 +21,12 @@ USER = "6812f0b3c9a14e2b7d5a91cc"
 OTHER = "6812f0b3c9a14e2b7d5a91cd"
 CONNECTED = WaitCondition.INTEGRATION_CONNECTED
 CONFIGURED = WaitCondition.WORKFLOW_TRIGGER_CONFIGURED
+# The repository's own raw handle type (WaitsRepository._raw_collection).
+WaitsCollection: TypeAlias = "AsyncIOMotorCollection[dict[str, Any]]"
 
 
 @pytest.fixture
-async def repo(raw_collection) -> WaitsRepository:
+async def repo(raw_collection: WaitsCollection) -> WaitsRepository:
     await raw_collection.create_index(
         [("user_id", 1), ("condition", 1), ("subject_id", 1), ("waiter", 1), ("waiter_id", 1)],
         unique=True,
@@ -80,7 +83,7 @@ class TestWaitsRepository:
         assert taken.created_at >= before.replace(microsecond=0)
 
     async def test_a_repeat_ask_keeps_one_wait_with_the_newest_run_and_time(
-        self, repo: WaitsRepository, raw_collection: AsyncIOMotorCollection
+        self, repo: WaitsRepository, raw_collection: WaitsCollection
     ) -> None:
         await _keep(repo, stream_id="stream-old")
         await raw_collection.update_many(
@@ -111,7 +114,7 @@ class TestWaitsRepository:
         assert second == [None, None, None]
 
     async def test_an_expired_wait_the_ttl_sweep_has_not_removed_is_neither_found_nor_claimed(
-        self, repo: WaitsRepository, raw_collection: AsyncIOMotorCollection
+        self, repo: WaitsRepository, raw_collection: WaitsCollection
     ) -> None:
         await _keep(repo)
         [wait] = await repo.find_met(USER, CONNECTED, "gmail")
@@ -158,14 +161,14 @@ class TestWaitsRepository:
         assert sorted(claimed) == [f"conv-{n}" for n in range(5)]
 
     async def test_racing_first_asks_from_one_waiter_leave_one_document(
-        self, repo: WaitsRepository, raw_collection: AsyncIOMotorCollection
+        self, repo: WaitsRepository, raw_collection: WaitsCollection
     ) -> None:
         await asyncio.gather(*(_keep(repo) for _ in range(5)))
 
         assert await raw_collection.count_documents({"user_id": USER}) == 1
 
     async def test_a_restored_wait_is_claimable_again_with_its_original_ask_time(
-        self, repo: WaitsRepository, raw_collection: AsyncIOMotorCollection
+        self, repo: WaitsRepository, raw_collection: WaitsCollection
     ) -> None:
         await _keep(repo)
         asked_at = datetime.now(UTC) - timedelta(hours=3)
@@ -177,6 +180,7 @@ class TestWaitsRepository:
         await repo.restore(claimed)
 
         [again] = await _take_all(repo)
+        assert again.id == claimed.id
         # Mongo keeps milliseconds, so the restored time is the original to within one.
         assert abs(again.created_at - asked_at) < timedelta(milliseconds=1)
 

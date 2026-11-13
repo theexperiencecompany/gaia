@@ -576,10 +576,27 @@ class TestTriggeredExecutionPrompt:
         assert TRIGGERED_RELEVANCE_GUIDANCE not in prompt
 
     @pytest.mark.parametrize(
-        ("recurrence", "rearm"), [(None, True), ("every_1h", False)], ids=["one-off", "recurring"]
+        ("fields", "rearm"),
+        [
+            ({}, True),
+            ({"recurrence": "every_1h"}, False),
+            (
+                {
+                    "trigger_subscriptions": [
+                        TriggerSubscription(
+                            trigger_name="gmail_new_message",
+                            action=SubscriptionAction.EXECUTE,
+                            resolution=SubscriptionResolution.ACCOUNT,
+                        )
+                    ]
+                },
+                False,
+            ),
+        ],
+        ids=["one-off", "recurring", "watched"],
     )
     def test_a_one_off_todo_woken_by_a_met_wait_must_set_its_next_check(
-        self, recurrence: str | None, rearm: bool
+        self, fields: dict[str, object], rearm: bool
     ) -> None:
         origin = TriggerOrigin(
             subscription_id="w1",
@@ -587,7 +604,7 @@ class TestTriggeredExecutionPrompt:
             payload={"message": "The user just connected Gmail."},
         )
 
-        prompt = _prompt(_doc(title="Chase Acme", recurrence=recurrence), origin=origin)
+        prompt = _prompt(_doc(title="Chase Acme", **fields), origin=origin)
 
         assert (TODO_REARM_TAG in prompt) is rearm
         assert (TODO_WAKES_AGAIN_TAG in prompt) is not rearm

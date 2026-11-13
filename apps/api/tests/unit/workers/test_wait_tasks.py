@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -210,3 +211,15 @@ class TestResumeWaiter:
             error="wf-1",
             defer_seconds=30.0,
         )
+
+    async def test_a_cancelled_resume_puts_the_wait_back_and_stays_cancelled(
+        self, seams: Seams
+    ) -> None:
+        wait = _wait()
+        seams.claim.return_value = wait
+        seams.deliver.side_effect = asyncio.CancelledError
+
+        with pytest.raises(asyncio.CancelledError):
+            await resume_waiter({}, USER, "w1")
+
+        seams.restore.assert_awaited_once_with(wait)
