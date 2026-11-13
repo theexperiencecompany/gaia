@@ -97,20 +97,26 @@ class WorkflowTurnFailed(WorkflowRunFailed):
     """
 
 
+def new_execution_id() -> str:
+    """Mint a workflow execution id: once per fire, by whoever starts it."""
+    return f"exec_{uuid4().hex[:12]}"
+
+
 async def create_execution(
     workflow_id: str,
     user_id: str,
     trigger_type: str = "manual",
     conversation_id: str | None = None,
+    execution_id: str | None = None,
 ) -> WorkflowExecution:
-    """Create a workflow execution record with status "running".
+    """Create a workflow execution record with status "running", under the id the fire was started with.
 
     Args:
         trigger_type: manual, schedule, or an integration name.
     """
     execution = await workflow_executions_repository.create(
         WorkflowExecutionDocument(
-            execution_id=f"exec_{uuid4().hex[:12]}",
+            execution_id=execution_id or new_execution_id(),
             workflow_id=workflow_id,
             user_id=user_id,
             status="running",
@@ -143,10 +149,14 @@ async def record_skipped_execution(
     trigger_type: str,
     summary: str,
     conversation_id: str | None = None,
+    execution_id: str | None = None,
 ) -> WorkflowExecution:
     """Record a fire that never ran, so run history shows it and why instead of a silent gap."""
     execution = await create_execution(
-        workflow_id=workflow_id, user_id=user_id, trigger_type=trigger_type
+        workflow_id=workflow_id,
+        user_id=user_id,
+        trigger_type=trigger_type,
+        execution_id=execution_id,
     )
     await complete_execution(
         execution_id=execution.execution_id,

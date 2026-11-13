@@ -17,6 +17,8 @@ from app.config.rate_limits import RateLimitPeriod
 from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.constants.vfs import SYSTEM_USER_ID
+from app.db.repositories.workflow_executions import workflow_executions_repository
+from app.db.repositories.workflows import workflow_repository
 from app.models.conversation_log_models import (
     Reply,
     ReplyOutcome,
@@ -33,11 +35,14 @@ from app.models.playbook_models import PlaybookRunStatus
 from app.models.scheduler_models import DeactivationReason
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.models.workflow_execution_models import RecordedCall
-from app.models.workflow_models import TriggerType, WorkflowStep
+from app.models.workflow_models import TriggerType, WorkflowExecutionRequest, WorkflowStep
 from app.services.conversation.outcome import EntryOutcome
 from app.services.workflow.conversation_service import build_selected_workflow_data
 from app.services.workflow.execution_service import WorkflowFireTimedOut, WorkflowTurnFailed
 from app.services.workflow.notifications import send_workflow_completion_notification
+from app.services.workflow.queue_service import WorkflowQueueService
+from app.services.workflow.service import WorkflowService
+from app.services.workflow.validators import WorkflowValidator
 from app.utils import auth_utils
 from app.utils.errors import AppError
 from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
@@ -317,6 +322,7 @@ class TestExecuteWorkflowById:
             workflow_id=workflow.id,
             user_id=workflow.user_id,
             trigger_type=expected_trigger_type,
+            execution_id=None,
         )
 
     async def test_shared_scheduler_survives_failed_execution(self, ctx):
@@ -351,6 +357,39 @@ class TestExecuteWorkflowById:
             await execute_workflow_by_id(ctx, workflow.id)
 
         mock_scheduler.close.assert_not_awaited()
+
+    async def test_the_execution_id_a_manual_run_answers_with_is_the_one_stored(self, ctx):
+        """Regression (live test): POST /execute returned exec_wf_<id>_<hex>, the run was stored as another id."""
+        workflow = _make_workflow()
+        queued = AsyncMock(return_value=True)
+        with (
+            patch.object(WorkflowService, "get_workflow", AsyncMock(return_value=workflow)),
+            patch.object(WorkflowValidator, "validate_for_execution"),
+            patch.object(workflow_repository, "touch", AsyncMock(return_value=True)),
+            patch.object(WorkflowQueueService, "queue_workflow_execution", queued),
+        ):
+            answered = await WorkflowService.execute_workflow(
+                workflow.id, WorkflowExecutionRequest(), workflow.user_id
+            )
+        _, _, job_context = queued.await_args.args
+        stored = AsyncMock(side_effect=lambda document: document)
+
+        _, p_scheduler = _patch_scheduler(workflow)
+        with (
+            p_scheduler,
+            patch(
+                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
+                AsyncMock(return_value=("conv_123", [])),
+            ),
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch.object(workflow_executions_repository, "create", stored),
+            patch("app.workers.tasks.workflow_tasks.complete_execution", AsyncMock()),
+            patch("app.workers.tasks.workflow_tasks._rearm_quietly", AsyncMock()),
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            await execute_workflow_by_id(ctx, workflow.id, context=job_context)
+
+        assert [c.args[0].execution_id for c in stored.await_args_list] == [answered.execution_id]
 
     async def test_success_path_threads_the_exact_arguments_through(self, ctx):
         """The chat turn, the completion record and the re-arm each act on THIS run's workflow, execution id and context — a dropped, renamed or None'd value lands on the wrong conversation, the wrong execution row, or arms the wrong occurrence."""

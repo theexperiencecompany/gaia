@@ -1,5 +1,4 @@
 import secrets
-import uuid
 
 from pymongo.errors import DuplicateKeyError
 
@@ -29,6 +28,7 @@ from app.models.workflow_models import (
 )
 from app.services.integrations.integration_status import get_all_integrations_status
 from app.services.triggers.gate_edits import apply_gate_edit, report_gate_edit
+from app.services.workflow.execution_service import new_execution_id
 from app.services.workflow.integration_requirements import (
     build_integration_refs,
     compute_integration_refs,
@@ -847,10 +847,10 @@ class WorkflowService:
             if not touched:
                 raise ValueError(f"Failed to update workflow {workflow_id}")
 
-            execution_id = f"exec_{workflow_id}_{uuid.uuid4().hex[:8]}"
+            execution_id = new_execution_id()
 
             success = await WorkflowQueueService.queue_workflow_execution(
-                workflow_id, user_id, request.context
+                workflow_id, user_id, {**(request.context or {}), "execution_id": execution_id}
             )
             if not success:
                 raise ValueError(f"Failed to queue workflow execution for {workflow_id}")

@@ -185,6 +185,8 @@ class _FireStamp(BaseModel):
     trigger_data: object = None
     # Set by the trigger gate on a fire it held for, or let through, the user's quiet hours.
     quiet_hours: QuietHoursStamp | None = None
+    # Minted by the request that started the fire (a manual run), so the id it answered with is the one stored.
+    execution_id: str | None = None
 
 
 class _RateLimitDetail(BaseModel):
@@ -1409,6 +1411,7 @@ async def _record_overlapped_fire(
     workflow: Workflow | None,
     workflow_id: str,
     trigger_type: str,
+    execution_id: str | None,
 ) -> str:
     # This fire never ran: the conversation was already claimed by another run, so
     # it dropped out before charging quota. The user is told nothing — except when
@@ -1437,6 +1440,7 @@ async def _record_overlapped_fire(
         trigger_type,
         OVERLAPPED_AWAITING_APPROVAL_SUMMARY if awaiting_approval else OVERLAPPED_SUMMARY,
         conversation_id=overlapped.conversation_id,
+        execution_id=execution_id,
     )
     await WorkflowService.increment_execution_count(
         workflow_id, overlapped.user_id, is_successful=False
@@ -1633,6 +1637,7 @@ async def _execute_workflow_fire(workflow_id: str, context: dict[str, object] | 
             workflow_id=workflow_id,
             user_id=workflow.user_id,
             trigger_type=trigger_type,
+            execution_id=stamp.execution_id,
         )
         execution_id = execution.execution_id
 
@@ -1655,7 +1660,9 @@ async def _execute_workflow_fire(workflow_id: str, context: dict[str, object] | 
             reason=str(never_ran),
             error_type=type(never_ran).__name__,
         )
-        return await _record_overlapped_fire(never_ran, workflow, workflow_id, trigger_type)
+        return await _record_overlapped_fire(
+            never_ran, workflow, workflow_id, trigger_type, stamp.execution_id
+        )
     except asyncio.CancelledError:
         await _record_timed_out_fire(workflow, workflow_id, execution_id, stamp.trigger_type)
         raise
