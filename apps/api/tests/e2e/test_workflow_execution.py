@@ -520,12 +520,10 @@ class TestWorkflowExecutionFailurePropagation:
 
         notifications: list[object] = []
 
-        async def _create_notification(request):
-            notifications.append(request)
+        async def _submit(notice):
+            notifications.append(notice)
 
-        monkeypatch.setattr(
-            workflow_tasks.notification_service, "create_notification", _create_notification
-        )
+        monkeypatch.setattr(workflow_tasks, "submit", _submit)
 
         monkeypatch.setattr(WorkflowScheduler, "initialize", AsyncMock())
         monkeypatch.setattr(WorkflowScheduler, "close", AsyncMock())
@@ -649,9 +647,9 @@ class TestWorkflowExecutionFailurePropagation:
 
         notifications = workflow_execution_env["notifications"]
         assert len(notifications) == 1, f"Expected one failure notification, got {notifications!r}"
-        assert notifications[0].user_id == workflow.user_id
-        assert workflow.title in notifications[0].content.title
-        assert notifications[0].metadata["workflow_id"] == workflow.id
+        assert notifications[0].recipient == workflow.user_id
+        assert workflow.title in notifications[0].subject.label
+        assert notifications[0].report_id.startswith(f"sys:workflow_failed:{workflow.id}:")
 
         assert "Error executing workflow" in result, (
             f"The task's return value must report the failure, got {result!r}"
@@ -702,9 +700,7 @@ class TestWorkflowExecutionFailurePropagation:
 
         monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))
         monkeypatch.setattr(
-            workflow_tasks.notification_service,
-            "create_notification",
-            AsyncMock(side_effect=RuntimeError("notification backend unreachable")),
+            workflow_tasks, "submit", AsyncMock(side_effect=RuntimeError("outbox unreachable"))
         )
 
         result = await execute_workflow_by_id({}, workflow.id, {"trigger_type": "manual"})

@@ -13,15 +13,10 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
-from app.models.notification.notification_models import (
-    ActionStyle,
-    ActionType,
-    NotificationSourceEnum,
-    NotificationType,
-)
 from app.models.scheduler_models import DeactivationReason
 from app.models.user_models import UserDocument
 from app.models.workflow_models import IntegrationRef
+from app.services.outbox.models import Initiative, NoticeOutcome, ProducerKind, SubjectKind
 from app.workers.tasks.workflow_tasks import (
     _notify_workflow_failed,
     _notify_workflow_paused_for_integrations,
@@ -59,9 +54,7 @@ async def _run_task(
         patch(
             f"{PAUSE_MODULE}.WorkflowService.deactivate_workflow", new_callable=AsyncMock
         ) as deactivate,
-        patch(
-            f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock
-        ) as notify,
+        patch(f"{MODULE}.submit", new_callable=AsyncMock) as notify,
         patch(f"{MODULE}.enforce_cost_budget", new_callable=AsyncMock) as budget,
         patch(f"{MODULE}.create_execution", new_callable=AsyncMock) as create,
         patch(
@@ -102,10 +95,10 @@ class TestADisconnectedIntegrationPausesTheWorkflow:
         _, _, notify, _ = await _run_task(_workflow(), GMAIL, {"trigger_type": "schedule"})
 
         assert notify.await_count == 1
-        assert notify.await_args.args[0].content.body == (
-            "'Morning roadmap digest' needs Gmail, which isn't connected. "
-            "It's paused and will run again once you reconnect."
-        )
+        assert notify.await_args.args[0].facts == [
+            "'Morning roadmap digest' needs Gmail, which isn't connected.",
+            "It is paused and will run again once the user reconnects.",
+        ]
 
     async def test_the_skip_reason_names_every_integration_the_fire_lacked(self) -> None:
         """The skip reason is the run's only record; naming one of two missing integrations misdirects."""
@@ -153,9 +146,7 @@ class TestTheLimitNoticeSpeaksOncePerWindow:
                 new_callable=AsyncMock,
                 return_value=not already_sent,
             ),
-            patch(
-                f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock
-            ) as notify,
+            patch(f"{MODULE}.submit", new_callable=AsyncMock) as notify,
         ):
             error = RateLimitExceededException(feature="trigger_workflow_executions")
             await _notify_workflow_failed(error, _workflow())
@@ -173,58 +164,44 @@ class TestTheLimitNoticeSpeaksOncePerWindow:
 
 
 class TestTheNoticeTellsTheUserWhatToReconnect:
-    """The pause notice must be actionable: which workflow, which integration, and one click to fix it.
+    """The pause notice must be actionable: which workflow and which integrations it waits on.
 
-    These pin the copy and the link, because a notice naming the wrong integration is the loop it
-    was written to end.
+    These pin the facts, because a notice naming the wrong integration is the loop it was written
+    to end.
     """
 
     @staticmethod
-    async def _sent(missing: list[IntegrationRef]) -> Any:
-        with patch(
-            f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock
-        ) as notify:
+    async def _filed(missing: list[IntegrationRef]) -> Any:
+        with patch(f"{MODULE}.submit", new_callable=AsyncMock) as submit:
             await _notify_workflow_paused_for_integrations(_workflow(), missing)
-        return notify.await_args.args[0]
+        return submit.await_args.args[0]
 
     async def test_it_names_the_workflow_and_every_integration_it_waits_on(self) -> None:
-        request = await self._sent(GMAIL_AND_NOTION)
+        notice = await self._filed(GMAIL_AND_NOTION)
 
-        assert request.content.title == "Workflow Paused: Morning roadmap digest"
-        assert request.content.body == (
-            "'Morning roadmap digest' needs Gmail, Notion, which isn't connected. "
-            "It's paused and will run again once you reconnect."
-        )
+        assert notice.subject.label == "Morning roadmap digest"
+        assert notice.facts == [
+            "'Morning roadmap digest' needs Gmail, Notion, which isn't connected.",
+            "It is paused and will run again once the user reconnects.",
+        ]
 
-    async def test_the_button_connects_the_first_missing_integration_in_place(self) -> None:
-        request = await self._sent(GMAIL_AND_NOTION)
+    async def test_it_reaches_this_user_as_a_workflow_notice_that_needs_them(self) -> None:
+        notice = await self._filed(GMAIL_AND_NOTION)
 
-        (action,) = request.content.actions
-        assert action.label == "Connect Gmail"
-        assert action.type == ActionType.REDIRECT
-        assert action.style == ActionStyle.PRIMARY
-        assert action.config.redirect.url == "/integrations?id=gmail"
-        assert action.config.redirect.open_in_new_tab is False
-        assert action.config.redirect.close_notification is True
+        assert notice.recipient == "6812f0b3c9a14e2b7d5a91cc"
+        assert notice.producer is ProducerKind.WORKFLOW
+        assert notice.subject.kind is SubjectKind.WORKFLOW_RUN
+        assert notice.outcome is NoticeOutcome.NEEDS_YOU
+        assert notice.initiative is Initiative.USER_SCHEDULED
+        assert notice.report_id.startswith("sys:workflow_paused:wf-1:gmail,notion:")
 
-    async def test_it_reaches_this_user_as_an_integration_warning(self) -> None:
-        request = await self._sent(GMAIL_AND_NOTION)
-
-        assert request.user_id == "6812f0b3c9a14e2b7d5a91cc"
-        assert request.source == NotificationSourceEnum.INTEGRATION_EXPIRED
-        assert request.type == NotificationType.WARNING
-        assert request.metadata == {
-            "workflow_id": "wf-1",
-            "missing_integrations": "gmail,notion",
-        }
-
-    async def test_a_notice_that_cannot_be_delivered_is_recorded_not_raised(self) -> None:
-        """A notice that can't be delivered must not become a worker error, or the whole fire retries for nothing."""
+    async def test_a_notice_that_cannot_be_filed_is_recorded_not_raised(self) -> None:
+        """A notice that can't be filed must not become a worker error, or the whole fire retries for nothing."""
         with (
             patch(
-                f"{MODULE}.notification_service.create_notification",
+                f"{MODULE}.submit",
                 new_callable=AsyncMock,
-                side_effect=RuntimeError("mongo down"),
+                side_effect=RuntimeError("redis down"),
             ),
             patch(f"{MODULE}.log") as mock_log,
         ):
@@ -232,11 +209,11 @@ class TestTheNoticeTellsTheUserWhatToReconnect:
 
         mock_log.warning.assert_called_once()
         assert mock_log.warning.call_args.args == (
-            "[WORKER] Could not send the integration-paused notice",
+            "[WORKER] Could not file the integration-paused notice",
         )
         assert mock_log.warning.call_args.kwargs == {
             "workflow_id": "wf-1",
-            "error": "mongo down",
+            "error": "redis down",
             "error_type": "RuntimeError",
         }
 
@@ -250,7 +227,7 @@ class TestTheLimitNoticeIsClaimedPerWorkflow:
                 new_callable=AsyncMock,
                 return_value=True,
             ) as claim,
-            patch(f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock),
+            patch(f"{MODULE}.submit", new_callable=AsyncMock),
         ):
             await _notify_workflow_failed(
                 RateLimitExceededException(feature="trigger_workflow_executions"),

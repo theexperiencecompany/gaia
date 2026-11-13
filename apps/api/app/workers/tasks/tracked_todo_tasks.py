@@ -58,12 +58,6 @@ from app.db.repositories.todos import todo_repository
 from app.decorators import enforce_cost_budget
 from app.decorators.entitlements import capture_paywall_block, is_paid
 from app.models.message_models import TodoRunWake
-from app.models.notification.notification_models import (
-    NotificationContent,
-    NotificationRequest,
-    NotificationSourceEnum,
-    NotificationType,
-)
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import ExternalRefSource, TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import TriggerOrigin
@@ -72,7 +66,9 @@ from app.models.workflow_models import TriggerType
 from app.services.analytics_service import capture
 from app.services.conversation_service import get_or_create_todo_conversation
 from app.services.integrations.user_integrations import get_connected_integration_ids
-from app.services.notification_service import notification_service
+from app.services.outbox.intake import submit
+from app.services.outbox.models import Initiative, NoticeOutcome, ProducerKind, SubjectKind
+from app.services.outbox.system_notices import system_notice
 from app.services.todo_activity import record_activity
 from app.services.todos.inbox_desk import with_desk_notes
 from app.services.todos.open_state import wake_budget_update
@@ -91,6 +87,7 @@ from app.services.triggers.todo_trigger_window import (
 )
 from app.services.triggers.trigger_gate import GateHold, quiet_hours_hold
 from app.services.user_service import get_quiet_hours
+from app.utils import clock
 from app.utils.auth_utils import OwnerNotFoundError, require_owner
 from app.utils.cron_utils import CronError, get_next_run_time
 from app.utils.occurrence import occurrence_stamp, parse_occurrence_stamp
@@ -1007,7 +1004,7 @@ async def finish_tracked_todo_run(ctx: ArqJobContext, undone: FinishedTodoRun) -
 
 
 async def _mark_todo_failed(todo_id: str, user_id: str, doc: TodoDocument) -> None:
-    """Mark the todo as permanently failed and notify the user in-app."""
+    """Mark the todo as permanently failed and file the notice that says so."""
     await todo_repository.add_labels(todo_id, user_id=user_id, labels=[FAILED_LABEL])
     # The execution path skips failed todos until a manual reset, so leaving the
     # subscriptions armed would burn events on a todo that can never run.
@@ -1028,22 +1025,27 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: TodoDocument) -> No
 
 
 async def _notify_run_failed(doc: TodoDocument, body: str) -> None:
-    """Tell the user in-app that a run used up its attempts; a failed send is only logged."""
+    """File that a run used up its attempts; the schedule moves on whether or not the notice is filed."""
     try:
-        await notification_service.create_notification(
-            NotificationRequest(
+        await submit(
+            system_notice(
                 user_id=doc.user_id,
-                source=NotificationSourceEnum.BACKGROUND_JOB,
-                type=NotificationType.ERROR,
-                content=NotificationContent(title=f"Scheduled Task Failed: {doc.title}", body=body),
-                metadata={"todo_id": doc.id, "retry_count": MAX_RETRY_ATTEMPTS},
+                producer=ProducerKind.TODO,
+                subject_kind=SubjectKind.TODO_RUN,
+                kind="todo_run_failed",
+                key=f"{doc.id}:{clock.now().isoformat()}",
+                label=doc.title,
+                outcome=NoticeOutcome.FAILED,
+                initiative=Initiative.USER_SCHEDULED,
+                facts=[body],
             )
         )
     except Exception as notify_exc:
-        log.warning(
+        log.error(
             "tracked_todo.failure_notification_failed",
             todo_id=doc.id,
             error=str(notify_exc),
+            error_type=type(notify_exc).__name__,
         )
 
 

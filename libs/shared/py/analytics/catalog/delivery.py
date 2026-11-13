@@ -13,6 +13,7 @@ from shared.py.analytics.catalog.base import ServerEvent
 __all__ = [
     "DeliveryItemHeld",
     "DeliveryMessageSent",
+    "DeliveryUpdatesViewed",
     "ProactiveDestinationBasis",
     "ProactiveDestinationKind",
 ]
@@ -62,3 +63,13 @@ class DeliveryItemHeld(ServerEvent):
 
     reason: Literal["quiet_hours", "dnd", "not_before", "checkin", "gap", "wait_for_run"]
     max_class: Literal["background", "routine", "timely", "interrupt"]
+
+
+class DeliveryUpdatesViewed(ServerEvent):
+    """A user opened the Updates feed, which lists what GAIA told them and what it only recorded."""
+
+    event: ClassVar[str] = "delivery:updates_viewed"
+    budget_per_user_day: ClassVar[int] = 50
+
+    filter: Literal["all", "needs_you", "done", "failed", "held"]
+    item_count: int

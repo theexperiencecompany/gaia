@@ -755,7 +755,7 @@ module = [
   "app.models.bot_models",
   "app.models.sandbox_models",
   "app.models.support_models",
-  "app.models.notification.notification_models",
+  "app.models.channel_preference_models",
   "app.models.platform_models",
 ]
 disallow_untyped_defs = true

@@ -20,10 +20,6 @@ import time_machine
 
 from app.constants.todos import TodoActivityEvent
 from app.constants.trigger_gates import GateAuthor
-from app.models.notification.notification_models import (
-    NotificationSourceEnum,
-    NotificationType,
-)
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.trigger_gate_models import AuthoredGate
 from app.models.trigger_subscription_models import (
@@ -36,6 +32,7 @@ from app.models.trigger_subscription_models import (
     TriggerSubscription,
     TriggerSubscriptionStatus,
 )
+from app.services.outbox.models import Initiative, NoticeOutcome, ProducerKind, SubjectKind
 from app.services.triggers.subscription_dispatch import (
     dispatch_to_subscribed_todos,
     fire_subscription,
@@ -94,7 +91,7 @@ def deps():
         patch(f"{_MOD}.redis_cache") as redis,
         patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue,
         patch(f"{_MOD}.RedisPoolManager.get_pool", new_callable=AsyncMock) as get_pool,
-        patch(f"{_MOD}.notification_service.create_notification", new_callable=AsyncMock) as notify,
+        patch(f"{_MOD}.submit", new_callable=AsyncMock) as notify,
         patch(f"{_MOD}.tracked_todo_service.complete_tracked_todo", new_callable=AsyncMock) as done,
         patch(f"{_MOD}.capture") as capture,
         patch(f"{_MOD}.record_activity", new_callable=AsyncMock) as activity,
@@ -567,7 +564,7 @@ class TestActions:
         assert origin.trigger_name == GMAIL
         assert origin.payload == payload
 
-    async def test_notify_sends_a_deep_link_and_changes_nothing(self, deps) -> None:
+    async def test_notify_files_a_notice_and_changes_nothing(self, deps) -> None:
         sub = _subscription(action=SubscriptionAction.NOTIFY)
         deps.repo.find_active_by_user_and_trigger.return_value = [
             _todo(trigger_subscriptions=[sub])
@@ -575,15 +572,17 @@ class TestActions:
 
         await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
 
-        request = deps.notify.await_args.args[0]
-        assert request.user_id == USER_ID
-        assert request.source == NotificationSourceEnum.TODO_TRIGGER
-        assert request.type == NotificationType.INFO
-        assert request.content.title == "Update on: Chase Acme"
-        assert request.content.body == f"An event you were watching ({GMAIL}) just fired."
-        assert request.content.actions[0].label == "View todo"
-        assert request.content.actions[0].config.redirect.url == f"/todos?todoId={TODO_ID}"
-        assert request.metadata == {"todo_id": TODO_ID, "subscription_id": sub.id}
+        notice = deps.notify.await_args.args[0]
+        assert notice.recipient == USER_ID
+        assert notice.producer is ProducerKind.TODO
+        assert notice.subject.kind is SubjectKind.TODO_RUN
+        assert notice.subject.label == "Chase Acme"
+        assert notice.outcome is NoticeOutcome.INFO
+        assert notice.initiative is Initiative.USER_SCHEDULED
+        assert notice.report_id.startswith(f"sys:trigger_notify:{sub.id}:")
+        assert notice.facts == [
+            f"An event the user was watching for on 'Chase Acme' just fired ({GMAIL})."
+        ]
         deps.enqueue.assert_not_awaited()
         deps.repo.update.assert_not_awaited()
 

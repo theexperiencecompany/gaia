@@ -376,7 +376,6 @@ _INDEX_CREATORS = [
     "create_file_indexes",
     "create_calendar_indexes",
     "create_blog_indexes",
-    "create_notification_indexes",
     "create_reminder_indexes",
     "create_workflow_indexes",
     "create_payment_indexes",

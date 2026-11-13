@@ -40,10 +40,10 @@ export interface MenuSectionConfig {
 // Page navigation items
 const PAGE_ITEMS: MenuItemConfig[] = [
   {
-    id: "notifications",
-    label: "Notifications",
+    id: "updates",
+    label: "Updates",
     icon: <NotificationIcon width={18} height={18} />,
-    path: "/notifications",
+    path: "/updates",
   },
   {
     id: "calendar",

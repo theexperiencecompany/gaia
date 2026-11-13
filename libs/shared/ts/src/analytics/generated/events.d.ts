@@ -35,6 +35,7 @@ export type ServerEventName =
   | "chat:turn_reacted"
   | "delivery:item_held"
   | "delivery:message_sent"
+  | "delivery:updates_viewed"
   | "device:approved"
   | "device:revoked"
   | "device:self_paired"
@@ -77,9 +78,6 @@ export type ServerEventName =
   | "notes:created"
   | "notes:deleted"
   | "notes:updated"
-  | "notification:action_executed"
-  | "notification:bulk_action"
-  | "notification:read"
   | "notification:unsubscribed"
   | "nurture:email_sent"
   | "onboarding:completed"
@@ -181,7 +179,6 @@ export type WebEventName =
   | "navigation:navbar_dropdown_opened"
   | "navigation:navbar_link_clicked"
   | "navigation:sidebar_clicked"
-  | "notification:viewed"
   | "onboarding:checkout_retried"
   | "onboarding:restarted"
   | "onboarding:skipped"
@@ -626,6 +623,13 @@ export interface EventProperties {
     "max_class": "background" | "routine" | "timely" | "interrupt";
     "degraded": boolean;
   };
+  "delivery:updates_viewed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "filter": "all" | "needs_you" | "done" | "failed" | "held";
+    "item_count": number;
+  };
   "desktop_popup:dismissed": Record<string, never>;
   "desktop_popup:opened": {
     "triggered_by_wake_word": boolean;
@@ -976,33 +980,10 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
   };
-  "notification:action_executed": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "notification:bulk_action": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "action": string;
-    "successful": number;
-    "total": number;
-  };
-  "notification:read": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "count": number;
-  };
   "notification:unsubscribed": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "notification:viewed": {
-    "notification_id": string;
-    "source": "popover";
   };
   "nurture:email_sent": {
     "actor": "user" | "agent";

@@ -2,8 +2,6 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from app.constants.log_tags import LogTag
 from app.constants.websocket import ReportSettledOutcome
 from app.services.outbox.transport import ws_speech
@@ -90,24 +88,3 @@ class TestPublishConversationMessage:
 
         assert manager.broadcast_to_user.await_count == 2
         assert [w["attempt"] for w in event["warnings"]] == [1, 2]
-
-
-class TestPublishNotification:
-    async def test_frame_shape(self) -> None:
-        manager = _manager()
-        notification = {"id": "n1", "content": {"title": "Done"}}
-
-        with patch.object(ws_speech, "websocket_manager", manager):
-            await ws_speech.publish_notification(USER_ID, notification)
-
-        manager.broadcast_to_user.assert_awaited_once_with(
-            USER_ID,
-            {"type": "outbox.message", "kind": "notification", "notification": notification},
-        )
-
-    async def test_a_failed_publish_raises(self) -> None:
-        manager = _manager(side_effect=RuntimeError("redis down"))
-
-        with patch.object(ws_speech, "websocket_manager", manager):
-            with pytest.raises(RuntimeError, match="redis down"):
-                await ws_speech.publish_notification(USER_ID, {})

@@ -10,7 +10,7 @@ no_unauthorized_send, whose forbidden set is the shipped
 GMAIL_DESTRUCTIVE_TOOLS (never a copy) to match the HIL layer.
 
 expected.end_state covers todos, tracked_todos, reminders, projects,
-labels, notifications, workflows, answer_contains, recalled and the
+labels, workflows, answer_contains, recalled and the
 fake mailbox; an unprojected key fails the case loudly instead of
 passing silently. score.gates picks which checks decide pass/fail.
 """
@@ -886,44 +886,6 @@ async def _project_labels(user_id: str, want: list[object]) -> list[dict[str, ob
     return entries
 
 
-async def _project_notifications(user_id: str, want: list[object]) -> list[dict[str, object]]:
-    """Return notifications the agent actually created for this user.
-
-    channel asks whether any notification targeted that channel at all,
-    since delivery can be skipped for an unconnected channel.
-    """
-    from app.services.notification_service import notification_service
-
-    items = await notification_service.get_user_notifications(user_id, status=None, limit=100)
-    entries: list[dict[str, object]] = []
-    for item in want:
-        if not isinstance(item, dict):
-            raise RuntimeError(
-                f"capability notifications end_state entry is not a mapping: {item!r}"
-            )
-        entry: dict[str, object] = {}
-        if "count" in item:
-            entry["count"] = len(items)
-        if "title_contains" in item:
-            term = str(item["title_contains"])
-            entry["title_contains"] = _term_if(
-                any(term.lower() in n.content.title.lower() for n in items), term
-            )
-        if "body_contains" in item:
-            term = str(item["body_contains"])
-            entry["body_contains"] = _term_if(
-                any(term.lower() in n.content.body.lower() for n in items), term
-            )
-        if "channel" in item:
-            term = str(item["channel"])
-            entry["channel"] = _term_if(
-                any(ch.channel_type.lower() == term.lower() for n in items for ch in n.channels),
-                term,
-            )
-        entries.append(entry)
-    return entries
-
-
 async def _project_tracked_todos(user_id: str, want: list[object]) -> list[dict[str, object]]:
     from app.db.repositories.todos import todo_repository
 
@@ -1062,7 +1024,6 @@ async def _compute_end_state(case: Case, user_id: str, text: str) -> dict[str, o
         "reminders": _project_reminders,
         "projects": _project_projects,
         "labels": _project_labels,
-        "notifications": _project_notifications,
     }
     projected: dict[str, object] = {}
     for key, want in wanted.items():

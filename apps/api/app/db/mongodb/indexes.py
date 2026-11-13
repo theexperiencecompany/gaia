@@ -108,7 +108,6 @@ async def create_all_indexes() -> None:
             create_file_indexes(),
             create_calendar_indexes(),
             create_blog_indexes(),
-            create_notification_indexes(),
             create_reminder_indexes(),
             create_workflow_indexes(),
             create_payment_indexes(),
@@ -155,7 +154,6 @@ async def create_all_indexes() -> None:
             "files",
             "calendar",
             "blog",
-            "notifications",
             "reminders",
             "workflows",
             "payments",
@@ -536,31 +534,6 @@ async def create_blog_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating blog indexes", error=str(e), error_type=type(e).__name__
-        )
-        raise
-
-
-async def create_notification_indexes() -> None:
-    """Create indexes for notifications collection."""
-    notifications_collection = get_async_collection("notifications")
-    try:
-        # Create all notification indexes concurrently
-        await asyncio.gather(
-            # For user-specific notifications
-            notifications_collection.create_index([("user_id", 1), ("created_at", -1)]),
-            # For unread notifications
-            notifications_collection.create_index(
-                [("user_id", 1), ("read", 1), ("created_at", -1)]
-            ),
-            # For notification type filtering
-            notifications_collection.create_index([("user_id", 1), ("type", 1)]),
-        )
-
-    except Exception as e:
-        log.error(
-            f"{LogTag.MONGO} Error creating notification indexes",
-            error=str(e),
-            error_type=type(e).__name__,
         )
         raise
 
@@ -1666,6 +1639,7 @@ async def create_outbox_indexes() -> None:
                 partialFilterExpression={"report.subject.series": {"$type": "string"}},
             ),
             items.create_index([("user_id", 1), ("state", 1), ("created_at", -1)]),
+            items.create_index([("user_id", 1), ("created_at", -1)], name="updates_feed"),
             items.create_index(
                 [("user_id", 1), ("report.subject.owner_conversation_id", 1)],
                 partialFilterExpression={

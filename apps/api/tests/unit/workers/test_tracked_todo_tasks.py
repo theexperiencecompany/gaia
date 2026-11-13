@@ -92,10 +92,6 @@ from app.constants.trigger_gates import GateAuthor, SystemGatePreset
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.repositories.todos import todo_repository
 from app.models.message_models import TodoRunWake
-from app.models.notification.notification_models import (
-    NotificationSourceEnum,
-    NotificationType,
-)
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
@@ -116,6 +112,7 @@ from app.models.trigger_subscription_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from app.services.outbox.models import NoticeOutcome, ProducerKind
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.tracked_todo_service import starting_canvas, tracked_todo_service
 from app.services.triggers.batching import MAX_TRIGGER_BATCH_EVENTS
@@ -1691,7 +1688,7 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
                 LOAD_USER,
                 AsyncMock(side_effect=_user_context(timezone=timezone)),
             ),
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.submit", notify),
             patch(f"{MODULE}.teardown_subscriptions", teardown),
             patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             _serving(pool),
@@ -1738,14 +1735,13 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
             f"gave up after {MAX_RETRY_ATTEMPTS} failed attempts; the next occurrence runs "
             "as scheduled",
         )
-        (request,) = (c.args[0] for c in seams.notify.await_args_list)
-        assert (request.user_id, request.type) == (OWNER_ID, NotificationType.ERROR)
-        assert request.content.title == "Scheduled Task Failed: Inbox desk"
-        assert request.content.body == (
+        (notice,) = (c.args[0] for c in seams.notify.await_args_list)
+        assert (notice.recipient, notice.outcome) == (OWNER_ID, NoticeOutcome.FAILED)
+        assert notice.subject.label == "Inbox desk"
+        assert notice.facts == [
             f"This run of 'Inbox desk' failed after {MAX_RETRY_ATTEMPTS} attempts. "
             "It runs again at its next scheduled time."
-        )
-        assert request.metadata == {"todo_id": "todo-1", "retry_count": MAX_RETRY_ATTEMPTS}
+        ]
 
     async def test_a_watch_run_that_gives_up_leaves_the_schedule_and_clears_the_count(self) -> None:
         pending = datetime.now(UTC) + timedelta(hours=5)
@@ -3741,7 +3737,7 @@ class TestExecuteOnExecutor:
 
 
 class TestMarkTodoFailed:
-    async def test_labels_the_todo_and_notifies_the_user(self):
+    async def test_labels_the_todo_and_files_the_failure_notice(self):
         repo = MagicMock()
         repo.add_labels = AsyncMock()
         notify = AsyncMock()
@@ -3749,7 +3745,7 @@ class TestMarkTodoFailed:
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.submit", notify),
             patch(f"{MODULE}.teardown_subscriptions", teardown),
         ):
             await _mark_todo_failed("todo-1", OWNER_ID, _doc(title="Nightly backup"))
@@ -3758,13 +3754,12 @@ class TestMarkTodoFailed:
         # A failed todo is skipped by the execution path until a manual reset, so
         # leaving its subscriptions armed would burn events on a todo that cannot run.
         teardown.assert_awaited_once_with("todo-1", OWNER_ID, reason="failed")
-        request = notify.await_args.args[0]
-        assert request.user_id == OWNER_ID
-        assert request.source == NotificationSourceEnum.BACKGROUND_JOB
-        assert request.type == NotificationType.ERROR
-        assert request.content.title == "Scheduled Task Failed: Nightly backup"
-        assert f"after {MAX_RETRY_ATTEMPTS} attempts" in request.content.body
-        assert request.metadata == {"todo_id": "todo-1", "retry_count": MAX_RETRY_ATTEMPTS}
+        notice = notify.await_args.args[0]
+        assert notice.recipient == OWNER_ID
+        assert notice.outcome is NoticeOutcome.FAILED
+        assert notice.producer is ProducerKind.TODO
+        assert notice.subject.label == "Nightly backup"
+        assert f"after {MAX_RETRY_ATTEMPTS} attempts" in notice.facts[0]
 
     async def test_stopping_is_on_the_todos_timeline(self, activity):
         with (
@@ -3773,7 +3768,7 @@ class TestMarkTodoFailed:
                 "app.workers.tasks.todo_run_context.todo_repository",
                 MagicMock(add_labels=AsyncMock()),
             ),
-            patch(f"{MODULE}.notification_service.create_notification", AsyncMock()),
+            patch(f"{MODULE}.submit", AsyncMock()),
             patch(f"{MODULE}.teardown_subscriptions", AsyncMock(return_value=0)),
         ):
             await _mark_todo_failed("todo-1", OWNER_ID, _doc())
@@ -3785,15 +3780,15 @@ class TestMarkTodoFailed:
             "label is removed"
         )
 
-    async def test_a_notification_failure_never_loses_the_failed_label(self):
+    async def test_a_notice_that_cannot_be_filed_never_loses_the_failed_label(self):
         repo = MagicMock()
         repo.add_labels = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(
-                f"{MODULE}.notification_service.create_notification",
-                AsyncMock(side_effect=RuntimeError("notification bus down")),
+                f"{MODULE}.submit",
+                AsyncMock(side_effect=RuntimeError("redis down")),
             ),
             patch(f"{MODULE}.teardown_subscriptions", AsyncMock(return_value=0)),
         ):

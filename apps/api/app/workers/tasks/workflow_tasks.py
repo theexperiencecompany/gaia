@@ -56,17 +56,6 @@ from app.decorators.entitlements import capture_paywall_block, is_paid
 from app.decorators.rate_limiting import enforce_tiered_limit
 from app.models.chat_models import MessageModel
 from app.models.message_models import MessageRequestWithHistory
-from app.models.notification.notification_models import (
-    ActionConfig,
-    ActionStyle,
-    ActionType,
-    NotificationAction,
-    NotificationContent,
-    NotificationRequest,
-    NotificationSourceEnum,
-    NotificationType,
-    RedirectConfig,
-)
 from app.models.payment_models import PlanType
 from app.models.playbook_models import PlaybookDocument, PlaybookRunOutcome, PlaybookRunStatus
 from app.models.scheduler_models import DeactivationReason
@@ -86,8 +75,9 @@ from app.models.workflow_models import (
 from app.services.analytics_service import capture
 from app.services.cost_budget import format_reset_date
 from app.services.hil.approvals_store import list_pending_for_conversation
-from app.services.notification_service import notification_service
 from app.services.outbox.intake import submit
+from app.services.outbox.models import Initiative, NoticeOutcome, ProducerKind, SubjectKind
+from app.services.outbox.system_notices import system_notice
 from app.services.triggers.batching import (
     coalesce_window_seconds,
     drain_trigger_batch,
@@ -131,6 +121,7 @@ from app.services.workflow.playbook.workflow_hash import workflow_hash
 from app.services.workflow.scheduler import WorkflowScheduler, workflow_scheduler
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.thread_reset import reset_workflow_threads
+from app.utils import clock
 from app.utils.auth_utils import OwnerNotFoundError, require_owner
 from app.utils.errors import create_error
 from app.utils.occurrence import parse_occurrence_stamp
@@ -437,10 +428,8 @@ async def _quota_exhausted_body(workflow: Workflow, reset_time_str: str) -> str:
         return body
 
 
-async def _rate_limit_failure_content(
-    error: Exception, workflow: Workflow
-) -> tuple[str, NotificationAction | None]:
-    """Failure copy plus the upgrade CTA for a budget-, quota-, or plan-blocked run."""
+async def _rate_limit_failure_content(error: Exception, workflow: Workflow) -> str:
+    """Say why a budget-, quota-, or plan-blocked run did not run, and the upgrade that lifts it."""
     # HTTPException.detail is typed str | None upstream, but RateLimitExceededException
     # always assigns a dict at runtime — read it via getattr, not the inherited annotation.
     raw_detail = getattr(error, "detail", None)
@@ -483,23 +472,7 @@ async def _rate_limit_failure_content(
             f"Upgrade to {upgrade_plan} to unlock this feature."
         )
 
-    upgrade_action = (
-        None
-        if is_pro
-        else NotificationAction(
-            type=ActionType.REDIRECT,
-            label=f"Upgrade to {upgrade_plan}",
-            style=ActionStyle.PRIMARY,
-            config=ActionConfig(
-                redirect=RedirectConfig(
-                    url="/settings?section=subscription",
-                    open_in_new_tab=False,
-                    close_notification=True,
-                )
-            ),
-        )
-    )
-    return body, upgrade_action
+    return body
 
 
 async def _limit_notice_already_sent(workflow: Workflow) -> bool:
@@ -516,50 +489,33 @@ async def _limit_notice_already_sent(workflow: Workflow) -> bool:
 async def _notify_workflow_paused_for_integrations(
     workflow: Workflow, missing: list[IntegrationRef]
 ) -> None:
-    """Send the one notice a workflow gets when it pauses for a dead integration.
+    """File the one notice a workflow gets when it pauses for a dead integration.
 
-    Best-effort: failing to notify must not turn a clean skip into a worker
+    Best-effort: failing to file it must not turn a clean skip into a worker
     error. The workflow is already paused, so a lost notice costs one
     message, not one per occurrence.
     """
     names = ", ".join(ref.name for ref in missing)
-    first = missing[0]
     try:
-        await notification_service.create_notification(
-            NotificationRequest(
+        await submit(
+            system_notice(
                 user_id=workflow.user_id,
-                source=NotificationSourceEnum.INTEGRATION_EXPIRED,
-                type=NotificationType.WARNING,
-                content=NotificationContent(
-                    title=f"Workflow Paused: {workflow.title}",
-                    body=(
-                        f"'{workflow.title}' needs {names}, which isn't connected. "
-                        f"It's paused and will run again once you reconnect."
-                    ),
-                    actions=[
-                        NotificationAction(
-                            type=ActionType.REDIRECT,
-                            label=f"Connect {first.name}",
-                            style=ActionStyle.PRIMARY,
-                            config=ActionConfig(
-                                redirect=RedirectConfig(
-                                    url=f"/integrations?id={first.id}",
-                                    open_in_new_tab=False,
-                                    close_notification=True,
-                                )
-                            ),
-                        )
-                    ],
-                ),
-                metadata={
-                    "workflow_id": workflow.id,
-                    "missing_integrations": ",".join(ref.id for ref in missing),
-                },
+                producer=ProducerKind.WORKFLOW,
+                subject_kind=SubjectKind.WORKFLOW_RUN,
+                kind="workflow_paused",
+                key=f"{workflow.id}:{','.join(sorted(ref.id for ref in missing))}:{clock.now().date()}",
+                label=workflow.title,
+                outcome=NoticeOutcome.NEEDS_YOU,
+                initiative=Initiative.USER_SCHEDULED,
+                facts=[
+                    f"'{workflow.title}' needs {names}, which isn't connected.",
+                    "It is paused and will run again once the user reconnects.",
+                ],
             )
         )
     except Exception as notify_err:
         log.warning(
-            f"{LogTag.WORKER} Could not send the integration-paused notice",
+            f"{LogTag.WORKER} Could not file the integration-paused notice",
             workflow_id=workflow.id,
             error=str(notify_err),
             error_type=type(notify_err).__name__,
@@ -567,45 +523,32 @@ async def _notify_workflow_paused_for_integrations(
 
 
 async def _notify_workflow_failed(error: Exception, workflow: Workflow) -> None:
-    """Tell the user the workflow failed.
-
-    Best-effort: a notification failure must not mask the error that caused it.
-    """
+    """File that the workflow failed, or was paused by a limit it hit."""
     if isinstance(error, RateLimitExceededException) and await _limit_notice_already_sent(workflow):
         return
-    try:
-        if isinstance(error, RateLimitExceededException):
-            body, upgrade_action = await _rate_limit_failure_content(error, workflow)
-        else:
-            body = f"Your workflow '{workflow.title}' encountered an error and could not complete."
-            upgrade_action = None
-
-        # A budget skip is a pause, not a failure — the run resumes after the
-        # daily reset, and the title must not read like something broke.
-        title = (
-            f"Workflow Paused: {workflow.title}"
-            if isinstance(error, CostBudgetExceededException)
-            else f"Workflow Failed: {workflow.title}"
+    if isinstance(error, RateLimitExceededException):
+        fact = await _rate_limit_failure_content(error, workflow)
+    else:
+        fact = f"Your workflow '{workflow.title}' encountered an error and could not complete."
+    # A budget skip is a pause, not a failure: the run resumes after the daily reset.
+    outcome = (
+        NoticeOutcome.INFO
+        if isinstance(error, CostBudgetExceededException)
+        else NoticeOutcome.FAILED
+    )
+    await submit(
+        system_notice(
+            user_id=workflow.user_id,
+            producer=ProducerKind.WORKFLOW,
+            subject_kind=SubjectKind.WORKFLOW_RUN,
+            kind="workflow_failed",
+            key=f"{workflow.id}:{clock.now().isoformat()}",
+            label=workflow.title,
+            outcome=outcome,
+            initiative=Initiative.USER_SCHEDULED,
+            facts=[fact],
         )
-
-        await notification_service.create_notification(
-            NotificationRequest(
-                user_id=workflow.user_id,
-                source=NotificationSourceEnum.WORKFLOW_FAILED,
-                type=NotificationType.ERROR,
-                content=NotificationContent(
-                    title=title,
-                    body=body,
-                    actions=[upgrade_action] if upgrade_action else None,
-                ),
-                metadata={
-                    "workflow_id": workflow.id,
-                    "error_type": type(error).__name__,
-                },
-            )
-        )
-    except Exception as notify_err:
-        log.debug(f"{LogTag.WORKER} Failed to send failure notification: %s" % notify_err)
+    )
 
 
 async def _record_execution_failure(
@@ -661,7 +604,15 @@ async def _record_execution_failure(
     # An executor that died was already announced by the delivery path, as the
     # workflow's failure notification; a second one here would say it twice.
     if not isinstance(error, WorkflowExecutorFailed):
-        await _notify_workflow_failed(error, workflow)
+        try:
+            await _notify_workflow_failed(error, workflow)
+        except Exception as notify_err:
+            log.error(
+                f"{LogTag.WORKER} Could not file the workflow failure notice",
+                workflow_id=workflow_id,
+                error=str(notify_err),
+                error_type=type(notify_err).__name__,
+            )
 
 
 def _fallback_note(result: PlaybookRunResult) -> str:

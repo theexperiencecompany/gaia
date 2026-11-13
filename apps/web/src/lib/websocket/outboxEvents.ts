@@ -3,7 +3,6 @@ export const OUTBOX_MESSAGE_EVENT = "outbox.message";
 
 export const OutboxMessageKind = {
   ConversationMessage: "conversation_message",
-  Notification: "notification",
   ReportSettled: "report_settled",
 } as const;
 

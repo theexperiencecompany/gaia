@@ -477,8 +477,7 @@ async def test_a_fallback_that_raises_still_records_the_replays_calls() -> None:
     harness.playbook_run = AsyncMock(return_value=_stopped_replay())
     harness.chat = AsyncMock(side_effect=RuntimeError("agent exploded"))
 
-    with patch(f"{MODULE}.notification_service.create_notification", AsyncMock()):
-        await _fire(harness)
+    await _fire(harness)
 
     harness.complete_execution.assert_awaited_once()
     kwargs = harness.complete_execution.await_args.kwargs
@@ -496,8 +495,7 @@ async def test_a_failed_outcome_write_after_a_replay_still_records_its_calls() -
     harness.playbook_run = AsyncMock(return_value=_stopped_replay())
     harness.record_run_outcome = AsyncMock(side_effect=ConnectionError("mongo away"))
 
-    with patch(f"{MODULE}.notification_service.create_notification", AsyncMock()):
-        await _fire(harness)
+    await _fire(harness)
 
     kwargs = harness.complete_execution.await_args.kwargs
     assert kwargs["status"] == "failed"
@@ -1302,7 +1300,6 @@ class _LockedReplayHarness(_Harness):
         self.release = AsyncMock(side_effect=self._release)
         self.holder = AsyncMock(return_value=holder or None)
         self.run_playbook = AsyncMock(side_effect=self._run)
-        self.notify = AsyncMock()
         self.increment = AsyncMock()
         self.get_user = AsyncMock(
             return_value=AuthenticatedUser(user_id=workflow.user_id, timezone="UTC")
@@ -1336,7 +1333,6 @@ class _LockedReplayHarness(_Harness):
                 MagicMock(increment_execution_count=self.increment),
             ),
             patch(f"{MODULE}.run_playbook", self.run_playbook),
-            patch(f"{MODULE}.notification_service.create_notification", self.notify),
             patch(f"{MODULE}.require_owner", self.get_user),
         ]
 
@@ -1436,7 +1432,6 @@ class TestTheFireReservesItsConversation:
 
         await _fire(harness)
 
-        harness.notify.assert_not_awaited()
         harness.submit.assert_not_awaited()
 
     async def test_a_held_lock_leaves_the_playbooks_record_alone(self) -> None:
@@ -2333,8 +2328,7 @@ class TestAFailureAfterAReplayIsStillTheWorkflowsOwn:
         harness.playbook_run = AsyncMock(return_value=_stopped_replay())
         harness.chat = AsyncMock(side_effect=RuntimeError("agent exploded"))
 
-        with patch(f"{MODULE}.notification_service.create_notification", AsyncMock()):
-            await _fire(harness)
+        await _fire(harness)
 
         assert increment.await_args_list == [call("wf_1", USER_ID, is_successful=False)]
 

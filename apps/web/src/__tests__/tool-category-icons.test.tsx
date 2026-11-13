@@ -14,7 +14,6 @@ const BUILTIN_TOOL_CATEGORIES = [
   "integrations",
   "manual",
   "memory",
-  "notifications",
   "posthog",
   "reminders",
   "search",

@@ -47,10 +47,6 @@ vi.mock("@/i18n/navigation", () => ({
   usePathname: () => "/c",
 }));
 
-vi.mock("@/features/notification/hooks/useNotifications", () => ({
-  useNotifications: () => ({ notifications: [] }),
-}));
-
 vi.mock("@/features/pricing/hooks/useDodoPayments", () => ({
   useDodoPayments: () => ({
     createSubscriptionAndRedirect: vi.fn(),

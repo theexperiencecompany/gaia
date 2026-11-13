@@ -37,6 +37,13 @@ def _judgement_fields(judgement: ItemJudgement | None) -> dict[str, object]:
     return {} if judgement is None else {"judgement": judgement.model_dump(mode="python")}
 
 
+def _outcome_in(outcomes: Collection[str]) -> dict[str, object]:
+    values = list(outcomes)
+    return {
+        "$or": [{"report.report.outcome": {"$in": values}}, {"report.outcome": {"$in": values}}]
+    }
+
+
 class InsertedItem(NamedTuple):
     """The stored item for a report, and whether this call is the one that stored it."""
 
@@ -372,6 +379,48 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
     async def list_of_attempt(self, user_id: str, attempt_id: str) -> list[OutboxItemDocument]:
         """Return the items one compose attempt took, whatever state they are in now."""
         return await self._find({"user_id": user_id, "compose_attempt_id": attempt_id})
+
+    async def list_feed(
+        self,
+        user_id: str,
+        *,
+        states: Collection[ItemState],
+        outcomes: Collection[str] | None,
+        excluded_outcomes: Collection[str],
+        before: datetime | None,
+        limit: int,
+    ) -> list[OutboxItemDocument]:
+        """Return a page of the user's items, newest first: in these states, with these outcomes, without those.
+
+        An outcome is a run report's declared outcome or a notice's, whichever the item's report carries.
+        """
+        clauses: list[dict[str, object]] = [
+            {"user_id": user_id, "state": {"$in": [state.value for state in states]}}
+        ]
+        if before is not None:
+            clauses.append({"created_at": {"$lt": before}})
+        if outcomes is not None:
+            clauses.append(_outcome_in(outcomes))
+        if excluded_outcomes:
+            clauses.append({"$nor": [_outcome_in(excluded_outcomes)]})
+        return await self._find({"$and": clauses}, sort=[("created_at", -1)], limit=limit)
+
+    async def count_told_since(
+        self, user_id: str, since: datetime, *, excluded_outcomes: Collection[str]
+    ) -> int:
+        """Return how many items were told to the user since the instant, leaving out the outcomes named."""
+        return await self._count(
+            {
+                "$and": [
+                    {
+                        "user_id": user_id,
+                        "state": ItemState.SENT.value,
+                        "updated_at": {"$gte": since},
+                    },
+                    {"$nor": [_outcome_in(excluded_outcomes)]},
+                ]
+            }
+        )
 
     async def claim_queued(
         self, user_id: str, report_ids: list[str], attempt_id: str

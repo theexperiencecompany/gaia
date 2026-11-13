@@ -27,7 +27,7 @@ from app.services.delivery.chat_channel import resolve_channel_priority
 from app.services.delivery.presence import active_surface, read_presence
 from app.services.outbox.policy import is_answer
 from app.services.platform_link_service import linked_platforms_of
-from app.utils.notification.channel_preferences import normalize_channel_preferences
+from app.utils.channel_preferences import normalize_channel_preferences
 from shared.py.analytics.catalog.delivery import (
     ProactiveDestinationBasis,
     ProactiveDestinationKind,

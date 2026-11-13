@@ -112,27 +112,6 @@ const dummyTools = {
       category: "documents",
       required_integration: null,
     },
-    // Notifications tools
-    {
-      name: "get_notifications",
-      category: "notifications",
-      required_integration: null,
-    },
-    {
-      name: "search_notifications",
-      category: "notifications",
-      required_integration: null,
-    },
-    {
-      name: "get_notification_count",
-      category: "notifications",
-      required_integration: null,
-    },
-    {
-      name: "mark_notifications_read",
-      category: "notifications",
-      required_integration: null,
-    },
     // Productivity tools (todos + reminders)
     {
       name: "create_todo",
@@ -483,7 +462,6 @@ const dummyTools = {
     "googlesheets",
     "linkedin",
     "memory",
-    "notifications",
     "notion",
     "productivity",
     "search",

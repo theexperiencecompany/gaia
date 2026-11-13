@@ -24,6 +24,7 @@ from app.constants.memory import (
 from app.models.chat_models import MessageModel
 from app.models.conversation_models import ConversationDocument
 from app.models.user_models import UserDocument
+from app.services.outbox.models import NoticeOutcome, ProducerKind
 from app.workers.tasks.memory_backfill_tasks import (
     _conversation_date,
     _conversation_to_messages,
@@ -31,7 +32,6 @@ from app.workers.tasks.memory_backfill_tasks import (
     backfill_active_users,
     backfill_user_memories,
 )
-from tests.helpers import captured_wide_event
 
 MODULE = "app.workers.tasks.memory_backfill_tasks"
 
@@ -332,30 +332,19 @@ class TestBackfillUserMemories:
 
 
 class TestNotifyMemoryReady:
-    async def test_notification_redirects_to_the_memory_settings_page(self) -> None:
-        create = AsyncMock()
-        with patch(f"{MODULE}.notification_service.create_notification", create):
+    async def test_files_one_background_notice_per_user(self) -> None:
+        submit = AsyncMock()
+        with patch(f"{MODULE}.submit", submit):
             await _notify_memory_ready(USER_ID)
 
-        (request,) = create.await_args.args
-        assert request.user_id == USER_ID
-        assert request.metadata == {"source": "memory_backfill"}
-        (action,) = request.content.actions
-        redirect = action.config.redirect
-        assert redirect.url == "/settings/memory"
-        assert redirect.open_in_new_tab is False
-        assert redirect.close_notification is True
+        (notice,) = submit.await_args.args
+        assert notice.recipient == USER_ID
+        assert notice.report_id == f"sys:memory_ready:{USER_ID}"
+        assert notice.outcome is NoticeOutcome.INFO
+        assert notice.producer is ProducerKind.ACCOUNT
 
-    async def test_a_failed_notification_is_warned_not_raised(self) -> None:
-        create = AsyncMock(side_effect=RuntimeError("notification service down"))
-        with patch(f"{MODULE}.notification_service.create_notification", create):
-            async with captured_wide_event() as event:
+    async def test_a_notice_that_cannot_be_filed_raises(self) -> None:
+        submit = AsyncMock(side_effect=RuntimeError("redis down"))
+        with patch(f"{MODULE}.submit", submit):
+            with pytest.raises(RuntimeError, match="redis down"):
                 await _notify_memory_ready(USER_ID)
-
-        assert event["warnings"] == [
-            {
-                "msg": "memory_backfill.notification_failed",
-                "user_id": USER_ID,
-                "error": "notification service down",
-            }
-        ]

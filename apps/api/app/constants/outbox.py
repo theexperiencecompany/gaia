@@ -63,6 +63,8 @@ WORKFLOW_REPORT_PREFIX: Final = "wf:"
 TODO_REPORT_PREFIX: Final = "todo:"
 APPROVAL_REPORT_PREFIX: Final = "hil:"
 APPROVAL_SUBJECT_PREFIX: Final = "approval:"
+#: System notices are named by what happened and its natural key: sys:{kind}:{key}.
+SYSTEM_REPORT_PREFIX: Final = "sys:"
 
 #: What a subject is called to the user when the producer has no name for it: an ask is the request.
 ASK_LABEL_FALLBACK: Final = "Your request"

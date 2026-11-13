@@ -22,7 +22,7 @@ from app.services.email.models import EmailMessage
 from app.services.email.providers import get_email_provider
 from app.services.email.providers.base import MarketingContactsProvider
 from app.services.email.service import render_email_template, send_email
-from app.utils.notification.unsubscribe import build_unsubscribe_headers, build_unsubscribe_url
+from app.utils.email_unsubscribe import build_unsubscribe_headers, build_unsubscribe_url
 from shared.py.wide_events import log
 
 

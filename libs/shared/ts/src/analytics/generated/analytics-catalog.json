@@ -2672,6 +2672,35 @@
       }
     },
     {
+      "event": "delivery:updates_viewed",
+      "class": "DeliveryUpdatesViewed",
+      "owner": "server",
+      "domain": "delivery",
+      "description": "A user opened the Updates feed, which lists what GAIA told them and what it only recorded.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user opened the Updates feed, which lists what GAIA told them and what it only recorded.",
+        "properties": {
+          "filter": {
+            "enum": ["all", "needs_you", "done", "failed", "held"],
+            "title": "Filter",
+            "type": "string"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          }
+        },
+        "required": ["filter", "item_count"],
+        "title": "DeliveryUpdatesViewed",
+        "type": "object"
+      }
+    },
+    {
       "event": "desktop_popup:dismissed",
       "class": "DesktopPopupDismissed",
       "owner": "web",
@@ -4603,81 +4632,6 @@
       }
     },
     {
-      "event": "notification:action_executed",
-      "class": "NotificationActionExecuted",
-      "owner": "server",
-      "domain": "notification",
-      "description": "A user ran an action button on a notification.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user ran an action button on a notification.",
-        "properties": {},
-        "title": "NotificationActionExecuted",
-        "type": "object"
-      }
-    },
-    {
-      "event": "notification:bulk_action",
-      "class": "NotificationBulkAction",
-      "owner": "server",
-      "domain": "notification",
-      "description": "A user applied one action to several notifications at once.",
-      "previous_names": [],
-      "budget_per_user_day": 50,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user applied one action to several notifications at once.",
-        "properties": {
-          "action": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Action",
-            "type": "string"
-          },
-          "successful": {
-            "title": "Successful",
-            "type": "integer"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": ["action", "successful", "total"],
-        "title": "NotificationBulkAction",
-        "type": "object"
-      }
-    },
-    {
-      "event": "notification:read",
-      "class": "NotificationRead",
-      "owner": "server",
-      "domain": "notification",
-      "description": "A user marked a notification read.",
-      "previous_names": ["notification:dismissed"],
-      "budget_per_user_day": 10,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user marked a notification read.",
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          }
-        },
-        "required": ["count"],
-        "title": "NotificationRead",
-        "type": "object"
-      }
-    },
-    {
       "event": "notification:unsubscribed",
       "class": "NotificationUnsubscribed",
       "owner": "server",
@@ -4692,36 +4646,6 @@
         "description": "A user unsubscribed from notification emails.",
         "properties": {},
         "title": "NotificationUnsubscribed",
-        "type": "object"
-      }
-    },
-    {
-      "event": "notification:viewed",
-      "class": "NotificationViewed",
-      "owner": "web",
-      "domain": "notification",
-      "description": "A user clicked a notification in the notification center popover.",
-      "previous_names": [],
-      "budget_per_user_day": 10,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": null,
-      "properties": {
-        "additionalProperties": false,
-        "description": "A user clicked a notification in the notification center popover.",
-        "properties": {
-          "notification_id": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Notification Id",
-            "type": "string"
-          },
-          "source": {
-            "const": "popover",
-            "title": "Source",
-            "type": "string"
-          }
-        },
-        "required": ["notification_id", "source"],
-        "title": "NotificationViewed",
         "type": "object"
       }
     },

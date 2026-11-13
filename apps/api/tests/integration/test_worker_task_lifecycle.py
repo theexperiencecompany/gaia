@@ -481,7 +481,7 @@ class TestWorkflowTaskExecution:
                 side_effect=RuntimeError("Agent crashed"),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_service,
-            patch("app.workers.tasks.workflow_tasks.notification_service") as mock_notif,
+            patch("app.workers.tasks.workflow_tasks.submit", new_callable=AsyncMock) as mock_notif,
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
@@ -498,8 +498,6 @@ class TestWorkflowTaskExecution:
             ),
         ):
             mock_wf_service.increment_execution_count = AsyncMock()
-            mock_notif.create_notification = AsyncMock()
-
             result = await execute_workflow_by_id(ARQ_CTX, "wf-fail")
 
             # Verify execution completed with failure
@@ -513,8 +511,8 @@ class TestWorkflowTaskExecution:
                 "wf-fail", FAKE_USER_ID, is_successful=False
             )
 
-            # Verify failure notification sent
-            mock_notif.create_notification.assert_awaited_once()
+            # Verify the failure notice was filed
+            mock_notif.assert_awaited_once()
 
             assert "Error" in result
 

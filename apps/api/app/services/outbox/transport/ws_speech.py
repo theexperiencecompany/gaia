@@ -1,4 +1,4 @@
-"""The WebSocket transport for words the user reads: one outbox.message event, two kinds."""
+"""The WebSocket transport for words the user reads: the one outbox.message event."""
 
 import asyncio
 from typing import Any
@@ -63,14 +63,3 @@ async def publish_report_settled(
         },
     )
 
-
-async def publish_notification(user_id: str, notification: dict[str, Any]) -> None:
-    """Push a delivered notification record to the user's open clients; raises on a failed publish."""
-    await websocket_manager.broadcast_to_user(
-        user_id,
-        {
-            "type": WS_EVENT_OUTBOX_MESSAGE,
-            "kind": OutboxMessageKind.NOTIFICATION,
-            "notification": notification,
-        },
-    )

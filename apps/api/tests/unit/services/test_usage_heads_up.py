@@ -1,7 +1,7 @@
 """The one-time heads-up before a pro user's monthly allowance runs out.
 
 Redis is real (fakeredis), so the SET NX gate and its TTL are what production
-would store. The notification write is the boundary that is stubbed.
+would store. The outbox submit is the boundary that is stubbed.
 """
 
 from collections.abc import AsyncIterator, Iterator
@@ -15,9 +15,8 @@ from app.constants.cache import COST_BUDGET_NEAR_NOTIFIED_KEY
 from app.constants.llm import MONTHLY_BUDGET_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.models.notification.notification_models import NotificationSourceEnum
 from app.services import usage_heads_up
-from app.services.notification_service import notification_service
+from app.services.outbox.models import NoticeOutcome, NoticeReport, ProducerKind, SubjectKind
 from app.services.usage_heads_up import notify_monthly_heads_up_once
 
 USER = "u-heads-up"
@@ -36,10 +35,10 @@ async def fake_redis() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
 
 @pytest.fixture
 def created() -> Iterator[AsyncMock]:
-    """Stub the notification write and answer the allowance window for known users only."""
+    """Stub the outbox submit and answer the allowance window for known users only."""
     notify = AsyncMock()
     with (
-        patch.object(notification_service, "create_notification", notify),
+        patch.object(usage_heads_up, "submit", notify),
         patch.object(
             usage_heads_up,
             "monthly_allowance_window",
@@ -60,19 +59,21 @@ class TestMonthlyHeadsUp:
 
         assert created.await_count == 1
 
-    async def test_tells_the_user_what_stops_and_when_it_comes_back(
-        self, created: AsyncMock
-    ) -> None:
+    async def test_files_what_stops_and_when_it_comes_back(self, created: AsyncMock) -> None:
         await notify_monthly_heads_up_once(USER)
 
-        request = created.await_args.args[0]
-        assert request.user_id == USER
-        assert request.source == NotificationSourceEnum.USAGE_LIMIT
-        assert request.content.title == "Most of this month's usage allowance is used"
-        assert request.content.body == (
+        notice = created.await_args.args[0]
+        assert isinstance(notice, NoticeReport)
+        assert notice.recipient == USER
+        assert notice.producer is ProducerKind.ACCOUNT
+        assert notice.subject.kind is SubjectKind.ACCOUNT
+        assert notice.outcome is NoticeOutcome.INFO
+        assert notice.report_id == f"sys:usage_heads_up:{USER}:{WINDOW}"
+        assert notice.facts == [
+            "Most of the user's monthly usage allowance is used.",
             "When it runs out, chat, workflows and tracked todos pause "
-            "until February 15, when it resets."
-        )
+            "until February 15, when it resets.",
+        ]
 
     async def test_the_gate_is_this_users_month_and_expires_with_it(
         self, created: AsyncMock, fake_redis: fakeredis.aioredis.FakeRedis
@@ -88,7 +89,7 @@ class TestMonthlyHeadsUp:
         await notify_monthly_heads_up_once(USER)
         await notify_monthly_heads_up_once("u2")
 
-        assert [c.args[0].user_id for c in created.await_args_list] == [USER, "u2"]
+        assert [c.args[0].recipient for c in created.await_args_list] == [USER, "u2"]
 
     async def test_no_redis_sends_nothing(self, created: AsyncMock) -> None:
         with patch.object(redis_cache, "redis", None):
@@ -96,10 +97,10 @@ class TestMonthlyHeadsUp:
 
         created.assert_not_awaited()
 
-    async def test_a_failed_write_is_reported_with_its_cause(self, created: AsyncMock) -> None:
-        created.side_effect = RuntimeError("mongo down")
+    async def test_a_failed_submit_is_reported_with_its_cause(self, created: AsyncMock) -> None:
+        created.side_effect = RuntimeError("redis down")
         with patch.object(usage_heads_up, "log") as log:
             await notify_monthly_heads_up_once(USER)
 
         assert log.warning.call_args.args == (f"{LogTag.AGENT} Monthly heads-up notice failed",)
-        assert log.warning.call_args.kwargs == {"error": "mongo down", "error_type": "RuntimeError"}
+        assert log.warning.call_args.kwargs == {"error": "redis down", "error_type": "RuntimeError"}

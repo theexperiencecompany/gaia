@@ -1,5 +1,3 @@
-import type { NotificationActionView } from "../api/generated";
-
 export type { ChannelPreferences } from "../api/generated";
 export enum NotificationStatus {
   PENDING = "pending",
@@ -42,7 +40,18 @@ export interface NotificationActionConfig {
   };
 }
 
-export type NotificationAction = NotificationActionView;
+export interface NotificationAction {
+  id: string;
+  type: NotificationActionType;
+  label: string;
+  style: NotificationActionStyle;
+  config?: NotificationActionConfig | null;
+  disabled: boolean;
+  executed: boolean;
+  executed_at?: string | null;
+  requires_confirmation: boolean;
+  confirmation_message?: string | null;
+}
 
 export interface InAppNotificationContent {
   title: string;

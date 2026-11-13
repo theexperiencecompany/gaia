@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * Regression: an unpaid account mid-onboarding fired /conversations,
- * /notifications and /integrations from the shell behind the wizard, and each
+ * /updates and /integrations from the shell behind the wizard, and each
  * 402 surfaced as a "Failed to fetch conversations" or paywall toast. The paid
  * session must not mount until the plan is read and allows it.
  */
@@ -33,11 +33,8 @@ vi.mock("@/features/pricing/api/pricingApi", () => ({
 vi.mock("@/lib/websocket/useWebSocketConnection", () => ({
   useWebSocketConnection: () => paidSessionHook("websocket"),
 }));
-vi.mock("@/features/notification/hooks/useNotifications", () => ({
-  useNotifications: () => paidSessionHook("notifications"),
-}));
-vi.mock("@/features/notification/hooks/useNotificationWebSocket", () => ({
-  useNotificationWebSocket: () => paidSessionHook("notification_ws"),
+vi.mock("@/features/updates/hooks/useUpdatesLiveRefresh", () => ({
+  useUpdatesLiveRefresh: () => paidSessionHook("updates"),
 }));
 vi.mock("@/features/chat/hooks/useBgMessageWebSocket", () => ({
   useBgMessageWebSocket: () => paidSessionHook("bg_messages"),
@@ -144,7 +141,7 @@ describe("ProvidersLayout paid session", () => {
     render(<ProvidersLayout>page</ProvidersLayout>, { wrapper });
 
     await waitFor(() =>
-      expect(paidSessionHook).toHaveBeenCalledWith("notifications"),
+      expect(paidSessionHook).toHaveBeenCalledWith("updates"),
     );
     expect(paidSessionHook).toHaveBeenCalledWith("websocket");
   });

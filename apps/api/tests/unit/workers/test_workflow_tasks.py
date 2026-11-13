@@ -253,9 +253,7 @@ class TestExecuteWorkflowById:
                 AsyncMock(side_effect=RuntimeError("LLM timeout")),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.notification_service",
-            ),
+            patch("app.workers.tasks.workflow_tasks.submit", new_callable=AsyncMock),
             patch(
                 "app.workers.tasks.workflow_tasks.create_execution",
                 mock_create_exec,
@@ -329,7 +327,7 @@ class TestExecuteWorkflowById:
                 AsyncMock(side_effect=ValueError("boom")),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.notification_service"),
+            patch("app.workers.tasks.workflow_tasks.submit", new_callable=AsyncMock),
             patch(
                 "app.workers.tasks.workflow_tasks.create_execution",
                 AsyncMock(return_value=mock_execution),
@@ -1352,23 +1350,16 @@ class TestExecuteWorkflowByIdNotifications:
             p_create,
             p_complete,
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.notification_service",
-            ) as mock_notif,
+            patch("app.workers.tasks.workflow_tasks.submit", new_callable=AsyncMock) as mock_notif,
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
-            mock_notif.create_notification = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
         assert "Error executing workflow" in result
-        mock_notif.create_notification.assert_awaited_once()
-        notif_req = mock_notif.create_notification.call_args[0][0]
-        assert "Resets" in notif_req.content.body
-        assert "Upgrade to Pro" in notif_req.content.body
-        # Should include an upgrade action
-        assert notif_req.content.actions is not None
-        assert len(notif_req.content.actions) == 1
-        assert "Upgrade" in notif_req.content.actions[0].label
+        mock_notif.assert_awaited_once()
+        notif_req = mock_notif.call_args[0][0]
+        assert "Resets" in notif_req.facts[0]
+        assert "Upgrade to Pro" in notif_req.facts[0]
 
     async def test_rate_limit_without_reset_time_sends_plan_gated_notification(self, ctx):
         """RateLimitExceededException without reset_time sends a plan-gated message."""
@@ -1386,18 +1377,15 @@ class TestExecuteWorkflowByIdNotifications:
             p_create,
             p_complete,
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.notification_service",
-            ) as mock_notif,
+            patch("app.workers.tasks.workflow_tasks.submit", new_callable=AsyncMock) as mock_notif,
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
-            mock_notif.create_notification = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
         assert "Error executing workflow" in result
-        notif_req = mock_notif.create_notification.call_args[0][0]
-        assert "not available on your current plan" in notif_req.content.body
-        assert "Upgrade to Pro" in notif_req.content.body
+        notif_req = mock_notif.call_args[0][0]
+        assert "not available on your current plan" in notif_req.facts[0]
+        assert "Upgrade to Pro" in notif_req.facts[0]
 
     async def test_rate_limit_with_invalid_reset_time_format_falls_back(self, ctx):
         """When reset_time string in the detail dict is unparseable, the fallback body is used (no Resets line)."""
@@ -1418,18 +1406,15 @@ class TestExecuteWorkflowByIdNotifications:
             p_create,
             p_complete,
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.notification_service",
-            ) as mock_notif,
+            patch("app.workers.tasks.workflow_tasks.submit", new_callable=AsyncMock) as mock_notif,
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
-            mock_notif.create_notification = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
         assert "Error executing workflow" in result
-        notif_req = mock_notif.create_notification.call_args[0][0]
+        notif_req = mock_notif.call_args[0][0]
         # Falls back to the version without the reset time formatting
-        assert "You've used all your workflow executions" in notif_req.content.body
+        assert "You've used all your workflow executions" in notif_req.facts[0]
 
     async def test_generic_error_sends_plain_failure_notification(self, ctx):
         """Non-rate-limit errors produce a plain failure notification."""
@@ -1444,22 +1429,17 @@ class TestExecuteWorkflowByIdNotifications:
             p_create,
             p_complete,
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.notification_service",
-            ) as mock_notif,
+            patch("app.workers.tasks.workflow_tasks.submit", new_callable=AsyncMock) as mock_notif,
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
-            mock_notif.create_notification = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
         assert "Error executing workflow" in result
-        notif_req = mock_notif.create_notification.call_args[0][0]
-        assert "encountered an error" in notif_req.content.body
-        # No upgrade action for generic errors
-        assert notif_req.content.actions is None
+        notif_req = mock_notif.call_args[0][0]
+        assert "encountered an error" in notif_req.facts[0]
 
     async def test_notification_failure_during_error_is_swallowed(self, ctx):
-        """If notification_service.create_notification fails during error handling, the exception is swallowed and the error result is still returned."""
+        """If filing the failure notice fails during error handling, the exception is swallowed and the error result is still returned."""
         workflow = _make_workflow()
         error = ValueError("Original error")
 
@@ -1471,14 +1451,10 @@ class TestExecuteWorkflowByIdNotifications:
             p_create,
             p_complete,
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.notification_service",
-            ) as mock_notif,
+            patch("app.workers.tasks.workflow_tasks.submit", new_callable=AsyncMock) as mock_notif,
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
-            mock_notif.create_notification = AsyncMock(
-                side_effect=RuntimeError("Notification service down")
-            )
+            mock_notif.side_effect = RuntimeError("redis down")
             result = await execute_workflow_by_id(ctx, workflow.id)
 
         assert "Error executing workflow" in result
@@ -1507,10 +1483,9 @@ class TestExecuteWorkflowByIdNotifications:
                 AsyncMock(side_effect=RuntimeError("DB write failure")),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.notification_service") as mock_notif,
+            patch("app.workers.tasks.workflow_tasks.submit", new_callable=AsyncMock),
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
-            mock_notif.create_notification = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
         assert "Error executing workflow" in result
@@ -1539,12 +1514,11 @@ class TestExecuteWorkflowByIdNotifications:
                 AsyncMock(),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.notification_service") as mock_notif,
+            patch("app.workers.tasks.workflow_tasks.submit", new_callable=AsyncMock),
         ):
             mock_wf_svc.increment_execution_count = AsyncMock(
                 side_effect=RuntimeError("Stats DB down")
             )
-            mock_notif.create_notification = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
         assert "Error executing workflow" in result
@@ -1568,10 +1542,9 @@ class TestExecuteWorkflowByIdNotifications:
                 mock_complete_exec,
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.notification_service") as mock_notif,
+            patch("app.workers.tasks.workflow_tasks.submit", new_callable=AsyncMock),
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
-            mock_notif.create_notification = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
         assert "Error executing workflow" in result
@@ -1998,7 +1971,7 @@ class _FirePatches:
             patch(f"{MODULE}.coalesce_window_seconds", self.coalesce),
             patch(f"{MODULE}.distrust_fresh_playbook", self.distrust),
             patch(f"{MODULE}.playbook_repository.record_run_outcome", self.record_run_outcome),
-            patch(f"{MODULE}.notification_service.create_notification", self.notify),
+            patch(f"{MODULE}.submit", self.notify),
             patch(f"{MODULE}.log", self.log),
         ):
             stack.enter_context(patcher)
@@ -2545,11 +2518,11 @@ class TestCostWallCopy:
             period=RateLimitPeriod.MONTH,
         )
 
-        body, action = await _rate_limit_failure_content(error, _make_workflow())
+        body = await _rate_limit_failure_content(error, _make_workflow())
 
         assert "December 1" in body
         assert "today" not in body
-        assert action is None
+        assert "Upgrade" not in body
 
     async def test_a_daily_wall_keeps_the_daily_copy(self) -> None:
         error = CostBudgetExceededException(
@@ -2558,6 +2531,6 @@ class TestCostWallCopy:
             current_plan="pro",
         )
 
-        body, _ = await _rate_limit_failure_content(error, _make_workflow())
+        body = await _rate_limit_failure_content(error, _make_workflow())
 
         assert "for today" in body

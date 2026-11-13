@@ -47,7 +47,7 @@ class LogTag:
     ONBOARDING: Final[str] = "[ONBOARDING]"  # services/onboarding
     TODO: Final[str] = "[TODO]"  # services/todos
     PAYMENT: Final[str] = "[PAYMENT]"  # services/payments
-    NOTIFICATION: Final[str] = "[NOTIFICATION]"  # utils/notification
+    NOTIFICATION: Final[str] = "[NOTIFICATION]"  # push and email notifications
     DESKTOP: Final[str] = "[DESKTOP]"  # services/desktop
     HIL: Final[str] = "[HIL]"  # services/hil + agents/middleware/hil_approval
     BROWSER: Final[str] = "[BROWSER]"  # services/browser + agents/tools/browser_tool

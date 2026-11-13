@@ -4,6 +4,7 @@ The unique (user_id, compose_attempt_id) insert is the gate in front of every
 transport: a message is sent only by the call whose insert won.
 """
 
+from collections.abc import Collection
 from datetime import datetime
 from typing import Literal
 
@@ -37,6 +38,14 @@ class OutboxMessagesRepository(UserScopedRepository[OutboxMessageDocument, Outbo
     async def get_by_attempt(self, user_id: str, attempt_id: str) -> OutboxMessageDocument | None:
         """Return the message a compose attempt produced, or None."""
         return await self._find_one({"user_id": user_id, "compose_attempt_id": attempt_id})
+
+    async def list_by_attempts(
+        self, user_id: str, attempt_ids: Collection[str]
+    ) -> list[OutboxMessageDocument]:
+        """Return the messages the compose attempts produced."""
+        return await self._find(
+            {"user_id": user_id, "compose_attempt_id": {"$in": list(attempt_ids)}}
+        )
 
     async def finish_send(
         self,

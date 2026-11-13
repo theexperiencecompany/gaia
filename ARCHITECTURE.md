@@ -396,10 +396,9 @@ Integration tools (Composio + MCP — the thousands) are **never bound** to the 
 - `apps/api/app/agents/core/outcome_review.py` — `review_outcome` checks that declared outcome against the delegation's successful tool calls (done needs work, schedule a reminder or a scheduled/recurring tracked todo, subscribe a trigger watch). An unbacked declaration is nudged once (`create_agent._after_finish_task`), then delivered under an "unverified" note; a verified one picks the reply shape (`comms_prompts.outcome_delivery_note`, appended in `executor_runner._review_outcome_note`). `app/agents/core/delegation_window.py` owns `current_delegation` / `running_turn_start`, the slice every per-run check counts over.
 - `apps/api/app/agents/tools/skill_tools.py` — see §7.
 
-### 9.5 Workflows, todos, notifications, etc.
+### 9.5 Workflows, todos, reminders, etc.
 
 - `apps/api/app/agents/tools/workflow_tool.py` + `workflow_shared_tools.py` — see §10.
-- `apps/api/app/agents/tools/notification_tool.py` — see §11.
 - `apps/api/app/agents/tools/reminder_tool.py` — reminders.
 - `apps/api/app/agents/tools/todo_tool.py` — classic user-facing todos.
 - `apps/api/app/agents/tools/todo_tools.py` — `plan_tasks`, `update_tasks` (in-state todo channel).
@@ -429,7 +428,6 @@ Integration tools (Composio + MCP — the thousands) are **never bound** to the 
   - `workflow_subagent.py` — `WorkflowSubagentRunner` (subagent that generates workflows).
   - `subagent_output.py` — parses subagent JSON responses.
   - `trigger_search.py` — trigger search for `search_triggers` tool.
-  - `notifications.py` — workflow notification rules.
   - `validators.py` — workflow validation.
   - `conversation_service.py` — conversation-bound workflows.
 - `apps/api/app/agents/tools/workflow_tool.py` — `create_workflow`, `list_workflows`, `search_triggers`, `run_workflow`, etc. Uses `WorkflowSubagentRunner`. Direct creation for simple triggers; confirmation-required for integration triggers with config fields.
@@ -445,19 +443,31 @@ Integration tools (Composio + MCP — the thousands) are **never bound** to the 
 
 ---
 
-## 11. Notifications
+## 11. The outbound layer: how GAIA tells the user anything
 
-- `apps/api/app/agents/tools/notification_tool.py` — `get_notifications`, `search_notifications`, `mark_notifications_read`, `get_notification_count`, `get_notification_preferences`. Uses `get_stream_writer` to push real-time updates.
-- `apps/api/app/services/notification_service.py` — `NotificationService` facade around `NotificationOrchestrator`.
-- `apps/api/app/utils/notification/`
-  - `orchestrator.py` — multi-channel routing.
-  - `channels.py` — `ChannelAdapter`.
-  - `actions.py` — `ActionHandler`.
-  - `channel_preferences.py` — per-channel user prefs.
-- `apps/api/app/models/notification/notification_models.py` — `NotificationRecord`, `NotificationRequest`, `NotificationType`, `NotificationStatus`, `NotificationSourceEnum`, `ChannelConfig`, `BulkActions`.
-- `apps/api/app/constants/notifications.py` — `ALL_AUTO_INJECTED_CHANNELS`, `CHANNEL_TYPE_INAPP`.
-- `apps/api/app/services/outbox/transport/bot_queue.py` — proxies notifications to the right channel (in-app, email, bot, push).
-- Frontend: `libs/shared/ts/src/types/notification.ts`, `libs/shared/ts/src/api/notificationsApi.ts`, `libs/shared/ts/src/hooks/useNotificationsBase.ts`.
+Everything GAIA says on its own goes through one place, the outbox, and nothing else speaks. A producer files a *report* (facts, never words) and the outbox decides whether, when, where and in what words it is told. There is no notification collection, orchestrator or notification tool: "anything new?" is answered from the work-state slot comms reads, and the user reads the record on the Updates page.
+
+Producers (`submit` from `app/services/outbox/intake.py`; a failed enqueue raises):
+
+- Executor runs, tracked-todo runs, workflow runs and playbook replays file a `RunReport` (§9.4, §10, §12).
+- Reminders, approvals (§9.4), browser jobs, artifacts and link greetings file a `NoticeReport` built by their own module.
+- System notices are `NoticeReport`s built by `apps/api/app/services/outbox/system_notices.py`, named `sys:{kind}:{natural key}` so one occurrence is one fact: integration expired (`needs_you`), memory ready, Gmail personalization, system workflows provisioned, the monthly usage heads-up, a workflow paused or failed or stopped by a limit, a tracked todo that used up its attempts, a trigger that fired for a todo, and the maintenance sweep's expired, overdue and dormant-digest reports. Account-level notices are self-initiated (`background` unless they need the user); a notice about something the user set up (a workflow, a watched todo) is `user_scheduled`, which makes it an answer.
+- The maintenance sweep (`workers/tasks/maintenance_sweep_tasks.py`) files at most one report per todo per day (the day is in the report id, and the ledger says whether it already did); how often the user is told again is the outbox's repeat back-off (`REPEAT_BACKOFF_SECONDS`), not a sweep cooldown.
+
+Pipeline, all under `apps/api/app/services/outbox/`:
+
+- `intake.py` stores the report once (idempotent on `report_id`), lets the latest report of a replace subject stand, has the Judge read it (`judge.py`, `judge_context.py`, `judge_verdict.py`), applies the Rails (`policy.py`: send now, hold, record only, expire) and the attention placement (`holds.py`, `attention.py`: quiet hours, do-not-disturb, the daily budget, the gap, check-ins, repeat back-off), and sends what is to be told.
+- `router.py` picks the owner conversation (where it is recorded) and the one alert destination; `compose.py` words one message in the comms persona; `deliver.py` is the compare-and-set state machine over items and ledger messages; `flush.py` / `flush_queue.py` release holds; the speech transports in `transport/` (`ws_speech.py`, `bot_queue.py`, `push.py`) are importable only from the outbox (`tests/meta/test_speech_transport_fence.py`).
+- Collections: `outbox_items` (a report and where it stands, TTL 90 days) and `outbox_messages` (the ledger: what was said, to whom, where; TTL 180 days). Models in `app/models/outbox_models.py`.
+
+The Updates feed:
+
+- `GET /api/v1/updates?filter=all|needs_you|done|failed|held&before=&limit=` (`app/api/v1/endpoints/updates.py`, `services/outbox/updates.py`) reads items newest first, with the ledger message that told a sent item. Superseded items and progress notices are not listed. Opening it emits `delivery:updates_viewed`.
+- Web: `apps/web/src/features/updates/` and the `/updates` page; the header button shows how many updates arrived since the page was last opened. Rows open the conversation that owns the subject.
+
+What is left of "notifications" is the user's settings and plumbing, not a message path: per-channel on/off (`GET/PUT /notifications/preferences/channels`, `app/utils/channel_preferences.py`), push device registration (`/notifications/register-device`, `device_token_service.py`) and the signed email unsubscribe link (`app/utils/email_unsubscribe.py`). The pre-outbox `notifications` collection is frozen: nothing writes or reads it, no index code touches it, and its rows stay as they were.
+
+Frontend shared contract: request and response types come from `@gaia/shared/api/generated` (`libs/shared/ts/src/api/generated/schema.d.ts`, from `apps/api/openapi.json`).
 
 ---
 
@@ -534,7 +544,7 @@ Integration tools (Composio + MCP — the thousands) are **never bound** to the 
 ## 16. Cross-Cutting Concerns
 
 - **Tracing** — LangSmith (`@traceable` decorators in `executor_runner.py`) + Langfuse (`trace_id_for_message` in `app/config/langfuse.py`).
-- **Rate limiting** — `apps/api/app/api/v1/middleware/tiered_rate_limiter.py`, `apps/api/app/decorators/rate_limiting.py`. Used by `notification_tool`, `workflow_tool`, `bash`, `read`, etc.
+- **Rate limiting** — `apps/api/app/api/v1/middleware/tiered_rate_limiter.py`, `apps/api/app/decorators/rate_limiting.py`. Used by `workflow_tool`, `bash`, `read`, etc.
 - **Entitlements (paid-only gate)** — `apps/api/app/api/v1/middleware/entitlement.py` + `entitlement_allowlist.py`. Deny-by-default: **every new authenticated route 402s unless its prefix is added to `FREE_PATH_PREFIXES`**. Distinct from rate limiting — that caps how much a plan may use, this blocks a plan with none at all. Workers and the bot router are outside the middleware and gate themselves with `app/decorators/entitlements.py`. See `apps/api/CLAUDE.md` § Entitlements.
 - **WebSocket** — `apps/api/app/core/websocket_manager.py` (real-time bot/event push).
 - **Caching** — `apps/api/app/decorators/caching.py` (`Cacheable`, `CacheInvalidator`).
@@ -619,4 +629,6 @@ A browser task is a background job, not a tool call the turn holds open. `browse
 | Change workflow triggers | `apps/api/app/services/workflow/trigger_service.py` + `apps/api/app/models/trigger_config.py` |
 | Change tracked-todo notes (canvas.md / activity.md) | `apps/api/app/services/gaia_task_files.py` + `apps/api/app/services/todo_canvas_storage.py` |
 | Change sandbox behavior | `apps/api/app/services/sandbox/{pool,lifecycle,shard_router,artifact_watcher}.py` |
-| Change notification routing | `apps/api/app/utils/notification/orchestrator.py` + `apps/api/app/services/outbox/transport/bot_queue.py` |
+| Change where or when GAIA tells the user something | `apps/api/app/services/outbox/router.py` + `holds.py` + `policy.py` |
+| Add a system notice (account, integration, usage, maintenance) | `apps/api/app/services/outbox/system_notices.py`, then `submit` it from the producer |
+| Change the Updates feed | `apps/api/app/services/outbox/updates.py` + `apps/web/src/features/updates/` |

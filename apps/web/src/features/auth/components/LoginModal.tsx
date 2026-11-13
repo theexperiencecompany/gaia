@@ -25,7 +25,7 @@ const NON_DISMISSABLE_ROUTE_PREFIXES = [
   "/settings",
   "/pins",
   "/redirect",
-  "/notifications",
+  "/updates",
   "/calendar",
   "/dashboard",
 ];

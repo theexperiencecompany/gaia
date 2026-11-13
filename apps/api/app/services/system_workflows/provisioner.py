@@ -16,17 +16,6 @@ from pymongo.errors import DuplicateKeyError
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.entitlements import is_paid
-from app.models.notification.notification_models import (
-    ActionConfig,
-    ActionStyle,
-    ActionType,
-    NotificationAction,
-    NotificationContent,
-    NotificationRequest,
-    NotificationSourceEnum,
-    NotificationType,
-    RedirectConfig,
-)
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     SystemWorkflowDefinition,
@@ -34,7 +23,9 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowDocument,
 )
-from app.services.notification_service import NotificationService
+from app.services.outbox.intake import submit
+from app.services.outbox.models import NoticeOutcome, ProducerKind, SubjectKind
+from app.services.outbox.system_notices import system_notice
 from app.services.system_workflows.definitions import SYSTEM_WORKFLOWS_BY_INTEGRATION
 from app.services.system_workflows.recipes import install_recipe
 from app.services.user_service import get_profile_timezone
@@ -181,54 +172,35 @@ async def _notify_workflows_provisioned(
     integration_display_name: str,
     created: list[CreateWorkflowRequest],
 ) -> None:
-    """Send a friendly notification summarising the newly provisioned workflows."""
-    integration_name = integration_display_name
-
-    if len(created) == 1:
-        title = f"I set up a workflow for your {integration_name}"
-    else:
-        title = f"I set up {len(created)} workflows for your {integration_name}"
-
-    workflow_lines = "\n".join(f"• {r.title}: {r.description}" for r in created)
-    body = f"Here's what I've got running for you:\n\n{workflow_lines}\n\nYou can adjust or turn them off anytime."
-
+    """File what GAIA set up for the user's newly connected integration."""
+    titles = sorted(request.title for request in created)
     try:
-        notification_service = NotificationService()
-        await notification_service.create_notification(
-            NotificationRequest(
+        await submit(
+            system_notice(
                 user_id=user_id,
-                source=NotificationSourceEnum.SYSTEM_WORKFLOWS_PROVISIONED,
-                type=NotificationType.SUCCESS,
-                priority=2,
-                content=NotificationContent(
-                    title=title,
-                    body=body,
-                    actions=[
-                        NotificationAction(
-                            type=ActionType.REDIRECT,
-                            label="View Workflows",
-                            style=ActionStyle.PRIMARY,
-                            config=ActionConfig(
-                                redirect=RedirectConfig(
-                                    url="/workflows",
-                                    open_in_new_tab=False,
-                                    close_notification=True,
-                                )
-                            ),
-                        )
-                    ],
-                ),
-                metadata={"integration_display_name": integration_display_name},
+                producer=ProducerKind.ACCOUNT,
+                subject_kind=SubjectKind.ACCOUNT,
+                kind="workflows_provisioned",
+                key=f"{integration_display_name}:{'|'.join(titles)}",
+                label=f"Workflows for your {integration_display_name}",
+                outcome=NoticeOutcome.INFO,
+                facts=[
+                    f"GAIA set up {len(created)} workflow(s) for the user's "
+                    f"{integration_display_name}: "
+                    + "; ".join(f"{r.title} ({r.description})" for r in created)
+                    + ".",
+                    "They can adjust or turn them off anytime.",
+                ],
             )
         )
         log.info(
-            f"{LogTag.WORKFLOW} Sent system workflow provisioning notification to user for integration",
+            f"{LogTag.WORKFLOW} Filed the system workflow provisioning notice for integration",
             user_id=user_id,
             integration_display_name=integration_display_name,
         )
     except Exception as e:
         log.error(
-            f"{LogTag.WORKFLOW} Failed to send provisioning notification for user",
+            f"{LogTag.WORKFLOW} Failed to file the provisioning notice for user",
             user_id=user_id,
             error=str(e),
             error_type=type(e).__name__,

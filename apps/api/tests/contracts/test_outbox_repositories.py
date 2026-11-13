@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Collection
 from datetime import UTC, datetime, timedelta
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
 
+from app.constants.agents import OutcomeState
 from app.constants.outbox import ITEMS_COLLECTION, MESSAGES_COLLECTION
 from app.constants.outbox_attention import ATTENTION_SETTINGS_COLLECTION
 from app.constants.outbox_judge import ATTENTION_PROFILES_COLLECTION
@@ -19,6 +20,7 @@ from app.db.repositories.outbox_messages import OutboxMessagesRepository
 from app.models.attention_profile_models import ProfileAnswer
 from app.models.outbox_models import OutboxMessageDocument
 from app.models.ownership_models import DeliveryPolicy
+from app.models.task_report_models import TaskReport
 from app.services.outbox.judge_models import ItemJudgement, Relevance, Sensitivity
 from app.services.outbox.models import (
     ComposeMode,
@@ -29,6 +31,7 @@ from app.services.outbox.models import (
     NoticeOutcome,
     NoticeReport,
     ProducerKind,
+    RunReport,
     Subject,
     SubjectKind,
     UrgencyClass,
@@ -461,3 +464,131 @@ async def test_profiles_are_per_user(profiles) -> None:
     other = await profiles.get_or_seed("another-user", [ProfileAnswer(q="q", a="a")])
 
     assert other.answers == [ProfileAnswer(q="q", a="a")]
+
+
+def _noticed(report_id: str, outcome: NoticeOutcome) -> NoticeReport:
+    return _report(report_id).model_copy(update={"outcome": outcome})
+
+
+def _run_reported(report_id: str, outcome: OutcomeState) -> RunReport:
+    return RunReport(
+        report_id=report_id,
+        recipient=USER,
+        producer=ProducerKind.EXECUTOR,
+        subject=Subject(kind=SubjectKind.ASK, id=report_id, label="L"),
+        occurred_at=T0,
+        initiative=Initiative.ASKED,
+        report=TaskReport(outcome=outcome),
+    )
+
+
+@pytest.fixture
+def stamped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give each stored item its own creation minute, in insert order."""
+    minutes = iter(range(100))
+    monkeypatch.setattr(
+        "app.db.repositories.outbox_items.clock.now", lambda: T0 + timedelta(minutes=next(minutes))
+    )
+
+
+async def _feed(
+    items: OutboxItemsRepository,
+    *,
+    states: Collection[ItemState] = frozenset(ItemState),
+    outcomes: Collection[str] | None = None,
+    excluded_outcomes: Collection[str] = (),
+    before: datetime | None = None,
+    limit: int = 10,
+) -> list[str]:
+    page = await items.list_feed(
+        USER,
+        states=states,
+        outcomes=outcomes,
+        excluded_outcomes=excluded_outcomes,
+        before=before,
+        limit=limit,
+    )
+    return [item.report_id for item in page]
+
+
+@pytest.mark.usefixtures("stamped")
+async def test_the_feed_lists_the_users_items_newest_first_a_page_at_a_time(repos) -> None:
+    items, _ = repos
+    for n in range(4):
+        await items.insert_if_new(_report(f"r{n}", subject=f"s{n}"), expires_at=EXPIRES)
+
+    assert await _feed(items) == ["r3", "r2", "r1", "r0"]
+    assert await _feed(items, limit=2) == ["r3", "r2"]
+    assert await _feed(items, before=T0 + timedelta(minutes=2)) == ["r1", "r0"]
+
+
+@pytest.mark.usefixtures("stamped")
+async def test_the_feed_narrows_by_state_and_by_the_outcome_a_run_or_a_notice_carries(
+    repos,
+) -> None:
+    items, _ = repos
+    await items.insert_if_new(
+        _run_reported("run-needs", OutcomeState.NEEDS_YOU), expires_at=EXPIRES
+    )
+    await items.insert_if_new(_run_reported("run-done", OutcomeState.DONE), expires_at=EXPIRES)
+    await items.insert_if_new(_noticed("notice-needs", NoticeOutcome.NEEDS_YOU), expires_at=EXPIRES)
+    await items.insert_if_new(_noticed("notice-info", NoticeOutcome.INFO), expires_at=EXPIRES)
+    await items.insert_if_new(
+        _noticed("notice-progress", NoticeOutcome.PROGRESS), expires_at=EXPIRES
+    )
+
+    needs = {"needs_you", "blocked"}
+    assert await _feed(items, outcomes=needs) == ["notice-needs", "run-needs"]
+    assert await _feed(items, excluded_outcomes=needs | {"progress"}) == [
+        "notice-info",
+        "run-done",
+    ]
+    assert await _feed(items, states={ItemState.HELD}) == []
+
+
+@pytest.mark.usefixtures("stamped")
+async def test_the_feed_leaves_out_the_states_it_is_not_asked_for_and_other_users(repos) -> None:
+    items, _ = repos
+    await items.insert_if_new(_report("old", minutes=0), expires_at=EXPIRES)
+    await items.insert_if_new(_report("new", minutes=5), expires_at=EXPIRES)
+    await items.insert_if_new(
+        _report("stranger").model_copy(update={"recipient": "6812f0b3c9a14e2b7d5a91dd"}),
+        expires_at=EXPIRES,
+    )
+    await items.apply_replace(_report("new", minutes=5))
+
+    listed = frozenset(ItemState) - {ItemState.SUPERSEDED}
+    assert await _feed(items, states=listed) == ["new"]
+
+
+async def test_a_ledger_read_by_compose_attempts_returns_only_those_messages(repos) -> None:
+    _, messages = repos
+    for attempt in ("a1", "a2", "a3"):
+        await messages.insert_attempt(_message(attempt))
+
+    found = await messages.list_by_attempts(USER, {"a1", "a3"})
+
+    assert sorted(m.compose_attempt_id for m in found) == ["a1", "a3"]
+
+
+@pytest.mark.usefixtures("stamped")
+async def test_the_told_since_count_is_sent_items_after_the_instant_without_the_outcomes_left_out(
+    repos,
+) -> None:
+    items, _ = repos
+    for report_id, outcome in (
+        ("old", NoticeOutcome.INFO),
+        ("told", NoticeOutcome.INFO),
+        ("progress", NoticeOutcome.PROGRESS),
+        ("unsent", NoticeOutcome.INFO),
+    ):
+        await _queued(items, _noticed(report_id, outcome))
+    for attempt, report_id in (("a1", "old"), ("a2", "told"), ("a3", "progress")):
+        await items.claim_queued(USER, [report_id], attempt)
+        await items.begin_send(USER, attempt)
+        await items.finish_send(USER, attempt, ItemState.SENT)
+    await items._raw_collection().update_one(
+        {"user_id": USER, "report_id": "old"}, {"$set": {"updated_at": T0 - timedelta(days=1)}}
+    )
+
+    assert await items.count_told_since(USER, T0, excluded_outcomes={"progress"}) == 1

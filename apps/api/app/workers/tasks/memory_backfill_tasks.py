@@ -24,23 +24,13 @@ from app.constants.memory import (
     MEMORY_BACKFILL_MAX_USERS_PER_RUN,
     MemorySourceType,
 )
-from app.constants.notifications import MEMORY_SETTINGS_URL
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.memory.consolidation import cancel_consolidation
 from app.memory.engine import memory_engine
-from app.models.notification.notification_models import (
-    ActionConfig,
-    ActionStyle,
-    ActionType,
-    NotificationAction,
-    NotificationContent,
-    NotificationRequest,
-    NotificationSourceEnum,
-    NotificationType,
-    RedirectConfig,
-)
-from app.services.notification_service import notification_service
+from app.services.outbox.intake import submit
+from app.services.outbox.models import NoticeOutcome, ProducerKind, SubjectKind
+from app.services.outbox.system_notices import system_notice
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import MemoryContext, UserContext, log
@@ -173,38 +163,20 @@ def _conversation_date(doc: dict[str, Any]) -> datetime:
 
 
 async def _notify_memory_ready(user_id: str) -> None:
-    """Tell the user their memory was just seeded, linking to the memory page."""
-    try:
-        await notification_service.create_notification(
-            NotificationRequest(
-                user_id=user_id,
-                source=NotificationSourceEnum.BACKGROUND_JOB,
-                type=NotificationType.INFO,
-                priority=2,
-                content=NotificationContent(
-                    title="Your memory is ready",
-                    body=(
-                        "GAIA just organized memories from your past conversations — it now "
-                        "remembers your context, preferences, and the people you mention. "
-                        "Review or edit anything anytime."
-                    ),
-                    actions=[
-                        NotificationAction(
-                            type=ActionType.REDIRECT,
-                            label="View memories",
-                            style=ActionStyle.PRIMARY,
-                            config=ActionConfig(
-                                redirect=RedirectConfig(
-                                    url=MEMORY_SETTINGS_URL,
-                                    open_in_new_tab=False,
-                                    close_notification=True,
-                                )
-                            ),
-                        )
-                    ],
-                ),
-                metadata={"source": "memory_backfill"},
-            )
+    """File that the user's memory was just seeded from their past conversations."""
+    await submit(
+        system_notice(
+            user_id=user_id,
+            producer=ProducerKind.ACCOUNT,
+            subject_kind=SubjectKind.ACCOUNT,
+            kind="memory_ready",
+            key=user_id,
+            label="Your memory",
+            outcome=NoticeOutcome.INFO,
+            facts=[
+                "GAIA organized memories from the user's past conversations: it now remembers "
+                "their context, preferences and the people they mention.",
+                "They can review or edit any memory in settings, under memory.",
+            ],
         )
-    except Exception as e:
-        log.warning("memory_backfill.notification_failed", user_id=user_id, error=str(e)[:200])
+    )

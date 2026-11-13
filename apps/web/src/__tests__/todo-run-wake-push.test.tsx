@@ -115,8 +115,7 @@ describe("a tracked todo run's wake pushed to an open chat", () => {
   it("ignores an outbox frame that is not a chat message", async () => {
     await pushed()({
       type: "outbox.message",
-      kind: "notification",
-      notification: { id: "n-1" },
+      kind: "a_kind_added_later",
     });
 
     expect(db.putMessage).not.toHaveBeenCalled();

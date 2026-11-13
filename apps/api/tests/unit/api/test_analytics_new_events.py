@@ -20,7 +20,6 @@ from app.models.files_models import FileDocument
 from app.models.hil_models import ApprovalLedgerDocument, LedgerState
 from app.models.integration_models import Integration
 from app.models.memory_models import MemoryDocument
-from app.models.notification.notification_models import NotificationRecord
 from app.models.payment_models import PlanType
 from app.models.todo_models import TodoDocument
 from app.models.user_instructions_models import (
@@ -53,12 +52,7 @@ from shared.py.analytics.catalog.integrations import (
     SkillEnabled,
 )
 from shared.py.analytics.catalog.memory import MemoryCreated, MemoryDocumentUpdated, MemoryUpdated
-from shared.py.analytics.catalog.notifications import (
-    NotificationActionExecuted,
-    NotificationBulkAction,
-    NotificationRead,
-    NotificationUnsubscribed,
-)
+from shared.py.analytics.catalog.notifications import NotificationUnsubscribed
 from shared.py.analytics.catalog.onboarding import (
     OnboardingReset,
     OnboardingSocialProfilesConfirmed,
@@ -515,75 +509,7 @@ class TestImageNewEvents:
 NOTIF = "app.api.v1.endpoints.notification"
 
 
-def _notif_record() -> NotificationRecord:
-    from datetime import UTC as _UTC, datetime as _dt
-
-    from app.models.notification.notification_models import (
-        NotificationContent,
-        NotificationRecord,
-        NotificationRequest,
-        NotificationSourceEnum,
-        NotificationStatus,
-        NotificationType,
-    )
-
-    return NotificationRecord(
-        id="n1",
-        user_id=UID,
-        status=NotificationStatus.READ,
-        created_at=_dt(2026, 1, 1, tzinfo=_UTC),
-        original_request=NotificationRequest(
-            user_id=UID,
-            source=NotificationSourceEnum.AI_AGENT,
-            type=NotificationType.INFO,
-            content=NotificationContent(title="Hi", body="Body"),
-        ),
-    )
-
-
 class TestNotificationNewEvents:
-    async def test_read_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(f"{NOTIF}.notification_service.mark_as_read", new_callable=AsyncMock) as m,
-            patch(f"{NOTIF}.capture") as mock_capture,
-        ):
-            m.return_value = _notif_record()
-            resp = await client.post("/api/v1/notifications/n1/read")
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), NotificationRead(count=1))
-
-    async def test_bulk_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(f"{NOTIF}.notification_service.bulk_actions", new_callable=AsyncMock) as m,
-            patch(f"{NOTIF}.capture") as mock_capture,
-        ):
-            m.return_value = {"n1": True, "n2": True}
-            resp = await client.post(
-                "/api/v1/notifications/bulk-actions",
-                json={"notification_ids": ["n1", "n2"], "action": "mark_read"},
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(
-            UserId(UID), NotificationBulkAction(action="mark_read", successful=2, total=2)
-        )
-
-    async def test_execute_captures(self, client: AsyncClient) -> None:
-        result = MagicMock()
-        result.success = True
-        result.message = "Done"
-        result.data = {}
-        with (
-            patch(
-                f"{NOTIF}.notification_service.execute_action",
-                new_callable=AsyncMock,
-                return_value=result,
-            ),
-            patch(f"{NOTIF}.capture") as mock_capture,
-        ):
-            resp = await client.post("/api/v1/notifications/n1/actions/a1/execute")
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), NotificationActionExecuted())
-
     async def test_unsubscribe_captures_with_user_id(self, client: AsyncClient) -> None:
         with (
             patch(f"{NOTIF}.verify_unsubscribe_token", return_value=UID),

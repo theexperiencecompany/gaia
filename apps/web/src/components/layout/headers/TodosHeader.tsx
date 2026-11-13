@@ -6,8 +6,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { ChevronRight } from "@/components/shared/icons";
-import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import TodoModal from "@/features/todo/components/TodoModal";
+import { UpdatesButton } from "@/features/updates/components/UpdatesButton";
 import { usePathname } from "@/i18n/navigation";
 import { useTodoStore } from "@/stores/todoStore";
 
@@ -98,7 +98,7 @@ export default function TodosHeader() {
             />
           </div>
         </Tooltip>
-        <NotificationCenter />
+        <UpdatesButton />
       </div>
     </div>
   );

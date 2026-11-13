@@ -120,7 +120,7 @@ CLAUSES: tuple[Clause, ...] = (
         source="comms",
         starts_at="- HONOR THE CHANNEL:",
         governs="a named notification channel is used, not silently widened to all",
-        depends_on=("gate:tool_call_correctness", "data/capability/notifications.yaml"),
+        depends_on=("gate:tool_call_correctness",),
     ),
     Clause(
         name="one_entity",

@@ -69,7 +69,7 @@ async def _run_task(
         patch(f"{MODULE}.enforce_cost_budget", new_callable=AsyncMock, side_effect=budget_error),
         patch(f"{MODULE}.reschedule_if_refilled", new_callable=AsyncMock) as refill,
         patch(f"{MODULE}.coalesce_window_seconds", return_value=900) as coalesce,
-        patch(f"{MODULE}.notification_service", MagicMock(send_notification=AsyncMock())),
+        patch(f"{MODULE}.submit", new_callable=AsyncMock),
         patch(f"{MODULE}.create_execution", new_callable=AsyncMock) as create,
         patch(
             f"{MODULE}.execute_workflow_as_chat",

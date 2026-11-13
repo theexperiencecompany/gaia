@@ -7,27 +7,21 @@ from datetime import UTC, datetime, timedelta
 import random
 from typing import Literal, cast
 
-from arq.connections import ArqRedis
 from langchain_core.messages import BaseMessage, HumanMessage
 
 from app.agents.llm.client import ainvoke_llm, metered_config, resolve_model
 from app.agents.prompts.todo_prompts import HEALTH_CHECK_VERDICT_ONLY
 from app.constants.todos import BLOCKING_LABELS, TodoActivityEvent
+from app.db.repositories.outbox_items import outbox_items_repository
 from app.db.repositories.todos import todo_repository
-from app.models.notification.notification_models import (
-    NotificationContent,
-    NotificationRequest,
-    NotificationSourceEnum,
-    NotificationType,
-)
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.services.canvas_markdown import bounded_canvas
-from app.services.notification_service import notification_service
+from app.services.outbox.intake import submit
+from app.services.outbox.models import NoticeOutcome, ProducerKind, SubjectKind
+from app.services.outbox.system_notices import system_notice, system_report_id
 from app.services.todo_activity import record_activity
-from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
-from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import is_within_local_daytime
 from shared.py.wide_events import log
 
@@ -38,15 +32,11 @@ MAX_HEALTH_CHECKS_PER_USER = 10  # Max agent health-check calls per user per swe
 # scan is complete no matter how many tracked todos exist.
 _MIGRATION_PAGE_SIZE = 200
 
-# Escalating backoff between repeat notifications for the same todo: notify, then
-# wait 1 day, then 3, then 7 before each repeat. After the schedule is exhausted
-# the todo is muted for MUTE_DAYS so a permanently-stuck todo stops nagging.
-NOTIFICATION_BACKOFF_DAYS = (1, 3, 7)
-NOTIFICATION_MUTE_DAYS = 30
-# Strike counter lives longer than the cooldown so the escalation level survives
-# between notifications; it resets only after this much silence.
-STRIKE_TTL_DAYS = 30
-SECONDS_PER_DAY = 86400
+# What the sweep files for a todo is named by the day, so it files at most one notice a day for
+# each; how often the user is told again is the outbox's repeat back-off.
+KIND_EXPIRED = "todo_expired"
+KIND_OVERDUE = "todo_overdue"
+KIND_DORMANT_DIGEST = "todo_dormant_digest"
 
 # Quiet hours: only push proactive notifications during the user's local daytime
 # so reminders never arrive in the middle of the night.
@@ -54,7 +44,7 @@ DAYTIME_START_HOUR = 9
 DAYTIME_END_HOUR = 21
 
 # What a tier's health check decided, so the caller's counter branches are checked.
-ExpiredOutcome = Literal["archived", "notified", "muted"]
+ExpiredOutcome = Literal["archived", "notified"]
 DormantOutcome = Literal["requeued", "needs_attention"]
 
 
@@ -69,11 +59,9 @@ async def maintenance_sweep_tracked_todos(_ctx: Mapping[str, object]) -> str:
     now = datetime.now(UTC)
     log.info("maintenance_sweep.scan_started")
 
-    pool = await RedisPoolManager.get_pool()
-
     todos = await todo_repository.list_active_tracked_all_users(limit=200)
     migrated = await _normalize_all_canvases()
-    expired, overdue, dormant = await _classify_tracked_todos(pool, now, todos)
+    expired, overdue, dormant = await _classify_tracked_todos(now, todos)
 
     # Track health-check calls per user to cap LLM usage per sweep
     health_checks_used: dict[str, int] = {}
@@ -81,15 +69,15 @@ async def maintenance_sweep_tracked_todos(_ctx: Mapping[str, object]) -> str:
     daytime_cache: dict[str, bool] = {}
 
     archived, notified_expired = await _process_expired(
-        expired, pool, now, health_checks_used, daytime_cache
+        expired, now, health_checks_used, daytime_cache
     )
-    notified_overdue = await _process_overdue(overdue, pool, now, daytime_cache)
+    notified_overdue = await _process_overdue(overdue, now, daytime_cache)
     requeued, needs_attention_todos = await _process_dormant(
-        dormant, pool, now, health_checks_used, daytime_cache
+        dormant, now, health_checks_used, daytime_cache
     )
 
     if needs_attention_todos:
-        await _send_dormant_digest(needs_attention_todos)
+        await _send_dormant_digest(needs_attention_todos, now)
 
     summary = (
         f"archived:{archived} notified_expired:{notified_expired} "
@@ -153,28 +141,38 @@ async def _normalize_stored_canvases(todos: list[TodoDocument]) -> int:
     return migrated
 
 
+def _notice_day(now: datetime) -> str:
+    return now.date().isoformat()
+
+
+async def _already_filed_today(user_id: str, kind: str, key: str, now: datetime) -> bool:
+    """Whether the sweep already filed today's notice of one kind for key: nothing new to check or say."""
+    report_id = system_report_id(kind, f"{key}:{_notice_day(now)}")
+    return await outbox_items_repository.get_by_report(user_id, report_id) is not None
+
+
 async def _classify_tracked_todos(
-    pool: ArqRedis, now: datetime, todos: list[TodoDocument]
+    now: datetime, todos: list[TodoDocument]
 ) -> tuple[list[TodoDocument], list[TodoDocument], list[TodoDocument]]:
     """Bucket active tracked todos into expired/overdue/dormant tiers.
 
-    Todos still inside their notification backoff are skipped. Each tier is capped
-    at 20 entries per sweep.
+    A todo the sweep already filed today's notice for is skipped, so it costs no health check.
+    Each tier is capped at 20 entries per sweep.
     """
     expired: list[TodoDocument] = []
     overdue: list[TodoDocument] = []
     dormant: list[TodoDocument] = []
 
     for todo in todos:
-        # Skip todos still inside their (escalating) notification backoff.
-        if await pool.exists(_cooldown_key(todo.id)):
-            continue
-
         if todo.expires_at and todo.expires_at <= now:
-            expired.append(todo)
+            if not await _already_filed_today(todo.user_id, KIND_EXPIRED, todo.id, now):
+                expired.append(todo)
         elif todo.due_date and todo.due_date <= now and not _has_upcoming_schedule(todo, now):
-            overdue.append(todo)
-        elif _is_dormant(todo, now):
+            if not await _already_filed_today(todo.user_id, KIND_OVERDUE, todo.id, now):
+                overdue.append(todo)
+        elif _is_dormant(todo, now) and not await _already_filed_today(
+            todo.user_id, KIND_DORMANT_DIGEST, todo.user_id, now
+        ):
             dormant.append(todo)
 
     # Cap at 20 per tier per sweep
@@ -183,12 +181,11 @@ async def _classify_tracked_todos(
 
 async def _process_expired(
     expired: list[TodoDocument],
-    pool: ArqRedis,
     now: datetime,
     health_checks_used: dict[str, int],
     daytime_cache: dict[str, bool],
 ) -> tuple[int, int]:
-    """Run the health-check agent on expired todos; archive or notify each.
+    """Run the health-check agent on expired todos; archive or file a notice for each.
 
     Returns (archived_count, notified_count).
     """
@@ -196,7 +193,7 @@ async def _process_expired(
     notified_expired = 0
     for todo in expired:
         uid = todo.user_id
-        # Defer to a daytime sweep: no cooldown consumed, retried later.
+        # Defer to a daytime sweep: retried later.
         if not await _is_user_daytime(uid, now, daytime_cache):
             continue
         if health_checks_used.get(uid, 0) >= MAX_HEALTH_CHECKS_PER_USER:
@@ -204,11 +201,11 @@ async def _process_expired(
         # Counted before the call: a failed check has still spent the budget.
         health_checks_used[uid] = health_checks_used.get(uid, 0) + 1
         try:
-            result = await _health_check_expired(todo, pool)
+            result = await _health_check_expired(todo, now)
         except Exception as exc:
             # One todo must never abort the sweep for every other user: an
             # oversized canvas once raised here and killed the whole cron. No
-            # cooldown was consumed, so this todo is retried next sweep.
+            # notice was filed, so this todo is retried next sweep.
             log.error(
                 "maintenance_sweep.expired_health_check_error",
                 todo_id=todo.id,
@@ -225,18 +222,17 @@ async def _process_expired(
 
 async def _process_overdue(
     overdue: list[TodoDocument],
-    pool: ArqRedis,
     now: datetime,
     daytime_cache: dict[str, bool],
 ) -> int:
-    """Send an individual notification for each overdue todo. Returns notified count."""
+    """File a notice for each overdue todo. Returns how many were filed."""
     notified_overdue = 0
     for todo in overdue:
         uid = todo.user_id
         if not await _is_user_daytime(uid, now, daytime_cache):
             continue
         try:
-            notified = await _notify_overdue(todo, pool)
+            await _notify_overdue(todo, now)
         except Exception as exc:
             # Same containment as the health-check tiers: one todo's failure
             # cannot cost every other user their sweep.
@@ -247,41 +243,36 @@ async def _process_overdue(
                 error_type=type(exc).__name__,
             )
             continue
-        if notified:
-            notified_overdue += 1
+        notified_overdue += 1
     return notified_overdue
 
 
 async def _process_dormant(
     dormant: list[TodoDocument],
-    pool: ArqRedis,
     now: datetime,
     health_checks_used: dict[str, int],
     daytime_cache: dict[str, bool],
 ) -> tuple[int, list[TodoDocument]]:
     """Re-queue dormant todos via the agent, else collect them for the digest.
 
-    Applies the escalating backoff once per surviving todo and drops any now muted.
     Returns (requeued_count, needs_attention_todos).
     """
     requeued = 0
-    # Collect dormant todos that need human attention, then apply the
-    # escalating backoff once per todo and drop any that are now muted.
-    needs_attention_candidates: list[TodoDocument] = []
+    needs_attention: list[TodoDocument] = []
     for todo in dormant:
         uid = todo.user_id
         if not await _is_user_daytime(uid, now, daytime_cache):
             continue
         if health_checks_used.get(uid, 0) >= MAX_HEALTH_CHECKS_PER_USER:
-            needs_attention_candidates.append(todo)
+            needs_attention.append(todo)
             continue
         # Counted before the call: a failed check has still spent the budget.
         health_checks_used[uid] = health_checks_used.get(uid, 0) + 1
         try:
-            result = await _health_check_dormant(todo, pool)
+            result = await _health_check_dormant(todo)
         except Exception as exc:
             # One todo must never abort the sweep for others (an oversized canvas
-            # once did). It keeps its cooldown-free state and retries next sweep
+            # once did). It retries next sweep
             # rather than being digested on a check that failed.
             log.error(
                 "maintenance_sweep.dormant_health_check_error",
@@ -293,14 +284,9 @@ async def _process_dormant(
         if result == "requeued":
             requeued += 1
         else:
-            needs_attention_candidates.append(todo)
+            needs_attention.append(todo)
 
-    needs_attention_todos: list[TodoDocument] = []
-    for todo in needs_attention_candidates:
-        if await _register_notification(pool, todo.id):
-            needs_attention_todos.append(todo)
-
-    return requeued, needs_attention_todos
+    return requeued, needs_attention
 
 
 def _has_upcoming_schedule(todo: TodoDocument, now: datetime) -> bool:
@@ -353,12 +339,12 @@ def _is_dormant(todo: TodoDocument, now: datetime) -> bool:
     return idle_days > WAITING_LABEL_MAX_DAYS
 
 
-async def _health_check_expired(todo: TodoDocument, pool: ArqRedis) -> ExpiredOutcome:
+async def _health_check_expired(todo: TodoDocument, now: datetime) -> ExpiredOutcome:
     """
     Run a health-check agent call for an expired todo.
 
     Returns "archived" if the agent decides it expired cleanly, "notified" if a
-    notification was sent, or "muted" when the escalating backoff is exhausted.
+    notice was filed.
     """
     todo_id = todo.id
     user_id = todo.user_id
@@ -373,7 +359,7 @@ async def _health_check_expired(todo: TodoDocument, pool: ArqRedis) -> ExpiredOu
         "Did this expire cleanly (i.e. no further action is needed)? "
         f"{HEALTH_CHECK_VERDICT_ONLY} Respond with exactly one of:\n"
         "ARCHIVE: <brief reason>\n"
-        "NOTIFY: <message to send to the user>"
+        "NOTIFY: <why it needs the user's attention>"
     )
 
     response = await _health_check_verdict(user_id, prompt)
@@ -381,33 +367,24 @@ async def _health_check_expired(todo: TodoDocument, pool: ArqRedis) -> ExpiredOu
     if response.startswith("ARCHIVE:"):
         reason = response[len("ARCHIVE:") :].strip()
         await tracked_todo_service.archive_tracked_todo(todo_id, user_id, reason)
-        # Archived todos leave the active set; a short cooldown just avoids a
-        # redundant re-scan before the archive propagates.
-        await _set_cooldown(pool, todo_id, NOTIFICATION_BACKOFF_DAYS[0])
         log.info("maintenance_sweep.expired_archived", todo_id=todo_id, reason=reason)
         return "archived"
 
-    # Default: notify, subject to the escalating backoff.
-    if not await _register_notification(pool, todo_id):
-        log.info("maintenance_sweep.expired_muted", todo_id=todo_id)
-        return "muted"
-
     message = response[len("NOTIFY:") :].strip() if response.startswith("NOTIFY:") else response
-    await _send_individual_notification(
-        user_id=user_id,
-        title=f"Expired: {title}",
-        body=message or f"Your tracked todo '{title}' has expired and may need attention.",
-        todo_id=todo_id,
-        notification_type=NotificationType.WARNING,
+    await _file_todo_notice(
+        todo,
+        KIND_EXPIRED,
+        message or f"The tracked todo '{title}' has expired and may need attention.",
+        now,
     )
     await record_activity(
-        todo_id, user_id, TodoActivityEvent.MAINTENANCE, "told the user this todo expired"
+        todo_id, user_id, TodoActivityEvent.MAINTENANCE, "reported this todo as expired"
     )
     log.info("maintenance_sweep.expired_notified", todo_id=todo_id)
     return "notified"
 
 
-async def _health_check_dormant(todo: TodoDocument, pool: ArqRedis) -> DormantOutcome:
+async def _health_check_dormant(todo: TodoDocument) -> DormantOutcome:
     """
     Run a health-check agent call for a dormant todo.
 
@@ -452,9 +429,6 @@ async def _health_check_dormant(todo: TodoDocument, pool: ArqRedis) -> DormantOu
             TodoActivityEvent.MAINTENANCE,
             f"re-queued after {idle_days} idle days to: {action}",
         )
-        # Re-queued for execution, not notified: a short cooldown avoids
-        # re-processing before the scheduled run; no escalation strike consumed.
-        await _set_cooldown(pool, todo_id, NOTIFICATION_BACKOFF_DAYS[0])
         log.info(
             "maintenance_sweep.dormant_requeued",
             todo_id=todo_id,
@@ -462,36 +436,25 @@ async def _health_check_dormant(todo: TodoDocument, pool: ArqRedis) -> DormantOu
         )
         return "requeued"
 
-    # The caller registers the escalating backoff for needs-attention todos
-    # (so muted ones are dropped from the digest), so don't set a cooldown here.
     log.info("maintenance_sweep.dormant_needs_attention", todo_id=todo_id)
     return "needs_attention"
 
 
-async def _notify_overdue(todo: TodoDocument, pool: ArqRedis) -> bool:
-    """Notify about an overdue todo and label it needs-follow-up.
-
-    Returns True if a notification was sent, False when the escalating backoff
-    is exhausted and the todo is muted.
-    """
+async def _notify_overdue(todo: TodoDocument, now: datetime) -> None:
+    """File that a todo is overdue and label it needs-follow-up."""
     todo_id = todo.id
     user_id = todo.user_id
     title = todo.title
     due_date = todo.due_date
-    now = datetime.now(UTC)
-
-    if not await _register_notification(pool, todo_id):
-        log.info("maintenance_sweep.overdue_muted", todo_id=todo_id)
-        return False
 
     days_overdue = (now - due_date).days if due_date else 0
 
-    await _send_individual_notification(
-        user_id=user_id,
-        title=f"Overdue: {title}",
-        body=f"'{title}' was due {days_overdue} day{'s' if days_overdue != 1 else ''} ago and has no scheduled follow-up.",
-        todo_id=todo_id,
-        notification_type=NotificationType.WARNING,
+    await _file_todo_notice(
+        todo,
+        KIND_OVERDUE,
+        f"'{title}' was due {days_overdue} day{'s' if days_overdue != 1 else ''} ago and has no "
+        "scheduled follow-up.",
+        now,
     )
 
     # Add needs-follow-up label
@@ -500,7 +463,7 @@ async def _notify_overdue(todo: TodoDocument, pool: ArqRedis) -> bool:
         todo_id,
         user_id,
         TodoActivityEvent.MAINTENANCE,
-        f"told the user it is {days_overdue} day(s) overdue with nothing scheduled",
+        f"reported it {days_overdue} day(s) overdue with nothing scheduled",
     )
 
     log.info(
@@ -508,17 +471,10 @@ async def _notify_overdue(todo: TodoDocument, pool: ArqRedis) -> bool:
         todo_id=todo_id,
         days_overdue=days_overdue,
     )
-    return True
 
 
-async def _send_dormant_digest(todos: list[TodoDocument]) -> None:
-    """Send a single digest notification for all dormant todos that need attention."""
-    if not todos:
-        return
-
-    now = datetime.now(UTC)
-
-    # Collect user_ids: send one digest per user
+async def _send_dormant_digest(todos: list[TodoDocument], now: datetime) -> None:
+    """File one digest notice per user for all their dormant todos that need attention."""
     by_user: dict[str, list[TodoDocument]] = {}
     for todo in todos:
         if todo.user_id:
@@ -531,44 +487,27 @@ async def _send_dormant_digest(todos: list[TodoDocument]) -> None:
 async def _send_user_dormant_digest(
     user_id: str, user_todos: list[TodoDocument], now: datetime
 ) -> None:
-    """Send one dormant-todo digest notification to a single user."""
-    lines: list[str] = []
-    for todo in user_todos:
-        idle_days = (now - todo.updated_at).days if todo.updated_at else DORMANT_DAYS
-        lines.append(f"- {todo.title} (idle {idle_days}d)")
-
+    """File one dormant-todo digest notice for a single user."""
+    facts = [
+        f"'{todo.title}' has been idle for "
+        f"{(now - todo.updated_at).days if todo.updated_at else DORMANT_DAYS} days."
+        for todo in user_todos
+    ]
     count = len(user_todos)
-    body = "\n".join(lines)
-    # Deep-link the single todo; land on the list when the digest bundles several.
-    action = todo_redirect_action(
-        "View todo" if count == 1 else "Review todos",
-        user_todos[0].id if count == 1 else None,
-    )
-
     try:
-        await notification_service.create_notification(
-            NotificationRequest(
+        await submit(
+            system_notice(
                 user_id=user_id,
-                source=NotificationSourceEnum.BACKGROUND_JOB,
-                type=NotificationType.INFO,
-                priority=2,
-                content=NotificationContent(
-                    title=(
-                        f"{count} dormant todo needs attention"
-                        if count == 1
-                        else f"{count} dormant todos need attention"
-                    ),
-                    body=body,
-                    actions=[action],
-                ),
-                metadata={"todo_count": count},
+                producer=ProducerKind.TODO,
+                subject_kind=SubjectKind.TODO_RUN,
+                kind=KIND_DORMANT_DIGEST,
+                key=f"{user_id}:{_notice_day(now)}",
+                label="Dormant todos",
+                outcome=NoticeOutcome.INFO,
+                facts=facts,
             )
         )
-        log.info(
-            "maintenance_sweep.dormant_digest_sent",
-            user_id=user_id,
-            todo_count=count,
-        )
+        log.info("maintenance_sweep.dormant_digest_filed", user_id=user_id, todo_count=count)
     except Exception as exc:
         log.warning(
             "maintenance_sweep.dormant_digest_failed",
@@ -614,73 +553,20 @@ async def _health_check_verdict(user_id: str, prompt: str) -> str:
     return cast(BaseMessage, response).text.strip()
 
 
-async def _send_individual_notification(
-    user_id: str,
-    title: str,
-    body: str,
-    todo_id: str,
-    notification_type: NotificationType,
-) -> None:
-    """Send a single notification for a specific todo across the user's enabled channels."""
-    try:
-        await notification_service.create_notification(
-            NotificationRequest(
-                user_id=user_id,
-                source=NotificationSourceEnum.BACKGROUND_JOB,
-                type=notification_type,
-                content=NotificationContent(
-                    title=title,
-                    body=body,
-                    actions=[todo_redirect_action("View todo", todo_id)],
-                ),
-                metadata={"todo_id": todo_id},
-            )
+async def _file_todo_notice(todo: TodoDocument, kind: str, fact: str, now: datetime) -> None:
+    """File the notice of one kind for a todo, named by the day so the sweep files it at most once a day."""
+    await submit(
+        system_notice(
+            user_id=todo.user_id,
+            producer=ProducerKind.TODO,
+            subject_kind=SubjectKind.TODO_RUN,
+            kind=kind,
+            key=f"{todo.id}:{_notice_day(now)}",
+            label=todo.title,
+            outcome=NoticeOutcome.INFO,
+            facts=[fact],
         )
-    except Exception as exc:
-        log.warning(
-            "maintenance_sweep.notification_failed",
-            todo_id=todo_id,
-            error=str(exc),
-        )
-
-
-def _cooldown_key(todo_id: str) -> str:
-    """Redis key whose presence throttles re-processing of a todo."""
-    return f"gaia_maintenance_notified:{todo_id}"
-
-
-def _strike_key(todo_id: str) -> str:
-    """Redis key holding the escalation level (notification count) for a todo."""
-    return f"gaia_maintenance_strikes:{todo_id}"
-
-
-async def _set_cooldown(pool: ArqRedis, todo_id: str, days: int) -> None:
-    """Throttle re-processing of a todo for days days."""
-    await pool.set(_cooldown_key(todo_id), "1", ex=days * SECONDS_PER_DAY)
-
-
-async def _register_notification(pool: ArqRedis, todo_id: str) -> bool:
-    """Advance a todo's escalating notification backoff.
-
-    True to send now, setting the next cooldown from NOTIFICATION_BACKOFF_DAYS;
-    False once exhausted, muting for NOTIFICATION_MUTE_DAYS. The strike counter
-    outlives each cooldown, resetting only after STRIKE_TTL_DAYS of silence.
-    """
-    strike_key = _strike_key(todo_id)
-    # pool.get() is typed Any (redis-py stub); it returns str | bytes | None
-    # depending on the client's decode_responses setting.
-    raw: str | bytes | None = await pool.get(strike_key)
-    if isinstance(raw, bytes):
-        raw = raw.decode()
-    strike = (int(raw) + 1) if raw else 1
-
-    if strike > len(NOTIFICATION_BACKOFF_DAYS):
-        await _set_cooldown(pool, todo_id, NOTIFICATION_MUTE_DAYS)
-        return False
-
-    await pool.set(strike_key, str(strike), ex=STRIKE_TTL_DAYS * SECONDS_PER_DAY)
-    await _set_cooldown(pool, todo_id, NOTIFICATION_BACKOFF_DAYS[strike - 1])
-    return True
+    )
 
 
 async def _is_user_daytime(user_id: str, now: datetime, cache: dict[str, bool]) -> bool:

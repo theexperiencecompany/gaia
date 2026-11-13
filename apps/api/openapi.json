@@ -1,94 +1,6 @@
 {
   "components": {
     "schemas": {
-      "ActionConfig": {
-        "description": "Container holding exactly one of the supported action configurations.",
-        "properties": {
-          "api_call": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ApiCallConfig"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "modal": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ModalConfig"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "redirect": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RedirectConfig"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "title": "ActionConfig",
-        "type": "object"
-      },
-      "ActionExecutionResponse": {
-        "description": "The execute-action envelope, under a name of its own.\n\nParameterising the generic inline exports the component as\n``NotificationResponse_dict_str__Any__``, a TypeScript type name that\nchanges with the type argument; a named subclass exports as itself.\n``data`` is whatever the matched ``ActionHandler`` returned, which is open\nby design.",
-        "properties": {
-          "data": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Data"
-          },
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "success",
-          "message"
-        ],
-        "title": "ActionExecutionResponse",
-        "type": "object"
-      },
-      "ActionStyle": {
-        "description": "Visual emphasis for a notification action button.",
-        "enum": [
-          "primary",
-          "secondary",
-          "danger"
-        ],
-        "title": "ActionStyle",
-        "type": "string"
-      },
-      "ActionType": {
-        "description": "Kind of interaction a notification action performs when invoked.",
-        "enum": [
-          "redirect",
-          "api_call",
-          "modal"
-        ],
-        "title": "ActionType",
-        "type": "string"
-      },
       "ActivityDay": {
         "description": "One UTC day of the heatmap: actions plus the tokens they burned.\n\nToken counts are the *charged* ones only \u2014 the same spend the budget\npercentage is measured against \u2014 so background work (memory extraction,\nonboarding) never shows up as something the user did. Cached and reasoning\ntokens are broken out because they explain an otherwise surprising input\ntotal; ``tokens`` is input + output, matching how the per-request ceiling\ncounts them (``cost_budget.record_model_call_usage``).",
         "properties": {
@@ -260,91 +172,6 @@
         ],
         "title": "AgentType",
         "type": "string"
-      },
-      "ApiCallConfig": {
-        "description": "Configuration for an action that issues an HTTP request when invoked.",
-        "properties": {
-          "endpoint": {
-            "title": "Endpoint",
-            "type": "string"
-          },
-          "error_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Message"
-          },
-          "headers": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "type": "string"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Headers"
-          },
-          "is_internal": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": false,
-            "title": "Is Internal"
-          },
-          "method": {
-            "default": "POST",
-            "enum": [
-              "GET",
-              "POST",
-              "PUT",
-              "DELETE"
-            ],
-            "title": "Method",
-            "type": "string"
-          },
-          "payload": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Payload"
-          },
-          "success_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Success Message"
-          }
-        },
-        "required": [
-          "endpoint"
-        ],
-        "title": "ApiCallConfig",
-        "type": "object"
       },
       "ApprovalDecisionRequest": {
         "description": "Body for a button approval decision (approve/deny, with scope and feedback).",
@@ -2317,65 +2144,6 @@
         "title": "BuiltinSkillsResponse",
         "type": "object"
       },
-      "BulkActionRequest": {
-        "description": "Request model for bulk actions",
-        "properties": {
-          "action": {
-            "$ref": "#/components/schemas/BulkActions",
-            "description": "Action to be performed on the notifications"
-          },
-          "notification_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Notification Ids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "notification_ids",
-          "action"
-        ],
-        "title": "BulkActionRequest",
-        "type": "object"
-      },
-      "BulkActionSummary": {
-        "description": "Per-notification outcome of a bulk action, plus the success tally.",
-        "properties": {
-          "results": {
-            "additionalProperties": {
-              "type": "boolean"
-            },
-            "description": "Per-notification-ID success flag",
-            "title": "Results",
-            "type": "object"
-          },
-          "successful": {
-            "title": "Successful",
-            "type": "integer"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "results",
-          "successful",
-          "total"
-        ],
-        "title": "BulkActionSummary",
-        "type": "object"
-      },
-      "BulkActions": {
-        "description": "Bulk operations that can be applied to multiple notifications at once.",
-        "enum": [
-          "mark_read",
-          "archive"
-        ],
-        "title": "BulkActions",
-        "type": "string"
-      },
       "BulkMoveRequest": {
         "properties": {
           "project_id": {
@@ -2760,97 +2528,6 @@
           "new_password"
         ],
         "title": "ChangePasswordRequest",
-        "type": "object"
-      },
-      "ChannelConfig": {
-        "description": "Per-channel delivery settings for a notification request.",
-        "properties": {
-          "channel_type": {
-            "title": "Channel Type",
-            "type": "string"
-          },
-          "config": {
-            "additionalProperties": true,
-            "title": "Config",
-            "type": "object"
-          },
-          "enabled": {
-            "default": true,
-            "title": "Enabled",
-            "type": "boolean"
-          },
-          "priority": {
-            "default": 1,
-            "title": "Priority",
-            "type": "integer"
-          },
-          "template": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Template"
-          }
-        },
-        "required": [
-          "channel_type"
-        ],
-        "title": "ChannelConfig",
-        "type": "object"
-      },
-      "ChannelDeliveryStatus": {
-        "description": "Delivery outcome of a notification on a single channel.",
-        "properties": {
-          "channel_type": {
-            "title": "Channel Type",
-            "type": "string"
-          },
-          "delivered_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Delivered At"
-          },
-          "error_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Message"
-          },
-          "retry_count": {
-            "default": 0,
-            "title": "Retry Count",
-            "type": "integer"
-          },
-          "skipped": {
-            "default": false,
-            "title": "Skipped",
-            "type": "boolean"
-          },
-          "status": {
-            "$ref": "#/components/schemas/NotificationStatus"
-          }
-        },
-        "required": [
-          "channel_type",
-          "status"
-        ],
-        "title": "ChannelDeliveryStatus",
         "type": "object"
       },
       "ChannelPreferences": {
@@ -5981,6 +5658,26 @@
         "title": "DodoWebhookAckResponse",
         "type": "object"
       },
+      "DropReason": {
+        "description": "Why an item is recorded and never alerted.",
+        "enum": [
+          "nothing_new",
+          "cancelled",
+          "compose_skipped",
+          "not_watching",
+          "expired",
+          "user_muted",
+          "already_known",
+          "moot",
+          "superseded",
+          "duplicate",
+          "unwanted",
+          "repeat_backoff",
+          "leak_unresolved"
+        ],
+        "title": "DropReason",
+        "type": "string"
+      },
       "EmailSearchResponse": {
         "description": "Contact-email addresses extracted from a web search, plus the raw search data.",
         "properties": {
@@ -8920,6 +8617,22 @@
         "title": "InviteResponse",
         "type": "object"
       },
+      "ItemState": {
+        "description": "Where an item is on its way out: received, then queued or settled.",
+        "enum": [
+          "received",
+          "queued",
+          "held",
+          "composing",
+          "sending",
+          "sent",
+          "dropped",
+          "superseded",
+          "failed"
+        ],
+        "title": "ItemState",
+        "type": "string"
+      },
       "LabEventResponse": {
         "description": "Accepted; the payload itself is never echoed back.",
         "properties": {
@@ -9532,20 +9245,6 @@
           "label"
         ],
         "title": "ManagedAt",
-        "type": "object"
-      },
-      "MarkAllReadSummary": {
-        "description": "Outcome of marking every delivered notification for a user as read.",
-        "properties": {
-          "updated_count": {
-            "title": "Updated Count",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "updated_count"
-        ],
-        "title": "MarkAllReadSummary",
         "type": "object"
       },
       "MarketplaceResponse": {
@@ -11531,25 +11230,6 @@
         "title": "MobileLoginUrlResponse",
         "type": "object"
       },
-      "ModalConfig": {
-        "description": "Configuration for an action that opens a frontend modal component.",
-        "properties": {
-          "component": {
-            "title": "Component",
-            "type": "string"
-          },
-          "props": {
-            "additionalProperties": true,
-            "title": "Props",
-            "type": "object"
-          }
-        },
-        "required": [
-          "component"
-        ],
-        "title": "ModalConfig",
-        "type": "object"
-      },
       "MultiURLResponse": {
         "properties": {
           "results": {
@@ -11901,652 +11581,6 @@
           "snippet"
         ],
         "title": "NoteSearchResult",
-        "type": "object"
-      },
-      "NotificationAction": {
-        "description": "An interactive action (button) attached to a notification.",
-        "properties": {
-          "config": {
-            "$ref": "#/components/schemas/ActionConfig"
-          },
-          "confirmation_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Confirmation Message"
-          },
-          "disabled": {
-            "default": false,
-            "title": "Disabled",
-            "type": "boolean"
-          },
-          "executed": {
-            "default": false,
-            "title": "Executed",
-            "type": "boolean"
-          },
-          "executed_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Executed At"
-          },
-          "icon": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Icon"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "requires_confirmation": {
-            "default": false,
-            "title": "Requires Confirmation",
-            "type": "boolean"
-          },
-          "style": {
-            "$ref": "#/components/schemas/ActionStyle",
-            "default": "secondary"
-          },
-          "type": {
-            "$ref": "#/components/schemas/ActionType"
-          }
-        },
-        "required": [
-          "type",
-          "label",
-          "config"
-        ],
-        "title": "NotificationAction",
-        "type": "object"
-      },
-      "NotificationActionView": {
-        "description": "A notification action as it appears on the wire (see ``NotificationView``).",
-        "properties": {
-          "config": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ActionConfig"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "confirmation_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Confirmation Message"
-          },
-          "disabled": {
-            "title": "Disabled",
-            "type": "boolean"
-          },
-          "executed": {
-            "title": "Executed",
-            "type": "boolean"
-          },
-          "executed_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Executed At"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "requires_confirmation": {
-            "title": "Requires Confirmation",
-            "type": "boolean"
-          },
-          "style": {
-            "$ref": "#/components/schemas/ActionStyle"
-          },
-          "type": {
-            "$ref": "#/components/schemas/ActionType"
-          }
-        },
-        "required": [
-          "id",
-          "type",
-          "label",
-          "style",
-          "requires_confirmation",
-          "executed",
-          "disabled"
-        ],
-        "title": "NotificationActionView",
-        "type": "object"
-      },
-      "NotificationChannelView": {
-        "description": "One channel's delivery outcome as it appears on the wire.\n\nA narrower projection of ``ChannelDeliveryStatus``: ``retry_count`` is\ninternal and deliberately not serialized.",
-        "properties": {
-          "channel_type": {
-            "title": "Channel Type",
-            "type": "string"
-          },
-          "delivered_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Delivered At"
-          },
-          "error_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Message"
-          },
-          "skipped": {
-            "title": "Skipped",
-            "type": "boolean"
-          },
-          "status": {
-            "$ref": "#/components/schemas/NotificationStatus"
-          }
-        },
-        "required": [
-          "channel_type",
-          "status",
-          "skipped"
-        ],
-        "title": "NotificationChannelView",
-        "type": "object"
-      },
-      "NotificationContent": {
-        "description": "Displayable payload of a notification: title, body, actions and rich data.",
-        "properties": {
-          "actions": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/NotificationAction"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Actions"
-          },
-          "body": {
-            "title": "Body",
-            "type": "string"
-          },
-          "rich_content": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rich Content"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title",
-          "body"
-        ],
-        "title": "NotificationContent",
-        "type": "object"
-      },
-      "NotificationContentView": {
-        "description": "The ``content`` block of a ``NotificationView``.",
-        "properties": {
-          "actions": {
-            "items": {
-              "$ref": "#/components/schemas/NotificationActionView"
-            },
-            "title": "Actions",
-            "type": "array"
-          },
-          "body": {
-            "title": "Body",
-            "type": "string"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title",
-          "body"
-        ],
-        "title": "NotificationContentView",
-        "type": "object"
-      },
-      "NotificationRecord": {
-        "description": "Persisted notification with its original request and per-channel statuses.\n\nIdentity is the UUID ``id`` (not Mongo's ``_id``); the notification repository\nsets ``identity_field = \"id\"``.",
-        "properties": {
-          "archived_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Archived At"
-          },
-          "channels": {
-            "items": {
-              "$ref": "#/components/schemas/ChannelDeliveryStatus"
-            },
-            "title": "Channels",
-            "type": "array"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "delivered_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Delivered At"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "original_request": {
-            "$ref": "#/components/schemas/NotificationRequest"
-          },
-          "read_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Read At"
-          },
-          "status": {
-            "$ref": "#/components/schemas/NotificationStatus",
-            "default": "pending"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          },
-          "user_id": {
-            "title": "User Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "user_id",
-          "created_at",
-          "original_request"
-        ],
-        "title": "NotificationRecord",
-        "type": "object"
-      },
-      "NotificationRequest": {
-        "description": "Inbound request to send a notification to a user across channels.",
-        "properties": {
-          "channels": {
-            "items": {
-              "$ref": "#/components/schemas/ChannelConfig"
-            },
-            "title": "Channels",
-            "type": "array"
-          },
-          "content": {
-            "$ref": "#/components/schemas/NotificationContent"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "title": "Metadata",
-            "type": "object"
-          },
-          "priority": {
-            "default": 3,
-            "maximum": 5.0,
-            "minimum": 1.0,
-            "title": "Priority",
-            "type": "integer"
-          },
-          "scheduled_for": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Scheduled For"
-          },
-          "source": {
-            "$ref": "#/components/schemas/NotificationSourceEnum"
-          },
-          "type": {
-            "$ref": "#/components/schemas/NotificationType",
-            "default": "info"
-          },
-          "user_id": {
-            "title": "User Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "user_id",
-          "source",
-          "content"
-        ],
-        "title": "NotificationRequest",
-        "type": "object"
-      },
-      "NotificationResponse_BulkActionSummary_": {
-        "properties": {
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/BulkActionSummary"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "success",
-          "message"
-        ],
-        "title": "NotificationResponse[BulkActionSummary]",
-        "type": "object"
-      },
-      "NotificationResponse_MarkAllReadSummary_": {
-        "properties": {
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MarkAllReadSummary"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "success",
-          "message"
-        ],
-        "title": "NotificationResponse[MarkAllReadSummary]",
-        "type": "object"
-      },
-      "NotificationResponse_NotificationRecord_": {
-        "properties": {
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/NotificationRecord"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "success",
-          "message"
-        ],
-        "title": "NotificationResponse[NotificationRecord]",
-        "type": "object"
-      },
-      "NotificationResponse_NotificationView_": {
-        "properties": {
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/NotificationView"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "success",
-          "message"
-        ],
-        "title": "NotificationResponse[NotificationView]",
-        "type": "object"
-      },
-      "NotificationSourceEnum": {
-        "description": "Originating system or feature that produced the notification.",
-        "enum": [
-          "ai_email_draft",
-          "ai_calendar_event",
-          "ai_todo_suggestion",
-          "ai_reminder",
-          "ai_todo_added",
-          "ai_agent",
-          "email_trigger",
-          "background_job",
-          "workflow_completed",
-          "workflow_failed",
-          "system_workflows_provisioned",
-          "usage_limit",
-          "integration_expired",
-          "todo_trigger"
-        ],
-        "title": "NotificationSourceEnum",
-        "type": "string"
-      },
-      "NotificationStatus": {
-        "description": "Lifecycle state of a notification record.",
-        "enum": [
-          "pending",
-          "delivered",
-          "failed",
-          "read",
-          "archived"
-        ],
-        "title": "NotificationStatus",
-        "type": "string"
-      },
-      "NotificationType": {
-        "description": "Severity/category of a notification, used for styling and filtering.",
-        "enum": [
-          "info",
-          "warning",
-          "error",
-          "success"
-        ],
-        "title": "NotificationType",
-        "type": "string"
-      },
-      "NotificationView": {
-        "description": "A notification flattened for API/tool consumers.\n\nDistinct from ``NotificationRecord``: the record is the stored document (it\nnests the whole ``original_request``), while this is the flat shape the web\nand mobile clients actually read \u2014 ``content``/``source``/``type``/\n``metadata`` are lifted out of the request, and the channel entries are\nprojected. It mirrors ``NotificationRecord`` in the frontend's\n``notificationTypes.ts``.\n\nTimestamps are ``str`` because the producer emits ISO strings and that is\nthe published contract; parsing them into ``datetime`` here would re-emit\nthem in Pydantic's own format.\n\nBuilt by ``NotificationOrchestrator._serialize_notification``, which is\nstill the producer \u2014 this model is the named shape of what it returns.",
-        "properties": {
-          "channels": {
-            "items": {
-              "$ref": "#/components/schemas/NotificationChannelView"
-            },
-            "title": "Channels",
-            "type": "array"
-          },
-          "content": {
-            "$ref": "#/components/schemas/NotificationContentView"
-          },
-          "created_at": {
-            "title": "Created At",
-            "type": "string"
-          },
-          "delivered_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Delivered At"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "title": "Metadata",
-            "type": "object"
-          },
-          "read_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Read At"
-          },
-          "source": {
-            "$ref": "#/components/schemas/NotificationSourceEnum"
-          },
-          "status": {
-            "$ref": "#/components/schemas/NotificationStatus"
-          },
-          "type": {
-            "$ref": "#/components/schemas/NotificationType"
-          },
-          "user_id": {
-            "title": "User Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "user_id",
-          "status",
-          "created_at",
-          "content",
-          "source",
-          "type"
-        ],
-        "title": "NotificationView",
         "type": "object"
       },
       "NotionAllPageEventsConfig": {
@@ -13094,38 +12128,6 @@
         ],
         "title": "OnboardingStep",
         "type": "string"
-      },
-      "PaginatedNotificationsResponse": {
-        "description": "Response model for paginated notifications",
-        "properties": {
-          "limit": {
-            "title": "Limit",
-            "type": "integer"
-          },
-          "notifications": {
-            "items": {
-              "$ref": "#/components/schemas/NotificationView"
-            },
-            "title": "Notifications",
-            "type": "array"
-          },
-          "offset": {
-            "title": "Offset",
-            "type": "integer"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "notifications",
-          "total",
-          "limit",
-          "offset"
-        ],
-        "title": "PaginatedNotificationsResponse",
-        "type": "object"
       },
       "PaginationMeta": {
         "properties": {
@@ -15371,30 +14373,6 @@
         "title": "RedeemLinkCodeResponse",
         "type": "object"
       },
-      "RedirectConfig": {
-        "description": "Configuration for a redirect action that navigates the user to a URL.",
-        "properties": {
-          "close_notification": {
-            "default": false,
-            "title": "Close Notification",
-            "type": "boolean"
-          },
-          "open_in_new_tab": {
-            "default": true,
-            "title": "Open In New Tab",
-            "type": "boolean"
-          },
-          "url": {
-            "title": "Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "url"
-        ],
-        "title": "RedirectConfig",
-        "type": "object"
-      },
       "RegenerateStepsRequest": {
         "description": "Request model for regenerating workflow steps.",
         "properties": {
@@ -17341,6 +16319,20 @@
         ],
         "title": "SubTask",
         "type": "object"
+      },
+      "SubjectKind": {
+        "description": "What a report is about.",
+        "enum": [
+          "ask",
+          "workflow_run",
+          "todo_run",
+          "reminder",
+          "browser_job",
+          "account",
+          "approval"
+        ],
+        "title": "SubjectKind",
+        "type": "string"
       },
       "SubscriptionAction": {
         "description": "What firing a subscription does to its todo.",
@@ -19987,6 +18979,20 @@
         "title": "UnpublishIntegrationResponse",
         "type": "object"
       },
+      "UnseenUpdates": {
+        "description": "How many updates GAIA told the user since they last opened the feed.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "UnseenUpdates",
+        "type": "object"
+      },
       "UpdateCustomIntegrationRequest": {
         "description": "Request to update a custom integration (partial update).",
         "properties": {
@@ -20153,6 +19159,18 @@
         },
         "title": "UpdateFileRequest",
         "type": "object"
+      },
+      "UpdateFilter": {
+        "description": "Which updates the feed lists.",
+        "enum": [
+          "all",
+          "needs_you",
+          "done",
+          "failed",
+          "held"
+        ],
+        "title": "UpdateFilter",
+        "type": "string"
       },
       "UpdateHILPreferencesRequest": {
         "description": "Partial update to a user's HIL preferences; omitted fields are left unchanged.",
@@ -20362,6 +19380,16 @@
         "title": "UpdateMessagesResponse",
         "type": "object"
       },
+      "UpdateOutcome": {
+        "description": "Where the update left what it is about.",
+        "enum": [
+          "done",
+          "needs_you",
+          "failed"
+        ],
+        "title": "UpdateOutcome",
+        "type": "string"
+      },
       "UpdateProjectRequest": {
         "description": "Model for updating projects - all fields optional",
         "properties": {
@@ -20494,6 +19522,120 @@
           }
         },
         "title": "UpdateReminderRequest",
+        "type": "object"
+      },
+      "UpdateRow": {
+        "description": "One thing GAIA reported: what it is about, what became of it, and the words it was told in.",
+        "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The conversation that owns the subject, which the row opens.",
+            "title": "Conversation Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "drop_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DropReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "facts": {
+            "description": "What GAIA recorded, one claim per entry.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
+          "held_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When a held update is told, when it waits for an instant.",
+            "title": "Held Until"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/UpdateOutcome"
+          },
+          "report_id": {
+            "title": "Report Id",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ItemState"
+          },
+          "subject_kind": {
+            "$ref": "#/components/schemas/SubjectKind"
+          },
+          "subject_label": {
+            "title": "Subject Label",
+            "type": "string"
+          },
+          "told": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The message the user was told, one entry per bubble; None when it was not told.",
+            "title": "Told"
+          },
+          "told_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Told At"
+          }
+        },
+        "required": [
+          "report_id",
+          "subject_kind",
+          "subject_label",
+          "outcome",
+          "state",
+          "facts",
+          "occurred_at",
+          "created_at"
+        ],
+        "title": "UpdateRow",
         "type": "object"
       },
       "UpdateTimezoneResponse": {
@@ -20685,6 +19827,37 @@
           }
         },
         "title": "UpdateWorkflowRequest",
+        "type": "object"
+      },
+      "UpdatesResponse": {
+        "description": "A page of the feed, newest first.",
+        "properties": {
+          "next_before": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pass as before to read the next page; None on the last page.",
+            "title": "Next Before"
+          },
+          "updates": {
+            "items": {
+              "$ref": "#/components/schemas/UpdateRow"
+            },
+            "title": "Updates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "updates",
+          "next_before"
+        ],
+        "title": "UpdatesResponse",
         "type": "object"
       },
       "UsageActivityResponse": {
@@ -31817,257 +30990,6 @@
         ]
       }
     },
-    "/api/v1/notifications": {
-      "get": {
-        "description": "Get user's notifications with pagination.",
-        "operationId": "notification_get_notifications",
-        "parameters": [
-          {
-            "description": "Filter by status",
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/NotificationStatus"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Filter by status",
-              "title": "Status"
-            }
-          },
-          {
-            "description": "Number of notifications to return",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "description": "Number of notifications to return",
-              "maximum": 100,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Number of notifications to skip",
-            "in": "query",
-            "name": "offset",
-            "required": false,
-            "schema": {
-              "default": 0,
-              "description": "Number of notifications to skip",
-              "minimum": 0,
-              "title": "Offset",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Filter by channel type (e.g., email, sms)",
-            "in": "query",
-            "name": "channel_type",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Filter by channel type (e.g., email, sms)",
-              "title": "Channel Type"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PaginatedNotificationsResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Get Notifications",
-        "tags": [
-          "Notification"
-        ]
-      }
-    },
-    "/api/v1/notifications/bulk-actions": {
-      "post": {
-        "description": "Perform bulk actions on multiple notifications.",
-        "operationId": "notification_bulk_actions",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BulkActionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotificationResponse_BulkActionSummary_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Bulk Actions",
-        "tags": [
-          "Notification"
-        ]
-      }
-    },
-    "/api/v1/notifications/mark-all-read": {
-      "post": {
-        "description": "Mark every delivered notification for the user as read, server-side.\n\nOperates on every matching notification, not just the ones the caller has\ncurrently loaded \u2014 this is what lets \"mark all as read\" cover notifications\nbeyond the first page a paginated client has fetched.",
-        "operationId": "notification_mark_all_read",
-        "parameters": [
-          {
-            "description": "Only mark notifications on this channel",
-            "in": "query",
-            "name": "channel_type",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Only mark notifications on this channel",
-              "title": "Channel Type"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotificationResponse_MarkAllReadSummary_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Mark All Read",
-        "tags": [
-          "Notification"
-        ]
-      }
-    },
     "/api/v1/notifications/preferences/channels": {
       "get": {
         "description": "Get user's notification channel preferences.",
@@ -32436,212 +31358,6 @@
           }
         },
         "summary": "Unsubscribe From Emails",
-        "tags": [
-          "Notification"
-        ]
-      }
-    },
-    "/api/v1/notifications/{notification_id}": {
-      "get": {
-        "description": "Get a specific notification.",
-        "operationId": "notification_get_notification",
-        "parameters": [
-          {
-            "description": "Notification ID",
-            "in": "path",
-            "name": "notification_id",
-            "required": true,
-            "schema": {
-              "description": "Notification ID",
-              "title": "Notification Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotificationResponse_NotificationView_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Get Notification",
-        "tags": [
-          "Notification"
-        ]
-      }
-    },
-    "/api/v1/notifications/{notification_id}/actions/{action_id}/execute": {
-      "post": {
-        "description": "Execute a notification action.\n\n``data`` stays a free-form dict: it is whatever the matched ``ActionHandler``\nproduced (``ActionResult.data``), which is open by design.",
-        "operationId": "notification_execute_action",
-        "parameters": [
-          {
-            "description": "Notification ID",
-            "in": "path",
-            "name": "notification_id",
-            "required": true,
-            "schema": {
-              "description": "Notification ID",
-              "title": "Notification Id",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Action ID",
-            "in": "path",
-            "name": "action_id",
-            "required": true,
-            "schema": {
-              "description": "Action ID",
-              "title": "Action Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ActionExecutionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Execute Action",
-        "tags": [
-          "Notification"
-        ]
-      }
-    },
-    "/api/v1/notifications/{notification_id}/read": {
-      "post": {
-        "description": "Mark notification as read.\n\n``data`` is the stored record, not the flattened ``NotificationView`` that\n``GET /notifications/{id}`` returns \u2014 the two endpoints have always returned\ndifferent shapes under the same key.",
-        "operationId": "notification_mark_as_read",
-        "parameters": [
-          {
-            "description": "Notification ID",
-            "in": "path",
-            "name": "notification_id",
-            "required": true,
-            "schema": {
-              "description": "Notification ID",
-              "title": "Notification Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotificationResponse_NotificationRecord_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Mark As Read",
         "tags": [
           "Notification"
         ]
@@ -40491,6 +39207,166 @@
         "summary": "Get Trigger Schemas",
         "tags": [
           "Triggers"
+        ]
+      }
+    },
+    "/api/v1/updates": {
+      "get": {
+        "description": "Return a page of the user's updates, newest first.",
+        "operationId": "updates_get_updates",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/UpdateFilter",
+              "default": "all"
+            }
+          },
+          {
+            "description": "Read the page after this cursor.",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Read the page after this cursor.",
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdatesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Updates",
+        "tags": [
+          "Updates"
+        ]
+      }
+    },
+    "/api/v1/updates/unseen": {
+      "get": {
+        "description": "Return how many updates GAIA told the user since they last opened the feed.",
+        "operationId": "updates_get_unseen_updates",
+        "parameters": [
+          {
+            "description": "When the user last opened the feed.",
+            "in": "query",
+            "name": "since",
+            "required": true,
+            "schema": {
+              "description": "When the user last opened the feed.",
+              "format": "date-time",
+              "title": "Since",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnseenUpdates"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Unseen Updates",
+        "tags": [
+          "Updates"
         ]
       }
     },

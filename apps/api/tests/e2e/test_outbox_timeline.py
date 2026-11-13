@@ -55,6 +55,7 @@ from app.models.task_report_models import (
     TaskReport,
 )
 from app.models.todo_models import TodoDocument
+from app.models.updates_models import UpdateFilter, UpdateOutcome
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.schemas.outbound import OutboundAttachment
@@ -80,7 +81,9 @@ from app.services.outbox.models import (
     SubjectMerge,
     UrgencyClass,
 )
+from app.services.outbox.system_notices import system_notice
 from app.services.outbox.transport.bot_queue import OutboundResult
+from app.services.outbox.updates import read_updates
 from app.services.platform_link_completion import complete_platform_link
 from app.services.platform_link_service import PlatformLinkService
 from tests._harness.judge import ScriptedJudge, verdict
@@ -1243,7 +1246,7 @@ async def test_when_the_judge_is_unavailable_the_reminder_is_still_told_and_tagg
     assert len(await tl.ledger()) == 1
 
 
-async def _told_at(tl: OutboxTimeline, report: RunReport, minutes: float) -> None:
+async def _told_at(tl: OutboxTimeline, report: RunReport | NoticeReport, minutes: float) -> None:
     """Submit a report at a minute and let its intake, batch window included, run."""
     await tl.at(minutes)
     await tl.submit(report)
@@ -1799,3 +1802,70 @@ async def test_a_run_no_turn_waits_on_settles_no_chip(tl: OutboxTimeline) -> Non
     unwaited = _turn_run(OutcomeState.DONE).model_copy(update={"turn_message_id": None})
 
     assert await _settled_after(tl, unwaited) == []
+
+
+def _integration_expired() -> NoticeReport:
+    return system_notice(
+        user_id=USER,
+        producer=ProducerKind.ACCOUNT,
+        subject_kind=SubjectKind.ACCOUNT,
+        kind="integration_expired",
+        key="notion:ca_1:2026-11-10",
+        label="Notion connection",
+        outcome=NoticeOutcome.NEEDS_YOU,
+        facts=["The sign-in for the user's Notion account expired."],
+    )
+
+
+def _memory_ready() -> NoticeReport:
+    return system_notice(
+        user_id=USER,
+        producer=ProducerKind.ACCOUNT,
+        subject_kind=SubjectKind.ACCOUNT,
+        kind="memory_ready",
+        key=USER,
+        label="Your memory",
+        outcome=NoticeOutcome.INFO,
+        facts=["GAIA organized memories from the user's past conversations."],
+    )
+
+
+async def test_b11_an_integration_that_expires_with_the_budget_spent_is_told_and_is_in_the_feed(
+    tl: OutboxTimeline,
+) -> None:
+    await attention_settings_repository.save(USER, AttentionSettings(max_unsolicited_per_day=0))
+    await _told_at(tl, _integration_expired(), 0)
+
+    [message] = await tl.ledger()
+    assert message.state is MessageState.SENT
+    assert message.report_ids == ["sys:integration_expired:notion:ca_1:2026-11-10"]
+    page = await read_updates(USER, UpdateFilter.NEEDS_YOU, before=None, limit=10)
+    [row] = page.updates
+    assert (row.subject_kind, row.outcome, row.state) == (
+        SubjectKind.ACCOUNT,
+        UpdateOutcome.NEEDS_YOU,
+        ItemState.SENT,
+    )
+    assert row.told == message.parts
+    assert row.facts == ["The sign-in for the user's Notion account expired."]
+
+
+async def test_b14_a_memory_ready_notice_waits_for_a_check_in_and_the_feed_shows_it_held(
+    tl: OutboxTimeline,
+) -> None:
+    await _told_at(tl, _memory_ready(), 0)
+
+    assert await tl.ledger() == []
+    held = await read_updates(USER, UpdateFilter.HELD, before=None, limit=10)
+    [row] = held.updates
+    assert (row.state, row.told) == (ItemState.HELD, None)
+    assert row.held_until is not None
+    assert (await read_updates(USER, UpdateFilter.NEEDS_YOU, before=None, limit=10)).updates == []
+
+
+async def test_a_system_notice_filed_twice_is_one_item_and_one_message(tl: OutboxTimeline) -> None:
+    await tl.submit(_integration_expired())
+    await _told_at(tl, _integration_expired(), 0)
+
+    assert len(await tl.items()) == 1
+    assert len(await tl.ledger()) == 1

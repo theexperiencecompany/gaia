@@ -179,25 +179,6 @@
       ]
     },
     {
-      "name": "Notification read (continuous)",
-      "description": "notification:dismissed (web client) before 2026-09-17 13:42:36.633 UTC, the first server-side notification:read, then notification:read.",
-      "tags": ["canonical"],
-      "steps": [
-        {
-          "event": "notification:dismissed",
-          "properties": [
-            {
-              "key": "timestamp < toDateTime('2026-09-17 13:42:36.633', 'UTC')",
-              "type": "hogql"
-            }
-          ]
-        },
-        {
-          "event": "notification:read"
-        }
-      ]
-    },
-    {
       "name": "Rate limit hit (continuous)",
       "description": "rate_limit_hit, then rate_limit:hit after the event catalog rename. One server emitter changed its name in one deploy, so the two never fire for the same hit and need no date bound.",
       "tags": ["canonical"],

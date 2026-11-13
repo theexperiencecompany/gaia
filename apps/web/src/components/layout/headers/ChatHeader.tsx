@@ -6,8 +6,8 @@ import Link from "next/link";
 import ModelSelectorDevControls from "@/components/layout/headers/ModelSelectorDevControls";
 import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
-import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import { TodoChatBackLink } from "@/features/todo/components/TodoChatBackLink";
+import { UpdatesButton } from "@/features/updates/components/UpdatesButton";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 
 function preloadCommandMenu() {
@@ -67,7 +67,7 @@ export default function ChatHeader() {
             <BubbleChatAddIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-primary" />
           </SidebarHeaderButton>
         </Link>
-        <NotificationCenter />
+        <UpdatesButton />
       </div>
     </div>
   );

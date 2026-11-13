@@ -42,7 +42,7 @@ from app.services.storage.account_vfs import AccountFileProjection, materialize_
 from app.services.storage.juicefs import _is_mounted, user_workspace_path
 from app.services.usage_summary import build_usage_summary
 from app.services.voice_service import list_voices
-from app.utils.notification.channel_preferences import fetch_channel_preferences
+from app.utils.channel_preferences import fetch_channel_preferences
 from shared.py.wide_events import log
 
 

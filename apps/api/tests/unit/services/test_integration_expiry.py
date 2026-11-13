@@ -11,19 +11,18 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.models.integration_models import (
     IntegrationAccount,
     UserIntegrationDocument,
     UserIntegrationStatus,
 )
-from app.models.notification.notification_models import ActionStyle, NotificationType
 from app.services.integrations.integration_expiry import (
     AccountExpired,
     _expiry_body,
     announce_account_expiry,
     expire_account,
 )
+from app.services.outbox.models import NoticeOutcome, ProducerKind, SubjectKind
 from tests.integration_account_factories import (
     make_integration_account,
     make_integration_record,
@@ -222,11 +221,10 @@ class TestOneAccountOfSeveral:
 def announce_seams() -> Iterator[dict[str, MagicMock]]:
     with (
         patch(f"{MODULE}.websocket_manager") as ws,
-        patch(f"{MODULE}.notification_service") as notifications,
+        patch(f"{MODULE}.submit", new_callable=AsyncMock) as submit,
     ):
         ws.broadcast_to_user = AsyncMock()
-        notifications.create_notification = AsyncMock()
-        yield {"ws": ws, "notify": notifications}
+        yield {"ws": ws, "submit": submit}
 
 
 def _expired(*, count: int = 1, integration_expired: bool = True) -> AccountExpired:
@@ -272,8 +270,8 @@ class TestTheAnnouncement:
     ) -> None:
         await announce_account_expiry(USER_ID, INTEGRATION_ID, _expired(), [], None)
 
-        request = announce_seams["notify"].create_notification.await_args.args[0]
-        assert request.content.title == "Notion disconnected"
+        notice = announce_seams["submit"].await_args.args[0]
+        assert notice.subject.label == "Notion connection"
 
     async def test_one_of_several_accounts_is_named_so_the_user_knows_which_to_reconnect(
         self, announce_seams: dict[str, MagicMock]
@@ -282,36 +280,42 @@ class TestTheAnnouncement:
             USER_ID, INTEGRATION_ID, _expired(count=2, integration_expired=False), [], None
         )
 
-        request = announce_seams["notify"].create_notification.await_args.args[0]
-        assert request.content.title == "Notion (ca_1@acme.com) disconnected"
+        notice = announce_seams["submit"].await_args.args[0]
+        assert notice.subject.label == "Notion (ca_1@acme.com) connection"
 
-    async def test_it_is_an_in_app_warning_whose_button_signs_that_account_back_in(
+    async def test_it_is_filed_as_a_notice_the_user_must_act_on(
         self, announce_seams: dict[str, MagicMock]
     ) -> None:
-        await announce_account_expiry(USER_ID, INTEGRATION_ID, _expired(), ["Digest"], None)
+        expired = _expired()
+        await announce_account_expiry(USER_ID, INTEGRATION_ID, expired, ["Digest"], None)
 
-        request = announce_seams["notify"].create_notification.await_args.args[0]
-        assert request.user_id == USER_ID
-        assert request.type == NotificationType.WARNING
-        assert [c.channel_type for c in request.channels] == [CHANNEL_TYPE_INAPP]
-        (action,) = request.content.actions
-        assert action.label == "Reconnect"
-        assert action.style == ActionStyle.PRIMARY
-        assert action.config.redirect.url == f"/integrations?connect={INTEGRATION_ID}&account=ca_1"
-        assert request.metadata == {"integration_id": INTEGRATION_ID, "paused_workflows": 1}
-        assert request.content.body == (
+        notice = announce_seams["submit"].await_args.args[0]
+        assert notice.recipient == USER_ID
+        assert notice.producer is ProducerKind.ACCOUNT
+        assert notice.subject.kind is SubjectKind.ACCOUNT
+        assert notice.outcome is NoticeOutcome.NEEDS_YOU
+        assert notice.report_id == (
+            f"sys:integration_expired:{INTEGRATION_ID}:ca_1:{expired.account.connected_at.isoformat()}"
+        )
+        assert notice.facts[0] == (
             f"{GENERIC_LEAD} Your “Digest” workflow is paused until you reconnect."
         )
 
-    async def test_the_notification_carries_the_cause(
-        self, announce_seams: dict[str, MagicMock]
-    ) -> None:
+    async def test_the_notice_carries_the_cause(self, announce_seams: dict[str, MagicMock]) -> None:
         await announce_account_expiry(
             USER_ID, INTEGRATION_ID, _expired(), [], "refresh_token_revoked"
         )
 
-        body = announce_seams["notify"].create_notification.await_args.args[0].content.body
-        assert body.startswith("Your Notion account revoked GAIA's access.")
+        facts = announce_seams["submit"].await_args.args[0].facts
+        assert facts[0].startswith("Your Notion account revoked GAIA's access.")
+
+    async def test_a_notice_that_cannot_be_filed_raises(
+        self, announce_seams: dict[str, MagicMock]
+    ) -> None:
+        announce_seams["submit"].side_effect = RuntimeError("redis down")
+
+        with pytest.raises(RuntimeError, match="redis down"):
+            await announce_account_expiry(USER_ID, INTEGRATION_ID, _expired(), [], None)
 
 
 class TestTheBodySaysWhyTheConnectionDied:

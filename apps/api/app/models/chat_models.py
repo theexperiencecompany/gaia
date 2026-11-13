@@ -110,7 +110,6 @@ tool_fields = [
     "weather_data",
     "search_results",
     "deep_research_results",
-    "notification_data",
     "memory_data",
     "todo_data",
     "code_data",

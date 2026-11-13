@@ -11,10 +11,9 @@ import { useBgMessageWebSocket } from "@/features/chat/hooks/useBgMessageWebSock
 import { useExecutorCancelWebSocket } from "@/features/chat/hooks/useExecutorCancelWebSocket";
 import { useExecutorStream } from "@/features/chat/hooks/useExecutorStream";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
-import { useNotifications } from "@/features/notification/hooks/useNotifications";
-import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
 import { useAppSessionEnabled } from "@/features/pricing/hooks/useEntitlement";
 import { useTodoWorkflowGlobalListener } from "@/features/todo/hooks/useTodoWorkflowGlobalListener";
+import { useUpdatesLiveRefresh } from "@/features/updates/hooks/useUpdatesLiveRefresh";
 
 import useAxiosInterceptor from "@/hooks/api/useAxiosInterceptor";
 import GlobalAuth from "@/hooks/providers/GlobalAuth";
@@ -30,7 +29,7 @@ const GlobalIntegrationModal = dynamic(
 );
 
 /**
- * The signed-in app's background requests: realtime sockets, notifications,
+ * The signed-in app's background requests: realtime sockets, updates,
  * executor streams. All of them are paid-only, so they mount only once the
  * plan is read and allows them; an unpaid account on /onboarding fires none.
  */
@@ -38,11 +37,8 @@ function PaidSessionEffects() {
   // Initialize global WebSocket connection
   useWebSocketConnection();
 
-  // Warm the notification query cache on app load
-  useNotifications({ limit: 100 });
-
-  // Subscribe to notification events — writes the shared query cache
-  useNotificationWebSocket();
+  // Refresh the Updates feed and its badge when GAIA tells the user something
+  useUpdatesLiveRefresh();
 
   // Subscribe to background executor completion messages — inserts new
   // bot messages delivered via WebSocket (executor notifications, queued task results)

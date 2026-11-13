@@ -21,11 +21,6 @@ from app.constants.todos import BLOCKING_LABELS, EXECUTE_TRACKED_TODO_TASK, Todo
 from app.constants.trigger_gates import GateOwner
 from app.db.redis import redis_cache
 from app.db.repositories.todos import todo_repository
-from app.models.notification.notification_models import (
-    NotificationContent,
-    NotificationRequest,
-    NotificationSourceEnum,
-)
 from app.models.todo_models import ExternalRefSource, TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import (
     ConditionOperator,
@@ -35,9 +30,10 @@ from app.models.trigger_subscription_models import (
     TriggerSubscriptionStatus,
 )
 from app.services.analytics_service import capture
-from app.services.notification_service import notification_service
+from app.services.outbox.intake import submit
+from app.services.outbox.models import Initiative, NoticeOutcome, ProducerKind, SubjectKind
+from app.services.outbox.system_notices import system_notice
 from app.services.todo_activity import record_activity
-from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.condition_matching import conditions_match
 from app.services.triggers.todo_trigger_window import (
@@ -55,6 +51,7 @@ from app.services.triggers.trigger_gate import (
     automation_text,
     decide_gate,
 )
+from app.utils import clock
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.analytics import UserId
@@ -360,16 +357,20 @@ async def _execute(
 
 async def _notify(todo: TodoDocument, subscription: TriggerSubscription) -> None:
     """Tell the user the event landed. No state change — that is the point."""
-    await notification_service.create_notification(
-        NotificationRequest(
+    await submit(
+        system_notice(
             user_id=todo.user_id,
-            source=NotificationSourceEnum.TODO_TRIGGER,
-            content=NotificationContent(
-                title=f"Update on: {todo.title}",
-                body=f"An event you were watching ({subscription.trigger_name}) just fired.",
-                actions=[todo_redirect_action("View todo", todo.id)],
-            ),
-            metadata={"todo_id": todo.id, "subscription_id": subscription.id},
+            producer=ProducerKind.TODO,
+            subject_kind=SubjectKind.TODO_RUN,
+            kind="trigger_notify",
+            key=f"{subscription.id}:{clock.now().isoformat()}",
+            label=todo.title,
+            outcome=NoticeOutcome.INFO,
+            initiative=Initiative.USER_SCHEDULED,
+            facts=[
+                f"An event the user was watching for on '{todo.title}' just fired "
+                f"({subscription.trigger_name})."
+            ],
         )
     )
     log.info("todo_subscription.notified", todo_id=todo.id)

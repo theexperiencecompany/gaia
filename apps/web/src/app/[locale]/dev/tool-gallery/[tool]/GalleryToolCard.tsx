@@ -13,7 +13,6 @@ import EmailThreadCard from "@/features/chat/components/bubbles/bot/EmailThreadC
 import FileArtifactSection from "@/features/chat/components/bubbles/bot/FileArtifactSection";
 import GoogleDocsSection from "@/features/chat/components/bubbles/bot/GoogleDocsSection";
 import IntegrationConnectionPrompt from "@/features/chat/components/bubbles/bot/IntegrationConnectionPrompt";
-import NotificationListSection from "@/features/chat/components/bubbles/bot/NotificationListSection";
 import PeopleSearchSection from "@/features/chat/components/bubbles/bot/PeopleSearchSection";
 import RateLimitCard from "@/features/chat/components/bubbles/bot/RateLimitCard";
 import RedditCommentSection from "@/features/chat/components/bubbles/bot/RedditCommentSection";
@@ -112,12 +111,6 @@ const GALLERY_RENDERERS: GalleryRenderers = {
   workflow_created: (data) => <WorkflowCreatedCard workflow={data} />,
   support_ticket_data: (data) => (
     <SupportTicketSection support_ticket_data={data} />
-  ),
-  notification_data: (data) => (
-    <NotificationListSection
-      notifications={data.notifications ?? []}
-      title="Your Notifications"
-    />
   ),
   rate_limit_data: (data) => <RateLimitCard data={data} />,
   mcp_app: (data) => <MCPAppRenderer data={data} />,

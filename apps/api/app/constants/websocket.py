@@ -30,7 +30,6 @@ class OutboxMessageKind(StrEnum):
     """What an outbox.message frame carries, named by its kind field."""
 
     CONVERSATION_MESSAGE = "conversation_message"
-    NOTIFICATION = "notification"
     #: A report the app showed a status chip for has settled; the frame says how.
     REPORT_SETTLED = "report_settled"
 

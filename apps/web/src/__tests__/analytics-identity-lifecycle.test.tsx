@@ -207,7 +207,7 @@ describe("API request headers", () => {
 
   async function sentClientType(): Promise<unknown> {
     let sent: InternalAxiosRequestConfig | undefined;
-    await apiauth.get("/api/v1/notifications", {
+    await apiauth.get("/api/v1/updates", {
       adapter: async (config) => {
         sent = config;
         return { data: {}, status: 200, statusText: "OK", headers: {}, config };

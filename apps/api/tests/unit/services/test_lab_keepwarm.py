@@ -33,7 +33,6 @@ from app.models.trigger_subscription_models import (
 from app.services.agent_lab import agents_home, lab_runs
 from app.services.agent_lab.agents_saves import save_agents_home
 from app.services.agent_lab.sandbox_events import SandboxEventKind, report_sandbox_event
-from app.services.notification_service import notification_service
 from app.services.sandbox.pool import PooledSandbox, refresh_sandbox_timeout
 from app.workers.tasks import sandbox_tasks
 from app.workers.tasks.sandbox_tasks import LabTickOutcome
@@ -227,9 +226,8 @@ class _Tick:
                 ("log.info", self.log_info),
             ):
                 stack.enter_context(patch(f"{TASKS_MODULE}.{target}", value))
-            # On the singleton, so a notification sent through any import path is seen.
             stack.enter_context(
-                patch.object(notification_service, "create_notification", self.notify)
+                patch("app.services.triggers.subscription_dispatch.submit", self.notify)
             )
             stack.enter_context(
                 patch(

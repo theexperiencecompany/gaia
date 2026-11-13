@@ -35,8 +35,8 @@ from app.services.providers.provider_credentials_service import (
     ProviderConfig,
     resolve as resolve_resend_config,
 )
-from app.utils.notification.channel_preferences import normalize_channel_preferences
-from app.utils.notification.unsubscribe import build_unsubscribe_headers, build_unsubscribe_url
+from app.utils.channel_preferences import normalize_channel_preferences
+from app.utils.email_unsubscribe import build_unsubscribe_headers, build_unsubscribe_url
 from app.utils.timezone import as_utc, is_within_local_daytime
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.onboarding import NurtureEmailSent

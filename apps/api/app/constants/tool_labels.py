@@ -123,11 +123,6 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "update_reminder_tool": "Updating the reminder",
     "delete_reminder_tool": "Removing the reminder",
     "search_reminders_tool": "Searching reminders",
-    # ── Native: notifications ──────────────────────────────────────────
-    "get_notifications": "Checking notifications",
-    "search_notifications": "Searching notifications",
-    "get_notification_count": "Counting notifications",
-    "mark_notifications_read": "Marking notifications read",
     # ── Native: workflows ──────────────────────────────────────────────
     "create_workflow": "Building the workflow",
     "edit_workflow": "Editing the workflow",

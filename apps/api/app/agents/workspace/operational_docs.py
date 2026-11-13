@@ -361,15 +361,7 @@ user-visible output from a subagent STILL goes in the parent session's
 
 NOTIFICATIONS_DOC: Final[str] = """# Notifications & channels
 
-How GAIA reaches the user: reading their notification inbox, and being told on
-a channel.
-
-## Reading notifications
-
-- `get_notifications`: the user's notification inbox (filter by status/type).
-- `search_notifications`: text search over their notifications.
-- `get_notification_count`: how many (e.g. unread).
-- `mark_notifications_read`: mark one or more read.
+How GAIA reaches the user: being told on a channel.
 
 ## Being told on a channel
 
@@ -382,7 +374,6 @@ there when you finish. Valid channels: `whatsapp`, `telegram`, `discord`,
 - A channel only delivers if the user has LINKED that platform
   (WhatsApp/Telegram/Discord/Slack) and has it enabled; otherwise the message
   says it could not use that channel and goes where they are active.
-- `get_notification_preferences`: which channels are enabled.
 
 A messaging platform is a *channel established via a platform link*, NOT an
 OAuth integration, so `connect_integration("whatsapp")` will fail with "not
@@ -895,8 +886,7 @@ context. It is cheap and keeps you from guessing how your own machinery works.
   reminder differs from a workflow and a tracked todo (executor-direct tools,
   no subagent).
 - `sessions-and-artifacts`: working inside a session; producing artifacts.
-- `notifications`: reading the inbox, and being told on a channel; channel
-  linking is user-managed.
+- `notifications`: being told on a channel; channel linking is user-managed.
 - `workflows`: saved automations that run on a schedule or integration event;
   what `create_workflow` does and doesn't do; result delivery.
 - `memory`: your long-term memory about the user. the `/workspace/memory/`
@@ -1087,10 +1077,7 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
         ManualDoc(
             name="notifications",
             title="Notifications & channels",
-            description=(
-                "Reading the notification inbox, and being told on a channel "
-                "(WhatsApp/Telegram/Slack); channel linking."
-            ),
+            description=("Being told on a channel (WhatsApp/Telegram/Slack); channel linking."),
             body=NOTIFICATIONS_DOC,
         ),
         ManualDoc(

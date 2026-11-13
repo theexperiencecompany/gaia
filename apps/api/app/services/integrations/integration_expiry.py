@@ -21,28 +21,17 @@ from typing import Literal
 from app.config.oauth_config import get_integration_by_id
 from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT
 from app.constants.log_tags import LogTag
-from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.core.websocket_manager import websocket_manager
 from app.models.integration_models import IntegrationAccount
-from app.models.notification.notification_models import (
-    ActionConfig,
-    ActionStyle,
-    ActionType,
-    ChannelConfig,
-    NotificationAction,
-    NotificationContent,
-    NotificationRequest,
-    NotificationSourceEnum,
-    NotificationType,
-    RedirectConfig,
-)
 from app.services.integrations.integration_accounts import (
     get_account_record,
     primary_account,
     save_accounts,
 )
 from app.services.integrations_fs import schedule_user_integrations_sync
-from app.services.notification_service import notification_service
+from app.services.outbox.intake import submit
+from app.services.outbox.models import NoticeOutcome, ProducerKind, SubjectKind
+from app.services.outbox.system_notices import system_notice
 from shared.py.wide_events import log
 
 # Which detection path drove this transition — carried into the wide event so a
@@ -182,7 +171,7 @@ async def announce_account_expiry(
     paused_workflows: Sequence[str],
     reason: str | None,
 ) -> None:
-    """Flip an open integrations page live, then leave a persistent Reconnect nudge."""
+    """Flip an open integrations page live, then file the notice that the user must reconnect."""
     integration = get_integration_by_id(integration_id)
     integration_name = integration.name if integration else integration_id
     await websocket_manager.broadcast_to_user(
@@ -201,34 +190,18 @@ async def announce_account_expiry(
         if expired.account_count > 1
         else integration_name
     )
-    await notification_service.create_notification(
-        NotificationRequest(
+    await submit(
+        system_notice(
             user_id=user_id,
-            source=NotificationSourceEnum.INTEGRATION_EXPIRED,
-            type=NotificationType.WARNING,
-            channels=[ChannelConfig(channel_type=CHANNEL_TYPE_INAPP)],
-            content=NotificationContent(
-                title=f"{named} disconnected",
-                body=_expiry_body(named, paused_workflows, reason),
-                actions=[
-                    NotificationAction(
-                        type=ActionType.REDIRECT,
-                        label="Reconnect",
-                        style=ActionStyle.PRIMARY,
-                        config=ActionConfig(
-                            redirect=RedirectConfig(
-                                url=f"/integrations?connect={integration_id}"
-                                f"&account={expired.account.id}",
-                                open_in_new_tab=False,
-                                close_notification=True,
-                            )
-                        ),
-                    )
-                ],
-            ),
-            metadata={
-                "integration_id": integration_id,
-                "paused_workflows": len(paused_workflows),
-            },
+            producer=ProducerKind.ACCOUNT,
+            subject_kind=SubjectKind.ACCOUNT,
+            kind="integration_expired",
+            key=f"{integration_id}:{expired.account.id}:{expired.account.connected_at.isoformat()}",
+            label=f"{named} connection",
+            outcome=NoticeOutcome.NEEDS_YOU,
+            facts=[
+                _expiry_body(named, paused_workflows, reason),
+                "Reconnecting it in the app's integrations page restores it.",
+            ],
         )
     )

@@ -97,7 +97,7 @@ def _backend(
         patch(f"{MODULE}.memory_engine.summarize_episode", summarize),
         patch(f"{MODULE}.memory_engine.consolidate", consolidate),
         patch(f"{MODULE}.cancel_consolidation", AsyncMock()),
-        patch(f"{MODULE}.notification_service.create_notification", notify),
+        patch(f"{MODULE}.submit", notify),
     ):
         yield _Backend(user_repo, retain, notify, summarize, consolidate)
 

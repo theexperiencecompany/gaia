@@ -8,7 +8,7 @@ from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_EMAIL
 from app.db.repositories.users import user_repository
 from app.models.user_models import UserDocument
-from app.utils.notification.channel_preferences import normalize_channel_preferences
+from app.utils.channel_preferences import normalize_channel_preferences
 from app.utils.timezone import as_utc
 from shared.py.wide_events import log
 

@@ -55,6 +55,7 @@ from app.api.v1.endpoints import (
     todos,
     tools,
     triggers,
+    updates,
     usage,
     user,
     voice,
@@ -119,6 +120,7 @@ router.include_router(skills.router, tags=["Skills"])
 router.include_router(instructions.router, tags=["Instructions"])
 router.include_router(support.router, tags=["Support"])
 router.include_router(payments.router, prefix="/payments", tags=["Payments"])
+router.include_router(updates.router, tags=["Updates"])
 router.include_router(usage.router, tags=["Usage"])
 router.include_router(tools.router, tags=["Tools"])
 router.include_router(models.router, tags=["Models"])

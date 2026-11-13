@@ -1,4 +1,3 @@
-import asyncio
 from html import escape
 from typing import Annotated
 
@@ -7,9 +6,7 @@ from fastapi import (
     Body,
     Depends,
     HTTPException,
-    Path,
     Query,
-    Request,
     Response,
 )
 from fastapi.responses import HTMLResponse
@@ -18,43 +15,22 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.log_tags import LogTag
 from app.constants.notifications import EXPO_TOKEN_PATTERN, MAX_DEVICES_PER_USER
 from app.db.repositories.users import user_repository
+from app.models.channel_preference_models import ChannelPreferences, ChannelPreferencesUpdate
 from app.models.device_token_models import (
     PushTokenRequest,
     PushTokenResponse,
-)
-from app.models.notification.notification_models import (
-    ChannelPreferences,
-    ChannelPreferencesUpdate,
-    NotificationListFilters,
-    NotificationRecord,
-    NotificationStatus,
-    NotificationView,
-)
-from app.models.notification.request_models import (
-    ActionExecutionResponse,
-    BulkActionRequest,
-    BulkActionSummary,
-    MarkAllReadSummary,
-    NotificationResponse,
-    PaginatedNotificationsResponse,
 )
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import capture
 from app.services.device_token_service import get_device_token_service
-from app.services.notification_service import notification_service
-from app.utils.notification.channel_preferences import fetch_channel_preferences
-from app.utils.notification.unsubscribe import verify_unsubscribe_token
+from app.utils.channel_preferences import fetch_channel_preferences
+from app.utils.email_unsubscribe import verify_unsubscribe_token
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.notifications import (
-    NotificationActionExecuted,
-    NotificationBulkAction,
-    NotificationRead,
-    NotificationUnsubscribed,
-)
+from shared.py.analytics.catalog.notifications import NotificationUnsubscribed
 from shared.py.analytics.catalog.settings import SettingsNotificationsToggled
-from shared.py.wide_events import NotificationContext, log
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -120,56 +96,6 @@ async def unsubscribe_from_emails(token: Annotated[str, Query()]) -> Response:
 
 async def _disable_email_channel(user_id: str) -> None:
     await user_repository.set_channel_preferences(user_id, email=False)
-
-
-@router.get("/notifications", response_model=PaginatedNotificationsResponse)
-async def get_notifications(
-    status: NotificationStatus | None = Query(None, description="Filter by status"),
-    limit: int = Query(50, ge=1, le=100, description="Number of notifications to return"),
-    offset: int = Query(default=0, ge=0, description="Number of notifications to skip"),
-    channel_type: str | None = Query(None, description="Filter by channel type (e.g., email, sms)"),
-    current_user: AuthenticatedUser = Depends(get_current_user),
-) -> PaginatedNotificationsResponse:
-    """Get user's notifications with pagination."""
-    user_id = current_user.user_id
-
-    if not user_id:
-        raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
-
-    log.set(
-        user={"id": user_id},
-        operation="list",
-        notification=NotificationContext(operation="list", channel=channel_type)
-        if channel_type
-        else NotificationContext(operation="list"),
-    )
-
-    try:
-        filters = NotificationListFilters(
-            status=status, channel_type=channel_type, limit=limit, offset=offset
-        )
-        notifications, notification_count = await asyncio.gather(
-            notification_service.get_user_notifications(user_id, filters=filters),
-            notification_service.get_user_notifications_count(user_id, status, channel_type),
-        )
-
-        log.set(outcome="success")
-        log.set_ns("notification", result_count=len(notifications), success=True)
-        return PaginatedNotificationsResponse(
-            notifications=notifications,
-            total=notification_count,
-            limit=limit,
-            offset=offset,
-        )
-
-    except Exception as e:
-        log.error(
-            f"{LogTag.NOTIFICATION} Failed to get notifications",
-            user_id=user_id,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        raise HTTPException(status_code=500, detail="Failed to get notifications") from e
 
 
 @router.get("/notifications/preferences/channels", response_model=ChannelPreferences)
@@ -242,206 +168,6 @@ async def update_channel_preferences(
             error=str(e),
         )
         raise HTTPException(status_code=500, detail="Failed to update channel preferences") from e
-
-
-@router.post("/notifications/{notification_id}/actions/{action_id}/execute")
-async def execute_action(
-    request: Request,
-    notification_id: str = Path(..., description="Notification ID"),
-    action_id: str = Path(..., description="Action ID"),
-    current_user: AuthenticatedUser = Depends(get_current_user),
-) -> ActionExecutionResponse:
-    """Execute a notification action.
-
-    ``data`` stays a free-form dict: it is whatever the matched ``ActionHandler``
-    produced (``ActionResult.data``), which is open by design.
-    """
-    user_id = current_user.user_id
-    if not user_id:
-        raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
-
-    log.set(
-        user={"id": user_id},
-        operation="execute_action",
-        notification=NotificationContext(operation="dispatch", notification_id=notification_id),
-    )
-
-    try:
-        result = await notification_service.execute_action(
-            notification_id, action_id, user_id, request=request
-        )
-
-        if not result.success:
-            raise HTTPException(status_code=400, detail=result.message)
-
-        log.set(outcome="success")
-        log.set_ns("notification", success=True)
-        capture(UserId(user_id), NotificationActionExecuted())
-        return ActionExecutionResponse(
-            success=True,
-            message=result.message or "Action executed successfully",
-            data=result.data,
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        log.error(
-            f"{LogTag.NOTIFICATION} Failed to execute action",
-            user_id=user_id,
-            notification_id=notification_id,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        raise HTTPException(status_code=500, detail="Failed to execute action") from e
-
-
-@router.post("/notifications/{notification_id}/read")
-async def mark_as_read(
-    notification_id: str = Path(..., description="Notification ID"),
-    current_user: AuthenticatedUser = Depends(get_current_user),
-) -> NotificationResponse[NotificationRecord]:
-    """Mark notification as read.
-
-    ``data`` is the stored record, not the flattened ``NotificationView`` that
-    ``GET /notifications/{id}`` returns — the two endpoints have always returned
-    different shapes under the same key.
-    """
-    user_id = current_user.user_id
-    if not user_id:
-        raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
-
-    log.set(
-        user={"id": user_id},
-        operation="mark_read",
-        notification=NotificationContext(operation="read", notification_id=notification_id),
-    )
-
-    try:
-        updated_notification = await notification_service.mark_as_read(notification_id, user_id)
-        if not updated_notification:
-            raise HTTPException(status_code=404, detail="Notification not found")
-
-        log.set(outcome="success")
-        log.set_ns("notification", success=True)
-        capture(UserId(user_id), NotificationRead(count=1))
-        return NotificationResponse(
-            success=True,
-            message="Notification marked as read",
-            data=updated_notification,
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        log.error(
-            f"{LogTag.NOTIFICATION} Failed to mark notification as read",
-            user_id=user_id,
-            notification_id=notification_id,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        raise HTTPException(status_code=500, detail="Failed to mark notification as read") from e
-
-
-@router.post("/notifications/bulk-actions")
-async def bulk_actions(
-    request: BulkActionRequest = Body(...),
-    current_user: AuthenticatedUser = Depends(get_current_user),
-) -> NotificationResponse[BulkActionSummary]:
-    """Perform bulk actions on multiple notifications."""
-    user_id = current_user.user_id
-    if not user_id:
-        raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
-
-    notification_ids = request.notification_ids or []
-    log.set(
-        user={"id": user_id},
-        operation="bulk_actions",
-        notification=NotificationContext(
-            operation="mark_all_read", result_count=len(notification_ids)
-        ),
-    )
-
-    try:
-        if not notification_ids:
-            raise HTTPException(status_code=400, detail="No notification IDs provided")
-
-        results = await notification_service.bulk_actions(notification_ids, user_id, request.action)
-
-        successful = sum(1 for success in results.values() if success)
-        total = len(results)
-
-        log.set_ns(
-            "notification",
-            result_count=successful,
-            success=successful == total,
-        )
-        capture(
-            UserId(user_id),
-            NotificationBulkAction(action=request.action, successful=successful, total=total),
-        )
-        return NotificationResponse(
-            success=True,
-            message=f"Bulk action completed: {successful}/{total} successful",
-            data=BulkActionSummary(results=results, successful=successful, total=total),
-        )
-
-    except Exception as e:
-        log.error(
-            f"{LogTag.NOTIFICATION} Failed to perform bulk actions",
-            user_id=user_id,
-            notification_count=len(notification_ids),
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        raise HTTPException(status_code=500, detail="Failed to perform bulk actions") from e
-
-
-@router.post("/notifications/mark-all-read")
-async def mark_all_read(
-    channel_type: str | None = Query(None, description="Only mark notifications on this channel"),
-    current_user: AuthenticatedUser = Depends(get_current_user),
-) -> NotificationResponse[MarkAllReadSummary]:
-    """Mark every delivered notification for the user as read, server-side.
-
-    Operates on every matching notification, not just the ones the caller has
-    currently loaded — this is what lets "mark all as read" cover notifications
-    beyond the first page a paginated client has fetched.
-    """
-    user_id = current_user.user_id
-    if not user_id:
-        raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
-
-    log.set(
-        user={"id": user_id},
-        operation="mark_all_read",
-        notification=NotificationContext(operation="mark_all_read", channel=channel_type)
-        if channel_type
-        else NotificationContext(operation="mark_all_read"),
-    )
-
-    try:
-        updated_count = await notification_service.mark_all_read(user_id, channel_type=channel_type)
-
-        log.set(outcome="success")
-        log.set_ns("notification", result_count=updated_count, success=True)
-        return NotificationResponse(
-            success=True,
-            message=f"Marked {updated_count} notifications as read",
-            data=MarkAllReadSummary(updated_count=updated_count),
-        )
-
-    except Exception as e:
-        log.error(
-            f"{LogTag.NOTIFICATION} Failed to mark all notifications as read",
-            user_id=user_id,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        raise HTTPException(
-            status_code=500, detail="Failed to mark all notifications as read"
-        ) from e
 
 
 @router.post("/notifications/register-device", response_model=PushTokenResponse)
@@ -538,45 +264,3 @@ async def unregister_device_token(
             error=str(e),
         )
         raise HTTPException(status_code=500, detail="Failed to unregister device token") from e
-
-
-@router.get("/notifications/{notification_id}")
-async def get_notification(
-    notification_id: str = Path(..., description="Notification ID"),
-    current_user: AuthenticatedUser = Depends(get_current_user),
-) -> NotificationResponse[NotificationView]:
-    """Get a specific notification."""
-    user_id = current_user.user_id
-    if not user_id:
-        raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
-
-    log.set(
-        user={"id": user_id},
-        operation="get",
-        notification=NotificationContext(operation="read", notification_id=notification_id),
-    )
-
-    try:
-        notification = await notification_service.get_notification(notification_id, user_id)
-        if not notification:
-            raise HTTPException(status_code=404, detail="Notification not found")
-
-        log.set(outcome="success")
-        log.set_ns("notification", success=True)
-        return NotificationResponse(
-            success=True,
-            message="Notification retrieved successfully",
-            data=notification,
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        log.error(
-            f"{LogTag.NOTIFICATION} Failed to get notification",
-            user_id=user_id,
-            notification_id=notification_id,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        raise HTTPException(status_code=500, detail="Failed to get notification") from e

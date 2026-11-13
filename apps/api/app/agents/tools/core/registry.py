@@ -370,7 +370,6 @@ class ToolRegistry:
             integration_tool,
             manual_tool,
             memory_tools,
-            notification_tool,
             playbook_tools,
             reminder_tool,
             research_tool,
@@ -401,11 +400,6 @@ class ToolRegistry:
             risk=CategoryRisk(destructive_tools=set()),
         )
 
-        self._add_category(
-            "notifications",
-            tools=[*notification_tool.tools],
-            risk=CategoryRisk(destructive_tools=set()),
-        )
         # Account-center mutations are forced-ask; manage_linked_account is
         # argument-gated instead — see hil/policy.ARGUMENT_GATED_TOOLS.
         self._add_category(

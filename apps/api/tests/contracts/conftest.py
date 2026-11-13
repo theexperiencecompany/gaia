@@ -67,9 +67,6 @@ async def raw_collection(
     # lane sharing one mongod owns — and can drop — everything it creates.
     coll = client[worker_mongo_db_name()][f"contract_fixture_{worker}_{uuid.uuid4().hex}"]
 
-    # Both modules that hold the accessor: the base owns every standard path,
-    # and notifications binds its own for the one bulk update_many the base
-    # has no seam for. Missing either sends that repository at real Mongo.
     def accessor(name: str) -> AsyncIOMotorCollection:
         # pymongo refuses a non-str name, so a repository that lost its name fails here too.
         if not isinstance(name, str):
@@ -77,7 +74,6 @@ async def raw_collection(
         return coll
 
     monkeypatch.setattr("app.db.repositories.base.get_async_collection", accessor)
-    monkeypatch.setattr("app.db.repositories.notifications.get_async_collection", accessor)
 
     yield coll
 

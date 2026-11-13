@@ -30,21 +30,9 @@ from app.config.settings import settings
 from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.log_tags import LogTag
-from app.constants.notifications import MEMORY_SETTINGS_URL
 from app.constants.onboarding import TRIAGE_EARLY_THRESHOLD
 from app.core.websocket_manager import websocket_manager
 from app.db.repositories.users import user_repository
-from app.models.notification.notification_models import (
-    ActionConfig,
-    ActionStyle,
-    ActionType,
-    NotificationAction,
-    NotificationContent,
-    NotificationRequest,
-    NotificationSourceEnum,
-    NotificationType,
-    RedirectConfig,
-)
 from app.models.onboarding_models import (
     ClarifyAnswerRecord,
     InboxTriage,
@@ -60,7 +48,6 @@ from app.models.onboarding_models import (
 )
 from app.models.user_models import OnboardingSubdocument, PersonalizationBundle, UserDocument
 from app.services.composio.composio_service import get_composio_service
-from app.services.notification_service import notification_service
 from app.services.onboarding import inbox_scan_cache
 from app.services.onboarding.inbox_triage_service import triage_inbox
 from app.services.onboarding.intelligence_job import personalization_already_ran
@@ -69,6 +56,9 @@ from app.services.onboarding.social_profile_service import (
     extract_social_profiles_from_emails,
 )
 from app.services.onboarding.writing_style_service import learn_writing_style
+from app.services.outbox.intake import submit
+from app.services.outbox.models import NoticeOutcome, ProducerKind, SubjectKind
+from app.services.outbox.system_notices import system_notice
 from app.utils.background_tasks import spawn_background_task
 from app.utils.profile_card import (
     generate_holo_card_content,
@@ -84,10 +74,10 @@ from shared.py.wide_events import log
 # card is shareable the moment its content is saved; there is no publish step.
 _HOLO_CARD_PATH = "/profile"
 
-_PERSONALIZATION_NOTIFICATION_TITLE = "Check your memories — I just added a lot"
-_MEMORIES_NOTIFICATION_BODY = (
-    "I read through your inbox and saved what matters — the people you work with, "
-    "how you write, what you're on top of."
+_PERSONALIZATION_FACTS = (
+    "GAIA read through the user's inbox and saved what matters to their memories: the people "
+    "they work with, how they write, what they are on top of.",
+    "They can review the memories in settings, under memory.",
 )
 
 
@@ -652,51 +642,28 @@ def _holo_card_message(card_url: str) -> str:
 
 
 async def _announce_personalization(user_id: str, *, card_ready: bool) -> str | None:
-    """Notify the user on every channel and seed a web conversation with the card link.
+    """File the personalization notice and seed a web conversation with the card link.
 
     Returns the seeded conversation id, or None when there is no card or
     seeding failed. Fail-soft: an undelivered announcement must not fail the
     pipeline or cost the user their personalization marker.
     """
     card_url = holo_card_url(user_id)
-    body = _MEMORIES_NOTIFICATION_BODY
-    actions = [
-        NotificationAction(
-            type=ActionType.REDIRECT,
-            label="View memories",
-            style=ActionStyle.PRIMARY,
-            config=ActionConfig(
-                redirect=RedirectConfig(
-                    url=MEMORY_SETTINGS_URL,
-                    open_in_new_tab=False,
-                    close_notification=True,
-                )
-            ),
-        )
-    ]
+    facts = list(_PERSONALIZATION_FACTS)
     if card_ready:
-        body = f"{body} Your holo card is ready too."
-        actions.append(
-            NotificationAction(
-                type=ActionType.REDIRECT,
-                label="See your holo card",
-                config=ActionConfig(redirect=RedirectConfig(url=card_url)),
-            )
-        )
+        facts.append(f"Their holo card is ready too, at {card_url}.")
 
     try:
-        await notification_service.create_notification(
-            NotificationRequest(
+        await submit(
+            system_notice(
                 user_id=user_id,
-                source=NotificationSourceEnum.BACKGROUND_JOB,
-                type=NotificationType.SUCCESS,
-                priority=2,
-                content=NotificationContent(
-                    title=_PERSONALIZATION_NOTIFICATION_TITLE,
-                    body=body,
-                    actions=actions,
-                ),
-                metadata={"source": "gmail_personalization"},
+                producer=ProducerKind.ACCOUNT,
+                subject_kind=SubjectKind.ACCOUNT,
+                kind="personalization",
+                key=user_id,
+                label="Your memories",
+                outcome=NoticeOutcome.INFO,
+                facts=facts,
             )
         )
     except Exception as e:

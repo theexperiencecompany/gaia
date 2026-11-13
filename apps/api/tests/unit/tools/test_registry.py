@@ -401,7 +401,6 @@ class TestToolWrapper:
 _EXPECTED_CATEGORY_METADATA: dict[str, tuple[str, bool, str | None, bool, bool]] = {
     "search": ("general", False, None, False, False),
     "documents": ("general", False, None, False, False),
-    "notifications": ("general", False, None, False, False),
     "account": ("general", False, None, False, False),
     "tracked_todos": ("tasks", False, None, False, False),
     "todos": ("todos", False, "todos", True, False),
@@ -476,7 +475,6 @@ def expected_category_tool_names() -> dict[str, set[str]]:
         integration_tool,
         manual_tool,
         memory_tools,
-        notification_tool,
         playbook_tools,
         reminder_tool,
         research_tool,
@@ -499,7 +497,6 @@ def expected_category_tool_names() -> dict[str, set[str]]:
             *(t.name for t in download_tool.tools),
         },
         "documents": {file_tools.search_uploaded_files.name},
-        "notifications": {t.name for t in notification_tool.tools},
         "account": {t.name for t in account_tools.tools},
         "tracked_todos": {t.name for t in tracked_todo_tools.tools},
         "todos": {t.name for t in todo_tool.tools},
@@ -618,7 +615,6 @@ class TestInitializeCategoriesReal:
 _CORE_CATEGORY_NAMES = [
     "search",
     "documents",
-    "notifications",
     "todos",
     "reminders",
     "skills",
@@ -682,16 +678,14 @@ class TestCoreInitializationContract:
     which tools the executor can reach and how the HIL gate judges them.
     """
 
-    def test_search_documents_and_notifications_register_expected_tools(self):
+    def test_search_and_documents_register_expected_tools(self):
         registry = ToolRegistry()
         registry._initialize_categories()
 
         search = registry.get_category("search")
         documents = registry.get_category("documents")
-        notifications = registry.get_category("notifications")
         assert search is not None
         assert documents is not None
-        assert notifications is not None
 
         assert [tool.name for tool in search.tools] == [
             "web_search_tool",
@@ -700,13 +694,6 @@ class TestCoreInitializationContract:
             "download",
         ]
         assert [tool.name for tool in documents.tools] == ["search_uploaded_files"]
-        assert [tool.name for tool in notifications.tools] == [
-            "get_notifications",
-            "search_notifications",
-            "get_notification_count",
-            "mark_notifications_read",
-            "get_notification_preferences",
-        ]
 
     def test_every_initialized_tool_has_an_explicit_hil_classification(self):
         """No built-in tool may ship unclassified (destructive=None): the HIL gate would fall to the LLM classifier for code-reviewed tools."""
@@ -982,7 +969,6 @@ class TestInitializedCategoryContract:
     PLACEMENT_OVERRIDES: ClassVar[dict[str, dict[str, object]]] = {
         "search": {},
         "documents": {},
-        "notifications": {},
         "account": {},
         "tracked_todos": {"space": "tasks"},
         "todos": {"space": "todos", "integration_name": "todos", "is_delegated": True},

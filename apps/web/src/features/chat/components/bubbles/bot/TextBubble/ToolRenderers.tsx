@@ -31,7 +31,6 @@ import type {
   EmailFetchData,
   EmailSentData,
 } from "@/types/features/mailTypes";
-import type { NotificationView } from "@/types/features/notificationTypes";
 import type {
   RedditCommentCreatedData,
   RedditCommentData,
@@ -54,7 +53,6 @@ import EmailSentSection from "../EmailSentSection";
 import FileArtifactSection from "../FileArtifactSection";
 import GoogleDocsSection from "../GoogleDocsSection";
 import MemoryCard from "../MemoryCard";
-import NotificationListSection from "../NotificationListSection";
 import PeopleSearchSection from "../PeopleSearchSection";
 import RateLimitCard from "../RateLimitCard";
 import RedditCommentSection from "../RedditCommentSection";
@@ -205,15 +203,6 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       stats={data.stats}
       action={data.action}
       message={data.message}
-    />
-  ),
-  notification_data: (data) => (
-    <NotificationListSection
-      notifications={
-        (data as { notifications: unknown[] })
-          .notifications as NotificationView[]
-      }
-      title="Your Notifications"
     />
   ),
   connect_options: (data) => <ConnectOptions connect_options={data} />,

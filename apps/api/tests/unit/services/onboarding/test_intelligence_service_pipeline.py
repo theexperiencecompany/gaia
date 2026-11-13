@@ -19,14 +19,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.log_tags import LogTag
-from app.constants.notifications import MEMORY_SETTINGS_URL
 from app.constants.onboarding import GMAIL_PERSONALIZATION_MARKER
-from app.models.notification.notification_models import (
-    ActionStyle,
-    ActionType,
-    NotificationSourceEnum,
-    NotificationType,
-)
 from app.models.onboarding_models import (
     EmailSummary,
     InboxTriage,
@@ -45,6 +38,7 @@ from app.services.onboarding.intelligence_service import (
     holo_card_url,
     process_onboarding_intelligence,
 )
+from app.services.outbox.models import NoticeOutcome, ProducerKind, SubjectKind
 from app.workers.task_envelope import arq_task
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import (
@@ -573,11 +567,10 @@ def announce_stack() -> Any:
     frontend.FRONTEND_URL = "https://app.example.test"
     with (
         patch(f"{MODULE}.settings", frontend),
-        patch(f"{MODULE}.notification_service") as notifications,
+        patch(f"{MODULE}.submit", new_callable=AsyncMock) as submit,
         patch(f"{MODULE}.seed_holo_card_conversation", AsyncMock(return_value="conv-1")) as seed,
     ):
-        notifications.create_notification = AsyncMock()
-        yield notifications, seed
+        yield submit, seed
 
 
 class TestHoloCardUrl:
@@ -616,41 +609,37 @@ class TestHoloCardMessage:
 
 class TestAnnouncePersonalization:
     @pytest.mark.parametrize("card_ready", [True, False])
-    async def test_creates_exactly_one_notification(
+    async def test_files_exactly_one_background_notice(
         self, announce_stack: Any, card_ready: bool
     ) -> None:
-        notifications, _ = announce_stack
+        submit, _ = announce_stack
 
         await _announce_personalization(USER, card_ready=card_ready)
 
-        assert notifications.create_notification.await_count == 1
-        request = notifications.create_notification.await_args.args[0]
-        assert request.user_id == USER
-        assert request.source is NotificationSourceEnum.BACKGROUND_JOB
-        assert request.content.title == "Check your memories — I just added a lot"
+        assert submit.await_count == 1
+        notice = submit.await_args.args[0]
+        assert notice.recipient == USER
+        assert notice.producer is ProducerKind.ACCOUNT
+        assert notice.subject.kind is SubjectKind.ACCOUNT
+        assert notice.outcome is NoticeOutcome.INFO
+        assert notice.report_id == f"sys:personalization:{USER}"
 
-    async def test_the_notification_offers_the_memories_and_the_card(
-        self, announce_stack: Any
-    ) -> None:
-        notifications, _ = announce_stack
+    async def test_the_notice_names_the_card_when_it_is_ready(self, announce_stack: Any) -> None:
+        submit, _ = announce_stack
 
         await _announce_personalization(USER, card_ready=True)
 
-        content = notifications.create_notification.await_args.args[0].content
-        assert [a.type for a in content.actions] == [ActionType.REDIRECT, ActionType.REDIRECT]
-        assert [a.config.redirect.url for a in content.actions] == [MEMORY_SETTINGS_URL, CARD_URL]
-        assert content.body.endswith("Your holo card is ready too.")
+        assert f"Their holo card is ready too, at {CARD_URL}." in submit.await_args.args[0].facts
 
     async def test_a_card_that_does_not_exist_is_never_linked(self, announce_stack: Any) -> None:
         """The public card page 404s until the card is persisted, so a failed card must leave no link anywhere."""
-        notifications, seed = announce_stack
+        submit, seed = announce_stack
 
         assert await _announce_personalization(USER, card_ready=False) is None
 
-        content = notifications.create_notification.await_args.args[0].content
-        assert [a.config.redirect.url for a in content.actions] == [MEMORY_SETTINGS_URL]
-        assert CARD_URL not in content.body
-        assert "holo card" not in content.body
+        facts = " ".join(submit.await_args.args[0].facts)
+        assert CARD_URL not in facts
+        assert "holo card" not in facts
         assert seed.await_count == 0
 
     async def test_the_seeded_conversation_holds_the_card_url(self, announce_stack: Any) -> None:
@@ -667,8 +656,8 @@ class TestAnnouncePersonalization:
     ) -> None:
         # Delivery is fail-soft: the user must not lose the card link because a
         # notification channel was down.
-        notifications, seed = announce_stack
-        notifications.create_notification = AsyncMock(side_effect=RuntimeError("channel down"))
+        submit, seed = announce_stack
+        submit.side_effect = RuntimeError("channel down")
 
         assert await _announce_personalization(USER, card_ready=True) == "conv-1"
 
@@ -678,36 +667,15 @@ class TestAnnouncePersonalization:
         with patch(f"{MODULE}.seed_holo_card_conversation", AsyncMock(return_value=None)):
             assert await _announce_personalization(USER, card_ready=True) is None
 
-    async def test_the_notification_is_built_field_for_field(self, announce_stack: Any) -> None:
-        """Every field here is rendered or acted on by the client — nothing is filler."""
-        notifications, _ = announce_stack
-
-        await _announce_personalization(USER, card_ready=True)
-
-        request = notifications.create_notification.await_args.args[0]
-        assert request.type is NotificationType.SUCCESS
-        assert request.priority == 2
-        assert request.metadata == {"source": "gmail_personalization"}
-        memories, card = request.content.actions
-        assert memories.label == "View memories"
-        assert memories.style is ActionStyle.PRIMARY
-        assert memories.config.redirect.url == MEMORY_SETTINGS_URL
-        assert memories.config.redirect.open_in_new_tab is False
-        assert memories.config.redirect.close_notification is True
-        assert card.label == "See your holo card"
-        assert card.style is ActionStyle.SECONDARY
-        assert card.config.redirect.url == CARD_URL
-        assert card.config.redirect.open_in_new_tab is True
-
     async def test_an_undeliverable_notification_is_visible_in_the_wide_event(
         self, announce_stack: Any
     ) -> None:
         """Delivery is swallowed on purpose, so the warning is the ONLY evidence a user was never told."""
-        notifications, _ = announce_stack
+        submit, _ = announce_stack
         # Long on purpose: a provider stack trace is what actually lands here,
         # and the 200-char cap is what keeps one failure from flooding the event.
         blurb = "channel down: " + "x" * 500
-        notifications.create_notification = AsyncMock(side_effect=RuntimeError(blurb))
+        submit.side_effect = RuntimeError(blurb)
 
         await _announce_personalization(USER, card_ready=True)
 

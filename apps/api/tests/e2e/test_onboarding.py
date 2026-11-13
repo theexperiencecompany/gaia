@@ -472,17 +472,16 @@ def _enter_persistence_patches(stack: ExitStack, users: _UserStore, externals: _
 
 
 def _enter_transport_patches(stack: ExitStack, stages: _StageSink, externals: _Externals) -> None:
-    """Record the socket and the notification service rather than delivering them."""
+    """Record the socket and the outbox notices rather than delivering them."""
 
-    async def _create_notification(request: Any) -> None:
-        externals.notifications.append(request.content.title)
+    async def _file_notice(notice: Any) -> None:
+        externals.notifications.append(notice.report_id)
 
-    notifications = AsyncMock()
-    notifications.create_notification.side_effect = _create_notification
+    notices = AsyncMock(side_effect=_file_notice)
 
     for patcher in (
         patch(f"{SVC}.intelligence_service.websocket_manager", stages),
-        patch(f"{SVC}.intelligence_service.notification_service", notifications),
+        patch(f"{SVC}.intelligence_service.submit", notices),
     ):
         stack.enter_context(patcher)
 
@@ -777,7 +776,7 @@ class TestConnectingGmailEarnsThePersonalization:
         assert holo_card_url(USER_ID) in holo_turns[0]
 
     async def test_the_notification_goes_out_too(self, externals: _Externals):
-        assert externals.notifications == ["Check your memories — I just added a lot"]
+        assert externals.notifications == [f"sys:personalization:{USER_ID}"]
 
     async def test_the_marker_and_the_conversation_id_are_persisted_together(
         self, users: _UserStore, externals: _Externals

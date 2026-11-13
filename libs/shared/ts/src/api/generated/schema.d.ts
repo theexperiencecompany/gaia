@@ -2637,137 +2637,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/notifications": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Notifications
-         * @description Get user's notifications with pagination.
-         */
-        get: operations["notification_get_notifications"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/notifications/{notification_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Notification
-         * @description Get a specific notification.
-         */
-        get: operations["notification_get_notification"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/notifications/{notification_id}/actions/{action_id}/execute": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Execute Action
-         * @description Execute a notification action.
-         *
-         *     ``data`` stays a free-form dict: it is whatever the matched ``ActionHandler``
-         *     produced (``ActionResult.data``), which is open by design.
-         */
-        post: operations["notification_execute_action"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/notifications/{notification_id}/read": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Mark As Read
-         * @description Mark notification as read.
-         *
-         *     ``data`` is the stored record, not the flattened ``NotificationView`` that
-         *     ``GET /notifications/{id}`` returns — the two endpoints have always returned
-         *     different shapes under the same key.
-         */
-        post: operations["notification_mark_as_read"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/notifications/bulk-actions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Bulk Actions
-         * @description Perform bulk actions on multiple notifications.
-         */
-        post: operations["notification_bulk_actions"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/notifications/mark-all-read": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Mark All Read
-         * @description Mark every delivered notification for the user as read, server-side.
-         *
-         *     Operates on every matching notification, not just the ones the caller has
-         *     currently loaded — this is what lets "mark all as read" cover notifications
-         *     beyond the first page a paginated client has fetched.
-         */
-        post: operations["notification_mark_all_read"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/notifications/preferences/channels": {
         parameters: {
             query?: never;
@@ -5084,6 +4953,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Updates
+         * @description Return a page of the user's updates, newest first.
+         */
+        get: operations["updates_get_updates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/updates/unseen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Unseen Updates
+         * @description Return how many updates GAIA told the user since they last opened the feed.
+         */
+        get: operations["updates_get_unseen_updates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/upload": {
         parameters: {
             query?: never;
@@ -5874,47 +5783,6 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
-         * ActionConfig
-         * @description Container holding exactly one of the supported action configurations.
-         */
-        ActionConfig: {
-            api_call?: components["schemas"]["ApiCallConfig"] | null;
-            modal?: components["schemas"]["ModalConfig"] | null;
-            redirect?: components["schemas"]["RedirectConfig"] | null;
-        };
-        /**
-         * ActionExecutionResponse
-         * @description The execute-action envelope, under a name of its own.
-         *
-         *     Parameterising the generic inline exports the component as
-         *     ``NotificationResponse_dict_str__Any__``, a TypeScript type name that
-         *     changes with the type argument; a named subclass exports as itself.
-         *     ``data`` is whatever the matched ``ActionHandler`` returned, which is open
-         *     by design.
-         */
-        ActionExecutionResponse: {
-            /** Data */
-            data?: {
-                [key: string]: unknown;
-            } | null;
-            /** Message */
-            message: string;
-            /** Success */
-            success: boolean;
-        };
-        /**
-         * ActionStyle
-         * @description Visual emphasis for a notification action button.
-         * @enum {string}
-         */
-        ActionStyle: "primary" | "secondary" | "danger";
-        /**
-         * ActionType
-         * @description Kind of interaction a notification action performs when invoked.
-         * @enum {string}
-         */
-        ActionType: "redirect" | "api_call" | "modal";
-        /**
          * ActivityDay
          * @description One UTC day of the heatmap: actions plus the tokens they burned.
          *
@@ -6002,37 +5870,6 @@ export interface components {
          * @enum {string}
          */
         AgentType: "static";
-        /**
-         * ApiCallConfig
-         * @description Configuration for an action that issues an HTTP request when invoked.
-         */
-        ApiCallConfig: {
-            /** Endpoint */
-            endpoint: string;
-            /** Error Message */
-            error_message?: string | null;
-            /** Headers */
-            headers?: {
-                [key: string]: string;
-            } | null;
-            /**
-             * Is Internal
-             * @default false
-             */
-            is_internal?: boolean | null;
-            /**
-             * Method
-             * @default POST
-             * @enum {string}
-             */
-            method?: "GET" | "POST" | "PUT" | "DELETE";
-            /** Payload */
-            payload?: {
-                [key: string]: unknown;
-            } | null;
-            /** Success Message */
-            success_message?: string | null;
-        };
         /**
          * ApprovalDecisionRequest
          * @description Body for a button approval decision (approve/deny, with scope and feedback).
@@ -6866,39 +6703,6 @@ export interface components {
              */
             total: number;
         };
-        /**
-         * BulkActionRequest
-         * @description Request model for bulk actions
-         */
-        BulkActionRequest: {
-            /** @description Action to be performed on the notifications */
-            action: components["schemas"]["BulkActions"];
-            /** Notification Ids */
-            notification_ids: string[];
-        };
-        /**
-         * BulkActions
-         * @description Bulk operations that can be applied to multiple notifications at once.
-         * @enum {string}
-         */
-        BulkActions: "mark_read" | "archive";
-        /**
-         * BulkActionSummary
-         * @description Per-notification outcome of a bulk action, plus the success tally.
-         */
-        BulkActionSummary: {
-            /**
-             * Results
-             * @description Per-notification-ID success flag
-             */
-            results: {
-                [key: string]: boolean;
-            };
-            /** Successful */
-            successful: number;
-            /** Total */
-            total: number;
-        };
         /** BulkMoveRequest */
         BulkMoveRequest: {
             /** Project Id */
@@ -7092,53 +6896,6 @@ export interface components {
             current_password: string;
             /** New Password */
             new_password: string;
-        };
-        /**
-         * ChannelConfig
-         * @description Per-channel delivery settings for a notification request.
-         */
-        ChannelConfig: {
-            /** Channel Type */
-            channel_type: string;
-            /** Config */
-            config?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Enabled
-             * @default true
-             */
-            enabled?: boolean;
-            /**
-             * Priority
-             * @default 1
-             */
-            priority?: number;
-            /** Template */
-            template?: string | null;
-        };
-        /**
-         * ChannelDeliveryStatus
-         * @description Delivery outcome of a notification on a single channel.
-         */
-        ChannelDeliveryStatus: {
-            /** Channel Type */
-            channel_type: string;
-            /** Delivered At */
-            delivered_at?: string | null;
-            /** Error Message */
-            error_message?: string | null;
-            /**
-             * Retry Count
-             * @default 0
-             */
-            retry_count?: number;
-            /**
-             * Skipped
-             * @default false
-             */
-            skipped?: boolean;
-            status: components["schemas"]["NotificationStatus"];
         };
         /**
          * ChannelPreferences
@@ -8616,6 +8373,12 @@ export interface components {
             status?: "success";
         };
         /**
+         * DropReason
+         * @description Why an item is recorded and never alerted.
+         * @enum {string}
+         */
+        DropReason: "nothing_new" | "cancelled" | "compose_skipped" | "not_watching" | "expired" | "user_muted" | "already_known" | "moot" | "superseded" | "duplicate" | "unwanted" | "repeat_backoff" | "leak_unresolved";
+        /**
          * EmailSearchResponse
          * @description Contact-email addresses extracted from a web search, plus the raw search data.
          */
@@ -10043,6 +9806,12 @@ export interface components {
             id: string;
         };
         /**
+         * ItemState
+         * @description Where an item is on its way out: received, then queued or settled.
+         * @enum {string}
+         */
+        ItemState: "received" | "queued" | "held" | "composing" | "sending" | "sent" | "dropped" | "superseded" | "failed";
+        /**
          * LabEventResponse
          * @description Accepted; the payload itself is never echoed back.
          */
@@ -10218,14 +9987,6 @@ export interface components {
             href: string;
             /** Label */
             label: string;
-        };
-        /**
-         * MarkAllReadSummary
-         * @description Outcome of marking every delivered notification for a user as read.
-         */
-        MarkAllReadSummary: {
-            /** Updated Count */
-            updated_count: number;
         };
         /**
          * MarketplaceResponse
@@ -11235,18 +10996,6 @@ export interface components {
             /** Url */
             url: string;
         };
-        /**
-         * ModalConfig
-         * @description Configuration for an action that opens a frontend modal component.
-         */
-        ModalConfig: {
-            /** Component */
-            component: string;
-            /** Props */
-            props?: {
-                [key: string]: unknown;
-            };
-        };
         /** MultiURLResponse */
         MultiURLResponse: {
             /** Results */
@@ -11396,266 +11145,6 @@ export interface components {
             plaintext: string;
             /** Snippet */
             snippet: string;
-        };
-        /**
-         * NotificationAction
-         * @description An interactive action (button) attached to a notification.
-         */
-        NotificationAction: {
-            config: components["schemas"]["ActionConfig"];
-            /** Confirmation Message */
-            confirmation_message?: string | null;
-            /**
-             * Disabled
-             * @default false
-             */
-            disabled?: boolean;
-            /**
-             * Executed
-             * @default false
-             */
-            executed?: boolean;
-            /** Executed At */
-            executed_at?: string | null;
-            /** Icon */
-            icon?: string | null;
-            /** Id */
-            id?: string;
-            /** Label */
-            label: string;
-            /**
-             * Requires Confirmation
-             * @default false
-             */
-            requires_confirmation?: boolean;
-            /** @default secondary */
-            style?: components["schemas"]["ActionStyle"];
-            type: components["schemas"]["ActionType"];
-        };
-        /**
-         * NotificationActionView
-         * @description A notification action as it appears on the wire (see ``NotificationView``).
-         */
-        NotificationActionView: {
-            config?: components["schemas"]["ActionConfig"] | null;
-            /** Confirmation Message */
-            confirmation_message?: string | null;
-            /** Disabled */
-            disabled: boolean;
-            /** Executed */
-            executed: boolean;
-            /** Executed At */
-            executed_at?: string | null;
-            /** Id */
-            id: string;
-            /** Label */
-            label: string;
-            /** Requires Confirmation */
-            requires_confirmation: boolean;
-            style: components["schemas"]["ActionStyle"];
-            type: components["schemas"]["ActionType"];
-        };
-        /**
-         * NotificationChannelView
-         * @description One channel's delivery outcome as it appears on the wire.
-         *
-         *     A narrower projection of ``ChannelDeliveryStatus``: ``retry_count`` is
-         *     internal and deliberately not serialized.
-         */
-        NotificationChannelView: {
-            /** Channel Type */
-            channel_type: string;
-            /** Delivered At */
-            delivered_at?: string | null;
-            /** Error Message */
-            error_message?: string | null;
-            /** Skipped */
-            skipped: boolean;
-            status: components["schemas"]["NotificationStatus"];
-        };
-        /**
-         * NotificationContent
-         * @description Displayable payload of a notification: title, body, actions and rich data.
-         */
-        NotificationContent: {
-            /** Actions */
-            actions?: components["schemas"]["NotificationAction"][] | null;
-            /** Body */
-            body: string;
-            /** Rich Content */
-            rich_content?: {
-                [key: string]: unknown;
-            } | null;
-            /** Title */
-            title: string;
-        };
-        /**
-         * NotificationContentView
-         * @description The ``content`` block of a ``NotificationView``.
-         */
-        NotificationContentView: {
-            /** Actions */
-            actions?: components["schemas"]["NotificationActionView"][];
-            /** Body */
-            body: string;
-            /** Title */
-            title: string;
-        };
-        /**
-         * NotificationRecord
-         * @description Persisted notification with its original request and per-channel statuses.
-         *
-         *     Identity is the UUID ``id`` (not Mongo's ``_id``); the notification repository
-         *     sets ``identity_field = "id"``.
-         */
-        NotificationRecord: {
-            /** Archived At */
-            archived_at?: string | null;
-            /** Channels */
-            channels?: components["schemas"]["ChannelDeliveryStatus"][];
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Delivered At */
-            delivered_at?: string | null;
-            /** Id */
-            id: string;
-            original_request: components["schemas"]["NotificationRequest"];
-            /** Read At */
-            read_at?: string | null;
-            /** @default pending */
-            status?: components["schemas"]["NotificationStatus"];
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at?: string;
-            /** User Id */
-            user_id: string;
-        };
-        /**
-         * NotificationRequest
-         * @description Inbound request to send a notification to a user across channels.
-         */
-        NotificationRequest: {
-            /** Channels */
-            channels?: components["schemas"]["ChannelConfig"][];
-            content: components["schemas"]["NotificationContent"];
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at?: string;
-            /** Id */
-            id?: string;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Priority
-             * @default 3
-             */
-            priority?: number;
-            /** Scheduled For */
-            scheduled_for?: string | null;
-            source: components["schemas"]["NotificationSourceEnum"];
-            /** @default info */
-            type?: components["schemas"]["NotificationType"];
-            /** User Id */
-            user_id: string;
-        };
-        /** NotificationResponse[BulkActionSummary] */
-        NotificationResponse_BulkActionSummary_: {
-            data?: components["schemas"]["BulkActionSummary"] | null;
-            /** Message */
-            message: string;
-            /** Success */
-            success: boolean;
-        };
-        /** NotificationResponse[MarkAllReadSummary] */
-        NotificationResponse_MarkAllReadSummary_: {
-            data?: components["schemas"]["MarkAllReadSummary"] | null;
-            /** Message */
-            message: string;
-            /** Success */
-            success: boolean;
-        };
-        /** NotificationResponse[NotificationRecord] */
-        NotificationResponse_NotificationRecord_: {
-            data?: components["schemas"]["NotificationRecord"] | null;
-            /** Message */
-            message: string;
-            /** Success */
-            success: boolean;
-        };
-        /** NotificationResponse[NotificationView] */
-        NotificationResponse_NotificationView_: {
-            data?: components["schemas"]["NotificationView"] | null;
-            /** Message */
-            message: string;
-            /** Success */
-            success: boolean;
-        };
-        /**
-         * NotificationSourceEnum
-         * @description Originating system or feature that produced the notification.
-         * @enum {string}
-         */
-        NotificationSourceEnum: "ai_email_draft" | "ai_calendar_event" | "ai_todo_suggestion" | "ai_reminder" | "ai_todo_added" | "ai_agent" | "email_trigger" | "background_job" | "workflow_completed" | "workflow_failed" | "system_workflows_provisioned" | "usage_limit" | "integration_expired" | "todo_trigger";
-        /**
-         * NotificationStatus
-         * @description Lifecycle state of a notification record.
-         * @enum {string}
-         */
-        NotificationStatus: "pending" | "delivered" | "failed" | "read" | "archived";
-        /**
-         * NotificationType
-         * @description Severity/category of a notification, used for styling and filtering.
-         * @enum {string}
-         */
-        NotificationType: "info" | "warning" | "error" | "success";
-        /**
-         * NotificationView
-         * @description A notification flattened for API/tool consumers.
-         *
-         *     Distinct from ``NotificationRecord``: the record is the stored document (it
-         *     nests the whole ``original_request``), while this is the flat shape the web
-         *     and mobile clients actually read — ``content``/``source``/``type``/
-         *     ``metadata`` are lifted out of the request, and the channel entries are
-         *     projected. It mirrors ``NotificationRecord`` in the frontend's
-         *     ``notificationTypes.ts``.
-         *
-         *     Timestamps are ``str`` because the producer emits ISO strings and that is
-         *     the published contract; parsing them into ``datetime`` here would re-emit
-         *     them in Pydantic's own format.
-         *
-         *     Built by ``NotificationOrchestrator._serialize_notification``, which is
-         *     still the producer — this model is the named shape of what it returns.
-         */
-        NotificationView: {
-            /** Channels */
-            channels?: components["schemas"]["NotificationChannelView"][];
-            content: components["schemas"]["NotificationContentView"];
-            /** Created At */
-            created_at: string;
-            /** Delivered At */
-            delivered_at?: string | null;
-            /** Id */
-            id: string;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
-            /** Read At */
-            read_at?: string | null;
-            source: components["schemas"]["NotificationSourceEnum"];
-            status: components["schemas"]["NotificationStatus"];
-            type: components["schemas"]["NotificationType"];
-            /** User Id */
-            user_id: string;
         };
         /**
          * NotionAllPageEventsConfig
@@ -11937,20 +11426,6 @@ export interface components {
          * @enum {string}
          */
         OnboardingStep: "started" | "questions_answered" | "paywall_reached" | "paid_reveal_seen" | "first_chat_opened";
-        /**
-         * PaginatedNotificationsResponse
-         * @description Response model for paginated notifications
-         */
-        PaginatedNotificationsResponse: {
-            /** Limit */
-            limit: number;
-            /** Notifications */
-            notifications: components["schemas"]["NotificationView"][];
-            /** Offset */
-            offset: number;
-            /** Total */
-            total: number;
-        };
         /** PaginationMeta */
         PaginationMeta: {
             /**
@@ -13049,24 +12524,6 @@ export interface components {
             linked: boolean;
         };
         /**
-         * RedirectConfig
-         * @description Configuration for a redirect action that navigates the user to a URL.
-         */
-        RedirectConfig: {
-            /**
-             * Close Notification
-             * @default false
-             */
-            close_notification?: boolean;
-            /**
-             * Open In New Tab
-             * @default true
-             */
-            open_in_new_tab?: boolean;
-            /** Url */
-            url: string;
-        };
-        /**
          * RegenerateStepsRequest
          * @description Request model for regenerating workflow steps.
          */
@@ -14065,6 +13522,12 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * SubjectKind
+         * @description What a report is about.
+         * @enum {string}
+         */
+        SubjectKind: "ask" | "workflow_run" | "todo_run" | "reminder" | "browser_job" | "account" | "approval";
         /**
          * SubscriptionAction
          * @description What firing a subscription does to its todo.
@@ -15334,6 +14797,14 @@ export interface components {
             status?: "success";
         };
         /**
+         * UnseenUpdates
+         * @description How many updates GAIA told the user since they last opened the feed.
+         */
+        UnseenUpdates: {
+            /** Count */
+            count: number;
+        };
+        /**
          * UpdateCustomIntegrationRequest
          * @description Request to update a custom integration (partial update).
          */
@@ -15398,6 +14869,12 @@ export interface components {
              */
             filename?: string | null;
         };
+        /**
+         * UpdateFilter
+         * @description Which updates the feed lists.
+         * @enum {string}
+         */
+        UpdateFilter: "all" | "needs_you" | "done" | "failed" | "held";
         /**
          * UpdateHILPreferencesRequest
          * @description Partial update to a user's HIL preferences; omitted fields are left unchanged.
@@ -15501,6 +14978,12 @@ export interface components {
             modified_count: number;
         };
         /**
+         * UpdateOutcome
+         * @description Where the update left what it is about.
+         * @enum {string}
+         */
+        UpdateOutcome: "done" | "needs_you" | "failed";
+        /**
          * UpdateProjectRequest
          * @description Model for updating projects - all fields optional
          */
@@ -15543,6 +15026,65 @@ export interface components {
              * @description Stop executing after this date
              */
             stop_after?: string | null;
+        };
+        /**
+         * UpdateRow
+         * @description One thing GAIA reported: what it is about, what became of it, and the words it was told in.
+         */
+        UpdateRow: {
+            /**
+             * Conversation Id
+             * @description The conversation that owns the subject, which the row opens.
+             */
+            conversation_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            drop_reason?: components["schemas"]["DropReason"] | null;
+            /**
+             * Facts
+             * @description What GAIA recorded, one claim per entry.
+             */
+            facts: string[];
+            /**
+             * Held Until
+             * @description When a held update is told, when it waits for an instant.
+             */
+            held_until?: string | null;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            outcome: components["schemas"]["UpdateOutcome"];
+            /** Report Id */
+            report_id: string;
+            state: components["schemas"]["ItemState"];
+            subject_kind: components["schemas"]["SubjectKind"];
+            /** Subject Label */
+            subject_label: string;
+            /**
+             * Told
+             * @description The message the user was told, one entry per bubble; None when it was not told.
+             */
+            told?: string[] | null;
+            /** Told At */
+            told_at?: string | null;
+        };
+        /**
+         * UpdatesResponse
+         * @description A page of the feed, newest first.
+         */
+        UpdatesResponse: {
+            /**
+             * Next Before
+             * @description Pass as before to read the next page; None on the last page.
+             */
+            next_before: string | null;
+            /** Updates */
+            updates: components["schemas"]["UpdateRow"][];
         };
         /** UpdateTimezoneResponse */
         UpdateTimezoneResponse: {
@@ -16504,16 +16046,11 @@ export interface components {
     headers: never;
     pathItems: never;
 }
-export type ActionConfig = components['schemas']['ActionConfig'];
-export type ActionExecutionResponse = components['schemas']['ActionExecutionResponse'];
-export type ActionStyle = components['schemas']['ActionStyle'];
-export type ActionType = components['schemas']['ActionType'];
 export type ActivityDay = components['schemas']['ActivityDay'];
 export type AddIntegrationResponse = components['schemas']['AddIntegrationResponse'];
 export type AddUserIntegrationRequest = components['schemas']['AddUserIntegrationRequest'];
 export type AddUserIntegrationResponse = components['schemas']['AddUserIntegrationResponse'];
 export type AgentType = components['schemas']['AgentType'];
-export type ApiCallConfig = components['schemas']['ApiCallConfig'];
 export type ApprovalDecisionRequest = components['schemas']['ApprovalDecisionRequest'];
 export type ApprovalDecisionResponse = components['schemas']['ApprovalDecisionResponse'];
 export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest'];
@@ -16566,9 +16103,6 @@ export type BuiltInEngine = components['schemas']['BuiltInEngine'];
 export type BuiltInOption = components['schemas']['BuiltInOption'];
 export type BuiltinSkillInfo = components['schemas']['BuiltinSkillInfo'];
 export type BuiltinSkillsResponse = components['schemas']['BuiltinSkillsResponse'];
-export type BulkActionRequest = components['schemas']['BulkActionRequest'];
-export type BulkActions = components['schemas']['BulkActions'];
-export type BulkActionSummary = components['schemas']['BulkActionSummary'];
 export type BulkMoveRequest = components['schemas']['BulkMoveRequest'];
 export type BulkOperationResponse = components['schemas']['BulkOperationResponse'];
 export type BulkUpdateRequest = components['schemas']['BulkUpdateRequest'];
@@ -16583,8 +16117,6 @@ export type CalendarPreferencesUpdateRequest = components['schemas']['CalendarPr
 export type CalendarPreferencesUpdateResponse = components['schemas']['CalendarPreferencesUpdateResponse'];
 export type CancelStreamResponse = components['schemas']['CancelStreamResponse'];
 export type ChangePasswordRequest = components['schemas']['ChangePasswordRequest'];
-export type ChannelConfig = components['schemas']['ChannelConfig'];
-export type ChannelDeliveryStatus = components['schemas']['ChannelDeliveryStatus'];
 export type ChannelPreferences = components['schemas']['ChannelPreferences'];
 export type ChannelPreferencesUpdate = components['schemas']['ChannelPreferencesUpdate'];
 export type ChannelPriorityList = components['schemas']['ChannelPriorityList'];
@@ -16663,6 +16195,7 @@ export type DiscoverSkillsResponse = components['schemas']['DiscoverSkillsRespon
 export type DispatchError = components['schemas']['DispatchError'];
 export type DispatchErrorKind = components['schemas']['DispatchErrorKind'];
 export type DodoWebhookAckResponse = components['schemas']['DodoWebhookAckResponse'];
+export type DropReason = components['schemas']['DropReason'];
 export type EmailSearchResponse = components['schemas']['EmailSearchResponse'];
 export type EnableComposioToolkitRequest = components['schemas']['EnableComposioToolkitRequest'];
 export type EnableComposioToolkitResponse = components['schemas']['EnableComposioToolkitResponse'];
@@ -16746,6 +16279,7 @@ export type IntegrationToolApproval = components['schemas']['IntegrationToolAppr
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
 export type InviteCreatedResponse = components['schemas']['InviteCreatedResponse'];
 export type InviteResponse = components['schemas']['InviteResponse'];
+export type ItemState = components['schemas']['ItemState'];
 export type LabEventResponse = components['schemas']['LabEventResponse'];
 export type LinearCommentAddedConfig = components['schemas']['LinearCommentAddedConfig'];
 export type LinearIssueCreatedConfig = components['schemas']['LinearIssueCreatedConfig'];
@@ -16758,7 +16292,6 @@ export type LiveViewTokenResponse = components['schemas']['LiveViewTokenResponse
 export type LoginRequest = components['schemas']['LoginRequest'];
 export type LogoutResponse = components['schemas']['LogoutResponse'];
 export type ManagedAt = components['schemas']['ManagedAt'];
-export type MarkAllReadSummary = components['schemas']['MarkAllReadSummary'];
 export type MarketplaceResponse = components['schemas']['MarketplaceResponse'];
 export type MaskedProvider = components['schemas']['MaskedProvider'];
 export type MCPConfigDetail = components['schemas']['MCPConfigDetail'];
@@ -16807,28 +16340,12 @@ export type MessageRequestWithHistory = components['schemas']['MessageRequestWit
 export type MessageSearchResult = components['schemas']['MessageSearchResult'];
 export type MintPlatformLinkCodeResponse = components['schemas']['MintPlatformLinkCodeResponse'];
 export type MobileLoginUrlResponse = components['schemas']['MobileLoginUrlResponse'];
-export type ModalConfig = components['schemas']['ModalConfig'];
 export type MultiURLResponse = components['schemas']['MultiURLResponse'];
 export type MyIntegrationItem = components['schemas']['MyIntegrationItem'];
 export type MyIntegrationsResponse = components['schemas']['MyIntegrationsResponse'];
 export type NoteModel = components['schemas']['NoteModel'];
 export type NoteResponse = components['schemas']['NoteResponse'];
 export type NoteSearchResult = components['schemas']['NoteSearchResult'];
-export type NotificationAction = components['schemas']['NotificationAction'];
-export type NotificationActionView = components['schemas']['NotificationActionView'];
-export type NotificationChannelView = components['schemas']['NotificationChannelView'];
-export type NotificationContent = components['schemas']['NotificationContent'];
-export type NotificationContentView = components['schemas']['NotificationContentView'];
-export type NotificationRecord = components['schemas']['NotificationRecord'];
-export type NotificationRequest = components['schemas']['NotificationRequest'];
-export type NotificationResponse_BulkActionSummary_ = components['schemas']['NotificationResponse_BulkActionSummary_'];
-export type NotificationResponse_MarkAllReadSummary_ = components['schemas']['NotificationResponse_MarkAllReadSummary_'];
-export type NotificationResponse_NotificationRecord_ = components['schemas']['NotificationResponse_NotificationRecord_'];
-export type NotificationResponse_NotificationView_ = components['schemas']['NotificationResponse_NotificationView_'];
-export type NotificationSourceEnum = components['schemas']['NotificationSourceEnum'];
-export type NotificationStatus = components['schemas']['NotificationStatus'];
-export type NotificationType = components['schemas']['NotificationType'];
-export type NotificationView = components['schemas']['NotificationView'];
 export type NotionAllPageEventsConfig = components['schemas']['NotionAllPageEventsConfig'];
 export type NotionNewPageInDbConfig = components['schemas']['NotionNewPageInDbConfig'];
 export type NotionPageContentUpdatedConfig = components['schemas']['NotionPageContentUpdatedConfig'];
@@ -16844,7 +16361,6 @@ export type OnboardingResetResponse = components['schemas']['OnboardingResetResp
 export type OnboardingResponse = components['schemas']['OnboardingResponse'];
 export type OnboardingStatusResponse = components['schemas']['OnboardingStatusResponse'];
 export type OnboardingStep = components['schemas']['OnboardingStep'];
-export type PaginatedNotificationsResponse = components['schemas']['PaginatedNotificationsResponse'];
 export type PaginationMeta = components['schemas']['PaginationMeta'];
 export type PaymentVerificationResponse = components['schemas']['PaymentVerificationResponse'];
 export type PendingApprovalRef = components['schemas']['PendingApprovalRef'];
@@ -16896,7 +16412,6 @@ export type RecurrenceData = components['schemas']['RecurrenceData'];
 export type RecurrenceRule = components['schemas']['RecurrenceRule'];
 export type RedeemLinkCodeRequest = components['schemas']['RedeemLinkCodeRequest'];
 export type RedeemLinkCodeResponse = components['schemas']['RedeemLinkCodeResponse'];
-export type RedirectConfig = components['schemas']['RedirectConfig'];
 export type RegenerateStepsRequest = components['schemas']['RegenerateStepsRequest'];
 export type RegenerateWritingStyleExampleResponse = components['schemas']['RegenerateWritingStyleExampleResponse'];
 export type RegisterServerRequest = components['schemas']['RegisterServerRequest'];
@@ -16955,6 +16470,7 @@ export type StartPairingResponse = components['schemas']['StartPairingResponse']
 export type StarVoiceRequest = components['schemas']['StarVoiceRequest'];
 export type StaticReminderPayload = components['schemas']['StaticReminderPayload'];
 export type StoredIntegrationTool = components['schemas']['StoredIntegrationTool'];
+export type SubjectKind = components['schemas']['SubjectKind'];
 export type SubscriptionAction = components['schemas']['SubscriptionAction'];
 export type SubscriptionCondition = components['schemas']['SubscriptionCondition'];
 export type SubscriptionDocument = components['schemas']['SubscriptionDocument'];
@@ -17013,11 +16529,13 @@ export type TriggerSubscriptionView = components['schemas']['TriggerSubscription
 export type TriggerType = components['schemas']['TriggerType'];
 export type UnlinkAccountResponse = components['schemas']['UnlinkAccountResponse'];
 export type UnpublishIntegrationResponse = components['schemas']['UnpublishIntegrationResponse'];
+export type UnseenUpdates = components['schemas']['UnseenUpdates'];
 export type UpdateCustomIntegrationRequest = components['schemas']['UpdateCustomIntegrationRequest'];
 export type UpdateDescriptionRequest = components['schemas']['UpdateDescriptionRequest'];
 export type UpdateDescriptionResponse = components['schemas']['UpdateDescriptionResponse'];
 export type UpdateDocumentRequest = components['schemas']['UpdateDocumentRequest'];
 export type UpdateFileRequest = components['schemas']['UpdateFileRequest'];
+export type UpdateFilter = components['schemas']['UpdateFilter'];
 export type UpdateHILPreferencesRequest = components['schemas']['UpdateHILPreferencesRequest'];
 export type UpdateHoloCardColorsResponse = components['schemas']['UpdateHoloCardColorsResponse'];
 export type UpdateInstructionsRequest = components['schemas']['UpdateInstructionsRequest'];
@@ -17025,8 +16543,11 @@ export type UpdateIntegrationAccountRequest = components['schemas']['UpdateInteg
 export type UpdateMemoryRequest = components['schemas']['UpdateMemoryRequest'];
 export type UpdateMessagesRequest = components['schemas']['UpdateMessagesRequest'];
 export type UpdateMessagesResponse = components['schemas']['UpdateMessagesResponse'];
+export type UpdateOutcome = components['schemas']['UpdateOutcome'];
 export type UpdateProjectRequest = components['schemas']['UpdateProjectRequest'];
 export type UpdateReminderRequest = components['schemas']['UpdateReminderRequest'];
+export type UpdateRow = components['schemas']['UpdateRow'];
+export type UpdatesResponse = components['schemas']['UpdatesResponse'];
 export type UpdateTimezoneResponse = components['schemas']['UpdateTimezoneResponse'];
 export type UpdateUserFeatureFlagRequest = components['schemas']['UpdateUserFeatureFlagRequest'];
 export type UpdateVoiceRequest = components['schemas']['UpdateVoiceRequest'];
@@ -24389,315 +23910,6 @@ export interface operations {
             };
         };
     };
-    notification_get_notifications: {
-        parameters: {
-            query?: {
-                /** @description Filter by channel type (e.g., email, sms) */
-                channel_type?: string | null;
-                /** @description Number of notifications to return */
-                limit?: number;
-                /** @description Number of notifications to skip */
-                offset?: number;
-                /** @description Filter by status */
-                status?: components["schemas"]["NotificationStatus"] | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedNotificationsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    notification_get_notification: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Notification ID */
-                notification_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NotificationResponse_NotificationView_"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    notification_execute_action: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Action ID */
-                action_id: string;
-                /** @description Notification ID */
-                notification_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ActionExecutionResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    notification_mark_as_read: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Notification ID */
-                notification_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NotificationResponse_NotificationRecord_"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    notification_bulk_actions: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BulkActionRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NotificationResponse_BulkActionSummary_"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    notification_mark_all_read: {
-        parameters: {
-            query?: {
-                /** @description Only mark notifications on this channel */
-                channel_type?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NotificationResponse_MarkAllReadSummary_"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
     notification_get_channel_preferences: {
         parameters: {
             query?: never;
@@ -30756,6 +29968,108 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkflowTriggerResponse"][];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updates_get_updates: {
+        parameters: {
+            query?: {
+                /** @description Read the page after this cursor. */
+                before?: string | null;
+                filter?: components["schemas"]["UpdateFilter"];
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdatesResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updates_get_unseen_updates: {
+        parameters: {
+            query: {
+                /** @description When the user last opened the feed. */
+                since: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnseenUpdates"];
                 };
             };
             /** @description Unprocessable Entity */
