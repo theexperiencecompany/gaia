@@ -273,7 +273,7 @@ def _fetch_message_view(
     propagate for the aggregator to attach partial-state context.
     """
     needs_body = force_body or message_view_needs_body(fields, body_processing)
-    needs_full = needs_body or message_view_needs_full(fields, body_processing)
+    needs_full = force_body or message_view_needs_full(fields, body_processing)
     full = _gmail_proxy(
         user_id,
         endpoint=f"{GMAIL_API_BASE}/users/me/messages/{message_id}",

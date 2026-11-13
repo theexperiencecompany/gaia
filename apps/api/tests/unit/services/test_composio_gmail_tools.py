@@ -1473,6 +1473,7 @@ class TestTheThreadRead:
             (["body"], "raw", "full"),
             (["attachments"], "none", "full"),
             ([], "none", "full"),
+            (["subject", "body"], "none", "metadata"),
         )
         for fields, processing, expected in cases:
             mock_proxy.reset_mock()
@@ -1638,6 +1639,33 @@ class TestAMessageReadForMetadataStaysAMetadataRead:
         )
 
         assert formats and set(formats) == {"full"}
+
+    def test_a_body_field_with_no_body_processing_stays_a_metadata_read(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        """body_processing "none" drops the body, so asking for the field costs no full fetch."""
+        formats: list[str] = []
+        mailbox = _one_message_mailbox()
+
+        def _serve(request: ProxyRequest) -> dict[str, Any]:
+            if "/users/me/messages/" in request.endpoint and (request.query or {}).get("format"):
+                formats.append(request.query["format"])
+            return mailbox(request)
+
+        mock_proxy.side_effect = _serve
+
+        _register_and_get_tools()["FETCH_MESSAGES"](
+            request=FetchMessagesInput(
+                query="after:1790000000",
+                per_page=5,
+                fields=["subject", "body"],
+                body_processing="none",
+            ),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert formats and set(formats) == {"metadata"}
 
 
 class TestTheThreadCapStopsTheWalk:
