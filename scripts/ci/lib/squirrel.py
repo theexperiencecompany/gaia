@@ -73,7 +73,10 @@ SHORT_PAGES = frozenset({"/download", "/contact"})
 WIKI_LINK = re.compile(r"^\[\[[^\[\]'\"]+\]\]$")
 # One integration's page; the paginated hub (/marketplace/page/N) is ours and stays checked.
 MARKETPLACE_DETAIL = re.compile(r"^/marketplace/[^/]+$")
-PLACEHOLDER_RULES = frozenset({"content/placeholder-contact", "content/placeholder-text"})
+# The checks an integration page fails on its tools' synced docs, not on our copy.
+SYNCED_DOC_RULES = frozenset(
+    {"content/placeholder-contact", "content/placeholder-text", "content/keyword-stuffing"}
+)
 BASELINE_HEADER = """\
 # squirrelscan's findings, which `scripts/ci/smoke-web.sh` holds to this file:
 # `<page path>\\t<rule id>/<check>[\\t<item>]`, one per line, `*` as the page of a
@@ -150,7 +153,7 @@ def _cron_as_markdown(seen: Observed, _pages: frozenset[str]) -> bool:
 
 def _synced_tool_docs(seen: Observed, _pages: frozenset[str]) -> bool:
     page = seen.finding.page
-    return seen.finding.rule in PLACEHOLDER_RULES and bool(MARKETPLACE_DETAIL.match(page))
+    return seen.finding.rule in SYNCED_DOC_RULES and bool(MARKETPLACE_DETAIL.match(page))
 
 
 def _hub_word_count(seen: Observed, pages: frozenset[str]) -> bool:
@@ -187,10 +190,12 @@ IGNORED = (
     ),
     Ignore(
         "an integration page shows its tools' documentation as the API syncs it from the "
-        "provider (Composio), sample addresses included; it changes with no deploy of ours, "
-        "so no baseline can pin it",
+        "provider (Composio), sample addresses and the tool names they repeat included; it "
+        "changes with no deploy of ours, so no baseline can pin it",
         "/marketplace/googlesheets gained jane@example.com and john@example.com from its "
-        "Composio tool docs between two crawls on 2026-11-12, with no commit in between",
+        "Composio tool docs between two crawls on 2026-11-12, with no commit in between; "
+        "/marketplace/googledocs' 'google' density crossed squirrel's line and fell back "
+        "between two PR runs on 2026-11-13, the same commit's pages and new tool descriptions",
         _synced_tool_docs,
     ),
     Ignore(
