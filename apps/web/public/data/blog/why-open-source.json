@@ -1,6 +1,7 @@
 {
   "slug": "why-open-source",
   "title": "Why Open Source?",
+  "description": "Why we build GAIA in the open: an AI assistant with access to your email, files and schedule has to earn trust, and open source code lets you verify it.",
   "metaTitle": "Why We Built GAIA in the Open: Privacy and Trust",
   "date": "2025-11-02",
   "authors": [

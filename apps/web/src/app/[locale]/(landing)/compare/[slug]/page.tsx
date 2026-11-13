@@ -95,7 +95,9 @@ export default async function ComparisonPage({ params }: PageProps) {
     alternativeData !== undefined &&
     !isRedirectedPath(`/alternative-to/${slug}`);
 
-  const categories = comparisonCategoryGroups(allComparisons);
+  const categories = comparisonCategoryGroups(allComparisons, (key) =>
+    t(`comparisons.${key}`),
+  );
   const currentCategory = categories.find((group) =>
     group.items.some((comparison) => comparison.slug === slug),
   );

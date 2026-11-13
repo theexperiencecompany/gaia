@@ -15,38 +15,13 @@ import {
 } from "@/utils/useCaseMeta";
 
 /**
- * Extracts description from markdown content for meta descriptions
- */
-function extractDescription(markdown: string, maxLength: number = 160): string {
-  if (!markdown) return "";
-
-  // Remove markdown syntax
-  const text = markdown
-    .replace(/#{1,6}\s+/g, "")
-    .replace(/[*_]{1,2}([^*_]+)[*_]{1,2}/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/```[\s\S]*?```/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (text.length <= maxLength) return text;
-
-  const truncated = text.substring(0, maxLength);
-  const lastSpace = truncated.lastIndexOf(" ");
-  return lastSpace > 100
-    ? `${truncated.substring(0, lastSpace)}...`
-    : `${truncated}...`;
-}
-
-/**
  * Generates metadata for a blog post
  */
 export function generateBlogMetadata(blog: BlogContentPost): Metadata {
   return {
     ...generatePageMetadata({
       title: blog.metaTitle ?? blog.title,
-      description: extractDescription(blog.content),
+      description: blog.description,
       path: `/blog/${blog.slug}`,
       image: blog.image || siteConfig.ogImage,
       type: "article",

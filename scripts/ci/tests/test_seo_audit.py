@@ -27,7 +27,10 @@ class Head:
     canonical: str | None = None
     robots: str = ""
     og_image: str = "/og.png"
-    description: str = "A description long enough to sit inside the snippet window of a result."
+    description: str = (
+        "A description long enough to sit inside the snippet window of a search result, "
+        "saying what the page does in one or two short sentences."
+    )
 
 
 CLEAN_HEAD = Head()
@@ -189,6 +192,17 @@ def test_description_bounds_are_the_web_apps_snippet_config() -> None:
     assert "WARN meta description length: 2" in result.stdout, result.stdout
     assert f"{low - 1} {NAMED}/under" in result.stdout
     assert f"{high + 1} {NAMED}/over" in result.stdout
+
+
+def test_a_cjk_description_counts_each_character_twice_toward_the_minimum() -> None:
+    low, _ = _description_range()
+    half = (low + 1) // 2
+    pages = {"/ja-fits": "あ" * half, "/ja-thin": "あ" * (half - 1)}
+    with serve(_snippet_site(pages)) as base:
+        result = _audit(base, f"--site-url={NAMED}")
+
+    assert "WARN meta description length: 1" in result.stdout, result.stdout
+    assert f"{half - 1} {NAMED}/ja-thin" in result.stdout
 
 
 @contextmanager
