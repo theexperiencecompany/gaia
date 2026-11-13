@@ -845,6 +845,7 @@ class TestProcessUpdatesPayload:
             "state_update": state_update,
             "emitted_tool_calls": {"tc-already"},
             "integration_metadata": metadata,
+            "user_id": "u1",
         }
 
     @pytest.mark.asyncio
@@ -2213,3 +2214,66 @@ class TestAResumeIsAddressedToItsInterrupt:
         carried, clock = captured["resume"].update["messages"]
         assert carried is note
         assert "User Local Time (Asia/Kolkata)" in clock.content
+
+
+class _ColdMcpClient:
+    """A user's MCPClient that has not loaded the tool in this process: only its owner lookup knows it."""
+
+    def __init__(self) -> None:
+        self._tools: dict[str, list[Any]] = {}
+
+    def find_integration(self, tool_name: str) -> str | None:
+        return None
+
+    async def resolve_tool_owner(self, tool_name: str) -> str | None:
+        return "int_weather" if tool_name == "get_forecast" else None
+
+
+class _UnknownToolRegistry:
+    def get_category_of_tool(self, tool_name: str) -> str:
+        return "unknown"
+
+    def get_all_tools_for_search(self) -> list[Any]:
+        return []
+
+
+@pytest.mark.asyncio
+async def test_an_executor_runs_custom_mcp_tool_card_names_the_integration_it_came_from() -> None:
+    forecast_call = AIMessage(
+        content="",
+        tool_calls=[{"name": "get_forecast", "args": {"city": "Pune"}, "id": "tc-fc"}],
+    )
+
+    async def _fake_astream(*args: Any, **kwargs: Any) -> Any:
+        yield ("updates", {"agent": {"messages": [forecast_call]}})
+
+    mock_graph = MagicMock()
+    mock_graph.astream = _fake_astream
+    stream_writer = MagicMock()
+
+    with (
+        patch("app.agents.core.subagents.subagent_runner.log"),
+        patch(
+            "app.utils.agent_utils.get_tool_registry",
+            new_callable=AsyncMock,
+            return_value=_UnknownToolRegistry(),
+        ),
+        patch(
+            "app.services.mcp.mcp_client.get_mcp_client",
+            new_callable=AsyncMock,
+            return_value=_ColdMcpClient(),
+        ),
+        patch(
+            "app.utils.agent_utils._integration_display",
+            new_callable=AsyncMock,
+            return_value=("https://weather.example/icon.png", "Bundle Weather"),
+        ),
+    ):
+        await execute_subagent_stream(
+            _make_ctx(subagent_graph=mock_graph, user_id="u1"), stream_writer=stream_writer
+        )
+
+    card = stream_writer.call_args[0][0]["tool_data"]["data"]
+    assert card["tool_category"] == "int_weather"
+    assert card["integration_name"] == "Bundle Weather"
+    assert card["icon_url"] == "https://weather.example/icon.png"

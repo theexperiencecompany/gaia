@@ -75,6 +75,12 @@ class TestLegacyFaviconUrl:
         url = legacy_favicon_url("https://sub.deep.example.com/path")
         assert url == "https://www.google.com/s2/favicons?domain=example.com&sz=256"
 
+    @pytest.mark.parametrize(
+        "server_url", ["http://127.0.0.1:8977/mcp", "http://localhost:3000/mcp", "https:///mcp"]
+    )
+    def test_a_host_with_no_registered_domain_has_no_favicon(self, server_url: str) -> None:
+        assert legacy_favicon_url(server_url) is None
+
 
 # ---------------------------------------------------------------------------
 # _smithery_qualified_name

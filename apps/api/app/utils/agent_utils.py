@@ -217,6 +217,9 @@ async def format_tool_call_entry(
         icon_url = icon_url or known_icon
         integration_name = integration_name or known_name
 
+    if tool_name_raw == ACTIVATE_INTEGRATION_TOOL_NAME and integration_name:
+        tool_display_name = _ACTIVATE_INTEGRATION_NAMED_LABEL.format(name=integration_name)
+
     # ToolCallsDataEntry declares exactly the ToolDataEntry keys this variant
     # carries, in the byte order the frontend parser expects — so its dump IS a
     # ToolDataEntry by construction (Type Safety item 12).
@@ -292,7 +295,7 @@ _SPECIAL_TOOLS: dict[str, tuple[str, str, bool]] = {
     "stop_browser_task": (BROWSER_TOOL_CATEGORY, "Stopping the browser task", False),
     "tell_browser_task": (BROWSER_TOOL_CATEGORY, "Telling the browser task", False),
     "spawn_subagent": ("spawn_subagent", "Working on part of it", False),
-    ACTIVATE_INTEGRATION_TOOL_NAME: ("integrations", "Opening your app", False),
+    ACTIVATE_INTEGRATION_TOOL_NAME: ("integrations", "Connecting to your app", False),
     "plan_tasks": ("plan_tasks", "Planning", False),
     # Synthetic card a replayed workflow run leads with — never a callable
     # tool. The playbooks category carries the icon the authoring tools use.
@@ -300,6 +303,9 @@ _SPECIAL_TOOLS: dict[str, tuple[str, str, bool]] = {
     "update_tasks": ("plan_tasks", "Updating the plan", False),
     "finish_task": ("finish_task", "Wrapping up", False),
 }
+
+# The activate card's label once the integration's name is known.
+_ACTIVATE_INTEGRATION_NAMED_LABEL = "Connecting to {name}"
 
 
 def _owning_integration(tool_name: str, registry_category: str) -> OAuthIntegration | None:
@@ -369,11 +375,10 @@ def _registry_mcp_ui_metadata(
 
 
 async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | None:
-    """Resolve which integration owns an MCP tool via the user's MCPClient.
+    """Resolve which of the user's connected MCP integrations owns a tool, or None.
 
-    MCP tools no longer live in the global ToolRegistry — each MCPClient is
-    the single source of truth. Returns None if the tool isn't an MCP tool
-    or the user has no connected MCP that exposes it.
+    The same owner lookup the execute resolver runs the tool through, so a card
+    formatted before this process has loaded the tool still names its integration.
     """
     from app.services.mcp.mcp_client import (
         get_mcp_client,
@@ -381,7 +386,7 @@ async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | Non
 
     try:
         mcp_client = await get_mcp_client(user_id)
-        return mcp_client.find_integration(tool_name)
+        return await mcp_client.resolve_tool_owner(tool_name)
     except Exception as e:
         log.warning(
             f"{LogTag.AGENT} MCP integration lookup failed for",
