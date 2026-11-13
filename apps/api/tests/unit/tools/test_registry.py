@@ -425,10 +425,9 @@ _EXPECTED_CATEGORY_METADATA: dict[str, tuple[str, bool, str | None, bool, bool]]
     "desktop": ("desktop", False, None, False, False),
 }
 
-# The three HIL-reviewed built-ins that must come out marked destructive,
+# The HIL-reviewed built-ins that must come out marked destructive,
 # per the docstring on _initialize_categories.
 _EXPECTED_DESTRUCTIVE_TOOL_NAMES = {
-    "send_notification",
     "execute_workflow",
     "connect_integration",
     "browser_task",
@@ -706,7 +705,6 @@ class TestCoreInitializationContract:
             "search_notifications",
             "get_notification_count",
             "mark_notifications_read",
-            "send_notification",
             "get_notification_preferences",
         ]
 
@@ -723,7 +721,7 @@ class TestCoreInitializationContract:
         ]
         assert unclassified == []
 
-        assert registry.is_tool_destructive("send_notification") is True
+        assert registry.is_tool_destructive("execute_workflow") is True
         assert registry.is_tool_destructive("web_search_tool") is False
         assert registry.is_tool_destructive("search_uploaded_files") is False
 

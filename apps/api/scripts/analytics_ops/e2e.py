@@ -45,7 +45,6 @@ from shared.py.analytics.catalog.chat import (
     ChatMessageSubmitted,
 )
 from shared.py.analytics.catalog.delivery import DeliveryMessageSent
-from shared.py.analytics.catalog.notifications import NotificationAgentSent
 from shared.py.analytics.catalog.onboarding import (
     OnboardingCompleted,
     OnboardingPhaseCompleted,
@@ -111,7 +110,6 @@ NOT_DRIVABLE = (
     f"{DeliveryMessageSent.event} (producer, destination, destination_basis): no journey fires a "
     "reminder or a tracked todo run, and the workflow journey's sim comms replies itself, so its "
     "run never reaches the executor's report",
-    f"{NotificationAgentSent.event}: no journey's sim script calls send_notification",
 )
 
 

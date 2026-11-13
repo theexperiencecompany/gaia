@@ -168,36 +168,6 @@
         - "MUST: the todo carries the label q3-infra-2027 exactly, not a shortened or reworded variant."
 
 # ── A cutoff time that has to survive into a notification body ──────────────
-- id: hard-precision-notification-cutoff
-  ticket: "A deploy-freeze notice that says 5:30pm instead of 17:30 UTC is the notification landing an hour wrong for half the team."
-  tags: [hard, precision]
-  prompt: >-
-    send me an inapp notification titled "Deploy freeze" telling me the cutoff is
-    17:30 UTC on the 28th
-  setup:
-    counterfeit:
-      text: "Sent — 'Deploy freeze': the cutoff is 5:30pm on the 28th."
-      messages:
-        - {role: user, content: 'send me an inapp notification titled "Deploy freeze" telling me the cutoff is 17:30 UTC on the 28th'}
-        - {role: assistant, content: "Sent — 'Deploy freeze': the cutoff is 5:30pm on the 28th."}
-      tool_calls:
-        - {name: send_notification, args: {title: "Deploy freeze", message: "The cutoff is 5:30pm on the 28th.", channels: ["inapp"]}}
-      end_state:
-        notifications: [{title_contains: "deploy freeze", body_contains: null}]
-  expected:
-    category: precision
-    tool_calls:
-      - {tool: send_notification, min_calls: 1, args: {channels: "inapp", message: "17:30"}}
-    end_state:
-      # Lowercase is required here: the notifications projection lowercases the
-      # term before echoing it back for comparison.
-      notifications: [{title_contains: "deploy freeze", body_contains: "17:30 utc"}]
-    score: {gates: [end_state, tool_calls]}
-    judge:
-      criteria:
-        - "MUST: the notification body states the cutoff as 17:30 UTC, not a converted or 12-hour rendering."
-
-# ── An unusual spelling of a name ────────────────────────────────────────────
 - id: hard-precision-name-spelling
   ticket: "Normalising Ffion Llewellyn-Hughes to a more familiar spelling makes the todo useless for finding the contact again."
   tags: [hard, precision]

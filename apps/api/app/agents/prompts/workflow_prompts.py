@@ -158,7 +158,7 @@ FORBIDDEN STEP TYPES (DO NOT CREATE):
 - Do NOT create steps that involve only text processing, data analysis, or content generation without external tool usage
 - Do NOT create generic steps like "gather requirements," "evaluate options," or "make recommendations" - these are LLM capabilities
 - If content analysis is needed, the LLM will do it while using actual tools like web_search_tool
-- Do NOT add a step that just notifies the user the workflow finished or delivers its results. GAIA sends a completion notification automatically after every run (this respects the user's "notify on completion" setting), so a final "notify the user" or "send results" step would notify them twice. Only when the instructions explicitly ask for a deliberate conditional or immediate alert during the run (e.g. "ping me if an email looks urgent") should a step message the user, and it should do so with the send_notification tool under `category: "gaia"`. If a step only prepares a summary to surface to the user, use `category: "gaia"`.
+- Do NOT add a step that just notifies the user the workflow finished or delivers its results. GAIA sends a completion notification automatically after every run (this respects the user's "notify on completion" setting), so a final "notify the user" or "send results" step would notify them twice. No step ever messages the user: when the instructions ask for a conditional alert (e.g. "ping me if an email looks urgent"), a step checks the condition and the run's report carries the alert. If a step only prepares a summary to surface to the user, use `category: "gaia"`.
 - Do NOT over-use todos. Only add a todo step when the workflow is genuinely about tracking a task the user wants to remember or revisit later. Do not turn ordinary actions (sending an email, creating an event) into todo items, and do not add a "create a todo to do X" step when the workflow can just do X directly with a real tool.
 
 FOCUS ON EXTERNAL TOOL ACTIONS:
@@ -243,11 +243,11 @@ run the workflow.
 
 
 WORKFLOW_AUTO_NOTIFY_SECTION = """
-NOTIFICATIONS: GAIA automatically sends the user a completion notification carrying this run's
-result on all their enabled channels when the run finishes. Do NOT call send_notification to
-announce that the workflow finished or to deliver its result: that would notify the user twice.
-Only call send_notification if the workflow instructions above explicitly ask for an immediate
-or conditional alert during the run (e.g. "ping me on WhatsApp if an email is urgent").
+NOTIFICATIONS: GAIA tells the user this run's result when the run finishes. Do NOT announce
+that the workflow finished or deliver its result yourself: that would tell the user twice.
+If the workflow instructions above ask for a conditional alert (e.g. "ping me if an email is
+urgent"), put the alert in your report with the outcome needs_you; it reaches them when the
+run finishes.
 """
 
 # Appended when the triggering event names which of the user's accounts received it.
@@ -257,11 +257,11 @@ This run was triggered by an event on the user's account {accounts}. Act on that
 account: pass it as `account` to execute for that integration's tools."""
 
 WORKFLOW_SILENT_NOTIFY_SECTION = """
-NOTIFICATIONS: This workflow is configured to run silently. GAIA does NOT send an automatic
-completion notification; the result only lands in this conversation. If the workflow
-instructions above ask to notify, alert, ping, or message the user (including conditionally,
-like "only if something needs my attention"), deliver that alert with send_notification.
-Otherwise finish without notifying.
+NOTIFICATIONS: This workflow is configured to run silently. GAIA does NOT tell the user the
+result; it only lands in this conversation. If the workflow instructions above ask to
+notify, alert, ping, or message the user (including conditionally, like "only if something
+needs my attention"), put that alert in your report with the outcome needs_you: only that
+reaches them. Otherwise finish with a done report.
 """
 
 WORKFLOW_EXECUTION_PROMPT = """You're running the user's saved workflow on their behalf. This is an automated run, so finish it end to end and don't ask the user anything.

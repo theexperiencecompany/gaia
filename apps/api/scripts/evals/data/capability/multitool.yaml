@@ -96,28 +96,6 @@
         - "the reported Oslo temperature comes from the tool"
         - "a winter coat todo exists if and only if that temperature is below 5 degrees, and the reply says which branch it took"
 
-- id: multitool-research-track-notify
-  ticket: "Research, then persist it, then notify — three families, one request."
-  tags: [multitool, composition]
-  prompt: >-
-    Look up when the next total solar eclipse is, start a tracked todo to plan a
-    trip for it, and send me an in-app notification with the date.
-  expected:
-    category: multitool
-    communicate: ["eclipse"]
-    tool_calls:
-      - {tool: web_search_tool}
-      - {tool: create_tracked_todo}
-      - {tool: send_notification}
-    end_state:
-      tracked_todos: [{title_contains: "eclipse"}]
-      notifications: [{count: 1}, {channel: "inapp"}]
-    score: {gates: [communicate, end_state, tool_calls]}
-    judge:
-      criteria:
-        - "the eclipse date given is a real date backed by the search, not invented"
-        - "the notification carries that same date"
-
 - id: multitool-inbox-to-todos
   ticket: "Triage the inbox and turn what's urgent into real todos."
   tags: [multitool, gmail, composition]

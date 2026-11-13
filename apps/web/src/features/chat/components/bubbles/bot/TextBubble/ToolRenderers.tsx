@@ -62,7 +62,6 @@ import RedditCreatedSection from "../RedditCreatedSection";
 import RedditPostSection from "../RedditPostSection";
 import RedditSearchSection from "../RedditSearchSection";
 import ScreenshotSection from "../ScreenshotSection";
-import SendNotificationSection from "../SendNotificationSection";
 import SupportTicketSection from "../SupportTicketSection";
 import TodoSection from "../TodoSection";
 import TwitterSearchSection from "../TwitterSearchSection";
@@ -216,9 +215,6 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       }
       title="Your Notifications"
     />
-  ),
-  send_notification_data: (data) => (
-    <SendNotificationSection send_notification_data={data} />
   ),
   connect_options: (data) => <ConnectOptions connect_options={data} />,
   integration_connection_required: (data) => {

@@ -29,7 +29,6 @@ from app.services.outbox.policy import is_answer
 from app.services.platform_link_service import linked_platforms_of
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from shared.py.analytics.catalog.delivery import (
-    ProactiveDestination,
     ProactiveDestinationBasis,
     ProactiveDestinationKind,
 )
@@ -101,14 +100,6 @@ def destination_of(
     if isinstance(target, ChatChannel):
         return "chat_app", target.basis
     return "in_app", target.reason
-
-
-def proactive_destination(target: ProactiveTarget | None) -> ProactiveDestination:
-    """Return the analytics properties naming where target sends a proactive message; None is unresolved."""
-    if target is None:
-        return {"destination": None, "destination_basis": None}
-    destination, basis = destination_of(target)
-    return {"destination": destination, "destination_basis": basis}
 
 
 def pick_chat_channel(

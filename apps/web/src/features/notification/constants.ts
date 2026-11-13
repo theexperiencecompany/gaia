@@ -21,15 +21,3 @@ export const NOTIFICATION_PLATFORM_LABELS: Record<
 
 export const NOTIFICATION_PLATFORM_ICONS: Record<NotificationPlatform, string> =
   BOT_PLATFORM_ICONS;
-
-// Channel-level maps extend the platform maps with the always-available
-// in-app channel, which is delivered over WebSocket rather than a bot.
-export const NOTIFICATION_CHANNEL_LABELS: Record<string, string> = {
-  ...NOTIFICATION_PLATFORM_LABELS,
-  inapp: "In-app",
-};
-
-export const NOTIFICATION_CHANNEL_ICONS: Record<string, string> = {
-  ...NOTIFICATION_PLATFORM_ICONS,
-  inapp: "/images/logos/macos.webp",
-};

@@ -329,7 +329,7 @@ SANDBOX_RUN_EVENT_GUIDANCE = (
 # reads the run's final report and messages the user only when it matters, so
 # the run must neither notify on its own nor decide delivery for the user.
 DELIVERED_RESULT_RULES = (
-    "REPORTING: never call send_notification for this run or change this todo's delivery "
+    "REPORTING: never message the user for this run or change this todo's delivery "
     "settings. When this run proves the goal is fully achieved, write Learnings in "
     "canvas.md and call complete_tracked_todo in this run; never wait for the user to "
     "report it."
@@ -349,7 +349,7 @@ DELIVERED_RESULT_GUIDANCE = f"{DELIVERED_RESULT_RULES} {DELIVERED_REPORT_FORM}"
 SILENT_RUN_GUIDANCE = (
     "DELIVERY: this todo is silent, so your final message is NOT sent to the user. "
     "Record the outcome in the todo's files. If something genuinely needs them, "
-    "send_notification is the only way to reach them. "
+    "report it as needs_you or failed: those still reach them. "
     "If the goal is fully achieved (the fix is live and verified, the watched "
     "event arrived and is handled), update canvas.md Learnings and call "
     "complete_tracked_todo in the same run instead of leaving it open."

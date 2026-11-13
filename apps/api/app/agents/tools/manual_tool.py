@@ -33,8 +33,8 @@ async def read_manual(topic: ManualTopic) -> str:
     - ``reminders``: one-off and recurring time-based nudges to the user; how a
       reminder differs from a workflow and a tracked todo.
     - ``sessions-and-artifacts``: working in a session; producing artifacts.
-    - ``notifications``: reading the inbox and sending the user a message on a
-      channel (``send_notification``); channel linking.
+    - ``notifications``: reading the inbox, the channel preferences, and how to ask to be
+      told on a channel; channel linking.
     - ``workflows``: saved automations that fire on a schedule or integration
       event; what ``create_workflow`` does and doesn't do; result delivery.
     - ``memory``: long-term memory about the user: the ``/workspace/memory/``

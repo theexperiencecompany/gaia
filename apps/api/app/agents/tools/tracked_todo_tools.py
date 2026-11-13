@@ -93,7 +93,7 @@ _NOTIFY_ON_RUN_DESC = (
     "finds something that matters (routine runs never do). Default True, except for "
     "a sub-todo, which reports to its parent's runs instead. The user's setting: set "
     "it only when they ask to stop or resume hearing about this todo; a silent run "
-    "can still reach them with send_notification when something genuinely needs them."
+    "still reaches them when its report needs them (needs_you or failed)."
 )
 _PARENT_TODO_DESC = (
     "ID of the user's open tracked todo that owns this one as a sub-todo, when this is "

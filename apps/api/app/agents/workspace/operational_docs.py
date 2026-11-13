@@ -225,13 +225,13 @@ When a scheduled or triggered run finishes, GAIA reads its final report and
 messages the user's chat app (WhatsApp/Telegram/Discord/Slack) only if the run
 found something they need to know or decide; a routine or no-op run sends
 nothing. So end with a factual report of what you did and what changed, and do
-NOT call `send_notification` to announce it, which sends it twice. Every run's
+never message the user yourself, which tells them twice. Every run's
 outcome, sent or not, is recorded in activity.md.
 
 `notify_on_run` (on `create_tracked_todo` / `update_tracked_todo`, default on)
 turns that delivery off entirely. It is the user's setting: change it only when
-they ask. A silent todo reaches the user only if the run deliberately calls
-`send_notification`.
+they ask. A silent todo still reaches the user when its report needs them
+(outcome `needs_you` or `failed`).
 
 Unrelated to the todo being marked completed, and separate from the failure
 notification above, which always fires.
@@ -361,8 +361,8 @@ user-visible output from a subagent STILL goes in the parent session's
 
 NOTIFICATIONS_DOC: Final[str] = """# Notifications & channels
 
-How GAIA reaches the user: both reading their notification inbox and sending
-them a message on a channel.
+How GAIA reaches the user: reading their notification inbox, and being told on
+a channel.
 
 ## Reading notifications
 
@@ -371,28 +371,18 @@ them a message on a channel.
 - `get_notification_count`: how many (e.g. unread).
 - `mark_notifications_read`: mark one or more read.
 
-## Sending a message to the user: `send_notification`
+## Being told on a channel
 
-`send_notification(message, title, channels, notification_type="info")`
-proactively pings the user on a channel. Use it for "text me on WhatsApp when
-X", or to alert the user to an important result when they may be away from the
-app.
+You never message the user yourself. When the user asked to be told on a
+particular chat app ("text me on WhatsApp when it's done"), comms set that as
+the task's delivery channel when it handed you the work, and GAIA tells them
+there when you finish. Valid channels: `whatsapp`, `telegram`, `discord`,
+`slack`.
 
-- Pass `channels` only when the user named one: "text me on WhatsApp" →
-  `["whatsapp"]`, "ping me on Slack" → `["slack"]`. Valid channels: `whatsapp`,
-  `telegram`, `discord`, `slack`, `inapp`. If they named none, omit `channels`:
-  the tool picks the one place they are active (a chat app or the GAIA app).
-  Never broadcast to channels the user did not ask for.
-- A messaging channel only delivers if the user has LINKED that platform
-  (WhatsApp/Telegram/Discord/Slack) and has it enabled; an unlinked channel is
-  silently skipped. The return reports `delivered_channels`; check it. If a
-  channel didn't deliver, tell the user that platform isn't linked and that
-  channels are linked/managed in their settings in the app.
-- Use sparingly: only when the user asked, or for an important/time-sensitive
-  result, not for routine completions already visible in chat, and not on
-  every step of a task.
-- `get_notification_preferences`: which channels are enabled, before targeting
-  one.
+- A channel only delivers if the user has LINKED that platform
+  (WhatsApp/Telegram/Discord/Slack) and has it enabled; otherwise the message
+  says it could not use that channel and goes where they are active.
+- `get_notification_preferences`: which channels are enabled.
 
 A messaging platform is a *channel established via a platform link*, NOT an
 OAuth integration, so `connect_integration("whatsapp")` will fail with "not
@@ -401,22 +391,21 @@ the user in their app settings; there is no agent tool for that yet.
 
 ## Automatic result delivery
 
-Three things already deliver their own results, and calling `send_notification`
-to announce one of them sends it to the user twice:
+Every finished run reports to the user through one place, which words the
+message and picks where it goes:
 
-- A background task started from a **chat** delivers its result into the
-  conversation it came from (the user's Telegram/WhatsApp/... chat, or the web
-  app). "Keep me posted" there needs no notification on that same channel.
-- A finished **workflow** run delivers its result to the user's linked platforms
-  plus in-app, unless the workflow is silent. See the `workflows` doc.
-- A finished **tracked todo** run is reported to the user's chat app when it
-  found something that matters, unless that todo has `notify_on_run` off. See
-  the `tracked-todos` doc.
+- A background task started from a **chat** is told in the conversation it came
+  from (the user's Telegram/WhatsApp/... chat, or the web app) while they are
+  active there.
+- A finished **workflow** run is told to the user's linked platforms or the app,
+  unless the workflow is silent. See the `workflows` doc.
+- A finished **tracked todo** run is told when it found something that matters,
+  unless that todo has `notify_on_run` off. See the `tracked-todos` doc.
 
-When one of these delivers the result, do not announce it again. A silent
-workflow, or a todo with `notify_on_run` off, delivers nothing, so there a
-notification is the only way the user hears. Otherwise notify only for something
-genuinely separate and urgent.
+Your report is what the message is made from, so state what happened and what
+needs the user. A silent workflow, or a todo with `notify_on_run` off, tells
+the user nothing unless the report needs them (`needs_you`, `failed`, `partial`
+or `unverified`).
 """
 
 
@@ -554,20 +543,19 @@ Offer to pause it instead, or point them to the app to delete.
 - **Full executor, in the background.** A run executes silently on the same
   executor with all the same tools you have, exactly like a user-typed task. It
   is driven by the workflow's `prompt` (the steps are a hint/preview).
-- **It can message the user mid-run.** Because a run has the full toolset, it has
-  `send_notification`. So if the prompt says "send me the result on WhatsApp",
-  the run sends it there itself via that tool. See the `notifications` doc.
+- **It cannot message the user mid-run.** What reaches them is its report when
+  it finishes: say in the report what needs them. See the `notifications` doc.
 
 ## Results & notifications
 
 By default (`notify_on_completion` on) the final result is delivered
-automatically: posted as real messages into the user's linked messaging
-platforms (WhatsApp/Telegram/Discord/Slack) and surfaced as an in-app completion
-notification. A silent workflow delivers nothing on success; it only reaches the
-user if its own prompt sends something (e.g. an explicit `send_notification`).
-Failures always notify. So do NOT add a `send_notification` to announce a result
-that completion delivery already sends, and do NOT double-send if the prompt
-already messages the user. See the `notifications` doc for channel details.
+automatically: told to the user as a message in the place they are active (a
+linked messaging platform such as WhatsApp/Telegram/Discord/Slack, or the app).
+A silent workflow delivers nothing on success; it only reaches the user when its
+report needs them (`needs_you`, `failed`, `partial`, `unverified`). Failures
+always notify. So do NOT message the user yourself to announce a result that
+completion delivery already tells. See the `notifications` doc for channel
+details.
 
 ## Typical flow
 
@@ -874,7 +862,7 @@ these.
 | "Add to my todo list / what are my tasks?" | the user's todo provider | `user-todos` |
 | "Set a goal / make a roadmap / track progress on X" | break it into tracked todos | `tracked-todos` |
 | "Remind me / ping me / set a timer at <time>" | `create_reminder_tool(...)` | `reminders` |
-| "Text / notify me on WhatsApp/Telegram/Slack" | `send_notification(channels=[...])` | `notifications` |
+| "Text / notify me on WhatsApp/Telegram/Slack" | the delivery channel comms set when it handed over the task (no tool) | `notifications` |
 | "Automate X / every morning do Y / set up a workflow" | `create_workflow(user_request)` | `workflows` |
 | "Change / pause / resume a workflow" | `edit_workflow` / `pause_workflow` / `resume_workflow` (list first for the id) | `workflows` |
 | "Install / create a skill / teach you a repeatable procedure" | `activate_integration("skills", ...)` | `skills` |
@@ -907,8 +895,8 @@ context. It is cheap and keeps you from guessing how your own machinery works.
   reminder differs from a workflow and a tracked todo (executor-direct tools,
   no subagent).
 - `sessions-and-artifacts`: working inside a session; producing artifacts.
-- `notifications`: reading the inbox and sending the user a message on a
-  channel (`send_notification`); channel linking is user-managed.
+- `notifications`: reading the inbox, and being told on a channel; channel
+  linking is user-managed.
 - `workflows`: saved automations that run on a schedule or integration event;
   what `create_workflow` does and doesn't do; result delivery.
 - `memory`: your long-term memory about the user. the `/workspace/memory/`
@@ -1100,8 +1088,8 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
             name="notifications",
             title="Notifications & channels",
             description=(
-                "Reading the notification inbox and sending the user a message on a "
-                "channel (send_notification, WhatsApp/Telegram/Slack); channel linking."
+                "Reading the notification inbox, and being told on a channel "
+                "(WhatsApp/Telegram/Slack); channel linking."
             ),
             body=NOTIFICATIONS_DOC,
         ),

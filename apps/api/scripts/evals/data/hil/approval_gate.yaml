@@ -6,9 +6,7 @@
 # case's setup.decision is POSTed to /approvals/{id}/decision and the resumed run
 # is read back from Mongo via the conversations API.
 #
-# `send_notification` is one of the three code-reviewed destructive built-ins
-# (agents/tools/core/registry.py), so `mode: always_ask` gates it with no
-# override needed. `create_tracked_todo` is not destructive by default, so its
+# `create_tracked_todo` is not destructive by default, so its
 # cases gate it through a per-user tool_override — exactly how the settings UI
 # would.
 #

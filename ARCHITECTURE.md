@@ -447,7 +447,7 @@ Integration tools (Composio + MCP — the thousands) are **never bound** to the 
 
 ## 11. Notifications
 
-- `apps/api/app/agents/tools/notification_tool.py` — `get_notifications`, `search_notifications`, `mark_notifications_read`, `send_notification`, `get_notification_count`, `get_notification_preferences`. Uses `get_stream_writer` to push real-time updates.
+- `apps/api/app/agents/tools/notification_tool.py` — `get_notifications`, `search_notifications`, `mark_notifications_read`, `get_notification_count`, `get_notification_preferences`. Uses `get_stream_writer` to push real-time updates.
 - `apps/api/app/services/notification_service.py` — `NotificationService` facade around `NotificationOrchestrator`.
 - `apps/api/app/utils/notification/`
   - `orchestrator.py` — multi-channel routing.

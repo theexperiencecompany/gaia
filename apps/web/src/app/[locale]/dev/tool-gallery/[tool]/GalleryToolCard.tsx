@@ -20,7 +20,6 @@ import RedditCommentSection from "@/features/chat/components/bubbles/bot/RedditC
 import RedditPostSection from "@/features/chat/components/bubbles/bot/RedditPostSection";
 import RedditSearchSection from "@/features/chat/components/bubbles/bot/RedditSearchSection";
 import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResultsTabs";
-import SendNotificationSection from "@/features/chat/components/bubbles/bot/SendNotificationSection";
 import SupportTicketSection from "@/features/chat/components/bubbles/bot/SupportTicketSection";
 import TodoProgressSection from "@/features/chat/components/bubbles/bot/TodoProgressSection";
 import TodoSection from "@/features/chat/components/bubbles/bot/TodoSection";
@@ -119,9 +118,6 @@ const GALLERY_RENDERERS: GalleryRenderers = {
       notifications={data.notifications ?? []}
       title="Your Notifications"
     />
-  ),
-  send_notification_data: (data) => (
-    <SendNotificationSection send_notification_data={data} />
   ),
   rate_limit_data: (data) => <RateLimitCard data={data} />,
   mcp_app: (data) => <MCPAppRenderer data={data} />,

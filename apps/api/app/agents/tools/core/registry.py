@@ -349,9 +349,9 @@ class ToolRegistry:
         HIL INVARIANT: every internal category passes an explicit
         ``destructive_tools`` set (empty when none are destructive) so no in-repo
         tool is ever left unclassified. The destructive built-ins are code-reviewed:
-        ``send_notification`` (external delivery), ``execute_workflow`` (autonomous
-        run-now), ``connect_integration`` (connects an external account). Everything
-        else is reversible / user-owned / read-only / sandbox-local and therefore safe.
+        ``execute_workflow`` (autonomous run-now), ``connect_integration`` (connects an
+        external account). Everything else is reversible / user-owned / read-only /
+        sandbox-local and therefore safe.
         """
 
         # NOTE: Import tool modules lazily to avoid circular imports during app startup.
@@ -404,7 +404,7 @@ class ToolRegistry:
         self._add_category(
             "notifications",
             tools=[*notification_tool.tools],
-            risk=CategoryRisk(destructive_tools={"send_notification"}),
+            risk=CategoryRisk(destructive_tools=set()),
         )
         # Account-center mutations are forced-ask; manage_linked_account is
         # argument-gated instead — see hil/policy.ARGUMENT_GATED_TOOLS.

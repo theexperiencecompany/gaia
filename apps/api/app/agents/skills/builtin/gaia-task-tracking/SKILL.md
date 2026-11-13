@@ -250,11 +250,11 @@ ALWAYS evaluated in the user's stored timezone. Pass cron in user-local wall-clo
   (WhatsApp/Telegram/Discord/Slack) only when the run found something they need
   to know or decide. A routine or no-op run sends nothing.
 - So end with a factual report (what you did, what changed, what needs them),
-  and do NOT call `send_notification` to announce it — that sends it twice.
+  and never message the user yourself — that tells them twice.
 - Every run's outcome, sent or not, is recorded in activity.md for you.
 - `notify_on_run` (default `True`, `False` for a sub-todo, settable on create/update) turns delivery off
   entirely. It is the user's setting: change it only when they ask. A silent
-  todo reaches the user only via a deliberate `send_notification`.
+  todo still reaches the user when its report needs them (`needs_you` or `failed`).
 
 ## Sub-todos
 

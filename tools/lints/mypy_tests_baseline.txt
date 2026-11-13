@@ -410,8 +410,6 @@ apps/api/tests/unit/tools/test_linkedin_tool.py	call-arg
 apps/api/tests/unit/tools/test_manual_tool.py	attr-defined
 apps/api/tests/unit/tools/test_memory_tools.py	arg-type
 apps/api/tests/unit/tools/test_memory_tools.py	attr-defined
-apps/api/tests/unit/tools/test_notification_tool.py	arg-type
-apps/api/tests/unit/tools/test_notification_tool.py	attr-defined
 apps/api/tests/unit/tools/test_research_tool.py	arg-type
 apps/api/tests/unit/tools/test_research_tool.py	assignment
 apps/api/tests/unit/tools/test_skill_tools.py	attr-defined

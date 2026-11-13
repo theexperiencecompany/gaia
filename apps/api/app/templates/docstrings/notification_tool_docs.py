@@ -74,61 +74,12 @@ Returns:
     Success status of the operation
 """
 
-SEND_NOTIFICATION = """
-Send a notification to the user on their connected channels (WhatsApp, Telegram, Discord, Slack, in-app).
-
-Use this tool to proactively alert the user about something important that happened or
-completed, especially when they are away from the app or the event is time-sensitive.
-
-## WHEN TO USE (use sparingly)
-- A long-running task or workflow just finished and the user asked to be notified
-- A critical event occurred that the user explicitly asked to be alerted about
-- The user is expecting a result and would miss it without an explicit ping
-
-## WHEN NOT TO USE (do not overnotify)
-- Routine task completions the user can see in the chat
-- Every step of a multi-step workflow: only notify at the end
-- Informational updates the user did not ask to be pinged about
-- More than 1-2 times per session unless the user explicitly requests it
-
-## CHANNEL SELECTION
-- If the user named channels, pass EXACTLY those ("text me on whatsapp" → ["whatsapp"], "ping me on slack" → ["slack"]). Valid names: "whatsapp", "telegram", "discord", "slack", "inapp".
-- If the user did NOT name a channel, omit `channels`: the notification goes where the user is active now (a chat app or the GAIA app), else the first chat app in their order, else the GAIA app. Never ask which channel, and never broadcast to channels the user did not ask for.
-- Use get_notification_preferences first if you need to know what channels are available
-- When the user is chatting with you on a messaging platform, your result is already delivered into that chat: do not notify that same channel for "keep me posted" or "let me know when done", and never add "inapp" as a filler channel.
-
-## WORKFLOW AND TRACKED-TODO RUNS
-- When you are executing a saved workflow or a tracked todo, the run instructions state whether GAIA
-  already delivers the run's result to the user. If it does, do NOT call this tool to announce
-  the result: that double-notifies the user. Without `channels`, such a call sends nothing and
-  tells you to put the update in your result. Only name a channel when the run's own
-  instructions explicitly ask for an alert there (e.g. "ping me on WhatsApp if an email is urgent").
-- When the run's result is not delivered (a silent todo, a workflow with no completion
-  notification), an unnamed call reaches the user as usual.
-
-## NOTIFICATION TYPE
-- "info" (default): general update
-- "success": task completed successfully
-- "warning": something needs attention
-- "error": something failed
-
-Args:
-    message: Required notification body text (keep it concise and actionable)
-    title: Required short, specific title summarizing the update (e.g. "Reminder",
-        "Task completed", "Build failed"); never a generic app name
-    channels: Optional list of channel names: exactly the channel(s) the user named, or
-        omitted so the notification goes where the user is reachable now
-    notification_type: Optional type ("info", "success", "warning", or "error")
-
-Returns:
-    Delivery status including which channels received the notification
-"""
 
 GET_NOTIFICATION_PREFERENCES = """
 Get the user's current notification channel preferences.
 
 Returns which channels (WhatsApp, Telegram, Discord, Slack, in-app) are enabled or disabled
-for the user. Use this before calling send_notification when you need to know which
+for the user. Use this when you need to know which
 channels are available, or when the user asks about their notification settings.
 
 When to use:

@@ -35,10 +35,7 @@ import type {
   EmailThreadData,
   PeopleSearchData,
 } from "@/types/features/mailTypes";
-import type {
-  NotificationView,
-  SendNotificationData,
-} from "@/types/features/notificationTypes";
+import type { NotificationView } from "@/types/features/notificationTypes";
 import type { RedditData } from "@/types/features/redditTypes";
 import type {
   DeepResearchResults,
@@ -153,7 +150,6 @@ const TOOL_REGISTRY = {
   code_data: null as unknown as CodeData,
   todo_data: null as unknown as TodoToolData,
   notification_data: null as unknown as { notifications: NotificationView[] },
-  send_notification_data: null as unknown as SendNotificationData,
   integration_connection_required: null as unknown as IntegrationConnectionData,
   connect_options: null as unknown as ConnectOptionsData,
   integration_list_data: null as unknown as IntegrationListStreamData,

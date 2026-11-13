@@ -23,9 +23,9 @@ plain HTTP, with nothing simulated:
    REAL effect back from the domain API (GET /api/v1/todos,
    GET /api/v1/notifications).
 
-Which tools are gated is not invented either. send_notification is one of the
-three code-reviewed destructive built-ins (agents/tools/core/registry.py), so
-mode: always_ask alone gates it. Everything else is gated the way a user
+Which tools are gated is not invented either. The code-reviewed destructive
+built-ins (agents/tools/core/registry.py) are gated by mode: always_ask alone.
+Everything else is gated the way a user
 would gate it, through tool_overrides — the same per-user map the settings UI
 writes and services/hil/policy.resolve_policy reads first.
 

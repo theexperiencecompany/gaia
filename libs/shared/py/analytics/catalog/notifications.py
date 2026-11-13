@@ -3,11 +3,9 @@
 from typing import ClassVar, Literal
 
 from shared.py.analytics.catalog.base import ServerEvent, WebEvent
-from shared.py.analytics.catalog.delivery import ProactiveDestinationBasis, ProactiveDestinationKind
 from shared.py.analytics.catalog.properties import Identifier
 
 __all__ = [
-    "NotificationAgentSent",
     "NotificationActionExecuted",
     "NotificationBulkAction",
     "NotificationRead",
@@ -49,20 +47,6 @@ class NotificationUnsubscribed(ServerEvent):
 
     event: ClassVar[str] = "notification:unsubscribed"
     budget_per_user_day: ClassVar[int] = 10
-
-
-class NotificationAgentSent(ServerEvent):
-    """The agent's send_notification sent one, or folded it into the reply already reaching the user.
-
-    destination is set only when the agent named no channel and GAIA chose where it goes.
-    """
-
-    event: ClassVar[str] = "notification:agent_sent"
-    budget_per_user_day: ClassVar[int] = 50
-
-    outcome: Literal["sent", "folded_into_reply"]
-    destination: ProactiveDestinationKind | None = None
-    destination_basis: ProactiveDestinationBasis | None = None
 
 
 class NotificationViewed(WebEvent):

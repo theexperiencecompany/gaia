@@ -6,13 +6,12 @@ types name that place and the rule that chose it, so routing is measurable on ea
 event.
 """
 
-from typing import ClassVar, Literal, TypedDict
+from typing import ClassVar, Literal
 
 from shared.py.analytics.catalog.base import ServerEvent
 
 __all__ = [
     "DeliveryMessageSent",
-    "ProactiveDestination",
     "ProactiveDestinationBasis",
     "ProactiveDestinationKind",
 ]
@@ -26,13 +25,6 @@ ProactiveDestinationKind = Literal["chat_app", "in_app"]
 ProactiveDestinationBasis = Literal[
     "recent_activity", "priority", "owner_chat", "requested_channel", "active_in_app", "no_chat_app"
 ]
-
-
-class ProactiveDestination(TypedDict):
-    """The destination properties of a delivery event; both None when the destination was never resolved."""
-
-    destination: ProactiveDestinationKind | None
-    destination_basis: ProactiveDestinationBasis | None
 
 
 class DeliveryMessageSent(ServerEvent):

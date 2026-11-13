@@ -77,7 +77,6 @@ export type ServerEventName =
   | "notes:deleted"
   | "notes:updated"
   | "notification:action_executed"
-  | "notification:agent_sent"
   | "notification:bulk_action"
   | "notification:read"
   | "notification:unsubscribed"
@@ -972,14 +971,6 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-  };
-  "notification:agent_sent": {
-    "actor": "user" | "agent";
-    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
-    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "outcome": "sent" | "folded_into_reply";
-    "destination"?: "chat_app" | "in_app";
-    "destination_basis"?: "recent_activity" | "priority" | "owner_chat" | "requested_channel" | "active_in_app" | "no_chat_app";
   };
   "notification:bulk_action": {
     "actor": "user" | "agent";

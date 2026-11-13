@@ -948,9 +948,9 @@ async def prepare_executor_execution(
             }
         )
 
-    # The executor owns send_notification but only sees the task text comms
-    # writes, so inject the notification mode here (keyed off this run's own
-    # configurable) rather than depend on comms forwarding the rule. Skip if already present.
+    # The executor only sees the task text comms writes, so inject the delivery mode
+    # here (keyed off this run's own configurable) rather than depend on comms
+    # forwarding the rule. Skip if already present.
     if configurable.get("workflow_id") and "NOTIFICATIONS:" not in enhanced_task:
         notification_section = (
             WORKFLOW_AUTO_NOTIFY_SECTION
