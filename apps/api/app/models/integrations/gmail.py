@@ -81,7 +81,7 @@ class GmailThreadData(BaseModel):
 
 
 class GmailDraftDetailData(BaseModel):
-    """A users.drafts resource: GMAIL_GET_DRAFT's data, or one GMAIL_LIST_DRAFTS entry."""
+    """A users.drafts resource: one GMAIL_LIST_DRAFTS entry."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -140,7 +140,7 @@ class GmailThreadView(BaseModel):
 
 
 class GmailDraftMessageView(TypedDict):
-    """A draft's message as ``draft_template`` trims it; body is the plain text."""
+    """A draft's message as ``process_list_drafts_response`` trims it; body is the plain text."""
 
     to: str
     subject: str
@@ -150,7 +150,7 @@ class GmailDraftMessageView(TypedDict):
 
 
 class GmailDraftView(TypedDict):
-    """``draft_template``'s output."""
+    """One draft in ``process_list_drafts_response``'s output."""
 
     id: str
     message: GmailDraftMessageView

@@ -408,17 +408,6 @@ def _message_view(message: RelayedGmailMessage, *, include_body: bool) -> GmailM
     return view
 
 
-def detailed_message_template(raw: Mapping[str, object]) -> dict[str, object]:
-    """Convert a raw Gmail message to its detailed view, keyed as the agent reads it.
-
-    Every field of the view is a JSON-native scalar, a list of them, or a TypedDict of
-    them, so the dump is already the document the agent is handed. The test that round-
-    trips this through json.dumps is what keeps that true for a field added later.
-    """
-    view = _message_view(RelayedGmailMessage.model_validate(raw), include_body=True)
-    return view.model_dump(by_alias=True)
-
-
 def thread_template(thread: GmailThreadData) -> GmailThreadView:
     """Convert a Gmail thread to a minimal representation (thread ID + minimized messages)."""
     return GmailThreadView(
@@ -451,11 +440,6 @@ def _draft_view(draft: GmailDraftDetailData) -> GmailDraftView:
             "content": content,
         },
     }
-
-
-def draft_template(raw: Mapping[str, object]) -> GmailDraftView:
-    """Convert a raw GMAIL_GET_DRAFT payload to its minimal draft view."""
-    return _draft_view(GmailDraftDetailData.model_validate(raw))
 
 
 def message_view_needs_body(

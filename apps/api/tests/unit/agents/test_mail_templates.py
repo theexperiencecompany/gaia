@@ -2,7 +2,6 @@
 
 import base64
 import email.message
-import json
 from unittest.mock import patch
 
 import pytest
@@ -13,8 +12,6 @@ from app.agents.templates.mail_templates import (
     _decode_part_payload,
     _get_text_from_html,
     build_message_view,
-    detailed_message_template,
-    draft_template,
     message_view_needs_body,
     minimal_message_template,
     process_get_thread_response,
@@ -534,50 +531,6 @@ class TestMinimalMessageTemplate:
 
 
 # ---------------------------------------------------------------------------
-# detailed_message_template
-# ---------------------------------------------------------------------------
-
-
-class TestDetailedMessageTemplate:
-    def test_detailed_template(self):
-        raw = _make_raw_email(
-            subject="Detailed",
-            sender="a@b.com",
-            to="c@d.com",
-            cc="e@f.com",
-            body_text="Full body",
-            body_html="<p>Full body</p>",
-        )
-        msg = _make_gmail_message(raw=raw, label_ids=["INBOX"])
-
-        result = detailed_message_template(msg)
-
-        assert result["subject"] == "Detailed"
-        assert result["from"] == "a@b.com"
-        assert result["cc"] == "e@f.com"
-        assert "content" in result
-        assert result["isRead"] is True
-        assert result["hasAttachment"] is False
-
-    def test_detailed_template_minimal_data(self):
-        msg = {"id": "m1", "threadId": "t1", "labelIds": [], "snippet": ""}
-
-        result = detailed_message_template(msg)
-        assert result["id"] == "m1"
-
-    def test_the_detailed_card_is_a_json_document_the_agent_can_be_handed(self) -> None:
-        """It reaches the agent as JSON, so every value must already be JSON."""
-        raw = _make_raw_email(
-            subject="JSON please", sender="a@b.com", to="c@d.com", body_text="Body"
-        )
-        msg = _make_gmail_message(raw=raw, label_ids=["INBOX"])
-
-        result = detailed_message_template(msg)
-
-        assert json.loads(json.dumps(result)) == result
-
-
-# ---------------------------------------------------------------------------
 # build_message_view / project_message_view
 # ---------------------------------------------------------------------------
 
@@ -692,12 +645,18 @@ class TestThreadTemplate:
 
 
 # ---------------------------------------------------------------------------
-# draft_template
+# One draft in the GMAIL_LIST_DRAFTS view
 # ---------------------------------------------------------------------------
 
 
-class TestDraftTemplate:
-    def test_draft_template(self):
+def _listed_draft(draft: dict) -> dict:
+    return process_list_drafts_response({"drafts": [draft]})["drafts"][0]
+
+
+class TestListedDraftView:
+    """One draft as GMAIL_LIST_DRAFTS' trimmed view carries it."""
+
+    def test_a_listed_draft_carries_its_headers_and_body(self):
         raw = _make_raw_email(
             subject="Draft Subject",
             to="recipient@example.com",
@@ -709,7 +668,7 @@ class TestDraftTemplate:
             "message": _make_gmail_message(raw=raw, snippet="Draft snip"),
         }
 
-        result = draft_template(draft_data)
+        result = _listed_draft(draft_data)
         assert result["id"] == "draft_001"
         assert result["message"]["subject"] == "Draft Subject"
         assert result["message"]["to"] == "recipient@example.com"
@@ -717,14 +676,14 @@ class TestDraftTemplate:
         assert result["message"]["body"].strip() == "Draft body"
         assert "content" in result["message"]
 
-    def test_draft_template_empty_message(self):
+    def test_a_listed_draft_with_an_empty_message_keeps_its_id(self):
         draft_data = {"id": "d_empty", "message": {}}
 
-        result = draft_template(draft_data)
+        result = _listed_draft(draft_data)
         assert result["id"] == "d_empty"
 
     def test_a_draft_missing_its_id_and_snippet_reads_them_as_empty(self):
-        result = draft_template({"message": {}})
+        result = _listed_draft({"message": {}})
 
         assert result["id"] == ""
         assert result["message"]["snippet"] == ""
