@@ -11,6 +11,7 @@ from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from functools import partial
+import time
 from typing import Any, Protocol, TypeVar, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -30,6 +31,7 @@ from langgraph.config import get_config
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 from redis.asyncio import Redis
+from redis.asyncio.client import Pipeline
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.agents.context.slots import TIME_CONTEXT_MARKER, PromptSlot, mark, slot_of
@@ -696,11 +698,14 @@ async def test_one_append_streams_one_entry_frame_and_at_most_one_state_frame(
     assert len(states) <= len(entry_seqs)
 
 
-# Measured on the step's own path (no HTTP, auth or billing): 56 and 23 before the live-test
-# fixes. A turn appends 4 entries at 4 ops each (head write, outbox read, insert, outbox drop);
-# the rest are the claim, the comms phase, head reads and the reply's amend. ~123 ms each in prod.
-PLAIN_TURN_MONGO_OPS = 49
-FIRST_DELTA_MONGO_OPS = 20
+# The step's own path, no HTTP or auth (was 49 and 20). Per append: head read, head write, two-op
+# flush; plus claim, one unsettled read per batch, comms phase, amend, metering. ~123 ms each in prod.
+PLAIN_TURN_MONGO_OPS = 28
+# 12 to 14: the background flush and metering row race the reply's commit.
+FIRST_DELTA_MONGO_OPS = 14
+# Round trips, a pipeline counting as one: hint raises, frame publishes, claim keys, budget reads.
+PLAIN_TURN_REDIS_TRIPS = 23
+FIRST_DELTA_REDIS_TRIPS = 10
 
 
 @dataclass(frozen=True)
@@ -732,17 +737,41 @@ async def _profiled(
     return ops
 
 
+def _count_redis_trips(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Record the time of every Redis round trip from now on, a pipeline counting as one."""
+    trips: list[float] = []
+    command, flush = Redis.execute_command, Pipeline.execute
+
+    async def counted_command(self: Redis, *args: Any, **options: Any) -> Any:
+        trips.append(time.time())
+        return await command(self, *args, **options)
+
+    async def counted_flush(self: Pipeline, raise_on_error: bool = True) -> list[Any]:
+        trips.append(time.time())
+        return await flush(self, raise_on_error)
+
+    monkeypatch.setattr(Redis, "execute_command", counted_command)
+    monkeypatch.setattr(Pipeline, "execute", counted_flush)
+    return trips
+
+
 @pytest.mark.service
-async def test_a_plain_turn_stays_within_its_mongo_budget(
-    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+async def test_a_plain_turn_stays_within_its_mongo_and_redis_budget(
+    rig_for: RigFactory,
+    mongo_db: AsyncIOMotorDatabase[dict[str, object]],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     rig = await rig_for(gated("first answer", "second answer"))
     await rig.send("m1", "hi")
     await rig.settle()
 
+    trips: list[float] = []
+
     async def turn() -> None:
+        counted = _count_redis_trips(monkeypatch)
         await rig.send("m2", "and again")
         await rig.settle()
+        trips.extend(counted)
 
     ops = await _profiled(mongo_db, turn)
 
@@ -752,6 +781,9 @@ async def test_a_plain_turn_stays_within_its_mongo_budget(
     before_first_delta = [op for op in ops if op.at <= opened.at]
     assert len(ops) <= PLAIN_TURN_MONGO_OPS, ops
     assert len(before_first_delta) <= FIRST_DELTA_MONGO_OPS, before_first_delta
+    shown_at = opened.at.timestamp()
+    assert len(trips) <= PLAIN_TURN_REDIS_TRIPS
+    assert len([at for at in trips if at <= shown_at]) <= FIRST_DELTA_REDIS_TRIPS
 
 
 @pytest.mark.service
