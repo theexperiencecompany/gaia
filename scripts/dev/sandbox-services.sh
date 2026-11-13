@@ -120,14 +120,23 @@ start_all() {
 seed_mongo() {
   log "seeding GAIA.subscription_plans"
   (cd "$API_DIR" && uv run --no-build python - <<'PY'
+import json
+
 from pymongo import MongoClient
 
+from scripts.plan_catalogue import ADVERTISED_PRO_MONTHLY_PRICE, ProductPrice, build_plan_catalogue
+
+# The catalogue scripts/payment_setup.py writes, priced as advertised instead of read from
+# Dodo (unreachable here), so every row carries what PlanDocument requires.
+advertised = json.loads(ADVERTISED_PRO_MONTHLY_PRICE.read_text())
+monthly = ProductPrice("dev_pro_monthly", advertised["amount"], advertised["currency"])
+yearly = ProductPrice("dev_pro_yearly", advertised["amount"] * 12, advertised["currency"])
 db = MongoClient("mongodb://localhost:27017/")["GAIA"]
 if db.subscription_plans.count_documents({}) == 0:
-    db.subscription_plans.insert_one({
-        "plan_id": "free", "name": "Free", "amount": 0,
-        "currency": "USD", "is_active": True,
-    })
+    db.subscription_plans.insert_many(
+        plan.model_dump(by_alias=True, exclude={"id"})
+        for plan in build_plan_catalogue(monthly, yearly)
+    )
 print(f"subscription_plans={db.subscription_plans.count_documents({})}")
 PY
   )

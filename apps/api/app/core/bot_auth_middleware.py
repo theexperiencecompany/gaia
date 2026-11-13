@@ -19,6 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
 from app.config.settings import settings
+from app.constants.auth import BOT_API_KEY_HEADER
 from app.constants.cache import TEN_MINUTES_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import get_cache, set_cache
@@ -106,7 +107,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         route, the JWT identifies the user. Gating it on JWT failure left
         successful fast-path requests with bot_api_key_valid unset, causing 401s.
         """
-        api_key = request.headers.get("X-Bot-API-Key")
+        api_key = request.headers.get(BOT_API_KEY_HEADER)
         platform = request.headers.get("X-Bot-Platform")
         platform_user_id = request.headers.get("X-Bot-Platform-User-Id")
 

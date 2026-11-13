@@ -37,6 +37,8 @@ WOS_SESSION_MAX_AGE_SECONDS = 7 * 24 * 3600
 # bypass is active, this header selects the Mongo user to authenticate as instead
 # of DEV_AUTH_BYPASS_EMAIL, letting one server act as many users without restarts.
 DEV_USER_HEADER = "X-Dev-User"
+# Carried by every bot request; the bot middleware identifies its user, never the dev bypass.
+BOT_API_KEY_HEADER = "X-Bot-API-Key"
 # Remediation shown when the resolved dev-bypass user does not exist. The exact
 # "mint it via ..." phrasing is the actionable fix — keep it in the message.
 DEV_USER_MISSING_HINT = "mint it via POST /api/v1/dev/users"

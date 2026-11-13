@@ -31,6 +31,7 @@ from app.api.v1.middleware.client_type import (
 )
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME, POSTHOG_SESSION_HEADER
 from app.constants.auth import (
+    BOT_API_KEY_HEADER,
     DEV_USER_HEADER,
     DEV_USER_MISSING_HINT,
     WOS_SESSION_COOKIE,
@@ -1016,6 +1017,19 @@ class TestDevBypassWithAMongoUser:
             True,
             False,
         )
+
+    def test_a_bot_request_is_left_for_bot_auth_to_identify(self) -> None:
+        """Regression (live test): the bypass overrode the bot session token, so a bot followed as the dev user."""
+        app = _build_test_app()
+        with patch(
+            "app.utils.auth_utils.user_repository.get_by_email",
+            new_callable=AsyncMock,
+            return_value=self._USER,
+        ) as get_by_email:
+            resp = TestClient(app).get("/api/v1/protected", headers={BOT_API_KEY_HEADER: "bot-key"})
+
+        get_by_email.assert_not_awaited()
+        assert resp.json() == {"user": None, "authenticated": False}
 
     def test_the_bypass_user_is_published_to_the_request_context(self) -> None:
         app = _build_test_app()

@@ -20,6 +20,7 @@ from app.config.workos import get_async_workos_client
 from app.constants.analytics import POSTHOG_PROVIDER_KEY, POSTHOG_SESSION_HEADER
 from app.constants.auth import (
     AGENT_TOKEN_PATHS,
+    BOT_API_KEY_HEADER,
     DEV_USER_HEADER,
     DEV_USER_MISSING_HINT,
     WOS_SESSION_COOKIE,
@@ -248,7 +249,8 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             self._publish_user(request)
             return await call_next(request)
 
-        if self.dev_bypass_email:
+        # A bot names its user with its own token, so it authenticates exactly as in production.
+        if self.dev_bypass_email and BOT_API_KEY_HEADER not in request.headers:
             return await self._dispatch_dev_bypass(request, call_next)
 
         # Self-host mode: authenticate via the local session JWT instead of
