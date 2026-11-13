@@ -270,6 +270,8 @@ export const chatApi = {
           }
         },
         onmessage(event) {
+          // fetch-event-source dispatches a comment-only block (the keepalive) as empty data; the SSE spec dispatches nothing.
+          if (event.data === "") return;
           streamLog("sse", "frame", {
             conversationId,
             detail: { raw: event.data },
