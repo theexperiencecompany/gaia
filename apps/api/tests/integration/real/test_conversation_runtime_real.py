@@ -73,6 +73,7 @@ from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.hil import hil_approval_repository
+from app.db.repositories.playbooks import playbook_repository
 from app.models.agent_config import AgentConfigurable, StepTurnRef, agent_configurable
 from app.models.agent_models import AgentRunnableConfig
 from app.models.conversation_frame_models import (
@@ -171,6 +172,7 @@ from app.services.hil.gate import GateContext, read_gate_context
 from app.services.workflow import thread_reset
 from app.services.workflow.conversation_service import log_playbook_run
 from app.services.workflow.execution_service import WorkflowFireOverlapped, WorkflowTurnFailed
+from app.services.workflow.service import WorkflowService
 from app.utils.errors import ConversationIdTakenError
 from app.workers.tasks import workflow_tasks
 from app.workers.tasks.workflow_tasks import (
@@ -1386,7 +1388,7 @@ class _Turns:
         return turn
 
     def configurable(self, index: int) -> AgentConfigurable:
-        return self.built[index][2].config["configurable"]
+        return agent_configurable(self.built[index][2].config)
 
 
 def _workflow(user_id: str) -> Workflow:
@@ -1592,11 +1594,11 @@ async def test_a_successful_fire_records_success_and_emits_workflow_executed_onc
         with (
             patch.object(workflow_tasks, "enforce_tiered_limit", AsyncMock()),
             patch.object(
-                workflow_tasks.playbook_repository,
+                playbook_repository,
                 "get_for_workflow",
                 AsyncMock(return_value=None),
             ),
-            patch.object(workflow_tasks.WorkflowService, "increment_execution_count", AsyncMock()),
+            patch.object(WorkflowService, "increment_execution_count", AsyncMock()),
             patch.object(workflow_tasks, "complete_execution", completed),
             patch.object(workflow_tasks, "distrust_fresh_playbook", AsyncMock()),
             patch.object(workflow_tasks, "_rearm_quietly", AsyncMock()),

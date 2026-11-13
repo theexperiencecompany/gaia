@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.constants.chat import ARTIFACT_CARD
 from app.models.conversation_log_models import Reply
+from app.models.tool_data_models import ToolDataEntry
 
 
 @dataclass(frozen=True)
@@ -27,10 +28,11 @@ class _ArtifactCard(BaseModel):
 def reply_files(reply: Reply) -> tuple[ReplyFile, ...]:
     """Return each file the reply's cards wrote, once per path, in the order they were written."""
     files: dict[str, ReplyFile] = {}
-    for card in reply.tool_data:
-        if card.get("tool_name") != ARTIFACT_CARD:
+    cards: tuple[ToolDataEntry, ...] = reply.tool_data
+    for card in cards:
+        if card["tool_name"] != ARTIFACT_CARD:
             continue
-        written = _ArtifactCard.model_validate(card.get("data"))
+        written = _ArtifactCard.model_validate(card["data"])
         if written.event == "upsert":
             files.setdefault(written.path, ReplyFile(written.path, written.content_type))
     return tuple(files.values())

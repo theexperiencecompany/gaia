@@ -184,27 +184,40 @@ class TestOnboardingRequest:
         """Q2 is "pick up to three": a fourth need is a client that skipped the cap."""
         with pytest.raises(ValidationError):
             OnboardingRequest(
-                profession="Founder", needs=["inbox", "calendar", "mornings", "reminders"]
+                profession="Founder",
+                needs=[
+                    OnboardingNeed.INBOX,
+                    OnboardingNeed.CALENDAR,
+                    OnboardingNeed.MORNINGS,
+                    OnboardingNeed.REMINDERS,
+                ],
             )
         # The stored shape is read back for users who picked up to seven under
         # the old Q2; it keeps their first picks rather than refusing to load.
         assert [
             n.value
             for n in OnboardingPreferences(
-                needs=["inbox", "calendar", "mornings", "reminders"]
+                needs=[
+                    OnboardingNeed.INBOX,
+                    OnboardingNeed.CALENDAR,
+                    OnboardingNeed.MORNINGS,
+                    OnboardingNeed.REMINDERS,
+                ]
             ).needs
         ] == ["inbox", "calendar", "mornings"]
 
     def test_a_role_need_is_accepted_for_its_role(self) -> None:
-        r = OnboardingRequest(profession="student", needs=["student_exams", "inbox"])
+        r = OnboardingRequest(
+            profession="student", needs=[OnboardingNeed.STUDENT_EXAMS, OnboardingNeed.INBOX]
+        )
         assert [n.value for n in r.needs] == ["student_exams", "inbox"]
 
     def test_a_role_need_is_rejected_for_another_role(self) -> None:
         """The student pair is only ever shown to students; a founder sending it is a replayed or hand-built request."""
         with pytest.raises(ValidationError, match="only offered to student"):
-            OnboardingRequest(profession="founder", needs=["student_exams"])
+            OnboardingRequest(profession="founder", needs=[OnboardingNeed.STUDENT_EXAMS])
         with pytest.raises(ValidationError, match="only offered to student"):
-            OnboardingRequest(profession="Plumber", needs=["student_exams"])
+            OnboardingRequest(profession="Plumber", needs=[OnboardingNeed.STUDENT_EXAMS])
 
     def test_every_role_pair_belongs_to_exactly_one_role(self) -> None:
         seen: list[OnboardingNeed] = []
@@ -220,7 +233,8 @@ class TestOnboardingRequest:
     def test_the_pick_cap_is_three(self) -> None:
         assert NEEDS_MAX_SELECTION == 3
         assert OnboardingRequest(
-            profession="Founder", needs=["inbox", "calendar", "mornings"]
+            profession="Founder",
+            needs=[OnboardingNeed.INBOX, OnboardingNeed.CALENDAR, OnboardingNeed.MORNINGS],
         ).needs
 
     def test_multiline_profession_rejected(self):
@@ -262,7 +276,7 @@ class TestOnboardingRequest:
     def test_profession_rejections_say_why(self, profession: str, message: str):
         """The message is what the wizard surfaces; a vague one is a support ticket."""
         with pytest.raises(ValidationError, match=message):
-            OnboardingRequest(profession=profession, needs=["inbox"])
+            OnboardingRequest(profession=profession, needs=[OnboardingNeed.INBOX])
         with pytest.raises(ValidationError, match=message):
             OnboardingPreferences(profession=profession)
 

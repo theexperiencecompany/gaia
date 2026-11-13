@@ -51,7 +51,7 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
-from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
+from app.models.hil_models import HILApprovalRecord, HILApprovalStatus, HilInterruptPayload
 from app.services.conversation.runtime import install_runtime_ports
 from app.utils import background_tasks
 from app.utils.agent_utils import IntegrationMetadata
@@ -89,14 +89,14 @@ LIVE: AgentConfigurable = {
 }
 
 
-def _delegation(parent: AgentConfigurable | None = None, **ctx_overrides: Any) -> Delegation:
-    parent = dict(parent if parent is not None else LIVE)
-    configurable = {**parent, "thread_id": THREAD, **ctx_overrides}
+def _delegation(parent: AgentConfigurable | None = None) -> Delegation:
+    parent = (LIVE if parent is None else parent).copy()
+    configurable: AgentConfigurable = {**parent, "thread_id": THREAD}
     return Delegation(
         ctx=SubagentExecutionContext(
             subagent_graph=MagicMock(),
             agent_name="spawned_subagent",
-            config={"configurable": dict(configurable)},
+            config={"agent_name": "spawned_subagent", "configurable": dict(configurable)},
             configurable=configurable,
             integration_id="spawn",
             initial_state={},
@@ -296,9 +296,10 @@ class TestABlockingRun:
 
     async def test_a_workflow_run_records_every_call_across_a_pause(self, redis: Any) -> None:
         def _outcome(text: str, to: str, *, paused: bool) -> SubagentOutcome:
+            interrupt: HilInterruptPayload | None = {"approval_id": "a1"} if paused else None
             return SubagentOutcome(
                 text=text,
-                interrupt={"approval_id": "a1"} if paused else None,
+                interrupt=interrupt,
                 run_messages=(
                     AIMessage(
                         content="",
@@ -308,7 +309,7 @@ class TestABlockingRun:
                 ),
             )
 
-        parent = {**LIVE, "workflow_id": "wf-1", "execution_mode": "background"}
+        parent: AgentConfigurable = {**LIVE, "workflow_id": "wf-1", "execution_mode": "background"}
         with _blocking(
             [_outcome("", "a@b.c", paused=True), _outcome("both sent", "d@e.f", paused=False)]
         ):
@@ -626,7 +627,7 @@ class TestWhatTheExecutorIsTold:
                 ToolMessage(content="ok", tool_call_id="t1"),
             ),
         )
-        parent = {**LIVE, "workflow_id": "wf-1"}
+        parent: AgentConfigurable = {**LIVE, "workflow_id": "wf-1"}
         with patch(f"{MODULE}.execute_subagent_stream", new=AsyncMock(return_value=outcome)):
             await delegate(_delegation(parent), background=True, probe_parked=False)
             await _drain()
@@ -923,7 +924,7 @@ class TestABackgroundRunsStreamLifecycle:
 class TestWhatAParkedRunSays:
     @staticmethod
     async def _park(
-        interrupt: dict[str, Any], *records: HILApprovalRecord
+        interrupt: HilInterruptPayload, *records: HILApprovalRecord
     ) -> tuple[AsyncMock, AsyncMock]:
         execute = AsyncMock(
             side_effect=[

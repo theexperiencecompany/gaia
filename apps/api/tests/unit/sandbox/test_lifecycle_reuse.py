@@ -7,16 +7,18 @@ real set_timeout call count and real pool state.
 from __future__ import annotations
 
 import asyncio
+from contextlib import AbstractContextManager
 import time
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 import uuid
 
-from e2b import NotFoundException, SandboxState
+from e2b import AsyncSandbox, NotFoundException, SandboxState
 import pytest
 from tests.helpers import captured_wide_event
 
+from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import SANDBOX_LIFETIME_SECONDS
 from app.services.sandbox import lifecycle, pool as pool_module
@@ -77,9 +79,7 @@ async def test_unhealthy_cached_handle_is_evicted() -> None:
     repo = AsyncMock()
     with (
         patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
-        patch.object(
-            lifecycle.AsyncSandbox, "get_info", AsyncMock(side_effect=NotFoundException("gone"))
-        ),
+        patch.object(AsyncSandbox, "get_info", AsyncMock(side_effect=NotFoundException("gone"))),
         patch.object(lifecycle, "e2b_sandbox_repository", repo),
     ):
         user_id = _seed(entry)
@@ -116,7 +116,7 @@ async def test_a_cached_sandbox_on_the_default_template_is_dropped_for_a_flagged
     entry.template_id = "gaia-coder"
     recorded: dict[str, object] = {}
     with (
-        patch.object(pool_module.settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
+        patch.object(settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
         patch.object(lifecycle, "_record", recorded.update),
         patch.object(lifecycle, "e2b_sandbox_repository", AsyncMock()),
     ):
@@ -132,10 +132,10 @@ async def test_returns_none_when_no_cached_entry() -> None:
     assert await lifecycle._reuse_cached_entry(missing, {}, "gaia-coder") is None
 
 
-def _control_plane(state: SandboxState) -> object:
+def _control_plane(state: SandboxState) -> AbstractContextManager[AsyncMock]:
     """Patch E2B's control plane to report the sandbox in the given state."""
     return patch.object(
-        lifecycle.AsyncSandbox, "get_info", AsyncMock(return_value=SimpleNamespace(state=state))
+        AsyncSandbox, "get_info", AsyncMock(return_value=SimpleNamespace(state=state))
     )
 
 
@@ -183,9 +183,7 @@ async def test_evicting_a_dead_cached_sandbox_marks_only_that_sandbox_dead() -> 
     repo = AsyncMock()
     with (
         patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
-        patch.object(
-            lifecycle.AsyncSandbox, "get_info", AsyncMock(side_effect=NotFoundException("gone"))
-        ),
+        patch.object(AsyncSandbox, "get_info", AsyncMock(side_effect=NotFoundException("gone"))),
         patch.object(lifecycle, "e2b_sandbox_repository", repo),
     ):
         await _reuse(entry)
@@ -202,8 +200,8 @@ async def test_an_agent_lab_sandbox_refreshes_to_its_own_lifetime_on_its_own_win
         p1,
         p2,
         p3,
-        patch.object(pool_module.settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
-        patch.object(pool_module.settings, "E2B_AGENT_LAB_LIFETIME_SECONDS", lab_lifetime),
+        patch.object(settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
+        patch.object(settings, "E2B_AGENT_LAB_LIFETIME_SECONDS", lab_lifetime),
     ):
         entry.timeout_refreshed_at = time.monotonic() - (SANDBOX_LIFETIME_SECONDS + 5)
         await _reuse(entry)
@@ -243,9 +241,7 @@ async def test_an_unreachable_control_plane_never_gets_a_live_sandbox_killed() -
     repo = AsyncMock()
     with (
         patch.object(lifecycle, "_health_probe", AsyncMock(side_effect=[False, True])),
-        patch.object(
-            lifecycle.AsyncSandbox, "get_info", AsyncMock(side_effect=RuntimeError("e2b 502"))
-        ),
+        patch.object(AsyncSandbox, "get_info", AsyncMock(side_effect=RuntimeError("e2b 502"))),
         patch.object(lifecycle, "_ensure_mounted", AsyncMock()),
         patch.object(lifecycle, "_verify_canary_or_die", AsyncMock(return_value=True)),
         patch.object(lifecycle, "e2b_sandbox_repository", repo),
@@ -263,9 +259,7 @@ async def test_a_dead_sandbox_is_dropped_even_when_the_control_plane_cannot_be_a
     repo = AsyncMock()
     with (
         patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
-        patch.object(
-            lifecycle.AsyncSandbox, "get_info", AsyncMock(side_effect=RuntimeError("e2b 502"))
-        ),
+        patch.object(AsyncSandbox, "get_info", AsyncMock(side_effect=RuntimeError("e2b 502"))),
         patch.object(lifecycle, "e2b_sandbox_repository", repo),
     ):
         user_id, result = await _reuse(entry)
@@ -283,7 +277,7 @@ async def test_a_hung_control_plane_is_bounded_in_the_liveness_check() -> None:
 
     with (
         patch.object(lifecycle, "_health_probe", AsyncMock(side_effect=[False, True])),
-        patch.object(lifecycle.AsyncSandbox, "get_info", hang),
+        patch.object(AsyncSandbox, "get_info", hang),
         patch.object(lifecycle, "SANDBOX_CONNECT_TIMEOUT_SECONDS", 0.05),
         patch.object(lifecycle, "_ensure_mounted", AsyncMock()),
         patch.object(lifecycle, "_verify_canary_or_die", AsyncMock(return_value=True)),
@@ -299,13 +293,13 @@ def test_the_lab_lifetime_is_the_environments_setting() -> None:
     # team, which rejects any timeout over its 1h cap ("Timeout cannot be greater
     # than 1 hours"). The cap belongs to the team each environment's key is on.
     with (
-        patch.object(pool_module.settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
-        patch.object(pool_module.settings, "E2B_AGENT_LAB_LIFETIME_SECONDS", 3600),
+        patch.object(settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
+        patch.object(settings, "E2B_AGENT_LAB_LIFETIME_SECONDS", 3600),
     ):
         assert pool_module.sandbox_lifetime_seconds("gaia-coder-8gb") == 3600
 
 
-def _frozen_clock(now: float) -> object:
+def _frozen_clock(now: float) -> AbstractContextManager[SimpleNamespace]:
     """Freeze only pool.py's monotonic clock, leaving the event loop's untouched."""
     return patch.object(pool_module, "time", SimpleNamespace(monotonic=lambda: now))
 
@@ -323,8 +317,8 @@ async def test_the_kill_timer_is_refreshed_only_once_half_its_lifetime_has_passe
     entry.template_id = "gaia-coder-8gb"
     entry.timeout_refreshed_at = 10_000.0
     with (
-        patch.object(pool_module.settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
-        patch.object(pool_module.settings, "E2B_AGENT_LAB_LIFETIME_SECONDS", 3601),
+        patch.object(settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
+        patch.object(settings, "E2B_AGENT_LAB_LIFETIME_SECONDS", 3601),
         _frozen_clock(10_000.0 + elapsed),
     ):
         assert await pool_module.refresh_sandbox_timeout(entry) is refreshed

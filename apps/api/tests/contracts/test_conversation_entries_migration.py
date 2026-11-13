@@ -385,7 +385,7 @@ async def test_message_shaped_entries_are_rewritten_in_place_with_settles_at_the
     )
     ref = HeadRef(str(result.inserted_id), conversation_id, USER)
     at = datetime(2026, 2, 1, tzinfo=UTC)
-    old = [
+    old: list[dict[str, object]] = [
         _message(1),
         _message(2, "bot"),
         {

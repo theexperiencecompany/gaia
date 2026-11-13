@@ -6,7 +6,6 @@ import asyncio
 
 from app.agents.core.background.executor_runner import (
     DETACHED_EXECUTOR_TASK_NAME,
-    run_executor_background,
 )
 from app.agents.core.background.redis_writer import STREAM_PUBLISH_TASK_NAME
 from app.agents.core.subagents.delegation import BACKGROUND_SUBAGENT_TASK_NAME
@@ -15,7 +14,7 @@ from app.services.hil import resolution
 from app.utils import background_tasks
 
 #: call_executor spawns its live run unnamed, so the task carries the coroutine's name.
-LIVE_EXECUTOR_TASK_NAME = run_executor_background.__qualname__
+LIVE_EXECUTOR_TASK_NAME = "run_executor_background"
 
 
 def tasks_named(*names: str) -> list[asyncio.Task[object]]:

@@ -4,13 +4,15 @@ The ledger repository and the card settlement are the mocked seams; the ticket
 routing, the redeem and the tool invocation are production code.
 """
 
-from typing import TypedDict
+from typing import Any, TypedDict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import StreamMode
 import pytest
 
 from app.agents.tools.execute import dispatch as dispatch_module
@@ -63,13 +65,15 @@ async def test_an_approved_tool_streams_its_card_on_the_run_that_redeems_it() ->
     repo.get_by_approval_id = AsyncMock(return_value=_approved_row())
     repo.claim_executing = AsyncMock(return_value=True)
     repo.transition = AsyncMock(return_value=True)
-    graph = (
+    graph: CompiledStateGraph = (
         StateGraph(_State)
         .add_node("redeem", _redeem_node)
         .add_edge(START, "redeem")
         .add_edge("redeem", END)
         .compile()
     )
+    initial: _State = {"result": None}
+    modes: list[StreamMode] = ["custom", "values"]
     config: RunnableConfig = {
         "configurable": {
             "thread_id": "executor_conv-1",
@@ -87,10 +91,9 @@ async def test_an_approved_tool_streams_its_card_on_the_run_that_redeems_it() ->
             new=AsyncMock(return_value=ResolvedTool("show_card", show_card, is_integration=False)),
         ),
     ):
-        chunks = [
-            c
-            async for c in graph.astream({"result": None}, config, stream_mode=["custom", "values"])
-        ]
+        chunks: list[tuple[str, Any]] = []
+        async for mode, payload in graph.astream(initial, config, stream_mode=modes):
+            chunks.append((mode, payload))
 
     assert ("custom", CARD_FRAME) in chunks
     final = chunks[-1][1]["result"]

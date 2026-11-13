@@ -38,7 +38,7 @@ def _composed() -> FirstConversation:
 
 
 @pytest.fixture
-def runtime() -> Iterator[Runtime]:
+def runtime() -> Runtime:
     runtime = Runtime()
     install_runtime_ports(runtime.ports)
     return runtime

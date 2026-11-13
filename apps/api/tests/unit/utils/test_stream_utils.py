@@ -349,7 +349,7 @@ class TestReconstructSubagentGroups:
         assert group["token_count"] == 42
 
     def test_no_subagents_is_noop(self) -> None:
-        td = {"tool_data": [{"tool_name": "search_results", "data": {}}]}
+        td: dict[str, object] = {"tool_data": [{"tool_name": "search_results", "data": {}}]}
         reconstruct_subagent_groups(td)
         assert td["tool_data"] == [{"tool_name": "search_results", "data": {}}]
 

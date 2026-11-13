@@ -58,7 +58,9 @@ class TestOutOfBandThreadWritesCarryIds:
         builder.set_entry_point("model")
         builder.add_edge("model", "tools")
         builder.add_edge("tools", END)
-        graph = builder.compile(checkpointer=InMemorySaver(), interrupt_after=["model"])
+        graph: CompiledStateGraph = builder.compile(
+            checkpointer=InMemorySaver(), interrupt_after=["model"]
+        )
 
         await graph.ainvoke({"messages": [HumanMessage("do a thing")]}, CONFIG)
         assert (await graph.aget_state(CONFIG)).next == ("tools",)

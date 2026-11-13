@@ -54,7 +54,7 @@ def test_an_entry_answered_with_no_work_is_final_with_its_reply() -> None:
 
 
 def test_an_entry_is_not_final_while_the_work_it_caused_runs() -> None:
-    entries = [
+    entries: list[Entry] = [
         fired("wf"),
         _work("w1", "t1", 1, ["wf"]),
         _reply("o1", "r1", "on it"),
@@ -64,7 +64,7 @@ def test_an_entry_is_not_final_while_the_work_it_caused_runs() -> None:
 
 
 def test_an_entry_is_not_final_while_its_finished_work_awaits_its_reply() -> None:
-    entries = [
+    entries: list[Entry] = [
         fired("wf"),
         _work("w1", "t1", 1, ["wf"]),
         _reply("o1", "r1", "on it"),
@@ -75,7 +75,7 @@ def test_an_entry_is_not_final_while_its_finished_work_awaits_its_reply() -> Non
 
 
 def test_the_work_reply_that_answers_it_last_is_its_outcome() -> None:
-    entries = [
+    entries: list[Entry] = [
         fired("wf"),
         _work("w1", "t1", 1, ["wf"]),
         _reply("o1", "r1", "on it"),
@@ -91,7 +91,7 @@ def test_the_work_reply_that_answers_it_last_is_its_outcome() -> None:
 
 
 def test_failed_work_fails_the_entry_even_when_its_reply_answered() -> None:
-    entries = [
+    entries: list[Entry] = [
         fired("wf"),
         _work("w1", "t1", 1, ["wf"]),
         _reply("o1", "r1", "on it"),
@@ -106,7 +106,7 @@ def test_failed_work_fails_the_entry_even_when_its_reply_answered() -> None:
 
 
 def test_a_failed_reply_fails_the_entry() -> None:
-    entries = [
+    entries: list[Entry] = [
         fired("wf"),
         _reply("o1", "r1", ""),
         settled("s1", ["wf"], 1, outcome=ReplyOutcome.FAILED),
@@ -123,7 +123,12 @@ def test_a_stop_before_any_reply_ends_the_entry_as_stopped() -> None:
 
 
 def test_a_reply_to_another_input_does_not_finish_the_entry() -> None:
-    entries = [user("u1"), fired("wf"), _reply("o1", "r1", "hi"), settled("s1", ["u1"], 1)]
+    entries: list[Entry] = [
+        user("u1"),
+        fired("wf"),
+        _reply("o1", "r1", "hi"),
+        settled("s1", ["u1"], 1),
+    ]
     state, _ = fold(entries)
     log = [logged(seq, entry) for seq, entry in enumerate(entries, start=1)]
     assert entry_outcome("wf", 2, log, state) is None

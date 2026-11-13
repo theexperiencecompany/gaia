@@ -180,9 +180,15 @@ class _ReadThenPause(ConversationLogRepository):
         after_seq: int = 0,
         through_seq: int | None = None,
         ids: Sequence[str] | None = None,
+        reply_ids: Sequence[str] | None = None,
     ) -> list[LoggedEntry] | None:
         rows = await super().read_log(
-            conversation_id, user_id=user_id, after_seq=after_seq, through_seq=through_seq, ids=ids
+            conversation_id,
+            user_id=user_id,
+            after_seq=after_seq,
+            through_seq=through_seq,
+            ids=ids,
+            reply_ids=reply_ids,
         )
         pause, self.pause = self.pause, None
         if pause is not None:

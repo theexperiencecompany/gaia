@@ -4,7 +4,13 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
-from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    HumanMessage,
+    MessageLikeRepresentation,
+    RemoveMessage,
+)
 import pytest
 from scripts.repair_comms_message_breaks import repair_thread, repair_writes
 
@@ -39,12 +45,13 @@ def test_text_and_clean_messages_are_left_alone_or_trimmed() -> None:
 
 
 def test_the_writes_replace_and_remove_through_the_real_reducer() -> None:
-    history = [
+    history: list[AnyMessage] = [
         HumanMessage(id="h1", content="go"),
         AIMessage(id="a1", content=BR * 13, tool_calls=CALL),
         AIMessage(id="a2", content=BR * 3998),
     ]
-    repaired = messages_delta_reducer(history, [repair_writes(history)])
+    writes: list[MessageLikeRepresentation] = [*repair_writes(history)]
+    repaired = messages_delta_reducer(history, [writes])
     assert [(m.id, m.content) for m in repaired] == [("h1", "go"), ("a1", "")]
 
 

@@ -21,6 +21,7 @@ from app.models.conversation_log_models import Entry, EntryKind, LoggedEntry
 from app.models.conversation_models import (
     ConversationHead,
     EntryKey,
+    MessageShape,
     StoredEntry,
 )
 from app.utils.errors import ConversationStoreError, UnmigratedConversationError
@@ -347,9 +348,12 @@ class EntryWindow:
         return {"kind": {"$in": sorted(self._kinds())}, **({"$or": named} if named else {})}
 
     def admits(self, entry: StoredEntry, log_head: int) -> bool:
-        fields = entry.message_fields()
         in_range = self.after_seq < entry.seq <= self.upper(log_head)
-        return in_range and fields.get("kind") in self._kinds() and self._names(entry.id, fields)
+        return (
+            in_range
+            and entry.shape().kind in self._kinds()
+            and self._names(entry.id, entry.shape())
+        )
 
     def take(self, union: Mapping[int, StoredEntry]) -> list[StoredEntry]:
         seqs = sorted(union, reverse=True)
@@ -362,7 +366,7 @@ class EntryWindow:
     def _kinds(self) -> frozenset[str]:
         return self.kinds if self.kinds is not None else frozenset(LOG_KINDS)
 
-    def _names(self, entry_id: str, fields: Mapping[str, object]) -> bool:
+    def _names(self, entry_id: str, shape: MessageShape) -> bool:
         if self.ids is None and self.reply_ids is None:
             return True
-        return entry_id in (self.ids or ()) or fields.get("reply_id") in (self.reply_ids or ())
+        return entry_id in (self.ids or ()) or shape.reply_id in (self.reply_ids or ())

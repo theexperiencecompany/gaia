@@ -286,7 +286,7 @@ async def test_an_approval_cards_label_follows_the_log(
     mongo_log: MongoConversationLog, ending: Entry, label: str
 ) -> None:
     user_id = str(ObjectId())
-    work = [started("work:t1", "t1", 1), asked("approval:ap1", "t1", "ap1")]
+    work: list[Entry] = [started("work:t1", "t1", 1), asked("approval:ap1", "t1", "ap1")]
     turn = _turn("send the mail", cards=(_card("ap1"),))
     conversation_id = await _chat(user_id, [turn[0], *work, *turn[1:]])
 

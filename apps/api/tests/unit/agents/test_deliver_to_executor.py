@@ -65,7 +65,7 @@ def _seams(*, busy: list[bool], started: bool):
 
     stack = patch.object(er, "reclaim_dead_lock", _free_after_reclaim)
     start = patch.object(er, "_start_executor_run", new_callable=AsyncMock, return_value=started)
-    append = patch.object(er.ExecutorInbox, "append", new_callable=AsyncMock)
+    append = patch.object(ExecutorInbox, "append", new_callable=AsyncMock)
     return stack, start, append
 
 

@@ -8,7 +8,7 @@ are what the client and the log really get.
 """
 
 import asyncio
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator
 import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -58,7 +58,7 @@ async def redis(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[fakeredis.aior
 
 
 @pytest.fixture
-async def runtime() -> AsyncIterator[Runtime]:
+async def runtime() -> Runtime:
     runtime = Runtime()
     install_runtime_ports(runtime.ports)
     await runtime.log.append(CONVERSATION, USER, user("u1"))
@@ -77,7 +77,7 @@ class Client:
 
 
 @pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch, runtime: Runtime) -> Iterator[Client]:
+def client(monkeypatch: pytest.MonkeyPatch, runtime: Runtime) -> Client:
     seen = Client()
 
     async def _publish_chunk(stream_id: str, chunk: str) -> None:

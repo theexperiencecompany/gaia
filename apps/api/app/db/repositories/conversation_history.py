@@ -12,6 +12,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
+from pydantic import BaseModel, ConfigDict
+
 from app.constants.chat import BOT_MESSAGE_TYPE, USER_MESSAGE_TYPE
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME, ApprovalResolution
 from app.models.chat_models import MessageReaction
@@ -261,12 +263,17 @@ def _card_approvals(entry: object) -> list[str]:
             return []
 
 
+class _ApprovalCardData(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    approval_id: str | None = None
+
+
 def _approval_of(card: ToolDataEntry) -> str | None:
     data = card["data"]
     if card["tool_name"] != APPROVAL_REQUEST_TOOL_NAME or not isinstance(data, dict):
         return None
-    approval_id = data.get("approval_id")
-    return approval_id if isinstance(approval_id, str) else None
+    return _ApprovalCardData.model_validate(data).approval_id
 
 
 def _cards(cards: Sequence[ToolDataEntry], beside: _Beside) -> list[ToolDataEntry] | None:

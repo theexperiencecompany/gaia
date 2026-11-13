@@ -78,6 +78,7 @@ from app.models.conversation_models import (
     ConversationSearchResults,
     ConversationSummary,
     ConversationUpdate,
+    EntryAddress,
     StoredEntry,
     _ConversationIdRow,
     _ConversationOwnerRow,
@@ -507,12 +508,13 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """Say who already holds doc's conversation id; re-raise when another unique key refused it."""
         with store_errors("create"):  # pragma: no mutate — error label only
             holder = await self._raw_collection().find_one(
-                {"conversation_id": doc.conversation_id}, {"_id": 0, "user_id": 1}
+                {"conversation_id": doc.conversation_id},
+                {"_id": 0, "conversation_id": 1, "user_id": 1},
             )
         meta: dict[str, object] = {"conversation_id": doc.conversation_id}
         if holder is None:
             raise error
-        if holder["user_id"] != doc.user_id:
+        if _ConversationOwnerRow.model_validate(holder).user_id != doc.user_id:
             raise ConversationIdTakenError(
                 message=f"conversation id {doc.conversation_id} belongs to another user",
                 meta=meta,
@@ -890,15 +892,16 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 .aggregate(stored)
                 .to_list(length=None)
             )
-        staged = {(str(row["conversation_id"]), int(str(row["seq"]))) for row in revised}
+        staged = {EntryAddress.model_validate(row).key for row in revised}
         found: dict[tuple[str, int], StoredRow] = {}
         for raw in pending:
             row = stored_row(raw)
             found[(row.conversation_id, row.logged.seq)] = row
         for raw in rows:
-            key = (str(raw["conversation_id"]), int(str(raw["seq"])))
+            row = stored_row(raw)
+            key = (row.conversation_id, row.logged.seq)
             if key not in found and key not in staged:
-                found[key] = stored_row(raw)
+                found[key] = row
         return sorted(found.values(), key=lambda row: (row.logged.at, row.logged.seq))
 
     async def _first_entry(

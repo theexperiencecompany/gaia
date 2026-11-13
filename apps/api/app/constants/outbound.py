@@ -11,7 +11,7 @@ RabbitMQ rejects a redeclare whose arguments differ from the existing queue.
 
 from __future__ import annotations
 
-from typing import Any
+from pamqp.common import FieldTable
 
 from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource
 
@@ -37,11 +37,8 @@ def dlq_name(queue_name: str) -> str:
     return f"{queue_name}.dlq"
 
 
-def work_queue_arguments(queue_name: str) -> dict[str, Any]:
-    """Return declaration arguments for a work queue: dead-letter to the shared DLX.
-
-    Typed dict[str, Any] to satisfy aio-pika's FieldTable argument.
-    """
+def work_queue_arguments(queue_name: str) -> FieldTable:
+    """Return declaration arguments for a work queue: dead-letter to the shared DLX."""
     return {
         "x-dead-letter-exchange": OUTBOUND_DLX,
         "x-dead-letter-routing-key": dlq_name(queue_name),

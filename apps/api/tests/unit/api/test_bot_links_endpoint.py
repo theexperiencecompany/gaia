@@ -6,7 +6,6 @@ link-token-info). Assertions are unchanged from the original module — only the
 patch targets moved with the code.
 """
 
-from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
@@ -1147,7 +1146,7 @@ LOG_PATCH = "app.api.v1.endpoints.bot_links.log"
 
 
 @pytest.fixture
-def runtime() -> Iterator[Runtime]:
+def runtime() -> Runtime:
     runtime = Runtime()
     install_runtime_ports(runtime.ports)
     return runtime
