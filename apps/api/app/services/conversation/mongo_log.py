@@ -242,7 +242,12 @@ class MongoConversationLog:
             if isinstance(result, Rejected):
                 raise EntryRejected(result.reason)
             if await self._repository.commit_log_entry(
-                head, logged, result.state, epoch=epoch, unread=unread
+                head,
+                logged,
+                result.state,
+                epoch=epoch,
+                unread=unread,
+                flush=epoch is not None,
             ):
                 await _publish_hint(conversation_id, user_id, logged, result.state)
                 return Appended(

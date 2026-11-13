@@ -197,6 +197,16 @@ class LLMCallsRepository(MongoRepository[LLMCallDocument, LLMCallUpdate]):
     # call back by id — it is queried in ranges by the indexes below.
     cache_policy = None
 
+    async def create(self, doc: LLMCallDocument) -> LLMCallDocument:
+        """Insert one ledger row and return it with its id, without the read-back the base pays for.
+
+        The ledger is append-only and never cached, so nothing reads the row back by id: the
+        insert alone is the record, and the id the caller needs is the id Mongo assigned.
+        """
+        data = doc.model_dump(exclude={"id"}, exclude_none=True)
+        result = await self._raw_collection().insert_one(data)
+        return doc.model_copy(update={"id": str(result.inserted_id)})
+
     async def insert_backfilled(self, docs: Sequence[LLMCallDocument]) -> int:
         """Insert reconstructed rows, skipping any already present.
 

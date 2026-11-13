@@ -109,11 +109,14 @@ class ConversationLogRepository(ConversationRepository):
         *,
         epoch: int | None,
         unread: bool = False,
+        flush: bool = True,
     ) -> bool:
         """Commit logged and the state after it, only while the head is as read (and held by epoch when given).
 
         unread also marks the conversation unread. An entry that changes what history shows (a
         message, its settle) advances the sync clock, so batch sync and the activity signal see it.
+        flush defers the copy to conversation_entries to a later commit or the sweeper (an accept's
+        entry that kicks a step does not flush: the step's later commits carry it).
         """
         expected: dict[str, object] = {
             "conversation_id": head.conversation_id,
@@ -143,11 +146,12 @@ class ConversationLogRepository(ConversationRepository):
             )
         if not result.matched_count:
             return False
-        self._spawn_flush(
-            head.conversation_id,
-            head.user_id,
-            [*head.unflushed, StoredEntry.model_validate(document)],
-        )
+        if flush:
+            self._spawn_flush(
+                head.conversation_id,
+                head.user_id,
+                [*head.unflushed, StoredEntry.model_validate(document)],
+            )
         return True
 
     async def read_log(

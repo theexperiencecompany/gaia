@@ -76,6 +76,7 @@ from app.services.conversation.reply_files import reply_files
 from app.services.conversation.step_view import StepView
 from app.services.conversation.todo_wake import nothing_to_report
 from app.services.conversation.verdict import merge_group, quote_target, verdict
+from app.utils.hot_path import first_text_gate, open_hot_path
 from app.utils.liveness import keep_proving
 from shared.py.wide_events import log
 
@@ -430,32 +431,37 @@ async def _run_attempt(
     ports: RuntimePorts, attempt: _Attempt, context: Sequence[LoggedEntry]
 ) -> None:
     """Run one comms attempt to its end; the run is certainly dead when this returns or raises."""
-    attempt.view.phase_set(await _set_comms(ports, attempt.claim, CommsPhase.THINKING))
-    try:
-        run = await ports.runner.start(attempt.claim, attempt.batch, context)
-    except Exception as error:  # a run that cannot start fails its inputs like one that crashed
-        await _fail(ports, attempt, error)
-        return
-    try:
-        ending = await _watch(ports, attempt, run)
-    except ClaimLost:
-        await run.cancel(CancelReason.LOST)
-        if attempt.progress is None:
-            await _retract(ports, attempt)
-        raise
-    except Exception as error:  # a store or stream failure mid-attempt fails it, under the claim
-        await run.cancel(CancelReason.LOST)
-        await _fail(ports, attempt, error)
-        return
-    except BaseException:
-        await run.cancel(CancelReason.LOST)
-        raise
-    try:
-        await _end(ports, attempt, run, ending)
-    except ClaimLost:
-        raise
-    except Exception as error:  # settling failed part-way: its idempotent ids let _fail finish it
-        await _fail(ports, attempt, error)
+    with first_text_gate():
+        attempt.view.phase_set(await _set_comms(ports, attempt.claim, CommsPhase.THINKING))
+        try:
+            run = await ports.runner.start(attempt.claim, attempt.batch, context)
+        except Exception as error:  # a run that cannot start fails its inputs like one that crashed
+            await _fail(ports, attempt, error)
+            return
+        try:
+            ending = await _watch(ports, attempt, run)
+        except ClaimLost:
+            await run.cancel(CancelReason.LOST)
+            if attempt.progress is None:
+                await _retract(ports, attempt)
+            raise
+        except (
+            Exception
+        ) as error:  # a store or stream failure mid-attempt fails it, under the claim
+            await run.cancel(CancelReason.LOST)
+            await _fail(ports, attempt, error)
+            return
+        except BaseException:
+            await run.cancel(CancelReason.LOST)
+            raise
+        try:
+            await _end(ports, attempt, run, ending)
+        except ClaimLost:
+            raise
+        except (
+            Exception
+        ) as error:  # settling failed part-way: its idempotent ids let _fail finish it
+            await _fail(ports, attempt, error)
 
 
 async def _watch(ports: RuntimePorts, attempt: _Attempt, run: CommsRun) -> _Ending:
@@ -596,6 +602,7 @@ async def _show(ports: RuntimePorts, attempt: _Attempt, payload: StreamPayload) 
         if opened.seq == attempt.seen + 1:
             # Its own entry: no need to read the log for joiners the next verdict.
             attempt.seen = opened.seq
+        open_hot_path()
     shown = attempt.progress
     attempt.progress = replace(shown, reply=_fold(shown.reply, payload))
     delta = ReplyDeltaFrame(

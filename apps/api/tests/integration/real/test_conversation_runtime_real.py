@@ -276,6 +276,15 @@ class Rig:
         )
         return sent.accepted.seq
 
+    async def submit(self, message_id: str, text: str) -> int:
+        accepted = await submit_message(
+            self.conversation_id,
+            AuthenticatedUser(user_id=self.user_id),
+            SendMessageRequest(message_id=message_id, text=text),
+            ConversationSource.WEB,
+        )
+        return accepted.seq
+
     async def settle(self) -> None:
         """Wait until no step runs here; a step's appends may kick another, so wait again."""
         async with asyncio.timeout(_SETTLE_SECONDS):
@@ -769,7 +778,8 @@ async def test_a_plain_turn_stays_within_its_mongo_and_redis_budget(
 
     async def turn() -> None:
         counted = _count_redis_trips(monkeypatch)
-        await rig.send("m2", "and again")
+        with patch("app.services.conversation.send.capture"):
+            await rig.submit("m2", "and again")
         await rig.settle()
         trips.extend(counted)
 
@@ -779,6 +789,9 @@ async def test_a_plain_turn_stays_within_its_mongo_and_redis_budget(
         logged for logged in reversed(await rig.entries()) if isinstance(logged.entry, Reply)
     )
     before_first_delta = [op for op in ops if op.at <= opened.at]
+    print(f"\n=== total={len(ops)} before={len(before_first_delta)} trips={len(trips)} ===")
+    for op in before_first_delta:
+        print(f"  {op.collection} {op.op}")
     assert len(ops) <= PLAIN_TURN_MONGO_OPS, ops
     assert len(before_first_delta) <= FIRST_DELTA_MONGO_OPS, before_first_delta
     shown_at = opened.at.timestamp()
