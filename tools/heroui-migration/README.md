@@ -71,16 +71,33 @@ inventory + variants  →  screenshot baseline  →  codemod  →  typecheck  �
                                                                      changed, on screen
 ```
 
-### a. Baseline screenshots (before touching code)
+### a. Whole-app visual review (`review/`)
+
+Run on the capture machine (the M4), never a laptop. One command per side:
 
 ```bash
-cd ~/Projects/gaia
-node tools/heroui-migration/routes.mjs      # 68 routes from the app dir
-node tools/heroui-migration/visual/shoot.mjs --label v2
+cd tools/heroui-migration && pnpm install --ignore-workspace
+# SKIP_BROWSER_GC: without it Playwright deletes every other browser revision on the machine
+PLAYWRIGHT_SKIP_BROWSER_GC=1 node_modules/.bin/playwright install chromium-headless-shell
+pnpm review before <v2-ref>   # seed API, build v2, discover states, capture twice, review.html
+pnpm review after  <v3-ref>   # build v3, capture twice, component change log, full review.html
+pnpm review report            # recompare + re-render only
 ```
 
-Headless Chromium, desktop 1440 + mobile 390, full-page PNGs, 4 workers, no agent
-driving the UI. Takes ~2 min for all 136 shots.
+What it does, in order (each step is its own script, runnable alone):
+
+| Step | Script | |
+|---|---|---|
+| stack | `review/stack.sh` | worktree per side, local API (dev bypass, sim LLM) on :8100, `next build` with CI's public values, `next start` on :3210 (v2) / :3211 (v3) |
+| seed | `review/seed.mjs` + `seed_notifications.py` | resets and seeds `review@gaia.local` (Pro, projects, 12 todos, 7 chats holding every chat tool card, 3 workflows, one published as a use case, 4 notifications) and `onboarding@gaia.local` (not onboarded) through the real API |
+| inventory | `review/inventory.mjs` | every `page.tsx` under `apps/web/src/app`, dynamic segments bound to the prerender manifest (marketing) or the seed (app); unbindable pages listed as skipped with the reason |
+| states | `review/discover.mjs` -> `review/states.json` | every Tab, Dropdown/Select/Popover/Accordion trigger, Modal-opening button and Tooltip, by ARIA role + accessible name, so the same state replays on both builds |
+| capture | `review/capture.mjs` | 1440x900 and 390x844, fixed clock (seed + 1h), Asia/Kolkata, seeded `Math.random`, CSS motion frozen, writes blocked, third-party bytes replayed from a disk cache |
+| compare | `review/compare.mjs` | pixels that differ between two runs of the same build are noise and are masked; the rest becomes changed regions |
+| change log | `review/changelog.mjs` | per changed file: v2 parts -> v3 compound parts, and every prop remap with its `decisions.json` / Button-table rule |
+| page | `review/html.mjs` | `review.html`: before / after / diff / slider per route and state, filters by area and severity |
+
+Artifacts land in `$REVIEW_OUT` (default `~/v3review/out`); `run.sh publish` serves it on the Tailscale address.
 
 ### b. Codemod
 
@@ -94,23 +111,7 @@ Verified dry run on this repo: **284 files rewritten, 0 errors, 213 sites flagge
 for manual review (124 `Button` content props, 78 `Chip`, 9 `Tooltip`, 1 `Spinner`,
 1 `Avatar`) → `manual-review.log`.
 
-### c. Visual diff — the review surface
-
-```bash
-node tools/heroui-migration/visual/shoot.mjs --label v3
-node tools/heroui-migration/visual/compare.mjs --a v2 --b v3
-open tools/heroui-migration/visual-report.html
-```
-
-The unit of review is a **changed region**, not a percentage. Every cluster of
-changed pixels becomes a before/after crop:
-
-- cards show the largest change per route as stacked before/after crops
-- lightbox: full page with red boxes over every changed region, a before/after
-  slider, and a filmstrip of all region crops; `←/→` switches viewport
-- percentages are only a sort key — the crops are the point
-
-### d. Bundle / tree-shaking
+### c. Bundle / tree-shaking
 
 ```bash
 node tools/heroui-migration/bundle.mjs --snapshot v2      # after `pnpm -C apps/web build`
@@ -125,7 +126,7 @@ unique JS, duplication factor, css, and which packages survive into
 `--deps` measures the install graph — 33 `@heroui/*` micro-packages + framer-motion
 collapse to 2 packages.
 
-### e. Phase gate
+### d. Phase gate
 
 ```bash
 pnpm -C apps/web type-check && pnpm -C apps/web lint && pnpm -C apps/web test
@@ -162,12 +163,10 @@ Realistic effort with this harness: **4–6 hours** for phases 1–7, plus whate
 | `inventory.mjs` | JSX site inventory, tiers, stale docs |
 | `variants.mjs` | v2↔v3 variant vocabularies joined to real usage |
 | `codemods/v3-props.cjs` | Tier A codemod + `Divider`→`Separator` |
-| `visual/shoot.mjs` | headless screenshot capture |
-| `visual/compare.mjs` | pixel diff → region crops → review UI |
+| `review/` | whole-app visual review (section 3a) |
 | `bundle.mjs` | per-route shipped bytes, tree-shaking deltas |
 | `report.mjs` | side-by-side code diff of every changed file |
-| `routes.mjs` | derives routes from the app dir |
 | `v3-variants.json` | v3 vocabulary snapshot (regenerate with `--v3-dir`) |
 
-Generated and gitignored: `inventory.json`, `variants.json`, `shots/`,
-`visual-report.html`, `bundle-*.json`, `manual-review.log`.
+Generated and gitignored: `inventory.json`, `variants.json`, `bundle-*.json`,
+`manual-review.log`. The review writes outside the repo (`$REVIEW_OUT`).
