@@ -444,12 +444,25 @@ class TestFetchInputsModelsSend:
         )
         assert request.fields == ["id", "threadId", "from", "subject", "time", "labels"]
 
+    def test_the_old_has_attachment_field_means_the_attachment_list(self):
+        request = FetchMessagesInput.model_validate({"fields": ["subject", "hasAttachment"]})
+        assert request.fields == ["subject", "attachments"]
+
     @pytest.mark.regression
     def test_internal_date_spellings_mean_the_message_time(self):
         thread = FetchThreadInput.model_validate(
             {"thread_ids": ["t1"], "fields": ["from", "internalDate", "internal_date", "date"]}
         )
         assert thread.fields == ["from", "time"]
+
+    @pytest.mark.regression
+    def test_composio_message_id_spelling_means_the_message_id(self):
+        # Composio's own Gmail tools and trigger payloads key the id as `messageId`;
+        # prod GMAIL_FETCH_THREAD calls were refused for sending it.
+        thread = FetchThreadInput.model_validate(
+            {"thread_ids": ["t1"], "fields": ["messageId", "threadId", "from", "id"]}
+        )
+        assert thread.fields == ["id", "threadId", "from"]
 
     def test_an_unknown_field_is_still_refused(self):
         with pytest.raises(ValueError, match="isImportant"):
@@ -1459,6 +1472,10 @@ class TestTheThreadRead:
             (["subject"], "none", "metadata"),
             (["body"], "raw", "full"),
             (["attachments"], "none", "full"),
+            ([], "none", "full"),
+            (["subject", "body"], "none", "metadata"),
+            # A thread past the offload limit comes back whole, body included.
+            (["id"], "normalize", "full"),
         )
         for fields, processing, expected in cases:
             mock_proxy.reset_mock()
@@ -1590,6 +1607,62 @@ class TestAMessageReadForMetadataStaysAMetadataRead:
 
         _register_and_get_tools()["FETCH_MESSAGES"](
             request=FetchMessagesInput(query="after:1790000000", per_page=5, fields=["id"]),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert formats and set(formats) == {"metadata"}
+
+    @pytest.mark.parametrize(
+        "fields",
+        [["attachments"], []],
+        ids=["attachments", "all-fields"],
+    )
+    def test_an_attachment_field_is_read_from_the_full_message(
+        self, mock_proxy: MagicMock, fields: list[MessageFieldLiteral]
+    ) -> None:
+        """Only format=full carries the MIME parts an attachment is found in."""
+        formats: list[str] = []
+        mailbox = _one_message_mailbox()
+
+        def _serve(request: ProxyRequest) -> dict[str, Any]:
+            if "/users/me/messages/" in request.endpoint and (request.query or {}).get("format"):
+                formats.append(request.query["format"])
+            return mailbox(request)
+
+        mock_proxy.side_effect = _serve
+
+        _register_and_get_tools()["FETCH_MESSAGES"](
+            request=FetchMessagesInput(
+                query="after:1790000000", per_page=5, fields=fields, body_processing="none"
+            ),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert formats and set(formats) == {"full"}
+
+    def test_a_body_field_with_no_body_processing_stays_a_metadata_read(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        """body_processing "none" drops the body, so asking for the field costs no full fetch."""
+        formats: list[str] = []
+        mailbox = _one_message_mailbox()
+
+        def _serve(request: ProxyRequest) -> dict[str, Any]:
+            if "/users/me/messages/" in request.endpoint and (request.query or {}).get("format"):
+                formats.append(request.query["format"])
+            return mailbox(request)
+
+        mock_proxy.side_effect = _serve
+
+        _register_and_get_tools()["FETCH_MESSAGES"](
+            request=FetchMessagesInput(
+                query="after:1790000000",
+                per_page=5,
+                fields=["subject", "body"],
+                body_processing="none",
+            ),
             execute_request=MagicMock(),
             auth_credentials=AUTH_CREDS,
         )
