@@ -446,6 +446,27 @@
     padding-top: var(--gaia-field-inside-textarea-padding-top);
     padding-bottom: var(--gaia-field-inside-textarea-padding-bottom);
   }
+  /* v2's startContent and endContent sat on the value's row under the label, at
+     the field's 12px inset with a 6px gap to the value, not centred on the field. */
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input-group__prefix,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input-group__suffix {
+    align-self: stretch;
+    height: auto;
+    padding-top: var(--gaia-field-inside-padding-top);
+    padding-bottom: var(--gaia-field-inside-padding-bottom);
+  }
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input-group__prefix {
+    padding-inline: var(--gaia-field-inside-padding-x) 0;
+  }
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input-group__suffix {
+    padding-inline: 0 var(--gaia-field-inside-padding-x);
+  }
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input-group:has(> .input-group__prefix) .input-group__input {
+    padding-inline-start: var(--gaia-field-inside-content-gap);
+  }
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input-group:has(> .input-group__suffix) .input-group__input {
+    padding-inline-end: var(--gaia-field-inside-content-gap);
+  }
 
   /* components/shared/controlVariants.ts */
   .chip.gaia-chip-selected {

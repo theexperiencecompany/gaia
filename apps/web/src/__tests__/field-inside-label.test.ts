@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import postcss, { Rule } from "postcss";
 import { describe, expect, it } from "vitest";
 
 import { fieldVariants } from "@/components/shared/fieldVariants";
@@ -28,6 +29,25 @@ describe("inside-label fields", () => {
     expect(
       selectors.filter((selector) => !selector.startsWith(VISIBLE_LABEL_GATE)),
     ).toEqual([]);
+  });
+
+  // An InputGroup.Prefix centred on the 56px field sat above the value, which
+  // sits under the label (MCPIntegrationModal's icons); v2 put it on the value's row.
+  it("puts a prefix and suffix on the value's row", () => {
+    const valueRow = new Set<string>();
+    postcss.parse(GAIA_CSS).walkDecls("padding-top", (decl) => {
+      if (decl.value !== "var(--gaia-field-inside-padding-top)") return;
+      if (!(decl.parent instanceof Rule)) return;
+      for (const selector of decl.parent.selectors)
+        valueRow.add(selector.split(/\s+/).at(-1) ?? "");
+    });
+    expect([...valueRow]).toEqual(
+      expect.arrayContaining([
+        ".input-group__input",
+        ".input-group__prefix",
+        ".input-group__suffix",
+      ]),
+    );
   });
 
   it("is opted into through fieldVariants alone", () => {
