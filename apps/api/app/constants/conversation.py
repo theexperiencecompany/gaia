@@ -97,6 +97,11 @@ WORK_LOST_REPORT = (
     "The background work stopped unexpectedly when the server running it went down, "
     "so it did not finish."
 )
+# Past its expiry by this much, an approval the HIL sweep has not timed out is the conversation sweep's to settle.
+APPROVAL_EXPIRY_GRACE = timedelta(minutes=5)
+APPROVAL_UNDECIDABLE_REPORT = (
+    "The approval this work was waiting on expired or no longer exists, so it did not go ahead."
+)
 # How long a shutting-down process lets its running conversation steps finish.
 STEP_DRAIN_GRACE_SECONDS = 20.0
 # How far back a connect looks for work waiting on that integration.

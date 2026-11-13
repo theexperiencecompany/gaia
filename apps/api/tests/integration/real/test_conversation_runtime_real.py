@@ -9,7 +9,7 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol, TypeVar, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -65,6 +65,7 @@ from app.db.redis import redis_cache
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.hil import hil_approval_repository
 from app.models.agent_config import AgentConfigurable, StepTurnRef, agent_configurable
 from app.models.agent_models import AgentRunnableConfig
 from app.models.conversation_frame_models import (
@@ -98,6 +99,7 @@ from app.models.conversation_log_models import (
     WorkStarted,
 )
 from app.models.conversation_send_models import SendMessageRequest
+from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
 from app.models.playbook_models import PlaybookDocument, ToolStep
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
@@ -675,6 +677,70 @@ async def test_connecting_an_integration_continues_the_work_waiting_on_it(
     assert len(await rig.of(IntegrationConnected)) == 1
     assert any("just connected Gmail" in text for text in humans(model.prompts[1]))
     assert [reply.text for reply in await rig.of(Reply)][-1] == "done, the email is sent"
+
+
+async def _paused_on(rig: Rig, model: GatedModel, expires_at: datetime | None) -> None:
+    """Start t1 in a chat turn and pause it on approval a1, as the gate logs it."""
+    _during(model, 0, lambda: rig.start_work("t1"))
+    await rig.send("m1", "send the invoice")
+    await rig.settle()
+    await record_approval_requested(
+        rig.conversation_id, rig.user_id, "t1", "a1", summary="Send it", expires_at=expires_at
+    )
+
+
+async def _settled_by_sweeps(rig: Rig) -> tuple[list[ApprovalDecided], list[WorkFinished]]:
+    """Sweep twice and let the step answer: what the log then holds for a1 and t1."""
+    for _ in range(2):
+        await sweep_conversations()
+        await rig.settle()
+    return await rig.of(ApprovalDecided), await rig.of(WorkFinished)
+
+
+@pytest.mark.service
+async def test_work_waiting_on_an_approval_no_store_holds_is_settled_once(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("on it", "I could not send it")
+    rig = await rig_for(model)
+    await _paused_on(rig, model, expires_at=None)
+
+    decided, finished = await _settled_by_sweeps(rig)
+
+    state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+    assert [(d.approval_id, d.decision) for d in decided] == [("a1", "abandon")]
+    assert [(f.task_id, f.outcome) for f in finished] == [("t1", WorkOutcome.FAILED)]
+    assert state.work == ()
+    assert state.display is DisplayState.IDLE
+    # The step tells the user in the task's own reply.
+    assert "t1" in [reply.reply_id for reply in await rig.of(Reply)]
+
+
+@pytest.mark.service
+async def test_work_waiting_on_an_expired_approval_is_settled_once_and_its_record_closed(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("on it", "the approval expired")
+    rig = await rig_for(model)
+    expired = datetime.now(UTC) - timedelta(hours=1)
+    await hil_approval_repository.create_if_absent(
+        HILApprovalRecord(
+            approval_id="a1",
+            user_id=rig.user_id,
+            conversation_id=rig.conversation_id,
+            stream_id="stream-1",
+            tool_name="send_email",
+            expires_at=expired,
+        )
+    )
+    await _paused_on(rig, model, expires_at=expired)
+
+    decided, finished = await _settled_by_sweeps(rig)
+
+    record = await hil_approval_repository.get("a1")
+    assert [(d.approval_id, d.decision) for d in decided] == [("a1", "timeout")]
+    assert [(f.task_id, f.outcome) for f in finished] == [("t1", WorkOutcome.FAILED)]
+    assert record is not None and record.status is not HILApprovalStatus.PENDING
 
 
 @pytest.mark.service
