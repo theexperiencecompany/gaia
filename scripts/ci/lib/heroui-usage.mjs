@@ -159,12 +159,13 @@ class Module {
     for (const stmt of this.ast.program.body) {
       if (stmt.type !== "ImportDeclaration") continue;
       for (const spec of stmt.specifiers) {
+        const local = spec.local.name;
         const imported =
           spec.type === "ImportSpecifier" ? (spec.imported.name ?? spec.imported.value) : null;
-        this.imports.set(spec.local.name, { source: stmt.source.value, imported });
+        this.imports.set(local, { source: stmt.source.value, imported });
         if (stmt.source.value !== HEROUI) continue;
-        if (spec.type === "ImportNamespaceSpecifier") this.heroNamespaces.add(spec.local.name);
-        if (imported && /^[A-Z]/.test(imported)) this.heroNamed.set(spec.local.name, imported);
+        if (spec.type === "ImportNamespaceSpecifier") this.heroNamespaces.add(local);
+        if (imported && /^[A-Z]/.test(imported)) this.heroNamed.set(local, imported);
       }
     }
     traverse.default(this.ast, {
@@ -250,11 +251,12 @@ function classStrings(module, node, out, seen = new Set()) {
     case "ObjectExpression":
       for (const prop of node.properties) {
         if (prop.type !== "ObjectProperty") continue;
-        const key = prop.key.type === "StringLiteral" ? prop.key.value : prop.key.name;
+        const keyType = prop.key.type;
+        const key = keyType === "StringLiteral" ? prop.key.value : prop.key.name;
         // A variant call's className option ({ className: "bg-x" }) is a class list; other keys are cn() conditions.
         if (key === "className" && !prop.computed) recurse(prop.value);
-        else if (prop.key.type === "StringLiteral") out.push(prop.key.value);
-        else if (prop.key.type === "Identifier" && !prop.computed) out.push(prop.key.name);
+        else if (keyType === "StringLiteral") out.push(key);
+        else if (keyType === "Identifier" && !prop.computed) out.push(key);
       }
       break;
     case "ArrowFunctionExpression":
@@ -269,10 +271,13 @@ function classStrings(module, node, out, seen = new Set()) {
 function styleKeys(node) {
   const expr = node?.type === "JSXExpressionContainer" ? node.expression : node;
   if (expr?.type !== "ObjectExpression") return [];
-  return expr.properties
-    .filter((p) => p.type === "ObjectProperty" && !p.computed)
-    .map((p) => (p.key.type === "Identifier" ? p.key.name : p.key.value))
-    .filter((key) => typeof key === "string" && STYLE_KEY.test(key));
+  const keys = [];
+  for (const p of expr.properties) {
+    if (p.type !== "ObjectProperty" || p.computed) continue;
+    const key = p.key.type === "Identifier" ? p.key.name : p.key.value;
+    if (typeof key === "string" && STYLE_KEY.test(key)) keys.push(key);
+  }
+  return keys;
 }
 
 function mentionsIdentifier(node, name) {
@@ -323,11 +328,10 @@ function heroTag(name, module, wrappers) {
 /** The components a shared file exports that pass their own className to a HeroUI or variant-styled element. */
 export function heroWrappersIn(file, src) {
   const module = Module.load(file, src);
-  const variantFns = new Set(
-    [...module.imports]
-      .filter(([, b]) => VARIANT_MODULE.test(b.source))
-      .map(([local]) => local),
-  );
+  const variantFns = new Set();
+  for (const [local, binding] of module.imports) {
+    if (VARIANT_MODULE.test(binding.source)) variantFns.add(local);
+  }
   const wrappers = new Set();
   traverse.default(module.ast, {
     JSXOpeningElement(nodePath) {
@@ -451,9 +455,9 @@ export function heroUsageIn(file, src) {
         if (attr.type !== "JSXAttribute") continue;
         const name = attr.name.name;
         if (COLLAPSING_PARTS.has(tag) && name === "className") {
-          const spacing = classStrings(module, attr.value, [])
-            .flatMap((c) => c.split(/\s+/))
-            .filter((token) => BOX_SPACING.test(utilityOf(token)));
+          const spacing = classStrings(module, attr.value, []).flatMap((c) =>
+            c.split(/\s+/).filter((token) => BOX_SPACING.test(utilityOf(token))),
+          );
           if (spacing.length > 0) {
             found.push({
               line,

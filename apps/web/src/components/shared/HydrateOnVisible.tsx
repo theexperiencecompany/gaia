@@ -36,7 +36,10 @@ function useIsHydrating(): boolean {
 export function HydrateOnVisible({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const isHydrating = useIsHydrating();
+  // Server render and hydration both read the server snapshot, so only the global tells them apart; the
+  // mismatch is the mechanism: the inert div below keeps the server HTML (suppressHydrationWarning).
   const [active, setActive] = useState(
+    // react-doctor-disable-next-line react-doctor/no-hydration-branch-on-browser-global
     () => typeof window === "undefined" || !isHydrating,
   );
   // The server markup's height, held while the client render swaps in: a lazy

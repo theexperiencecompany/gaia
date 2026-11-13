@@ -8,9 +8,7 @@ describe("GaiaListBoxItem", () => {
   it("truncates a text label to one line, as v2's item title did", () => {
     render(
       <ListBox aria-label="Timezones">
-        <GaiaListBoxItem id="kolkata" textValue="Kolkata">
-          Kolkata (UTC+05:30) - 00:56
-        </GaiaListBoxItem>
+        <GaiaListBoxItem id="kolkata" textValue="Kolkata (UTC+05:30) - 00:56" />
       </ListBox>,
     );
     const label = screen.getByText("Kolkata (UTC+05:30) - 00:56");

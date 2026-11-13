@@ -199,27 +199,13 @@ const RecurrenceSelector: React.FC<RecurrenceSelectorProps> = ({
       </Select.Trigger>
       <Select.Popover className="border border-zinc-800">
         <ListBox>
-          <GaiaListBoxItem id="none" textValue="Does not repeat">
-            Does not repeat
-          </GaiaListBoxItem>
-          <GaiaListBoxItem id="daily" textValue="Daily">
-            Daily
-          </GaiaListBoxItem>
-          <GaiaListBoxItem id="weekdays" textValue="Every weekday (Mon-Fri)">
-            Every weekday (Mon-Fri)
-          </GaiaListBoxItem>
-          <GaiaListBoxItem id="weekly" textValue="Weekly">
-            Weekly
-          </GaiaListBoxItem>
-          <GaiaListBoxItem id="monthly" textValue="Monthly">
-            Monthly
-          </GaiaListBoxItem>
-          <GaiaListBoxItem id="yearly" textValue="Yearly">
-            Yearly
-          </GaiaListBoxItem>
-          <GaiaListBoxItem id="custom" textValue="Custom (select days)">
-            Custom (select days)
-          </GaiaListBoxItem>
+          <GaiaListBoxItem id="none" textValue="Does not repeat" />
+          <GaiaListBoxItem id="daily" textValue="Daily" />
+          <GaiaListBoxItem id="weekdays" textValue="Every weekday (Mon-Fri)" />
+          <GaiaListBoxItem id="weekly" textValue="Weekly" />
+          <GaiaListBoxItem id="monthly" textValue="Monthly" />
+          <GaiaListBoxItem id="yearly" textValue="Yearly" />
+          <GaiaListBoxItem id="custom" textValue="Custom (select days)" />
         </ListBox>
       </Select.Popover>
     </Select>
