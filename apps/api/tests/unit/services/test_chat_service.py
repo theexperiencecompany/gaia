@@ -467,6 +467,7 @@ def _make_stream_manager_mock(is_cancelled: bool = False) -> MagicMock:
     return m
 
 
+@pytest.mark.usefixtures("in_process_redis")
 class TestRunChatStreamBackground:
     @pytest.fixture(autouse=True)
     def _no_pending_approval(self) -> Iterator[None]:

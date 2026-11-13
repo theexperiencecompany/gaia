@@ -79,6 +79,7 @@ from app.models.user_models import AuthenticatedUser
 from app.utils.concurrency import reset_captured_loop
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext, analytics_context
+from tests.helpers import InProcessRedis
 
 # Hermetic by default (USE_REAL_SERVICES=0): a bare local run stays offline
 # via the global _get_mongodb_instance mock. CI sets USE_REAL_SERVICES=1 so
@@ -379,6 +380,14 @@ def onboarding_finish_on_link() -> Iterator[AsyncMock]:
         "app.services.platform_link_completion.complete_onboarding_on_platform_link", AsyncMock()
     ) as finish:
         yield finish
+
+
+@pytest.fixture
+def in_process_redis(monkeypatch: pytest.MonkeyPatch) -> InProcessRedis:
+    """Back the redis_cache singleton with named locks that really exclude, for code that takes a DistributedLock."""
+    client = InProcessRedis(redis_cache.redis)
+    monkeypatch.setattr(redis_cache, "redis", client)
+    return client
 
 
 @pytest.fixture

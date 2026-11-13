@@ -30,12 +30,11 @@ from app.agents.core.background.comms_narrator import (
 )
 from app.agents.core.thread_lock import CommsThreadLockTimeout, comms_thread_lock
 from app.constants.log_tags import LogTag
-from app.db.redis import redis_cache
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from tests.helpers import captured_wide_event
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("in_process_redis")]
 
 CONVERSATION_ID = "conv-lock-1"
 NARRATOR = "app.agents.core.background.comms_narrator"
@@ -45,52 +44,6 @@ USER = AuthenticatedUser(user_id="6812f0b3c9a14e2b7d5a91cc", email="u@gaia.local
 THREAD: RunnableConfig = {"configurable": {"thread_id": CONVERSATION_ID}}
 SETTLE_SECONDS = 0.05
 SHORT_ACQUIRE_SECONDS = 0.05
-
-
-class _InProcessLock:
-    """redis-py's Lock contract on one asyncio.Lock: bounded blocking acquire, owner-checked release."""
-
-    def __init__(self, held: asyncio.Lock, blocking_timeout: float | None) -> None:
-        self._held = held
-        self._blocking_timeout = blocking_timeout
-        self._owns = False
-
-    async def acquire(self) -> bool:
-        try:
-            await asyncio.wait_for(self._held.acquire(), self._blocking_timeout)
-        except TimeoutError:
-            return False
-        self._owns = True
-        return True
-
-    async def extend(self, additional_time: float, replace_ttl: bool = False) -> bool:
-        return self._owns
-
-    async def release(self) -> None:
-        if self._owns:
-            self._owns = False
-            self._held.release()
-
-
-class _InProcessRedis:
-    """The hermetic redis client with named locks that really exclude, in process."""
-
-    def __init__(self, rest: object) -> None:
-        self._rest = rest
-        self._locks: dict[str, asyncio.Lock] = {}
-
-    def __getattr__(self, name: str) -> object:
-        return getattr(self._rest, name)
-
-    def lock(
-        self,
-        name: str,
-        *,
-        timeout: float,
-        blocking_timeout: float | None,
-        thread_local: bool,
-    ) -> _InProcessLock:
-        return _InProcessLock(self._locks.setdefault(name, asyncio.Lock()), blocking_timeout)
 
 
 class _ThreadState(TypedDict):
@@ -130,13 +83,6 @@ def comms_thread() -> Iterator[_CommsThread]:
     thread = _CommsThread()
     with patch(f"{NARRATOR}.GraphManager.get_graph", AsyncMock(return_value=thread.graph)):
         yield thread
-
-
-@pytest.fixture(autouse=True)
-def in_process_redis(monkeypatch: pytest.MonkeyPatch) -> _InProcessRedis:
-    client = _InProcessRedis(redis_cache.redis)
-    monkeypatch.setattr(redis_cache, "redis", client)
-    return client
 
 
 async def _narration_run_started(comms_thread: _CommsThread) -> asyncio.Task[str]:

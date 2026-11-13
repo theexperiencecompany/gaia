@@ -932,3 +932,49 @@ def hostile_jwts(claims: Mapping[str, object], secret: str) -> dict[str, str]:
         "tampered_payload": f"{header}.{_b64url_json({**claims, 'sub': 'intruder'})}.{signature}",
         "garbage": "not-a-jwt",
     }
+
+
+class InProcessLock:
+    """redis-py's Lock contract on one asyncio.Lock: bounded blocking acquire, owner-checked release."""
+
+    def __init__(self, held: asyncio.Lock, blocking_timeout: float | None) -> None:
+        self._held = held
+        self._blocking_timeout = blocking_timeout
+        self._owns = False
+
+    async def acquire(self) -> bool:
+        try:
+            await asyncio.wait_for(self._held.acquire(), self._blocking_timeout)
+        except TimeoutError:
+            return False
+        self._owns = True
+        return True
+
+    async def extend(self, additional_time: float, replace_ttl: bool = False) -> bool:
+        return self._owns
+
+    async def release(self) -> None:
+        if self._owns:
+            self._owns = False
+            self._held.release()
+
+
+class InProcessRedis:
+    """The hermetic redis client with named locks that really exclude, in process."""
+
+    def __init__(self, rest: object) -> None:
+        self._rest = rest
+        self._locks: dict[str, asyncio.Lock] = {}
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._rest, name)
+
+    def lock(
+        self,
+        name: str,
+        *,
+        timeout: float,
+        blocking_timeout: float | None,
+        thread_local: bool,
+    ) -> InProcessLock:
+        return InProcessLock(self._locks.setdefault(name, asyncio.Lock()), blocking_timeout)
