@@ -48,6 +48,8 @@ MESSAGE_KINDS: frozenset[str] = frozenset(
         EntryKind.WORK_FINISHED,
     }
 )
+#: The kinds whose append advances a conversation's sync clock: each changes what history shows.
+SYNCED_KINDS: frozenset[str] = MESSAGE_KINDS | {EntryKind.REPLY_SETTLED}
 #: The kinds a message read looks up beside its window.
 RELATED_KINDS: frozenset[str] = frozenset(
     {

@@ -31,6 +31,7 @@ from app.db.repositories.conversation_entries import (
     logged_of,
     store_errors,
 )
+from app.db.repositories.conversation_history import SYNCED_KINDS
 from app.db.repositories.conversations import ConversationRepository
 from app.models.conversation_log_models import (
     CommsPhase,
@@ -117,7 +118,8 @@ class ConversationLogRepository(ConversationRepository):
     ) -> bool:
         """Commit logged and the state after it, only while the head is as read (and held by epoch when given).
 
-        unread also marks the conversation unread and advances its sync clock, in the same write.
+        unread also marks the conversation unread. An entry that changes what history shows (a
+        message, its settle) advances the sync clock, so batch sync and the activity signal see it.
         """
         expected: dict[str, object] = {
             "conversation_id": head.conversation_id,
@@ -138,7 +140,11 @@ class ConversationLogRepository(ConversationRepository):
                         STATE_FIELD: state.model_dump(mode="json"),
                         **({"is_unread": True} if unread else {}),
                     },
-                    **({"$currentDate": {"updatedAt": True}} if unread else {}),
+                    **(
+                        {"$currentDate": {"updatedAt": True}}
+                        if unread or logged.entry.kind in SYNCED_KINDS
+                        else {}
+                    ),
                 },
             )
         if not result.matched_count:

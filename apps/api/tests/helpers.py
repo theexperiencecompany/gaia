@@ -56,13 +56,23 @@ from workos.session import SessionModule
 
 from app.config.rate_limits import RateLimitConfig
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
+from app.constants.chat import ConversationSource
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
 from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateKind
+from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
+from app.models.conversation_log_models import (
+    LoggedEntry,
+    Reply,
+    ReplyOutcome,
+    ReplySettled,
+    UserMessage,
+)
 from app.models.email_verdict_models import EmailVerdictDocument
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.user_models import AuthenticatedUser, UserDocument
+from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.runtime.secrets_store import fernet_key_from
 from app.utils.timezone import Timezone
@@ -969,3 +979,39 @@ def hostile_jwts(claims: Mapping[str, object], secret: str) -> dict[str, str]:
         "tampered_payload": f"{header}.{_b64url_json({**claims, 'sub': 'intruder'})}.{signature}",
         "garbage": "not-a-jwt",
     }
+
+
+async def log_history(
+    conversation_id: str, user_id: str, messages: Sequence[Mapping[str, str]]
+) -> None:
+    """Log a finished exchange: each user message, then each bot reply settled as answering them.
+
+    messages are what a client reads back: type ("user" or "bot"), response, and message_id.
+    """
+    log = MongoConversationLog(conversation_log_repository, lambda: datetime.now(UTC))
+    asked: list[LoggedEntry] = []
+    for message in messages:
+        message_id = message.get("message_id") or f"m-{ObjectId()}"
+        if message["type"] == "user":
+            said = UserMessage(
+                id=message_id, text=message["response"], surface=ConversationSource.WEB
+            )
+            asked.append((await log.append(conversation_id, user_id, said)).logged)
+            continue
+        reply = Reply(
+            id=f"reply:{message_id}",
+            reply_id=message_id,
+            attempt_id=f"attempt:{message_id}",
+            text=message["response"],
+        )
+        opened = (await log.append(conversation_id, user_id, reply)).logged
+        settle = ReplySettled(
+            id=f"settle:{message_id}",
+            reply_id=message_id,
+            outcome=ReplyOutcome.ANSWERED,
+            answers=tuple(logged.entry.id for logged in asked),
+            through=asked[-1].seq if asked else opened.seq,
+            quote_target=None,
+        )
+        await log.append(conversation_id, user_id, settle)
+        asked = []

@@ -476,7 +476,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """
         if doc.messages:
             raise ValueError(
-                "create() writes only the head; append the messages with append_messages()"
+                "create() writes only the head; messages are log entries appended to its log"
             )
         head = doc.model_dump(exclude={"id", "messages", "has_older"}, exclude_none=True)
         head[LOG_HEAD_FIELD] = 0

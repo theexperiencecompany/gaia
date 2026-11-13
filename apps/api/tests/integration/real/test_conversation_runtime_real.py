@@ -796,7 +796,7 @@ async def _legacy_turn(rig: Rig, said: str) -> None:
 
 
 @pytest.mark.service
-async def test_a_conversation_from_before_the_step_continues_on_it_with_its_history(
+async def test_a_conversation_continues_on_the_step_with_its_logged_history(
     rig_for: RigFactory,
 ) -> None:
     model = gated("Paris is lovely in May", "May 12 to 19 then")
@@ -820,9 +820,12 @@ async def test_a_conversation_from_before_the_step_continues_on_it_with_its_hist
         )
     await rig.settle()
     shown = model.prompts[1]
-    assert accepted.seq == 3
-    assert [reply.text for reply in await rig.of(Reply)] == ["May 12 to 19 then"]
-    assert await rig.answered() == [(ReplyOutcome.ANSWERED, ("m1",))]
+    assert accepted.seq == 4
+    assert [reply.text for reply in await rig.of(Reply)] == [
+        "Paris is lovely in May",
+        "May 12 to 19 then",
+    ]
+    assert (await rig.answered())[-1] == (ReplyOutcome.ANSWERED, ("m1",))
     assert humans(shown).count("when should I visit Paris?") == 1
     assert [str(m.content) for m in shown if isinstance(m, AIMessage)] == ["Paris is lovely in May"]
     assert humans(shown).count("book a week then") == 1
@@ -1660,7 +1663,7 @@ async def _unread(rig: Rig) -> bool | None:
 
 
 @pytest.mark.service
-async def test_a_delivered_reminder_is_one_notice_with_its_cards_and_no_legacy_message(
+async def test_a_delivered_reminder_is_one_notice_shown_once_with_its_cards(
     rig_for: RigFactory,
 ) -> None:
     rig = await rig_for(gated())
@@ -1677,7 +1680,9 @@ async def test_a_delivered_reminder_is_one_notice_with_its_cards_and_no_legacy_m
     stored = await conversation_repository.get(rig.conversation_id, user_id=rig.user_id)
     assert (notice.text, notice.tool_data) == ("time to stretch", (card,))
     assert stored is not None
-    assert [m.response for m in stored.messages if m.response == "time to stretch"] == []
+    assert [(m.type, m.response, m.tool_data) for m in stored.messages] == [
+        ("bot", "time to stretch", [card])
+    ]
     to_platform.assert_not_awaited()
     assert await _unread(rig) is True
 
