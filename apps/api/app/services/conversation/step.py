@@ -395,10 +395,19 @@ async def _run_attempt(
         if attempt.progress is None:
             await _retract(ports, attempt)
         raise
+    except Exception as error:  # a store or stream failure mid-attempt fails it, under the claim
+        await run.cancel(CancelReason.LOST)
+        await _fail(ports, attempt, error)
+        return
     except BaseException:
         await run.cancel(CancelReason.LOST)
         raise
-    await _end(ports, attempt, run, ending)
+    try:
+        await _end(ports, attempt, run, ending)
+    except ClaimLost:
+        raise
+    except Exception as error:  # settling failed part-way: its idempotent ids let _fail finish it
+        await _fail(ports, attempt, error)
 
 
 async def _watch(ports: RuntimePorts, attempt: _Attempt, run: CommsRun) -> _Ending:

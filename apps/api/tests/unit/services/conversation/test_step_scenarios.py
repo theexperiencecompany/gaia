@@ -1,6 +1,7 @@
 """advance, one named scenario per row: the exact log, frames and runner calls each one produces."""
 
 import asyncio
+from dataclasses import dataclass
 from typing import cast
 
 from langgraph.errors import GraphRecursionError
@@ -11,6 +12,8 @@ from app.constants.hil import HIL_ACK_APPROVED
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import (
     EntryFrame,
+    OutputFrame,
+    ReplyDeltaFrame,
     ResponseEvent,
     RetractFrame,
     ToolDataEvent,
@@ -62,6 +65,7 @@ from tests.unit.services.conversation.runtime_doubles import (
     EffectCall,
     Fail,
     Pause,
+    RecordingFrames,
     Runtime,
     Started,
 )
@@ -486,6 +490,16 @@ class StepScenarios:
         assert (await settles(rt))[0].through == 2
         await assert_quiet(rt)
 
+    async def test_a_store_error_mid_attempt_settles_it_failed_and_releases(
+        self, rt: Runtime
+    ) -> None:
+        rt.frames = _FlakyFrames()
+        rt.runner.script([text("hel"), text("lo"), Finished(Replied("hello"))])
+        await send(rt, user("u1"))
+        await run(rt)
+        assert await answered(rt) == [(ReplyOutcome.FAILED, ("u1",))]
+        await assert_quiet(rt)
+
     async def test_a_message_stopped_before_any_run_saw_it_never_reaches_the_next(
         self, rt: Runtime
     ) -> None:
@@ -883,6 +897,19 @@ class StepScenarios:
             (ReplyOutcome.FAILED, ("u1",)),
         ]
         assert turn_ends(posthog_events) == []
+
+
+@dataclass
+class _FlakyFrames(RecordingFrames):
+    """Fails the first reply delta once, as a Redis blip mid-reply would."""
+
+    failed: bool = False
+
+    async def publish(self, conversation_id: str, frame: OutputFrame) -> None:
+        if isinstance(frame, ReplyDeltaFrame) and not self.failed:
+            self.failed = True
+            raise ConnectionError("redis down")
+        await super().publish(conversation_id, frame)
 
 
 class TestStepScenariosInMemory(StepScenarios):
