@@ -328,13 +328,15 @@ function ControlBar({
 
       <div className="flex items-center gap-2">
         <Tooltip>
-          <Chip
-            variant="soft"
-            color={state === "listening" ? "success" : "default"}
-            size="sm"
-          >
-            {state}
-          </Chip>
+          <Tooltip.Trigger>
+            <Chip
+              variant="soft"
+              color={state === "listening" ? "success" : "default"}
+              size="sm"
+            >
+              {state}
+            </Chip>
+          </Tooltip.Trigger>
           <Tooltip.Content>Detector status</Tooltip.Content>
         </Tooltip>
 

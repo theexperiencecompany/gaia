@@ -35,6 +35,12 @@ import {
 import { SkillImportForm } from "./SkillImportForm";
 import { SkillTargetSelect } from "./SkillTargetSelect";
 
+const sourceTabs = tabsVariants({
+  variant: "solid",
+  color: "accent",
+  shape: "pill",
+});
+
 interface SkillEditorModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -297,22 +303,25 @@ function SkillEditorForm({
           <Tabs
             selectedKey={mode}
             onSelectionChange={(key) => setMode(key as "write" | "import")}
-            className={tabsVariants({ color: "accent" }).base({
+            className={sourceTabs.base({
               className: shapeVariants({ shape: "pill", className: "mb-1" }),
             })}
           >
             <Tabs.ListContainer>
-              <Tabs.List aria-label="Skill source">
-                <Tabs.Tab id="write">
+              <Tabs.List
+                aria-label="Skill source"
+                className={sourceTabs.tabList()}
+              >
+                <Tabs.Tab id="write" className={sourceTabs.tab()}>
                   Write your own
-                  <Tabs.Indicator />
+                  <Tabs.Indicator className={sourceTabs.tabIndicator()} />
                 </Tabs.Tab>
-                <Tabs.Tab id="import">
+                <Tabs.Tab id="import" className={sourceTabs.tab()}>
                   <div className="flex items-center gap-1.5">
                     <Github01Icon className="size-4" />
                     <span>Import from GitHub</span>
                   </div>
-                  <Tabs.Indicator />
+                  <Tabs.Indicator className={sourceTabs.tabIndicator()} />
                 </Tabs.Tab>
               </Tabs.List>
             </Tabs.ListContainer>

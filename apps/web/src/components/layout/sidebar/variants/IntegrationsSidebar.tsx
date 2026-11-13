@@ -120,6 +120,7 @@ export default function IntegrationsSidebar() {
       <Tooltip>
         <GaiaButton
           variant="accent-soft"
+          tone="accent"
           className="w-full justify-start text-sm"
           size="sm"
           onPress={openIntegrationModal}

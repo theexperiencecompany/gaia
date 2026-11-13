@@ -11,7 +11,10 @@ import {
 } from "@icons";
 import Image from "next/image";
 import { useState } from "react";
-import { overlayVariants } from "@/components/shared/controlVariants";
+import {
+  chipVariants,
+  overlayVariants,
+} from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -154,7 +157,12 @@ export function SystemWorkflowChip({ size = "sm" }: SystemWorkflowChipProps) {
   return (
     <Tooltip delay={300} closeDelay={0}>
       <Tooltip.Trigger>
-        <Chip color="accent" variant="soft" size={size}>
+        <Chip
+          color="accent"
+          variant="soft"
+          size={size}
+          className={chipVariants({ hue: "brand" })}
+        >
           <Image src="/brand/gaia_logo.svg" alt="GAIA" width={14} height={14} />
           <Chip.Label>System</Chip.Label>
         </Chip>

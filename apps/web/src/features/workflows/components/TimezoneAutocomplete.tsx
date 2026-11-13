@@ -3,6 +3,7 @@
 import { ComboBox, ListBox } from "@heroui/react";
 import { useEffect, useMemo, useState } from "react";
 import { ComboBoxInput } from "@/components/shared/ComboBoxInput";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { timezoneSearchText } from "@/utils/timezoneUtils";
 
@@ -63,7 +64,7 @@ export function TimezoneAutocomplete({
   return (
     <ComboBox
       aria-label="Timezone"
-      className={className}
+      className={inputVariants({ size: "sm", className })}
       items={filteredOptions}
       inputValue={inputValue}
       onInputChange={setInputValue}

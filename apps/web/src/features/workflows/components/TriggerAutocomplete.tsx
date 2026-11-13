@@ -8,6 +8,7 @@ import {
 } from "@heroui/react";
 import type React from "react";
 import { ComboBoxInput } from "@/components/shared/ComboBoxInput";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -120,7 +121,10 @@ export function TriggerAutocomplete({
     <div className="w-full space-y-2">
       <ComboBox
         aria-label="Choose an event"
-        className="w-full"
+        className={fieldVariants({
+          labelPlacement: "inside",
+          className: "w-full",
+        })}
         allowsEmptyCollection
         defaultFilter={() => true}
         inputValue={filterValue}

@@ -11,6 +11,7 @@ import {
 import { CheckmarkCircle02Icon, Delete02Icon, Link01Icon } from "@icons";
 import { useState } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
+import { fieldVariants } from "@/components/shared/fieldVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import type {
@@ -75,7 +76,10 @@ export function ComposioToolkitDetail({ slug }: ComposioToolkitDetailProps) {
       {canEnable &&
         detail.fields.map((field) => (
           <TextField
-            className={inputVariants({ size: "sm" })}
+            className={fieldVariants({
+              labelPlacement: "inside",
+              className: inputVariants({ size: "sm" }),
+            })}
             key={field.name}
             isRequired={field.required}
             type={field.is_secret ? "password" : "text"}

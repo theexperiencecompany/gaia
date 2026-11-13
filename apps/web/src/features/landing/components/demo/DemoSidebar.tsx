@@ -466,6 +466,7 @@ const DemoSidebar = memo(function DemoSidebar({
             <div className="flex w-full justify-center">
               <GaiaButton
                 variant="accent-soft"
+                tone="accent"
                 size="sm"
                 fullWidth
                 className="mt-1 mb-4 flex justify-start text-sm font-medium"

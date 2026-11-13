@@ -32,6 +32,7 @@ export default function WorkflowsSidebar() {
         <Tooltip>
           <GaiaButton
             variant="accent-soft"
+            tone="accent"
             size="sm"
             fullWidth
             className="mb-2 flex justify-start text-sm font-medium"

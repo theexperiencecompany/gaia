@@ -44,6 +44,7 @@ export default function Sidebar() {
         <Tooltip>
           <LinkButton
             variant="accent-soft"
+            tone="accent"
             href="/c"
             onClick={prepareNewChat}
             size="sm"
