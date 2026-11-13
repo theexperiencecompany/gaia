@@ -66,6 +66,7 @@ const DownloadButton: React.FC<DownloadButtonProps> = ({
 
   return (
     <GaiaButton
+      aria-label="Download"
       className="text-xs"
       tone="muted"
       hoverTone="dim"

@@ -323,6 +323,7 @@ export default function TodoSidebar() {
               onItemClick={handleNavigation}
               action={
                 <GaiaButton
+                  aria-label="Add project"
                   isIconOnly
                   size="sm"
                   variant="ghost"

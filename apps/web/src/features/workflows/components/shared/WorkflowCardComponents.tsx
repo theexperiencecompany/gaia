@@ -338,6 +338,7 @@ export function MissingIntegrationsAlert({
           </GaiaButton>
           <Dropdown isOpen={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
             <GaiaButton
+              aria-label="More options"
               variant="default-solid"
               isIconOnly
               isDisabled={!!connectingId}

@@ -1131,6 +1131,11 @@ V2_VARIANT_NAMES = [
             ),
             "<Table.Column>: mark one column isRowHeader",
         ),
+        (
+            'import { GaiaButton } from "@/components/shared/GaiaButton";\n\n'
+            "export const Demo = () => <GaiaButton isIconOnly><svg /></GaiaButton>;\n",
+            "isIconOnly button without aria-label",
+        ),
         (_hero_component("<B />", "Button as B"), "<Button>: use GaiaButton"),
         (
             _hero_component(

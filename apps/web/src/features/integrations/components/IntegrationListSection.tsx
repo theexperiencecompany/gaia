@@ -2,6 +2,7 @@ import {
   Accordion,
   AccordionItem,
   Chip,
+  type Key,
   Link,
   ScrollShadow,
   Tooltip,
@@ -70,6 +71,8 @@ function IntegrationListSection({
   const router = useRouter();
   const { integrations, connectIntegration, refetch } = useIntegrations();
   const [connectingIds, setConnectingIds] = useState<Set<string>>(new Set());
+  const [expandedKeys, setExpandedKeys] = useState<Set<Key>>(new Set());
+  const [autoOpened, setAutoOpened] = useState<ReadonlySet<string>>(new Set());
 
   // Separate connected and not connected integrations, sorted alphabetically
   const connectedIntegrations = integrations
@@ -253,11 +256,17 @@ function IntegrationListSection({
 
   const total_count = integrations.length;
 
-  // Build accordion keys for sections that have items
-  const defaultExpandedKeys = new Set<string>();
-  if (connectedIntegrations.length > 0) defaultExpandedKeys.add("connected");
-  if (suggestedIntegrations.length > 0) defaultExpandedKeys.add("suggested");
-  if (notConnectedIntegrations.length > 0) defaultExpandedKeys.add("available");
+  // Each section opens once, the first render its items exist (the query can land after mount); the user's toggles stand after that.
+  const populated = [
+    connectedIntegrations.length > 0 && "connected",
+    suggestedIntegrations.length > 0 && "suggested",
+    notConnectedIntegrations.length > 0 && "available",
+  ].filter((key): key is string => key !== false);
+  const newlyPopulated = populated.filter((key) => !autoOpened.has(key));
+  if (newlyPopulated.length > 0) {
+    setAutoOpened(new Set([...autoOpened, ...newlyPopulated]));
+    setExpandedKeys(new Set([...expandedKeys, ...newlyPopulated]));
+  }
 
   // Build accordion items array
   const accordionItems = [
@@ -348,7 +357,8 @@ function IntegrationListSection({
     <div className="w-full max-w-2xl rounded-3xl bg-zinc-800 p-4 text-white">
       <Accordion
         allowsMultipleExpanded
-        defaultExpandedKeys={defaultExpandedKeys}
+        expandedKeys={expandedKeys}
+        onExpandedChange={setExpandedKeys}
       >
         {accordionItems}
       </Accordion>
