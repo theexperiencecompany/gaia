@@ -20,7 +20,7 @@ function CalendarChip({ calendar, selected, onSelect }: CalendarChipProps) {
       onClick={() => onSelect(calendar.id)}
     >
       <Chip
-        className={toneVariants({ tone: selected ? "dim" : "faint" })}
+        className={toneVariants({ tone: selected ? "dim" : "subtle" })}
         variant="tertiary"
       >
         <div
@@ -65,9 +65,7 @@ export default function CalendarSelector({
             />
           ))
       ) : (
-        <div className="p-3 text-sm text-zinc-400">
-          You have no Calendars
-        </div>
+        <div className="p-3 text-sm text-zinc-400">You have no Calendars</div>
       )}
     </div>
   );

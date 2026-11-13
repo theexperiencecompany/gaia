@@ -153,22 +153,19 @@ export const EnhancedNotificationCard = ({
                             ? "danger-soft"
                             : "tertiary"
                       }
-                      tone={
-                        action.style === "primary" || action.style === "danger"
-                          ? "default"
-                          : "muted"
-                      }
-                      hoverTone={
-                        action.style === "primary" || action.style === "danger"
-                          ? "none"
-                          : "dim"
-                      }
+                      shape="sm"
                       key={action.id}
                       isDisabled={
                         buttonProps.disabled || isLoading || isExecuted
                       }
                       onPress={() => handleActionClick(action.id)}
-                      className={`gap-1.5 rounded-lg text-xs font-normal transition ${showLoading ? "opacity-50" : ""} ${isExecuted ? "cursor-not-allowed opacity-60" : ""}`}
+                      className={`gap-1.5 text-xs font-normal transition ${
+                        action.style === "primary"
+                          ? "bg-accent/10 text-accent hover:bg-accent/20"
+                          : action.style === "danger"
+                            ? "bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                            : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300"
+                      } ${showLoading ? "opacity-50" : ""} ${isExecuted ? "cursor-not-allowed opacity-60" : ""}`}
                     >
                       {showLoading ? (
                         <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />

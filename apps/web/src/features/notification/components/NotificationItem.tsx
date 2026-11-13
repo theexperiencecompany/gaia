@@ -91,7 +91,8 @@ export const NotificationItem = ({
                   key={action.id}
                   variant="tertiary"
                   size="sm"
-                  className={`h-7 text-xs ${isExecuted ? "cursor-not-allowed opacity-50" : ""}`}
+                  tone="bright"
+                  className={`h-7 bg-zinc-800/50 text-xs hover:bg-zinc-800/70 ${isExecuted ? "cursor-not-allowed opacity-50" : ""}`}
                   isDisabled={isDisabled}
                   onPress={() => executeAction(notification.id, action)}
                 >

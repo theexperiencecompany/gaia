@@ -131,7 +131,8 @@ export default function SkillsManagement() {
         </SearchField>
         <GaiaButton
           size="sm"
-          className="shrink-0 rounded-xl"
+          shape="md"
+          className="shrink-0"
           onPress={openCreate}
           variant="primary"
         >

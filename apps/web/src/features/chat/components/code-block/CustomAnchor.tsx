@@ -3,6 +3,8 @@ import { GlobalIcon } from "@icons";
 import type { URLResponse } from "@shared/api/generated";
 import Image from "next/image";
 import { memo, type ReactNode, useEffect, useRef, useState } from "react";
+import { overlayVariants } from "@/components/shared/controlVariants";
+import { toneVariants } from "@/components/shared/tone";
 import {
   usePrefetchUrlMetadata,
   useUrlMetadata,
@@ -405,7 +407,14 @@ const CustomAnchor = memo(
         </Tooltip.Trigger>
         <Tooltip.Content
           showArrow
-          className="relative max-w-[280px] min-w-[280px] border-2 border-zinc-800 p-3 shadow-lg"
+          className={overlayVariants({
+            surface: "secondary",
+            className: toneVariants({
+              tone: "white",
+              className:
+                "relative max-w-[280px] min-w-[280px] border-2 border-zinc-800 p-3 shadow-lg",
+            }),
+          })}
         >
           {tooltipContent}
         </Tooltip.Content>

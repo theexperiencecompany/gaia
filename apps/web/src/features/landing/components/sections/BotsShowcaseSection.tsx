@@ -445,7 +445,7 @@ function CTAGroup({
           aria-label="Previous platform"
           onPress={onPrev}
           tone="faint"
-          hoverTone="foreground"
+          hoverTone="bright"
           className="min-w-10 h-10 w-10 transition-colors"
         >
           <ArrowLeft02Icon size={24} />
@@ -457,7 +457,7 @@ function CTAGroup({
           aria-label="Next platform"
           onPress={onNext}
           tone="faint"
-          hoverTone="foreground"
+          hoverTone="bright"
           className="min-w-10 h-10 w-10 transition-colors"
         >
           <ArrowRight02Icon size={24} />

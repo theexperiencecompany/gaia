@@ -13,6 +13,7 @@ import { format } from "date-fns";
 import { useEffect, useMemo } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
@@ -304,7 +305,11 @@ function TodoTextInputFields({
         placeholder="Title"
         className={inputVariants({
           variant: "underlined",
-          className: "text-2xl font-semibold",
+          placeholder: "faint",
+          className: toneVariants({
+            tone: "strong",
+            className: "text-2xl font-semibold",
+          }),
         })}
         value={title}
         onChange={(e) => onTitleChange(e.target.value)}
@@ -320,7 +325,11 @@ function TodoTextInputFields({
         rows={1}
         className={inputVariants({
           variant: "underlined",
-          className: "max-h-40 min-h-9 resize-none field-sizing-content",
+          placeholder: "faint",
+          className: toneVariants({
+            tone: "bright",
+            className: "max-h-40 min-h-9 resize-none field-sizing-content",
+          }),
         })}
       />
     </div>

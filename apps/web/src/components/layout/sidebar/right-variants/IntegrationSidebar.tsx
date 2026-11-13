@@ -4,6 +4,7 @@ import { Chip, Skeleton } from "@heroui/react";
 import nextDynamic from "next/dynamic";
 import { useState } from "react";
 import { shapeVariants } from "@/components/shared/shape";
+import { toneVariants } from "@/components/shared/tone";
 import { SidebarContent, SidebarHeader } from "@/components/ui/sidebar";
 import { InstanceSetupCallout } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
@@ -168,7 +169,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   color="default"
                   className={shapeVariants({
                     shape: "pill",
-                    className: "font-light border-1 text-zinc-300",
+                    className: toneVariants({
+                      tone: "dim",
+                      className: "font-light border-1",
+                    }),
                   })}
                 >
                   {tool.label}

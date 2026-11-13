@@ -13,6 +13,7 @@ import { flattenArgsPreview } from "@shared/utils";
 import { useState } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useMarkApprovalDecided } from "@/features/chat/hooks/useMarkApprovalDecided";
 import {
@@ -177,7 +178,12 @@ export default function ApprovalReviewSheet({
             <Modal.CloseTrigger aria-label="Close" />
             <Modal.Header className="flex items-center gap-2">
               <ShieldIcon width={18} className="shrink-0 text-amber-400" />
-              <Modal.Heading className="text-sm">
+              <Modal.Heading
+                className={toneVariants({
+                  tone: "strong",
+                  className: "text-sm",
+                })}
+              >
                 {items.length} actions need your approval ({totals})
               </Modal.Heading>
             </Modal.Header>

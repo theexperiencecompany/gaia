@@ -104,7 +104,7 @@ export function MemoryList({ onChanged }: MemoryListProps) {
           <GaiaButton
             variant="danger-soft"
             size="sm"
-            className="rounded-xl"
+            shape="md"
             isPending={isClearing}
             onPress={handleClearAll}
           >
@@ -113,7 +113,7 @@ export function MemoryList({ onChanged }: MemoryListProps) {
         )}
         <GaiaButton
           size="sm"
-          className="rounded-xl"
+          shape="md"
           onPress={() => setIsAddModalOpen(true)}
           variant="primary"
         >
@@ -169,8 +169,8 @@ export function MemoryList({ onChanged }: MemoryListProps) {
           <GaiaButton
             isIconOnly
             size="sm"
+            shape="md"
             variant="default-soft"
-            className="rounded-xl"
             aria-label="Previous page"
             isDisabled={page <= 1}
             onPress={() => list.setPage(page - 1)}
@@ -180,8 +180,8 @@ export function MemoryList({ onChanged }: MemoryListProps) {
           <GaiaButton
             isIconOnly
             size="sm"
+            shape="md"
             variant="default-soft"
-            className="rounded-xl"
             aria-label="Next page"
             isDisabled={page >= totalPages}
             onPress={() => list.setPage(page + 1)}

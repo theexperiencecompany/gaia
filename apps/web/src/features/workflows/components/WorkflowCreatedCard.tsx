@@ -160,9 +160,10 @@ export default function WorkflowCreatedCard({
         <GaiaButton
           variant="accent-soft"
           size="sm"
+          shape="md"
           isPending={isLoading}
           onPress={handleOpenModal}
-          className="mt-1 w-full rounded-xl font-medium"
+          className="mt-1 w-full font-medium"
         >
           <PencilEdit01Icon className="size-3.5" />
           View &amp; Edit

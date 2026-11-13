@@ -59,9 +59,9 @@ const ACTION_CLS: Record<ToastState, string> = {
   loading: "bg-white/10 text-white data-[hover=true]:bg-white/15",
 };
 const DISMISS_CLS = "bg-white/5 text-white/70 data-[hover=true]:bg-white/10";
-// rounded-xl (12px) on the 28px-tall button reads as a rounded rectangle; a
+// shape md (12px) on the 28px-tall button reads as a rounded rectangle; a
 // larger radius would exceed half the height and clamp into a full pill.
-const BTN_BASE = "h-7 min-w-0 rounded-xl px-3 font-medium text-xs";
+const BTN_BASE = "h-7 min-w-0 font-medium text-xs";
 
 // sileo renders the toast as a <button>, so its controls can't be buttons; HeroUI's render type only allows one.
 const renderAsDiv = (
@@ -92,6 +92,7 @@ function ToastControls({
           render={renderAsDiv}
           size="sm"
           variant="default-soft"
+          shape="md"
           fullWidth
           className={`${BTN_BASE} ${ACTION_CLS[state]}`}
           onPress={action.onClick}
@@ -104,6 +105,7 @@ function ToastControls({
           render={renderAsDiv}
           size="sm"
           variant="default-soft"
+          shape="md"
           fullWidth
           className={`${BTN_BASE} ${DISMISS_CLS}`}
           onPress={() => sileo.dismiss(idRef.id)}

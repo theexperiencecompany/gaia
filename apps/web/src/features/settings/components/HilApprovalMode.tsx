@@ -86,8 +86,8 @@ export function HilApprovalMode() {
       >
         <GaiaButton
           size="sm"
+          shape="md"
           variant="default-soft"
-          className="rounded-xl"
           onPress={() => router.push("/integrations")}
         >
           Open Integrations

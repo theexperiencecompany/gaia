@@ -76,7 +76,7 @@ export function GateDetail({
                   size="sm"
                   variant="ghost"
                   tone="muted"
-                  hoverTone="foreground"
+                  hoverTone="bright"
                   inset="tight"
                   aria-label={GATE_EDIT_LABEL}
                   className="h-6 min-w-0 text-xs"

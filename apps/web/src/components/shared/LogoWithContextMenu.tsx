@@ -215,7 +215,7 @@ export function LogoWithContextMenu({
       {isOpen && (
         <ContextMenuContent className="rounded-2xl bg-primary-bg/70 p-1.5">
           {menuItemsConfig.map((item, index) => {
-            const className =
+            const itemClassName =
               "hover:bg-zinc-700! hover:text-white text-zinc-400 animate-in fade-in slide-in-from-left-2 duration-100";
             const style = {
               animationDelay: `${index * 50}ms`,
@@ -227,7 +227,7 @@ export function LogoWithContextMenu({
                 <ContextMenuItem
                   key={item.id}
                   asChild
-                  className={className}
+                  className={itemClassName}
                   style={style}
                 >
                   <Link
@@ -245,7 +245,7 @@ export function LogoWithContextMenu({
             return (
               <ContextMenuItem
                 key={item.id}
-                className={className}
+                className={itemClassName}
                 style={style}
                 onSelect={() => handleAction(item.action)}
               >

@@ -75,7 +75,7 @@ export function WhatsNewCard() {
           onPress={handleDismiss}
           aria-label="Dismiss what's new"
           tone="muted"
-          hoverTone="foreground"
+          hoverTone="white"
           className="absolute top-2 right-2 h-6 w-6 min-w-6 bg-zinc-900/60 hover:bg-zinc-900 opacity-0 group-hover:opacity-100"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}

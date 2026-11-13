@@ -235,7 +235,10 @@ function DemoIntegrationSidebar({
                     size="sm"
                     className={shapeVariants({
                       shape: "pill",
-                      className: "font-light text-zinc-300",
+                      className: toneVariants({
+                        tone: "dim",
+                        className: "font-light",
+                      }),
                     })}
                   >
                     {tool}

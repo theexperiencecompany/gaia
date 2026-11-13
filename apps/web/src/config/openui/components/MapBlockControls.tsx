@@ -33,6 +33,7 @@ export function MapBlockControls({
         isIconOnly
         size="sm"
         variant="tertiary"
+        tone="bright"
         onPress={handleZoomIn}
         aria-label="Zoom in"
         className="bg-zinc-800/90 backdrop-blur-md hover:bg-zinc-700"
@@ -43,6 +44,7 @@ export function MapBlockControls({
         isIconOnly
         size="sm"
         variant="tertiary"
+        tone="bright"
         onPress={handleZoomOut}
         aria-label="Zoom out"
         className="bg-zinc-800/90 backdrop-blur-md hover:bg-zinc-700"
@@ -53,6 +55,7 @@ export function MapBlockControls({
         isIconOnly
         size="sm"
         variant="tertiary"
+        tone="bright"
         onPress={handleReset}
         aria-label="Reset view"
         className="bg-zinc-800/90 backdrop-blur-md hover:bg-zinc-700"
