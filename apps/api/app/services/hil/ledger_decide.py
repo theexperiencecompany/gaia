@@ -33,7 +33,6 @@ from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.db.repositories.approval_ledger import approval_ledger_repository
-from app.db.repositories.conversations import conversation_repository
 from app.models.execute_models import DispatchErrorKind
 from app.models.hil_models import (
     ApprovalLedgerDocument,
@@ -493,7 +492,6 @@ async def _settle_terminal(row: ApprovalLedgerDocument, state: LedgerState) -> N
     """
     if row.proposing_run_id:
         settle_session_approval_frame(row.proposing_run_id, row.approval_id, state.value)
-    await _persist_decision_status(row, state.value)
     await _broadcast_decision(row, state.value, None)
 
 
@@ -650,7 +648,6 @@ async def publish_ledger_decision(
             mapped.value,
             feedback if feedback is not None else row.feedback,
         )
-    await _persist_decision_status(row, mapped.value)
     await _broadcast_decision(row, mapped.value, feedback if feedback is not None else row.feedback)
 
 
@@ -668,29 +665,7 @@ async def publish_ledger_revocation(row: ApprovalLedgerDocument) -> None:
         settle_session_approval_frame(
             row.proposing_run_id, row.approval_id, "revoked", drop_if_unpublished=True
         )
-    await _persist_decision_status(row, "revoked")
     await _broadcast_decision(row, "revoked", None)
-
-
-async def _persist_decision_status(row: ApprovalLedgerDocument, status: str) -> None:
-    """Settle the persisted card frame so reload renders the terminal state.
-
-    Isolated on purpose (mirrors bridge.publish_decision): a write error here
-    must never fail the decision or revocation it reports on.
-    """
-    try:
-        await conversation_repository.set_message_approval_status(
-            row.conversation_id,
-            user_id=row.user_id,
-            approval_id=row.approval_id,
-            status=status,
-        )
-    except Exception as e:
-        log.warning(
-            f"{LogTag.HIL} Ledger decision persist missed; live delivery already attempted",
-            approval_id=row.approval_id,
-            error_type=type(e).__name__,
-        )
 
 
 async def _broadcast_decision(

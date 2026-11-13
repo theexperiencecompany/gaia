@@ -91,5 +91,4 @@ async def relay_job_cards(request: BrowserJobRequest) -> None:
             stream_id,
             conversation_id=request.conversation_id,
             user_id=request.user_id,
-            message_id=request.message_id,
         )

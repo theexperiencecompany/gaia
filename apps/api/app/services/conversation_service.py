@@ -9,12 +9,12 @@ from psycopg_pool import AsyncConnectionPool
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.constants.error_codes import CONVERSATION_NOT_FOUND
 from app.constants.log_tags import LogTag
+from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import (
     BatchSyncRequest,
     ConversationModel,
     SystemPurpose,
-    UpdateMessagesRequest,
 )
 from app.models.conversation_models import (
     BatchSyncResponse,
@@ -30,7 +30,6 @@ from app.models.conversation_models import (
     StarConversationResponse,
     SystemConversationCreated,
     UpdateDescriptionResponse,
-    UpdateMessagesResponse,
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
@@ -302,33 +301,6 @@ async def delete_todo_conversations(user_id: str, todo_ids: list[str]) -> None:
         await _cleanup_conversation_storage(user_id, conversation_id)
 
 
-async def update_messages(
-    request: UpdateMessagesRequest,
-    user: AuthenticatedUser,
-) -> UpdateMessagesResponse:
-    """Append messages to a conversation, returning the ids they were stored under."""
-    user_id = user.user_id
-    seqs = await conversation_repository.append_messages(
-        request.conversation_id,
-        user_id=user_id,
-        messages=request.messages,
-    )
-
-    if seqs is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Conversation not found or does not belong to the user",
-        )
-
-    return UpdateMessagesResponse(
-        conversation_id=request.conversation_id,
-        message="Messages updated",
-        modified_count=1,
-        message_ids=list(seqs),
-        message_seqs=list(seqs.values()),
-    )
-
-
 async def pin_message(
     conversation_id: str, message_id: str, pinned: bool, user: AuthenticatedUser
 ) -> PinMessageResponse:
@@ -337,17 +309,10 @@ async def pin_message(
     if not await conversation_repository.exists(conversation_id, user_id=user_id):
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    if (
-        await conversation_repository.get_message(conversation_id, message_id, user_id=user_id)
-        is None
+    if not await conversation_log_repository.set_pinned(
+        conversation_id, user_id=user_id, message_id=message_id, pinned=pinned
     ):
         raise HTTPException(status_code=404, detail="Message not found in conversation")
-
-    updated = await conversation_repository.set_message_pinned(
-        conversation_id, user_id=user_id, message_id=message_id, pinned=pinned
-    )
-    if not updated:
-        raise HTTPException(status_code=404, detail="Message not found or update failed")
 
     capture(UserId(user_id), ChatMessagePinned() if pinned else ChatMessageUnpinned())
     response_message = (

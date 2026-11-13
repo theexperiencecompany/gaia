@@ -32,7 +32,6 @@ from app.models.chat_models import (
     ConversationSource,
     MessageModel,
     SystemPurpose,
-    ToolDataEntry,
 )
 from app.models.conversation_log_models import ConversationState
 from app.models.document_models import UserScopedDocument
@@ -61,15 +60,6 @@ class ConversationEntry(MessageModel):
     def committed(cls, message: MessageModel, seq: int) -> ConversationEntry:
         """The message as committed at seq."""
         return cls.model_validate({**message.model_dump(), "seq": seq})
-
-
-class FoldedCards(BaseModel):
-    """Cards a detached run closed before the message they fold into was saved; its save takes them."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    since: datetime
-    cards: list[ToolDataEntry] = Field(default_factory=list)
 
 
 class ConversationDocument(UserScopedDocument):
@@ -102,8 +92,6 @@ class ConversationDocument(UserScopedDocument):
     # Conversation-level artifact registry: one entry per agent-written file,
     # deduped by path; services/chat/artifacts_registry.py owns every write.
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
-    # Write-side state only (see FOLDED_CARDS_FIELD): never serialized to a reader.
-    folded_cards: dict[str, FoldedCards] = Field(default_factory=dict, exclude=True)
     createdAt: str | None = None
     updatedAt: datetime | None = None
 
@@ -420,18 +408,6 @@ class UpdateDescriptionResponse(ConversationActionResponse):
     """Rename acknowledgement, echoing the description that was stored."""
 
     description: str
-
-
-class UpdateMessagesResponse(BaseModel):
-    """Append acknowledgement carrying the ids the appended messages were stored
-    under — the client reconciles its optimistic records against these."""
-
-    conversation_id: str
-    message: str
-    modified_count: int
-    message_ids: list[str]
-    # The seq each id holds in the conversation's order, index for index.
-    message_seqs: list[int]
 
 
 class PinMessageResponse(BaseModel):

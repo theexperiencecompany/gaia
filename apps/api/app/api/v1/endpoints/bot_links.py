@@ -6,7 +6,6 @@ metadata) and share nothing with the chat/stream transport beyond the bot API
 key check. Mounted on the same /api/v1/bot prefix, so no URL moved.
 """
 
-from datetime import UTC, datetime, timedelta
 import secrets
 
 from fastapi import APIRouter, HTTPException, Request
@@ -20,6 +19,7 @@ from app.constants.cache import (
     PLATFORM_LINK_TOKEN_PREFIX,
     PLATFORM_LINK_TOKEN_TTL,
 )
+from app.constants.chat import ConversationSource
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.db.redis import redis_cache
 from app.models.bot_models import (
@@ -30,11 +30,12 @@ from app.models.bot_models import (
     RedeemLinkCodeRequest,
     RedeemLinkCodeResponse,
 )
-from app.models.chat_models import MessageModel, UpdateMessagesRequest
+from app.models.conversation_log_models import Notice, UserMessage
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import error_responses
 from app.services.bot_service import BotService
-from app.services.conversation_service import update_messages
+from app.services.conversation.log import accept
+from app.services.conversation.runtime import runtime_ports
 from app.services.onboarding.first_contact import build_first_contact
 from app.services.platform_link_code_service import (
     claim_platform_link_code,
@@ -50,6 +51,9 @@ from app.services.user_service import get_user_by_id
 from app.utils.auth_utils import resolve_bot_user
 from app.utils.errors import create_error
 from shared.py.wide_events import log
+
+#: The origin of the bot's introduction, logged at account linking.
+FIRST_CONTACT_ORIGIN = "first_contact"
 
 router = APIRouter()
 
@@ -310,31 +314,28 @@ async def _persist_first_contact(
         conversation_id = await BotService.get_or_create_session(
             body.platform, body.platform_user_id, None, actor, is_dm=True
         )
-        now = datetime.now(UTC)
-        messages: list[MessageModel] = []
+        entries: list[UserMessage | Notice] = []
         # Only a turn the user really sent: WhatsApp/iMessage prefill is
         # editable and stored verbatim; Telegram's deep link carries no
         # text, so a canned-opener turn would fake input for "has spoken" checks.
         if body.first_message:
-            messages.append(
-                MessageModel(
-                    type="user",
-                    response=body.first_message,
-                    date=(now - timedelta(milliseconds=100)).isoformat(),
+            entries.append(
+                UserMessage(
+                    id=f"first-contact:{conversation_id}:user",
+                    text=body.first_message,
+                    surface=ConversationSource(body.platform),
                     first_contact=True,
                 )
             )
-        messages.append(
-            MessageModel(
-                type="bot",
-                response=NEW_MESSAGE_BREAKER.join(bubbles),
-                date=now.isoformat(),
+        entries.append(
+            Notice(
+                id=f"first-contact:{conversation_id}:intro",
+                text=NEW_MESSAGE_BREAKER.join(bubbles),
+                origin=FIRST_CONTACT_ORIGIN,
             )
         )
-        await update_messages(
-            UpdateMessagesRequest(conversation_id=conversation_id, messages=messages),
-            user=actor,
-        )
+        for entry in entries:
+            await accept(runtime_ports(), conversation_id, user_id, entry)
     except Exception as e:
         # Swallowed deliberately (see above), but logged at error: nothing
         # retries this, so the thread is permanently missing the introduction

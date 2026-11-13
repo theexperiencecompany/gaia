@@ -15,32 +15,26 @@ must advance the sync clock bumps updatedAt explicitly.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping, Sequence
-from dataclasses import replace
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import datetime
 import random
 from typing import ClassVar
 
-from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 
 from app.constants.chat import (
     CONVERSATION_APPEND_JITTER_SECONDS,
-    CONVERSATION_APPEND_MAX_ATTEMPTS,
     CONVERSATION_ENTRIES_COLLECTION,
     CONVERSATION_READ_LIMIT,
-    SUBAGENT_GROUP_TOOL_NAME,
 )
 from app.db.repositories.base import UserScopedRepository
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversation_entries import (
     AWAITING_APPROVAL,
-    CONTENT_HASH_FIELD,
     DROP_EMBEDDED_STAGE,
     EMBEDDED_STATE_STAGE,
-    FOLDED_CARDS_FIELD,
     LOG_HEAD_FIELD,
-    MESSAGES_ONLY,
     OUTBOX_FIELD,
     REVISION_FIELD,
     STATE_FIELD,
@@ -48,12 +42,8 @@ from app.db.repositories.conversation_entries import (
     EntryWindow,
     Head,
     StoredRow,
-    absorbing,
     at_its_seq,
-    at_log_head,
     committed_at,
-    content_hash,
-    every_outbox_entry_matching,
     head_fields,
     head_from_raw,
     head_with_existing,
@@ -61,11 +51,8 @@ from app.db.repositories.conversation_entries import (
     logged_of,
     newest,
     outbox_entries_matching,
-    parked,
-    still_waiting,
     store_errors,
     stored_entries_matching,
-    stored_message,
     stored_row,
 )
 from app.db.repositories.conversation_history import (
@@ -81,8 +68,6 @@ from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
     ConversationSource,
     ConversationSyncItem,
-    MessageModel,
-    SavedSubagentGroup,
     SystemPurpose,
 )
 from app.models.conversation_log_models import EntryKind, LoggedEntry
@@ -106,12 +91,13 @@ from app.models.conversation_models import (
 from app.utils.errors import (
     ConversationAlreadyExistsError,
     ConversationIdTakenError,
-    ConversationNotFoundError,
     ConversationStoreError,
 )
 from shared.py.wide_events import log, spawn_logged_task
 
 _JITTER = random.SystemRandom()
+#: A quote, a settle's quote, an approval, its work: the longest chain a message reads beside it.
+_BESIDE_PASSES = 4
 _BOT_SOURCE_VALUES: list[str] = [s.value for s in BOT_CONVERSATION_SOURCES]
 _NEWEST_FIRST: list[tuple[str, int]] = [("seq", -1)]
 _OUTBOX_FIELDS: dict[str, object] = {"conversation_id": 1, "user_id": 1, OUTBOX_FIELD: 1}
@@ -130,6 +116,15 @@ _SUMMARY_PROJECTION: dict[str, object] = {
     "createdAt": 1,
     "updatedAt": 1,
 }
+
+
+@dataclass(frozen=True)
+class _History:
+    """A head with the messages a read projected from it, and whether older ones exist."""
+
+    head: Head
+    messages: list[ConversationEntry]
+    older: bool
 
 
 class ConversationRepository(UserScopedRepository[ConversationDocument, ConversationUpdate]):
@@ -300,47 +295,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
     # ---- the entry log: append, flush, read ----
 
-    async def append(
-        self, conversation_id: str, *, user_id: str, entries: Sequence[MessageModel]
-    ) -> list[int]:
-        """Commit entries at consecutive seqs in one conditional head write, returning each one's seq.
-
-        All or none. An id already committed with the same content is not appended again;
-        its seq is returned. One committed with other content raises ConversationStoreError,
-        writing nothing. Raises ConversationNotFoundError for a missing conversation.
-        """
-        batch: dict[str, dict[str, object]] = {}
-        for message in entries:
-            if message.message_id is None:
-                raise ValueError("an appended entry carries its producer-minted id")
-            data = stored_message(message)
-            batch.setdefault(message.message_id, {**data, CONTENT_HASH_FIELD: content_hash(data)})
-        ids = [str(message.message_id) for message in entries]
-        for _ in range(CONVERSATION_APPEND_MAX_ATTEMPTS):
-            head = await self._read_head_for_append(conversation_id, user_id, list(batch))
-            if head is None:
-                raise ConversationNotFoundError(
-                    message=f"conversation {conversation_id} does not exist for this user",
-                    meta={"conversation_id": conversation_id},
-                )
-            known = head.known_seqs()
-            _refuse_other_content(conversation_id, batch, head.known_content())
-            fresh = [(entry_id, data) for entry_id, data in batch.items() if entry_id not in known]
-            if not fresh:
-                if head.outbox:
-                    self._spawn_flush(conversation_id, user_id)
-                return [known[entry_id] for entry_id in ids]
-            seqs = {entry_id: head.log_head + n for n, (entry_id, _) in enumerate(fresh, 1)}
-            if await self._commit(conversation_id, user_id, head.log_head, fresh, seqs):
-                self._spawn_flush(conversation_id, user_id)
-                return [known.get(entry_id) or seqs[entry_id] for entry_id in ids]
-            await asyncio.sleep(_backoff())
-        raise ConversationStoreError(
-            message=f"append to conversation {conversation_id} lost every conditional write",
-            why=f"the head moved under each of {CONVERSATION_APPEND_MAX_ATTEMPTS} attempts",
-            meta={"conversation_id": conversation_id},
-        )
-
     async def flush_outbox(self, conversation_id: str, *, user_id: str) -> None:
         """Copy every outbox entry into conversation_entries, then drop it from the head: insert first, always."""
         # Reads only the outbox: what is committed is flushed whatever the embedded array holds.
@@ -380,180 +334,12 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     }
                 )
 
-    async def append_messages(
-        self, conversation_id: str, *, user_id: str, messages: Sequence[MessageModel]
-    ) -> dict[str, int] | None:
-        """Append messages to a conversation, returning each id's seq in order (None if it does not exist).
-
-        Each message takes the folded cards waiting for its id in the same commit.
-        """
-        stamped = [
-            message
-            if message.message_id is not None
-            else message.model_copy(update={"message_id": str(ObjectId())})
-            for message in messages
-        ]
-        try:
-            seqs = await self.append(conversation_id, user_id=user_id, entries=stamped)
-        except ConversationNotFoundError:
-            return None
-        return {str(message.message_id): seqs[n] for n, message in enumerate(stamped)}
-
-    async def park_folded_cards(
-        self,
-        conversation_id: str,
-        *,
-        user_id: str,
-        message_id: str,
-        entries: Sequence[Mapping[str, object]],
-    ) -> bool:
-        """Leave cards for message_id until its save absorbs them; False once it is saved.
-
-        Parks only at the log_head its read saw, so no commit of the message slips between.
-        """
-        for _ in range(CONVERSATION_APPEND_MAX_ATTEMPTS):
-            head = await self._read_head_for_append(conversation_id, user_id, [message_id])
-            if head is None or message_id in head.known_seqs():
-                return False
-            with store_errors("park folded cards"):  # pragma: no mutate — error label only
-                matched = await self._apply_pipeline_update_unfetched(
-                    {"conversation_id": conversation_id, **at_log_head(head.log_head)},
-                    [{"$set": {FOLDED_CARDS_FIELD: parked(message_id, entries)}}],
-                    # The waiting room is write-side only: no cached read shows it.
-                    scope=None,
-                    extra_filter={"user_id": user_id},
-                )
-            if matched:
-                return True
-            await asyncio.sleep(_backoff())
-        raise ConversationStoreError(
-            message=f"parking cards on conversation {conversation_id} lost every conditional write",
-            meta={"conversation_id": conversation_id},
-        )
-
-    async def set_message_pinned(
-        self, conversation_id: str, *, user_id: str, message_id: str, pinned: bool
-    ) -> bool:
-        """Set one message's pinned flag and advance the conversation's updatedAt."""
-        if not await self._update_entry(
-            conversation_id, user_id, {"id": message_id}, {"$set": {"pinned": pinned}}
-        ):
-            return False
-        await self._set_fields(conversation_id, user_id)
-        return True
-
     async def list_artifacts(
         self, conversation_id: str, *, user_id: str
     ) -> list[ArtifactRegistryEntry]:
         """Return the conversation's artifact registry, or an empty list when it has none."""
         document = await self._find_one({"conversation_id": conversation_id, "user_id": user_id})
         return list(document.artifacts) if document else []
-
-    async def append_message_tool_data(
-        self,
-        conversation_id: str,
-        *,
-        user_id: str,
-        message_id: str,
-        entries: Sequence[Mapping[str, object]],
-    ) -> bool:
-        """Append tool-data entries onto one message; does not advance updatedAt."""
-        return await self._update_entry(
-            conversation_id,
-            user_id,
-            {"id": message_id},
-            {"$push": {"tool_data": {"$each": [dict(entry) for entry in entries]}}},
-        )
-
-    async def extend_subagent_group(
-        self, conversation_id: str, *, user_id: str, message_id: str, group: SavedSubagentGroup
-    ) -> bool:
-        """Append calls to one saved subagent group in place and stamp its end; False when absent."""
-        path = "tool_data.$[group].data"
-        return await self._update_entry(
-            conversation_id,
-            user_id,
-            {"id": message_id, "tool_data.data.subagent_id": group.subagent_id},
-            {
-                "$push": {f"{path}.tool_calls": {"$each": group.tool_calls}},
-                "$set": {
-                    f"{path}.completed_at": group.completed_at,
-                    f"{path}.duration_ms": group.duration_ms,
-                },
-            },
-            array_filters=[
-                {
-                    "group.tool_name": SUBAGENT_GROUP_TOOL_NAME,
-                    "group.data.subagent_id": group.subagent_id,
-                }
-            ],
-        )
-
-    async def fail_unfinished_replies(
-        self, *, opened_before: datetime, error: str, owners: set[tuple[str, str]]
-    ) -> int:
-        """Settle the replies in progress since before opened_before in owners' conversations as failed with error.
-
-        owners holds (user_id, conversation_id) pairs; each one's outbox is flushed first, so a
-        reply committed by a process that died before its flush is settled too. Intentionally
-        unscoped (a maintenance sweep).
-        """
-        if not owners:
-            return 0
-        for user_id, conversation_id in sorted(owners):
-            await self.flush_outbox(conversation_id, user_id=user_id)
-        with store_errors("unfinished reply sweep"):
-            result = await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).update_many(
-                {
-                    "in_progress": True,
-                    "at": {"$lt": opened_before},
-                    "$or": [
-                        {"user_id": user_id, "conversation_id": conversation_id}
-                        for user_id, conversation_id in sorted(owners)
-                    ],
-                },
-                {"$set": {"error": error}, "$unset": {"in_progress": ""}},
-            )
-        return result.modified_count
-
-    async def list_unfinished_reply_owners(
-        self, *, opened_before: datetime
-    ) -> set[tuple[str, str]]:
-        """Return the (user_id, conversation_id) of every reply in progress since before opened_before.
-
-        Reads the outboxes as well as the collection. Intentionally unscoped (a maintenance sweep).
-        """
-        unfinished = {"in_progress": True, "at": {"$lt": opened_before}}
-        owner = {"_id": 0, "user_id": 1, "conversation_id": 1}
-        with store_errors("unfinished reply sweep"):
-            stored = await (
-                self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
-                .find(unfinished, owner)
-                .to_list(length=None)
-            )
-            pending = await (
-                self._raw_collection()
-                .aggregate([*every_outbox_entry_matching(unfinished), {"$project": owner}])
-                .to_list(length=None)
-            )
-        owners = [_ConversationOwnerRow.model_validate(row) for row in [*stored, *pending]]
-        return {(owner.user_id, owner.conversation_id) for owner in owners}
-
-    async def set_message_approval_status(
-        self, conversation_id: str, *, user_id: str, approval_id: str, status: str
-    ) -> bool:
-        """Settle a persisted approval_request frame's status on every message holding it.
-
-        Returns whether the frame was there to settle. Does not advance updatedAt.
-        """
-        return await self._update_entry(
-            conversation_id,
-            user_id,
-            {"tool_data.data.approval_id": approval_id},
-            {"$set": {"tool_data.$[entry].data.status": status}},
-            array_filters=[{"entry.data.approval_id": approval_id}],
-            every_match=True,
-        )
 
     # ---- targeted / projected reads ----
 
@@ -562,8 +348,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         heads = await self._read_heads({"conversation_id": doc_id, "user_id": user_id})
         if not heads:
             return None
-        [(head, messages)] = await self._histories(heads, _newest_window())
-        return self._with_newest(head, messages)
+        [history] = await self._histories(heads, EntryWindow(), limit=CONVERSATION_READ_LIMIT)
+        return self._with_history(history)
 
     async def read_messages_before(
         self, conversation_id: str, *, user_id: str, before_seq: int, limit: int
@@ -572,9 +358,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         heads = await self._read_heads({"conversation_id": conversation_id, "user_id": user_id})
         if not heads:
             return None
-        window = EntryWindow(before_seq=before_seq, limit=limit + 1)
-        [(_, messages)] = await self._histories(heads, window)
-        return ConversationMessagesPage(messages=messages[-limit:], has_more=len(messages) > limit)
+        window = EntryWindow(before_seq=before_seq)
+        [history] = await self._histories(heads, window, limit=limit)
+        return ConversationMessagesPage(messages=history.messages, has_more=history.older)
 
     async def get_message(
         self, conversation_id: str, message_id: str, *, user_id: str
@@ -584,8 +370,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         if not heads:
             return None
         window = EntryWindow(ids=[message_id], reply_ids=[message_id])
-        [(_, messages)] = await self._histories(heads, window)
-        return messages[0] if messages else None
+        [history] = await self._histories(heads, window)
+        return history.messages[0] if history.messages else None
 
     async def get_source(self, conversation_id: str, *, user_id: str) -> ConversationSource | None:
         """Return the conversation's source enum, or None when it doesn't exist."""
@@ -655,9 +441,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def recent_for_user(self, user_id: str, *, limit: int) -> list[ConversationDocument]:
         """Return the user's most recent conversations, each with its newest messages."""
         heads = await self._read_heads({"user_id": user_id}, sort={"createdAt": -1}, limit=limit)
+        window = EntryWindow()
         return [
-            self._with_messages(head, messages)
-            for head, messages in await self._histories(heads, _newest_window())
+            self._with_history(history)
+            for history in await self._histories(heads, window, limit=CONVERSATION_READ_LIMIT)
         ]
 
     async def find_todo_conversation_id(self, user_id: str, todo_id: str) -> str | None:
@@ -777,9 +564,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         if not conditions:
             return []
         heads = await self._read_heads({"$or": conditions})
+        window = EntryWindow()
         return [
-            self._with_newest(head, messages)
-            for head, messages in await self._histories(heads, _newest_window())
+            self._with_history(history)
+            for history in await self._histories(heads, window, limit=CONVERSATION_READ_LIMIT)
         ]
 
     # ---- search / pinned ----
@@ -906,48 +694,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             raws = await self._raw_collection().aggregate(pipeline).to_list(length=None)
         return head_from_raw(raws[0]) if raws else None
 
-    async def _commit(
-        self,
-        conversation_id: str,
-        user_id: str,
-        log_head: int,
-        fresh: Sequence[tuple[str, dict[str, object]]],
-        seqs: Mapping[str, int],
-    ) -> bool:
-        """Allocate seqs: the one conditional head write, absorbing each entry's folded cards with it."""
-        committed = {
-            str(seqs[entry_id]): absorbing(
-                entry_id,
-                {
-                    **data,
-                    "conversation_id": conversation_id,
-                    "user_id": user_id,
-                    "seq": seqs[entry_id],
-                },
-            )
-            for entry_id, data in fresh
-        }
-        with store_errors("append"):  # pragma: no mutate — error label only
-            matched = await self._apply_pipeline_update_unfetched(
-                {"conversation_id": conversation_id, **at_log_head(log_head)},
-                [
-                    {
-                        "$set": {
-                            LOG_HEAD_FIELD: log_head + len(fresh),
-                            OUTBOX_FIELD: {
-                                "$mergeObjects": [{"$ifNull": [f"${OUTBOX_FIELD}", {}]}, committed]
-                            },
-                            "updatedAt": "$$NOW",
-                            FOLDED_CARDS_FIELD: still_waiting(list(seqs)),
-                        }
-                    }
-                ],
-                # Conversations are uncached (cache_policy None): no read to invalidate.
-                scope=None,
-                extra_filter={"user_id": user_id},
-            )
-        return matched > 0
-
     async def _insert_entries(self, entries: Sequence[StoredEntry]) -> None:
         """Insert each outbox entry; one already stored at its seq was flushed before, any other conflict is a bug."""
         collection = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
@@ -975,35 +721,58 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             )
 
     async def _histories(
-        self, heads: Sequence[Head], window: EntryWindow
-    ) -> list[tuple[Head, list[ConversationEntry]]]:
-        """Each head's messages in window: its message-shaping entries, projected with what they need beside them."""
-        windows = await self._union_for(heads, replace(window, kinds=MESSAGE_KINDS))
-        logged = [(head, [logged_of(entry) for entry in entries]) for head, entries in windows]
-        related = await asyncio.gather(*(self._related(head, read) for head, read in logged))
-        return [(head, project(read, beside)) for (head, read), beside in zip(logged, related)]
+        self, heads: Sequence[Head], window: EntryWindow, *, limit: int | None = None
+    ) -> list[_History]:
+        """Each head's messages in window: the newest limit of them, and whether older ones exist."""
+        if limit is None:
+            windows = await self._union_for(heads, replace(window, kinds=MESSAGE_KINDS))
+            return list(
+                await asyncio.gather(
+                    *(self._history(head, entries, older=False) for head, entries in windows)
+                )
+            )
+        return list(await asyncio.gather(*(self._newest(head, window, limit) for head in heads)))
+
+    async def _newest(self, head: Head, window: EntryWindow, limit: int) -> _History:
+        """Read back one chunk at a time until limit messages show: finished work a reply took shows none."""
+        shown: list[ConversationEntry] = []
+        before = window.before_seq
+        while True:
+            chunk = replace(window, kinds=MESSAGE_KINDS, before_seq=before, limit=limit + 1)
+            [(_, entries)] = await self._union_for([head], chunk)
+            more = len(entries) > limit
+            page = entries[-limit:] if more else entries
+            shown = (await self._history(head, page, older=False)).messages + shown
+            if len(shown) > limit or not more:
+                return _History(head, shown[-limit:], len(shown) > limit)
+            before = page[0].seq
+
+    async def _history(
+        self, head: Head, entries: Sequence[StoredEntry], *, older: bool
+    ) -> _History:
+        logged = [logged_of(entry) for entry in entries]
+        return _History(head, project(logged, await self._related(head, logged)), older)
 
     async def _related(self, head: Head, window: Sequence[LoggedEntry]) -> list[LoggedEntry]:
-        """Read the settles of the window's replies and the user messages it quotes from outside it."""
-        quoted, replies = needed_beside(window)
-        related = await self._lookup(head, quoted, replies) if quoted or replies else []
-        late, _ = needed_beside(window, related)
-        return related + (await self._lookup(head, late, []) if late else [])
+        """Read what the window's messages need from outside it: settles, quotes, approvals, answering replies."""
 
-    async def _lookup(
-        self, head: Head, ids: Sequence[str], reply_ids: Sequence[str]
-    ) -> list[LoggedEntry]:
-        window = EntryWindow(ids=ids, reply_ids=reply_ids, kinds=RELATED_KINDS)
-        [(_, found)] = await self._union_for([head], window)
-        return [logged_of(entry) for entry in found]
+        async def lookup(ids: Sequence[str], reply_ids: Sequence[str]) -> list[LoggedEntry]:
+            found = EntryWindow(ids=ids, reply_ids=reply_ids, kinds=RELATED_KINDS)
+            [(_, entries)] = await self._union_for([head], found)
+            return [logged_of(entry) for entry in entries]
+
+        return await _read_beside(window, lookup)
 
     async def _hits(self, user_id: str, rows: Sequence[StoredRow]) -> list[ConversationMessageHit]:
         """Project cross-conversation rows one message apiece, with their settles and quotes."""
-        hits = [row.logged for row in rows]
-        quoted, replies = needed_beside(hits)
-        beside = await self._related_rows(user_id, quoted, replies) if quoted or replies else []
-        late, _ = needed_beside(hits, [row.logged for row in beside])
-        beside += await self._related_rows(user_id, late, []) if late else []
+        beside: list[StoredRow] = []
+
+        async def lookup(ids: Sequence[str], reply_ids: Sequence[str]) -> list[LoggedEntry]:
+            found = await self._related_rows(user_id, ids, reply_ids)
+            beside.extend(found)
+            return [row.logged for row in found]
+
+        await _read_beside([row.logged for row in rows], lookup)
         related: dict[str, list[LoggedEntry]] = {}
         for row in [*rows, *beside]:
             related.setdefault(row.conversation_id, []).append(row.logged)
@@ -1016,11 +785,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def _related_rows(
         self, user_id: str, ids: Sequence[str], reply_ids: Sequence[str]
     ) -> list[StoredRow]:
-        named = [
-            {"kind": EntryKind.REPLY_SETTLED.value, "reply_id": {"$in": list(reply_ids)}},
-            {"kind": EntryKind.USER_MESSAGE.value, "id": {"$in": list(ids)}},
-        ]
-        return await self._find_entries(user_id, {"$or": named})
+        named = [{"id": {"$in": list(ids)}}, {"reply_id": {"$in": list(reply_ids)}}]
+        return await self._find_entries(
+            user_id, {"kind": {"$in": sorted(RELATED_KINDS)}, "$or": named}
+        )
 
     async def _union_for(
         self, heads: Sequence[Head], window: EntryWindow
@@ -1094,6 +862,17 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 .aggregate(outbox_entries_matching(user_id, match, excluding=excluding))
                 .to_list(length=None)
             )
+            # An entry still in an outbox is newer than any stored copy of it, matching or not.
+            revised = await (
+                self._raw_collection()
+                .aggregate(
+                    [
+                        *outbox_entries_matching(user_id, {}, excluding=excluding),
+                        {"$project": {"_id": 0, "conversation_id": 1, "seq": 1}},
+                    ]
+                )
+                .to_list(length=None)
+            )
             stored = stored_entries_matching(
                 user_id,
                 match,
@@ -1112,9 +891,15 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 user_id=user_id,
                 conversation_ids=behind,
             )
+        staged = {(str(row["conversation_id"]), int(str(row["seq"]))) for row in revised}
         found: dict[tuple[str, int], StoredRow] = {}
-        for row in map(stored_row, [*pending, *rows]):
-            found.setdefault((row.conversation_id, row.logged.seq), row)
+        for raw in pending:
+            row = stored_row(raw)
+            found[(row.conversation_id, row.logged.seq)] = row
+        for raw in rows:
+            key = (str(raw["conversation_id"]), int(str(raw["seq"])))
+            if key not in found and key not in staged:
+                found[key] = stored_row(raw)
         return sorted(found.values(), key=lambda row: (row.logged.at, row.logged.seq))
 
     async def _first_entry(
@@ -1129,42 +914,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         found = await self._find_entries(user_id, match, excluding=excluding, limit=1)
         # pragma: no mutate end
         return found[0] if found else None
-
-    async def _update_entry(
-        self,
-        conversation_id: str,
-        user_id: str,
-        match: Mapping[str, object],
-        update: Mapping[str, object] | Sequence[Mapping[str, object]],
-        *,
-        array_filters: Sequence[Mapping[str, object]] | None = None,
-        every_match: bool = False,
-    ) -> bool:
-        """Update one stored message (every matching one with every_match); one still in the outbox is flushed first.
-
-        Never writes inside the outbox: a miss flushes it and retries once, and an
-        every_match update flushes first, since a hit in the collection says nothing
-        of a match still in the outbox.
-        """
-        query = {"user_id": user_id, "conversation_id": conversation_id, **match, **MESSAGES_ONLY}
-        filters = [dict(f) for f in array_filters] if array_filters is not None else None
-        document: dict[str, object] | list[dict[str, object]] = (
-            dict(update) if isinstance(update, Mapping) else [dict(stage) for stage in update]
-        )
-        entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
-        if every_match:
-            await self.flush_outbox(conversation_id, user_id=user_id)
-            with store_errors("entry update"):  # pragma: no mutate — error label only
-                result = await entries.update_many(query, document, array_filters=filters)
-            return result.matched_count > 0
-        with store_errors("entry update"):  # pragma: no mutate — error label only
-            result = await entries.update_one(query, document, array_filters=filters)
-        if result.matched_count:
-            return True
-        await self.flush_outbox(conversation_id, user_id=user_id)
-        with store_errors("entry update"):  # pragma: no mutate — error label only
-            retried = await entries.update_one(query, document, array_filters=filters)
-        return retried.matched_count > 0
 
     async def _delete_conversations(self, match: Mapping[str, object], user_id: str) -> list[str]:
         """Delete the user's conversations matching match and their entries, returning their ids."""
@@ -1182,19 +931,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             await self._raw_collection().delete_many(query)
         return ids
 
-    def _with_newest(
-        self, head: Head, entries: Sequence[ConversationEntry]
-    ) -> ConversationDocument:
-        """Return the head with the newest CONVERSATION_READ_LIMIT of entries, read one past it to tell."""
-        doc = self._with_messages(head, entries[-CONVERSATION_READ_LIMIT:])
-        doc.has_older = len(entries) > CONVERSATION_READ_LIMIT
-        return doc
-
-    def _with_messages(
-        self, head: Head, entries: Sequence[ConversationEntry]
-    ) -> ConversationDocument:
-        doc = self._to_model(head.fields)
-        doc.messages = list(entries)
+    def _with_history(self, history: _History) -> ConversationDocument:
+        doc = self._to_model(history.head.fields)
+        doc.messages = history.messages
+        doc.has_older = history.older
         return doc
 
     def _listed(self) -> dict[str, object]:
@@ -1244,30 +984,29 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 conversation_repository = ConversationRepository()
 
 
+async def _read_beside(
+    window: Sequence[LoggedEntry],
+    lookup: Callable[[Sequence[str], Sequence[str]], Awaitable[list[LoggedEntry]]],
+) -> list[LoggedEntry]:
+    """Look up what the window needs, pass by pass, as each answer names more; never the same id twice."""
+    related: list[LoggedEntry] = []
+    asked: set[str] = set()
+    for _ in range(_BESIDE_PASSES):
+        ids, reply_ids = (
+            [name for name in names if name not in asked]
+            for names in needed_beside(window, related)
+        )
+        if not ids and not reply_ids:
+            break
+        asked |= {*ids, *reply_ids}
+        related += await lookup(ids, reply_ids)
+    return related
+
+
 def _backoff() -> float:
     """Return how long a writer that lost the conditional write waits before rereading the head."""
     # Any short wait is correct, so its bounds are not behaviour a test can pin.
     return _JITTER.uniform(0, CONVERSATION_APPEND_JITTER_SECONDS)  # pragma: no mutate
-
-
-def _newest_window() -> EntryWindow:
-    # Read at call time, so the limit stays one constant a test can lower; one past it tells has_older.
-    return EntryWindow(limit=CONVERSATION_READ_LIMIT + 1)
-
-
-def _refuse_other_content(
-    conversation_id: str,
-    batch: Mapping[str, Mapping[str, object]],
-    committed: Mapping[str, str | None],
-) -> None:
-    """Raise when an id in batch is already committed with other content: a retry never reports an unwritten save."""
-    for entry_id, data in batch.items():
-        if entry_id in committed and committed[entry_id] != data[CONTENT_HASH_FIELD]:
-            raise ConversationStoreError(
-                message=f"entry {entry_id} is already committed with other content",
-                why="an append is idempotent only for the same message; fill or edit the entry instead",
-                meta={"conversation_id": conversation_id, "entry_id": entry_id},
-            )
 
 
 def _todo_binding(todo_id: str) -> dict[str, object]:

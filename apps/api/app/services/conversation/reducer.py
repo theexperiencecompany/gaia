@@ -44,14 +44,14 @@ def reduce(state: ConversationState, logged: LoggedEntry) -> Transition | Reject
 def _apply(state: ConversationState, seq: int, entry: Entry) -> Transition | Rejected:
     result: Transition | Rejected
     match entry:
+        case TodoWoke() | Notice() | IntegrationNeeded() | UserMessage(first_contact=True):
+            result = Transition(state=state, effects=())
         case UserMessage() | WorkflowFired() | IntegrationConnected():
             result = _wake_input(state, seq, entry)
         case BargeIn(reply_id=reply_id):
             result = Transition(state=state, effects=_barge_effects(state, reply_id))
         case StopRequested():
             result = _stop(state, seq, entry)
-        case TodoWoke() | Notice() | IntegrationNeeded():
-            result = Transition(state=state, effects=())
         case WorkStarted():
             result = _start_work(state, seq, entry)
         case ApprovalRequested():

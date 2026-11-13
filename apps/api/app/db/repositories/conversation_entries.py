@@ -13,14 +13,11 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
-import hashlib
-import json
 
 from pydantic import TypeAdapter
 from pymongo.errors import PyMongoError
 
 from app.constants.chat import CONVERSATION_ENTRIES_MIGRATION_SCRIPT
-from app.models.chat_models import MessageModel
 from app.models.conversation_log_models import Entry, EntryKind, LoggedEntry
 from app.models.conversation_models import (
     ConversationHead,
@@ -55,8 +52,6 @@ HEAD_INTERNAL_FIELDS = (
 )
 #: The kinds the conversation log appends; a stored entry with any other kind, or none, is a message.
 LOG_KINDS: list[str] = [kind.value for kind in EntryKind]
-MESSAGES_ONLY: dict[str, object] = {"kind": {"$nin": LOG_KINDS}}
-LOG_ENTRIES_ONLY: dict[str, object] = {"kind": {"$in": LOG_KINDS}}
 
 #: A server-side hash of the whole embedded array: any append, trim or in-place edit changes it.
 EMBEDDED_FINGERPRINT: dict[str, object] = {"$toHashedIndexKey": {"$ifNull": ["$messages", []]}}
@@ -157,11 +152,6 @@ class Head:
         """Return the committed-content hash of every entry id this head's reads saw."""
         stored = {row.id: row.content_hash for row in self.document.existing}
         return {**stored, **{entry.id: entry.content_hash for entry in self.outbox.values()}}
-
-
-def is_log_entry(entry: StoredEntry) -> bool:
-    """Whether a stored entry is one the conversation log appended rather than a message."""
-    return entry.message_fields().get("kind") in LOG_KINDS
 
 
 def newest(stored: StoredEntry | None, staged: StoredEntry) -> StoredEntry:
@@ -300,20 +290,6 @@ def head_fields(raw: Mapping[str, object]) -> dict[str, object]:
     return {key: value for key, value in raw.items() if key not in HEAD_INTERNAL_FIELDS}
 
 
-def stored_message(message: MessageModel) -> dict[str, object]:
-    """Return the message as an entry stores it: today's fields, with id in place of message_id."""
-    data = {k: v for k, v in message.model_dump().items() if v is not None}
-    data["id"] = data.pop("message_id")
-    return data
-
-
-def content_hash(stored: Mapping[str, object]) -> str:
-    """Hash a message as append commits it, so a retry can tell the same message from another under its id."""
-    return hashlib.sha256(
-        json.dumps(dict(stored), sort_keys=True, default=str).encode()
-    ).hexdigest()
-
-
 def logged_of(stored: StoredEntry) -> LoggedEntry:
     """Read a stored entry (from the collection or an outbox) back as the log entry it holds."""
     fields = {k: v for k, v in stored.document().items() if k not in _POSITION_KEYS}
@@ -426,95 +402,3 @@ class EntryWindow:
         if self.ids is None and self.reply_ids is None:
             return True
         return entry_id in (self.ids or ()) or fields.get("reply_id") in (self.reply_ids or ())
-
-
-def waiting_for(message_id: str) -> dict[str, object]:
-    """Read the waiting-room entry for message_id, taking the id as a literal, never a path."""
-    return {
-        "$getField": {
-            "field": {"$literal": message_id},
-            "input": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]},
-        }
-    }
-
-
-def absorbing(message_id: str, message: Mapping[str, object]) -> dict[str, object]:
-    """Build the entry as committed, stamped at commit time unless it carries its own, its waiting cards after its tool_data.
-
-    The entry itself is a $literal, so text that starts with "$" is never read as a path.
-    """
-    waiting = {"$getField": {"field": "cards", "input": waiting_for(message_id)}}
-    tool_data = {
-        "$concatArrays": [{"$ifNull": ["$$message.tool_data", []]}, {"$ifNull": [waiting, []]}]
-    }
-    return {
-        "$let": {
-            "vars": {"message": {"$literal": dict(message)}},
-            "in": {
-                "$mergeObjects": [
-                    "$$message",
-                    {
-                        "at": {"$ifNull": ["$$message.at", "$$NOW"]},
-                        "tool_data": {"$cond": [{"$eq": [tool_data, []]}, "$$REMOVE", tool_data]},
-                    },
-                ]
-            },
-        }
-    }
-
-
-def still_waiting(saved_ids: list[str]) -> dict[str, object]:
-    """Keep the waiting room minus the cards these messages absorbed and any a day stale."""
-    kept = {
-        "$arrayToObject": {
-            "$filter": {
-                "input": {"$objectToArray": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]}},
-                "as": "waiting",
-                "cond": {
-                    "$and": [
-                        {"$not": [{"$in": ["$$waiting.k", {"$literal": saved_ids}]}]},
-                        {
-                            "$gt": [
-                                "$$waiting.v.since",
-                                {
-                                    "$dateSubtract": {
-                                        "startDate": "$$NOW",
-                                        "unit": "second",
-                                        "amount": FOLDED_CARDS_KEEP_SECONDS,
-                                    }
-                                },
-                            ]
-                        },
-                    ]
-                },
-            }
-        }
-    }
-    return {
-        "$let": {
-            "vars": {"kept": kept},
-            "in": {"$cond": [{"$eq": ["$$kept", {}]}, "$$REMOVE", "$$kept"]},
-        }
-    }
-
-
-def parked(message_id: str, cards: Sequence[Mapping[str, object]]) -> dict[str, object]:
-    """Return the waiting room with these cards added under message_id, keeping when it first waited."""
-    waiting = waiting_for(message_id)
-    return {
-        "$setField": {
-            "field": {"$literal": message_id},
-            "input": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]},
-            "value": {
-                "since": {
-                    "$ifNull": [{"$getField": {"field": "since", "input": waiting}}, "$$NOW"]
-                },
-                "cards": {
-                    "$concatArrays": [
-                        {"$ifNull": [{"$getField": {"field": "cards", "input": waiting}}, []]},
-                        {"$literal": [dict(card) for card in cards]},
-                    ]
-                },
-            },
-        }
-    }

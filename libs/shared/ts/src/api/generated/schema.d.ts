@@ -1085,11 +1085,7 @@ export interface paths {
          * @description Page a conversation's history back from before_seq: the newest limit messages before it.
          */
         get: operations["conversations_get_messages_before_endpoint"];
-        /**
-         * Update Messages Endpoint
-         * @description Update the messages of a conversation.
-         */
-        put: operations["conversations_update_messages_endpoint"];
+        put?: never;
         /**
          * Send Message Endpoint
          * @description Accept a message into a conversation the step runs; its reply arrives on the events stream.
@@ -9305,19 +9301,6 @@ export interface components {
             collapsed_at?: string | null;
         };
         /**
-         * FoldedCards
-         * @description Cards a detached run closed before the message they fold into was saved; its save takes them.
-         */
-        FoldedCards: {
-            /** Cards */
-            cards?: components["schemas"]["ToolDataEntry"][];
-            /**
-             * Since
-             * Format: date-time
-             */
-            since: string;
-        };
-        /**
          * FollowUpActionsEvent
          * @description A chat stream follow_up_actions event, tagged.
          */
@@ -11374,70 +11357,6 @@ export interface components {
             trace_id?: string | null;
         };
         /**
-         * MessageModel
-         * @description A single chat message with its content, attachments and tool data.
-         */
-        MessageModel: {
-            /** Date */
-            date?: string | null;
-            /** Disclaimer */
-            disclaimer?: string | null;
-            /** Error */
-            error?: string | null;
-            /** File */
-            file?: string | null;
-            /**
-             * Filedata
-             * @default []
-             */
-            fileData?: components["schemas"]["FileData"][] | null;
-            /**
-             * Fileids
-             * @default []
-             */
-            fileIds?: string[] | null;
-            /** Filename */
-            filename?: string | null;
-            /** Filetype */
-            filetype?: string | null;
-            /** First Contact */
-            first_contact?: boolean | null;
-            /** Follow Up Actions */
-            follow_up_actions?: string[] | null;
-            image_data?: components["schemas"]["ImageData"] | null;
-            /** In Progress */
-            in_progress?: boolean | null;
-            /** Message Id */
-            message_id?: string | null;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
-            /** Pinned */
-            pinned?: boolean | null;
-            /** Platform Message Id */
-            platform_message_id?: string | null;
-            reaction?: components["schemas"]["MessageReaction"] | null;
-            replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
-            /** Response */
-            response: string;
-            selectedCalendarEvent?: components["schemas"]["SelectedCalendarEventData"] | null;
-            /** Selectedtool */
-            selectedTool?: string | null;
-            selectedWorkflow?: components["schemas"]["SelectedWorkflowDataInput"] | null;
-            /** Stopped */
-            stopped?: boolean | null;
-            /** Subtype */
-            subtype?: string | null;
-            todo_run_wake?: components["schemas"]["TodoRunWake"] | null;
-            /** Tool Data */
-            tool_data?: components["schemas"]["ToolDataEntry"][] | null;
-            /** Toolcategory */
-            toolCategory?: string | null;
-            /** Type */
-            type: string;
-        };
-        /**
          * MessageReaction
          * @description GAIA's one emoji reaction on a user message.
          */
@@ -11668,6 +11587,11 @@ export interface components {
          * @description Text delivered to the user outside a step, with the cards of the work it reports.
          */
         Notice: {
+            /**
+             * Follow Up Actions
+             * @default []
+             */
+            follow_up_actions?: string[];
             /**
              * Id
              * @description Producer-minted idempotency key
@@ -16173,33 +16097,6 @@ export interface components {
             content: string;
         };
         /**
-         * UpdateMessagesRequest
-         * @description Request to replace the messages of a conversation.
-         */
-        UpdateMessagesRequest: {
-            /** Conversation Id */
-            conversation_id: string;
-            /** Messages */
-            messages: components["schemas"]["MessageModel"][];
-        };
-        /**
-         * UpdateMessagesResponse
-         * @description Append acknowledgement carrying the ids the appended messages were stored
-         *     under — the client reconciles its optimistic records against these.
-         */
-        UpdateMessagesResponse: {
-            /** Conversation Id */
-            conversation_id: string;
-            /** Message */
-            message: string;
-            /** Message Ids */
-            message_ids: string[];
-            /** Message Seqs */
-            message_seqs: number[];
-            /** Modified Count */
-            modified_count: number;
-        };
-        /**
          * UpdateProjectRequest
          * @description Model for updating projects - all fields optional
          */
@@ -16443,6 +16340,11 @@ export interface components {
              * @default []
              */
             files?: components["schemas"]["FileData"][];
+            /**
+             * First Contact
+             * @default false
+             */
+            first_contact?: boolean;
             /**
              * Id
              * @description Producer-minted idempotency key
@@ -17663,7 +17565,6 @@ export type FirstStepKey = components['schemas']['FirstStepKey'];
 export type FirstStepsCollapseRequest = components['schemas']['FirstStepsCollapseRequest'];
 export type FirstStepsResponse = components['schemas']['FirstStepsResponse'];
 export type FirstStepsState = components['schemas']['FirstStepsState'];
-export type FoldedCards = components['schemas']['FoldedCards'];
 export type FollowUpActionsEvent = components['schemas']['FollowUpActionsEvent'];
 export type GateAuthor = components['schemas']['GateAuthor'];
 export type GateEdit = components['schemas']['GateEdit'];
@@ -17783,7 +17684,6 @@ export type MessageBoundaryEvent = components['schemas']['MessageBoundaryEvent']
 export type MessageBoundaryPayload = components['schemas']['MessageBoundaryPayload'];
 export type MessageFeedbackRequest = components['schemas']['MessageFeedbackRequest'];
 export type MessageFeedbackResponse = components['schemas']['MessageFeedbackResponse'];
-export type MessageModel = components['schemas']['MessageModel'];
 export type MessageReaction = components['schemas']['MessageReaction'];
 export type MessageRequest = components['schemas']['MessageRequest'];
 export type MessageSearchResult = components['schemas']['MessageSearchResult'];
@@ -18034,8 +17934,6 @@ export type UpdateHoloCardColorsResponse = components['schemas']['UpdateHoloCard
 export type UpdateInstructionsRequest = components['schemas']['UpdateInstructionsRequest'];
 export type UpdateIntegrationAccountRequest = components['schemas']['UpdateIntegrationAccountRequest'];
 export type UpdateMemoryRequest = components['schemas']['UpdateMemoryRequest'];
-export type UpdateMessagesRequest = components['schemas']['UpdateMessagesRequest'];
-export type UpdateMessagesResponse = components['schemas']['UpdateMessagesResponse'];
 export type UpdateProjectRequest = components['schemas']['UpdateProjectRequest'];
 export type UpdateReminderRequest = components['schemas']['UpdateReminderRequest'];
 export type UpdateTimezoneResponse = components['schemas']['UpdateTimezoneResponse'];
@@ -21163,57 +21061,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConversationMessagesPage"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    conversations_update_messages_endpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateMessagesRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UpdateMessagesResponse"];
                 };
             };
             /** @description Unprocessable Entity */

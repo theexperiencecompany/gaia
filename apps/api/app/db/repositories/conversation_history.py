@@ -2,16 +2,22 @@
 
 A UserMessage is a user message, a Reply with its ReplySettled a bot message carrying its
 outcome, a Notice a bot message, a TodoWoke or WorkflowFired the user-side message that woke
-the run. Every other kind shapes no message of its own.
+the run, and finished work with cards its own bubble until a reply answers that work (the
+reply whose reply_id is its task_id carries them then). An approval card's status is derived
+from the approval's entries; nothing rewrites it in place.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field
 
 from app.constants.chat import BOT_MESSAGE_TYPE, USER_MESSAGE_TYPE
+from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME, ApprovalResolution
 from app.models.chat_models import MessageReaction
 from app.models.conversation_log_models import (
+    ApprovalDecided,
+    ApprovalRequested,
     EntryKind,
     LoggedEntry,
     Notice,
@@ -20,12 +26,16 @@ from app.models.conversation_log_models import (
     ReplySettled,
     TodoWoke,
     UserMessage,
+    WorkFinished,
     WorkflowFired,
+    WorkOutcome,
 )
 from app.models.conversation_models import ConversationEntry
+from app.models.hil_models import HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
+from app.models.tool_data_models import ToolDataEntry
 
-#: The kinds a history window counts: each shapes one message.
+#: The kinds a history window counts: each can shape one message.
 MESSAGE_KINDS: frozenset[str] = frozenset(
     {
         EntryKind.USER_MESSAGE,
@@ -33,67 +43,108 @@ MESSAGE_KINDS: frozenset[str] = frozenset(
         EntryKind.NOTICE,
         EntryKind.TODO_WOKE,
         EntryKind.WORKFLOW_FIRED,
+        EntryKind.WORK_FINISHED,
     }
 )
-#: The kinds a message read looks up beside its window: the settles and the quoted user messages.
-RELATED_KINDS: frozenset[str] = frozenset({EntryKind.REPLY_SETTLED, EntryKind.USER_MESSAGE})
+#: The kinds a message read looks up beside its window.
+RELATED_KINDS: frozenset[str] = frozenset(
+    {
+        EntryKind.REPLY_SETTLED,
+        EntryKind.USER_MESSAGE,
+        EntryKind.REPLY,
+        EntryKind.APPROVAL_REQUESTED,
+        EntryKind.APPROVAL_DECIDED,
+        EntryKind.WORK_FINISHED,
+    }
+)
 #: The kinds whose text search reads and a pin marks.
 TEXT_KINDS: frozenset[str] = frozenset({EntryKind.USER_MESSAGE, EntryKind.REPLY, EntryKind.NOTICE})
 PINNABLE_KINDS: frozenset[str] = frozenset({EntryKind.USER_MESSAGE, EntryKind.REPLY})
+#: How a decided approval's card reads.
+_DECIDED_LABEL: dict[ApprovalResolution, HILApprovalStatus] = {
+    "approve": HILApprovalStatus.APPROVED,
+    "deny": HILApprovalStatus.DENIED,
+    "timeout": HILApprovalStatus.TIMEOUT,
+    "abandon": HILApprovalStatus.ABANDONED,
+}
+_STOPPED_WORK = frozenset({WorkOutcome.CANCELLED, WorkOutcome.LOST})
+_CANCELLED_LABEL = "cancelled"
+
+
+@dataclass
+class _Beside:
+    """What the window's messages read from the entries around them."""
+
+    settles: dict[str, ReplySettled] = field(default_factory=dict)
+    users: dict[str, UserMessage] = field(default_factory=dict)
+    replies: set[str] = field(default_factory=set)
+    requests: dict[str, ApprovalRequested] = field(default_factory=dict)
+    decisions: dict[str, ApprovalDecided] = field(default_factory=dict)
+    finished: dict[str, WorkFinished] = field(default_factory=dict)
+
+    @classmethod
+    def of(cls, entries: Iterable[LoggedEntry]) -> _Beside:
+        beside = cls()
+        for logged in entries:
+            match logged.entry:
+                case ReplySettled() as settled:
+                    beside.settles[settled.reply_id] = settled
+                case UserMessage() as message:
+                    beside.users[message.id] = message
+                case Reply(reply_id=reply_id):
+                    beside.replies.add(reply_id)
+                case ApprovalRequested() as request:
+                    beside.requests[request.approval_id] = request
+                case ApprovalDecided() as decision:
+                    beside.decisions[decision.approval_id] = decision
+                case WorkFinished() as work:
+                    beside.finished[work.task_id] = work
+                case _:
+                    pass
+        return beside
 
 
 def needed_beside(
     window: Sequence[LoggedEntry], related: Sequence[LoggedEntry] = ()
 ) -> tuple[list[str], list[str]]:
-    """Return what the window's messages still need beside related: quoted user message ids, and unsettled reply ids.
+    """Return the entry ids and reply ids the window's messages still need beside related.
 
-    A settle's quote is the reply's final one, so a read that found settles asks again for their quotes.
+    Each answer can name more (a settle's quote, a request's work), so a read asks until none is left.
     """
     read = [*window, *related]
     present = {logged.entry.id for logged in read}
-    settled = {logged.entry.reply_id for logged in read if isinstance(logged.entry, ReplySettled)}
-    quoted = {
-        target
-        for logged in read
-        if (target := _quote_target(logged.entry)) is not None and target not in present
-    }
-    replies = [
+    beside = _Beside.of(read)
+    wanted = {target for logged in read if (target := _quote_target(logged.entry)) is not None}
+    for logged in window:
+        for approval_id in _card_approvals(logged.entry):
+            wanted |= {f"approval:{approval_id}", f"approval:{approval_id}:decided"}
+    for request in beside.requests.values():
+        wanted |= {f"work:{request.task_id}:finished", f"work:{request.task_id}:lost"}
+    replies = {
         logged.entry.reply_id
         for logged in window
-        if isinstance(logged.entry, Reply) and logged.entry.reply_id not in settled
-    ]
-    return sorted(quoted), replies
+        if isinstance(logged.entry, Reply) and logged.entry.reply_id not in beside.settles
+    }
+    replies |= {
+        logged.entry.task_id
+        for logged in window
+        if isinstance(logged.entry, WorkFinished) and logged.entry.task_id not in beside.replies
+    }
+    return sorted(wanted - present), sorted(replies)
 
 
 def project(
     window: Sequence[LoggedEntry], related: Iterable[LoggedEntry] = ()
 ) -> list[ConversationEntry]:
-    """Project the window's entries, in order, into messages; related supplies settles and quoted messages."""
-    beside = list(related)
-    settles = {
-        logged.entry.reply_id: logged.entry
-        for logged in [*window, *beside]
-        if isinstance(logged.entry, ReplySettled)
-    }
-    users = {
-        logged.entry.id: logged.entry
-        for logged in [*window, *beside]
-        if isinstance(logged.entry, UserMessage)
-    }
-    return [
-        message for logged in window if (message := _message(logged, settles, users)) is not None
-    ]
+    """Project the window's entries, in order, into messages; related supplies what they read beside them."""
+    beside = _Beside.of([*window, *related])
+    return [message for logged in window if (message := _message(logged, beside)) is not None]
 
 
-def _message(
-    logged: LoggedEntry,
-    settles: Mapping[str, ReplySettled],
-    users: Mapping[str, UserMessage],
-) -> ConversationEntry | None:
+def _message(logged: LoggedEntry, beside: _Beside) -> ConversationEntry | None:
     seq, date = logged.seq, logged.at.isoformat()
     match logged.entry:
         case UserMessage() as message:
-            quote = message.reply_to_message or _quote(users, message.reply_to)
             return ConversationEntry(
                 seq=seq,
                 date=date,
@@ -106,13 +157,14 @@ def _message(
                 toolCategory=message.tool_category,
                 selectedWorkflow=message.selected_workflow,
                 selectedCalendarEvent=message.selected_calendar_event,
-                replyToMessage=quote,
+                replyToMessage=message.reply_to_message or _quote(beside, message.reply_to),
                 reaction=_reaction(message),
                 platform_message_id=message.platform_message_id,
+                first_contact=message.first_contact or None,
                 pinned=message.pinned or None,
             )
         case Reply() as reply:
-            settled = settles.get(reply.reply_id)
+            settled = beside.settles.get(reply.reply_id)
             target = reply.quote_target if settled is None else settled.quote_target
             return ConversationEntry(
                 seq=seq,
@@ -120,9 +172,9 @@ def _message(
                 type=BOT_MESSAGE_TYPE,
                 response=reply.text,
                 message_id=reply.reply_id,
-                tool_data=list(reply.tool_data) or None,
+                tool_data=_cards(reply.tool_data, beside),
                 follow_up_actions=list(reply.follow_up_actions) or None,
-                replyToMessage=_quote(users, target),
+                replyToMessage=_quote(beside, target),
                 in_progress=True if settled is None else None,
                 stopped=True if settled and settled.outcome is ReplyOutcome.STOPPED else None,
                 error=settled.failure.value if settled and settled.failure else None,
@@ -135,7 +187,8 @@ def _message(
                 type=BOT_MESSAGE_TYPE,
                 response=notice.text,
                 message_id=notice.id,
-                tool_data=list(notice.tool_data) or None,
+                tool_data=_cards(notice.tool_data, beside),
+                follow_up_actions=list(notice.follow_up_actions) or None,
             )
         case TodoWoke() as woke:
             return ConversationEntry(
@@ -155,8 +208,62 @@ def _message(
                 message_id=fired.id,
                 selectedWorkflow=fired.run.workflow,
             )
+        case WorkFinished() as work if work.task_id not in beside.replies and (
+            work.tool_data or work.outcome in _STOPPED_WORK
+        ):
+            return ConversationEntry(
+                seq=seq,
+                date=date,
+                type=BOT_MESSAGE_TYPE,
+                response="",
+                message_id=f"work:{work.task_id}",
+                tool_data=_cards(work.tool_data, beside),
+                stopped=True if work.outcome in _STOPPED_WORK else None,
+            )
         case _:
             return None
+
+
+def _card_approvals(entry: object) -> list[str]:
+    match entry:
+        case Reply(tool_data=cards) | Notice(tool_data=cards) | WorkFinished(tool_data=cards):
+            return [approval for card in cards if (approval := _approval_of(card)) is not None]
+        case _:
+            return []
+
+
+def _approval_of(card: ToolDataEntry) -> str | None:
+    data = card["data"]
+    if card["tool_name"] != APPROVAL_REQUEST_TOOL_NAME or not isinstance(data, dict):
+        return None
+    approval_id = data.get("approval_id")
+    return approval_id if isinstance(approval_id, str) else None
+
+
+def _cards(cards: Sequence[ToolDataEntry], beside: _Beside) -> list[ToolDataEntry] | None:
+    """Return the cards with each logged approval's status as the log has it."""
+    shown: list[ToolDataEntry] = []
+    for card in cards:
+        approval_id = _approval_of(card)
+        status = None if approval_id is None else _approval_status(approval_id, beside)
+        shown.append(
+            card if status is None else {**card, "data": {**card["data"], "status": status}}
+        )
+    return shown or None
+
+
+def _approval_status(approval_id: str, beside: _Beside) -> str | None:
+    """Return a logged approval's card status; None leaves an approval the log never asked as created."""
+    decision = beside.decisions.get(approval_id)
+    if decision is not None:
+        return _DECIDED_LABEL[decision.decision].value
+    request = beside.requests.get(approval_id)
+    if request is None:
+        return None
+    work = beside.finished.get(request.task_id)
+    if work is not None and work.outcome in _STOPPED_WORK:
+        return _CANCELLED_LABEL
+    return HILApprovalStatus.PENDING.value
 
 
 def _quote_target(entry: object) -> str | None:
@@ -169,8 +276,8 @@ def _quote_target(entry: object) -> str | None:
             return None
 
 
-def _quote(users: Mapping[str, UserMessage], target: str | None) -> ReplyToMessageData | None:
-    quoted = None if target is None else users.get(target)
+def _quote(beside: _Beside, target: str | None) -> ReplyToMessageData | None:
+    quoted = None if target is None else beside.users.get(target)
     if quoted is None:
         return None
     return ReplyToMessageData(id=quoted.id, content=quoted.text, role="user")

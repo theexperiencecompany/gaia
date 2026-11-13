@@ -12,7 +12,6 @@ from app.models.chat_models import (
     PinnedUpdate,
     StarredUpdate,
     UpdateDescriptionRequest,
-    UpdateMessagesRequest,
 )
 from app.models.conversation_models import (
     BatchSyncResponse,
@@ -26,7 +25,6 @@ from app.models.conversation_models import (
     PinnedMessagesResponse,
     StarConversationResponse,
     UpdateDescriptionResponse,
-    UpdateMessagesResponse,
 )
 from app.models.conversation_send_models import (
     BargeInAccepted,
@@ -55,7 +53,6 @@ from app.services.conversation_service import (
     require_owned_conversation,
     star_conversation,
     update_conversation_description,
-    update_messages,
 )
 from app.services.conversation_stop_service import press_stop
 from shared.py.wide_events import log
@@ -172,20 +169,6 @@ async def get_messages_before_endpoint(
     page = await get_messages_before(conversation_id, user, before_seq=before_seq, limit=limit)
     log.set_ns("conversation", messages=len(page.messages), has_more=page.has_more)
     return page
-
-
-@router.put("/conversations/{conversation_id}/messages")
-async def update_messages_endpoint(
-    request: UpdateMessagesRequest, user: AuthenticatedUser = Depends(get_current_user)
-) -> UpdateMessagesResponse:
-    """
-    Update the messages of a conversation.
-    """
-    log.set(
-        user={"id": user.user_id},
-        conversation={"operation": "update_messages"},
-    )
-    return await update_messages(request, user)
 
 
 @router.post("/conversations/{conversation_id}/messages", status_code=status.HTTP_202_ACCEPTED)

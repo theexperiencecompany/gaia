@@ -122,6 +122,8 @@ class UserMessage(_Entry):
     reaction: Reaction | None = None
     # The browser's PostHog session the message was sent from: what it causes is counted there.
     posthog_session_id: Identifier | None = None
+    # Sent at account linking and answered there by the bot's introduction: it wakes no step.
+    first_contact: bool = False
     pinned: bool = False
     # Bumped on each in-place update; a client applies an update only when it is newer.
     revision: int = Field(default=0, ge=0)
@@ -207,6 +209,7 @@ class Notice(_Entry):
     text: str
     origin: str
     tool_data: tuple[ToolDataEntry, ...] = ()
+    follow_up_actions: tuple[str, ...] = ()
 
 
 class WorkStarted(_Entry):

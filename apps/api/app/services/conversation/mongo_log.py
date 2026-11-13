@@ -126,7 +126,7 @@ class MongoConversationLog:
             update={"reaction": reaction, "revision": message.revision + 1}
         )
         amended = found[0].model_copy(update={"entry": revised})
-        if not await self._repository.stage_log_reaction(
+        if not await self._repository.stage_unfenced_amend(
             conversation_id, user_id=user_id, amended=amended, after_revision=message.revision
         ):
             return None

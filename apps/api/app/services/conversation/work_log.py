@@ -104,6 +104,25 @@ async def record_work_finished(
     await accept(runtime_ports(), conversation_id, user_id, entry)
 
 
+async def record_detached_work(
+    conversation_id: str, user_id: str, task_id: str, cards: Sequence[ToolDataEntry]
+) -> None:
+    """Log what a detached run (a background subagent, a browser job) showed as its own finished work.
+
+    Its result reaches the user through the executor run that reads its landing; this entry only
+    keeps its cards, so it wakes nothing (no WorkStarted makes it live) and a reply never takes them in place.
+    """
+    entry = WorkFinished(
+        id=f"work:{task_id}:finished",
+        task_id=task_id,
+        outcome=WorkOutcome.DONE,
+        report="",
+        tool_data=tuple(cards),
+        nothing_for_user=True,
+    )
+    await accept(runtime_ports(), conversation_id, user_id, entry)
+
+
 async def running_step_task(conversation_id: str, user_id: str) -> str | None:
     """Return the task id of the executor running in the conversation when the step started it; else None."""
     holder = await get_lock_holder(conversation_id)

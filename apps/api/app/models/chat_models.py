@@ -35,7 +35,6 @@ __all__ = [
     "SystemPurpose",
     "ToolDataEntry",
     "UpdateDescriptionRequest",
-    "UpdateMessagesRequest",
 ]
 
 
@@ -180,13 +179,6 @@ class ConversationModel(BaseModel):
     is_unread: bool | None = False
     source: ConversationSource | None = None
     is_onboarding_demo: bool = False
-
-
-class UpdateMessagesRequest(BaseModel):
-    """Request to replace the messages of a conversation."""
-
-    conversation_id: str
-    messages: list[MessageModel]
 
 
 class StarredUpdate(BaseModel):

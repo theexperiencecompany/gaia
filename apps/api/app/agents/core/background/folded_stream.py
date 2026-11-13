@@ -1,36 +1,26 @@
-"""Close a detached stream that folds its cards into another run's message.
+"""Close a detached run's stream, logging what it showed as that run's own finished work.
 
 A background subagent and a background browser job each stream on a stream of
-their own, which the client folds into the message of the turn that started
-them (open_detached_stream with kind SUBAGENT). Closing one saves what it
-streamed into that message (folded_cards, whichever of the two is saved first),
-then ends the stream.
+their own, which outlives the turn that started them. Their cards belong to that
+run, not to any message: closing the stream logs them on a WorkFinished keyed by
+the stream (work_log.record_detached_work), then ends the stream.
 """
 
 from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.core.background.executor_queue import close_detached_stream
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
-from app.services.folded_cards import save_folded_cards
+from app.services.conversation.work_log import record_detached_work
 from shared.py.wide_events import log
 
 
-async def close_folded_stream(
-    stream_id: str, *, conversation_id: str, user_id: str, message_id: str | None
-) -> None:
-    """Save what the stream collected into the message it folded into, then end it."""
+async def close_folded_stream(stream_id: str, *, conversation_id: str, user_id: str) -> None:
+    """Log what the stream collected as its run's finished work, then end it."""
     try:
         entries = drain_executor_tool_data(stream_id)
-        if entries and message_id:
-            await save_folded_cards(conversation_id, user_id, message_id, entries)
-        elif entries:
-            log.warning(
-                f"{LogTag.AGENT} Detached stream has no message to save its cards into",
-                conversation_id=conversation_id,
-                stream_id=stream_id,
-                entries=len(entries),
-            )
-    except Exception as e:  # unsaved cards must not also cost the run its ending
+        if entries:
+            await record_detached_work(conversation_id, user_id, stream_id, entries)
+    except Exception as e:  # unlogged cards must not also cost the run its ending
         log.error(
             f"{LogTag.AGENT} Could not save a detached stream's cards",
             conversation_id=conversation_id,

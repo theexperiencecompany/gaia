@@ -331,7 +331,6 @@ async def _run_background(
                 stream_id,
                 conversation_id=delegation.conversation_id,
                 user_id=delegation.ctx.user_id or "",
-                message_id=_folds_into(delegation),
             )
 
         if outcome is None:
@@ -397,12 +396,6 @@ async def _execute_on_own_stream(
         if outcome is None or not outcome.paused:
             _emit_end(writer, delegation, start_time)
     return outcome
-
-
-def _folds_into(delegation: Delegation) -> str | None:
-    """Return the message a background run's own stream folds into: the dispatching run's."""
-    parent: AgentConfigurable = delegation.parent_configurable
-    return parent.get("bot_message_id")
 
 
 async def _park(delegation: Delegation, interrupt: HilInterruptPayload) -> None:

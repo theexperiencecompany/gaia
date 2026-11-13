@@ -14,7 +14,10 @@ from datetime import datetime
 from bson import ObjectId
 from pymongo import ReturnDocument
 
-from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
+from app.constants.chat import (
+    CONVERSATION_APPEND_MAX_ATTEMPTS,
+    CONVERSATION_ENTRIES_COLLECTION,
+)
 from app.db.repositories.conversation_entries import (
     LOG_HEAD_FIELD,
     OUTBOX_FIELD,
@@ -34,8 +37,11 @@ from app.models.conversation_log_models import (
     ConversationState,
     EntryKind,
     LoggedEntry,
+    Reply,
+    UserMessage,
 )
 from app.models.conversation_models import ConversationHead, StoredEntry
+from app.utils.errors import ConversationStoreError
 
 _INTEGRATION_KINDS = (EntryKind.INTEGRATION_NEEDED, EntryKind.INTEGRATION_CONNECTED)
 #: A head the sweep must visit: unflushed entries, unsettled inputs or live work. A non-empty
@@ -148,13 +154,14 @@ class ConversationLogRepository(ConversationRepository):
         after_seq: int = 0,
         through_seq: int | None = None,
         ids: Sequence[str] | None = None,
+        reply_ids: Sequence[str] | None = None,
     ) -> list[LoggedEntry] | None:
         """Return the log entries after after_seq (through through_seq, of ids) in seq order; None for a missing conversation."""
         heads = await self._read_heads({"conversation_id": conversation_id, "user_id": user_id})
         if not heads:
             return None
         before = None if through_seq is None else through_seq + 1
-        window = EntryWindow(after_seq=after_seq, before_seq=before, ids=ids)
+        window = EntryWindow(after_seq=after_seq, before_seq=before, ids=ids, reply_ids=reply_ids)
         [(_, entries)] = await self._union_for(heads, window)
         return [logged_of(entry) for entry in entries]
 
@@ -185,12 +192,12 @@ class ConversationLogRepository(ConversationRepository):
         self._spawn_flush(conversation_id, user_id)
         return True
 
-    async def stage_log_reaction(
+    async def stage_unfenced_amend(
         self, conversation_id: str, *, user_id: str, amended: LoggedEntry, after_revision: int
     ) -> bool:
         """Stage amended unfenced, only while the stored entry is still at after_revision; the flush carries it.
 
-        A staged amendment newer than after_revision (the chat model's reaction) makes this a no-op.
+        A staged amendment newer than after_revision (a fill, a reaction, a pin) makes this a no-op.
         """
         staged = f"{OUTBOX_FIELD}.{amended.seq}"
         with store_errors("log reaction"):  # pragma: no mutate — error label
@@ -209,6 +216,35 @@ class ConversationLogRepository(ConversationRepository):
             return False
         self._spawn_flush(conversation_id, user_id)
         return True
+
+    async def set_pinned(
+        self, conversation_id: str, *, user_id: str, message_id: str, pinned: bool
+    ) -> bool:
+        """Pin or unpin the user message with this id or the reply with this reply id; False when there is none."""
+        for _ in range(CONVERSATION_APPEND_MAX_ATTEMPTS):
+            found = await self.read_log(
+                conversation_id, user_id=user_id, ids=[message_id], reply_ids=[message_id]
+            )
+            target = next(
+                (logged for logged in found or [] if isinstance(logged.entry, UserMessage | Reply)),
+                None,
+            )
+            if target is None or not isinstance(entry := target.entry, UserMessage | Reply):
+                return False
+            if entry.pinned is pinned:
+                return True
+            revised = entry.model_copy(update={"pinned": pinned, "revision": entry.revision + 1})
+            if await self.stage_unfenced_amend(
+                conversation_id,
+                user_id=user_id,
+                amended=target.model_copy(update={"entry": revised}),
+                after_revision=entry.revision,
+            ):
+                return True
+        raise ConversationStoreError(
+            message=f"pinning in conversation {conversation_id} lost every conditional write",
+            meta={"conversation_id": conversation_id, "entry_id": message_id},
+        )
 
     async def list_heads_to_sweep(self, limit: int, after: str | None) -> list[SweepHead]:
         """Return up to limit heads with unflushed entries, unsettled inputs or live work, in _id order past after."""
