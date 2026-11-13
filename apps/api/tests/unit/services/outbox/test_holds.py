@@ -7,6 +7,7 @@ import pytest
 
 from app.constants.outbox_attention import (
     FLUSH_JITTER_MAX_SECONDS,
+    IN_CALL_HOLD_SECONDS,
     MAX_DEFERRALS,
     MAX_HOLD_AGE_SECONDS,
     HoldReason,
@@ -44,6 +45,7 @@ def _state(now: datetime = DAY, **overrides: Any) -> AttentionState:
         "clock": UserClock(Timezone.utc(), DEFAULT_QUIET_HOURS),
         "settings": AttentionSettings(),
         "last_active_at": None,
+        "in_call": False,
         "unsolicited_today": 0,
         "last_unsolicited_at": None,
         "fact_history": None,
@@ -320,3 +322,56 @@ def test_a_long_do_not_disturb_never_holds_an_item_past_the_hold_age_cap() -> No
     placed = place(notice(), ROUTINE, verdict(), week)
 
     assert placed == Hold(DAY + timedelta(seconds=MAX_HOLD_AGE_SECONDS), HoldReason.DND)
+
+
+def _in_call(now: datetime = DAY, **overrides: Any) -> AttentionState:
+    return _state(now, in_call=True, last_active_at=now, **overrides)
+
+
+def test_a_timely_item_waits_for_the_call_to_end_and_is_checked_again_after_the_hold() -> None:
+    placed = place(notice(), UrgencyClass.TIMELY, verdict(), _in_call())
+
+    assert placed == Hold(DAY + timedelta(seconds=IN_CALL_HOLD_SECONDS), HoldReason.IN_CALL)
+
+
+def test_a_background_item_waits_for_the_call_to_end() -> None:
+    placed = place(notice(), UrgencyClass.BACKGROUND, verdict(), _in_call())
+
+    assert isinstance(placed, Hold)
+    assert placed.reason is HoldReason.IN_CALL
+
+
+def test_an_answer_and_an_interrupt_are_told_in_a_call() -> None:
+    answer = notice(initiative=Initiative.ASKED)
+
+    assert place(answer, ROUTINE, verdict(), _in_call()) == Tell()
+    assert place(notice(), UrgencyClass.INTERRUPT, verdict(), _in_call()) == Tell()
+
+
+def test_a_security_notice_is_not_held_for_a_call() -> None:
+    assert place(notice(), UrgencyClass.TIMELY, verdict(topics=["security"]), _in_call()) == Tell()
+
+
+def test_a_call_never_holds_an_item_past_its_deadline() -> None:
+    soon = verdict(urgency=UrgencyClass.TIMELY, deliver_by=DAY + timedelta(minutes=20))
+
+    placed = place(notice(), UrgencyClass.TIMELY, soon, _in_call())
+
+    assert placed == Hold(DAY + timedelta(minutes=5), HoldReason.IN_CALL)
+
+
+def test_a_call_marks_the_user_active_so_an_answer_is_told_in_quiet_hours() -> None:
+    answer = notice(initiative=Initiative.ASKED)
+
+    assert place(answer, ROUTINE, verdict(), _in_call(NIGHT)) == Tell()
+
+
+def test_an_item_held_for_a_call_is_told_once_the_hold_age_cap_is_reached() -> None:
+    held = ItemHold(
+        reason=HoldReason.IN_CALL,
+        until=DAY,
+        since=DAY - timedelta(seconds=MAX_HOLD_AGE_SECONDS),
+        deferrals=0,
+    )
+
+    assert place(notice(), UrgencyClass.TIMELY, verdict(), _in_call(prior_hold=held)) == Tell()

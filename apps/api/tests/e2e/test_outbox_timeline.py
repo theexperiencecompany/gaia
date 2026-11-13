@@ -1869,3 +1869,115 @@ async def test_a_system_notice_filed_twice_is_one_item_and_one_message(tl: Outbo
 
     assert len(await tl.items()) == 1
     assert len(await tl.ledger()) == 1
+
+
+ROOM = f"voice_session_{USER}_0f3a9c"
+
+
+async def test_f1_the_answer_to_something_asked_in_a_call_is_spoken_in_it_and_shown_in_the_app(
+    tl: OutboxTimeline,
+) -> None:
+    await tl.active_on(ConversationSource.TELEGRAM)
+    await tl.call_starts(ROOM)
+    await _told_at(tl, _run("run-1", OutcomeState.DONE, initiative=Initiative.ASKED), 0)
+
+    [message] = await tl.ledger()
+    assert (message.destination, message.destination_basis) == ("in_app", "in_call")
+    assert tl.sinks.voice == [(ROOM, message.parts)]
+    assert [conversation for conversation, _ in tl.sinks.ws] == ["web-1"]
+    assert tl.sinks.bot == []
+    assert tl.compose.context["destination"] == "voice"
+
+
+async def test_f3_a_reminder_that_fires_in_a_call_is_spoken(tl: OutboxTimeline) -> None:
+    await tl.call_starts(ROOM)
+    await _told_at(tl, _reminder(), 0)
+
+    [message] = await tl.ledger()
+    assert (message.mode.value, message.destination_basis) == ("interrupt", "in_call")
+    assert tl.sinks.voice == [(ROOM, message.parts)]
+
+
+async def test_an_answer_with_something_private_in_it_is_shown_but_not_said_aloud(
+    tl: OutboxTimeline,
+) -> None:
+    await tl.call_starts(ROOM)
+    tl.judge.verdicts["run-1"] = verdict(
+        urgency=UrgencyClass.ROUTINE, sensitivity=Sensitivity.HEALTH
+    )
+    await _told_at(tl, _run("run-1", OutcomeState.DONE, initiative=Initiative.ASKED), 0)
+
+    [message] = await tl.ledger()
+    assert (message.destination, message.destination_basis) == ("in_app", "active_in_app")
+    assert tl.sinks.voice == []
+    assert [conversation for conversation, _ in tl.sinks.ws] == ["web-1"]
+
+
+async def test_f2_something_nobody_asked_for_waits_out_the_call_and_is_not_spoken(
+    tl: OutboxTimeline,
+) -> None:
+    await tl.call_starts(ROOM)
+    tl.judge.verdicts["run-1"] = verdict(urgency=UrgencyClass.TIMELY)
+    await _told_at(tl, _run("run-1", OutcomeState.NEEDS_YOU, subject_id="todo-1"), 0)
+
+    assert await _states(tl) == {"run-1": ItemState.HELD}
+    assert [event.reason for event in tl.sinks.held] == ["in_call"]
+    assert tl.sinks.voice == [] and tl.sinks.ws == []
+
+    await tl.at(10)
+    await tl.call_ends(ROOM)
+    await tl.at(11)
+    await tl.drain()
+
+    [message] = await tl.ledger()
+    assert (message.destination, message.destination_basis) == ("in_app", "active_in_app")
+    assert tl.sinks.voice == []
+    assert [conversation for conversation, _ in tl.sinks.ws] == ["web-1"]
+
+
+async def test_what_was_background_before_a_call_is_placed_as_new_when_it_ends(
+    tl: OutboxTimeline,
+) -> None:
+    await tl.call_starts(ROOM)
+    await _told_at(tl, _run("run-1", OutcomeState.DONE, subject_id="todo-1"), 0)
+    assert [event.reason for event in tl.sinks.held] == ["in_call"]
+
+    await tl.at(10)
+    await tl.call_ends(ROOM)
+    await tl.at(11)
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.HELD}
+    assert [event.reason for event in tl.sinks.held] == ["in_call", "checkin"]
+    assert await tl.ledger() == []
+
+
+async def test_f4_after_a_call_what_comes_goes_to_the_app_though_a_chat_app_was_used_before(
+    tl: OutboxTimeline,
+) -> None:
+    await tl.active_on(ConversationSource.TELEGRAM)
+    await tl.at(5)
+    await tl.call_starts(ROOM)
+    await tl.at(20)
+    await tl.call_ends(ROOM)
+    await _told_at(tl, _run("run-1", OutcomeState.DONE, initiative=Initiative.ASKED), 21)
+
+    [message] = await tl.ledger()
+    assert (message.destination, message.destination_basis) == ("in_app", "active_in_app")
+    assert tl.sinks.bot == []
+
+
+async def test_a_call_that_never_reported_its_end_stops_holding_things_once_its_heartbeat_lapses(
+    tl: OutboxTimeline, fake_redis
+) -> None:
+    await tl.call_starts(ROOM)
+    tl.judge.verdicts["run-1"] = verdict(urgency=UrgencyClass.TIMELY)
+    await _told_at(tl, _run("run-1", OutcomeState.NEEDS_YOU, subject_id="todo-1"), 0)
+    assert await _states(tl) == {"run-1": ItemState.HELD}
+
+    await fake_redis.delete(f"user_call_presence:{USER}")
+    await tl.at(40)
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.SENT}
+    assert tl.sinks.voice == []

@@ -329,8 +329,8 @@ async def _run_chat_stream(
 
     # Registered before comms runs so call_executor's background task can
     # append events while open; drained on executor finish, torn down in
-    # _finalize_stream. Voice mode marks the stream for a voice_tts frame.
-    register_executor_capture(stream_id, voice_mode=body.voice_mode)
+    # _finalize_stream.
+    register_executor_capture(stream_id)
 
     try:
         _set_stream_log_context(body, user_id, conversation_id, stream_id, is_new_conversation)

@@ -31,6 +31,8 @@ src/
   config.py     — VoiceAgentSettings + bootstrap_settings() for Infisical
   constants.py  — SSE tokens, TTS thresholds, compiled regexes, system prompt
   utils.py      — sanitize_for_tts, extract_meta_data, now_ts, ms_since
+  call_presence.py — call heartbeat/end reported to the API
+  outbox_speech.py — speaks the outbox's composed messages sent into the room
 ```
 
 **CustomLLM** (`llm.py`): A `livekit.agents.llm.LLM` subclass that streams SSE from `POST /api/v1/chat-stream` on the GAIA backend. It reuses a single `aiohttp.ClientSession` across turns and flushes text to ElevenLabs TTS in sentence-sized chunks (flush at sentence boundary ≥40 chars, or hard flush at 120 chars) to minimize latency.

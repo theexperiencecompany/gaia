@@ -18,7 +18,11 @@ from app.agents.core.graph_manager import GraphManager
 from app.agents.core.thread_lock import comms_thread_lock
 from app.agents.core.thread_writes import with_message_ids
 from app.agents.llm.client import ainvoke_structured
-from app.agents.prompts.compose_prompts import COMPOSE_RULES, OUTCOME_REPLY_SHAPES
+from app.agents.prompts.compose_prompts import (
+    COMPOSE_RULES,
+    OUTCOME_REPLY_SHAPES,
+    SPOKEN_COMPOSE_RULES,
+)
 from app.agents.templates.agent_template import get_comms_static_prompt
 from app.constants.log_tags import LogTag
 from app.constants.outbound import OUTBOUND_TTL_SECONDS_DEFAULT, OUTBOUND_TTL_SECONDS_GREETING
@@ -56,7 +60,7 @@ from app.services.outbox.prerendered import (
     prerendered_parts,
     prerendered_text,
 )
-from app.services.outbox.router import ChatChannel, ProactiveTarget, Route
+from app.services.outbox.router import ChatChannel, InApp, ProactiveTarget, Route
 from shared.py.wide_events import log
 
 
@@ -82,6 +86,11 @@ class _ThreadValues(TypedDict, total=False):
 
 def _destination_source(target: ProactiveTarget) -> ConversationSource:
     return target.source if isinstance(target, ChatChannel) else ConversationSource.WEB
+
+
+def _is_spoken(target: ProactiveTarget) -> bool:
+    """Whether the words are said aloud in the user's live call, not read."""
+    return isinstance(target, InApp) and target.call_room is not None
 
 
 def _must_say(item: OutboxItemDocument) -> bool:
@@ -306,13 +315,14 @@ async def _word(
     locale: str,
 ) -> Composed:
     source = _destination_source(destination.target)
+    spoken = _is_spoken(destination.target)
     recent_sent = await outbox_messages_repository.recent_sent(
         user_id, limit=COMPOSE_LEDGER_MESSAGES
     )
     context: dict[str, object] = {
         "mode": mode.value,
         "locale": locale,
-        "destination": source.value,
+        "destination": "voice" if spoken else source.value,
         "items": [_item_view(item) for item in items],
         "recent_thread": await _thread_snapshot(destination.alert_conversation_id),
         "already_sent": [part for message in recent_sent for part in message.parts],
@@ -322,7 +332,11 @@ async def _word(
     if earlier_runs := await _earlier_runs(items):
         context["earlier_runs"] = earlier_runs
     messages: list[BaseMessage] = [
-        SystemMessage(content=get_comms_static_prompt(source.value) + COMPOSE_RULES),
+        SystemMessage(
+            content=get_comms_static_prompt(source.value)
+            + COMPOSE_RULES
+            + (SPOKEN_COMPOSE_RULES if spoken else "")
+        ),
         HumanMessage(content=json.dumps(context, ensure_ascii=False)),
     ]
     await _flag_leaking_facts(items, user_id)

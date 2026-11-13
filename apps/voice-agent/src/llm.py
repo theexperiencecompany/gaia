@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 import json
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import aiohttp
 from livekit import rtc
@@ -25,7 +25,6 @@ from src.constants import (
     DONE_SENTINEL,
     FRONTEND_STREAM_TOPIC,
     MAIN_RESPONSE_COMPLETE_KEY,
-    MESSAGE_ID_KEY,
     OPEN_TAG_DEFER_CAP,
     PLUMBING_EVENT_KEYS,
     RESPONSE_KEY,
@@ -36,7 +35,6 @@ from src.constants import (
     TTS_HARD_FLUSH_CHARS,
     TTS_MIN_EMIT_CHARS,
     TTS_MIN_SENTENCE_CHARS,
-    VOICE_TTS_KEY,
     LogTag,
 )
 from src.utils import (
@@ -47,9 +45,6 @@ from src.utils import (
     ms_since,
     sanitize_for_tts,
 )
-
-if TYPE_CHECKING:
-    from livekit.agents import AgentSession
 
 
 class CustomLLM(LLM):
@@ -74,9 +69,6 @@ class CustomLLM(LLM):
         self._turn_index = 0
         # Reused across turns to avoid TCP reconnect overhead per turn
         self._http_session: aiohttp.ClientSession | None = None
-        # Set by the entrypoint once the AgentSession exists. The drain uses it
-        # to speak each delegated executor answer as its own utterance.
-        self.session: AgentSession | None = None
         # Keep drain tasks referenced so they aren't garbage-collected mid-run.
         self._drain_tasks: set[asyncio.Task[None]] = set()
 
@@ -164,7 +156,7 @@ class CustomLLM(LLM):
         The comms turn (its chat() generator) ends as soon as the reply is done,
         so the ack plays immediately. The executor's UI events and narrated
         answer arrive later on the same still-open stream — this keeps reading
-        them: forwarding tool cards to the screen and speaking each answer.
+        them, forwarding tool cards to the screen.
 
         The drain deliberately outlives the turn, so it gets its own wide event
         rather than writing into the turn's — that one has already been emitted
@@ -195,11 +187,10 @@ class CustomLLM(LLM):
             await self._drain(resp)
 
     async def _drain(self, resp: aiohttp.ClientResponse) -> None:
-        """Forward the post-reply UI events and speak each executor answer.
+        """Forward the post-reply UI events (tool cards, follow-ups) to the screen.
 
-        Mirrors what's shown on screen: forward what's displayed (tool cards,
-        follow-ups), speak what's a bot message (each voice_tts answer, in
-        order, as its own utterance via session.say).
+        What GAIA tells the user once the work is done is not read off this stream: the
+        outbox sends it into the call as its own message (see outbox_speech).
         """
         try:
             async for raw in resp.content:
@@ -216,37 +207,10 @@ class CustomLLM(LLM):
             await resp.release()
 
     async def _handle_drain_event(self, data: str) -> None:
-        """Speak a voice_tts answer, or forward a plumbing event to the screen."""
+        """Forward a plumbing event to the screen; anything else on the drained stream is not for it."""
         try:
             event = json.loads(data)
         except json.JSONDecodeError:
-            return
-        voice_tts = event.get(VOICE_TTS_KEY)
-        if isinstance(voice_tts, str) and voice_tts:
-            spoken = sanitize_for_tts(voice_tts)
-            if spoken and self.session is not None:
-                # say() schedules its own utterance; the comms turn is already
-                # over so it plays as soon as it lands.
-                self.session.say(spoken)
-            # Bubble the answer immediately off the data channel, keyed by the
-            # saved message_id so the backend's WebSocket push (same id)
-            # reconciles in place instead of duplicating. Without this the
-            # bubble waits on (or misses) that WebSocket push while TTS already
-            # played.
-            message_id = event.get(MESSAGE_ID_KEY)
-            if not isinstance(message_id, str) or not message_id:
-                # No id to reconcile against. The frontend only treats this frame
-                # as a delegated answer when message_id is a non-empty string;
-                # forwarding a null id makes it fall through to the normal response
-                # path and append onto the active comms bubble. Skip the immediate
-                # bubble and let the backend's WebSocket push render it instead.
-                log.warning(
-                    f"{LogTag.LLM} Voice TTS frame missing message_id; skipping immediate bubble"
-                )
-                return
-            await self.forward_stream_event_to_frontend(
-                json.dumps({RESPONSE_KEY: voice_tts, MESSAGE_ID_KEY: message_id})
-            )
             return
         if event.keys() & PLUMBING_EVENT_KEYS:
             await self.forward_stream_event_to_frontend(data)
@@ -357,7 +321,6 @@ class _VoiceTurn:
         self.first_tts_flush_ms: float | None = None
         self.tts_flush_count = 0
         self.tts_chars_total = 0
-        self.executor_tts_chars = 0
         self.text_buffer: list[str] = []
         self.deferred_flushes = 0
         # Set once the comms reply is done. The turn ends here so the ack plays
@@ -519,8 +482,8 @@ class _VoiceTurn:
         payload: dict[str, Any] = {
             "message": self.user_message,
             "messages": self.messages,
-            # Hold the stream open for a delegated executor's narrated answer
-            # so we can speak it (it arrives as a `voice_tts` frame below).
+            # Hold the stream open for a delegated executor's tool cards, which
+            # the drain forwards to the screen.
             "voice_mode": True,
         }
         if self.llm.conversation_id:
@@ -538,7 +501,6 @@ class _VoiceTurn:
             "first_tts_flush_ms": self.first_tts_flush_ms,
             "tts_flush_count": self.tts_flush_count,
             "tts_chars_total": self.tts_chars_total,
-            "executor_tts_chars": self.executor_tts_chars,
             "total_ms": ms_since(self.turn_start),
         }
 
@@ -593,17 +555,6 @@ class _VoiceTurn:
             await self.llm.set_conversation_description(conv_desc)
             return None
 
-        # Delegated executor's narrated answer, delivered after the main
-        # response (so after main_response_complete disabled TTS). Speak it
-        # regardless of tts_enabled. Forward the frame to the frontend as the
-        # comms→executor boundary marker (it does NOT render the text — the
-        # answer comes from its own WebSocket push — but uses the frame's
-        # arrival to stop folding TTS-aligned transcript into the comms bubble).
-        voice_tts = event_payload.get(VOICE_TTS_KEY)
-        if isinstance(voice_tts, str) and voice_tts:
-            await self.llm.forward_stream_event_to_frontend(data)
-            return self._on_executor_answer(voice_tts)
-
         # Plumbing events never contribute to TTS — drop here even if they
         # happen to carry a stray response field.
         if is_plumbing:
@@ -636,19 +587,6 @@ class _VoiceTurn:
             ack_flushed=bool(tail),
         )
         return tail
-
-    def _on_executor_answer(self, voice_tts: str) -> str | None:
-        spoken = sanitize_for_tts(voice_tts)
-        if not spoken:
-            return None
-        self.executor_tts_chars += len(spoken)
-        log.info(
-            f"{LogTag.LLM} executor answer arrived",
-            phase="tts_executor_answer",
-            char_count=len(spoken),
-            elapsed_ms=ms_since(self.turn_start),
-        )
-        return spoken
 
     async def _on_response_piece(self, event_payload: dict[str, Any]) -> str | None:
         """Accumulate one response token and flush when a chunk is speakable."""

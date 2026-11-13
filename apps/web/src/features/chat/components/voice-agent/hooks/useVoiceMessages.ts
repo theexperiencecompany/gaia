@@ -219,32 +219,6 @@ export function useVoiceMessages(
     (event: Record<string, unknown>, cid: string) => {
       if (isNonRenderingEvent(event)) return;
 
-      // A delegated executor's final answer ({response, message_id}) renders as
-      // its own bubble keyed by message_id, not folded into the comms-ack turn.
-      // The WebSocket outbox.message carries the same id and reconciles in place.
-      const answerId = event.message_id;
-      if (
-        typeof answerId === "string" &&
-        answerId &&
-        typeof event.response === "string" &&
-        event.response
-      ) {
-        addOrUpdateMessage({
-          id: answerId,
-          conversationId: cid,
-          content: event.response,
-          role: "assistant",
-          status: "sent",
-          createdAt: nextCreatedAt(),
-          updatedAt: new Date(),
-          messageId: answerId,
-          tool_data: null,
-          follow_up_actions: null,
-          optimistic: true,
-        });
-        return;
-      }
-
       const turn = activeTurnRef.current ?? openBotTurn();
 
       let changed = false;

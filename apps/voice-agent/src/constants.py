@@ -30,20 +30,6 @@ TRACE_ID_HEADER = "x-trace-id"
 FRONTEND_STREAM_TOPIC = "backend-stream-event"
 RESPONSE_KEY = "response"
 MAIN_RESPONSE_COMPLETE_KEY = "main_response_complete"
-# Backend sends this (voice-mode streams only) carrying a delegated executor's
-# narrated answer for the agent to SPEAK. The frontend never renders its text
-# (the same answer arrives via its WebSocket push), but the event IS forwarded
-# as a boundary marker: the bot bubble renders the comms agent's speech from the
-# TTS-aligned transcript, which can't tell comms speech from the executor's —
-# only the agent knows the boundary, and this frame is it. After it, the
-# frontend stops folding transcript into the live bubble.
-# Must match VOICE_TTS_KEY in apps/api/app/agents/core/background/executor_runner.py.
-VOICE_TTS_KEY = "voice_tts"
-# Saved bot-message id carried on the voice_tts frame. We forward the answer as a
-# display frame keyed by it so the bubble renders off the data channel and the
-# backend's WebSocket push (same id) reconciles in place instead of duplicating.
-MESSAGE_ID_KEY = "message_id"
-
 # Plumbing event keys that must never reach TTS.
 # Any backend SSE event carrying one of these keys is forwarded to the frontend
 # but never appended to the TTS text buffer.
@@ -86,9 +72,14 @@ MIN_ENDPOINTING_DELAY_S = 0.8
 # aiohttp sock_read timeout (s) for the backend chat-stream request. MUST exceed
 # the backend's VOICE_EXECUTOR_RESULT_TIMEOUT_S (90s): on a delegated turn the
 # backend parks the SSE stream with no bytes on the wire while it waits for the
-# executor, so a shorter read timeout would abort the turn and lose the spoken
-# answer before it is sent.
+# executor, so a shorter read timeout would abort the turn and lose the
+# executor's tool cards before they are sent.
 BACKEND_REQUEST_TIMEOUT_S = 120.0
+
+# Timeout (s) of one call-presence request, and how long the heartbeat waits for the
+# session's agent token before trying again.
+CALL_PRESENCE_REQUEST_TIMEOUT_S = 10.0
+CALL_TOKEN_WAIT_S = 1.0
 
 # Single \s before the attribute tail (not \s+): [^>] also matches whitespace,
 # and the overlap between the two quantifiers is what makes backtracking blow up.
@@ -124,7 +115,6 @@ __all__ = [
     "FRONTEND_STREAM_TOPIC",
     "RESPONSE_KEY",
     "MAIN_RESPONSE_COMPLETE_KEY",
-    "VOICE_TTS_KEY",
     "PLUMBING_EVENT_KEYS",
     "SENTENCE_ENDINGS",
     "TTS_MIN_SENTENCE_CHARS",

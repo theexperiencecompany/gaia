@@ -2,7 +2,7 @@
 
 Record is not alert. A result is recorded where it belongs (its owner conversation)
 whatever happens to the alert, and the alert goes to exactly one place: where the user
-is active now (a chat app or the GAIA app), else, for an answer, back to the direct
+is active now (a chat app or the GAIA app; in a live call, spoken there), else, for an answer, back to the direct
 message that asked, else the first chat app in their priority order that is linked and
 left enabled in notification settings, else the GAIA app. A chat app the user asked to be
 told on outranks all of that, when it is linked and enabled.
@@ -24,7 +24,9 @@ from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import AuthenticatedUser
 from app.services.bot_service import BotService
 from app.services.delivery.chat_channel import resolve_channel_priority
-from app.services.delivery.presence import active_surface, read_presence
+from app.services.delivery.presence import active_surface, read_call_room, read_presence
+from app.services.outbox.judge_models import PRIVATE_SENSITIVITIES
+from app.services.outbox.models import UrgencyClass
 from app.services.outbox.policy import is_answer
 from app.services.platform_link_service import linked_platforms_of
 from app.utils.channel_preferences import normalize_channel_preferences
@@ -50,8 +52,8 @@ class ChatChannel:
     unreachable_active: ConversationSource | None = None
 
 
-#: Why nothing goes to a chat app: the user is active in the GAIA app, or no chat app is usable.
-InAppReason = Literal["active_in_app", "no_chat_app"]
+#: Why nothing goes to a chat app: the user is active in the GAIA app, in a live call there, or no chat app is usable.
+InAppReason = Literal["active_in_app", "in_call", "no_chat_app"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +63,8 @@ class InApp:
     reason: InAppReason
     #: The chat app the user is active on but that cannot be messaged (muted or no account id).
     unreachable_active: ConversationSource | None = None
+    #: The LiveKit room the message is also spoken in, set exactly when the reason is in_call.
+    call_room: str | None = None
 
 
 ProactiveTarget = ChatChannel | InApp
@@ -87,7 +91,7 @@ def is_active_place(target: ProactiveTarget) -> bool:
     match target:
         case (
             ChatChannel(basis="recent_activity" | "requested_channel")
-            | InApp(reason="active_in_app")
+            | InApp(reason="active_in_app" | "in_call")
         ):
             return True
     return False
@@ -185,6 +189,22 @@ async def _requested_chat_channel(
     return replace(channel, basis="requested_channel") if channel is not None else None
 
 
+def is_spoken_in_call(item: OutboxItemDocument) -> bool:
+    """Whether a live call may hear the item: the user's own answer or an interrupt, and nothing private."""
+    private = item.judgement is not None and item.judgement.sensitivity in PRIVATE_SENSITIVITIES
+    return not private and (is_answer(item.report) or item.urgency is UrgencyClass.INTERRUPT)
+
+
+async def _call_target(user_id: str, items: list[OutboxItemDocument]) -> InApp | None:
+    """Return where a live call puts the message: spoken in it when every item may be heard, else shown in the app it is in."""
+    room = await read_call_room(user_id)
+    if room is None:
+        return None
+    if all(is_spoken_in_call(item) for item in items):
+        return InApp(reason="in_call", call_room=room)
+    return InApp(reason="active_in_app")
+
+
 @dataclass(frozen=True, slots=True)
 class _Owner:
     """The conversation that owns a subject's history."""
@@ -259,7 +279,11 @@ async def route(
         target = InApp(reason="no_chat_app")
     else:
         requested_target = await _requested_chat_channel(user.user_id, requested)
-        target = requested_target or await resolve_proactive_target(user.user_id)
+        target = (
+            requested_target
+            or await _call_target(user.user_id, items)
+            or await resolve_proactive_target(user.user_id)
+        )
         if requested_target is None and owner is not None and not is_active_place(target):
             if any(is_answer(item.report) for item in items):
                 target = await _owner_dm_channel(owner) or target

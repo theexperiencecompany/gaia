@@ -103,6 +103,8 @@ DEVICE_MANIFEST_CACHE_PREFIX = "device_manifest"
 LAST_ACTIVE_GATE_PREFIX = "last_active_gate"
 # Redis hash per user: surface -> epoch seconds of the user's last inbound message there.
 USER_PRESENCE_PREFIX = "user_presence"
+# Redis string per user, present while a voice call is live: the LiveKit room the call is in.
+USER_CALL_PRESENCE_PREFIX = "user_call_presence"
 
 # Cache key prefixes
 TEAM_CACHE_PREFIX = "team"

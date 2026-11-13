@@ -50,6 +50,14 @@ OUTBOX_TRANSPORT_RETRIES = _register_once(
     ),
 )
 
+OUTBOX_SPOKEN_FAILED = _register_once(
+    "outbox_spoken_failed_total",
+    lambda: Counter(
+        name="outbox_spoken_failed_total",
+        documentation="Messages the user's live call did not take; they were still recorded and shown in the app",
+    ),
+)
+
 OUTBOX_ITEMS_RECOVERED = _register_once(
     "outbox_items_recovered_total",
     lambda: Counter(

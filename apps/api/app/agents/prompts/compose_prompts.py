@@ -25,6 +25,15 @@ Rules:
 - When requested_channel_unavailable names a chat app, the user asked to be told there but it cannot be used: say so in one short line, then give the message.
 """
 
+#: Added when the message is said aloud in the user's live call: the words are heard once, never read.
+SPOKEN_COMPOSE_RULES: Final = """
+
+This message is spoken aloud to the user in their live voice call, over whatever they were just saying. Write what a person would say, not what a screen would show:
+- One part, one or two short plain sentences. The one thing they need first; offer more ("want the details?") instead of reading every point.
+- No markdown, lists, headings, emoji, links, addresses or codes to read out, and no ids. Say times and amounts the way you would aloud ("three thirty", "about forty dollars").
+- Open with a few words that place it ("About that flight search:") when it answers something from earlier, so it does not land out of nowhere.
+- Dispositions still apply to every item, and what an item says is still the only truth.
+"""
 
 #: The reply shape for each verified outcome; an item carries its own as how_to_say.
 OUTCOME_REPLY_SHAPES: dict[OutcomeState, str] = {

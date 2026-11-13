@@ -23,9 +23,15 @@ ProactiveDestinationKind = Literal["chat_app", "in_app"]
 
 #: Why: the user was active there, it led their chat-app order, the answer went back to the
 #: direct message that asked, the producer named the chat app, they were active in the GAIA app,
-#: or no chat app was usable.
+#: in a live voice call there (spoken as well as shown), or no chat app was usable.
 ProactiveDestinationBasis = Literal[
-    "recent_activity", "priority", "owner_chat", "requested_channel", "active_in_app", "no_chat_app"
+    "recent_activity",
+    "priority",
+    "owner_chat",
+    "requested_channel",
+    "active_in_app",
+    "in_call",
+    "no_chat_app",
 ]
 
 
@@ -61,7 +67,7 @@ class DeliveryItemHeld(ServerEvent):
     event: ClassVar[str] = "delivery:item_held"
     budget_per_user_day: ClassVar[int] = 500
 
-    reason: Literal["quiet_hours", "dnd", "not_before", "checkin", "gap", "wait_for_run"]
+    reason: Literal["quiet_hours", "dnd", "not_before", "checkin", "gap", "wait_for_run", "in_call"]
     max_class: Literal["background", "routine", "timely", "interrupt"]
 
 

@@ -5316,6 +5316,46 @@ export interface paths {
         patch: operations["user_update_user_timezone"];
         trace?: never;
     };
+    "/api/v1/voice/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Hold Voice Session
+         * @description Keep the user marked as in a live call; the voice worker calls this on every heartbeat.
+         */
+        put: operations["voice_hold_voice_session"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/voice/session/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End Voice Session
+         * @description Record the user's call as over and tell what waited for it to end.
+         */
+        post: operations["voice_end_voice_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/voice/voices": {
         parameters: {
             query?: never;
@@ -7436,7 +7476,7 @@ export interface components {
          * @description Client or channel a conversation originated from.
          * @enum {string}
          */
-        ConversationSource: "web" | "mobile" | "desktop" | "telegram" | "discord" | "slack" | "whatsapp" | "imessage" | "workflow_system" | "background";
+        ConversationSource: "web" | "mobile" | "desktop" | "telegram" | "discord" | "slack" | "whatsapp" | "imessage" | "voice" | "workflow_system" | "background";
         /**
          * ConversationSummary
          * @description The projected conversation-list row — every field the web list consumes,
@@ -15460,6 +15500,17 @@ export interface components {
             selected_voice_id: string;
         };
         /**
+         * VoiceSessionRequest
+         * @description The live call a voice worker reports on.
+         */
+        VoiceSessionRequest: {
+            /**
+             * Room Name
+             * @description LiveKit room of the call, as minted by GET /token
+             */
+            room_name: string;
+        };
+        /**
          * VoiceTokenResponse
          * @description LiveKit session credentials minted by GET /token.
          *
@@ -16567,6 +16618,7 @@ export type VerifyPaymentRequest = components['schemas']['VerifyPaymentRequest']
 export type VoiceListResponse = components['schemas']['VoiceListResponse'];
 export type VoiceOption = components['schemas']['VoiceOption'];
 export type VoiceSelectionResponse = components['schemas']['VoiceSelectionResponse'];
+export type VoiceSessionRequest = components['schemas']['VoiceSessionRequest'];
 export type VoiceTokenResponse = components['schemas']['VoiceTokenResponse'];
 export type WebSearchResult = components['schemas']['WebSearchResult'];
 export type WorkflowCreator = components['schemas']['WorkflowCreator'];
@@ -31014,6 +31066,122 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UpdateTimezoneResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    voice_hold_voice_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoiceSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not the user's call */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    voice_end_voice_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoiceSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not the user's call */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Unprocessable Entity */

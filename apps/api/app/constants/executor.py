@@ -7,14 +7,6 @@ and any future consumers reference a single source of truth.
 
 from app.constants.task_report import FailureReason
 
-# SSE frame key carrying the executor's narrated answer for voice-mode TTS.
-# Must match VOICE_TTS_KEY in apps/voice-agent/src/constants.py — the voice
-# agent matches on this exact string to decide what to speak.
-VOICE_TTS_KEY = "voice_tts"
-# SSE frame key carrying the saved bot message's id alongside the voice answer.
-# Must match MESSAGE_ID_KEY in apps/voice-agent/src/constants.py.
-MESSAGE_ID_KEY = "message_id"
-
 # User-facing error text when the executor exhausts its recursion budget
 # (GraphRecursionError). Handed to comms as the error result so it's re-voiced in
 # GAIA's persona instead of leaking the raw LangGraph traceback string.

@@ -247,6 +247,8 @@ Bot receives message → adapter builds `CommandContext` → unified `BotCommand
   - **Noise cancellation** — `livekit.plugins.noise_cancellation`.
   - **AgentSession** — streams chat responses from the backend over HTTP, pipes to TTS.
 - `apps/voice-agent/src/config.py` — voice worker config.
+- `apps/voice-agent/src/call_presence.py` — heartbeat to `PUT /voice/session` while the call lives, `POST /voice/session/end` at shutdown (`apps/api/app/api/v1/endpoints/voice.py` → `services/delivery/presence.py`). A live call holds everything but the user's own answers and interrupts (`HoldReason.IN_CALL`, `services/outbox/holds.py`) and releases it at the call's end (`flush.release_on_call_end`).
+- `apps/voice-agent/src/outbox_speech.py` — says what the outbox sends into the room: `router.route` picks `InApp(reason="in_call")`, compose words it for the ear (`SPOKEN_COMPOSE_RULES`), `outbox/transport/voice.py` publishes it on the `outbox.speech` LiveKit data topic (`libs/shared/py/voice_call.py`), the worker `session.say`s each part at a turn boundary. The worker never speaks a raw report and refuses packets a participant sent.
 - `apps/voice-agent/src/__main__.py` — CLI entrypoint: `start` or `download-files`.
 - **Wake word** — `libs/wake-word/` (`@gaia/wake-word`): `src/core` (3-stage openWakeWord pipeline), `src/web` (onnxruntime-web + AudioWorklet + React hook), `src/native` (onnxruntime-react-native), `models/` (mel + embedding + VAD + classifier ONNX), `training/` (Piper TTS + LibriSpeech negatives + MPS training). 122 KB ONNX, ~80ms time-to-wake.
 

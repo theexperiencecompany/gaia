@@ -3680,6 +3680,7 @@
           "slack",
           "whatsapp",
           "imessage",
+          "voice",
           "workflow_system",
           "background"
         ],
@@ -20435,6 +20436,21 @@
           "selected_voice_id"
         ],
         "title": "VoiceSelectionResponse",
+        "type": "object"
+      },
+      "VoiceSessionRequest": {
+        "description": "The live call a voice worker reports on.",
+        "properties": {
+          "room_name": {
+            "description": "LiveKit room of the call, as minted by GET /token",
+            "title": "Room Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "room_name"
+        ],
+        "title": "VoiceSessionRequest",
         "type": "object"
       },
       "VoiceTokenResponse": {
@@ -40533,6 +40549,136 @@
         "summary": "Update User Timezone",
         "tags": [
           "User"
+        ]
+      }
+    },
+    "/api/v1/voice/session": {
+      "put": {
+        "description": "Keep the user marked as in a live call; the voice worker calls this on every heartbeat.",
+        "operationId": "voice_hold_voice_session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not the user's call"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Hold Voice Session",
+        "tags": [
+          "Voice"
+        ]
+      }
+    },
+    "/api/v1/voice/session/end": {
+      "post": {
+        "description": "Record the user's call as over and tell what waited for it to end.",
+        "operationId": "voice_end_voice_session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not the user's call"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "End Voice Session",
+        "tags": [
+          "Voice"
         ]
       }
     },

@@ -36,7 +36,7 @@ from app.services.conversation_service import update_messages
 from app.services.outbox import compose as compose_module
 from app.services.outbox.approvals import approval_id_of_report, is_approval_open
 from app.services.outbox.compose import Composed
-from app.services.outbox.judge_models import Sensitivity
+from app.services.outbox.judge_models import PRIVATE_SENSITIVITIES
 from app.services.outbox.metrics import (
     OUTBOX_ATTACHMENTS_FAILED,
     OUTBOX_ITEMS_DROPPED,
@@ -53,7 +53,14 @@ from app.services.outbox.models import (
     UrgencyClass,
 )
 from app.services.outbox.prerendered import PrerenderedKind, prerendered_text
-from app.services.outbox.router import ChatChannel, NoDestinationError, Route, destination_of, route
+from app.services.outbox.router import (
+    ChatChannel,
+    InApp,
+    NoDestinationError,
+    Route,
+    destination_of,
+    route,
+)
 from app.services.outbox.settled import announce_attempt_settled, announce_items_settled
 from app.services.outbox.transport.bot_queue import (
     OutboundResult,
@@ -62,6 +69,7 @@ from app.services.outbox.transport.bot_queue import (
     publish_outbound_photo,
 )
 from app.services.outbox.transport.push import push_approval_pending
+from app.services.outbox.transport.voice import publish_spoken
 from app.services.outbox.transport.ws_speech import publish_conversation_message
 from app.utils import clock
 from app.utils.auth_utils import load_user_context
@@ -69,11 +77,6 @@ from app.utils.redis_lock import DistributedLock
 from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.delivery import DeliveryMessageSent
 from shared.py.wide_events import log
-
-#: What a lock screen never previews: the push says only that something needs attention.
-PUSH_PREVIEW_HIDDEN_SENSITIVITIES = frozenset(
-    {Sensitivity.HEALTH, Sensitivity.FINANCE, Sensitivity.CREDENTIALS, Sensitivity.SOCIAL_PRIVATE}
-)
 
 
 class OutboxUserNotFoundError(RuntimeError):
@@ -111,8 +114,7 @@ def _max_class(items: list[OutboxItemDocument]) -> UrgencyClass:
 def _push_body(included: list[OutboxItemDocument], composed: Composed, locale: str) -> str:
     """Return the text a push may show on a lock screen: the first bubble, unless an item is too private to preview."""
     if any(
-        item.judgement is not None
-        and item.judgement.sensitivity in PUSH_PREVIEW_HIDDEN_SENSITIVITIES
+        item.judgement is not None and item.judgement.sensitivity in PRIVATE_SENSITIVITIES
         for item in included
     ):
         return prerendered_text(PrerenderedKind.GENERIC_PREVIEW, locale)
@@ -259,8 +261,9 @@ async def _alert_in_app(
     sent: _SentAs,
     has_text: bool,
 ) -> None:
-    """Show the recorded message in the app; an approval's ask also pushes to a backgrounded phone."""
-    for message in saved[destination.alert_conversation_id]:
+    """Show the recorded message in the app, and say it in the user's live call; an approval's ask also pushes to a backgrounded phone."""
+    messages = saved[destination.alert_conversation_id]
+    for message in messages:
         await publish_conversation_message(
             user_id,
             destination.alert_conversation_id,
@@ -271,6 +274,11 @@ async def _alert_in_app(
                 "date": message.date,
                 "kind": message.kind.value,
             },
+        )
+    target = destination.target
+    if isinstance(target, InApp) and target.call_room is not None and has_text:
+        await publish_spoken(
+            target.call_room, sent.attempt_id, [message.response for message in messages]
         )
     if sent.approval_id is not None and has_text:
         await push_approval_pending(

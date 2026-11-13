@@ -1,14 +1,16 @@
-"""Which chat surface the user is actually on: the last time they SENT a message there.
+"""Where the user actually is: the last time they SENT a message on each surface, and whether a call is live.
 
-Only the user's own inbound turns write it. GAIA's outbound deliveries bump
+Only the user's own inbound turns write the stamps. GAIA's outbound deliveries bump
 bot_sessions.updated_at and the conversation's updatedAt too, which is why
-neither can tell where the user is.
+neither can tell where the user is. A call is not a turn: the voice worker holds it
+live with a heartbeat, and its end stamps the voice surface.
 """
 
 from collections.abc import Mapping
 
-from app.constants.cache import USER_PRESENCE_PREFIX
+from app.constants.cache import USER_CALL_PRESENCE_PREFIX, USER_PRESENCE_PREFIX
 from app.constants.notifications import (
+    CALL_PRESENCE_TTL_SECONDS,
     PRESENCE_ACTIVE_WINDOW_SECONDS,
     PRESENCE_RETENTION_SECONDS,
 )
@@ -20,6 +22,10 @@ from app.utils import clock
 
 def _presence_key(user_id: str) -> str:
     return f"{USER_PRESENCE_PREFIX}:{user_id}"
+
+
+def _call_key(user_id: str) -> str:
+    return f"{USER_CALL_PRESENCE_PREFIX}:{user_id}"
 
 
 def _now_epoch() -> int:
@@ -51,6 +57,29 @@ async def record_turn_presence(user_id: str, source: ConversationSource) -> Pres
 async def read_presence(user_id: str) -> PresenceSnapshot:
     """Return the user's presence as it stands now."""
     return _parse(await redis_cache.client.hgetall(_presence_key(user_id)), _now_epoch())
+
+
+async def mark_call_live(user_id: str, room_name: str) -> None:
+    """Say the user is in the call in room_name for the next heartbeat window; each beat renews it."""
+    await redis_cache.client.set(_call_key(user_id), room_name, ex=CALL_PRESENCE_TTL_SECONDS)
+
+
+async def read_call_room(user_id: str) -> str | None:
+    """Return the LiveKit room of the user's live call, or None when they are not in one."""
+    return await redis_cache.client.get(_call_key(user_id))
+
+
+async def end_call(user_id: str, room_name: str) -> bool:
+    """Record the call in room_name as over and stamp the user's last presence on voice.
+
+    False, and nothing changed, when the user is in another call by now: a late end of the
+    old room must not end the new one.
+    """
+    if await read_call_room(user_id) != room_name:
+        return False
+    await redis_cache.client.delete(_call_key(user_id))
+    await record_turn_presence(user_id, ConversationSource.VOICE)
+    return True
 
 
 def surfaces_by_recency(snapshot: PresenceSnapshot) -> list[tuple[ConversationSource, int]]:

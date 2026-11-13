@@ -18,11 +18,14 @@ from app.constants.notifications import (
 )
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
+from app.models.outbox_models import OutboxItemDocument
 from app.models.platform_models import PlatformLinkEntry
 from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import UserDocument
 from app.services.delivery.chat_channel import resolve_channel_priority
 from app.services.outbox import router
+from app.services.outbox.judge_models import ItemJudgement, Sensitivity
+from app.services.outbox.models import Initiative, UrgencyClass
 from app.services.outbox.router import (
     ChatChannel,
     InApp,
@@ -32,6 +35,7 @@ from app.services.outbox.router import (
     resolve_proactive_target,
 )
 from shared.py.wide_events import log
+from tests._harness.judge import notice, verdict
 
 USER_ID = "6acc0dac0cc0a00000000001"
 
@@ -83,6 +87,7 @@ class TestIsActivePlace:
         [
             (ChatChannel(ConversationSource.TELEGRAM, "tg-1", "recent_activity"), True),
             (InApp(reason="active_in_app"), True),
+            (InApp(reason="in_call", call_room="room-1"), True),
             (ChatChannel(ConversationSource.TELEGRAM, "tg-1", "requested_channel"), True),
             (ChatChannel(ConversationSource.TELEGRAM, "tg-1", "priority"), False),
             (
@@ -100,6 +105,7 @@ class TestIsActivePlace:
         ids=[
             "chat_app_active",
             "app_active",
+            "in_call",
             "requested_channel",
             "by_order",
             "by_order_unreachable_active",
@@ -111,6 +117,48 @@ class TestIsActivePlace:
         self, target: ProactiveTarget, active: bool
     ) -> None:
         assert is_active_place(target) is active
+
+
+def _item(
+    initiative: Initiative, urgency: UrgencyClass, sensitivity: Sensitivity = Sensitivity.NONE
+) -> OutboxItemDocument:
+    report = notice(initiative=initiative)
+    return OutboxItemDocument(
+        user_id=USER_ID,
+        report_id=report.report_id,
+        report=report,
+        urgency=urgency,
+        judgement=ItemJudgement(verdict=verdict(sensitivity=sensitivity), sensitivity=sensitivity),
+        expires_at=datetime(2027, 1, 1, tzinfo=UTC),
+    )
+
+
+class TestIsSpokenInCall:
+    @pytest.mark.parametrize(
+        ("item", "heard"),
+        [
+            (_item(Initiative.ASKED, UrgencyClass.ROUTINE), True),
+            (_item(Initiative.SELF_INITIATED, UrgencyClass.INTERRUPT), True),
+            (_item(Initiative.SELF_INITIATED, UrgencyClass.TIMELY), False),
+            (_item(Initiative.SELF_INITIATED, UrgencyClass.BACKGROUND), False),
+            (_item(Initiative.ASKED, UrgencyClass.ROUTINE, Sensitivity.HEALTH), False),
+            (_item(Initiative.SELF_INITIATED, UrgencyClass.INTERRUPT, Sensitivity.FINANCE), False),
+            (_item(Initiative.ASKED, UrgencyClass.ROUTINE, Sensitivity.PERSONAL), True),
+        ],
+        ids=[
+            "answer",
+            "interrupt",
+            "timely",
+            "background",
+            "private_answer",
+            "private_interrupt",
+            "personal_answer",
+        ],
+    )
+    def test_only_the_users_own_answers_and_interrupts_that_are_not_private_are_heard(
+        self, item: OutboxItemDocument, heard: bool
+    ) -> None:
+        assert router.is_spoken_in_call(item) is heard
 
 
 class TestResolveChannelPriority:

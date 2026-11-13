@@ -76,6 +76,12 @@ class StarVoiceRequest(BaseModel):
     starred: bool = Field(description="True to star, False to unstar")
 
 
+class VoiceSessionRequest(BaseModel):
+    """The live call a voice worker reports on."""
+
+    room_name: str = Field(description="LiveKit room of the call, as minted by GET /token")
+
+
 class StarredVoicesResponse(BaseModel):
     """The user's full starred set after a star/unstar."""
 

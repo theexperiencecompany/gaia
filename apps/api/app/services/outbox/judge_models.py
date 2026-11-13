@@ -38,6 +38,12 @@ class Sensitivity(StrEnum):
     SOCIAL_PRIVATE = "social_private"
 
 
+#: What a lock screen never previews and a speaker never says aloud.
+PRIVATE_SENSITIVITIES = frozenset(
+    {Sensitivity.HEALTH, Sensitivity.FINANCE, Sensitivity.CREDENTIALS, Sensitivity.SOCIAL_PRIVATE}
+)
+
+
 class Moment(StrEnum):
     """Whether now is a bad moment to tell the user, whatever the urgency."""
 

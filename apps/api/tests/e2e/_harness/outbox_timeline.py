@@ -39,7 +39,8 @@ from app.db.mongodb.indexes import create_outbox_indexes
 from app.models.chat_models import ConversationSource
 from app.models.outbox_models import OutboxItemDocument, OutboxMessageDocument
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.services.delivery.presence import record_turn_presence
+from app.services.delivery.presence import end_call, mark_call_live, record_turn_presence
+from app.services.outbox.flush import release_on_call_end
 from app.services.outbox.intake import submit
 from app.services.outbox.models import ComposeResult, OutboxReport
 from app.services.outbox.transport.bot_queue import OutboundResult
@@ -229,6 +230,8 @@ class Sinks:
     #: The (outbox message id, part index) each file was published under, parallel to `files`.
     file_parts: list[tuple[str | None, int]] = field(default_factory=list)
     ws: list[tuple[str, str]] = field(default_factory=list)
+    #: (room, parts) of each message said in a live call.
+    voice: list[tuple[str, list[str]]] = field(default_factory=list)
     #: (approval id, body) of each approval push to a backgrounded phone.
     push: list[tuple[str, str]] = field(default_factory=list)
     #: The outbox message id each bot message was published under, parallel to `bot`.
@@ -262,6 +265,14 @@ class OutboxTimeline:
 
     async def active_on(self, source: ConversationSource) -> None:
         await record_turn_presence(self.world.user_id, source)
+
+    async def call_starts(self, room: str = "voice_session_room") -> None:
+        await mark_call_live(self.world.user_id, room)
+
+    async def call_ends(self, room: str = "voice_session_room") -> None:
+        """End the call as the voice worker's last request does: clear it, stamp voice, release what waited."""
+        if await end_call(self.world.user_id, room):
+            await release_on_call_end(self.world.user_id)
 
     async def play(self, steps: list[tuple[float, Callable[[], Awaitable[object]]]]) -> None:
         """Run each (minutes, action) in order, moving the clock to its minute first."""
@@ -405,6 +416,10 @@ def _patched(
         sinks.file_parts.append((outbox_message_id, part_index))
         return True
 
+    async def publish_voice(room_name: str, message_id: str, parts: list[str]) -> bool:
+        sinks.voice.append((room_name, list(parts)))
+        return True
+
     async def publish_ws(user_id: str, conversation_id: str, message: dict[str, Any]) -> None:
         sinks.ws.append((conversation_id, message["response"]))
 
@@ -428,6 +443,7 @@ def _patched(
         enter(patch(f"{DELIVER}.publish_outbound_photo", publish_photo))
         enter(patch(f"{DELIVER}.publish_outbound_file", publish_file))
         enter(patch(f"{DELIVER}.publish_conversation_message", publish_ws))
+        enter(patch(f"{DELIVER}.publish_spoken", publish_voice))
         enter(_approval_doubles(world, sinks))
         enter(patch(f"{DELIVER}.capture", capture))
         enter(patch(f"{DELIVER}.load_user_context", load_user))

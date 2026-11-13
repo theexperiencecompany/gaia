@@ -2,6 +2,8 @@
 
 import re
 
+from shared.py.voice_call import CALL_HEARTBEAT_SECONDS
+
 # Maximum devices a user can register for push notifications
 MAX_DEVICES_PER_USER = 10
 
@@ -42,3 +44,7 @@ PRESENCE_ACTIVE_WINDOW_SECONDS = 3 * 60 * 60
 # How long the per-surface "last wrote here" stamps are kept, so the agent can
 # still say "last seen on WhatsApp 6 days ago". The window above decides delivery.
 PRESENCE_RETENTION_SECONDS = 30 * 24 * 60 * 60
+
+# A live call is renewed by the voice worker's heartbeat; a worker that died without
+# ending the call stops being "in a call" after two missed beats.
+CALL_PRESENCE_TTL_SECONDS = 2 * CALL_HEARTBEAT_SECONDS + 30

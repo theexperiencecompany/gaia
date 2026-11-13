@@ -59,12 +59,17 @@ MAX_HOLD_AGE_SECONDS: Final = 18 * ONE_HOUR_TTL
 #: Still held at this age means a flush was lost: it is logged at error.
 HELD_AGE_ALERT_SECONDS: Final = 20 * ONE_HOUR_TTL
 
+#: A hold for a live call is re-placed this often, so a call whose end was never reported cannot hold an item past it.
+IN_CALL_HOLD_SECONDS: Final = THIRTY_MINUTES_TTL
+
 # --- Flush ---
 
 #: Releases that land on a shared instant (quiet end, check-in slots) are spread over this window.
 FLUSH_JITTER_MAX_SECONDS: Final = 20 * 60
 #: A user's return flushes what waits for a check-in after this, so the reply goes first.
 RETURN_FLUSH_DELAY_SECONDS: Final = 20.0
+#: What a call's end releases is flushed this long after it, once the call's room has closed.
+CALL_END_FLUSH_DELAY_SECONDS: Final = 5.0
 #: The flush job of one user and instant; a held item scheduled twice is flushed once.
 OUTBOX_FLUSH_TASK: Final = "outbox_flush"
 OUTBOX_FLUSH_JOB_ID_PREFIX: Final = "outbox:flush:"
@@ -90,3 +95,5 @@ class HoldReason(StrEnum):
     #: Told too soon after the last unsolicited message.
     GAP = "gap"
     WAIT_FOR_RUN = "wait_for_run"
+    #: The user is in a live voice call: only answers and interrupts are spoken, the rest waits for the call to end.
+    IN_CALL = "in_call"

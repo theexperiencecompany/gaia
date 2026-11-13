@@ -23,10 +23,13 @@ from app.schemas.voice_schemas import (
     UpdateVoiceRequest,
     VoiceListResponse,
     VoiceSelectionResponse,
+    VoiceSessionRequest,
     VoiceTokenResponse,
 )
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import capture
+from app.services.delivery.presence import end_call, mark_call_live
+from app.services.outbox.flush import release_on_call_end
 from app.services.voice_service import (
     get_user_voice,
     list_voices,
@@ -37,6 +40,7 @@ from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.properties import Identifier
 from shared.py.analytics.catalog.settings import SettingsPreferencesChanged
+from shared.py.voice_call import voice_room_name, voice_room_user_id
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -78,7 +82,7 @@ async def get_token(
             code="voice_not_available",
         )
 
-    room_name = f"voice_session_{user_id}_{uuid.uuid4().hex}"
+    room_name = voice_room_name(user_id, uuid.uuid4().hex)
 
     identity = f"user_{user_id}"
     display_name = user_email
@@ -129,6 +133,40 @@ async def get_token(
         participantName=display_name,
         conversation_id=conversation_id,
     )
+
+
+def _own_call_room(user: AuthenticatedUser, payload: VoiceSessionRequest) -> str:
+    """Return the room a voice worker reports on, refusing any caller but the worker and any room but the user's own."""
+    try:
+        belongs = voice_room_user_id(payload.room_name) == user.user_id
+    except ValueError:
+        belongs = False
+    if not user.impersonated or not belongs:
+        raise AppError(
+            message="Only the voice worker of the user's own call can report it.",
+            status_code=403,
+            code="voice_session_forbidden",
+        )
+    return payload.room_name
+
+
+@router.put(
+    "/voice/session", status_code=204, responses=error_responses({403: "Not the user's call"})
+)
+async def hold_voice_session(payload: VoiceSessionRequest, user: CurrentUser) -> None:
+    """Keep the user marked as in a live call; the voice worker calls this on every heartbeat."""
+    log.set(user={"id": user.user_id}, operation="hold_voice_session")
+    await mark_call_live(user.user_id, _own_call_room(user, payload))
+
+
+@router.post(
+    "/voice/session/end", status_code=204, responses=error_responses({403: "Not the user's call"})
+)
+async def end_voice_session(payload: VoiceSessionRequest, user: CurrentUser) -> None:
+    """Record the user's call as over and tell what waited for it to end."""
+    log.set(user={"id": user.user_id}, operation="end_voice_session")
+    if await end_call(user.user_id, _own_call_room(user, payload)):
+        await release_on_call_end(user.user_id)
 
 
 @router.get("/voice/voices")

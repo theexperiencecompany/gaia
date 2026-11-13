@@ -2559,7 +2559,8 @@
               "not_before",
               "checkin",
               "gap",
-              "wait_for_run"
+              "wait_for_run",
+              "in_call"
             ],
             "title": "Reason",
             "type": "string"
@@ -2638,6 +2639,7 @@
               "owner_chat",
               "requested_channel",
               "active_in_app",
+              "in_call",
               "no_chat_app"
             ],
             "title": "Destination Basis",

@@ -1,11 +1,12 @@
 """Where the user is: their inbound stamps per surface, and what each run reads off them."""
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import fakeredis.aioredis
 
 from app.constants.notifications import (
+    CALL_PRESENCE_TTL_SECONDS,
     PRESENCE_ACTIVE_WINDOW_SECONDS,
     PRESENCE_RETENTION_SECONDS,
 )
@@ -19,6 +20,8 @@ from app.services.delivery.presence import (
     record_turn_presence,
     surfaces_by_recency,
 )
+from app.utils import clock
+from shared.py.voice_call import CALL_HEARTBEAT_SECONDS
 
 USER_ID = "6acc0dac0cc0a00000000001"
 KEY = f"user_presence:{USER_ID}"
@@ -113,14 +116,13 @@ class TestRecordTurnPresenceStorage:
 
 
 class TestNow:
-    def test_now_is_read_in_utc(self) -> None:
-        clock = MagicMock()
-        clock.now.return_value = datetime(2026, 10, 24, 17, 2, tzinfo=UTC)
-
-        with patch.object(presence_module, "datetime", clock):
+    def test_now_is_read_from_the_clock_seam(self) -> None:
+        with patch.object(
+            clock, "now", return_value=datetime(2026, 10, 24, 17, 2, tzinfo=UTC)
+        ) as read:
             assert presence_module._now_epoch() == _epoch_of(2026, 10, 24, 17, 2)
 
-        clock.now.assert_called_once_with(UTC)
+        read.assert_called_once_with()
 
 
 def _epoch_of(year: int, month: int, day: int, hour: int, minute: int) -> int:
@@ -204,3 +206,58 @@ class TestActiveSurface:
 
     def test_no_entries_is_none(self) -> None:
         assert active_surface(_snapshot(), NOW) is None
+
+
+CALL_KEY = f"user_call_presence:{USER_ID}"
+ROOM = f"voice_session_{USER_ID}_0f3a9c"
+
+
+class TestCallPresence:
+    async def test_no_one_is_in_a_call_until_the_worker_says_so(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        assert await presence_module.read_call_room(USER_ID) is None
+
+    async def test_a_call_is_live_for_two_missed_heartbeats_and_each_beat_renews_it(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        await presence_module.mark_call_live(USER_ID, ROOM)
+
+        assert await presence_module.read_call_room(USER_ID) == ROOM
+        assert 0 < await fake_redis.ttl(CALL_KEY) <= CALL_PRESENCE_TTL_SECONDS
+        assert CALL_PRESENCE_TTL_SECONDS > 2 * CALL_HEARTBEAT_SECONDS
+
+    async def test_ending_a_call_clears_it_and_stamps_the_voice_surface(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        await presence_module.mark_call_live(USER_ID, ROOM)
+        start = _epoch()
+
+        assert await presence_module.end_call(USER_ID, ROOM) is True
+
+        assert await presence_module.read_call_room(USER_ID) is None
+        stamped = await fake_redis.hgetall(KEY)
+        assert stamped.keys() == {"voice"}
+        assert start <= int(stamped["voice"]) <= _epoch()
+
+    async def test_the_late_end_of_an_old_call_leaves_the_new_one_live(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        newer = f"voice_session_{USER_ID}_beef"
+        await presence_module.mark_call_live(USER_ID, newer)
+
+        assert await presence_module.end_call(USER_ID, ROOM) is False
+
+        assert await presence_module.read_call_room(USER_ID) == newer
+        assert await fake_redis.hgetall(KEY) == {}
+
+    async def test_ending_a_call_nobody_held_changes_nothing(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        assert await presence_module.end_call(USER_ID, ROOM) is False
+        assert await fake_redis.hgetall(KEY) == {}
+
+    def test_a_call_just_ended_puts_the_user_in_the_app_not_on_a_chat_app(self) -> None:
+        recent = _snapshot(voice=NOW - 30, telegram=NOW - 600)
+
+        assert active_surface(recent, NOW) is ConversationSource.VOICE

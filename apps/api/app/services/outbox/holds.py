@@ -1,7 +1,7 @@
 """When an item that is to be told is told: now, held until an instant, or recorded as a repeat.
 
 Pure, like the policy it follows: what the policy decided, what the Judge made of the item and
-the user's attention now (quiet hours, DND, the day's budget, the gap since the last message, who
+the user's attention now (quiet hours, DND, a live call, the day's budget, the gap since the last message, who
 is here) in, a Placement out, so every limit is provable without a database or a clock. The
 policy decides whether the user hears of an item; this decides when, in the order of the design's
 Rails (5.5): the user's own timing, silence, answers and timely items, then the unsolicited
@@ -17,6 +17,7 @@ from app.constants.outbox_attention import (
     ANSWER_QUIET_GRACE_SECONDS,
     DEADLINE_PROXIMITY_SECONDS,
     FLUSH_JITTER_MAX_SECONDS,
+    IN_CALL_HOLD_SECONDS,
     MAX_DAYTIME_HOLD_SECONDS,
     MAX_DEFERRALS,
     MAX_HOLD_AGE_SECONDS,
@@ -60,8 +61,10 @@ class AttentionState:
     now: datetime
     clock: UserClock
     settings: AttentionSettings
-    #: When the user last wrote on any surface; None when they have not lately.
+    #: When the user last wrote on any surface, or now while they are in a call; None when they have not lately.
     last_active_at: datetime | None
+    #: The user is in a live voice call.
+    in_call: bool
     unsolicited_today: int
     last_unsolicited_at: datetime | None
     fact_history: FactHistory | None
@@ -217,6 +220,17 @@ def escalated(urgency: UrgencyClass, state: AttentionState) -> UrgencyClass:
     return urgency
 
 
+def _heard_in_call(
+    report: OutboxReport, urgency: UrgencyClass, verdict: JudgeVerdict | None
+) -> bool:
+    """Whether an item is told while the user is in a call: their own answers and interrupts, and a security notice."""
+    return (
+        is_answer(report)
+        or urgency is UrgencyClass.INTERRUPT
+        or (verdict is not None and is_security_notice(verdict))
+    )
+
+
 def _in_silence(
     report: OutboxReport,
     urgency: UrgencyClass,
@@ -298,6 +312,9 @@ def place(
     not_before = report.delivery_policy.not_before
     if not_before is not None and not_before > state.now:
         return Hold(not_before, HoldReason.NOT_BEFORE)
+    if state.in_call and not _heard_in_call(report, urgency, verdict):
+        until = _bounded(state.now + _seconds(IN_CALL_HOLD_SECONDS), latest)
+        return _hold_or_tell(state, until, HoldReason.IN_CALL)
     silent = _in_silence(report, urgency, verdict, state, latest)
     if silent is not None:
         return silent

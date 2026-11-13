@@ -607,7 +607,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "reason": "quiet_hours" | "dnd" | "not_before" | "checkin" | "gap" | "wait_for_run";
+    "reason": "quiet_hours" | "dnd" | "not_before" | "checkin" | "gap" | "wait_for_run" | "in_call";
     "max_class": "background" | "routine" | "timely" | "interrupt";
   };
   "delivery:message_sent": {
@@ -618,7 +618,7 @@ export interface EventProperties {
     "subject_kind": "ask" | "workflow_run" | "todo_run" | "reminder" | "browser_job" | "account" | "approval";
     "mode": "answer" | "unsolicited" | "interrupt";
     "destination": "chat_app" | "in_app";
-    "destination_basis": "recent_activity" | "priority" | "owner_chat" | "requested_channel" | "active_in_app" | "no_chat_app";
+    "destination_basis": "recent_activity" | "priority" | "owner_chat" | "requested_channel" | "active_in_app" | "in_call" | "no_chat_app";
     "items_count": number;
     "max_class": "background" | "routine" | "timely" | "interrupt";
     "degraded": boolean;

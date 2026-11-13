@@ -20,6 +20,7 @@ from app.constants.outbox import (
     OUTBOX_RECOVERY_MAX_ATTEMPTS,
 )
 from app.constants.outbox_attention import (
+    CALL_END_FLUSH_DELAY_SECONDS,
     FLUSH_COMPOSE_CONCURRENCY_KEY,
     FLUSH_CONTINUATION_DELAY_SECONDS,
     FLUSH_MAX_CONCURRENT_COMPOSES,
@@ -48,6 +49,11 @@ from shared.py.wide_events import log
 _RELEASED_BY_RETURN = (HoldReason.CHECKIN, HoldReason.GAP, HoldReason.DND, HoldReason.QUIET_HOURS)
 
 
+def _held_for_call(item: OutboxItemDocument) -> bool:
+    """Whether the item waited for a call to end, which is no hold of its own kind: it is placed as new."""
+    return item.hold is not None and item.hold.reason is HoldReason.IN_CALL
+
+
 async def flush_due(user_id: str) -> int:
     """Settle the user's held items whose hold has ended and tell what is to be told as one message; return how many were told.
 
@@ -69,7 +75,9 @@ async def flush_due(user_id: str) -> int:
     failures: list[Exception] = []
     for item in due[:FLUSH_MAX_ITEMS_PER_RUN]:
         try:
-            state = await settle_report(item.report, prior_hold=item.hold, released=True)
+            state = await settle_report(
+                item.report, prior_hold=item.hold, released=not _held_for_call(item)
+            )
         except Exception as error:
             log.error(
                 f"{LogTag.NOTIFICATION} Outbox flush could not settle a held item",
@@ -96,6 +104,13 @@ async def release_on_return(user_id: str) -> None:
     """End the holds a user's return answers and flush them just after, so the reply goes first."""
     await release_and_flush(
         user_id, _RELEASED_BY_RETURN, delay=timedelta(seconds=RETURN_FLUSH_DELAY_SECONDS)
+    )
+
+
+async def release_on_call_end(user_id: str) -> None:
+    """End the holds a live call put on the user's items and flush them once it has closed."""
+    await release_and_flush(
+        user_id, (HoldReason.IN_CALL,), delay=timedelta(seconds=CALL_END_FLUSH_DELAY_SECONDS)
     )
 
 

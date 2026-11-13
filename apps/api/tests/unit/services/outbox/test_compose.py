@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 from langchain_core.messages import AIMessage
 import pytest
 
-from app.agents.prompts.compose_prompts import OUTCOME_REPLY_SHAPES
+from app.agents.prompts.compose_prompts import OUTCOME_REPLY_SHAPES, SPOKEN_COMPOSE_RULES
 from app.constants.agents import OutcomeState
 from app.constants.chat import ConversationSource
 from app.constants.outbound import OUTBOUND_TTL_SECONDS_DEFAULT, OUTBOUND_TTL_SECONDS_GREETING
@@ -114,6 +114,7 @@ async def _compose(
     *,
     requested_unavailable: ConversationSource | None = None,
     leaks: list[list[str]] | None = None,
+    target: InApp = InApp(reason="no_chat_app"),
 ):
     """Compose items; leaks lists what the internals guard finds in each answer's parts, in order (none by default)."""
     graph = SimpleNamespace(aget_state=AsyncMock(return_value=SimpleNamespace(values={})))
@@ -133,7 +134,7 @@ async def _compose(
             destination=Route(
                 alert_conversation_id="c",
                 recorded_in=("c",),
-                target=InApp(reason="no_chat_app"),
+                target=target,
                 requested_unavailable=requested_unavailable,
             ),
             locale="en",
@@ -291,6 +292,24 @@ def _run_item(
 
 def _context(model: AsyncMock) -> dict[str, Any]:
     return json.loads(model.await_args_list[0].args[1][1].content)
+
+
+class TestASpokenMessage:
+    async def test_a_message_for_a_live_call_is_worded_to_be_heard(self) -> None:
+        model = _model(_result(("run-1", "include"), parts=["Sent."]))
+
+        await _compose(model, [_run_item()], target=InApp(reason="in_call", call_room="room-1"))
+
+        assert _context(model)["destination"] == "voice"
+        assert SPOKEN_COMPOSE_RULES in model.await_args_list[0].args[1][0].content
+
+    async def test_a_message_for_the_app_is_not(self) -> None:
+        model = _model(_result(("run-1", "include"), parts=["Sent."]))
+
+        await _compose(model, [_run_item()])
+
+        assert _context(model)["destination"] == "web"
+        assert SPOKEN_COMPOSE_RULES not in model.await_args_list[0].args[1][0].content
 
 
 class TestWhatComposeIsShownOfARun:

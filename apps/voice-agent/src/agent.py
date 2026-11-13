@@ -34,6 +34,7 @@ from shared.py.analytics.context import analytics_context
 from shared.py.logging import configure_file_logging
 from shared.py.secrets import inject_infisical_secrets
 from shared.py.wide_events import ModelContext, VoiceContext, get_trace_id, log, log_context
+from src.call_presence import end_call_presence, hold_call_presence
 from src.config import bootstrap_settings
 from src.constants import (
     BACKEND_REQUEST_TIMEOUT_S,
@@ -45,6 +46,7 @@ from src.constants import (
     LogTag,
 )
 from src.llm import CustomLLM
+from src.outbox_speech import listen_for_outbox_speech
 from src.utils import extract_meta_data, ms_since, user_id_from_room
 
 # Absolute path so logs land in the right place regardless of CWD. A no-op
@@ -375,6 +377,17 @@ def _spawn_credential_task(
     task.add_done_callback(_done)
 
 
+def _hold_call_presence(ctx: JobContext, llm: CustomLLM) -> None:
+    """Tell the API the user is in a call for as long as the room lives, and that it is over at shutdown."""
+    heartbeat = asyncio.create_task(hold_call_presence(llm, ctx.room.name))
+
+    async def end_call(_reason: str) -> None:
+        heartbeat.cancel()
+        await end_call_presence(llm, ctx.room.name)
+
+    ctx.add_shutdown_callback(end_call)
+
+
 async def entrypoint(ctx: JobContext) -> None:
     """Initialize and run the voice agent session for a single room."""
     settings = ctx.proc.userdata["settings"]
@@ -444,10 +457,6 @@ async def entrypoint(ctx: JobContext) -> None:
             use_tts_aligned_transcript=True,
         )
 
-        # The drain speaks each delegated executor answer as its own utterance
-        # once the comms turn has ended.
-        custom_llm.session = session
-
         _register_session_logging(ctx, session, identity, session_trace_id, analytics, user)
 
         # Tracks the currently-applied TTS voice so repeated metadata events
@@ -497,6 +506,9 @@ async def entrypoint(ctx: JobContext) -> None:
                 delete_room_on_close=True,
             ),
         )
+
+        listen_for_outbox_speech(ctx.room, session, background_tasks)
+        _hold_call_presence(ctx, custom_llm)
 
         # Participants who joined before the agent (the common case — the user
         # connects first) never emit participant_connected here; apply their

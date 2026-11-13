@@ -62,4 +62,3 @@ async def publish_report_settled(
             "outcome": outcome,
         },
     )
-
