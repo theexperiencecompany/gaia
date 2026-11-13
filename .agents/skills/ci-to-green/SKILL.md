@@ -117,7 +117,7 @@ nohup python3 scripts/ci/mutation.py local app/x.py app/y.py > /tmp/mut.out 2>&1
 ```
 
 - For ONE module, skip the background job entirely: `mise mutation:one app/x.py`
-  runs it in the foreground and prints the survivors with their diffs.
+  runs the same `local` path in the foreground and prints the survivors with their diffs.
 - Watch `/tmp/mut.out` for `pass` / `SURVIVORS` / `ERROR`. Per-module logs are in
   `verify-logs/mutation/`; `mise mutation:survivors verify-logs/mutation/<module>.verdict.json`
   re-prints any of them.

@@ -343,7 +343,8 @@ class ConversationEntriesMigration(ConversationRepository):
         folded = set(read.head.migration_folded_acks)
         seqs: list[int] = []
         for element in elements:
-            entry = by_id.get(element.message_id or "")
+            key = element.message_id or ""  # pragma: no mutate — a None id is never an entry id
+            entry = by_id.get(key)
             if entry is None:
                 if element.message_id not in folded:
                     report.mismatches.append(f"{element.message_id} has no entry")
