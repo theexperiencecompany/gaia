@@ -55,9 +55,11 @@ export function WakeWordIndicator({
 
   return (
     <Tooltip>
-      <div className="rounded-2xl bg-zinc-800 p-2">
-        <StatusIcon state={state} enabled={enabled} />
-      </div>
+      <Tooltip.Trigger>
+        <div className="rounded-2xl bg-zinc-800 p-2">
+          <StatusIcon state={state} enabled={enabled} />
+        </div>
+      </Tooltip.Trigger>
       <Tooltip.Content placement="left">
         {tooltipFor(state, error)}
       </Tooltip.Content>

@@ -7,7 +7,6 @@ import {
   RemoveCircleIcon,
   Share08Icon,
 } from "@icons";
-import { Focusable } from "react-aria-components";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
@@ -69,22 +68,16 @@ export function ConnectedActions({
 
       {integration.isPublic && (
         <Tooltip>
-          <Focusable>
-            <LinkButton
-              variant="primary"
-              isIconOnly={useIconOnly}
-              className="w-full"
-              href={marketplacePath(integration.slug)}
-              aria-label="View on Marketplace"
-            >
-              <LinkSquareIcon
-                width={18}
-                height={18}
-                className="outline-none!"
-              />
-              {!useIconOnly && "View"}
-            </LinkButton>
-          </Focusable>
+          <LinkButton
+            variant="primary"
+            isIconOnly={useIconOnly}
+            className="w-full"
+            href={marketplacePath(integration.slug)}
+            aria-label="View on Marketplace"
+          >
+            <LinkSquareIcon width={18} height={18} className="outline-none!" />
+            {!useIconOnly && "View"}
+          </LinkButton>
           <Tooltip.Content>View on Marketplace</Tooltip.Content>
         </Tooltip>
       )}

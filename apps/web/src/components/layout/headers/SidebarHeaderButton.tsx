@@ -2,6 +2,7 @@
 
 import { Tooltip } from "@heroui/react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { Focusable } from "react-aria-components";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -43,7 +44,7 @@ export const SidebarHeaderButton = ({
 
   return (
     <Tooltip>
-      <Tooltip.Trigger className="contents">{button}</Tooltip.Trigger>
+      <Focusable>{button}</Focusable>
       <Tooltip.Content>{tooltip}</Tooltip.Content>
     </Tooltip>
   );

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { Tooltip } from "@heroui/react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -70,5 +71,25 @@ describe("GAIA button variants", () => {
       </GaiaButton>,
     );
     expect(screen.getByRole("button", { name: "Go" }).className).toContain(cls);
+  });
+});
+
+// v3's Tooltip opens only for a child that takes React Aria's trigger props; a
+// bare Next.js link never did, so every tooltip around a LinkButton stayed shut.
+describe("a tooltip around a link button", () => {
+  it("opens on hover", async () => {
+    render(
+      <Tooltip delay={0} closeDelay={0}>
+        <LinkButton href="/c">New Chat</LinkButton>
+        <Tooltip.Content>Start a chat</Tooltip.Content>
+      </Tooltip>,
+    );
+    const link = screen.getByRole("link", { name: "New Chat" });
+    // React Aria opens a hover tooltip only once a pointer has moved (interaction modality "pointer").
+    fireEvent.pointerMove(link, { pointerType: "mouse" });
+    fireEvent.pointerEnter(link, { pointerType: "mouse" });
+    expect((await screen.findByRole("tooltip")).textContent).toContain(
+      "Start a chat",
+    );
   });
 });

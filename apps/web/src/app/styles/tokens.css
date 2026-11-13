@@ -92,6 +92,13 @@ html {
   background-color: var(--background);
 }
 
+/* v2's Tooltip defaults (delay 0, closeDelay 500); v3's theme waits 1500ms before
+   opening, so a tooltip without its own delay looked like it never opened. */
+:root {
+  --tooltip-delay: 0ms;
+  --tooltip-close-delay: 500ms;
+}
+
 /* GAIA control dimensions: v2's sizes on v3's components, which ship pill radii,
    a 36px desktop button and font-weight 500. Read only by gaia.css. */
 :root {
