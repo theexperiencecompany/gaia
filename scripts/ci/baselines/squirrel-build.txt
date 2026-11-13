@@ -2810,66 +2810,25 @@ score:URL Structure=93
 /learn/workflow-automation	content/keyword-stuffing/keyword-stuffing	automation
 /learn/workflow-orchestration	content/keyword-stuffing/keyword-stuffing	workflow
 /learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
-/marketplace/adspo-mcp-other	content/keyword-stuffing/keyword-stuffing	adspo
-/marketplace/agentmail	content/keyword-stuffing/keyword-stuffing	email
 /marketplace/asana	perf/dom-size/dom-max-children
-/marketplace/brave-search-mcp-other	content/keyword-stuffing/keyword-stuffing	search
-/marketplace/calendly	content/keyword-stuffing/keyword-stuffing	event
 /marketplace/clickup	perf/dom-size/dom-max-children
-/marketplace/deepwiki	content/keyword-stuffing/keyword-stuffing	deepwiki
-/marketplace/dropbox	content/keyword-stuffing/keyword-stuffing	team
 /marketplace/dropbox	perf/dom-size/dom-max-children
-/marketplace/github	content/keyword-stuffing/keyword-stuffing	repository
 /marketplace/github	perf/dom-size/dom-max-children
 /marketplace/github	perf/dom-size/dom-total-nodes
 /marketplace/gmail	perf/dom-size/dom-max-children
-/marketplace/googlecalendar	content/keyword-stuffing/keyword-stuffing	calendar
-/marketplace/googledocs	content/keyword-stuffing/keyword-stuffing	document
-/marketplace/googledocs	content/keyword-stuffing/keyword-stuffing	google
-/marketplace/googledrive	content/keyword-stuffing/keyword-stuffing	file
 /marketplace/googledrive	perf/dom-size/dom-max-children
-/marketplace/googlemeet	content/keyword-stuffing/keyword-stuffing	conference
-/marketplace/googlesheets	content/keyword-stuffing/keyword-stuffing	spreadsheet
-/marketplace/googletasks	content/keyword-stuffing/keyword-stuffing	list
-/marketplace/googletasks	content/keyword-stuffing/keyword-stuffing	task
-/marketplace/googletasks	content/keyword-stuffing/keyword-stuffing	tasks
-/marketplace/granola-mcp-productivity	content/keyword-stuffing/keyword-stuffing	meeting
 /marketplace/hubspot	perf/dom-size/dom-max-children
-/marketplace/instagram	content/keyword-stuffing/keyword-stuffing	media
 /marketplace/jira	perf/dom-size/dom-max-children
-/marketplace/keyloom-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	component
-/marketplace/linear	content/keyword-stuffing/keyword-stuffing	linear
-/marketplace/manufact-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	server
-/marketplace/microsoft-teams	content/keyword-stuffing/keyword-stuffing	teams
-/marketplace/open-web-search-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	search
-/marketplace/outlook	content/keyword-stuffing/keyword-stuffing	calendar
-/marketplace/outlook	content/keyword-stuffing/keyword-stuffing	folder
-/marketplace/outlook	content/keyword-stuffing/keyword-stuffing	use
-/marketplace/outlook	content/keyword-stuffing/keyword-stuffing	user
 /marketplace/outlook	perf/dom-size/dom-max-children
 /marketplace/outlook	perf/dom-size/dom-total-nodes
 /marketplace/page/2	content/word-count/word-count
 /marketplace/page/3	content/word-count/word-count
-/marketplace/postman-code-eu-mcp-developer	content/keyword-stuffing/keyword-stuffing	code
-/marketplace/postman-code-mcp-developer	content/keyword-stuffing/keyword-stuffing	api
-/marketplace/postman-full-mcp-developer	content/keyword-stuffing/keyword-stuffing	api
-/marketplace/postman-full-mcp-developer	content/keyword-stuffing/keyword-stuffing	postman
-/marketplace/postman-minimal-eu-mcp-developer	content/keyword-stuffing/keyword-stuffing	postman
-/marketplace/prisma-mcp-developer	content/keyword-stuffing/keyword-stuffing	database
-/marketplace/prisma-mcp-developer	content/keyword-stuffing/keyword-stuffing	postgres
-/marketplace/prisma-mcp-developer	content/keyword-stuffing/keyword-stuffing	prisma
 /marketplace/resend-mcp-communication	perf/dom-size/dom-max-children
 /marketplace/slack	perf/dom-size/dom-max-children
-/marketplace/todoist	content/keyword-stuffing/keyword-stuffing	need
-/marketplace/todoist	content/keyword-stuffing/keyword-stuffing	use
 /marketplace/todoist	perf/dom-size/dom-max-children
-/marketplace/trello	content/keyword-stuffing/keyword-stuffing	board
 /marketplace/trello	perf/dom-size/dom-max-children
 /marketplace/trello	perf/dom-size/dom-total-nodes
-/marketplace/twitter	content/keyword-stuffing/keyword-stuffing	user
 /marketplace/twitter	perf/dom-size/dom-max-children
-/marketplace/yelp	content/keyword-stuffing/keyword-stuffing	business
-/marketplace/zoom	content/keyword-stuffing/keyword-stuffing	meeting
 /open-source-ai-assistant	perf/cache-headers/cache-control
 /pricing	perf/cache-headers/cache-control
 /privacy	perf/cache-headers/cache-control
