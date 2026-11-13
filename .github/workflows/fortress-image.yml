@@ -1,0 +1,63 @@
+name: Fortress image
+
+# gaia-fortress: the gaia image plus Fortress, the browser host's opt-in
+# Chromium (apps/api/Dockerfile's fortress target), for a browser host that sets
+# BROWSER_HOST_FORTRESS. The gaia image itself never downloads Fortress. amd64
+# only, tagged with gaia's <apps_tag> and <commit sha>. Its own workflow so no
+# deploy waits on it: ci.yml calls it as a leaf after build-images (outside the
+# build.yml call trigger-build awaits), and build.yml calls it only on a
+# dispatch, where nothing awaits the whole workflow. A Fortress asset
+# re-uploaded upstream under its pinned tag reds this workflow alone, never the
+# gaia release, the deploy or the quality gate. Its runtime layers come from
+# gaia's own :buildcache, so only the Fortress layer is new.
+
+on:
+  workflow_call:
+    inputs:
+      apps_tag:
+        description: "The gaia image's release tag this build pairs with"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  docker-api-fortress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build and push the Fortress image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          target: fortress
+          platforms: linux/amd64
+          build-args: GIT_COMMIT_SHA=${{ github.sha }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/gaia-fortress:${{ inputs.apps_tag }}
+            ghcr.io/${{ github.repository_owner }}/gaia-fortress:${{ github.sha }}
+          cache-from: |
+            type=registry,ref=ghcr.io/${{ github.repository_owner }}/gaia:buildcache
+            type=registry,ref=ghcr.io/${{ github.repository_owner }}/gaia-fortress:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/gaia-fortress:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd
