@@ -1,0 +1,1537 @@
+- id: report-d-01
+  ticket: Booking and one invite done; the second invitee is ambiguous between two contacts, so partial with a choose needs_you.
+  tags:
+  - report
+  - partial_blocked
+  - dev
+  setup:
+    now: '2026-11-07T11:20:00'
+    ask:
+      id: ask_d01
+      text: book osteria lume for 4 on friday at 8 and send sam and lee the invite
+      asked_at: '2026-11-07T11:12:00'
+    writes:
+    - c3
+    - c7
+    transcript:
+    - call_id: c1
+      tool: opentable_search
+      args:
+        restaurant: Osteria Lume
+        date: '2026-11-13'
+        time: '20:00'
+        party_size: 4
+      result:
+        restaurant_id: rst_70214
+        name: Osteria Lume
+        slots:
+        - '19:30'
+        - '20:00'
+        - '21:15'
+    - call_id: c2
+      tool: approval_gate
+      args:
+        action: Book Osteria Lume Fri 13 Nov 20:00 for 4 (no deposit)
+        call_ref: c3
+      result:
+        decision: approved
+        basis: standing_grant
+        grant: Restaurant bookings without a deposit
+    - call_id: c3
+      tool: opentable_book
+      args:
+        restaurant_id: rst_70214
+        date: '2026-11-13'
+        time: '20:00'
+        party_size: 4
+      result:
+        status: confirmed
+        confirmation_number: OL-55190
+        restaurant: Osteria Lume
+        datetime: '2026-11-13T20:00:00'
+        party_size: 4
+        address: 41 Calder Street
+    - call_id: c4
+      tool: contacts_search
+      args:
+        query: Sam
+      result:
+        results:
+        - name: Sam Achterberg
+          email: sam.a@fernhill.example
+          company: Fernhill Studio
+          last_contacted: '2026-10-29'
+        - name: Samira Haddad
+          nickname: Sam
+          email: samira.haddad@mailbox.example
+          company: null
+          last_contacted: '2026-11-01'
+    - call_id: c5
+      tool: contacts_search
+      args:
+        query: Lee
+      result:
+        results:
+        - name: Lee Okonkwo
+          email: lee.okonkwo@mailbox.example
+          company: null
+    - call_id: c6
+      tool: calendar_list_events
+      args:
+        time_min: '2026-11-13T18:00:00'
+        time_max: '2026-11-13T23:00:00'
+      result:
+        events:
+        - id: ev_5521
+          summary: Gym
+          start: '2026-11-13T18:00:00'
+          end: '2026-11-13T19:00:00'
+    - call_id: c7
+      tool: gmail_send
+      args:
+        to:
+        - lee.okonkwo@mailbox.example
+        subject: Dinner Fri 13 Nov, 8pm – Osteria Lume
+        body: Hi Lee, table for 4 booked at Osteria Lume (41 Calder Street) on Friday 13 Nov at 8pm. Hope you can make it!
+      result:
+        id: 18f61a2c03
+        threadId: 18f61a2c03
+        labelIds:
+        - SENT
+    - assistant_note: Two contacts go by Sam (Sam Achterberg, Samira Haddad); not guessing which one.
+  expected:
+    category: partial_blocked
+    split: dev
+    ambiguous: false
+    outcome: partial
+    key_facts:
+    - text: Booked Osteria Lume for 4 on Friday 13 Nov at 8pm
+      kind: did
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: Sent the dinner invite to Lee Okonkwo
+      kind: did
+      source_call_ids:
+      - c7
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: 'Didn''t send the invite to Sam: two contacts match (Sam Achterberg at Fernhill Studio and Samira Haddad)'
+      kind: not_done
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: true
+    answer: false
+    score:
+      gates: &id001
+      - report_outcome
+      - report_facts
+      - report_specifics
+      - report_kinds
+      - report_shape
+      - report_contract
+- id: report-d-02
+  ticket: 'Form done, payment stuck on 3DS code (c4 is not submitted: not in authorization). Lunch-balance banner is an unprompted
+    money finding.'
+  tags:
+  - report
+  - partial_blocked
+  - dev
+  setup:
+    now: '2026-11-09T19:05:00'
+    ask:
+      id: ask_d02
+      text: submit Mia's consent form for the science museum trip and pay the $35
+      asked_at: '2026-11-09T18:58:00'
+    writes:
+    - c2
+    transcript:
+    - call_id: c1
+      tool: browser_open
+      args:
+        url: https://portal.brookside-elementary.example/forms/frm_8812
+      result:
+        status: 200
+        title: Science Museum Trip – Grade 3
+        text: 'Trip date: Fri 20 Nov 2026. Consent form and $35.00 fee due by Fri 13 Nov. Student: Mia Navarro (3B). NOTICE:
+          Lunch account balance for Mia Navarro is -$12.40. Hot meals may be limited after 14 Nov if the balance is not cleared.'
+    - call_id: c2
+      tool: school_portal_submit_form
+      args:
+        form_id: frm_8812
+        fields:
+          student: Mia Navarro
+          consent: true
+          emergency_contact: Daniel Navarro, +1 555 0143
+      result:
+        status: submitted
+        receipt_id: CF-20931
+        submitted_at: '2026-11-09T19:02:41'
+    - call_id: c3
+      tool: approval_gate
+      args:
+        action: Pay $35.00 trip fee to Brookside Elementary with Visa ••4417
+        call_ref: c4
+      result:
+        decision: approved
+        basis: explicit_now
+        approved_at: '2026-11-09T19:03:10'
+    - call_id: c4
+      tool: school_portal_pay
+      args:
+        form_id: frm_8812
+        amount: 35.0
+        currency: USD
+        card: visa_4417
+      result:
+        status: requires_action
+        next_action: 3ds_challenge
+        message: Your bank sent a one-time code to the phone ending 82. Enter it within 10 minutes to complete the payment.
+        expires_at: '2026-11-09T19:14:00'
+    - call_id: c5
+      tool: calendar_list_events
+      args:
+        time_min: '2026-11-20T00:00:00'
+        time_max: '2026-11-20T23:59:00'
+      result:
+        events:
+        - id: ev_1180
+          summary: Standup
+          start: '2026-11-20T09:30:00'
+    - assistant_note: Consent submitted. Fee payment waits on the card's one-time code.
+  expected:
+    category: partial_blocked
+    split: dev
+    ambiguous: false
+    outcome: partial
+    key_facts:
+    - text: Submitted Mia's consent form for the science museum trip on 20 Nov
+      kind: did
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: 'The $35 trip fee isn''t paid yet: your bank needs the one-time code it texted to the phone ending 82'
+      kind: not_done
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    - text: Mia's school lunch account is $12.40 overdrawn; hot meals may be limited after 14 Nov if it isn't cleared
+      kind: observed
+      source_call_ids:
+      - c1
+      unprompted: true
+      has_time: true
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: true
+    answer: false
+    score:
+      gates: *id001
+- id: report-d-03
+  ticket: Etsy validation error reveals the missing flat number, which also casts doubt on the Amazon write (inferred). In-flight
+    order to old address is unprompted.
+  tags:
+  - report
+  - partial_blocked
+  - holdout
+  setup:
+    now: '2026-11-08T16:40:00'
+    ask:
+      id: ask_d03
+      text: change my shipping address on amazon and etsy to the new flat — 14 Harrow Lane, Leeds LS6 2QT
+      asked_at: '2026-11-08T16:31:00'
+    writes:
+    - c2
+    transcript:
+    - call_id: c1
+      tool: amazon_list_addresses
+      args: {}
+      result:
+        addresses:
+        - id: addr_01
+          line1: 9 Kirkgate
+          city: Leeds
+          postcode: LS1 6BY
+          default: true
+    - call_id: c2
+      tool: amazon_add_address
+      args:
+        line1: 14 Harrow Lane
+        city: Leeds
+        postcode: LS6 2QT
+        set_default: true
+      result:
+        address_id: addr_07
+        default: true
+        created_at: '2026-11-08T16:35:12'
+    - call_id: c3
+      tool: etsy_update_shipping_address
+      args:
+        line1: 14 Harrow Lane
+        city: Leeds
+        postcode: LS6 2QT
+        set_default: true
+      result:
+        error: validation_failed
+        field: address_line_2
+        message: Royal Mail lists 6 delivery points at 14 Harrow Lane (Flat 1-6). Please add the flat number.
+    - call_id: c4
+      tool: amazon_list_orders
+      args:
+        status: open
+      result:
+        orders:
+        - order_id: 114-3302917-5521840
+          item: Bosch cordless drill
+          ship_to: 9 Kirkgate, Leeds LS1 6BY
+          status: dispatched
+          estimated_delivery: '2026-11-10'
+        - order_id: 114-0081263-1177245
+          item: Kindle book
+          status: delivered digitally
+    - assistant_note: Amazon updated. Etsy refuses without a flat number, which I don't have.
+  expected:
+    category: partial_blocked
+    split: holdout
+    ambiguous: false
+    outcome: partial
+    key_facts:
+    - text: Added 14 Harrow Lane, Leeds LS6 2QT as your default Amazon address
+      kind: did
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: 'Etsy address not changed: the building has six flats and Etsy needs the flat number'
+      kind: not_done
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: The Amazon address was saved without a flat number, so deliveries there may also go astray
+      kind: inferred
+      source_call_ids: []
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Your Bosch drill order is already dispatched to the old address, 9 Kirkgate, arriving 10 Nov
+      kind: observed
+      source_call_ids:
+      - c4
+      unprompted: true
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: true
+    answer: false
+    score:
+      gates: *id001
+- id: report-d-04
+  ticket: One cancellation done, the other blocked on sign-in. The £59 fee date wasn't asked about but makes the sign-in time-sensitive.
+  tags:
+  - report
+  - partial_blocked
+  - holdout
+  setup:
+    now: '2026-11-07T21:10:00'
+    ask:
+      id: ask_d04
+      text: cancel my gym membership and the spotify family plan
+      asked_at: '2026-11-07T21:02:00'
+    writes:
+    - c3
+    transcript:
+    - call_id: c1
+      tool: spotify_get_subscription
+      args: {}
+      result:
+        plan: Premium Family
+        price: £19.99/month
+        next_billing: '2026-11-21'
+        members: 4
+    - call_id: c2
+      tool: approval_gate
+      args:
+        action: Cancel Spotify Premium Family (£19.99/month)
+        call_ref: c3
+      result:
+        decision: approved
+        basis: explicit_now
+        approved_at: '2026-11-07T21:05:30'
+    - call_id: c3
+      tool: spotify_cancel_subscription
+      args:
+        plan: Premium Family
+      result:
+        status: cancelled
+        access_until: '2026-11-21'
+        final_charge: null
+    - call_id: c4
+      tool: gmail_search
+      args:
+        query: from:ironworksgym.example newer_than:60d
+        max_results: 5
+      result:
+        messages:
+        - id: 18f40d1a7e
+          from: Ironworks Gym <members@ironworksgym.example>
+          subject: Annual maintenance fee reminder
+          date: '2026-11-01T08:00:00'
+          snippet: Your annual maintenance fee of £59.00 will be charged on 15 Nov 2026 to active memberships.
+        - id: 18f2c90b11
+          from: Ironworks Gym <news@ironworksgym.example>
+          subject: New spin classes!
+          date: '2026-10-20T07:00:00'
+    - call_id: c5
+      tool: browser_open
+      args:
+        url: https://members.ironworksgym.example/account/cancel
+      result:
+        status: 200
+        title: Member login – Ironworks Gym
+        text: Please sign in with your member email and password to manage your membership.
+    - assistant_note: Spotify cancelled. Gym portal needs the user's own password.
+  expected:
+    category: partial_blocked
+    split: holdout
+    ambiguous: false
+    outcome: partial
+    key_facts:
+    - text: Cancelled the Spotify Premium Family plan; it stays active until 21 Nov and won't renew
+      kind: did
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: 'Gym membership not cancelled: the Ironworks members portal needs you to sign in'
+      kind: not_done
+      source_call_ids:
+      - c5
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Ironworks charges a £59 annual maintenance fee on 15 Nov to active memberships
+      kind: observed
+      source_call_ids:
+      - c4
+      unprompted: true
+      has_time: true
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: true
+    answer: false
+    score:
+      gates: *id001
+- id: report-d-05
+  ticket: 'The read succeeded but the only deliverable (calendar write) is blocked by a revoked token: failed + needs_reconnect,
+    with the found details as observed.'
+  tags:
+  - report
+  - connection_error
+  - dev
+  setup:
+    now: '2026-11-07T08:30:00'
+    ask:
+      id: ask_d05
+      text: add my physio appointment from the clinic email to my calendar
+      asked_at: '2026-11-07T08:24:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: gmail_search
+      args:
+        query: physio appointment newer_than:14d
+        max_results: 5
+      result:
+        messages:
+        - id: 18f3e2b9a0
+          from: Riverside Physio <bookings@riversidephysio.example>
+          subject: Appointment confirmed – Wed 11 Nov 17:15
+          date: '2026-11-05T12:40:00'
+        - id: 18f1aa0f22
+          from: PhysioShop <offers@physioshop.example>
+          subject: 20% off foam rollers
+    - call_id: c2
+      tool: gmail_get_message
+      args:
+        id: 18f3e2b9a0
+      result:
+        from: bookings@riversidephysio.example
+        body: Hi, your appointment with Jo Kirwan is confirmed for Wednesday 11 November at 17:15 at Unit 4, 22 Mill Road.
+          Please arrive 10 minutes early. Cancellations with less than 24 hours' notice are charged £45.
+    - call_id: c3
+      tool: calendar_create_event
+      args:
+        summary: Physio – Jo Kirwan
+        start: '2026-11-11T17:15:00'
+        end: '2026-11-11T18:00:00'
+        location: Unit 4, 22 Mill Road
+      result: 'HttpError 401: invalid_grant - Token has been expired or revoked.'
+    - call_id: c4
+      tool: calendar_list_calendars
+      args: {}
+      result: 'HttpError 401: invalid_grant - Token has been expired or revoked.'
+  expected:
+    category: connection_error
+    split: dev
+    ambiguous: false
+    outcome: failed
+    key_facts:
+    - text: 'Physio appointment not added to your calendar: the Google Calendar connection has expired'
+      kind: not_done
+      source_call_ids:
+      - c3
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Physio with Jo Kirwan at Riverside Physio, Unit 4, 22 Mill Road, on Wednesday 11 Nov at 5:15pm
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Cancelling with less than 24 hours' notice costs £45
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    failure: true
+    scope: false
+    needs_you: false
+    answer: false
+    failure_reason: integration_disconnected
+    score:
+      gates: *id001
+- id: report-d-06
+  ticket: 'Slack revoked mid-run but the email half succeeded: partial (not failed) with failure integration_disconnected/needs_reconnect.'
+  tags:
+  - report
+  - connection_error
+  - dev
+  setup:
+    now: '2026-11-06T17:45:00'
+    ask:
+      id: ask_d06
+      text: 'post the weekly metrics summary in #growth and email it to priya'
+      asked_at: '2026-11-06T17:38:00'
+    writes:
+    - c5
+    transcript:
+    - call_id: c1
+      tool: sheets_get_values
+      args:
+        spreadsheet_id: 1kQ9_weekly_metrics
+        range: W45!A1:D6
+      result:
+        values:
+        - - Metric
+          - W44
+          - W45
+          - Change
+        - - Signups
+          - 1,115
+          - 1,204
+          - +8%
+        - - Activation
+          - 39%
+          - 41%
+          - +2pt
+        - - Churn
+          - 2.4%
+          - 2.1%
+          - -0.3pt
+        - - MRR
+          - $84,210
+          - $86,950
+          - +3.3%
+    - call_id: c2
+      tool: slack_post_message
+      args:
+        channel: '#growth'
+        text: 'Weekly metrics W45: signups 1,204 (+8%), activation 41% (+2pt), churn 2.1% (-0.3pt), MRR $86,950 (+3.3%).'
+      result:
+        ok: false
+        error: token_revoked
+    - call_id: c3
+      tool: slack_auth_test
+      args: {}
+      result:
+        ok: false
+        error: token_revoked
+    - call_id: c4
+      tool: contacts_search
+      args:
+        query: Priya
+      result:
+        results:
+        - name: Priya Raman
+          email: priya.raman@tallow.example
+          company: Tallow (you)
+    - call_id: c5
+      tool: gmail_send
+      args:
+        to:
+        - priya.raman@tallow.example
+        subject: Weekly metrics – W45
+        body: 'Hi Priya, W45: signups 1,204 (+8%), activation 41% (+2pt), churn 2.1% (-0.3pt), MRR $86,950 (+3.3%).'
+      result:
+        id: 18f5d7710c
+        threadId: 18f5d7710c
+        labelIds:
+        - SENT
+  expected:
+    category: connection_error
+    split: dev
+    ambiguous: false
+    outcome: partial
+    key_facts:
+    - text: Emailed the W45 metrics summary to Priya Raman
+      kind: did
+      source_call_ids:
+      - c5
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: 'Not posted in #growth: the Slack connection has been revoked'
+      kind: not_done
+      source_call_ids:
+      - c2
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: true
+    scope: false
+    needs_you: false
+    answer: false
+    failure_reason: integration_disconnected
+    score:
+      gates: *id001
+- id: report-d-07
+  ticket: 'Read-only: Gmail answers, Outlook token expired. The Outlook gap belongs in scope.gaps, not a not_done fact; partial
+    + needs_reconnect.'
+  tags:
+  - report
+  - connection_error
+  - dev
+  setup:
+    now: '2026-11-09T09:00:00'
+    ask:
+      id: ask_d07
+      text: has my accountant sent anything about the tax return? check both my work outlook and gmail
+      asked_at: '2026-11-09T08:55:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: gmail_search
+      args:
+        query: from:ledgerwise.example newer_than:30d
+        max_results: 10
+      result:
+        messages:
+        - id: 18f4b1e033
+          from: Hana Ito <hana@ledgerwise.example>
+          subject: Your 2025/26 return – documents needed
+          date: '2026-11-04T15:12:00'
+        - id: 18f20cc901
+          from: Ledgerwise <newsletter@ledgerwise.example>
+          subject: Autumn budget explained
+    - call_id: c2
+      tool: gmail_get_message
+      args:
+        id: 18f4b1e033
+      result:
+        body: Hi, to file your 2025/26 self-assessment before the 31 January deadline we still need your P60 and the rental
+          income statement for Harrow Lane. Please send them by 20 November. Late filing incurs an automatic £100 penalty.
+          Best, Hana
+    - call_id: c3
+      tool: outlook_search
+      args:
+        query: from:ledgerwise.example
+        folder: inbox
+        days: 30
+      result: 'Error: 401 Unauthorized - AADSTS700082: The refresh token has expired due to inactivity.'
+  expected:
+    category: connection_error
+    split: dev
+    ambiguous: false
+    outcome: partial
+    key_facts:
+    - text: Hana Ito at Ledgerwise asked for your P60 and the Harrow Lane rental income statement by 20 Nov
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    - text: Filing after 31 Jan incurs an automatic £100 penalty
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    failure: true
+    scope: true
+    needs_you: false
+    answer: true
+    failure_reason: integration_disconnected
+    score:
+      gates: *id001
+- id: report-d-08
+  ticket: 'Nothing done: blocked on payment. The MOT expiring 18 Nov is an unprompted finding that also gates the renewal.'
+  tags:
+  - report
+  - blocked_before_start
+  - dev
+  setup:
+    now: '2026-11-08T12:00:00'
+    ask:
+      id: ask_d08
+      text: renew the car tax for the golf
+      asked_at: '2026-11-08T11:54:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: vehicle_lookup
+      args:
+        registration: LK19 XRT
+      result:
+        make: VOLKSWAGEN
+        model: GOLF
+        tax_status: Taxed
+        tax_due: '2026-11-30'
+        mot_status: Valid
+        mot_expiry: '2026-11-18'
+    - call_id: c2
+      tool: browser_open
+      args:
+        url: https://vehicle-tax.example/renew?reg=LK19XRT
+      result:
+        status: 200
+        title: Tax your vehicle
+        text: 'LK19 XRT – Volkswagen Golf. 12 months: £190.00, pay by debit or credit card. A valid MOT is required to tax
+          this vehicle for the full period. Enter card details to continue.'
+    - call_id: c3
+      tool: wallet_list_cards
+      args: {}
+      result:
+        cards: []
+    - assistant_note: No saved card; the user has to enter or supply payment.
+  expected:
+    category: blocked_before_start
+    split: dev
+    ambiguous: false
+    outcome: needs_you
+    key_facts:
+    - text: Car tax for the Golf (LK19 XRT) is due by 30 Nov; 12 months costs £190
+      kind: observed
+      source_call_ids:
+      - c1
+      - c2
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    - text: 'Not renewed yet: there''s no saved card to pay the £190 with'
+      kind: not_done
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: The Golf's MOT expires on 18 Nov, before the tax is due, and a valid MOT is needed to tax it
+      kind: observed
+      source_call_ids:
+      - c1
+      - c2
+      unprompted: true
+      has_time: true
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: true
+    answer: false
+    score:
+      gates: *id001
+- id: report-d-09
+  ticket: Approval granted but the bank holds the transfer for SCA; nothing was submitted, so no pending_confirmation and
+    no authorization entry.
+  tags:
+  - report
+  - blocked_before_start
+  - dev
+  setup:
+    now: '2026-11-07T15:30:00'
+    ask:
+      id: ask_d09
+      text: send 250 euros to lukas for the concert tickets
+      asked_at: '2026-11-07T15:24:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: bank_list_payees
+      args: {}
+      result:
+        payees:
+        - payee_id: pyee_3391
+          name: Lukas Brenner
+          iban: DE89 3704 0044 0532 0130 00
+        - payee_id: pyee_1022
+          name: Hausverwaltung Kerner GmbH
+          iban: DE12 5001 0517 5407 3249 31
+    - call_id: c2
+      tool: bank_get_balance
+      args:
+        account: giro
+      result:
+        account: Girokonto ••6620
+        available: 1843.17
+        currency: EUR
+    - call_id: c3
+      tool: approval_gate
+      args:
+        action: Transfer €250.00 to Lukas Brenner (DE89…3000), reference 'Concert tickets'
+        call_ref: c4
+      result:
+        decision: approved
+        basis: explicit_now
+        approved_at: '2026-11-07T15:28:02'
+    - call_id: c4
+      tool: bank_create_transfer
+      args:
+        payee_id: pyee_3391
+        amount: 250.0
+        currency: EUR
+        reference: Concert tickets
+      result:
+        status: pending_sca
+        transfer_id: null
+        message: Confirm this transfer with the 6-digit code sent to your phone ending 19.
+        sca_expires_at: '2026-11-07T15:35:00'
+  expected:
+    category: blocked_before_start
+    split: dev
+    ambiguous: false
+    outcome: needs_you
+    key_facts:
+    - text: 'The €250 to Lukas Brenner hasn''t been sent: your bank needs the 6-digit code it texted to the phone ending 19'
+      kind: not_done
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: true
+    answer: false
+    score:
+      gates: *id001
+- id: report-d-10
+  ticket: A choice with money and a calendar conflict; irreversible change. No write happened.
+  tags:
+  - report
+  - blocked_before_start
+  - dev
+  setup:
+    now: '2026-11-07T13:00:00'
+    ask:
+      id: ask_d10
+      text: move my lisbon flight on the 19th to the 20th
+      asked_at: '2026-11-07T12:51:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: airline_get_booking
+      args:
+        pnr: Q7XK2M
+        last_name: Marsh
+      result:
+        pnr: Q7XK2M
+        passenger: Elena Marsh
+        segments:
+        - flight: TP1351
+          from: LHR
+          to: LIS
+          dep: '2026-11-19T07:05:00'
+          fare: Discount
+    - call_id: c2
+      tool: airline_change_options
+      args:
+        pnr: Q7XK2M
+        date: '2026-11-20'
+      result:
+        options:
+        - flight: TP1353
+          dep: '2026-11-20T07:05:00'
+          change_fee: 75.0
+          fare_difference: 0.0
+          currency: GBP
+        - flight: TP1357
+          dep: '2026-11-20T18:40:00'
+          change_fee: 75.0
+          fare_difference: 112.4
+          currency: GBP
+        terms: Changes are final and non-refundable; your current seat on TP1351 is released.
+    - call_id: c3
+      tool: calendar_list_events
+      args:
+        time_min: '2026-11-20T00:00:00'
+        time_max: '2026-11-20T23:59:00'
+      result:
+        events:
+        - id: ev_7731
+          summary: Dentist – Dr. Patel
+          start: '2026-11-20T08:30:00'
+          end: '2026-11-20T09:15:00'
+          location: London
+    - assistant_note: Two possible flights with different costs; the morning one clashes with the dentist. Asking.
+  expected:
+    category: blocked_before_start
+    split: dev
+    ambiguous: false
+    outcome: needs_you
+    key_facts:
+    - text: 'Two flights on 20 Nov: 7:05am for a £75 change fee, or 6:40pm for £75 plus £112.40 fare difference; changes are
+        final'
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: The 7:05am flight clashes with your dentist appointment with Dr. Patel at 8:30am that day
+      kind: observed
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: 'Flight not changed yet: the two options cost different amounts and the change can''t be undone'
+      kind: not_done
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: true
+    answer: false
+    score:
+      gates: *id001
+- id: report-d-15
+  ticket: '503 on first create, verified nothing was created, retry succeeds: one did fact from c4, no not_done for c2.'
+  tags:
+  - report
+  - error_then_retry
+  - holdout
+  setup:
+    now: '2026-11-07T12:30:00'
+    ask:
+      id: ask_d15
+      text: put dinner at mum's on sunday 6pm in my calendar and invite rafael
+      asked_at: '2026-11-07T12:22:00'
+    writes:
+    - c4
+    transcript:
+    - call_id: c1
+      tool: contacts_search
+      args:
+        query: Rafael
+      result:
+        results:
+        - name: Rafael Costa
+          email: rafael.costa@mailbox.example
+          relationship: brother
+    - call_id: c2
+      tool: calendar_create_event
+      args:
+        summary: Dinner at Mum's
+        start: '2026-11-08T18:00:00'
+        end: '2026-11-08T20:30:00'
+        attendees:
+        - rafael.costa@mailbox.example
+        send_updates: all
+      result: 'Error: 503 Backend Error - The service is currently unavailable.'
+    - call_id: c3
+      tool: calendar_list_events
+      args:
+        time_min: '2026-11-08T17:00:00'
+        time_max: '2026-11-08T21:00:00'
+      result:
+        events: []
+    - assistant_note: Nothing was created by the failed call; retrying once.
+    - call_id: c4
+      tool: calendar_create_event
+      args:
+        summary: Dinner at Mum's
+        start: '2026-11-08T18:00:00'
+        end: '2026-11-08T20:30:00'
+        attendees:
+        - rafael.costa@mailbox.example
+        send_updates: all
+      result:
+        id: evt_m8x2
+        status: confirmed
+        start: '2026-11-08T18:00:00'
+        attendees:
+        - email: rafael.costa@mailbox.example
+          responseStatus: needsAction
+  expected:
+    category: error_then_retry
+    split: holdout
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: Added dinner at Mum's on Sunday 8 Nov at 6pm to your calendar and invited Rafael Costa
+      kind: did
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    failure: false
+    scope: false
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001
+- id: report-d-16
+  ticket: First booking fails on an expired card; alternate card succeeds after a second approval. Expired card is an unprompted
+    risk.
+  tags:
+  - report
+  - error_then_retry
+  - dev
+  setup:
+    now: '2026-11-07T20:10:00'
+    ask:
+      id: ask_d16
+      text: book me a cab to heathrow T5 tomorrow 5am from home
+      asked_at: '2026-11-07T20:02:00'
+    writes:
+    - c6
+    transcript:
+    - call_id: c1
+      tool: rides_quote
+      args:
+        pickup: home
+        dropoff: Heathrow Terminal 5
+        pickup_at: '2026-11-08T05:00:00'
+      result:
+        products:
+        - id: comfort
+          name: Comfort
+          fare_estimate: 68.5
+          currency: GBP
+        - id: exec
+          name: Executive
+          fare_estimate: 94.0
+          currency: GBP
+    - call_id: c2
+      tool: approval_gate
+      args:
+        action: Schedule Cabwise Comfort to Heathrow T5, Sun 8 Nov 05:00, est. £68.50, Visa ••4417
+        call_ref: c3
+      result:
+        decision: approved
+        basis: explicit_now
+        approved_at: '2026-11-07T20:05:12'
+    - call_id: c3
+      tool: rides_schedule
+      args:
+        product_id: comfort
+        pickup_at: '2026-11-08T05:00:00'
+        payment_method: visa_4417
+      result:
+        status: failed
+        error: card_expired
+        message: Visa ending 4417 expired 10/26.
+    - call_id: c4
+      tool: wallet_list_cards
+      args: {}
+      result:
+        cards:
+        - id: visa_4417
+          brand: Visa
+          last4: '4417'
+          exp: 10/26
+        - id: amex_1009
+          brand: Amex
+          last4: '1009'
+          exp: 03/28
+    - call_id: c5
+      tool: approval_gate
+      args:
+        action: Schedule the same ride with Amex ••1009 instead
+        call_ref: c6
+      result:
+        decision: approved
+        basis: explicit_now
+        approved_at: '2026-11-07T20:07:40'
+    - call_id: c6
+      tool: rides_schedule
+      args:
+        product_id: comfort
+        pickup_at: '2026-11-08T05:00:00'
+        payment_method: amex_1009
+      result:
+        status: scheduled
+        ride_id: rd_77Q1
+        pickup_at: '2026-11-08T05:00:00'
+        fare_estimate: 68.5
+        currency: GBP
+        free_cancellation_until: '2026-11-08T04:00:00'
+        cancellation_fee: 10.0
+  expected:
+    category: error_then_retry
+    split: dev
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: Scheduled a Cabwise Comfort ride from home to Heathrow T5 for 5am Sunday 8 Nov, about £68.50 on your Amex ••1009
+      kind: did
+      source_call_ids:
+      - c6
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: Free cancellation until 4am; after that it costs £10
+      kind: observed
+      source_call_ids:
+      - c6
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    - text: Your Visa ••4417 expired in October; anything still billed to it will fail
+      kind: observed
+      source_call_ids:
+      - c3
+      - c4
+      unprompted: true
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001
+- id: report-d-17
+  ticket: Timeout, check shows no duplicate, retry succeeds. Two Kais exist; the group membership resolves the right one.
+    Retry response has an empty 'errors' key, which is success.
+  tags:
+  - report
+  - error_then_retry
+  - dev
+  setup:
+    now: '2026-11-07T23:00:00'
+    ask:
+      id: ask_d17
+      text: split last night's dinner bill with kai and mo on splitwise
+      asked_at: '2026-11-07T22:54:00'
+    writes:
+    - c5
+    transcript:
+    - call_id: c1
+      tool: gmail_search
+      args:
+        query: receipt newer_than:2d
+        max_results: 5
+      result:
+        messages:
+        - id: 18f5f11a20
+          from: Brasa Grill <receipts@brasagrill.example>
+          subject: Your receipt – $142.80
+          date: '2026-11-06T22:41:00'
+        - id: 18f5e0b7c1
+          from: Lyft <no-reply@lyft.example>
+          subject: Your ride receipt – $18.20
+    - call_id: c2
+      tool: splitwise_get_groups
+      args: {}
+      result:
+        groups:
+        - id: 8841
+          name: Thursday dinners
+          members:
+          - id: 5512
+            name: Kai Lindgren
+          - id: 5517
+            name: Mo Barakat
+          - id: 4001
+            name: you
+        - id: 9020
+          name: Ski trip 2026
+          members:
+          - id: 6020
+            name: Kai Sato
+    - call_id: c3
+      tool: splitwise_create_expense
+      args:
+        group_id: 8841
+        cost: '142.80'
+        description: Brasa Grill dinner
+        split_equally: true
+      result: 'Error: 504 Gateway Timeout'
+    - call_id: c4
+      tool: splitwise_get_expenses
+      args:
+        group_id: 8841
+        limit: 5
+      result:
+        expenses:
+        - id: 3388012
+          description: Pizza
+          cost: '61.00'
+          date: '2026-10-30'
+    - assistant_note: Timeout didn't create the expense; retrying.
+    - call_id: c5
+      tool: splitwise_create_expense
+      args:
+        group_id: 8841
+        cost: '142.80'
+        description: Brasa Grill dinner
+        split_equally: true
+      result:
+        expenses:
+        - id: 3390117
+          cost: '142.80'
+          description: Brasa Grill dinner
+          users:
+          - name: you
+            paid_share: '142.80'
+            owed_share: '47.60'
+          - name: Kai Lindgren
+            owed_share: '47.60'
+          - name: Mo Barakat
+            owed_share: '47.60'
+        errors: {}
+  expected:
+    category: error_then_retry
+    split: dev
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: 'Added the $142.80 Brasa Grill dinner to Splitwise, split equally: Kai Lindgren and Mo Barakat each owe you $47.60'
+      kind: did
+      source_call_ids:
+      - c5
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    failure: false
+    scope: false
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001
+- id: report-d-18
+  ticket: Condition (>60 min delay) not met; a 15-min delay is a distractor that must not trigger the move.
+  tags:
+  - report
+  - conditional
+  - dev
+  setup:
+    now: '2026-11-08T19:00:00'
+    ask:
+      id: todo_d18
+      text: if my UA 512 flight tomorrow is delayed more than an hour, move my 2pm call with odile to 4pm
+      asked_at: '2026-11-08T08:30:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: flight_status
+      args:
+        flight: UA512
+        date: '2026-11-09'
+      result:
+        flight: UA512
+        from: EWR
+        to: ORD
+        scheduled_departure: '2026-11-09T07:00:00'
+        estimated_departure: '2026-11-09T07:15:00'
+        scheduled_arrival: '2026-11-09T08:50:00'
+        estimated_arrival: '2026-11-09T09:05:00'
+        status: Delayed 15 min
+    - call_id: c2
+      tool: calendar_search
+      args:
+        query: Odile
+        time_min: '2026-11-09T00:00:00'
+        time_max: '2026-11-09T23:59:00'
+      result:
+        events:
+        - id: evt_od2
+          summary: Call – Odile Brun (Maisonnet)
+          start: '2026-11-09T14:00:00'
+          end: '2026-11-09T14:45:00'
+    - assistant_note: 15-minute delay, under the one-hour threshold. Leaving the call where it is.
+  expected:
+    category: conditional
+    split: dev
+    ambiguous: false
+    outcome: no_action_needed
+    key_facts:
+    - text: UA 512 tomorrow is only 15 minutes late, now landing around 9:05am, so your 2pm call with Odile stays as is
+      kind: observed
+      source_call_ids:
+      - c1
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: true
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001
+- id: report-d-19
+  ticket: Condition held (€1,140 < €1,200) so the booking runs under the approval given when the condition was set (prior_approval).
+  tags:
+  - report
+  - conditional
+  - dev
+  setup:
+    now: '2026-11-07T07:00:00'
+    ask:
+      id: todo_d19
+      text: if the alfama apartment drops under €1,200 for dec 10-17, book it
+      asked_at: '2026-11-01T21:15:00'
+    writes:
+    - c3
+    transcript:
+    - call_id: c1
+      tool: stays_get_listing
+      args:
+        listing_id: lst_44821
+        check_in: '2026-12-10'
+        check_out: '2026-12-17'
+        guests: 2
+      result:
+        name: Casa Azulejo – Alfama
+        total_price: 1140.0
+        currency: EUR
+        previous_total: 1290.0
+        available: true
+        cancellation_policy: Free cancellation until 3 Dec 2026; 50% charge after.
+    - call_id: c2
+      tool: approval_gate
+      args:
+        action: Book Casa Azulejo, Alfama, 10–17 Dec for 2, €1,140 total, Visa ••8803
+        call_ref: c3
+      result:
+        decision: approved
+        basis: prior_approval
+        approved_at: '2026-11-01T21:15:00'
+        condition: total under €1,200
+    - call_id: c3
+      tool: stays_book
+      args:
+        listing_id: lst_44821
+        check_in: '2026-12-10'
+        check_out: '2026-12-17'
+        guests: 2
+        payment_method: visa_8803
+      result:
+        status: confirmed
+        reservation_id: HMX4KD2
+        total: 1140.0
+        currency: EUR
+        charged_now: 0.0
+        charge_date: '2026-12-03'
+  expected:
+    category: conditional
+    split: dev
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: Booked Casa Azulejo in Alfama for 10-17 Dec for €1,140 (down from €1,290); your Visa ••8803 is charged on 3 Dec
+      kind: did
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: Free cancellation until 3 Dec; after that half the price is charged
+      kind: observed
+      source_call_ids:
+      - c1
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001
+- id: report-d-20
+  ticket: 'User stopped mid-run: outcome cancelled, with the 5 sends already done as did and the 7 unsent named so the group-chat
+    post covers them.'
+  tags:
+  - report
+  - cancelled
+  - holdout
+  setup:
+    now: '2026-11-09T10:12:00'
+    ask:
+      id: ask_d20
+      text: email all the workshop attendees that saturday's session moves to 2pm
+      asked_at: '2026-11-09T10:09:00'
+    writes:
+    - c2
+    - c3
+    - c4
+    - c5
+    - c6
+    transcript:
+    - call_id: c1
+      tool: sheets_get_values
+      args:
+        spreadsheet_id: 1Wk_shop_rsvps
+        range: Saturday!A2:B13
+      result:
+        values:
+        - - Aoife Byrne
+          - aoife.byrne@mailbox.example
+        - - Bilal Chaudhry
+          - bilal@chaudhry.example
+        - - Carmen Ortiz
+          - c.ortiz@mailbox.example
+        - - Dmitri Volkov
+          - dvolkov@kiln.example
+        - - Esi Mensah
+          - esi.mensah@mailbox.example
+        - - Felix Hart
+          - felix.hart@mailbox.example
+        - - Greta Lund
+          - greta@lundworks.example
+        - - Hiro Tanaka
+          - hiro.t@mailbox.example
+        - - Ifeoma Obi
+          - ifeoma.obi@mailbox.example
+        - - Jonas Weber
+          - jonas.weber@mailbox.example
+        - - Kira Novak
+          - kira@novak-studio.example
+        - - Luis Prado
+          - luis.prado@mailbox.example
+    - call_id: c2
+      tool: gmail_send
+      args:
+        to:
+        - aoife.byrne@mailbox.example
+        subject: Saturday's workshop moves to 2pm
+        body: 'Hi Aoife, quick note: Saturday''s pottery workshop now starts at 2pm instead of 10am. Same studio.'
+      result:
+        id: 18f6b00a1
+        threadId: 18f6b00a1
+        labelIds:
+        - SENT
+    - call_id: c3
+      tool: gmail_send
+      args:
+        to:
+        - bilal@chaudhry.example
+        subject: Saturday's workshop moves to 2pm
+        body: 'Hi Bilal, quick note: Saturday''s pottery workshop now starts at 2pm instead of 10am. Same studio.'
+      result:
+        id: 18f6b01a1
+        threadId: 18f6b01a1
+        labelIds:
+        - SENT
+    - call_id: c4
+      tool: gmail_send
+      args:
+        to:
+        - c.ortiz@mailbox.example
+        subject: Saturday's workshop moves to 2pm
+        body: 'Hi Carmen, quick note: Saturday''s pottery workshop now starts at 2pm instead of 10am. Same studio.'
+      result:
+        id: 18f6b02a1
+        threadId: 18f6b02a1
+        labelIds:
+        - SENT
+    - call_id: c5
+      tool: gmail_send
+      args:
+        to:
+        - dvolkov@kiln.example
+        subject: Saturday's workshop moves to 2pm
+        body: 'Hi Dmitri, quick note: Saturday''s pottery workshop now starts at 2pm instead of 10am. Same studio.'
+      result:
+        id: 18f6b03a1
+        threadId: 18f6b03a1
+        labelIds:
+        - SENT
+    - call_id: c6
+      tool: gmail_send
+      args:
+        to:
+        - esi.mensah@mailbox.example
+        subject: Saturday's workshop moves to 2pm
+        body: 'Hi Esi, quick note: Saturday''s pottery workshop now starts at 2pm instead of 10am. Same studio.'
+      result:
+        id: 18f6b04a1
+        threadId: 18f6b04a1
+        labelIds:
+        - SENT
+    - event: user_cancelled
+      at: '2026-11-09T10:11:40'
+      message: stop, I'll post it in the group chat instead
+  expected:
+    category: cancelled
+    split: holdout
+    ambiguous: false
+    outcome: cancelled
+    key_facts:
+    - text: 'Before you stopped, emailed 5 of the 12 attendees that Saturday''s workshop moves to 2pm: Aoife Byrne, Bilal
+        Chaudhry, Carmen Ortiz, Dmitri Volkov and Esi Mensah'
+      kind: did
+      source_call_ids:
+      - c2
+      - c3
+      - c4
+      - c5
+      - c6
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: The other 7 attendees, Felix Hart through Luis Prado, were not emailed
+      kind: not_done
+      source_call_ids:
+      - c1
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001

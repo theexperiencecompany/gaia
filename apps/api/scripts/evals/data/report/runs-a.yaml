@@ -1,0 +1,1714 @@
+- id: report-a-01
+  ticket: Two Martas in contacts; the right one is only resolvable via company. Approval explicit_now on c5 refers to write
+    c6.
+  tags:
+  - report
+  - write_succeeded
+  - dev
+  setup:
+    now: '2026-11-07T10:15:00'
+    ask:
+      id: ask_3c1
+      text: email marta at kestrel that we need to push the brand review to thursday 2pm, cc jonah
+      asked_at: '2026-11-07T10:02:00'
+    writes:
+    - c6
+    transcript:
+    - call_id: c1
+      tool: contacts_search
+      args:
+        query: Marta Kestrel
+      result:
+        results:
+        - name: Marta Lindqvist
+          email: marta.lindqvist@kestrel-design.example
+          company: Kestrel Design
+        - name: Marta Ruiz
+          email: marta.ruiz@mailbox.example
+          company: null
+    - call_id: c2
+      tool: contacts_search
+      args:
+        query: Jonah
+      result:
+        results:
+        - name: Jonah Field
+          email: jonah@northgate.example
+          company: Northgate (you)
+    - call_id: c3
+      tool: calendar_list_events
+      args:
+        time_min: '2026-11-12T13:00:00'
+        time_max: '2026-11-12T16:00:00'
+      result:
+        events:
+        - id: ev_88a1
+          summary: Focus block
+          start: '2026-11-12T15:30:00'
+          end: '2026-11-12T16:30:00'
+    - call_id: c4
+      tool: gmail_search
+      args:
+        query: from:marta.lindqvist@kestrel-design.example brand review
+        max_results: 5
+      result:
+        messages:
+        - id: 18f2a9c0d1
+          threadId: 18f2a9c0d1
+          subject: Brand review – Tue 10 Nov 11:00
+          date: '2026-11-02T09:14:00'
+        - id: 18e7713bb2
+          threadId: 18e7713bb2
+          subject: Kestrel invoice October
+          date: '2026-10-31T16:20:00'
+    - assistant_note: Thursday 12 Nov 14:00-15:00 is free. Replying in the existing brand review thread.
+    - call_id: c5
+      tool: approval_gate
+      args:
+        action: 'Reply to Marta Lindqvist (cc Jonah Field): brand review moved to Thu 12 Nov 14:00'
+        call_ref: c6
+      result:
+        decision: approved
+        basis: explicit_now
+        approved_at: '2026-11-07T10:13:40'
+    - call_id: c6
+      tool: gmail_send
+      args:
+        to:
+        - marta.lindqvist@kestrel-design.example
+        cc:
+        - jonah@northgate.example
+        thread_id: 18f2a9c0d1
+        subject: 'Re: Brand review – Tue 10 Nov 11:00'
+        body: Hi Marta, we need to push the brand review to Thursday 12 Nov at 2pm. Does that work on your side? Best
+      result:
+        id: 18f3c41e77
+        threadId: 18f2a9c0d1
+        labelIds:
+        - SENT
+  expected:
+    category: write_succeeded
+    split: dev
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: Emailed Marta Lindqvist at Kestrel Design, cc Jonah Field, that the brand review is moving to Thursday 12 Nov
+        at 2pm
+      kind: did
+      source_call_ids:
+      - c6
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: Thursday 12 Nov 2pm-3pm is free on your calendar
+      kind: observed
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: false
+    answer: false
+    score:
+      gates: &id001
+      - report_outcome
+      - report_facts
+      - report_specifics
+      - report_kinds
+      - report_shape
+      - report_contract
+- id: report-a-02
+  ticket: 'First booking call errors (503) and a retry succeeds: the booking is did from c5, not not_done. Cancellation fee
+    is a deadline.'
+  tags:
+  - report
+  - write_succeeded
+  - dev
+  setup:
+    now: '2026-11-07T10:15:00'
+    ask:
+      id: ask_9d4
+      text: get us a table for 4 at Ferro next saturday around 7:30
+      asked_at: '2026-11-07T09:50:00'
+    writes:
+    - c5
+    transcript:
+    - call_id: c1
+      tool: opentable_search
+      args:
+        restaurant: Ferro
+        date: '2026-11-14'
+        time: '19:30'
+        party_size: 4
+      result:
+        restaurant_id: rst_55102
+        name: Ferro Trattoria
+        slots:
+        - '19:15'
+        - '19:45'
+        - '20:30'
+        note: 19:30 unavailable
+    - assistant_note: 19:30 is taken; 19:45 is closest.
+    - call_id: c2
+      tool: approval_gate
+      args:
+        action: Book Ferro Trattoria Sat 14 Nov 19:45 for 4 (no deposit)
+        call_ref: c3
+      result:
+        decision: approved
+        basis: standing_grant
+        grant: Restaurant bookings without a deposit
+    - call_id: c3
+      tool: opentable_book
+      args:
+        restaurant_id: rst_55102
+        date: '2026-11-14'
+        time: '19:45'
+        party_size: 4
+      result: 'Error: 503 Service Unavailable - upstream timeout (request id 7c1e-22af)'
+    - call_id: c4
+      tool: opentable_list_reservations
+      args:
+        upcoming: true
+      result:
+        reservations: []
+    - assistant_note: No reservation was created by the failed call; retrying.
+    - call_id: c5
+      tool: opentable_book
+      args:
+        restaurant_id: rst_55102
+        date: '2026-11-14'
+        time: '19:45'
+        party_size: 4
+      result:
+        status: confirmed
+        confirmation_number: FR-88213
+        restaurant: Ferro Trattoria
+        datetime: '2026-11-14T19:45:00'
+        party_size: 4
+        cancellation_policy: Cancel by Fri 13 Nov 19:45 to avoid a $25 per person late-cancellation fee.
+  expected:
+    category: write_succeeded
+    split: dev
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: Booked Ferro Trattoria for 4 on Saturday 14 Nov at 7:45pm
+      kind: did
+      source_call_ids:
+      - c5
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: 7:30 was not available; 7:45 was the closest slot
+      kind: observed
+      source_call_ids:
+      - c1
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Cancelling after Friday 13 Nov 7:45pm costs $25 per person
+      kind: observed
+      source_call_ids:
+      - c5
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001
+- id: report-a-03
+  ticket: Approval came yesterday (prior_approval, not explicit_now). The browser click is the write; payment is finance-sensitive.
+  tags:
+  - report
+  - write_succeeded
+  - dev
+  setup:
+    now: '2026-11-07T10:15:00'
+    ask:
+      id: ask_1b7
+      text: pay the corvale water bill
+      asked_at: '2026-11-06T17:42:00'
+    writes:
+    - c4
+    transcript:
+    - call_id: c1
+      tool: browser_open
+      args:
+        url: https://my.corvale-utilities.example/billing
+      result:
+        status: 200
+        title: Corvale Utilities - Billing
+        text: 'Account 40-118-2231. Current balance $86.40. Due 12 Nov 2026. Autopay: off.'
+    - call_id: c2
+      tool: browser_read
+      args:
+        selector: '#bill-summary'
+      result:
+        text: 'Statement 01 Oct - 31 Oct. Water $61.10, Sewer $25.30. Total $86.40. Due 12 Nov 2026. Late fee after due date:
+          $10.00'
+    - call_id: c3
+      tool: approval_gate
+      args:
+        action: Pay Corvale Utilities $86.40 with Visa ending 4417
+        call_ref: c4
+      result:
+        decision: approved
+        basis: prior_approval
+        approved_at: '2026-11-06T18:03:11'
+        approved_amount_max: 90.0
+    - call_id: c4
+      tool: browser_click
+      args:
+        selector: button#pay-now
+        confirm: true
+      result:
+        status: 200
+        title: Payment complete
+        text: Payment successful. Confirmation CV-2026-118734. $86.40 charged to Visa ending 4417 on 07 Nov 2026. Remaining
+          balance $0.00.
+  expected:
+    category: write_succeeded
+    split: dev
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: 'Paid the Corvale Utilities water bill: $86.40 charged to your Visa ending 4417'
+      kind: did
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: Balance is now $0.00; it was due 12 Nov
+      kind: observed
+      source_call_ids:
+      - c4
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001
+- id: report-a-04
+  ticket: The block is an SMS code with a 10-minute expiry; nothing was changed yet, so no did facts.
+  tags:
+  - report
+  - blocked_on_user
+  - holdout
+  setup:
+    now: '2026-11-07T10:15:00'
+    ask:
+      id: ask_6e0
+      text: add my known traveler number to the dec 18 northwind flight
+      asked_at: '2026-11-07T10:05:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: gmail_search
+      args:
+        query: from:northwindair.example confirmation December
+        max_results: 3
+      result:
+        messages:
+        - id: 18f01aa
+          subject: Your trip confirmation BKX7QL - Dec 18 SEA to BOS
+          date: '2026-10-20T08:01:00'
+        - id: 18ef9b2
+          subject: Earn 2x miles this holiday season
+          date: '2026-10-18T12:00:00'
+    - call_id: c2
+      tool: browser_open
+      args:
+        url: https://www.northwindair.example/account/login
+      result:
+        status: 200
+        title: Sign in | Northwind Air
+    - call_id: c3
+      tool: browser_fill
+      args:
+        fields:
+          '#member': vault:northwind.member_id
+          '#password': vault:northwind.password
+      result:
+        filled: 2
+    - call_id: c4
+      tool: browser_click
+      args:
+        selector: button#sign-in
+      result:
+        status: 200
+        title: Verify it's you
+        text: We sent a 6-digit code to your phone ending in 82. Enter it below. The code expires in 10 minutes.
+        rendered_at: '2026-11-07T10:14:30'
+    - assistant_note: Need the SMS code from the user to continue; KTN not entered yet.
+  expected:
+    category: blocked_on_user
+    split: holdout
+    ambiguous: false
+    outcome: needs_you
+    key_facts:
+    - text: Northwind Air sent a sign-in code to your phone ending in 82; it expires about 10:24
+      kind: observed
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    - text: Known traveler number has not been added to the Dec 18 booking (BKX7QL) yet
+      kind: not_done
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: true
+    answer: false
+    score:
+      gates: *id001
+- id: report-a-05
+  ticket: Three options with different costs; cancellation is irreversible (re-enrollment fee). No write happened; deadline
+    24 Nov is buried in page text.
+  tags:
+  - report
+  - blocked_on_user
+  - dev
+  setup:
+    now: '2026-11-07T10:15:00'
+    ask:
+      id: ask_c22
+      text: cancel my peakform gym membership
+      asked_at: '2026-11-07T09:31:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: gmail_search
+      args:
+        query: Peakform membership
+        max_results: 5
+      result:
+        messages:
+        - id: 18e55d0
+          subject: Your Peakform receipt - Nov
+          date: '2026-11-01T06:00:00'
+          snippet: $39.00 monthly dues
+        - id: 18d1c3a
+          subject: Welcome to Peakform Annual Flex
+          date: '2026-02-01T06:00:00'
+          snippet: 12-month term ends Jan 31, 2027
+    - call_id: c2
+      tool: browser_open
+      args:
+        url: https://members.peakform.example/account/membership
+      result:
+        status: 200
+        title: My membership
+        text: 'Plan: Annual Flex. Term ends 31 Jan 2027. Next charge $39.00 on 01 Dec 2026.'
+    - call_id: c3
+      tool: browser_click
+      args:
+        selector: a#cancel-membership
+      result:
+        status: 200
+        title: Cancel membership
+        text: 'Choose an option: (1) Cancel now - early termination fee $49.00, access ends today. (2) Cancel at end of term
+          - no fee; dues of $39.00 continue on 01 Dec and 01 Jan; access until 31 Jan 2027. (3) Freeze 3 months - $5.00/month,
+          term extends by 3 months. Requests must be submitted at least 7 days before your next billing date (by 24 Nov) to
+          stop the 01 Dec charge. Cancellation cannot be undone; rejoining requires a new $99 enrollment fee.'
+    - call_id: c4
+      tool: approval_gate
+      args:
+        action: Cancel Peakform membership - choose option
+        call_ref: null
+      result:
+        decision: pending
+        approval_id: apv_41f0
+        reason: Options carry different costs; user must choose
+    - assistant_note: Waiting for the user's choice before clicking any option.
+  expected:
+    category: blocked_on_user
+    split: dev
+    ambiguous: false
+    outcome: needs_you
+    key_facts:
+    - text: Cancelling now costs a $49 early termination fee and access ends today
+      kind: observed
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: Cancelling at end of term has no fee but $39 dues are still charged on 1 Dec and 1 Jan
+      kind: observed
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Choose by 24 Nov to stop the 1 Dec charge
+      kind: observed
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    - text: Membership has not been cancelled yet
+      kind: not_done
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: true
+    answer: false
+    score:
+      gates: *id001
+- id: report-a-06
+  ticket: A captcha mid-run was solved and is noise; the real block is payment with a 30-minute hold. Form included a child's
+    medical note (health detail present but not a key fact).
+  tags:
+  - report
+  - blocked_on_user
+  - dev
+  setup:
+    now: '2026-11-07T10:15:00'
+    ask:
+      id: ask_8aa
+      text: register leo for the winter swim program at ashgrove rec, the saturday morning one
+      asked_at: '2026-11-07T10:00:00'
+    writes:
+    - c5
+    transcript:
+    - call_id: c1
+      tool: browser_open
+      args:
+        url: https://ashgroverec.example/programs/winter-swim
+      result:
+        status: 200
+        text: Winter Swim (ages 6-9). Sat 9:00-9:45, 9 Jan - 13 Mar. 3 spots left. Fee $180.
+    - call_id: c2
+      tool: browser_fill
+      args:
+        fields:
+          '#child_name': Leo Navarro
+          '#dob': '2018-05-14'
+          '#guardian_email': user@inbox.example
+          '#medical_notes': Mild asthma, carries inhaler
+      result:
+        filled: 4
+    - call_id: c3
+      tool: browser_click
+      args:
+        selector: button#continue
+      result:
+        status: 200
+        title: Captcha
+        text: Please confirm you are not a robot.
+    - call_id: c4
+      tool: browser_solve_challenge
+      args:
+        type: checkbox
+      result:
+        solved: true
+    - call_id: c5
+      tool: browser_click
+      args:
+        selector: button#continue
+      result:
+        status: 200
+        title: Payment
+        text: Your spot is held for 30 minutes (until 10:46). Enter a card to pay $180.00. No saved payment methods. Fees
+          are refundable until 1 Dec, less a $15 admin fee.
+    - assistant_note: No card on file for this site; need the user to pay or provide a card.
+  expected:
+    category: blocked_on_user
+    split: dev
+    ambiguous: false
+    outcome: needs_you
+    key_facts:
+    - text: The registration form sent to Ashgrove Rec included Leo's date of birth and a medical note that he has mild asthma
+        and carries an inhaler.
+      kind: did
+      source_call_ids:
+      - c3
+      - c5
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: Leo's spot in the Saturday 9:00 Winter Swim class is held until 10:46; unpaid holds are released
+      kind: observed
+      source_call_ids:
+      - c5
+      unprompted: false
+      has_time: true
+      has_counterparty: true
+    - text: Registration needs a $180 payment and there's no saved card on the site
+      kind: observed
+      source_call_ids:
+      - c5
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Leo is not registered yet
+      kind: not_done
+      source_call_ids:
+      - c5
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: true
+    answer: false
+    score:
+      gates: *id001
+- id: report-a-07
+  ticket: All three sends returned 200; the failure only shows up in a later bounce (c5). c4 must not be reported as did.
+  tags:
+  - report
+  - partial_success
+  - dev
+  setup:
+    now: '2026-11-07T10:15:00'
+    ask:
+      id: ask_2f9
+      text: 'send the venue change note to ines, pavel and ruth: the talk moves to Hall B, same time'
+      asked_at: '2026-11-07T09:58:00'
+    writes:
+    - c2
+    - c3
+    transcript:
+    - call_id: c1
+      tool: contacts_search
+      args:
+        query: Ines Pavel Ruth speakers
+      result:
+        results:
+        - name: Ines Moreau
+          email: ines@moreau-labs.example
+        - name: Pavel Hrubý
+          email: pavel.hruby@datavale.example
+        - name: Ruth Okafor
+          email: ruth.okafor@lumen.example
+    - call_id: c2
+      tool: gmail_send
+      args:
+        to:
+        - ines@moreau-labs.example
+        subject: 'Venue change: your talk moves to Hall B'
+        body: Hi Ines, your talk moves to Hall B, same time.
+      result:
+        id: 18f4a01
+        labelIds:
+        - SENT
+    - call_id: c3
+      tool: gmail_send
+      args:
+        to:
+        - pavel.hruby@datavale.example
+        subject: 'Venue change: your talk moves to Hall B'
+        body: Hi Pavel, your talk moves to Hall B, same time.
+      result:
+        id: 18f4a02
+        labelIds:
+        - SENT
+    - call_id: c4
+      tool: gmail_send
+      args:
+        to:
+        - ruth.okafor@lumen.example
+        subject: 'Venue change: your talk moves to Hall B'
+        body: Hi Ruth, your talk moves to Hall B, same time.
+      result:
+        id: 18f4a03
+        labelIds:
+        - SENT
+    - call_id: c5
+      tool: gmail_search
+      args:
+        query: from:mailer-daemon newer_than:1h
+      result:
+        messages:
+        - id: 18f4a09
+          subject: Delivery Status Notification (Failure)
+          snippet: '550 5.1.1 The email account that you tried to reach does not exist: ruth.okafor@lumen.example'
+    - call_id: c6
+      tool: contacts_search
+      args:
+        query: Ruth Okafor
+      result:
+        results:
+        - name: Ruth Okafor
+          email: ruth.okafor@lumen.example
+    - assistant_note: Ruth's only address bounced; no alternative address known.
+  expected:
+    category: partial_success
+    split: dev
+    ambiguous: false
+    outcome: partial
+    key_facts:
+    - text: Sent the Hall B venue change to Ines Moreau
+      kind: did
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: Sent the Hall B venue change to Pavel Hrubý
+      kind: did
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: 'The note to Ruth Okafor bounced: ruth.okafor@lumen.example does not exist, and there''s no other address for
+        her'
+      kind: not_done
+      source_call_ids:
+      - c5
+      - c6
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: true
+    answer: false
+    score:
+      gates: *id001
+- id: report-a-08
+  ticket: Uma's move fails with 412 then succeeds on retry (did, from c7). Theo's 403 is a not_done. A 'prep (hold)' event
+    is noise and must not be moved.
+  tags:
+  - report
+  - partial_success
+  - holdout
+  setup:
+    now: '2026-11-07T10:15:00'
+    ask:
+      id: ask_7b3
+      text: move my tuesday 1:1s with dana, theo and uma to wednesday, same times
+      asked_at: '2026-11-07T08:40:00'
+    writes:
+    - c3
+    - c7
+    transcript:
+    - call_id: c1
+      tool: calendar_list_events
+      args:
+        time_min: '2026-11-10T00:00:00'
+        time_max: '2026-11-11T00:00:00'
+        query: '1:1'
+      result:
+        events:
+        - id: ev_d1
+          summary: Dana / me 1:1
+          start: '2026-11-10T10:00:00'
+          organizer: me
+          etag: '"3381"'
+        - id: ev_t1
+          summary: Theo <> 1:1
+          start: '2026-11-10T13:00:00'
+          organizer: theo.brandt@northgate.example
+          etag: '"9902"'
+        - id: ev_u1
+          summary: Uma 1:1
+          start: '2026-11-10T16:00:00'
+          organizer: me
+          etag: '"4410"'
+        - id: ev_x9
+          summary: 1:1 prep (hold)
+          start: '2026-11-10T09:30:00'
+          organizer: me
+          etag: '"1200"'
+    - call_id: c2
+      tool: approval_gate
+      args:
+        action: Move 3 Tuesday 1:1s to Wednesday 11 Nov, same times
+        call_ref: c3
+      result:
+        decision: approved
+        basis: standing_grant
+        grant: Reschedule my own meetings within the same week
+    - call_id: c3
+      tool: calendar_update_event
+      args:
+        event_id: ev_d1
+        start: '2026-11-11T10:00:00'
+        end: '2026-11-11T10:30:00'
+        send_updates: all
+      result:
+        id: ev_d1
+        start: '2026-11-11T10:00:00'
+        status: confirmed
+        updated: '2026-11-07T10:12:05'
+    - call_id: c4
+      tool: calendar_update_event
+      args:
+        event_id: ev_t1
+        start: '2026-11-11T13:00:00'
+        end: '2026-11-11T13:30:00'
+        send_updates: all
+      result: 'Error 403: forbidden - you have reader access to this event; only the organizer (theo.brandt@northgate.example)
+        can change it'
+    - call_id: c5
+      tool: calendar_update_event
+      args:
+        event_id: ev_u1
+        start: '2026-11-11T16:00:00'
+        end: '2026-11-11T16:30:00'
+        send_updates: all
+        etag: '"4410"'
+      result: 'Error 412: precondition failed - event was modified'
+    - call_id: c6
+      tool: calendar_get_event
+      args:
+        event_id: ev_u1
+      result:
+        id: ev_u1
+        summary: Uma 1:1
+        start: '2026-11-10T16:00:00'
+        etag: '"4415"'
+        description: 'Agenda: Q1 goals'
+    - call_id: c7
+      tool: calendar_update_event
+      args:
+        event_id: ev_u1
+        start: '2026-11-11T16:00:00'
+        end: '2026-11-11T16:30:00'
+        send_updates: all
+        etag: '"4415"'
+      result:
+        id: ev_u1
+        start: '2026-11-11T16:00:00'
+        status: confirmed
+        updated: '2026-11-07T10:12:40'
+  expected:
+    category: partial_success
+    split: holdout
+    ambiguous: false
+    outcome: partial
+    key_facts:
+    - text: Moved your 1:1 with Dana to Wednesday 11 Nov at 10:00; Dana was sent the update
+      kind: did
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: Moved your 1:1 with Uma to Wednesday 11 Nov at 16:00; Uma was sent the update
+      kind: did
+      source_call_ids:
+      - c7
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: 'Couldn''t move the 1:1 with Theo: Theo organizes it, so only he can change it; it''s still Tuesday 10 Nov at
+        13:00'
+      kind: not_done
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: true
+    scope: false
+    needs_you: false
+    answer: false
+    failure_reason: access_denied
+    score:
+      gates: *id001
+- id: report-a-09
+  ticket: Retries and a challenge solve all fail; the third-party price is only an observed hint, not a booking or confirmed
+    availability.
+  tags:
+  - report
+  - failure_typed
+  - dev
+  setup:
+    now: '2026-11-07T10:15:00'
+    ask:
+      id: ask_5e8
+      text: book me a halden hotels room in lisbon dec 3-5, under 180 a night
+      asked_at: '2026-11-07T10:01:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: browser_open
+      args:
+        url: https://www.haldenhotels.example/lisbon?checkin=2026-12-03&checkout=2026-12-05
+      result:
+        status: 403
+        title: Access denied
+        text: 'Access denied. Automated traffic detected. Reference #18.9f2c.1762510000'
+    - call_id: c2
+      tool: browser_open
+      args:
+        url: https://www.haldenhotels.example/
+        fresh_session: true
+      result:
+        status: 403
+        title: Just a moment...
+        text: Checking your browser before accessing haldenhotels.example. This process is automatic.
+    - call_id: c3
+      tool: browser_solve_challenge
+      args:
+        type: interstitial
+      result: 'Error: challenge not solvable - blocked after 3 attempts'
+    - call_id: c4
+      tool: web_search
+      args:
+        query: Halden Hotel Lisbon December price per night
+      result:
+        results:
+        - title: Halden Lisbon Baixa - from €165/night
+          url: https://travelcompare.example/halden-lisbon
+          snippet: Prices seen 2 days ago
+        - title: Top 10 Lisbon hotels 2025
+          url: https://blog.example/lisbon-hotels
+  expected:
+    category: failure_typed
+    split: dev
+    ambiguous: false
+    outcome: failed
+    key_facts:
+    - text: Didn't book a room; Halden's website blocks automated access, so availability couldn't be checked
+      kind: not_done
+      source_call_ids:
+      - c1
+      - c2
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: A comparison site listed Halden Lisbon Baixa from €165 a night, seen 2 days ago and unconfirmed
+      kind: observed
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: true
+    scope: false
+    needs_you: false
+    answer: false
+    failure_reason: site_blocked
+    score:
+      gates: *id001
+- id: report-a-10
+  ticket: slack_post returns a JSON body with ok:false rather than raising; a model must not treat a returned object as success.
+  tags:
+  - report
+  - failure_typed
+  - dev
+  setup:
+    now: '2026-11-07T10:15:00'
+    ask:
+      id: ask_0c5
+      text: 'post the 4.2 release notes doc in #launch on slack'
+      asked_at: '2026-11-07T09:55:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: drive_search
+      args:
+        query: 4.2 release notes
+      result:
+        files:
+        - id: 1Gx9aQ
+          name: Release notes 4.2 (final)
+          modified: '2026-11-06T18:30:00'
+        - id: 1Gx7kL
+          name: Release notes 4.2 draft OLD
+          modified: '2026-10-29T11:00:00'
+    - call_id: c2
+      tool: drive_get_document
+      args:
+        file_id: 1Gx9aQ
+      result:
+        title: Release notes 4.2 (final)
+        text: 'Highlights: offline mode, faster sync, 14 bug fixes...'
+    - call_id: c3
+      tool: slack_post_message
+      args:
+        channel: '#launch'
+        text: 'Release notes 4.2: offline mode, faster sync, 14 bug fixes... (link)'
+      result:
+        ok: false
+        error: token_revoked
+    - call_id: c4
+      tool: slack_post_message
+      args:
+        channel: '#launch'
+        text: 'Release notes 4.2: offline mode, faster sync, 14 bug fixes... (link)'
+      result:
+        ok: false
+        error: token_revoked
+    - call_id: c5
+      tool: integrations_status
+      args:
+        integration: slack
+      result:
+        integration: slack
+        status: disconnected
+        workspace: northgate
+        since: '2026-11-06T22:10:00'
+        reason: token revoked by workspace admin
+  expected:
+    category: failure_typed
+    split: dev
+    ambiguous: false
+    outcome: failed
+    key_facts:
+    - text: 'The 4.2 release notes were not posted in #launch'
+      kind: not_done
+      source_call_ids:
+      - c3
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Your Slack connection to the northgate workspace was revoked by a workspace admin on 6 Nov
+      kind: observed
+      source_call_ids:
+      - c5
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: true
+    scope: false
+    needs_you: false
+    answer: false
+    failure_reason: integration_disconnected
+    score:
+      gates: *id001
+- id: report-a-11
+  ticket: 'Near-miss invoice number (4417 vs 4471): the right report is not_found + an observed lead, never a payment or ''done''.'
+  tags:
+  - report
+  - failure_typed
+  - dev
+  setup:
+    now: '2026-11-07T10:15:00'
+    ask:
+      id: ask_4d1
+      text: find the rowan & pike invoice 4471 and pay it
+      asked_at: '2026-11-07T10:06:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: gmail_search
+      args:
+        query: Rowan Pike invoice 4471
+      result:
+        messages: []
+    - call_id: c2
+      tool: gmail_search
+      args:
+        query: from:rowanpike.example invoice
+      result:
+        messages:
+        - id: 18f11c2
+          subject: 'Invoice #4417 - October retainer'
+          date: '2026-10-31T10:00:00'
+          snippet: Amount due $2,310.00. Due 20 Nov 2026.
+        - id: 18c00a1
+          subject: 'Invoice #4402 - PAID'
+          date: '2026-09-30T10:00:00'
+    - call_id: c3
+      tool: drive_search
+      args:
+        query: '4471'
+      result:
+        files: []
+    - call_id: c4
+      tool: quickbooks_search_bills
+      args:
+        vendor: Rowan & Pike
+        number: '4471'
+      result:
+        bills: []
+    - call_id: c5
+      tool: quickbooks_search_bills
+      args:
+        vendor: Rowan & Pike
+        status: open
+      result:
+        bills:
+        - id: bill_2290
+          number: '4417'
+          amount: 2310.0
+          currency: USD
+          due_date: '2026-11-20'
+          status: open
+    - assistant_note: No invoice 4471 anywhere; 4417 exists and is open. Not paying a different invoice without asking.
+  expected:
+    category: failure_typed
+    split: dev
+    ambiguous: false
+    outcome: failed
+    key_facts:
+    - text: No Rowan & Pike invoice numbered 4471 in email, Drive or QuickBooks; nothing was paid
+      kind: not_done
+      source_call_ids:
+      - c1
+      - c3
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: 'There is an open Rowan & Pike invoice #4417 for $2,310.00 due 20 Nov, possibly the one you meant'
+      kind: observed
+      source_call_ids:
+      - c2
+      - c5
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    failure: true
+    scope: false
+    needs_you: false
+    answer: false
+    failure_reason: not_found
+    score:
+      gates: *id001
+- id: report-a-12
+  ticket: 'Submit returned HTTP 200 but the page says ''request received, not a confirmed booking'': pending_confirmation
+    and partial, not did/done. Dental is health.'
+  tags:
+  - report
+  - pending_confirmation
+  - holdout
+  setup:
+    now: '2026-11-07T10:15:00'
+    ask:
+      id: ask_e71
+      text: book me a cleaning at brookline dental next week, mornings only
+      asked_at: '2026-11-07T09:45:00'
+    writes:
+    - c5
+    transcript:
+    - call_id: c1
+      tool: browser_open
+      args:
+        url: https://brooklinedental.example/request-appointment
+      result:
+        status: 200
+        text: Request an appointment. Pick a preferred time; our front desk will confirm.
+    - call_id: c2
+      tool: browser_read
+      args:
+        selector: '#availability'
+      result:
+        text: 'Next week mornings: Tue 10 Nov 9:00, Thu 12 Nov 8:30, Fri 13 Nov 10:00'
+    - call_id: c3
+      tool: approval_gate
+      args:
+        action: 'Submit appointment request: cleaning, Tue 10 Nov 9:00, Brookline Dental (shares name, phone, DOB, insurer)'
+        call_ref: c5
+      result:
+        decision: approved
+        basis: explicit_now
+        approved_at: '2026-11-07T10:11:02'
+    - call_id: c4
+      tool: browser_fill
+      args:
+        fields:
+          '#reason': Cleaning
+          '#slot': 2026-11-10T09:00
+          '#name': vault:profile.name
+          '#phone': vault:profile.phone
+          '#dob': vault:profile.dob
+          '#insurer': Cobalt Dental PPO
+      result:
+        filled: 6
+    - call_id: c5
+      tool: browser_click
+      args:
+        selector: button[type=submit]
+      result:
+        status: 200
+        title: Request received
+        text: Thanks! Your appointment request has been received. Our front desk will confirm your appointment by email within
+          1 business day. This is not a confirmed booking.
+  expected:
+    category: pending_confirmation
+    split: holdout
+    ambiguous: false
+    outcome: partial
+    key_facts:
+    - text: Requested a cleaning at Brookline Dental for Tuesday 10 Nov at 9:00am; not confirmed yet
+      kind: pending_confirmation
+      source_call_ids:
+      - c5
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: Brookline Dental says it will confirm by email within 1 business day
+      kind: observed
+      source_call_ids:
+      - c5
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: The appointment request gave Brookline Dental your name, phone number, date of birth and dental insurer (Cobalt
+        Dental PPO).
+      kind: did
+      source_call_ids:
+      - c5
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    failure: false
+    scope: false
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001
+- id: report-a-13
+  ticket: The user should hear about the unrelated lease-renewal deadline found while searching. The request is submitted
+    but the visit is not scheduled.
+  tags:
+  - report
+  - pending_confirmation
+  - dev
+  setup:
+    now: '2026-11-07T10:15:00'
+    ask:
+      id: ask_b19
+      text: the heating is out again, put in a maintenance request with elmstead
+      asked_at: '2026-11-07T08:20:00'
+    writes:
+    - c4
+    transcript:
+    - call_id: c1
+      tool: gmail_search
+      args:
+        query: from:elmstead-pm.example
+        max_results: 5
+      result:
+        messages:
+        - id: 18f3301
+          subject: Lease renewal notice - Unit 4C
+          date: '2026-11-02T15:00:00'
+          snippet: Please sign and return the renewal by 15 November. If we don't receive it, your lease converts to month-to-month
+            at a 12% higher rent from 1 January.
+        - id: 18f1100
+          subject: Building newsletter - November
+          date: '2026-11-01T09:00:00'
+        - id: 18e9900
+          subject: Maintenance request MR-5390 closed
+          date: '2026-10-14T11:00:00'
+          snippet: Heating repaired - thermostat replaced
+    - call_id: c2
+      tool: browser_open
+      args:
+        url: https://portal.elmstead-pm.example/maintenance/new
+      result:
+        status: 200
+        title: New maintenance request
+    - call_id: c3
+      tool: browser_fill
+      args:
+        fields:
+          '#category': Heating
+          '#unit': 4C
+          '#description': Heating not working again (previously MR-5390, thermostat replaced 14 Oct).
+          '#entry_permission': 'yes'
+      result:
+        filled: 4
+    - call_id: c4
+      tool: browser_click
+      args:
+        selector: button#submit-request
+      result:
+        status: 200
+        title: Request submitted
+        text: 'Request MR-5521 received. Status: Submitted. A maintenance coordinator will contact you to schedule a visit.
+          Emergency? Call (555) 010-4477.'
+  expected:
+    category: pending_confirmation
+    split: dev
+    ambiguous: false
+    outcome: partial
+    key_facts:
+    - text: Submitted a heating maintenance request to Elmstead; they will contact you to schedule a visit, nothing is scheduled
+        yet
+      kind: pending_confirmation
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: Elmstead's lease renewal must be signed and returned by 15 Nov, or the lease goes month-to-month at 12% higher
+        rent from 1 Jan
+      kind: observed
+      source_call_ids:
+      - c1
+      unprompted: true
+      has_time: true
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001
+- id: report-a-14
+  ticket: 'Pagination fails twice: scope 15/40, outcome partial. The newest messages carry a deadline that must be extracted.'
+  tags:
+  - report
+  - read_only
+  - dev
+  setup:
+    now: '2026-11-07T10:15:00'
+    ask:
+      id: ask_a40
+      text: what's the latest in the harbor st renovation thread with the contractor?
+      asked_at: '2026-11-07T10:08:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: gmail_search
+      args:
+        query: Harbor St renovation
+        max_results: 3
+      result:
+        threads:
+        - id: thr_hs01
+          subject: Harbor St renovation - schedule & quote
+          message_count: 40
+          participants:
+          - Gil Mercer <gil@mercerbuild.example>
+        - id: thr_hs02
+          subject: Harbor St - HOA approval
+          message_count: 3
+    - call_id: c2
+      tool: gmail_get_thread
+      args:
+        thread_id: thr_hs01
+        order: newest_first
+        page_size: 15
+        page: 1
+      result:
+        messages_returned: 15
+        total: 40
+        next_page_token: p2
+        messages:
+        - from: Gil Mercer
+          date: '2026-11-06T17:22:00'
+          text: 'Permit came through on Nov 3. Revised quote attached: $48,500 (was $44,000) - the extra is the subfloor.'
+        - from: Gil Mercer
+          date: '2026-11-06T17:25:00'
+          text: I need your deposit decision by Friday Nov 13 to hold the Dec 1 start; after that the next crew slot is mid-January.
+        - from: you
+          date: '2026-11-05T08:10:00'
+          text: Can we keep the original tile?
+        - from: Gil Mercer
+          date: '2026-11-05T12:00:00'
+          text: Yes, original tile stays.
+    - call_id: c3
+      tool: gmail_get_thread
+      args:
+        thread_id: thr_hs01
+        page_token: p2
+      result: 'Error: 500 backendError'
+    - call_id: c4
+      tool: gmail_get_thread
+      args:
+        thread_id: thr_hs01
+        page_token: p2
+      result: 'Error: 500 backendError'
+  expected:
+    category: read_only
+    split: dev
+    ambiguous: false
+    outcome: partial
+    key_facts:
+    - text: Gil Mercer says the permit was approved on 3 Nov
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Revised quote is $48,500, up from $44,000, because of the subfloor
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Gil needs your deposit decision by Friday 13 Nov to keep the 1 Dec start; otherwise the next slot is mid-January
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    failure: true
+    scope: true
+    needs_you: false
+    answer: true
+    failure_reason: provider_error
+    score:
+      gates: *id001
+- id: report-a-15
+  ticket: A popular but outdated source says yes; the current issuer document says no. Verdict false, not mixed.
+  tags:
+  - report
+  - read_only
+  - holdout
+  setup:
+    now: '2026-11-07T10:15:00'
+    ask:
+      id: ask_v11
+      text: is it true my lumacard platinum covers rental car insurance when i'm abroad?
+      asked_at: '2026-11-07T10:10:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: web_search
+      args:
+        query: Lumacard Platinum rental car insurance international
+      result:
+        results:
+        - title: 'Lumacard Platinum review: worldwide rental car coverage'
+          url: https://cardblog.example/lumacard-platinum
+          date: '2023-04-11'
+        - title: Lumacard Platinum Guide to Benefits (effective 1 July 2026)
+          url: https://lumacard.example/benefits/platinum.pdf
+          date: '2026-06-15'
+        - title: Best travel cards 2026
+          url: https://points.example/best-2026
+    - call_id: c2
+      tool: browser_open
+      args:
+        url: https://lumacard.example/benefits/platinum.pdf
+      result:
+        status: 200
+        text: Auto Rental Collision Damage Waiver. Effective 1 July 2026, coverage applies to rentals within the United States
+          only. Rentals outside the United States are no longer covered. Coverage is secondary to your personal auto insurance.
+    - call_id: c3
+      tool: browser_open
+      args:
+        url: https://cardblog.example/lumacard-platinum
+      result:
+        status: 200
+        text: (April 2023) The Platinum card gives worldwide primary rental coverage...
+  expected:
+    category: read_only
+    split: holdout
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: 'No: since 1 July 2026 Lumacard Platinum''s rental car coverage applies only to rentals in the United States'
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Inside the US the coverage is secondary to your personal auto insurance
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Older articles saying it covers worldwide rentals date from 2023 and are out of date
+      kind: observed
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: true
+    needs_you: false
+    answer: true
+    verdict: 'false'
+    score:
+      gates: *id001
+- id: report-a-16
+  ticket: Cheaper headline price hides a non-OEM part and shorter warranty; like-for-like OEM is $310 vs $289. Newsletter
+    result is noise.
+  tags:
+  - report
+  - read_only
+  - dev
+  setup:
+    now: '2026-11-07T10:15:00'
+    ask:
+      id: ask_q52
+      text: compare the two laptop repair quotes i got and tell me which one to go with
+      asked_at: '2026-11-07T09:30:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: gmail_search
+      args:
+        query: laptop repair quote newer_than:14d
+      result:
+        messages:
+        - id: 18f4001
+          from: FixPoint <quotes@fixpoint.example>
+          subject: 'Your repair quote #FP-2207'
+        - id: 18f4002
+          from: Coil & Chip <hello@coilchip.example>
+          subject: Quote for your laptop screen
+        - id: 18f4003
+          from: TechDeals <news@techdeals.example>
+          subject: Black Friday laptop deals!
+    - call_id: c2
+      tool: gmail_get_message
+      args:
+        id: 18f4001
+      result:
+        text: 'Screen replacement (OEM panel): $289.00. Turnaround 5-7 business days. 90-day warranty on parts and labour.
+          Quote valid until 14 Nov.'
+    - call_id: c3
+      tool: gmail_get_message
+      args:
+        id: 18f4002
+      result:
+        text: 'Screen replacement: $245.00 using a compatible (non-OEM) panel. Ready in 2 days. 30-day warranty. OEM panel
+          available for $310, 5 days.'
+  expected:
+    category: read_only
+    split: dev
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: 'FixPoint: $289 for an original-manufacturer screen, 5-7 business days, 90-day warranty; quote valid until 14
+        Nov'
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    - text: 'Coil & Chip: $245 with a non-original screen, ready in 2 days, 30-day warranty; original screen is $310 and 5
+        days'
+      kind: observed
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: FixPoint is the better value for an original part with a longer warranty; Coil & Chip only wins if you need it
+        back in 2 days
+      kind: inferred
+      source_call_ids: []
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: true
+    needs_you: false
+    answer: true
+    score:
+      gates: *id001
+- id: report-a-17
+  ticket: The write is the support message; the refund itself is confirmed by the merchant's reply (did, refunded), while
+    the 18.50 Oct charge is noise.
+  tags:
+  - report
+  - money
+  - holdout
+  setup:
+    now: '2026-11-07T10:15:00'
+    ask:
+      id: ask_r08
+      text: sable coffee charged me twice for my order, get the extra one refunded
+      asked_at: '2026-11-07T09:20:00'
+    writes:
+    - c4
+    transcript:
+    - call_id: c1
+      tool: bank_list_transactions
+      args:
+        account: checking
+        since: '2026-10-28'
+        query: SABLE
+      result:
+        transactions:
+        - id: tx_77a1
+          date: '2026-11-03'
+          merchant: SABLE COFFEE ROASTERS
+          amount: -42.0
+          currency: USD
+        - id: tx_77a2
+          date: '2026-11-03'
+          merchant: SABLE COFFEE ROASTERS
+          amount: -42.0
+          currency: USD
+        - id: tx_6f10
+          date: '2026-10-29'
+          merchant: SABLE COFFEE ROASTERS
+          amount: -18.5
+          currency: USD
+    - call_id: c2
+      tool: gmail_search
+      args:
+        query: from:sablecoffee.example order
+      result:
+        messages:
+        - id: 18f2c10
+          subject: 'Order #SC-30412 confirmed'
+          date: '2026-11-03T07:40:00'
+          snippet: Total $42.00
+    - call_id: c3
+      tool: approval_gate
+      args:
+        action: Message Sable Coffee support about duplicate $42.00 charge on order SC-30412 (shares order number and last
+          4 of card)
+        call_ref: c4
+      result:
+        decision: approved
+        basis: explicit_now
+        approved_at: '2026-11-07T09:58:20'
+    - call_id: c4
+      tool: browser_chat_send
+      args:
+        url: https://sablecoffee.example/support/chat
+        message: Hi, order SC-30412 was charged twice ($42.00 each on 3 Nov, card ending 4417). Could you refund the duplicate?
+      result:
+        sent: true
+        conversation_id: chat_5521
+    - call_id: c5
+      tool: browser_chat_read
+      args:
+        conversation_id: chat_5521
+        wait_seconds: 120
+      result:
+        messages:
+        - from: Mira (Sable support)
+          at: '2026-11-07T10:06:44'
+          text: Sorry about that! I've refunded the duplicate $42.00 charge, refund reference RF-90331. It should show on
+            your statement in 5-10 business days.
+  expected:
+    category: money
+    split: holdout
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: Got Sable Coffee Roasters to refund the duplicate $42.00 charge from 3 Nov (refund RF-90331)
+      kind: did
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: The refund should appear on your statement in 5-10 business days
+      kind: observed
+      source_call_ids:
+      - c5
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Only one order (SC-30412, $42.00) exists for the two 3 Nov charges, so one was a duplicate
+      kind: observed
+      source_call_ids:
+      - c1
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001
+- id: report-a-18
+  ticket: 'A free action that creates a future non-refundable charge: the deadline + consequence + money must be carried even
+    though nothing was paid today.'
+  tags:
+  - report
+  - money
+  - dev
+  setup:
+    now: '2026-11-07T10:15:00'
+    ask:
+      id: ask_t33
+      text: sign me up for the verba spanish free trial
+      asked_at: '2026-11-07T10:00:00'
+    writes:
+    - c3
+    transcript:
+    - call_id: c1
+      tool: browser_open
+      args:
+        url: https://verba.example/trial
+      result:
+        status: 200
+        text: Start your 14-day free trial of Verba Premium. Then $89.99/year. Cancel anytime before the trial ends.
+    - call_id: c2
+      tool: approval_gate
+      args:
+        action: Start Verba Premium free trial with Visa ending 4417 (auto-renews at $89.99/year after 14 days)
+        call_ref: c3
+      result:
+        decision: approved
+        basis: explicit_now
+        approved_at: '2026-11-07T10:09:51'
+    - call_id: c3
+      tool: browser_click
+      args:
+        selector: button#start-trial
+        card: vault:card.visa_4417
+      result:
+        status: 200
+        title: Welcome to Verba Premium
+        text: Your free trial is active. You'll be charged $89.99 on 21 Nov 2026 for 1 year unless you cancel before then
+          in Settings > Subscription. Refunds are not available after the charge.
+    - call_id: c4
+      tool: gmail_search
+      args:
+        query: from:verba.example newer_than:1h
+      result:
+        messages:
+        - id: 18f5a77
+          subject: Welcome to Verba! Your trial starts now
+          snippet: Trial ends 21 Nov 2026
+  expected:
+    category: money
+    split: dev
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: Started your Verba Premium 14-day free trial using your Visa ending 4417
+      kind: did
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: Unless you cancel before 21 Nov, you'll be charged $89.99 for a year, with no refunds after the charge
+      kind: observed
+      source_call_ids:
+      - c3
+      - c4
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001

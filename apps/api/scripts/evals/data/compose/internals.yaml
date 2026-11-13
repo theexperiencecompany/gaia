@@ -1,0 +1,127 @@
+# The internals guard: a producer's facts that name GAIA machinery come out as what the user gets.
+# The producer is at fault, so the case writes the leak into the items; the message must not repeat it.
+
+- id: compose-internals-approval-id
+  ticket: An approval id in a notice's facts is never read out; the user hears what they are asked to approve.
+  tags: [compose, internals, dev]
+  setup:
+    mode: answer
+    items:
+      - kind: notice
+        id: i1
+        subject: send the quote to Halima Okoye
+        urgency: 2
+        producer: approval
+        outcome: needs_you
+        initiative: asked
+        facts:
+          - Approval ap_3f9a1c0de277 is waiting on the user. Sending the quote of 1,480 to Halima Okoye needs a yes or no, and it lapses Fri 14 Nov 18:00.
+  expected:
+    category: internals
+    split: dev
+    include: [i1]
+    communicate: ["1,480", "Halima"]
+    must_not_communicate: ["ap_3f9a1c0de277"]
+    score:
+      gates: [compose_dispositions, compose_internals, compose_degraded, communicate, must_not_communicate]
+
+- id: compose-internals-executor-vocabulary
+  ticket: The executor's own words in a result (executor, subagent, tool call) are never passed on.
+  tags: [compose, internals, holdout]
+  setup:
+    mode: answer
+    items:
+      - kind: run
+        id: i1
+        subject: find the Westbrook invoice
+        urgency: 2
+        result: The executor ran a tool call through a subagent and found invoice WB-2291 for 640.00 due on 28 Nov.
+        report:
+          outcome: done
+          facts:
+            - text: A subagent made a tool call and read invoice WB-2291 from Westbrook Print, 640.00, due 28 Nov.
+              kind: observed
+              source_call_ids: [c1]
+          scope:
+            covered: The accounting inbox.
+            complete: true
+            gaps: []
+  expected:
+    category: internals
+    split: holdout
+    include: [i1]
+    communicate: ["WB-2291", "640.00", "28 Nov"]
+    must_not_communicate: ["executor", "subagent", "tool call"]
+    score:
+      gates: [compose_dispositions, compose_internals, compose_degraded, communicate, must_not_communicate]
+
+- id: compose-internals-agent-payload-tag
+  ticket: A payload tag from the agent tiers in a result never reaches the user.
+  tags: [compose, internals, dev]
+  setup:
+    mode: answer
+    items:
+      - kind: run
+        id: i1
+        subject: summarise the landlord's email
+        urgency: 2
+        result: "<executor_result>The landlord, Mr Okafor, will inspect the flat on Sat 22 Nov between 10:00 and 12:00 and asks you to clear the hallway.</executor_result>"
+        report:
+          outcome: done
+          facts:
+            - text: Mr Okafor will inspect the flat on Sat 22 Nov between 10:00 and 12:00 and asks you to clear the hallway.
+              kind: observed
+              source_call_ids: [c1]
+          scope:
+            covered: The latest email from the landlord.
+            complete: true
+            gaps: []
+  expected:
+    category: internals
+    split: dev
+    include: [i1]
+    communicate: ["Okafor", "22 Nov", "hallway"]
+    must_not_communicate: ["executor_result", "<executor"]
+    score:
+      gates: [compose_dispositions, compose_internals, compose_degraded, communicate, must_not_communicate]
+
+- id: compose-internals-in-a-combined-batch
+  ticket: A leak in one item of a batch does not poison the others, and none of it reaches the user.
+  tags: [compose, internals, holdout]
+  setup:
+    mode: unsolicited
+    items:
+      - kind: notice
+        id: i1
+        subject: card expiry
+        urgency: 2
+        facts:
+          - Your Visa ending 4417 expires on 30 Nov, and the gym membership of 31.00 will fail to renew on 1 Dec.
+      - kind: run
+        id: i2
+        subject: refresh the weekly digest
+        urgency: 2
+        initiative: self_initiated
+        result: The subagent finished the digest through three tool calls.
+        report:
+          outcome: done
+          facts:
+            - text: The subagent's tool calls found that the energy tariff ends on 15 Dec and the new rate is 27.4p per kWh.
+              kind: observed
+              source_call_ids: [c2]
+              unprompted: true
+              time:
+                at: "2026-12-15"
+                meaning: due_by
+          scope:
+            covered: The energy supplier's account page.
+            complete: true
+            gaps: []
+  expected:
+    category: internals
+    split: holdout
+    include: [i1, i2]
+    communicate: ["30 Nov", "15 Dec", "27.4p"]
+    must_not_communicate: ["subagent", "tool call"]
+    score:
+      gates: [compose_dispositions, compose_internals, compose_degraded, communicate, must_not_communicate]

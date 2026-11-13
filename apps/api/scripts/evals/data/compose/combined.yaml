@@ -1,0 +1,221 @@
+# Several subjects, one message: every item that must be said is said with its own specifics, a routine item with
+# nothing in it is left out, and the user is never told the batch is more finished than it is.
+
+- id: compose-combined-two-answers
+  ticket: Two things the user asked for, finished together, go out as one message with each one's specifics.
+  tags: [compose, combined, dev]
+  setup:
+    mode: answer
+    items:
+      - kind: run
+        id: i1
+        subject: reply to the caterer
+        urgency: 2
+        result: Replied to the caterer.
+        report:
+          outcome: done
+          facts:
+            - text: Replied to Farid at Saffron & Sons accepting the revised quote of 2,340 for 60 guests.
+              kind: did
+              source_call_ids: [c2]
+              counterparty: Farid
+      - kind: run
+        id: i2
+        subject: find the cheapest courier for a 12 kg box to Leeds
+        urgency: 2
+        result: Three couriers compared.
+        report:
+          outcome: done
+          facts:
+            - text: Parcelio is cheapest at 14.20 for a 12 kg box to Leeds, delivered Thu 20 Nov; Swiftline is 17.90 for Wed 19 Nov.
+              kind: observed
+              source_call_ids: [c1]
+          answer:
+            recommendation: Parcelio, unless it has to arrive by Wednesday.
+          scope:
+            covered: Quotes from Parcelio, Swiftline and Dovetail Post.
+            complete: true
+            gaps: []
+  expected:
+    category: combined
+    split: dev
+    include: [i1, i2]
+    communicate: ["Farid", "2,340", "Parcelio", "14.20"]
+    max_parts: 3
+    score:
+      gates: [compose_dispositions, compose_internals, compose_parts, compose_degraded, communicate]
+
+- id: compose-combined-timely-with-routine-nothing
+  ticket: A timely notice is told, and a routine check with nothing in it is left out of the same message.
+  tags: [compose, combined, dev]
+  setup:
+    mode: unsolicited
+    items:
+      - kind: notice
+        id: i1
+        subject: domain renewal
+        urgency: 2
+        facts:
+          - The domain greenfield-studio.example renews on 20 Nov for 18.99 and the card on file expires on 30 Nov.
+      - kind: run
+        id: i2
+        subject: watch the council planning portal
+        urgency: 1
+        initiative: self_initiated
+        report:
+          outcome: nothing_new
+          scope:
+            covered: The planning portal for 12 Alder Road since Monday's check.
+            complete: true
+            gaps: []
+  expected:
+    category: combined
+    split: dev
+    include: [i1]
+    skip: [i2]
+    communicate: ["greenfield-studio.example", "20 Nov"]
+    must_not_communicate: ["planning portal", "Alder Road"]
+    max_parts: 2
+    score:
+      gates: [compose_dispositions, compose_internals, compose_parts, compose_degraded, communicate, must_not_communicate]
+
+- id: compose-combined-done-and-needs-you
+  ticket: One item finished and one waiting on the user are both told, and the waiting one asks its question.
+  tags: [compose, combined, dev]
+  setup:
+    mode: answer
+    items:
+      - kind: run
+        id: i1
+        subject: renew the library books
+        urgency: 2
+        result: Renewed the books.
+        report:
+          outcome: done
+          facts:
+            - text: Renewed your 4 library books, now due Fri 28 Nov.
+              kind: did
+              source_call_ids: [c3]
+      - kind: run
+        id: i2
+        subject: pay the parking permit
+        urgency: 2
+        result: The payment page needs a code.
+        report:
+          outcome: needs_you
+          facts:
+            - text: The council's payment page sent a 6-digit code to your phone and is waiting for it before charging 85.00 for the permit.
+              kind: observed
+              source_call_ids: [c2]
+          needs_you:
+            kind: verification_code
+            ask: What is the 6-digit code the council texted you?
+            options: []
+  expected:
+    category: combined
+    split: dev
+    include: [i1, i2]
+    communicate: ["28 Nov", "85.00", "code"]
+    must_not_communicate: ["permit is paid", "paid the permit", "i've paid"]
+    max_parts: 3
+    score:
+      gates: [compose_dispositions, compose_internals, compose_parts, compose_degraded, communicate, must_not_communicate]
+
+- id: compose-combined-failure-and-success
+  ticket: When one of two things failed the message does not call the pair done.
+  tags: [compose, combined, holdout]
+  setup:
+    mode: answer
+    items:
+      - kind: run
+        id: i1
+        subject: cancel the gym membership
+        urgency: 2
+        result: Cancelled.
+        report:
+          outcome: done
+          facts:
+            - text: Cancelled your Northside Gym membership; the last charge is 31.00 on 1 Dec.
+              kind: did
+              source_call_ids: [c2]
+      - kind: run
+        id: i2
+        subject: cancel the cloud storage plan
+        urgency: 2
+        result: The cancellation failed.
+        report:
+          outcome: failed
+          facts:
+            - text: The Stratus Drive plan was not cancelled; its site returned an error and the plan renews on 6 Dec for 119.00.
+              kind: not_done
+              source_call_ids: [c4]
+          failure:
+            reason: provider_error
+            recovery: user_can_rerun
+  expected:
+    category: combined
+    split: holdout
+    include: [i1, i2]
+    communicate: ["Northside", "Stratus Drive", "6 Dec"]
+    must_not_communicate: ["both are cancelled", "both cancelled", "everything is cancelled", "all done"]
+    max_parts: 3
+    score:
+      gates: [compose_dispositions, compose_internals, compose_parts, compose_degraded, communicate, must_not_communicate]
+
+- id: compose-combined-three-answers-one-message
+  ticket: Three answers arriving together are one message, not three, and each keeps its figure.
+  tags: [compose, combined, holdout]
+  setup:
+    mode: answer
+    destination: whatsapp
+    items:
+      - kind: run
+        id: i1
+        subject: move Thursday's call
+        urgency: 2
+        result: Moved the call.
+        report:
+          outcome: done
+          facts:
+            - text: Moved the call with Ivana Petrov from Thu 20 Nov 11:00 to Fri 21 Nov 15:30.
+              kind: did
+              source_call_ids: [c2]
+              counterparty: Ivana Petrov
+      - kind: run
+        id: i2
+        subject: check the invoice from Westbrook Print
+        urgency: 2
+        result: The invoice is unpaid.
+        report:
+          outcome: done
+          facts:
+            - text: Westbrook Print's invoice WP-5530 for 764.00 is unpaid and was due on 9 Nov.
+              kind: observed
+              source_call_ids: [c1]
+          scope:
+            covered: The accounting inbox and the Westbrook Print invoice thread.
+            complete: true
+            gaps: []
+      - kind: run
+        id: i3
+        subject: track the parcel from Hana Boutique
+        urgency: 2
+        result: The parcel is delayed.
+        report:
+          outcome: done
+          facts:
+            - text: The Hana Boutique parcel is delayed to Mon 24 Nov because of a customs hold in Rotterdam.
+              kind: observed
+              source_call_ids: [c1]
+          scope:
+            covered: The carrier's tracking page.
+            complete: true
+            gaps: []
+  expected:
+    category: combined
+    split: holdout
+    include: [i1, i2, i3]
+    communicate: ["Ivana", "WP-5530", "764.00", "24 Nov"]
+    max_parts: 3
+    score:
+      gates: [compose_dispositions, compose_internals, compose_parts, compose_degraded, communicate]

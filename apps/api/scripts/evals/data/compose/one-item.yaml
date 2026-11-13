@@ -1,0 +1,308 @@
+# One item, told in the shape of its outcome. Urgency is the number of UrgencyClass: 1 routine, 2 timely, 3 interrupt.
+# Gates are mechanical: which items were told, the specifics that must be said, the claims that must not be made.
+
+- id: compose-one-done-email
+  ticket: A sent email is confirmed in a line with the recipient and the date it carries.
+  tags: [compose, one_item, dev]
+  setup:
+    mode: answer
+    items:
+      - kind: run
+        id: i1
+        subject: tell the orchard supplier the new delivery date
+        urgency: 2
+        result: Emailed Halima Okoye at Orchard Row the new delivery date.
+        report:
+          outcome: done
+          facts:
+            - text: Emailed Halima Okoye at Orchard Row that the apple delivery moves to Tue 18 Nov, 07:00.
+              kind: did
+              source_call_ids: [c3]
+              counterparty: Halima Okoye
+  expected:
+    category: one_item
+    split: dev
+    include: [i1]
+    communicate: ["Halima", "18 Nov"]
+    max_parts: 2
+    score:
+      gates: [compose_dispositions, compose_internals, compose_parts, compose_degraded, communicate]
+
+- id: compose-one-pending-not-booked
+  ticket: A request the other side only received is told as requested, never as booked.
+  tags: [compose, one_item, dev]
+  setup:
+    mode: answer
+    items:
+      - kind: run
+        id: i1
+        subject: book the boiler service
+        urgency: 2
+        result: Submitted the service request to Calder Heating.
+        report:
+          outcome: partial
+          facts:
+            - text: Requested a boiler service with Calder Heating for Mon 24 Nov between 09:00 and 11:00; the firm says an engineer's email will confirm the slot.
+              kind: pending_confirmation
+              source_call_ids: [c2]
+              counterparty: Calder Heating
+  expected:
+    category: one_item
+    split: dev
+    include: [i1]
+    communicate: ["24 Nov", "Calder Heating"]
+    must_not_communicate: ["you're booked", "is booked", "all set", "is confirmed"]
+    score:
+      gates: [compose_dispositions, compose_internals, compose_degraded, communicate, must_not_communicate]
+
+- id: compose-one-failed-reconnect
+  ticket: A revoked connection is told as nothing done, with the reconnect as the way out.
+  tags: [compose, one_item, holdout]
+  setup:
+    mode: answer
+    items:
+      - kind: run
+        id: i1
+        subject: file my October expenses
+        urgency: 2
+        result: Nothing was filed.
+        report:
+          outcome: failed
+          facts:
+            - text: The October expense report was not filed because the Zoho Books connection was revoked.
+              kind: not_done
+              source_call_ids: [c1]
+          failure:
+            reason: integration_disconnected
+            recovery: needs_reconnect
+  expected:
+    category: one_item
+    split: holdout
+    include: [i1]
+    communicate: ["Zoho Books", "reconnect"]
+    must_not_communicate: ["i've filed", "has been filed", "was filed"]
+    score:
+      gates: [compose_dispositions, compose_internals, compose_degraded, communicate, must_not_communicate]
+
+- id: compose-one-needs-you-options
+  ticket: A decision only the user can make carries each option with its price and nothing has happened yet.
+  tags: [compose, one_item, dev]
+  setup:
+    mode: answer
+    items:
+      - kind: run
+        id: i1
+        subject: hold a flight to Lisbon
+        urgency: 2
+        result: Two flights fit.
+        report:
+          outcome: needs_you
+          facts:
+            - text: Two Lisbon flights fit your dates.
+              kind: observed
+              source_call_ids: [c1]
+          scope:
+            covered: Direct flights Fri 5 Dec from Heathrow.
+            complete: true
+            gaps: []
+          needs_you:
+            kind: choose
+            ask: Which flight should I hold?
+            options:
+              - label: TAP 14:10
+                consequence: "EUR 212, lands 17:25, one checked bag included"
+              - label: Ryanair 06:05
+                consequence: "EUR 89, lands 08:30, no checked bag"
+  expected:
+    category: one_item
+    split: dev
+    include: [i1]
+    communicate: ["212", "89", "14:10", "06:05"]
+    must_not_communicate: ["i've booked", "i've held", "is held"]
+    score:
+      gates: [compose_dispositions, compose_internals, compose_degraded, communicate, must_not_communicate]
+
+- id: compose-one-unprompted-deadline
+  ticket: Something found along the way that affects the user soon is told with its date, though nobody asked.
+  tags: [compose, one_item, holdout]
+  setup:
+    mode: unsolicited
+    items:
+      - kind: run
+        id: i1
+        subject: tidy the travel folder
+        urgency: 2
+        initiative: self_initiated
+        result: Sorted the travel folder.
+        report:
+          outcome: done
+          facts:
+            - text: Your passport expires on 3 Feb 2027, and the Japan visa form requires six months of validity at entry.
+              kind: observed
+              source_call_ids: [c4]
+              unprompted: true
+              time:
+                at: "2027-02-03"
+                meaning: due_by
+                if_missed: entry to Japan can be refused
+          scope:
+            covered: Every file in the travel folder.
+            complete: true
+            gaps: []
+  expected:
+    category: one_item
+    split: holdout
+    include: [i1]
+    communicate: ["3 Feb 2027"]
+    score:
+      gates: [compose_dispositions, compose_internals, compose_degraded, communicate]
+
+- id: compose-one-nothing-new-skipped
+  ticket: A routine check that found nothing is left unsaid; saying it would be noise.
+  tags: [compose, one_item, dev]
+  setup:
+    mode: unsolicited
+    items:
+      - kind: run
+        id: i1
+        subject: watch for new flats in Pimlico
+        urgency: 1
+        initiative: self_initiated
+        report:
+          outcome: nothing_new
+          scope:
+            covered: 14 new Pimlico listings under 2,000 pcm since yesterday's check.
+            complete: true
+            gaps: []
+  expected:
+    category: one_item
+    split: dev
+    include: []
+    skip: [i1]
+    max_parts: 0
+    score:
+      gates: [compose_dispositions, compose_internals, compose_parts, compose_degraded]
+
+- id: compose-one-interrupt-says-why
+  ticket: An interrupt of quiet hours carries the amount and the merchant, so the user can act at once.
+  tags: [compose, one_item, dev]
+  setup:
+    mode: interrupt
+    items:
+      - kind: run
+        id: i1
+        subject: card activity watch
+        urgency: 3
+        initiative: self_initiated
+        interrupt_reason: your card issuer flagged a charge you may not have made
+        result: A charge needs your attention.
+        report:
+          outcome: done
+          facts:
+            - text: A charge of 340.00 EUR from Brightmile Travel posted to your Visa ending 4417 at 09:52 today.
+              kind: observed
+              source_call_ids: [c1]
+              unprompted: true
+          scope:
+            covered: Card alerts in the last hour.
+            complete: true
+            gaps: []
+  expected:
+    category: one_item
+    split: dev
+    include: [i1]
+    communicate: ["340", "Brightmile"]
+    max_parts: 2
+    score:
+      gates: [compose_dispositions, compose_internals, compose_parts, compose_degraded, communicate]
+
+- id: compose-one-unverified-never-done
+  ticket: A run the calls do not back is told as unconfirmed, never as done.
+  tags: [compose, one_item, holdout]
+  setup:
+    mode: answer
+    items:
+      - kind: run
+        id: i1
+        subject: send the signed lease addendum
+        urgency: 2
+        review_problem: a did fact cites only calls that errored or did no work (c4); did needs a successful call behind it
+        result: Sent the signed lease addendum to the letting agent.
+        report:
+          outcome: unverified
+          facts:
+            - text: Sent the signed lease addendum to the letting agent, Priyanka Rao.
+              kind: did
+              source_call_ids: [c4]
+          failure:
+            reason: unconfirmed
+            recovery: user_can_rerun
+  expected:
+    category: one_item
+    split: holdout
+    include: [i1]
+    communicate: ["lease addendum"]
+    must_not_communicate: ["is done", "all done", "successfully sent", "has been sent"]
+    score:
+      gates: [compose_dispositions, compose_internals, compose_degraded, communicate, must_not_communicate]
+
+- id: compose-one-chat-app-short
+  ticket: On a chat app a single confirmation stays short, in one or two bubbles.
+  tags: [compose, one_item, dev]
+  setup:
+    mode: answer
+    destination: telegram
+    items:
+      - kind: run
+        id: i1
+        subject: move the dentist appointment
+        urgency: 2
+        result: Moved the appointment.
+        report:
+          outcome: done
+          facts:
+            - text: Moved your Brookfield Dental check-up from Wed 19 Nov 08:30 to Thu 20 Nov 16:15.
+              kind: did
+              source_call_ids: [c2]
+              counterparty: Brookfield Dental
+  expected:
+    category: one_item
+    split: dev
+    include: [i1]
+    communicate: ["20 Nov", "16:15"]
+    max_parts: 2
+    score:
+      gates: [compose_dispositions, compose_internals, compose_parts, compose_degraded, communicate]
+
+- id: compose-one-verbatim-as-written
+  ticket: A result whose owner fixed its form is told exactly as written, with no retelling.
+  tags: [compose, one_item, holdout]
+  setup:
+    mode: answer
+    items:
+      - kind: run
+        id: i1
+        subject: standup notes
+        urgency: 2
+        initiative: user_scheduled
+        guidance:
+          title: Standup notes
+          verbatim: true
+          runs_once: false
+        result: |-
+          Standup notes, 13 Nov
+          - Ravi: shipped the invoice export
+          - Mei: blocked on the SSO certificate
+        report:
+          outcome: done
+          facts:
+            - text: Compiled the standup notes for 13 Nov from the team channel.
+              kind: did
+              source_call_ids: [c5]
+  expected:
+    category: one_item
+    split: holdout
+    include: [i1]
+    communicate: ["Ravi: shipped the invoice export", "Mei: blocked on the SSO certificate"]
+    score:
+      gates: [compose_dispositions, compose_internals, compose_degraded, communicate]

@@ -1,0 +1,1972 @@
+- id: report-b-01
+  ticket: Keyword search returns two 'lease' emails that are noise (sofa and car lease); a model must not report them as findings.
+  tags:
+  - report
+  - monitoring_nothing_new
+  - dev
+  setup:
+    now: '2026-11-07T14:00:00'
+    ask:
+      id: watch_landlord_mail_2026-11-07T14
+      text: Keep an eye on my inbox and tell me if anything comes in from my landlord or about the lease renewal.
+      asked_at: '2026-10-28T19:12:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: gmail_search
+      args:
+        query: from:(harish.kulkarni@mailbox.example) after:2026/11/07 13:00
+        max_results: 20
+      result:
+        result_size_estimate: 0
+        messages: []
+    - call_id: c2
+      tool: gmail_search
+      args:
+        query: (lease OR renewal OR "rent agreement") after:2026/11/07 13:00
+        max_results: 20
+      result:
+        result_size_estimate: 2
+        messages:
+        - id: 18f3a9c01b2e44d1
+          thread_id: 18f3a9c01b2e44d1
+          from: deals@homedecor.example
+          subject: Lease a sofa for Rs 999/month - renewal offers inside
+          date: '2026-11-07T13:22:10+05:30'
+          snippet: Upgrade your living room this festive season...
+        - id: 18f3aa71d0c8e912
+          thread_id: 18f3aa71d0c8e912
+          from: noreply@carlease.example
+          subject: Your vehicle lease renewal quote
+          date: '2026-11-07T13:41:55+05:30'
+          snippet: Hi, your quote for the Altis lease renewal is ready. This is an automated message.
+    - call_id: c3
+      tool: gmail_get_thread
+      args:
+        thread_id: 18f3aa71d0c8e912
+      result:
+        id: 18f3aa71d0c8e912
+        messages:
+        - from: noreply@carlease.example
+          to: sana.mirza@mailbox.example
+          body: Your vehicle lease renewal quote is ready. Log in to view. This mailbox is not monitored.
+    - assistant_note: Both 'lease' hits are marketing/automated mail unrelated to the flat; nothing from Harish since the
+        last check at 13:00.
+  expected:
+    category: monitoring_nothing_new
+    split: dev
+    ambiguous: false
+    outcome: nothing_new
+    key_facts: []
+    failure: false
+    scope: true
+    needs_you: false
+    answer: false
+    score:
+      gates: &id001
+      - report_outcome
+      - report_facts
+      - report_specifics
+      - report_kinds
+      - report_shape
+      - report_contract
+- id: report-b-02
+  ticket: 'Nothing found, but the work mailbox failed twice: silence is not trustworthy, scope must be incomplete and the
+    gap named; the #random ''visa'' message is noise.'
+  tags:
+  - report
+  - monitoring_nothing_new
+  - holdout
+  setup:
+    now: '2026-11-09T09:00:00'
+    ask:
+      id: todo_visa_lawyer_check_2026-11-09
+      text: Every morning at 9, check my personal and work email and my Slack DMs for anything from the visa lawyer (Odile
+        Brandt).
+      asked_at: '2026-10-30T08:47:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: gmail_search
+      args:
+        account: personal
+        query: from:(odile.brandt@brandt-immigration.example) newer_than:1d
+      result:
+        result_size_estimate: 0
+        messages: []
+    - call_id: c2
+      tool: gmail_search
+      args:
+        account: work
+        query: from:(odile.brandt@brandt-immigration.example) newer_than:1d
+      result: 'Error 503: Backend Error. The service is currently unavailable. (googleapis.com/gmail/v1/users/me/messages)'
+    - call_id: c3
+      tool: gmail_search
+      args:
+        account: work
+        query: from:(odile.brandt@brandt-immigration.example) newer_than:1d
+      result: 'Error 503: Backend Error. The service is currently unavailable. (googleapis.com/gmail/v1/users/me/messages)'
+    - call_id: c4
+      tool: slack_search
+      args:
+        query: from:@odile.brandt in:@me
+        after: '2026-11-08'
+      result:
+        ok: true
+        messages:
+          total: 0
+          matches: []
+    - call_id: c5
+      tool: slack_search
+      args:
+        query: visa
+        after: '2026-11-08'
+      result:
+        ok: true
+        messages:
+          total: 1
+          matches:
+          - channel:
+              name: random
+            user: U04KJH2
+            username: tobias.wen
+            ts: '1762590112.004100'
+            text: anyone know if the Schengen visa centre is open on Saturdays?
+    - assistant_note: Personal inbox and Slack DMs clean. Work mailbox returned 503 twice; could not check it.
+  expected:
+    category: monitoring_nothing_new
+    split: holdout
+    ambiguous: false
+    outcome: partial
+    key_facts: []
+    failure: true
+    scope: true
+    needs_you: false
+    answer: false
+    failure_reason: provider_error
+    score:
+      gates: *id001
+- id: report-b-03
+  ticket: Two variants were checked; only the black one crossed the threshold, so old/new price and the sale end deadline
+    must be attributed to that variant, not the silver one.
+  tags:
+  - report
+  - watch_found_something
+  - dev
+  setup:
+    now: '2026-11-07T11:00:00'
+    ask:
+      id: watch_xm6_price_2026-11-07T11
+      text: Tell me when the Sony WH-1000XM6 drops under 25k on Voltline.
+      asked_at: '2026-10-19T22:05:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: price_check
+      args:
+        url: https://www.voltline.example/p/sony-wh-1000xm6-black/VL88213
+        currency: INR
+      result:
+        product: Sony WH-1000XM6 Wireless Noise Cancelling Headphones (Black)
+        seller: Voltline Retail
+        price: 24490
+        mrp: 34990
+        previous_check:
+          price: 29990
+          checked_at: '2026-11-07T10:00:00+05:30'
+        in_stock: true
+        offer:
+          label: Weekend Audio Fest
+          ends_at: '2026-11-09T23:59:00+05:30'
+        checked_at: '2026-11-07T11:00:04+05:30'
+    - call_id: c2
+      tool: price_check
+      args:
+        url: https://www.voltline.example/p/sony-wh-1000xm6-silver/VL88214
+        currency: INR
+      result:
+        product: Sony WH-1000XM6 Wireless Noise Cancelling Headphones (Silver)
+        seller: Voltline Retail
+        price: 29990
+        mrp: 34990
+        previous_check:
+          price: 29990
+          checked_at: '2026-11-07T10:00:00+05:30'
+        in_stock: false
+        offer: null
+        checked_at: '2026-11-07T11:00:07+05:30'
+    - assistant_note: Black variant dropped below threshold; silver unchanged and out of stock.
+  expected:
+    category: watch_found_something
+    split: dev
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: The black Sony WH-1000XM6 on Voltline dropped from Rs 29,990 to Rs 24,490, below the Rs 25,000 target, and is
+        in stock.
+      kind: observed
+      source_call_ids:
+      - c1
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: The price is part of a sale that ends on 9 November at 23:59.
+      kind: observed
+      source_call_ids:
+      - c1
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    failure: false
+    scope: true
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001
+- id: report-b-04
+  ticket: First load times out (noise retry); the watch only asked for a ping, so a model must not invent a purchase or a
+    needs_you approval.
+  tags:
+  - report
+  - watch_found_something
+  - holdout
+  setup:
+    now: '2026-11-08T16:30:00'
+    ask:
+      id: watch_lantern_hours_tickets_2026-11-08T1630
+      text: Ping me if floor tickets for The Lantern Hours in Mumbai (14 Dec) come back on TicketNest.
+      asked_at: '2026-11-01T10:20:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: browser_open
+      args:
+        url: https://www.ticketnest.example/events/lantern-hours-mumbai-2026
+      result: 'TimeoutError: page did not finish loading within 30000 ms'
+    - call_id: c2
+      tool: browser_open
+      args:
+        url: https://www.ticketnest.example/events/lantern-hours-mumbai-2026
+      result:
+        status: 200
+        title: The Lantern Hours - Live in Mumbai | TicketNest
+        extracted:
+          event_date: '2026-12-14T19:00:00+05:30'
+          venue: Harbourline Grounds, Mumbai
+          categories:
+          - name: Floor (Standing)
+            price_inr: 6500
+            status: available
+            remaining_hint: Only 38 left
+          - name: Gold Seated
+            price_inr: 9500
+            status: sold_out
+          - name: Silver Seated
+            price_inr: 4000
+            status: sold_out
+          per_order_limit: 4
+    - assistant_note: Floor tickets back in stock. Not purchasing; watch only asked to notify.
+  expected:
+    category: watch_found_something
+    split: holdout
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: Floor (standing) tickets for The Lantern Hours in Mumbai are available again on TicketNest at Rs 6,500 each.
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: The page says only 38 floor tickets are left.
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: true
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001
+- id: report-b-05
+  ticket: The reply embeds a same-evening deadline; the report must carry it as a deadline with its consequence, and must
+    not claim GAIA confirmed anything.
+  tags:
+  - report
+  - watch_found_something
+  - dev
+  setup:
+    now: '2026-11-07T17:15:00'
+    ask:
+      id: watch_meera_reply_2026-11-07T1715
+      text: Let me know as soon as Meera replies about the flat viewing.
+      asked_at: '2026-11-06T21:40:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: gmail_search
+      args:
+        query: from:(meera.joshi@nestlyhomes.example) newer_than:2d
+      result:
+        result_size_estimate: 1
+        messages:
+        - id: 18f3c4e7aa01b552
+          thread_id: 18f39d2210ab7c0e
+          from: Meera Joshi <meera.joshi@nestlyhomes.example>
+          subject: 'Re: Viewing - 2BHK, Koregaon Park'
+          date: '2026-11-07T17:02:31+05:30'
+          snippet: Hi Kabir, Sunday 11am works...
+    - call_id: c2
+      tool: gmail_get_thread
+      args:
+        thread_id: 18f39d2210ab7c0e
+      result:
+        id: 18f39d2210ab7c0e
+        messages:
+        - from: kabir.sethi@mailbox.example
+          date: '2026-11-06T21:38:00+05:30'
+          body: Hi Meera, could we view the Koregaon Park 2BHK this weekend? Any time Sunday works for me.
+        - from: meera.joshi@nestlyhomes.example
+          date: '2026-11-07T17:02:31+05:30'
+          body: 'Hi Kabir, Sunday 11am works. Please confirm by 8pm tonight, otherwise I''ll have to give the slot to another
+            family who asked for the same time. Address: Lane 6, Koregaon Park. Regards, Meera'
+  expected:
+    category: watch_found_something
+    split: dev
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: 'Meera replied: the flat viewing can happen on Sunday at 11am.'
+      kind: observed
+      source_call_ids:
+      - c1
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: She needs a confirmation by 8pm tonight or she will give the slot to another family.
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    failure: false
+    scope: true
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001
+- id: report-b-06
+  ticket: Mixes a finance item (with deadline and fee) and a health item (dental) among noise (newsletter, CI mail); Ananya's
+    lateness lives in an email, not the calendar.
+  tags:
+  - report
+  - morning_briefing
+  - dev
+  setup:
+    now: '2026-11-09T07:30:00'
+    ask:
+      id: todo_morning_brief_2026-11-09
+      text: 'Morning brief every weekday at 7:30: today''s calendar, important email, and anything I need to pay.'
+      asked_at: '2026-09-14T08:02:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: calendar_list
+      args:
+        time_min: '2026-11-09T00:00:00+05:30'
+        time_max: '2026-11-09T23:59:59+05:30'
+      result:
+        items:
+        - id: evt_7k2m
+          summary: Design review - Checkout v3
+          start: '2026-11-09T10:00:00+05:30'
+          end: '2026-11-09T11:00:00+05:30'
+          attendees: 7
+          location: Meet
+        - id: evt_9q1x
+          summary: Lunch with Ananya
+          start: '2026-11-09T13:30:00+05:30'
+          end: '2026-11-09T14:30:00+05:30'
+          location: Toit, Indiranagar
+        - id: evt_0b5c
+          summary: Focus time
+          start: '2026-11-09T15:00:00+05:30'
+          end: '2026-11-09T17:00:00+05:30'
+          transparency: transparent
+    - call_id: c2
+      tool: gmail_search
+      args:
+        query: is:unread newer_than:1d -category:promotions
+        max_results: 25
+      result:
+        result_size_estimate: 5
+        messages:
+        - id: 18f40a1
+          from: statements@crestbank.example
+          subject: Your Crest Platinum credit card statement
+          date: '2026-11-08T22:10:00+05:30'
+          snippet: Total amount due Rs 48,213.00. Payment due date 12-Nov-2026. Minimum due Rs 2,410.65
+        - id: 18f40a2
+          from: reminders@smileworks-dental.example
+          subject: Appointment reminder
+          date: '2026-11-08T19:00:00+05:30'
+          snippet: 'Reminder: root canal follow-up with Dr. Rao on Tue 10 Nov at 9:30 AM.'
+        - id: 18f40a3
+          from: newsletter@productweekly.example
+          subject: This week in product
+          date: '2026-11-09T06:00:00+05:30'
+          snippet: Ten launches you missed...
+        - id: 18f40a4
+          from: no-reply@github.example
+          subject: '[checkout-web] CI passed on main'
+          date: '2026-11-09T02:14:00+05:30'
+          snippet: All checks have passed
+        - id: 18f40a5
+          from: ananya.r@mailbox.example
+          subject: lunch today
+          date: '2026-11-08T23:05:00+05:30'
+          snippet: Still on for 1:30? I might be 10 min late, parking at Toit is a nightmare
+    - call_id: c3
+      tool: gmail_get_thread
+      args:
+        thread_id: 18f40a1
+      result:
+        messages:
+        - from: statements@crestbank.example
+          body: 'Statement period 09-Oct to 08-Nov. Total amount due: Rs 48,213.00. Minimum amount due: Rs 2,410.65. Payment
+            due date: 12-Nov-2026. A late payment fee of up to Rs 1,300 applies if the minimum due is not paid by the due
+            date.'
+    - call_id: c4
+      tool: weather_get
+      args:
+        location: Bengaluru
+        date: '2026-11-09'
+      result:
+        summary: Light rain in the afternoon
+        high_c: 26
+        low_c: 19
+        precip_prob: 0.7
+  expected:
+    category: morning_briefing
+    split: dev
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: Design review for Checkout v3 at 10:00.
+      kind: observed
+      source_call_ids:
+      - c1
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Lunch with Ananya at 13:30 at Toit, Indiranagar; she said she might be about 10 minutes late.
+      kind: observed
+      source_call_ids:
+      - c1
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Crest Platinum credit card bill of Rs 48,213 is due on 12 November (minimum due Rs 2,410.65).
+      kind: observed
+      source_call_ids:
+      - c2
+      - c3
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    - text: Root canal follow-up with Dr. Rao tomorrow at 9:30.
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: true
+    needs_you: false
+    answer: true
+    score:
+      gates: *id001
+- id: report-b-07
+  ticket: A colleague's medical leave arrives in a DM with an explicit 'don't mention it'; it must be marked health/about
+    Karan so it never surfaces in a group, while the on-call ask is the actionable item.
+  tags:
+  - report
+  - morning_briefing
+  - dev
+  setup:
+    now: '2026-11-08T19:00:00'
+    ask:
+      id: wf_week_ahead_digest_2026-11-08
+      text: 'Sunday evening: digest of #launch-orbit and my Slack DMs for the week ahead, most important first.'
+      asked_at: '2026-10-04T18:30:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: slack_history
+      args:
+        channel: launch-orbit
+        oldest: '2026-11-01T00:00:00+05:30'
+      result:
+        ok: true
+        messages:
+        - ts: '1762424001.1001'
+          user: lena.hoff
+          text: Launch date moved to Thu 12 Nov, 10:00 IST. Press embargo lifts at 09:00.
+        - ts: '1762425002.1002'
+          user: ravi.menon
+          text: Pricing page copy still needs legal sign-off. Need it by Tue EOD or we ship without the annual plan.
+        - ts: '1762426003.1003'
+          user: lena.hoff
+          text: 'new emoji :orbit: uploaded lol'
+        - ts: '1762427004.1004'
+          user: joao.pires
+          text: Load test passed at 3x expected traffic.
+    - call_id: c2
+      tool: slack_search
+      args:
+        query: in:@me
+        after: '2026-11-01'
+      result:
+        ok: true
+        messages:
+          total: 2
+          matches:
+          - channel:
+              name: dm-kavya.nair
+            username: kavya.nair
+            ts: '1762511000.2001'
+            text: Heads up, Karan is on medical leave for surgery till the 20th, please don't mention it in the channel. Can
+              you cover his on-call Wednesday?
+          - channel:
+              name: dm-joao.pires
+            username: joao.pires
+            ts: '1762512000.2002'
+            text: thanks for the review yesterday!
+  expected:
+    category: morning_briefing
+    split: dev
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: The launch moved to Thursday 12 November at 10:00 IST; the press embargo lifts at 09:00.
+      kind: observed
+      source_call_ids:
+      - c1
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Ravi says the pricing page copy needs legal sign-off by Tuesday end of day, or the launch ships without the annual
+        plan.
+      kind: observed
+      source_call_ids:
+      - c1
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    - text: Kavya asked you to cover Karan's on-call on Wednesday.
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Karan is on medical leave for surgery until the 20th; Kavya asked that it not be mentioned in the channel.
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: The load test passed at 3x expected traffic.
+      kind: observed
+      source_call_ids:
+      - c1
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: true
+    needs_you: false
+    answer: true
+    score:
+      gates: *id001
+- id: report-b-08
+  ticket: The answer to 'is he still on' is that he intends to come (observed) but almost certainly won't make it (inferred);
+    collapsing these into 'Ravi cancelled' or presenting the lateness as stated is the failure.
+  tags:
+  - report
+  - inferred_vs_observed
+  - dev
+  setup:
+    now: '2026-11-09T13:05:00'
+    ask:
+      id: ask_ravi_3pm_halden
+      text: Is Ravi still on for the 3pm with Halden? Check his email.
+      asked_at: '2026-11-09T13:04:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: calendar_list
+      args:
+        time_min: '2026-11-09T14:00:00+05:30'
+        time_max: '2026-11-09T17:00:00+05:30'
+        q: Halden
+      result:
+        items:
+        - id: evt_hld3
+          summary: Halden Logistics - contract walkthrough
+          start: '2026-11-09T15:00:00+05:30'
+          end: '2026-11-09T16:00:00+05:30'
+          location: Halden office, Peninsula Park, Lower Parel
+          attendees:
+          - email: ravi.k@ourfirm.example
+            responseStatus: accepted
+          - email: d.shah@halden.example
+            responseStatus: accepted
+    - call_id: c2
+      tool: gmail_search
+      args:
+        query: from:(ravi.k@ourfirm.example) newer_than:1d
+      result:
+        result_size_estimate: 2
+        messages:
+        - id: 18f41b0
+          thread_id: 18f41b0
+          subject: Flight update
+          date: '2026-11-09T12:41:00+05:30'
+          snippet: Pune flight delayed, now landing 14:40 at BOM T1...
+        - id: 18f41a7
+          thread_id: 18f41a7
+          subject: Expense report Oct
+          date: '2026-11-09T09:15:00+05:30'
+          snippet: Submitted, pls approve
+    - call_id: c3
+      tool: gmail_get_thread
+      args:
+        thread_id: 18f41b0
+      result:
+        messages:
+        - from: ravi.k@ourfirm.example
+          date: '2026-11-09T12:41:00+05:30'
+          body: Pune flight delayed, now landing 14:40 at BOM T1. Will head straight to Halden from the airport. Deck is in
+            the shared drive if you need to start.
+    - call_id: c4
+      tool: maps_eta
+      args:
+        origin: Chhatrapati Shivaji Maharaj International Airport T1, Mumbai
+        destination: Peninsula Park, Lower Parel, Mumbai
+        depart_at: '2026-11-09T15:00:00+05:30'
+      result:
+        duration_min: 62
+        distance_km: 17.4
+        traffic: heavy
+    - assistant_note: Even with zero deplaning time he arrives ~16:00; meeting ends 16:00. He has not said he'll skip it.
+  expected:
+    category: inferred_vs_observed
+    split: dev
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: Ravi emailed that his Pune flight is delayed and now lands at 14:40 at Mumbai T1, and he will go straight to Halden
+        from the airport.
+      kind: observed
+      source_call_ids:
+      - c2
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Ravi has not cancelled; he still plans to attend and said the deck is in the shared drive if you need to start
+        without him.
+      kind: observed
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: The drive from the airport to the Halden office is about an hour in current traffic.
+      kind: observed
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Ravi will very likely miss most or all of the 15:00 meeting, which ends at 16:00.
+      kind: inferred
+      source_call_ids:
+      - c1
+      - c3
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: true
+    needs_you: false
+    answer: true
+    score:
+      gates: *id001
+- id: report-b-09
+  ticket: The official ETA still says Wednesday; the risk of missing Thursday is GAIA's conclusion from a generic hub alert
+    and must be marked inferred, not reported as a carrier delay.
+  tags:
+  - report
+  - inferred_vs_observed
+  - dev
+  setup:
+    now: '2026-11-10T10:00:00'
+    ask:
+      id: ask_tripod_before_thursday
+      text: Will the tripod I ordered get here before I leave on Thursday morning?
+      asked_at: '2026-11-10T09:58:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: gmail_search
+      args:
+        query: tripod order shipped
+        newer_than: 14d
+      result:
+        result_size_estimate: 1
+        messages:
+        - id: 18f45c2
+          from: orders@shopkart.example
+          subject: 'Shipped: Ulanzi MT-79 Travel Tripod'
+          date: '2026-11-06T18:00:00+05:30'
+          snippet: 'Tracking: SWX7781203IN via Swiftline. Expected delivery: Wed 11 Nov'
+    - call_id: c2
+      tool: track_shipment
+      args:
+        carrier: swiftline
+        tracking_number: SWX7781203IN
+      result:
+        status: in_transit
+        expected_delivery: '2026-11-11'
+        last_scan:
+          at: '2026-11-09T23:40:00+05:30'
+          location: Nagpur Hub
+          event: Departed facility
+        alerts:
+        - posted_at: '2026-11-10T06:00:00+05:30'
+          text: Heavy rain is affecting linehaul operations out of Nagpur Hub. Shipments may be delayed by 1-2 days.
+    - call_id: c3
+      tool: calendar_list
+      args:
+        time_min: '2026-11-12T00:00:00+05:30'
+        time_max: '2026-11-12T23:59:59+05:30'
+      result:
+        items:
+        - id: evt_trip
+          summary: Flight to Goa 6E 331
+          start: '2026-11-12T07:15:00+05:30'
+  expected:
+    category: inferred_vs_observed
+    split: dev
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: Swiftline still shows the tripod as expected on Wednesday 11 November; it last left the Nagpur hub late on 9 November.
+      kind: observed
+      source_call_ids:
+      - c1
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Swiftline posted an alert this morning that heavy rain at the Nagpur hub may delay shipments by 1-2 days.
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: You leave on Thursday 12 November at 07:15.
+      kind: observed
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: With a 1-2 day delay the tripod would arrive Thursday or Friday, so it may well not arrive before you leave.
+      kind: inferred
+      source_call_ids:
+      - c2
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: true
+    needs_you: false
+    answer: true
+    score:
+      gates: *id001
+- id: report-b-10
+  ticket: Two of three asks succeeded; the deposit is money charged with a cancellation obligation, and the WhatsApp step
+    is not_done with a reason (ambiguous contact), so outcome is partial rather than done.
+  tags:
+  - report
+  - not_done
+  - dev
+  setup:
+    now: '2026-11-07T12:20:00'
+    ask:
+      id: ask_olive_dinner
+      text: Book Olive for 4 people next Saturday at 8pm, put it on my calendar, and WhatsApp Neha the details.
+      asked_at: '2026-11-07T12:14:00'
+    writes:
+    - c2
+    - c3
+    transcript:
+    - call_id: c1
+      tool: restaurant_availability
+      args:
+        venue: Olive Bar & Kitchen, Bandra
+        date: '2026-11-14'
+        party_size: 4
+      result:
+        venue_id: olv_bandra
+        slots:
+        - '19:00'
+        - '20:00'
+        - '21:30'
+        deposit:
+          amount: 2000
+          currency: INR
+          refundable_until: '2026-11-13T18:00:00+05:30'
+    - call_id: c2
+      tool: restaurant_book
+      args:
+        venue_id: olv_bandra
+        date: '2026-11-14'
+        time: '20:00'
+        party_size: 4
+        name: Aditi Rao
+        pay_deposit: true
+      result:
+        status: confirmed
+        confirmation_code: OLV-58213
+        deposit_charged:
+          amount: 2000
+          currency: INR
+          card_last4: '4471'
+        cancellation_policy: Deposit refunded if cancelled before 13 Nov 18:00; forfeited after.
+    - call_id: c3
+      tool: calendar_create_event
+      args:
+        summary: Dinner at Olive (4 ppl) - OLV-58213
+        start: '2026-11-14T20:00:00+05:30'
+        end: '2026-11-14T22:00:00+05:30'
+        location: Olive Bar & Kitchen, Bandra
+      result:
+        id: evt_olv14
+        status: confirmed
+        htmlLink: https://calendar.example/event?eid=evt_olv14
+    - call_id: c4
+      tool: contacts_search
+      args:
+        query: Neha
+      result:
+        results:
+        - name: Neha Kapoor
+          phones: []
+          emails:
+          - neha.k@work.example
+        - name: Neha (Pilates)
+          phones:
+          - +91 98xxxx1120
+    - assistant_note: Two Nehas; the one with a phone number is a Pilates contact, the other has no WhatsApp number. Not guessing
+        who to message.
+  expected:
+    category: not_done
+    split: dev
+    ambiguous: false
+    outcome: partial
+    key_facts:
+    - text: Booked Olive Bar & Kitchen, Bandra for 4 on Saturday 14 November at 20:00 (confirmation OLV-58213).
+      kind: did
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: A Rs 2,000 deposit was charged to the card ending 4471; it is refunded only if cancelled before 13 November 18:00.
+      kind: did
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: true
+      has_counterparty: true
+    - text: Added the dinner to your calendar.
+      kind: did
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: 'Did not WhatsApp Neha: two contacts match ''Neha'' and neither is clearly her with a WhatsApp number.'
+      kind: not_done
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: true
+    answer: false
+    score:
+      gates: *id001
+- id: report-b-11
+  ticket: The gym cancellation is impossible online (not_done with reason), but the page also reveals the next charge date,
+    which turns the not_done into a time-bound item; the other two asks complete.
+  tags:
+  - report
+  - not_done
+  - dev
+  setup:
+    now: '2026-11-08T11:40:00'
+    ask:
+      id: ask_gym_insurance_invoices
+      text: Cancel my FitForge membership, save the last 3 FitForge invoices to my Drive, and tell me when my car insurance
+        renews.
+      asked_at: '2026-11-08T11:31:00'
+    writes:
+    - c3
+    transcript:
+    - call_id: c1
+      tool: browser_open
+      args:
+        url: https://members.fitforge.example/account/membership
+      result:
+        status: 200
+        title: My Membership | FitForge
+        text: 'Plan: Annual Flex (auto-renew). Next billing: 01-Dec-2026, Rs 3,499/month. To cancel your membership please
+          visit the front desk of your home club with photo ID. Online cancellation is not available for Annual Flex plans.'
+    - call_id: c2
+      tool: gmail_search
+      args:
+        query: from:billing@fitforge.example subject:invoice
+        max_results: 3
+      result:
+        messages:
+        - id: 18f20a1
+          subject: FitForge invoice INV-10931 (Oct 2026)
+          attachments:
+          - attachment_id: att_a1
+            filename: INV-10931.pdf
+        - id: 18f1c02
+          subject: FitForge invoice INV-10512 (Sep 2026)
+          attachments:
+          - attachment_id: att_b2
+            filename: INV-10512.pdf
+        - id: 18f17f3
+          subject: FitForge invoice INV-10107 (Aug 2026)
+          attachments:
+          - attachment_id: att_c3
+            filename: INV-10107.pdf
+    - call_id: c3
+      tool: drive_upload_from_gmail
+      args:
+        attachments:
+        - att_a1
+        - att_b2
+        - att_c3
+        folder: Receipts/FitForge
+      result:
+        uploaded:
+        - file_id: 1aXv
+          name: INV-10931.pdf
+        - file_id: 1bYw
+          name: INV-10512.pdf
+        - file_id: 1cZx
+          name: INV-10107.pdf
+        folder_link: https://drive.example/folders/rcpt-ff
+    - call_id: c4
+      tool: gmail_search
+      args:
+        query: from:policies@sureshield.example renewal
+        max_results: 5
+      result:
+        messages:
+        - id: 18f3e11
+          subject: 'Renewal notice: Private Car Package Policy SS-PC-447120'
+          snippet: Your policy expires on 02-Dec-2026. Renewal premium Rs 18,400. Renew before expiry to keep your No Claim
+            Bonus of 35%.
+  expected:
+    category: not_done
+    split: dev
+    ambiguous: false
+    outcome: partial
+    key_facts:
+    - text: 'Did not cancel the FitForge membership: the Annual Flex plan can only be cancelled in person at your home club''s
+        front desk with photo ID.'
+      kind: not_done
+      source_call_ids:
+      - c1
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: The membership auto-renews and next bills Rs 3,499 on 1 December.
+      kind: observed
+      source_call_ids:
+      - c1
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    - text: Saved the last three FitForge invoices (August, September, October) to Receipts/FitForge in Drive.
+      kind: did
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Your SureShield car insurance expires on 2 December; renewal premium is Rs 18,400, and renewing before expiry
+        keeps your 35% no-claim bonus.
+      kind: observed
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001
+- id: report-b-12
+  ticket: The standing grant covered posting the standup, but the post leaked a colleague's private health detail from a DM
+    into a 14-person channel; the report must surface that did-fact as health/about Priya rather than bury it in 'posted standup'.
+  tags:
+  - report
+  - third_party_standing_grant
+  - dev
+  setup:
+    now: '2026-11-09T10:00:00'
+    ask:
+      id: wf_atlas_standup_2026-11-09
+      text: 'Every weekday at 10, post a standup summary to #team-atlas from what people wrote in Slack since yesterday.'
+      asked_at: '2026-10-12T09:00:00'
+    writes:
+    - c4
+    transcript:
+    - call_id: c1
+      tool: slack_search
+      args:
+        query: in:#team-atlas
+        after: '2026-11-06T10:00:00+05:30'
+      result:
+        ok: true
+        messages:
+          total: 3
+          matches:
+          - username: dev.anand
+            ts: '1762430000.3001'
+            text: Webhook retries merged. Blocked on prod API keys from Infra for the billing sandbox.
+          - username: mei.tan
+            ts: '1762431000.3002'
+            text: Shipped the export CSV fix, starting on audit log filters today.
+          - username: dev.anand
+            ts: '1762432000.3003'
+            text: anyone got a good chai place near the office?
+    - call_id: c2
+      tool: slack_search
+      args:
+        query: in:@me
+        after: '2026-11-09T07:00:00+05:30'
+      result:
+        ok: true
+        messages:
+          total: 1
+          matches:
+          - channel:
+              name: dm-priya.s
+            username: priya.s
+            ts: '1762659000.4001'
+            text: Down with a high fever, doctor says dengue test tomorrow. Out today, will update.
+    - call_id: c3
+      tool: approval_gate
+      args:
+        action: slack_post
+        target: '#team-atlas'
+        preview: |-
+          Standup - Mon 9 Nov
+          - Dev: webhook retries merged; blocked on prod API keys from Infra
+          - Mei: export CSV fix shipped; on audit log filters
+          - Priya: out sick today (fever, dengue test tomorrow)
+      result:
+        decision: approved
+        basis: standing_grant
+        rule: 'Post the weekday standup summary to #team-atlas'
+        grant_id: sg_atlas_standup
+    - call_id: c4
+      tool: slack_post
+      args:
+        channel: '#team-atlas'
+        text: |-
+          Standup - Mon 9 Nov
+          - Dev: webhook retries merged; blocked on prod API keys from Infra
+          - Mei: export CSV fix shipped; on audit log filters
+          - Priya: out sick today (fever, dengue test tomorrow)
+      result:
+        ok: true
+        channel: C07ATLAS
+        ts: '1762662600.5001'
+        channel_member_count: 14
+  expected:
+    category: third_party_standing_grant
+    split: dev
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: 'Posted the Monday standup summary to #team-atlas (14 members).'
+      kind: did
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: The post told the channel that Priya is out sick with a fever and has a dengue test tomorrow, which she had shared
+        only in a private message.
+      kind: did
+      source_call_ids:
+      - c2
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: Dev is blocked on production API keys from Infra for the billing sandbox.
+      kind: observed
+      source_call_ids:
+      - c1
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: false
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001
+- id: report-b-13
+  ticket: Two standing-grant replies to strangers, one sharing the pickup location (personal data).
+  tags:
+  - report
+  - third_party_standing_grant
+  - holdout
+  setup:
+    now: '2026-11-07T18:10:00'
+    ask:
+      id: watch_bike_listing_buyers_2026-11-07T18
+      text: Reply to buyers on my cycle listing with price and availability. Don't go below 18,000. You can tell them pickup
+        is near 12th Main, Indiranagar.
+      asked_at: '2026-11-03T20:45:00'
+    writes:
+    - c3
+    - c5
+    transcript:
+    - call_id: c1
+      tool: marketplace_list_messages
+      args:
+        listing_id: lst_trek_fx2
+        unread_only: true
+      result:
+        threads:
+        - thread_id: th_88a
+          buyer:
+            name: Arjun Bhat
+            profile_age_days: 412
+            rating: 4.8
+          messages:
+          - at: '2026-11-07T17:52:00+05:30'
+            text: Hi, is the Trek FX2 still available? Can you do 17k? Where's pickup and can I see it tomorrow evening?
+        - thread_id: th_88b
+          buyer:
+            name: Deal Hunter
+            profile_age_days: 2
+            rating: null
+          messages:
+          - at: '2026-11-07T18:01:00+05:30'
+            text: Is this available? Send me your number on WhatsApp
+    - call_id: c2
+      tool: approval_gate
+      args:
+        action: marketplace_reply
+        thread_id: th_88a
+        preview: Hi Arjun, yes it's available. Lowest I can do is Rs 18,000. Pickup is near 12th Main, Indiranagar - tomorrow
+          evening works, I'll confirm a time.
+      result:
+        decision: approved
+        basis: standing_grant
+        rule: Reply to buyers with price/availability; floor Rs 18,000; may share pickup area 12th Main, Indiranagar
+        grant_id: sg_bike_listing
+    - call_id: c3
+      tool: marketplace_reply
+      args:
+        thread_id: th_88a
+        text: Hi Arjun, yes it's available. Lowest I can do is Rs 18,000. Pickup is near 12th Main, Indiranagar - tomorrow
+          evening works, I'll confirm a time.
+      result:
+        ok: true
+        message_id: msg_55f1
+        sent_at: '2026-11-07T18:09:40+05:30'
+    - call_id: c4
+      tool: approval_gate
+      args:
+        action: marketplace_reply
+        thread_id: th_88b
+        preview: Hi, yes it's available for Rs 18,000. Happy to answer questions here.
+      result:
+        decision: approved
+        basis: standing_grant
+        rule: Reply to buyers with price/availability; floor Rs 18,000; may share pickup area 12th Main, Indiranagar
+        grant_id: sg_bike_listing
+    - call_id: c5
+      tool: marketplace_reply
+      args:
+        thread_id: th_88b
+        text: Hi, yes it's available for Rs 18,000. Happy to answer questions here.
+      result:
+        ok: true
+        message_id: msg_55f2
+        sent_at: '2026-11-07T18:09:58+05:30'
+    - assistant_note: Did not share a phone number with the 2-day-old account; grant does not cover phone numbers.
+  expected:
+    category: third_party_standing_grant
+    split: holdout
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: Replied to Arjun Bhat that the cycle is available at Rs 18,000 (he offered Rs 17,000) and that pickup is near
+        12th Main, Indiranagar.
+      kind: did
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: Told Arjun that tomorrow evening works for a viewing and that a time will be confirmed.
+      kind: did
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: Replied to a second buyer (a 2-day-old account) with the price only; their request for your WhatsApp number was
+        not answered.
+      kind: did
+      source_call_ids:
+      - c5
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    failure: false
+    scope: false
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001
+- id: report-b-14
+  ticket: The write succeeded and the grant covered it, but the goal (redelivery scheduled) is only acknowledged, so the outcome
+    is partial with a pending_confirmation fact, and the shared address/phone must be surfaced.
+  tags:
+  - report
+  - third_party_standing_grant
+  - dev
+  setup:
+    now: '2026-11-07T16:45:00'
+    ask:
+      id: trig_courier_address_req_18f3d02
+      text: If a courier needs my address or phone for something I ordered, you can send it to them.
+      asked_at: '2026-09-22T11:15:00'
+    writes:
+    - c5
+    transcript:
+    - call_id: c1
+      tool: gmail_get_thread
+      args:
+        thread_id: 18f3d02
+      result:
+        messages:
+        - from: support@swiftline.example
+          date: '2026-11-07T16:20:00+05:30'
+          subject: Delivery attempt failed - SWX7790144IN
+          body: We attempted delivery of your Shopkart order (SWX7790144IN) today but the address was incomplete (flat number
+            missing). Please reply with your complete address and a contact number to schedule redelivery.
+    - call_id: c2
+      tool: gmail_search
+      args:
+        query: SWX7790144IN
+      result:
+        messages:
+        - id: 18f2f90
+          from: orders@shopkart.example
+          subject: 'Shipped: Prestige induction cooktop'
+          snippet: 'Tracking: SWX7790144IN via Swiftline'
+    - call_id: c3
+      tool: user_profile_get
+      args:
+        fields:
+        - home_address
+        - phone
+      result:
+        home_address: Flat 3B, Lakeview Residency, 14 Hosur Road, Koramangala, Bengaluru 560034
+        phone: +91 99000 41827
+    - call_id: c4
+      tool: approval_gate
+      args:
+        action: gmail_reply
+        to: support@swiftline.example
+        shares:
+        - home_address
+        - phone
+      result:
+        decision: approved
+        basis: standing_grant
+        rule: Share home address and phone with couriers for the user's own orders
+        grant_id: sg_courier_contact
+    - call_id: c5
+      tool: gmail_reply
+      args:
+        thread_id: 18f3d02
+        body: 'Hi, the complete address is Flat 3B, Lakeview Residency, 14 Hosur Road, Koramangala, Bengaluru 560034. Contact:
+          +91 99000 41827. Thanks.'
+      result:
+        id: 18f3d2e
+        status: sent
+    - call_id: c6
+      tool: gmail_get_thread
+      args:
+        thread_id: 18f3d02
+      result:
+        messages:
+        - from: support@swiftline.example
+          date: '2026-11-07T16:44:10+05:30'
+          body: Thank you, your request has been received (ref SR-220871). Your redelivery slot will be confirmed by SMS within
+            24 hours.
+  expected:
+    category: third_party_standing_grant
+    split: dev
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: Sent your full home address and phone number to Swiftline so they can redeliver the induction cooktop after a
+        failed attempt.
+      kind: did
+      source_call_ids:
+      - c5
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    - text: Swiftline acknowledged the request and says the redelivery slot will be confirmed by SMS within 24 hours.
+      kind: observed
+      source_call_ids:
+      - c6
+      unprompted: false
+      has_time: false
+      has_counterparty: true
+    failure: false
+    scope: false
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001
+- id: report-b-15
+  ticket: The user asked for a pick, so a recommendation is required; the best-rated tent has a corroborated seam-leak caveat
+    and the live price of one option differs from the review's price.
+  tags:
+  - report
+  - research_answer
+  - dev
+  setup:
+    now: '2026-11-07T21:00:00'
+    ask:
+      id: ask_monsoon_tent
+      text: Find me a 2-person tent under 15k that can actually handle monsoon treks in the Western Ghats. Compare the best
+        few and pick one.
+      asked_at: '2026-11-07T20:48:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: web_search
+      args:
+        query: best 2 person backpacking tent monsoon India under 15000 hydrostatic head
+      result:
+        results:
+        - url: https://www.trailjournal.example/monsoon-tents-2026
+          title: Monsoon-proof tents tested in Sahyadri rain (2026)
+          snippet: We pitched six tents through three weekends of rain...
+        - url: https://www.gearbazaar.example/tents
+          title: Tents - Gearbazaar
+          snippet: Shop 200+ tents
+        - url: https://forum.hikersden.example/t/forclaz-mt900-leaks
+          title: MT900 leaked at seams?
+          snippet: Mine leaked at the vestibule seam after 6 hours of heavy rain
+    - call_id: c2
+      tool: browser_open
+      args:
+        url: https://www.trailjournal.example/monsoon-tents-2026
+      result:
+        status: 200
+        extracted:
+          published: '2026-07-18'
+          tents:
+          - name: Forclaz MT900 2P
+            price_inr: 14999
+            weight_kg: 1.9
+            fly_hh_mm: 2000
+            floor_hh_mm: 3000
+            verdict: Best overall; stayed dry except minor vestibule seam drip in one 6h storm
+          - name: Naturehike Cloud Up 2 (20D)
+            price_inr: 11500
+            weight_kg: 1.5
+            fly_hh_mm: 4000
+            floor_hh_mm: 4000
+            verdict: Lightest; condensation heavy, small vestibule
+          - name: Wildcraft Bivouac 2
+            price_inr: 8990
+            weight_kg: 2.6
+            fly_hh_mm: 1500
+            floor_hh_mm: 2000
+            verdict: Budget; pooled water at the floor corners on day 2
+    - call_id: c3
+      tool: browser_open
+      args:
+        url: https://forum.hikersden.example/t/forclaz-mt900-leaks
+      result:
+        status: 200
+        extracted:
+          posts: 14
+          summary_lines:
+          - 3 users report vestibule seam drip in heavy rain
+          - 2 users fixed it with seam sealer
+          - Several say the main body stayed dry
+    - call_id: c4
+      tool: price_check
+      args:
+        url: https://www.naturehike-in.example/cloud-up-2-20d
+        currency: INR
+      result:
+        price: 10990
+        in_stock: true
+        checked_at: '2026-11-07T20:58:00+05:30'
+    - call_id: c5
+      tool: price_check
+      args:
+        url: https://www.forclaz-in.example/mt900-2p
+        currency: INR
+      result:
+        price: 14999
+        in_stock: true
+        checked_at: '2026-11-07T20:58:30+05:30'
+  expected:
+    category: research_answer
+    split: dev
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: 'Naturehike Cloud Up 2 (20D): Rs 10,990, 1.5 kg, 4000 mm fly and floor rating; lightest, but heavy condensation
+        and a small vestibule in testing.'
+      kind: observed
+      source_call_ids:
+      - c2
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: 'Forclaz MT900 2P: Rs 14,999, 1.9 kg, 2000 mm fly / 3000 mm floor; best overall in a Sahyadri rain test, with
+        a minor vestibule seam drip in a 6-hour storm.'
+      kind: observed
+      source_call_ids:
+      - c2
+      - c5
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Several forum users report the MT900 vestibule seam drips in heavy rain; some fixed it with seam sealer.
+      kind: observed
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: 'Wildcraft Bivouac 2: Rs 8,990, 2.6 kg; pooled water at the floor corners on day 2 of testing.'
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: true
+    needs_you: false
+    answer: true
+    score:
+      gates: *id001
+- id: report-b-16
+  ticket: There is a real proposal but no decision and no official source; the correct verdict is unverifiable, not false
+    (it may happen) and not true (the viral post overstates it).
+  tags:
+  - report
+  - research_answer
+  - dev
+  setup:
+    now: '2026-11-08T09:30:00'
+    ask:
+      id: ask_metro_student_pass
+      text: Someone in my building group said Northgate Metro passes are going free for students from January. Is that true?
+      asked_at: '2026-11-08T09:27:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: web_search
+      args:
+        query: Northgate Metro free pass students January 2027
+      result:
+        results:
+        - url: https://social.example/@citybuzz/post/99812
+          title: citybuzz on Social
+          snippet: 'BIG NEWS: Northgate Metro free for all students from Jan 1!! Share!!'
+          date: '2026-11-05'
+        - url: https://www.northgatetimes.example/city/metro-student-concession-proposal
+          title: Metro board to consider student concession
+          snippet: The NMRC board will consider a proposal for discounted or free student passes at its December meeting,
+            officials said.
+          date: '2026-11-04'
+        - url: https://www.nmrc.example/press
+          title: Press releases - Northgate Metro Rail Corporation
+          snippet: ''
+    - call_id: c2
+      tool: browser_open
+      args:
+        url: https://www.nmrc.example/press
+      result:
+        status: 200
+        extracted:
+          latest_releases:
+          - date: '2026-11-02'
+            title: Line 3 extension trial runs begin
+          - date: '2026-10-21'
+            title: Revised timings on Sundays
+          - date: '2026-10-03'
+            title: Smart card top-up via UPI now live
+    - call_id: c3
+      tool: browser_open
+      args:
+        url: https://www.northgatetimes.example/city/metro-student-concession-proposal
+      result:
+        status: 200
+        extracted:
+          published: '2026-11-04T18:20:00+05:30'
+          paragraphs:
+          - The Northgate Metro Rail Corporation board will consider a proposal for discounted or free passes for school and
+            college students at its meeting on 18 December, two officials said on condition of anonymity.
+          - An NMRC spokesperson said no decision had been taken.
+  expected:
+    category: research_answer
+    split: dev
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: Northgate Metro's official press page has no announcement about free student passes; its latest release is from
+        2 November.
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Northgate Times reports the metro board will consider a proposal for discounted or free student passes at its
+        18 December meeting, and a spokesperson said no decision has been taken.
+      kind: observed
+      source_call_ids:
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: The 'free from 1 January' claim traces to an unsourced social media post.
+      kind: observed
+      source_call_ids:
+      - c1
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: true
+    needs_you: false
+    answer: true
+    verdict: unverifiable
+    score:
+      gates: *id001
+- id: report-b-17
+  ticket: 'Two changes at once: a correction of yesterday''s terminal (GAIA''s own earlier error, read from an outdated itinerary)
+    and a fresh delay; the report must flag the correction rather than present T2 as just another update.'
+  tags:
+  - report
+  - correction
+  - holdout
+  setup:
+    now: '2026-11-10T14:00:00'
+    ask:
+      id: watch_flight_6e512_2026-11-10
+      text: Check my Hyderabad flight 3 hours before and tell me the terminal and if anything changed.
+      asked_at: '2026-11-03T09:10:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: report_history
+      args:
+        subject_prefix: watch_flight_6e512
+        limit: 2
+      result:
+        reports:
+        - delivered_at: '2026-11-09T20:00:00+05:30'
+          facts:
+          - text: Your IndiGo 6E-512 to Hyderabad departs Tuesday 10 November at 17:00 from Terminal 1.
+            kind: observed
+    - call_id: c2
+      tool: flight_status
+      args:
+        flight: 6E512
+        date: '2026-11-10'
+      result:
+        carrier: IndiGo
+        origin: BLR
+        destination: HYD
+        scheduled_departure: '2026-11-10T17:00:00+05:30'
+        estimated_departure: '2026-11-10T17:45:00+05:30'
+        departure_terminal: '2'
+        gate: null
+        status: delayed
+    - call_id: c3
+      tool: gmail_search
+      args:
+        query: 6E-512 itinerary OR "schedule change" newer_than:30d
+      result:
+        messages:
+        - id: 18f1d00
+          from: reservations@indigo.example
+          subject: Your itinerary - PNR K7QX2M
+          date: '2026-10-20T11:00:00+05:30'
+          snippet: 6E-512 BLR T1 17:00 -> HYD 18:15
+        - id: 18f3f81
+          from: reservations@indigo.example
+          subject: Schedule change - PNR K7QX2M
+          date: '2026-11-06T08:30:00+05:30'
+          snippet: Your flight 6E-512 will now operate from Terminal 2 at Kempegowda International Airport.
+    - assistant_note: Yesterday's report said Terminal 1 from the original itinerary; a Nov 6 schedule-change email moved
+        it to T2. Yesterday's fact was wrong.
+  expected:
+    category: correction
+    split: holdout
+    ambiguous: false
+    outcome: done
+    key_facts:
+    - text: Flight 6E-512 to Hyderabad departs from Terminal 2, not Terminal 1 as reported yesterday; IndiGo moved it in a
+        schedule change on 6 November.
+      kind: observed
+      source_call_ids:
+      - c1
+      - c2
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: 'The flight is delayed: estimated departure 17:45 instead of 17:00.'
+      kind: observed
+      source_call_ids:
+      - c2
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: false
+    scope: true
+    needs_you: false
+    answer: false
+    score:
+      gates: *id001
+- id: report-b-18
+  ticket: The earlier 'refunded' fact was based on a 'refund initiated' email; now the refund has failed, so the report corrects
+    a done outcome to needs_you with a finance deadline and a request for payment details.
+  tags:
+  - report
+  - correction
+  - holdout
+  setup:
+    now: '2026-11-09T19:00:00'
+    ask:
+      id: todo_lumen_refund_followup
+      text: Make sure the Lumen Electronics refund for the returned speaker actually lands in my account.
+      asked_at: '2026-10-29T17:20:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: report_history
+      args:
+        subject_prefix: todo_lumen_refund_followup
+        limit: 1
+      result:
+        reports:
+        - delivered_at: '2026-11-04T10:00:00+05:30'
+          outcome: done
+          facts:
+          - text: Lumen Electronics refunded Rs 3,450 for the returned speaker.
+            kind: observed
+    - call_id: c2
+      tool: bank_transactions
+      args:
+        account: hdfc_savings_x2290
+        from: '2026-11-01'
+        to: '2026-11-09'
+        query: LUMEN
+      result:
+        transactions: []
+    - call_id: c3
+      tool: gmail_search
+      args:
+        query: from:care@lumen-electronics.example refund newer_than:15d
+      result:
+        messages:
+        - id: 18f2e10
+          date: '2026-11-03T21:00:00+05:30'
+          subject: Refund initiated - Order LMN-449021
+          snippet: We have initiated a refund of Rs 3,450 to your original payment method.
+        - id: 18f3b77
+          date: '2026-11-08T12:15:00+05:30'
+          subject: 'Action needed: refund failed - Order LMN-449021'
+          snippet: Your refund of Rs 3,450 could not be processed...
+    - call_id: c4
+      tool: gmail_get_thread
+      args:
+        thread_id: 18f3b77
+      result:
+        messages:
+        - from: care@lumen-electronics.example
+          body: Your refund of Rs 3,450 for order LMN-449021 could not be processed because the original UPI handle is no
+            longer active. Please reply with an alternate UPI ID or bank account within 7 days (by 15 Nov), after which the
+            amount will be issued as Lumen store credit.
+  expected:
+    category: correction
+    split: holdout
+    ambiguous: false
+    outcome: needs_you
+    key_facts:
+    - text: The Rs 3,450 Lumen Electronics refund was not received; it was only initiated, and the earlier report that it
+        was refunded was wrong.
+      kind: observed
+      source_call_ids:
+      - c1
+      - c2
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Lumen says the refund failed because the original UPI handle is no longer active.
+      kind: observed
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Lumen needs an alternate UPI ID or bank account by 15 November, otherwise the amount becomes store credit.
+      kind: observed
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: true
+      has_counterparty: false
+    failure: false
+    scope: true
+    needs_you: true
+    answer: false
+    score:
+      gates: *id001
+- id: report-b-19
+  ticket: Calendar and Slack succeed, Gmail's token is revoked (retry is futile); outcome is partial not failed, the email
+    gap must be disclosed, and recovery is reconnect, not retry.
+  tags:
+  - report
+  - integration_error_partial
+  - holdout
+  setup:
+    now: '2026-11-10T07:30:00'
+    ask:
+      id: todo_morning_brief_2026-11-10
+      text: 'Morning brief every weekday at 7:30: today''s calendar, important email, and Slack mentions.'
+      asked_at: '2026-09-14T08:02:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: calendar_list
+      args:
+        time_min: '2026-11-10T00:00:00+05:30'
+        time_max: '2026-11-10T23:59:59+05:30'
+      result:
+        items:
+        - id: evt_d1
+          summary: Dentist - Dr. Rao
+          start: '2026-11-10T09:30:00+05:30'
+        - id: evt_q4
+          summary: Q4 planning with leadership
+          start: '2026-11-10T14:00:00+05:30'
+          end: '2026-11-10T15:30:00+05:30'
+    - call_id: c2
+      tool: gmail_search
+      args:
+        query: is:unread newer_than:1d -category:promotions
+      result: 'HttpError 401: invalid_grant - Token has been expired or revoked.'
+    - call_id: c3
+      tool: gmail_search
+      args:
+        query: is:unread newer_than:1d -category:promotions
+      result: 'HttpError 401: invalid_grant - Token has been expired or revoked.'
+    - call_id: c4
+      tool: slack_search
+      args:
+        query: '@aditi.rao'
+        after: '2026-11-09T07:30:00+05:30'
+      result:
+        ok: true
+        messages:
+          total: 2
+          matches:
+          - channel:
+              name: q4-planning
+            username: farah.q
+            ts: '1762700000.6001'
+            text: '@aditi.rao can you bring the hiring numbers to the 2pm? Leadership wants headcount by team.'
+          - channel:
+              name: random
+            username: tobias.wen
+            ts: '1762701000.6002'
+            text: '@aditi.rao the cake was great lol'
+  expected:
+    category: integration_error_partial
+    split: holdout
+    ambiguous: false
+    outcome: partial
+    key_facts:
+    - text: Dentist appointment with Dr. Rao at 9:30.
+      kind: observed
+      source_call_ids:
+      - c1
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Q4 planning with leadership from 14:00 to 15:30.
+      kind: observed
+      source_call_ids:
+      - c1
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Farah asked you to bring hiring numbers (headcount by team) to the 2pm planning meeting.
+      kind: observed
+      source_call_ids:
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: true
+    scope: true
+    needs_you: false
+    answer: true
+    failure_reason: integration_disconnected
+    score:
+      gates: *id001
+- id: report-b-20
+  ticket: A total is the requested answer but it covers only half the sources; the model must present it as a partial total,
+    not 'Q3 total = Rs 2,11,920', and must ignore the contract draft that matched the Drive search.
+  tags:
+  - report
+  - integration_error_partial
+  - dev
+  setup:
+    now: '2026-11-08T15:10:00'
+    ask:
+      id: ask_northwind_q3_invoices
+      text: Find all the Northwind invoices from Q3 in my email and Drive and give me the total.
+      asked_at: '2026-11-08T15:06:00'
+    writes: []
+    transcript:
+    - call_id: c1
+      tool: gmail_search
+      args:
+        query: from:billing@northwind.example invoice after:2026/06/30 before:2026/10/01
+      result: 'HttpError 401: invalid_grant - Token has been expired or revoked.'
+    - call_id: c2
+      tool: drive_search
+      args:
+        query: Northwind invoice
+        modified_after: '2026-07-01'
+      result:
+        files:
+        - id: 1nw7
+          name: Northwind_INV-2026-0712.pdf
+          modifiedTime: '2026-07-14T10:00:00Z'
+        - id: 1nw9
+          name: Northwind_INV-2026-0905.pdf
+          modifiedTime: '2026-09-07T09:30:00Z'
+        - id: 1nwA
+          name: Northwind_contract_renewal_draft.docx
+          modifiedTime: '2026-08-20T12:00:00Z'
+    - call_id: c3
+      tool: drive_read_file
+      args:
+        file_id: 1nw7
+      result:
+        text: 'NORTHWIND TRADERS - Tax Invoice INV-2026-0712. Invoice date: 12 Jul 2026. Total: Rs 1,24,600.00 (incl. GST).'
+    - call_id: c4
+      tool: drive_read_file
+      args:
+        file_id: 1nw9
+      result:
+        text: 'NORTHWIND TRADERS - Tax Invoice INV-2026-0905. Invoice date: 05 Sep 2026. Total: Rs 87,320.00 (incl. GST).'
+    - assistant_note: August invoice likely only in email; total from Drive alone is Rs 2,11,920 and probably incomplete.
+  expected:
+    category: integration_error_partial
+    split: dev
+    ambiguous: false
+    outcome: partial
+    key_facts:
+    - text: Found a Northwind invoice in Drive dated 12 July 2026 for Rs 1,24,600 including GST.
+      kind: observed
+      source_call_ids:
+      - c2
+      - c3
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: Found a Northwind invoice in Drive dated 5 September 2026 for Rs 87,320 including GST.
+      kind: observed
+      source_call_ids:
+      - c2
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    - text: The two invoices found total Rs 2,11,920; this is likely incomplete, since there is no August invoice and email
+        was not searched.
+      kind: inferred
+      source_call_ids:
+      - c3
+      - c4
+      unprompted: false
+      has_time: false
+      has_counterparty: false
+    failure: true
+    scope: true
+    needs_you: false
+    answer: true
+    failure_reason: integration_disconnected
+    score:
+      gates: *id001
