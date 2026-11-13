@@ -14,6 +14,7 @@ judge at redeem; redeem's APPROVED -> EXECUTING claim is single-use; and crash
 recovery runs lazily via reconcile_conversation_ledger, with no daemon.
 """
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -32,7 +33,6 @@ from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.db.repositories.approval_ledger import approval_ledger_repository
-from app.db.repositories.conversations import conversation_repository
 from app.models.execute_models import DispatchErrorKind
 from app.models.hil_models import (
     ApprovalLedgerDocument,
@@ -492,7 +492,6 @@ async def _settle_terminal(row: ApprovalLedgerDocument, state: LedgerState) -> N
     """
     if row.proposing_run_id:
         settle_session_approval_frame(row.proposing_run_id, row.approval_id, state.value)
-    await _persist_decision_status(row, state.value)
     await _broadcast_decision(row, state.value, None)
 
 
@@ -539,8 +538,10 @@ async def revoke_ticket(
     return f"Revoked '{approval_id}' ({row.summary}). It will never be asked."
 
 
-async def cancel_ledger_approvals(conversation_id: str, user_id: str) -> list[str]:
-    """Withdraw a cancelled run's pending ledger approvals so nothing revives them.
+async def cancel_ledger_approvals(
+    conversation_id: str, user_id: str, approval_ids: Collection[str]
+) -> list[str]:
+    """Withdraw these of a cancelled run's pending ledger approvals so nothing revives them.
 
     Ledger twin of resolution.cancel_conversation_approvals: without it a later
     Approve (stale card, another tab, a bot "yes") redeems a ticket for stopped
@@ -549,7 +550,11 @@ async def cancel_ledger_approvals(conversation_id: str, user_id: str) -> list[st
     """
     cancelled: list[str] = []
     for row in await approval_ledger_repository.list_open(conversation_id):
-        if row.state is not LedgerState.PENDING or row.user_id != user_id:
+        if (
+            row.state is not LedgerState.PENDING
+            or row.user_id != user_id
+            or row.approval_id not in approval_ids
+        ):
             continue
         if not await approval_ledger_repository.transition(
             row.approval_id, LedgerState.PENDING, LedgerState.REVOKED
@@ -643,7 +648,6 @@ async def publish_ledger_decision(
             mapped.value,
             feedback if feedback is not None else row.feedback,
         )
-    await _persist_decision_status(row, mapped.value)
     await _broadcast_decision(row, mapped.value, feedback if feedback is not None else row.feedback)
 
 
@@ -661,29 +665,7 @@ async def publish_ledger_revocation(row: ApprovalLedgerDocument) -> None:
         settle_session_approval_frame(
             row.proposing_run_id, row.approval_id, "revoked", drop_if_unpublished=True
         )
-    await _persist_decision_status(row, "revoked")
     await _broadcast_decision(row, "revoked", None)
-
-
-async def _persist_decision_status(row: ApprovalLedgerDocument, status: str) -> None:
-    """Settle the persisted card frame so reload renders the terminal state.
-
-    Isolated on purpose (mirrors bridge.publish_decision): a write error here
-    must never fail the decision or revocation it reports on.
-    """
-    try:
-        await conversation_repository.set_message_approval_status(
-            row.conversation_id,
-            user_id=row.user_id,
-            approval_id=row.approval_id,
-            status=status,
-        )
-    except Exception as e:
-        log.warning(
-            f"{LogTag.HIL} Ledger decision persist missed; live delivery already attempted",
-            approval_id=row.approval_id,
-            error_type=type(e).__name__,
-        )
 
 
 async def _broadcast_decision(

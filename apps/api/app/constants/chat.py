@@ -121,9 +121,9 @@ CONVERSATION_READ_LIMIT = 600
 # Named in every refusal of a conversation the entries migration has not reached.
 CONVERSATION_ENTRIES_MIGRATION_SCRIPT = "app.scripts.migrate_conversation_entries"
 
-# ``MessageModel.type`` of a message the human wrote (the other value is
-# ``"bot"``). Named so a stored-message query and the writers agree on the literal.
+# ``MessageModel.type`` of a message the human wrote, and of one GAIA wrote: the projection's two sides.
 USER_MESSAGE_TYPE = "user"
+BOT_MESSAGE_TYPE = "bot"
 
 # Saved on a reply whose turn died (a crashed process) after the user saw it begin.
 TURN_INTERRUPTED = (

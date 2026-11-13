@@ -95,8 +95,9 @@ async def await_outcome(
     cursor = await latest_frame_id(conversation_id)
     async with asyncio.timeout(timeout):
         while True:
-            entries = await log.read_after(conversation_id, user_id, logged.seq - 1)
+            # State before entries: whatever the state says has settled, the entries read after it hold.
             state = await log.state(conversation_id, user_id)
+            entries = await log.read_after(conversation_id, user_id, logged.seq - 1)
             outcome = entry_outcome(logged.entry.id, logged.seq, entries, state)
             if outcome is not None:
                 return outcome

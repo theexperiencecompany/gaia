@@ -16,9 +16,8 @@ from redis.asyncio import Redis
 from app.api.v1.middleware.auth import PostHogRequestContextMiddleware
 from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.db.repositories.conversation_log import conversation_log_repository
-from app.db.repositories.conversations import conversation_repository
 from app.models.bot_models import BotChatRequest
-from app.models.chat_models import ConversationSource, MessageModel
+from app.models.chat_models import ConversationSource
 from app.models.conversation_frame_models import ConversationUpdatedFrame, StateFrame
 from app.models.conversation_log_models import BargeIn, DisplayState, UserMessage
 from app.models.user_models import AuthenticatedUser
@@ -33,6 +32,7 @@ from app.services.conversation.send import submit_bot_message
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from shared.py.wide_events import _spawned_tasks
 from tests.conftest import FAKE_USER
+from tests.helpers import log_history
 from tests.unit.services.conversation.runtime_doubles import (
     EffectCall,
     RecordingEffects,
@@ -92,6 +92,8 @@ _HISTORY = [
     {"type": "user", "response": "what's on today?", "message_id": "old-u"},
     {"type": "bot", "response": "two meetings", "message_id": "old-b"},
 ]
+# The user message, the reply and its settle.
+_LOGGED = 3
 
 
 def _send(message_id: str, text: str = "book it for $600") -> dict[str, object]:
@@ -191,7 +193,7 @@ async def test_a_resent_message_keeps_its_first_seq_and_is_stored_once(
     assert sends.captured.call_count == 1
 
 
-async def test_a_send_into_a_conversation_from_before_the_step_continues_it(
+async def test_a_send_into_a_conversation_with_history_continues_it(
     client: AsyncClient,
     sends: Sends,
     make_conversation: Callable[..., Awaitable[str]],
@@ -202,12 +204,12 @@ async def test_a_send_into_a_conversation_from_before_the_step_continues_it(
     )
     entries = await conversation_log_repository.read_log(conversation_id, user_id=FAKE_USER.user_id)
     assert response.status_code == 202, response.text
-    assert response.json()["seq"] == len(_HISTORY) + 1
-    assert [e.entry.id for e in entries or []] == ["m1"]
+    assert response.json()["seq"] == _LOGGED + 1
+    assert [e.entry.id for e in entries or []][_LOGGED:] == ["m1"]
     assert EffectCall("kick") in sends.effects.calls
 
 
-async def test_a_bot_session_from_before_the_step_keeps_its_conversation(
+async def test_a_bot_session_with_history_keeps_its_conversation(
     sends: Sends, make_conversation: Callable[..., Awaitable[str]]
 ) -> None:
     platform_user = f"tg-{uuid4().hex[:8]}"
@@ -215,11 +217,7 @@ async def test_a_bot_session_from_before_the_step_keeps_its_conversation(
     before = await BotService.get_or_create_session(
         "telegram", platform_user, None, user, is_dm=True
     )
-    await conversation_repository.append_messages(
-        before,
-        user_id=user.user_id,
-        messages=[MessageModel.model_validate(message) for message in _HISTORY],
-    )
+    await log_history(before, user.user_id, _HISTORY)
     body = BotChatRequest(
         message="and tomorrow?",
         platform="telegram",
@@ -230,7 +228,7 @@ async def test_a_bot_session_from_before_the_step_keeps_its_conversation(
     with patch("app.services.conversation.send.charge_bot_turn", new_callable=AsyncMock):
         accepted = await submit_bot_message(body, user)
     assert accepted.conversation_id == before
-    assert accepted.seq == len(_HISTORY) + 1
+    assert accepted.seq == _LOGGED + 1
 
 
 async def test_a_bot_message_is_counted_once_after_it_is_accepted_and_never_on_a_resend(

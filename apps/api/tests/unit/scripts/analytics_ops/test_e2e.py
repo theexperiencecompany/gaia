@@ -119,7 +119,6 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
         "chat:work_stopped",
         {
             **WEB,
-            "streams": 0,
             "executor_stopped": False,
             "pending_tasks": 0,
             "subagents": 0,

@@ -16,6 +16,7 @@ from sentry_sdk.types import Event
 from app.agents.core.background import session as stream_session
 from app.config.sentry import init_sentry
 from app.config.settings import settings
+from app.models.work_cancel_models import WorkCancelled
 from app.services.providers import provider_credentials_service
 from tests.factories import make_config, make_state, make_user
 from tests.helpers import (
@@ -176,6 +177,6 @@ def selfhost_credential_store(monkeypatch: pytest.MonkeyPatch) -> Iterator[InMem
 @pytest.fixture
 def logged_stops(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     """Stand in for the conversation log a Stop is appended to; the runtime suite drives the real one."""
-    record = AsyncMock()
+    record = AsyncMock(return_value=WorkCancelled())
     monkeypatch.setattr("app.services.conversation_stop_service.record_user_stop", record)
     return record

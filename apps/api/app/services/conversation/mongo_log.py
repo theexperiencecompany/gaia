@@ -23,7 +23,6 @@ from app.constants.conversation import (
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.db.repositories.conversation_log import (
-    EMPTY_LOG_STATE,
     ConversationLogRepository,
     LogHead,
 )
@@ -41,6 +40,7 @@ from app.models.conversation_log_models import (
     ReplyOutcome,
     ReplySettled,
     StepClaim,
+    TodoWoke,
     UserMessage,
 )
 from app.services.conversation.ports import Appended, ClaimLost, EntryRejected
@@ -74,7 +74,7 @@ class MongoConversationLog:
         self._clock = clock
 
     async def append(self, conversation_id: str, user_id: str, entry: Entry) -> Appended:
-        """Store entry at the next seq; the same id again returns the first result as a duplicate."""
+        """Store entry at the next seq; the same id again returns the stored entry as a duplicate, with the current state and no effects."""
         return await self._append(conversation_id, user_id, entry, epoch=None)
 
     async def append_fenced(self, claim: StepClaim, entry: Entry) -> Appended:
@@ -99,7 +99,10 @@ class MongoConversationLog:
                 message=f"no {entry.kind} entry {entry.id} in conversation {claim.conversation_id}",
                 meta={"conversation_id": claim.conversation_id, "entry_id": entry.id},
             )
-        revised = entry.model_copy(update={"revision": previous.revision + 1})
+        # A pin is the user's, set beside the step: a fill never takes it back.
+        revised = entry.model_copy(
+            update={"revision": previous.revision + 1, "pinned": previous.pinned}
+        )
         amended = stored.model_copy(update={"entry": revised})
         if not await self._repository.stage_log_amend(
             claim.conversation_id, user_id=claim.user_id, epoch=claim.epoch, amended=amended
@@ -123,7 +126,7 @@ class MongoConversationLog:
             update={"reaction": reaction, "revision": message.revision + 1}
         )
         amended = found[0].model_copy(update={"entry": revised})
-        if not await self._repository.stage_log_reaction(
+        if not await self._repository.stage_unfenced_amend(
             conversation_id, user_id=user_id, amended=amended, after_revision=message.revision
         ):
             return None
@@ -220,7 +223,7 @@ class MongoConversationLog:
                 raise ClaimLost
             seq = head.known.get(entry.id)
             if seq is not None:
-                return await self._first_result(conversation_id, user_id, seq)
+                return await self._duplicate(head, seq)
             logged = LoggedEntry(seq=head.log_head + 1, at=self._clock(), entry=entry)
             result = reduce(head.state, logged)
             if isinstance(result, Rejected):
@@ -244,7 +247,10 @@ class MongoConversationLog:
         )
 
     async def _marks_unread(self, conversation_id: str, user_id: str, entry: Entry) -> bool:
-        """Return whether entry is news the user did not ask for here: a Notice, or a reply answering no message of theirs."""
+        """Return whether entry is news the user did not ask for here: a Notice, or a reply answering no message of theirs.
+
+        A todo's write-up never is: its chat is reached from the todo, so it carries no unread dot.
+        """
         match entry:
             case Notice():
                 return True
@@ -252,19 +258,25 @@ class MongoConversationLog:
                 answered = await self._repository.read_log(
                     conversation_id, user_id=user_id, ids=list(answers)
                 )
-                return not any(isinstance(logged.entry, UserMessage) for logged in answered or ())
+                return not any(
+                    isinstance(logged.entry, UserMessage | TodoWoke) for logged in answered or ()
+                )
             case _:
                 return False
 
-    async def _first_result(self, conversation_id: str, user_id: str, seq: int) -> Appended:
-        """Replay the log through seq: what the append that stored it returned, as a duplicate."""
-        entries = await self._repository.read_log(conversation_id, user_id=user_id, through_seq=seq)
+    async def _duplicate(self, head: LogHead, seq: int) -> Appended:
+        """Return the entry already stored at seq: a duplicate changes nothing, so it carries the current state and no effects."""
+        entries = await self._repository.read_log(
+            head.conversation_id, user_id=head.user_id, after_seq=seq - 1, through_seq=seq
+        )
         if not entries or entries[-1].seq != seq:
             raise ConversationStoreError(
-                message=f"seq {seq} of conversation {conversation_id} holds a message, not a log entry",
-                meta={"conversation_id": conversation_id, "seq": seq},
+                message=f"seq {seq} of conversation {head.conversation_id} holds a message, not a log entry",
+                meta={"conversation_id": head.conversation_id, "seq": seq},
             )
-        return _replay(entries)
+        return Appended(
+            logged=entries[-1], previous=head.state, state=head.state, effects=(), duplicate=True
+        )
 
     async def _head(
         self, conversation_id: str, user_id: str, entry_id: str | None = None
@@ -275,27 +287,6 @@ class MongoConversationLog:
         if head is None:
             raise _not_found(conversation_id)
         return head
-
-
-def _replay(entries: Sequence[LoggedEntry]) -> Appended:
-    """Fold entries from the empty state, returning the last one's append; seqs between them hold messages."""
-    state = EMPTY_LOG_STATE
-    appended: Appended | None = None
-    for logged in entries:
-        previous = state.model_copy(update={"head": logged.seq - 1})
-        result = reduce(previous, logged)
-        if isinstance(result, Rejected):
-            raise ConversationStoreError(
-                message=f"stored entry at seq {logged.seq} no longer reduces",
-                why=result.reason.value,
-            )
-        state = result.state
-        appended = Appended(
-            logged=logged, previous=previous, state=state, effects=result.effects, duplicate=True
-        )
-    if appended is None:
-        raise ConversationStoreError(message="replay of an empty log")
-    return appended
 
 
 def _not_found(conversation_id: str) -> ConversationNotFoundError:

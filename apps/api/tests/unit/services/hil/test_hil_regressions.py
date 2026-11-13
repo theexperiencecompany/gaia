@@ -542,7 +542,7 @@ class TestCancelledRunIsNotResurrectedByItsApproval:
             for p in self._patches(store, runner):
                 stack.enter_context(p)
 
-            await cancel_conversation_approvals(CONVERSATION_ID, USER_ID)
+            await cancel_conversation_approvals(CONVERSATION_ID, USER_ID, ["a1"])
             with pytest.raises(AppError):
                 await resolve_approval(approval_id="a1", user_id=USER_ID, kind="approve")
             await drain_spawned_tasks()
@@ -559,7 +559,7 @@ class TestCancelledRunIsNotResurrectedByItsApproval:
             for p in self._patches(store, runner):
                 stack.enter_context(p)
 
-            await cancel_conversation_approvals(CONVERSATION_ID, USER_ID)
+            await cancel_conversation_approvals(CONVERSATION_ID, USER_ID, ["a1"])
             counts = await sweep_approvals()
             await drain_spawned_tasks()
 

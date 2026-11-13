@@ -232,23 +232,6 @@ async def publish_decision(
         integration_name=record.integration_name,
     )
     await _publish_entry(stream_id, _approval_entry(card, status, feedback=feedback))
-    # Settle the PERSISTED frame now too, since a later pause before final delivery
-    # reconciles would otherwise show a dead pending card. Isolated: the caller
-    # (the gate) fails CLOSED, so a write error here must not become a denial.
-    try:
-        await conversation_repository.set_message_approval_status(
-            record.conversation_id,
-            user_id=record.user_id,
-            approval_id=record.approval_id,
-            status=status.value,
-        )
-    except Exception as e:
-        log.error(
-            f"{LogTag.HIL} Could not settle persisted approval frame; delivery will reconcile",
-            approval_id=record.approval_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
 
 
 async def publish_auto_approval(approval: GatedApproval, *, reason: str) -> None:

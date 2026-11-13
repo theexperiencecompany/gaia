@@ -9,7 +9,7 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol, TypeVar, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -24,6 +24,7 @@ from langchain_core.messages import (
     SystemMessage,
 )
 from langchain_core.outputs import ChatGenerationChunk
+from langgraph.config import get_config
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 from redis.asyncio import Redis
@@ -36,22 +37,29 @@ from app.agents.core.background import (
     todo_run,
     todo_run_delivery,
 )
+from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_lock_value,
+    build_run_item,
     keep_alive,
     try_acquire_lock,
 )
-from app.agents.core.background.executor_runner import deliver_to_executor
+from app.agents.core.background.executor_runner import (
+    deliver_to_executor,
+    wake_executor_for_inbox,
+)
 from app.agents.core.background.result_delivery import deliver_message_to_conversation
-from app.agents.core.background.session import ExecutorRun
+from app.agents.core.background.session import ExecutorRun, RunIdentity, RunKind
 from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_executor
 from app.agents.core.background.todo_run_delivery import report_form_of
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.agents.core.graph_manager import GraphManager
+from app.agents.core.subagents.subagent_runner import prepare_executor_execution
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.run_record import append_call
 from app.config.settings import settings
+from app.constants.agents import AgentTag
 from app.constants.browser import HandoffDecision, HandoffStatus
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
@@ -64,7 +72,8 @@ from app.db.redis import redis_cache
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
-from app.models.agent_config import AgentConfigurable, StepTurnRef
+from app.db.repositories.hil import hil_approval_repository
+from app.models.agent_config import AgentConfigurable, StepTurnRef, agent_configurable
 from app.models.agent_models import AgentRunnableConfig
 from app.models.conversation_frame_models import (
     EntryFrame,
@@ -77,6 +86,7 @@ from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
     Batch,
+    CancelWork,
     DisplayState,
     Entry,
     IntegrationConnected,
@@ -96,16 +106,18 @@ from app.models.conversation_log_models import (
     WorkStarted,
 )
 from app.models.conversation_send_models import SendMessageRequest
+from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
 from app.models.playbook_models import PlaybookDocument, ToolStep
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.todo_wake_models import TodoRunWake
 from app.models.tool_data_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
+from app.models.work_cancel_models import WorkCancelled
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
 from app.schemas.browser import NewHandoff
-from app.services import analytics_service
+from app.services import analytics_service, conversation_stop_service
 from app.services.browser.handoff import create_pending_handoff
 from app.services.browser.handoff_buttons import decide_handoff_by_button
 from app.services.checkpoint_thread_reset import ThreadReset
@@ -115,8 +127,9 @@ from app.services.conversation.comms_runner import (
     CommsGraphRunner,
     CommsTurn,
     CommsTurnBuilder,
+    step_turn_ref,
 )
-from app.services.conversation.comms_turn import build_comms_turn, step_turn_ref
+from app.services.conversation.comms_turn import build_comms_turn
 from app.services.conversation.composition import RuntimeEffects, running_steps
 from app.services.conversation.event_stream import (
     RedisStreamFrames,
@@ -147,7 +160,10 @@ from app.services.conversation.work_log import (
     record_work_started,
     running_step_task,
 )
+from app.services.conversation_stop_service import press_stop
 from app.services.delivery.chat_channel import ChatChannel
+from app.services.hil import resolution
+from app.services.hil.gate import GateContext, read_gate_context
 from app.services.workflow import thread_reset
 from app.services.workflow.conversation_service import log_playbook_run
 from app.services.workflow.execution_service import WorkflowFireOverlapped, WorkflowTurnFailed
@@ -178,9 +194,11 @@ from tests.integration.real.test_comms_runner_real import (
     gated,
     humans,
     patched_graph,
+    recall_call,
 )
 from tests.unit.services.conversation.log_helpers import workflow_run
 from tests.unit.services.conversation.runtime_doubles import ScriptedApprovals
+from tests.unit.services.hil.conftest import make_request
 
 EntryT = TypeVar("EntryT")
 _SETTLE_SECONDS = 30.0
@@ -207,10 +225,10 @@ class _Effects(RuntimeEffects):
             await super().kick(conversation_id, user_id)
 
     async def cancel_work(
-        self, conversation_id: str, user_id: str, task_ids: tuple[str, ...]
-    ) -> None:
-        self.cancelled.append(task_ids)
-        await super().cancel_work(conversation_id, user_id, task_ids)
+        self, conversation_id: str, user_id: str, cancel: CancelWork
+    ) -> WorkCancelled:
+        self.cancelled.append(cancel.task_ids)
+        return await super().cancel_work(conversation_id, user_id, cancel)
 
     async def start_ack(self, conversation_id: str, user_id: str, message_id: str) -> None:
         return None
@@ -251,9 +269,10 @@ class Rig:
         return [(s.outcome, s.answers) for s in await self.of(ReplySettled)]
 
     def step(self) -> StepTurnRef:
-        """Return what the attempt running now hands the work it dispatches."""
-        claim, batch = self.turns[-1]
-        return step_turn_ref(claim, batch)
+        """Return what the attempt running now hands the work it dispatches, read from its run as call_executor does."""
+        step = agent_configurable(get_config()).get("conversation_step")
+        assert step is not None
+        return step
 
     async def start_work(self, task_id: str) -> bool:
         """Do what call_executor does inside the attempt running now."""
@@ -372,6 +391,13 @@ async def rig_for(
             task.cancel()
 
 
+@pytest.fixture
+def tool_registry() -> None:
+    """Register the real tool registry: tool cards resolve their categories through it."""
+    if not providers.is_initialized("tool_registry"):
+        init_tool_registry()
+
+
 def _during(model: GatedModel, call: int, action: Callable[[], Awaitable[object]]) -> None:
     model._during[call] = action
 
@@ -417,6 +443,33 @@ async def test_a_side_question_during_work_is_answered_while_the_work_runs(
 
 
 @pytest.mark.service
+@pytest.mark.usefixtures("tool_registry")
+async def test_work_started_after_a_message_joined_the_attempt_answers_that_message_too(
+    rig_for: RigFactory,
+) -> None:
+    model = gated(recall_call("c1"), recall_call("c2"), "on it", "both done")
+    rig = await rig_for(model)
+    # m2 lands after the first tool call committed the attempt, so it joins rather than restarts.
+    _during(model, 1, lambda: rig.send("m2", "and a hotel"))
+    _during(model, 2, lambda: rig.start_work("t1"))
+    await rig.send("m1", "find me flights")
+    await rig.settle()
+    await record_work_finished(
+        rig.conversation_id, rig.user_id, "t1", WorkOutcome.DONE, WorkReport("booked both")
+    )
+    await rig.settle()
+    write_up = (await rig.of(ReplySettled))[-1]
+    [m2_seq] = [e.seq for e in await rig.entries() if e.entry.id == "m2"]
+    assert len(rig.turns) == 2
+    assert [(w.task_id, w.cause_through, w.answers) for w in await rig.of(WorkStarted)] == [
+        ("t1", m2_seq, ("m1", "m2"))
+    ]
+    assert {"m1", "m2"} <= set(write_up.answers)
+    # m2 is answered too, so nothing unanswered sits between the write-up and what it answers.
+    assert write_up.quote_target is None
+
+
+@pytest.mark.service
 async def test_stop_mid_work_cancels_that_work_and_wakes_nothing(
     rig_for: RigFactory,
 ) -> None:
@@ -435,6 +488,51 @@ async def test_stop_mid_work_cancels_that_work_and_wakes_nothing(
 
 
 @pytest.mark.service
+async def test_a_stop_cancels_only_the_work_before_it_and_reports_what_it_cancelled(
+    rig_for: RigFactory, real_redis: Redis
+) -> None:
+    model = gated("on it")
+    rig = await rig_for(model)
+    lock = f"{EXECUTOR_BUSY_PREFIX}{rig.conversation_id}"
+    _during(model, 0, lambda: rig.start_work("t1"))
+    await rig.send("m1", "find me flights")
+    await rig.settle()
+    await real_redis.set(lock, "stream-1:t1")
+    await record_approval_requested(
+        rig.conversation_id, rig.user_id, "t1", "a1", summary="Book it", expires_at=None
+    )
+    cancel_work = rig.effects.cancel_work
+    asked: list[CancelWork] = []
+
+    async def then_new_work_starts(
+        conversation_id: str, user_id: str, cancel: CancelWork
+    ) -> WorkCancelled:
+        asked.append(cancel)
+        cancelled = await cancel_work(conversation_id, user_id, cancel)
+        # Work the user asks for right after the Stop starts and takes the executor.
+        assert await record_work_carried(rig.conversation_id, rig.user_id, "t2")
+        await real_redis.set(lock, "stream-2:t2")
+        return cancelled
+
+    captured: list[ServerEvent] = []
+
+    def record(_user: object, event: ServerEvent, *_args: object, **_kwargs: object) -> None:
+        captured.append(event)
+
+    with (
+        patch.object(rig.effects, "cancel_work", side_effect=then_new_work_starts),
+        patch.object(conversation_stop_service, "capture", side_effect=record),
+    ):
+        stopped = await press_stop(rig.conversation_id, rig.user_id, None)
+    state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+    assert asked == [CancelWork(task_ids=("t1",), approval_ids=("a1",))]
+    assert (stopped.work.executor_stopped, stopped.work.executor_task_id) == (True, "t1")
+    assert await real_redis.get(lock) == "stream-2:t2"
+    assert [work.task_id for work in state.work] == ["t2"]
+    assert [(e.executor_stopped, e.pending_tasks, e.approvals) for e in captured] == [(True, 0, 0)]
+
+
+@pytest.mark.service
 async def test_work_started_after_a_stop_in_its_own_attempt_is_refused(
     rig_for: RigFactory,
 ) -> None:
@@ -446,9 +544,17 @@ async def test_work_started_after_a_stop_in_its_own_attempt_is_refused(
         await record_user_stop(rig.conversation_id, rig.user_id, "s1")
         started.append(await rig.start_work("t2"))
 
-    _during(model, 0, stop_then_dispatch)
+    dispatching: list[asyncio.Future[None]] = []
+
+    async def a_tool_call_the_stop_lands_on() -> None:
+        # The Stop cancels the run; the tool call already under way still reaches its dispatch.
+        dispatching.append(asyncio.ensure_future(stop_then_dispatch()))
+        await asyncio.shield(dispatching[0])
+
+    _during(model, 0, a_tool_call_the_stop_lands_on)
     await rig.send("m1", "send the report")
     await rig.settle()
+    await asyncio.gather(*dispatching)
     state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
     assert started == [False]
     assert state.work == ()
@@ -591,6 +697,70 @@ async def test_connecting_an_integration_continues_the_work_waiting_on_it(
     assert [reply.text for reply in await rig.of(Reply)][-1] == "done, the email is sent"
 
 
+async def _paused_on(rig: Rig, model: GatedModel, expires_at: datetime | None) -> None:
+    """Start t1 in a chat turn and pause it on approval a1, as the gate logs it."""
+    _during(model, 0, lambda: rig.start_work("t1"))
+    await rig.send("m1", "send the invoice")
+    await rig.settle()
+    await record_approval_requested(
+        rig.conversation_id, rig.user_id, "t1", "a1", summary="Send it", expires_at=expires_at
+    )
+
+
+async def _settled_by_sweeps(rig: Rig) -> tuple[list[ApprovalDecided], list[WorkFinished]]:
+    """Sweep twice and let the step answer: what the log then holds for a1 and t1."""
+    for _ in range(2):
+        await sweep_conversations()
+        await rig.settle()
+    return await rig.of(ApprovalDecided), await rig.of(WorkFinished)
+
+
+@pytest.mark.service
+async def test_work_waiting_on_an_approval_no_store_holds_is_settled_once(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("on it", "I could not send it")
+    rig = await rig_for(model)
+    await _paused_on(rig, model, expires_at=None)
+
+    decided, finished = await _settled_by_sweeps(rig)
+
+    state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+    assert [(d.approval_id, d.decision) for d in decided] == [("a1", "abandon")]
+    assert [(f.task_id, f.outcome) for f in finished] == [("t1", WorkOutcome.FAILED)]
+    assert state.work == ()
+    assert state.display is DisplayState.IDLE
+    # The step tells the user in the task's own reply.
+    assert "t1" in [reply.reply_id for reply in await rig.of(Reply)]
+
+
+@pytest.mark.service
+async def test_work_waiting_on_an_expired_approval_is_settled_once_and_its_record_closed(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("on it", "the approval expired")
+    rig = await rig_for(model)
+    expired = datetime.now(UTC) - timedelta(hours=1)
+    await hil_approval_repository.create_if_absent(
+        HILApprovalRecord(
+            approval_id="a1",
+            user_id=rig.user_id,
+            conversation_id=rig.conversation_id,
+            stream_id="stream-1",
+            tool_name="send_email",
+            expires_at=expired,
+        )
+    )
+    await _paused_on(rig, model, expires_at=expired)
+
+    decided, finished = await _settled_by_sweeps(rig)
+
+    record = await hil_approval_repository.get("a1")
+    assert [(d.approval_id, d.decision) for d in decided] == [("a1", "timeout")]
+    assert [(f.task_id, f.outcome) for f in finished] == [("t1", WorkOutcome.FAILED)]
+    assert record is not None and record.status is not HILApprovalStatus.PENDING
+
+
 @pytest.mark.service
 async def test_an_approval_holds_the_work_until_the_user_decides(
     rig_for: RigFactory,
@@ -626,7 +796,7 @@ async def _legacy_turn(rig: Rig, said: str) -> None:
 
 
 @pytest.mark.service
-async def test_a_conversation_from_before_the_step_continues_on_it_with_its_history(
+async def test_a_conversation_continues_on_the_step_with_its_logged_history(
     rig_for: RigFactory,
 ) -> None:
     model = gated("Paris is lovely in May", "May 12 to 19 then")
@@ -650,9 +820,12 @@ async def test_a_conversation_from_before_the_step_continues_on_it_with_its_hist
         )
     await rig.settle()
     shown = model.prompts[1]
-    assert accepted.seq == 3
-    assert [reply.text for reply in await rig.of(Reply)] == ["May 12 to 19 then"]
-    assert await rig.answered() == [(ReplyOutcome.ANSWERED, ("m1",))]
+    assert accepted.seq == 4
+    assert [reply.text for reply in await rig.of(Reply)] == [
+        "Paris is lovely in May",
+        "May 12 to 19 then",
+    ]
+    assert (await rig.answered())[-1] == (ReplyOutcome.ANSWERED, ("m1",))
     assert humans(shown).count("when should I visit Paris?") == 1
     assert [str(m.content) for m in shown if isinstance(m, AIMessage)] == ["Paris is lovely in May"]
     assert humans(shown).count("book a week then") == 1
@@ -1130,6 +1303,8 @@ async def test_a_todo_wake_gets_one_write_up_in_its_chat_and_that_write_up_is_wh
     )
     assert delivery.finished.await_args.args[2] == "run_acme"
     assert "result sent on telegram" in delivery.finished.await_args.args[3]
+    # The todo's chat is reached from the todo: its write-up leaves no unread dot.
+    assert await _unread(rig) is False
 
 
 @pytest.mark.service
@@ -1153,13 +1328,11 @@ async def test_a_todo_run_that_found_nothing_for_the_user_settles_silent_and_sen
 
 
 @pytest.mark.service
+@pytest.mark.usefixtures("tool_registry")
 async def test_a_playbook_replay_reads_back_from_its_conversations_log_with_its_cards(
     rig_for: RigFactory,
 ) -> None:
     rig = await rig_for(gated())
-    # Cards resolve their categories through the real tool registry.
-    if not providers.is_initialized("tool_registry"):
-        init_tool_registry()
     now = datetime.now(UTC)
     playbook = PlaybookDocument(
         playbook_id="pb-1",
@@ -1490,7 +1663,7 @@ async def _unread(rig: Rig) -> bool | None:
 
 
 @pytest.mark.service
-async def test_a_delivered_reminder_is_one_notice_with_its_cards_and_no_legacy_message(
+async def test_a_delivered_reminder_is_one_notice_shown_once_with_its_cards(
     rig_for: RigFactory,
 ) -> None:
     rig = await rig_for(gated())
@@ -1507,7 +1680,9 @@ async def test_a_delivered_reminder_is_one_notice_with_its_cards_and_no_legacy_m
     stored = await conversation_repository.get(rig.conversation_id, user_id=rig.user_id)
     assert (notice.text, notice.tool_data) == ("time to stretch", (card,))
     assert stored is not None
-    assert [m.response for m in stored.messages if m.response == "time to stretch"] == []
+    assert [(m.type, m.response, m.tool_data) for m in stored.messages] == [
+        ("bot", "time to stretch", [card])
+    ]
     to_platform.assert_not_awaited()
     assert await _unread(rig) is True
 
@@ -1795,6 +1970,135 @@ async def test_every_comms_run_carries_the_identity_the_approval_gate_needs(
     assert configurable.get("stream_id")
     assert configurable.get("user_id") == rig.user_id
     assert configurable.get("conversation_id") == rig.conversation_id
+
+
+@dataclass
+class _Runs:
+    """The executor runs a path started, by the configurable each was handed."""
+
+    configurables: list[AgentConfigurable] = field(default_factory=list)
+
+    async def run(
+        self,
+        run: ExecutorRun,
+        task: str,
+        configurable: AgentConfigurable,
+        resume: object = None,
+    ) -> None:
+        self.configurables.append(configurable)
+
+    def spawn(self, prepared: PreparedQueuedTask, conversation_id: str) -> None:
+        self.configurables.append(prepared.configurable)
+
+
+async def _executor_gate_context(configurable: AgentConfigurable) -> GateContext | None:
+    """Return what the approval gate reads inside the executor run built from configurable."""
+    ctx, error = await prepare_executor_execution(
+        task="carry on", configurable=configurable, stream_id=configurable.get("stream_id")
+    )
+    assert ctx is not None, error
+    return read_gate_context(make_request(configurable=dict(agent_configurable(ctx.config))))
+
+
+async def _ticket(rig: Rig) -> None:
+    await deliver_to_executor(
+        rig.conversation_id, AuthenticatedUser(user_id=rig.user_id), "APPROVAL_READY a1"
+    )
+
+
+async def _subagent_landing(rig: Rig) -> None:
+    await deliver_to_executor(
+        rig.conversation_id,
+        AuthenticatedUser(user_id=rig.user_id),
+        "the subagent found 3 flights",
+        tag=AgentTag.SUBAGENT_RESULT,
+    )
+
+
+async def _browser_wake(rig: Rig) -> None:
+    await ExecutorInbox(rig.conversation_id).append("job-1", "the browser task finished")
+    await wake_executor_for_inbox(rig.conversation_id, AuthenticatedUser(user_id=rig.user_id))
+
+
+@pytest.mark.service
+@pytest.mark.parametrize(
+    "start",
+    [_ticket, _subagent_landing, _browser_wake],
+    ids=["approved_ticket", "subagent_landing", "browser_wake"],
+)
+async def test_every_post_turn_run_carries_the_identity_the_approval_gate_needs(
+    rig_for: RigFactory, start: Callable[[Rig], Awaitable[None]]
+) -> None:
+    rig = await rig_for(gated("ok"))
+    await rig.send("m1", "find me flights")
+    await rig.settle()
+    runs = _Runs()
+    with patch.object(executor_runner, "_spawn_detached_run", runs.spawn):
+        await start(rig)
+    [configurable] = runs.configurables
+    context = await _executor_gate_context(configurable)
+    assert context is not None
+    assert (context.user_id, context.conversation_id) == (rig.user_id, rig.conversation_id)
+    assert context.stream_id
+
+
+@pytest.mark.service
+async def test_a_todo_run_carries_the_identity_the_approval_gate_needs(
+    rig_for: RigFactory,
+) -> None:
+    runs = _Runs()
+    todo = _todo_doc("owner")
+    async with _todo_rig(rig_for, gated("ok"), todo, runs.run) as (rig, _delivery):
+        await run_todo_on_executor(_todo_request(rig, todo))
+    [configurable] = runs.configurables
+    context = await _executor_gate_context(configurable)
+    assert context is not None
+    assert (context.user_id, context.conversation_id) == (rig.user_id, rig.conversation_id)
+    assert context.stream_id
+
+
+@pytest.mark.service
+async def test_a_resumed_run_carries_the_identity_the_approval_gate_needs(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated("ok"))
+    await rig.send("m1", "send the invoice")
+    await rig.settle()
+    paused = _Runs()
+    with patch.object(executor_runner, "_spawn_detached_run", paused.spawn):
+        await _ticket(rig)
+    [paused_with] = paused.configurables
+    record = HILApprovalRecord(
+        approval_id="a1",
+        user_id=rig.user_id,
+        conversation_id=rig.conversation_id,
+        stream_id=paused_with["stream_id"],
+        tool_name="send_email",
+        status=HILApprovalStatus.APPROVED,
+        expires_at=datetime.now(UTC) + timedelta(minutes=15),
+        resume_item=dict(
+            build_run_item(
+                task="send the invoice",
+                configurable=paused_with,
+                identity=RunIdentity(
+                    stream_id=paused_with["stream_id"],
+                    conversation_id=rig.conversation_id,
+                    kind=RunKind.QUEUED,
+                    task_id="t-paused",
+                    user_message_id=None,
+                ),
+            )
+        ),
+    )
+    resumed = _Runs()
+    with patch.object(resolution, "run_executor_background", resumed.run):
+        await resolution._dispatch_resume(record)
+        await asyncio.gather(*resolution._resume_tasks)
+    [configurable] = resumed.configurables
+    context = await _executor_gate_context(configurable)
+    assert context is not None
+    assert (context.user_id, context.conversation_id) == (rig.user_id, rig.conversation_id)
+    assert context.stream_id
 
 
 async def _read_all(conversation_id: str) -> list[StreamedFrame]:

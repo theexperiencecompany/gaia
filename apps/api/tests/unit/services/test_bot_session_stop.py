@@ -9,8 +9,8 @@ from app.constants.chat import ConversationSource
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.models.bot_models import BotSessionDocument
 from app.models.user_models import AuthenticatedUser
-from app.models.work_cancel_models import WorkCancelled
-from app.services import conversation_stop_service
+from app.models.work_cancel_models import ConversationStopResponse, WorkCancelled
+from app.services import bot_session_stop, conversation_stop_service
 from app.services.bot_service import BotService
 from app.services.bot_session_stop import reset_bot_session, stop_bot_session
 from app.services.browser.job_stop import RequesterChat
@@ -41,9 +41,14 @@ class _Sessions:
 
 @pytest.fixture
 def cancelled(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-    """Stand in for cancel_all_work, which test_work_cancel covers."""
-    mock = AsyncMock(return_value=WorkCancelled())
-    monkeypatch.setattr(conversation_stop_service, "cancel_all_work", mock)
+    """Stand in for the stop itself, which test_conversation_stop_service covers."""
+    mock = AsyncMock(
+        side_effect=lambda conversation_id, *_: ConversationStopResponse(
+            conversation_id=conversation_id, work=WorkCancelled()
+        )
+    )
+    monkeypatch.setattr(conversation_stop_service, "stop_conversation", mock)
+    monkeypatch.setattr(bot_session_stop, "stop_conversation", mock)
     return mock
 
 

@@ -32,7 +32,7 @@ from app.agents.core.background.session import (
     RunKind,
     mark_executor_spawned,
 )
-from app.agents.core.background.work_cancel import cancel_all_work, cancel_named_work
+from app.agents.core.background.work_cancel import cancel_named_work, stop_unlogged_work
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.constants.agents import TimeHorizon
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
@@ -46,7 +46,11 @@ from app.models.ownership_models import ExecutorIntent
 from app.models.work_cancel_models import WorkCancelled
 from app.services.browser.chat_task import stop_report
 from app.services.browser.job_stop import requester_chat
-from app.services.conversation.work_log import record_gaia_stop, record_work_started
+from app.services.conversation.work_log import (
+    approvals_awaited_by,
+    record_gaia_stop,
+    record_work_started,
+)
 from app.services.workflow.execution_service import get_last_run_brief
 from app.services.workflow.playbook.check import playbook_check_brief
 from app.utils.background_tasks import spawn_background_task
@@ -409,14 +413,19 @@ async def cancel_executor(
     try:
         if task_ids:
             # A targeted cancel names executor tasks and leaves the browser run going.
-            work = await cancel_named_work(conversation_id, user_id, task_ids, redirect=message)
+            approvals = await approvals_awaited_by(conversation_id, user_id, task_ids)
+            work = await cancel_named_work(
+                conversation_id, user_id, task_ids, approval_ids=approvals, redirect=message
+            )
         else:
             requester = requester_chat(
                 user_id, ConversationSource.coerce(configurable.get("conversation_source"))
             )
-            work = await cancel_all_work(conversation_id, user_id, requester, redirect=message)
-            if (step := configurable.get("conversation_step")) is not None:
-                await record_gaia_stop(step, conversation_id, user_id, uuid4().hex)
+            step = configurable["conversation_step"]
+            logged = await record_gaia_stop(step, conversation_id, user_id, uuid4().hex)
+            work = logged.combined_with(await stop_unlogged_work(conversation_id, requester))
+            if message:
+                await ExecutorInbox(conversation_id).append(str(uuid4()), message)
     except Exception as e:
         # Deliberately no lock cleanup here: unconditional deletion previously
         # let two executors run concurrently on one conversation. TTL recovers it.
@@ -429,7 +438,6 @@ def _cancel_report(work: WorkCancelled, *, targeted: bool) -> str:
     """Say what a cancel stopped, the way the comms model reads it."""
     cancelled = [
         *([work.executor_task_id or "running"] if work.executor_stopped else []),
-        *([f"{work.pending_tasks} pending task(s)"] if work.pending_tasks else []),
         *work.pending_task_ids,
         *([f"{len(work.subagent_ids)} running subagent(s)"] if work.subagent_ids else []),
         *([f"{len(work.approval_ids)} pending approval(s)"] if work.approval_ids else []),

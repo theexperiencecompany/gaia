@@ -1,6 +1,6 @@
 """Background work as conversation log entries: started (fenced on the step's claim), approvals, finished."""
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -21,11 +21,16 @@ from app.models.conversation_log_models import (
     WorkStarted,
 )
 from app.models.tool_data_models import ToolDataEntry
+from app.models.work_cancel_models import WorkCancelled
 from app.services.conversation.log import accept, publish_appended
 from app.services.conversation.ports import ClaimLost, EntryRejected
 from app.services.conversation.reply_analytics import capture_unanswered_stop, stopped_waking
 from app.services.conversation.runtime import runtime_ports
 from shared.py.wide_events import log
+
+
+class WorkNotCancelled(Exception):
+    """A Stop was logged but the work it covers could not be cancelled."""
 
 
 async def record_work_started(
@@ -135,6 +140,19 @@ async def approval_is_logged(conversation_id: str, user_id: str, approval_id: st
     return any(approval_id in work.pending_approvals for work in state.work)
 
 
+async def approvals_awaited_by(
+    conversation_id: str, user_id: str, task_ids: Collection[str]
+) -> list[str]:
+    """Return the approvals the conversation's live work with these task ids waits on."""
+    state = await runtime_ports().log.state(conversation_id, user_id)
+    return sorted(
+        approval
+        for work in state.work
+        if work.task_id in task_ids
+        for approval in work.pending_approvals
+    )
+
+
 async def record_approval_decided(
     conversation_id: str, user_id: str, approval_id: str, decision: ApprovalResolution
 ) -> None:
@@ -146,22 +164,31 @@ async def record_approval_decided(
 
 
 async def record_work_carried(
-    conversation_id: str, user_id: str, task_id: str, cause: LoggedEntry | None = None
+    conversation_id: str,
+    user_id: str,
+    task_id: str,
+    cause: LoggedEntry | None = None,
+    *,
+    detached: bool = False,
 ) -> bool:
     """Append WorkStarted for work started outside a step, answering cause, else caused by everything logged so far.
 
-    False when a Stop since refuses it, so nothing dispatches; the step narrates its WorkFinished.
+    False when a Stop since refuses it, so nothing dispatches; the step narrates its WorkFinished
+    unless the work is detached (a background subagent, a browser job), whose result lands elsewhere.
     """
     ports = runtime_ports()
     if cause is None:
         state = await ports.log.state(conversation_id, user_id)
-        entry = WorkStarted(id=f"work:{task_id}", task_id=task_id, cause_through=state.head)
+        entry = WorkStarted(
+            id=f"work:{task_id}", task_id=task_id, cause_through=state.head, detached=detached
+        )
     else:
         entry = WorkStarted(
             id=f"work:{task_id}",
             task_id=task_id,
             cause_through=cause.seq,
             answers=(cause.entry.id,),
+            detached=detached,
         )
     try:
         await accept(ports, conversation_id, user_id, entry)
@@ -178,8 +205,8 @@ async def record_work_carried(
 
 async def record_gaia_stop(
     step: StepTurnRef, conversation_id: str, user_id: str, stop_id: str
-) -> None:
-    """Log the comms model's own stop: it covers everything before the inputs it is answering."""
+) -> WorkCancelled:
+    """Log the comms model's own stop: it covers everything before the inputs it is answering; return what it cancelled."""
     ports = runtime_ports()
     claim = StepClaim(conversation_id=conversation_id, user_id=user_id, epoch=step["epoch"])
     entry = StopRequested(
@@ -187,12 +214,17 @@ async def record_gaia_stop(
     )
     appended = await ports.log.append_fenced(claim, entry)
     await publish_appended(ports.frames, conversation_id, appended)
-    for task_ids in (e.task_ids for e in appended.effects if isinstance(e, CancelWork)):
-        await ports.effects.cancel_work(conversation_id, user_id, task_ids)
+    cancelled = WorkCancelled()
+    for cancel in (e for e in appended.effects if isinstance(e, CancelWork)):
+        cancelled = await ports.effects.cancel_work(conversation_id, user_id, cancel)
+    return cancelled
 
 
-async def record_user_stop(conversation_id: str, user_id: str, stop_id: str) -> None:
-    """Log the user's Stop; its effects preempt the step and cancel the work it covers."""
+async def record_user_stop(conversation_id: str, user_id: str, stop_id: str) -> WorkCancelled:
+    """Log the user's Stop; its effects preempt the step and cancel the work it covers, which this returns.
+
+    Raises WorkNotCancelled when the cancel failed: once logged, nothing else stops that work.
+    """
     ports = runtime_ports()
     accepted = await accept(
         ports, conversation_id, user_id, StopRequested(id=f"stop:{stop_id}", by=StopBy.USER)
@@ -200,3 +232,6 @@ async def record_user_stop(conversation_id: str, user_id: str, stop_id: str) -> 
     if stopped := stopped_waking(accepted.appended):
         logged = await ports.log.read_after(conversation_id, user_id, min(stopped) - 1)
         capture_unanswered_stop(user_id, conversation_id, accepted.appended, logged)
+    if any(isinstance(effect, CancelWork) for effect in accepted.failed_effects):
+        raise WorkNotCancelled(conversation_id)
+    return accepted.cancelled

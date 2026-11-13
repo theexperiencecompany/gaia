@@ -10,6 +10,7 @@ from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource, Sou
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
+    SelectedCalendarEventData,
     SelectedWorkflowData,
 )
 from app.models.todo_wake_models import TodoRunWake
@@ -34,7 +35,6 @@ __all__ = [
     "SystemPurpose",
     "ToolDataEntry",
     "UpdateDescriptionRequest",
-    "UpdateMessagesRequest",
 ]
 
 
@@ -128,6 +128,7 @@ class MessageModel(BaseModel):
     selectedTool: str | None = None
     toolCategory: str | None = None
     selectedWorkflow: SelectedWorkflowData | None = None
+    selectedCalendarEvent: SelectedCalendarEventData | None = None
     # What woke a tracked todo's run, on the user's side of the todo's chat.
     todo_run_wake: TodoRunWake | None = None
     tool_data: list[ToolDataEntry] | None = None
@@ -178,13 +179,6 @@ class ConversationModel(BaseModel):
     is_unread: bool | None = False
     source: ConversationSource | None = None
     is_onboarding_demo: bool = False
-
-
-class UpdateMessagesRequest(BaseModel):
-    """Request to replace the messages of a conversation."""
-
-    conversation_id: str
-    messages: list[MessageModel]
 
 
 class StarredUpdate(BaseModel):

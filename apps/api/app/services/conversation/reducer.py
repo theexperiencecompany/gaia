@@ -44,14 +44,21 @@ def reduce(state: ConversationState, logged: LoggedEntry) -> Transition | Reject
 def _apply(state: ConversationState, seq: int, entry: Entry) -> Transition | Rejected:
     result: Transition | Rejected
     match entry:
+        case (
+            TodoWoke()
+            | Notice()
+            | IntegrationNeeded()
+            | UserMessage(first_contact=True)
+            | UserMessage(imported=True)
+            | Reply(imported=True)
+        ):
+            result = Transition(state=state, effects=())
         case UserMessage() | WorkflowFired() | IntegrationConnected():
             result = _wake_input(state, seq, entry)
         case BargeIn(reply_id=reply_id):
             result = Transition(state=state, effects=_barge_effects(state, reply_id))
         case StopRequested():
             result = _stop(state, seq, entry)
-        case TodoWoke() | Notice() | IntegrationNeeded():
-            result = Transition(state=state, effects=())
         case WorkStarted():
             result = _start_work(state, seq, entry)
         case ApprovalRequested():
@@ -108,19 +115,18 @@ def _stop(state: ConversationState, seq: int, entry: StopRequested) -> Transitio
     covers = seq - 1 if entry.covers_through is None else entry.covers_through
     if covers >= seq:
         return Rejected(reason=RejectReason.STOP_COVERS_FUTURE)
-    cancelled = tuple(
-        task_id
-        for item in state.work
-        if item.cause_through <= covers
-        for task_id in (item.task_id, *item.joined)
-    )
+    covered = [item for item in state.work if item.cause_through <= covers]
+    cancelled = tuple(task_id for item in covered for task_id in (item.task_id, *item.joined))
+    approvals = tuple(sorted(approval for item in covered for approval in item.pending_approvals))
     stopped = _drop_waking_through(state, covers).model_copy(
         update={
             "stopped_through": max(state.stopped_through, covers),
             "work": tuple(item for item in state.work if item.cause_through > covers),
         }
     )
-    cancel: tuple[Effect, ...] = (CancelWork(task_ids=cancelled),) if cancelled else ()
+    cancel: tuple[Effect, ...] = (
+        (CancelWork(task_ids=cancelled, approval_ids=approvals),) if cancelled else ()
+    )
     return Transition(state=stopped, effects=(Preempt(stop_through=covers), *cancel))
 
 
@@ -138,6 +144,7 @@ def _start_work(state: ConversationState, seq: int, entry: WorkStarted) -> Trans
         cause_through=entry.cause_through,
         answers=entry.answers,
         pending_approvals=frozenset(),
+        detached=entry.detached,
     )
     return Transition(state=state.model_copy(update={"work": (*state.work, work)}), effects=())
 
@@ -179,7 +186,7 @@ def _finish_work(state: ConversationState, seq: int, entry: WorkFinished) -> Tra
     remaining = state.model_copy(
         update={"work": tuple(item for item in state.work if item.task_id != entry.task_id)}
     )
-    if entry.outcome is WorkOutcome.CANCELLED:
+    if entry.outcome is WorkOutcome.CANCELLED or live.detached:
         return Transition(state=remaining, effects=())
     result = FinishedWork(
         seq=seq, task_id=entry.task_id, cause_through=live.cause_through, answers=live.answers
@@ -196,6 +203,8 @@ def _open_reply(state: ConversationState, entry: Reply) -> Transition | Rejected
 
 
 def _settle_reply(state: ConversationState, seq: int, entry: ReplySettled) -> Transition | Rejected:
+    if entry.imported:
+        return _settle_imported(state, seq, entry)
     if entry.reply_id != state.open_reply:
         return Rejected(reason=RejectReason.REPLY_NOT_OPEN)
     if entry.through >= seq:
@@ -205,6 +214,19 @@ def _settle_reply(state: ConversationState, seq: int, entry: ReplySettled) -> Tr
         update={"comms": CommsPhase.IDLE, "open_reply": None, "settled_through": settled}
     )
     return Transition(state=finished, effects=())
+
+
+def _settle_imported(
+    state: ConversationState, seq: int, entry: ReplySettled
+) -> Transition | Rejected:
+    """Settle imported history: its reply never opened, so only the settled watermark moves."""
+    if entry.through >= seq:
+        return Rejected(reason=RejectReason.REPLY_ANSWERS_FUTURE)
+    settled = max(state.settled_through, entry.through)
+    return Transition(
+        state=_drop_waking_through(state, settled).model_copy(update={"settled_through": settled}),
+        effects=(),
+    )
 
 
 def _drop_waking_through(state: ConversationState, seq: int) -> ConversationState:

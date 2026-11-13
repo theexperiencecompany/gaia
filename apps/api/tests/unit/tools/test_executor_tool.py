@@ -6,7 +6,7 @@ real; the only mocked boundaries are the executor graph itself
 """
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
 from datetime import UTC, datetime
 import json
 import time
@@ -25,6 +25,7 @@ from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import release_lock_if_owned, try_acquire_lock
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.session import get_session, teardown_session
+from app.agents.core.background.work_cancel import cancel_named_work
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.agents.tools import executor_tool
 from app.agents.tools.executor_tool import call_executor, cancel_executor, tools
@@ -48,9 +49,12 @@ from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import AsyncRedisCommands, redis_cache
 from app.db.repositories.playbooks import playbook_repository
+from app.models.agent_config import StepTurnRef
 from app.models.agent_models import InboxEntry, RunningSubagent
+from app.models.conversation_log_models import CancelWork
 from app.models.ownership_models import ExecutorIntent
 from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, ToolStep
+from app.models.work_cancel_models import WorkCancelled
 from app.schemas.browser import BrowserResultSnapshot
 from app.schemas.browser_job import BrowserJobFinished, BrowserJobState, BrowserJobStatus
 from app.services.browser import job_stop
@@ -62,8 +66,18 @@ from app.services.browser.jobs import (
     record_ending,
     set_latest_job,
 )
+from app.services.conversation import runtime
+from app.services.conversation.log import accept
+from app.services.conversation.runtime import runtime_ports
+from app.services.conversation.work_log import (
+    record_approval_requested,
+    record_work_carried,
+    record_work_started,
+)
 from app.utils import background_tasks
 from tests.browser_factories import make_browser_job_state
+from tests.unit.services.conversation.log_helpers import user
+from tests.unit.services.conversation.runtime_doubles import RecordingEffects, Runtime
 from tests.work_cancel_fakes import (
     BROWSER_JOB,
     EXECUTOR_STREAM,
@@ -140,6 +154,61 @@ def config_for(stream_id: str | None = "stream-1", **overrides: Any) -> Runnable
         configurable["stream_id"] = stream_id
     configurable.update(overrides)
     return {"configurable": configurable}
+
+
+class _CancellingEffects(RecordingEffects):
+    """The recording effects, cancelling for real what a logged Stop's CancelWork names."""
+
+    async def cancel_work(
+        self, conversation_id: str, user_id: str, cancel: CancelWork
+    ) -> WorkCancelled:
+        await super().cancel_work(conversation_id, user_id, cancel)
+        return await cancel_named_work(
+            conversation_id, user_id, cancel.task_ids, approval_ids=cancel.approval_ids
+        )
+
+
+@pytest.fixture(autouse=True)
+def conversation_runtime(monkeypatch: pytest.MonkeyPatch) -> Runtime:
+    """Install the conversation runtime over an in-memory log; a cancel's Stop is logged on it."""
+    rt = Runtime(effects=_CancellingEffects())
+    monkeypatch.setattr(runtime._Installed, "ports", rt.ports)
+    return rt
+
+
+async def stopping(
+    *joined: str,
+    running: str = "running-task",
+    approvals: Sequence[str] = (),
+    user_id: str = "user-1",
+    **overrides: Any,
+) -> RunnableConfig:
+    """Return the config of an attempt answering a new message while running works, as the step runs it.
+
+    joined are tasks handed to running; approvals are what it waits on.
+    """
+    ports = runtime_ports()
+    await accept(ports, CONVERSATION_ID, user_id, user("m1"))
+    assert await record_work_carried(CONVERSATION_ID, user_id, running)
+    for approval_id in approvals:
+        await record_approval_requested(
+            CONVERSATION_ID, user_id, running, approval_id, summary="", expires_at=None
+        )
+    asked = await accept(ports, CONVERSATION_ID, user_id, user("m2"))
+    claim = await ports.log.claim(CONVERSATION_ID, user_id)
+    assert claim is not None
+    seq = asked.appended.logged.seq
+    step: StepTurnRef = {
+        "epoch": claim.epoch,
+        "batch_start": seq,
+        "cause_through": seq,
+        "answers": ["m2"],
+    }
+    for task_id in joined:
+        assert await record_work_started(
+            step, CONVERSATION_ID, user_id, task_id, joins="running-task"
+        )
+    return config_for(conversation_step=step, **overrides)
 
 
 def task_id_from(response: str) -> str:
@@ -599,7 +668,7 @@ class TestRedirectAcquire:
     ) -> None:
         """The headline case: the tool node runs both tool calls concurrently."""
         await fake_redis.set(LOCK_KEY, "old-stream:old-task", ex=EXECUTOR_BUSY_TTL)
-        config = config_for("new-stream")
+        config = await stopping(running="old-task", stream_id="new-stream")
 
         cancel_response, call_response = await asyncio.gather(
             run_cancel_executor(config=config, task_ids=[]),
@@ -700,7 +769,7 @@ class TestCancelExecutorStopsTheBrowser:
         await _a_running_browser_job()
         await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
 
-        response = await run_cancel_executor(config=config_for(), task_ids=[])
+        response = await run_cancel_executor(config=await stopping(), task_ids=[])
 
         assert await job_cancel_requested("job-1") is True
         assert response.endswith("Stopped the browser task.")
@@ -712,7 +781,7 @@ class TestCancelExecutorStopsTheBrowser:
         # to cancel — the job itself is the only thing that still stops the browser.
         await _a_running_browser_job()
 
-        response = await run_cancel_executor(config=config_for(), task_ids=[])
+        response = await run_cancel_executor(config=await stopping(), task_ids=[])
 
         assert response == "Stopped the browser task."
 
@@ -733,7 +802,7 @@ class TestCancelExecutorStopsTheBrowser:
         )
 
         response = await run_cancel_executor(
-            config=config_for(conversation_source="telegram"), task_ids=[]
+            config=await stopping(conversation_source="telegram"), task_ids=[]
         )
 
         assert response == "Stopped the browser task."
@@ -761,7 +830,7 @@ class TestCancelExecutorStopsTheBrowser:
 
         monkeypatch.setattr(job_stop, "running_chat_jobs", _the_run_ends_as_the_stop_finds_it)
 
-        response = await run_cancel_executor(config=config_for(), task_ids=[])
+        response = await run_cancel_executor(config=await stopping(), task_ids=[])
 
         assert response == (
             "The browser task had already finished before the stop reached it; its result stands."
@@ -786,7 +855,7 @@ class TestCancelExecutorStopsTheBrowser:
     async def test_a_stop_with_nothing_running_anywhere_still_reports_nothing(
         self, fake_redis: AsyncRedisCommands
     ) -> None:
-        response = await run_cancel_executor(config=config_for(), task_ids=[])
+        response = await run_cancel_executor(config=await stopping(), task_ids=[])
 
         assert response == "No executor tasks are running or pending for this conversation."
 
@@ -806,7 +875,7 @@ class TestCancelExecutor:
     async def test_reports_when_nothing_is_running_or_pending(
         self, fake_redis: AsyncRedisCommands
     ) -> None:
-        response = await run_cancel_executor(config=config_for(), task_ids=[])
+        response = await run_cancel_executor(config=await stopping(), task_ids=[])
 
         assert response == "No executor tasks are running or pending for this conversation."
 
@@ -826,9 +895,9 @@ class TestCancelExecutor:
         await inbox().append("q1", "first thing")
         await inbox().append("q2", "second thing")
 
-        response = await run_cancel_executor(config=config_for(), task_ids=[])
+        response = await run_cancel_executor(config=await stopping("q1", "q2"), task_ids=[])
 
-        assert response == "Cancelled: running-task, 2 pending task(s)."
+        assert response == "Cancelled: running-task, q1, q2."
         assert cancelled_streams == ["stream-1"]
         assert await fake_redis.get(LOCK_KEY) is None
         # Everything the user asked for is gone; only the stop notice for the
@@ -900,9 +969,9 @@ class TestCancelExecutor:
     ) -> None:
         await inbox().append("q1", "pending work")
 
-        response = await run_cancel_executor(config=config_for(), task_ids=[])
+        response = await run_cancel_executor(config=await stopping("q1"), task_ids=[])
 
-        assert response == "Cancelled: 1 pending task(s)."
+        assert response == "Cancelled: q1."
 
     async def test_unmatched_task_ids_change_nothing(
         self, fake_redis: AsyncRedisCommands, broadcast: AsyncMock
@@ -929,13 +998,15 @@ class TestCancelExecutor:
         monkeypatch.setattr(StreamManager, "cancel_stream", cancel_stream)
         await fake_redis.set(LOCK_KEY, f"{blank_stream_id}:held-task", ex=EXECUTOR_BUSY_TTL)
 
-        response = await run_cancel_executor(config=config_for(), task_ids=[])
+        response = await run_cancel_executor(
+            config=await stopping(running="held-task"), task_ids=[]
+        )
 
         assert response == "Cancelled: held-task."
         cancel_stream.assert_not_awaited()
         assert await fake_redis.get(LOCK_KEY) is None
 
-    async def test_legacy_lock_value_without_a_task_id(
+    async def test_a_lock_no_logged_task_holds_is_not_the_stops_to_cancel(
         self,
         fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
@@ -944,7 +1015,10 @@ class TestCancelExecutor:
         monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
         await fake_redis.set(LOCK_KEY, "bare-stream-id", ex=EXECUTOR_BUSY_TTL)
 
-        assert await run_cancel_executor(config=config_for(), task_ids=[]) == "Cancelled: running."
+        response = await run_cancel_executor(config=await stopping(), task_ids=[])
+
+        assert response == "No executor tasks are running or pending for this conversation."
+        assert await fake_redis.get(LOCK_KEY) == "bare-stream-id"
 
     async def test_a_failed_cancel_leaves_the_running_task_lock_intact(
         self,
@@ -960,7 +1034,7 @@ class TestCancelExecutor:
         )
         await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
 
-        response = await run_cancel_executor(config=config_for(), task_ids=[])
+        response = await run_cancel_executor(config=await stopping(), task_ids=[])
 
         assert response == "Cancellation attempted but hit an error: redis connection reset"
         assert await fake_redis.get(LOCK_KEY) == "stream-1:running-task"
@@ -969,9 +1043,9 @@ class TestCancelExecutor:
 
 @pytest.mark.usefixtures("no_arq")
 class TestCancelEverythingIsTheConversationStop:
-    """cancel_executor([]) is the same stop as the Stop button: it reaches every kind of work."""
+    """cancel_executor([]) is a logged Stop like the Stop button's, covering what came before the attempt."""
 
-    async def test_stop_everything_cancels_run_inbox_subagents_approvals_and_browser_job(
+    async def test_stop_everything_cancels_run_its_hand_overs_approvals_subagents_and_browser_job(
         self,
         fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
@@ -980,18 +1054,19 @@ class TestCancelEverythingIsTheConversationStop:
     ) -> None:
         await seed_live_work(CONVERSATION_ID)
 
-        response = await run_cancel_executor(config=config_for(), task_ids=[])
+        response = await run_cancel_executor(
+            config=await stopping("queued-task", approvals=["approval-1"]), task_ids=[]
+        )
 
         assert response == (
-            "Cancelled: running-task, 1 pending task(s), 1 running subagent(s). "
-            "Stopped the browser task."
+            "Cancelled: running-task, queued-task, 1 running subagent(s). Stopped the browser task."
         )
         assert await StreamManager.is_cancelled(EXECUTOR_STREAM)
         assert await StreamManager.is_cancelled(SUBAGENT_STREAM)
         assert await fake_redis.get(LOCK_KEY) is None
         assert await job_cancel_requested(BROWSER_JOB)
-        closed_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1")
-        closed_ledger_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1")
+        closed_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1", ("approval-1",))
+        closed_ledger_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1", ("approval-1",))
 
     async def test_the_models_stop_is_not_the_users_and_emits_no_event(
         self,
@@ -1001,7 +1076,7 @@ class TestCancelEverythingIsTheConversationStop:
     ) -> None:
         await seed_live_work(CONVERSATION_ID)
 
-        await run_cancel_executor(config=config_for(), task_ids=[])
+        await run_cancel_executor(config=await stopping(), task_ids=[])
 
         assert posthog_events == []
 
@@ -1014,10 +1089,12 @@ class TestCancelEverythingIsTheConversationStop:
         """A parked approval outlives the busy lock; left open, Approve revives the stopped work."""
         closed_approvals.return_value = ["approval-1"]
 
-        response = await run_cancel_executor(config=config_for(), task_ids=[])
+        response = await run_cancel_executor(
+            config=await stopping(approvals=["approval-1"]), task_ids=[]
+        )
 
         assert response == "Cancelled: 1 pending approval(s)."
-        closed_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1")
+        closed_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1", ("approval-1",))
 
 
 class TestCancelClosesHilApprovals:
@@ -1038,9 +1115,9 @@ class TestCancelClosesHilApprovals:
         monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
         await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
 
-        await run_cancel_executor(config=config_for(), task_ids=[])
+        await run_cancel_executor(config=await stopping(approvals=["approval-1"]), task_ids=[])
 
-        closed_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1")
+        closed_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1", ("approval-1",))
 
     async def test_stopping_the_running_task_closes_ledger_approvals_too(
         self,
@@ -1054,25 +1131,9 @@ class TestCancelClosesHilApprovals:
         monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
         await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
 
-        await run_cancel_executor(config=config_for(), task_ids=[])
+        await run_cancel_executor(config=await stopping(approvals=["ledger-1"]), task_ids=[])
 
-        closed_ledger_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1")
-
-    async def test_a_userless_stop_still_closes_ledger_approvals_for_the_conversation(
-        self,
-        fake_redis: AsyncRedisCommands,
-        broadcast: AsyncMock,
-        closed_ledger_approvals: AsyncMock,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
-        await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
-        config = config_for()
-        del config["configurable"]["user_id"]
-
-        await run_cancel_executor(config=config, task_ids=[])
-
-        closed_ledger_approvals.assert_awaited_once_with(CONVERSATION_ID, "")
+        closed_ledger_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1", ("ledger-1",))
 
     async def test_sparing_the_running_task_leaves_its_approvals_alone(
         self,
@@ -1114,7 +1175,9 @@ class TestCancelClosesHilApprovals:
         closed_approvals.side_effect = RuntimeError("mongo unavailable")
         await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
 
-        response = await run_cancel_executor(config=config_for(), task_ids=[])
+        response = await run_cancel_executor(
+            config=await stopping(approvals=["approval-1"]), task_ids=[]
+        )
 
         assert response == "Cancellation attempted but hit an error: mongo unavailable"
         broadcast.assert_not_awaited()
@@ -1140,7 +1203,7 @@ class TestCancelAnnouncesTheInterruption:
         await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
 
         await run_cancel_executor(
-            config=config_for(), task_ids=[], message="book the 4pm slot instead"
+            config=await stopping(), task_ids=[], message="book the 4pm slot instead"
         )
 
         notice, redirect = await inbox().read()
@@ -1161,7 +1224,7 @@ class TestCancelAnnouncesTheInterruption:
         monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
         await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
 
-        await run_cancel_executor(config=config_for(), task_ids=[])
+        await run_cancel_executor(config=await stopping(), task_ids=[])
 
         entries = await inbox().read()
         assert len(entries) == 1
@@ -1207,7 +1270,7 @@ class TestCancelStopsSubagents:
     ) -> None:
         stream_id = await self._running("s1", dispatched_by="finished-turn")
 
-        response = await run_cancel_executor(config=config_for(), task_ids=[])
+        response = await run_cancel_executor(config=await stopping(), task_ids=[])
 
         assert response == "Cancelled: 1 running subagent(s)."
         assert await StreamManager.is_cancelled(stream_id)
@@ -1223,7 +1286,7 @@ class TestCancelStopsSubagents:
 
         response = await run_cancel_executor(config=config_for(), task_ids=["running-task"])
 
-        assert response == "Cancelled: running-task."
+        assert response == "Cancelled: running-task, 1 running subagent(s)."
         assert await StreamManager.is_cancelled(mine)
         assert not await StreamManager.is_cancelled(theirs)
 
@@ -1248,7 +1311,7 @@ class TestCancelStopsSubagents:
         stream_id = await self._running("s1", dispatched_by="finished-turn")
         await _a_running_browser_job()
 
-        response = await run_cancel_executor(config=config_for(), task_ids=[])
+        response = await run_cancel_executor(config=await stopping(), task_ids=[])
 
         assert response == "Cancelled: 1 running subagent(s). Stopped the browser task."
         assert await StreamManager.is_cancelled(stream_id)
@@ -1300,39 +1363,6 @@ class TestMalformedInboxEntries:
 
 
 # ── cancel broadcast ─────────────────────────────────────────────────
-
-
-class TestCancelBroadcast:
-    async def test_no_user_id_means_no_broadcast_attempt(
-        self,
-        fake_redis: AsyncRedisCommands,
-        broadcast: AsyncMock,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
-        await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
-        config = config_for()
-        del config["configurable"]["user_id"]
-
-        response = await run_cancel_executor(config=config, task_ids=[])
-
-        assert response == "Cancelled: running-task."
-        broadcast.assert_not_awaited()
-
-    async def test_a_broken_websocket_does_not_fail_the_cancellation(
-        self,
-        fake_redis: AsyncRedisCommands,
-        broadcast: AsyncMock,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
-        broadcast.side_effect = RuntimeError("rabbitmq unavailable")
-        await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
-
-        response = await run_cancel_executor(config=config_for(), task_ids=[])
-
-        assert response == "Cancelled: running-task."
-        assert await fake_redis.get(LOCK_KEY) is None
 
 
 # ── module surface ───────────────────────────────────────────────────

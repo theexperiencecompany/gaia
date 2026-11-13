@@ -10,6 +10,7 @@ from app.constants.hil import ApprovalDecision
 from app.models.conversation_frame_models import OutputFrame, StreamPayload
 from app.models.conversation_log_models import (
     Batch,
+    CancelWork,
     CommsPhase,
     ConversationState,
     Effect,
@@ -23,6 +24,7 @@ from app.models.conversation_log_models import (
 )
 from app.models.message_models import MessageDict
 from app.models.tool_data_models import ToolDataEntry
+from app.models.work_cancel_models import WorkCancelled
 from app.services.conversation.reply_files import ReplyFile
 
 
@@ -53,7 +55,7 @@ class ConversationLog(Protocol):
     """One conversation's ordered record, its folded state, and the step's claim on it."""
 
     async def append(self, conversation_id: str, user_id: str, entry: Entry) -> Appended:
-        """Store entry at the next seq; the same id again returns the first result as a duplicate."""
+        """Store entry at the next seq; the same id again returns the stored entry as a duplicate, with the current state and no effects."""
         ...
 
     async def append_fenced(self, claim: StepClaim, entry: Entry) -> Appended:
@@ -199,9 +201,9 @@ class Effects(Protocol):
         ...
 
     async def cancel_work(
-        self, conversation_id: str, user_id: str, task_ids: tuple[str, ...]
-    ) -> None:
-        """Cancel exactly these tasks."""
+        self, conversation_id: str, user_id: str, cancel: CancelWork
+    ) -> WorkCancelled:
+        """Cancel exactly the effect's tasks and close its approvals; return what that came to."""
         ...
 
     async def start_ack(self, conversation_id: str, user_id: str, message_id: str) -> None:

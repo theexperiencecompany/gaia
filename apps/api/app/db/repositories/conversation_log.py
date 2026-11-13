@@ -1,9 +1,7 @@
 """The conversation log's half of the conversation repository: its entries, its fold, and the step's claim.
 
 A log entry is one conversation_entries document, {conversation_id, user_id, seq, at} plus
-the entry's own fields (id and kind among them), committed through the same outbox and seq
-allocator as a message. kind alone tells the two apart: is_log_entry and MESSAGES_ONLY keep
-every message reader to messages, and EntryWindow(log=True) keeps the log to its own kinds.
+the entry's own fields (id and kind among them), committed through the head's outbox.
 The head stores the log's fold (state), its step holder (runner) and the last epoch (runner_epoch).
 """
 
@@ -14,10 +12,12 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from bson import ObjectId
-from pydantic import TypeAdapter
 from pymongo import ReturnDocument
 
-from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
+from app.constants.chat import (
+    CONVERSATION_APPEND_MAX_ATTEMPTS,
+    CONVERSATION_ENTRIES_COLLECTION,
+)
 from app.db.repositories.conversation_entries import (
     LOG_HEAD_FIELD,
     OUTBOX_FIELD,
@@ -27,22 +27,23 @@ from app.db.repositories.conversation_entries import (
     EntryWindow,
     Head,
     at_log_head,
-    committed_at,
+    log_document,
+    logged_of,
     store_errors,
 )
+from app.db.repositories.conversation_history import SYNCED_KINDS
 from app.db.repositories.conversations import ConversationRepository
 from app.models.conversation_log_models import (
     CommsPhase,
     ConversationState,
-    Entry,
     EntryKind,
     LoggedEntry,
+    Reply,
+    UserMessage,
 )
 from app.models.conversation_models import ConversationHead, StoredEntry
+from app.utils.errors import ConversationStoreError
 
-_ENTRY: TypeAdapter[Entry] = TypeAdapter(Entry)
-#: A stored entry's keys beside the log entry's own fields; id is both, so it stays.
-_POSITION_KEYS = ("conversation_id", "user_id", "seq", "at", "content_hash", "migration_fields")
 _INTEGRATION_KINDS = (EntryKind.INTEGRATION_NEEDED, EntryKind.INTEGRATION_CONNECTED)
 #: A head the sweep must visit: unflushed entries, unsettled inputs or live work. A non-empty
 #: outbox sorts after {}. Also the sweep index's partial filter, so only these heads are indexed.
@@ -117,7 +118,8 @@ class ConversationLogRepository(ConversationRepository):
     ) -> bool:
         """Commit logged and the state after it, only while the head is as read (and held by epoch when given).
 
-        unread also marks the conversation unread and advances its sync clock, in the same write.
+        unread also marks the conversation unread. An entry that changes what history shows (a
+        message, its settle) advances the sync clock, so batch sync and the activity signal see it.
         """
         expected: dict[str, object] = {
             "conversation_id": head.conversation_id,
@@ -127,7 +129,7 @@ class ConversationLogRepository(ConversationRepository):
         }
         if epoch is not None:
             expected[f"{RUNNER_FIELD}.epoch"] = epoch
-        document = _document(head.conversation_id, head.user_id, logged)
+        document = log_document(head.conversation_id, head.user_id, logged)
         with store_errors("log append"):  # pragma: no mutate — error label
             result = await self._raw_collection().update_one(
                 expected,
@@ -138,7 +140,11 @@ class ConversationLogRepository(ConversationRepository):
                         STATE_FIELD: state.model_dump(mode="json"),
                         **({"is_unread": True} if unread else {}),
                     },
-                    **({"$currentDate": {"updatedAt": True}} if unread else {}),
+                    **(
+                        {"$currentDate": {"updatedAt": True}}
+                        if unread or logged.entry.kind in SYNCED_KINDS
+                        else {}
+                    ),
                 },
             )
         if not result.matched_count:
@@ -154,15 +160,16 @@ class ConversationLogRepository(ConversationRepository):
         after_seq: int = 0,
         through_seq: int | None = None,
         ids: Sequence[str] | None = None,
+        reply_ids: Sequence[str] | None = None,
     ) -> list[LoggedEntry] | None:
         """Return the log entries after after_seq (through through_seq, of ids) in seq order; None for a missing conversation."""
         heads = await self._read_heads({"conversation_id": conversation_id, "user_id": user_id})
         if not heads:
             return None
         before = None if through_seq is None else through_seq + 1
-        window = EntryWindow(after_seq=after_seq, before_seq=before, ids=ids, log=True)
+        window = EntryWindow(after_seq=after_seq, before_seq=before, ids=ids, reply_ids=reply_ids)
         [(_, entries)] = await self._union_for(heads, window)
-        return [_logged(entry) for entry in entries]
+        return [logged_of(entry) for entry in entries]
 
     async def stage_log_amend(
         self, conversation_id: str, *, user_id: str, epoch: int, amended: LoggedEntry
@@ -180,7 +187,7 @@ class ConversationLogRepository(ConversationRepository):
                 },
                 {
                     "$set": {
-                        f"{OUTBOX_FIELD}.{amended.seq}": _document(
+                        f"{OUTBOX_FIELD}.{amended.seq}": log_document(
                             conversation_id, user_id, amended
                         )
                     }
@@ -191,12 +198,19 @@ class ConversationLogRepository(ConversationRepository):
         self._spawn_flush(conversation_id, user_id)
         return True
 
-    async def stage_log_reaction(
-        self, conversation_id: str, *, user_id: str, amended: LoggedEntry, after_revision: int
+    async def stage_unfenced_amend(
+        self,
+        conversation_id: str,
+        *,
+        user_id: str,
+        amended: LoggedEntry,
+        after_revision: int,
+        advances_sync: bool = False,
     ) -> bool:
         """Stage amended unfenced, only while the stored entry is still at after_revision; the flush carries it.
 
-        A staged amendment newer than after_revision (the chat model's reaction) makes this a no-op.
+        A staged amendment newer than after_revision (a fill, a reaction, a pin) makes this a no-op.
+        advances_sync bumps updatedAt, so batch sync carries the edit to the user's other devices.
         """
         staged = f"{OUTBOX_FIELD}.{amended.seq}"
         with store_errors("log reaction"):  # pragma: no mutate — error label
@@ -209,12 +223,45 @@ class ConversationLogRepository(ConversationRepository):
                         {f"{staged}.revision": after_revision},
                     ],
                 },
-                {"$set": {staged: _document(conversation_id, user_id, amended)}},
+                {
+                    "$set": {staged: log_document(conversation_id, user_id, amended)},
+                    **({"$currentDate": {"updatedAt": True}} if advances_sync else {}),
+                },
             )
         if not result.matched_count:
             return False
         self._spawn_flush(conversation_id, user_id)
         return True
+
+    async def set_pinned(
+        self, conversation_id: str, *, user_id: str, message_id: str, pinned: bool
+    ) -> bool:
+        """Pin or unpin the user message with this id or the reply with this reply id; False when there is none."""
+        for _ in range(CONVERSATION_APPEND_MAX_ATTEMPTS):
+            found = await self.read_log(
+                conversation_id, user_id=user_id, ids=[message_id], reply_ids=[message_id]
+            )
+            target = next(
+                (logged for logged in found or [] if isinstance(logged.entry, UserMessage | Reply)),
+                None,
+            )
+            if target is None or not isinstance(entry := target.entry, UserMessage | Reply):
+                return False
+            if entry.pinned is pinned:
+                return True
+            revised = entry.model_copy(update={"pinned": pinned, "revision": entry.revision + 1})
+            if await self.stage_unfenced_amend(
+                conversation_id,
+                user_id=user_id,
+                amended=target.model_copy(update={"entry": revised}),
+                after_revision=entry.revision,
+                advances_sync=True,
+            ):
+                return True
+        raise ConversationStoreError(
+            message=f"pinning in conversation {conversation_id} lost every conditional write",
+            meta={"conversation_id": conversation_id, "entry_id": message_id},
+        )
 
     async def list_heads_to_sweep(self, limit: int, after: str | None) -> list[SweepHead]:
         """Return up to limit heads with unflushed entries, unsettled inputs or live work, in _id order past after."""
@@ -268,7 +315,8 @@ class ConversationLogRepository(ConversationRepository):
             )
             rows = [row async for row in cursor]
         return [
-            (str(row["conversation_id"]), _logged(StoredEntry.model_validate(row))) for row in rows
+            (str(row["conversation_id"]), logged_of(StoredEntry.model_validate(row)))
+            for row in rows
         ]
 
     async def take_runner(
@@ -352,23 +400,6 @@ def _log_head(head: Head) -> LogHead:
         holder=None if document.runner is None else document.runner.epoch,
         runner_epoch=document.runner_epoch,
         known=head.known_seqs(),
-    )
-
-
-def _document(conversation_id: str, user_id: str, logged: LoggedEntry) -> dict[str, object]:
-    return {
-        **logged.entry.model_dump(),
-        "conversation_id": conversation_id,
-        "user_id": user_id,
-        "seq": logged.seq,
-        "at": logged.at,
-    }
-
-
-def _logged(stored: StoredEntry) -> LoggedEntry:
-    fields = {k: v for k, v in stored.document().items() if k not in _POSITION_KEYS}
-    return LoggedEntry(
-        seq=stored.seq, at=committed_at(stored), entry=_ENTRY.validate_python(fields)
     )
 
 

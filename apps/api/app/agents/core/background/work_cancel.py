@@ -1,9 +1,11 @@
 """Stop a conversation's background work: the executor run, its inbox, subagents, approvals, browser jobs.
 
-cancel_all_work is the one stop every trigger uses: the Stop button, a bot's /stop
-and the comms cancel_executor tool. cancel_named_work is the targeted cancel the
-tool makes when the user names one task, which leaves everything else running.
+cancel_named_work cancels exactly the tasks it is given: a logged Stop's CancelWork
+names the work it covers, and the cancel_executor tool names the one task the user
+means. stop_unlogged_work stops the rest of a Stop, the work no log entry names.
 """
+
+from collections.abc import Collection
 
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_progress import drop_progress
@@ -14,7 +16,7 @@ from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.agent_models import RunningSubagent
 from app.models.work_cancel_models import WorkCancelled
-from app.services.browser.job_stop import RequesterChat, stop_chat_jobs
+from app.services.browser.job_stop import RequesterChat, stop_chat_jobs, stop_named_jobs
 from app.services.hil.ledger_decide import cancel_ledger_approvals
 from app.services.hil.resolution import cancel_conversation_approvals
 from shared.py.wide_events import log
@@ -23,62 +25,53 @@ from shared.py.wide_events import log
 _NO_STREAM_IDS = frozenset({"", "1"})
 
 
-async def cancel_all_work(
-    conversation_id: str,
-    user_id: str,
-    requester: RequesterChat | None,
-    *,
-    redirect: str | None = None,
+async def stop_unlogged_work(
+    conversation_id: str, requester: RequesterChat | None
 ) -> WorkCancelled:
-    """Stop everything running for the conversation; an idle one comes back empty and untouched.
+    """Stop what the chat runs that no log entry names: its browser jobs, and subagents that outlived their run.
 
+    A logged Stop's CancelWork cancels the work the log holds; this is the rest of a Stop.
     requester widens the browser stop to the job that answers to the user's own bot chat.
-    redirect is what the user wants instead, handed to the next executor run with the stop.
     """
-    inbox = ExecutorInbox(conversation_id)
-    lock_value = await _held_lock(conversation_id)
-    task_id, run_subagents = (
-        await _stop_running_executor(conversation_id, lock_value) if lock_value else (None, [])
-    )
-    subagents = [*run_subagents, *await RunningSubagents(conversation_id).stop_all()]
-    approvals = await _close_approvals(conversation_id, user_id)
-    pending = await inbox.clear()
-    # After the clear: a stopped job's notice lands in the inbox and must survive it.
+    subagents = await RunningSubagents(conversation_id).stop_all()
+    # After the run's cancel: a stopped job's notice lands in the inbox and must survive it.
     browser_jobs = await stop_chat_jobs(conversation_id, requester)
     work = WorkCancelled(
-        executor_stopped=lock_value is not None,
-        executor_task_id=task_id or None,
-        pending_tasks=pending,
-        subagent_ids=[subagent.subagent_id for subagent in subagents],
-        approval_ids=approvals,
-        browser_jobs=browser_jobs,
+        subagent_ids=[subagent.subagent_id for subagent in subagents], browser_jobs=browser_jobs
     )
-    await _settle(conversation_id, work, redirect)
+    await _settle(conversation_id, work, None)
     return work
 
 
 async def cancel_named_work(
     conversation_id: str,
     user_id: str,
-    task_ids: list[str],
+    task_ids: Collection[str],
     *,
+    approval_ids: Collection[str],
     redirect: str | None = None,
 ) -> WorkCancelled:
-    """Cancel only the named executor tasks, running or queued, and the approvals of a stopped run."""
+    """Cancel only the named executor tasks, running or queued, and close the approvals they wait on."""
     inbox = ExecutorInbox(conversation_id)
     lock_value = await _held_lock(conversation_id)
     running_task_id = parse_lock_value(lock_value)[1] if lock_value else None
     named = running_task_id is not None and running_task_id in task_ids
+    subagents: list[RunningSubagent] = []
     if named and lock_value is not None:
-        await _stop_running_executor(conversation_id, lock_value)
-    # Only once the RUNNING task is gone: a spared run is still waiting on its approvals.
-    approvals = await _close_approvals(conversation_id, user_id) if named else []
+        subagents = (await _stop_running_executor(conversation_id, lock_value))[1]
+    # Detached work is logged under its own stream: a background subagent's, or a browser job's relay.
+    subagents.extend(await RunningSubagents(conversation_id).stop_streams(task_ids))
+    browser_jobs = await stop_named_jobs(task_ids)
+    # Only once a running named task is gone: closing first would let it ask again.
+    approvals = await _close_approvals(conversation_id, user_id, approval_ids)
     work = WorkCancelled(
         executor_stopped=named,
         executor_task_id=running_task_id if named else None,
         executor_spared=lock_value is not None and not named,
         pending_task_ids=await inbox.discard(set(task_ids)),
+        subagent_ids=[subagent.subagent_id for subagent in subagents],
         approval_ids=approvals,
+        browser_jobs=browser_jobs,
     )
     await _settle(conversation_id, work, redirect)
     return work
@@ -111,10 +104,14 @@ async def _stop_running_executor(
     return task_id, subagents
 
 
-async def _close_approvals(conversation_id: str, user_id: str) -> list[str]:
-    """Close the conversation's pending approvals in both stores, so no Approve revives stopped work."""
-    barrier = await cancel_conversation_approvals(conversation_id, user_id)
-    ledger = await cancel_ledger_approvals(conversation_id, user_id)
+async def _close_approvals(
+    conversation_id: str, user_id: str, approval_ids: Collection[str]
+) -> list[str]:
+    """Close these pending approvals in whichever store holds them, so no Approve revives stopped work."""
+    if not approval_ids:
+        return []
+    barrier = await cancel_conversation_approvals(conversation_id, user_id, approval_ids)
+    ledger = await cancel_ledger_approvals(conversation_id, user_id, approval_ids)
     return [*barrier, *ledger]
 
 
@@ -129,7 +126,7 @@ async def _settle(conversation_id: str, work: WorkCancelled, redirect: str | Non
         "work_cancel",
         conversation_id=conversation_id,
         executor_stopped=work.executor_stopped,
-        pending=work.pending_tasks + len(work.pending_task_ids),
+        pending=len(work.pending_task_ids),
         subagents=len(work.subagent_ids),
         approvals=len(work.approval_ids),
         browser_jobs=len(work.browser_jobs),

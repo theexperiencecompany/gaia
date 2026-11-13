@@ -10,16 +10,14 @@ call follows the same feed into its own run's stream while it blocks.
 import asyncio
 from collections.abc import Awaitable, Callable
 from functools import partial
-from uuid import uuid4
 
-from app.agents.core.background.executor_queue import open_detached_stream
-from app.agents.core.background.folded_stream import close_folded_stream
+from app.agents.core.background.folded_stream import close_folded_stream, open_folded_stream
 from app.agents.core.background.redis_writer import publish_to_stream
-from app.constants.browser import BROWSER_JOB_STREAM_ID_PREFIX
 from app.constants.log_tags import LogTag
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.job_events import JOB_TERMINAL_FRAME, read_job_events
 from app.services.browser.job_lifetime import browser_job_ttl_seconds
+from app.services.browser.job_stop import browser_job_task_id, stop_job
 from app.services.browser.jobs import done_state, get_conversation_slot
 from shared.py.wide_events import log
 
@@ -62,12 +60,13 @@ async def relay_job_cards(request: BrowserJobRequest) -> None:
     outlives it: a crash here costs the cards, never the job.
     """
     log.set(browser={"job_id": request.job_id})
-    stream_id = f"{BROWSER_JOB_STREAM_ID_PREFIX}{uuid4()}"
-    await open_detached_stream(
-        stream_id,
-        conversation_id=request.conversation_id,
-        user_id=request.user_id,
-    )
+    stream_id = browser_job_task_id(request.job_id)
+    if not await open_folded_stream(
+        stream_id, conversation_id=request.conversation_id, user_id=request.user_id
+    ):
+        # A Stop landed before the relay could log the job: it stops the job it could not cover.
+        await stop_job(request.job_id)
+        return
     try:
         # Until the feed itself expires: past the latest the worker lets the job end.
         async with asyncio.timeout(browser_job_ttl_seconds()):
@@ -91,5 +90,4 @@ async def relay_job_cards(request: BrowserJobRequest) -> None:
             stream_id,
             conversation_id=request.conversation_id,
             user_id=request.user_id,
-            message_id=request.message_id,
         )

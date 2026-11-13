@@ -7,7 +7,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from app.constants.chat import ConversationSource
 from app.constants.hil import ApprovalResolution
-from app.models.chat_models import ReactionBy
+from app.models.chat_models import ImageData, ReactionBy
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -122,6 +122,13 @@ class UserMessage(_Entry):
     reaction: Reaction | None = None
     # The browser's PostHog session the message was sent from: what it causes is counted there.
     posthog_session_id: Identifier | None = None
+    # Sent at account linking and answered there by the bot's introduction: it wakes no step.
+    first_contact: bool = False
+    pinned: bool = False
+    # Shown on a todo run's wake message written before TodoWoke existed.
+    todo_run_wake: TodoRunWake | None = None
+    # History the entries migration rewrote: already answered, it wakes no step.
+    imported: bool = False
     # Bumped on each in-place update; a client applies an update only when it is newer.
     revision: int = Field(default=0, ge=0)
 
@@ -206,6 +213,7 @@ class Notice(_Entry):
     text: str
     origin: str
     tool_data: tuple[ToolDataEntry, ...] = ()
+    follow_up_actions: tuple[str, ...] = ()
 
 
 class WorkStarted(_Entry):
@@ -217,6 +225,8 @@ class WorkStarted(_Entry):
     answers: tuple[str, ...] = ()
     # The live task this one was handed to while it ran; the two finish, and stop, as one.
     joins: str | None = None
+    # A background subagent or browser job: its result lands in another run, so its finish wakes nothing.
+    detached: bool = False
 
 
 class ApprovalRequested(_Entry):
@@ -280,10 +290,15 @@ class Reply(_Entry):
     text: str = ""
     tool_data: tuple[ToolDataEntry, ...] = ()
     follow_up_actions: tuple[str, ...] = ()
+    # A generated image the reply shows, as history the entries migration rewrote stored it.
+    image: ImageData | None = None
     # The user message the reply quotes, known when it opens so a first bubble can quote it.
     quote_target: str | None = None
     # Characters of the reply the user heard before a voice barge-in.
     heard_through: int | None = Field(default=None, ge=0)
+    pinned: bool = False
+    # History the entries migration rewrote: no attempt wrote it, so it opens nothing.
+    imported: bool = False
     # Bumped on each in-place fill; a client applies an update only when it is newer.
     revision: int = Field(default=0, ge=0)
 
@@ -301,12 +316,14 @@ class ReplySettled(_Entry):
     quote_target: str | None
     # Set exactly when outcome is FAILED.
     failure: FailureReason | None = None
+    # Settles an imported Reply, which never opened; old history may hold a reply to nothing.
+    imported: bool = False
 
     @model_validator(mode="after")
     def _answers_unless_cut_short(self) -> "ReplySettled":
         if (self.failure is None) is (self.outcome is ReplyOutcome.FAILED):
             raise ValueError("a failed reply names its failure, and only a failed one does")
-        if not self.answers and self.outcome not in _MAY_ANSWER_NOTHING:
+        if not self.answers and self.outcome not in _MAY_ANSWER_NOTHING and not self.imported:
             raise ValueError(f"a {self.outcome} reply answers at least one entry")
         return self
 
@@ -370,6 +387,7 @@ class LiveWork(BaseModel):
     pending_approvals: frozenset[str]
     # Tasks handed to this work while it ran (WorkStarted.joins); a Stop that ends it ends them.
     joined: tuple[str, ...] = ()
+    detached: bool = False
 
 
 class FinishedWork(BaseModel):
@@ -431,11 +449,12 @@ class Preempt(BaseModel):
 
 
 class CancelWork(BaseModel):
-    """Cancel exactly these tasks."""
+    """Cancel exactly these tasks, and close the approvals they wait on."""
 
     model_config = _FROZEN
 
     task_ids: tuple[str, ...] = Field(min_length=1)
+    approval_ids: tuple[str, ...] = ()
 
 
 class StartAck(BaseModel):

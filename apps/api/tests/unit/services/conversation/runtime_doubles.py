@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Protocol
 
@@ -12,6 +12,7 @@ from app.models.conversation_log_models import (
     ApprovalDecided,
     BargeIn,
     Batch,
+    CancelWork,
     CommsPhase,
     ConversationState,
     Entry,
@@ -23,6 +24,7 @@ from app.models.conversation_log_models import (
     UserMessage,
 )
 from app.models.message_models import MessageDict
+from app.models.work_cancel_models import WorkCancelled
 from app.services.conversation.ports import (
     Appended,
     CancelReason,
@@ -178,7 +180,10 @@ class InMemoryConversationLog:
     def _append(self, conversation: _Conversation, entry: Entry) -> Appended:
         first = conversation.first_results.get(entry.id)
         if first is not None:
-            return replace(first, duplicate=True)
+            state = conversation.state
+            return Appended(
+                logged=first.logged, previous=state, state=state, effects=(), duplicate=True
+            )
         logged = LoggedEntry(seq=conversation.state.head + 1, at=self._clock(), entry=entry)
         result = reduce(conversation.state, logged)
         if isinstance(result, Rejected):
@@ -469,9 +474,10 @@ class RecordingEffects:
             await self.on_kick()
 
     async def cancel_work(
-        self, conversation_id: str, user_id: str, task_ids: tuple[str, ...]
-    ) -> None:
-        self._record(EffectCall("cancel_work", task_ids))
+        self, conversation_id: str, user_id: str, cancel: CancelWork
+    ) -> WorkCancelled:
+        self._record(EffectCall("cancel_work", cancel.task_ids))
+        return WorkCancelled()
 
     async def start_ack(self, conversation_id: str, user_id: str, message_id: str) -> None:
         self._record(EffectCall("start_ack", message_id))

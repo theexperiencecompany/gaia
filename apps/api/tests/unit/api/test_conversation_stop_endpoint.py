@@ -10,6 +10,7 @@ from app.agents.core.background.executor_channel import ExecutorInbox
 from app.constants.agents import AgentTag
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.core.stream_manager import stream_manager
+from app.models.work_cancel_models import WorkCancelled
 from app.services import conversation_stop_service
 from app.services.browser import job_stop
 from app.services.browser.jobs import job_cancel_requested
@@ -63,9 +64,15 @@ class TestStopConversation:
         logged_stops.assert_awaited_once()
         assert logged_stops.await_args.args[:2] == (CONVERSATION, FAKE_USER.user_id)
 
-    async def test_the_stop_cancels_the_full_set_of_work(
-        self, client: AsyncClient, pending_approvals: ApprovalSeams
+    async def test_the_answer_is_the_logged_stops_cancel_and_the_rest_of_the_stop(
+        self, client: AsyncClient, no_approvals: ApprovalSeams, logged_stops: AsyncMock
     ) -> None:
+        logged_stops.return_value = WorkCancelled(
+            executor_stopped=True,
+            executor_task_id=EXECUTOR_TASK,
+            pending_task_ids=["queued-task"],
+            approval_ids=[APPROVAL, LEDGER_APPROVAL],
+        )
         await seed_live_work(CONVERSATION)
 
         response = await client.post(STOP_URL)
@@ -77,31 +84,32 @@ class TestStopConversation:
                 "executor_stopped": True,
                 "executor_task_id": EXECUTOR_TASK,
                 "executor_spared": False,
-                "pending_tasks": 1,
-                "pending_task_ids": [],
+                "pending_task_ids": ["queued-task"],
                 "subagent_ids": ["s1"],
                 "approval_ids": [APPROVAL, LEDGER_APPROVAL],
                 "browser_jobs": {BROWSER_JOB: "stopped"},
             },
         }
-        for stream_id in (EXECUTOR_STREAM, SUBAGENT_STREAM):
-            assert await stream_manager.is_cancelled(stream_id)
+        # The executor is the logged Stop's to cancel; the subagent no run holds is the rest's.
+        assert not await stream_manager.is_cancelled(EXECUTOR_STREAM)
+        assert await stream_manager.is_cancelled(SUBAGENT_STREAM)
+        # The queued hand-over is the logged Stop's to discard, and it is stubbed here.
         assert [entry.tag for entry in await ExecutorInbox(CONVERSATION).read()] == [
+            AgentTag.USER_INTERJECTION,
             AgentTag.BROWSER_STOPPED,
             AgentTag.EXECUTOR_INTERRUPTED,
         ]
 
     @pytest.mark.regression
-    async def test_web_stop_cancels_approvals_and_the_browser_job(
-        self, client: AsyncClient, pending_approvals: ApprovalSeams
+    async def test_web_stop_logs_the_stop_and_stops_the_browser_job(
+        self, client: AsyncClient, no_approvals: ApprovalSeams, logged_stops: AsyncMock
     ) -> None:
-        """Regression: the web Stop cancelled the turn's stream and left approval cards live and the executor running."""
+        """Regression: the web Stop cancelled the turn's stream and left the executor and browser job running."""
         await seed_live_work(CONVERSATION)
 
         await client.post(STOP_URL)
 
-        pending_approvals.barrier.assert_awaited_once_with(CONVERSATION, FAKE_USER.user_id)
-        pending_approvals.ledger.assert_awaited_once_with(CONVERSATION, FAKE_USER.user_id)
+        logged_stops.assert_awaited_once()
         assert await job_cancel_requested(BROWSER_JOB)
 
     async def test_a_web_stop_emits_work_stopped_exactly_once(

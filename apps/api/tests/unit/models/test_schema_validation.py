@@ -12,7 +12,6 @@ from app.models.chat_models import (
     MessageModel,
     SourceCategory,
     SystemPurpose,
-    UpdateMessagesRequest,
 )
 from app.models.memory_models import (
     CreateMemoryRequest,
@@ -157,18 +156,6 @@ class TestReplyToMessageData:
     def test_missing_fields(self):
         with pytest.raises(ValidationError):
             ReplyToMessageData(id="msg_1")
-
-
-class TestUpdateMessagesRequest:
-    def test_valid(self):
-        r = UpdateMessagesRequest(
-            conversation_id="conv_1",
-            messages=[
-                MessageModel(type="user", response="Hey"),
-            ],
-        )
-        assert r.conversation_id == "conv_1"
-        assert len(r.messages) == 1
 
 
 class TestBatchSyncRequest:

@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any
+from unittest.mock import patch
 import uuid
 
 from hypothesis import HealthCheck, given, settings, strategies as st
@@ -14,10 +15,6 @@ from redis.asyncio import Redis
 
 from app.constants.chat import ConversationSource
 from app.db.repositories import conversations as conversations_module
-from app.db.repositories.conversation_entries_migration import (
-    ConversationEntriesMigration,
-    HeadRef,
-)
 from app.db.repositories.conversation_log import ConversationLogRepository
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import ConversationSyncItem, MessageModel
@@ -25,13 +22,14 @@ from app.models.conversation_log_models import (
     CommsPhase,
     ConversationState,
     Entry,
-    EntryKind,
     IntegrationConnected,
     IntegrationNeeded,
     LoggedEntry,
     Rejected,
     Reply,
     ReplyOutcome,
+    ReplySettled,
+    UserMessage,
 )
 from app.models.conversation_models import ConversationDocument
 from app.services.conversation.mongo_log import MongoConversationLog
@@ -256,6 +254,29 @@ async def test_the_same_id_appended_by_two_tasks_at_once_is_stored_once(
     assert await entries_collection.count_documents({"conversation_id": conversation}) == 1
 
 
+async def test_a_duplicate_append_reads_its_one_stored_entry_not_the_log(
+    conversation: str, raw_collection: Any
+) -> None:
+    repository = ConversationLogRepository()
+    log = MongoConversationLog(repository, FakeClock())
+    for number in range(40):
+        await log.append(conversation, UID, user(f"u{number}"))
+    read_log = repository.read_log
+    read: list[int] = []
+
+    async def counted(*args: Any, **kwargs: Any) -> list[LoggedEntry] | None:
+        entries = await read_log(*args, **kwargs)
+        read.append(len(entries or []))
+        return entries
+
+    with patch.object(repository, "read_log", side_effect=counted):
+        again = await log.append(conversation, UID, user("u3"))
+    state = await log.state(conversation, UID)
+    assert (again.duplicate, again.logged.seq, again.logged.entry.id) == (True, 4, "u3")
+    assert (again.previous, again.state, again.effects) == (state, state, ())
+    assert read == [1]
+
+
 @pytest.mark.parametrize("flushed", [False, True])
 async def test_amend_updates_the_one_entry_whether_or_not_it_was_flushed(
     log: MongoConversationLog,
@@ -428,92 +449,165 @@ def _every_kind() -> list[Entry]:
     ]
 
 
-def _messages(prefix: str) -> list[MessageModel]:
+def _chat() -> list[Entry]:
+    """Mix a chat turn, work with an approval, a notice, a workflow run and a todo run."""
     return [
-        MessageModel(type="user", response=f"find the {prefix} invoice", message_id=f"{prefix}1"),
-        MessageModel(type="bot", response=f"found the {prefix} invoice", message_id=f"{prefix}2"),
-        MessageModel(type="user", response="thanks", message_id=f"{prefix}3"),
+        UserMessage(id="u1", text="find the acme invoice", surface=ConversationSource.WEB),
+        started("w", "t1", 1),
+        asked("a", "t1", "ap1"),
+        decided("d", "ap1"),
+        Reply(
+            id="o",
+            reply_id="r1",
+            attempt_id="a1",
+            text="found the acme invoice",
+            quote_target="u1",
+            follow_up_actions=("pay it",),
+        ),
+        ReplySettled(
+            id="s",
+            reply_id="r1",
+            outcome=ReplyOutcome.ANSWERED,
+            answers=("u1",),
+            through=1,
+            quote_target="u1",
+        ),
+        finished("f", "t1"),
+        notice("n"),
+        fired("wf"),
+        todo_woke("tw"),
+        UserMessage(id="u2", text="thanks", surface=ConversationSource.WEB, reply_to="u1"),
     ]
 
 
-async def _message_payloads(user_id: str, conversation_id: str, pattern: str) -> list[object]:
+def _rows(messages: Sequence[MessageModel]) -> list[tuple[object, ...]]:
+    return [
+        (
+            m.type,
+            m.message_id,
+            m.response,
+            m.in_progress,
+            m.replyToMessage.id if m.replyToMessage else None,
+            bool(m.todo_run_wake),
+            m.selectedWorkflow.id if m.selectedWorkflow else None,
+        )
+        for m in messages
+    ]
+
+
+_HISTORY = [
+    ("user", "u1", "find the acme invoice", None, None, False, None),
+    ("bot", "r1", "found the acme invoice", None, "u1", False, None),
+    ("bot", "n", "delivered", None, None, False, None),
+    ("user", "wf", "", None, None, False, "wf_1"),
+    ("user", "tw", "", None, None, True, None),
+    ("user", "u2", "thanks", None, "u1", False, None),
+]
+
+
+async def _mixed_chat(log: MongoConversationLog) -> tuple[str, str]:
+    user_id, conversation_id = f"u-{uuid.uuid4().hex}", f"c-{uuid.uuid4().hex}"
+    await _create_head(conversation_id, user_id)
+    for entry in _chat():
+        await log.append(conversation_id, user_id, entry)
+    return user_id, conversation_id
+
+
+async def test_history_sync_and_lookups_are_the_log_projected_into_messages(
+    raw_collection: Any, log: MongoConversationLog
+) -> None:
     repo = ConversationRepository()
+    user_id, conversation_id = await _mixed_chat(log)
+
     doc = await repo.get(conversation_id, user_id=user_id)
     assert doc is not None
+    assert (_rows(doc.messages), doc.has_older) == (_HISTORY, False)
+    [reply] = [m for m in doc.messages if m.message_id == "r1"]
+    assert (reply.follow_up_actions, reply.stopped, reply.error) == (["pay it"], None, None)
     [synced] = await repo.find_updated_since(
         user_id, [ConversationSyncItem(conversation_id=conversation_id, last_updated=None)]
     )
-    search = await repo.search(user_id, pattern=pattern)
-    pinned = await repo.list_pinned_messages(user_id)
-    one = await repo.get_message(conversation_id, f"{pattern}2", user_id=user_id)
-    owner = await repo.find_owner_of_message(user_id, f"{pattern}2")
+    assert _rows(synced.messages) == _HISTORY
+    [recent] = await repo.recent_for_user(user_id, limit=1)
+    assert _rows(recent.messages) == _HISTORY
+    one = await repo.get_message(conversation_id, "r1", user_id=user_id)
+    assert one is not None
+    assert _rows([one]) == [_HISTORY[1]]
+    assert await repo.find_owner_of_message(user_id, "r1") == conversation_id
+    assert await repo.find_owner_of_message(user_id, "u1") is None
+    assert await repo.has_sent_message(user_id)
 
-    def shape(messages: Sequence[MessageModel]) -> list[dict[str, object]]:
-        return [message.model_dump(exclude={"seq"}) for message in messages]
 
-    return [
-        shape(doc.messages),
-        shape(synced.messages),
-        shape([hit.message for hit in search.messages]),
-        shape([hit.message for hit in pinned]),
-        shape([one] if one else []),
-        owner == conversation_id,
-        await repo.has_sent_message(user_id),
+async def test_a_page_reads_the_settle_and_the_quote_that_lie_outside_it(
+    raw_collection: Any, log: MongoConversationLog
+) -> None:
+    repo = ConversationRepository()
+    user_id, conversation_id = await _mixed_chat(log)
+    notice_seq = 8
+
+    page = await repo.read_messages_before(
+        conversation_id, user_id=user_id, before_seq=notice_seq, limit=1
+    )
+    assert page is not None
+    assert (_rows(page.messages), page.has_more) == ([_HISTORY[1]], True)
+    [first] = (
+        await repo.read_messages_before(conversation_id, user_id=user_id, before_seq=5, limit=5)
+    ).messages
+    assert _rows([first]) == [_HISTORY[0]]
+
+
+async def test_an_unsettled_reply_reads_in_progress_and_a_failed_one_names_why(
+    raw_collection: Any, log: MongoConversationLog
+) -> None:
+    repo = ConversationRepository()
+    user_id, conversation_id = f"u-{uuid.uuid4().hex}", f"c-{uuid.uuid4().hex}"
+    await _create_head(conversation_id, user_id)
+    for entry in (
+        user("u1"),
+        opened("o1", "r1"),
+        settled("s1", ["u1"], 1, reply_id="r1", outcome=ReplyOutcome.FAILED),
+        user("u2"),
+        opened("o2", "r2"),
+    ):
+        await log.append(conversation_id, user_id, entry)
+
+    doc = await repo.get(conversation_id, user_id=user_id)
+    assert doc is not None
+    assert [(m.message_id, m.in_progress, m.error) for m in doc.messages] == [
+        ("u1", None, None),
+        ("r1", None, "server_restart"),
+        ("u2", None, None),
+        ("r2", True, None),
     ]
 
 
-async def test_message_readers_never_see_a_log_entry_of_any_kind(raw_collection: Any) -> None:
+async def test_search_reads_the_text_of_messages_replies_and_notices_only(
+    raw_collection: Any, log: MongoConversationLog
+) -> None:
     repo = ConversationRepository()
-    log = MongoConversationLog(ConversationLogRepository(), FakeClock())
-    plain, mixed = (f"u-{uuid.uuid4().hex}", "c-plain"), (f"u-{uuid.uuid4().hex}", "c-mixed")
-    for user_id, conversation_id in (plain, mixed):
-        await _create_head(conversation_id, user_id)
-    first, second, third = _messages("inv")
-    for user_id, conversation_id in (plain, mixed):
-        await repo.append_messages(conversation_id, user_id=user_id, messages=[first, second])
-    kinds = _every_kind()
-    for entry in kinds[:6]:
-        await log.append(mixed[1], mixed[0], entry)
-    for user_id, conversation_id in (plain, mixed):
-        await repo.append_messages(conversation_id, user_id=user_id, messages=[third])
-        await repo.set_message_pinned(
-            conversation_id, user_id=user_id, message_id="inv2", pinned=True
-        )
-    for entry in kinds[6:]:
-        await log.append(mixed[1], mixed[0], entry)
-    stored_kinds = {item.entry.kind for item in await log.read_after(mixed[1], mixed[0], 0)}
-    assert stored_kinds == set(EntryKind)
-    assert await _message_payloads(*mixed, "inv") == await _message_payloads(*plain, "inv")
+    user_id, conversation_id = await _mixed_chat(log)
+
+    found = await repo.search(user_id, pattern="acme")
+    assert [(hit.conversation_id, *_rows([hit.message])) for hit in found.messages] == [
+        (conversation_id, _HISTORY[0]),
+        (conversation_id, _HISTORY[1]),
+    ]
+    assert [
+        hit.message.message_id for hit in (await repo.search(user_id, pattern="deliver")).messages
+    ] == ["n"]
+    assert (await repo.search(user_id, pattern="Watch the Acme")).messages == []
 
 
-async def test_whole_conversation_reads_return_the_newest_messages_past_interleaved_log_entries(
-    raw_collection: Any, monkeypatch: pytest.MonkeyPatch
+async def test_the_newest_window_counts_messages_past_interleaved_log_entries(
+    raw_collection: Any, log: MongoConversationLog, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(conversations_module, "CONVERSATION_READ_LIMIT", 2)
     repo = ConversationRepository()
-    log = MongoConversationLog(ConversationLogRepository(), FakeClock())
-    user_id = f"u-{uuid.uuid4().hex}"
-    chats = [f"c-{uuid.uuid4().hex}" for _ in range(2)]
-    kinds = _every_kind()
-    for conversation_id in chats:
-        await _create_head(conversation_id, user_id)
-        first, second, third = _messages(conversation_id)
-        await repo.append_messages(conversation_id, user_id=user_id, messages=[first, second])
-        for entry in kinds[:6]:
-            await log.append(conversation_id, user_id, entry)
-        await repo.append_messages(conversation_id, user_id=user_id, messages=[third])
-        for entry in kinds[6:]:
-            await log.append(conversation_id, user_id, entry)
+    user_id, conversation_id = await _mixed_chat(log)
 
-    doc = await repo.get(chats[0], user_id=user_id)
+    doc = await repo.get(conversation_id, user_id=user_id)
     assert doc is not None
-    assert [m.message_id for m in doc.messages] == [f"{chats[0]}2", f"{chats[0]}3"]
-    synced = await repo.find_updated_since(
-        user_id, [ConversationSyncItem(conversation_id=c, last_updated=None) for c in chats]
-    )
-    assert {d.conversation_id: [m.message_id for m in d.messages] for d in synced} == {
-        c: [f"{c}2", f"{c}3"] for c in chats
-    }
+    assert (_rows(doc.messages), doc.has_older) == (_HISTORY[-2:], True)
 
 
 async def test_a_chat_shows_it_awaits_approval_exactly_while_its_work_waits_on_the_user(
@@ -548,34 +642,3 @@ async def test_a_chat_shows_it_awaits_approval_exactly_while_its_work_waits_on_t
     for conversation_id in (background, web):
         await log.append(conversation_id, user_id, decided("d", "ap1"))
     assert await shown() == ({web: False}, {background: False, web: False})
-
-
-async def test_a_migrated_conversation_reads_as_an_idle_log_at_its_message_count(
-    raw_collection: Any,
-) -> None:
-    conversation_id = f"c-{uuid.uuid4().hex}"
-    messages = [
-        {"type": "user" if n % 2 else "bot", "response": f"m{n}", "message_id": f"m{n}"}
-        for n in range(1, 6)
-    ]
-    inserted = await raw_collection.insert_one(
-        {
-            "conversation_id": conversation_id,
-            "user_id": UID,
-            "createdAt": datetime.now(UTC).isoformat(),
-            "updatedAt": datetime.now(UTC),
-            "messages": messages,
-        }
-    )
-    await ConversationEntriesMigration().migrate(
-        HeadRef(str(inserted.inserted_id), conversation_id, UID), apply=True
-    )
-    log = MongoConversationLog(ConversationLogRepository(), FakeClock())
-    state = await log.state(conversation_id, UID)
-    assert (state.head, state.comms, state.unsettled_waking) == (5, CommsPhase.IDLE, ())
-    assert await log.read_after(conversation_id, UID, 0) == []
-    appended = await log.append(conversation_id, UID, user("u6"))
-    assert appended.logged.seq == 6
-    doc = await ConversationRepository().get(conversation_id, user_id=UID)
-    assert doc is not None
-    assert [message.message_id for message in doc.messages] == [f"m{n}" for n in range(1, 6)]

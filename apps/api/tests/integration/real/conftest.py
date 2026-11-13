@@ -52,12 +52,12 @@ from app.db.mongodb.indexes import (
 from app.db.redis import delete_cache, redis_cache
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
-from app.models.chat_models import MessageModel
 from app.models.conversation_models import ConversationDocument
 from app.models.payment_models import PlanType
 from shared.py.wide_events import _spawned_tasks
 from tests.helpers import (
     HeaderDrivenAuthMiddleware,
+    log_history,
     pg_advisory_lock,
     pick_free_port,
     skip_items_without_real_services,
@@ -271,12 +271,7 @@ def make_conversation(conversations_collection):
             **overrides,
         }
         await conversation_repository.create(ConversationDocument.model_validate(doc))
-        if messages:
-            await conversation_repository.append_messages(
-                conv_id,
-                user_id=user_id,
-                messages=[MessageModel.model_validate(message) for message in messages],
-            )
+        await log_history(conv_id, user_id, messages)
         return conv_id
 
     return _make

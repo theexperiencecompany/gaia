@@ -21,9 +21,7 @@ from app.models.chat_models import (
     ConversationModel,
     ConversationSource,
     ConversationSyncItem,
-    MessageModel,
     SystemPurpose,
-    UpdateMessagesRequest,
 )
 from app.models.conversation_models import (
     ConversationDocument,
@@ -49,7 +47,6 @@ from app.services.conversation_service import (
     require_owned_conversation,
     star_conversation,
     update_conversation_description,
-    update_messages,
 )
 from app.utils.errors import AppError, ConversationIdTakenError, ConversationStoreError
 from shared.py.analytics import UserId
@@ -337,79 +334,47 @@ class TestListConversations:
         assert mock_repo.count_active.call_args[0][0] == "user_1"
 
 
-class TestUpdateMessages:
-    async def test_appends_and_returns_ids(self, mock_repo, test_user):
-        mock_repo.append_messages.return_value = {"m1": 4}
-        request = UpdateMessagesRequest(
-            conversation_id="conv_abc", messages=[MessageModel(type="user", response="Hi")]
-        )
-        result = await update_messages(request, test_user)
-        assert (result.message_ids, result.message_seqs) == (["m1"], [4])
-        assert result.conversation_id == "conv_abc"
-        assert mock_repo.append_messages.call_args.kwargs["user_id"] == USER_ID
-
-    async def test_raises_404_when_conversation_missing(self, mock_repo, test_user):
-        mock_repo.append_messages.return_value = None
-        request = UpdateMessagesRequest(
-            conversation_id="missing", messages=[MessageModel(type="user", response="Hi")]
-        )
-        with pytest.raises(HTTPException) as exc_info:
-            await update_messages(request, test_user)
-        assert exc_info.value.status_code == 404
+@pytest.fixture
+def mock_log_repo():
+    """Patch the log repository a pin amends through."""
+    repo = AsyncMock()
+    with patch.object(conversation_service, "conversation_log_repository", repo):
+        yield repo
 
 
 class TestPinMessage:
-    async def test_pins_message(self, mock_repo, test_user):
+    @pytest.mark.parametrize(
+        ("pinned", "event"), [(True, ChatMessagePinned()), (False, ChatMessageUnpinned())]
+    )
+    async def test_a_pin_amends_the_logged_message_and_is_captured(
+        self, mock_repo, mock_log_repo, test_user, pinned, event
+    ):
         mock_repo.exists.return_value = True
-        mock_repo.get_message.return_value = MessageModel(
-            type="bot", response="Hello", message_id="msg_1"
-        )
-        mock_repo.set_message_pinned.return_value = True
-        result = await pin_message("conv_abc", "msg_1", True, test_user)
-        assert result.pinned is True
-        assert "pinned successfully" in result.message
+        mock_log_repo.set_pinned.return_value = True
+        with patch("app.services.conversation_service.capture") as mock_capture:
+            result = await pin_message("conv_abc", "msg_1", pinned, test_user)
+        assert result.pinned is pinned
         mock_repo.exists.assert_awaited_once_with("conv_abc", user_id=USER_ID)
-        mock_repo.get_message.assert_awaited_once_with("conv_abc", "msg_1", user_id=USER_ID)
-        mock_repo.set_message_pinned.assert_awaited_once_with(
-            "conv_abc", user_id=USER_ID, message_id="msg_1", pinned=True
+        mock_log_repo.set_pinned.assert_awaited_once_with(
+            "conv_abc", user_id=USER_ID, message_id="msg_1", pinned=pinned
         )
+        mock_capture.assert_called_once_with(UserId(USER_ID), event)
 
-    async def test_pin_captures_pinned_with_user_id(self, mock_repo, test_user):
-        mock_repo.exists.return_value = True
-        mock_repo.get_message.return_value = MessageModel(
-            type="bot", response="Hello", message_id="msg_1"
-        )
-        mock_repo.set_message_pinned.return_value = True
-        with patch(
-            "app.services.conversation_service.capture",
-        ) as mock_capture:
-            await pin_message("conv_abc", "msg_1", True, test_user)
-        mock_capture.assert_called_once_with(UserId(USER_ID), ChatMessagePinned())
-
-    async def test_unpin_captures_unpinned_with_user_id(self, mock_repo, test_user):
-        mock_repo.exists.return_value = True
-        mock_repo.get_message.return_value = MessageModel(
-            type="bot", response="Hello", message_id="msg_1"
-        )
-        mock_repo.set_message_pinned.return_value = True
-        with patch(
-            "app.services.conversation_service.capture",
-        ) as mock_capture:
-            await pin_message("conv_abc", "msg_1", False, test_user)
-        mock_capture.assert_called_once_with(UserId(USER_ID), ChatMessageUnpinned())
-
-    async def test_raises_404_conversation_not_found(self, mock_repo, test_user):
+    async def test_raises_404_conversation_not_found(self, mock_repo, mock_log_repo, test_user):
         mock_repo.exists.return_value = False
         with pytest.raises(HTTPException) as exc_info:
             await pin_message("conv_abc", "msg_1", True, test_user)
         assert exc_info.value.status_code == 404
+        mock_log_repo.set_pinned.assert_not_awaited()
 
-    async def test_raises_404_message_not_found(self, mock_repo, test_user):
+    async def test_raises_404_message_not_found(self, mock_repo, mock_log_repo, test_user):
         mock_repo.exists.return_value = True
-        mock_repo.get_message.return_value = None
-        with pytest.raises(HTTPException) as exc_info:
-            await pin_message("conv_abc", "missing", True, test_user)
+        mock_log_repo.set_pinned.return_value = False
+        with patch("app.services.conversation_service.capture") as mock_capture:
+            with pytest.raises(HTTPException) as exc_info:
+                await pin_message("conv_abc", "missing", True, test_user)
         assert exc_info.value.status_code == 404
+        mock_capture.assert_not_called()
 
 
 class TestGetStarredMessages:

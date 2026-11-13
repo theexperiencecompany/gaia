@@ -6,7 +6,7 @@ link-token-info). Assertions are unchanged from the original module — only the
 patch targets moved with the code.
 """
 
-from datetime import datetime, timedelta
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
@@ -27,6 +27,7 @@ from app.models.bot_models import (
     CreateLinkTokenResponse,
     RedeemLinkCodeRequest,
 )
+from app.models.conversation_log_models import Entry, Notice, UserMessage
 from app.models.payment_models import PlanType
 from app.models.platform_models import PlatformLinkCompletion, PlatformLinkResult
 from app.models.user_models import (
@@ -35,11 +36,13 @@ from app.models.user_models import (
     OnboardingPreferences,
     UserDocument,
 )
+from app.services.conversation.runtime import install_runtime_ports
 from app.services.outbound_delivery import OutboundResult
 from app.services.platform_link_code_service import LinkCodeClaim, PlatformLinkCodePayload
 from app.services.platform_link_completion import PostLinkSideEffectError
 from app.utils.errors import AppError
 from shared.py.wide_events import log, log_context
+from tests.unit.services.conversation.runtime_doubles import Runtime
 
 from app.api.v1.endpoints.bot_links import (  # isort: skip
     _persist_first_contact,
@@ -1140,86 +1143,60 @@ class TestRedeemLinkCode:
 
 
 SESSION_PATCH = "app.api.v1.endpoints.bot_links.BotService.get_or_create_session"
-UPDATE_PATCH = "app.api.v1.endpoints.bot_links.update_messages"
 LOG_PATCH = "app.api.v1.endpoints.bot_links.log"
 
 
-class TestPersistFirstContact:
-    """The redeem endpoint stores the first contact as the bot thread's opening turns, through the same write path the chat stream uses."""
+@pytest.fixture
+def runtime() -> Iterator[Runtime]:
+    runtime = Runtime()
+    install_runtime_ports(runtime.ports)
+    return runtime
 
-    async def test_writes_the_opener_and_the_bundle_as_the_threads_first_turns(self):
-        """The opener stored is the user's actual editable message, not the canned prefilled text."""
+
+async def _logged(runtime: Runtime) -> list[Entry]:
+    return [logged.entry for logged in await runtime.log.read_after("conv-1", LINKED_USER_ID, 0)]
+
+
+class TestPersistFirstContact:
+    """The redeem endpoint logs the first contact as the bot thread's opening entries."""
+
+    async def test_logs_the_opener_as_first_contact_then_the_introduction(self, runtime: Runtime):
+        """The opener logged is the user's actual editable message, flagged so it wakes no reply."""
         body = RedeemLinkCodeRequest(**REDEEM_BODY, first_message=OWN_MESSAGE)
-        with (
-            patch(SESSION_PATCH, new_callable=AsyncMock, return_value="conv-1") as session,
-            patch(UPDATE_PATCH, new_callable=AsyncMock) as update,
-        ):
+        with patch(SESSION_PATCH, new_callable=AsyncMock, return_value="conv-1") as session:
             await _persist_first_contact(LINKED_USER_ID, body, BUBBLES)
 
         actor = AuthenticatedUser(user_id=LINKED_USER_ID)
         session.assert_awaited_once_with("telegram", "TG42", None, actor, is_dm=True)
-        update.assert_awaited_once()
-        request = update.await_args.args[0]
-        assert update.await_args.kwargs == {"user": actor}
-        assert request.conversation_id == "conv-1"
-        opener, reply = request.messages
-        assert (opener.type, opener.response) == ("user", OWN_MESSAGE)
-        assert (reply.type, reply.response) == ("bot", NEW_MESSAGE_BREAKER.join(BUBBLES))
-        # Stored the way the chat stream stores turns: UTC with an offset, the
-        # opener a beat before the reply so the thread orders the same on reload.
-        opener_at, reply_at = (
-            datetime.fromisoformat(opener.date),
-            datetime.fromisoformat(reply.date),
-        )
-        assert reply_at.utcoffset() == timedelta(0)
-        assert reply_at - opener_at == timedelta(milliseconds=100)
+        opener, intro = await _logged(runtime)
+        assert isinstance(opener, UserMessage)
+        assert (opener.text, opener.first_contact) == (OWN_MESSAGE, True)
+        assert isinstance(intro, Notice)
+        assert intro.text == NEW_MESSAGE_BREAKER.join(BUBBLES)
+        state = await runtime.log.state("conv-1", LINKED_USER_ID)
+        assert state.unsettled_waking == ()
 
-    async def test_the_opener_is_marked_as_first_contact_since_no_chat_turn_ran_for_it(self):
-        """Reconciliation tells it from a submitted message, which it otherwise looks identical to, by this flag alone."""
-        body = RedeemLinkCodeRequest(**REDEEM_BODY, first_message=OWN_MESSAGE)
-        with (
-            patch(SESSION_PATCH, new_callable=AsyncMock, return_value="conv-1"),
-            patch(UPDATE_PATCH, new_callable=AsyncMock) as update,
-        ):
-            await _persist_first_contact(LINKED_USER_ID, body, BUBBLES)
-
-        opener, reply = update.await_args.args[0].messages
-        assert (opener.first_contact, reply.first_contact) == (True, None)
-
-    async def test_a_link_that_carried_no_message_writes_no_user_turn(self):
-        """A Telegram deep link is a tap, not a sentence; the canned opener must not be stored as a message the user never sent."""
-        with (
-            patch(SESSION_PATCH, new_callable=AsyncMock, return_value="conv-1"),
-            patch(UPDATE_PATCH, new_callable=AsyncMock) as update,
-        ):
+    async def test_a_link_that_carried_no_message_logs_no_user_message(self, runtime: Runtime):
+        """A Telegram deep link is a tap, not a sentence; no message the user never sent is logged."""
+        with patch(SESSION_PATCH, new_callable=AsyncMock, return_value="conv-1"):
             await _persist_first_contact(
                 LINKED_USER_ID, RedeemLinkCodeRequest(**REDEEM_BODY), BUBBLES
             )
 
-        (reply,) = update.await_args.args[0].messages
-        assert (reply.type, reply.response) == ("bot", NEW_MESSAGE_BREAKER.join(BUBBLES))
+        (intro,) = await _logged(runtime)
+        assert isinstance(intro, Notice)
+        assert intro.text == NEW_MESSAGE_BREAKER.join(BUBBLES)
 
-    async def test_a_user_without_a_profile_still_gets_the_thread(self):
-        with (
-            patch(SESSION_PATCH, new_callable=AsyncMock, return_value="conv-1") as session,
-            patch(UPDATE_PATCH, new_callable=AsyncMock),
-        ):
-            await _persist_first_contact(
-                LINKED_USER_ID, RedeemLinkCodeRequest(**REDEEM_BODY), BUBBLES
-            )
-        assert session.await_args.args[3] == AuthenticatedUser(user_id=LINKED_USER_ID)
-
-    async def test_a_failed_write_is_logged_and_never_raised(self):
+    async def test_a_failed_write_is_logged_and_never_raised(self, runtime: Runtime):
         """The link already succeeded and the code is spent; a transcript failure must not turn that into an unretryable error."""
         with (
             patch(SESSION_PATCH, new_callable=AsyncMock, side_effect=RuntimeError("mongo down")),
-            patch(UPDATE_PATCH, new_callable=AsyncMock) as update,
             patch(LOG_PATCH) as mock_log,
         ):
             await _persist_first_contact(
                 LINKED_USER_ID, RedeemLinkCodeRequest(**REDEEM_BODY), BUBBLES
             )
-        update.assert_not_awaited()
+        assert await _logged(runtime) == []
         # error, not warning: nothing retries this, so the thread is permanently
         # missing the introduction GAIA already sent.
         mock_log.error.assert_called_once_with(

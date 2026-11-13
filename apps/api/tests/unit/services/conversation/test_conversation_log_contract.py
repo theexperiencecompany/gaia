@@ -39,18 +39,21 @@ class ConversationLogContract:
         assert [(item.seq, item.entry.id) for item in after] == [(2, "u2"), (3, "u3")]
         assert (await subject.log.state(CID, UID)).unsettled_waking == (1, 2, 3)
 
-    async def test_a_second_append_of_one_id_returns_the_first_result_and_stores_nothing(
+    async def test_a_second_append_of_one_id_returns_the_stored_entry_and_changes_nothing(
         self, subject: LogUnderTest
     ) -> None:
         first = await subject.log.append(CID, UID, user("u1"))
+        await subject.log.append(CID, UID, user("u2"))
         again = await subject.log.append(CID, UID, user("u1"))
+        state = await subject.log.state(CID, UID)
         assert (first.duplicate, again.duplicate) == (False, True)
-        assert (again.logged, again.state, again.effects) == (
+        assert (again.logged, again.previous, again.state, again.effects) == (
             first.logged,
-            first.state,
-            first.effects,
+            state,
+            state,
+            (),
         )
-        assert len(await subject.log.read_after(CID, UID, 0)) == 1
+        assert len(await subject.log.read_after(CID, UID, 0)) == 2
 
     async def test_a_rejected_entry_raises_and_stores_nothing(self, subject: LogUnderTest) -> None:
         await subject.log.append(CID, UID, user("u1"))

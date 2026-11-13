@@ -21,9 +21,9 @@ from langgraph.errors import GraphBubbleUp
 from langgraph.types import Command
 
 from app.agents.core.background.bg_results import release_bg_dispatch, try_claim_bg_dispatch
-from app.agents.core.background.executor_queue import open_detached_stream, safe_configurable
+from app.agents.core.background.executor_queue import safe_configurable
 from app.agents.core.background.executor_runner import deliver_to_executor
-from app.agents.core.background.folded_stream import close_folded_stream
+from app.agents.core.background.folded_stream import close_folded_stream, open_folded_stream
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.session import run_user_from_configurable
@@ -331,7 +331,6 @@ async def _run_background(
                 stream_id,
                 conversation_id=delegation.conversation_id,
                 user_id=delegation.ctx.user_id or "",
-                message_id=_folds_into(delegation),
             )
 
         if outcome is None:
@@ -368,11 +367,11 @@ async def _execute_on_own_stream(
     approval this run raises, which is what lets a decision resume it later.
     """
     ctx = delegation.ctx
-    await open_detached_stream(
-        stream_id,
-        conversation_id=delegation.conversation_id,
-        user_id=ctx.user_id or "",
-    )
+    if not await open_folded_stream(
+        stream_id, conversation_id=delegation.conversation_id, user_id=ctx.user_id or ""
+    ):
+        # A Stop landed before the run could start: it is as stopped as one the user ended mid-run.
+        return SubagentOutcome(text="", stopped=True)
     ctx.stream_id = stream_id
     ctx.parent_stream_id = parent_stream_id
     item = delegation.resume_item()
@@ -397,12 +396,6 @@ async def _execute_on_own_stream(
         if outcome is None or not outcome.paused:
             _emit_end(writer, delegation, start_time)
     return outcome
-
-
-def _folds_into(delegation: Delegation) -> str | None:
-    """Return the message a background run's own stream folds into: the dispatching run's."""
-    parent: AgentConfigurable = delegation.parent_configurable
-    return parent.get("bot_message_id")
 
 
 async def _park(delegation: Delegation, interrupt: HilInterruptPayload) -> None:

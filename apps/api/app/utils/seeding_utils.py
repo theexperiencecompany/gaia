@@ -3,15 +3,26 @@ from uuid import uuid4
 
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
-from app.db.repositories.conversations import conversation_repository
-from app.models.chat_models import ConversationModel, MessageModel, SystemPurpose, ToolDataEntry
+from app.models.chat_models import ConversationModel, SystemPurpose, ToolDataEntry
+from app.models.conversation_log_models import Notice
 from app.models.user_models import AuthenticatedUser
+from app.services.conversation.log import accept
+from app.services.conversation.runtime import runtime_ports
 from app.services.conversation_service import create_conversation_service
 from app.services.onboarding.first_conversation import FirstConversation
 from shared.py.wide_events import log
 
 _HOLO_CARD_CONVERSATION_DESCRIPTION = "Your holo card is ready"
 _FIRST_CONVERSATION_DESCRIPTION = "Getting started"
+#: The origin of what GAIA says in a conversation it seeds.
+_SEEDED = "seeded"
+
+
+async def _say(conversation_id: str, user_id: str, notices: list[Notice]) -> None:
+    """Log what GAIA opens a seeded conversation with, in order, each under an id of its place."""
+    for n, notice in enumerate(notices, 1):
+        entry = notice.model_copy(update={"id": f"seed:{conversation_id}:{n}"})
+        await accept(runtime_ports(), conversation_id, user_id, entry)
 
 
 async def seed_holo_card_conversation(user_id: str, message: str) -> str | None:
@@ -33,18 +44,7 @@ async def seed_holo_card_conversation(user_id: str, message: str) -> str | None:
 
         await create_conversation_service(conversation, AuthenticatedUser(user_id=user_id))
 
-        message_ids = await conversation_repository.append_messages(
-            conversation_id,
-            user_id=user_id,
-            messages=[MessageModel(type="bot", response=message)],
-        )
-        if message_ids is None:
-            log.error(
-                f"{LogTag.STARTUP} Seeded holo card conversation vanished before its message",
-                conversation_id=conversation_id,
-                user_id=user_id,
-            )
-            return None
+        await _say(conversation_id, user_id, [Notice(id=_SEEDED, text=message, origin=_SEEDED)])
 
         log.info(
             f"{LogTag.STARTUP} Seeded holo card conversation for user",
@@ -84,32 +84,22 @@ async def seed_first_conversation(user_id: str, composed: FirstConversation) -> 
 
         # A message's cards render ABOVE its bubbles, so the buttons get a
         # message of their own between the routines and the question.
-        messages = [
-            MessageModel(type="bot", response=NEW_MESSAGE_BREAKER.join(composed.opening)),
-            MessageModel(
-                type="bot",
-                response="",
-                tool_data=[cast(ToolDataEntry, composed.connect_tool_data())],
+        notices = [
+            Notice(id=_SEEDED, text=NEW_MESSAGE_BREAKER.join(composed.opening), origin=_SEEDED),
+            Notice(
+                id=_SEEDED,
+                text="",
+                origin=_SEEDED,
+                tool_data=(cast(ToolDataEntry, composed.connect_tool_data()),),
             ),
-            MessageModel(
-                type="bot",
-                response=composed.question,
-                follow_up_actions=composed.follow_ups,
+            Notice(
+                id=_SEEDED,
+                text=composed.question,
+                origin=_SEEDED,
+                follow_up_actions=tuple(composed.follow_ups),
             ),
         ]
-
-        message_ids = await conversation_repository.append_messages(
-            conversation_id,
-            user_id=user_id,
-            messages=messages,
-        )
-        if message_ids is None:
-            log.error(
-                f"{LogTag.ONBOARDING} Seeded first conversation vanished before its messages",
-                conversation_id=conversation_id,
-                user_id=user_id,
-            )
-            return None
+        await _say(conversation_id, user_id, notices)
 
         log.info(
             f"{LogTag.ONBOARDING} Seeded first conversation for user",

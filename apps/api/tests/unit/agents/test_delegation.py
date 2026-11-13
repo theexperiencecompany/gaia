@@ -44,19 +44,27 @@ from app.constants.hil import SUBAGENT_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, RunningSubagent, SubagentKind
-from app.models.chat_models import MessageModel, ToolDataEntry
+from app.models.chat_models import ToolDataEntry
+from app.models.conversation_log_models import (
+    Entry,
+    WorkFinished,
+    WorkOutcome,
+    WorkStarted,
+)
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
+from app.services.conversation.runtime import install_runtime_ports
 from app.utils import background_tasks
 from app.utils.agent_utils import IntegrationMetadata
 from shared.py.wide_events import log
 from tests.helpers import WideEventRecorder, captured_wide_event
+from tests.unit.services.conversation.log_helpers import user
+from tests.unit.services.conversation.runtime_doubles import Runtime
 from tests.unit.services.hil.conftest import make_record
 
 pytestmark = pytest.mark.unit
 
 MODULE = "app.agents.core.subagents.delegation"
 FOLDED = "app.agents.core.background.folded_stream"
-FOLDED_CARDS = "app.services.folded_cards"
 
 
 class _OwnStream:
@@ -122,34 +130,25 @@ async def redis() -> AsyncIterator[Any]:
 
 
 @pytest.fixture
-def client_edges() -> Iterator[SimpleNamespace]:
-    """Record the stream, websocket and persistence edges a background run touches."""
-    broadcasts: list[dict[str, Any]] = []
-
-    async def _broadcast(_user_id: str, payload: dict[str, Any]) -> None:
-        broadcasts.append(payload)
-
+async def client_edges() -> AsyncIterator[SimpleNamespace]:
+    """Record the stream and log edges a background run touches."""
+    runtime = Runtime()
+    install_runtime_ports(runtime.ports)
+    await runtime.log.append(CONVERSATION, "u1", user("u1"))
     with (
         patch.object(executor_queue, "StreamManager", AsyncMock()) as stream_manager,
-        patch.object(executor_queue.websocket_manager, "broadcast_to_user", new=_broadcast),
-        patch(f"{FOLDED_CARDS}.conversation_repository") as conversations,
         patch(f"{MODULE}.stream_manager") as streams,
         patch(f"{FOLDED}.stream_manager", new=streams),
         patch(f"{MODULE}.deliver_to_executor", new=AsyncMock()) as deliver,
     ):
-        conversations.append_message_tool_data = AsyncMock(return_value=True)
-        conversations.extend_subagent_group = AsyncMock(return_value=True)
-        conversations.get_message = AsyncMock(
-            return_value=MessageModel(type="bot", response="", tool_data=[])
-        )
         streams.is_cancelled = AsyncMock(return_value=False)
         yield SimpleNamespace(
-            broadcasts=broadcasts,
-            conversations=conversations,
-            deliver=deliver,
-            streams=streams,
-            stream_manager=stream_manager,
+            runtime=runtime, deliver=deliver, streams=streams, stream_manager=stream_manager
         )
+
+
+async def _logged(edges: SimpleNamespace) -> list[Entry]:
+    return [logged.entry for logged in await edges.runtime.log.read_after(CONVERSATION, "u1", 1)]
 
 
 @pytest.fixture
@@ -375,7 +374,7 @@ class TestABackgroundDispatch:
 
 
 class TestABackgroundRunOwnsItsStream:
-    async def test_it_announces_its_own_stream_folded_into_the_parents_message(
+    async def test_it_runs_on_its_own_stream_logged_as_detached_work(
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:
         seen: dict[str, Any] = {}
@@ -391,14 +390,12 @@ class TestABackgroundRunOwnsItsStream:
             await delegate(_delegation(), background=True, probe_parked=False)
             await _drain()
 
-        (announced,) = [
-            b for b in client_edges.broadcasts if b["type"] == "executor.stream_started"
-        ]
-        assert announced["stream_id"] == seen["stream_id"] != "parent-stream"
-        assert announced["task_id"] == "row-1"
-        assert announced["bot_message_id"] == "bot-msg-1"
-        # The client upserts only this run's cards: the turn's own run may still be writing.
-        assert announced["kind"] == "subagent"
+        started, ended = await _logged(client_edges)
+        assert isinstance(started, WorkStarted)
+        assert (started.task_id, started.detached) == (seen["stream_id"], True)
+        assert seen["stream_id"] != "parent-stream"
+        assert isinstance(ended, WorkFinished)
+        assert (ended.task_id, ended.outcome) == (seen["stream_id"], WorkOutcome.DONE)
         # The gate reads both off the run's configurable: the card goes on this
         # stream, and the approval record gets the recipe that resumes the run.
         assert seen["configurable"]["stream_id"] == seen["stream_id"]
@@ -406,28 +403,33 @@ class TestABackgroundRunOwnsItsStream:
         # A Stop on the dispatching turn still reaches it.
         assert seen["parent_stream_id"] == "parent-stream"
 
-    async def test_its_frames_are_saved_into_the_parents_message(
+    async def test_its_cards_are_logged_on_its_own_finished_work(
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:
-        with patch(
-            f"{MODULE}.execute_subagent_stream",
-            new=AsyncMock(return_value=SubagentOutcome(text="done")),
+        cards: list[ToolDataEntry] = [{"tool_name": "search", "data": {"q": "x"}}]
+        with (
+            patch(
+                f"{MODULE}.execute_subagent_stream",
+                new=AsyncMock(return_value=SubagentOutcome(text="done")),
+            ),
+            patch(f"{FOLDED}.drain_executor_tool_data", return_value=cards),
         ):
             await delegate(_delegation(), background=True, probe_parked=False)
             await _drain()
 
-        saved = client_edges.conversations.append_message_tool_data.await_args
-        assert saved.args[0] == CONVERSATION
-        assert saved.kwargs["message_id"] == "bot-msg-1"
-        assert saved.kwargs["entries"], "the run's subagent row must be saved"
+        _, ended = await _logged(client_edges)
+        assert isinstance(ended, WorkFinished)
+        assert list(ended.tool_data) == cards
 
-    async def test_cards_that_cannot_be_saved_do_not_cost_the_run_its_result(
-        self, redis: Any, client_edges: SimpleNamespace
+    async def test_cards_that_cannot_be_logged_do_not_cost_the_run_its_result(
+        self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
     ) -> None:
-        client_edges.conversations.get_message.side_effect = RuntimeError("mongo down")
-        with patch(
-            f"{MODULE}.execute_subagent_stream",
-            new=AsyncMock(return_value=SubagentOutcome(text="the summary")),
+        with (
+            patch(
+                f"{MODULE}.execute_subagent_stream",
+                new=AsyncMock(return_value=SubagentOutcome(text="the summary")),
+            ),
+            patch(f"{FOLDED}.record_work_finished", side_effect=RuntimeError("mongo down")),
         ):
             await delegate(_delegation(), background=True, probe_parked=False)
             await _drain()
@@ -435,68 +437,15 @@ class TestABackgroundRunOwnsItsStream:
         (landed,) = [c.args[2] for c in client_edges.deliver.await_args_list]
         assert landed.endswith(": the summary")
         assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
-
-
-class TestAResumedRunSavesIntoWhatItsParkSaved:
-    """A resumed run's frames join the parked run's saved row and card; a reload shows one of each."""
-
-    @staticmethod
-    def _saved_turn() -> MessageModel:
-        return MessageModel(
-            type="bot",
-            response="",
-            tool_data=[
-                {
-                    "tool_name": "subagent_group",
-                    "data": {"subagent_id": "row-1", "tool_calls": [{"tool_call_id": "a"}]},
-                },
-                {
-                    "tool_name": "approval_request",
-                    "data": {"approval_id": "appr-1", "status": "approved"},
-                },
-            ],
-        )
-
-    async def test_its_calls_extend_the_saved_row_and_the_card_is_not_saved_twice(
-        self, redis: Any, client_edges: SimpleNamespace
-    ) -> None:
-        client_edges.conversations.get_message.return_value = self._saved_turn()
-
-        async def _resumed(**kwargs: Any) -> SubagentOutcome:
-            writer = kwargs["stream_writer"]
-            writer(
-                {
-                    "tool_data": {
-                        "tool_name": "approval_request",
-                        "tool_category": "hil",
-                        "data": {"approval_id": "appr-1", "status": "approved"},
-                    }
-                }
-            )
-            writer(
-                {
-                    "tool_data": {
-                        "tool_name": "tool_calls_data",
-                        "subagent_id": "row-1",
-                        "data": {"tool_name": "create_flowchart", "tool_call_id": "b"},
-                    }
-                }
-            )
-            return SubagentOutcome(text="drawn")
-
-        with patch(f"{MODULE}.execute_subagent_stream", new=_resumed):
-            assert await delegation.resume_background(
-                _delegation(), {"status": "approved", "approval_id": "appr-1"}
-            )
-            await _drain()
-
-        extended = client_edges.conversations.extend_subagent_group.await_args
-        assert extended.kwargs["message_id"] == "bot-msg-1"
-        group = extended.kwargs["group"]
-        assert group.subagent_id == "row-1"
-        assert [c["tool_call_id"] for c in group.tool_calls] == ["b"]
-        assert group.completed_at is not None
-        client_edges.conversations.append_message_tool_data.assert_not_awaited()
+        assert recorder.event("subagent_run")["errors"] == [
+            {
+                "msg": f"{LogTag.AGENT} Could not log a detached run's end",
+                "conversation_id": CONVERSATION,
+                "stream_id": _OwnStream(),
+                "error_type": "RuntimeError",
+                "error": "mongo down",
+            }
+        ]
 
 
 class TestABackgroundRunThatParks:
@@ -766,13 +715,12 @@ class TestABackgroundRunsBoundary:
                 await _drain()
 
         event = recorder.event("subagent_run")
-        (announced,) = [
-            b for b in client_edges.broadcasts if b["type"] == "executor.stream_started"
-        ]
+        started, _ = await _logged(client_edges)
+        assert isinstance(started, WorkStarted)
         assert event["trace_id"] == "trace-1"
         assert event["agent_name"] == "spawned_subagent"
         assert event["conversation_id"] == CONVERSATION
-        assert event["stream_id"] == announced["stream_id"]
+        assert event["stream_id"] == started.task_id
         assert event["subagent_id"] == "row-1"
         assert event["integration_id"] == "spawn"
         assert event["resumed"] is False
@@ -910,12 +858,7 @@ class TestABackgroundRunsStreamLifecycle:
             await _drain()
 
         ((stream_id, frames),) = own_stream.items()
-        (announced,) = [
-            b for b in client_edges.broadcasts if b["type"] == "executor.stream_started"
-        ]
-        assert stream_id == announced["stream_id"]
         assert stream_id.startswith(SUBAGENT_STREAM_ID_PREFIX)
-        assert announced["conversation_id"] == CONVERSATION
         assert [next(iter(f)) for f in frames] == ["subagent_start", "subagent_end"]
         assert frames[0]["subagent_start"]["subagent"] == "linear"
         assert frames[0]["subagent_start"]["icon_url"] == "https://icons.example/linear.png"
@@ -975,145 +918,6 @@ class TestABackgroundRunsStreamLifecycle:
 
         assert seen["stream_id"] == seen["own"]
         assert seen[SUBAGENT_RESUME_CONFIG_KEY]["tool_call_id"] == "call-1"
-
-    async def test_a_run_with_no_user_announces_nothing_and_saves_under_no_user(
-        self, redis: Any, client_edges: SimpleNamespace
-    ) -> None:
-        base = _delegation()
-        run = replace(base, ctx=replace(base.ctx, user_id=None))
-        entries: list[ToolDataEntry] = [{"tool_name": "search", "data": {"q": "x"}}]
-        with (
-            patch(
-                f"{MODULE}.execute_subagent_stream",
-                new=AsyncMock(return_value=SubagentOutcome(text="done")),
-            ),
-            patch(f"{FOLDED}.drain_executor_tool_data", return_value=entries),
-        ):
-            await delegate(run, background=True, probe_parked=False)
-            await _drain()
-
-        conversations = client_edges.conversations
-        assert client_edges.broadcasts == []
-        assert conversations.get_message.await_args.kwargs["user_id"] == ""
-        assert conversations.append_message_tool_data.await_args.kwargs["user_id"] == ""
-
-
-GROUP = {"tool_name": "subagent_group", "data": {"subagent_id": "row-1", "tool_calls": []}}
-HELD_CARD = {"tool_name": "approval_request", "data": {"approval_id": "appr-1"}}
-NEW_CARD = {"tool_name": "approval_request", "data": {"approval_id": "appr-2"}}
-SEARCH = {"tool_name": "search", "data": {"q": "x"}}
-
-
-class TestSavingABackgroundRunsFrames:
-    @staticmethod
-    async def _run(entries: list[Any], parent: AgentConfigurable | None = None) -> None:
-        with (
-            patch(
-                f"{MODULE}.execute_subagent_stream",
-                new=AsyncMock(return_value=SubagentOutcome(text="done")),
-            ),
-            patch(f"{FOLDED}.drain_executor_tool_data", return_value=entries),
-        ):
-            await delegate(_delegation(parent), background=True, probe_parked=False)
-            await _drain()
-
-    async def test_the_frames_are_appended_to_the_users_own_message(
-        self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
-    ) -> None:
-        await self._run([GROUP, SEARCH])
-
-        conversations = client_edges.conversations
-        conversations.get_message.assert_awaited_once_with(CONVERSATION, "bot-msg-1", user_id="u1")
-        conversations.append_message_tool_data.assert_awaited_once_with(
-            CONVERSATION, user_id="u1", message_id="bot-msg-1", entries=[GROUP, SEARCH]
-        )
-        assert "errors" not in recorder.event("subagent_run")
-
-    async def test_a_resumed_segment_extends_its_row_and_saves_only_new_cards(
-        self, redis: Any, client_edges: SimpleNamespace
-    ) -> None:
-        client_edges.conversations.get_message.return_value = MessageModel(
-            type="bot", response="", tool_data=[GROUP, HELD_CARD]
-        )
-
-        await self._run([GROUP, HELD_CARD, NEW_CARD, SEARCH])
-
-        extended = client_edges.conversations.extend_subagent_group.await_args
-        assert extended.args == (CONVERSATION,)
-        assert extended.kwargs["user_id"] == "u1"
-        assert extended.kwargs["message_id"] == "bot-msg-1"
-        assert extended.kwargs["group"].subagent_id == "row-1"
-        client_edges.conversations.append_message_tool_data.assert_awaited_once_with(
-            CONVERSATION, user_id="u1", message_id="bot-msg-1", entries=[NEW_CARD, SEARCH]
-        )
-
-    async def test_a_run_with_no_message_to_fold_into_saves_nothing_and_says_so(
-        self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
-    ) -> None:
-        parent = {k: v for k, v in LIVE.items() if k != "bot_message_id"}
-
-        await self._run([GROUP, SEARCH], parent)
-
-        client_edges.conversations.get_message.assert_not_awaited()
-        client_edges.conversations.append_message_tool_data.assert_not_awaited()
-        assert recorder.event("subagent_run")["warnings"] == [
-            {
-                "msg": f"{LogTag.AGENT} Detached stream has no message to save its cards into",
-                "conversation_id": CONVERSATION,
-                "stream_id": _OwnStream(),
-                "entries": 2,
-            }
-        ]
-
-    async def test_frames_for_a_message_not_saved_yet_wait_for_its_save(
-        self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
-    ) -> None:
-        """A fast run can end before its turn saved the message: its cards wait on the conversation."""
-        conversations = client_edges.conversations
-        conversations.get_message.return_value = None
-        conversations.park_folded_cards = AsyncMock(return_value=True)
-
-        await self._run([GROUP, SEARCH])
-
-        conversations.append_message_tool_data.assert_not_awaited()
-        conversations.park_folded_cards.assert_awaited_once_with(
-            CONVERSATION, user_id="u1", message_id="bot-msg-1", entries=[GROUP, SEARCH]
-        )
-        assert "errors" not in recorder.event("subagent_run")
-
-    async def test_an_append_that_matched_nothing_is_recorded(
-        self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
-    ) -> None:
-        client_edges.conversations.append_message_tool_data.return_value = False
-
-        await self._run([GROUP, SEARCH, NEW_CARD])
-
-        assert recorder.event("subagent_run")["errors"] == [
-            {
-                "msg": f"{LogTag.AGENT} Detached stream cards matched no message; not saved",
-                "conversation_id": CONVERSATION,
-                "message_id": "bot-msg-1",
-                "entries": 3,
-            }
-        ]
-
-    async def test_a_save_that_raises_is_recorded_and_the_result_still_lands(
-        self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
-    ) -> None:
-        client_edges.conversations.get_message.side_effect = RuntimeError("mongo down")
-
-        await self._run([GROUP])
-
-        assert _landings(client_edges.deliver) == [_landing("done")]
-        assert recorder.event("subagent_run")["errors"] == [
-            {
-                "msg": f"{LogTag.AGENT} Could not save a detached stream's cards",
-                "conversation_id": CONVERSATION,
-                "stream_id": _OwnStream(),
-                "error_type": "RuntimeError",
-                "error": "mongo down",
-            }
-        ]
 
 
 class TestWhatAParkedRunSays:

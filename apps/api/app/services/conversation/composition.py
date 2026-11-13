@@ -17,11 +17,13 @@ from app.db.repositories.conversation_log import conversation_log_repository
 from app.models.chat_models import ConversationSource, ReactionBy
 from app.models.conversation_frame_models import EntryUpdatedFrame
 from app.models.conversation_log_models import (
+    CancelWork,
     LoggedEntry,
     Reaction,
     Reply,
     UserMessage,
 )
+from app.models.work_cancel_models import WorkCancelled
 from app.services.conversation.ack import decide_reaction
 from app.services.conversation.approval_replies import HilApprovalReplies
 from app.services.conversation.comms_runner import CommsGraphRunner
@@ -84,10 +86,12 @@ class RuntimeEffects:
         task.add_done_callback(_steps.running.discard)
 
     async def cancel_work(
-        self, conversation_id: str, user_id: str, task_ids: tuple[str, ...]
-    ) -> None:
-        """Cancel exactly the named tasks, running or queued, and the approvals of a stopped run."""
-        await cancel_named_work(conversation_id, user_id, list(task_ids))
+        self, conversation_id: str, user_id: str, cancel: CancelWork
+    ) -> WorkCancelled:
+        """Cancel exactly the named tasks, running or queued, and close the approvals they wait on."""
+        return await cancel_named_work(
+            conversation_id, user_id, cancel.task_ids, approval_ids=cancel.approval_ids
+        )
 
     async def start_ack(self, conversation_id: str, user_id: str, message_id: str) -> None:
         """Decide the instant reaction beside the step; the accept that asked never waits for it."""

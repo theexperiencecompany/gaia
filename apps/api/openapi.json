@@ -4266,6 +4266,16 @@
             "title": "Response",
             "type": "string"
           },
+          "selectedCalendarEvent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectedCalendarEventData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "selectedTool": {
             "anyOf": [
               {
@@ -7730,28 +7740,6 @@
           }
         },
         "title": "FirstStepsState",
-        "type": "object"
-      },
-      "FoldedCards": {
-        "description": "Cards a detached run closed before the message they fold into was saved; its save takes them.",
-        "properties": {
-          "cards": {
-            "items": {
-              "$ref": "#/components/schemas/ToolDataEntry"
-            },
-            "title": "Cards",
-            "type": "array"
-          },
-          "since": {
-            "format": "date-time",
-            "title": "Since",
-            "type": "string"
-          }
-        },
-        "required": [
-          "since"
-        ],
-        "title": "FoldedCards",
         "type": "object"
       },
       "FollowUpActionsEvent": {
@@ -11609,311 +11597,6 @@
         "title": "MessageFeedbackResponse",
         "type": "object"
       },
-      "MessageModel": {
-        "description": "A single chat message with its content, attachments and tool data.",
-        "properties": {
-          "date": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Date"
-          },
-          "disclaimer": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Disclaimer"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "file": {
-            "anyOf": [
-              {
-                "contentMediaType": "application/octet-stream",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "File"
-          },
-          "fileData": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/FileData"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": [],
-            "title": "Filedata"
-          },
-          "fileIds": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": [],
-            "title": "Fileids"
-          },
-          "filename": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Filename"
-          },
-          "filetype": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Filetype"
-          },
-          "first_contact": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "First Contact"
-          },
-          "follow_up_actions": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Follow Up Actions"
-          },
-          "image_data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ImageData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "in_progress": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "In Progress"
-          },
-          "message_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Message Id"
-          },
-          "metadata": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Metadata"
-          },
-          "pinned": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pinned"
-          },
-          "platform_message_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Platform Message Id"
-          },
-          "reaction": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MessageReaction"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "replyToMessage": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ReplyToMessageData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "response": {
-            "title": "Response",
-            "type": "string"
-          },
-          "selectedTool": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Selectedtool"
-          },
-          "selectedWorkflow": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SelectedWorkflowDataInput"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "stopped": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Stopped"
-          },
-          "subtype": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subtype"
-          },
-          "todo_run_wake": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/TodoRunWake"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "toolCategory": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Toolcategory"
-          },
-          "tool_data": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/ToolDataEntry"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tool Data"
-          },
-          "type": {
-            "title": "Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "response"
-        ],
-        "title": "MessageModel",
-        "type": "object"
-      },
       "MessageReaction": {
         "description": "GAIA's one emoji reaction on a user message.",
         "properties": {
@@ -12396,6 +12079,14 @@
         "additionalProperties": false,
         "description": "Text delivered to the user outside a step, with the cards of the work it reports.",
         "properties": {
+          "follow_up_actions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Follow Up Actions",
+            "type": "array"
+          },
           "id": {
             "description": "Producer-minted idempotency key",
             "minLength": 1,
@@ -16352,11 +16043,31 @@
             "title": "Id",
             "type": "string"
           },
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "imported": {
+            "default": false,
+            "title": "Imported",
+            "type": "boolean"
+          },
           "kind": {
             "const": "reply",
             "default": "reply",
             "title": "Kind",
             "type": "string"
+          },
+          "pinned": {
+            "default": false,
+            "title": "Pinned",
+            "type": "boolean"
           },
           "quote_target": {
             "anyOf": [
@@ -16525,6 +16236,11 @@
             "minLength": 1,
             "title": "Id",
             "type": "string"
+          },
+          "imported": {
+            "default": false,
+            "title": "Imported",
+            "type": "boolean"
           },
           "kind": {
             "const": "reply_settled",
@@ -21742,68 +21458,6 @@
         "title": "UpdateMemoryRequest",
         "type": "object"
       },
-      "UpdateMessagesRequest": {
-        "description": "Request to replace the messages of a conversation.",
-        "properties": {
-          "conversation_id": {
-            "title": "Conversation Id",
-            "type": "string"
-          },
-          "messages": {
-            "items": {
-              "$ref": "#/components/schemas/MessageModel"
-            },
-            "title": "Messages",
-            "type": "array"
-          }
-        },
-        "required": [
-          "conversation_id",
-          "messages"
-        ],
-        "title": "UpdateMessagesRequest",
-        "type": "object"
-      },
-      "UpdateMessagesResponse": {
-        "description": "Append acknowledgement carrying the ids the appended messages were stored\nunder \u2014 the client reconciles its optimistic records against these.",
-        "properties": {
-          "conversation_id": {
-            "title": "Conversation Id",
-            "type": "string"
-          },
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
-          "message_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Message Ids",
-            "type": "array"
-          },
-          "message_seqs": {
-            "items": {
-              "type": "integer"
-            },
-            "title": "Message Seqs",
-            "type": "array"
-          },
-          "modified_count": {
-            "title": "Modified Count",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "conversation_id",
-          "message",
-          "modified_count",
-          "message_ids",
-          "message_seqs"
-        ],
-        "title": "UpdateMessagesResponse",
-        "type": "object"
-      },
       "UpdateProjectRequest": {
         "description": "Model for updating projects - all fields optional",
         "properties": {
@@ -22374,17 +22028,32 @@
             "title": "Files",
             "type": "array"
           },
+          "first_contact": {
+            "default": false,
+            "title": "First Contact",
+            "type": "boolean"
+          },
           "id": {
             "description": "Producer-minted idempotency key",
             "minLength": 1,
             "title": "Id",
             "type": "string"
           },
+          "imported": {
+            "default": false,
+            "title": "Imported",
+            "type": "boolean"
+          },
           "kind": {
             "const": "user_message",
             "default": "user_message",
             "title": "Kind",
             "type": "string"
+          },
+          "pinned": {
+            "default": false,
+            "title": "Pinned",
+            "type": "boolean"
           },
           "platform_message_id": {
             "anyOf": [
@@ -22495,6 +22164,16 @@
           "text": {
             "title": "Text",
             "type": "string"
+          },
+          "todo_run_wake": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TodoRunWake"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "tool_category": {
             "anyOf": [
@@ -23028,12 +22707,6 @@
             "title": "Pending Task Ids",
             "type": "array"
           },
-          "pending_tasks": {
-            "default": 0,
-            "description": "Queued executor requests dropped wholesale.",
-            "title": "Pending Tasks",
-            "type": "integer"
-          },
           "subagent_ids": {
             "description": "Running subagents stopped.",
             "items": {
@@ -23047,7 +22720,6 @@
           "executor_stopped",
           "executor_task_id",
           "executor_spared",
-          "pending_tasks",
           "pending_task_ids",
           "subagent_ids",
           "approval_ids",
@@ -23212,6 +22884,11 @@
             "minimum": 1.0,
             "title": "Cause Through",
             "type": "integer"
+          },
+          "detached": {
+            "default": false,
+            "title": "Detached",
+            "type": "boolean"
           },
           "id": {
             "description": "Producer-minted idempotency key",
@@ -28412,66 +28089,6 @@
           }
         },
         "summary": "Send Message Endpoint",
-        "tags": [
-          "Conversations"
-        ]
-      },
-      "put": {
-        "description": "Update the messages of a conversation.",
-        "operationId": "conversations_update_messages_endpoint",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateMessagesRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UpdateMessagesResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Update Messages Endpoint",
         "tags": [
           "Conversations"
         ]
