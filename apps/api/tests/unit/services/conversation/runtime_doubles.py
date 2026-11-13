@@ -495,7 +495,8 @@ class ScriptedApprovals:
 
 
 CONVERSATION = "c1"
-USER = "user_1"
+# A Mongo ObjectId: the step counts each reply on the user's analytics profile.
+USER = "65f1a2b3c4d5e6f708192a3b"
 
 
 class ScenarioLog(ConversationLog, Protocol):

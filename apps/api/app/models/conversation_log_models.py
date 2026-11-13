@@ -120,6 +120,8 @@ class UserMessage(_Entry):
     selected_calendar_event: SelectedCalendarEventData | None = None
     reply_to_message: ReplyToMessageData | None = None
     reaction: Reaction | None = None
+    # The browser's PostHog session the message was sent from: what it causes is counted there.
+    posthog_session_id: Identifier | None = None
     # Bumped on each in-place update; a client applies an update only when it is newer.
     revision: int = Field(default=0, ge=0)
 

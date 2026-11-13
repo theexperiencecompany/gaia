@@ -7,11 +7,14 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from httpx import AsyncClient
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 from redis.asyncio import Redis
 
+from app.api.v1.middleware.auth import PostHogRequestContextMiddleware
+from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
 from app.models.bot_models import BotChatRequest
@@ -24,6 +27,7 @@ from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports
 from app.services.conversation.send import submit_bot_message
+from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from shared.py.wide_events import _spawned_tasks
 from tests.conftest import FAKE_USER
 from tests.unit.services.conversation.runtime_doubles import (
@@ -123,6 +127,24 @@ async def test_a_spoken_turn_is_logged_as_voice_and_gets_no_instant_reaction(
     assert sends.effects.calls == [EffectCall("kick")]
 
 
+async def test_a_sent_message_keeps_the_browser_session_its_reply_is_counted_in(
+    test_app: FastAPI, sends: Sends
+) -> None:
+    conversation_id = f"convrt-{uuid4().hex[:10]}"
+    # The real middleware binds the request's analytics context, as production stacks it.
+    transport = ASGITransport(app=PostHogRequestContextMiddleware(test_app))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:  # NOSONAR
+        response = await client.post(
+            f"/api/v1/conversations/{conversation_id}/messages",
+            json=_send("m1"),
+            headers={POSTHOG_SESSION_HEADER: "0190f00d-sess"},
+        )
+    assert response.status_code == 202, response.text
+    entries = await conversation_log_repository.read_log(conversation_id, user_id=FAKE_USER.user_id)
+    [message] = [e.entry for e in entries or [] if isinstance(e.entry, UserMessage)]
+    assert message.posthog_session_id == "0190f00d-sess"
+
+
 async def test_a_barge_in_is_logged_after_the_turn_and_a_resend_keeps_its_seq(
     client: AsyncClient, sends: Sends
 ) -> None:
@@ -206,6 +228,27 @@ async def test_a_bot_session_from_before_the_step_keeps_its_conversation(
         accepted = await submit_bot_message(body, user)
     assert accepted.conversation_id == before
     assert accepted.seq == len(_HISTORY) + 1
+
+
+async def test_a_bot_message_is_counted_once_after_it_is_accepted_and_never_on_a_resend(
+    sends: Sends,
+) -> None:
+    user = AuthenticatedUser(user_id=FAKE_USER.user_id)
+    body = BotChatRequest(
+        message="and tomorrow?",
+        platform="telegram",
+        platform_user_id=f"tg-{uuid4().hex[:8]}",
+        platform_message_id="902",
+        is_dm=True,
+    )
+    with patch("app.services.conversation.send.charge_bot_turn", new_callable=AsyncMock):
+        first = await submit_bot_message(body, user)
+        again = await submit_bot_message(body, user)
+    assert first.seq == again.seq
+    [(_, event), *_] = [call.args for call in sends.captured.call_args_list]
+    assert sends.captured.call_count == 1
+    assert isinstance(event, ChatMessageSubmitted)
+    assert (event.source, event.stream_id, event.is_retry) == ("telegram", "telegram:902", False)
 
 
 async def test_a_sent_messages_files_are_stored_on_its_entry_for_every_device(

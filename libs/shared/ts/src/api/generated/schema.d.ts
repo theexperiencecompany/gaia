@@ -16428,6 +16428,8 @@ export interface components {
             kind: "user_message";
             /** Platform Message Id */
             platform_message_id?: string | null;
+            /** Posthog Session Id */
+            posthog_session_id?: string | null;
             reaction?: components["schemas"]["Reaction"] | null;
             /** Reply To */
             reply_to?: string | null;

@@ -42,7 +42,6 @@ from app.services.conversation.comms_input import (
 )
 from app.services.conversation.ports import CancelReason, Finished, RunEvent
 from shared.py.analytics.catalog.agents import AgentRunStarted
-from shared.py.analytics.catalog.attribution import Attribution
 from shared.py.analytics.context import AnalyticsContext, analytics_context
 
 _STREAM_MODES: list[StreamMode] = ["messages", "custom", "updates"]
@@ -66,7 +65,7 @@ class CommsTurn:
     # Graph state keys beside messages (intent, integration_usernames, ...).
     state: dict[str, object]
     # Who caused the inputs; the run and everything it dispatches are attributed to them.
-    attribution: Attribution
+    analytics: AnalyticsContext
     run_started: AgentRunStarted
 
 
@@ -133,7 +132,7 @@ class CommsGraphRun:
     async def _drive(self, state: dict[str, object]) -> None:
         turn = self._turn
         with (
-            analytics_context(AnalyticsContext(attribution=turn.attribution)),
+            analytics_context(turn.analytics),
             agent_run_lifecycle(self._claim.user_id, turn.run_started) as lifecycle,
         ):
             try:

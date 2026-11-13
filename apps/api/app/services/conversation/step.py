@@ -64,6 +64,7 @@ from app.services.conversation.ports import (
     Streamed,
     Summarized,
 )
+from app.services.conversation.reply_analytics import capture_reply_ended
 from app.services.conversation.todo_wake import nothing_to_report
 from app.services.conversation.verdict import merge_group, quote_target, verdict
 from shared.py.wide_events import log
@@ -329,7 +330,7 @@ async def _answered_as_approval(
         through=first.seq,
         quote_target=await _quote(ports, claim, answers, first.seq - 1, shown.seq),
     )
-    await _append(ports, claim, settled)
+    await _settle(ports, claim, (first,), settled)
     return True
 
 
@@ -520,9 +521,10 @@ async def _stop(ports: RuntimePorts, attempt: _Attempt) -> None:
         return
     await _amend(ports, attempt.claim, progress.reply)
     state = await ports.log.state(attempt.claim.conversation_id, attempt.claim.user_id)
-    await _append(
+    await _settle(
         ports,
         attempt.claim,
+        attempt.covers,
         _settled(attempt, ReplyOutcome.STOPPED, (), state.stopped_through, None),
     )
 
@@ -659,9 +661,10 @@ async def _conclude(
     answers, quote = await _answers_and_quote(ports, attempt, stored.seq)
     if settled_as is ReplyOutcome.SILENT:
         quote = None
-    await _append(
+    await _settle(
         ports,
         attempt.claim,
+        attempt.covers,
         _settled(attempt, settled_as, answers, attempt.through, quote, failure),
     )
 
@@ -758,6 +761,20 @@ async def _append(ports: RuntimePorts, claim: StepClaim, entry: Entry) -> Logged
     appended = await ports.log.append_fenced(claim, entry)
     await publish_appended(ports.frames, claim.conversation_id, appended)
     return appended.logged
+
+
+async def _settle(
+    ports: RuntimePorts, claim: StepClaim, covers: Sequence[LoggedEntry], settled: ReplySettled
+) -> None:
+    """Settle a reply on the inputs it covered, and count it the first time it lands."""
+    appended = await ports.log.append_fenced(claim, settled)
+    await publish_appended(ports.frames, claim.conversation_id, appended)
+    if appended.duplicate:
+        return
+    since = await ports.log.read_after(claim.conversation_id, claim.user_id, covers[0].seq)
+    capture_reply_ended(
+        claim.user_id, claim.conversation_id, covers, settled, appended.logged.at, since
+    )
 
 
 async def _amend(ports: RuntimePorts, claim: StepClaim, entry: Reply | UserMessage) -> LoggedEntry:

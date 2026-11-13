@@ -132,6 +132,7 @@ from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySur
 from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.workflows import WorkflowExecuted
 from shared.py.analytics.context import (
+    AnalyticsContext,
     analytics_context,
     current_analytics_context,
     worker_context,
@@ -263,7 +264,7 @@ def _turn_builder(
             opening=[SystemMessage(content="STATIC PROMPT")],
             closing=[mark(HumanMessage(content="[clock]"), TIME_CONTEXT_MARKER)],
             state={"intent": "", "integration_usernames": {}},
-            attribution=TEST_ATTRIBUTION,
+            analytics=AnalyticsContext(attribution=TEST_ATTRIBUTION),
             run_started=AgentRunStarted(
                 agent="comms", mode="interactive", conversation_id=claim.conversation_id
             ),

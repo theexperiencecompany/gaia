@@ -9,7 +9,7 @@ from app.agents.core.background.todo_run_delivery import write_up_note
 from app.agents.core.messages import MessageScope, build_turn_context
 from app.agents.llm.lane import AgentRole
 from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
-from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource
+from app.constants.chat import ConversationSource
 from app.constants.conversation import WORKFLOW_RUN_REQUEST
 from app.db.repositories.conversations import conversation_repository
 from app.helpers.agent_helpers import (
@@ -31,6 +31,7 @@ from app.models.conversation_log_models import (
 )
 from app.services.chat.workspace import schedule_last_active_touch
 from app.services.conversation.comms_runner import CommsTurn
+from app.services.conversation.reply_analytics import spoken_context
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.todo_wake import todo_runs_reported
 from app.services.delivery.presence import presence_before
@@ -38,6 +39,7 @@ from app.utils.auth_utils import require_owner
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
+from shared.py.analytics.context import AnalyticsContext
 
 _COMMS_AGENT = "comms_agent"
 
@@ -104,7 +106,7 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
         config=config,
         opening=[*context.chain, *(m for m in (context.presence,) if m is not None)],
         closing=[*await _delivery_note(claim, batch), context.clock],
-        attribution=_attribution(said, fired),
+        analytics=_analytics(said, fired),
         run_started=AgentRunStarted(
             agent="comms",
             mode=mode,
@@ -167,28 +169,18 @@ def _stamp_workflow_run(configurable: AgentConfigurable, run: WorkflowRun) -> No
 
 
 #: Work that finished, or an integration the work waited on, wakes comms with no one asking.
-_UNPROMPTED = Attribution(actor=Actor.AGENT, trigger=Trigger.SYSTEM, surface=EntrySurface.WORKER)
+_UNPROMPTED = AnalyticsContext(
+    attribution=Attribution(actor=Actor.AGENT, trigger=Trigger.SYSTEM, surface=EntrySurface.WORKER)
+)
 
 
-def _attribution(said: list[UserMessage], fired: WorkflowRun | None) -> Attribution:
+def _analytics(said: list[UserMessage], fired: WorkflowRun | None) -> AnalyticsContext:
     """Return who caused the attempt: the user who spoke last, the workflow's fire, else the work itself."""
     if said:
-        return _spoken(said[-1])
+        return spoken_context(said[-1])
     if fired is not None:
-        return fired.attribution
+        return AnalyticsContext(attribution=fired.attribution)
     return _UNPROMPTED
-
-
-def _spoken(message: UserMessage) -> Attribution:
-    if message.voice:
-        surface = EntrySurface.VOICE
-    elif message.surface in BOT_CONVERSATION_SOURCES:
-        surface = EntrySurface.BOT
-    elif message.surface is ConversationSource.DESKTOP:
-        surface = EntrySurface.DESKTOP
-    else:
-        surface = EntrySurface.WEB
-    return Attribution(actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=surface)
 
 
 def _source(said: list[UserMessage]) -> str:

@@ -10,15 +10,12 @@ from app.db.redis import redis_cache
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversations import conversation_repository
 from app.decorators import enforce_cost_budget, enforce_tiered_limit
-from app.models.bot_models import BotChatRequest
 from app.models.chat_models import ConversationModel, ConversationSource
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import capture
 from app.services.bot_session_merge import apply_merge, plan_merge
 from app.services.conversation_service import create_conversation_service
 from app.services.limit_upsell import capture_limit_hit
-from shared.py.analytics import PlatformIdentity, UserId
-from shared.py.analytics.catalog.chat import ChatMessageSubmitted
+from shared.py.analytics import PlatformIdentity
 from shared.py.wide_events import log
 
 # Constants
@@ -198,32 +195,12 @@ class BotService:
         return await BotService.get_or_create_session(platform, platform_user_id, channel_id, user)
 
 
-async def charge_bot_turn(user_id: str, body: BotChatRequest, stream_id: str) -> None:
-    """Charge quota/budget for one bot turn and record its submission event.
+async def charge_bot_turn(user_id: str) -> None:
+    """Charge quota and the day's budget for one bot turn, refusing it before any work starts.
 
     Mirrors what the web chat endpoint charges via @tiered_rate_limit, done
     manually since the caller here has no authenticated request to decorate.
     """
-    # Can't be a decorator: the caller has no authenticated request (resolved
-    # from a platform link). Without this, bot turns had no quota and never hit
-    # record_activity. enforce_rate_limit (above) is separate: flat anti-spam.
     await enforce_tiered_limit(user_id, "chat_messages")
-    # Caps how EXPENSIVE the day has been (the tiered limit above caps how MANY
-    # messages) — without it, an over-budget bot user got a stream that opened
-    # and died partway instead of a clean refusal before any work started.
+    # Caps how expensive the day has been; the tiered limit above caps how many messages.
     await enforce_cost_budget(user_id, feature_key="chat_messages")
-    # Captured past every gate, like the web endpoint: a refusal never reached
-    # the agent, so counting it here would inflate volume by exactly the users
-    # who hit walls most. A refusal is its own event.
-    capture(
-        UserId(user_id),
-        ChatMessageSubmitted(
-            # `source` is the canonical key: a ConversationSource value, the same
-            # key every other chat event reports its surface under.
-            source=body.platform,
-            has_files=bool(body.file_ids or body.file_data),
-            stream_id=stream_id,
-            # Bots have no retry action: a resend is a new message.
-            is_retry=False,
-        ),
-    )

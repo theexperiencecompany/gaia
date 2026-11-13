@@ -33,6 +33,7 @@ from app.services.files import FileService
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
+from shared.py.analytics.context import bound_analytics_context
 from shared.py.wide_events import log
 
 _TITLE_TASK_NAME = "conversation-title"
@@ -60,6 +61,12 @@ async def open_conversation(
         ConversationModel(conversation_id=conversation_id, source=source), user
     )
     return True
+
+
+def _posthog_session_id() -> str | None:
+    context = bound_analytics_context()
+    session: str | None = context.posthog_session_id if context else None
+    return session
 
 
 async def send_message(
@@ -91,6 +98,7 @@ async def send_message(
         selected_workflow=body.selected_workflow,
         selected_calendar_event=body.selected_calendar_event,
         reply_to_message=reply_to_message,
+        posthog_session_id=_posthog_session_id(),
     )
     accepted = await accept(runtime_ports(), conversation_id, user.user_id, message)
     seq = accepted.appended.logged.seq
@@ -150,7 +158,7 @@ async def submit_bot_message(body: BotChatRequest, user: AuthenticatedUser) -> B
     message_id = (
         f"{platform}:{body.platform_message_id}" if body.platform_message_id else uuid4().hex
     )
-    await charge_bot_turn(user_id, body, message_id)
+    await charge_bot_turn(user_id)
     sent = await send_message(
         conversation_id,
         user,
@@ -158,6 +166,17 @@ async def submit_bot_message(body: BotChatRequest, user: AuthenticatedUser) -> B
         ConversationSource(platform),
         platform_message_id=body.platform_message_id,
     )
+    if not sent.duplicate:
+        capture(
+            UserId(user_id),
+            ChatMessageSubmitted(
+                source=platform,
+                has_files=bool(body.file_ids or body.file_data),
+                stream_id=message_id,
+                # Bots have no retry action: a resend is a new message.
+                is_retry=False,
+            ),
+        )
     token = create_bot_session_token(
         user_id=user_id, platform=platform, platform_user_id=body.platform_user_id
     )

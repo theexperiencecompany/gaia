@@ -22390,6 +22390,18 @@
             ],
             "title": "Platform Message Id"
           },
+          "posthog_session_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posthog Session Id"
+          },
           "reaction": {
             "anyOf": [
               {
