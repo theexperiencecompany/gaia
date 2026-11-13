@@ -199,7 +199,7 @@ export interface NotificationUpdate {
 }
 
 // The API's action result, with `data` narrowed to what an executed action carries.
-export type ActionResult = Omit<ActionExecutionResponse, "data"> & {
+export type NotificationActionResult = Omit<ActionExecutionResponse, "data"> & {
   data?: ActionResultData | null;
 };
 

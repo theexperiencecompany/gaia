@@ -118,6 +118,7 @@ export const workFinished = (
   tool_data: toolData,
   note: "",
   nothing_for_user: false,
+  continued_by_decision: false,
   image: null,
 });
 

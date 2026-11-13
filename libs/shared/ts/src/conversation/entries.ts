@@ -317,6 +317,7 @@ const WorkFinishedSchema = z.object({
   tool_data: z.array(ToolDataEntrySchema).default([]),
   note: z.string().default(""),
   nothing_for_user: z.boolean().default(false),
+  continued_by_decision: z.boolean().default(false),
   image: ImageDataSchema.nullable().default(null),
 }) satisfies z.ZodType<WorkFinished>;
 

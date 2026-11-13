@@ -24,9 +24,9 @@ class BotChatRequest(BaseModel):
     message: str = Field(..., description="User's message text", min_length=1, max_length=32768)
     platform: str = Field(..., description="Platform name (discord, slack, etc.)")
     platform_user_id: str = Field(..., description=_PLATFORM_USER_ID_DESC, min_length=1)
-    channel_id: str | None = Field(None, description="Channel/group ID (None for DM)")
+    channel_id: str | None = Field(default=None, description="Channel/group ID (None for DM)")
     is_dm: bool = Field(
-        False,
+        default=False,
         description=(
             "Whether this conversation is a direct message. Discord and Slack DM "
             "channel ids differ from the user id, so the server cannot tell a DM "
@@ -34,18 +34,18 @@ class BotChatRequest(BaseModel):
         ),
     )
     file_ids: list[str] | None = Field(
-        None,
+        default=None,
         description="IDs of files attached to this message (uploaded via /api/v1/upload).",
     )
     file_data: list[FileData] | None = Field(
-        None,
+        default=None,
         description=(
             "Full metadata for attached files. Mirrors the web chat payload so "
             "the agent can resolve URL/filename without an extra DB lookup."
         ),
     )
     platform_message_id: str | None = Field(
-        None,
+        default=None,
         description=(
             "Platform-native id of the user's message (WhatsApp wamid, Telegram "
             "message_id, Discord id, Slack ts). Persisted on the saved user "

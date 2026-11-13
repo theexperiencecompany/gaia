@@ -286,11 +286,11 @@ describe("sending", () => {
 
     await sendMessage("run it", {
       conversationId: CONVERSATION,
-      selectedTool: "gmail_send",
-      toolCategory: "gmail",
-      selectedWorkflow: workflow,
-      selectedCalendarEvent: event,
-      replyToMessage: quoted,
+      selected_tool: "gmail_send",
+      tool_category: "gmail",
+      selected_workflow: workflow,
+      selected_calendar_event: event,
+      reply_to_message: quoted,
     });
 
     const [call] = sendResult.calls as { body: Record<string, unknown> }[];
@@ -308,7 +308,7 @@ describe("sending", () => {
   it("sends a workflow picked with no text", async () => {
     await sendMessage("", {
       conversationId: CONVERSATION,
-      selectedWorkflow: {
+      selected_workflow: {
         id: "w1",
         title: "Digest",
         description: "",

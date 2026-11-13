@@ -80,9 +80,6 @@ libs/shared/ts/src/chat/approvals.types.ts:HilMode
 libs/shared/ts/src/chat/fixtures.ts:ToolFixture
 libs/shared/ts/src/chat/streaming.ts:ChatStreamEvent
 libs/shared/ts/src/chat/streaming.ts:JsonObject
-libs/shared/ts/src/chat/streaming.ts:StreamToolOutput
-libs/shared/ts/src/chat/streaming.ts:SubagentEndPayload
-libs/shared/ts/src/chat/streaming.ts:SubagentStartPayload
 libs/shared/ts/src/chat/turnAccumulator.ts:TurnAccumulator
 libs/shared/ts/src/chat/types.ts:ApiFileData
 libs/shared/ts/src/chat/types.ts:ApiToolData

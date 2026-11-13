@@ -82,11 +82,11 @@ export function useComposerSubmit({
     }
     sendMessage(inputText, {
       files: uploadedFileData,
-      selectedTool: selectedTool ?? null,
-      toolCategory: selectedToolCategory ?? null,
-      selectedWorkflow,
-      selectedCalendarEvent,
-      replyToMessage,
+      selected_tool: selectedTool ?? null,
+      tool_category: selectedToolCategory ?? null,
+      selected_workflow: selectedWorkflow,
+      selected_calendar_event: selectedCalendarEvent,
+      reply_to_message: replyToMessage,
     }).catch((error) => {
       console.error("Chat send failed", error);
     });

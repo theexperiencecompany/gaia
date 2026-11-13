@@ -275,6 +275,7 @@ class AgentConfigurableView(BaseModel):
     workflow_notify_on_completion: bool = True
     langfuse_trace_id: str | None = None
     langfuse_tags: list[str] | None = None
+    conversation_step: StepTurnRef | None = None
 
 
 def read_agent_configurable(config: AgentRunConfig | None) -> AgentConfigurableView:

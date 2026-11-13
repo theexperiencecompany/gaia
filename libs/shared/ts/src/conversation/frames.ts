@@ -71,7 +71,7 @@ const StreamPayloadSchema = z.discriminatedUnion("type", [
       subagent_id: z.string(),
       subagent_name: z.string(),
       subagent: optionalString,
-      agent_type: z.string(),
+      agent_type: z.enum(["handoff", "spawned"]),
       started_at: z.string(),
       icon_url: optionalString,
       tool_category: optionalString,
@@ -118,17 +118,8 @@ function toStreamEvent(payload: StreamPayload): ChatStreamEvent {
         messageId: payload.message_boundary.message_id,
         discarded: payload.message_boundary.discarded,
       };
-    case "subagent_start": {
-      const { agent_type, ...start } = payload.subagent_start;
-      // Nothing emits "handoff" any more; stored rows that carry it still render as one.
-      return {
-        type: "subagent_start",
-        payload: {
-          ...start,
-          agent_type: agent_type === "handoff" ? "handoff" : "spawned",
-        },
-      };
-    }
+    case "subagent_start":
+      return { type: "subagent_start", payload: payload.subagent_start };
     case "subagent_end":
       return { type: "subagent_end", payload: payload.subagent_end };
     case "follow_up_actions":

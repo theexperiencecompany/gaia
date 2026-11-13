@@ -7,9 +7,8 @@ capped, and anything older than what it retains is replayed from the log.
 
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import TypedDict
 
-from pydantic import TypeAdapter
+from pydantic import BaseModel, TypeAdapter
 
 from app.constants.conversation import (
     EVENTS_BLOCK_MS,
@@ -40,13 +39,10 @@ from app.services.conversation.ports import ConversationLog
 _FRAME: TypeAdapter[OutputFrame] = TypeAdapter(OutputFrame)
 
 
-class _StreamFields(TypedDict):
+class _StreamFields(BaseModel):
     """One stream entry's fields as this module writes them."""
 
     frame: str
-
-
-_FIELDS: TypeAdapter[_StreamFields] = TypeAdapter(_StreamFields)
 
 
 @dataclass(frozen=True)
@@ -113,7 +109,7 @@ class RedisStreamFrames:
 
 def _streamed(stream_id: str, fields: object) -> StreamedFrame:
     return StreamedFrame(
-        stream_id=stream_id, frame=_FRAME.validate_json(_FIELDS.validate_python(fields)["frame"])
+        stream_id=stream_id, frame=_FRAME.validate_json(_StreamFields.model_validate(fields).frame)
     )
 
 

@@ -7,7 +7,7 @@ import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
 
 /** The request as this device built it: a picked workflow carries every step's id and category. */
-type LocalSendBody = Omit<SendMessageRequest, "selected_workflow"> & {
+export type LocalSendBody = Omit<SendMessageRequest, "selected_workflow"> & {
   selected_workflow?: WorkflowData | null;
 };
 

@@ -48,7 +48,7 @@ export const useWorkflowAutoSend = (): void => {
       }
 
       sendMessage(WORKFLOW_RUN_TEXT, {
-        selectedWorkflow: workflow,
+        selected_workflow: workflow,
         conversationId: null,
       }).catch((error) => {
         console.error("Workflow auto-send failed", error);

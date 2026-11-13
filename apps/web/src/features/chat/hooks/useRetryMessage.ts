@@ -34,12 +34,12 @@ export const useRetryMessage = () => {
         await sendMessage(message.text, {
           conversationId,
           files: message.files,
-          replyToMessage: message.reply_to_message,
-          selectedTool: message.selected_tool,
-          toolCategory: message.tool_category,
-          selectedWorkflow: message.selected_workflow,
-          selectedCalendarEvent: message.selected_calendar_event,
-          retryOf: message.id,
+          reply_to_message: message.reply_to_message,
+          selected_tool: message.selected_tool,
+          tool_category: message.tool_category,
+          selected_workflow: message.selected_workflow,
+          selected_calendar_event: message.selected_calendar_event,
+          retry_of: message.id,
         });
       } catch (error) {
         console.error("[useRetryMessage] Error retrying message:", error);
