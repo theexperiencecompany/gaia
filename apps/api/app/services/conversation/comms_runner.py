@@ -130,22 +130,25 @@ class CommsGraphRun:
             await record_interruption(self._graph, self._config)
 
     async def _drive(self, state: dict[str, object]) -> None:
+        """Run the attempt; any failure, the lifecycle's own included, reaches events() so the step settles it."""
+        try:
+            await self._drive_counted(state)
+        except Exception as error:  # the step settles a crashed run as failed
+            self._out.put_nowait(error)
+        finally:
+            close_feed(self._run_id)
+
+    async def _drive_counted(self, state: dict[str, object]) -> None:
         turn = self._turn
         with (
             analytics_context(turn.analytics),
-            agent_run_lifecycle(self._claim.user_id, turn.run_started) as lifecycle,
+            agent_run_lifecycle(self._claim.user_id, turn.run_started),
         ):
-            try:
-                await self._stream(state)
-                *tail, finished = self._mapper.finish()
-                for event in tail:
-                    await self._emit(event)
-                self._out.put_nowait(finished)
-            except Exception as error:  # the step settles a crashed run as failed
-                lifecycle.failure_reason = type(error).__name__
-                self._out.put_nowait(error)
-            finally:
-                close_feed(self._run_id)
+            await self._stream(state)
+            *tail, finished = self._mapper.finish()
+            for event in tail:
+                await self._emit(event)
+            self._out.put_nowait(finished)
 
     async def _stream(self, state: dict[str, object]) -> None:
         # With subgraphs=True every event is a (namespace, mode, payload) triple, and astream is a
