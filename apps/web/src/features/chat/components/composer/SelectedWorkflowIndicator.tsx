@@ -48,6 +48,7 @@ export default function SelectedWorkflowIndicator({
       {onRemove && (
         <div className="absolute top-4 right-4 z-20">
           <GaiaButton
+            aria-label="Remove workflow"
             isIconOnly
             size="sm"
             variant="ghost"

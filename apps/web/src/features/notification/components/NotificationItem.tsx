@@ -62,6 +62,7 @@ export const NotificationItem = ({
           <div className="flex shrink-0 items-center gap-1">
             <Tooltip>
               <GaiaButton
+                aria-label="Mark as read"
                 variant="default-soft"
                 size="sm"
                 isIconOnly

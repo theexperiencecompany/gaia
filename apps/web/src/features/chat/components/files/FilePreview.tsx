@@ -47,6 +47,7 @@ const FileChip: React.FC<{
       )}
 
       <GaiaButton
+        aria-label="Remove file"
         isIconOnly
         size="sm"
         variant="tertiary"

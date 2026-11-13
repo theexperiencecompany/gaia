@@ -152,7 +152,13 @@ function EmailBodyPreview({
     >
       {!isLocked && (
         <div className="absolute top-0 right-0 z-2 flex w-full justify-end">
-          <GaiaButton variant="ghost" size="sm" isIconOnly onPress={onEdit}>
+          <GaiaButton
+            aria-label="Edit"
+            variant="ghost"
+            size="sm"
+            isIconOnly
+            onPress={onEdit}
+          >
             <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
           </GaiaButton>
         </div>
@@ -233,7 +239,13 @@ function ComposeFields({
         </div>
 
         {!isLocked && (
-          <GaiaButton variant="ghost" size="sm" isIconOnly onPress={onEdit}>
+          <GaiaButton
+            aria-label="Edit"
+            variant="ghost"
+            size="sm"
+            isIconOnly
+            onPress={onEdit}
+          >
             <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
           </GaiaButton>
         )}
@@ -269,6 +281,7 @@ function RecipientRow({
         {emails.join(", ") || ""}
         {!isLocked && (
           <GaiaButton
+            aria-label={emails.length !== 0 ? "Edit recipients" : undefined}
             size="sm"
             onPress={onEdit}
             variant={emails.length === 0 ? "tertiary" : "ghost"}
@@ -489,6 +502,7 @@ function RecipientSelectionModal({
                   <FieldError>{customEmailError}</FieldError>
                 </TextField>
                 <GaiaButton
+                  aria-label="Add email"
                   size="sm"
                   onPress={handleAddCustomEmail}
                   isIconOnly

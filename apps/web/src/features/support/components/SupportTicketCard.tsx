@@ -261,6 +261,7 @@ export default function SupportTicketCard({
               {editData.title}
             </div>
             <GaiaButton
+              aria-label="Edit"
               isIconOnly
               size="sm"
               variant="ghost"

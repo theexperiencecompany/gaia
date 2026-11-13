@@ -297,6 +297,7 @@ export default function WorkflowSection({
               </Dropdown>
             ) : (
               <GaiaButton
+                aria-label="Regenerate workflow"
                 variant="default-soft"
                 size="sm"
                 onPress={handleGenerate}
@@ -311,6 +312,7 @@ export default function WorkflowSection({
             {hasWorkflow && (
               <Tooltip>
                 <GaiaButton
+                  aria-label="Run workflow"
                   variant="success-soft"
                   size="sm"
                   onPress={handleRun}

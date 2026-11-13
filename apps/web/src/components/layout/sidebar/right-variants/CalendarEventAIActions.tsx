@@ -97,7 +97,11 @@ export default function CalendarEventAIActions({
         {currentAction.label}
       </GaiaButton>
       <Dropdown>
-        <GaiaButton variant="default-solid" isIconOnly>
+        <GaiaButton
+          aria-label="More options"
+          variant="default-solid"
+          isIconOnly
+        >
           <ArrowDown01Icon className="size-4" />
         </GaiaButton>
         <Dropdown.Popover placement="bottom end">

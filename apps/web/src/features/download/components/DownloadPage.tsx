@@ -226,7 +226,11 @@ function DesktopDownloadButton({
     <ButtonGroup>
       {mainButton}
       <Dropdown>
-        <GaiaButton isIconOnly variant={buttonVariant}>
+        <GaiaButton
+          aria-label="Choose architecture"
+          isIconOnly
+          variant={buttonVariant}
+        >
           <ChevronDown width={17} height={17} />
         </GaiaButton>
         <Dropdown.Popover placement="bottom end">

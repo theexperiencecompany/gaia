@@ -192,6 +192,7 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
       <div className="absolute right-2 bottom-2 flex flex-col items-center gap-1">
         <Tooltip>
           <GaiaButton
+            aria-label="Zoom out"
             variant="default-solid"
             size="sm"
             onPress={handleZoomOut}
@@ -203,6 +204,7 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
         </Tooltip>
         <Tooltip>
           <GaiaButton
+            aria-label="Reset zoom"
             variant="default-solid"
             size="sm"
             onPress={resetZoom}
@@ -214,6 +216,7 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
         </Tooltip>
         <Tooltip>
           <GaiaButton
+            aria-label="Zoom in"
             variant="default-solid"
             size="sm"
             onPress={handleZoomIn}
@@ -226,6 +229,7 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
 
         <Tooltip>
           <GaiaButton
+            aria-label="Reset pan and zoom"
             variant="default-solid"
             size="sm"
             onPress={() => {
@@ -241,6 +245,7 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
 
         <Tooltip>
           <GaiaButton
+            aria-label="Download diagram"
             variant="default-solid"
             size="sm"
             onPress={handleDownload}

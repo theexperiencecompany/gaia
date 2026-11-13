@@ -142,6 +142,7 @@ export default function ChatOptionsDropdown({
     <>
       <Dropdown className={`group/${chatId} w-fit min-w-fit dark`}>
         <GaiaButton
+          aria-label={btnChildren ? undefined : "Chat options"}
           className={`ml-auto ${buttonHovered ? "backdrop-blur-lg" : ""}`}
           isIconOnly={!btnChildren}
           variant={btnChildren ? "tertiary" : "ghost"}
