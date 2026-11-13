@@ -50,7 +50,7 @@ The **only** agent the user talks to. Owns the conversation thread, narrates pro
 - `apps/api/app/services/conversation/` — the conversation runtime: `send.py` accepts a message (`POST /conversations/{id}/messages`), `step.py` answers it, `event_stream.py` serves `GET /conversations/{id}/events`. A workflow fire is not a chat turn: `execute_workflow_as_chat` (`apps/api/app/workers/tasks/workflow_tasks.py`) appends a `WorkflowFired` entry, the conversation step answers it, and the job reads the outcome off the log (`apps/api/app/services/conversation/outcome.py`).
 - `apps/api/app/agents/core/graph_builder/build_graph.py` — `build_comms_graph()` / `build_comms_agent()`. Comms is built with `disable_retrieve_tools=True` and end-graph hooks `[follow_up_actions_node, memory_node]`.
 - `apps/api/app/override/langgraph_bigtool/utils.py` — `State`, the graph state every tier runs on: `messages` (a `DeltaChannel`, not a plain snapshot channel), `todos`, `intent`, `integration_usernames`, `remaining_steps`. Per-run values like `user_id`, `active_todo_id` and `execution_mode` live in `config["configurable"]` (`AgentConfigurable`), not in state.
-- `apps/api/app/agents/core/messages.py` — `construct_langchain_messages` builds the message array with per-turn context (calendar, reply-to, file refs, timezone).
+- `apps/api/app/agents/core/messages.py` — `build_turn_context` builds a step turn's context (calendar, reply-to, file refs, presence, timezone); `services/conversation/comms_turn.py` wraps it into the comms attempt's config and prompt.
 - `apps/api/app/agents/core/graph_manager.py` — `GraphManager.get_graph(name)` resolves graphs via lazy providers.
 
 ### Comms tool surface (deliberately tiny)
@@ -105,9 +105,9 @@ One rule governs it:
 - `apps/api/app/agents/core/background/executor_capture.py` — per-stream collector for executor tool events so background/workflow runs render identically to live chat.
 - `apps/api/app/agents/core/background/executor_channel.py` — **the live channel.** `ExecutorInbox` (per-conversation pending messages), the `decide_drain` rule, the `<user_interjection>` / `<executor_interrupted>` framing, and `drain_inbox_hook`. See "Live channel" below.
 - `apps/api/app/agents/core/background/executor_queue.py` — the `busy` Redis lock (`try_acquire_lock` SET NX, `release_lock_if_owned`, `extend_lock_if_owned`; every holder renews its liveness with `keep_alive`, whose beat also re-arms the busy lock it holds (ownership-checked), so a run that outlives `EXECUTOR_BUSY_TTL` keeps its lock and that TTL is only the crash net, and `reclaim_dead_lock` is the one way a dead holder's lock is freed) plus `prepare_run_from_item` / `build_run_item`, which materialize a **detached** run — one that owns its own stream. `open_detached_stream` / `close_detached_stream` are the one way any detached run (executor or background subagent) mints its stream and ends it. There is no queue of pending runs.
-- `apps/api/app/agents/core/background/result_delivery.py` — `deliver_result()` and `persist_cancelled_run()`. Finished text → narrate and deliver as new bot message; cancelled → persist `tool_data` only if `executor_owns_tool_data`.
-- `apps/api/app/agents/core/background/session.py` — `StreamSession`, `ExecutorRun`, `RunKind` (LIVE shares comms' stream / QUEUED owns its own). **One session per `stream_id`** replaces the old module-level dict soup.
-- `apps/api/app/agents/core/background/redis_writer.py` — `make_redis_stream_writer(stream_id)` routes executor tool events back to the SSE consumer.
+- `apps/api/app/agents/core/background/result_delivery.py` — `deliver_message_to_conversation()`, which reminders use. Executor results are not delivered here: a run ends by logging `WorkFinished`, and the step writes its reply.
+- `apps/api/app/agents/core/background/session.py` — `StreamSession`, `ExecutorRun`, `RunKind` (LIVE: dispatched by a comms attempt under the attempt's stream id, its session opened by `call_executor` and torn down when the run finalizes / QUEUED owns its own stream). **One session per `stream_id`** replaces the old module-level dict soup.
+- `apps/api/app/agents/core/background/redis_writer.py` — `make_redis_stream_writer(stream_id)` collects a run's tool events into its session (for `WorkFinished`'s cards); `WorkDeltas` republishes them as `work_delta` frames on the conversation's events stream.
 
 ### Pre-model hooks (shared by comms + executor + subagents)
 
@@ -120,7 +120,7 @@ One rule governs it:
 
 - `apps/api/app/helpers/agent_helpers.py` — `build_agent_config`, `build_initial_state`, `frames_for_stream_event`.
 - `apps/api/app/core/lazy_loader.py` — `lazy_provider` / `providers.aget()` for on-demand graph creation.
-- `apps/api/app/core/stream_manager.py` — Redis-backed SSE stream + cancel signaling.
+- `apps/api/app/core/stream_manager.py` — a run's Redis stream and its cancel flag. Clients never read it: they follow `GET /conversations/{id}/events`.
 
 ---
 
@@ -500,7 +500,6 @@ Integration tools (Composio + MCP — the thousands) are **never bound** to the 
   - `pool.py` — `SandboxPool` (per-user `AsyncSandbox` pool with `asyncio.Lock` and refcount; Prometheus `set_sandbox_pool_size` gauge; per-shard tracking for `JUICEFS_NUM_SHARDS`).
   - `lifecycle.py` — acquire / release / pause-on-idle (refcount-based kill timer).
   - `shard_router.py` — `shard_for(user_id)` distributes users across E2B sandboxes.
-  - `artifact_watcher.py` — watches sandbox for produced files; emits to SSE.
   - `__init__.py` — `acquire_sandbox(user_id)` entrypoint + `SandboxAcquisitionError`.
 - `apps/api/app/constants/sandbox.py` — `BASH_DEFAULT_TIMEOUT_SECONDS`, `BASH_MAX_COMMAND_LENGTH`, `BASH_MAX_TIMEOUT_SECONDS`, `WORKSPACE_TMP_SUFFIX`.
 - All coding tools (bash, read, edit, write) target the user's E2B sandbox + JuiceFS mount — on GAIA Cloud.
@@ -616,5 +615,5 @@ A browser task is a background job, not a tool call the turn holds open. `browse
 | Change memory projection | `apps/api/app/memory/projection.py` + `apps/api/app/services/memory_fs.py` |
 | Change workflow triggers | `apps/api/app/services/workflow/trigger_service.py` + `apps/api/app/models/trigger_config.py` |
 | Change tracked-todo notes (canvas.md / activity.md) | `apps/api/app/services/gaia_task_files.py` + `apps/api/app/services/todo_canvas_storage.py` |
-| Change sandbox behavior | `apps/api/app/services/sandbox/{pool,lifecycle,shard_router,artifact_watcher}.py` |
+| Change sandbox behavior | `apps/api/app/services/sandbox/{pool,lifecycle,shard_router}.py` |
 | Change notification routing | `apps/api/app/utils/notification/orchestrator.py` + `apps/api/app/services/outbound_delivery.py` |
