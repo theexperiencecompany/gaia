@@ -40,6 +40,7 @@ const RESOLVED_ICONS: Record<
   denied: Cancel01Icon,
   timeout: Clock01Icon,
   abandoned: Cancel01Icon,
+  cancelled: Cancel01Icon,
   executed: CheckmarkCircle02Icon,
   failed: Cancel01Icon,
   unknown: AlertCircleIcon,

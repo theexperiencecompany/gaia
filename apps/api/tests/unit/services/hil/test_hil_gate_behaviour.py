@@ -25,6 +25,7 @@ from .conftest import (
     make_record,
     make_request,
     make_tool,
+    registered_row,
     resolver_returning,
 )
 
@@ -33,7 +34,7 @@ POLICY = "app.services.hil.policy"
 TOOL_NAME = "delete_item"
 SERVER_KEY = "mcp:srv_a:delete_item"
 INTEGRATION_NAME = "Alpha Docs"
-SUMMARY = "Delete item (Alpha Docs); id: i1"
+SUMMARY = "Delete item in Alpha Docs: i1"
 
 
 def _mcp_tool() -> BaseTool:
@@ -89,7 +90,7 @@ def _ledger() -> MagicMock:
     ledger = MagicMock()
     ledger.find_live = AsyncMock(return_value=None)
     ledger.find_latest_denied = AsyncMock(return_value=None)
-    ledger.register = AsyncMock(return_value="ap_abc1234567")
+    ledger.register = AsyncMock(return_value=registered_row())
     return ledger
 
 
@@ -127,7 +128,7 @@ class TestLedgerPathResolvesForTheRunsUser:
                 _execute_request(), _context(), _call(), "auto"
             )
 
-        assert verdict.settled is True
+        assert verdict.runs is True
         assert judged.await_args.args[4] == SUMMARY
 
 

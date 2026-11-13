@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.models.hil_models import ApprovalScope, HILMode, HILPreferences
+from app.models.stream_events import PendingApprovalCardData
 from app.schemas.common import ResponseModel
 
 
@@ -63,6 +64,12 @@ class BatchApprovalDecisionResponse(BaseModel):
     """Result of a batch decision: each approval's individual outcome."""
 
     outcomes: list[BatchDecisionOutcome]
+
+
+class PendingApprovalsResponse(BaseModel):
+    """A conversation's pending approvals, numbered in this order by both the bot prompt and the reply."""
+
+    approvals: list[PendingApprovalCardData]
 
 
 class HILPreferencesResponse(ResponseModel, HILPreferences):

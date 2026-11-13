@@ -15,25 +15,25 @@ The bridge is what the user actually sees, and what stops them being asked twice
 
 import asyncio
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.constants.hil import (
-    APPROVAL_REQUEST_TOOL_NAME,
-    HIL_SUMMARY_MAX_ARG_CHARS,
-    HIL_SUMMARY_MAX_ARGS,
-)
+from app.agents.core.background.session import RunKind
+from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.models.hil_models import ApprovalLedgerDocument, HILApprovalStatus, LedgerState
+from app.models.stream_events import PendingApprovalCardData
 from app.services.hil.bridge import (
     ApprovalOutcome,
     GatedApproval,
-    build_summary,
     flush_held_approval_cards,
+    pending_card,
     publish_approval_request,
+    publish_auto_approval,
     publish_decision,
     publish_ledger_request,
     recall_declined_call,
@@ -41,8 +41,8 @@ from app.services.hil.bridge import (
     settle_session_approval_frame,
     sync_conversation_approval_flag,
 )
+from app.services.hil.describe import describe_call
 from app.services.hil.utils import GatedCall
-from app.utils.general_utils import ELLIPSIS
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilCardShown
 
@@ -51,6 +51,9 @@ from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_record, tools_th
 MODULE = "app.services.hil.bridge"
 
 TOOL_CALL = GatedCall(id="call-1", name="send_email", args={"to": "bob@example.com"})
+DESCRIPTION = describe_call(TOOL_CALL.name, TOOL_CALL.args, "Gmail")
+SUMMARY = DESCRIPTION.headline
+ASKED_AT = datetime(2026, 11, 10, 9, 30, tzinfo=UTC)
 
 SEPARATOR = ": "  # the colon + space between the browser-task lead-in and its task
 ARG_SEPARATOR = "; "  # between a tool label and its arguments, which carry their own colons
@@ -66,7 +69,9 @@ def bridge():
     session = MagicMock(tool_events=[])
     with (
         patch(f"{MODULE}.log") as log,
-        patch(f"{MODULE}.upsert_pending_approval", new=AsyncMock(return_value=True)) as upsert,
+        patch(
+            f"{MODULE}.upsert_pending_approval", new=AsyncMock(return_value=make_record())
+        ) as upsert,
         patch(f"{MODULE}.stream_manager") as stream,
         patch(f"{MODULE}.get_session", return_value=session) as get_session,
         patch(f"{MODULE}.notify_approval_pending", new=AsyncMock()) as notify,
@@ -93,7 +98,7 @@ async def publish(bridge: dict, **overrides: Any) -> None:
             user_id=USER_ID,
             conversation_id=CONVERSATION_ID,
             tool_call=TOOL_CALL,
-            summary="Send email — to: bob@example.com",
+            description=DESCRIPTION,
             integration_name="Gmail",
         ),
         **overrides,
@@ -109,7 +114,7 @@ def published_frame(bridge: dict) -> dict[str, Any]:
 
 class TestPublishExactlyOnce:
     async def test_a_new_approval_is_surfaced_and_wakes_the_user(self, bridge: dict) -> None:
-        bridge["upsert"].return_value = True
+        bridge["upsert"].return_value = make_record()
 
         await publish(bridge)
 
@@ -124,9 +129,7 @@ class TestPublishExactlyOnce:
         # or approval id deep-links the user to a card that isn't the one waiting.
         await publish(bridge)
 
-        bridge["notify"].assert_awaited_once_with(
-            USER_ID, CONVERSATION_ID, "appr-1", "Send email — to: bob@example.com"
-        )
+        bridge["notify"].assert_awaited_once_with(USER_ID, CONVERSATION_ID, "appr-1", SUMMARY)
 
     async def test_the_wide_event_names_the_approval_its_tool_and_its_stream(
         self, bridge: dict
@@ -151,7 +154,7 @@ class TestPublishExactlyOnce:
     async def test_a_resume_replay_publishes_nothing_and_wakes_nobody(self, bridge: dict) -> None:
         # The node re-runs from the top on every resume. Re-publishing would stack a
         # duplicate card per replay and re-push a notification for a card already answered.
-        bridge["upsert"].return_value = False
+        bridge["upsert"].return_value = None
 
         await publish(bridge)
 
@@ -164,7 +167,7 @@ class TestPublishExactlyOnce:
         # `created`), not at the later decision.
         from prometheus_client import REGISTRY
 
-        bridge["upsert"].return_value = True
+        bridge["upsert"].return_value = make_record()
         before = REGISTRY.get_sample_value("hil_pause_total", {}) or 0.0
 
         await publish(bridge)
@@ -174,7 +177,7 @@ class TestPublishExactlyOnce:
     async def test_a_resume_replay_is_not_counted_as_a_pause(self, bridge: dict) -> None:
         from prometheus_client import REGISTRY
 
-        bridge["upsert"].return_value = False
+        bridge["upsert"].return_value = None
         before = REGISTRY.get_sample_value("hil_pause_total", {}) or 0.0
 
         await publish(bridge)
@@ -210,7 +213,9 @@ class TestDualDelivery:
         assert data["status"] == "pending"
         assert data["gated_tool_name"] == "send_email"
         assert data["tool_call_id"] == "call-1"
-        assert data["timeout_seconds"] > 0
+        record = bridge["upsert"].return_value
+        assert datetime.fromisoformat(data["asked_at"]) == record.created_at
+        assert datetime.fromisoformat(data["expires_at"]) == record.expires_at
         assert data["always_asks"] is False
 
     @pytest.mark.regression
@@ -236,7 +241,7 @@ class TestDualDelivery:
                     user_id=USER_ID,
                     conversation_id=CONVERSATION_ID,
                     tool_call=disconnect,
-                    summary="Disconnect Gmail",
+                    description=DESCRIPTION,
                     integration_name="Gmail",
                 )
             )
@@ -288,7 +293,7 @@ class TestTheOutcomeSettlesTheCard:
         assert data["integration_name"] == "Gmail"
         assert data["gated_tool_name"] == TOOL_CALL.name
         assert data["tool_call_id"] == TOOL_CALL.id
-        assert data["summary"] == "Send email — to: bob@example.com"
+        assert data["summary"] == SUMMARY
         assert data["args_preview"] == TOOL_CALL.args
 
     async def test_an_approval_settles_the_card(self, bridge: dict) -> None:
@@ -453,27 +458,6 @@ class TestDeclineMemory:
             await recall_declined_call(STREAM_ID, "send_email", {"to": "bob@example.com"}) is None
         )
 
-    async def test_an_auto_refusal_round_trips_its_provenance(self) -> None:
-        # The retry message differs ("auto declined" vs "the user declined"), so
-        # the provenance must survive the Redis round trip.
-        await remember_declined_call(
-            STREAM_ID, "send_email", {"to": "bob@example.com"}, "stop spamming", auto=True
-        )
-
-        outcome = await recall_declined_call(STREAM_ID, "send_email", {"to": "bob@example.com"})
-
-        assert outcome is not None
-        assert outcome.auto is True
-        assert outcome.feedback == "stop spamming"
-
-    async def test_a_user_decline_still_reads_as_user_made(self) -> None:
-        await remember_declined_call(STREAM_ID, "send_email", {"to": "bob@example.com"}, "no")
-
-        outcome = await recall_declined_call(STREAM_ID, "send_email", {"to": "bob@example.com"})
-
-        assert outcome is not None
-        assert outcome.auto is False
-
     async def test_unserializable_arguments_do_not_crash_the_gate(self) -> None:
         # Tool args come from an LLM and are only loosely typed. A key derivation that
         # raises here would fail the gate closed on every call carrying an odd value.
@@ -481,187 +465,6 @@ class TestDeclineMemory:
         await remember_declined_call(STREAM_ID, "send_email", args, "no")
 
         assert await recall_declined_call(STREAM_ID, "send_email", args) is not None
-
-
-class TestSummary:
-    """The one line the user reads before approving, built deterministically with no LLM on the hot path."""
-
-    def test_the_tool_and_integration_are_both_named(self) -> None:
-        summary = build_summary("send_email", {}, "Gmail")
-
-        assert "Send email" in summary
-        assert "Gmail" in summary
-
-    def test_scalar_arguments_are_shown_so_the_user_knows_what_they_approve(self) -> None:
-        summary = build_summary("send_email", {"to": "bob@example.com"}, None)
-
-        assert "to" in summary
-        assert "bob@example.com" in summary
-
-    def test_a_long_value_is_clipped_rather_than_flooding_the_card(self) -> None:
-        summary = build_summary("send_email", {"body": "x" * 500}, None)
-
-        assert len(summary) < 200
-        assert "x" * (HIL_SUMMARY_MAX_ARG_CHARS + 1) not in summary
-
-    def test_only_a_few_arguments_are_shown(self) -> None:
-        args = {f"field_{i}": f"value_{i}" for i in range(10)}
-
-        summary = build_summary("send_email", args, None)
-
-        shown = [name for name in args if name in summary]
-        assert len(shown) == HIL_SUMMARY_MAX_ARGS
-
-    def test_a_nested_argument_is_skipped_rather_than_dumped_into_the_card(self) -> None:
-        # A raw dict/list in a one-line summary is unreadable, and an attachment payload
-        # could be enormous.
-        summary = build_summary(
-            "send_email", {"attachments": [{"name": "secret.pdf"}], "to": "bob@example.com"}, None
-        )
-
-        assert "secret.pdf" not in summary
-        assert "bob@example.com" in summary
-
-    def test_a_call_with_no_arguments_still_reads_as_a_sentence(self) -> None:
-        assert build_summary("delete_everything", {}, None) == "Delete everything"
-
-    def test_multi_word_tool_names_get_every_underscore_swapped(self) -> None:
-        assert build_summary("list_all_todos", {}, None) == "List all todos"
-
-    def test_the_integration_name_is_parenthesized_after_the_label(self) -> None:
-        assert build_summary("send_email", {}, "Gmail") == "Send email (Gmail)"
-
-    def test_a_named_account_is_parenthesized_beside_the_integration(self) -> None:
-        assert (
-            build_summary("send_email", {}, "Gmail", "work@acme.com")
-            == "Send email (Gmail, work@acme.com)"
-        )
-
-    def test_with_no_integration_the_label_carries_no_parentheses(self) -> None:
-        assert build_summary("send_email", {}, None) == "Send email"
-
-    def test_the_label_and_arguments_are_joined_by_a_semicolon(self) -> None:
-        assert (
-            build_summary("send_email", {"to": "bob"}, None) == f"Send email{ARG_SEPARATOR}to: bob"
-        )
-
-    def test_multiple_arguments_are_comma_separated_in_order(self) -> None:
-        summary = build_summary("send_email", {"to": "bob", "cc": "al"}, None)
-
-        assert summary == f"Send email{ARG_SEPARATOR}to: bob, cc: al"
-
-    def test_an_argument_value_at_the_clip_boundary_is_shown_in_full(self) -> None:
-        value = "a" * HIL_SUMMARY_MAX_ARG_CHARS
-
-        summary = build_summary("send_email", {"note": value}, None)
-
-        assert summary == f"Send email{ARG_SEPARATOR}note: {value}"
-        assert ELLIPSIS not in summary
-
-    def test_an_argument_value_one_over_the_boundary_is_clipped_with_an_ellipsis(self) -> None:
-        value = "a" * (HIL_SUMMARY_MAX_ARG_CHARS + 1)
-
-        summary = build_summary("send_email", {"note": value}, None)
-
-        assert (
-            summary == f"Send email{ARG_SEPARATOR}note: {'a' * HIL_SUMMARY_MAX_ARG_CHARS}{ELLIPSIS}"
-        )
-
-    def test_boolean_and_numeric_arguments_are_shown_as_scalars(self) -> None:
-        summary = build_summary("set_reminder", {"urgent": True, "count": 3}, None)
-
-        assert summary == f"Set reminder{ARG_SEPARATOR}urgent: True, count: 3"
-
-
-class TestBrowserTaskSummary:
-    """browser_task gets a bespoke summary: the LLM's task argument, not the tool name, so the card reads as what will happen."""
-
-    def test_a_missing_task_argument_falls_back_to_a_generic_line(self) -> None:
-        assert build_summary("browser_task", {}, None) == "Start a browser task"
-
-    def test_a_whitespace_only_task_falls_back_to_a_generic_line(self) -> None:
-        assert build_summary("browser_task", {"task": "   "}, None) == "Start a browser task"
-
-    def test_the_task_is_stripped_of_surrounding_whitespace(self) -> None:
-        summary = build_summary("browser_task", {"task": "  Book a flight  "}, None)
-
-        assert summary == f"Start a browser task{SEPARATOR}Book a flight"
-
-    def test_only_the_first_sentence_is_used_and_its_period_is_dropped(self) -> None:
-        summary = build_summary("browser_task", {"task": "Book a flight. Then find a hotel."}, None)
-
-        assert summary == f"Start a browser task{SEPARATOR}Book a flight"
-
-    def test_a_task_with_no_sentence_break_is_used_whole_when_short(self) -> None:
-        summary = build_summary("browser_task", {"task": "Book a flight to Tokyo"}, None)
-
-        assert summary == f"Start a browser task{SEPARATOR}Book a flight to Tokyo"
-
-    def test_a_lead_in_exactly_at_the_clip_boundary_is_kept_whole(self) -> None:
-        task = "y" * 140  # no ". " in it, so `first` == the whole (stripped) task
-
-        summary = build_summary("browser_task", {"task": task}, None)
-
-        assert summary == f"Start a browser task{SEPARATOR}{task}"
-        assert ELLIPSIS not in summary
-
-    def test_a_lead_in_one_over_the_clip_boundary_is_clipped_with_an_ellipsis(self) -> None:
-        task = "y" * 141
-
-        summary = build_summary("browser_task", {"task": task}, None)
-
-        assert summary == f"Start a browser task{SEPARATOR}{'y' * 140}{ELLIPSIS}"
-
-    def test_a_long_task_with_no_sentence_break_is_clipped_from_the_full_task(self) -> None:
-        task = "x" * 200
-
-        summary = build_summary("browser_task", {"task": task}, None)
-
-        assert summary == f"Start a browser task{SEPARATOR}{'x' * 140}{ELLIPSIS}"
-
-    def test_an_empty_lead_in_before_the_first_period_falls_back_to_the_full_task(self) -> None:
-        # task.split(". ", 1)[0] is "" here, so the "0 < len(first)" guard must reject
-        # it and fall through to clipping the whole task, not render an empty lead-in.
-        summary = build_summary("browser_task", {"task": ". rest of the task"}, None)
-
-        assert summary == f"Start a browser task{SEPARATOR}. rest of the task"
-
-    def test_only_the_first_period_space_is_treated_as_a_sentence_break(self) -> None:
-        summary = build_summary("browser_task", {"task": "First. Second. Third."}, None)
-
-        assert summary == f"Start a browser task{SEPARATOR}First"
-
-    def test_a_trailing_period_with_no_further_sentence_is_dropped(self) -> None:
-        # No ". " anywhere in the task, so `first` is the whole (stripped) task — only
-        # the final `.rstrip(".")` removes the trailing period, not the split.
-        summary = build_summary("browser_task", {"task": "Book a flight."}, None)
-
-        assert summary == f"Start a browser task{SEPARATOR}Book a flight"
-
-    def test_the_trailing_strip_removes_only_periods_not_other_characters(self) -> None:
-        # `X` is not a character `rstrip(".")` would ever touch — this pins the exact
-        # strip set against a mutant that also strips trailing `X`s.
-        summary = build_summary("browser_task", {"task": "Book a flightX."}, None)
-
-        assert summary == f"Start a browser task{SEPARATOR}Book a flightX"
-
-    def test_a_one_character_lead_in_is_kept_not_clipped(self) -> None:
-        # Pins the lower bound at `0 <`, not `1 <`: a single-character lead-in must
-        # still be treated as present and used as-is, not fall through to clip_text.
-        summary = build_summary("browser_task", {"task": "A. Rest of stuff here"}, None)
-
-        assert summary == f"Start a browser task{SEPARATOR}A"
-
-    def test_a_140_char_lead_in_from_a_longer_task_is_kept_whole(self) -> None:
-        # Distinguishes `<= 140` from `< 140`: here `first` (the lead-in before the
-        # first ". ") is exactly 140 chars but `task` (the fallback clip_text source)
-        # is much longer, so a boundary off-by-one would clip a sentence that fits.
-        task = "y" * 140 + ". additional sentence"
-
-        summary = build_summary("browser_task", {"task": task}, None)
-
-        assert summary == f"Start a browser task{SEPARATOR}{'y' * 140}"
-        assert ELLIPSIS not in summary
 
 
 class TestCardShownEvent:
@@ -675,9 +478,10 @@ class TestCardShownEvent:
                     user_id=USER_ID,
                     conversation_id=CONVERSATION_ID,
                     tool_call=TOOL_CALL,
-                    summary="Send it",
+                    description=DESCRIPTION,
                     integration_name="Gmail",
                 ),
+                asked_at=ASKED_AT,
             )
 
         capture.assert_called_once_with(
@@ -696,9 +500,10 @@ class TestCardShownEvent:
                     user_id=USER_ID,
                     conversation_id=CONVERSATION_ID,
                     tool_call=TOOL_CALL,
-                    summary="Send it",
+                    description=DESCRIPTION,
                     integration_name="Gmail",
                 ),
+                asked_at=ASKED_AT,
                 live=False,
             )
 
@@ -721,9 +526,10 @@ class TestBackgroundFlagSync:
                     user_id=USER_ID,
                     conversation_id=CONVERSATION_ID,
                     tool_call=TOOL_CALL,
-                    summary="Send it",
+                    description=DESCRIPTION,
                     integration_name="Gmail",
                 ),
+                asked_at=ASKED_AT,
                 owner_run_type="todo",
                 owner_id="todo-9",
             )
@@ -745,9 +551,10 @@ class TestBackgroundFlagSync:
                     user_id=USER_ID,
                     conversation_id=CONVERSATION_ID,
                     tool_call=TOOL_CALL,
-                    summary="Send it",
+                    description=DESCRIPTION,
                     integration_name="Gmail",
                 ),
+                asked_at=ASKED_AT,
             )
 
         mark.assert_not_called()
@@ -838,26 +645,32 @@ async def publish_ledger(**overrides: Any) -> None:
         user_id=USER_ID,
         conversation_id=CONVERSATION_ID,
         tool_call=TOOL_CALL,
-        summary="Send it",
+        description=DESCRIPTION,
         integration_name="Gmail",
     )
-    kwargs: dict[str, Any] = {"live": False}
+    kwargs: dict[str, Any] = {"live": False, "asked_at": ASKED_AT}
     with patch(f"{MODULE}.capture"):
         await publish_ledger_request(approval, **{**kwargs, **overrides})
     await asyncio.sleep(0)  # let the fire-and-forget notify task start
 
 
 class TestLedgerCardPublish:
-    async def test_the_ledger_card_carries_the_why_and_a_fresh_version(self, bridge: dict) -> None:
-        await publish_ledger(rationale="user asked to send it", auto_reason="judge said ask")
+    async def test_the_ledger_card_carries_when_it_was_asked_and_no_expiry(
+        self, bridge: dict
+    ) -> None:
+        # Regression: cards carried age_seconds=0 forever, so every card read "asked just
+        # now" and a bot prompt promised a 6-hour expiry that ledger approvals never have.
+        await publish_ledger(auto_reason="judge said ask")
 
         bridge["stream"].publish_chunk.assert_awaited_once()
         assert bridge["stream"].publish_chunk.await_args.args[0] == STREAM_ID
         data = published_frame(bridge)["data"]
         assert data["integration_name"] == "Gmail"
-        assert data["rationale"] == "user asked to send it"
         assert data["auto_reason"] == "judge said ask"
-        assert data["age_seconds"] == 0
+        assert datetime.fromisoformat(data["asked_at"]) == ASKED_AT
+        assert data["expires_at"] is None
+        assert "age_seconds" not in data and "timeout_seconds" not in data
+        assert data["description"] == DESCRIPTION.model_dump()
         assert data["ledger_version"] == 0
 
     async def test_an_unheld_card_wakes_the_user_about_the_right_approval(
@@ -865,7 +678,7 @@ class TestLedgerCardPublish:
     ) -> None:
         await publish_ledger()
 
-        bridge["notify"].assert_awaited_once_with(USER_ID, CONVERSATION_ID, "ap_1", "Send it")
+        bridge["notify"].assert_awaited_once_with(USER_ID, CONVERSATION_ID, "ap_1", SUMMARY)
 
     async def test_the_wide_event_names_the_approval_tool_and_stream(self, bridge: dict) -> None:
         await publish_ledger()
@@ -927,19 +740,6 @@ class TestApprovalFlagSyncScope:
             "error": "mongo down",
             "error_type": "RuntimeError",
         }
-
-
-class TestDeclineMemoryLegacyRecord:
-    async def test_a_record_without_provenance_reads_as_the_users_own_decline(self) -> None:
-        with patch(f"{MODULE}.redis_cache") as cache:
-            cache.redis = MagicMock()
-            cache.get = AsyncMock(return_value={"feedback": "no"})
-
-            outcome = await recall_declined_call(STREAM_ID, "send_email", {"to": "bob"})
-
-        assert outcome is not None
-        assert outcome.auto is False
-        assert outcome.feedback == "no"
 
 
 def _card_frame(approval_id: str, *, held: bool = False, **data: object) -> dict[str, object]:
@@ -1155,3 +955,92 @@ class TestFlushHeldApprovalCardsDelivery:
             await flush_held_approval_cards(STREAM_ID)
 
         bridge["stream"].publish_chunk.assert_not_awaited()
+
+
+class TestHeldAndAutoCards:
+    async def test_a_held_live_card_is_stored_as_json_ready_for_the_drain(
+        self, bridge: dict
+    ) -> None:
+        bridge["session"].kind = RunKind.LIVE
+
+        await publish_ledger(live=True)
+
+        bridge["stream"].publish_chunk.assert_not_awaited()
+        (frame,) = bridge["session"].tool_events
+        assert frame["_held_approval"] is True
+        assert frame["tool_data"]["data"]["asked_at"] == "2026-11-10T09:30:00Z"
+
+    async def test_an_auto_approved_receipt_says_why_auto_mode_ran_it(self, bridge: dict) -> None:
+        approval = GatedApproval(
+            approval_id="appr-1",
+            stream_id=STREAM_ID,
+            user_id=USER_ID,
+            conversation_id=CONVERSATION_ID,
+            tool_call=TOOL_CALL,
+            description=DESCRIPTION,
+            integration_name="Gmail",
+        )
+        with patch(f"{MODULE}.record_auto_approval", new=AsyncMock()):
+            await publish_auto_approval(approval, reason="You asked to email Bob")
+
+        data = published_frame(bridge)["data"]
+        assert data["status"] == "auto_approved"
+        assert data["auto_reason"] == "You asked to email Bob"
+        assert datetime.fromisoformat(data["asked_at"]).utcoffset() == timedelta(0)
+
+
+class TestPendingCard:
+    """The card a bot prompt lists is rebuilt from the stored row, field for field."""
+
+    async def test_a_ledger_row_rebuilds_its_card_with_the_account_and_version(self) -> None:
+        row = ApprovalLedgerDocument(
+            approval_id="ap_1",
+            conversation_id=CONVERSATION_ID,
+            user_id=USER_ID,
+            fingerprint="fp",
+            tool_name="send_email",
+            args={"to": "bob@example.com"},
+            account="work@example.com",
+            v=3,
+            created_at=ASKED_AT,
+        )
+
+        card = await pending_card(row)
+
+        description = describe_call("send_email", row.args, None, "work@example.com")
+        assert card == PendingApprovalCardData(
+            approval_id="ap_1",
+            tool_call_id="",
+            gated_tool_name="send_email",
+            integration_name=None,
+            summary=description.headline,
+            description=description,
+            args_preview={"to": "bob@example.com"},
+            feedback=None,
+            auto_reason=None,
+            asked_at=ASKED_AT,
+            ledger_version=3,
+            status="pending",
+            expires_at=None,
+        )
+        assert "work@example.com" in card.summary
+
+    async def test_a_barrier_record_rebuilds_its_card_with_its_expiry(self) -> None:
+        record = make_record(integration_name="Gmail", created_at=ASKED_AT)
+
+        card = await pending_card(record)
+
+        assert card == PendingApprovalCardData(
+            approval_id="appr-1",
+            tool_call_id="call-1",
+            gated_tool_name="send_email",
+            integration_name="Gmail",
+            summary=SUMMARY,
+            description=DESCRIPTION,
+            args_preview={"to": "bob@example.com"},
+            feedback=None,
+            auto_reason=None,
+            asked_at=ASKED_AT,
+            status="pending",
+            expires_at=record.expires_at,
+        )

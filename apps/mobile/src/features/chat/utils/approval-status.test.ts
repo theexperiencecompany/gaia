@@ -101,13 +101,13 @@ describe("approvalOutcomeText — libs fallback", () => {
     },
   );
 
-  it("prefers explicit feedback when present", () => {
+  it("uses the shared outcome sentence over feedback", () => {
     const text = approvalOutcomeText({
       ...base,
       status: "executed",
       feedback: "Sent message abc",
     });
-    expect(text).toContain("Sent message abc");
+    expect(text).toBe("You approved this, and it's done");
   });
 });
 

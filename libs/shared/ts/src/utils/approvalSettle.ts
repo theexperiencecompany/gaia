@@ -4,7 +4,7 @@ import type {
   ApprovalRequestData,
   ApprovalStatus,
 } from "../chat/approvals";
-import { APPROVAL_REQUEST_TOOL_NAME } from "../chat/approvals";
+import { APPROVAL_REQUEST_TOOL_NAME, settleCard } from "../chat/approvals";
 
 /**
  * Settling an approval card, the one way both clients do it.
@@ -23,16 +23,21 @@ const KNOWN_STATUSES: ReadonlySet<string> = new Set<ApprovalStatus>([
   "abandoned",
   "auto_approved",
   "revoked",
+  "cancelled",
   "executed",
   "failed",
   "unknown",
 ]);
 
 /** Statuses the backend publishes over `hil_approval_decided`. */
-export const TERMINAL_APPROVAL_STATUSES: readonly ApprovalStatus[] = [
+export const TERMINAL_APPROVAL_STATUSES: readonly Exclude<
+  ApprovalStatus,
+  "pending"
+>[] = [
   "approved",
   "denied",
   "revoked",
+  "cancelled",
   "executed",
   "failed",
   "unknown",
@@ -48,7 +53,7 @@ export function isKnownApprovalStatus(
 export interface ApprovalSettlement {
   conversation_id: string;
   approval_id: string;
-  status: ApprovalStatus;
+  status: Exclude<ApprovalStatus, "pending">;
   feedback: string | null;
 }
 
@@ -71,12 +76,12 @@ export function parseApprovalDecidedEvent(
     return null;
   if (typeof approval_id !== "string" || approval_id === "") return null;
   if (typeof status !== "string") return null;
-  if (!(TERMINAL_APPROVAL_STATUSES as readonly string[]).includes(status))
-    return null;
+  const terminal = TERMINAL_APPROVAL_STATUSES.find((known) => known === status);
+  if (terminal === undefined) return null;
   return {
     conversation_id,
     approval_id,
-    status: status as ApprovalStatus,
+    status: terminal,
     feedback: typeof feedback === "string" && feedback !== "" ? feedback : null,
   };
 }
@@ -92,14 +97,14 @@ export function parseApprovalDecidedEvent(
 export function statusAfterDecision(
   decision: ApprovalDecision,
   outcome: ApprovalDecisionResponse,
-): ApprovalStatus | null {
+): Exclude<ApprovalStatus, "pending"> | null {
   if (outcome.success) return decision === "approve" ? "approved" : "denied";
   const status = outcome.status ?? null;
   if (
     status === null ||
+    !isKnownApprovalStatus(status) ||
     status === "pending" ||
-    status === "unknown" ||
-    !isKnownApprovalStatus(status)
+    status === "unknown"
   ) {
     return null;
   }
@@ -124,16 +129,16 @@ export function settleApprovalToolData<T extends ToolDataLike>(
   let changed = false;
   const next = entries.map((entry) => {
     if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return entry;
-    const data = entry.data as Partial<ApprovalRequestData> | null | undefined;
+    const data = entry.data as ApprovalRequestData | null | undefined;
     if (!data || data.approval_id !== settlement.approval_id) return entry;
     changed = true;
     return {
       ...entry,
-      data: {
-        ...(data as ApprovalRequestData),
-        status: settlement.status,
-        feedback: settlement.feedback ?? data.feedback ?? null,
-      },
+      data: settleCard(
+        data,
+        settlement.status,
+        settlement.feedback ?? data.feedback ?? null,
+      ),
     };
   });
   return { entries: changed ? next : entries, changed };

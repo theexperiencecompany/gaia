@@ -30,7 +30,6 @@ describe("UnifiedToolThread with a catalog-enabled Composio toolkit", () => {
         ]}
         isStreaming={false}
         pendingApprovalToolCallIds={new Set()}
-        approvalOutcomeByToolCallId={new Map()}
       />,
     );
 

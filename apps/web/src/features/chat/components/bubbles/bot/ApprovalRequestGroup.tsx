@@ -5,10 +5,12 @@ import { ShieldIcon } from "@icons";
 import type {
   ApprovalDecision,
   ApprovalRequestData,
-  ApprovalStatus,
+  SettledApprovalCardData,
 } from "@shared/chat";
-import { useEffect, useState } from "react";
+import { settleCard } from "@shared/chat";
+import { useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
+import { APPROVAL_COPY } from "@/features/chat/constants/approvalCopy";
 import { useMarkApprovalDecided } from "@/features/chat/hooks/useMarkApprovalDecided";
 import {
   BATCH_OUTCOME_REASON,
@@ -18,24 +20,7 @@ import { toast } from "@/lib/toast";
 import ApprovalRequestSection from "./ApprovalRequestSection";
 import { useApprovalResolver } from "./ApprovalResolveContext";
 import ApprovalReviewSheet from "./ApprovalReviewSheet";
-
-/** A withdrawn approval stays visible just long enough to prove the agent
- * self-corrected — then collapses. Silent deletion reads as "did it send?". */
-const TOMBSTONE_MS = 10000;
-
-function RevokedTombstone({ item }: { item: ApprovalRequestData }) {
-  const [visible, setVisible] = useState(true);
-  useEffect(() => {
-    const timer = setTimeout(() => setVisible(false), TOMBSTONE_MS);
-    return () => clearTimeout(timer);
-  }, []);
-  if (!visible) return null;
-  return (
-    <div className="w-full rounded-2xl bg-zinc-800/60 p-3 text-xs text-zinc-500">
-      Agent withdrew: {item.summary} — no action needed.
-    </div>
-  );
-}
+import ApprovalSettledLine from "./ApprovalSettledLine";
 
 interface ApprovalRequestGroupProps {
   items: ApprovalRequestData[];
@@ -45,10 +30,9 @@ interface ApprovalRequestGroupProps {
 }
 
 /**
- * Pending approvals render as cards; a decided one collapses into an
- * outcome chip on its tool's row instead (see ApprovalOutcomeChip). With
- * several pending, a review bar decides the whole set while per-card
- * buttons still allow partial answers.
+ * Pending approvals render as cards; a decided one stays as a compact line
+ * saying what happened. With several pending, a review bar decides the whole
+ * set while per-card buttons still allow partial answers.
  *
  * A decision writes back to this message's tool_data via TextBubble's
  * resolver — the resolved frame publishes on a different (RESUMED) stream, so persisting here clears the pill and survives reload.
@@ -63,16 +47,16 @@ export default function ApprovalRequestGroup({
   const markApprovalDecided = useMarkApprovalDecided();
 
   const pending = items.filter((item) => item.status === "pending");
-  const revoked = items.filter((item) => item.status === "revoked");
+  const settled = items.filter((item) => item.status !== "pending");
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const settle = (
     approvalId: string,
-    status: ApprovalStatus,
+    status: SettledApprovalCardData["status"],
     feedback: string | null,
   ) => {
     const item = items.find((i) => i.approval_id === approvalId);
-    if (item) resolveApproval?.(approvalId, { ...item, status, feedback });
+    if (item) resolveApproval?.(approvalId, settleCard(item, status, feedback));
   };
 
   const decideAll = async (decision: ApprovalDecision) => {
@@ -84,9 +68,13 @@ export default function ApprovalRequestGroup({
           decision,
         })),
       });
-      markApprovalDecided(conversationId);
-      const status: ApprovalStatus =
-        decision === "approve" ? "approved" : "denied";
+      markApprovalDecided(
+        conversationId,
+        decision === "approve"
+          ? APPROVAL_COPY.carryingOnWithDecisions
+          : APPROVAL_COPY.tellingGaiaNo,
+      );
+      const status = decision === "approve" ? "approved" : "denied";
       for (const outcome of response.outcomes) {
         // Settle to the server's state, not the tapped button: not_found means
         // the row was decided elsewhere. Falls back to the tap when the server
@@ -106,10 +94,10 @@ export default function ApprovalRequestGroup({
           (o) => !o.resolved && o.reason !== BATCH_OUTCOME_REASON.NOT_FOUND,
         )
       ) {
-        toast.error("Some approvals couldn't be submitted, please try again");
+        toast.error(APPROVAL_COPY.batchPartlyFailed);
       }
     } catch {
-      toast.error("Couldn't submit your decisions, please try again");
+      toast.error(APPROVAL_COPY.batchFailed);
     } finally {
       setBatchSubmitting(null);
     }
@@ -121,7 +109,7 @@ export default function ApprovalRequestGroup({
         <div className="flex w-full items-center gap-3 rounded-2xl bg-zinc-800 p-4">
           <ShieldIcon width={18} className="shrink-0 text-amber-400" />
           <div className="min-w-0 flex-1 text-sm text-zinc-100">
-            {pending.length} actions need your approval
+            {APPROVAL_COPY.groupTitle(pending.length)}
           </div>
           <Button
             color="primary"
@@ -129,7 +117,7 @@ export default function ApprovalRequestGroup({
             isDisabled={batchSubmitting !== null}
             onPress={() => decideAll("approve")}
           >
-            Approve all
+            {APPROVAL_COPY.approveAll}
           </Button>
           <Button
             variant="flat"
@@ -137,7 +125,7 @@ export default function ApprovalRequestGroup({
             isDisabled={batchSubmitting !== null}
             onPress={() => decideAll("deny")}
           >
-            Decline all
+            {APPROVAL_COPY.declineAll}
           </Button>
           {pending.length >= 3 && (
             <Button
@@ -146,7 +134,7 @@ export default function ApprovalRequestGroup({
               isDisabled={batchSubmitting !== null}
               onPress={() => setSheetOpen(true)}
             >
-              {`Review ${pending.length}`}
+              {APPROVAL_COPY.review(pending.length)}
             </Button>
           )}
         </div>
@@ -170,8 +158,8 @@ export default function ApprovalRequestGroup({
           ))}
         </div>
       )}
-      {revoked.map((item) => (
-        <RevokedTombstone key={item.approval_id} item={item} />
+      {settled.map((item) => (
+        <ApprovalSettledLine key={item.approval_id} data={item} />
       ))}
       <ApprovalReviewSheet
         items={pending}

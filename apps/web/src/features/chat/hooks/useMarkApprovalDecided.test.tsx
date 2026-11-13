@@ -33,7 +33,7 @@ describe("useMarkApprovalDecided", () => {
     useChatStore.setState({ activeConversationId: CONVO });
 
     const { result } = renderHook(() => useMarkApprovalDecided());
-    result.current();
+    result.current(undefined, "Carrying on");
 
     expect(useStreamStore.getState().sessions[CONVO]?.awaitingApproval).toBe(
       false,
@@ -51,7 +51,7 @@ describe("useMarkApprovalDecided", () => {
     useChatStore.setState({ activeConversationId: CONVO });
 
     const { result } = renderHook(() => useMarkApprovalDecided());
-    result.current(cardConvo);
+    result.current(cardConvo, "Carrying on");
 
     expect(
       useStreamStore.getState().sessions[cardConvo]?.awaitingApproval,
@@ -72,7 +72,7 @@ describe("useMarkApprovalDecided", () => {
     useChatStore.setState({ activeConversationId: null });
 
     const { result } = renderHook(() => useMarkApprovalDecided());
-    result.current();
+    result.current(undefined, "Carrying on");
 
     expect(
       useStreamStore.getState().sessions[pendingKey]?.awaitingApproval,

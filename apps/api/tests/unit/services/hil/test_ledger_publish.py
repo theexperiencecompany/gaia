@@ -6,8 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.models.hil_models import LedgerState
+from app.services.hil.describe import describe_call
 
-from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_request
+from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_request, registered_row
+
+ASKED_AT = registered_row().created_at
 
 MODULE = "app.services.hil.gate"
 
@@ -38,7 +41,7 @@ def _ledger(
     ledger = MagicMock()
     ledger.find_live = AsyncMock(return_value=live)
     ledger.find_latest_denied = AsyncMock(return_value=denied)
-    ledger.register = AsyncMock(return_value=registered_id)
+    ledger.register = AsyncMock(return_value=registered_row(registered_id))
     return ledger
 
 
@@ -118,9 +121,10 @@ class TestLedgerPublishHold:
                         user_id=USER_ID,
                         conversation_id="conv-1",
                         tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
-                        summary="Send it",
+                        description=describe_call("GMAIL_SEND_EMAIL", {"to": "b@x"}, "gmail"),
                         integration_name="gmail",
                     ),
+                    asked_at=ASKED_AT,
                 )
             chunk.assert_not_awaited()
             notify.assert_not_called()
@@ -152,9 +156,10 @@ class TestLedgerPublishHold:
                     user_id=USER_ID,
                     conversation_id="conv-1",
                     tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
-                    summary="Send it",
+                    description=describe_call("GMAIL_SEND_EMAIL", {"to": "b@x"}, "gmail"),
                     integration_name="gmail",
                 ),
+                asked_at=ASKED_AT,
             )
         chunk.assert_awaited_once()
         notify.assert_called_once()
@@ -182,9 +187,10 @@ class TestLedgerPublishHold:
                         user_id=USER_ID,
                         conversation_id="conv-1",
                         tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
-                        summary="Send it",
+                        description=describe_call("GMAIL_SEND_EMAIL", {"to": "b@x"}, "gmail"),
                         integration_name="gmail",
                     ),
+                    asked_at=ASKED_AT,
                 )
             chunk.assert_awaited_once()
             notify.assert_called_once()
@@ -212,9 +218,10 @@ class TestLedgerPublishHold:
                         user_id=USER_ID,
                         conversation_id="conv-1",
                         tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
-                        summary="Send it",
+                        description=describe_call("GMAIL_SEND_EMAIL", {"to": "b@x"}, "gmail"),
                         integration_name="gmail",
                     ),
+                    asked_at=ASKED_AT,
                     live=False,
                 )
             chunk.assert_awaited_once()
@@ -245,9 +252,10 @@ class TestLedgerPublishHold:
                         user_id=USER_ID,
                         conversation_id="conv-1",
                         tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
-                        summary="Send it",
+                        description=describe_call("GMAIL_SEND_EMAIL", {"to": "b@x"}, "gmail"),
                         integration_name="gmail",
                     ),
+                    asked_at=ASKED_AT,
                 )
             row = MagicMock()
             row.approval_id = "ap_drop"
@@ -256,7 +264,7 @@ class TestLedgerPublishHold:
                 patch.object(ledger_decide, "_persist_decision_status", new=AsyncMock()),
                 patch.object(ledger_decide, "_broadcast_decision", new=AsyncMock()),
             ):
-                await ledger_decide.publish_ledger_revocation(row)
+                await ledger_decide.publish_ledger_revocation(row, LedgerState.REVOKED)
             from app.agents.core.background.session import get_session
 
             assert get_session(stream_id).tool_events == []
@@ -303,7 +311,9 @@ class TestFlushHeldCards:
         try:
             with (
                 patch.object(bridge, "approval_ledger_repository") as repo,
-                patch.object(bridge.stream_manager, "publish_chunk", new=AsyncMock()) as chunk,
+                patch(
+                    "app.services.hil.bridge.stream_manager.publish_chunk", new=AsyncMock()
+                ) as chunk,
                 patch.object(bridge, "_schedule_pending_notification") as notify,
             ):
                 repo.get_by_approval_id = AsyncMock(return_value=row)
@@ -324,7 +334,9 @@ class TestFlushHeldCards:
         try:
             with (
                 patch.object(bridge, "approval_ledger_repository") as repo,
-                patch.object(bridge.stream_manager, "publish_chunk", new=AsyncMock()) as chunk,
+                patch(
+                    "app.services.hil.bridge.stream_manager.publish_chunk", new=AsyncMock()
+                ) as chunk,
                 patch.object(bridge, "_schedule_pending_notification") as notify,
             ):
                 repo.get_by_approval_id = AsyncMock(return_value=row)

@@ -51,7 +51,7 @@ from app.services.latency_metrics import observe_hil_dispatch_lag, observe_hil_u
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
-DecisionKind = Literal["approve", "deny", "timeout", "abandon"]
+DecisionKind = Literal["approve", "deny", "timeout"]
 
 
 class SweepCounts(TypedDict):
@@ -65,13 +65,11 @@ class SweepCounts(TypedDict):
 # No run ever reads it back (there is nothing left to resume) — it is the audit trail.
 CANCELLED_FEEDBACK = "The user cancelled this task; the action was never performed."
 
-# What the record audits. The paused gate receives the same status, except
-# "abandoned" resumes as a denial — the user moved on, the agent must not act.
+# What the record audits; the paused gate receives the same status.
 _TERMINAL_STATUS: dict[str, HILApprovalStatus] = {
     "approve": HILApprovalStatus.APPROVED,
     "deny": HILApprovalStatus.DENIED,
     "timeout": HILApprovalStatus.TIMEOUT,
-    "abandon": HILApprovalStatus.ABANDONED,
 }
 
 # Prevent GC of resume tasks spawned here (create_task keeps only a weak ref).
@@ -185,33 +183,12 @@ async def resolve_approvals_batch(
     return outcomes
 
 
-async def abandon_conversation_approvals(
-    conversation_id: str, user_id: str, feedback: str
-) -> list[str]:
-    """Resolve every pending approval in a conversation as abandoned.
-
-    Used when the user moves on to an unrelated request: each paused run resumes,
-    sees a refusal, wraps up, and releases the conversation's executor lock so the
-    new turn's work can proceed.
-    """
-    abandoned: list[str] = []
-    for record in await list_pending_for_conversation(conversation_id):
-        try:
-            await _resolve_or_close(record, user_id=user_id, kind="abandon", feedback=feedback)
-            abandoned.append(record.approval_id)
-        except (ApprovalRequestNotFoundError, ApprovalRequestForbiddenError):
-            # Already decided, or not this user's to decide. Keep going: one record must
-            # never strand the conversation's other paused runs, which is the whole point.
-            continue
-    return abandoned
-
-
 async def cancel_conversation_approvals(conversation_id: str, user_id: str) -> list[str]:
     """Close a cancelled run's pending approvals so nothing can restart it.
 
     Left pending, a later "Approve" or the timeout sweep would re-dispatch the very run the
     user stopped, on a fresh stream the cancel flag doesn't cover. Deliberately does NOT
-    resume (unlike abandon_conversation_approvals) since the run is already gone. mark_decided
+    resume since the run is already gone. mark_decided
     runs first: it is the exactly-once mutex, so only its winner may clear resume_item.
     """
     cancelled: list[str] = []
@@ -294,7 +271,7 @@ async def _resolve_record(
     # record carries its resume recipe from creation, so it is always resumable.
     if record.resume_item is None and record.subagent_resume is None:
         # An APPROVE with no run to carry it out is a false "going ahead", so fail loudly
-        # and let the sweep expire it. A deny/timeout/abandon needs no run at all, since
+        # and let the sweep expire it. A deny/timeout needs no run at all, since
         # its whole point is that the action does NOT happen, so it's safe to record.
         if kind == "approve":
             log.error(f"{LogTag.HIL} No resume context on record", approval_id=record.approval_id)
@@ -343,7 +320,7 @@ async def _resolve_record(
 
     log.set(hil={"approval_id": record.approval_id, "decision": kind, "tool": record.tool_name})
     if record.resume_item is None and record.subagent_resume is None:
-        # An un-resumable deny/timeout/abandon closed in place: nothing to resume.
+        # An un-resumable deny/timeout closed in place: nothing to resume.
         log.info(
             f"{LogTag.HIL} Decision recorded without a resume dispatch",
             approval_id=record.approval_id,

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { approvalOutcomeLabel, isSettled } from "./approvals";
+import {
+  approvalAgeSeconds,
+  approvalExpiresAt,
+  approvalOutcomeLabel,
+  cardDescription,
+  formatApprovalAge,
+  isSettled,
+  settleCard,
+} from "./approvals";
 import type { ApprovalRequestData } from "./approvals.types";
 
 const base: ApprovalRequestData = {
@@ -7,47 +15,78 @@ const base: ApprovalRequestData = {
   tool_call_id: "call-1",
   gated_tool_name: "send_email",
   integration_name: "gmail",
-  summary: "Send email",
+  summary: "Send an email",
+  description: {
+    action: "Send an email",
+    headline: "Send an email",
+    confirm: "send it",
+    details: [],
+  },
   args_preview: {},
   status: "pending",
   feedback: null,
-  timeout_seconds: 300,
+  auto_reason: null,
+  asked_at: "2026-11-10T10:00:00Z",
 };
 
-describe("ledger-extended approval shapes", () => {
-  it("revoked is settled with a withdraw label", () => {
+describe("approval outcomes", () => {
+  it("names who withdrew a card: the agent, or the user's Stop", () => {
     expect(isSettled("revoked")).toBe(true);
     expect(approvalOutcomeLabel({ ...base, status: "revoked" })).toBe(
-      "Agent withdrew this",
+      "GAIA withdrew this request, so nothing was done",
+    );
+    expect(approvalOutcomeLabel({ ...base, status: "cancelled" })).toBe(
+      "You stopped GAIA before answering, so nothing was done",
     );
   });
 
-  it("ledger-only fields ride optional without breaking the base shape", () => {
-    const card: ApprovalRequestData = {
-      ...base,
-      rationale: "user asked for cleanup",
-      age_seconds: 172800,
-      ledger_version: 4,
-    };
-    expect(card.ledger_version).toBe(4);
-  });
-
-  it("decision payloads carry the rendered row version", () => {
-    const payload = { decision: "approve" as const, v: 4 };
-    expect(payload.v).toBe(4);
+  it("says what is known when the result could not be confirmed", () => {
+    expect(approvalOutcomeLabel({ ...base, status: "unknown" })).toBe(
+      "You approved this, but GAIA couldn't confirm it went through",
+    );
   });
 });
 
-describe("formatApprovalAge", () => {
-  it("renders compact age strings", async () => {
-    const { formatApprovalAge } = await import("./approvals");
-    expect(formatApprovalAge(30)).toBe("asked just now");
-    expect(formatApprovalAge(3600)).toBe("asked 1h ago");
-    expect(formatApprovalAge(172800)).toBe("asked 2d ago");
+describe("card age", () => {
+  const now = Date.parse("2026-11-12T10:00:00Z");
+
+  it("is computed from when the card was asked, at render time", () => {
+    expect(approvalAgeSeconds(base, now)).toBe(172800);
   });
 
-  it("re-confirm threshold is one day", async () => {
-    const { RECONFIRM_AGE_SECONDS } = await import("./approvals");
-    expect(RECONFIRM_AGE_SECONDS).toBe(86400);
+  it("is unknown on a card saved before asked_at existed", () => {
+    expect(
+      approvalAgeSeconds({ asked_at: undefined } as never, now),
+    ).toBeNull();
+  });
+
+  it("reads as words", () => {
+    expect(formatApprovalAge(30)).toBe("just now");
+    expect(formatApprovalAge(3600)).toBe("1h ago");
+    expect(formatApprovalAge(172800)).toBe("2d ago");
+  });
+});
+
+describe("card shape", () => {
+  it("settling drops an expiry, so a decided card never claims to expire", () => {
+    const expiring: ApprovalRequestData = {
+      ...base,
+      expires_at: "2026-11-12T16:00:00Z",
+    };
+    expect(approvalExpiresAt(expiring)).toBe("2026-11-12T16:00:00Z");
+    const settled = settleCard(expiring, "approved", null);
+    expect(settled).not.toHaveProperty("expires_at");
+    expect(approvalExpiresAt(settled)).toBeNull();
+  });
+
+  it("a card saved before descriptions reads as its summary", () => {
+    expect(
+      cardDescription({ summary: "Gmail send email", description: undefined }),
+    ).toEqual({
+      action: "Gmail send email",
+      headline: "Gmail send email",
+      confirm: "go ahead",
+      details: [],
+    });
   });
 });

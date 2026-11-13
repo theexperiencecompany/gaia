@@ -12,8 +12,8 @@ from typing import Final, Literal
 from app.constants.cache import EXECUTOR_BUSY_TTL
 from app.constants.general import FINISH_TASK_NAME
 
-# The launch switch is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (the
-# default mode is a HILPreferences field default, so it lives with the model).
+# The default mode is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (a
+# HILPreferences field default, so it lives with the model).
 
 # auto mode: what the intent judge is shown. Intent routinely spans turns
 # ("draft an email to Bob" ... "looks good, send it"), so the latest message
@@ -57,11 +57,10 @@ HIL_JEV_MODEL_NAME = "typesafe/jev-1.13"
 HIL_JEV_URL = "https://openrouter.ai/api/alpha/decisions"
 HIL_JEV_TIMEOUT_SECONDS = 15
 HIL_JEV_ACCEPT_LINE = 0.50
-HIL_JEV_REJECT_FLOOR = 0.50
 
-
-# The forbid double-check itself failed; the verdict asks rather than trusting either way.
-JEV_FORBID_CHECK_FAILED = "unclear-forbid"
+# The note on a card auto mode raised instead of running the call. The judge's own
+# reason names tool slugs and scores, so it stays model-facing; the user reads this.
+AUTO_ASK_NOTE = "GAIA isn't sure you asked for this, so it's checking with you first."
 
 
 class JevChoice(StrEnum):
@@ -70,7 +69,6 @@ class JevChoice(StrEnum):
     AUTHORIZED = "authorized"
     FORBIDDEN = "forbidden"
     UNCLEAR = "unclear"
-    PERMITTED = "permitted"
 
 
 # JEV reply classifier: an approve under the line leaves the action pending.
@@ -102,10 +100,6 @@ HIL_RESUMABLE_STATUSES: frozenset[str] = frozenset({"approved", "denied", "timeo
 # sweep's crashed-resume pass matches on these. "auto_approved" is absent: it
 # never paused, so it has no run to resume.
 HIL_UNRESUMED_SWEEP_STATUSES: tuple[str, ...] = ("approved", "denied", "timeout", "abandoned")
-
-# How much of a call's arguments the deterministic one-line summary shows.
-HIL_SUMMARY_MAX_ARGS = 2
-HIL_SUMMARY_MAX_ARG_CHARS = 60
 
 # The classifier reading a chat reply to a pending approval gets richer context
 # than the card summary: recent turns + the full (bounded) args. TOTAL budget
@@ -203,6 +197,6 @@ APPROVAL_TOOL_CATEGORY = "hil"
 # starting a new turn.
 HIL_ACK_APPROVED = "Got it, going ahead."
 HIL_ACK_DENIED = "Understood, I will not do that."
-
-# Auto-deny reason when a bot user moves on without answering a pending approval.
-UNRELATED_FEEDBACK = "The user moved on to a different request; do not perform the action."
+# The same acks when the reply decided exactly one action, named in plain words.
+HIL_ACK_APPROVED_ONE = "Got it, I'll {action}."
+HIL_ACK_DENIED_ONE = "Understood, I won't {action}."

@@ -432,6 +432,57 @@
         "title": "ApprovalDecisionResponse",
         "type": "object"
       },
+      "ApprovalDescription": {
+        "description": "A gated call in plain words, rendered the same by web cards and bot prompts.",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "confirm": {
+            "title": "Confirm",
+            "type": "string"
+          },
+          "details": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalDetail"
+            },
+            "title": "Details",
+            "type": "array"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "headline",
+          "confirm",
+          "details"
+        ],
+        "title": "ApprovalDescription",
+        "type": "object"
+      },
+      "ApprovalDetail": {
+        "description": "One labelled fact about a gated call, e.g. To: bob@x.com.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ],
+        "title": "ApprovalDetail",
+        "type": "object"
+      },
       "ApprovePairingRequest": {
         "description": "The signed-in browser approves a pairing by its short user_code.",
         "properties": {
@@ -7647,7 +7698,7 @@
         "description": "A user's HIL preferences as returned by the preferences endpoints.",
         "properties": {
           "mode": {
-            "default": "always_allow",
+            "default": "auto",
             "enum": [
               "always_allow",
               "always_ask",
@@ -8909,6 +8960,7 @@
         "title": "InviteResponse",
         "type": "object"
       },
+      "JsonValue": {},
       "LabEventResponse": {
         "description": "Accepted; the payload itself is never echoed back.",
         "properties": {
@@ -13155,6 +13207,123 @@
         "title": "PaymentVerificationResponse",
         "type": "object"
       },
+      "PendingApprovalCardData": {
+        "description": "A card waiting on the user.",
+        "properties": {
+          "always_asks": {
+            "default": false,
+            "title": "Always Asks",
+            "type": "boolean"
+          },
+          "approval_id": {
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "args_preview": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Args Preview",
+            "type": "object"
+          },
+          "asked_at": {
+            "format": "date-time",
+            "title": "Asked At",
+            "type": "string"
+          },
+          "auto_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Reason"
+          },
+          "description": {
+            "$ref": "#/components/schemas/ApprovalDescription"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          },
+          "gated_tool_name": {
+            "title": "Gated Tool Name",
+            "type": "string"
+          },
+          "integration_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integration Name"
+          },
+          "ledger_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Version"
+          },
+          "status": {
+            "const": "pending",
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "tool_call_id": {
+            "title": "Tool Call Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approval_id",
+          "tool_call_id",
+          "gated_tool_name",
+          "integration_name",
+          "summary",
+          "description",
+          "args_preview",
+          "feedback",
+          "auto_reason",
+          "asked_at",
+          "status"
+        ],
+        "title": "PendingApprovalCardData",
+        "type": "object"
+      },
       "PendingApprovalRef": {
         "description": "A live approval parked against this todo \u2014 the UI's jump link to the\nconversation holding the card. Oldest live row wins; terminal rows never\nappear here.",
         "properties": {
@@ -13174,6 +13343,23 @@
           "conversation_id"
         ],
         "title": "PendingApprovalRef",
+        "type": "object"
+      },
+      "PendingApprovalsResponse": {
+        "description": "A conversation's pending approvals, numbered in this order by both the bot prompt and the reply.",
+        "properties": {
+          "approvals": {
+            "items": {
+              "$ref": "#/components/schemas/PendingApprovalCardData"
+            },
+            "title": "Approvals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "approvals"
+        ],
+        "title": "PendingApprovalsResponse",
         "type": "object"
       },
       "PersistedTriageSummary": {
@@ -16408,6 +16594,123 @@
           }
         },
         "title": "SetToolOverrideRequest",
+        "type": "object"
+      },
+      "SettledApprovalCardData": {
+        "description": "A decided card: no expiry, since a decision cannot expire.",
+        "properties": {
+          "always_asks": {
+            "default": false,
+            "title": "Always Asks",
+            "type": "boolean"
+          },
+          "approval_id": {
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "args_preview": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Args Preview",
+            "type": "object"
+          },
+          "asked_at": {
+            "format": "date-time",
+            "title": "Asked At",
+            "type": "string"
+          },
+          "auto_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Reason"
+          },
+          "description": {
+            "$ref": "#/components/schemas/ApprovalDescription"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          },
+          "gated_tool_name": {
+            "title": "Gated Tool Name",
+            "type": "string"
+          },
+          "integration_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integration Name"
+          },
+          "ledger_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ledger Version"
+          },
+          "status": {
+            "enum": [
+              "approved",
+              "denied",
+              "timeout",
+              "abandoned",
+              "auto_approved",
+              "revoked",
+              "cancelled",
+              "executed",
+              "failed",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "tool_call_id": {
+            "title": "Tool Call Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approval_id",
+          "tool_call_id",
+          "gated_tool_name",
+          "integration_name",
+          "summary",
+          "description",
+          "args_preview",
+          "feedback",
+          "auto_reason",
+          "asked_at",
+          "status"
+        ],
+        "title": "SettledApprovalCardData",
         "type": "object"
       },
       "SetupStatusResponse": {
@@ -22392,6 +22695,69 @@
           }
         },
         "summary": "Post Batch Decision",
+        "tags": [
+          "Approvals"
+        ]
+      }
+    },
+    "/api/v1/approvals/pending": {
+      "get": {
+        "description": "List the conversation's pending approvals in the order a chat reply is read against.",
+        "operationId": "approvals_get_pending_approvals",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingApprovalsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Pending Approvals",
         "tags": [
           "Approvals"
         ]

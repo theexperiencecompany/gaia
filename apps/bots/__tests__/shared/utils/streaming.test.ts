@@ -51,7 +51,9 @@ function streamingGaia(
   chunks: StreamStep[],
   approvalAfter?: number,
   approval?: Partial<ApprovalRequestData>,
+  serverPending?: ApprovalRequestData[],
 ): GaiaClient {
+  const emitted: ApprovalRequestData[] = [];
   return {
     chatStream: async (
       _request: unknown,
@@ -92,24 +94,35 @@ function streamingGaia(
         pendingText += step;
         await onChunk(step);
         if (approvalAfter === i && onApproval) {
-          await onApproval({
+          const card = {
             approval_id: "a1",
             tool_call_id: "t1",
             gated_tool_name: "delete_everything",
             integration_name: null,
             summary: "Delete the production database",
+            description: {
+              action: "Delete the production database",
+              headline: "Delete the production database",
+              confirm: "delete it",
+              details: [],
+            },
             args_preview: {},
             status: "pending",
             feedback: null,
-            timeout_seconds: 3600,
+            auto_reason: null,
+            asked_at: new Date().toISOString(),
             ...approval,
-          } as ApprovalRequestData);
+          } as ApprovalRequestData;
+          emitted.push(card);
+          await onApproval(card);
         }
       }
       keepPendingText();
       await onDone(full, "conv-test");
       return full;
     },
+    // The server's list, in its reply order; by default exactly what this turn raised.
+    listPendingApprovals: async () => serverPending ?? emitted,
     createLinkToken: async () => ({ authUrl: "https://gaia.test/link" }),
   } as unknown as GaiaClient;
 }
@@ -156,12 +169,14 @@ async function deliver(
     editable = true,
     approvalAfter,
     approval,
+    serverPending,
     failEdit,
     failStream,
   }: {
     editable?: boolean;
     approvalAfter?: number;
     approval?: Partial<ApprovalRequestData>;
+    serverPending?: ApprovalRequestData[];
     /** Throws on the Nth edit (0-based), emulating a platform rejection. */
     failEdit?: { at: number; error: unknown };
     /** The transport error to fail the whole stream with, instead of streaming. */
@@ -213,7 +228,7 @@ async function deliver(
 
   await handleStreamingChat(
     failStream === undefined
-      ? streamingGaia(chunks, approvalAfter, approval)
+      ? streamingGaia(chunks, approvalAfter, approval, serverPending)
       : failingGaia(failStream),
     {
       message: "drive the streamer",
@@ -337,35 +352,74 @@ describe("handleStreamingChat delivery", () => {
     });
   });
 
-  it("does not overwrite an out-of-band approval prompt", async () => {
-    // The approval prompt posts via the adapter's `sendNewMessage`, moving that
-    // adapter's live-edit cursor onto the prompt on editing platforms; if the
-    // streamer kept editing "the current message" it'd overwrite the question.
+  it("asks one approval question after the reply, never inside it", async () => {
+    // The prompt posts via the adapter's `sendNewMessage` once the turn is done, so it
+    // can never be overwritten by a later edit or split the reply it belongs to.
     const { bubbles } = await deliver(
       "telegram",
       ["Checking that first. ", "Now the rest of the answer."],
       { approvalAfter: 0 },
     );
 
-    const prompt = bubbles.find((b) => b.includes("Approval needed"));
-    expect(prompt).toBeDefined();
-    expect(prompt).toContain("Delete the production database");
-    // Whatever streamed after the prompt must land in its own message.
-    expect(bubbles.at(-1)).toContain("Now the rest of the answer");
-    expect(bubbles.at(-1)).not.toContain("Approval needed");
+    const prompts = bubbles.filter((b) => b.includes("GAIA wants to"));
+    expect(prompts).toHaveLength(1);
+    expect(bubbles.at(-1)).toContain(
+      "GAIA wants to delete the production database",
+    );
+    expect(bubbles.at(-1)).toContain(
+      "Reply yes to delete it, or no to cancel.",
+    );
+    expect(bubbles.at(-2)).toContain("Now the rest of the answer");
   });
 
-  it("shows how long ago the approval was asked", async () => {
-    // Ledger-backed approvals carry age_seconds; the prompt should surface it
-    // so a user answering hours later knows the request is stale.
+  it("shows how long ago a stale approval was asked, and no expiry it does not have", async () => {
     const { bubbles } = await deliver("telegram", ["Checking that first. "], {
       approvalAfter: 0,
-      approval: { age_seconds: 3700 },
+      approval: { asked_at: new Date(Date.now() - 3700_000).toISOString() },
     });
 
-    const prompt = bubbles.find((b) => b.includes("Approval needed"));
-    expect(prompt).toBeDefined();
-    expect(prompt).toContain("asked 1h ago");
+    const prompt = bubbles.find((b) => b.includes("GAIA wants to"));
+    expect(prompt).toContain("Asked 1h ago.");
+    expect(prompt).not.toMatch(/expire/i);
+  });
+
+  it("numbers the prompt from the server's list, older pending approvals included", async () => {
+    // Regression: the prompt numbered only this turn's approvals while the server read
+    // "yes 2" against every pending one, so "2" could approve something never shown as 2.
+    const pendingCard = (id: string, headline: string): ApprovalRequestData =>
+      ({
+        approval_id: id,
+        tool_call_id: "",
+        gated_tool_name: "GMAIL_SEND_EMAIL",
+        integration_name: null,
+        summary: headline,
+        description: {
+          action: headline,
+          headline,
+          confirm: "go ahead",
+          details: [],
+        },
+        args_preview: {},
+        status: "pending",
+        feedback: null,
+        auto_reason: null,
+        asked_at: new Date().toISOString(),
+      }) as ApprovalRequestData;
+    const { bubbles } = await deliver("telegram", ["Done drafting. "], {
+      approvalAfter: 0,
+      approval: { approval_id: "ap_new1" },
+      serverPending: [
+        pendingCard("ap_old", "Delete a calendar event from Work"),
+        pendingCard("ap_new1", "Send an email to bob@x.com"),
+        pendingCard("ap_new2", "Post on X"),
+      ],
+    });
+
+    const prompt = bubbles.at(-1) ?? "";
+    expect(prompt).toContain("3 things need your OK:");
+    expect(prompt).toContain("1. Delete a calendar event from Work");
+    expect(prompt).toContain("2. Send an email to bob@x.com");
+    expect(prompt).toContain("3. Post on X");
   });
 
   it("never shows a break token, whole or partially received", async () => {

@@ -20,7 +20,6 @@
  */
 import type { AnalyticsContext } from "../../analytics";
 import type { ApprovalRequestData } from "../../chat";
-import { formatApprovalAge } from "../../chat/approvals";
 import type { GaiaClient } from "../api";
 import { BOT_STREAM_ERROR, type ReactionHandler } from "../api/chat-stream";
 import {
@@ -30,6 +29,7 @@ import {
   isLostReply,
 } from "../delivery-failures";
 import type { ChatRequest, PlatformName } from "../types";
+import { formatApprovalPrompt } from "./approvalPrompt";
 import { segmentIntoBubbles } from "./bubbles";
 import { isMessageGoneError, retryAfterMs } from "./delivery-errors";
 import { BOT_FAILURE_REASON, recordBotFailure } from "./failure-reasons";
@@ -53,26 +53,6 @@ import { chunkResponse, PLATFORM_LIMITS } from "./text";
 import { wideLog, withWideEvent } from "./wide-events";
 
 const logger = createBotLogger("shared", "streaming");
-
-/** The approval window is hours, so "360 minutes" is not a usable way to say it. */
-function formatExpiry(seconds: number): string {
-  const minutes = Math.max(1, Math.round(seconds / 60));
-  if (minutes < 60) return minutes === 1 ? "1 minute" : `${minutes} minutes`;
-  const hours = Math.round(minutes / 60);
-  return hours === 1 ? "1 hour" : `${hours} hours`;
-}
-
-/** Render a PENDING HIL approval as a yes/no prompt for a bot message. Only
- * pending approvals are surfaced out-of-band (see handleApprovalUpdate); settled
- * ones are narrated by the agent's streamed reply. */
-function formatApprovalPrompt(data: ApprovalRequestData): string {
-  const age =
-    data.age_seconds != null ? ` (${formatApprovalAge(data.age_seconds)})` : "";
-  return (
-    `**Approval needed:** ${data.summary}${age}\n` +
-    `Reply **yes** to approve or **no** to decline. This expires in ${formatExpiry(data.timeout_seconds)}.`
-  );
-}
 
 export interface StreamingOptions {
   editIntervalMs: number;
@@ -635,6 +615,27 @@ async function runStreamingChat(
     await onGenericError(formattedError);
   };
 
+  const pendingApprovals = new Map<string, ApprovalRequestData>();
+  /**
+   * One question for everything left pending, numbered from the server's list: the
+   * reply is read against that list, so older approvals from earlier turns count too.
+   */
+  const askPendingApprovals = async (
+    convId: string,
+    deliverOutOfBand: (text: string) => Promise<void>,
+  ): Promise<void> => {
+    if (pendingApprovals.size === 0 || !convId) return;
+    try {
+      const cards = await gaia.listPendingApprovals(convId, {
+        platform: request.platform,
+        platformUserId: request.platformUserId,
+      });
+      const prompt = formatApprovalPrompt(cards);
+      if (prompt) await deliverOutOfBand(prompt);
+    } catch (error) {
+      logger.error("approval_prompt_failed", {}, error);
+    }
+  };
   const streamFn = (
     onChunk: (text: string) => void | Promise<void>,
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
@@ -656,18 +657,15 @@ async function runStreamingChat(
         responseLength = fullText.length;
         conversationId = convId;
         await onDone(fullText, convId);
+        await askPendingApprovals(convId, deliverOutOfBand);
       },
       onError,
-      // HIL approval prompts go out as their own message so a non-streaming platform
-      // (Discord/WhatsApp, which shows nothing until the stream ends) still surfaces the
-      // question while the agent is paused waiting.
-
-      // Only the PENDING question needs one — a bot has no buttons, so the user answers in
-      // chat. Settled frames (auto-approved, or a resumed decision) arrive mid-stream and are
-      // already narrated by the agent's streamed reply, so posting them would fragment it.
-      async (data: ApprovalRequestData) => {
-        if (data.status !== "pending") return;
-        await deliverOutOfBand(formatApprovalPrompt(data));
+      // A pending frame means the turn ends with a question (above); one that settles
+      // first cancels it. The reply narrates settled cards.
+      (data: ApprovalRequestData) => {
+        if (data.status === "pending")
+          pendingApprovals.set(data.approval_id, data);
+        else pendingApprovals.delete(data.approval_id);
       },
       // One assistant message ended. A kept one is segmented and delivered here
       // and nowhere earlier; a discarded one (a handoff preamble, or a draft the

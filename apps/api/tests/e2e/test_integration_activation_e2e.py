@@ -299,7 +299,7 @@ class TestActivationThroughRealExecutorGraph:
             patch(f"{_DISPATCH_MOD}.capture"),
             patch(
                 "app.services.hil.policy.get_hil_preferences",
-                new=AsyncMock(return_value=HILPreferences()),
+                new=AsyncMock(return_value=HILPreferences(mode="always_allow")),
             ),
         ):
             async with build_executor_graph(chat_llm=model, in_memory_checkpointer=True) as graph:

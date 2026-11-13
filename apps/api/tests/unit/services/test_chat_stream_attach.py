@@ -22,7 +22,7 @@ import pytest
 
 from app.agents.core.agent import AgentRunOptions, StreamMessageIds
 from app.agents.core.background.session import RunKind, create_session, get_session
-from app.models.message_models import FileData, MessageRequestWithHistory
+from app.models.message_models import FileData, MessageDict, MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
 from app.services.chat.stream import (
@@ -35,6 +35,9 @@ from app.services.chat.stream import (
     _StreamState,
     _TurnContext,
 )
+from app.services.hil.conversational import ReplyOutcome
+from app.services.hil.describe import describe_call
+from app.utils.agent_utils import format_sse_response
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
@@ -174,7 +177,6 @@ class TestFinalizeStreamBackstop:
             [
                 {"tool_name": "search", "data": {}},
                 {"tool_name": "search", "data": {}},
-                {"data": {}},
             ]
         )
 
@@ -189,7 +191,7 @@ class TestFinalizeStreamBackstop:
             )
 
         assert log.set.call_args.kwargs["tool_types"] == ["search"]
-        assert log.set.call_args.kwargs["tool_calls_count"] == 3
+        assert log.set.call_args.kwargs["tool_calls_count"] == 2
 
     async def test_saved_turn_is_not_resaved_or_reattached(self) -> None:
         """The backstop must never double-persist or double-attach a turn already saved and attached."""
@@ -216,7 +218,7 @@ class TestFinalizeStreamBackstop:
 
 class TestRecentHistory:
     def test_a_trailing_user_turn_is_dropped_from_the_prior_context(self) -> None:
-        messages = [
+        messages: list[MessageDict] = [
             {"role": "user", "content": "draft it"},
             {"role": "assistant", "content": "drafted"},
             {"role": "user", "content": "send it"},
@@ -225,7 +227,7 @@ class TestRecentHistory:
         assert _recent_history(messages) == messages[:2]
 
     def test_a_trailing_assistant_turn_is_kept(self) -> None:
-        messages = [
+        messages: list[MessageDict] = [
             {"role": "user", "content": "draft it"},
             {"role": "assistant", "content": "drafted"},
         ]
@@ -262,7 +264,14 @@ class TestResolvePendingApprovalTurnApproves:
             ],
             conversation_id="conv-1",
         )
-        classifier = AsyncMock(return_value="approve")
+        classifier = AsyncMock(
+            return_value=ReplyOutcome(
+                action="approve",
+                decided=(
+                    describe_call("GMAIL_SEND_EMAIL", {"recipient_email": "bob@x.com"}, None),
+                ),
+            )
+        )
         with (
             patch.object(chat_stream, "stream_manager") as sm,
             patch.object(chat_stream, "_persist_turn", new_callable=AsyncMock),
@@ -283,6 +292,37 @@ class TestResolvePendingApprovalTurnApproves:
         classifier.assert_awaited_once_with(
             "conv-1", USER_ID, "yes", [{"role": "assistant", "content": "Send the email?"}]
         )
+        # One decided action is acknowledged by name, not with a generic "going ahead".
+        assert sm.publish_chunk.await_args_list[0].args[1] == format_sse_response(
+            "Got it, I'll send an email."
+        )
+
+    async def test_an_unrelated_reply_runs_a_normal_turn_and_decides_nothing(self) -> None:
+        body = MessageRequestWithHistory(
+            message="what's the weather",
+            messages=[{"role": "user", "content": "what's the weather"}],
+            conversation_id="conv-1",
+        )
+        with (
+            patch.object(chat_stream, "stream_manager") as sm,
+            patch.object(
+                chat_stream,
+                "resolve_pending_from_message",
+                new=AsyncMock(return_value=ReplyOutcome(action="unrelated")),
+            ),
+        ):
+            sm.publish_chunk = AsyncMock()
+            result = await _resolve_pending_approval_turn(
+                body,
+                AuthenticatedUser(user_id=USER_ID),
+                "conv-1",
+                "stream-1",
+                _StreamState(),
+                "whatsapp",
+            )
+
+        assert result is False
+        sm.publish_chunk.assert_not_awaited()
 
 
 class TestResolvePendingApprovalTurnDegradesOnFailure:
@@ -511,9 +551,9 @@ class TestRunChatStreamTurnDerivations:
             patch.object(chat_stream, "capture"),
             patch.object(chat_stream, "_finalize_stream", AsyncMock()),
             patch.object(chat_stream, "_wait_for_artifact_forwarder", AsyncMock()),
-            patch.object(chat_stream.conversation_repository, "get_todo_id", get_todo_id),
-            patch.object(
-                chat_stream.FileService, "attach_uploads", new_callable=AsyncMock
+            patch("app.services.chat.stream.conversation_repository.get_todo_id", get_todo_id),
+            patch(
+                "app.services.chat.stream.FileService.attach_uploads", new_callable=AsyncMock
             ) as attach_uploads,
         ):
             sm.publish_chunk = AsyncMock()

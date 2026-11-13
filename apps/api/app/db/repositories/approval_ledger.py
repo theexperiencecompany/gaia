@@ -33,8 +33,8 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
     uses_object_id = True
     cache_policy = None
 
-    async def register(self, proposal: ApprovalProposal) -> str:
-        """Insert a PENDING row for the proposal, or return the live duplicate's id.
+    async def register(self, proposal: ApprovalProposal) -> ApprovalLedgerDocument:
+        """Insert a PENDING row for the proposal, or return the live duplicate.
 
         Dedup consults live states only: a terminal fingerprint re-registers
         fresh (revoked-then-reproposed must not collapse into a dead id).
@@ -43,20 +43,18 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
         """
         existing = await self.find_live(proposal.fingerprint, proposal.conversation_id)
         if existing is not None:
-            return existing.approval_id
-        approval_id = f"ap_{uuid4().hex[:12]}"
+            return existing
+        row = ApprovalLedgerDocument(approval_id=f"ap_{uuid4().hex[:12]}", **proposal.model_dump())
         try:
-            await self.create(
-                ApprovalLedgerDocument(approval_id=approval_id, **proposal.model_dump())
-            )
+            await self.create(row)
         except DuplicateKeyError:
             # Lost the insert race (partial unique index on live
             # conversation+fingerprint): the winner's row is the id.
             winner = await self.find_live(proposal.fingerprint, proposal.conversation_id)
             if winner is not None:
-                return winner.approval_id
+                return winner
             raise
-        return approval_id
+        return row
 
     async def claim_resume(self, approval_id: str) -> bool:
         """Claim the one resume this approval may trigger; exactly one winner.

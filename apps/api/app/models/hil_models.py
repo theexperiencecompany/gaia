@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -34,12 +34,12 @@ class HILApprovalStatus(StrEnum):
         return self is not HILApprovalStatus.PENDING
 
 
-# The three global approval modes. Launch switch: the default stays
-# ``always_allow`` (HIL off — nothing gated) until we flip it post-launch.
+# The three global approval modes. The default applies at read time to every user
+# who never chose a mode, so changing it moves all of them at once.
 HILMode = Literal["always_allow", "always_ask", "auto"]
 # once: this call only. always_tool: also set a "never ask" override for the tool.
 ApprovalScope = Literal["once", "always_tool"]
-HIL_DEFAULT_MODE: HILMode = "always_allow"
+HIL_DEFAULT_MODE: HILMode = "auto"
 
 
 class DeclinedCallRecord(TypedDict):
@@ -50,9 +50,6 @@ class DeclinedCallRecord(TypedDict):
     """
 
     feedback: str | None
-    # Present only on auto-mode refusals (absent on rows written before this
-    # shipped, which correctly read as user-made).
-    auto: NotRequired[bool]
 
 
 class HilInterruptPayload(TypedDict, total=False):
@@ -207,9 +204,30 @@ class LedgerState(StrEnum):
     EXECUTED = "executed"
     FAILED = "failed"
     UNKNOWN = "unknown"
+    # The user pressed Stop before deciding; REVOKED is the agent withdrawing it.
+    CANCELLED = "cancelled"
 
 
 LIVE_LEDGER_STATES = frozenset({LedgerState.PENDING, LedgerState.APPROVED})
+
+
+class ApprovalDetail(BaseModel):
+    """One labelled fact about a gated call, e.g. To: bob@x.com."""
+
+    label: str
+    value: str
+
+
+class ApprovalDescription(BaseModel):
+    """A gated call in plain words, rendered the same by web cards and bot prompts."""
+
+    # Verb + object, e.g. "Send an email".
+    action: str
+    # The action with its target, for lists and the model: Send an email to bob@x.com: "Q3".
+    headline: str
+    # Closing verb for a single-action prompt, e.g. "send it".
+    confirm: str
+    details: list[ApprovalDetail]
 
 
 class ApprovalProposal(BaseModel):
@@ -255,7 +273,7 @@ class ApprovalLedgerDocument(MongoDocument, ApprovalProposal):
     decided_by: str | None = None
     decided_at: datetime | None = None
     v: int = 0
-    created_at: datetime | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     # When this row entered EXECUTING. The lazy reconciler treats EXECUTING
     # older than the cutoff as crashed (UNKNOWN) — never blind-retried.
     executing_started_at: datetime | None = None

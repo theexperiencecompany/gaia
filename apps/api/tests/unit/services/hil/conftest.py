@@ -22,7 +22,7 @@ import pytest
 from app.agents.middleware.runtime_adapter import BigtoolToolRuntime
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.constants.execute import EXECUTE_TOOL_NAME
-from app.models.hil_models import HILApprovalRecord, HILPreferences
+from app.models.hil_models import ApprovalLedgerDocument, HILApprovalRecord, HILPreferences
 from app.services.hil.gate import decide_tool_call
 from app.services.hil.intent import IntentDecision
 from app.services.providers.provider_credentials_service import ProviderConfig
@@ -104,6 +104,18 @@ def human_message(text: str) -> HumanMessage:
     return HumanMessage(content=text)
 
 
+def registered_row(approval_id: str = "ap_abc1234567") -> ApprovalLedgerDocument:
+    """Build the row ApprovalLedgerRepository.register hands back for a fresh proposal."""
+    return ApprovalLedgerDocument(
+        approval_id=approval_id,
+        conversation_id=CONVERSATION_ID,
+        user_id=USER_ID,
+        fingerprint="fp",
+        tool_name=GATED_TOOL,
+        created_at=datetime(2026, 11, 10, 9, 30, tzinfo=UTC),
+    )
+
+
 def make_record(**overrides: Any) -> HILApprovalRecord:
     """Build a real pending approval record."""
     now = datetime.now(UTC)
@@ -142,10 +154,10 @@ async def run_through_gate(request: ToolCallRequest, handler: Any) -> Any:
 
 GATED_TOOL = "GMAIL_SEND_EMAIL"
 GATED_ARGS: dict[str, Any] = {"to": "b@x"}
-# build_summary of GATED_TOOL / GATED_ARGS once the registry names its integration.
-GATED_SUMMARY = "Gmail send email (Gmail); to: b@x"
+# describe_call(GATED_TOOL, GATED_ARGS, ...).headline; "to" is not a curated Gmail key.
+GATED_SUMMARY = "Send an email"
 GATED_ACCOUNT = "work@acme.com"
-GATED_ACCOUNT_SUMMARY = "Gmail send email (Gmail, work@acme.com); to: b@x"
+GATED_ACCOUNT_SUMMARY = "Send an email (as work@acme.com)"
 GATE_MODULE = "app.services.hil.gate"
 
 
@@ -215,7 +227,7 @@ def gate_seams() -> Iterator[GateSeams]:
     ledger = MagicMock()
     ledger.find_live = AsyncMock(return_value=None)
     ledger.find_latest_denied = AsyncMock(return_value=None)
-    ledger.register = AsyncMock(return_value="ap_abc1234567")
+    ledger.register = AsyncMock(return_value=registered_row())
     ledger.recent_tool_outcomes = AsyncMock(return_value=[])
     ledger_enabled: set[str] = {USER_ID}
     jev_enabled: set[str] = set()

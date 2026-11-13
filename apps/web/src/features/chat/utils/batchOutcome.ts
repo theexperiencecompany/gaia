@@ -1,4 +1,7 @@
-import type { ApprovalStatus } from "@shared/chat";
+import type { SettledApprovalCardData } from "@shared/chat";
+import { isKnownApprovalStatus } from "@shared/utils";
+
+type SettledStatus = SettledApprovalCardData["status"];
 
 /** Why a batch item did not commit — the server's vocabulary (ledger_decide.py). */
 export const BATCH_OUTCOME_REASON = {
@@ -6,20 +9,6 @@ export const BATCH_OUTCOME_REASON = {
   STALE: "stale",
   ERROR: "error",
 } as const;
-
-/** Server-reported ledger states that name a real card status. */
-const KNOWN_STATUSES: ReadonlySet<string> = new Set<string>([
-  "pending",
-  "approved",
-  "denied",
-  "timeout",
-  "abandoned",
-  "auto_approved",
-  "revoked",
-  "executed",
-  "failed",
-  "unknown",
-]);
 
 /**
  * Settle a batch item to the server's reported state, not the tapped button.
@@ -32,14 +21,14 @@ const KNOWN_STATUSES: ReadonlySet<string> = new Set<string>([
  */
 export function resolveBatchOutcomeStatus(
   outcomeStatus: string | null | undefined,
-  tapped: ApprovalStatus,
-): ApprovalStatus {
+  tapped: SettledStatus,
+): SettledStatus {
   if (
-    outcomeStatus !== null &&
-    outcomeStatus !== undefined &&
-    KNOWN_STATUSES.has(outcomeStatus)
+    outcomeStatus != null &&
+    isKnownApprovalStatus(outcomeStatus) &&
+    outcomeStatus !== "pending"
   ) {
-    return outcomeStatus as ApprovalStatus;
+    return outcomeStatus;
   }
   return tapped;
 }

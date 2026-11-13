@@ -31,13 +31,22 @@ os.environ["ENV"] = "selfhost"
 os.environ["AUTH_MODE"] = "local"
 
 from app.core.app_factory import create_app
-from scripts.openapi_contract import assert_refs_resolve, with_identifier_component_names
+from app.models.stream_events import PendingApprovalCardData, SettledApprovalCardData
+from scripts.openapi_contract import (
+    assert_refs_resolve,
+    with_identifier_component_names,
+    with_stream_frame_schemas,
+)
 
 OUTPUT = API_ROOT / "openapi.json"
+# SSE frames no route returns but clients render: the approval cards.
+STREAM_FRAME_MODELS = (PendingApprovalCardData, SettledApprovalCardData)
 
 
 def main() -> None:
-    schema = with_identifier_component_names(create_app().openapi())
+    schema = with_identifier_component_names(
+        with_stream_frame_schemas(create_app().openapi(), STREAM_FRAME_MODELS)
+    )
     assert_refs_resolve(schema)
     OUTPUT.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n")
     operations = sum(len(methods) for methods in schema["paths"].values())

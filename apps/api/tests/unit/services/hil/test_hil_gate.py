@@ -16,7 +16,12 @@ from langchain_core.messages import ToolMessage
 from langgraph.errors import GraphInterrupt
 import pytest
 
-from app.constants.hil import HIL_STATUS_KWARG, SUBAGENT_RESUME_CONFIG_KEY
+from app.constants.hil import (
+    AUTO_ASK_NOTE,
+    HIL_STATUS_KWARG,
+    SUBAGENT_RESUME_CONFIG_KEY,
+    JevChoice,
+)
 from app.models.agent_config import SubagentKind, SubagentResumeItem
 from app.models.hil_models import HILApprovalStatus
 from app.services.hil.approvals_store import approval_id_for
@@ -29,15 +34,14 @@ from app.services.hil.gate import (
     decide_tool_call,
     read_gate_context,
 )
-from app.services.hil.intent import IntentDecision, JudgedCall
-from app.services.hil.prompts import AUTO_REJECT_TEMPLATE
+from app.services.hil.intent import AutoHistory, IntentDecision, JudgedCall
+from app.services.hil.jev_judge import JevCase, JevVerdict, decide_from_verdict
 from app.services.hil.utils import GatedCall
 
 from .conftest import (
     CONVERSATION_ID,
     GATED_ACCOUNT,
     GATED_ACCOUNT_SUMMARY,
-    GATED_ARGS,
     GATED_TOOL,
     STREAM_ID,
     USER_ID,
@@ -445,52 +449,36 @@ def barrier(gate_seams: GateSeams) -> GateSeams:
 
 
 class TestBarrierAutoMode:
-    async def test_an_auto_refusal_without_words_is_repeated_as_auto(
-        self, barrier: GateSeams
-    ) -> None:
-        barrier.recall.return_value = ApprovalOutcome(
-            status=HILApprovalStatus.DENIED, feedback=None, auto=True
-        )
-
-        result = await decide_tool_call(gated_request())
-
-        assert result is not None
-        assert result.content == AUTO_REJECT_TEMPLATE.format(tool=GATED_TOOL, reason="")
-        assert result.additional_kwargs[HIL_STATUS_KWARG] == "denied"
-        barrier.publish_request.assert_not_awaited()
-
-    async def test_a_rejected_call_is_refused_and_remembered_as_auto(
-        self, barrier: GateSeams
-    ) -> None:
+    async def test_a_forbidden_verdict_asks_with_the_plain_note(self, barrier: GateSeams) -> None:
         barrier.policy.return_value = "auto"
-        barrier.judge.return_value = IntentDecision("reject", "you said never email b@x")
-
-        result = await decide_tool_call(gated_request())
-
-        assert result is not None
-        assert result.content == AUTO_REJECT_TEMPLATE.format(
-            tool=GATED_TOOL, reason="you said never email b@x"
+        barrier.judge.return_value = decide_from_verdict(
+            JevVerdict(choice=JevChoice.FORBIDDEN, confidence=0.95),
+            JevCase(
+                call=JudgedCall(tool_name=GATED_TOOL, description="", args={}, summary=""),
+                user_messages=["never email b@x", "send it"],
+                prior_calls=[],
+                history=AutoHistory(),
+            ),
         )
-        barrier.remember.assert_awaited_once_with(
-            STREAM_ID, GATED_TOOL, GATED_ARGS, "you said never email b@x", auto=True
-        )
-        barrier.publish_request.assert_not_awaited()
-        barrier.interrupt.assert_not_called()
+
+        await decide_tool_call(gated_request())
+
+        assert barrier.publish_request.await_args_list[0].kwargs["auto_reason"] == AUTO_ASK_NOTE
+        barrier.remember.assert_not_awaited()
+        barrier.interrupt.assert_called_once()
 
     @pytest.mark.parametrize(
-        ("reason", "card_reason"),
-        [("the recipient is new", "Auto mode wasn't sure: the recipient is new"), ("", None)],
-        ids=["explained", "unexplained"],
+        "reason", ["the recipient is new", ""], ids=["explained", "unexplained"]
     )
-    async def test_an_unsure_judge_explains_itself_on_the_card_only_when_it_can(
-        self, barrier: GateSeams, reason: str, card_reason: str | None
+    async def test_an_unsure_judge_puts_the_plain_note_on_the_card(
+        self, barrier: GateSeams, reason: str
     ) -> None:
         barrier.policy.return_value = "auto"
         barrier.judge.return_value = IntentDecision("ask", reason)
 
         await decide_tool_call(gated_request())
 
-        assert barrier.publish_request.await_args_list[0].kwargs["auto_reason"] == card_reason
+        assert barrier.publish_request.await_args_list[0].kwargs["auto_reason"] == AUTO_ASK_NOTE
         barrier.interrupt.assert_called_once()
 
 

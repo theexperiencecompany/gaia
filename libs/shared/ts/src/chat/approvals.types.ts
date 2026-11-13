@@ -14,13 +14,18 @@
 import type {
   BatchDecisionItem,
   HILPreferencesResponse,
+  PendingApprovalCardData,
+  SettledApprovalCardData,
   UpdateHILPreferencesRequest,
 } from "../api/generated";
 
 export type {
+  ApprovalDescription,
   BatchApprovalDecisionResponse,
   BatchDecisionItem,
   BatchDecisionOutcome,
+  PendingApprovalCardData,
+  SettledApprovalCardData,
 } from "../api/generated";
 
 export type HilMode = "always_allow" | "always_ask" | "auto";
@@ -36,17 +41,8 @@ export type HilPreferences = HILPreferencesResponse;
 /** Body of PUT /approvals/preferences; omitted fields are left unchanged. */
 export type HilPreferencesUpdate = UpdateHILPreferencesRequest;
 
-export type ApprovalStatus =
-  | "pending"
-  | "approved"
-  | "denied"
-  | "timeout"
-  | "abandoned"
-  | "auto_approved"
-  | "revoked"
-  | "executed"
-  | "failed"
-  | "unknown";
+/** Where a card stands; only `pending` is still the user's to decide. */
+export type ApprovalStatus = ApprovalRequestData["status"];
 
 export type ApprovalDecision = "approve" | "deny";
 export type ApprovalScope = "once" | "always_tool";
@@ -65,25 +61,12 @@ export interface BatchApprovalDecisionPayload {
   decisions: BatchDecisionItem[];
 }
 
-/** One approval card, as streamed to the client. */
-export interface ApprovalRequestData {
-  approval_id: string;
-  tool_call_id: string;
-  gated_tool_name: string;
-  integration_name: string | null;
-  summary: string;
-  args_preview: Record<string, unknown>;
-  status: ApprovalStatus;
-  feedback: string | null;
-  /** Why auto mode ran this without asking. Only set on `auto_approved`. */
-  auto_reason?: string | null;
-  timeout_seconds: number;
-  /** Ledger-backed approvals: the agent's one-line why. Absent on old-path cards. */
-  rationale?: string | null;
-  /** Seconds since registration; clients render "asked 2d ago". */
-  age_seconds?: number | null;
-  /** Row version the client saw; echoed back on decide for stale-v refresh. */
-  ledger_version?: number | null;
-  /** The call asks in every mode; "always allow" must not be offered on it. */
-  always_asks?: boolean;
-}
+/**
+ * One approval card, as streamed to the client. A pending card may carry an
+ * expiry (interrupt-path approvals only; ledger approvals never expire); a
+ * settled card never does. Cards saved before `description` and `asked_at`
+ * existed lack them, so readers go through `cardDescription` / `approvalAge`.
+ */
+export type ApprovalRequestData =
+  | PendingApprovalCardData
+  | SettledApprovalCardData;

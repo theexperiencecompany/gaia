@@ -76,6 +76,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/approvals/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pending Approvals
+         * @description List the conversation's pending approvals in the order a chat reply is read against.
+         */
+        get: operations["approvals_get_pending_approvals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/approvals/preferences": {
         parameters: {
             query?: never;
@@ -6083,6 +6103,30 @@ export interface components {
             success: boolean;
         };
         /**
+         * ApprovalDescription
+         * @description A gated call in plain words, rendered the same by web cards and bot prompts.
+         */
+        ApprovalDescription: {
+            /** Action */
+            action: string;
+            /** Confirm */
+            confirm: string;
+            /** Details */
+            details: components["schemas"]["ApprovalDetail"][];
+            /** Headline */
+            headline: string;
+        };
+        /**
+         * ApprovalDetail
+         * @description One labelled fact about a gated call, e.g. To: bob@x.com.
+         */
+        ApprovalDetail: {
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
+        /**
          * ApprovePairingRequest
          * @description The signed-in browser approves a pairing by its short user_code.
          */
@@ -9516,7 +9560,7 @@ export interface components {
         HILPreferencesResponse: {
             /**
              * Mode
-             * @default always_allow
+             * @default auto
              * @enum {string}
              */
             mode: "always_allow" | "always_ask" | "auto";
@@ -10057,6 +10101,7 @@ export interface components {
             /** Id */
             id: string;
         };
+        JsonValue: unknown;
         /**
          * LabEventResponse
          * @description Accepted; the payload itself is never echoed back.
@@ -12003,6 +12048,50 @@ export interface components {
             subscription_id?: string | null;
         };
         /**
+         * PendingApprovalCardData
+         * @description A card waiting on the user.
+         */
+        PendingApprovalCardData: {
+            /**
+             * Always Asks
+             * @default false
+             */
+            always_asks?: boolean;
+            /** Approval Id */
+            approval_id: string;
+            /** Args Preview */
+            args_preview: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /**
+             * Asked At
+             * Format: date-time
+             */
+            asked_at: string;
+            /** Auto Reason */
+            auto_reason: string | null;
+            description: components["schemas"]["ApprovalDescription"];
+            /** Expires At */
+            expires_at?: string | null;
+            /** Feedback */
+            feedback: string | null;
+            /** Gated Tool Name */
+            gated_tool_name: string;
+            /** Integration Name */
+            integration_name: string | null;
+            /** Ledger Version */
+            ledger_version?: number | null;
+            /**
+             * Status
+             * @constant
+             */
+            status: "pending";
+            /** Summary */
+            summary: string;
+            /** Tool Call Id */
+            tool_call_id: string;
+        };
+        /**
          * PendingApprovalRef
          * @description A live approval parked against this todo — the UI's jump link to the
          *     conversation holding the card. Oldest live row wins; terminal rows never
@@ -12019,6 +12108,14 @@ export interface components {
              * @description Conversation holding the card
              */
             conversation_id: string;
+        };
+        /**
+         * PendingApprovalsResponse
+         * @description A conversation's pending approvals, numbered in this order by both the bot prompt and the reply.
+         */
+        PendingApprovalsResponse: {
+            /** Approvals */
+            approvals: components["schemas"]["PendingApprovalCardData"][];
         };
         /**
          * PersistedTriageSummary
@@ -13580,6 +13677,51 @@ export interface components {
             message_id: string | null;
             /** Status */
             status: string;
+        };
+        /**
+         * SettledApprovalCardData
+         * @description A decided card: no expiry, since a decision cannot expire.
+         */
+        SettledApprovalCardData: {
+            /**
+             * Always Asks
+             * @default false
+             */
+            always_asks?: boolean;
+            /** Approval Id */
+            approval_id: string;
+            /** Args Preview */
+            args_preview: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /**
+             * Asked At
+             * Format: date-time
+             */
+            asked_at: string;
+            /** Auto Reason */
+            auto_reason: string | null;
+            description: components["schemas"]["ApprovalDescription"];
+            /** Feedback */
+            feedback: string | null;
+            /** Gated Tool Name */
+            gated_tool_name: string;
+            /** Integration Name */
+            integration_name: string | null;
+            /**
+             * Ledger Version
+             * @default null
+             */
+            ledger_version?: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "approved" | "denied" | "timeout" | "abandoned" | "auto_approved" | "revoked" | "cancelled" | "executed" | "failed" | "unknown";
+            /** Summary */
+            summary: string;
+            /** Tool Call Id */
+            tool_call_id: string;
         };
         /**
          * SetToolOverrideRequest
@@ -16549,6 +16691,8 @@ export type AgentType = components['schemas']['AgentType'];
 export type ApiCallConfig = components['schemas']['ApiCallConfig'];
 export type ApprovalDecisionRequest = components['schemas']['ApprovalDecisionRequest'];
 export type ApprovalDecisionResponse = components['schemas']['ApprovalDecisionResponse'];
+export type ApprovalDescription = components['schemas']['ApprovalDescription'];
+export type ApprovalDetail = components['schemas']['ApprovalDetail'];
 export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest'];
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];
 export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry'];
@@ -16780,6 +16924,7 @@ export type IntegrationToolApproval = components['schemas']['IntegrationToolAppr
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
 export type InviteCreatedResponse = components['schemas']['InviteCreatedResponse'];
 export type InviteResponse = components['schemas']['InviteResponse'];
+export type JsonValue = components['schemas']['JsonValue'];
 export type LabEventResponse = components['schemas']['LabEventResponse'];
 export type LinearCommentAddedConfig = components['schemas']['LinearCommentAddedConfig'];
 export type LinearIssueCreatedConfig = components['schemas']['LinearIssueCreatedConfig'];
@@ -16881,7 +17026,9 @@ export type OnboardingStep = components['schemas']['OnboardingStep'];
 export type PaginatedNotificationsResponse = components['schemas']['PaginatedNotificationsResponse'];
 export type PaginationMeta = components['schemas']['PaginationMeta'];
 export type PaymentVerificationResponse = components['schemas']['PaymentVerificationResponse'];
+export type PendingApprovalCardData = components['schemas']['PendingApprovalCardData'];
 export type PendingApprovalRef = components['schemas']['PendingApprovalRef'];
+export type PendingApprovalsResponse = components['schemas']['PendingApprovalsResponse'];
 export type PersistedTriageSummary = components['schemas']['PersistedTriageSummary'];
 export type PersonalizationResponse = components['schemas']['PersonalizationResponse'];
 export type PersonalizationTodo = components['schemas']['PersonalizationTodo'];
@@ -16964,6 +17111,7 @@ export type SelfPairResponse = components['schemas']['SelfPairResponse'];
 export type SendDraftResponse = components['schemas']['SendDraftResponse'];
 export type SendEmailForm = components['schemas']['SendEmailForm'];
 export type SendEmailWithAttachmentsResponse = components['schemas']['SendEmailWithAttachmentsResponse'];
+export type SettledApprovalCardData = components['schemas']['SettledApprovalCardData'];
 export type SetToolOverrideRequest = components['schemas']['SetToolOverrideRequest'];
 export type SetupStatusResponse = components['schemas']['SetupStatusResponse'];
 export type SetupWizardResponse = components['schemas']['SetupWizardResponse'];
@@ -17293,6 +17441,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BatchApprovalDecisionResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    approvals_get_pending_approvals: {
+        parameters: {
+            query: {
+                conversation_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingApprovalsResponse"];
                 };
             };
             /** @description Unprocessable Entity */

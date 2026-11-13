@@ -4,23 +4,26 @@ import { useStreamStore } from "@/stores/streamStore";
 
 /**
  * Clear a conversation's "waiting on you" gate the moment the user decides,
- * before the resolved stream frame arrives.
+ * before the resolved stream frame arrives, and say what GAIA does next.
  *
  * Prefers the caller's conversation (a sheet or background card outlives the
  * active one), then `activeConversationId`, then the pending new-chat key —
  * the route param is stale for a replaceState'd new chat.
  */
-export function useMarkApprovalDecided(): (conversationId?: string) => void {
+export function useMarkApprovalDecided(): (
+  conversationId: string | undefined,
+  loadingText: string,
+) => void {
   const clearAwaitingApproval = useStreamStore(
     (state) => state.clearAwaitingApproval,
   );
   return useCallback(
-    (conversationId?: string) => {
+    (conversationId: string | undefined, loadingText: string) => {
       const key =
         conversationId ??
         useChatStore.getState().activeConversationId ??
         useStreamStore.getState().pendingNewConversationKey;
-      if (key) clearAwaitingApproval(key);
+      if (key) clearAwaitingApproval(key, loadingText);
     },
     [clearAwaitingApproval],
   );

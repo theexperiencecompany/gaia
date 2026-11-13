@@ -21,20 +21,17 @@ import hashlib
 import json
 from typing import Any, Protocol, TypedDict, cast
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import TypeAdapter
 
 from app.agents.core.background.session import RunKind, get_session
 from app.constants.cache import HIL_DECLINED_PREFIX
 from app.constants.hil import (
     APPROVAL_REQUEST_TOOL_NAME,
     APPROVAL_TOOL_CATEGORY,
-    HIL_APPROVAL_TIMEOUT_SECONDS,
     HIL_CLASSIFIER_MAX_ARG_CHARS,
     HIL_CLASSIFIER_MAX_ARGS,
     HIL_CLASSIFIER_MAX_DETAIL_CHARS,
     HIL_DECLINE_MEMORY_TTL_SECONDS,
-    HIL_SUMMARY_MAX_ARG_CHARS,
-    HIL_SUMMARY_MAX_ARGS,
 )
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
@@ -43,14 +40,22 @@ from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.conversations import conversation_repository
 from app.models.agent_config import SubagentResumeItem
 from app.models.hil_models import (
+    ApprovalDescription,
+    ApprovalLedgerDocument,
     DeclinedCallRecord,
     HILApprovalRecord,
     HILApprovalStatus,
     LedgerState,
 )
-from app.models.stream_events import ApprovalRequestEntry, ApprovalRequestEntryData
+from app.models.stream_events import (
+    ApprovalRequestEntry,
+    PendingApprovalCardData,
+    SettledApprovalCardData,
+    SettledApprovalStatus,
+)
 from app.services.analytics_service import capture
 from app.services.hil.approvals_store import record_auto_approval, upsert_pending_approval
+from app.services.hil.describe import describe_call
 from app.services.hil.notify import notify_approval_pending
 from app.services.hil.policy import asks_every_time
 from app.services.hil.utils import GatedCall
@@ -79,6 +84,7 @@ class _ApprovalFrameData(TypedDict, total=False):
     approval_id: object
     status: str
     feedback: str
+    expires_at: object
 
 
 @dataclass
@@ -88,9 +94,6 @@ class ApprovalOutcome:
     status: HILApprovalStatus
     feedback: str | None = None
     scope: str = "once"
-    # True when the refusal came from auto mode, never from the user — the
-    # retry message must not claim the user declined something they never saw.
-    auto: bool = False
 
 
 @dataclass(frozen=True)
@@ -102,8 +105,13 @@ class GatedApproval:
     user_id: str
     conversation_id: str
     tool_call: GatedCall
-    summary: str
+    description: ApprovalDescription
     integration_name: str | None
+
+    @property
+    def summary(self) -> str:
+        """The one-line form of the description, for the model and notifications."""
+        return self.description.headline
 
 
 class ApprovalCard(Protocol):
@@ -114,7 +122,7 @@ class ApprovalCard(Protocol):
     @property
     def tool_call(self) -> GatedCall: ...
     @property
-    def summary(self) -> str: ...
+    def description(self) -> ApprovalDescription: ...
     @property
     def integration_name(self) -> str | None: ...
 
@@ -125,7 +133,7 @@ class SettledApprovalCard:
 
     approval_id: str
     tool_call: GatedCall
-    summary: str
+    description: ApprovalDescription
     integration_name: str | None
 
 
@@ -142,7 +150,7 @@ async def publish_approval_request(
     top), so the card and the notification are gated on whether the upsert
     actually created the record. A replay is a no-op.
     """
-    created = await upsert_pending_approval(
+    record = await upsert_pending_approval(
         approval_id=approval.approval_id,
         user_id=approval.user_id,
         conversation_id=approval.conversation_id,
@@ -155,7 +163,7 @@ async def publish_approval_request(
         subagent_thread_id=subagent_thread_id,
         subagent_resume=subagent_resume,
     )
-    if not created:
+    if record is None:
         return
 
     # Counted here — the one place a genuine pause is born (gated on `created`,
@@ -171,7 +179,14 @@ async def publish_approval_request(
     )
     await _publish_entry(
         approval.stream_id,
-        await _pending_entry(approval, auto_reason=auto_reason),
+        _entry(
+            await _pending_data(
+                approval,
+                auto_reason=auto_reason,
+                asked_at=record.created_at,
+                expires_at=record.expires_at,
+            )
+        ),
     )
     _schedule_pending_notification(
         approval.user_id, approval.conversation_id, approval.approval_id, approval.summary
@@ -181,7 +196,7 @@ async def publish_approval_request(
 async def publish_ledger_request(
     approval: GatedApproval,
     *,
-    rationale: str | None = None,
+    asked_at: datetime,
     auto_reason: str | None = None,
     live: bool = True,
     owner_run_type: str = "",
@@ -202,10 +217,9 @@ async def publish_ledger_request(
             "stream_id": stream_id,
         }
     )
-    entry = await _pending_entry(approval, auto_reason=auto_reason)
-    entry.data.rationale = rationale
-    entry.data.age_seconds = 0
-    entry.data.ledger_version = 0
+    entry = _entry(
+        await _pending_data(approval, auto_reason=auto_reason, asked_at=asked_at, ledger_version=0)
+    )
     # Server-owned funnel event: exactly once per registration, held or
     # streamed — the card exists either way. Explicit user_id: bridge paths
     # carry no request context to attribute from.
@@ -235,7 +249,7 @@ async def publish_ledger_request(
             approval.user_id, approval.conversation_id, approval.approval_id, approval.summary
         )
         return
-    frame = {"tool_data": entry.model_dump(), "_held_approval": True}
+    frame = {"tool_data": entry.model_dump(mode="json"), "_held_approval": True}
     session.tool_events.append(frame)
 
 
@@ -275,10 +289,12 @@ async def publish_decision(
     card = SettledApprovalCard(
         approval_id=record.approval_id,
         tool_call=GatedCall(name=record.tool_name, id=record.tool_call_id, args=record.args),
-        summary=record.summary,
+        description=describe_call(record.tool_name, record.args, record.integration_name),
         integration_name=record.integration_name,
     )
-    await _publish_entry(stream_id, _approval_entry(card, status, feedback=feedback))
+    await _publish_entry(
+        stream_id, _approval_entry(card, status, asked_at=record.created_at, feedback=feedback)
+    )
     # Settle the PERSISTED frame now too, since a later pause before final delivery
     # reconciles would otherwise show a dead pending card. Isolated: the caller
     # (the gate) fails CLOSED, so a write error here must not become a denial.
@@ -305,6 +321,7 @@ async def publish_auto_approval(approval: GatedApproval, *, reason: str) -> None
     is a receipt, not a request. Auto mode should never mean the user cannot see what was
     done in their name.
     """
+    asked_at = datetime.now(UTC)
     await record_auto_approval(
         approval_id=approval.approval_id,
         user_id=approval.user_id,
@@ -319,7 +336,9 @@ async def publish_auto_approval(approval: GatedApproval, *, reason: str) -> None
     )
     await _publish_entry(
         approval.stream_id,
-        _approval_entry(approval, HILApprovalStatus.AUTO_APPROVED, auto_reason=reason),
+        _approval_entry(
+            approval, HILApprovalStatus.AUTO_APPROVED, asked_at=asked_at, auto_reason=reason
+        ),
     )
 
 
@@ -328,12 +347,11 @@ async def remember_declined_call(
     tool_name: str,
     args: Mapping[str, object],
     feedback: str | None,
-    auto: bool = False,
 ) -> None:
     """Record that this exact call was declined for the rest of the turn."""
     if not redis_cache.redis:
         return
-    record: DeclinedCallRecord = {"feedback": feedback, "auto": auto}
+    record: DeclinedCallRecord = {"feedback": feedback}
     await redis_cache.set(
         _declined_key(stream_id, tool_name, args),
         record,
@@ -358,41 +376,7 @@ async def recall_declined_call(
     return ApprovalOutcome(
         status=HILApprovalStatus.DENIED,
         feedback=record.get("feedback"),
-        auto=record.get("auto", False),
     )
-
-
-class _BrowserTaskArgs(BaseModel):
-    """The one browser_task argument the approval card summarises."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    task: str = ""
-
-
-def build_summary(
-    tool_name: str,
-    args: Mapping[str, object],
-    integration_name: str | None,
-    account: str | None = None,
-) -> str:
-    """Deterministic one-line summary of a gated call (no LLM in the hot path)."""
-    if tool_name == "browser_task":
-        # A browser task's whole intent is its ``task`` — but a weak model can
-        # write a long paragraph, so keep the card scannable: the first sentence,
-        # or a clipped lead. Never dump ``start_url`` or truncate mid-word.
-        task = _BrowserTaskArgs.model_validate(args).task.strip()
-        if not task:
-            return "Start a browser task"
-        first = task.split(". ")[0].strip().rstrip(".")
-        concise = first if 0 < len(first) <= 140 else clip_text(task, 140)
-        return f"Start a browser task: {concise}"
-    label = tool_name.replace("_", " ").strip().capitalize()
-    source = ", ".join(part for part in (integration_name, account) if part)
-    if source:
-        label = f"{label} ({source})"
-    parts = _summary_arg_parts(args)
-    return f"{label}; {', '.join(parts)}" if parts else label
 
 
 def build_action_detail(summary: str, args: Mapping[str, object]) -> str:
@@ -443,7 +427,7 @@ async def _publish_entry(stream_id: str, entry: ApprovalRequestEntry) -> None:
     Both carry the same plain-dict frame the rest of the tool_data pipeline
     (stream_utils, the bot bridge, the frontend parser) reads.
     """
-    frame = {"tool_data": entry.model_dump()}
+    frame = {"tool_data": entry.model_dump(mode="json")}
     await stream_manager.publish_chunk(stream_id, f"data: {json.dumps(frame)}\n\n")
     session = get_session(stream_id)
     if session is not None:
@@ -487,6 +471,8 @@ def settle_session_approval_frame(
                 settled = True
                 continue
             data["status"] = status
+            # A decided card cannot expire; leaving the pending card's expiry would contradict it.
+            data.pop("expires_at", None)
             if feedback is not None:
                 data["feedback"] = feedback
             kept.append(event)
@@ -589,48 +575,106 @@ def _is_held(event: object) -> bool:
     return frame.get("_held_approval") is True
 
 
-async def _pending_entry(card: ApprovalCard, *, auto_reason: str | None) -> ApprovalRequestEntry:
+async def pending_card(
+    record: HILApprovalRecord | ApprovalLedgerDocument,
+) -> PendingApprovalCardData:
+    """Rebuild a still-pending approval's card from its stored row, as the bot prompt lists it."""
+    if isinstance(record, ApprovalLedgerDocument):
+        card = SettledApprovalCard(
+            approval_id=record.approval_id,
+            tool_call=GatedCall(name=record.tool_name, id="", args=record.args),
+            description=describe_call(record.tool_name, record.args, None, record.account),
+            integration_name=None,
+        )
+        return await _pending_data(
+            card, auto_reason=None, asked_at=record.created_at, ledger_version=record.v
+        )
+    card = SettledApprovalCard(
+        approval_id=record.approval_id,
+        tool_call=GatedCall(name=record.tool_name, id=record.tool_call_id, args=record.args),
+        description=describe_call(record.tool_name, record.args, record.integration_name),
+        integration_name=record.integration_name,
+    )
+    return await _pending_data(
+        card, auto_reason=None, asked_at=record.created_at, expires_at=record.expires_at
+    )
+
+
+async def _pending_data(
+    card: ApprovalCard,
+    *,
+    auto_reason: str | None,
+    asked_at: datetime,
+    expires_at: datetime | None = None,
+    ledger_version: int | None = None,
+) -> PendingApprovalCardData:
     """Build a PENDING card, stamped with whether its call asks every time."""
-    entry = _approval_entry(card, HILApprovalStatus.PENDING, auto_reason=auto_reason)
-    entry.data.always_asks = await asks_every_time(card.tool_call.name, card.tool_call.args)
-    return entry
+    return PendingApprovalCardData(
+        **_card_fields(card, asked_at=asked_at, feedback=None, auto_reason=auto_reason),
+        status="pending",
+        expires_at=expires_at,
+        ledger_version=ledger_version,
+        always_asks=await asks_every_time(card.tool_call.name, card.tool_call.args),
+    )
 
 
 def _approval_entry(
     card: ApprovalCard,
-    status: HILApprovalStatus,
+    status: HILApprovalStatus | LedgerState,
+    *,
+    asked_at: datetime,
     feedback: str | None = None,
     auto_reason: str | None = None,
 ) -> ApprovalRequestEntry:
+    """Build a decided card; a pending status here is a bug and raises."""
+    data = SettledApprovalCardData(
+        **_card_fields(card, asked_at=asked_at, feedback=feedback, auto_reason=auto_reason),
+        status=_SETTLED_STATUS.validate_python(status.value),
+    )
+    return _entry(data)
+
+
+_SETTLED_STATUS: TypeAdapter[SettledApprovalStatus] = TypeAdapter(SettledApprovalStatus)
+
+
+class _CardFields(TypedDict):
+    approval_id: str
+    tool_call_id: str
+    gated_tool_name: str
+    integration_name: str | None
+    summary: str
+    description: ApprovalDescription
+    args_preview: dict[str, Any]
+    feedback: str | None
+    auto_reason: str | None
+    asked_at: datetime
+
+
+def _card_fields(
+    card: ApprovalCard, *, asked_at: datetime, feedback: str | None, auto_reason: str | None
+) -> _CardFields:
     tool_call = card.tool_call
+    return {
+        "approval_id": card.approval_id,
+        "tool_call_id": tool_call.id,
+        "gated_tool_name": tool_call.name,
+        "integration_name": card.integration_name,
+        "summary": card.description.headline,
+        "description": card.description,
+        "args_preview": tool_call.args,
+        "feedback": feedback,
+        "auto_reason": auto_reason,
+        "asked_at": asked_at,
+    }
+
+
+def _entry(data: PendingApprovalCardData | SettledApprovalCardData) -> ApprovalRequestEntry:
     return ApprovalRequestEntry(
         tool_name=APPROVAL_REQUEST_TOOL_NAME,
         tool_category=APPROVAL_TOOL_CATEGORY,
-        data=ApprovalRequestEntryData(
-            approval_id=card.approval_id,
-            tool_call_id=tool_call.id,
-            gated_tool_name=tool_call.name,
-            integration_name=card.integration_name,
-            summary=card.summary,
-            args_preview=tool_call.args,
-            status=status,
-            feedback=feedback,
-            auto_reason=auto_reason,
-            timeout_seconds=int(HIL_APPROVAL_TIMEOUT_SECONDS),
-        ),
+        data=data,
         timestamp=datetime.now(UTC).isoformat(),
     )
-
-
-def _summary_arg_parts(args: Mapping[str, object]) -> list[str]:
-    """Build a few short key: value scalars for the card's one-line summary."""
-    parts: list[str] = []
-    for key, value in (args or {}).items():
-        if len(parts) >= HIL_SUMMARY_MAX_ARGS:
-            break
-        if isinstance(value, (str, int, float, bool)):
-            parts.append(f"{key}: {clip_text(str(value), HIL_SUMMARY_MAX_ARG_CHARS)}")
-    return parts
 
 
 def _declined_key(stream_id: str, tool_name: str, args: Mapping[str, object]) -> str:

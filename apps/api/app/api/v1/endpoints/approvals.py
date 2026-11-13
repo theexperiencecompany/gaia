@@ -12,11 +12,14 @@ from app.schemas.hil_schemas import (
     BatchApprovalDecisionRequest,
     BatchApprovalDecisionResponse,
     HILPreferencesResponse,
+    PendingApprovalsResponse,
     SetToolOverrideRequest,
     UpdateHILPreferencesRequest,
 )
 from app.services.analytics_service import capture
 from app.services.feature_flags import is_hil_ledger_enabled
+from app.services.hil.bridge import pending_card
+from app.services.hil.conversational import list_pending_for_reply
 from app.services.hil.ledger_decide import decide_ledger_batch, decide_ledger_card
 from app.services.hil.preferences import (
     get_hil_preferences,
@@ -118,6 +121,19 @@ async def post_batch_decision(
         ),
     )
     return BatchApprovalDecisionResponse(outcomes=outcomes)
+
+
+@router.get("/pending")
+async def get_pending_approvals(
+    conversation_id: str,
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+) -> PendingApprovalsResponse:
+    """List the conversation's pending approvals in the order a chat reply is read against."""
+    log.set(user={"id": user.user_id}, hil={"operation": "list_pending"})
+    rows = await list_pending_for_reply(conversation_id)
+    return PendingApprovalsResponse(
+        approvals=[await pending_card(row) for row in rows if row.user_id == user.user_id]
+    )
 
 
 @router.get("/preferences")
