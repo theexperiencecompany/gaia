@@ -1,24 +1,28 @@
 import type { Metadata } from "next";
-import { getTranslations } from "next-intl/server";
-import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
+import { hubMetadata } from "@/lib/hubMetadata";
 
-export async function automateHubMetadata(locale: string): Promise<Metadata> {
-  const t = await getTranslations({ locale, namespace: "automate" });
+const AUTOMATE_HUB_KEYWORDS = [
+  "automate tools together",
+  "tool automation combos",
+  "Gmail Slack automation",
+  "Notion Todoist automation",
+  "GitHub Linear automation",
+  "AI workflow automation",
+  "connect two apps AI",
+  "productivity tool automation",
+];
 
-  return generateLocalizedPageMetadata({
-    title: t("hub_meta_title"),
-    description: t("hub_meta_description"),
-    path: "/automate",
-    keywords: [
-      "automate tools together",
-      "tool automation combos",
-      "Gmail Slack automation",
-      "Notion Todoist automation",
-      "GitHub Linear automation",
-      "AI workflow automation",
-      "connect two apps AI",
-      "productivity tool automation",
-    ],
+export function automateHubMetadata(
+  locale: string,
+  page = 1,
+  totalPages = 1,
+): Promise<Metadata> {
+  return hubMetadata({
+    namespace: "automate",
+    hubPath: "/automate",
+    keywords: AUTOMATE_HUB_KEYWORDS,
     locale,
+    page,
+    totalPages,
   });
 }

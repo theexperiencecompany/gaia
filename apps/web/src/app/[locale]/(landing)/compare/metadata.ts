@@ -1,26 +1,28 @@
 import type { Metadata } from "next";
-import { getTranslations } from "next-intl/server";
-import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
+import { hubMetadata } from "@/lib/hubMetadata";
 
-export async function comparisonsHubMetadata(
+const COMPARISONS_HUB_KEYWORDS = [
+  "GAIA comparisons",
+  "AI assistant comparison",
+  "ChatGPT alternative",
+  "Zapier alternative",
+  "n8n alternative",
+  "Motion alternative",
+  "AI productivity tools",
+  "best AI assistant",
+];
+
+export function comparisonsHubMetadata(
   locale: string,
+  page = 1,
+  totalPages = 1,
 ): Promise<Metadata> {
-  const t = await getTranslations({ locale, namespace: "comparisons" });
-
-  return generateLocalizedPageMetadata({
-    title: t("hub_meta_title"),
-    description: t("hub_meta_description"),
-    path: "/compare",
-    keywords: [
-      "GAIA comparisons",
-      "AI assistant comparison",
-      "ChatGPT alternative",
-      "Zapier alternative",
-      "n8n alternative",
-      "Motion alternative",
-      "AI productivity tools",
-      "best AI assistant",
-    ],
+  return hubMetadata({
+    namespace: "comparisons",
+    hubPath: "/compare",
+    keywords: COMPARISONS_HUB_KEYWORDS,
     locale,
+    page,
+    totalPages,
   });
 }
