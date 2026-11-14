@@ -4840,7 +4840,7 @@ class TestPersistAndIndexToolsExact:
         resolved.custom_doc = None
         return resolved
 
-    async def test_stores_server_names_indexes_then_busts_the_user_caches_last(self):
+    async def test_stores_server_names_indexes_busts_the_user_caches_then_announces(self):
         """Mongo is shared by every user, so it holds the server's names, never one user's prefixed ones."""
         client = MCPClient(user_id=USER_ID)
         order: list[str] = []
@@ -4859,6 +4859,11 @@ class TestPersistAndIndexToolsExact:
                 new_callable=AsyncMock,
                 side_effect=lambda *_: order.append("invalidate"),
             ) as mock_invalidate,
+            patch(
+                "app.services.mcp.mcp_client.announce_integration_changed",
+                new_callable=AsyncMock,
+                side_effect=lambda *_: order.append("announce"),
+            ) as mock_announce,
             patch("app.services.mcp.mcp_client.log"),
         ):
             await client._persist_and_index_tools(
@@ -4870,7 +4875,8 @@ class TestPersistAndIndexToolsExact:
         )
         client._index_platform_mcp_tools.assert_awaited_once_with(INTEGRATION_ID, [tool])
         mock_invalidate.assert_awaited_once_with(USER_ID)
-        assert order[-1] == "invalidate"
+        mock_announce.assert_awaited_once_with(USER_ID, INTEGRATION_ID)
+        assert order[-2:] == ["invalidate", "announce"]
 
     async def test_custom_integration_routes_to_custom_handler_with_doc_fields(self):
         resolved = MagicMock()
@@ -4925,6 +4931,9 @@ class TestPersistAndIndexToolsExact:
             patch(
                 "app.services.mcp.mcp_client.invalidate_user_integration_caches",
                 new_callable=AsyncMock,
+            ),
+            patch(
+                "app.services.mcp.mcp_client.announce_integration_changed", new_callable=AsyncMock
             ),
             patch("app.services.mcp.mcp_client.log") as mock_log,
         ):

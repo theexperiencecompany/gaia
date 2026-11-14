@@ -9,12 +9,6 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
-from app.db.repositories.conversation_entries_legacy import (
-    BOT_MESSAGE_TYPE,
-    USER_MESSAGE_TYPE,
-    ConversationEntry,
-    MessageReaction,
-)
 from app.models.conversation_log_models import (
     LoggedEntry,
     Notice,
@@ -26,6 +20,12 @@ from app.models.conversation_log_models import (
     WorkflowFired,
     WorkOutcome,
     WorkStarted,
+)
+from scripts.migrate_conversation_entries.legacy import (
+    BOT_MESSAGE_TYPE,
+    USER_MESSAGE_TYPE,
+    ConversationEntry,
+    MessageReaction,
 )
 from shared.py.conversation_wire import ReplyOutcome, ReplyToMessageData
 

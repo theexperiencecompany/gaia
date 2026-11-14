@@ -24,9 +24,9 @@ redeploying the old build.
 Usage::
 
     cd apps/api
-    uv run python -m app.scripts.migrate_conversation_entries               # dry run
-    uv run python -m app.scripts.migrate_conversation_entries --apply
-    uv run python -m app.scripts.migrate_conversation_entries --verify
+    uv run python -m scripts.migrate_conversation_entries               # dry run
+    uv run python -m scripts.migrate_conversation_entries --apply
+    uv run python -m scripts.migrate_conversation_entries --verify
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ from collections import Counter
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass
 
-from app.db.repositories.conversation_entries_migration import (
+from scripts.migrate_conversation_entries.migration import (
     NOT_KEPT_FIELDS,
     HeadRef,
     MigrationAction,

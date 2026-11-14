@@ -320,7 +320,7 @@ class StepScenarios:
             (first.attempt_id, 0, first.reply_id),
             (second.attempt_id, 0, second.reply_id),
         ]
-        assert rt.frames.conversations == {CONVERSATION}
+        assert set(rt.frames.conversations) == {CONVERSATION}
         await assert_quiet(rt)
 
     @pytest.mark.parametrize(

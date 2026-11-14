@@ -8,7 +8,6 @@ from app.models.conversation_log_models import (
     Effect,
     Entry,
     KickStep,
-    Preempt,
     StartAck,
 )
 from app.models.work_cancel_models import WorkCancelled
@@ -79,6 +78,4 @@ async def _run(
             return await effects.cancel_work(conversation_id, user_id, effect)
         case StartAck(message_id=message_id):
             await effects.start_ack(conversation_id, user_id, message_id)
-        case Preempt():
-            pass
     return None

@@ -140,7 +140,7 @@ CONVERSATION_APPEND_JITTER_SECONDS = 0.004
 CONVERSATION_READ_LIMIT = 600
 
 # Named in every refusal of a conversation the entries migration has not reached.
-CONVERSATION_ENTRIES_MIGRATION_SCRIPT = "app.scripts.migrate_conversation_entries"
+CONVERSATION_ENTRIES_MIGRATION_SCRIPT = "scripts.migrate_conversation_entries"
 
 # Shown when the model produced no text at all (reasoning-only output,
 # max_tokens exhausted mid-thought, a content filter) — a blank bubble reads as "it ignored me".

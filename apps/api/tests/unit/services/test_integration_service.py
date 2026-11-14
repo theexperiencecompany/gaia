@@ -32,7 +32,7 @@ from app.agents.core.integration_capabilities import (
 )
 from app.config.settings import settings
 from app.constants.cache import MCP_TOOLS_CACHE_KEY
-from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
+from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT, MAX_ACCOUNTS_PER_INTEGRATION
 from app.core.websocket_manager import websocket_manager
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integration_models import (
@@ -724,12 +724,16 @@ class TestUpdateUserIntegrationStatus:
             {"type": "integration_status_update", "data": {"integration_id": INTEGRATION_ID}},
         )
 
+    @patch("app.services.integrations.user_integration_status.websocket_manager")
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
     @patch("app.services.integrations.user_integration_status.user_integration_repository")
-    async def test_update_status_expired_passes_the_reason_through(self, mock_repo, mock_sched):
+    async def test_update_status_expired_passes_the_reason_through(
+        self, mock_repo: MagicMock, mock_sched: MagicMock, mock_ws: MagicMock
+    ) -> None:
         # The expiry transition owns the VFS resync itself, so this chokepoint
         # must keep scheduling it only on connect.
         mock_repo.set_status = AsyncMock(return_value=True)
+        mock_ws.announce = AsyncMock()
 
         result = await _uncached(update_user_integration_status)(
             USER_ID, INTEGRATION_ID, "expired", expired_reason="refresh_token_revoked"
@@ -743,6 +747,10 @@ class TestUpdateUserIntegrationStatus:
             expired_reason="refresh_token_revoked",
         )
         mock_sched.assert_not_called()
+        mock_ws.announce.assert_awaited_once_with(
+            USER_ID,
+            {"type": INTEGRATION_STATUS_UPDATE_EVENT, "data": {"integration_id": INTEGRATION_ID}},
+        )
 
     @patch("app.services.integrations.user_integration_status.websocket_manager")
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")

@@ -21,6 +21,7 @@ from app.models.conversation_log_models import Entry, Reply, ReplySettled, UserM
 from app.models.conversation_models import (
     ConversationDescriptionHit,
     ConversationDocument,
+    ConversationHead,
     LogPage,
 )
 from app.services.conversation import mongo_log as mongo_log_module
@@ -451,6 +452,29 @@ async def test_a_flush_never_drops_an_entry_whose_seq_another_entry_holds(
     assert conflict.value.message == "an outbox entry conflicts with a stored entry"
     assert "E11000" in conflict.value.why
     assert list(await _outbox(raw_collection, conversation)) == ["1"]
+
+
+async def test_a_flush_that_inserted_but_never_drained_finishes_beside_other_stored_entries(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    held: HeldFlushes,
+    raw_collection: Any,
+    entries_collection: Any,
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    other = await _chat(repo, uid)
+    await _append(other, uid, [_flushed_at_once("stored-first")])
+    await held.run_all()
+    await _append(cid, uid, [_message("m1")])
+    held.drop_all()
+    head = await raw_collection.find_one({"conversation_id": cid})
+    await repo._write_entries(list(ConversationHead.model_validate(head).outbox.values()))
+
+    await repo.flush_outbox(cid, user_id=uid)
+
+    assert await _outbox(raw_collection, conversation) == {}
+    assert await _ids(repo, conversation) == [(1, "m1")]
+    assert await entries_collection.count_documents({"conversation_id": cid}) == 1
 
 
 async def test_an_entry_without_a_commit_time_is_refused_as_corrupt(
