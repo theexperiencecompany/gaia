@@ -27,6 +27,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.constants.chat import BOT_CONVERSATION_SOURCES
 from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import (
     ConversationSource,
@@ -94,6 +95,11 @@ class ConversationDocument(UserScopedDocument):
     updatedAt: datetime | None = None
 
     _coerce_source = field_validator("source", mode="before")(_coerce_source)
+
+    @property
+    def listed(self) -> bool:
+        """Whether the conversation list shows it: a bot chat lives on its platform, a todo's chat on its todo."""
+        return self.todo_id is None and self.source not in BOT_CONVERSATION_SOURCES
 
 
 class ConversationUpdate(BaseModel):
@@ -445,10 +451,10 @@ class ConversationSyncRow(ConversationEntriesPage):
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
     # Live work in the conversation awaits the user's approval: the sidebar's dot.
     awaiting_approval: bool = False
-    # The tracked todo this chat belongs to; clients keep such a chat out of their lists.
     todo_id: str | None = None
-    # Where the chat originated; a bot chat is never listed, so clients need it to keep one cached.
     source: ConversationSource | None = None
+    # False for a chat the conversation list never shows (a todo's, a bot's): absent there is not deleted.
+    listed: bool
 
 
 class BatchSyncResponse(ResponseModel):

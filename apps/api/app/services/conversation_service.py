@@ -486,6 +486,7 @@ async def batch_sync_conversations(
                 awaiting_approval=document.awaiting_approval,
                 todo_id=document.todo_id,
                 source=document.source,
+                listed=document.listed,
             )
         )
 

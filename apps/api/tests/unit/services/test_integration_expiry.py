@@ -221,7 +221,7 @@ class TestOneAccountOfSeveral:
 @pytest.fixture
 def announce_seams() -> Iterator[dict[str, MagicMock]]:
     with (
-        patch(f"{MODULE}.websocket_manager") as ws,
+        patch("app.services.integrations.user_integration_status.websocket_manager") as ws,
         patch(f"{MODULE}.notification_service") as notifications,
     ):
         ws.broadcast_to_user = AsyncMock()
@@ -239,22 +239,7 @@ def _expired(*, count: int = 1, integration_expired: bool = True) -> AccountExpi
 
 
 class TestTheAnnouncement:
-    async def test_an_open_page_flips_to_the_integrations_new_status(
-        self, announce_seams: dict[str, MagicMock]
-    ) -> None:
-        await announce_account_expiry(
-            USER_ID, INTEGRATION_ID, _expired(count=2, integration_expired=False), [], None
-        )
-
-        announce_seams["ws"].broadcast_to_user.assert_awaited_once_with(
-            user_id=USER_ID,
-            message={
-                "type": "integration_status_update",
-                "data": {"integration_id": INTEGRATION_ID, "status": "connected"},
-            },
-        )
-
-    async def test_an_open_page_flips_to_expired_once_every_account_is_dead(
+    async def test_an_open_page_re_reads_the_integration(
         self, announce_seams: dict[str, MagicMock]
     ) -> None:
         await announce_account_expiry(USER_ID, INTEGRATION_ID, _expired(), [], None)
@@ -263,7 +248,7 @@ class TestTheAnnouncement:
             user_id=USER_ID,
             message={
                 "type": "integration_status_update",
-                "data": {"integration_id": INTEGRATION_ID, "status": "expired"},
+                "data": {"integration_id": INTEGRATION_ID},
             },
         )
 

@@ -60,10 +60,9 @@ const EMPTY: NotificationView[] = [];
 
 /**
  * Mark every cached DELIVERED notification read, optionally only those sent on
- * `channelType`. Shared by the mark-all mutation and the `notification.all_read`
- * websocket push so both views of "all read" patch the cache identically.
+ * `channelType`: the mark-all mutation's optimistic patch.
  */
-export function markDeliveredAsReadInCache(
+function markDeliveredAsReadInCache(
   queryClient: QueryClient,
   channelType?: string | null,
 ): void {

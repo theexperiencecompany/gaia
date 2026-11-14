@@ -673,7 +673,7 @@ class TestUpdateUserIntegrationStatus:
             user_id=USER_ID,
             message={
                 "type": "integration_status_update",
-                "data": {"integration_id": INTEGRATION_ID, "status": "connected"},
+                "data": {"integration_id": INTEGRATION_ID},
             },
         )
 
@@ -694,7 +694,7 @@ class TestUpdateUserIntegrationStatus:
 
         assert result is True
         (warning,) = event["warnings"]
-        assert "Failed to broadcast connected status" in warning["msg"]
+        assert "Failed to broadcast integration change" in warning["msg"]
         assert warning["integration_id"] == INTEGRATION_ID
         assert warning["error"] == "redis down"
         assert warning["error_type"] == "RuntimeError"
@@ -702,7 +702,9 @@ class TestUpdateUserIntegrationStatus:
     @patch("app.services.integrations.user_integration_status.websocket_manager")
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
     @patch("app.services.integrations.user_integration_status.user_integration_repository")
-    async def test_update_status_created_does_not_schedule(self, mock_repo, mock_sched, mock_ws):
+    async def test_update_status_created_tells_open_pages_without_scheduling(
+        self, mock_repo, mock_sched, mock_ws
+    ):
         mock_repo.set_status = AsyncMock(return_value=True)
         mock_ws.broadcast_to_user = AsyncMock()
 
@@ -716,8 +718,14 @@ class TestUpdateUserIntegrationStatus:
             expired_reason=None,
         )
         mock_sched.assert_not_called()
-        # Only the connected transition broadcasts; created must not.
-        mock_ws.broadcast_to_user.assert_not_awaited()
+        # A failed connect falls back to created: a page waiting on its tools must hear it.
+        mock_ws.broadcast_to_user.assert_awaited_once_with(
+            user_id=USER_ID,
+            message={
+                "type": "integration_status_update",
+                "data": {"integration_id": INTEGRATION_ID},
+            },
+        )
 
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
     @patch("app.services.integrations.user_integration_status.user_integration_repository")

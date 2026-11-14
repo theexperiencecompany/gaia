@@ -88,7 +88,7 @@ describe("syncing a tracked todo's chat", () => {
     vi.mocked(db.getAllConversations).mockResolvedValue([
       local("listed"),
       local("deleted-on-server"),
-      local("todo-chat", { todoId: "todo-1" }),
+      local("todo-chat", { todoId: "todo-1", listed: false }),
     ]);
 
     await batchSyncConversations();
@@ -101,8 +101,8 @@ describe("syncing a tracked todo's chat", () => {
   it("asks the server about every local todo chat and drops the ones it no longer has", async () => {
     vi.mocked(chatApi.fetchConversations).mockResolvedValue(listing([]));
     vi.mocked(db.getAllConversations).mockResolvedValue([
-      local("kept-todo-chat", { todoId: "todo-1" }),
-      local("deleted-todo-chat", { todoId: "todo-2" }),
+      local("kept-todo-chat", { todoId: "todo-1", listed: false }),
+      local("deleted-todo-chat", { todoId: "todo-2", listed: false }),
     ]);
     vi.mocked(chatApi.batchSyncConversations).mockResolvedValue({
       conversations: [],
@@ -141,6 +141,7 @@ describe("syncing a tracked todo's chat", () => {
       has_older: false,
       todo_id: "todo-1",
       source: null,
+      listed: false,
       starred: null,
       is_system_generated: null,
       system_purpose: null,
@@ -153,6 +154,7 @@ describe("syncing a tracked todo's chat", () => {
       id: "todo-chat",
       title: "Watch the deploy",
       todoId: "todo-1",
+      listed: false,
     });
   });
 });
@@ -161,7 +163,7 @@ describe("syncing a bot DM chat", () => {
   it("keeps it locally and asks only for what changed, although the server never lists it", async () => {
     vi.mocked(chatApi.fetchConversations).mockResolvedValue(listing([]));
     vi.mocked(db.getAllConversations).mockResolvedValue([
-      local("whatsapp-dm", { source: "whatsapp" }),
+      local("whatsapp-dm", { source: "whatsapp", listed: false }),
       local("deleted-on-server"),
     ]);
     vi.mocked(chatApi.batchSyncConversations).mockResolvedValue({
@@ -197,6 +199,7 @@ describe("syncing a bot DM chat", () => {
       has_older: false,
       todo_id: null,
       source: "telegram",
+      listed: false,
       starred: null,
       is_system_generated: null,
       system_purpose: null,
@@ -208,6 +211,7 @@ describe("syncing a bot DM chat", () => {
     expect(vi.mocked(db.putConversation).mock.calls[0][0]).toMatchObject({
       id: "telegram-dm",
       source: "telegram",
+      listed: false,
     });
   });
 });

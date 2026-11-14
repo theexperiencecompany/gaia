@@ -39,6 +39,7 @@ const noticedRow = (conversationId: string): ConversationSyncRow => ({
   starred: false,
   system_purpose: null,
   todo_id: null,
+  listed: true,
 });
 
 afterEach(() => {

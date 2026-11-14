@@ -4405,6 +4405,10 @@
             "title": "Items",
             "type": "array"
           },
+          "listed": {
+            "title": "Listed",
+            "type": "boolean"
+          },
           "source": {
             "anyOf": [
               {
@@ -4479,7 +4483,8 @@
           "artifacts",
           "awaiting_approval",
           "todo_id",
-          "source"
+          "source",
+          "listed"
         ],
         "title": "ConversationSyncRow",
         "type": "object"
@@ -8966,24 +8971,6 @@
         "title": "IntegrationResponse",
         "type": "object"
       },
-      "IntegrationStatusesResponse": {
-        "description": "Current connection status map, fetched independently of the catalog.",
-        "properties": {
-          "statuses": {
-            "additionalProperties": {
-              "type": "boolean"
-            },
-            "description": "Connection state keyed by integration id",
-            "title": "Statuses",
-            "type": "object"
-          }
-        },
-        "required": [
-          "statuses"
-        ],
-        "title": "IntegrationStatusesResponse",
-        "type": "object"
-      },
       "IntegrationSuccessResponse": {
         "properties": {
           "integrationId": {
@@ -11475,7 +11462,7 @@
         "type": "object"
       },
       "MyIntegrationsResponse": {
-        "description": "The full integration catalog personalized for one user (platform + their\nown custom integrations), each carrying connection status. Replaces the\nclient-side merge of /config + /status + /users/me/integrations.",
+        "description": "The full integration catalog personalized for one user (platform + their own custom), each with its connection status.",
         "properties": {
           "integrations": {
             "items": {
@@ -30126,7 +30113,7 @@
     },
     "/api/v1/integrations/me": {
       "get": {
-        "description": "The current user's full integration catalog (platform + their custom),\neach with connection status and tool count. One call replaces the old\n/config + /status + /users/me/integrations merge.",
+        "description": "The current user's full integration catalog (platform + their custom), each with its one connection status.",
         "operationId": "integrations_get_my_integrations_endpoint",
         "responses": {
           "200": {
@@ -30171,58 +30158,6 @@
           }
         },
         "summary": "Get My Integrations Endpoint",
-        "tags": [
-          "Integrations"
-        ]
-      }
-    },
-    "/api/v1/integrations/me/snapshot": {
-      "get": {
-        "description": "Return the workspace catalog without waiting for connection checks.",
-        "operationId": "integrations_get_my_integrations_snapshot_endpoint",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MyIntegrationsResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Get My Integrations Snapshot Endpoint",
         "tags": [
           "Integrations"
         ]
@@ -30515,58 +30450,6 @@
           }
         },
         "summary": "Search Integrations",
-        "tags": [
-          "Integrations"
-        ]
-      }
-    },
-    "/api/v1/integrations/status": {
-      "get": {
-        "description": "Refresh connection state independently from the fast catalog snapshot.",
-        "operationId": "integrations_get_integration_statuses_endpoint",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/IntegrationStatusesResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Get Integration Statuses Endpoint",
         "tags": [
           "Integrations"
         ]

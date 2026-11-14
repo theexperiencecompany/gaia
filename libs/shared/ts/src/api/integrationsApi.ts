@@ -6,7 +6,6 @@
 
 export const INTEGRATION_ENDPOINTS = {
   config: "/integrations/config",
-  status: "/integrations/status",
   userIntegrations: "/integrations/users/me/integrations",
   addToWorkspace: "/integrations/users/me/integrations",
   removeFromWorkspace: (integrationId: string) =>

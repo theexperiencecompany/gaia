@@ -18,8 +18,9 @@ export interface IConversation {
   // Live work here awaits the user's approval: the sidebar lists the
   // conversation for its card, and the row lights the approval dot.
   awaitingApproval?: boolean;
-  // The tracked todo this is the chat of: opened from that todo, never listed.
   todoId?: string | null;
+  // False when the server's conversation list never shows it (a todo's chat, a bot DM).
+  listed?: boolean;
   // Conversation-level artifact registry: the single source of truth for this
   // conversation's agent-written files. Messages store path references that
   // resolve against this (see FileArtifactSection / chatStore).

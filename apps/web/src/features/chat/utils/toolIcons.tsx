@@ -239,6 +239,30 @@ export const getToolCategoryIcon = (
     className: restProps.className,
   };
 
+  // The card's own integration icon from the server wins; the category glyph is the fallback.
+  if (iconUrl && isRenderableIconSrc(iconUrl)) {
+    const iconElement = (
+      <AutoInvertIcon
+        alt={`${category} Icon`}
+        size={defaultProps.size}
+        width={defaultProps.width}
+        height={defaultProps.height}
+        className={restProps.className}
+        src={iconUrl}
+      />
+    );
+    return showBackground ? (
+      <div className="relative rounded-lg p-1">
+        <div
+          className={`absolute inset-0 rounded-lg bg-zinc-700 ${pulsating ? "animate-pulse" : ""}`}
+        />
+        <div className="relative">{iconElement}</div>
+      </div>
+    ) : (
+      iconElement
+    );
+  }
+
   // Normalize the input category name
   const normalizedCategory = normalizeCategoryName(category);
 
@@ -265,32 +289,7 @@ export const getToolCategoryIcon = (
     }
   }
 
-  // If no predefined config found, try iconUrl fallback for custom integrations
-  if (!config) {
-    if (iconUrl && isRenderableIconSrc(iconUrl)) {
-      const iconElement = (
-        <AutoInvertIcon
-          alt={`${category} Icon`}
-          size={defaultProps.size}
-          width={defaultProps.width}
-          height={defaultProps.height}
-          className={restProps.className}
-          src={iconUrl}
-        />
-      );
-      return showBackground ? (
-        <div className="relative rounded-lg p-1">
-          <div
-            className={`absolute inset-0 rounded-lg bg-zinc-700 ${pulsating ? "animate-pulse" : ""}`}
-          />
-          <div className="relative">{iconElement}</div>
-        </div>
-      ) : (
-        iconElement
-      );
-    }
-    return null;
-  }
+  if (!config) return null;
 
   const iconElement = config.isImage ? (
     <AutoInvertIcon

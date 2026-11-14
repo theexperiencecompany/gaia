@@ -21,26 +21,31 @@ from app.services.integrations_fs import schedule_user_integrations_sync
 from shared.py.wide_events import log
 
 
-async def publish_connected(user_id: str, integration_id: str) -> None:
-    """Reflect a newly connected integration in the workspace VFS and on any open page."""
-    schedule_user_integrations_sync(user_id)
+async def announce_integration_changed(user_id: str, integration_id: str) -> None:
+    """Tell the user's open clients to re-read one integration's catalog entry, after its write succeeded."""
     # Best-effort: a missed push catches up on the next catalog read, so a
-    # broadcast failure (Redis down) must not fail the connect.
+    # broadcast failure (Redis down) must not fail the write it reports.
     try:
         await websocket_manager.broadcast_to_user(
             user_id=user_id,
             message={
                 "type": INTEGRATION_STATUS_UPDATE_EVENT,
-                "data": {"integration_id": integration_id, "status": "connected"},
+                "data": {"integration_id": integration_id},
             },
         )
     except Exception as e:
         log.warning(
-            f"{LogTag.INTEGRATION} Failed to broadcast connected status",
+            f"{LogTag.INTEGRATION} Failed to broadcast integration change",
             integration_id=integration_id,
             error=str(e),
             error_type=type(e).__name__,
         )
+
+
+async def publish_connected(user_id: str, integration_id: str) -> None:
+    """Reflect a newly connected integration in the workspace VFS and on any open page."""
+    schedule_user_integrations_sync(user_id)
+    await announce_integration_changed(user_id, integration_id)
 
     # Best-effort for the same reason: the connect itself already succeeded.
     try:
@@ -85,6 +90,8 @@ async def update_user_integration_status(
     )
     if status == "connected":
         await publish_connected(user_id, integration_id)
+    else:
+        await announce_integration_changed(user_id, integration_id)
     return True
 
 

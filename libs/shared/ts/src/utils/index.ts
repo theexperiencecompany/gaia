@@ -49,7 +49,6 @@ export {
   INTEGRATION_STATE_ORDER,
   integrationConnectionState,
   PROMPT_ACTION_LABEL,
-  reconcileIntegrationStatus,
 } from "./integrationStatus";
 export {
   NEW_MESSAGE_BREAK_TOKEN,

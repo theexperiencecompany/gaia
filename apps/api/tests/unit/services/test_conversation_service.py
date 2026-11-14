@@ -475,15 +475,24 @@ class TestBatchSyncConversations:
 
         assert result.conversations[0].awaiting_approval is False
 
-    async def test_a_todos_chat_tells_the_client_which_todo_it_belongs_to(
-        self, mock_repo, test_user
+    @pytest.mark.parametrize(
+        ("overrides", "listed"),
+        [
+            ({}, True),
+            ({"source": "web"}, True),
+            ({"todo_id": "todo-1"}, False),
+            ({"source": "telegram"}, False),
+        ],
+    )
+    async def test_a_row_says_whether_the_conversation_list_shows_it(
+        self, mock_repo, test_user, overrides: dict[str, str], listed: bool
     ):
-        """A client that opened a todo's chat keeps it in its own store; this is how it keeps it out of the list."""
-        mock_repo.find_updated_since = AsyncMock(return_value=[_document(todo_id="todo-1")])
+        """A client keeps an unlisted chat cached instead of reading its absence from the list as a delete."""
+        mock_repo.find_updated_since = AsyncMock(return_value=[_document(**overrides)])
         request = BatchSyncRequest(conversations=[ConversationSyncItem(conversation_id="conv_abc")])
         result = await batch_sync_conversations(request, test_user)
 
-        assert result.conversations[0].todo_id == "todo-1"
+        assert result.conversations[0].listed is listed
 
     async def test_an_asked_for_chat_the_user_no_longer_owns_comes_back_missing(
         self, mock_repo, test_user

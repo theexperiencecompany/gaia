@@ -1970,31 +1970,9 @@ export interface paths {
         };
         /**
          * Get My Integrations Endpoint
-         * @description The current user's full integration catalog (platform + their custom),
-         *     each with connection status and tool count. One call replaces the old
-         *     /config + /status + /users/me/integrations merge.
+         * @description The current user's full integration catalog (platform + their custom), each with its one connection status.
          */
         get: operations["integrations_get_my_integrations_endpoint"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/integrations/me/snapshot": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get My Integrations Snapshot Endpoint
-         * @description Return the workspace catalog without waiting for connection checks.
-         */
-        get: operations["integrations_get_my_integrations_snapshot_endpoint"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2075,26 +2053,6 @@ export interface paths {
          * @description Search public integrations using semantic search.
          */
         get: operations["integrations_search_integrations"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/integrations/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Integration Statuses Endpoint
-         * @description Refresh connection state independently from the fast catalog snapshot.
-         */
-        get: operations["integrations_get_integration_statuses_endpoint"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7820,6 +7778,8 @@ export interface components {
             is_unread: boolean | null;
             /** Items */
             items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
+            /** Listed */
+            listed: boolean;
             source: components["schemas"]["ConversationSource"] | null;
             /** Starred */
             starred: boolean | null;
@@ -10062,19 +10022,6 @@ export interface components {
             /** Integrations */
             integrations: components["schemas"]["IntegrationConfigItem"][];
         };
-        /**
-         * IntegrationStatusesResponse
-         * @description Current connection status map, fetched independently of the catalog.
-         */
-        IntegrationStatusesResponse: {
-            /**
-             * Statuses
-             * @description Connection state keyed by integration id
-             */
-            statuses: {
-                [key: string]: boolean;
-            };
-        };
         /** IntegrationSuccessResponse */
         IntegrationSuccessResponse: {
             /** Integrationid */
@@ -11362,9 +11309,7 @@ export interface components {
         };
         /**
          * MyIntegrationsResponse
-         * @description The full integration catalog personalized for one user (platform + their
-         *     own custom integrations), each carrying connection status. Replaces the
-         *     client-side merge of /config + /status + /users/me/integrations.
+         * @description The full integration catalog personalized for one user (platform + their own custom), each with its connection status.
          */
         MyIntegrationsResponse: {
             /** Integrations */
@@ -17284,7 +17229,6 @@ export type IntegrationInfo = components['schemas']['IntegrationInfo'];
 export type IntegrationRef = components['schemas']['IntegrationRef'];
 export type IntegrationResponse = components['schemas']['IntegrationResponse'];
 export type IntegrationsConfigResponse = components['schemas']['IntegrationsConfigResponse'];
-export type IntegrationStatusesResponse = components['schemas']['IntegrationStatusesResponse'];
 export type IntegrationSuccessResponse = components['schemas']['IntegrationSuccessResponse'];
 export type IntegrationTool = components['schemas']['IntegrationTool'];
 export type IntegrationToolApproval = components['schemas']['IntegrationToolApproval'];
@@ -23094,53 +23038,6 @@ export interface operations {
             };
         };
     };
-    integrations_get_my_integrations_snapshot_endpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MyIntegrationsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
     integrations_get_public_integration: {
         parameters: {
             query?: never;
@@ -23340,53 +23237,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchIntegrationsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    integrations_get_integration_statuses_endpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationStatusesResponse"];
                 };
             };
             /** @description Unprocessable Entity */
