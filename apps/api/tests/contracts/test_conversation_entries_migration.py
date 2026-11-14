@@ -11,7 +11,7 @@ from bson import ObjectId
 import pytest
 
 from app.db.mongodb.indexes import UNMIGRATED_HEAD_KEYS, UNMIGRATED_HEAD_OPTIONS
-from app.db.repositories.conversation_entries_legacy import ConversationEntry
+from app.db.repositories.conversation_entries_legacy import ConversationEntry, LegacyMessage
 from app.db.repositories.conversation_entries_migration import (
     ConversationEntriesMigration,
     HeadRef,
@@ -117,6 +117,12 @@ async def _history(ref: HeadRef) -> list[tuple[str, str | None, str]]:
     doc = await ConversationRepository().get(ref.conversation_id, user_id=ref.user_id)
     assert doc is not None
     return [(m.type, m.message_id, m.response) for m in shown_messages(doc)]
+
+
+def test_a_legacy_element_is_stored_with_only_the_fields_it_holds() -> None:
+    element = LegacyMessage.model_validate({"type": "bot", "response": "hi"})
+
+    assert element.stored() == {"type": "bot", "response": "hi"}
 
 
 async def test_every_old_shape_becomes_log_entries_that_read_back_as_the_old_array(
