@@ -4,7 +4,15 @@ import type { captureException } from "@sentry/nextjs";
 export function reportToSentry(
   ...args: Parameters<typeof captureException>
 ): void {
-  void import("@/lib/observability/sentryClient").then((sentry) => {
-    sentry.captureException(...args);
-  });
+  import("@/lib/observability/sentryClient")
+    .then((sentry) => {
+      sentry.captureException(...args);
+    })
+    .catch((loadError: unknown) => {
+      console.error(
+        "Sentry failed to load; unreported error:",
+        args[0],
+        loadError,
+      );
+    });
 }
