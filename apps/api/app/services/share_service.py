@@ -73,7 +73,7 @@ def _assert_secure_host() -> None:
     if settings.deployment.https_only and not settings.HOST.startswith("https://"):
         raise AppError(
             message="File sharing requires an HTTPS host in production.",  # pragma: no mutate -- operator prose; the test asserts the raise, not the wording
-            why=f"HOST '{settings.HOST}' is not https; a share token must not travel in cleartext.",  # pragma: no mutate -- operator prose
+            why=f"HOST '{settings.HOST}' is not https; a share token must not travel in cleartext.",
             fix="Set HOST to an https:// origin.",  # pragma: no mutate -- operator prose
             status_code=503,
         )

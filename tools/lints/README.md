@@ -624,7 +624,10 @@ after a statement's last line, for the statement's first line), and a comment-on
 1. a comment-only pragma inside brackets (a list, dict or call spread over lines);
 2. a comment-only pragma with no `start` / `end` / `block` token;
 3. a trailing pragma on a closing-bracket line that does not end the statement;
-4. a trailing pragma on a plain name argument of a call opened on an earlier line.
+4. a trailing pragma on a plain name argument of a call opened on an earlier line, or
+   on a keyword argument whose value holds nothing mutmut mutates (names, attributes,
+   subscripts, f-strings) when the call's own line has no pragma: `kw=None` and the
+   dropped argument are mutants of the call node, positioned on the call's line.
 
 **Why:** mutmut ignores all four silently, so the mutant the pragma was written for
 survives and reds the mutation lane, often a whole CI round later.

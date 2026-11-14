@@ -974,8 +974,32 @@ def test_a_pragma_on_a_closing_bracket_inside_an_expression_is_flagged(tmp_path:
 
 
 def test_a_pragma_on_a_plain_argument_of_a_multiline_call_is_flagged(tmp_path: Path) -> None:
-    src = "x = g(\n    a,\n    limit=limit,  # pragma: no mutate\n    b='s',  # pragma: no mutate\n)\n"
-    assert _pragma_lines(tmp_path, src) == [3]
+    src = "x = g(\n    a,  # pragma: no mutate\n    f(a),  # pragma: no mutate\n)\n"
+    assert _pragma_lines(tmp_path, src) == [2]
+
+
+def test_a_pragma_on_any_keyword_argument_of_a_multiline_call_is_flagged(tmp_path: Path) -> None:
+    # mutmut's kw=None and drop mutants are Call-node mutants, positioned on the call's line.
+    src = (
+        "x = g(\n"
+        "    limit=limit,  # pragma: no mutate\n"
+        "    why=f'host {h}',  # pragma: no mutate\n"
+        "    kind=item.kind[key],  # pragma: no mutate\n"
+        "    b='s',  # pragma: no mutate -- the literal's own mutants are on this line\n"
+        "    error_type=type(e).__name__,  # pragma: no mutate\n"
+        "    ok=a == b,  # pragma: no mutate\n"
+        ")\n"
+        "y = g(c=1)  # pragma: no mutate\n"
+        "z = g(  # pragma: no mutate -- the call's line skips its argument mutants\n"
+        "    mode='json',  # pragma: no mutate -- and this one the literal's\n"
+        ")\n"
+        "# pragma: no mutate start\n"
+        "w = g(\n"
+        "    mode='json',  # pragma: no mutate\n"
+        ")\n"
+        "# pragma: no mutate end\n"
+    )
+    assert _pragma_lines(tmp_path, src) == [2, 3, 4]
 
 
 def test_pragmas_outside_app_are_ignored(tmp_path: Path) -> None:
