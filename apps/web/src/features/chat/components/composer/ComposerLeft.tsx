@@ -144,6 +144,7 @@ export default function ComposerLeft({
               isSlashCommandDropdownOpen &&
                 "border-primary/50 bg-primary/20 text-primary hover:bg-primary/40",
             )}
+            aria-pressed={isSlashCommandDropdownOpen}
             onClick={() => {
               track("chat:tools_button_clicked", {
                 is_open: isSlashCommandDropdownOpen,
