@@ -16,8 +16,8 @@ import {
   type UseInstructionsResult,
 } from "@/features/instructions";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
+import { LazyMentionEditor } from "@/features/integrations/components/LazyMentionEditor";
 import { MentionChip } from "@/features/integrations/components/MentionChip";
-import { MentionEditor } from "@/features/integrations/components/MentionEditor";
 import type { Integration } from "@/features/integrations/types";
 import {
   decodeMentionHref,
@@ -209,7 +209,7 @@ export const IntegrationInstructionsModal = ({
                 </Tabs.List>
 
                 <Tabs.Panel id="write" className="px-0 pb-0">
-                  <MentionEditor
+                  <LazyMentionEditor
                     value={value}
                     onChange={setValue}
                     toolNames={toolNames}

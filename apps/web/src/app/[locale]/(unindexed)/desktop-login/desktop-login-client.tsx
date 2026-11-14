@@ -102,11 +102,12 @@ export function DesktopLoginClient({
 
   // Listen for the main process signalling it's about to navigate to /c
   useEffect(() => {
-    if (typeof window === "undefined" || !window.api?.onAuthRedirecting) return;
-    const cleanup = window.api.onAuthRedirecting(() => {
+    const api = getElectronAPI();
+    // Desktop builds older than the auth-redirect event do not expose it.
+    if (typeof api?.onAuthRedirecting !== "function") return;
+    return api.onAuthRedirecting(() => {
       setStatus("redirecting");
     });
-    return cleanup;
   }, []);
 
   // Resolved during render, not an effect, so this screen never paints before

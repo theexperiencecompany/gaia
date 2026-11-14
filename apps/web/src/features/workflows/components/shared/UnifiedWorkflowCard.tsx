@@ -15,6 +15,7 @@ import type {
 } from "@/types/features/workflowTypes";
 import type { ContentCreator } from "@/types/shared/contentTypes";
 import { formatRunCount } from "@/utils/formatters";
+import { WORKFLOW_CARD_ICON_SIZE } from "../../constants/workflowIconStyle";
 import { getTriggerDisplayInfo } from "../../triggers/utils";
 import { isSystemCreator } from "../../utils/creator";
 import { useWorkflowCardActions } from "./useWorkflowCardActions";
@@ -163,7 +164,7 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
       steps={steps}
       icon={customIcon}
       iconColor={customIconColor}
-      iconSize={25}
+      iconSize={WORKFLOW_CARD_ICON_SIZE}
       maxIcons={3}
     />
   );

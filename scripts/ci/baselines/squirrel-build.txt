@@ -25,16 +25,8 @@ score:URL Structure=93
 *	url/slug-convention/slug-convention	depth:category:3
 *	url/slug-convention/slug-convention	depth:faq:1
 *	url/slug-convention/slug-convention	depth:faq:2
-/	perf/cache-headers/cache-control
-/about	perf/cache-headers/cache-control
-/ai-assistant-like-jarvis	perf/cache-headers/cache-control
 /ai-assistant-that-can-see-your-screen	content/keyword-stuffing/keyword-stuffing	screen
-/ai-assistant-that-can-see-your-screen	perf/cache-headers/cache-control
 /ai-assistant-that-uses-your-computer	content/keyword-stuffing/keyword-stuffing	browser
-/ai-assistant-that-uses-your-computer	perf/cache-headers/cache-control
-/ai-assistant-whatsapp-telegram-imessage	perf/cache-headers/cache-control
-/ai-assistant-with-memory	perf/cache-headers/cache-control
-/ai-chief-of-staff	perf/cache-headers/cache-control
 /alternative-to/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /alternative-to/akiflow	content/keyword-stuffing/keyword-stuffing	tasks
 /alternative-to/asana	content/keyword-stuffing/keyword-stuffing	asana
@@ -242,16 +234,9 @@ score:URL Structure=93
 /automate/zoom-figma	content/keyword-stuffing/keyword-stuffing	zoom
 /automate/zoom-notion	content/keyword-stuffing/keyword-stuffing	notion
 /automate/zoom-teams	content/keyword-stuffing/keyword-stuffing	microsoft
-/best-ai-assistant	perf/cache-headers/cache-control
-/best-ai-calendar-assistant	perf/cache-headers/cache-control
 /best-ai-email-assistant	content/keyword-stuffing/keyword-stuffing	email
-/best-ai-email-assistant	perf/cache-headers/cache-control
-/best-ai-executive-assistant	perf/cache-headers/cache-control
 /blog	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
 /blog/tool-calling-under-the-hood	content/keyword-stuffing/keyword-stuffing	tool
-/bots	perf/cache-headers/cache-control
-/brand	perf/cache-headers/cache-control
-/cli	perf/cache-headers/cache-control
 /compare/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /compare/apple-reminders	content/keyword-stuffing/keyword-stuffing	apple
 /compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
@@ -1018,7 +1003,6 @@ score:URL Structure=93
 /de/learn/workflow-orchestration	content/keyword-stuffing/keyword-stuffing	workflow
 /de/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	die
 /de/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
-/download	perf/cache-headers/cache-control
 /es/alternative-to	content/keyword-stuffing/keyword-stuffing	con
 /es/alternative-to/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /es/alternative-to/bee	content/keyword-stuffing/keyword-stuffing	bee
@@ -1748,7 +1732,6 @@ score:URL Structure=93
 /es/learn/workflow-orchestration	content/keyword-stuffing/keyword-stuffing	flujos
 /es/learn/workflow-orchestration	content/keyword-stuffing/keyword-stuffing	trabajo
 /es/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
-/faq	perf/cache-headers/cache-control
 /features	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
 /features/contacts	content/keyword-stuffing/keyword-stuffing	contact
 /features/contacts	content/keyword-stuffing/keyword-stuffing	email
@@ -2669,8 +2652,6 @@ score:URL Structure=93
 /fr/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	des
 /fr/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	les
 /fr/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
-/how-to-use-ai-as-a-personal-assistant	perf/cache-headers/cache-control
-/inbox-zero-ai	perf/cache-headers/cache-control
 /ja/compare/category/ai-assistants	a11y/heading-order/heading-order	H3 after H1
 /ja/compare/category/automation	a11y/heading-order/heading-order	H3 after H1
 /ja/compare/category/calendar-scheduling	a11y/heading-order/heading-order	H3 after H1
@@ -2820,18 +2801,13 @@ score:URL Structure=93
 /marketplace/hubspot	perf/dom-size/dom-max-children
 /marketplace/jira	perf/dom-size/dom-max-children
 /marketplace/outlook	perf/dom-size/dom-max-children
-/marketplace/outlook	perf/dom-size/dom-total-nodes
 /marketplace/page/2	content/word-count/word-count
 /marketplace/page/3	content/word-count/word-count
 /marketplace/resend-mcp-communication	perf/dom-size/dom-max-children
 /marketplace/slack	perf/dom-size/dom-max-children
 /marketplace/todoist	perf/dom-size/dom-max-children
 /marketplace/trello	perf/dom-size/dom-max-children
-/marketplace/trello	perf/dom-size/dom-total-nodes
 /marketplace/twitter	perf/dom-size/dom-max-children
-/open-source-ai-assistant	perf/cache-headers/cache-control
-/pricing	perf/cache-headers/cache-control
-/privacy	perf/cache-headers/cache-control
 /pt-br/alternative-to	content/keyword-stuffing/keyword-stuffing	com
 /pt-br/alternative-to	content/keyword-stuffing/keyword-stuffing	para
 /pt-br/alternative-to/airtable	content/keyword-stuffing/keyword-stuffing	airtable
@@ -3307,10 +3283,7 @@ score:URL Structure=93
 /pt-br/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
 /signup	content/word-count/word-count
 /signup	images/offscreen-lazy/offscreen-images-not-lazy	image
-/signup	perf/cache-headers/cache-control
-/terms	perf/cache-headers/cache-control
 /thanks	content/word-count/word-count
-/thanks	perf/cache-headers/cache-control
 /use-cases/add-deadlines-to-calendar	content/word-count/word-count
 /use-cases/assignment-tracker	content/keyword-stuffing/keyword-stuffing	due
 /use-cases/assignment-tracker	content/word-count/word-count
