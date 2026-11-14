@@ -42,6 +42,9 @@ class Signal(BaseModel):
     amount_unit: str | None = None
     #: The item's own words (a message, a comment), verbatim; None when it has none.
     text: str | None = None
+    #: When the item was created and last changed in the app; None when the app does not say.
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class SignalFields(BaseModel):
@@ -57,6 +60,8 @@ class SignalFields(BaseModel):
     people: str | None = None
     amount: str | None = None
     text: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class SignalSource(BaseModel):
@@ -90,6 +95,8 @@ class LearnedSignal(BaseModel):
     amount: float | None = None
     amount_unit: str | None = None
     text: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class ScoutStep(BaseModel):

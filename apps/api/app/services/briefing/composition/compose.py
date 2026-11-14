@@ -10,7 +10,11 @@ from dataclasses import dataclass
 from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, metered_config
 from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.agents.prompts.brief_composition_prompts import COMPOSITION_RETRY_NOTE
-from app.constants.briefing import BRIEF_COMPOSITION_LABEL, MAX_COMPOSITION_ATTEMPTS
+from app.constants.briefing import (
+    BRIEF_COMPOSITION_LABEL,
+    BRIEFING_KIND_WEEKLY,
+    MAX_COMPOSITION_ATTEMPTS,
+)
 from app.models.brief_composition_models import (
     BriefComposition,
     ComposedBlock,
@@ -85,10 +89,19 @@ def rendered(composition: BriefComposition, values: SlotValues) -> BriefComposit
     return BriefComposition(blocks=[_filled(b, values) for b in composition.blocks])
 
 
+#: A digest that places nothing recaps nothing; a daily may leave its whole pool out as noise.
+_EMPTY_WEEKLY = (
+    "a weekly digest recaps the week: place what its pool holds of it (what got done, "
+    "its series, each goal's progress, even a stalled one) instead of nothing"
+)
+
+
 async def _problems(
-    user_id: str, answer: BriefComposition, pool: FactPool, values: SlotValues
+    user_id: str, answer: BriefComposition, pool: FactPool, values: SlotValues, kind: BriefingKind
 ) -> list[str]:
     """Return the contract's problems, else every heading untrue of its items."""
+    if kind == BRIEFING_KIND_WEEKLY and not answer.blocks:
+        return [_EMPTY_WEEKLY]
     return composition_problems(answer, pool, values) or await heading_problems(
         user_id, rendered(answer, values), pool
     )
@@ -115,7 +128,7 @@ async def compose_brief(user_id: str, pool: FactPool, kind: BriefingKind) -> Com
         except MalformedStructuredOutputError as exc:
             # A reply that is no whole composition is a broken answer like any other: named, asked again.
             return None, [f"the answer was not a whole BriefComposition tool call ({exc.reason})"]
-        return answer, await _problems(user_id, answer, pool, values)
+        return answer, await _problems(user_id, answer, pool, values, kind)
 
     answer, problems = await attempt()
     for _ in range(MAX_COMPOSITION_ATTEMPTS - 1):

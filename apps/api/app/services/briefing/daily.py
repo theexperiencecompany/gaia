@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 
 from app.agents.prompts.briefing_prompts import (
+    RecentLines,
     VoicePromptBlocks,
     VoiceSituation,
     build_briefing_voice_prompt,
@@ -11,7 +12,7 @@ from app.agents.prompts.briefing_prompts import (
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
     DAILY_KICKER,
-    RECENT_OPENINGS_SHOWN,
+    RECENT_BRIEFS_RECALLED,
     TODAY_SPAN,
     UNNAMED_READER,
     BriefingRunOutcome,
@@ -55,6 +56,7 @@ from app.services.briefing.prose import (
     Prose,
     Writing,
     links_in,
+    opening_line,
     reader_block,
     voiced_payload,
     written_brief,
@@ -70,6 +72,7 @@ from app.services.briefing.sections import (
     event_ids,
     lay_out,
     log_composition,
+    sources_shown,
 )
 from app.services.briefing.slots import (
     figures_in,
@@ -97,13 +100,20 @@ async def _setup_block(user: UserDocument, *, first_week: bool, offer_lighter: b
     return "\n".join(lines)
 
 
-async def _recent_openings(user_id: str) -> list[str]:
-    """Return the opening line of each recent daily brief's message, newest first."""
-    recent = await briefing_repository.list_recent(
-        user_id, limit=RECENT_OPENINGS_SHOWN, kind=BRIEFING_KIND_DAILY
+async def _recent_lines(user_id: str) -> RecentLines:
+    """Return what the recent daily briefs printed, newest first."""
+    payloads = [
+        brief.payload
+        for brief in await briefing_repository.list_recent(
+            user_id, limit=RECENT_BRIEFS_RECALLED, kind=BRIEFING_KIND_DAILY
+        )
+    ]
+    return RecentLines(
+        headlines=[p.headline for p in payloads if p.headline],
+        ledes=[p.lede for p in payloads if p.lede],
+        captions=[p.caption for p in payloads if p.caption],
+        openings=[opening_line(p.message) for p in payloads if p.message],
     )
-    messages = [brief.payload.message for brief in recent if brief.payload.message]
-    return [next(line.strip() for line in m.splitlines() if line.strip()) for m in messages]
 
 
 def _is_empty_day(payload: BriefingPayload) -> bool:
@@ -185,7 +195,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     gathered = await gather_candidates(
         user_id, clock, since, seen_at, CandidateSources(work, held, scouts, calendar)
     )
-    openings = await _recent_openings(user_id)
+    recent = await _recent_lines(user_id)
     pool, laid = await _composed_day(
         user,
         clock,
@@ -199,7 +209,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             calendar_events=len(calendar),
             calendar_connected=has_calendar,
             calendar_span=TODAY_SPAN,
-            recent_openings=openings,
+            recent_openings=recent.openings,
         ),
     )
     remembered = chosen_signals(laid.chosen, scouts.remembered)
@@ -218,9 +228,9 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         clock,
     )
 
-    # Idle ladder: nothing to report (no candidate beyond the calendar, no goal
-    # knowledge) escalates from the goal question to a plain warning to one
-    # goodbye, then dormancy. A new account's first week never climbs it.
+    # Idle ladder: nothing to report and no goal (or an ignored goal question) escalates
+    # to a plain warning, one goodbye, then dormancy; the ladder also says whether today
+    # asks about the goal. A new account's first week never climbs it.
     ladder = await dormancy.climb_idle_ladder(
         user, dstate, clock.date_str, has_news=gathered.has_news, has_goal=has_goal
     )
@@ -245,8 +255,9 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             wind_down=ladder.wind_down,
             first_week=ladder.first_week,
             offer_lighter_cadence=offer_lighter,
+            goal_asked_recently=ladder.goal_question is dormancy.GoalQuestion.ASKED,
         ),
-        recent_openings=openings,
+        recent=recent,
     )
     voice, draft = await written_brief(
         user_id,
@@ -255,6 +266,8 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             # What was done since the last brief is the user's own record, quotable as it stands.
             values=replace(facts.values, quoted=facts.values.quoted | figures_in([lookback_block])),
             lead=None if winback.is_winback or ladder.wind_down is not None else facts.lead,
+            recent=recent,
+            grounds=f"{facts.block}\n{blocks.signals}",
         ),
     )
     links = await links_in(user_id, voice.message, facts)
@@ -273,7 +286,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             "tallies": BriefingTallies(
                 done_by_you=len(completed.user), done_by_gaia=len(completed.gaia)
             ),
-            "sources_read": gathered.sources_read,
+            "sources_read": sources_shown(laid, gathered.pool),
             "sources_unavailable": gathered.sources_unavailable,
             "blocks": edition.drawn,
             "undrawn": edition.undrawn,

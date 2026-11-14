@@ -5,6 +5,7 @@ schedules, budgets the prompt is held to, and the deterministic hue rotation. Sh
 workflow-execution branch so nothing hardcodes these values.
 """
 
+from datetime import timedelta
 from enum import StrEnum
 from typing import Final, Literal
 
@@ -126,7 +127,22 @@ MAX_BRIEF_CAPTION_CHARS: Final[int] = 148
 # The message is a text, not a wall: about 20 short lines on the busiest day.
 MAX_BRIEF_MESSAGE_CHARS: Final[int] = 2700
 # How many recent briefs' opening lines the model sees, so today's opens differently.
-RECENT_OPENINGS_SHOWN: Final[int] = 5
+RECENT_BRIEFS_RECALLED: Final[int] = 5
+#: Words that say how often something happens; the voice may use one only where a fact does.
+FREQUENCY_CLAIMS: Final[tuple[str, ...]] = (
+    "rare",
+    "rarely",
+    "seldom",
+    "unusual",
+    "unusually",
+    "usual",
+    "usually",
+    "typical",
+    "typically",
+    "for once",
+    "as always",
+    "once again",
+)
 # Voice attempts per brief: one mend of the last brief when its slots fail the facts (the
 # mend shows it what it wrote), then the run fails rather than ship it.
 MAX_VOICE_ATTEMPTS: Final[int] = 2
@@ -164,6 +180,8 @@ ENABLED_BRIEFING_KEYS: Final[dict[BriefingFrequency, frozenset[str]]] = {
 # (brief, weekly digest) until a reactivation signal.
 IDLE_WARN_DAYS: Final[int] = 2
 IDLE_DORMANT_DAYS: Final[int] = 3
+#: How long a goal question waits before a brief asks about the same goal again.
+GOAL_QUESTION_REASK: Final = timedelta(days=7)
 # A new account's first days never wind down: the brief helps them get started instead.
 FIRST_WEEK_DAYS: Final[int] = 7
 

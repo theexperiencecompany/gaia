@@ -4,7 +4,9 @@ from collections.abc import Sequence
 from datetime import datetime
 from itertools import groupby
 
-from app.models.scout_models import RememberedSignal, SignalImportance
+from app.constants.scouts import SIGNAL_NEW_WITHIN
+from app.models.scout_models import RememberedSignal, Signal, SignalImportance
+from app.utils.timezone import as_utc
 
 SIGNALS_HEADER = "[ACROSS THEIR APPS]"
 
@@ -16,11 +18,25 @@ def _days_ago(then: datetime, now: datetime) -> str:
     return "yesterday" if days == 1 else f"{days} days ago"
 
 
+def _first_sighting(signal: Signal, now: datetime) -> str:
+    """Say how old an item no brief saw before is: new only when the app dates it inside the day."""
+    created = as_utc(signal.created_at)
+    if created is None:
+        return "first seen today, created date unknown"
+    if now - created < SIGNAL_NEW_WITHIN:
+        return f"new: created {_days_ago(created, now)}"
+    note = f"first seen today, created {created.date().isoformat()} ({_days_ago(created, now)})"
+    updated = as_utc(signal.updated_at)
+    if updated is not None:
+        note += f", last updated {_days_ago(updated, now)}"
+    return note
+
+
 def memory_note(item: RememberedSignal, now: datetime) -> str:
     """Say what earlier briefs remember of an item: first seen, times mentioned, how it moved."""
     memory = item.memory
     if memory is None:
-        return "new today"
+        return _first_sighting(item.signal, now)
     seen = f"first seen {_days_ago(memory.first_seen, now)}"
     if memory.times_shown and memory.last_shown is not None:
         seen += (

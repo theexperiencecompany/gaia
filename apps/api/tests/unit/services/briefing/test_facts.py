@@ -14,7 +14,7 @@ from app.models.briefing_models import BriefingEvent, BriefingItem, BriefingSect
 from app.models.scout_models import Signal
 from app.services.briefing.artifacts import ArtifactFact
 from app.services.briefing.context import UserClock
-from app.services.briefing.facts import TODAY, CalendarSpan, FactSources, build_facts
+from app.services.briefing.facts import TODAY, WEEK_AHEAD, BriefSpan, FactSources, build_facts
 from app.services.briefing.sections import Chosen
 from app.services.briefing.slots import BriefFact, CountSlot, SeriesField
 
@@ -47,7 +47,7 @@ def _sources(
     open_todos: int = 0,
     calendar: list[BriefingEvent] | None = None,
     event_ids: list[int] | None = None,
-    span: CalendarSpan = TODAY,
+    span: BriefSpan = TODAY,
     blocks: list[BriefBlock] | None = None,
 ) -> FactSources:
     return FactSources(
@@ -151,7 +151,7 @@ class TestTheCalendarAndTheCharts:
             BriefingEvent(date="2026-11-11", start="15:00", title="Board call"),
             BriefingEvent(date="2026-11-11", start=None, title="Offsite"),
         ]
-        span = CalendarSpan(heading="This week", empty="Nothing.")
+        span = BriefSpan(heading="This week", empty="Nothing.", no_items="None.")
 
         facts = build_facts(
             Chosen(sections=[], picked=[]),
@@ -183,6 +183,15 @@ class TestTheEmptyBriefAndTheLead:
             "beyond what is stated here."
         ) in facts.block.splitlines()
         assert facts.lead is None
+
+    def test_a_weekly_with_no_items_says_so_of_the_week_not_of_today(self) -> None:
+        facts = build_facts(Chosen(sections=[], picked=[]), _sources(span=WEEK_AHEAD), _CLOCK)
+
+        assert (
+            "The digest holds no items from this week. Do not claim anything ran, finished, or "
+            "is pending beyond what is stated here."
+        ) in facts.block.splitlines()
+        assert "today" not in facts.block
 
     def test_an_event_is_a_fact_timed_on_the_users_day(self) -> None:
         event = BriefingEvent(date="2026-11-11", start="15:00", title="Board call")

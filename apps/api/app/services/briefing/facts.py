@@ -110,20 +110,23 @@ def _counts(items: list[BriefingItem], open_todos: int, events: int) -> dict[Cou
 
 
 @dataclass(frozen=True)
-class CalendarSpan:
-    """How the facts head the brief's calendar, and say it is empty."""
+class BriefSpan:
+    """How the facts name the brief's span: its calendar's heading, an empty calendar, no items."""
 
     heading: str
     empty: str
+    no_items: str
 
 
-TODAY = CalendarSpan(
+TODAY = BriefSpan(
     heading="Today's calendar",
     empty="The user's calendar has nothing today.",
+    no_items="The brief holds no items today. Do not claim anything ran, finished, or is pending beyond what is stated here.",
 )
-WEEK_AHEAD = CalendarSpan(
+WEEK_AHEAD = BriefSpan(
     heading="The week ahead",
     empty="The user's calendar has nothing in the week ahead.",
+    no_items="The digest holds no items from this week. Do not claim anything ran, finished, or is pending beyond what is stated here.",
 )
 
 
@@ -140,7 +143,7 @@ class FactSources:
     calendar_connected: bool
     #: The pool id of each calendar event, in calendar order.
     event_ids: list[int]
-    span: CalendarSpan
+    span: BriefSpan
     todos_note: str | None
     #: The composition's blocks, whose charts, quotes, progress and notes the voice is told of.
     blocks: list[BriefBlock] = field(default_factory=list)
@@ -189,10 +192,7 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
     for fact_id, event in events:
         facts[fact_id] = BriefFact(title=event.title, time=event_time(event, clock.date_str))
     if not chosen.sections:
-        fact_lines.append(
-            "The brief holds no items today. Do not claim anything ran, finished, or is "
-            "pending beyond what is stated here."
-        )
+        fact_lines.append(sources.span.no_items)
     fact_lines += voiced_block_lines(sources.blocks)
     if sources.todos_note is not None:
         fact_lines.append(sources.todos_note)
