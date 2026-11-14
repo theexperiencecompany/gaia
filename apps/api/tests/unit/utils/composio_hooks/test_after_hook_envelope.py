@@ -15,10 +15,8 @@ from app.utils.composio_hooks.twitter_hooks import twitter_search_after_hook
 HOOKED_TOOLS = frozenset(
     {
         "GMAIL_CREATE_EMAIL_DRAFT",
-        "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
         "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
         "GMAIL_LIST_DRAFTS",
-        "GMAIL_GET_DRAFT",
         "GMAIL_SEND_DRAFT",
         "GMAIL_GET_CONTACTS",
         "GMAIL_SEARCH_PEOPLE",

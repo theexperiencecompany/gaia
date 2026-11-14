@@ -58,6 +58,8 @@ class WorkflowDraftPayload(TypedDict):
     cron_expression: str | None
     runs_only_when: str | None
     direct_create: bool
+    #: Sent back on create, so whatever waited on the user setting it up is picked back up.
+    draft_id: str
 
 
 class FinalizedOutput(BaseModel):
@@ -112,7 +114,9 @@ class FinalizedOutput(BaseModel):
         """Return this draft's trigger in the vocabulary the rest of the system uses."""
         return TRIGGER_TYPE_BY_DRAFT_TYPE.get(self.trigger_type, TriggerType.MANUAL)
 
-    def to_stream_payload(self) -> dict[Literal["workflow_draft"], WorkflowDraftPayload]:
+    def to_stream_payload(
+        self, draft_id: str
+    ) -> dict[Literal["workflow_draft"], WorkflowDraftPayload]:
         """Convert to the format expected by frontend stream handler."""
         return {
             "workflow_draft": {
@@ -125,6 +129,7 @@ class FinalizedOutput(BaseModel):
                 "cron_expression": self.cron_expression,
                 "runs_only_when": self.runs_only_when,
                 "direct_create": self.direct_create,
+                "draft_id": draft_id,
             }
         }
 

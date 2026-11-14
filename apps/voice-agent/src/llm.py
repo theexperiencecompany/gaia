@@ -23,6 +23,7 @@ from shared.py.wide_events import VoiceContext, get_trace_id, log, log_context, 
 from src.constants import (
     BACKEND_REQUEST_TIMEOUT_S,
     DONE_SENTINEL,
+    ERROR_KEY,
     FRONTEND_STREAM_TOPIC,
     MAIN_RESPONSE_COMPLETE_KEY,
     MESSAGE_ID_KEY,
@@ -36,6 +37,7 @@ from src.constants import (
     TTS_HARD_FLUSH_CHARS,
     TTS_MIN_EMIT_CHARS,
     TTS_MIN_SENTENCE_CHARS,
+    VOICE_ERROR_REPLY,
     VOICE_TTS_KEY,
     LogTag,
 )
@@ -201,6 +203,7 @@ class CustomLLM(LLM):
         follow-ups), speak what's a bot message (each voice_tts answer, in
         order, as its own utterance via session.say).
         """
+        apologised = False
         try:
             async for raw in resp.content:
                 data = _parse_sse_line(raw)
@@ -209,18 +212,32 @@ class CustomLLM(LLM):
                 if data == DONE_SENTINEL:
                     await self.forward_stream_event_to_frontend(data)
                     break
-                await self._handle_drain_event(data)
+                apologised = await self._handle_drain_event(data, apologised=apologised)
         except Exception as e:
             log.warning(f"{LogTag.LLM} Voice stream drain failed", error=str(e))
         finally:
             await resp.release()
 
-    async def _handle_drain_event(self, data: str) -> None:
-        """Speak a voice_tts answer, or forward a plumbing event to the screen."""
+    async def _handle_drain_event(self, data: str, *, apologised: bool) -> bool:
+        """Speak a voice_tts answer or an error, or forward a plumbing event to the screen.
+
+        Returns whether this drain has spoken its error apology, so a repeated error frame is not.
+        """
         try:
             event = json.loads(data)
         except json.JSONDecodeError:
-            return
+            return apologised
+        error = event.get(ERROR_KEY)
+        if isinstance(error, str) and error:
+            await self.forward_stream_event_to_frontend(data)
+            if not apologised and self.session is not None:
+                self.session.say(VOICE_ERROR_REPLY)
+            log.error(
+                f"{LogTag.LLM} backend stream error after the reply",
+                phase="drain_error",
+                error=error,
+            )
+            return True
         voice_tts = event.get(VOICE_TTS_KEY)
         if isinstance(voice_tts, str) and voice_tts:
             spoken = sanitize_for_tts(voice_tts)
@@ -243,13 +260,14 @@ class CustomLLM(LLM):
                 log.warning(
                     f"{LogTag.LLM} Voice TTS frame missing message_id; skipping immediate bubble"
                 )
-                return
+                return apologised
             await self.forward_stream_event_to_frontend(
                 json.dumps({RESPONSE_KEY: voice_tts, MESSAGE_ID_KEY: message_id})
             )
-            return
+            return apologised
         if event.keys() & PLUMBING_EVENT_KEYS:
             await self.forward_stream_event_to_frontend(data)
+        return apologised
 
     def chat(
         self,
@@ -366,6 +384,9 @@ class _VoiceTurn:
         # Set when the stream fully ended ([DONE]) within the comms turn — then
         # there's nothing left to drain.
         self.stream_done = False
+        # Set when the backend sent a terminal error frame. The turn ends there:
+        # the backend can repeat the error, and it must be answered only once.
+        self.failed = False
 
     async def chunks(self) -> AsyncGenerator[ChatChunk, None]:
         """Stream the backend reply and yield each sanitized TTS chunk as it flushes."""
@@ -437,7 +458,7 @@ class _VoiceTurn:
             log.info(
                 f"{LogTag.LLM} turn complete",
                 phase="turn_complete",
-                status="ok",
+                status="error" if self.failed else "ok",
                 **self._turn_fields(),
             )
 
@@ -498,6 +519,10 @@ class _VoiceTurn:
             # once. The rest of the stream (executor events + answer) is handled
             # by the background drain spawned in chunks().
             if self.comms_complete:
+                return
+
+            if self.failed:
+                self.stream_done = True
                 return
 
         # Stream ended without a completion marker — nothing left to drain.
@@ -583,6 +608,10 @@ class _VoiceTurn:
         if event_payload.get(MAIN_RESPONSE_COMPLETE_KEY) is True:
             return await self._on_main_response_complete()
 
+        error = event_payload.get(ERROR_KEY)
+        if isinstance(error, str) and error:
+            return await self._on_backend_error(data, error)
+
         conv_id = event_payload.get("conversation_id")
         if isinstance(conv_id, str) and conv_id:
             await self.llm.set_conversation_id(conv_id)
@@ -636,6 +665,25 @@ class _VoiceTurn:
             ack_flushed=bool(tail),
         )
         return tail
+
+    async def _on_backend_error(self, raw_event: str, error: str) -> str:
+        """Show a terminal backend failure on screen and apologise aloud, after any buffered reply text.
+
+        The frame carries no ``response``, so without this the turn ended in silence.
+        """
+        await self.llm.forward_stream_event_to_frontend(raw_event)
+        tail = None
+        if self.tts_enabled:
+            tail = await self._flush_buffer(min_chars=1, count_stats=False, label=None)
+        self.tts_enabled = False
+        self.failed = True
+        log.error(
+            f"{LogTag.LLM} backend returned stream error",
+            phase="backend_stream_error",
+            error=error,
+            elapsed_ms=ms_since(self.turn_start),
+        )
+        return f"{tail} {VOICE_ERROR_REPLY}" if tail else VOICE_ERROR_REPLY
 
     def _on_executor_answer(self, voice_tts: str) -> str | None:
         spoken = sanitize_for_tts(voice_tts)
