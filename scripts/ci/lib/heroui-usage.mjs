@@ -418,6 +418,20 @@ function isUnlabelledIconButton(node, module) {
 }
 
 /** Each child of a HeroUI Tooltip that can never open it, as `{ line, message }`. */
+/** Whether a JSX element renders the named HeroUI part anywhere inside it. */
+function rendersPart(elementPath, part, module) {
+  let found = false;
+  elementPath.traverse({
+    JSXOpeningElement(inner) {
+      if (heroTag(inner.node.name, module, new Map()) === part) {
+        found = true;
+        inner.stop();
+      }
+    },
+  });
+  return found;
+}
+
 function invalidTooltipTriggers(element, module) {
   const found = [];
   for (const child of element.children) {
@@ -494,6 +508,8 @@ export function heroUsageIn(file, src) {
       }
       if (PART_CONTROLS.has(tag) && nodePath.node.selfClosing) {
         found.push({ line, message: `<${tag} />: render its ${tag}.Control, or it draws nothing` });
+      } else if (PART_CONTROLS.has(tag) && !rendersPart(nodePath.parentPath, `${tag}.Control`, module)) {
+        found.push({ line, message: `<${tag}>: render its ${tag}.Control, or only its label draws` });
       }
       for (const attr of nodePath.node.attributes) {
         if (attr.type !== "JSXAttribute") continue;
