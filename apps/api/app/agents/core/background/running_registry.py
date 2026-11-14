@@ -60,13 +60,6 @@ class RunningSubagents:
             await client.hdel(self._key, subagent.subagent_id)
             await client.delete(f"{RUNNING_SUBAGENT_THREAD_PREFIX}{subagent.subagent_thread_id}")
 
-    async def holds_thread(self, subagent_thread_id: str) -> bool:
-        """Whether a live run is on this checkpoint thread right now."""
-        client = redis_cache.client
-        return bool(
-            client and await client.exists(f"{RUNNING_SUBAGENT_THREAD_PREFIX}{subagent_thread_id}")
-        )
-
     async def live(self) -> list[RunningSubagent]:
         """Every currently-running subagent for this conversation."""
         if not redis_cache.client:

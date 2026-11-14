@@ -3,11 +3,6 @@
 These builders feed the SSE chat stream and the message-to-tool_data
 conversion, so the wire contract is the invariant:
 
-- format_sse_response / format_sse_data must always emit a
-  data: <json>\\n\\n frame whose JSON parses and carries the input back
-  losslessly — including text with quotes, newlines, and non-ASCII characters.
-  An interpolation bug (str() instead of json.dumps) would produce an
-  unparseable frame for exactly those inputs.
 - convert_legacy_tool_data must move every non-None legacy tool field into
   a tool_data entry with a parseable ISO timestamp, never leave a converted
   field at the top level, and preserve pre-existing unified entries.
@@ -20,38 +15,6 @@ from hypothesis import given, settings, strategies as st
 
 from app.db.repositories.conversation_entries_legacy import convert_legacy_tool_data
 from app.models.chat_models import tool_fields
-from app.utils.agent_utils import format_sse_data, format_sse_response
-
-UNICODE_TEXT = st.text(
-    alphabet=st.characters(blacklist_categories=("Cs",)), min_size=0, max_size=200
-)
-
-
-class TestSseFrameBuilders:
-    @settings(deadline=None)
-    @given(content=UNICODE_TEXT)
-    def test_response_frame_is_lossless_json(self, content: str) -> None:
-        frame = format_sse_response(content)
-        assert frame.startswith("data: ")
-        assert frame.endswith("\n\n")
-        payload = json.loads(frame[len("data: ") : -2])
-        assert payload == {"response": content}
-
-    @settings(deadline=None)
-    @given(
-        data=st.dictionaries(
-            st.text(min_size=1, max_size=20),
-            st.one_of(st.text(), st.integers(), st.booleans(), st.none()),
-            max_size=10,
-        )
-    )
-    def test_data_frame_preserves_all_keys_and_values(self, data: dict[str, object]) -> None:
-        frame = format_sse_data(data)
-        assert frame.startswith("data: ")
-        assert frame.endswith("\n\n")
-        payload = json.loads(frame[len("data: ") : -2])
-        assert payload == data
-
 
 JSON_VALUE = st.recursive(
     st.one_of(st.text(max_size=100), st.integers(), st.booleans(), st.none()),

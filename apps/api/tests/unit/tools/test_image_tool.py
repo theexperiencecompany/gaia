@@ -4,6 +4,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from shared.py.conversation_wire import ImageData
+from tests.tool_helpers import tool_coroutine
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -48,7 +49,7 @@ class TestGenerateImage:
 
         from app.agents.tools.image_tool import generate_image
 
-        result = await generate_image.coroutine(
+        result = await tool_coroutine(generate_image)(
             prompt="A beautiful sunset over the ocean",
             config=_make_config(),
         )
@@ -73,7 +74,7 @@ class TestGenerateImage:
 
         from app.agents.tools.image_tool import generate_image
 
-        result = await generate_image.coroutine(prompt="A cat", config={"metadata": {}})
+        result = await tool_coroutine(generate_image)(prompt="A cat", config={"metadata": {}})
 
         assert result["status"] == "error"
         mock_generate.assert_not_awaited()
@@ -95,7 +96,7 @@ class TestGenerateImage:
 
         from app.agents.tools.image_tool import generate_image
 
-        await generate_image.coroutine(
+        await tool_coroutine(generate_image)(
             prompt="A cat",
             config=_make_config(),
         )
@@ -128,7 +129,7 @@ class TestGenerateImage:
 
         from app.agents.tools.image_tool import generate_image
 
-        result = await generate_image.coroutine(
+        result = await tool_coroutine(generate_image)(
             prompt="A cat",
             config=_make_config(),
         )
@@ -150,7 +151,7 @@ class TestGenerateImage:
 
         from app.agents.tools.image_tool import generate_image
 
-        await generate_image.coroutine(
+        await tool_coroutine(generate_image)(
             prompt="A cat",
             config=_make_config(),
         )
@@ -170,7 +171,7 @@ class TestGenerateImage:
 
         from app.agents.tools.image_tool import generate_image
 
-        result = await generate_image.coroutine(prompt="A cat", config={"metadata": {}})
+        result = await tool_coroutine(generate_image)(prompt="A cat", config={"metadata": {}})
 
         assert result == {
             "status": "error",

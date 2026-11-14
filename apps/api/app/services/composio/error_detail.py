@@ -1,7 +1,5 @@
 """What Composio's API said when a call failed: status, error slug, message and request id."""
 
-from typing import Any
-
 import composio_client
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
@@ -46,9 +44,9 @@ def is_auth_config_not_found(error: Exception) -> bool:
     )
 
 
-def composio_error_fields(error: Exception) -> dict[str, Any]:
+def composio_error_fields(error: Exception) -> dict[str, object]:
     """Log fields for a failed call: type and text, plus Composio's status, slug and request id."""
-    fields: dict[str, Any] = {"error": str(error), "error_type": type(error).__name__}
+    fields: dict[str, object] = {"error": str(error), "error_type": type(error).__name__}
     if isinstance(error, composio_client.APIStatusError):
         detail = _body_detail(error)
         fields["composio_status"] = error.status_code

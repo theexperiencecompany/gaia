@@ -6,7 +6,6 @@ export type {
   DisplayState,
   LiveTask,
   Reaction,
-  StateFrame,
   UserMessage,
 } from "../api/generated";
 export type { ConversationFrame } from "./frames";

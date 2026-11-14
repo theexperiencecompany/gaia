@@ -49,6 +49,8 @@ DOC = "tools/lints/README.md#typed-boundaries"
 _HERE = Path(__file__).resolve().parent
 BASELINE = _HERE / "typed_boundaries_baseline.txt"
 APP_ROOT = REPO_ROOT / "apps" / "api" / "app"
+#: Declares shapes the app imports (the wire TypedDicts); read for TypedDict names, never scanned.
+SHARED_PY_ROOT = REPO_ROOT / "libs" / "shared" / "py"
 
 LOOSE_ANNOTATION = "TB001"
 STRING_KEY_READ = "TB002"
@@ -69,6 +71,10 @@ BOUNDARY_MODULES: dict[str, str] = {
     "apps/api/app/browser_host/storage.py": "the CDP wire: Chrome owns every command and result shape",
     "apps/api/app/browser_host/proxy.py": "the CDP wire: Chrome owns every command and result shape",
     "apps/api/app/browser_host/screencast.py": "the CDP wire: Chrome owns every command and result shape",
+    "apps/api/app/services/conversation/tool_cards.py": "the tool-card boundary: each tool owns the "
+    "JSON its card carries (ToolDataEntry.data is open), folded into FoldedCards here once",
+    "apps/api/app/services/conversation/tool_timeline.py": "the tool-card boundary: the open call and "
+    "subagent-group JSON the cards carry is read into the typed ToolTimeline here once",
 }
 
 # Maps keyed by a protocol, not a shape: the key IS the contract (an HTTP
@@ -481,13 +487,19 @@ def _string_key_reads(tree: ast.AST, typeddicts: set[str]) -> list[int]:
     ]
 
 
-def scan(files: list[Path]) -> dict[tuple[str, str], list[int]]:
-    """Every violating line per (file, rule), for the files given."""
+def scan(
+    files: list[Path], shape_sources: list[Path] | None = None
+) -> dict[tuple[str, str], list[int]]:
+    """Every violating line per (file, rule), for the files given; shape_sources only declare TypedDicts."""
     out: dict[tuple[str, str], list[int]] = {}
     parsed = {
         path: ast.parse(path.read_text(encoding="utf-8"), filename=str(path)) for path in files
     }
-    typeddicts = typeddict_names(list(parsed.values()))
+    declaring = [
+        ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for path in shape_sources or []
+    ]
+    typeddicts = typeddict_names([*parsed.values(), *declaring])
     for path in files:
         relative = path.resolve().relative_to(REPO_ROOT).as_posix()
         if any(relative == entry or relative.startswith(entry) for entry in BOUNDARY_MODULES):
@@ -503,11 +515,12 @@ def scan(files: list[Path]) -> dict[tuple[str, str], list[int]]:
 
 
 def _current_violations() -> dict[tuple[str, str], int]:
-    return {key: lines[0] for key, lines in scan(iter_python_files([APP_ROOT])).items()}
+    found = scan(iter_python_files([APP_ROOT]), iter_python_files([SHARED_PY_ROOT]))
+    return {key: lines[0] for key, lines in found.items()}
 
 
 def _print_count() -> None:
-    found = scan(iter_python_files([APP_ROOT]))
+    found = scan(iter_python_files([APP_ROOT]), iter_python_files([SHARED_PY_ROOT]))
     by_rule: Counter[str] = Counter()
     by_dir: Counter[tuple[str, str]] = Counter()
     for (path, rule), lines in found.items():

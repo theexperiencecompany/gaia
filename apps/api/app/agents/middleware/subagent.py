@@ -10,7 +10,6 @@ default, blocking on request.
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Annotated, Any, Protocol, cast
-from weakref import WeakKeyDictionary
 
 from langchain.agents.middleware.types import (
     AgentMiddleware,
@@ -403,19 +402,3 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             self._tool_space = tool_space
         if tool_runtime_config is not None:
             self._tool_runtime_config = tool_runtime_config
-
-
-#: The spawner each compiled executor graph was built with. A parked background
-#: spawn is resumed by whichever process receives the user's decision, possibly
-#: after a restart, so it is rebuilt from its executor graph's own spawner.
-_SPAWNERS: WeakKeyDictionary[CompiledStateGraph, SubagentMiddleware] = WeakKeyDictionary()
-
-
-def bind_spawner(graph: CompiledStateGraph, spawner: SubagentMiddleware) -> None:
-    """Record the spawner a compiled executor graph carries."""
-    _SPAWNERS[graph] = spawner
-
-
-def spawner_of(graph: CompiledStateGraph) -> SubagentMiddleware:
-    """Return the spawner a compiled executor graph was built with."""
-    return _SPAWNERS[graph]
