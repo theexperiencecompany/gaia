@@ -25,6 +25,7 @@ apps/mobile/src/features/chat/api/queries.ts:ConversationsResponse=ConversationL
 apps/mobile/src/features/chat/components/chat/email-accordion.tsx:EmailAccordionItem=GmailMessageSummary
 apps/mobile/src/features/chat/components/chat/email-compose-card.tsx:EmailComposeData=SendEmailForm
 apps/mobile/src/features/chat/components/composer/composer.tsx:ReplyToData=ReplyToMessageData
+apps/mobile/src/features/chat/components/streaming/activity-format.types.ts:ActivityToolCall=ToolProgress
 apps/mobile/src/features/chat/hooks/use-chat.ts:SendMessageOptions=SendMessageRequest
 apps/mobile/src/features/chat/tool-data/cards/calendar-delete-card.tsx:CalendarDeleteOption=EventDeleteRequest
 apps/mobile/src/features/chat/tool-data/cards/calendar-edit-card.tsx:CalendarEditOption=EventDeleteRequest
@@ -74,6 +75,7 @@ apps/web/src/features/blog/components/BlogMetadata.tsx:TeamMember=AuthorDetails
 apps/web/src/features/chat/components/bubbles/bot/ChartDisplay.tsx:ChartData=SupportRequestCreate
 apps/web/src/features/chat/components/bubbles/user/ChatBubbleUser.tsx:BubbleIndicatorsProps=UserMessage
 apps/web/src/features/chat/components/composer/ComposerLeft.tsx:DropdownItemConfig=NotificationAction
+apps/web/src/features/chat/components/composer/SelectedToolIndicator.tsx:SelectedToolIndicatorProps=ToolProgress
 apps/web/src/features/chat/components/memory/MemoryIndicator.tsx:MemoryItem=NotificationRequest
 # One of the ten raw-apiauth feature files the concurrent migration is moving
 # onto the typed client; expected to go with it.
@@ -179,6 +181,7 @@ libs/shared/ts/src/chat/types.ts:TodoProgressItem=NotificationView
 libs/shared/ts/src/chat/types.ts:TodoProject=ProjectCreate
 libs/shared/ts/src/chat/types.ts:TodoSubtask=SubTaskInput
 libs/shared/ts/src/chat/types.ts:TodoToolStats=TodoCounts
+libs/shared/ts/src/chat/types.ts:ToolCallEntry=ToolProgress
 libs/shared/ts/src/chat/types.ts:WebResult=SearchResultItem
 libs/shared/ts/src/chat/types.ts:WorkflowCreatedData=PublicWorkflowCard
 libs/shared/ts/src/desktop-tools/types.ts:DesktopToolResult=DesktopToolResultRequest

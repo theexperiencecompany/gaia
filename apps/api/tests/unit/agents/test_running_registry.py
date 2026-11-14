@@ -200,7 +200,7 @@ class TestStopStreams:
         assert await reg.claim(_run("done", "subagent_done", dispatched_by="turn"))
         await request_stop("subagent_done")
 
-        with patch.object(registry, "request_stop", wraps=registry.request_stop) as cancel:
+        with patch.object(registry, "request_stop", wraps=request_stop) as cancel:
             await reg.stop_streams(["subagent_done"])
 
         cancel.assert_not_called()
@@ -218,7 +218,7 @@ class TestStopStreams:
         legacy = _run("legacy", None, dispatched_by="turn")
         assert await reg.claim(legacy)
 
-        with patch.object(registry, "request_stop", wraps=registry.request_stop) as cancel:
+        with patch.object(registry, "request_stop", wraps=request_stop) as cancel:
             assert await reg.live() == [legacy]
             assert await reg.stop_dispatched_by("turn") == [legacy]
 

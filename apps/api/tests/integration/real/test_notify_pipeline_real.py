@@ -25,6 +25,7 @@ from app.models.reminder_models import AgentType, ReminderModel, StaticReminderP
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.todo_models import TodoDocument
 from app.models.workflow_models import TriggerType
+from app.schemas.outbound import OutboundMessageEnvelope
 from app.services.conversation.bot_wake import BotWakingFrames
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
@@ -182,9 +183,13 @@ async def test_a_retried_reminder_sends_one_notification_one_bot_notice_and_no_p
     assert notice["text"] == "**Stretch**\nStand up for a minute"
     # The bot hears it as one wake to follow the DM, where its follower renders the notice.
     (wake,) = delivered.bot_messages
-    assert wake["destination_id"] == TELEGRAM_USER_ID
-    assert wake["follow"]["conversation_id"] == notice["conversation_id"]
-    assert wake["follow"]["after_seq"] == notice["seq"] - 1
+    envelope = OutboundMessageEnvelope.model_validate(wake)
+    assert envelope.destination_id == TELEGRAM_USER_ID
+    assert envelope.follow is not None
+    assert envelope.follow.conversation_id == notice["conversation_id"]
+    notice_seq = notice["seq"]
+    assert isinstance(notice_seq, int)
+    assert envelope.follow.after_seq == notice_seq - 1
     # Only an approval wakes the phone (f399ea57e2).
     assert delivered.pushes == []
     assert [e["type"] for e in delivered.socket_events] == ["notification.delivered"]
@@ -261,7 +266,9 @@ async def test_a_pending_approval_pushes_once_and_never_prompts_the_bot(
     (push,) = delivered.pushes
     (message,) = push
     assert message["categoryId"] == "hil_approval"
-    assert message["data"]["approval_id"] == "approval-1"
+    data = message["data"]
+    assert isinstance(data, dict)
+    assert data["approval_id"] == "approval-1"
     assert delivered.bot_messages == []
     assert delivered.socket_events == []
     assert len(await _notifications(mongo_db, str(LINKED_OID))) == 1

@@ -14,6 +14,7 @@ from app.constants.cache import (
     DESKTOP_RESULT_CHANNEL_PREFIX,
 )
 from app.constants.websocket import DESKTOP_TOOL_REQUEST_MESSAGE
+from app.core.websocket_manager import websocket_manager
 from app.services.desktop import bridge
 from app.services.desktop.bridge import (
     ERROR_REDIS_UNAVAILABLE,
@@ -26,7 +27,7 @@ from app.services.desktop.bridge import (
 
 pytestmark = pytest.mark.unit
 
-_REPLY = {
+_REPLY: dict[str, object] = {
     "type": "message",
     "data": json.dumps({"ok": True, "data": {"text": "hi"}, "error": None}),
 }
@@ -60,7 +61,7 @@ class TestRequestDesktopAction:
         broadcast = AsyncMock()
         with (
             _redis(pubsub) as cache,
-            patch.object(bridge.websocket_manager, "broadcast_to_user", broadcast),
+            patch.object(websocket_manager, "broadcast_to_user", broadcast),
         ):
             outcome = await request_desktop_action(user_id="u1", tool="read_clipboard")
 
@@ -83,7 +84,7 @@ class TestRequestDesktopAction:
         pubsub.unsubscribe.assert_awaited_once_with(f"{DESKTOP_RESULT_CHANNEL_PREFIX}{request_id}")
 
     async def test_noise_on_the_channel_is_skipped_until_a_real_result_arrives(self) -> None:
-        bytes_reply = {
+        bytes_reply: dict[str, object] = {
             "type": "message",
             "data": json.dumps({"ok": False, "error": "denied"}).encode(),
         }
@@ -97,7 +98,7 @@ class TestRequestDesktopAction:
         )
         with (
             _redis(pubsub),
-            patch.object(bridge.websocket_manager, "broadcast_to_user", AsyncMock()),
+            patch.object(websocket_manager, "broadcast_to_user", AsyncMock()),
         ):
             outcome = await request_desktop_action(user_id="u1", tool="read_clipboard")
 
@@ -108,7 +109,7 @@ class TestRequestDesktopAction:
         broadcast = AsyncMock()
         with (
             patch.object(bridge, "redis_cache", SimpleNamespace(redis=None)),
-            patch.object(bridge.websocket_manager, "broadcast_to_user", broadcast),
+            patch.object(websocket_manager, "broadcast_to_user", broadcast),
         ):
             outcome = await request_desktop_action(user_id="u1", tool="open_url")
 

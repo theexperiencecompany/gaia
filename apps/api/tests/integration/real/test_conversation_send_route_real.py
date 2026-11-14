@@ -26,7 +26,6 @@ from app.models.conversation_log_models import (
     DisplayState,
     Notice,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     UserMessage,
 )
@@ -47,7 +46,7 @@ from app.utils.notification.channels.conversation import (
     ConversationPayload,
 )
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
-from shared.py.conversation_wire import ConversationUpdatedFrame
+from shared.py.conversation_wire import ConversationUpdatedFrame, ReplyOutcome
 from shared.py.wide_events import _spawned_tasks
 from tests.conftest import FAKE_USER
 from tests.helpers import log_history

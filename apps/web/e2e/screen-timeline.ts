@@ -21,14 +21,14 @@ export interface ScreenItem {
   text: string;
 }
 
-export interface ScreenFrame {
+export interface ScreenSnapshot {
   t: number;
   items: ScreenItem[];
 }
 
 declare global {
   interface Window {
-    __screenTimeline?: ScreenFrame[];
+    __screenTimeline?: ScreenSnapshot[];
   }
 }
 
@@ -58,7 +58,7 @@ function readScreen(): ScreenItem[] {
 }
 
 function startRecording(read: () => ScreenItem[]): void {
-  const frames: ScreenFrame[] = [];
+  const frames: ScreenSnapshot[] = [];
   window.__screenTimeline = frames;
   const started = performance.now();
   let last = "";
@@ -92,7 +92,7 @@ export function currentScreen(page: Page): Promise<ScreenItem[]> {
   return page.evaluate(`(${readScreen.toString()})()`) as Promise<ScreenItem[]>;
 }
 
-export function timeline(page: Page): Promise<ScreenFrame[]> {
+export function timeline(page: Page): Promise<ScreenSnapshot[]> {
   return page.evaluate(() => window.__screenTimeline ?? []);
 }
 
@@ -105,7 +105,7 @@ const summarize = (items: ScreenItem[]): string =>
  * Every violation of "the screen only grows": an item changing position
  * relative to another, an item vanishing, or one id shown twice.
  */
-export function timelineViolations(frames: ScreenFrame[]): string[] {
+export function timelineViolations(frames: ScreenSnapshot[]): string[] {
   const problems: string[] = [];
   frames.forEach((frame, index) => {
     const ids = frame.items.map((i) => i.id);
@@ -136,7 +136,9 @@ export function timelineViolations(frames: ScreenFrame[]): string[] {
 }
 
 /** Assert the page's timeline so far never reordered, dropped or duplicated an item. */
-export async function expectScreenOnlyGrew(page: Page): Promise<ScreenFrame[]> {
+export async function expectScreenOnlyGrew(
+  page: Page,
+): Promise<ScreenSnapshot[]> {
   const frames = await timeline(page);
   const path = test.info().outputPath(`screen-timeline-${Date.now()}.json`);
   writeFileSync(path, JSON.stringify(frames, null, 1));

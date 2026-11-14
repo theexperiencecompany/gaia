@@ -15,6 +15,7 @@ from app.constants.websocket import DESKTOP_TOOL_REQUEST_MESSAGE
 from app.core.websocket_broadcast_listener import _consume
 from app.core.websocket_manager import websocket_manager
 from app.services.desktop.bridge import relay_desktop_result
+from tests.tool_helpers import tool_coroutine
 
 pytestmark = pytest.mark.service
 
@@ -60,7 +61,7 @@ async def listening(real_redis):
 @pytest.fixture
 def desktop(listening):
     app = DesktopApp(clipboard="copied on the desktop")
-    websocket_manager.connections[USER_ID] = {app}  # type: ignore[arg-type]  # duck-typed socket: only send_json is called
+    websocket_manager.connections[USER_ID] = {app}
     yield app
     websocket_manager.connections.pop(USER_ID, None)
 
@@ -70,7 +71,7 @@ async def test_a_desktop_tool_resumes_with_the_result_its_desktop_app_posted(des
     config = {"configurable": {"conversation_source": "desktop", "user_id": USER_ID}}
 
     async with asyncio.timeout(5):
-        result = await read_clipboard.coroutine(config=config)
+        result = await tool_coroutine(read_clipboard)(config=config)
 
     assert result == "Clipboard contents:\ncopied on the desktop"
     assert [request["tool"] for request in desktop.requests] == ["read_clipboard"]

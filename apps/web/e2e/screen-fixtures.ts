@@ -5,6 +5,7 @@
  */
 
 import { execFileSync } from "node:child_process";
+import type { ScreenItem } from "../../../libs/shared/ts/src/conversation/types";
 import { API_BASE_URL } from "./harness";
 
 const MONGO_URI = process.env.E2E_MONGO_URI ?? "mongodb://localhost:27017/GAIA";
@@ -46,11 +47,7 @@ export function conversationIdOf(url: string): string {
  * Backdate the conversation's open approval past its expiry, so the worker's
  * conversation sweep (every minute) expires it as it would after hours unanswered.
  */
-export interface ServerItem {
-  id: string;
-  kind: string;
-  seq: number;
-}
+export type ServerItem = Pick<ScreenItem, "id" | "kind" | "seq">;
 
 /** The screen the server computes for the conversation (its newest page), in seq order. */
 export async function serverScreen(

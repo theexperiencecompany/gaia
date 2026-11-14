@@ -279,7 +279,7 @@ export default function ChatRenderer({ compact = false }: ChatRendererProps) {
   const [openGeneratedImage, setOpenGeneratedImage] = useState<boolean>(false);
   const [openMemoryModal, setOpenMemoryModal] = useState<boolean>(false);
   // The open conversation's loading row, from its server state (plus voice/upload loading).
-  const { isLoading, loadingText, toolInfo } = useActiveLiveLoading();
+  const { isLoading, loadingText, progress } = useActiveLiveLoading();
   const { id: convoIdParam } = useParams<{ id: string }>();
   // While GAIA owes a reply, the newest bubble's follow-ups and action row
   // (they belong to a finished answer) are suppressed; finished turns keep theirs.
@@ -414,7 +414,7 @@ export default function ChatRenderer({ compact = false }: ChatRendererProps) {
         <AnimatePresence>
           <LoadingIndicator
             loadingText={loadingText}
-            toolInfo={toolInfo}
+            progress={progress}
             noPadding={compact}
             spinner={
               // The orb replaces the wave spinner in the popup; the

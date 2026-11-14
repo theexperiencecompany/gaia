@@ -8,10 +8,7 @@ import {
   sendingLoadingRow,
 } from "@shared/conversation";
 import { useEffect, useMemo } from "react";
-import {
-  type ActiveToolInfo,
-  useAuxLoadingStore,
-} from "@/stores/auxLoadingStore";
+import { useAuxLoadingStore } from "@/stores/auxLoadingStore";
 import { useChatStore } from "@/stores/chatStore";
 import { getRandomThinkingMessage } from "@/utils/playfulThinking";
 import { openConversation } from "./connection";
@@ -46,18 +43,11 @@ export function useConversationDisplay(
   );
 }
 
-const toolInfo = (progress: ToolProgress): ActiveToolInfo => ({
-  toolName: progress.tool_name,
-  toolCategory: progress.tool_category,
-  integrationName: progress.integration_name ?? undefined,
-  iconUrl: progress.icon_url ?? undefined,
-  showCategory: progress.show_category,
-});
-
 export interface LiveLoading {
   isLoading: boolean;
   loadingText: string;
-  toolInfo?: ActiveToolInfo;
+  /** The tool line the server states for what streams now. */
+  progress?: ToolProgress;
 }
 
 /** The loading row: shown whenever GAIA owes the user something, or a voice or upload flow is busy. */
@@ -79,11 +69,11 @@ function useLiveLoading(conversationId: string | null): LiveLoading {
         (status === DISPLAY_STATE.THINKING
           ? thinkingText
           : DISPLAY_STATUS_TEXT[status]),
-      toolInfo: row.progress ? toolInfo(row.progress) : undefined,
+      progress: row.progress ?? undefined,
     };
   }
   if (aux) {
-    return { isLoading: true, loadingText: aux.text, toolInfo: aux.toolInfo };
+    return { isLoading: true, loadingText: aux.text };
   }
   return { isLoading: false, loadingText: "" };
 }

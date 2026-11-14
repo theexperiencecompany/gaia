@@ -21,7 +21,7 @@ import uuid
 import pytest
 
 from app.agents.core.background.executor_queue import get_lock_holder
-from app.constants.browser import BROWSER_HANDOFF_REPLY_PROMPT, BrowserSessionStatus, JobEnding
+from app.constants.browser import BrowserSessionStatus, JobEnding
 from app.db.repositories.browser_tasks import browser_task_repository
 from tests.integration.real.browser._stack.fake_models import PAGE_URL, AgentStep, JevMove, Text
 from tests.integration.real.browser._stack.fixture_site import (
@@ -61,14 +61,11 @@ _PROGRESS = re.compile(r"^(Step \d+ ·|📽 )")
 
 
 def _told(transcript: Transcript) -> list[Delivery]:
-    """Return what the chat was told in words: no photo, no progress line, no handoff prompt."""
+    """Return what the chat was told in words: no photo, no progress line."""
     return [
         d
         for d in transcript.deliveries
-        if d.text
-        and not d.photo_url
-        and not _PROGRESS.match(d.text)
-        and BROWSER_HANDOFF_REPLY_PROMPT not in d.text
+        if d.text and not d.photo_url and not _PROGRESS.match(d.text)
     ]
 
 

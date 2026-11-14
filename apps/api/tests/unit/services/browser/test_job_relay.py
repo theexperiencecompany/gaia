@@ -61,7 +61,7 @@ async def test_cards_published_while_it_follows_are_read_after_the_ones_before(
     """Each read resumes after the last card it saw, never from the top again."""
     await publish_job_event("job-1", _card(1))
     reads: list[str] = []
-    real_read = job_relay.read_job_events
+    real_read = job_events.read_job_events
 
     async def _read(job_id: str, cursor: str) -> list[tuple[str, dict[str, object]]]:
         reads.append(cursor)
@@ -107,7 +107,7 @@ async def test_a_job_still_running_or_still_held_by_its_worker_is_followed_to_it
         await record_ending("job-1", ENDED)
         await claim_conversation_slot("conv-1", "job-1")
     quiet_reads = 0
-    real_read = job_relay.read_job_events
+    real_read = job_events.read_job_events
 
     async def _read(job_id: str, cursor: str) -> list[tuple[str, dict[str, object]]]:
         nonlocal quiet_reads
@@ -133,7 +133,7 @@ async def test_cards_still_arriving_from_a_job_that_ended_are_all_read_before_it
 ) -> None:
     """The run records its ending before its last card: the follow reads until the feed is quiet."""
     await record_ending("job-1", ENDED)
-    real_read = job_relay.read_job_events
+    real_read = job_events.read_job_events
     published = 0
 
     async def _read(job_id: str, cursor: str) -> list[tuple[str, dict[str, object]]]:

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.models.conversation_log_models import Entry
 from app.models.conversation_screen_models import WorkItem
 from app.models.hil_models import ApprovalLedgerDocument
 from app.services.conversation.screen import project_screen
@@ -17,7 +18,7 @@ from tests.unit.services.conversation.log_helpers import asked, fold, logged, st
 MODULE = "app.services.hil.pending"
 NOW = datetime(2026, 11, 14, 10, 0, tzinfo=UTC)
 # Task A starts first; B asks "pay" before A asks "email".
-ENTRIES = (
+ENTRIES: tuple[Entry, ...] = (
     user("u1"),
     started("w1", "task_a", 1),
     started("w2", "task_b", 1),
