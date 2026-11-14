@@ -1,5 +1,5 @@
 import { ApiError } from "@gaia/shared";
-import { userMessage } from "@gaia/shared/conversation/testing";
+import { userItem } from "@gaia/shared/conversation/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchConversationPage,
@@ -73,17 +73,7 @@ describe("postApprovalDecision", () => {
 });
 
 const PAGE = {
-  entries: [
-    {
-      kind: "entry",
-      seq: 3,
-      at: "2026-10-31T14:05:00+00:00",
-      entry: {
-        ...userMessage("m-3", "thanks"),
-        reaction: { emoji: "🙌", by: "jev" },
-      },
-    },
-  ],
+  items: [userItem("m-3", 3, "thanks")],
   state: { kind: "state", head: 3, display: "idle", work: [] },
   has_older: true,
   cursor: 3,
@@ -94,16 +84,15 @@ describe("loading the log", () => {
     getMock.mockReset();
   });
 
-  it("reads a conversation as its newest page of entries, with the head's state", async () => {
+  it("reads a conversation as its newest page of screen items, with the head's state", async () => {
     getMock.mockResolvedValue({ conversation_id: "c1", ...PAGE });
 
     const page = await fetchConversationPage("c1");
 
     expect(getMock).toHaveBeenCalledWith("/conversations/c1");
-    expect(page.entries[0]?.entry).toMatchObject({
-      id: "m-3",
-      reaction: { emoji: "🙌", by: "jev" },
-    });
+    expect(page.items.map((item) => [item.kind, item.id])).toEqual([
+      ["user", "m-3"],
+    ]);
     expect([page.state.head, page.cursor]).toEqual([3, 3]);
   });
 
