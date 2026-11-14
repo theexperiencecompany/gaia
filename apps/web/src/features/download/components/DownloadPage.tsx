@@ -276,7 +276,6 @@ function DesktopSection() {
       imageAlt="GAIA Desktop App"
       imagePosition="left"
       contentAlignment="right"
-      imagePriority={false}
       title="Download for Desktop"
       chip={
         <Chip variant="soft" color="success">
