@@ -9,7 +9,7 @@ import { chatApi } from "@/features/chat/api/chatApi";
 import { getElectronAPI } from "@/lib/electron/api";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 
-export const DESKTOP_TOOL_REQUEST = "desktop_tool_request";
+const DESKTOP_TOOL_REQUEST = "desktop_tool_request";
 
 /** Delay before the single retry of a failed tool-result POST. */
 const RESULT_RETRY_DELAY_MS = 500;
@@ -39,7 +39,7 @@ async function runOnDesktop(
 }
 
 /** Run one pushed request on this desktop and post its result; the awaiting agent tool resumes on that post. */
-export async function relayDesktopToolRequest(
+async function relayDesktopToolRequest(
   request: DesktopToolRequest,
 ): Promise<void> {
   const result = await runOnDesktop(request);

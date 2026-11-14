@@ -12,10 +12,10 @@ import type {
   BrowserHandoffSnapshot,
   BrowserStepSnapshot,
   BrowserTaskSnapshot,
-} from "../../conversation/browser-cards";
+} from "../../conversation/browser-cards.types";
 import type { FollowSurface } from "./follower.types";
 
-export const BROWSER_CARD_TOOL = "browser_task_data";
+const BROWSER_CARD_TOOL = "browser_task_data";
 const CARD_KINDS: ReadonlySet<string> = new Set([
   "session",
   "step",
@@ -25,9 +25,9 @@ const CARD_KINDS: ReadonlySet<string> = new Set([
 const BLANK_TAB_PREFIX = "about:";
 const NEW_TAB_URL = "chrome://newtab/";
 
-export const BROWSER_CREDENTIALS_SAVED_NOTE =
+const BROWSER_CREDENTIALS_SAVED_NOTE =
   "Once you're signed in, I'll save this site's session, encrypted, so I can skip the login next time. You can remove saved sites anytime in your Browser settings.";
-export const BROWSER_HANDOFF_REPLY_PROMPT =
+const BROWSER_HANDOFF_REPLY_PROMPT =
   "Reply here when you're done, or tell me to stop.";
 
 const isSnapshot = (data: unknown): data is BrowserTaskSnapshot =>

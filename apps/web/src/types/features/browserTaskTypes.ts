@@ -6,7 +6,6 @@
 
 export type { HandoffDecision as BrowserHandoffDecision } from "@shared/api/generated";
 export type {
-  BrowserAction,
   BrowserHandoffSnapshot,
   BrowserHandoffStatus,
   BrowserResultSnapshot,
@@ -15,7 +14,7 @@ export type {
   BrowserSessionStatus,
   BrowserStepSnapshot,
   BrowserTaskSnapshot,
-} from "@shared/conversation/browser-cards";
+} from "@shared/conversation/browser-cards.types";
 
 /**
  * Live-view WebSocket wire protocol. The API proxies these between the viewer
