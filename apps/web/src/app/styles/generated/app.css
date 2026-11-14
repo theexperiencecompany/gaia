@@ -241,6 +241,8 @@
 @source "../../../lib/api/typed.ts";
 @source "../../../lib/db/chatDb.ts";
 @source "../../../lib/electron/api.ts";
+@source "../../../lib/observability/reportToSentry.ts";
+@source "../../../lib/observability/sentryClient.ts";
 @source "../../../lib/websocket/useWebSocketConnection.ts";
 @source "../../../lib/websocket/WebSocketManager.ts";
 @source "../../../services/api/notifications.ts";
