@@ -53,6 +53,9 @@ vi.mock("@/features/chat/components/memory/MemoryModal", () => ({
 vi.mock("@/features/chat/components/bubbles/bot/SearchedImageDialog", () => ({
   default: () => null,
 }));
+vi.mock("@/features/auth/hooks/useCurrentUser", () => ({
+  useCurrentUser: () => ({ profilePicture: "" }),
+}));
 vi.mock("./connection", async (actual) => ({
   ...(await actual<Record<string, unknown>>()),
   deliverRetry: vi.fn(),
