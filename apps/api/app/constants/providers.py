@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.constants.llm import (
     AUX_MODEL_NAME,
+    CLOUDFLARE_MODEL_NAME,
     COMMS_MODEL_NAME,
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_MODEL_NAME,
@@ -85,6 +86,13 @@ LLM_MODEL_PROFILES: dict[LLMProviderName, LLMModelProfile] = {
         memory=None,
         vision=None,
     ),
+    LLMProviderName.CLOUDFLARE: LLMModelProfile(
+        chat=CLOUDFLARE_MODEL_NAME,
+        helper=CLOUDFLARE_MODEL_NAME,
+        judge=CLOUDFLARE_MODEL_NAME,
+        memory=CLOUDFLARE_MODEL_NAME,
+        vision=CLOUDFLARE_MODEL_NAME,
+    ),
     LLMProviderName.CUSTOM: LLMModelProfile(
         chat=None,
         helper=None,
@@ -97,6 +105,7 @@ LLM_MODEL_PROFILES: dict[LLMProviderName, LLMModelProfile] = {
 # The order configured providers are taken in: the default chat lane, its
 # fallback, and (outside production) every one-shot role after its hosted provider.
 LLM_PROVIDER_PRIORITY: tuple[LLMProviderName, ...] = (
+    LLMProviderName.CLOUDFLARE,
     LLMProviderName.OPENROUTER,
     LLMProviderName.GEMINI,
     LLMProviderName.OPENAI,
@@ -107,6 +116,16 @@ LLM_PROVIDER_PRIORITY: tuple[LLMProviderName, ...] = (
 # Production runs these on comms' own lane only, selected by name and on the
 # catalog model: never a default lane, a fallback, or a stored model choice.
 HOSTED_COMMS_ONLY_PROVIDERS: frozenset[LLMProviderName] = frozenset({LLMProviderName.OPENAI})
+
+# A configured provider here takes every role, comms and one-shots included, ahead of
+# the tables below; unset its credential and those tables serve again.
+OVERRIDE_PROVIDER = LLMProviderName.CLOUDFLARE
+
+# Where a failing lane on a provider goes instead of the next one in priority order.
+# The target serves the fallback even where HOSTED_COMMS_ONLY_PROVIDERS holds it back.
+PINNED_FALLBACKS: dict[LLMProviderName, LLMProviderName] = {
+    LLMProviderName.CLOUDFLARE: LLMProviderName.OPENAI,
+}
 
 # Production's one-shot routing, never walked past. Memory sits on a different
 # provider from the graph so concurrent calls don't wipe each other's prompt cache.
@@ -195,6 +214,7 @@ CUSTOM_PRESETS: dict[PresetName, ProviderPreset] = {
 class CredentialProviderName(StrEnum):
     """A provider the credential store can hold, in display order."""
 
+    CLOUDFLARE = "cloudflare"
     OPENROUTER = "openrouter"
     GEMINI = "gemini"
     OLLAMA = "ollama"
@@ -432,6 +452,8 @@ __all__ = [
     "FeatureSpec",
     "HOSTED_COMMS_ONLY_PROVIDERS",
     "HOSTED_ONE_SHOT_PROVIDERS",
+    "OVERRIDE_PROVIDER",
+    "PINNED_FALLBACKS",
     "LLM_MODEL_PROFILES",
     "LLM_PROVIDER_PRIORITY",
     "ManagedAt",

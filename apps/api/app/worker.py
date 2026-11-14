@@ -29,6 +29,7 @@ from app.constants.todos import (
     TODO_RUN_FINISH_TASK,
 )
 from app.constants.user_activity import REACTIVATE_USER_TASK
+from app.constants.waits import RESUME_WAITER_MAX_TRIES, RESUME_WAITER_TASK
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before the patched SDKs are used
 from app.workers.browser_worker import browser_reaper_cron
 from app.workers.config.worker_settings import WorkerFunction, WorkerSettings
@@ -85,6 +86,7 @@ from app.workers.tasks.tracked_todo_tasks import (
 )
 from app.workers.tasks.trigger_dispatch_tasks import dispatch_todo_subscriptions
 from app.workers.tasks.user_tasks import reactivate_user_task
+from app.workers.tasks.wait_tasks import resume_waiter
 from app.workers.tasks.workflow_dormancy_tasks import sweep_dormant_user_workflows
 
 # Rich tracebacks for anything that escapes to the top of this process, the same
@@ -130,6 +132,9 @@ _execute_tracked_todo = func(arq_task(execute_tracked_todo), name=EXECUTE_TRACKE
 _provision_inbox_desk = func(arq_task(provision_inbox_desk_task), name=PROVISION_INBOX_DESK_TASK)
 # Named from the constant the connect path enqueues by.
 _learn_scout = func(arq_task(learn_scout_task), name=LEARN_SCOUT_TASK)
+_resume_waiter = func(
+    arq_task(resume_waiter), name=RESUME_WAITER_TASK, max_tries=RESUME_WAITER_MAX_TRIES
+)
 _resume_tracked_todo = arq_task(resume_tracked_todo)
 _dispatch_todo_subscriptions = arq_task(dispatch_todo_subscriptions)
 _safety_net_check_orphaned_todos = arq_task(safety_net_check_orphaned_todos)
@@ -227,6 +232,7 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _sync_paid_person_properties,
     _provision_inbox_desk,
     _learn_scout,
+    _resume_waiter,
     _record_delivery_failure,
     _refresh_delivery_incident,
 ]

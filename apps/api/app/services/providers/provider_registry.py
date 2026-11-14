@@ -61,6 +61,23 @@ def _api_key_spec(preset: ProviderPreset, read_key: EnvReader) -> ProviderSpec:
 
 
 _DECLARED_SPECS: dict[CredentialProviderName, ProviderSpec] = {
+    CredentialProviderName.CLOUDFLARE: ProviderSpec(
+        preset=ProviderPreset(
+            label="Cloudflare Workers AI",
+            description="DeepSeek and other open models on Cloudflare's network. Takes over every AI role while it is set.",
+            key_url="https://dash.cloudflare.com/profile/api-tokens",
+            default_model=LLM_MODEL_PROFILES[LLMProviderName.CLOUDFLARE].chat,
+            favicon_url=favicon_url("cloudflare.com"),
+            api_key_label="API token",
+            account_id_label="Account ID",
+        ),
+        env={
+            "account_id": lambda: settings.CLOUDFLARE_AI_ACCOUNT_ID,
+            "api_key": lambda: settings.CLOUDFLARE_AI_API_TOKEN,
+        },
+        requires=frozenset({"account_id", "api_key"}),
+        registry_key=LLMProviderKey.CLOUDFLARE,
+    ),
     CredentialProviderName.OPENROUTER: ProviderSpec(
         preset=ProviderPreset(
             label="OpenRouter",
