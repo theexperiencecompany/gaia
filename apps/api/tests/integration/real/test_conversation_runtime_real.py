@@ -146,8 +146,6 @@ from app.services.conversation import (
     event_stream,
     mongo_log,
     step as step_module,
-    step_run,
-    step_writes,
     sweeper,
 )
 from app.services.conversation.bot_followers import list_active_bot_conversations
@@ -175,7 +173,7 @@ from app.services.conversation.integration_log import (
 )
 from app.services.conversation.log import Accepted, accept
 from app.services.conversation.mongo_log import MongoConversationLog
-from app.services.conversation.ports import EntryRejected, RuntimePorts
+from app.services.conversation.ports import Appended, EntryRejected, RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports
 from app.services.conversation.screen import project_screen
 from app.services.conversation.send import send_message, submit_message
@@ -896,24 +894,22 @@ async def _profiled(
 
 @contextmanager
 def _marking_reply_opens(
-    mongo_db: AsyncIOMotorDatabase[dict[str, object]], trips: list[float], marks: list[int]
+    rig: Rig,
+    mongo_db: AsyncIOMotorDatabase[dict[str, object]],
+    trips: list[float],
+    marks: list[int],
 ) -> Iterator[None]:
     """Just before the turn's reply is appended, note the Redis trips so far and leave a mark in Mongo's profile."""
-    opening_reply = step_writes.opening_reply
+    append_fenced = rig.ports.log.append_fenced
 
-    async def stamp_then_mark(*args: Any) -> Reply:
-        reply = await opening_reply(*args)
-        if not marks:
+    async def mark_then_append(claim: StepClaim, entry: Entry) -> Appended:
+        if isinstance(entry, Reply) and not marks:
             marks.append(len(trips))
             # Synchronous, so nothing on the loop runs between the mark and the append.
             mongo_db.delegate[_REPLY_OPENS_MARK].find_one({})
-        return reply
+        return await append_fenced(claim, entry)
 
-    # Both openings: a shown delta's (step_run) and a settle's that streamed nothing (step_writes).
-    with (
-        patch.object(step_run, "opening_reply", stamp_then_mark),
-        patch.object(step_writes, "opening_reply", stamp_then_mark),
-    ):
+    with patch.object(rig.ports.log, "append_fenced", mark_then_append):
         yield
 
 
@@ -955,7 +951,7 @@ async def _measured_turn(
 
     async def turn() -> None:
         counted = _count_redis_trips(monkeypatch)
-        with _marking_reply_opens(mongo_db, counted, marks):
+        with _marking_reply_opens(rig, mongo_db, counted, marks):
             with patch("app.services.conversation.send.capture"):
                 await rig.submit("m2", "and again")
             await rig.settle()
