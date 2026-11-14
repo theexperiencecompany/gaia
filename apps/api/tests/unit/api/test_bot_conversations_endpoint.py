@@ -30,6 +30,7 @@ async def test_the_report_is_recorded_on_the_conversations_session_for_its_platf
             "record_delivered",
             new=AsyncMock(return_value=recorded),
         ) as record,
+        patch.object(endpoint, "log") as logger,
     ):
         response = await endpoint.record_delivered(request, "conv-1", REPORT)
 
@@ -38,6 +39,13 @@ async def test_the_report_is_recorded_on_the_conversations_session_for_its_platf
         "conv-1", platform="telegram", delivered_seq=7, partial_reply=REPORT.partial_reply
     )
     assert response == BotDeliveryRecorded(recorded=recorded)
+    logger.set.assert_called_once_with(
+        operation="record_bot_delivery",
+        platform="telegram",
+        conversation_id="conv-1",
+        delivered_seq=7,
+        recorded=recorded,
+    )
 
 
 async def test_a_report_without_the_bot_key_records_nothing() -> None:

@@ -11,6 +11,7 @@ from app.models.conversation_send_models import RetryMessageRequest
 from app.services.conversation.runtime import install_runtime_ports
 from app.services.conversation.send import submit_retry
 from app.utils.errors import ConversationEntryNotFoundError
+from shared.py.analytics import UserId
 from tests.factories import make_authenticated_user
 from tests.unit.services.conversation.runtime_doubles import Runtime
 
@@ -24,6 +25,8 @@ TARGET = UserMessage(
     text="plan my day",
     surface=ConversationSource.TELEGRAM,
     platform_message_id="tg-41",
+    file_ids=("f1", "f2"),
+    reply_to="m0",
 )
 
 
@@ -31,8 +34,14 @@ TARGET = UserMessage(
 def runtime() -> Iterator[Runtime]:
     runtime = Runtime()
     install_runtime_ports(runtime.ports)
-    with patch(f"{SEND}.enforce_cost_budget", new=AsyncMock()):
+    with patch(f"{SEND}._posthog_session_id", return_value="ph-1"):
         yield runtime
+
+
+@pytest.fixture(autouse=True)
+def budget() -> Iterator[AsyncMock]:
+    with patch(f"{SEND}.enforce_cost_budget", new=AsyncMock()) as gate:
+        yield gate
 
 
 def _target(found: UserMessage | None) -> AsyncMock:
@@ -45,7 +54,7 @@ async def _logged(runtime: Runtime) -> list[UserMessage]:
 
 
 async def test_a_retry_logs_its_target_again_as_a_retry_from_the_surface_it_came_from(
-    runtime: Runtime,
+    runtime: Runtime, budget: AsyncMock
 ) -> None:
     with (
         patch(f"{SEND}.conversation_repository.find_user_message", new=_target(TARGET)) as find,
@@ -59,22 +68,28 @@ async def test_a_retry_logs_its_target_again_as_a_retry_from_the_surface_it_came
         )
 
     find.assert_awaited_once_with(USER.user_id, CONVERSATION, "m1")
+    budget.assert_awaited_once_with(USER.user_id, feature_key="chat_messages")
     (retry,) = await _logged(runtime)
-    assert (retry.id, retry.text, retry.surface, retry.platform_message_id, retry.retry_of) == (
-        "m2",
-        "plan my day",
-        ConversationSource.WEB,
-        None,
-        "m1",
-    )
+    assert (
+        retry.id,
+        retry.text,
+        retry.surface,
+        retry.platform_message_id,
+        retry.retry_of,
+        retry.posthog_session_id,
+    ) == ("m2", "plan my day", ConversationSource.WEB, None, "m1", "ph-1")
     assert (accepted.conversation_id, accepted.message_id) == (CONVERSATION, "m2")
-    (_, event), _ = capture.call_args
-    assert (event.is_retry, event.is_new_conversation, event.stream_id, event.source) == (
-        True,
-        False,
-        "m2",
-        "web",
-    )
+    (distinct_id, event), _ = capture.call_args
+    assert distinct_id == UserId(USER.user_id)
+    assert (
+        event.is_retry,
+        event.is_new_conversation,
+        event.stream_id,
+        event.source,
+        event.has_files,
+        event.file_count,
+        event.is_reply,
+    ) == (True, False, "m2", "web", True, 2, True)
 
 
 async def test_a_retry_of_a_retry_points_at_the_original_message(runtime: Runtime) -> None:
@@ -112,7 +127,9 @@ async def test_a_retry_of_a_message_the_conversation_does_not_hold_is_refused(
 ) -> None:
     with (
         patch(f"{SEND}.conversation_repository.find_user_message", new=_target(None)),
-        pytest.raises(ConversationEntryNotFoundError, match="no user message m9 in conversation"),
+        pytest.raises(
+            ConversationEntryNotFoundError, match="no user message m9 in conversation"
+        ) as refused,
     ):
         await submit_retry(
             CONVERSATION,
@@ -122,3 +139,4 @@ async def test_a_retry_of_a_message_the_conversation_does_not_hold_is_refused(
         )
 
     assert await _logged(runtime) == []
+    assert refused.value.meta == {"conversation_id": CONVERSATION, "entry_id": "m9"}

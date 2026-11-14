@@ -640,7 +640,9 @@ class TestPublishConversationWake:
     async def test_a_session_with_no_delivery_cursor_raises_instead_of_waking_from_nothing(
         self,
     ) -> None:
-        with pytest.raises(ValueError, match="has none"):
+        with pytest.raises(
+            ValueError, match=r"^a wake follows the session's delivery cursor, and it has none$"
+        ):
             await od.publish_conversation_wake(_session("telegram", None))
 
     async def test_a_platform_with_no_outbound_queue_is_skipped(self) -> None:
