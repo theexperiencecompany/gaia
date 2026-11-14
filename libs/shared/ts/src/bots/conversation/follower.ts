@@ -185,6 +185,7 @@ export class ConversationFollower {
     for (const item of items) {
       switch (item.kind) {
         case SCREEN_ITEM_KIND.USER:
+          // react-doctor-disable-next-line async-await-in-loop -- screen items render to the platform in log order
           if (item.seq > this.floor) await this.renderReaction(item);
           break;
         case SCREEN_ITEM_KIND.REPLY:
@@ -301,6 +302,7 @@ export class ConversationFollower {
     await delivery.end();
     if (delivery.opened) this.summary.repliesDelivered += 1;
     for (const file of reply.files) {
+      // react-doctor-disable-next-line async-await-in-loop -- files follow the reply in the order it attached them
       await this.surface.sendFile(this.conversationId, file);
       this.summary.filesDelivered += 1;
     }

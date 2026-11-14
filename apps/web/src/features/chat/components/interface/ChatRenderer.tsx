@@ -140,6 +140,10 @@ const ChatMessageItem = memo(function ChatMessageItem({
   }
   if (!messageProps) return null;
 
+  const grouping = {
+    withPrev: isGroupedWithPrev,
+    withNext: isGroupedWithNext,
+  };
   let bubble: ReactNode;
   if (
     message.type === "bot" &&
@@ -156,8 +160,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
             : botProps.follow_up_actions
         }
         date={isGroupedWithNext ? undefined : botProps.date}
-        isGroupedWithNext={isGroupedWithNext}
-        isGroupedWithPrev={isGroupedWithPrev}
+        grouping={grouping}
         hideAvatar={compact}
       />
     );
@@ -168,8 +171,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
         hideAvatar={compact}
         fullWidth={compact}
         disableActions={compact}
-        isGroupedWithNext={isGroupedWithNext}
-        isGroupedWithPrev={isGroupedWithPrev}
+        grouping={grouping}
       />
     );
   }

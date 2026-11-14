@@ -8,7 +8,10 @@ import SelectedWorkflowIndicator from "@/features/chat/components/composer/Selec
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useChatBubbleUser } from "@/features/chat/hooks/useChatBubbleUser";
 import { cn } from "@/lib/utils";
-import type { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
+import type {
+  BubbleGrouping,
+  ChatBubbleUserProps,
+} from "@/types/features/chatBubbleTypes";
 import type { AttachedFileData } from "@/types/shared/fileTypes";
 
 import { MessageReactions } from "../MessageReactions";
@@ -112,16 +115,15 @@ export default function ChatBubbleUser({
   loading,
   hideAvatar = false,
   fullWidth = false,
-  isGroupedWithNext = false,
-  isGroupedWithPrev = false,
+  grouping,
 }: ChatBubbleUserProps & {
   disableActions?: boolean;
   hideAvatar?: boolean;
   fullWidth?: boolean;
-  /** Consecutive user messages read as one group: only the last carries the avatar, tail and footer. */
-  isGroupedWithNext?: boolean;
-  isGroupedWithPrev?: boolean;
+  grouping?: BubbleGrouping;
 }) {
+  const isGroupedWithNext = grouping?.withNext ?? false;
+  const isGroupedWithPrev = grouping?.withPrev ?? false;
   const { hasContent, user, isEmojiOnly, bubbleClassName, textClassName } =
     useChatBubbleUser({
       text,
