@@ -1156,6 +1156,7 @@ jobs:
     # Boot (models, a cold Turbopack compile) plus the suite, measured 8-15 min locally.
     timeout-minutes: 35
     env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       SIM_STACK_LOGS: ${{ github.workspace }}/sim-stack
     permissions:
       contents: read
