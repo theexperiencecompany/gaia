@@ -119,8 +119,8 @@ def text(chunk: str) -> Streamed:
     return Streamed(payload=ResponseEvent(response=chunk))
 
 
-def taken_back(message_id: str) -> Streamed:
-    boundary = MessageBoundaryPayload(message_id=message_id, discarded=True)
+def message_ended(message_id: str) -> Streamed:
+    boundary = MessageBoundaryPayload(message_id=message_id)
     return Streamed(payload=MessageBoundaryEvent(message_boundary=boundary))
 
 
@@ -961,7 +961,7 @@ class StepScenarios:
         rt.runner.script(
             [
                 text("Second partial."),
-                taken_back("m1"),
+                message_ended("m1"),
                 text("Second "),
                 text("partial."),
                 Fail(RuntimeError("provider dropped the stream")),
@@ -984,7 +984,7 @@ class StepScenarios:
         rt.runner.script(
             [
                 text("Let me check that."),
-                taken_back("m1"),
+                message_ended("m1"),
                 text("Checked"),
                 text(" it."),
                 ModelOutput(False),
@@ -1001,7 +1001,9 @@ class StepScenarios:
         assert (await replies(rt))[0].text == f"Let me check that.{NEW_MESSAGE_BREAKER}Checked it."
 
     async def test_a_take_back_nothing_replaced_keeps_the_shown_preamble(self, rt: Runtime) -> None:
-        rt.runner.script([text("Let me check."), taken_back("m1"), card(), Finished(Replied(""))])
+        rt.runner.script(
+            [text("Let me check."), message_ended("m1"), card(), Finished(Replied(""))]
+        )
         await send(rt, user("u1"))
         await run(rt)
         bubbles = [delta for delta in reply_deltas(rt) if not isinstance(delta, CardsDelta)]

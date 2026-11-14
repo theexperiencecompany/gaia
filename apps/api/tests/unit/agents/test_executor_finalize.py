@@ -1119,7 +1119,7 @@ class TestTheRunsStreamWriter:
 
         assert writer is make.return_value
         deltas.assert_not_called()
-        assert await drain() is None
+        await drain()
 
 
 class TestFinalizeHandsOnHowTheRunEnded:

@@ -77,4 +77,4 @@ class TestSavedInstructionsOnAStepTurn:
             assert SKIP_APPROVALS in read
         # The gate is code, not prompt text: the instruction does not skip the approval.
         (requested,) = entries_of(await replayed(conversation_id, owner.user_id), ApprovalRequested)
-        assert "flowchart" in requested.summary.lower()
+        assert "flowchart" in requested.description.headline.lower()

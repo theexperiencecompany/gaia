@@ -22,7 +22,7 @@ NOW = datetime(2026, 11, 14, 12, 0, tzinfo=UTC)
 
 def _work(task_id: str, *approvals: str) -> LiveWork:
     return LiveWork(
-        task_id=task_id, cause_through=1, answers=(), pending_approvals=frozenset(approvals)
+        task_id=task_id, cause_through=1, answers=(), pending_approvals=tuple(approvals)
     )
 
 

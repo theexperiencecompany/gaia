@@ -43,6 +43,7 @@ from app.models.conversation_log_models import (
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.services.checkpoint_thread_reset import ThreadReset
 from app.services.conversation.outcome import EntryOutcome
+from app.utils import background_tasks
 from app.utils.errors import ConversationNotFoundError
 from shared.py.conversation_wire import ReplyOutcome
 from tests.helpers import captured_wide_event
@@ -364,7 +365,7 @@ class TestARunThatFinishedHandsItsResultOn:
         self, seams: _Seams
     ) -> None:
         names: list[str | None] = []
-        real_spawn = todo_run.spawn_background_task
+        real_spawn = background_tasks.spawn_background_task
 
         def spawn(
             coro: Coroutine[object, object, None], *, name: str | None = None
@@ -439,7 +440,7 @@ class TestARunThatFinishedHandsItsResultOn:
                 task_id=seams.task_ids[-1],
                 cause_through=3,
                 answers=("todo:run_1",),
-                pending_approvals=frozenset({"a1"}),
+                pending_approvals=("a1",),
             )
             other = work.model_copy(update={"task_id": "someone-else"})
             return EMPTY_LOG_STATE.model_copy(update={"work": (other, work)})
@@ -455,9 +456,7 @@ class TestARunThatFinishedHandsItsResultOn:
         assert event["tracked_todo"] == {"parked_on_approval": True}
 
     async def test_another_tasks_live_work_does_not_park_this_run(self, seams: _Seams) -> None:
-        other = LiveWork(
-            task_id="someone-else", cause_through=3, answers=(), pending_approvals=frozenset()
-        )
+        other = LiveWork(task_id="someone-else", cause_through=3, answers=(), pending_approvals=())
         seams.state.return_value = EMPTY_LOG_STATE.model_copy(update={"work": (other,)})
         with (
             patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),

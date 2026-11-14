@@ -371,7 +371,9 @@ class TestBotSendMessageWideEvent:
             ),
         ):
             async with captured_wide_event() as event:
-                result = await bot_send_message(request, BotChatRequest(**_CHAT_BODY("discord")))
+                result = await bot_send_message(
+                    request, BotChatRequest.model_validate(_CHAT_BODY("discord"))
+                )
 
         assert result == accepted
         linked.assert_awaited_once_with(request, "discord", "u1")
@@ -397,7 +399,9 @@ class TestBotSendMessageWideEvent:
             pytest.raises(HTTPException) as raised,
         ):
             async with captured_wide_event() as event:
-                await bot_send_message(_make_request(), BotChatRequest(**_CHAT_BODY("discord")))
+                await bot_send_message(
+                    _make_request(), BotChatRequest.model_validate(_CHAT_BODY("discord"))
+                )
 
         assert raised.value.status_code == 402
         assert raised.value.detail == (

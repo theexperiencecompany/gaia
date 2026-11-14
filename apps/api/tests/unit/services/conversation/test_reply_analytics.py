@@ -72,6 +72,7 @@ def test_a_reply_that_never_showed_counts_no_first_text() -> None:
     capture_reply_ended(analytics, CLAIM, [asked], end, T0 + timedelta(seconds=1), [])
 
     [(_user, event, _context, _dedupe)] = analytics.ended
+    assert isinstance(event, ChatMessageCompleted)
     assert event.ttft_ms is None
     assert event.e2e_full_ms == 1000.0
 
@@ -91,6 +92,7 @@ def test_the_event_says_what_the_turn_waited_on_and_what_it_started() -> None:
     capture_reply_ended(analytics, CLAIM, [asked], end, T0 + timedelta(milliseconds=900), since)
 
     [(_user, event, _context, _dedupe)] = analytics.ended
+    assert isinstance(event, ChatMessageCompleted)
     assert (event.is_new_conversation, event.delegated, event.queued) == (True, True, True)
     assert event.ttft_ms == 500.0
     assert event.stream_id == "u1"
@@ -110,4 +112,5 @@ def test_a_later_turn_with_nothing_before_it_neither_waited_nor_delegated() -> N
     capture_reply_ended(analytics, CLAIM, [asked], end, T0 + timedelta(milliseconds=200), since)
 
     [(_user, event, _context, _dedupe)] = analytics.ended
+    assert isinstance(event, ChatMessageCompleted)
     assert (event.is_new_conversation, event.delegated, event.queued) == (False, False, False)

@@ -97,7 +97,7 @@ class TestAnApprovalAChatMessagesWorkAsksFor:
         (finished,) = entries_of(parked, WorkFinished)
         assert work.answers == (message.id,)
         assert requested.task_id == work.task_id
-        assert "flowchart" in requested.summary.lower()
+        assert "flowchart" in requested.description.headline.lower()
         # The gated call did not run: the work ended on the proposal, and the ledger waits.
         assert finished.report == WAITING
         assert await _ledger(mongo_db, requested.approval_id) == (None, None)

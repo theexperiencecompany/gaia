@@ -14,6 +14,7 @@ from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
     ImageEvent,
+    StreamPayload,
     ToolDataEvent,
     WorkDeltaFrame,
 )
@@ -29,7 +30,6 @@ from app.models.conversation_log_models import (
 )
 from app.models.conversation_screen_models import (
     NoticeItem,
-    ReplyItem,
     ScreenInsertFrame,
     ScreenItem,
     ScreenPatch,
@@ -52,6 +52,7 @@ from app.utils.message_breaks import split_message_bubbles
 from shared.py.conversation_wire import (
     FailureReason,
     ImageData,
+    ReplyItem,
     ReplyOutcome,
     ScreenItemKind,
     ToolDataEntry,
@@ -751,7 +752,10 @@ _MADE = ImageData(url="https://img.example/1.png", prompt="a cat")
 
 
 def test_a_running_tasks_published_cards_and_image_show_on_its_work_item() -> None:
-    published = [ToolDataEvent(tool_data=_card("x")), ImageEvent(image_data=_MADE)]
+    published: list[StreamPayload] = [
+        ToolDataEvent(tool_data=_card("x")),
+        ImageEvent(image_data=_MADE),
+    ]
     tracker = ScreenTracker("c1", _RUNNING, {"t1": published})
     [_, work] = tracker.items
     assert isinstance(work, WorkItem)
@@ -843,7 +847,7 @@ def test_a_reply_naming_its_work_is_not_rekeyed_by_a_task_sharing_its_id() -> No
         for task in ("t1", "r1")
     ]
     reply = Reply(id="o1", reply_id="r1", attempt_id="a1", text="both", narrates=("t1",))
-    log = [user("u1"), first, second, *ends, reply]
+    log: list[Entry] = [user("u1"), first, second, *ends, reply]
     items = project_screen([logged(seq, entry) for seq, entry in enumerate(log, start=1)])
     [shown] = [item for item in items if isinstance(item, ReplyItem)]
     assert shown.narrates == ("t1",)

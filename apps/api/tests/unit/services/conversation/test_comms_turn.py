@@ -37,7 +37,9 @@ def _batch(start: int, entries: Sequence[Entry]) -> Batch:
 
 
 def _said(entry_id: str, surface: ConversationSource, **fields: object) -> UserMessage:
-    return UserMessage(id=entry_id, text=f"text {entry_id}", surface=surface, **fields)
+    return UserMessage.model_validate(
+        {"id": entry_id, "text": f"text {entry_id}", "surface": surface, **fields}
+    )
 
 
 @dataclass

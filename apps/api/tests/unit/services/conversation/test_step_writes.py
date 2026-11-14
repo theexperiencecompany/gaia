@@ -5,13 +5,18 @@ from collections import Counter
 import pytest
 
 from app.constants.chat import ConversationSource
-from app.models.conversation_frame_models import ReplyDeltaFrame, ResponseEvent, RetractFrame
+from app.models.conversation_frame_models import ResponseEvent, RetractFrame
 from app.models.conversation_log_models import Entry, Reply, ReplySettled, UserMessage, WorkStarted
 from app.services.conversation.log import accept
 from app.services.conversation.ports import Finished, ModelOutput, Replied, Streamed
 from app.services.conversation.step import advance
 from shared.py.analytics.catalog.chat import ChatMessageCompleted
-from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, BubblesDelta, ReplyOutcome
+from shared.py.conversation_wire import (
+    NEW_MESSAGE_BREAKER,
+    BubblesDelta,
+    ReplyDeltaFrame,
+    ReplyOutcome,
+)
 from tests.unit.services.conversation.log_helpers import asked, user
 from tests.unit.services.conversation.runtime_doubles import (
     CONVERSATION,

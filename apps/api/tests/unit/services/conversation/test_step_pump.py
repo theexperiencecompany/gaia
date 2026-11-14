@@ -31,7 +31,8 @@ async def _raising(error: BaseException) -> AsyncIterator[RunEvent]:
 
 async def _silent() -> AsyncIterator[RunEvent]:
     await asyncio.Event().wait()
-    yield  # never reached: the run streams nothing
+    raise AssertionError("an event nothing sets was set")
+    yield  # an async generator that streams nothing
 
 
 async def test_a_run_whose_stream_raises_is_read_as_crashed_with_its_error() -> None:

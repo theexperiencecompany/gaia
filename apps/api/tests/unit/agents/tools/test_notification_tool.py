@@ -1,10 +1,11 @@
 """send_notification: a named channel gets one notification per tool call, and the tool reports where it landed."""
 
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.tools import StructuredTool
 import pytest
 
 from app.agents.tools.notification_tool import send_notification
@@ -21,6 +22,12 @@ from shared.py.analytics.catalog.notifications import NotificationAgentSent
 from tests.factories import make_user_id
 
 MODULE = "app.agents.tools.notification_tool"
+
+
+def _send() -> Callable[..., Awaitable[object]]:
+    """Return the tool's coroutine, called with the injected config and call id as the tool node does."""
+    assert isinstance(send_notification, StructuredTool) and send_notification.coroutine is not None
+    return send_notification.coroutine
 
 
 @dataclass
@@ -60,7 +67,7 @@ async def test_a_named_channel_is_notified_once_per_tool_call(seams: Seams) -> N
         ]
     )
 
-    result = await send_notification.coroutine(
+    result = await _send()(
         config={"configurable": {"user_id": user_id}},
         tool_call_id="call-7",
         message="  Build failed on main  ",
@@ -95,7 +102,7 @@ async def test_a_replayed_tool_call_reuses_its_notification_id(seams: Seams) -> 
     config = {"configurable": {"user_id": user_id}}
 
     for call_id in ("call-1", "call-1", "call-2"):
-        await send_notification.coroutine(
+        await _send()(
             config=config, tool_call_id=call_id, message="hi", title="Hey", channels=["telegram"]
         )
 
