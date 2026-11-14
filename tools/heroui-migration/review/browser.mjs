@@ -120,6 +120,12 @@ export async function newContext(browser, { vp, user, seed, cacheDir, log }) {
   return ctx;
 }
 
+/** Close a context without waiting on route handlers still in flight, which would otherwise wedge the close and the run. */
+export async function closeContext(ctx) {
+  await ctx.unrouteAll({ behavior: "ignoreErrors" });
+  await ctx.close();
+}
+
 /** Third-party GETs are fetched once and replayed from disk, so both builds and both runs see the same bytes. */
 async function replayThirdParty(route, cacheDir, log) {
   const url = route.request().url();

@@ -73,7 +73,7 @@ inventory + variants  →  screenshot baseline  →  codemod  →  typecheck  �
 
 ### a. Whole-app visual review (`review/`)
 
-Run on the capture machine (the M4), never a laptop. One command per side:
+Run from a GAIA checkout on a machine with spare CPU. One command per side:
 
 ```bash
 cd tools/heroui-migration && pnpm install --ignore-workspace
@@ -97,7 +97,7 @@ What it does, in order (each step is its own script, runnable alone):
 | change log | `review/changelog.mjs` | per changed file: v2 parts -> v3 compound parts, and every prop remap with its `decisions.json` / Button-table rule |
 | page | `review/html.mjs` | `review.html`: before / after / diff / slider per route and state, filters by area and severity |
 
-Artifacts land in `$REVIEW_OUT` (default `~/v3review/out`); `run.sh publish` serves it on the Tailscale address.
+Artifacts land in `$REVIEW_OUT` (default `~/v3review/out`); `run.sh publish` serves it on `$PUBLISH_ADDR` (default 127.0.0.1; set a Tailscale or LAN address to share).
 
 ### b. Codemod
 
