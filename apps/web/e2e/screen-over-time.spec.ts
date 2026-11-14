@@ -1,9 +1,17 @@
 import { expect, type Page, test } from "@playwright/test";
-import { loadingRow, SIM_ENABLED, sendMessage } from "./harness";
+import {
+  loadingGaps,
+  loadingRow,
+  longestBlindWorkMs,
+  SIM_ENABLED,
+  sendMessage,
+  watchConversation,
+} from "./harness";
 import {
   askBefore,
   backdateApproval,
   conversationIdOf,
+  serverScreen,
 } from "./screen-fixtures";
 import {
   botLinesReading,
@@ -13,6 +21,7 @@ import {
   recordScreen,
   type ScreenItem,
   settledScreen,
+  timeline,
   toolSections,
 } from "./screen-timeline";
 
@@ -62,8 +71,24 @@ async function untilBotLine(
 async function finish(page: Page, lastLine: string): Promise<ScreenItem[]> {
   const live = await settledScreen(page, lastLine, TURN_MS);
   await expectScreenOnlyGrew(page);
+  await expectServerOrder(page, live);
   await expectReloadMatches(page, live, TURN_MS);
   return live;
+}
+
+/** The rendered items are the server's screen items, in the server's seq order. */
+async function expectServerOrder(
+  page: Page,
+  live: ScreenItem[],
+): Promise<void> {
+  const server = await serverScreen(conversationIdOf(page.url()));
+  const shown = new Set(live.map((i) => i.id));
+  expect(
+    live.map((i) => `${i.kind}:${i.id}`),
+    "the web renders the server's items in the server's order",
+  ).toEqual(
+    server.filter((i) => shown.has(i.id)).map((i) => `${i.kind}:${i.id}`),
+  );
 }
 
 /** Every user item sits above the replies to it: the first item is the user's, and user items keep send order. */
@@ -297,6 +322,114 @@ test.describe("screen over time — chat", () => {
     });
     const live = await finish(page, "Partial progress.");
     expect(botLinesReading(live, "ff-1")).toBe(1);
+  });
+
+  test("Retry on a failed reply resends that reply's message, not an earlier one", async ({
+    page,
+  }) => {
+    await openNewChat(page);
+    await sendAndOpen(page, "one [[say:First fine.]]");
+    await settledScreen(page, "First fine.", TURN_MS);
+    await sendMessage(
+      page,
+      "two [[say:Second partial.]] [[fail:provider dropped the stream]]",
+    );
+    const failed = page.getByRole("button", { name: "Retry" });
+    await expect(failed).toBeVisible({ timeout: TURN_MS });
+    const before = await currentScreen(page);
+    const attemptsBefore = botLinesReading(before, "Second partial.");
+    await failed.click();
+    await expect
+      .poll(
+        async () =>
+          botLinesReading(await currentScreen(page), "Second partial."),
+        {
+          timeout: TURN_MS,
+          message: "the retry re-ran the failed message",
+        },
+      )
+      .toBeGreaterThan(attemptsBefore);
+    const live = await settledScreen(page, "Second partial.", TURN_MS);
+    await expectScreenOnlyGrew(page);
+    expect(
+      botLinesReading(live, "First fine."),
+      "the earlier message was not resent",
+    ).toBe(1);
+    expect(live.filter((i) => i.role === "user").map((i) => i.text)).toEqual(
+      before.filter((i) => i.role === "user").map((i) => i.text),
+    );
+  });
+
+  test("the loading line stays up for the whole time work streams", async ({
+    page,
+  }) => {
+    await openNewChat(page);
+    const watch = watchConversation(page);
+    await sendAndOpen(page, heldWork("ld", "Loaded."));
+    await untilBotLine(page, "ld-1");
+    const firstCard = Date.now();
+    await untilBotLine(page, "ld-2");
+    const lastCard = Date.now();
+    await settledScreen(page, "Loaded.", TURN_MS);
+    const samples = await watch.stop();
+    expect(
+      loadingGaps(
+        samples,
+        firstCard - watch.startedAt,
+        lastCard - watch.startedAt,
+      ),
+      "no moment of running work without the loading line",
+    ).toEqual([]);
+    expect(
+      longestBlindWorkMs(samples),
+      "nothing grows while the line is hidden",
+    ).toBeLessThan(1_000);
+  });
+
+  test("a pending send becomes the server's user item in place, without moving", async ({
+    page,
+  }) => {
+    await openNewChat(page);
+    await sendAndOpen(page, "first [[say:Got the first.]]");
+    await settledScreen(page, "Got the first.", TURN_MS);
+    await sendMessage(page, "second [[say:Got the second.]]");
+    await settledScreen(page, "Got the second.", TURN_MS);
+    const frames = await timeline(page);
+    const positions = frames.flatMap((frame) => {
+      const at = frame.items.findIndex(
+        (i) => i.role === "user" && i.text.startsWith("second"),
+      );
+      return at < 0 ? [] : [`${at}:${frame.items[at].id}`];
+    });
+    expect(positions.length, "the send showed at once").toBeGreaterThan(0);
+    expect(
+      new Set(positions),
+      "one id at one position, pending to delivered",
+    ).toEqual(new Set([positions[0]]));
+    const live = await finish(page, "Got the second.");
+    expect(
+      positions[0].split(":")[1],
+      "the server item kept the pending send's id",
+    ).toBe(
+      live.find((i) => i.role === "user" && i.text.startsWith("second"))?.id,
+    );
+  });
+
+  test("a reply, then work, then a reply render in the server's order", async ({
+    page,
+  }) => {
+    await openNewChat(page);
+    await sendAndOpen(page, "say hi [[say:Hi first.]]");
+    await settledScreen(page, "Hi first.", TURN_MS);
+    await sendMessage(page, `now work ${todo("ord-1")} [[say:Work reply.]]`);
+    await settledScreen(page, "ord-1", TURN_MS);
+    await sendMessage(page, "and again [[say:Last reply.]]");
+    const live = await finish(page, "Last reply.");
+    const kinds = live.map((i) => i.kind);
+    const work = kinds.indexOf("work");
+    expect(work, "the work is on screen").toBeGreaterThan(0);
+    expect(kinds.slice(0, work)).toContain("reply");
+    expect(kinds.slice(work + 1)).toContain("reply");
   });
 });
 

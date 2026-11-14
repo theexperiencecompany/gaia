@@ -46,6 +46,28 @@ export function conversationIdOf(url: string): string {
  * Backdate the conversation's open approval past its expiry, so the worker's
  * conversation sweep (every minute) expires it as it would after hours unanswered.
  */
+export interface ServerItem {
+  id: string;
+  kind: string;
+  seq: number;
+}
+
+/** The screen the server computes for the conversation (its newest page), in seq order. */
+export async function serverScreen(
+  conversationId: string,
+): Promise<ServerItem[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/conversations/${conversationId}`,
+  );
+  if (!response.ok) {
+    throw new Error(
+      `GET conversation failed (${response.status}): ${await response.text()}`,
+    );
+  }
+  const { items } = (await response.json()) as { items: ServerItem[] };
+  return [...items].sort((a, b) => a.seq - b.seq);
+}
+
 export function seedInAppNotification(email: string, title: string): void {
   // In chat, send_notification folds into the reply it would duplicate, so an
   // in-app notification is stored the way the delivery service stores one.

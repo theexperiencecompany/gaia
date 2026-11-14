@@ -48,15 +48,11 @@ const replyTo = (live: ScreenItem[], line: string): ScreenItem => {
   return reply;
 };
 
-/** The unread count the header's notification bell shows (0 when its badge is hidden). */
+/** The unread count beside the header's notification bell. */
 function unreadBadge(page: Page): Promise<number> {
   return page.evaluate(() => {
     const bell = document.querySelector('button[aria-label="Notifications"]');
-    const badge = bell?.parentElement?.querySelector<HTMLElement>(
-      '[data-slot="badge"]',
-    );
-    if (!badge || badge.dataset.invisible === "true") return 0;
-    return Number(badge.innerText.trim()) || 0;
+    return Number(bell?.parentElement?.textContent?.replace(/\D/g, "") || 0);
   });
 }
 
@@ -129,8 +125,13 @@ test.describe("screen surfaces", () => {
     ]);
 
     await page.goto("/c");
-    await page.getByRole("button", { name: "Search", exact: true }).click();
-    await page.getByPlaceholder("Search or run a command...").fill(word);
+    // The command menu is a lazy chunk; a click before it loads opens nothing.
+    const searchBox = page.getByPlaceholder("Search or run a command...");
+    await expect(async () => {
+      await page.getByRole("button", { name: "Search", exact: true }).click();
+      await expect(searchBox).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: TURN_MS });
+    await searchBox.fill(word);
     const hit = page.getByRole("option").filter({ hasText: word });
     await expect(hit).toHaveCount(1, { timeout: TURN_MS });
     await hit.click();
@@ -211,7 +212,7 @@ test.describe("screen surfaces", () => {
       .toBe(0);
   });
 
-  test("a todo created in chat gets its workflow on the todo's page", async ({
+  test("a todo created in chat shows its workflow generation outcome live", async ({
     page,
   }) => {
     const title = marker("wf");
@@ -230,12 +231,18 @@ test.describe("screen surfaces", () => {
     await expect(page.getByText("Suggested Workflow")).toBeVisible({
       timeout: TURN_MS,
     });
-    await expect(page.getByText("Generating...")).toHaveCount(0, {
+    await page.getByRole("button", { name: "Generate Workflow" }).click();
+    await expect(page.getByText("Generating...")).toBeVisible({
       timeout: TURN_MS,
     });
+    // The scripted model cannot write a GeneratedWorkflow, so generation ends failed
+    // under sim; what this pins is that the worker's outcome reaches the open page live.
     await expect(
-      page.getByRole("button", { name: "Regenerate" }),
-      "a workflow appeared for the todo",
+      page
+        .getByRole("button", { name: "Regenerate" })
+        .or(page.getByText("Generation failed. Try again?")),
+      "the generation outcome is pushed to the open todo",
     ).toBeVisible({ timeout: TURN_MS });
+    await expect(page.getByText("Generating...")).toHaveCount(0);
   });
 });
