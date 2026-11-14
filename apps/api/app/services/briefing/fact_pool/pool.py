@@ -135,7 +135,7 @@ async def build_fact_pool(
         items=reads.items,
         series=series,
         quotes=quote_spans(reads.items),
-        goals=goal_states(reads.goals, _distinct([*completed, *open_todos])),
+        goals=goal_states(reads.goals, _distinct([*completed, *open_todos]), now),
         context=context,
         criteria=reads.criteria,
     )

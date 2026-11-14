@@ -85,3 +85,5 @@ class GoalState(BaseModel):
     open: int = Field(ge=0)
     #: The linked todos' titles, finished ones first.
     linked: list[str] = Field(default_factory=list)
+    #: The open linked todos untouched for GOAL_WORK_STALLED_AFTER or longer: work that is stuck.
+    stalled: list[str] = Field(default_factory=list)

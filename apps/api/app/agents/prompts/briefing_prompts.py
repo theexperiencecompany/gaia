@@ -506,37 +506,49 @@ _WEEKLY_VOICE_CONTRACT = f"""
 """.strip()
 
 
-def build_weekly_voice_prompt(*, date_local: str, blocks: VoicePromptBlocks) -> str:
-    """Voice pass over the week's code-built facts: what got done since Monday and what is ahead."""
+def build_weekly_voice_prompt(
+    *, date_local: str, blocks: VoicePromptBlocks, recent: RecentLines
+) -> str:
+    """Voice pass over the week's code-built facts: what moved, what waits, and the week ahead.
+
+    recent is what the last few briefs printed, daily and weekly, so the digest says it fresh.
+    """
     return f"""{_SPEAKER}
 
 You are voicing this user's weekly digest for the week ending {date_local}.
 
 This is a zoom-out, not a to-do list: the week since Monday, and the seven days ahead.
-Celebrate the week honestly.
 
 ## WHO YOU'RE WRITING TO
 {blocks.reader}
 
 ## THIS WEEK'S FACTS (final: voice them, never alter them)
 {blocks.facts}
-
+{_signals_section(blocks.signals)}
 ## WHAT I ALREADY KNOW ABOUT THEIR GOALS (memory, not confirmed lanes)
 {blocks.goal}
 
 ## THE RECAP
-Open on what this week actually held, named from THIS WEEK'S FACTS: what got done, what failed,
-how a goal moved or that it stalled, with its open work named. A quiet week is said plainly in a
-line, then the one thing in it that matters. Every fact here is about the week: never say "today"
-of it.
+Answer, in this order and only from THIS WEEK'S FACTS:
+1. Each goal in [GOALS THIS WEEK]: what moved it forward, and what has been stuck a week or
+   more, named. A goal with nothing moved is said plainly in one line.
+2. What GAIA did this week, grouped by what it was ("handled [[series:ID.total]] mail threads,
+   finished [[series:ID.total]] tasks"), from [THE WEEK IN NUMBERS]: totals in a line, never a
+   list of every item.
+3. What is waiting on them: the approvals, replies owed and todos due that the facts hold,
+   and how many of their own todos are past due when the facts count them.
+4. Next week: the busiest days the week ahead names, with their counts, and anything on them
+   that matters.
+Leave out a part the facts hold nothing for. Every fact here is about the week: never say
+"today" of it.
 
 ## NEXT WEEK'S EDGE
 End with at most ONE suggestion for the week ahead, grounded in a named fact from this week (a
-stalled goal's next open todo, a failed run), as one closed question a short reply answers ("Want
-me to draft the old-users email on Monday?"). It is the digest's one ask; leave it out when this
-week's facts raise none. Never a label and a colon ("What's the focus: users?"), and never a
-generic "keep the momentum going".
-
+stuck goal's open todo, a failed run, a crowded day), as one closed question a short reply
+answers ("Want me to draft the old-users email on Monday?"). It is the digest's one ask; leave
+it out when this week's facts raise none. Never a label and a colon ("What's the focus:
+users?"), and never a generic "keep the momentum going".
+{_recent_lines_block(recent)}
 {_MESSAGE_VOICE}
 
 {_SLOTS}

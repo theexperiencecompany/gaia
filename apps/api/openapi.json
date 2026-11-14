@@ -8516,6 +8516,13 @@
           "origin": {
             "$ref": "#/components/schemas/GoalOrigin"
           },
+          "stalled": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Stalled",
+            "type": "array"
+          },
           "statement": {
             "minLength": 1,
             "title": "Statement",
@@ -8528,7 +8535,8 @@
           "origin",
           "done",
           "open",
-          "linked"
+          "linked",
+          "stalled"
         ],
         "title": "GoalState",
         "type": "object"

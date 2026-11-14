@@ -1,12 +1,13 @@
 """Gather every producer's candidates for one brief, daily or weekly, numbered once and deduplicated."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import BriefingEvent, UnreadSource
 from app.models.scout_models import SignalImportance
+from app.models.todo_models import TodoDocument
 from app.services.briefing.candidates.app_signals import app_signal_candidates
 from app.services.briefing.candidates.approvals import approval_candidates
 from app.services.briefing.candidates.calendar import calendar_candidates
@@ -21,7 +22,7 @@ from app.services.briefing.candidates.tracked import (
     user_done_candidates,
     waiting_candidates,
 )
-from app.services.briefing.context import CompletedWork, TrackedWork, UserClock, day_start_utc
+from app.services.briefing.context import TrackedWork, UserClock, day_start_utc
 from app.services.briefing.scouts.service import ScoutSignals
 
 
@@ -45,12 +46,19 @@ class GatheredCandidates:
 
 @dataclass(frozen=True)
 class CandidateSources:
-    """What the daily run already read, which the producers turn into candidates."""
+    """What the run already read, which the producers turn into candidates.
+
+    ahead_days is how many local days from today the brief looks ahead for what is due:
+    a reminder or a dated todo of their own. user_done is what the user finished themselves,
+    which only the weekly recaps.
+    """
 
     work: TrackedWork
     held: list[PendingBriefItemDocument]
     scouts: ScoutSignals
     calendar: list[BriefingEvent]
+    ahead_days: int = 1
+    user_done: list[TodoDocument] = field(default_factory=list)
 
 
 def _found_by(candidate: BriefCandidate) -> str:
@@ -120,7 +128,7 @@ async def gather_candidates(
     """Run every producer, needs-you sources first, remember each find, and number them."""
     work = sources.work
     day_start = day_start_utc(clock)
-    day_end = day_start_utc(clock, days_ago=-1)
+    day_end = day_start_utc(clock, days_ago=-sources.ahead_days)
     open_todo_ids = {doc.id for doc in [*work.blocked, *work.failed, *work.running]}
     candidates = [
         *waiting_candidates(work),
@@ -130,27 +138,10 @@ async def gather_candidates(
         *await failed_run_candidates(user_id, since),
         *app_signal_candidates(sources.scouts.remembered, clock),
         *await held_candidates(user_id, sources.held),
+        *user_done_candidates(sources.user_done),
         *gaia_work_candidates(work),
         *calendar_candidates(sources.calendar, clock.date_str),
     ]
     remembered = await remember_candidates(user_id, _one_per_thing(candidates), now)
     pool, duplicates = _numbered(remembered)
     return GatheredCandidates(pool, duplicates, _unavailable(sources.scouts))
-
-
-async def gather_week_candidates(
-    user_id: str,
-    clock: UserClock,
-    since: datetime,
-    completed: CompletedWork,
-    ahead: list[BriefingEvent],
-) -> GatheredCandidates:
-    """Run the producers over the week since Monday: failed runs, what got done, the week ahead."""
-    candidates = [
-        *await failed_run_candidates(user_id, since),
-        *user_done_candidates(completed.user),
-        *gaia_work_candidates(TrackedWork(completed=completed.gaia)),
-        *calendar_candidates(ahead, clock.date_str),
-    ]
-    pool, duplicates = _numbered(candidates)
-    return GatheredCandidates(pool, duplicates, [])

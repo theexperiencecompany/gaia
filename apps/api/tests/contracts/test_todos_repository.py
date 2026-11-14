@@ -1700,6 +1700,32 @@ class TestBriefingReads:
 
         assert await repo.count_open_user_todos(user_id) == 60
 
+    async def test_only_open_user_todos_due_before_the_cutoff_are_counted_overdue(
+        self, repo, make_doc
+    ):
+        user_id = "u-overdue"
+        cutoff = datetime(2026, 11, 15, tzinfo=UTC)
+        for days in (1, 30):
+            await repo.create(
+                make_doc(user_id=user_id, title=f"late {days}", due_date=cutoff - timedelta(days))
+            )
+        await repo.create(make_doc(user_id=user_id, title="due at", due_date=cutoff))
+        await repo.create(make_doc(user_id=user_id, title="undated"))
+        await repo.create(
+            make_doc(user_id=user_id, title="done", completed=True, due_date=cutoff - timedelta(1))
+        )
+        await repo.create(
+            make_doc(
+                user_id=user_id,
+                title="tracked",
+                labels=[GAIA_TRACKED_LABEL],
+                due_date=cutoff - timedelta(1),
+            )
+        )
+
+        assert await repo.count_open_user_todos(user_id, due_before=cutoff) == 2
+        assert await repo.count_open_user_todos(user_id) == 4
+
 
 async def test_running_tracked_todos_are_the_users_open_unpaused_tracked_ones(repo, make_doc):
     running = await repo.create(make_doc(user_id="u1", labels=[GAIA_TRACKED_LABEL], title="run"))

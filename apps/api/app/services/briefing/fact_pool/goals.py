@@ -6,11 +6,14 @@ with no names (the onboarding focus) has none: it is stated, never guessed at.
 """
 
 from collections.abc import Sequence
+from datetime import datetime
 import re
 
+from app.constants.briefing import GOAL_WORK_STALLED_AFTER
 from app.models.brief_pool_models import GoalState
 from app.models.todo_models import TodoDocument
 from app.services.briefing.context import StatedGoal
+from app.utils.timezone import as_utc
 
 
 def _names(goal: StatedGoal) -> list[re.Pattern[str]]:
@@ -21,8 +24,16 @@ def _names(goal: StatedGoal) -> list[re.Pattern[str]]:
     ]
 
 
-def goal_states(goals: Sequence[StatedGoal], todos: Sequence[TodoDocument]) -> list[GoalState]:
-    """Return each goal with the finished and open todos linked to it, numbered g1 up.
+def _stuck(todo: TodoDocument, now: datetime) -> bool:
+    """Whether an open todo has gone untouched for GOAL_WORK_STALLED_AFTER; an undated one never has."""
+    touched = as_utc(todo.updated_at or todo.created_at)
+    return touched is not None and now - touched >= GOAL_WORK_STALLED_AFTER
+
+
+def goal_states(
+    goals: Sequence[StatedGoal], todos: Sequence[TodoDocument], now: datetime
+) -> list[GoalState]:
+    """Return each goal with the finished, open and stuck todos linked to it, numbered g1 up.
 
     todos are the ones the brief read: finished in its window, or still open.
     """
@@ -31,7 +42,7 @@ def goal_states(goals: Sequence[StatedGoal], todos: Sequence[TodoDocument]) -> l
         names = _names(goal)
         linked = [t for t in todos if any(n.search(t.title) for n in names)]
         done = [t.title for t in linked if t.completed]
-        still_open = [t.title for t in linked if not t.completed]
+        still_open = [t for t in linked if not t.completed]
         states.append(
             GoalState(
                 id=f"g{len(states) + 1}",
@@ -39,7 +50,8 @@ def goal_states(goals: Sequence[StatedGoal], todos: Sequence[TodoDocument]) -> l
                 origin=goal.origin,
                 done=len(done),
                 open=len(still_open),
-                linked=[*done, *still_open],
+                linked=[*done, *(t.title for t in still_open)],
+                stalled=[t.title for t in still_open if _stuck(t, now)],
             )
         )
     return states

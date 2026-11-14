@@ -1,6 +1,8 @@
 """Build the facts block the model voices, and the values its slots render, from the chosen sections."""
 
 from dataclasses import dataclass, field
+from datetime import date
+from itertools import groupby
 
 from app.constants.briefing import (
     BACKLOG_STATE,
@@ -10,6 +12,7 @@ from app.constants.briefing import (
 )
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import BriefBlock, SectionBlock
+from app.models.brief_pool_models import DataSeries, GoalState
 from app.models.briefing_models import (
     BRIEFING_ITEM_STATES,
     NEEDS_YOU_ITEM_KINDS,
@@ -20,7 +23,7 @@ from app.models.briefing_models import (
 )
 from app.services.briefing import context
 from app.services.briefing.artifacts import ArtifactFact
-from app.services.briefing.candidates.calendar import event_time
+from app.services.briefing.candidates.calendar import start_time
 from app.services.briefing.candidates.subjects import subject_key
 from app.services.briefing.composition.voiced_blocks import (
     block_words,
@@ -33,8 +36,10 @@ from app.services.briefing.sections import Chosen
 from app.services.briefing.slots import (
     BriefFact,
     CountSlot,
+    SeriesField,
     SlotValues,
     figures_in,
+    series_figures,
 )
 
 
@@ -100,36 +105,17 @@ def work_stats(work: context.TrackedWork) -> list[BriefingStat]:
     return [BriefingStat(value=str(n), label=label) for n, label in figures if n]
 
 
-def _counts(
-    placed: list[tuple[BriefingItem, BriefCandidate]], open_todos: int, events: int
-) -> dict[CountSlot, int]:
-    """Return the counts a [[count:...]] slot voices, each counting only what its name claims, zeros left out.
-
-    Waiting on you leaves out a calendar event and backlog; while away is what came in to be
-    held for the brief.
-    """
-    counts = {
-        CountSlot.NEEDS_YOU: sum(
-            1
-            for it, c in placed
-            if it.kind in NEEDS_YOU_ITEM_KINDS and not (c.is_event or c.backlog)
-        ),
-        CountSlot.DONE: sum(1 for it, _ in placed if it.kind == "lookback"),
-        CountSlot.IN_PROGRESS: sum(1 for it, _ in placed if it.kind == "gaia"),
-        CountSlot.WHILE_AWAY: sum(1 for _, c in placed if c.held_id is not None),
-        CountSlot.OPEN_TODOS: open_todos,
-        CountSlot.EVENTS: events,
-    }
-    return {slot: n for slot, n in counts.items() if n}
-
-
 @dataclass(frozen=True)
 class BriefSpan:
-    """How the facts name the brief's span: its calendar's heading, an empty calendar, no items."""
+    """How the facts name the brief's span: its calendar's heading, an empty calendar, no items.
+
+    by_day lists the calendar under each day's heading, with its count: a span of several days.
+    """
 
     heading: str
     empty: str
     no_items: str
+    by_day: bool = False
 
 
 _NO_CLAIM = "Do not claim anything ran, finished, or is pending beyond what is stated here."
@@ -142,7 +128,16 @@ WEEK_AHEAD = BriefSpan(
     heading="The week ahead",
     empty="The user's calendar has nothing in the week ahead.",
     no_items=f"The digest holds no items from this week. {_NO_CLAIM}",
+    by_day=True,
 )
+
+
+@dataclass(frozen=True)
+class WeekRecap:
+    """The week as code counts it: each series' total, grouped by what it counts, and each goal."""
+
+    series: list[DataSeries]
+    goals: list[GoalState]
 
 
 @dataclass(frozen=True)
@@ -163,6 +158,34 @@ class FactSources:
     todos_note: str | None
     #: The composition's blocks, whose charts, quotes, progress and notes the voice is told of.
     blocks: list[BriefBlock] = field(default_factory=list)
+    #: The user's own open todos past their due date, however many: counted, never listed.
+    overdue_todos: int = 0
+    #: The weekly's recap of the week: what each count series totals and how each goal moved.
+    recap: WeekRecap | None = None
+
+
+def _counts(
+    placed: list[tuple[BriefingItem, BriefCandidate]], sources: FactSources, events: int
+) -> dict[CountSlot, int]:
+    """Return the counts a [[count:...]] slot voices, each counting only what its name claims, zeros left out.
+
+    Waiting on you leaves out a calendar event and backlog; while away is what came in to be
+    held for the brief.
+    """
+    counts = {
+        CountSlot.NEEDS_YOU: sum(
+            1
+            for it, c in placed
+            if it.kind in NEEDS_YOU_ITEM_KINDS and not (c.is_event or c.backlog)
+        ),
+        CountSlot.DONE: sum(1 for it, _ in placed if it.kind == "lookback"),
+        CountSlot.IN_PROGRESS: sum(1 for it, _ in placed if it.kind == "gaia"),
+        CountSlot.WHILE_AWAY: sum(1 for _, c in placed if c.held_id is not None),
+        CountSlot.OPEN_TODOS: sources.open_todos,
+        CountSlot.OVERDUE_TODOS: sources.overdue_todos,
+        CountSlot.EVENTS: events,
+    }
+    return {slot: n for slot, n in counts.items() if n}
 
 
 def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts:
@@ -204,26 +227,35 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
             )
             fact_lines.append(f"{line} | linkable" if linkable else line)
     calendar = sources.calendar if isinstance(sources.calendar, list) else []
-    counts = _counts(placed, sources.open_todos, len(calendar))
+    counts = _counts(placed, sources, len(calendar))
     voiced = " · ".join(f"[[count:{slot.value}]] ({n})" for slot, n in counts.items())
     if voiced:
         fact_lines.insert(0, f"[COUNTS] {voiced}")
     events = list(zip(sources.event_ids, calendar, strict=True))
     for fact_id, event in events:
-        facts[fact_id] = BriefFact(title=event.title, time=event_time(event, clock.date_str))
+        facts[fact_id] = BriefFact(title=event.title, time=start_time(event))
     if not chosen.sections:
         fact_lines.append(sources.span.no_items)
     fact_lines += voiced_block_lines(sources.blocks)
+    if sources.recap is not None:
+        fact_lines += _recap_lines(sources.recap)
+        own_words += [title for goal in sources.recap.goals for title in goal.linked]
     if sources.todos_note is not None:
         fact_lines.append(sources.todos_note)
-    fact_lines.append(_calendar_note(events, sources, clock))
+    fact_lines.append(_calendar_note(events, sources))
     return Facts(
         sections=chosen.sections,
         block="\n".join(fact_lines),
         values=SlotValues(
             facts=facts,
             counts=counts,
-            series=charted_figures(sources.blocks),
+            series={
+                **charted_figures(sources.blocks),
+                **{
+                    series.id: series_figures(series)
+                    for series in (sources.recap.series if sources.recap else [])
+                },
+            },
             quoted=figures_in(own_words),
         ),
         deliverables=deliverables,
@@ -253,26 +285,74 @@ def _event_slot(fact_id: int, time: str | None) -> str:
     return f"[[fact:{fact_id}.time]] ({time})" if time else "all day"
 
 
-def _calendar_note(
-    events: list[tuple[int, BriefingEvent]], sources: FactSources, clock: UserClock
-) -> str:
+def _event_lines(events: list[tuple[int, BriefingEvent]]) -> list[str]:
+    return [
+        f"- fact {fact_id} | {_event_slot(fact_id, start_time(e))}: {e.title}"
+        for fact_id, e in events
+    ]
+
+
+def _by_day(events: list[tuple[int, BriefingEvent]]) -> list[str]:
+    """List the events under each day's heading and count, naming the busiest day of several."""
+    days = {day: list(group) for day, group in groupby(events, key=lambda pair: pair[1].date)}
+    busiest = max(len(group) for group in days.values())
+    lines: list[str] = []
+    for day, group in days.items():
+        busy = ", the week's busiest" if len(days) > 1 and len(group) == busiest else ""
+        label = date.fromisoformat(day).strftime("%A %b %-d")
+        lines += [f"{label}, {len(group)} event(s){busy}:", *_event_lines(group)]
+    return lines
+
+
+def _calendar_note(events: list[tuple[int, BriefingEvent]], sources: FactSources) -> str:
     if isinstance(sources.calendar, CalendarUnread):
         if sources.calendar.gap is CalendarGap.UNAVAILABLE:
             return CALENDAR_UNAVAILABLE
         return NO_CALENDAR_CONNECTED
     if not events:
         return sources.span.empty
-    lines = [
-        f"- fact {fact_id} | {_event_slot(fact_id, event_time(e, clock.date_str))}: {e.title}"
-        for fact_id, e in events
-    ]
-    return f"{sources.span.heading}:\n" + "\n".join(lines)
+    if sources.span.by_day:
+        return "\n".join([f"{sources.span.heading}, {len(events)} event(s):", *_by_day(events)])
+    return f"{sources.span.heading}:\n" + "\n".join(_event_lines(events))
 
 
-def user_todos_note(open_count: int) -> str:
+def _recap_lines(recap: WeekRecap) -> list[str]:
+    """Say the week's totals as one grouped recap, and what moved and what stuck on each goal."""
+    lines: list[str] = []
+    if recap.series:
+        lines.append(
+            "[THE WEEK IN NUMBERS] (voice these as one grouped recap of the week, never as a list)"
+        )
+        lines += [
+            f"- {s.label}: [[series:{s.id}.total]] ({series_figures(s)[SeriesField.TOTAL]}"
+            f"{f' {s.unit}' if s.unit else ''})"
+            for s in recap.series
+        ]
+    if recap.goals:
+        lines.append("[GOALS THIS WEEK]")
+        lines += [_goal_week_line(goal) for goal in recap.goals]
+    return lines
+
+
+def _goal_week_line(goal: GoalState) -> str:
+    done = goal.linked[: goal.done]
+    moved = f"moved forward: {'; '.join(done)}" if done else "nothing linked to it finished"
+    line = f'- "{goal.statement}": {moved}'
+    if goal.stalled:
+        line += f" | stuck a week or more: {'; '.join(goal.stalled)}"
+    return line
+
+
+def user_todos_note(open_count: int, overdue: int = 0) -> str:
     if not open_count:
         return "The user's own todo list is empty."
-    return (
+    note = (
         "The user's own open todos are counted in [COUNTS]"
         "; never voice that list as clear or empty."
     )
+    if overdue:
+        note += (
+            " [[count:overdue_todos]] of them are past due: say that count in one plain line,"
+            " never list them."
+        )
+    return note

@@ -4,16 +4,23 @@ Persistence precedes delivery so the dashboard never misses a brief that reached
 """
 
 from dataclasses import dataclass
+from itertools import takewhile
 
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
     BRIEFING_KIND_WEEKLY,
     DAILY_KICKER,
+    QUIET_NOTE_CALENDAR_CLEAR,
     QUIET_NOTE_CALENDAR_UNREAD,
-    QUIET_NOTE_DAY,
-    QUIET_NOTE_HEADLINE,
+    QUIET_NOTE_HEADLINES,
     QUIET_NOTE_NO_CALENDAR,
+    QUIET_NOTE_NOTHING_NEW,
+    QUIET_NOTE_OVERDUE,
+    QUIET_NOTE_RUN_UNITS,
+    QUIET_NOTE_STILL,
+    QUIET_NOTE_STILL_SINCE,
     QUIET_NOTE_WATCH,
+    WEEKLY_KICKER,
     BriefForm,
 )
 from app.constants.notifications import (
@@ -29,7 +36,7 @@ from app.models.briefing_models import (
 )
 from app.models.user_models import UserDocument
 from app.services.analytics_service import capture
-from app.services.briefing.context import CalendarGap, UserClock
+from app.services.briefing.context import CalendarGap, UserClock, when_sent
 from app.services.briefing.delivery import deliver_brief
 from app.services.briefing.edition_draws import BagDraw, draw_stamp_or_artwork, persist_draws
 from app.services.briefing.fact_pool.pool import FactPool
@@ -64,6 +71,11 @@ class Push:
 
 #: The family a quiet note reports: it is drawn in none.
 QUIET_NOTE_FAMILY = "none"
+
+_KICKERS: dict[BriefingKind, str] = {
+    BRIEFING_KIND_DAILY: DAILY_KICKER,
+    BRIEFING_KIND_WEEKLY: WEEKLY_KICKER,
+}
 
 _NOTIFICATION_KINDS: dict[BriefingKind, str] = {
     BRIEFING_KIND_DAILY: NOTIFICATION_KIND_BRIEFING_DAILY,
@@ -118,41 +130,86 @@ async def publish_brief(
     return stored.briefing
 
 
-def quiet_note(clock: UserClock, calendar: CalendarGap | None) -> BriefingPayload:
-    """Write a quiet day's note: nothing needs the user, said once, and what GAIA keeps watching."""
-    situation = {
-        None: QUIET_NOTE_DAY,
+@dataclass(frozen=True)
+class QuietFacts:
+    """What a quiet note says beside its quiet: the calendar, the quiet streak it continues, overdue.
+
+    quiet_run counts the quiet notes in a row this one makes, itself included; last_edition is
+    when the last drawn brief went out, said as the user would, None when no recent one was.
+    """
+
+    calendar: CalendarGap | None
+    quiet_run: int = 1
+    last_edition: str | None = None
+    overdue: int = 0
+
+
+def quiet_facts(
+    recent: list[BriefingModel], clock: UserClock, calendar: CalendarGap | None, overdue: int
+) -> QuietFacts:
+    """Read the quiet streak off the recent briefs, newest first, every kind among them."""
+    quiet = list(takewhile(lambda b: b.payload.form is BriefForm.QUIET_NOTE, recent))
+    edition = next((b for b in recent if b.payload.form is BriefForm.EDITION), None)
+    return QuietFacts(
+        calendar=calendar,
+        quiet_run=len(quiet) + 1,
+        last_edition=when_sent(edition, clock) if edition is not None else None,
+        overdue=overdue,
+    )
+
+
+def _quiet_news(kind: BriefingKind, facts: QuietFacts) -> str:
+    """Say there is nothing new; after a quiet brief, how long it has stayed so and since when."""
+    if facts.quiet_run == 1:
+        return QUIET_NOTE_NOTHING_NEW[kind]
+    if facts.last_edition is None:
+        return QUIET_NOTE_STILL
+    return QUIET_NOTE_STILL_SINCE.format(
+        run=facts.quiet_run, unit=QUIET_NOTE_RUN_UNITS[kind], when=facts.last_edition
+    )
+
+
+def quiet_note(clock: UserClock, kind: BriefingKind, facts: QuietFacts) -> BriefingPayload:
+    """Write a quiet brief's note from its facts: nothing new, the calendar, what is past due."""
+    calendar = {
+        None: QUIET_NOTE_CALENDAR_CLEAR[kind],
         CalendarGap.NOT_CONNECTED: QUIET_NOTE_NO_CALENDAR,
         CalendarGap.UNAVAILABLE: QUIET_NOTE_CALENDAR_UNREAD,
-    }[calendar]
+    }[facts.calendar]
+    lines = [f"{_quiet_news(kind, facts)}{calendar}"]
+    if facts.overdue:
+        lines.append(QUIET_NOTE_OVERDUE.format(count=facts.overdue))
+    lines.append(QUIET_NOTE_WATCH)
     return BriefingPayload(
         form=BriefForm.QUIET_NOTE,
-        kicker=DAILY_KICKER,
+        kicker=_KICKERS[kind],
         date=clock.date_str,
-        headline=QUIET_NOTE_HEADLINE,
+        headline=QUIET_NOTE_HEADLINES[kind],
         lede="",
         caption="",
         mood="idle",
         template_family="",
-        message=f"{situation}\n{QUIET_NOTE_WATCH}",
+        message="\n".join(lines),
     )
 
 
 async def publish_quiet_note(
-    user: UserDocument, clock: UserClock, payload: BriefingPayload, pool: PoolCounts
+    user: UserDocument,
+    clock: UserClock,
+    kind: BriefingKind,
+    payload: BriefingPayload,
+    pool: PoolCounts,
 ) -> BriefingModel:
-    """Store and deliver a quiet day's note: no edition is drawn, rendered or spent."""
-    stored = await store_note(user.id, clock.date_str, BRIEFING_KIND_DAILY, payload)
+    """Store and deliver a quiet brief's note: no edition is drawn, rendered or spent."""
+    stored = await store_note(user.id, clock.date_str, kind, payload)
     channels = await deliver_brief(
         user, stored, payload, NOTIFICATION_KIND_BRIEFING_NOTE, push=True
     )
-    await briefing_repository.set_delivered_channels(
-        user.id, clock.date_str, BRIEFING_KIND_DAILY, channels
-    )
+    await briefing_repository.set_delivered_channels(user.id, clock.date_str, kind, channels)
     capture(
         UserId(user.id),
         BriefingSent(
-            kind=BRIEFING_KIND_DAILY,
+            kind=kind,
             form=BriefForm.QUIET_NOTE.value,
             family=QUIET_NOTE_FAMILY,
             mood=payload.mood,
@@ -170,7 +227,7 @@ async def publish_quiet_note(
     log.info(
         "briefing.sent",
         user_id=user.id,
-        kind=BRIEFING_KIND_DAILY,
+        kind=kind,
         channels=channels,
         form="quiet_note",
     )

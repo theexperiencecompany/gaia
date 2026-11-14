@@ -26,6 +26,7 @@ from app.constants.briefing import (
     hue_for_day,
 )
 from app.models.briefing_models import (
+    BriefingModel,
     BriefingMood,
     BriefingPayload,
     BriefVoice,
@@ -135,11 +136,23 @@ def _draft(voice: BriefVoice, values: SlotValues) -> BriefVoice:
 
 _FREQUENCY_RE = re.compile(rf"\b({'|'.join(FREQUENCY_CLAIMS)})\b", re.IGNORECASE)
 _NOT_A_WORD_RE = re.compile(r"[^\w\s]")
+_SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+|\n+")
 
 
 def opening_line(message: str) -> str:
     """Return a message's first non-blank line."""
     return next((line.strip() for line in message.splitlines() if line.strip()), "")
+
+
+def recent_lines(briefs: list[BriefingModel]) -> RecentLines:
+    """Return what the recent briefs printed, newest first, daily and weekly alike."""
+    payloads = [brief.payload for brief in briefs]
+    return RecentLines(
+        headlines=[p.headline for p in payloads if p.headline],
+        ledes=[p.lede for p in payloads if p.lede],
+        captions=[p.caption for p in payloads if p.caption],
+        openings=[opening_line(p.message) for p in payloads if p.message],
+    )
 
 
 def _plain(line: str) -> tuple[str, ...]:
@@ -176,6 +189,21 @@ def _frequency_problems(draft: BriefVoice, grounds: str) -> list[str]:
     ]
 
 
+def _doubled_title_problems(draft: BriefVoice, values: SlotValues) -> list[str]:
+    """Name each fact title a field says twice in one sentence, as written words and a slot do."""
+    titles = {fact.title.casefold(): fact.title for fact in values.facts.values() if fact.title}
+    return [
+        f"the {name} says {title!r} twice in one sentence; name it once"
+        for name in _VOICED_FIELDS
+        for title in dict.fromkeys(
+            titles[key]
+            for sentence in _SENTENCE_END_RE.split(getattr(draft, name).casefold())
+            for key in titles
+            if sentence.count(key) > 1
+        )
+    ]
+
+
 def _length_problems(exc: ValidationError) -> list[str]:
     errors: list[ErrorDetails] = exc.errors()
     return [f"the {error['loc'][0]} once its slots are filled: {error['msg']}" for error in errors]
@@ -201,7 +229,11 @@ def _held_to_facts(voice: BriefVoice, writing: Writing) -> BriefVoice | list[str
         draft = _draft(voice, writing.values)
     except ValidationError as exc:
         return _length_problems(exc)
-    said = _repeat_problems(draft, writing.recent) + _frequency_problems(draft, writing.grounds)
+    said = (
+        _repeat_problems(draft, writing.recent)
+        + _frequency_problems(draft, writing.grounds)
+        + _doubled_title_problems(draft, writing.values)
+    )
     return said or draft
 
 

@@ -9,11 +9,15 @@ from app.models.briefing_models import BriefingEvent
 from app.services.briefing.candidates.app_names import integration_name
 
 
+def start_time(event: BriefingEvent) -> str | None:
+    """Say the time an event starts on the user's clock, as every brief does; None all day."""
+    return datetime.strptime(event.start, "%H:%M").strftime("%-I:%M %p") if event.start else None
+
+
 def event_time(event: BriefingEvent, today: str) -> str | None:
     """Say when an event starts; one on another day than today names its weekday too."""
     day = "" if event.date == today else date.fromisoformat(event.date).strftime("%a")
-    start = datetime.strptime(event.start, "%H:%M").strftime("%-I:%M %p") if event.start else ""
-    return " ".join(part for part in (day, start) if part) or None
+    return " ".join(part for part in (day, start_time(event)) if part) or None
 
 
 def calendar_candidates(events: list[BriefingEvent], today: str) -> list[BriefCandidate]:

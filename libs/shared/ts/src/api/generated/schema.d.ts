@@ -9916,6 +9916,8 @@ export interface components {
             /** Open */
             open: number;
             origin: components["schemas"]["GoalOrigin"];
+            /** Stalled */
+            stalled: string[];
             /** Statement */
             statement: string;
         };

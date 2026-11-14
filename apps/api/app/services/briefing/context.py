@@ -113,6 +113,24 @@ class TrackedWork:
         return not (self.completed or self.running or self.blocked or self.failed)
 
 
+@dataclass(frozen=True)
+class OwnTodos:
+    """How many open todos of their own the user has, and how many of those are past due."""
+
+    open: int
+    overdue: int
+
+
+async def count_own_todos(user_id: str, clock: UserClock) -> OwnTodos:
+    """Count the user's own open todos, and those due before today began on their clock."""
+    return OwnTodos(
+        open=await todo_repository.count_open_user_todos(user_id),
+        overdue=await todo_repository.count_open_user_todos(
+            user_id, due_before=day_start_utc(clock)
+        ),
+    )
+
+
 def is_gaia_tracked(doc: TodoDocument) -> bool:
     return GAIA_TRACKED_LABEL in doc.labels
 
@@ -156,7 +174,7 @@ def lookback_since(clock: UserClock, last: BriefingModel | None) -> datetime:
     return max(_aware(last.created_at), day_start_utc(clock, days_ago=LOOKBACK_MAX_DAYS))
 
 
-def _when_sent(last: BriefingModel, clock: UserClock) -> str:
+def when_sent(last: BriefingModel, clock: UserClock) -> str:
     """Name the last brief's day as the user would: yesterday, or its weekday and date."""
     day = date.fromisoformat(last.date)
     if day == clock.now_local.date() - timedelta(days=1):
@@ -284,14 +302,14 @@ async def format_lookback_block(
         parts.append("No prior briefing — this is the first look-back.")
     elif _aware(last.created_at) < since:
         parts.append(
-            f"The last brief went out {_when_sent(last, clock)}, over {LOOKBACK_MAX_DAYS} days "
+            f"The last brief went out {when_sent(last, clock)}, over {LOOKBACK_MAX_DAYS} days "
             f"ago; what it said is stale, so this looks back over the last {LOOKBACK_MAX_DAYS} days."
         )
     else:
         planned = [item.text for section in last.payload.sections for item in section.items]
         if planned:
             parts.append(
-                f"Your last brief, {_when_sent(last, clock)}, told the user you'd focus on:\n"
+                f"Your last brief, {when_sent(last, clock)}, told the user you'd focus on:\n"
                 + "\n".join(f"- {p}" for p in planned if p)
             )
 

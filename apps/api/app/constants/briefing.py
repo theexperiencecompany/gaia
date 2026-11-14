@@ -181,13 +181,32 @@ class BriefForm(StrEnum):
     QUIET_NOTE = "quiet_note"
 
 
-#: A quiet day's note: nothing placed and nothing on the calendar, so no edition, no filler.
-QUIET_NOTE_HEADLINE: Final[str] = "Nothing needs you today"
-QUIET_NOTE_DAY: Final[str] = "Nothing new needs you today, and your calendar is clear."
-QUIET_NOTE_NO_CALENDAR: Final[str] = "Nothing new needs you today."
+#: A quiet day's or week's note: nothing new and nothing on the calendar, so no edition, no
+#: filler. Its first line says what is new, then how the calendar stands; a quiet brief after
+#: a quiet brief says it is still quiet and since when, so a quiet streak never reads the same.
+QUIET_NOTE_HEADLINES: Final[dict[str, str]] = {
+    BRIEFING_KIND_DAILY: "Nothing needs you today",
+    BRIEFING_KIND_WEEKLY: "Nothing needs you this week",
+}
+QUIET_NOTE_NOTHING_NEW: Final[dict[str, str]] = {
+    BRIEFING_KIND_DAILY: "Nothing new needs you today",
+    BRIEFING_KIND_WEEKLY: "Nothing moved this week",
+}
+QUIET_NOTE_STILL: Final[str] = "Still nothing new, as in your last briefs"
+QUIET_NOTE_STILL_SINCE: Final[str] = "Still nothing new: {run} quiet {unit} since your brief {when}"
+QUIET_NOTE_RUN_UNITS: Final[dict[str, str]] = {
+    BRIEFING_KIND_DAILY: "days",
+    BRIEFING_KIND_WEEKLY: "weeks",
+}
+QUIET_NOTE_CALENDAR_CLEAR: Final[dict[str, str]] = {
+    BRIEFING_KIND_DAILY: ", and your calendar is clear.",
+    BRIEFING_KIND_WEEKLY: ", and next week's calendar is clear.",
+}
+QUIET_NOTE_NO_CALENDAR: Final[str] = "."
 QUIET_NOTE_CALENDAR_UNREAD: Final[str] = (
-    "Nothing new needs you today. I couldn't read your calendar, so check it before you plan."
+    ". I couldn't read your calendar, so check it before you plan."
 )
+QUIET_NOTE_OVERDUE: Final[str] = "{count} of your own todos are past due."
 QUIET_NOTE_WATCH: Final[str] = "I'll flag anything that comes in."
 
 
@@ -215,6 +234,8 @@ IDLE_WARN_DAYS: Final[int] = 2
 IDLE_DORMANT_DAYS: Final[int] = 3
 #: How long a goal question waits before a brief asks about the same goal again.
 GOAL_QUESTION_REASK: Final = timedelta(days=7)
+#: How long a goal's open todo sits untouched before the weekly calls it stuck.
+GOAL_WORK_STALLED_AFTER: Final = timedelta(days=7)
 # A new account's first days never wind down: the brief helps them get started instead.
 FIRST_WEEK_DAYS: Final[int] = 7
 

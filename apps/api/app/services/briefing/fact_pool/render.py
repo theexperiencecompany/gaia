@@ -107,10 +107,11 @@ def goal_line(goal: GoalState) -> str:
     line = f'{goal.id} | "{goal.statement}" (from {goal.origin.value})'
     if not goal.linked:
         return f"{line} | no todo names what it is about"
-    return (
+    line = (
         f"{line} | linked todos: {goal.done} finished in the window, {goal.open} open: "
         + "; ".join(goal.linked)
     )
+    return f"{line} | stuck a week or more: {'; '.join(goal.stalled)}" if goal.stalled else line
 
 
 def pool_block(pool: FactPool) -> str:

@@ -29,6 +29,7 @@ class CountSlot(StrEnum):
     IN_PROGRESS = "in_progress"
     WHILE_AWAY = "while_away"
     OPEN_TODOS = "open_todos"
+    OVERDUE_TODOS = "overdue_todos"
     EVENTS = "events"
 
 

@@ -1,8 +1,10 @@
 """Quotes cut verbatim from people's own words, and goals with the todos that name what they are about."""
 
+from datetime import UTC, datetime, timedelta
+
 from tests.factories import make_user_id
 
-from app.constants.briefing import QUOTE_MAX_CHARS, QUOTE_MIN_CHARS
+from app.constants.briefing import GOAL_WORK_STALLED_AFTER, QUOTE_MAX_CHARS, QUOTE_MIN_CHARS
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_pool_models import GoalOrigin, GoalState, QuoteSpan
 from app.models.scout_models import Signal
@@ -118,8 +120,13 @@ class TestQuoteSpans:
         assert [(q.id, q.item_id) for q in quote_spans(items)] == [("q1", 3)]
 
 
-def _todo(title: str, *, completed: bool = False) -> TodoDocument:
-    return TodoDocument(id=title, user_id=USER_ID, title=title, completed=completed)
+_NOW = datetime(2026, 11, 15, 9, tzinfo=UTC)
+
+
+def _todo(title: str, *, completed: bool = False, touched: datetime | None = None) -> TodoDocument:
+    return TodoDocument(
+        id=title, user_id=USER_ID, title=title, completed=completed, updated_at=touched
+    )
 
 
 class TestGoalStates:
@@ -138,7 +145,7 @@ class TestGoalStates:
             _todo("Book the dentist"),
         ]
 
-        mobile, seed = goal_states(goals, todos)
+        mobile, seed = goal_states(goals, todos, _NOW)
 
         assert mobile == GoalState(
             id="g1",
@@ -159,9 +166,24 @@ class TestGoalStates:
             ["Send the deck to Accel"],
         )
 
+    def test_open_work_untouched_a_week_or_more_is_stuck_and_the_rest_is_not(self) -> None:
+        goal = StatedGoal("Launch Atlas", GoalOrigin.MEMORY, terms=("Atlas",))
+        todos = [
+            _todo("Atlas pricing", touched=_NOW - GOAL_WORK_STALLED_AFTER),
+            _todo("Atlas press list", touched=_NOW - GOAL_WORK_STALLED_AFTER + timedelta(hours=1)),
+            _todo("Atlas launch post"),
+            _todo("Atlas landing page", completed=True, touched=_NOW - timedelta(days=30)),
+        ]
+
+        [state] = goal_states([goal], todos, _NOW)
+
+        assert state.stalled == ["Atlas pricing"]
+
     def test_a_goal_that_names_nothing_has_no_linked_work(self) -> None:
         [goal] = goal_states(
-            [StatedGoal("Close 10 customers", GoalOrigin.ONBOARDING)], [_todo("Customer call")]
+            [StatedGoal("Close 10 customers", GoalOrigin.ONBOARDING)],
+            [_todo("Customer call")],
+            _NOW,
         )
 
         assert (goal.origin, goal.done, goal.open, goal.linked) == (

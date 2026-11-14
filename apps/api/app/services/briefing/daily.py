@@ -4,7 +4,6 @@ from dataclasses import replace
 from datetime import UTC, datetime
 
 from app.agents.prompts.briefing_prompts import (
-    RecentLines,
     VoicePromptBlocks,
     VoiceSituation,
     build_briefing_voice_prompt,
@@ -21,7 +20,6 @@ from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
-from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.models.brief_composition_models import ChartBlock, QuoteBlock
 from app.models.briefing_models import (
@@ -65,8 +63,8 @@ from app.services.briefing.prose import (
     Prose,
     Writing,
     links_in,
-    opening_line,
     reader_block,
+    recent_lines,
     voiced_payload,
     written_brief,
 )
@@ -75,6 +73,7 @@ from app.services.briefing.publish import (
     Push,
     publish_brief,
     publish_quiet_note,
+    quiet_facts,
     quiet_note,
 )
 from app.services.briefing.schedule import describe_briefing_schedule
@@ -109,22 +108,6 @@ async def _setup_block(user: UserDocument, *, first_week: bool, offer_lighter: b
         apps = [integration["name"] for integration in connected]
         lines.append(f"Apps they've connected: {', '.join(apps) if apps else 'none yet'}.")
     return "\n".join(lines)
-
-
-async def _recent_lines(user_id: str) -> RecentLines:
-    """Return what the recent daily briefs printed, newest first."""
-    payloads = [
-        brief.payload
-        for brief in await briefing_repository.list_recent(
-            user_id, limit=RECENT_BRIEFS_RECALLED, kind=BRIEFING_KIND_DAILY
-        )
-    ]
-    return RecentLines(
-        headlines=[p.headline for p in payloads if p.headline],
-        ledes=[p.lede for p in payloads if p.lede],
-        captions=[p.caption for p in payloads if p.caption],
-        openings=[opening_line(p.message) for p in payloads if p.message],
-    )
 
 
 def _is_empty_day(payload: BriefingPayload) -> bool:
@@ -213,7 +196,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     # Facts are assembled by code from tracked-work state; the model composes and voices them.
     work = await context.gather_tracked_work(user_id, since)
     artifacts = gather_artifacts(work)
-    open_count = await todo_repository.count_open_user_todos(user_id)
+    todos = await context.count_own_todos(user_id, clock)
     window = daily_window(clock)
     day = await context.read_day_calendar(user_id, clock, window.start, window.end)
     completed = await context.gather_completed_since(user_id, since)
@@ -223,7 +206,8 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     gathered = await gather_candidates(
         user_id, clock, since, seen_at, CandidateSources(work, held, scouts, day.events)
     )
-    recent = await _recent_lines(user_id)
+    briefs = await briefing_repository.list_recent(user_id, limit=RECENT_BRIEFS_RECALLED)
+    recent = recent_lines(briefs)
     pool, laid = await _composed_day(
         user,
         window,
@@ -243,12 +227,13 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         laid.chosen,
         FactSources(
             artifacts=artifacts,
-            open_todos=open_count,
+            open_todos=todos.open,
             calendar=day.today,
             event_ids=event_ids(gathered.pool),
             span=TODAY,
-            todos_note=user_todos_note(open_count),
+            todos_note=user_todos_note(todos.open, todos.overdue),
             blocks=laid.blocks,
+            overdue_todos=todos.overdue,
         ),
         clock,
     )
@@ -261,7 +246,13 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     )
     if not winback.is_winback and not is_first and _is_quiet_day(laid, day.events, ladder):
         gap = day.today.gap if isinstance(day.today, context.CalendarUnread) else None
-        await publish_quiet_note(user, clock, quiet_note(clock, gap), PoolCounts.of(pool))
+        await publish_quiet_note(
+            user,
+            clock,
+            BRIEFING_KIND_DAILY,
+            quiet_note(clock, BRIEFING_KIND_DAILY, quiet_facts(briefs, clock, gap, todos.overdue)),
+            PoolCounts.of(pool),
+        )
         await _settle(user, ladder, gathered)
         return BriefingRunOutcome.SENT
 

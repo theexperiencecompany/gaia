@@ -187,6 +187,39 @@ class TestAVoiceThatRepeatsOrOverclaims:
         asked.assert_awaited_once()
 
 
+class TestAVoiceThatSaysATitleTwice:
+    """Regression: "Northwind's invoice is still past due: Northwind invoice." echoed its title."""
+
+    _VALUES = SlotValues(facts={1: BriefFact(title="Northwind invoice")}, counts={})
+
+    async def test_a_title_written_and_slotted_in_one_sentence_is_sent_back(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        echoed = _voice(message="The Northwind invoice is still past due: [[fact:1]].")
+        asked = AsyncMock(side_effect=[echoed, _voice(message="[Northwind](fact:1) is past due.")])
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+
+        _, draft = await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
+
+        problems = ["the message says 'Northwind invoice' twice in one sentence; name it once"]
+        assert asked.await_args_list[1].args[1] == (
+            f"PROMPT\n\n{voice_correction_note(problems, echoed.model_dump_json(indent=2))}"
+        )
+        assert draft.message == "Northwind is past due."
+
+    async def test_a_title_said_again_in_the_next_sentence_stands(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        again = _voice(message="[[fact:1]] is past due. The Northwind invoice went out Monday.")
+        asked = AsyncMock(side_effect=[again])
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+
+        voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
+
+        assert voice == again
+        asked.assert_awaited_once()
+
+
 @pytest.mark.parametrize(
     ("message", "opening"),
     [("\n  Priya replied overnight.\nMore.", "Priya replied overnight."), (" \n\t\n", "")],

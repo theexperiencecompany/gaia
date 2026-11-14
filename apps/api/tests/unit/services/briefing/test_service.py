@@ -40,9 +40,6 @@ from app.constants.briefing import (
     MAX_BRIEF_HEADLINE_CHARS,
     MAX_VOICE_ATTEMPTS,
     NO_CALENDAR_CONNECTED,
-    QUIET_NOTE_CALENDAR_UNREAD,
-    QUIET_NOTE_DAY,
-    QUIET_NOTE_WATCH,
     WEEKLY_KICKER,
     WINBACK_THRESHOLD,
     ArtFamily,
@@ -459,6 +456,13 @@ def _with_open_subjects(work: context.TrackedWork) -> context.TrackedWork:
     )
 
 
+def _own_todos(open_count: int, overdue: int = 0) -> AsyncMock:
+    """Stand in for count_open_user_todos: the whole list, or what of it is due before a cutoff."""
+    return AsyncMock(
+        side_effect=lambda _user, due_before=None: overdue if due_before else open_count
+    )
+
+
 def _patch_context_reads(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
     """Patch what the run gathers its context from (work, goals, dormancy, apps) and the scouts."""
     _seam(monkeypatch, w, chat_sync, "format_replies_block", AsyncMock(return_value="No replies."))
@@ -485,7 +489,7 @@ def _patch_context_reads(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
         "gather_tracked_work",
         AsyncMock(side_effect=lambda *_: _with_open_subjects(w.work)),
     )
-    _seam(monkeypatch, w, todo_repository, "count_open_user_todos", AsyncMock(return_value=0))
+    _seam(monkeypatch, w, todo_repository, "count_open_user_todos", _own_todos(0))
     _seam(
         monkeypatch,
         w,
@@ -874,7 +878,10 @@ class TestDailyBrief:
         world.agent.assert_not_awaited()
         payload = _stored_payload(world)
         assert payload.form is BriefForm.QUIET_NOTE
-        assert payload.message == f"{QUIET_NOTE_DAY}\n{QUIET_NOTE_WATCH}"
+        assert payload.message == (
+            "Nothing new needs you today, and your calendar is clear.\n"
+            "I'll flag anything that comes in."
+        )
         assert world.upsert.await_args.kwargs["edition"] is None
         request = world.notify.await_args.args[0]
         assert request.metadata["kind"] == NOTIFICATION_KIND_BRIEFING_NOTE
@@ -933,7 +940,67 @@ class TestDailyBrief:
 
         await daily.run_daily_briefing(_USER)
 
-        assert _stored_payload(world).message == f"{QUIET_NOTE_CALENDAR_UNREAD}\n{QUIET_NOTE_WATCH}"
+        assert _stored_payload(world).message == (
+            "Nothing new needs you today. I couldn't read your calendar, so check it before you "
+            "plan.\nI'll flag anything that comes in."
+        )
+
+    @staticmethod
+    def _brief(day: str, form: BriefForm) -> BriefingModel:
+        payload = BriefingPayload(
+            form=form,
+            kicker="K",
+            date=day,
+            headline="h",
+            lede="",
+            mood="idle",
+            caption="",
+            template_family="",
+        )
+        return BriefingModel(id=f"b-{day}", user_id=_USER, date=day, payload=payload)
+
+    async def test_a_quiet_day_after_quiet_days_says_how_long_and_since_which_brief(
+        self, world: World
+    ) -> None:
+        """Replay: five quiet days in a row each sent the very same two lines."""
+        self._quiet(world)
+        world.calendar = []
+        world.recent.return_value = [
+            self._brief("2026-10-13", BriefForm.QUIET_NOTE),
+            self._brief("2026-10-12", BriefForm.QUIET_NOTE),
+            self._brief("2026-10-11", BriefForm.EDITION),
+        ]
+
+        await daily.run_daily_briefing(_USER)
+
+        assert _stored_payload(world).message.splitlines()[0] == (
+            "Still nothing new: 3 quiet days since your brief on Sunday Oct 11, and your calendar "
+            "is clear."
+        )
+
+    async def test_a_quiet_day_counts_the_users_overdue_todos(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Replay: a user with 70 overdue todos of their own was never told of one."""
+        self._quiet(world)
+        world.calendar = []
+        _seam(
+            monkeypatch,
+            world,
+            todo_repository,
+            "count_open_user_todos",
+            _own_todos(200, overdue=70),
+        )
+
+        await daily.run_daily_briefing(_USER)
+
+        assert _stored_payload(world).message.splitlines()[1:] == [
+            "70 of your own todos are past due.",
+            "I'll flag anything that comes in.",
+        ]
+        world.reads["count_open_user_todos"].assert_any_await(
+            _USER, due_before=datetime(2026, 10, 13, 18, 30, tzinfo=UTC)
+        )
 
     async def test_a_day_with_an_event_is_an_edition_not_a_note(self, world: World) -> None:
         self._quiet(world)
@@ -1341,6 +1408,8 @@ def _a_full_week(monkeypatch: pytest.MonkeyPatch, world: World) -> None:
             return_value=context.CompletedWork(gaia=[deck], user=[_todo("u1", "Send the deck")])
         ),
     )
+    # GAIA's tracked work finished this week is the daily's own read, from Monday.
+    world.work = context.TrackedWork(completed=[deck])
     world.calendar = [_FRIDAY_PITCH]
     world.week.return_value = BriefingWeek(
         days=[BriefingWeekDay(you=1, gaia=2)] * 7, ahead=[_FRIDAY_PITCH]
@@ -1438,17 +1507,38 @@ class TestWeeklyRecap:
     ) -> None:
         _a_full_week(monkeypatch, world)
         world.agent.return_value = _weekly_voiced(
-            lede="Then [[fact:<fact of Pitch to Accel>]] on [[fact:<fact of Pitch to Accel>.time]]."
+            lede="Then [[fact:<fact of Pitch to Accel>]] on Friday at "
+            "[[fact:<fact of Pitch to Accel>.time]]."
         )
 
         await weekly.run_weekly_digest(_USER)
 
-        assert _stored_payload(world).lede == "Then Pitch to Accel on Fri 3:00 PM."
+        # Timed as the daily times them: the day is the heading's, the slot says the time.
+        assert _stored_payload(world).lede == "Then Pitch to Accel on Friday at 3:00 PM."
         facts = _facts_shown(_prompt(world))
-        assert "The week ahead:\n- fact " in facts and "(Fri 3:00 PM): Pitch to Accel" in facts
+        assert "The week ahead, 1 event(s):\nFriday Oct 16, 1 event(s):\n- fact " in facts
+        assert "(3:00 PM): Pitch to Accel" in facts
         assert "summary: Final numbers in" in facts
         assert "weekly digest for the week ending 2026-10-14" in world.composer.await_args.args[1]
         assert "## THIS WEEK'S FACTS" in _prompt(world)
+
+    async def test_every_event_ahead_is_counted_by_day_and_the_busiest_day_is_named(
+        self, world: World
+    ) -> None:
+        """Regression: the week ahead stopped at five events, so a six-meeting Monday read as five."""
+        monday = [
+            BriefingEvent(date="2026-10-19", start=f"{hour:02d}:00", title=f"Meeting {hour}")
+            for hour in range(9, 15)
+        ]
+        world.calendar = [*monday, _FRIDAY_PITCH]
+
+        await weekly.run_weekly_digest(_USER)
+
+        facts = _facts_shown(_prompt(world))
+        assert "The week ahead, 7 event(s):" in facts
+        assert "Friday Oct 16, 1 event(s):" in facts
+        assert "Monday Oct 19, 6 event(s), the week's busiest:" in facts
+        assert all(f": Meeting {hour}" in facts for hour in range(9, 15))
 
 
 class TestTheWeeklyHoldsToItsFacts:
@@ -1526,6 +1616,133 @@ class TestTheWeeklyHoldsToItsFacts:
             await weekly.run_weekly_digest(_USER)
 
         _assert_nothing_sent(world)
+
+
+def _finished(todo_id: str, title: str, *, gaia: bool, days_ago: int) -> TodoDocument:
+    done = _NOW - timedelta(days=days_ago)
+    return TodoDocument(
+        id=todo_id,
+        user_id=_USER,
+        title=title,
+        labels=[GAIA_TRACKED_LABEL] if gaia else [],
+        completed=True,
+        completed_at=done,
+        updated_at=done,
+    )
+
+
+class TestTheWeeklyAnswersTheWeek:
+    """Founder design: what moved and stuck per goal, GAIA's week grouped, what waits, next week."""
+
+    async def test_an_empty_week_sends_the_quiet_note_and_never_an_edition(
+        self, world: World
+    ) -> None:
+        world.calendar = []
+        world.reads["gather_completed_since"].return_value = context.CompletedWork()
+
+        assert await weekly.run_weekly_digest(_USER) is BriefingRunOutcome.SENT
+
+        world.composer.assert_not_awaited()
+        world.agent.assert_not_awaited()
+        world.host_image.assert_not_awaited()
+        payload = _stored_payload(world)
+        assert world.upsert.await_args.args[2] == "weekly"
+        assert (payload.form, payload.kicker, payload.headline) == (
+            BriefForm.QUIET_NOTE,
+            WEEKLY_KICKER,
+            "Nothing needs you this week",
+        )
+        assert payload.message == (
+            "Nothing moved this week, and next week's calendar is clear.\n"
+            "I'll flag anything that comes in."
+        )
+
+    async def test_the_weekly_is_sent_back_for_a_line_a_recent_daily_printed(
+        self, world: World
+    ) -> None:
+        """The weekly passed no recent lines and the daily read only dailies."""
+        daily_brief = BriefingPayload(
+            kicker="K",
+            date="2026-10-13",
+            headline="A good week",
+            lede="l",
+            mood="packed",
+            caption="c",
+            template_family="swiss",
+        )
+        world.recent.return_value = [
+            BriefingModel(id="d", user_id=_USER, date="2026-10-13", payload=daily_brief)
+        ]
+        world.agent.side_effect = [_weekly_voiced(), _weekly_voiced(headline="A full week")]
+
+        await weekly.run_weekly_digest(_USER)
+
+        world.recent.assert_awaited_once_with(_USER, limit=5)
+        retry = world.agent.await_args_list[1].kwargs["prompt"]
+        assert "the headline repeats a recent brief's line ('A good week')" in retry
+        assert "Headlines:\n- A good week" in retry
+        assert _stored_payload(world).headline == "A full week"
+
+    async def test_what_waits_on_the_user_reaches_the_weekly_and_is_remembered_as_shown(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The weekly read only failed runs, completions and the calendar, and scouts with no signals."""
+        world.work = context.TrackedWork(blocked=[_todo("b1", "Approve the Priya reply")])
+        world.scouts = _scouted(_LOGIN)
+        _seam(monkeypatch, world, todo_repository, "count_open_user_todos", _own_todos(80, 70))
+        world.agent.return_value = _weekly_voiced(lede="Two things wait on you.")
+
+        await weekly.run_weekly_digest(_USER)
+
+        facts = _facts_shown(_prompt(world))
+        assert "Waiting on you: Approve the Priya reply" in facts
+        assert "[[count:overdue_todos]] (70)" in facts
+        assert "Fix the login redirect" in _prompt(world)
+        world.seen.assert_awaited()
+        shown = [seen.external_id for seen in world.shown.await_args.args[1]]
+        assert "todo:b1" in shown
+
+    async def test_gaias_week_is_one_grouped_count_per_kind_of_work(self, world: World) -> None:
+        finished = [_finished(f"g{n}", f"Research {n}", gaia=True, days_ago=1) for n in range(6)]
+        world.reads["list_completed_since"].return_value = finished
+        world.agent.return_value = _weekly_voiced(
+            lede="I finished [[series:gaia_finished.total]] tasks."
+        )
+
+        await weekly.run_weekly_digest(_USER)
+
+        facts = _facts_shown(_prompt(world))
+        assert "[THE WEEK IN NUMBERS]" in facts
+        assert "- Tasks GAIA finished: [[series:gaia_finished.total]] (6 tasks)" in facts
+        assert _stored_payload(world).lede == "I finished 6 tasks."
+
+    async def test_each_goal_says_what_moved_it_and_what_is_stuck_a_week_or_more(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        goal = context.StatedGoal("Launch Atlas", GoalOrigin.MEMORY, terms=("Atlas",))
+        _seam(monkeypatch, world, context, "stated_goals", AsyncMock(return_value=[goal]))
+        world.reads["list_completed_since"].return_value = [
+            _finished("a1", "Atlas landing page", gaia=False, days_ago=2)
+        ]
+        stuck = TodoDocument(
+            id="a2",
+            user_id=_USER,
+            title="Atlas pricing",
+            updated_at=_NOW - timedelta(days=9),
+        )
+        fresh = TodoDocument(
+            id="a3", user_id=_USER, title="Atlas press list", updated_at=_NOW - timedelta(days=2)
+        )
+        world.reads["list_open_user_todos"].return_value = [stuck, fresh]
+        world.agent.return_value = _weekly_voiced()
+
+        await weekly.run_weekly_digest(_USER)
+
+        facts = _facts_shown(_prompt(world))
+        assert (
+            '- "Launch Atlas": moved forward: Atlas landing page'
+            " | stuck a week or more: Atlas pricing"
+        ) in facts
 
 
 class TestHeldItemsJoinTheBrief:
@@ -1643,9 +1860,7 @@ class TestTheProseHoldsToItsFacts:
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Regression: 5 open todos were shown to the model, then rejected when it said 5."""
-        _seam(
-            monkeypatch, world, todo_repository, "count_open_user_todos", AsyncMock(return_value=5)
-        )
+        _seam(monkeypatch, world, todo_repository, "count_open_user_todos", _own_todos(5))
         world.calendar = []
         world.agent.return_value = _voiced(
             "[[count:open_todos]] open todos, a quiet morning", "Nothing else today."
@@ -1668,9 +1883,7 @@ class TestTheProseHoldsToItsFacts:
     async def test_a_figure_typed_or_a_slot_naming_nothing_shown_is_regenerated(
         self, world: World, monkeypatch: pytest.MonkeyPatch, headline: str, named: str
     ) -> None:
-        _seam(
-            monkeypatch, world, todo_repository, "count_open_user_todos", AsyncMock(return_value=5)
-        )
+        _seam(monkeypatch, world, todo_repository, "count_open_user_todos", _own_todos(5))
         world.agent.side_effect = [
             _voiced(headline, "A quiet morning."),
             _voiced("A quiet one", "-"),
@@ -1887,7 +2100,8 @@ class TestWhatTheWriterIsShown:
 
         await daily.run_daily_briefing(_USER)
 
-        world.recent.assert_awaited_once_with(_USER, limit=5, kind="daily")
+        # Every kind: a weekly's lines are as stale to the next daily as a daily's.
+        world.recent.assert_awaited_once_with(_USER, limit=5)
         assert (
             "Headlines:\n- h\n- h\nLedes:\n- l\n- l\nCaptions:\n- c\n- c\n"
             "Message openings:\n- Priya replied overnight.\n"
@@ -2066,7 +2280,10 @@ class TestTheDailyRunWiring:
         assert world.reads["compute_winback_state"].await_args.args[0].id == _USER
         world.reads["has_daily_briefing"].assert_awaited_once_with(_USER)
         world.reads["gather_tracked_work"].assert_awaited_once_with(_USER, _DAY_START)
-        world.reads["count_open_user_todos"].assert_awaited_once_with(_USER)
+        assert world.reads["count_open_user_todos"].await_args_list == [
+            call(_USER),
+            call(_USER, due_before=datetime(2026, 10, 13, 18, 30, tzinfo=UTC)),
+        ]
         world.reads["gather_completed_since"].assert_awaited_once_with(_USER, _DAY_START)
         world.reads["list_for_user"].assert_awaited_once_with(_USER, sort=[("created_at", 1)])
         world.reads["format_replies_block"].assert_awaited_once_with(_USER, _DAY_START)
@@ -2406,9 +2623,7 @@ class TestTheFactsTheModelVoices:
     async def test_the_users_own_todos_are_counted_never_listed(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seam(
-            monkeypatch, world, todo_repository, "count_open_user_todos", AsyncMock(return_value=2)
-        )
+        _seam(monkeypatch, world, todo_repository, "count_open_user_todos", _own_todos(2))
 
         await daily.run_daily_briefing(_USER)
 
@@ -3046,6 +3261,14 @@ class TestTheWeeklyRunWiring:
             "gather_completed_since",
             AsyncMock(return_value=_weekly_completed()),
         )
+        world.work = context.TrackedWork(completed=_weekly_completed().gaia)
+        _seam(
+            monkeypatch,
+            world,
+            context,
+            "gather_tracked_work",
+            AsyncMock(side_effect=lambda *_: _with_open_subjects(world.work)),
+        )
         world.agent.return_value = _weekly_voiced()
         world.composer.side_effect = _composed({"This week": ["Deck", "U15"]})
 
@@ -3085,9 +3308,7 @@ class TestTheWeeklyRunWiring:
     ) -> None:
         world.agent.return_value = _weekly_voiced()
         world.user.name = "Ada Lovelace"
-        world.week.return_value = BriefingWeek(
-            days=[BriefingWeekDay(you=1, gaia=2)] * 7, ahead=[_FRIDAY_PITCH]
-        )
+        world.calendar = [_FRIDAY_PITCH]
 
         await weekly.run_weekly_digest(_USER)
 
@@ -3100,7 +3321,7 @@ class TestTheWeeklyRunWiring:
         assert "Recent briefs opened on" not in composed
         blocks = world.weekly_prompt.call_args.kwargs["blocks"]
         assert blocks.goal == "Stated goal: Ship v2"
-        assert "open_todos" not in blocks.facts and "todos" not in blocks.facts.lower()
+        assert "The user's own todo list is empty." in blocks.facts
         payload = _stored_payload(world)
         assert [b.kind for b in payload.blocks] == ["items"]
         assert payload.uncomposed == []

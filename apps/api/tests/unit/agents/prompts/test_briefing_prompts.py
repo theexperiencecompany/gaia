@@ -336,7 +336,12 @@ def test_without_recent_briefs_no_recent_lines_block_is_added() -> None:
 
 @pytest.mark.parametrize(
     "build",
-    [_prompt, partial(build_weekly_voice_prompt, date_local="2026-10-18", blocks=_BLOCKS)],
+    [
+        _prompt,
+        partial(
+            build_weekly_voice_prompt, date_local="2026-10-18", blocks=_BLOCKS, recent=RecentLines()
+        ),
+    ],
     ids=["daily", "weekly"],
 )
 def test_daily_and_weekly_share_one_message_voice_and_slot_grammar(
@@ -351,7 +356,9 @@ def test_daily_and_weekly_share_one_message_voice_and_slot_grammar(
 
 
 def test_the_weekly_voices_the_weeks_facts_and_goals_never_the_daily_extras() -> None:
-    prompt = build_weekly_voice_prompt(date_local="2026-10-18", blocks=_BLOCKS)
+    prompt = build_weekly_voice_prompt(
+        date_local="2026-10-18", blocks=_BLOCKS, recent=RecentLines()
+    )
 
     assert f"## THIS WEEK'S FACTS (final: voice them, never alter them)\n{_BLOCKS.facts}" in prompt
     assert _GOAL in prompt
@@ -362,11 +369,21 @@ def test_the_weekly_voices_the_weeks_facts_and_goals_never_the_daily_extras() ->
 
 
 def test_the_weekly_recaps_the_week_and_asks_at_most_one_grounded_closed_question() -> None:
-    prompt = build_weekly_voice_prompt(date_local="2026-10-18", blocks=_BLOCKS)
+    prompt = build_weekly_voice_prompt(
+        date_local="2026-10-18", blocks=_BLOCKS, recent=RecentLines()
+    )
 
-    assert "## THE RECAP\nOpen on what this week actually held" in prompt
-    assert 'never say "today"\nof it' in prompt
-    assert "leave it out when this\nweek's facts raise none" in prompt
+    assert "## THE RECAP\nAnswer, in this order and only from THIS WEEK'S FACTS:" in prompt
+    for part in (
+        "1. Each goal in [GOALS THIS WEEK]: what moved it forward, and what has been stuck a week",
+        "2. What GAIA did this week, grouped by what it was",
+        "3. What is waiting on them: the approvals, replies owed and todos due",
+        "4. Next week: the busiest days the week ahead names",
+    ):
+        assert part in prompt
+    flat = " ".join(prompt.split())
+    assert 'Every fact here is about the week: never say "today" of it.' in flat
+    assert "leave it out when this week's facts raise none" in flat
     assert "Never a label and a colon" in prompt
     assert "answer with a single word" not in prompt
 
