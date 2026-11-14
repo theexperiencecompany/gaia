@@ -5,6 +5,8 @@ and its name must match FINISH_TASK_NAME (the invariant the import-time assert
 guards).
 """
 
+from langchain_core.utils.function_calling import convert_to_openai_tool
+
 from app.agents.tools.finish_task_tool import finish_task
 from app.constants.general import FINISH_TASK_NAME
 
@@ -14,12 +16,25 @@ class TestFinishTask:
         assert finish_task.name == FINISH_TASK_NAME
 
     async def test_result_is_returned_verbatim(self) -> None:
-        result = await finish_task.coroutine(result="The full deliverable data.")
+        result = await finish_task.ainvoke({"result": "The full deliverable data."})
         assert result == "The full deliverable data."
 
     async def test_multi_line_results_are_untouched(self) -> None:
-        result = await finish_task.coroutine(result="line 1\nline 2\n- item")
+        result = await finish_task.ainvoke({"result": "line 1\nline 2\n- item"})
         assert result == "line 1\nline 2\n- item"
 
     async def test_empty_result_is_returned_as_is(self) -> None:
-        assert await finish_task.coroutine(result="") == ""
+        assert await finish_task.ainvoke({"result": ""}) == ""
+
+    async def test_what_the_run_declares_beside_it_leaves_the_result_as_given(self) -> None:
+        result = await finish_task.ainvoke(
+            {"result": "Nothing is new.", "outcome": "schedule", "nothing_for_user": True}
+        )
+        assert result == "Nothing is new."
+
+    async def test_the_model_is_told_a_run_has_something_for_the_user_unless_it_says_not(
+        self,
+    ) -> None:
+        schema = convert_to_openai_tool(finish_task)["function"]["parameters"]
+        assert schema["properties"]["nothing_for_user"]["default"] is False
+        assert schema["required"] == ["result"]

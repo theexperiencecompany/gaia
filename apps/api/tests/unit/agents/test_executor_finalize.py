@@ -11,7 +11,7 @@ Session state and the routing logic under test are real.
 """
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import ExitStack, contextmanager
 from dataclasses import replace
 import time
@@ -56,8 +56,8 @@ from app.agents.core.background.session import (
     get_session,
     mark_executor_spawned,
 )
+from app.agents.core.outcome_review import NOT_REVIEWED, OutcomeReview
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext, SubagentOutcome
-from app.agents.prompts.comms_prompts import outcome_delivery_note
 from app.constants.agents import AgentTag, OutcomeState, wrap_agent_payload
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_INBOX_PREFIX
 from app.constants.executor import (
@@ -282,7 +282,7 @@ class TestCompletedRouting:
         await er._finalize_executor_run(run, TASK, "result", "final")
 
         boundaries.deliver.assert_awaited_once_with(
-            run, "result", "final", CARD_NOTE, tool_data=[], outcome_note=""
+            run, "result", "final", CARD_NOTE, tool_data=[], review=NOT_REVIEWED
         )
         # A completed run narrates and delivers — it never records a cancellation.
         boundaries.record_cancel.assert_not_awaited()
@@ -313,9 +313,9 @@ class TestCompletedRouting:
         boundaries.persist_cancelled.assert_not_awaited()
 
 
-def _tool_turn(name: str, args: dict[str, str], call_id: str) -> list[AnyMessage]:
+def _tool_turn(name: str, args: Mapping[str, object], call_id: str) -> list[AnyMessage]:
     return [
-        AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": call_id}]),
+        AIMessage(content="", tool_calls=[{"name": name, "args": dict(args), "id": call_id}]),
         ToolMessage(content="ok", tool_call_id=call_id, name=name, status="success"),
     ]
 
@@ -327,11 +327,11 @@ def _delegation(*work: list[AnyMessage], outcome: str) -> list[AnyMessage]:
 
 @pytest.mark.usefixtures("fake_redis")
 class TestTheRunsDeclaredOutcomeIsCheckedAtFinalize:
-    """The outcome the executor declares is checked against its own thread before comms voices it."""
+    """The outcome the executor declares is checked against its own thread before delivery reads it."""
 
     async def _finalize(
         self, boundaries: _Boundaries, thread: list[AnyMessage]
-    ) -> tuple[str, dict[str, Any]]:
+    ) -> tuple[OutcomeReview, dict[str, Any]]:
         ctx = _executor_ctx()
         create_session("s1", RunKind.QUEUED)
         read = AsyncMock(side_effect=lambda c: thread if c is ctx else [])
@@ -339,14 +339,14 @@ class TestTheRunsDeclaredOutcomeIsCheckedAtFinalize:
             async with log_context("executor_finalize_test"):
                 await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "result", "final", ctx)
                 event = dict(log.get())
-        return boundaries.deliver.await_args.kwargs["outcome_note"], event
+        return boundaries.deliver.await_args.kwargs["review"], event
 
     async def test_a_verified_ask_is_voiced_as_an_ask_and_awaits_the_users_answer(
         self, boundaries: _Boundaries
     ) -> None:
-        note, event = await self._finalize(boundaries, _delegation(outcome="ask"))
+        review, event = await self._finalize(boundaries, _delegation(outcome="ask"))
 
-        assert note == outcome_delivery_note(OutcomeState.ASK, None)
+        assert review == OutcomeReview(OutcomeState.ASK, None)
         assert event["executor"] == {"outcome": "ask", "outcome_verified": True}
         assert await spend_confirmation("conv-1") is True
 
@@ -355,9 +355,9 @@ class TestTheRunsDeclaredOutcomeIsCheckedAtFinalize:
     ) -> None:
         problem = "done was declared but no work call succeeded"
 
-        note, event = await self._finalize(boundaries, _delegation(outcome="done"))
+        review, event = await self._finalize(boundaries, _delegation(outcome="done"))
 
-        assert note == outcome_delivery_note(OutcomeState.DONE, problem)
+        assert review == OutcomeReview(OutcomeState.DONE, problem)
         assert event["executor"] == {"outcome": "done", "outcome_verified": False}
         assert [(w["msg"], w["problem"]) for w in event["warnings"]] == [
             (f"{LogTag.AGENT} Executor outcome not verified", problem)
@@ -369,9 +369,9 @@ class TestTheRunsDeclaredOutcomeIsCheckedAtFinalize:
     ) -> None:
         thread = _delegation(_tool_turn("create_todo", {"title": "visa"}, "c1"), outcome="done")
 
-        note, event = await self._finalize(boundaries, thread)
+        review, event = await self._finalize(boundaries, thread)
 
-        assert note == outcome_delivery_note(OutcomeState.DONE, None)
+        assert review == OutcomeReview(OutcomeState.DONE, None)
         assert "warnings" not in event
         assert await spend_confirmation("conv-1") is False
 
@@ -388,10 +388,29 @@ class TestTheRunsDeclaredOutcomeIsCheckedAtFinalize:
                 event = dict(log.get())
 
         assert boundaries.deliver.await_args.args[1] == "result"
-        assert boundaries.deliver.await_args.kwargs["outcome_note"] == ""
+        assert boundaries.deliver.await_args.kwargs["review"] is NOT_REVIEWED
         assert [(e["msg"], e["error_type"]) for e in event["errors"]] == [
             (f"{LogTag.AGENT} Executor outcome review failed", "ConnectionError")
         ]
+
+    async def test_a_run_that_says_it_found_nothing_for_the_user_is_delivered_as_such(
+        self, boundaries: _Boundaries
+    ) -> None:
+        finish = {"result": "report", "outcome": "ask", "nothing_for_user": True}
+        thread = [HumanMessage(content=TASK), *_tool_turn(FINISH_TASK_NAME, finish, "finish")]
+
+        review, _ = await self._finalize(boundaries, thread)
+
+        assert review == OutcomeReview(OutcomeState.ASK, None, nothing_for_user=True)
+
+    async def test_a_run_with_no_thread_to_read_is_delivered_unreviewed(
+        self, boundaries: _Boundaries
+    ) -> None:
+        create_session("s1", RunKind.QUEUED)
+
+        await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "result", "final")
+
+        assert boundaries.deliver.await_args.kwargs["review"] is NOT_REVIEWED
 
 
 class TestDoneSignalAndOrdering:

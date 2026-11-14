@@ -77,7 +77,7 @@ def delivery_guidance(doc: TodoDocument) -> str:
     """State where the run's final report goes; a kind that sets its own report form gets no second one."""
     if not doc.notify_on_run:
         return SILENT_RUN_GUIDANCE
-    if doc.external_ref is not None and doc.external_ref.source.owns_report_form:
+    if doc.owns_report_form:
         return DELIVERED_RESULT_RULES
     return DELIVERED_RESULT_GUIDANCE
 

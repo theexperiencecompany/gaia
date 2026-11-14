@@ -18,6 +18,9 @@ from app.agents.core.background.result_delivery import (
     record_todo_run_wake,
 )
 from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
+from app.agents.core.outcome_review import OutcomeReview
+from app.agents.prompts.comms_prompts import outcome_delivery_note
+from app.constants.agents import OutcomeState
 from app.constants.todos import TODO_CONVERSATION_MAX_MESSAGES, TodoWakeKind
 from app.models.chat_models import ConversationSource, ToolDataEntry
 from app.models.message_models import TodoRunWake
@@ -407,6 +410,22 @@ class TestATrackedTodosRunReportIsKeptInItsChat:
         # The record and the user's message are independent.
         todo_delivery.assert_awaited_once()
 
+    async def test_what_the_run_declared_goes_to_todo_delivery_with_its_report(self) -> None:
+        run = _todo_run()
+        with (
+            patch(f"{MODULE}.update_messages", new_callable=AsyncMock),
+            patch(f"{MODULE}.websocket_manager", MagicMock(broadcast_to_user=AsyncMock())),
+            patch(f"{MODULE}.deliver_todo_run_result", new_callable=AsyncMock) as todo_delivery,
+        ):
+            declared = OutcomeReview(OutcomeState.SCHEDULE, None, nothing_for_user=True)
+            await deliver_result(run, "Nothing new.", "final", tool_data=None, review=declared)
+            await deliver_result(run, "Deploy is green.", "final", tool_data=None)
+
+        assert [call.args[2:] + (call.kwargs,) for call in todo_delivery.await_args_list] == [
+            ("Nothing new.", "final", {"nothing_for_user": True}),
+            ("Deploy is green.", "final", {"nothing_for_user": False}),
+        ]
+
 
 class TestARunsWakeLeadsItInItsChat:
     """What woke a run is a user-side message, saved in the todo's chat and pushed to an open one."""
@@ -467,7 +486,7 @@ class TestARunsWakeLeadsItInItsChat:
 
 
 class TestCommsNarratesARunsResultUnderItsOutcomeNote:
-    async def _narrated_input(self, outcome_note: str | None) -> str:
+    async def _narrated_input(self, review: OutcomeReview | None) -> str:
         run = ExecutorRun(
             stream_id="stream-1",
             conversation_id="conv-1",
@@ -486,14 +505,25 @@ class TestCommsNarratesARunsResultUnderItsOutcomeNote:
             patch(f"{MODULE}.conversation_repository", convo_repo),
             patch(f"{MODULE}.websocket_manager", MagicMock(broadcast_to_user=AsyncMock())),
         ):
-            if outcome_note is None:
+            if review is None:
                 await deliver_result(run, "raw", "final", tool_data=None)
             else:
-                await deliver_result(run, "raw", "final", tool_data=None, outcome_note=outcome_note)
+                await deliver_result(run, "raw", "final", tool_data=None, review=review)
         return str(narrate.await_args.args[0])
 
     async def test_a_result_with_no_outcome_note_is_narrated_as_it_came(self) -> None:
         assert await self._narrated_input(None) == "raw"
 
     async def test_the_outcome_note_follows_the_result(self) -> None:
-        assert await self._narrated_input("\n\nOutcome: ask") == "raw\n\nOutcome: ask"
+        problem = "done was declared but no work call succeeded"
+
+        narrated = await self._narrated_input(OutcomeReview(OutcomeState.DONE, problem))
+
+        assert narrated == f"raw{outcome_delivery_note(OutcomeState.DONE, problem)}"
+        assert narrated != "raw"
+
+    async def test_a_verified_outcome_is_narrated_under_its_own_reply_shape(self) -> None:
+        narrated = await self._narrated_input(OutcomeReview(OutcomeState.ASK, None))
+
+        assert narrated == f"raw{outcome_delivery_note(OutcomeState.ASK, None)}"
+        assert narrated != "raw"
