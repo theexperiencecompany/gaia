@@ -343,8 +343,6 @@ class Harness:
         self.run_task: str | None = None
         self.record_calls: list[dict[str, Any]] = []
         self.spawn_names: list[str | None] = []
-        self.delivery_kwargs: list[dict[str, Any]] = []
-        self.delivered: list[tuple[str, Any]] = []
         self.handoffs_created: list[tuple[Any, ...]] = []
         self.handoffs_awaited: list[tuple[Any, ...]] = []
         self.cancel_checks: list[str] = []
@@ -367,7 +365,7 @@ class Harness:
     @property
     def cards(self) -> list[dict[str, Any]]:
         """The card payloads the run published, in order."""
-        return [w[BROWSER_TASK_EVENT] for w in self.writes]
+        return [w[BROWSER_TASK_EVENT] for w in self.writes if BROWSER_TASK_EVENT in w]
 
     @property
     def rows(self) -> list[dict[str, Any]]:
@@ -402,26 +400,6 @@ class Harness:
         # from `on_step_end`. Driving it directly mirrors that call.
         assert self.callbacks.action_results is not None
         await self.callbacks.action_results(step_index, outputs)
-
-
-class RecordingDelivery:
-    def __init__(self, harness: Harness) -> None:
-        self._h = harness
-
-    async def step(self, snapshot: object) -> None:
-        self._h.delivered.append(("step", snapshot))
-
-    async def result(self, snapshot: object) -> None:
-        self._h.delivered.append(("result", snapshot))
-
-    async def handoff(self, snapshot: object) -> None:
-        self._h.delivered.append(("handoff", snapshot))
-
-    async def session(self, snapshot: object) -> None:
-        self._h.delivered.append(("session", snapshot))
-
-    async def note(self, text: str) -> None:
-        self._h.delivered.append(("note", text))
 
 
 async def _noop() -> None:
@@ -514,12 +492,6 @@ def _install(
         return spawn_background_task(coro, **kwargs)
 
     monkeypatch.setattr(jr, "spawn_background_task", _spawn)
-
-    def _delivery(**kwargs: Any) -> RecordingDelivery:
-        h.delivery_kwargs.append(kwargs)
-        return RecordingDelivery(h)
-
-    monkeypatch.setattr(jr, "BotProgressDelivery", _delivery)
 
     async def _publish_event(job_id: str, payload: dict[str, Any]) -> None:
         h.feed_jobs.append(job_id)
@@ -1376,79 +1348,53 @@ async def test_history_is_recorded_for_a_failed_run_too(
 
 
 # ---------------------------------------------------------------------------
-# execute_browser_job — bot mirroring
+# execute_browser_job — the hand-off link a bot user takes over with
 # ---------------------------------------------------------------------------
 
 
-async def test_bot_delivery_is_built_for_the_originating_platform(
+def _mint_links(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str, str]]:
+    minted: list[tuple[str, str, str]] = []
+
+    async def _mint(session_id: str, user_id: str, handoff_id: str) -> str:
+        minted.append((session_id, user_id, handoff_id))
+        return f"https://gaia.test/live/{handoff_id}"
+
+    monkeypatch.setattr(jr, "create_live_view_link", _mint)
+    return minted
+
+
+async def _ask_once(h: Harness) -> BrowserResultSnapshot:
+    await h.request_handoff(HandoffRequest(reason="verify"))
+    return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+
+async def test_a_bot_runs_pending_handoff_card_carries_a_link_minted_for_its_user(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    h = _install(monkeypatch)
-    monkeypatch.setattr(settings, "BROWSER_USE_STREAM_SCREENSHOTS", False)
-    await _run(h, _bot_request(task="x"))
-    assert h.delivery_kwargs == [
-        {
-            "platform": ConversationSource.DISCORD,
-            "user_id": USER_ID,
-            "stream_screenshots": False,
-        }
+    minted = _mint_links(monkeypatch)
+    h = _install(monkeypatch, run_body=_ask_once)
+
+    await _run(h, _bot_request())
+
+    handoffs = [c for c in h.cards if c["kind"] == "handoff"]
+    [(session_id, user_id, handoff_id)] = minted
+    assert user_id == USER_ID
+    assert [(c["status"], c["live_view_url"]) for c in handoffs] == [
+        (HandoffStatus.PENDING.value, f"https://gaia.test/live/{handoff_id}"),
+        (HandoffStatus.COMPLETED.value, None),
     ]
+    assert handoffs[0]["session_id"] == session_id
+    assert handoffs[0]["handoff_id"] == handoff_id
 
 
-async def test_bot_run_without_a_known_platform_is_not_mirrored(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    h = _install(monkeypatch)
-    await _run(h, _bot_request(conversation_source=None))
-    assert h.delivery_kwargs == []
+async def test_a_web_runs_handoff_mints_no_link(monkeypatch: pytest.MonkeyPatch) -> None:
+    minted = _mint_links(monkeypatch)
+    h = _install(monkeypatch, run_body=_ask_once)
 
+    await _run(h, _request())
 
-async def test_bot_run_without_a_user_is_not_mirrored(monkeypatch: pytest.MonkeyPatch) -> None:
-    h = _install(monkeypatch)
-    await _run(h, _bot_request(user_id=""))
-    assert h.delivery_kwargs == []
-
-
-async def test_bot_run_without_a_conversation_is_not_mirrored(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    h = _install(monkeypatch)
-    await _run(h, _bot_request(conversation_id=""))
-    assert h.delivery_kwargs == []
-
-
-async def test_failed_mirror_is_logged_with_the_snapshot_that_failed(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The card is already on the stream, so a platform outage is a logged warning — but it must say which snapshot and which error."""
-
-    class _Failing:
-        async def step(self, snapshot: object) -> None:
-            raise RuntimeError("rabbitmq down")
-
-        async def result(self, snapshot: object) -> None:
-            return None
-
-    async def body(h: Harness) -> BrowserResultSnapshot:
-        await h.emit(BrowserStepSnapshot(index=1, goal="g"))
-        return _result(BrowserSessionStatus.COMPLETED, True, "done")
-
-    h = _install(monkeypatch, run_body=body)
-    monkeypatch.setattr(jr, "BotProgressDelivery", lambda **kwargs: _Failing())
-    fake_log = MagicMock()
-    monkeypatch.setattr(jr, "log", fake_log)
-
-    out = await _run(h, _bot_request(task="x"))
-
-    assert out == _completed_message("done")
-    assert [card["kind"] for card in h.cards] == ["step", "result"]
-    (error_call,) = fake_log.error.call_args_list
-    assert error_call.args == (f"{LogTag.BROWSER} Bot delivery failed; continuing browser task",)
-    assert error_call.kwargs == {
-        "error_type": "RuntimeError",
-        "error": "rabbitmq down",
-        "browser": {"snapshot_type": "BrowserStepSnapshot"},
-    }
+    assert minted == []
+    assert [c["live_view_url"] for c in h.cards if c["kind"] == "handoff"] == [None, None]
 
 
 async def test_the_session_the_run_opened_is_logged_onto_the_wide_event(
@@ -2054,38 +2000,15 @@ async def test_a_handoff_card_promises_a_saved_login_only_when_one_will_be_kept(
     assert [c["saves_login"] for c in h.cards if c["kind"] == "handoff"] == [saves_login] * 2
 
 
-async def test_a_bot_user_is_sent_every_card_the_run_emits(
+async def test_a_stall_note_is_shown_on_the_runs_session_card(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = BrowserSessionSnapshot(task="x", status=BrowserSessionStatus.RUNNING, session_id="s1")
-    step = BrowserStepSnapshot(index=1, goal="open")
-    final = _result(BrowserSessionStatus.COMPLETED, True, "done")
 
-    async def body(h: Harness) -> BrowserResultSnapshot:
-        await h.emit(session)
-        await h.emit(step)
-        await h.request_handoff(HandoffRequest(reason="verify"))
-        await h.emit(final)
-        return final
-
-    h = _install(monkeypatch, run_body=body)
-
-    await _run(h, _bot_request())
-
-    kinds = [kind for kind, _ in h.delivered]
-    assert kinds == ["session", "step", "handoff", "handoff", "result"]
-    assert h.delivered[0][1] is session
-    assert h.delivered[1][1] is step
-    assert h.delivered[4][1] is final
-    assert [snap.status for kind, snap in h.delivered if kind == "handoff"] == [
-        HandoffStatus.PENDING,
-        HandoffStatus.COMPLETED,
-    ]
-
-
-async def test_a_stall_note_reaches_the_bot_user(monkeypatch: pytest.MonkeyPatch) -> None:
     async def body(h: Harness) -> BrowserResultSnapshot:
         assert h.callbacks.note is not None
+        await h.callbacks.note("Too early to show.")
+        await h.emit(session)
         await h.callbacks.note("Still loading the page.")
         return _result(BrowserSessionStatus.COMPLETED, True, "done")
 
@@ -2093,7 +2016,11 @@ async def test_a_stall_note_reaches_the_bot_user(monkeypatch: pytest.MonkeyPatch
 
     await _run(h, _bot_request())
 
-    assert ("note", "Still loading the page.") in h.delivered
+    sessions = [c for c in h.cards if c["kind"] == "session"]
+    assert [(c["session_id"], c["detail"]) for c in sessions] == [
+        ("s1", None),
+        ("s1", "Still loading the page."),
+    ]
 
 
 async def test_an_obscura_runs_fallback_session_opens_on_the_chrome_host_for_this_user(

@@ -11,6 +11,7 @@ import fakeredis.aioredis
 import pytest
 
 from app.agents.core.background import running_registry as registry
+from app.agents.core.background.run_stop import request_stop, stop_requested
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.subagent_channel import SubagentCancel
 from app.constants.cache import (
@@ -19,7 +20,6 @@ from app.constants.cache import (
     RUNNING_SUBAGENTS_TTL,
 )
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import stream_manager
 from app.models.agent_models import RunningSubagent
 from tests.helpers import captured_wide_event
 
@@ -155,7 +155,7 @@ class TestStopStream:
 
         assert {s.subagent_id for s in stopped} == {"child", "grandchild"}
         for stream_id in ("turn", "subagent_child", "subagent_grandchild"):
-            assert await stream_manager.is_cancelled(stream_id)
+            assert await stop_requested(stream_id)
 
     async def test_a_blocking_run_inside_a_stopped_subagent_stops_with_it(self) -> None:
         reg = RunningSubagents(CONV)
@@ -174,14 +174,14 @@ class TestStopStream:
         stopped = await registry.stop_stream(CONV, "turn")
 
         assert [s.subagent_id for s in stopped] == ["mine"]
-        assert not await stream_manager.is_cancelled("subagent_theirs")
+        assert not await stop_requested("subagent_theirs")
 
     async def test_a_run_on_the_stopped_stream_itself_is_not_stopped_twice(self) -> None:
         reg = RunningSubagents(CONV)
         assert await reg.claim(_run("blocking", "turn", dispatched_by="turn"))
 
         assert await registry.stop_stream(CONV, "turn") == []
-        assert await stream_manager.is_cancelled("turn")
+        assert await stop_requested("turn")
 
     async def test_a_run_the_user_resumed_is_not_stopped_with_the_turn_that_first_dispatched_it(
         self,
@@ -190,32 +190,18 @@ class TestStopStream:
         assert await reg.claim(_run("resumed", "subagent_resumed", dispatched_by=None))
 
         assert await registry.stop_stream(CONV, "turn") == []
-        assert not await stream_manager.is_cancelled("subagent_resumed")
+        assert not await stop_requested("subagent_resumed")
 
 
 @pytest.mark.usefixtures("fake_redis")
-class TestStopAll:
-    @pytest.mark.regression
-    async def test_stops_every_live_run_including_ones_whose_dispatcher_finished(self) -> None:
-        reg = RunningSubagents(CONV)
-        assert await reg.claim(_run("orphan", "subagent_orphan", dispatched_by="finished-turn"))
-        assert await reg.claim(_run("resumed", "subagent_resumed", dispatched_by=None))
-
-        stopped = await reg.stop_all()
-
-        assert {s.subagent_id for s in stopped} == {"orphan", "resumed"}
-        assert await stream_manager.is_cancelled("subagent_orphan")
-        assert await stream_manager.is_cancelled("subagent_resumed")
-
+class TestStopStreams:
     async def test_a_run_already_stopped_is_not_cancelled_again(self) -> None:
         reg = RunningSubagents(CONV)
         assert await reg.claim(_run("done", "subagent_done", dispatched_by="turn"))
-        await stream_manager.cancel_stream("subagent_done")
+        await request_stop("subagent_done")
 
-        with patch.object(
-            stream_manager, "cancel_stream", wraps=stream_manager.cancel_stream
-        ) as cancel:
-            await reg.stop_all()
+        with patch.object(registry, "request_stop", wraps=request_stop) as cancel:
+            await reg.stop_streams(["subagent_done"])
 
         cancel.assert_not_called()
 
@@ -223,20 +209,18 @@ class TestStopAll:
         """A second Stop finds the first one's runs still unwinding; it stopped none of them."""
         reg = RunningSubagents(CONV)
         assert await reg.claim(_run("done", "subagent_done", dispatched_by="turn"))
-        await stream_manager.cancel_stream("subagent_done")
+        await request_stop("subagent_done")
 
-        assert await reg.stop_all() == []
+        assert await reg.stop_streams(["subagent_done"]) == []
 
     async def test_a_record_written_before_runs_carried_streams_still_decodes(self) -> None:
         reg = RunningSubagents(CONV)
-        legacy = _sub("legacy")
+        legacy = _run("legacy", None, dispatched_by="turn")
         assert await reg.claim(legacy)
 
-        with patch.object(
-            stream_manager, "cancel_stream", wraps=stream_manager.cancel_stream
-        ) as cancel:
+        with patch.object(registry, "request_stop", wraps=request_stop) as cancel:
             assert await reg.live() == [legacy]
-            assert await reg.stop_all() == [legacy]
+            assert await reg.stop_dispatched_by("turn") == [legacy]
 
         cancel.assert_not_called()
         # An older replica still running it reads the thread's cancel flag.

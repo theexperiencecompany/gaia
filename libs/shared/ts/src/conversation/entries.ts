@@ -31,7 +31,7 @@ const ENTRY_KIND = {
   APPROVAL_REQUESTED: "approval_requested",
 } as const;
 
-const REPLY_OUTCOME = {
+export const REPLY_OUTCOME = {
   ANSWERED: "answered",
   STOPPED: "stopped",
   TRUNCATED: "truncated",
@@ -240,6 +240,16 @@ export const ToolTimelineSchema = z.object({
     }),
   ),
   cards: z.array(z.object({ key: z.string(), card: ToolDataEntrySchema })),
+  progress: z
+    .object({
+      message: z.string().min(1),
+      tool_name: z.string(),
+      tool_category: z.string(),
+      integration_name: z.string().nullable(),
+      icon_url: z.string().nullable(),
+      show_category: z.boolean(),
+    })
+    .nullable(),
 }) satisfies z.ZodType<ToolTimeline>;
 
 const UserItemSchema = z.object({
@@ -275,6 +285,7 @@ const ReplyItemSchema = z.object({
     ])
     .nullable(),
   narrates: z.array(z.string()),
+  retry_target: z.string().nullable(),
   files: z.array(
     z.object({ path: z.string().min(1), content_type: z.string().nullable() }),
   ),
@@ -299,6 +310,7 @@ const WorkItemSchema = z.object({
   tool_data: z.array(ToolDataEntrySchema),
   timeline: ToolTimelineSchema,
   image: ImageDataSchema.nullable(),
+  retry_target: z.string().nullable(),
 }) satisfies z.ZodType<WorkItem>;
 
 const NoticeItemSchema = z.object({

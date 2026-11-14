@@ -145,6 +145,10 @@ class HeldReplies:
             complete_message = append_message_bubble(complete_message, held)
         return complete_message, boundary_id, discarded
 
+    def supersede(self) -> None:
+        """Forget every reply held so far: the run was sent back to work, so its answer comes after."""
+        self.texts.clear()
+
     def flush(self, complete_message: str) -> str:
         """Append text whose message never reached a boundary (a cancelled run)."""
         for text in self.texts.values():

@@ -45,7 +45,10 @@ export interface ConversationView {
   pending: readonly PendingSend[];
   display: DisplayState;
   work: readonly LiveTask[];
+  /** The head of the last state frame: display and work are as of it. */
   head: number;
+  /** The log head the items reflect, which runs ahead of head between a patch and its state frame. */
+  screenHead: number;
 }
 
 export type FrameOutcome =

@@ -96,10 +96,11 @@ def entry(seq: int, kind: str, reply_id: str, outcome: ReplyOutcome = ReplyOutco
         outcome=None if opened else outcome,
         failure=None,
         narrates=(),
+        retry_target=None,
         files=(),
     )
     patch = "screen_insert" if opened else "screen_update"
-    return json.dumps({"frame": {"kind": patch, "item": item.model_dump(mode="json")}})
+    return json.dumps({"frame": {"kind": patch, "item": item.model_dump(mode="json"), "head": seq}})
 
 
 def delta(reply_id: str, index: int, text: str, bubble: int = 0) -> str:

@@ -48,6 +48,7 @@ import { OutboundConsumer } from "../consumer/outbound-consumer";
 import { STREAMING_DEFAULTS } from "../conversation/delivery-options";
 import type {
   ConversationSurface,
+  DeliveryCursor,
   FollowSurface,
 } from "../conversation/follower.types";
 import { ConversationFollowers } from "../conversation/followers";
@@ -798,7 +799,10 @@ export abstract class BaseBotAdapter {
     this.followers.resume(
       { platform: this.platform, platformUserId: target.platform_user_id },
       target.conversation_id,
-      target.after_seq,
+      {
+        delivered_seq: target.after_seq,
+        partial_reply: target.partial_reply,
+      },
       this.followSurface(
         surface,
         target.platform_user_id,
@@ -822,6 +826,18 @@ export abstract class BaseBotAdapter {
     const isChannel = channelId !== null;
     return {
       ...surface,
+      privateChat: !isChannel,
+      sendPhoto: (url, caption) =>
+        this.deliverOutboundFile(
+          destination,
+          {
+            url,
+            filename: url.split("/").pop() ?? url,
+            content_type: null,
+            caption,
+          },
+          isChannel,
+        ),
       sendFile: (conversationId, file) =>
         this.deliverOutboundFile(
           destination,
@@ -866,8 +882,32 @@ export abstract class BaseBotAdapter {
       (ctx, conversationId, signal) =>
         this.gaia.conversationEvents(ctx, conversationId, signal),
       STREAMING_DEFAULTS[this.platform],
+      (_ctx, conversationId, cursor) =>
+        this.recordDelivered(conversationId, cursor),
     );
     return this._followers;
+  }
+
+  /**
+   * Keeps the follower's cursor on the server. A failed write only means a restart
+   * could resend from the last cursor kept, so delivery goes on and the miss is logged.
+   */
+  private async recordDelivered(
+    conversationId: string,
+    cursor: DeliveryCursor,
+  ): Promise<void> {
+    try {
+      await this.gaia.recordDelivered(conversationId, {
+        platform: this.platform,
+        ...cursor,
+      });
+    } catch (error) {
+      wideLog.warning("delivery_cursor_not_recorded", {
+        ...sanitizeErrorForLog(error),
+        conversation_id: conversationId,
+        delivered_seq: cursor.delivered_seq,
+      });
+    }
   }
 
   /** Settles once every conversation followed so far is idle with its replies shown. */

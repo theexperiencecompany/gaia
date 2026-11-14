@@ -7,7 +7,6 @@ import asyncio
 from app.agents.core.background.executor_runner import (
     DETACHED_EXECUTOR_TASK_NAME,
 )
-from app.agents.core.background.redis_writer import STREAM_PUBLISH_TASK_NAME
 from app.agents.core.subagents.delegation import BACKGROUND_SUBAGENT_TASK_NAME
 from app.services.conversation.composition import running_steps
 from app.utils import background_tasks
@@ -27,17 +26,6 @@ def tasks_named(*names: str) -> list[asyncio.Task[object]]:
     return [t for t in background_tasks._background_tasks if t.get_name() in wanted]
 
 
-async def drain_publishes() -> None:
-    """Wait out the fire-and-forget XADDs the background writer scheduled.
-
-    make_redis_stream_writer is a sync callable that schedules each publish
-    through spawn_background_task, so reading the log without waiting reads a
-    truncated stream.
-    """
-    while pending := tasks_named(STREAM_PUBLISH_TASK_NAME):
-        await asyncio.gather(*pending, return_exceptions=True)
-
-
 async def drain_background_runs() -> None:
     """Wait out every conversation step, executor and background-subagent run still in flight.
 
@@ -48,7 +36,6 @@ async def drain_background_runs() -> None:
     """
     while pending := [
         *tasks_named(
-            STREAM_PUBLISH_TASK_NAME,
             LIVE_EXECUTOR_TASK_NAME,
             DETACHED_EXECUTOR_TASK_NAME,
             BACKGROUND_SUBAGENT_TASK_NAME,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
@@ -13,11 +14,11 @@ import pytest
 from redis.asyncio import Redis
 
 from app.agents.core.background.folded_stream import close_folded_stream, open_folded_stream
+from app.agents.core.background.run_stop import stop_requested
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.work_cancel import cancel_named_work
 from app.api.v1.endpoints.bot_links import _persist_first_contact
 from app.constants.chat import ConversationSource
-from app.core.stream_manager import stream_manager
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
 from app.models.agent_models import RunningSubagent
@@ -31,7 +32,7 @@ from app.models.conversation_log_models import (
     WorkOutcome,
 )
 from app.models.conversation_models import ConversationDocument
-from app.models.conversation_screen_models import NoticeItem, ScreenItem, WorkItem
+from app.models.conversation_screen_models import NoticeItem, ScreenItem, WorkItem, WorkStatus
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports, runtime_ports
@@ -220,9 +221,6 @@ async def test_a_stop_cancels_a_background_subagent_that_outlived_its_run(
     user_id = str(ObjectId())
     conversation_id = await _chat(user_id, _turn("research it"))
     stream_id = f"subagent_{uuid4().hex}"
-    await stream_manager.start_stream(
-        stream_id=stream_id, conversation_id=conversation_id, user_id=user_id
-    )
     subagent = RunningSubagent(
         subagent_id="sa-1",
         subagent_thread_id=f"thread-{uuid4().hex}",
@@ -244,7 +242,51 @@ async def test_a_stop_cancels_a_background_subagent_that_outlived_its_run(
     cancelled = await cancel_named_work(conversation_id, user_id, cancel, approval_ids=())
 
     assert cancelled.subagent_ids == ["sa-1"]
-    assert await stream_manager.is_cancelled(stream_id)
+    assert await stop_requested(stream_id)
+
+
+async def test_a_stop_mid_work_stops_the_running_work_and_the_screen_shows_it_cancelled(
+    mongo_log: MongoConversationLog,
+) -> None:
+    user_id = str(ObjectId())
+    conversation_id = await _chat(user_id, _turn("research it"))
+    stream_id = f"subagent_{uuid4().hex}"
+    assert await RunningSubagents(conversation_id).claim(
+        RunningSubagent(
+            subagent_id="sa-1",
+            subagent_thread_id=f"thread-{uuid4().hex}",
+            integration_id="notion",
+            agent_name="notion",
+            task_summary="research it",
+            started_at=datetime.now(UTC).isoformat(),
+            stream_id=stream_id,
+        )
+    )
+    assert await open_folded_stream(stream_id, conversation_id=conversation_id, user_id=user_id)
+    steps = 0
+
+    async def run() -> None:
+        nonlocal steps
+        while not await stop_requested(stream_id):
+            steps += 1
+            await asyncio.sleep(0.01)
+        await close_folded_stream(stream_id, conversation_id=conversation_id, user_id=user_id)
+
+    running = asyncio.create_task(run())
+    await asyncio.sleep(0.05)
+    await record_user_stop(conversation_id, user_id, "stop-1")
+    effects = runtime_ports().effects
+    assert isinstance(effects, RecordingEffects)
+    [cancel] = [call.argument for call in effects.calls if call.name == "cancel_work"]
+    assert isinstance(cancel, tuple)
+    await cancel_named_work(conversation_id, user_id, cancel, approval_ids=())
+    async with asyncio.timeout(2):
+        await running
+
+    assert steps > 0
+    entries = await conversation_log_repository.read_log(conversation_id, user_id=user_id)
+    [work] = [item for item in project_screen(entries or []) if isinstance(item, WorkItem)]
+    assert work.status is WorkStatus.CANCELLED
 
 
 async def _card_status(user_id: str, conversation_id: str) -> object:

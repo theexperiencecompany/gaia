@@ -217,7 +217,6 @@ apps/api/tests/unit/services/browser/test_capability_code.py	arg-type
 apps/api/tests/unit/services/browser/test_capability_code.py	assignment
 apps/api/tests/unit/services/browser/test_capability_code.py	attr-defined
 apps/api/tests/unit/services/browser/test_handoff.py	attr-defined
-apps/api/tests/unit/services/browser/test_job_relay.py	attr-defined
 apps/api/tests/unit/services/browser/test_job_stop.py	attr-defined
 apps/api/tests/unit/services/browser/test_job_teller.py	arg-type
 apps/api/tests/unit/services/browser/test_jobs.py	arg-type
@@ -241,8 +240,6 @@ apps/api/tests/unit/services/delivery_alerts/test_alerting.py	attr-defined
 apps/api/tests/unit/services/delivery_alerts/test_dead_letter_tap.py	arg-type
 apps/api/tests/unit/services/delivery_alerts/test_dead_letter_tap.py	attr-defined
 apps/api/tests/unit/services/delivery_alerts/test_incidents.py	arg-type
-apps/api/tests/unit/services/desktop/test_bridge.py	attr-defined
-apps/api/tests/unit/services/desktop/test_bridge.py	list-item
 apps/api/tests/unit/services/embedding_sidecar/test_server.py	attr-defined
 apps/api/tests/unit/services/integrations/test_integration_status.py	arg-type
 apps/api/tests/unit/services/mcp/test_device_connector.py	union-attr
@@ -310,7 +307,6 @@ apps/api/tests/unit/tools/coding/test_query_json_tool.py	arg-type
 apps/api/tests/unit/tools/coding/test_query_json_tool.py	index
 apps/api/tests/unit/tools/coding/test_read_fallback.py	arg-type
 apps/api/tests/unit/tools/test_context_tool.py	attr-defined
-apps/api/tests/unit/tools/test_desktop_tools.py	attr-defined
 apps/api/tests/unit/tools/test_discovery_tools.py	arg-type
 apps/api/tests/unit/tools/test_discovery_tools.py	syntax
 apps/api/tests/unit/tools/test_download_tool.py	attr-defined

@@ -9,6 +9,7 @@ export {
 export {
   FAILURE_REASON,
   LIVE_WORK_STATUS,
+  REPLY_OUTCOME,
   SCREEN_ITEM_KIND,
   WORK_STATUS,
 } from "./entries";
@@ -30,7 +31,7 @@ export type { LoadingRow, ScreenRow } from "./selectors";
 export {
   itemText,
   loadingRow,
-  messageToRetry,
+  retryTarget,
   screenRows,
   sendingLoadingRow,
 } from "./selectors";

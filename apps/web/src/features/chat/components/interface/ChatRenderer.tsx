@@ -1,6 +1,6 @@
 "use client";
 
-import { TOOL_CALLS_DATA_TOOL_NAME } from "@shared/chat";
+import { SCREEN_ITEM_KIND } from "@shared/conversation";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import nextDynamic from "next/dynamic";
@@ -17,39 +17,43 @@ import {
 import { MessageScrollerItem } from "@/components/ui/message-scroller";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import CreatedByGAIABanner from "@/features/chat/components/banners/CreatedByGAIABanner";
-import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import { ChatItemBoundary } from "@/features/chat/components/bubbles/bot/ChatItemBoundary";
 import SearchedImageDialog from "@/features/chat/components/bubbles/bot/SearchedImageDialog";
-import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
 import GeneratedImageSheet from "@/features/chat/components/image/GeneratedImageSheet";
 import { LoadingIndicator } from "@/features/chat/components/interface/LoadingIndicator";
 import MemoryModal from "@/features/chat/components/memory/MemoryModal";
-import { useConversation } from "@/features/chat/hooks/useConversation";
+import { useChatRows } from "@/features/chat/hooks/useChatRows";
 import { useConversationRow } from "@/features/chat/hooks/useConversationList";
 import { useMessageHighlight } from "@/features/chat/hooks/useMessageHighlight";
 import { useRetryMessage } from "@/features/chat/hooks/useRetryMessage";
-import { useActiveLiveLoading } from "@/features/chat/live/useLiveChat";
 import {
-  filterEmptyMessagePairs,
-  isBotMessageEmpty,
-} from "@/features/chat/utils/messageContentUtils";
-import { getMessageProps } from "@/features/chat/utils/messagePropsUtils";
+  type LiveConversation,
+  useLiveConversation,
+} from "@/features/chat/live/liveConversationStore";
+import { useActiveLiveLoading } from "@/features/chat/live/useLiveChat";
 import { useChatStore } from "@/stores/chatStore";
-import type {
-  ChatBubbleBotProps,
-  ChatBubbleUserProps,
-  SetImageDataType,
-} from "@/types/features/chatBubbleTypes";
-import type { MessageType } from "@/types/features/convoTypes";
+import type { SetImageDataType } from "@/types/features/chatBubbleTypes";
+import { GaiaRow } from "./rows/GaiaRow";
+import {
+  type ChatRow,
+  isUserSide,
+  type RowActions,
+  type RowLayout,
+  rowId,
+  rowKind,
+  rowShows,
+} from "./rows/rows";
+import { UserRow } from "./rows/UserRow";
 
 interface ChatRendererProps {
-  convoMessages?: MessageType[];
   /**
    * Compact mode for narrow surfaces (assistant popup): no avatars,
    * full-width bubbles, and a translate+blur entrance on each bubble.
    */
   compact?: boolean;
 }
+
+type Sends = LiveConversation["sends"];
 
 /** Compact-mode loader: the GAIA orb instead of the wave spinner. */
 const GaiaOrbLazy = nextDynamic(() => import("@/components/ui/orb/GaiaOrb"), {
@@ -108,167 +112,174 @@ function CompactReveal({
   );
 }
 
-/**
- * One message bubble, memoized on its own message (referentially stable
- * for idle messages) and grouping flags — else every bubble re-parsed
- * markdown on every streaming token. getMessageProps runs inside without
- * breaking the memo. `compact` mode drops the avatar, goes full-width,
- * suppresses actions/follow-ups, and plays a one-time CompactReveal entrance.
- */
-const ChatMessageItem = memo(function ChatMessageItem({
-  message,
-  options,
-  isGroupedWithNext,
-  isGroupedWithPrev,
-  suppressForBusy,
-  compact,
-  bubbleKey,
-}: {
-  message: MessageType;
-  options: Parameters<typeof getMessageProps>[2];
+/** The row's bubble, chosen by what the server's item is. */
+function RowBubble({
+  row,
+  sends,
+  actions,
+  layout,
+}: Readonly<{
+  row: ChatRow;
+  sends: Sends;
+  actions: RowActions;
+  layout: RowLayout;
+}>) {
+  switch (row.kind) {
+    case "item": {
+      const { item } = row;
+      if (
+        item.kind === SCREEN_ITEM_KIND.REPLY ||
+        item.kind === SCREEN_ITEM_KIND.WORK ||
+        item.kind === SCREEN_ITEM_KIND.NOTICE
+      )
+        return (
+          <GaiaRow
+            item={item}
+            draft={row.draft}
+            actions={actions}
+            layout={layout}
+          />
+        );
+      return (
+        <UserRow
+          source={{ kind: "item", item }}
+          actions={actions}
+          layout={layout}
+        />
+      );
+    }
+    case "draft":
+      return (
+        <GaiaRow
+          item={null}
+          draft={row.draft}
+          actions={actions}
+          layout={layout}
+        />
+      );
+    case "pending":
+      return (
+        <UserRow
+          source={{
+            kind: "pending",
+            send: row.send,
+            local: sends[row.send.id],
+          }}
+          actions={actions}
+          layout={layout}
+        />
+      );
+    case "optimistic":
+      return (
+        <UserRow
+          source={{ kind: "optimistic", message: row.message }}
+          actions={actions}
+          layout={layout}
+        />
+      );
+    default: {
+      const unhandled: never = row;
+      return unhandled;
+    }
+  }
+}
+
+/** What a row draws from: screenRows wraps these anew each frame, and each keeps its identity while unchanged. */
+function rowInputs(row: ChatRow): readonly unknown[] {
+  switch (row.kind) {
+    case "item":
+      return [row.item, row.draft];
+    case "draft":
+      return [row.draft];
+    case "pending":
+      return [row.send];
+    case "optimistic":
+      return [row.message];
+    default: {
+      const unhandled: never = row;
+      return unhandled;
+    }
+  }
+}
+
+interface ChatRowItemProps {
+  row: ChatRow;
+  sends: Sends;
+  actions: RowActions;
   isGroupedWithNext: boolean;
   isGroupedWithPrev: boolean;
   suppressForBusy: boolean;
   compact: boolean;
-  bubbleKey: string;
-}) {
-  let messageProps: ChatBubbleBotProps | ChatBubbleUserProps | null = null;
-  if (message.type === "bot") {
-    messageProps = getMessageProps(message, "bot", options);
-  } else if (message.type === "user") {
-    messageProps = getMessageProps(message, "user", options);
-  }
-  if (!messageProps) return null;
+}
 
-  const grouping = {
-    withPrev: isGroupedWithPrev,
-    withNext: isGroupedWithNext,
-  };
-  let bubble: ReactNode;
-  if (
-    message.type === "bot" &&
-    !isBotMessageEmpty(messageProps as ChatBubbleBotProps)
-  ) {
-    const botProps = messageProps as ChatBubbleBotProps;
-    bubble = (
-      <ChatBubbleBot
-        {...botProps}
-        disableActions={compact || isGroupedWithNext || suppressForBusy}
-        follow_up_actions={
-          compact || isGroupedWithNext || suppressForBusy
-            ? undefined
-            : botProps.follow_up_actions
-        }
-        date={isGroupedWithNext ? undefined : botProps.date}
-        grouping={grouping}
-        hideAvatar={compact}
-      />
-    );
-  } else {
-    bubble = (
-      <ChatBubbleUser
-        {...messageProps}
-        hideAvatar={compact}
-        fullWidth={compact}
-        disableActions={compact}
-        grouping={grouping}
-      />
-    );
-  }
+function sameRowItem(a: ChatRowItemProps, b: ChatRowItemProps): boolean {
+  const before = rowInputs(a.row);
+  const after = rowInputs(b.row);
+  return (
+    a.row.kind === b.row.kind &&
+    before.every((input, at) => Object.is(input, after[at])) &&
+    (a.row.kind !== "pending" || a.sends === b.sends) &&
+    a.actions === b.actions &&
+    a.isGroupedWithNext === b.isGroupedWithNext &&
+    a.isGroupedWithPrev === b.isGroupedWithPrev &&
+    a.suppressForBusy === b.suppressForBusy &&
+    a.compact === b.compact
+  );
+}
 
+/**
+ * One row, memoized on its server item (an unchanged item keeps its identity)
+ * and its grouping flags, so a streamed token re-renders only the row it
+ * lands in. `compact` mode drops the avatar, goes full-width, suppresses
+ * actions and follow-ups, and plays a one-time CompactReveal entrance.
+ */
+const ChatRowItem = memo(function ChatRowItem({
+  row,
+  sends,
+  actions,
+  isGroupedWithNext,
+  isGroupedWithPrev,
+  suppressForBusy,
+  compact,
+}: ChatRowItemProps) {
+  const id = rowId(row);
   const guarded = (
     <ChatItemBoundary
       item="message"
-      messageId={message.message_id}
-      resetKey={message}
+      messageId={id}
+      resetKey={rowInputs(row)[0]}
     >
-      {bubble}
+      <RowBubble
+        row={row}
+        sends={sends}
+        actions={actions}
+        layout={{
+          isGroupedWithNext,
+          isGroupedWithPrev,
+          suppressForBusy,
+          compact,
+        }}
+      />
     </ChatItemBoundary>
   );
 
   return compact ? (
-    <CompactReveal bubbleKey={bubbleKey}>{guarded}</CompactReveal>
+    <CompactReveal bubbleKey={id}>{guarded}</CompactReveal>
   ) : (
     guarded
   );
-});
+}, sameRowItem);
 
-/**
- * Deduplicate tool calls across all messages in the conversation. Pure and
- * reference-stable: when nothing was removed for a message, the original
- * object is returned so its identity survives (otherwise every tool-bearing
- * bubble re-renders on every token).
- */
-function deduplicateToolCalls(messages: MessageType[]): MessageType[] {
-  const seenToolCallIds = new Set<string>();
-
-  return messages.map((message) => {
-    // Only process bot messages with tool_data
-    if (message.type !== "bot" || !message.tool_data) {
-      return message;
-    }
-
-    // Track whether anything was actually deduplicated — if not, we return the
-    // original message object so its reference stays stable across streaming
-    // ticks.
-    let changed = false;
-
-    // Filter out tool calls that have already been shown in previous messages
-    const deduplicatedToolData = message.tool_data
-      .map((entry) => {
-        // Only deduplicate tool_calls_data entries
-        if (entry.tool_name !== TOOL_CALLS_DATA_TOOL_NAME) {
-          return entry;
-        }
-
-        // Filter the tool calls array within this entry
-        // Cast to unknown[] since we know tool_calls_data contains objects with tool_call_id
-        const toolCallsArray = (
-          Array.isArray(entry.data) ? entry.data : [entry.data]
-        ) as Array<{ tool_call_id?: string }>;
-        const filteredCalls = toolCallsArray.filter((call) => {
-          const toolCallId = call?.tool_call_id;
-          if (!toolCallId) return true; // Keep calls without IDs
-          if (seenToolCallIds.has(toolCallId)) return false; // Skip duplicates
-          seenToolCallIds.add(toolCallId);
-          return true;
-        });
-
-        // Nothing removed for this entry — keep the original reference.
-        if (filteredCalls.length === toolCallsArray.length) return entry;
-        changed = true;
-
-        // If all calls were filtered out, return null to remove this entry
-        if (filteredCalls.length === 0) return null;
-
-        // Return the entry with filtered calls
-        return {
-          ...entry,
-          data: filteredCalls,
-        };
-      })
-      .filter((entry) => entry !== null);
-
-    // No duplicates removed anywhere — preserve the original message reference.
-    if (!changed) return message;
-
-    return {
-      ...message,
-      tool_data: deduplicatedToolData,
-    } as MessageType;
-  });
-}
-
-export default function ChatRenderer({
-  convoMessages: propConvoMessages,
-  compact = false,
-}: ChatRendererProps) {
-  const { convoMessages: storeConvoMessages } = useConversation();
-  const convoMessages = propConvoMessages ?? storeConvoMessages;
+export default function ChatRenderer({ compact = false }: ChatRendererProps) {
+  const rows = useChatRows();
+  const activeConversationId = useChatStore(
+    (state) => state.activeConversationId,
+  );
+  const { sends } = useLiveConversation(activeConversationId);
   const [openGeneratedImage, setOpenGeneratedImage] = useState<boolean>(false);
   const [openMemoryModal, setOpenMemoryModal] = useState<boolean>(false);
   // The open conversation's loading row, from its server state (plus voice/upload loading).
-  const { isLoading, loadingText, toolInfo } = useActiveLiveLoading();
+  const { isLoading, loadingText, progress } = useActiveLiveLoading();
   const { id: convoIdParam } = useParams<{ id: string }>();
   // While GAIA owes a reply, the newest bubble's follow-ups and action row
   // (they belong to a finished answer) are suppressed; finished turns keep theirs.
@@ -286,62 +297,45 @@ export default function ChatRenderer({
 
   // `retryMessage` gets a new identity on most renders (unstable
   // `sendMessage` deps), so read it via ref to keep `handleRetry` (and the
-  // memoized message list) stable across streaming tokens.
+  // memoized rows) stable across streaming tokens.
   const retryMessageRef = useRef(retryMessage);
   useEffect(() => {
     retryMessageRef.current = retryMessage;
   });
-  const handleRetry = useCallback((msgId: string) => {
+  const handleRetry = useCallback((itemId: string) => {
     // Use the store's active conversation id, not the route param: a new
     // conversation rewrites the URL via history.replaceState without
     // updating useParams, so retry only worked after reload before this. getState keeps this dep-free.
     const conversationId = useChatStore.getState().activeConversationId;
     if (!conversationId) return;
-    retryMessageRef.current(conversationId, msgId);
+    retryMessageRef.current(conversationId, itemId);
   }, []);
 
   // Depend on primitive conversation fields, not the conversation object —
   // the conversation list gets a new reference every streaming token
   // (preview/timestamp updates), which would defeat the memoization downstream.
-  const isSystemGenerated = conversation?.is_system_generated;
+  const isSystemGenerated = conversation?.is_system_generated ?? false;
   const systemPurpose = conversation?.system_purpose ?? undefined;
-  const messagePropsOptions = useMemo(
+  const actions = useMemo<RowActions>(
     () => ({
-      conversation:
-        isSystemGenerated !== undefined || systemPurpose !== undefined
-          ? {
-              is_system_generated: isSystemGenerated,
-              system_purpose: systemPurpose,
-            }
-          : undefined,
       setImageData,
-      setOpenGeneratedImage,
-      setOpenMemoryModal,
+      setOpenImage: setOpenGeneratedImage,
+      onOpenMemoryModal: () => setOpenMemoryModal(true),
       onRetry: handleRetry,
       isRetrying,
+      isConvoSystemGenerated: isSystemGenerated,
+      systemPurpose,
     }),
     [isSystemGenerated, systemPurpose, handleRetry, isRetrying],
   );
 
-  // Filter out empty message pairs
-  const filteredMessages = useMemo(() => {
-    if (!convoMessages) return [];
-
-    return filterEmptyMessagePairs(
-      convoMessages,
-      conversation?.is_system_generated || false,
-      conversation?.system_purpose ?? undefined,
-    );
-  }, [
-    convoMessages,
-    conversation?.is_system_generated,
-    conversation?.system_purpose,
-  ]);
-
-  // Deduplicate tool calls across all messages in the conversation
-  const messagesWithDeduplicatedToolCalls = useMemo(
-    () => deduplicateToolCalls(filteredMessages),
-    [filteredMessages],
+  // A GAIA row with nothing to draw renders nothing, so it is left out: the
+  // grouping below then reads only the rows actually on screen.
+  const alwaysShowsGaia =
+    isSystemGenerated && systemPurpose === SystemPurpose.EMAIL_PROCESSING;
+  const shownRows = useMemo(
+    () => rows.filter((row) => rowShows(row, alwaysShowsGaia)),
+    [rows, alwaysShowsGaia],
   );
 
   // Scroll to (and highlight) a deep-linked message once it exists.
@@ -352,61 +346,13 @@ export default function ChatRenderer({
     );
     if (
       messageId &&
-      messagesWithDeduplicatedToolCalls.length > 0 &&
+      shownRows.length > 0 &&
       scrolledToMessageRef.current !== messageId
     ) {
       scrollToMessage(messageId);
       scrolledToMessageRef.current = messageId;
     }
-  }, [messagesWithDeduplicatedToolCalls, scrollToMessage]);
-
-  // A bot message only renders when non-empty, so grouping must look ahead
-  // past empty ones to the next *rendered* bubble — otherwise the last
-  // visible bubble wrongly loses its avatar/timestamp/follow-ups.
-  const rendersAsBotBubble = useCallback(
-    (message: MessageType | undefined): boolean => {
-      if (message?.type !== "bot") return false;
-      const props = getMessageProps(message, "bot", messagePropsOptions);
-      return !!props && !isBotMessageEmpty(props);
-    },
-    [messagePropsOptions],
-  );
-
-  // Busy/streaming suppression of follow-ups + the action row applies only
-  // to the turn currently in progress — the last rendered bubble, sitting
-  // above the loading indicator. Earlier finished turns keep their follow-ups.
-  const lastRenderedIndex = useMemo(() => {
-    for (let i = messagesWithDeduplicatedToolCalls.length - 1; i >= 0; i--) {
-      const candidate = messagesWithDeduplicatedToolCalls[i];
-      if (candidate.type === "bot") {
-        if (rendersAsBotBubble(candidate)) return i;
-        continue; // empty bot message — never renders, keep scanning back
-      }
-      return i; // user messages always render
-    }
-    return -1;
-  }, [messagesWithDeduplicatedToolCalls, rendersAsBotBubble]);
-
-  // Walk in `step` direction from `index`, skipping empty bot messages, and
-  // report whether the next/previous *rendered* bubble is from the same side.
-  const isGroupedInDirection = useCallback(
-    (index: number, step: 1 | -1): boolean => {
-      const side = messagesWithDeduplicatedToolCalls[index].type;
-      for (
-        let i = index + step;
-        i >= 0 && i < messagesWithDeduplicatedToolCalls.length;
-        i += step
-      ) {
-        const candidate = messagesWithDeduplicatedToolCalls[i];
-        if (candidate.type !== side) return false;
-        if (candidate.type !== "bot" || rendersAsBotBubble(candidate))
-          return true;
-        // Empty bot message — skip it and keep scanning in this direction.
-      }
-      return false;
-    },
-    [messagesWithDeduplicatedToolCalls, rendersAsBotBubble],
-  );
+  }, [shownRows, scrollToMessage]);
 
   return (
     <>
@@ -427,48 +373,48 @@ export default function ChatRenderer({
           conversation.system_purpose !== SystemPurpose.GETTING_STARTED
         }
       />
-      {messagesWithDeduplicatedToolCalls?.map(
-        (message: MessageType, index: number) => {
-          // Consecutive bubbles from one side group (iMessage-style): only the LAST
-          // shows the avatar/actions/timestamp; others sit tight with no
-          // gap. Looks past empty bot messages (never render) so grouping matches visible bubbles.
-          const isGroupedWithNext = isGroupedInDirection(index, 1);
-          const isGroupedWithPrev = isGroupedInDirection(index, -1);
-          // Only the active turn's bubble (the last rendered one) is suppressed
-          // while the conversation is busy — finished turns keep their actions.
-          const suppressForBusy =
-            index === lastRenderedIndex && isConversationBusy;
-          // Every message carries an id (uuid4 optimistic, backend-assigned
-          // after); the empty-string fallback matches messagePropsUtils.
-          const messageId = message.message_id || "";
+      {shownRows.map((row, index) => {
+        const id = rowId(row);
+        const userSide = isUserSide(row);
+        // Consecutive bubbles from one side group (iMessage-style): only the
+        // LAST shows the avatar/actions/timestamp; others sit tight with no gap.
+        const isGroupedWithNext =
+          index + 1 < shownRows.length &&
+          isUserSide(shownRows[index + 1]) === userSide;
+        const isGroupedWithPrev =
+          index > 0 && isUserSide(shownRows[index - 1]) === userSide;
+        // Only the active turn's bubble (the last one) is suppressed while
+        // the conversation is busy — finished turns keep their actions.
+        const suppressForBusy =
+          index === shownRows.length - 1 && isConversationBusy;
 
-          return (
-            // The scroller virtualizes rows (content-visibility) with anchor
-            // math it owns — replaces the old per-bubble inline hack that
-            // fought scroll restoration. User messages are turn anchors.
-            <MessageScrollerItem
-              key={messageId}
-              messageId={messageId}
-              scrollAnchor={message.type === "user"}
-            >
-              <ChatMessageItem
-                message={message}
-                options={messagePropsOptions}
-                isGroupedWithNext={isGroupedWithNext}
-                isGroupedWithPrev={isGroupedWithPrev}
-                suppressForBusy={suppressForBusy}
-                compact={compact}
-                bubbleKey={messageId}
-              />
-            </MessageScrollerItem>
-          );
-        },
-      )}
+        return (
+          // The scroller virtualizes rows (content-visibility) with anchor
+          // math it owns. User messages are turn anchors.
+          <MessageScrollerItem
+            key={id}
+            messageId={id}
+            scrollAnchor={userSide}
+            data-screen-item-id={id}
+            data-screen-item-kind={rowKind(row)}
+          >
+            <ChatRowItem
+              row={row}
+              sends={sends}
+              actions={actions}
+              isGroupedWithNext={isGroupedWithNext}
+              isGroupedWithPrev={isGroupedWithPrev}
+              suppressForBusy={suppressForBusy}
+              compact={compact}
+            />
+          </MessageScrollerItem>
+        );
+      })}
       {isLoading && (
         <AnimatePresence>
           <LoadingIndicator
             loadingText={loadingText}
-            toolInfo={toolInfo}
+            progress={progress}
             noPadding={compact}
             spinner={
               // The orb replaces the wave spinner in the popup; the

@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   bubbleReactions,
   type ConversationSample,
+  firstShownAt,
   listBubbles,
   loadingGaps,
   longestBlindWorkMs,
@@ -13,7 +14,8 @@ const sample = (
   t: number,
   loading: string | null,
   contentLength: number,
-): ConversationSample => ({ t, loading, contentLength });
+  shown: string[] = [],
+): ConversationSample => ({ t, loading, contentLength, shown });
 
 test.describe("harness — blind work", () => {
   test("content still growing with no loading row is measured first change to last", () => {
@@ -60,6 +62,17 @@ test.describe("harness — blind work", () => {
       sample(400, null, 0),
     ];
     expect(loadingGaps(samples, 100, 300)).toEqual([sample(200, null, 0)]);
+  });
+
+  test("a line is first shown at the reading it appeared in", () => {
+    const samples = [
+      sample(0, "Working on it", 0),
+      sample(100, "Working on it", 5, ["ld-1"]),
+      sample(200, null, 9, ["ld-1", "ld-2"]),
+    ];
+    expect(firstShownAt(samples, "ld-1")).toBe(100);
+    expect(firstShownAt(samples, "ld-2")).toBe(200);
+    expect(() => firstShownAt(samples, "ld-3")).toThrow("ld-3");
   });
 });
 

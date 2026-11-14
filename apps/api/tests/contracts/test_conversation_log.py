@@ -400,6 +400,7 @@ async def test_a_message_that_kicks_the_step_is_flushed_once_by_the_steps_commit
     log: MongoConversationLog, conversation: str, held: HeldFlushes, entries_collection: Any
 ) -> None:
     await log.append(conversation, UID, user("u1"))
+    # The new row's list push goes out at once; the message's flush waits for the step's commit.
     assert held.spawned == [("conversation_list_push", {"conversation_id": conversation})]
     claim = await log.claim(conversation, UID)
     assert claim is not None
@@ -604,6 +605,12 @@ async def test_a_load_a_sync_and_recent_reads_are_the_entries_the_events_stream_
     assert await repo.find_owner_of_message(user_id, "r1") == conversation_id
     assert await repo.find_owner_of_message(user_id, "u1") is None
     assert await repo.has_sent_message(user_id)
+    asked_again = await repo.find_user_message(user_id, conversation_id, "u2")
+    assert isinstance(asked_again, UserMessage)
+    assert (asked_again.id, asked_again.text) == ("u2", "thanks")
+    assert await repo.find_user_message(user_id, conversation_id, "o") is None
+    assert await repo.find_user_message(user_id, f"c-{uuid.uuid4().hex}", "u2") is None
+    assert await repo.find_user_message(f"u-{uuid.uuid4().hex}", conversation_id, "u2") is None
 
 
 async def test_a_page_reaches_back_to_the_task_and_the_reply_its_entries_complete(

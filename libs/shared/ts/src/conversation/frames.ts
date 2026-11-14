@@ -56,19 +56,24 @@ const LiveTaskSchema = z.object({
   awaiting_approval: z.boolean(),
 }) satisfies z.ZodType<LiveTask>;
 
+const head = z.number().int().min(0);
+
 const ScreenFrameSchema = z.object({
   kind: z.literal(FRAME_KIND.SCREEN),
   items: z.array(ScreenItemSchema),
+  head,
 }) satisfies z.ZodType<ScreenFrame>;
 
 const ScreenInsertFrameSchema = z.object({
   kind: z.literal(FRAME_KIND.SCREEN_INSERT),
   item: ScreenItemSchema,
+  head,
 }) satisfies z.ZodType<ScreenInsertFrame>;
 
 const ScreenUpdateFrameSchema = z.object({
   kind: z.literal(FRAME_KIND.SCREEN_UPDATE),
   item: ScreenItemSchema,
+  head,
 }) satisfies z.ZodType<ScreenUpdateFrame>;
 
 // The payload is checked against its generated union above; these tie the rest of each delta frame.
@@ -86,7 +91,7 @@ const RetractFrameSchema = z.object({
 
 export const StateFrameSchema = z.object({
   kind: z.literal(FRAME_KIND.STATE),
-  head: z.number().int().min(0),
+  head,
   display: z.enum([
     DISPLAY_STATE.IDLE,
     DISPLAY_STATE.THINKING,

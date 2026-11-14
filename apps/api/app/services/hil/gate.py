@@ -204,9 +204,6 @@ async def _decide_ledger(
         configurable: AgentConfigurable = configurable_of(request)
         owner = configurable.get("thread_id") or "unknown"
         task_id = await work_of_run(context.conversation_id, context.user_id, context.stream_id)
-        # blocked_by arrives with ordering chains (Phase 3): the chain joins the
-        # fingerprint there, so identical calls on different chains never share
-        # an envelope.
         ap_id = await approval_ledger_repository.register(
             ApprovalProposal(
                 conversation_id=context.conversation_id,

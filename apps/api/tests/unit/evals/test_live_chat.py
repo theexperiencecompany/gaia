@@ -95,6 +95,7 @@ def reply(
         outcome=outcome,
         failure=None,
         narrates=(),
+        retry_target=None,
         files=(),
     )
     return item.model_copy(update=over)
@@ -116,6 +117,7 @@ def work(
         tool_data=(),
         timeline=ToolTimeline(),
         image=None,
+        retry_target=None,
     )
     return item.model_copy(update={"asked_seq": seq if over.get("asking") else 0, **over})
 
@@ -146,15 +148,15 @@ def card(tool_name: str, data: object) -> ToolDataEntry:
 
 
 def shown(*items: UserItem | ReplyItem | WorkItem) -> ScreenFrame:
-    return ScreenFrame(items=items)
+    return ScreenFrame(items=items, head=max((item.seq for item in items), default=0))
 
 
 def insert(item: UserItem | ReplyItem | WorkItem) -> ScreenInsertFrame:
-    return ScreenInsertFrame(item=item)
+    return ScreenInsertFrame(item=item, head=item.seq)
 
 
 def update(item: UserItem | ReplyItem | WorkItem) -> ScreenUpdateFrame:
-    return ScreenUpdateFrame(item=item)
+    return ScreenUpdateFrame(item=item, head=item.seq)
 
 
 def state(head: int, display: DisplayState) -> StateFrame:

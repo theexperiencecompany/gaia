@@ -197,7 +197,7 @@ class _Harness:
     async def _log_state(self, conversation_id: str, user_id: str) -> ConversationState:
         return EMPTY.model_copy(update={"work": self.live_work})
 
-    def hold(self, holder: str, *, awaiting: frozenset[str] = frozenset()) -> None:
+    def hold(self, holder: str, *, awaiting: tuple[str, ...] = ()) -> None:
         """Make the conversation's log hold live work named holder, waiting on awaiting, so the fire finds it busy."""
         self.live_work = (
             LiveWork(task_id=holder, cause_through=1, answers=(), pending_approvals=awaiting),
@@ -2722,7 +2722,7 @@ class TestAnAgentFireOverlapsToo:
         """Work waiting on an approval stays live work in the log for the whole approval window."""
         workflow = _workflow()
         harness = _Harness(workflow)
-        harness.hold("task_9", awaiting=frozenset({"ap_1"}))
+        harness.hold("task_9", awaiting=("ap_1",))
 
         await _fire(harness)
 

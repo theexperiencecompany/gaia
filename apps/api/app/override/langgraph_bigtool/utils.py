@@ -115,6 +115,9 @@ def pop_pruned_tombstones(state: State) -> list[RemoveMessage]:
 # so a message pulled in from outside the graph would show once and be lost.
 INJECTED_MESSAGES_KEY = "_injected_messages"
 
+#: Graph node that sends a stopped agent back to work; the stop it answers was not the end.
+NUDGE_CONTINUE_NODE = "nudge_continue"
+
 
 def pop_injected_messages(state: State) -> list[AnyMessage]:
     """Pop INJECTED_MESSAGES_KEY so the model node can commit its contents."""

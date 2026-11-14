@@ -22,11 +22,12 @@ from app.agents.core.background import (
 )
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import (
+    PreparedQueuedTask,
     build_lock_value,
     get_lock_holder,
     release_lock_if_owned,
 )
-from app.agents.core.background.session import ExecutorRun, RunKind
+from app.agents.core.background.session import ExecutorRun, RunKind, get_session
 from app.constants.agents import AgentTag
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
@@ -147,7 +148,6 @@ class TestTheRealLockAndInbox:
             return await real_append(inbox, entry_id, text, tag)
 
         with (
-            patch.object(eq, "StreamManager", AsyncMock()),
             patch.object(er, "_spawn_detached_run") as spawn,
             patch.object(ExecutorInbox, "append", finalize_the_old_run_then_append),
         ):
@@ -174,7 +174,6 @@ _OLD_LOCK_SECONDS = EXECUTOR_BUSY_TTL - EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS
 def _real_lifecycle() -> Iterator[SimpleNamespace]:
     """Run the real busy lock and inbox over fakeredis, capturing only the spawned run."""
     with (
-        patch.object(eq, "StreamManager", AsyncMock()),
         patch.object(er, "_spawn_detached_run") as spawn,
     ):
         yield SimpleNamespace(spawn=spawn)
@@ -334,9 +333,17 @@ class TestARunTheLogRefuses:
         self, fake_redis, _carried_work_is_logged: AsyncMock
     ) -> None:
         _carried_work_is_logged.return_value = False
+        prepared: list[PreparedQueuedTask] = []
+        prepare = er._prepare_executor_run
+
+        async def remembered(*args: Any, **kwargs: Any) -> PreparedQueuedTask | None:
+            run = await prepare(*args, **kwargs)
+            if run is not None:
+                prepared.append(run)
+            return run
+
         with (
-            patch.object(eq, "StreamManager", AsyncMock()),
-            patch.object(er, "close_detached_stream", new_callable=AsyncMock) as closed,
+            patch.object(er, "_prepare_executor_run", remembered),
             patch.object(er, "_spawn_detached_run") as spawn,
         ):
             started = await er._start_executor_run(
@@ -344,5 +351,6 @@ class TestARunTheLogRefuses:
             )
         assert started is False
         spawn.assert_not_called()
-        closed.assert_awaited_once()
+        (run,) = prepared
+        assert get_session(run.run.stream_id) is None
         assert await get_lock_holder(CONVERSATION) is None

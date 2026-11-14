@@ -17,7 +17,7 @@ export interface IConversation {
   source?: string; // ConversationSource from backend (web, telegram, discord, etc.)
   // Live work here awaits the user's approval: the sidebar lists the
   // conversation for its card, and the row lights the approval dot.
-  awaitingApproval?: boolean;
+  awaitingApproval: boolean;
   todoId?: string | null;
   // False when the server's conversation list never shows it (a todo's chat, a bot DM).
   listed?: boolean;
@@ -110,6 +110,10 @@ class ChatDexie extends Dexie {
     this.version(6)
       .stores({})
       .upgrade((tx) => tx.table("conversationLogs").clear());
+    // v7: every row carries awaitingApproval; rows cached without it are dropped and refetched.
+    this.version(7)
+      .stores({})
+      .upgrade((tx) => tx.table("conversations").clear());
 
     this.conversations = this.table("conversations");
     this.conversationLogs = this.table("conversationLogs");

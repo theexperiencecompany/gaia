@@ -54,9 +54,12 @@ class ReplyText:
 def bubble_deltas(shown: Sequence[str], now: Sequence[str]) -> list[BubbleTextDelta | BubblesDelta]:
     """Return the deltas that carry a client from the shown bubbles to now.
 
-    Text only appends to the last shown bubble or opens later ones; anything else (text the
-    model took back) replaces every bubble at once.
+    Text only appends to the last shown bubble or opens later ones. Text the model took back
+    stays shown until its replacement reads past it or differently, which then replaces every
+    bubble at once: a retried or retracted message is replaced in place, never blanked first.
     """
+    if NEW_MESSAGE_BREAKER.join(shown).startswith(NEW_MESSAGE_BREAKER.join(now)):
+        return []
     if list(now[: max(len(shown) - 1, 0)]) != list(shown[:-1]) or len(now) < len(shown):
         return [BubblesDelta(bubbles=tuple(now))]
     if shown and not now[len(shown) - 1].startswith(shown[-1]):

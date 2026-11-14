@@ -6,9 +6,10 @@
  * A dropped connection reconnects and opens on a fresh screen (the follower is
  * idempotent, so an item it already rendered renders nothing). A server
  * that refuses the stream (4xx) ends the follow; anything else is retried.
+ * Each follower reports how far it delivered through record, which the server
+ * keeps, so a restarted bot resumes from that cursor.
  */
 
-import { FRAME_KIND } from "../../conversation/frames";
 import type { ConversationFrame } from "../../conversation/types";
 import type { BotUserContext } from "../types";
 import { recordBotFailure } from "../utils/failure-reasons";
@@ -16,7 +17,11 @@ import { getHttpStatus, sanitizeErrorForLog } from "../utils/logger";
 import { sleep } from "../utils/timeout";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import { ConversationFollower } from "./follower";
-import type { FollowSurface, StreamingOptions } from "./follower.types";
+import type {
+  DeliveryCursor,
+  FollowSurface,
+  StreamingOptions,
+} from "./follower.types";
 
 /** Opens one connection to a conversation's events stream. */
 export type ConversationEventSource = (
@@ -24,6 +29,13 @@ export type ConversationEventSource = (
   conversationId: string,
   signal: AbortSignal,
 ) => AsyncIterable<ConversationFrame>;
+
+/** Keeps how far a follower delivered a conversation, where a restarted bot reads it back. */
+export type DeliveryRecorder = (
+  ctx: BotUserContext,
+  conversationId: string,
+  cursor: DeliveryCursor,
+) => Promise<void>;
 
 /** Reconnect backoff: doubles from the base, capped. */
 const RECONNECT_BASE_MS = 500;
@@ -38,13 +50,14 @@ interface Followed {
 
 export class ConversationFollowers {
   private readonly active = new Map<string, Followed>();
-  /** The newest seq a follow of each conversation started from or delivered, so a late wake repeats nothing. */
-  private readonly reached = new Map<string, number>();
+  /** The cursor a follow of each conversation started from or delivered to, so a late wake repeats nothing. */
+  private readonly reached = new Map<string, DeliveryCursor>();
   private readonly runs = new Set<Promise<void>>();
 
   constructor(
     private readonly events: ConversationEventSource,
     private readonly options: StreamingOptions,
+    private readonly record: DeliveryRecorder,
   ) {}
 
   /**
@@ -62,34 +75,49 @@ export class ConversationFollowers {
       running.follower.expect(seq);
       return;
     }
-    this.start(ctx, conversationId, seq - 1, surface).expect(seq);
+    this.start(
+      ctx,
+      conversationId,
+      { delivered_seq: seq - 1, partial_reply: null },
+      surface,
+    ).expect(seq);
   }
 
   /**
-   * Follow a conversation after afterSeq until it is idle: one a restarted bot finds
-   * still answering, or one the server woke for something logged there. Nothing when
-   * a follow runs, and never from before what an earlier follow here reached.
+   * Follow a conversation from the server's delivery cursor until it is idle: one a
+   * restarted bot finds still answering or undelivered, or one the server woke for
+   * something logged there. Nothing when a follow runs, and never from before what
+   * an earlier follow here reached.
    */
   resume(
     ctx: BotUserContext,
     conversationId: string,
-    afterSeq: number,
+    from: DeliveryCursor,
     surface: FollowSurface,
   ): void {
     if (this.active.has(conversationId)) return;
-    const reached = this.reached.get(conversationId) ?? afterSeq;
-    this.start(ctx, conversationId, Math.max(afterSeq, reached), surface);
+    const reached = this.reached.get(conversationId);
+    const start =
+      reached && reached.delivered_seq > from.delivered_seq ? reached : from;
+    this.start(ctx, conversationId, start, surface);
   }
 
   private start(
     ctx: BotUserContext,
     conversationId: string,
-    floor: number,
+    from: DeliveryCursor,
     surface: FollowSurface,
   ): ConversationFollower {
-    this.reach(conversationId, floor);
+    this.reach(conversationId, from);
     const follower = new ConversationFollower(
-      floor,
+      {
+        floor: from.delivered_seq,
+        partialReply: from.partial_reply,
+        record: async (cursor) => {
+          this.reach(conversationId, cursor);
+          await this.record(ctx, conversationId, cursor);
+        },
+      },
       this.options,
       surface,
       conversationId,
@@ -103,9 +131,10 @@ export class ConversationFollowers {
     return follower;
   }
 
-  private reach(conversationId: string, seq: number): void {
-    if (seq > (this.reached.get(conversationId) ?? 0))
-      this.reached.set(conversationId, seq);
+  private reach(conversationId: string, cursor: DeliveryCursor): void {
+    const reached = this.reached.get(conversationId);
+    if (!reached || cursor.delivered_seq >= reached.delivered_seq)
+      this.reached.set(conversationId, cursor);
   }
 
   /** Settles once every follow running now has ended. */
@@ -163,7 +192,6 @@ export class ConversationFollowers {
           abort.signal,
         )) {
           await follower.apply(frame);
-          this.reach(conversationId, newestSeq(frame));
           failures = 0;
           if (follower.finished) {
             // Leave the registry before any await, so a message posted now starts a new follow.
@@ -192,18 +220,5 @@ export class ConversationFollowers {
         Math.min(RECONNECT_BASE_MS * 2 ** failures, RECONNECT_MAX_MS),
       );
     }
-  }
-}
-
-/** The newest screen position a frame shows; 0 for a frame that shows no item. */
-function newestSeq(frame: ConversationFrame): number {
-  switch (frame.kind) {
-    case FRAME_KIND.SCREEN:
-      return Math.max(0, ...frame.items.map((item) => item.seq));
-    case FRAME_KIND.SCREEN_INSERT:
-    case FRAME_KIND.SCREEN_UPDATE:
-      return frame.item.seq;
-    default:
-      return 0;
   }
 }

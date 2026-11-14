@@ -168,16 +168,19 @@ def ledger_facts(ended: ApprovalOutcome | ActionResult | None) -> LedgerFacts:
     return {"outcome": ended, "action": None}
 
 
-async def published_broadcasts(pubsub: PubSub) -> list[dict[str, object]]:
-    """Every WebSocket broadcast that reached the subscribed channel within a second."""
+async def published_broadcasts(pubsub: PubSub, user_id: str) -> list[dict[str, object]]:
+    """Every WebSocket broadcast to user_id that reached the subscribed channel within a second.
+
+    Pub/Sub ignores the Redis db, so the channel also carries every other process's broadcasts.
+    """
     published: list[dict[str, object]] = []
     loop = asyncio.get_running_loop()
     deadline = loop.time() + 1
     while loop.time() < deadline:
         # The subscribe ack also reads as None, so None never means the channel is done.
         message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.1)
-        if message is not None:
-            published.append(json.loads(message["data"]))
+        if message is not None and (broadcast := json.loads(message["data"]))["user_id"] == user_id:
+            published.append(broadcast)
     return published
 
 

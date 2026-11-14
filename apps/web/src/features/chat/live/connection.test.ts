@@ -2,7 +2,12 @@
 
 import { ApiError } from "@shared/api";
 import type { ScreenItem } from "@shared/conversation";
-import { replyItem, userItem } from "@shared/conversation/testing";
+import {
+  insertFrame,
+  replyItem,
+  screenFrame,
+  userItem,
+} from "@shared/conversation/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatStore } from "@/stores/chatStore";
 
@@ -28,6 +33,7 @@ const { server, saved, sendResult, retitled } = vi.hoisted(() => ({
   sendResult: {
     fail: null as Error | null,
     refusals: [] as Error[],
+    hold: null as Promise<void> | null,
     calls: [] as unknown[],
   },
 }));
@@ -61,6 +67,9 @@ vi.mock("@/features/chat/api/chatApi", () => {
         body: { message_id: string },
       ) => {
         sendResult.calls.push({ conversationId, body });
+        const hold = sendResult.hold;
+        sendResult.hold = null;
+        if (hold) await hold;
         const refusal = sendResult.refusals.shift();
         if (refusal) throw refusal;
         if (sendResult.fail) throw sendResult.fail;
@@ -103,8 +112,6 @@ import { sendMessage } from "./sendMessage";
 const AT = "2026-11-12T10:00:00+00:00";
 const CONVERSATION = "conv-1";
 
-const insert = (item: ScreenItem) => ({ kind: "screen_insert", item });
-const screenOf = (...items: ScreenItem[]) => ({ kind: "screen", items });
 const ids = () => view().items.map((item) => item.id);
 const state = (head: number, display: string) => ({
   kind: "state",
@@ -132,6 +139,7 @@ beforeEach(() => {
   saved.clear();
   sendResult.fail = null;
   sendResult.refusals = [];
+  sendResult.hold = null;
   sendResult.calls = [];
   retitled.length = 0;
   useLiveConversationStore.setState({ conversations: {} });
@@ -148,9 +156,9 @@ describe("following a conversation's events", () => {
     release = openConversation(CONVERSATION);
     await flush();
 
-    lastStream().push(screenOf(userItem("m1", 1, "hi")));
+    lastStream().push(screenFrame([userItem("m1", 1, "hi")]));
     lastStream().push(state(1, "thinking"));
-    lastStream().push(insert(replyItem("r1", 2, "Hel")));
+    lastStream().push(insertFrame(replyItem("r1", 2, "Hel")));
     lastStream().push(replyText("a1", 0, "Hel"));
     lastStream().push(replyText("a1", 1, "lo"));
 
@@ -162,7 +170,7 @@ describe("following a conversation's events", () => {
   it("titles the conversation from its title update, leaving the view as it was", async () => {
     release = openConversation(CONVERSATION);
     await flush();
-    lastStream().push(insert(userItem("m1", 1, "plan q3")));
+    lastStream().push(insertFrame(userItem("m1", 1, "plan q3")));
     const before = view();
 
     lastStream().push({
@@ -183,14 +191,14 @@ describe("following a conversation's events", () => {
     vi.useFakeTimers();
     release = openConversation(CONVERSATION);
     await vi.advanceTimersByTimeAsync(0);
-    lastStream().push(insert(userItem("m1", 1)));
+    lastStream().push(insertFrame(userItem("m1", 1)));
     lastStream().drop(new Error("socket lost"));
 
     await vi.advanceTimersByTimeAsync(1_000);
 
     expect(server.streams).toHaveLength(2);
     lastStream().push(
-      screenOf(userItem("m1", 1), replyItem("r1", 2, "done", "answered")),
+      screenFrame([userItem("m1", 1), replyItem("r1", 2, "done", "answered")]),
     );
     expect(ids()).toEqual(["m1", "r1"]);
   });
@@ -199,7 +207,7 @@ describe("following a conversation's events", () => {
     release = openConversation(CONVERSATION);
     await flush();
     const first = lastStream();
-    first.push(insert(userItem("m1", 1)));
+    first.push(insertFrame(userItem("m1", 1)));
     first.push(replyText("a1", 0, "one "));
     first.push(replyText("a1", 2, "three"));
     await flush();
@@ -207,7 +215,7 @@ describe("following a conversation's events", () => {
     expect(first.aborted()).toBe(true);
     const replay = lastStream();
     expect(server.streams).toHaveLength(2);
-    replay.push(screenOf(userItem("m1", 1)));
+    replay.push(screenFrame([userItem("m1", 1)]));
     replay.push(replyText("a1", 1, "two "));
     replay.push(replyText("a1", 2, "three"));
     expect(view().drafts[0]?.content.bubbles).toEqual(["one two three"]);
@@ -297,10 +305,46 @@ describe("sending", () => {
     expect(pending).toHaveLength(1);
     await sending;
 
-    lastStream().push(insert(userItem(pending[0].id, 1, "hello")));
+    lastStream().push(insertFrame(userItem(pending[0].id, 1, "hello")));
 
     expect(view().pending).toEqual([]);
     expect(ids()).toEqual([pending[0].id]);
+  });
+
+  it("delivers a burst in send order, each once the one before it was answered", async () => {
+    let answerFirst: () => void = () => undefined;
+    sendResult.hold = new Promise<void>((resolve) => {
+      answerFirst = resolve;
+    });
+    const texts = () =>
+      sendResult.calls.map(
+        (call) => (call as { body: { text: string } }).body.text,
+      );
+    const sending = ["first", "second", "third"].map((text) =>
+      sendMessage(text, { conversationId: CONVERSATION }),
+    );
+    await flush();
+    expect(texts()).toEqual(["first"]);
+
+    answerFirst();
+    await Promise.all(sending);
+
+    expect(texts()).toEqual(["first", "second", "third"]);
+  });
+
+  it("delivers a new chat's first message before the next one sent into it", async () => {
+    const texts = () =>
+      sendResult.calls.map(
+        (call) => (call as { body: { text: string } }).body.text,
+      );
+    const first = sendMessage("first", { conversationId: null });
+    const second = sendMessage("second");
+    await flush();
+    expect(texts()[0]).toBe("first");
+
+    await Promise.all([first, second]);
+
+    expect(texts()).toEqual(["first", "second"]);
   });
 
   it("marks a send the server refused as failed, and a retry resends the same message", async () => {
@@ -398,7 +442,7 @@ describe("reload", () => {
     expect(sendResult.calls).toHaveLength(1);
 
     // A reply mid-stream at reload: its draft is rebuilt from the stream's replay.
-    lastStream().push(insert(userItem("m-unsent", 4, "second")));
+    lastStream().push(insertFrame(userItem("m-unsent", 4, "second")));
     lastStream().push(replyText("a2", 0, "on it"));
     expect(view().pending).toEqual([]);
     expect(view().drafts[0]?.content.bubbles).toEqual(["on it"]);
@@ -407,7 +451,7 @@ describe("reload", () => {
   it("saves the screen and the sends it holds", async () => {
     release = openConversation(CONVERSATION);
     await flush();
-    lastStream().push(insert(userItem("m1", 1)));
+    lastStream().push(insertFrame(userItem("m1", 1)));
     persistConversation(CONVERSATION, { immediately: true });
     await flush();
 

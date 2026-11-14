@@ -101,9 +101,7 @@ def _state(comms: CommsPhase, *work: LiveWork) -> ConversationState:
 
 
 def _work(*approvals: str) -> LiveWork:
-    return LiveWork(
-        task_id="t1", cause_through=1, answers=(), pending_approvals=frozenset(approvals)
-    )
+    return LiveWork(task_id="t1", cause_through=1, answers=(), pending_approvals=approvals)
 
 
 def _settle(outcome: ReplyOutcome) -> ReplySettled:

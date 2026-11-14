@@ -47,6 +47,9 @@ export {
 export type {
   ConversationEventSource,
   ConversationSurface,
+  DeliveryCursor,
+  DeliveryRecorder,
+  FollowStart,
   FollowSurface,
   SentBubble,
   StreamingOptions,

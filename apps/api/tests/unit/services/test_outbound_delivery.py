@@ -11,6 +11,7 @@ from app.constants.outbound import (
     OUTBOUND_TTL_SECONDS_DEFAULT,
     OUTBOUND_TTL_SECONDS_GREETING,
 )
+from app.models.bot_models import BotDelivery, BotSessionDocument
 from app.models.chat_models import ConversationSource
 from app.services import outbound_delivery as od
 from app.services.platform_link_service import PlatformLinkService
@@ -276,148 +277,6 @@ class TestPublishOutboundMessageBrutalEdges:
         assert publisher.publish_outbound.await_count == 1
 
 
-class TestPublishOutboundPhoto:
-    """publish_outbound_photo enqueues a URL the bot fetches itself, and never raises."""
-
-    async def test_unsupported_platform_returns_false(self) -> None:
-        with patch.object(
-            PlatformLinkService, "get_linked_platforms", new_callable=AsyncMock
-        ) as linked:
-            ok = await od.publish_outbound_photo(
-                ConversationSource.WEB, "u1", "https://cdn.test/1.png", "1.png"
-            )
-        assert ok is False
-        linked.assert_not_awaited()
-
-    async def test_unlinked_account_returns_false(self) -> None:
-        with patch.object(
-            PlatformLinkService,
-            "get_linked_platforms",
-            new_callable=AsyncMock,
-            return_value={},
-        ):
-            ok = await od.publish_outbound_photo(
-                ConversationSource.TELEGRAM, "u1", "https://cdn.test/1.png", "1.png"
-            )
-        assert ok is False
-
-    async def test_a_publish_error_returns_false_rather_than_failing_the_browser_run(self) -> None:
-        """A step screenshot is progress, so losing one must not take the task down."""
-        publisher = AsyncMock()
-        publisher.publish_outbound = AsyncMock(side_effect=RuntimeError("boom"))
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value=_linked("telegram", "556677"),
-            ),
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-        ):
-            ok = await od.publish_outbound_photo(
-                ConversationSource.TELEGRAM, "u1", "https://cdn.test/1.png", "1.png"
-            )
-        assert ok is False
-
-    async def test_an_unlinked_account_is_logged_against_this_publisher_and_this_user(self) -> None:
-        """The warning names which publisher skipped and for whom, or it explains nothing."""
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value={},
-            ) as linked,
-            patch.object(od, "log") as logger,
-        ):
-            ok = await od.publish_outbound_photo(
-                ConversationSource.TELEGRAM, "u-42", "https://cdn.test/1.png", "1.png"
-            )
-
-        assert ok is False
-        linked.assert_awaited_once_with("u-42")
-        logger.warning.assert_called_once_with(
-            "outbound publish skipped: account not linked",
-            operation="publish_outbound_photo",
-            user_id="u-42",
-            platform="telegram",
-        )
-
-    async def test_a_publish_error_is_logged_with_the_platform_and_the_reason(self) -> None:
-        publisher = AsyncMock()
-        publisher.publish_outbound = AsyncMock(side_effect=RuntimeError("boom"))
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value=_linked("telegram", "556677"),
-            ),
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-            patch.object(od, "log") as logger,
-        ):
-            ok = await od.publish_outbound_photo(
-                ConversationSource.TELEGRAM, "u1", "https://cdn.test/1.png", "1.png"
-            )
-
-        assert ok is False
-        fields = logger.error.call_args.kwargs
-        assert logger.error.call_args.args == ("outbound attachment publish failed",)
-        assert logger.error.call_args.kwargs["operation"] == "publish_outbound_photo"
-        assert fields["platform"] == "telegram"
-        assert fields["error"] == "boom"
-        assert fields["error_type"] == "RuntimeError"
-        assert fields["user_id"] == "u1"
-        assert fields["destination_hash"] == hash_platform_user_id("556677")
-
-    async def test_success_enqueues_a_url_attachment_the_bot_will_fetch(self) -> None:
-        publisher = AsyncMock()
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value=_linked("telegram", "556677"),
-            ),
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-        ):
-            ok = await od.publish_outbound_photo(
-                ConversationSource.TELEGRAM,
-                "u1",
-                "https://cdn.test/browser_steps/s1/step_2.png",
-                "browser-step-2.jpg",
-                caption="Step 2 reading the page",
-            )
-        assert ok is True
-        queue, body = publisher.publish_outbound.await_args.args
-        assert queue == "outbound.telegram"
-        envelope = json.loads(body)
-        # A PHOTO envelope names a url, never an artifact path: the bot fetches
-        # the bytes itself rather than asking the API for them.
-        assert envelope.get("text") is None
-        assert envelope["destination_id"] == "556677"
-        assert envelope["attachment"] == {
-            "conversation_id": None,
-            "path": None,
-            "url": "https://cdn.test/browser_steps/s1/step_2.png",
-            "filename": "browser-step-2.jpg",
-            "content_type": None,
-            "caption": "Step 2 reading the page",
-        }
-        # A step shot expires like a queued message: delivered a day late it shows
-        # a page the run has long since left.
-        assert (
-            publisher.publish_outbound.await_args.kwargs["expiration"]
-            == OUTBOUND_TTL_SECONDS_DEFAULT
-        )
-
-
 class TestNotifyAccountLinked:
     async def test_a_linked_bot_platform_gets_the_confirmation_with_its_display_name(self) -> None:
         publisher = AsyncMock()
@@ -642,33 +501,6 @@ class TestAFailedOutboundSendIsExplainedOnTheWideEvent:
         assert error["error"] == "channel closed"
         assert error["error_type"] == "ConnectionError"
 
-    async def test_a_photo_url_the_envelope_refuses_is_not_sent_and_is_explained(self) -> None:
-        """The caller falls back to the caption on False; True here would mean a photo that never arrives."""
-        publisher = AsyncMock()
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value=_linked("telegram", "556677"),
-            ),
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-        ):
-            async with captured_wide_event() as event:
-                ok = await od.publish_outbound_photo(
-                    ConversationSource.TELEGRAM, "u1", "http://cdn.test/1.png", "step-1.png"
-                )
-
-        assert ok is False
-        publisher.publish_outbound.assert_not_awaited()
-        warning = _only(event["warnings"], "publish_outbound_photo: attachment URL rejected")
-        assert warning["platform"] == "telegram"
-        assert warning["user_id"] == "u1"
-        assert warning["destination_hash"] == hash_platform_user_id("556677")
-        assert warning["filename"] == "step-1.png"
-
 
 def _alert(report: AsyncMock) -> dict[str, object]:
     """Return the one failure report_delivery_failure got, minus its timestamp."""
@@ -720,13 +552,6 @@ class TestALostOutboundMessageIsAlerted:
                 ),
                 True,
                 id="channel-message",
-            ),
-            pytest.param(
-                lambda: od.publish_outbound_photo(
-                    ConversationSource.WHATSAPP, "u1", "https://cdn.test/s.png", "s.png"
-                ),
-                False,
-                id="photo",
             ),
         ],
     )
@@ -784,29 +609,6 @@ class TestALostOutboundMessageIsAlerted:
             envelope_id=_published_id(publisher),
         )
 
-    async def test_a_failed_photo_publish_alerts(self) -> None:
-        publisher = AsyncMock()
-        publisher.publish_outbound = AsyncMock(side_effect=ConnectionError("channel closed"))
-        report = AsyncMock()
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value=_linked("whatsapp", "15551234567"),
-            ),
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-            patch.object(od, "report_delivery_failure", report),
-        ):
-            ok = await od.publish_outbound_photo(
-                ConversationSource.WHATSAPP, "u1", "https://cdn.test/s.png", "s.png"
-            )
-
-        assert ok is False
-        assert _alert(report) == _enqueue_alert(envelope_id=_published_id(publisher))
-
     async def test_a_skipped_publish_does_not_alert(self) -> None:
         report = AsyncMock()
         with (
@@ -822,3 +624,43 @@ class TestALostOutboundMessageIsAlerted:
 
         assert ok is od.OutboundResult.SKIPPED
         report.assert_not_awaited()
+
+
+def _session(platform: str, delivery: BotDelivery | None) -> BotSessionDocument:
+    return BotSessionDocument(
+        session_key=f"{platform}:556677",
+        conversation_id="conv-1",
+        platform=platform,
+        platform_user_id="556677",
+        delivery=delivery,
+    )
+
+
+class TestPublishConversationWake:
+    async def test_a_session_with_no_delivery_cursor_raises_instead_of_waking_from_nothing(
+        self,
+    ) -> None:
+        with pytest.raises(
+            ValueError, match=r"^a wake follows the session's delivery cursor, and it has none$"
+        ):
+            await od.publish_conversation_wake(_session("telegram", None))
+
+    async def test_a_platform_with_no_outbound_queue_is_skipped(self) -> None:
+        with patch.object(od, "get_rabbitmq_publisher", new_callable=AsyncMock) as publisher:
+            result = await od.publish_conversation_wake(
+                _session("web", BotDelivery(delivered_seq=0))
+            )
+
+        assert result == od.OutboundResult.SKIPPED
+        publisher.assert_not_awaited()
+
+    async def test_a_wake_tells_the_bot_to_follow_from_the_sessions_cursor(self) -> None:
+        publisher = AsyncMock()
+        with patch.object(
+            od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+        ):
+            await od.publish_conversation_wake(_session("telegram", BotDelivery(delivered_seq=3)))
+
+        body = json.loads(publisher.publish_outbound.await_args.args[1])
+        assert (body["destination_id"], body["follow"]["conversation_id"]) == ("556677", "conv-1")
+        assert body["follow"]["after_seq"] == 3

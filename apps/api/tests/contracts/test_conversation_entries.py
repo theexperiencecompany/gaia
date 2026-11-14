@@ -135,6 +135,7 @@ async def test_an_entry_is_read_the_moment_append_returns(
     )
 
     assert held.held, "the flush must not have run yet"
+    # The list push for the new row is spawned too; neither has run.
     assert held.spawned == [
         ("conversation_list_push", {"conversation_id": conversation.conversation_id}),
         ("conversation_flush", {"conversation_id": conversation.conversation_id}),

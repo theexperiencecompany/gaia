@@ -15,3 +15,6 @@ WEBSOCKET_BROADCAST_CHANNEL: Final[str] = "websocket:broadcast"
 
 # How long the per-pod listener waits before re-subscribing after Redis drops it.
 WEBSOCKET_LISTENER_RESUBSCRIBE_SECONDS: Final[float] = 5.0
+
+# The message that asks the user's desktop app to run one desktop tool action.
+DESKTOP_TOOL_REQUEST_MESSAGE: Final[str] = "desktop_tool_request"

@@ -608,7 +608,7 @@ async def test_a_stop_cancels_only_the_work_before_it_and_reports_what_it_cancel
         patch.object(rig.effects, "cancel_work", side_effect=then_new_work_starts),
         patch.object(conversation_stop_service, "capture", side_effect=record),
     ):
-        stopped = await press_stop(rig.conversation_id, rig.user_id, None)
+        stopped = await press_stop(rig.conversation_id, rig.user_id)
     state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
     assert asked == [CancelWork(task_ids=("t1",), approval_ids=("a1",))]
     assert (stopped.work.executor_stopped, stopped.work.executor_task_id) == (True, "t1")
@@ -847,10 +847,10 @@ class _Budget:
 
 
 # Through submit_message: before the reply opens, accept 2, claim 1, unsettled 1, comms 1.
-# Was 29/14 Mongo, 27/14 Redis; work turn 46/23, 28/16. Each logged reply or work adds one
-# Redis publish, the conversation.list_changed push.
+# Redis includes one list-push PUBLISH per sync-clock advance (message, reply, settle), off the writer's path.
+# Measured at the production tick, so no tick-driven hint read is counted.
 PLAIN_TURN = _Budget(mongo=24, mongo_before_text=5, redis=31, redis_before_text=17)
-# The same turn with the attempt also logging the work it hands the executor before any text.
+# The same turn with the attempt also logging the work it hands the executor before any text (its push too).
 WORK_TURN = _Budget(mongo=43, mongo_before_text=13, redis=33, redis_before_text=20)
 
 
@@ -989,7 +989,7 @@ async def test_a_plain_turn_stays_within_its_mongo_and_redis_budget(
     mongo_db: AsyncIOMotorDatabase[dict[str, object]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    rig = await rig_for(gated("first answer", "second answer"))
+    rig = await rig_for(gated("first answer", "second answer"), tick=_production_tick)
     turn = await _measured_turn(rig, mongo_db, monkeypatch)
     _within(turn.spent, PLAIN_TURN)
     # The optional writes wait for the first text and still happen exactly once.
@@ -1023,7 +1023,7 @@ async def test_a_turn_that_hands_off_work_stays_within_its_mongo_and_redis_budge
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     model = gated("first answer", "on it")
-    rig = await rig_for(model)
+    rig = await rig_for(model, tick=_production_tick)
     started: list[bool] = []
 
     async def dispatch() -> None:
@@ -1243,9 +1243,9 @@ async def test_an_approval_holds_the_work_until_the_user_decides(
         rig.conversation_id, rig.user_id, "a1", ApprovalOutcome.APPROVED, ApprovalDecider.USER
     )
     decided = await rig.ports.log.state(rig.conversation_id, rig.user_id)
-    assert [work.pending_approvals for work in waiting.work] == [frozenset({"a1"})]
+    assert [work.pending_approvals for work in waiting.work] == [("a1",)]
     assert waiting.display is DisplayState.AWAITING_APPROVAL
-    assert [work.pending_approvals for work in decided.work] == [frozenset()]
+    assert [work.pending_approvals for work in decided.work] == [()]
     assert len(await rig.of(ApprovalDecided)) == 1
     assert [(a.summary, a.expires_at) for a in await rig.of(ApprovalRequested)] == [
         ("Send the invoice", None)
@@ -1646,7 +1646,7 @@ async def test_an_agent_withdrawing_its_approval_reaches_the_log_and_every_devic
     ]
     assert streamed == [(approval_id, ApprovalOutcome.WITHDRAWN)]
     state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
-    assert [w.pending_approvals for w in state.work] == [frozenset()]
+    assert [w.pending_approvals for w in state.work] == [()]
     await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
 
 

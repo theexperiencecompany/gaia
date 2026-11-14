@@ -229,6 +229,16 @@ class _Log:
             if self.root(request.task_id) == root and approval_id not in self.decisions
         )
 
+    def original(self, message_id: str) -> str:
+        """Return the user message a retry answers again, or message_id when it is no retry."""
+        message = self.users.get(message_id)
+        return message.retry_of if message is not None and message.retry_of else message_id
+
+    def newest_asked(self, answered: Iterable[str]) -> str | None:
+        """Return the newest user message among answered: the one a retry sends again."""
+        ids = {self.original(message_id) for message_id in answered}
+        return next((user for user in reversed(self.users) if user in ids), None)
+
     def work_status(self, root: str) -> WorkStatus:
         finished = self.finished.get(root)
         if finished is not None:
@@ -276,12 +286,14 @@ def needed_beside(
                 target = reply.quote_target if settle is None else settle.entry.quote_target
                 narrated = (*reply.narrates, *(() if settle is None else settle.entry.narrates))
                 wanted |= {target} if target else set()
+                wanted |= set(() if settle is None else settle.entry.answers)
                 wanted |= {
                     f"work:{task}:{end}" for task in (*narrated, reply.reply_id) for end in _ENDS
                 }
             case _:
                 pass
     wanted |= {f"work:{work.joins}" for work in read.started.values() if work.joins}
+    wanted |= {message.retry_of for message in read.users.values() if message.retry_of}
     present = {logged.entry.id for logged in (*window, *related)}
     return sorted(wanted - present), sorted(replies)
 
@@ -289,7 +301,7 @@ def needed_beside(
 def _item(logged: Positioned, read: _Log) -> ScreenItem | None:
     seq, at = logged.seq, logged.at
     match logged.entry:
-        case UserMessage() as message:
+        case UserMessage(retry_of=None) as message:
             return UserItem(id=message.id, seq=seq, at=at, message=message)
         case Reply() as reply:
             return _reply_item(seq, at, reply, read)
@@ -310,8 +322,10 @@ def _item(logged: Positioned, read: _Log) -> ScreenItem | None:
         case TodoWoke() as woke:
             return TodoWokeItem(id=woke.id, seq=seq, at=at, wake=woke.run.wake)
         # Shown through the items they change, or not at all.
+        # A retry answers its message again in that message's bubble.
         case (
-            WorkStarted()
+            UserMessage()
+            | WorkStarted()
             | StopRequested()
             | BargeIn()
             | ApprovalRequested()
@@ -366,6 +380,7 @@ def _work_item(seq: int, at: AwareDatetime, task_id: str, read: _Log) -> WorkIte
         tool_data=cards,
         timeline=work_timeline(handoff, cards, approvals),
         image=None if finished is None else finished.image,
+        retry_target=read.newest_asked(started.answers),
     )
 
 
@@ -395,7 +410,7 @@ def _reply_item(seq: int, at: AwareDatetime, reply: Reply, read: _Log) -> ReplyI
         # Nothing was shown before it failed: it appears where the failure was logged.
         seq, at = settled_at.seq, settled_at.at
     target = reply.quote_target if settle is None else settle.quote_target
-    quoted = None if target is None else read.users.get(target)
+    quoted = None if target is None else read.users.get(read.original(target))
     shown = tuple(own)
     return ReplyItem(
         id=reply.reply_id,
@@ -413,5 +428,8 @@ def _reply_item(seq: int, at: AwareDatetime, reply: Reply, read: _Log) -> ReplyI
         outcome=None if settle is None else settle.outcome,
         failure=None if settle is None else settle.failure,
         narrates=narrates,
+        retry_target=read.newest_asked(
+            (*(() if settle is None else settle.answers), *(() if target is None else (target,)))
+        ),
         files=reply_files([*work_cards, *reply.tool_data]),
     )

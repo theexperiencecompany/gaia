@@ -35,7 +35,14 @@ from app.models.conversation_screen_models import (
 from app.models.conversation_send_models import ConversationEvent
 from app.services.conversation.screen import TOOL_CALL_CARD, project_screen
 from app.services.conversation.screen_patches import ScreenItemMoved, ScreenTracker, screen_patches
-from shared.py.conversation_wire import FailureReason, ReplyOutcome, ScreenItemKind, ToolDataEntry
+from shared.py.conversation_wire import (
+    FailureReason,
+    ReplyItem,
+    ReplyOutcome,
+    ScreenItemKind,
+    ToolDataEntry,
+    ToolProgress,
+)
 from tests.helpers import REPO_ROOT
 from tests.unit.services.conversation.log_helpers import asked, decided, logged, notice, user
 
@@ -436,12 +443,36 @@ def test_any_conversation_only_grows_at_the_end_and_reloads_to_what_was_shown(
             assert all(card["data"]["tool_name"] != CALL_EXECUTOR_NAME for card in item.tool_data)
 
 
+def test_every_patch_names_the_log_head_it_reflects_even_when_it_amends_an_older_entry() -> None:
+    log = _Log()
+    log.append(user("u1"))
+    reply = Reply(id="1.1:reply", reply_id="r1.1", attempt_id="1.1", text="Seco")
+    seq = log.append(reply)
+    log.fill(seq, reply.model_copy(update={"text": "Second turn.", "revision": 1}))
+    log.append(
+        ReplySettled(
+            id="1.1:settled",
+            reply_id="r1.1",
+            outcome=ReplyOutcome.ANSWERED,
+            answers=("u1",),
+            through=1,
+            quote_target="u1",
+        )
+    )
+    assert [(patch.item.id, patch.head) for patch in log.patches] == [
+        ("u1", 1),
+        ("r1.1", 2),
+        ("r1.1", 2),
+        ("r1.1", 3),
+    ]
+
+
 def test_a_projection_that_moves_a_shown_item_fails_loudly() -> None:
     first, second = project_screen([logged(1, user("u1")), logged(2, user("u2"))])
     with pytest.raises(ScreenItemMoved):
-        screen_patches([first, second], [second, first])
+        screen_patches([first, second], [second, first], 2)
     with pytest.raises(ScreenItemMoved):
-        screen_patches([first, second], [second])
+        screen_patches([first, second], [second], 2)
 
 
 async def test_a_handed_over_tasks_cards_show_on_the_work_item_it_joined() -> None:
@@ -541,3 +572,118 @@ def test_a_reply_delivers_the_files_it_and_the_work_it_narrates_wrote_once_each(
     [*_, item] = project_screen(log)
     assert item.kind is ScreenItemKind.REPLY
     assert [file.path for file in item.files] == ["out/a.pdf", "out/b.pdf"]
+
+
+def test_a_reply_and_its_work_name_the_newest_user_message_they_answer_as_the_retry_target() -> (
+    None
+):
+    work = WorkStarted(id="work:t1", task_id="t1", cause_through=3, answers=("u1", "u2"))
+    reply = Reply(id="r:reply", reply_id="r", attempt_id="1", text="done")
+    settle = ReplySettled(
+        id="r:settled",
+        reply_id="r",
+        outcome=ReplyOutcome.ANSWERED,
+        answers=("u2", "u1"),
+        through=3,
+        quote_target=None,
+    )
+    log = [
+        logged(1, user("u1")),
+        logged(2, user("u2")),
+        logged(3, user("u3")),
+        logged(4, work),
+        logged(5, reply),
+        logged(6, settle),
+    ]
+    targets = {
+        item.id: item.retry_target
+        for item in project_screen(log)
+        if isinstance(item, WorkItem | ReplyItem)
+    }
+    assert targets == {"work:t1": "u2", "r": "u2"}
+
+
+def test_a_reply_quoting_a_newer_message_than_it_answers_retries_the_quoted_one() -> None:
+    reply = Reply(id="r:reply", reply_id="r", attempt_id="1", text="done")
+    settle = ReplySettled(
+        id="r:settled",
+        reply_id="r",
+        outcome=ReplyOutcome.ANSWERED,
+        answers=("u1",),
+        through=2,
+        quote_target="u2",
+    )
+    log = [logged(1, user("u1")), logged(2, user("u2")), logged(3, reply), logged(4, settle)]
+    [*_, item] = project_screen(log)
+    assert isinstance(item, ReplyItem)
+    assert item.retry_target == "u2"
+
+
+def test_the_progress_line_skips_other_cards_and_silent_calls_down_to_the_newest_that_speaks() -> (
+    None
+):
+    speaks: ToolDataEntry = {
+        "tool_name": TOOL_CALL_CARD,
+        "data": {
+            "tool_name": "gmail_send",
+            "message": "Sending the email",
+            "icon_url": "https://cdn.example/gmail.png",
+            "show_category": False,
+        },
+    }
+    silent: ToolDataEntry = {"tool_name": TOOL_CALL_CARD, "data": {"tool_name": "think"}}
+    other: ToolDataEntry = {"tool_name": "search", "data": {"message": "not a tool call"}}
+    reply = Reply(
+        id="r:reply", reply_id="r", attempt_id="1", text="hi", tool_data=(speaks, silent, other)
+    )
+    [*_, item] = project_screen([logged(1, user("u1")), logged(2, reply)])
+    assert isinstance(item, ReplyItem)
+    assert item.timeline.progress == ToolProgress(
+        message="Sending the email",
+        tool_name="gmail_send",
+        tool_category="",
+        integration_name=None,
+        icon_url="https://cdn.example/gmail.png",
+        show_category=False,
+    )
+
+
+def test_work_answering_no_user_message_has_no_retry_target() -> None:
+    work = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("n1",))
+    [_, item] = project_screen([logged(1, notice("n1")), logged(2, work)])
+    assert isinstance(item, WorkItem)
+    assert item.retry_target is None
+
+
+def test_an_items_timeline_states_the_newest_tool_calls_progress_line() -> None:
+    first: ToolDataEntry = {
+        "tool_name": TOOL_CALL_CARD,
+        "data": {"tool_name": "search", "message": "Searching the web", "show_category": False},
+    }
+    newest: ToolDataEntry = {
+        "tool_name": TOOL_CALL_CARD,
+        "data": {
+            "tool_name": "gmail_send",
+            "tool_category": "gmail",
+            "message": "Sending the email",
+            "integration_name": "Gmail",
+            "icon_url": None,
+        },
+    }
+    reply = Reply(
+        id="r:reply",
+        reply_id="r",
+        attempt_id="1",
+        text="hi",
+        tool_data=(first, newest, _card("no_message")),
+    )
+    [*_, item] = project_screen([logged(1, user("u1")), logged(2, reply)])
+    assert isinstance(item, ReplyItem)
+    assert item.timeline.progress == ToolProgress(
+        message="Sending the email",
+        tool_name="gmail_send",
+        tool_category="gmail",
+        integration_name="Gmail",
+        icon_url=None,
+        show_category=True,
+    )

@@ -244,6 +244,8 @@ export interface ConversationSample {
   t: number;
   loading: string | null;
   contentLength: number;
+  /** The watched lines (a card title, a reply) the conversation showed at this reading. */
+  shown: string[];
 }
 
 export interface ConversationWatch {
@@ -253,23 +255,34 @@ export interface ConversationWatch {
   stop: () => Promise<ConversationSample[]>;
 }
 
-/** Sample the loading row and the conversation's size every {@link SAMPLE_INTERVAL_MS} until stopped. */
-export function watchConversation(page: Page): ConversationWatch {
+/**
+ * Sample the loading row, the conversation's size and which of `lines` it shows every
+ * {@link SAMPLE_INTERVAL_MS} until stopped, so a window can start and end at the reading
+ * a line first showed in, not when a later poll noticed it.
+ */
+export function watchConversation(
+  page: Page,
+  lines: readonly string[] = [],
+): ConversationWatch {
   const samples: ConversationSample[] = [];
   const started = Date.now();
   let running = true;
   const loop = (async () => {
     while (running) {
-      const reading = await page.evaluate(() => {
+      const reading = await page.evaluate((watched) => {
         const row = document.querySelector('[data-testid="chat-loading-row"]');
-        const content = document.querySelector(
+        const content = document.querySelector<HTMLElement>(
           '[data-slot="message-scroller-content"]',
+        );
+        const onScreen = new Set(
+          (content?.innerText ?? "").split("\n").map((line) => line.trim()),
         );
         return {
           loading: row ? (row.textContent ?? "").trim() : null,
           contentLength: content?.textContent?.length ?? 0,
+          shown: watched.filter((line) => onScreen.has(line)),
         };
-      });
+      }, lines);
       samples.push({ t: Date.now() - started, ...reading });
       await page.waitForTimeout(SAMPLE_INTERVAL_MS);
     }
@@ -304,6 +317,16 @@ export function longestBlindWorkMs(samples: ConversationSample[]): number {
     longest = Math.max(longest, now.t - firstChange);
   }
   return longest;
+}
+
+/** When the watch first read `line` on screen; throws when it never did. */
+export function firstShownAt(
+  samples: ConversationSample[],
+  line: string,
+): number {
+  const first = samples.find((s) => s.shown.includes(line));
+  if (!first) throw new Error(`The watch never read "${line}" on screen`);
+  return first.t;
 }
 
 /** Samples inside [fromMs, toMs] that showed no loading row. */

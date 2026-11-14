@@ -259,6 +259,7 @@ function VoiceSessionInner({
             title: conversationDescription,
             description: conversationDescription,
             starred: false,
+            awaitingApproval: false,
             isSystemGenerated: false,
             systemPurpose: null,
             isUnread: false,

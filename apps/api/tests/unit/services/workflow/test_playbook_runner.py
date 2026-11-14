@@ -28,6 +28,7 @@ from langgraph.types import Command
 from pydantic import ValidationError
 import pytest
 
+from app.agents.core.background.run_stop import request_stop
 from app.agents.middleware.factory import (
     AccountingOptions,
     ContextOptions,
@@ -354,6 +355,28 @@ async def test_steps_run_in_order_through_the_registry() -> None:
     assert result.ok is True, result.failure
     assert [name for name, _ in recorder.calls] == ["list_events", "send_email"]
     assert [call.tool_name for call in result.trace] == ["list_events", "send_email"]
+
+
+async def test_a_replay_its_stream_was_told_to_stop_runs_no_step() -> None:
+    recorder = _Recorder()
+    await request_stop("playbook_test")
+
+    result, _ = await _run(_playbook(AGENDA_STEPS), _FakeRegistry(_tools(recorder)))
+
+    assert recorder.calls == []
+    assert result.ok is False
+    assert result.failure is not None
+    assert "the replay was stopped" in result.failure
+
+
+async def test_a_stop_for_another_stream_does_not_stop_this_replay() -> None:
+    recorder = _Recorder()
+    await request_stop("playbook_other")
+
+    result, _ = await _run(_playbook(AGENDA_STEPS), _FakeRegistry(_tools(recorder)))
+
+    assert result.ok is True, result.failure
+    assert [name for name, _ in recorder.calls] == ["list_events", "send_email"]
 
 
 async def test_resolved_arguments_reach_the_tool() -> None:

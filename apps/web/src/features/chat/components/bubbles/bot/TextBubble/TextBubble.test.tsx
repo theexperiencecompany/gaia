@@ -19,24 +19,38 @@ vi.mock("@/i18n/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
-// A calendar card handed a non-array payload throws inside its render.
+// An email thread card handed a thread with no messages throws inside its render.
 const CRASHING_CARD = [
   {
-    tool_name: "calendar_options",
-    data: "not-a-list",
+    tool_name: "email_thread_data",
+    data: {},
     timestamp: "2026-10-14T00:00:00Z",
   },
 ] as unknown as TypedToolDataEntry[];
+
+const turn = (over: Partial<ChatBubbleBotProps>) =>
+  ({
+    message_id: "bot-1",
+    text: "Looking into dentists",
+    bubbles: ["Looking into dentists"],
+    ...over,
+  }) as ChatBubbleBotProps;
 
 describe("TextBubble with a card that throws while rendering", () => {
   it("keeps the streamed text and contains the crash to that card", () => {
     vi.spyOn(console, "error").mockImplementation(vi.fn());
 
-    const props = {
-      message_id: "bot-1",
+    const props = turn({
       text: "Here is the streamed progress",
+      bubbles: ["Here is the streamed progress"],
       tool_data: CRASHING_CARD,
-    } as ChatBubbleBotProps;
+      // The bubble draws the cards the server folded into its timeline.
+      timeline: {
+        steps: [],
+        cards: CRASHING_CARD.map((card) => ({ key: card.tool_name, card })),
+        progress: null,
+      },
+    });
     render(<TextBubble {...props} />);
 
     expect(screen.getByText("Here is the streamed progress")).toBeDefined();
@@ -45,13 +59,6 @@ describe("TextBubble with a card that throws while rendering", () => {
     );
   });
 });
-
-const turn = (over: Partial<ChatBubbleBotProps>) =>
-  ({
-    message_id: "bot-1",
-    text: "Looking into dentists",
-    ...over,
-  }) as ChatBubbleBotProps;
 
 describe("a turn the user stopped", () => {
   it("says Stopped under what had streamed", () => {

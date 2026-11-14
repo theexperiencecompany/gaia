@@ -65,7 +65,3 @@ export const BASE_MESSAGE_SCHEMA = {
 };
 
 export type BaseMessageData = typeof BASE_MESSAGE_SCHEMA;
-export type BaseMessageKey = keyof typeof BASE_MESSAGE_SCHEMA;
-export const BASE_MESSAGE_KEYS = Object.keys(
-  BASE_MESSAGE_SCHEMA,
-) as BaseMessageKey[];

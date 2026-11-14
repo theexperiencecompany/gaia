@@ -7,10 +7,6 @@ import {
 } from "@/features/chat/api/chatApi";
 import { MAX_SYNC_CONVERSATIONS } from "@/features/chat/constants";
 import { applyConversationPage } from "@/features/chat/live/connection";
-import {
-  apiRowAwaitsApproval,
-  isApprovalFlagStale,
-} from "@/features/chat/utils/approvalFlag";
 import type { RequestOrigin } from "@/lib/api/typed";
 import { db, type IConversation } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
@@ -44,7 +40,7 @@ const toStoredConversation = (
   isSystemGenerated: conversation.is_system_generated ?? false,
   systemPurpose: conversation.system_purpose ?? null,
   isUnread: unreadUnlessViewed(conversation),
-  awaitingApproval: apiRowAwaitsApproval(conversation),
+  awaitingApproval: conversation.awaiting_approval,
   todoId: conversation.todo_id ?? null,
   source: conversation.source ?? undefined,
   listed: conversation.listed,
@@ -84,7 +80,7 @@ const identifyStaleConversations = (
       continue;
     }
 
-    if (isApprovalFlagStale(localFlagMap.get(conversationId), remote)) {
+    if (remote.awaiting_approval !== localFlagMap.get(conversationId)) {
       // Flag flipped without touching updatedAt — refetch for the dot.
       staleItems.push({
         conversation_id: conversationId,
@@ -201,29 +197,46 @@ export const batchSyncConversations = async (
       await db.deleteConversationsAndLogsBulk(deletedConversationIds);
     }
 
-    if (staleItems.length === 0) {
-      return;
-    }
-
-    const { conversations: freshConversations, missing } =
-      await chatApi.batchSyncConversations(staleItems, origin);
-
-    if (missing.length > 0) {
-      await db.deleteConversationsAndLogsBulk(missing);
-    }
-
-    if (freshConversations.length === 0) {
-      return;
-    }
-
-    await Promise.allSettled(
-      freshConversations.map((conversation) =>
-        applySyncedConversation(conversation.conversation_id, conversation),
-      ),
-    );
+    await syncItems(staleItems, origin);
   } catch {
     // Ignore background sync errors to avoid impacting the UI
   }
+};
+
+/** Fetch the rows newer than each item's last_updated, store them, and drop the ones the server no longer has. */
+async function syncItems(
+  items: ConversationSyncItem[],
+  origin: RequestOrigin,
+): Promise<void> {
+  if (items.length === 0) return;
+  const { conversations: freshConversations, missing } =
+    await chatApi.batchSyncConversations(items, origin);
+  if (missing.length > 0) {
+    await db.deleteConversationsAndLogsBulk(missing);
+  }
+  await Promise.allSettled(
+    freshConversations.map((conversation) =>
+      applySyncedConversation(conversation.conversation_id, conversation),
+    ),
+  );
+}
+
+/** Sync the rows a list push named: only they changed, so the list itself is not read again. */
+export const syncPushedConversations = async (
+  conversationIds: readonly string[],
+  origin: RequestOrigin = {},
+): Promise<void> => {
+  const items = await Promise.all(
+    conversationIds.map(async (conversationId) => {
+      const local = await db.getConversation(conversationId);
+      const at = local?.updatedAt ?? local?.createdAt;
+      return {
+        conversation_id: conversationId,
+        last_updated: at?.toISOString(),
+      };
+    }),
+  );
+  await syncItems(items, origin);
 };
 
 /** Store a synced row's conversation fields and fold its newest page of entries into the live view. */

@@ -61,7 +61,7 @@ export function useLiveLoading(conversationId: string | null): LiveLoading {
   return {
     visible: true,
     text:
-      row.detail ??
+      row.progress?.message ??
       (row.status === DISPLAY_STATE.THINKING
         ? thinkingText
         : DISPLAY_STATUS_TEXT[row.status]),

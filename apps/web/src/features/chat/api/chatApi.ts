@@ -5,6 +5,7 @@ import type {
   ConversationSyncItem,
   ConversationSyncRow,
   MessageAccepted,
+  RetryMessageRequest,
   SendMessageRequest,
   SystemPurpose as SystemPurposeLiteral,
 } from "@shared/api/generated";
@@ -234,6 +235,16 @@ export const chatApi = {
       silent: true,
     }),
 
+  /** Ask the server to answer one of the conversation's user messages again, in that message's place. */
+  retryConversationMessage: (
+    conversationId: string,
+    body: RetryMessageRequest,
+  ): Promise<MessageAccepted> =>
+    api.post("/api/v1/conversations/{conversation_id}/retry", {
+      path: { conversation_id: conversationId },
+      body,
+    }),
+
   /**
    * Follow a conversation's event stream from the log after seq `after`; resolves when
    * the server closes it. Each `data:` line is handed over raw for the caller to parse.
@@ -294,15 +305,21 @@ export const chatApi = {
 
   /**
    * Deliver the result of a desktop-executed tool action back to the
-   * backend, where the awaiting agent tool picks it up via Redis.
+   * backend, where the awaiting agent tool picks it up via Redis. A 410 means
+   * another window or device of this user answered first, which is success.
    */
   postDesktopToolResult: async (result: DesktopToolResult): Promise<void> => {
-    // The agent asked for this tool run; the user did nothing.
-    await api.post("/api/v1/desktop/tool-result", {
-      body: result,
-      silent: true,
-      background: true,
-    });
+    try {
+      // The agent asked for this tool run; the user did nothing.
+      await api.post("/api/v1/desktop/tool-result", {
+        body: result,
+        silent: true,
+        background: true,
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === HTTP_GONE) return;
+      throw error;
+    }
   },
 
   /**

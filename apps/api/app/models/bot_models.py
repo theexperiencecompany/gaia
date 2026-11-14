@@ -256,6 +256,29 @@ class BotSettingsResponse(BaseModel):
     )
 
 
+class PartialReply(BaseModel):
+    """A reply a bot follower had put only its first bubbles of on the platform."""
+
+    model_config = ConfigDict(frozen=True)
+
+    reply_id: str = Field(min_length=1)
+    bubbles: int = Field(ge=1)
+
+
+class BotDelivery(BaseModel):
+    """How far a session's bot delivered its conversation: every item through delivered_seq, plus partial_reply.
+
+    owed_seq is the newest entry logged for the bot to render; a session whose delivered_seq is
+    behind it has something a restarted bot must still send.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    delivered_seq: int = Field(ge=0)
+    partial_reply: PartialReply | None = None
+    owed_seq: int = Field(default=0, ge=0)
+
+
 class BotSessionDocument(MongoDocument):
     """A bot chat session — the mapping from a platform conversation to a GAIA
     ``conversation_id``, keyed by a unique ``session_key``.
@@ -274,6 +297,8 @@ class BotSessionDocument(MongoDocument):
     channel_id: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
+    # None until the conversation logs something its bot renders; reset when the session is repointed.
+    delivery: BotDelivery | None = None
 
 
 class BotSessionUpdate(BaseModel):

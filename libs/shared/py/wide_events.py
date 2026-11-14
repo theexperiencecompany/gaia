@@ -210,6 +210,7 @@ class ConversationOperation(StrEnum):
     MARK_READ = "mark_read"
     MARK_UNREAD = "mark_unread"
     PIN_MESSAGE = "pin_message"
+    RETRY = "retry"
     SEND = "send"
     STAR = "star"
     STOP = "stop"

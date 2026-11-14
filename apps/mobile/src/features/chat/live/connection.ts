@@ -1,6 +1,7 @@
 import { ApiError, parseSubscriptionRequiredBody } from "@gaia/shared";
 import type { ConversationPage } from "@gaia/shared/conversation";
 import { createConversationFollower } from "@gaia/shared/conversation/live";
+import { randomUUID } from "expo-crypto";
 import { chatDb } from "@/lib/db/chatDb";
 import { queryClient } from "@/lib/query-provider";
 import { EventStreamHttpError } from "@/lib/sse-client";
@@ -125,5 +126,17 @@ export async function deliverSend(
     if (offer) usePaywallStore.getState().setBlocked(offer);
     throw error;
   }
+  follower.wake(conversationId);
+}
+
+/** Ask the server to answer the user message target again; it keeps the message's one bubble. */
+export async function deliverRetry(
+  conversationId: string,
+  target: string,
+): Promise<void> {
+  await chatApi.retryConversationMessage(conversationId, {
+    message_id: randomUUID(),
+    target,
+  });
   follower.wake(conversationId);
 }

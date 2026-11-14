@@ -101,7 +101,7 @@
         "type": "string"
       },
       "ActiveBotConversation": {
-        "description": "A bot session's conversation still answering; a restarted bot follows its events after after_seq.\n\nThe log does not record what a platform delivered: after_seq is the newest settled reply's\nseq, so the follower replays the reply in flight and everything after it.",
+        "description": "A bot session's conversation to follow: its events after after_seq, the bot's delivered-through cursor.\n\npartial_reply names the reply just past it that the bot had sent only its first bubbles of, so a\nrestarted follower sends the rest and repeats none.",
         "properties": {
           "after_seq": {
             "minimum": 0.0,
@@ -127,6 +127,16 @@
             "title": "Is Dm",
             "type": "boolean"
           },
+          "partial_reply": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PartialReply"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "platform_user_id": {
             "title": "Platform User Id",
             "type": "string"
@@ -137,7 +147,8 @@
           "platform_user_id",
           "channel_id",
           "is_dm",
-          "after_seq"
+          "after_seq",
+          "partial_reply"
         ],
         "title": "ActiveBotConversation",
         "type": "object"
@@ -2167,6 +2178,49 @@
           "platform_user_id"
         ],
         "title": "BotChatRequest",
+        "type": "object"
+      },
+      "BotDeliveryRecorded": {
+        "description": "Whether the report moved the cursor; False for one behind what is already recorded.",
+        "properties": {
+          "recorded": {
+            "title": "Recorded",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "recorded"
+        ],
+        "title": "BotDeliveryRecorded",
+        "type": "object"
+      },
+      "BotDeliveryReport": {
+        "description": "What a bot follower put on the platform: every item through delivered_seq, plus partial_reply.",
+        "properties": {
+          "delivered_seq": {
+            "minimum": 0.0,
+            "title": "Delivered Seq",
+            "type": "integer"
+          },
+          "partial_reply": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PartialReply"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "platform": {
+            "$ref": "#/components/schemas/ConversationSource"
+          }
+        },
+        "required": [
+          "platform",
+          "delivered_seq"
+        ],
+        "title": "BotDeliveryReport",
         "type": "object"
       },
       "BotMessageAccepted": {
@@ -13178,6 +13232,27 @@
         "title": "PaginationMeta",
         "type": "object"
       },
+      "PartialReply": {
+        "description": "A reply a bot follower had put only its first bubbles of on the platform.",
+        "properties": {
+          "bubbles": {
+            "minimum": 1.0,
+            "title": "Bubbles",
+            "type": "integer"
+          },
+          "reply_id": {
+            "minLength": 1,
+            "title": "Reply Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reply_id",
+          "bubbles"
+        ],
+        "title": "PartialReply",
+        "type": "object"
+      },
       "PaymentVerificationResponse": {
         "properties": {
           "message": {
@@ -15901,6 +15976,17 @@
               }
             ]
           },
+          "retry_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Target"
+          },
           "seq": {
             "minimum": 1.0,
             "title": "Seq",
@@ -15931,6 +16017,7 @@
           "outcome",
           "failure",
           "narrates",
+          "retry_target",
           "files"
         ],
         "title": "ReplyItem",
@@ -16038,6 +16125,29 @@
           "attempt_id"
         ],
         "title": "RetractFrame",
+        "type": "object"
+      },
+      "RetryMessageRequest": {
+        "description": "Answer the user message target again in place; message_id is minted by the client and makes a resend a no-op.",
+        "properties": {
+          "message_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Message Id",
+            "type": "string"
+          },
+          "target": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id",
+          "target"
+        ],
+        "title": "RetryMessageRequest",
         "type": "object"
       },
       "SandboxExecuteRequest": {
@@ -16183,6 +16293,11 @@
         "additionalProperties": false,
         "description": "The newest page of the screen; a client replaces what it holds from the first item's seq on.",
         "properties": {
+          "head": {
+            "minimum": 0.0,
+            "title": "Head",
+            "type": "integer"
+          },
           "items": {
             "items": {
               "discriminator": {
@@ -16229,7 +16344,8 @@
         },
         "required": [
           "kind",
-          "items"
+          "items",
+          "head"
         ],
         "title": "ScreenFrame",
         "type": "object"
@@ -16238,6 +16354,11 @@
         "additionalProperties": false,
         "description": "An item became visible; its seq is its position, before every item with a higher one.",
         "properties": {
+          "head": {
+            "minimum": 0.0,
+            "title": "Head",
+            "type": "integer"
+          },
           "item": {
             "discriminator": {
               "mapping": {
@@ -16281,7 +16402,8 @@
         },
         "required": [
           "kind",
-          "item"
+          "item",
+          "head"
         ],
         "title": "ScreenInsertFrame",
         "type": "object"
@@ -16290,6 +16412,11 @@
         "additionalProperties": false,
         "description": "An item already shown changed in place; it keeps its position.",
         "properties": {
+          "head": {
+            "minimum": 0.0,
+            "title": "Head",
+            "type": "integer"
+          },
           "item": {
             "discriminator": {
               "mapping": {
@@ -16333,7 +16460,8 @@
         },
         "required": [
           "kind",
-          "item"
+          "item",
+          "head"
         ],
         "title": "ScreenUpdateFrame",
         "type": "object"
@@ -16922,17 +17050,6 @@
                 "type": "null"
               }
             ]
-          },
-          "retry_of": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Retry Of"
           },
           "selected_calendar_event": {
             "anyOf": [
@@ -19926,6 +20043,61 @@
         "title": "ToolInfo",
         "type": "object"
       },
+      "ToolProgress": {
+        "additionalProperties": false,
+        "description": "The newest tool call's line, which the loading row shows while the item streams.",
+        "properties": {
+          "icon_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Url"
+          },
+          "integration_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integration Name"
+          },
+          "message": {
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "show_category": {
+            "title": "Show Category",
+            "type": "boolean"
+          },
+          "tool_category": {
+            "title": "Tool Category",
+            "type": "string"
+          },
+          "tool_name": {
+            "title": "Tool Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "tool_name",
+          "tool_category",
+          "integration_name",
+          "icon_url",
+          "show_category"
+        ],
+        "title": "ToolProgress",
+        "type": "object"
+      },
       "ToolTimeline": {
         "additionalProperties": false,
         "description": "What an item's cards show, in order: the tool thread, then the cards rendered on their own.",
@@ -19938,6 +20110,16 @@
             "title": "Cards",
             "type": "array"
           },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ToolProgress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "steps": {
             "default": [],
             "items": {
@@ -19949,7 +20131,8 @@
         },
         "required": [
           "steps",
-          "cards"
+          "cards",
+          "progress"
         ],
         "title": "ToolTimeline",
         "type": "object"
@@ -22371,6 +22554,17 @@
             "title": "Kind",
             "type": "string"
           },
+          "retry_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Target"
+          },
           "seq": {
             "minimum": 1.0,
             "title": "Seq",
@@ -22406,7 +22600,8 @@
           "handoff",
           "tool_data",
           "timeline",
-          "image"
+          "image",
+          "retry_target"
         ],
         "title": "WorkItem",
         "type": "object"
@@ -24365,6 +24560,79 @@
           }
         },
         "summary": "List Active Bot Conversations",
+        "tags": [
+          "Bot"
+        ]
+      }
+    },
+    "/api/v1/bot/conversations/{conversation_id}/delivered": {
+      "put": {
+        "description": "Move the conversation's bot cursor to what its follower put on the platform.",
+        "operationId": "bot_record_delivered",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BotDeliveryReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BotDeliveryRecorded"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Record Bot Delivery",
         "tags": [
           "Bot"
         ]
@@ -27604,6 +27872,79 @@
           }
         },
         "summary": "Mark As Read Endpoint",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
+    "/api/v1/conversations/{conversation_id}/retry": {
+      "post": {
+        "description": "Answer one of the conversation's user messages again; the new reply arrives on the events stream.",
+        "operationId": "conversations_retry_message_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetryMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Retry Message Endpoint",
         "tags": [
           "Conversations"
         ]

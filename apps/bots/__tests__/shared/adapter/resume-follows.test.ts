@@ -106,6 +106,7 @@ const target = (afterSeq: number): ActiveBotConversation => ({
   channel_id: null,
   is_dm: true,
   after_seq: afterSeq,
+  partial_reply: null,
 });
 
 describe("a bot restarted while work ran", () => {

@@ -1,14 +1,13 @@
-import { messageToRetry } from "@shared/conversation";
+import { retryTarget } from "@shared/conversation";
 import { useCallback, useState } from "react";
 
-import { deliverSend } from "@/features/chat/live/connection";
+import { deliverRetry, deliverSend } from "@/features/chat/live/connection";
 import { liveConversation } from "@/features/chat/live/liveConversationStore";
-import { sendMessage } from "@/features/chat/live/sendMessage";
 
 /**
  * Retry from a bubble's action. A send that never reached the server is resent
- * as-is, so the server's message id dedup holds; an accepted message is sent
- * again as a new message that names it in retry_of.
+ * as-is, so the server's message id dedup holds; an accepted message is
+ * answered again by the server, in its place, with no new bubble.
  */
 export const useRetryMessage = () => {
   const [isRetrying, setIsRetrying] = useState(false);
@@ -23,24 +22,15 @@ export const useRetryMessage = () => {
           await deliverSend(conversationId, messageId);
           return;
         }
-        const message = messageToRetry(live.view, messageId);
-        if (!message) {
+        const target = retryTarget(live.view, messageId);
+        if (!target) {
           console.error(
             "[useRetryMessage] No user message to retry:",
             messageId,
           );
           return;
         }
-        await sendMessage(message.text, {
-          conversationId,
-          files: message.files,
-          reply_to_message: message.reply_to_message,
-          selected_tool: message.selected_tool,
-          tool_category: message.tool_category,
-          selected_workflow: message.selected_workflow,
-          selected_calendar_event: message.selected_calendar_event,
-          retry_of: message.id,
-        });
+        await deliverRetry(conversationId, target);
       } catch (error) {
         console.error("[useRetryMessage] Error retrying message:", error);
       } finally {

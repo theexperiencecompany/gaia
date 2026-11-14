@@ -12,6 +12,9 @@ import {
   type ConversationEventSource,
   ConversationFollower,
   ConversationFollowers,
+  type DeliveryCursor,
+  type DeliveryRecorder,
+  type FollowStart,
   type FollowSurface,
   REACTION_OUTCOME,
   type StreamingOptions,
@@ -44,15 +47,23 @@ type Call =
   | { op: "react"; target: string; emoji: string; replaces: string | null }
   | { op: "typing"; state: "start" | "stop" }
   | { op: "notice"; bubbles: string[] }
+  | { op: "photo"; url: string; caption: string }
   | { op: "file"; path: string };
 
 /** A platform that records every call, editable and deletable like Telegram. */
-function recorder(): { surface: FollowSurface; calls: Call[] } {
+function recorder(privateChat = true): {
+  surface: FollowSurface;
+  calls: Call[];
+} {
   const calls: Call[] = [];
   let next = 1;
   const surface: FollowSurface = {
+    privateChat,
     sendNotice: async (bubbles) => {
       calls.push({ op: "notice", bubbles });
+    },
+    sendPhoto: async (url, caption) => {
+      calls.push({ op: "photo", url, caption });
     },
     sendFile: async (_conversationId, file) => {
       calls.push({ op: "file", path: file.path });
@@ -92,6 +103,18 @@ const NON_EDITING: StreamingOptions = {
   streaming: false,
   platform: "whatsapp",
 };
+
+/** A follow after floor that keeps no cursor. */
+const startAfter = (floor: number): FollowStart => ({
+  floor,
+  partialReply: null,
+  record: async () => undefined,
+});
+const NOT_KEPT: DeliveryRecorder = async () => undefined;
+const cursorAt = (seq: number): DeliveryCursor => ({
+  delivered_seq: seq,
+  partial_reply: null,
+});
 
 const sent = (calls: Call[]) =>
   calls.flatMap((call) =>
@@ -183,7 +206,7 @@ describe.each([
       yield* answer(4, "r1", "All three, done.");
       yield stateFrame(4, "idle");
     };
-    const followers = new ConversationFollowers(source, options);
+    const followers = new ConversationFollowers(source, options, NOT_KEPT);
     const ctx = { platform: options.platform, platformUserId: "7" };
 
     followers.follow(ctx, "c1", 1, surface);
@@ -199,7 +222,12 @@ describe.each([
 
   it("renders the founder's conversation as its one result reply, and nothing twice on a reconnect", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, options, surface, "c1");
+    const follower = new ConversationFollower(
+      startAfter(0),
+      options,
+      surface,
+      "c1",
+    );
     const frames = [screenFrame([]), ...founderConversationFrames()];
     await feed(follower, frames);
     const reconnected = follower.apply(
@@ -217,7 +245,12 @@ describe.each([
 
   it("puts the reaction on the user's message, and replaces it later", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, options, surface, "c1");
+    const follower = new ConversationFollower(
+      startAfter(0),
+      options,
+      surface,
+      "c1",
+    );
     await feed(follower, [
       screenFrame([inbound("u1", 1, "11")]),
       updateFrame(inbound("u1", 1, "11", { emoji: "👀", by: "jev" })),
@@ -232,7 +265,7 @@ describe.each([
 
   it("posts a reply of three bubbles as the three bubbles it saved", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, options, surface);
+    const follower = new ConversationFollower(startAfter(0), options, surface);
     const bubbles = ["On it.", "Found 3 flights.", "The cheapest is $90."];
     await feed(follower, [
       screenFrame([inbound("u1", 1, "11")]),
@@ -253,7 +286,12 @@ describe.each([
 
   it("answers the quoted message natively", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, options, surface, "c1");
+    const follower = new ConversationFollower(
+      startAfter(0),
+      options,
+      surface,
+      "c1",
+    );
     await feed(follower, [
       screenFrame([inbound("u1", 1, "11"), inbound("u2", 2, "12")]),
       ...answer(3, "r1", "About the first one.", "u1"),
@@ -269,7 +307,7 @@ describe.each([
 describe("a retracted stream", () => {
   it("deletes the preamble's later bubbles when the server retracts it, and overwrites its first", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, EDITING, surface);
+    const follower = new ConversationFollower(startAfter(0), EDITING, surface);
     await feed(follower, [
       screenFrame([inbound("u1", 1, "11")]),
       insertFrame(replyItem("r1", 2, ["Let me check."])),
@@ -294,7 +332,12 @@ describe("a retracted stream", () => {
 describe("a failed reply", () => {
   it("keeps what was said before the failure and adds the failure line", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, NON_EDITING, surface, "c1");
+    const follower = new ConversationFollower(
+      startAfter(0),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
     await feed(follower, [
       screenFrame([inbound("u1", 1, "11")]),
       updateFrame({
@@ -319,7 +362,12 @@ describe("an approval the work waits on", () => {
 
   it("asks once, as a yes/no prompt with its expiry, and not again on a reconnect", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, NON_EDITING, surface, "c1");
+    const follower = new ConversationFollower(
+      startAfter(0),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
     follower.expect(1);
     const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
     const expiring = approvalAsked("t1", "ap1", "Send email to Sam", expiresAt);
@@ -344,7 +392,12 @@ describe("an approval the work waits on", () => {
 
   it("numbers every approval still open when another one arrives", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, NON_EDITING, surface, "c1");
+    const follower = new ConversationFollower(
+      startAfter(0),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
     await feed(follower, [
       screenFrame([inbound("u1", 1, "11"), workItem("t1", 2, "running")]),
       asking(sam),
@@ -362,7 +415,12 @@ describe("an approval the work waits on", () => {
 
   it("does not ask for an approval from before the follow", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(5, NON_EDITING, surface, "c1");
+    const follower = new ConversationFollower(
+      startAfter(5),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
     follower.expect(6);
     await feed(follower, [
       screenFrame([
@@ -379,7 +437,12 @@ describe("an approval the work waits on", () => {
 describe("history the follow started after", () => {
   it("renders nothing for a reply settled before the posted message", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(2, NON_EDITING, surface, "c1");
+    const follower = new ConversationFollower(
+      startAfter(2),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
     await feed(follower, [
       screenFrame([
         inbound("u1", 1, "11", { emoji: "👍", by: "jev" }),
@@ -393,11 +456,38 @@ describe("history the follow started after", () => {
 });
 
 describe("an approval logged after the follow's floor on work started before it", () => {
+  it("is asked from the follow's opening screen alone", async () => {
+    const { surface, calls } = recorder();
+    const sam = approvalAsked("t1", "ap1", "Send email to Sam");
+    // Woken (after_seq 6) for the approval logged at seq 7, on work started at seq 2.
+    const follower = new ConversationFollower(
+      startAfter(6),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
+    await feed(follower, [
+      screenFrame([
+        inbound("u1", 1, "11"),
+        workItem("t1", 2, "awaiting_approval", [sam], 7),
+      ]),
+      stateFrame(7, "awaiting_approval"),
+    ]);
+
+    expect(sent(calls).map(({ text }) => text)).toEqual([
+      "*Approval needed:* Send email to Sam\nReply *yes* to approve or *no* to decline.",
+    ]);
+  });
   it("is asked, once", async () => {
     const { surface, calls } = recorder();
     const sam = approvalAsked("t1", "ap1", "Send email to Sam");
     // Woken for the approval logged at seq 7, on work the screen shows at seq 2.
-    const follower = new ConversationFollower(6, NON_EDITING, surface, "c1");
+    const follower = new ConversationFollower(
+      startAfter(6),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
     const asking = workItem("t1", 2, "awaiting_approval", [sam], 7);
     await feed(follower, [
       screenFrame([inbound("u1", 1, "11"), asking]),
@@ -410,6 +500,38 @@ describe("an approval logged after the follow's floor on work started before it"
   });
 });
 
+describe("numbered approvals across two pieces of work", () => {
+  // Mirrors apps/api/tests/unit/services/hil/test_pending.py: the server resolves "2" against the same order.
+  it("number by the work's start, not by when each approval was asked", async () => {
+    const { surface, calls } = recorder();
+    const pay = approvalAsked("task_b", "pay", "Pay the invoice");
+    const email = approvalAsked("task_a", "email", "Send email to Sam");
+    const follower = new ConversationFollower(
+      startAfter(0),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
+    await feed(follower, [
+      screenFrame([
+        inbound("u1", 1, "11"),
+        workItem("task_a", 2, "running"),
+        workItem("task_b", 3, "running"),
+      ]),
+      updateFrame(workItem("task_b", 3, "awaiting_approval", [pay], 4)),
+      updateFrame(workItem("task_a", 2, "awaiting_approval", [email], 5)),
+    ]);
+
+    expect(
+      sent(calls)
+        .map(({ text }) => text)
+        .at(-1),
+    ).toBe(
+      "*Approvals needed:*\n1. Send email to Sam\n2. Pay the invoice\nReply *yes* to approve all, *no* to decline all, or say which numbers you mean.",
+    );
+  });
+});
+
 describe("a notice and a reply's files", () => {
   it.each([
     ["editing", EDITING],
@@ -418,7 +540,12 @@ describe("a notice and a reply's files", () => {
     "sends a notice logged in an idle conversation once on a %s platform, a replay included",
     async (_family, options) => {
       const { surface, calls } = recorder();
-      const follower = new ConversationFollower(3, options, surface, "c1");
+      const follower = new ConversationFollower(
+        startAfter(3),
+        options,
+        surface,
+        "c1",
+      );
       const frames = [
         insertFrame(noticeItem("n1", 4, "Your reminder: call the bank")),
         stateFrame(4, "idle"),
@@ -436,7 +563,12 @@ describe("a notice and a reply's files", () => {
 
   it("sends no notice from before the follow", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(4, NON_EDITING, surface, "c1");
+    const follower = new ConversationFollower(
+      startAfter(4),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
     await feed(follower, [screenFrame([noticeItem("n1", 4, "Old reminder")])]);
 
     expect(calls.filter((call) => call.op === "notice")).toEqual([]);
@@ -444,7 +576,12 @@ describe("a notice and a reply's files", () => {
 
   it("uploads the files a settled reply delivers once, after its text", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, NON_EDITING, surface, "c1");
+    const follower = new ConversationFollower(
+      startAfter(0),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
     follower.expect(1);
     const files = [{ path: "out/report.pdf", content_type: "application/pdf" }];
     const settled = {
@@ -494,18 +631,173 @@ describe("a follow the server woke", () => {
       follows += 1;
       for (const frame of follows === 1 ? frames : latest) yield frame;
     };
-    const followers = new ConversationFollowers(source, NON_EDITING);
+    const followers = new ConversationFollowers(source, NON_EDITING, NOT_KEPT);
     const ctx = { platform: NON_EDITING.platform, platformUserId: "7" };
 
     followers.follow(ctx, "c1", 1, surface);
     await followers.idle();
     // The wakes for the reply and the notice, consumed after that follow ended.
-    followers.resume(ctx, "c1", 1, surface);
+    followers.resume(ctx, "c1", cursorAt(1), surface);
     await followers.idle();
-    followers.resume(ctx, "c1", 2, surface);
+    followers.resume(ctx, "c1", cursorAt(2), surface);
     await followers.idle();
 
     expect(screen(calls)).toEqual(["Done."]);
     expect(calls.filter((call) => call.op === "notice")).toHaveLength(1);
+  });
+});
+
+describe.each([
+  ["editing", EDITING],
+  ["non-editing", NON_EDITING],
+])("a %s bot that crashes between a reply's bubbles", (_family, options) => {
+  it("sends the remaining bubbles once after the restart, and repeats nothing", async () => {
+    // The server's copy of the cursor: what the last record left.
+    let kept: DeliveryCursor = cursorAt(1);
+    const keep = async (cursor: DeliveryCursor) => {
+      kept = cursor;
+    };
+    const reply = replyItem("r1", 2, ["One.", "Two.", "Three."], "answered");
+    const before = recorder();
+    let sends = 0;
+    const crashing: FollowSurface = {
+      ...before.surface,
+      send: async (text, replyTo) => {
+        sends += 1;
+        if (sends === 3) throw new Error("bot process died");
+        return before.surface.send(text, replyTo);
+      },
+    };
+    const first = new ConversationFollower(
+      { floor: 1, partialReply: null, record: keep },
+      options,
+      crashing,
+      "c1",
+    );
+    await expect(
+      feed(first, [
+        screenFrame([inbound("u1", 1, "11")]),
+        insertFrame(reply),
+        stateFrame(2, "idle"),
+      ]),
+    ).rejects.toThrow("bot process died");
+
+    const resumed = recorder();
+    const restarted = new ConversationFollower(
+      {
+        floor: kept.delivered_seq,
+        partialReply: kept.partial_reply,
+        record: keep,
+      },
+      options,
+      resumed.surface,
+      "c1",
+    );
+    await feed(restarted, [
+      screenFrame([inbound("u1", 1, "11"), reply]),
+      stateFrame(2, "idle"),
+    ]);
+
+    expect(sent(before.calls).map(({ text }) => text)).toEqual([
+      "One.",
+      "Two.",
+    ]);
+    expect(sent(resumed.calls)).toEqual([{ text: "Three.", replyTo: null }]);
+    expect(kept).toEqual(cursorAt(2));
+  });
+});
+
+describe("a browser run on a work item", () => {
+  const SHOT = "https://cdn.test/step-1.png";
+  const LINK = "https://gaia.test/live/abc";
+  const REPLAY = "https://gaia.test/replay/r1";
+  const browserCard = (data: Record<string, unknown>) => ({
+    tool_name: "browser_task_data",
+    data,
+  });
+  const session = browserCard({
+    kind: "session",
+    task: "book",
+    status: "running",
+  });
+  const step = browserCard({
+    kind: "step",
+    index: 1,
+    goal: "open the booking page.",
+    url: "https://example.test/book",
+    screenshot: SHOT,
+    frame_digest: "f1",
+  });
+  // The page did not change: the photo already sent shows it.
+  const sameFrame = browserCard({ ...step.data, index: 2, goal: "scroll" });
+  const handoff = browserCard({
+    kind: "handoff",
+    handoff_id: "h1",
+    reason: "Sign in to finish the booking.",
+    status: "pending",
+    live_view_url: LINK,
+  });
+  const result = browserCard({
+    kind: "result",
+    status: "completed",
+    success: true,
+    summary: "Booked.",
+    replay_url: REPLAY,
+  });
+  const running = (cards: ReturnType<typeof browserCard>[]) => ({
+    ...workItem("t1", 2, "running"),
+    tool_data: cards,
+  });
+  const frames: ConversationFrame[] = [
+    screenFrame([inbound("u1", 1, "11")]),
+    insertFrame(running([session])),
+    updateFrame(running([session, step, sameFrame, handoff])),
+    updateFrame(running([session, step, sameFrame, handoff, result])),
+  ];
+
+  it("shows each new step's photo, the hand-off with its link, and the recap, once each", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(
+      startAfter(0),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
+
+    await feed(follower, [
+      ...frames,
+      // A reconnect opens on the same screen: nothing is shown twice.
+      screenFrame([
+        inbound("u1", 1, "11"),
+        running([session, step, sameFrame, handoff, result]),
+      ]),
+    ]);
+
+    expect(calls.filter((call) => call.op !== "typing")).toEqual([
+      { op: "photo", url: SHOT, caption: "Step 1 · open the booking page" },
+      {
+        op: "notice",
+        bubbles: [
+          "Sign in to finish the booking.",
+          `Open the live browser: ${LINK}`,
+          "Reply here when you're done, or tell me to stop.",
+        ],
+      },
+      { op: "notice", bubbles: [`📽 Here's a recap of the run: ${REPLAY}`] },
+    ]);
+  });
+
+  it("shows nothing of the run in a group chat", async () => {
+    const { surface, calls } = recorder(false);
+    const follower = new ConversationFollower(
+      startAfter(0),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
+
+    await feed(follower, frames);
+
+    expect(calls.filter((call) => call.op !== "typing")).toEqual([]);
   });
 });

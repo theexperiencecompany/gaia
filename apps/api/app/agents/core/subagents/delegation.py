@@ -21,9 +21,10 @@ from langchain_core.runnables.config import var_child_runnable_config
 from app.agents.core.background.bg_results import release_bg_dispatch, try_claim_bg_dispatch
 from app.agents.core.background.executor_runner import deliver_to_executor
 from app.agents.core.background.folded_stream import close_folded_stream, open_folded_stream
-from app.agents.core.background.redis_writer import make_redis_stream_writer
+from app.agents.core.background.run_stop import stop_requested
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.session import run_user_from_configurable
+from app.agents.core.background.session_writer import make_session_writer
 from app.agents.core.subagents.call_record import append_call_record
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
@@ -39,7 +40,6 @@ from app.agents.prompts.delegation_prompts import (
 )
 from app.constants.agents import AgentTag
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import stream_manager
 from app.models.agent_models import (
     AgentConfigurable,
     RunningSubagent,
@@ -189,7 +189,7 @@ async def _dispatch_background(delegation: Delegation) -> str:
         return THREAD_BUSY_REFUSAL.format(name=delegation.display.name)
     # Read after the claim: a stop that read the registry before it could not see this run.
     dispatcher = delegation.ctx.stream_id
-    if dispatcher and await stream_manager.is_cancelled(dispatcher):
+    if dispatcher and await stop_requested(dispatcher):
         await RunningSubagents(conversation_id).deregister(record)
         return STOPPED_BEFORE_START.format(name=delegation.display.name)
     _start_background_run(delegation, record, stream_id)
@@ -289,7 +289,7 @@ async def _execute_on_own_stream(
         configurable["stream_id"] = stream_id
 
     deltas = WorkDeltas(delegation.conversation_id, stream_id)
-    writer = deltas.wrap(make_redis_stream_writer(stream_id))
+    writer = deltas.wrap(make_session_writer(stream_id))
     _emit_start(writer, delegation)
     start_time = time.monotonic()
     try:

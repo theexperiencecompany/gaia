@@ -9,20 +9,18 @@ are what the client and the log really get.
 
 import asyncio
 from collections.abc import AsyncIterator
-import json
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
 
 import fakeredis.aioredis
 import pytest
 
-from app.agents.core.background import executor_queue, folded_stream, redis_writer as rw
 from app.agents.core.background.work_cancel import cancel_named_work
 from app.constants.browser import BROWSER_TASK_EVENT, BrowserSessionStatus, JobEnding
 from app.constants.log_tags import LogTag
 from app.models.conversation_log_models import WorkFinished, WorkOutcome, WorkStarted
 from app.schemas.browser import BrowserResultSnapshot, BrowserSessionSnapshot, BrowserStepSnapshot
 from app.schemas.browser_job import BrowserJobFinished, BrowserJobRequest, BrowserJobStopped
+from app.services.browser import job_relay
 from app.services.browser.job_events import JOB_TERMINAL_FRAME, publish_job_event
 from app.services.browser.job_relay import follow_job_cards, relay_job_cards
 from app.services.browser.job_runner import publish_frame_to_job
@@ -66,30 +64,24 @@ async def runtime() -> Runtime:
 
 
 class Client:
-    """What the user's client saw of the relay's stream."""
+    """What the relay collected on the job's stream, the cards its work shows."""
 
     def __init__(self) -> None:
-        self.chunks: dict[str, list[str]] = {}
+        self.collected: dict[str, list[dict[str, object]]] = {}
 
     def frames(self) -> list[dict[str, Any]]:
-        [stream] = self.chunks.values()
-        return [json.loads(chunk.removeprefix("data: ").strip()) for chunk in stream]
+        [stream] = self.collected.values()
+        return stream
 
 
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch, runtime: Runtime) -> Client:
     seen = Client()
 
-    async def _publish_chunk(stream_id: str, chunk: str) -> None:
-        seen.chunks.setdefault(stream_id, []).append(chunk)
+    def _collect(stream_id: str, data: dict[str, object]) -> None:
+        seen.collected.setdefault(stream_id, []).append(data)
 
-    manager = MagicMock()
-    manager.publish_chunk = _publish_chunk
-    monkeypatch.setattr(rw, "stream_manager", manager)
-    monkeypatch.setattr(executor_queue, "StreamManager", AsyncMock())
-    streams = MagicMock()
-    streams.is_cancelled = AsyncMock(return_value=False)
-    monkeypatch.setattr(folded_stream, "stream_manager", streams)
+    monkeypatch.setattr(job_relay, "collect_frame", _collect)
     return seen
 
 
@@ -186,11 +178,8 @@ async def test_a_job_that_ended_with_no_worker_left_is_not_followed_forever(
     await record_ending(JOB_ID, ending)
     seen: list[dict[str, object]] = []
 
-    async def _sink(card: dict[str, object]) -> None:
-        seen.append(card)
-
     async with captured_wide_event() as event:
-        await asyncio.wait_for(follow_job_cards(JOB_ID, CONVERSATION, _sink), timeout=5)
+        await asyncio.wait_for(follow_job_cards(JOB_ID, CONVERSATION, seen.append), timeout=5)
 
     assert len(seen) == 2
     [warning] = event["warnings"]

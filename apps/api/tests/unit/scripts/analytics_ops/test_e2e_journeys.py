@@ -78,7 +78,7 @@ def test_a_workflow_executed_once_that_ran_twice_fails_the_journey() -> None:
 
 
 def _line(item: UserItem | ReplyItem) -> str:
-    frame = ScreenInsertFrame(item=item)
+    frame = ScreenInsertFrame(item=item, head=item.seq)
     return f"data: {ConversationEvent(frame=frame).model_dump_json()}"
 
 

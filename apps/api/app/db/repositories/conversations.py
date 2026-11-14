@@ -70,6 +70,7 @@ from app.models.conversation_log_models import (
     TEXT_KINDS,
     EntryKind,
     LoggedEntry,
+    UserMessage,
 )
 from app.models.conversation_models import (
     BulkWriteDetails,
@@ -397,6 +398,21 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             user_id, {"kind": EntryKind.REPLY.value, "reply_id": reply_id}
         )
         return None if found is None else found.conversation_id
+
+    async def find_user_message(
+        self, user_id: str, conversation_id: str, message_id: str
+    ) -> UserMessage | None:
+        """Return the user message with this id in the user's conversation."""
+        found = await self._first_entry(
+            user_id,
+            {
+                "kind": EntryKind.USER_MESSAGE.value,
+                "conversation_id": conversation_id,
+                "id": message_id,
+            },
+        )
+        entry = None if found is None else found.logged.entry
+        return entry if isinstance(entry, UserMessage) else None
 
     async def find_workflow_conversation_id(self, user_id: str, workflow_id: str) -> str | None:
         """Return the id of the system-generated conversation a workflow's runs execute in."""

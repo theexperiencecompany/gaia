@@ -20,6 +20,7 @@ export const EMPTY_CONVERSATION_VIEW: ConversationView = {
   display: DISPLAY_STATE.IDLE,
   work: [],
   head: 0,
+  screenHead: 0,
 };
 
 const applied = (view: ConversationView): FrameOutcome => ({
@@ -38,10 +39,11 @@ function endedStream(item: ScreenItem): string | null {
   return null;
 }
 
-/** Take the server's items: each replaces the one it updates, and every item sits at its seq. */
+/** Take the server's items as of the log at head: each replaces the one it updates, and every item sits at its seq. */
 function withItems(
   view: ConversationView,
   incoming: readonly ScreenItem[],
+  head: number,
 ): ConversationView {
   const byId = new Map(view.items.map((item) => [item.id, item]));
   for (const item of incoming) {
@@ -59,6 +61,7 @@ function withItems(
   return {
     ...view,
     items,
+    screenHead: Math.max(view.screenHead, head),
     closed,
     drafts: view.drafts.filter(
       (draft) => !(draft.replyId && closed[draft.replyId]),
@@ -68,9 +71,13 @@ function withItems(
 }
 
 /** An update for an item older than everything held belongs to history not loaded here. */
-function update(view: ConversationView, item: ScreenItem): ConversationView {
+function update(
+  view: ConversationView,
+  item: ScreenItem,
+  head: number,
+): ConversationView {
   const oldest = view.items[0];
-  return oldest && item.seq < oldest.seq ? view : withItems(view, [item]);
+  return oldest && item.seq < oldest.seq ? view : withItems(view, [item], head);
 }
 
 const sameStream = (frame: DeltaFrame) => (draft: StreamDraft) =>
@@ -131,11 +138,11 @@ export function applyFrame(
 ): FrameOutcome {
   switch (frame.kind) {
     case FRAME_KIND.SCREEN:
-      return applied(withItems(view, frame.items));
+      return applied(withItems(view, frame.items, frame.head));
     case FRAME_KIND.SCREEN_INSERT:
-      return applied(withItems(view, [frame.item]));
+      return applied(withItems(view, [frame.item], frame.head));
     case FRAME_KIND.SCREEN_UPDATE:
-      return applied(update(view, frame.item));
+      return applied(update(view, frame.item, frame.head));
     case FRAME_KIND.REPLY_DELTA:
       return applyDelta(view, frame);
     case FRAME_KIND.RETRACT:
@@ -161,13 +168,18 @@ export function applyFrame(
   }
 }
 
-/** Take a page of the server's screen (a load, a sync or a page back) and its state. */
+/** Take a page of the server's screen (a load, a sync or a page back) and its state; a page no newer than the view's items only adds the items the view lacks. */
 export function applyPage(
   view: ConversationView,
   items: readonly ScreenItem[],
   state: Extract<ConversationFrame, { kind: "state" }>,
 ): ConversationView {
-  const outcome = applyFrame(withItems(view, items), state);
+  const held = new Set(view.items.map((item) => item.id));
+  const fresh =
+    state.head <= view.screenHead
+      ? items.filter((item) => !held.has(item.id))
+      : items;
+  const outcome = applyFrame(withItems(view, fresh, state.head), state);
   return outcome.view;
 }
 

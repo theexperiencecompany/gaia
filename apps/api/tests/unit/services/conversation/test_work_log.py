@@ -78,10 +78,10 @@ async def test_started_work_is_logged_with_the_step_it_answers_and_published(
     assert set(rt.frames.conversations) == {CONVERSATION}
 
 
-async def test_work_handed_to_a_run_the_log_never_had_goes_ahead_unlogged(rt: Runtime) -> None:
+async def test_work_handed_to_a_run_the_log_never_had_is_refused(rt: Runtime) -> None:
     step = await step_answering(rt, "u1")
     async with captured_wide_event() as event:
-        assert await record_work_started(step, CONVERSATION, USER, "t2", joins="unlogged-run")
+        assert not await record_work_started(step, CONVERSATION, USER, "t2", joins="unlogged-run")
     assert await stored_ids(rt) == ["u1"]
     assert event["warnings"] == [
         {
@@ -90,7 +90,6 @@ async def test_work_handed_to_a_run_the_log_never_had_goes_ahead_unlogged(rt: Ru
             "task_id": "t2",
             "joins": "unlogged-run",
             "reason": "EntryRejected",
-            "handed_over_unlogged": True,
             "error_type": "EntryRejected",
             "error": "task_not_live",
         }
@@ -104,9 +103,7 @@ async def test_work_a_stop_refuses_never_dispatches_even_when_it_joins_a_run(
     await accept(rt.ports, CONVERSATION, USER, stop("s1"))
     async with captured_wide_event() as event:
         assert not await record_work_started(step, CONVERSATION, USER, "t2", joins="t0")
-    assert [(w["reason"], w["handed_over_unlogged"]) for w in event["warnings"]] == [
-        ("EntryRejected", False)
-    ]
+    assert [w["reason"] for w in event["warnings"]] == ["EntryRejected"]
 
 
 async def test_work_under_a_lost_claim_never_dispatches_even_when_it_joins_a_run(
@@ -116,9 +113,7 @@ async def test_work_under_a_lost_claim_never_dispatches_even_when_it_joins_a_run
     step["epoch"] += 1
     async with captured_wide_event() as event:
         assert not await record_work_started(step, CONVERSATION, USER, "t2", joins="t0")
-    assert [(w["reason"], w["handed_over_unlogged"]) for w in event["warnings"]] == [
-        ("ClaimLost", False)
-    ]
+    assert [w["reason"] for w in event["warnings"]] == ["ClaimLost"]
 
 
 async def test_finished_work_is_logged_with_its_report_under_the_users_conversation(
@@ -275,3 +270,13 @@ async def test_live_work_lists_only_the_approvals_its_own_tasks_wait_on(rt: Runt
         )
     assert await approvals_awaited_by(CONVERSATION, USER, {"t1"}) == ["a", "b"]
     assert await approvals_awaited_by(CONVERSATION, USER, {"t3"}) == []
+
+
+async def test_work_under_a_claim_the_step_no_longer_holds_is_refused_and_logs_nothing(
+    rt: Runtime,
+) -> None:
+    step = await step_answering(rt, "u1")
+    step["epoch"] += 1
+
+    assert not await record_work_started(step, CONVERSATION, USER, "task-1")
+    assert await stored_ids(rt) == ["u1"]

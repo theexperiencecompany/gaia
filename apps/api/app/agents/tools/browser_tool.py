@@ -19,7 +19,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import InjectedToolCallId, tool
 from pydantic import BaseModel, ConfigDict
 
-from app.agents.core.background.redis_writer import publish_to_stream
+from app.agents.core.background.session_writer import collect_frame
 from app.agents.core.subagents.delegation import runs_in_background
 from app.constants.browser import (
     BROWSER_JOB_QUEUE,
@@ -270,7 +270,7 @@ async def _enqueue(request: BrowserJobRequest) -> bool:
 
 async def _await_ending(request: BrowserJobRequest) -> str:
     """Block a headless run until its job ends, its cards on the run's own stream; return how it ended."""
-    sink = partial(publish_to_stream, request.stream_id) if request.stream_id else _ignore
+    sink = partial(collect_frame, request.stream_id) if request.stream_id else _ignore
     await follow_job_cards(request.job_id, request.conversation_id, sink)
     ending = await done_state(request.job_id)
     if ending is None:
@@ -283,5 +283,5 @@ async def _await_ending(request: BrowserJobRequest) -> str:
     return ending_message(request.job_id, ending)
 
 
-async def _ignore(_card: dict[str, object]) -> None:
+def _ignore(_card: dict[str, object]) -> None:
     """Drop a card: a headless run with no stream has nowhere to show it."""

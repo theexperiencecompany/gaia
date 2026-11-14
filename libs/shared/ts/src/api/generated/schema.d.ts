@@ -315,6 +315,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bot/conversations/{conversation_id}/delivered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Record Bot Delivery
+         * @description Move the conversation's bot cursor to what its follower put on the platform.
+         */
+        put: operations["bot_record_delivered"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bot/conversations/active": {
         parameters: {
             query?: never;
@@ -1143,6 +1163,26 @@ export interface paths {
          * @description Mark a conversation as read.
          */
         patch: operations["conversations_mark_as_read_endpoint"];
+        trace?: never;
+    };
+    "/api/v1/conversations/{conversation_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Message Endpoint
+         * @description Answer one of the conversation's user messages again; the new reply arrives on the events stream.
+         */
+        post: operations["conversations_retry_message_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/conversations/{conversation_id}/star": {
@@ -5904,10 +5944,10 @@ export interface components {
         ActionType: "redirect" | "api_call" | "modal";
         /**
          * ActiveBotConversation
-         * @description A bot session's conversation still answering; a restarted bot follows its events after after_seq.
+         * @description A bot session's conversation to follow: its events after after_seq, the bot's delivered-through cursor.
          *
-         *     The log does not record what a platform delivered: after_seq is the newest settled reply's
-         *     seq, so the follower replays the reply in flight and everything after it.
+         *     partial_reply names the reply just past it that the bot had sent only its first bubbles of, so a
+         *     restarted follower sends the rest and repeats none.
          */
         ActiveBotConversation: {
             /** After Seq */
@@ -5918,6 +5958,7 @@ export interface components {
             conversation_id: string;
             /** Is Dm */
             is_dm: boolean;
+            partial_reply: components["schemas"]["PartialReply"] | null;
             /** Platform User Id */
             platform_user_id: string;
         };
@@ -6750,6 +6791,24 @@ export interface components {
              * @description User's ID on the platform
              */
             platform_user_id: string;
+        };
+        /**
+         * BotDeliveryRecorded
+         * @description Whether the report moved the cursor; False for one behind what is already recorded.
+         */
+        BotDeliveryRecorded: {
+            /** Recorded */
+            recorded: boolean;
+        };
+        /**
+         * BotDeliveryReport
+         * @description What a bot follower put on the platform: every item through delivered_seq, plus partial_reply.
+         */
+        BotDeliveryReport: {
+            /** Delivered Seq */
+            delivered_seq: number;
+            partial_reply?: components["schemas"]["PartialReply"] | null;
+            platform: components["schemas"]["ConversationSource"];
         };
         /**
          * BotMessageAccepted
@@ -12049,6 +12108,16 @@ export interface components {
              */
             total: number;
         };
+        /**
+         * PartialReply
+         * @description A reply a bot follower had put only its first bubbles of on the platform.
+         */
+        PartialReply: {
+            /** Bubbles */
+            bubbles: number;
+            /** Reply Id */
+            reply_id: string;
+        };
         /** PaymentVerificationResponse */
         PaymentVerificationResponse: {
             /** Message */
@@ -13356,6 +13425,8 @@ export interface components {
             /** Pinned */
             pinned: boolean;
             quote: components["schemas"]["ReplyToMessageData"] | null;
+            /** Retry Target */
+            retry_target: string | null;
             /** Seq */
             seq: number;
             timeline: components["schemas"]["ToolTimeline"];
@@ -13427,6 +13498,16 @@ export interface components {
              * @enum {string}
              */
             kind: "retract";
+        };
+        /**
+         * RetryMessageRequest
+         * @description Answer the user message target again in place; message_id is minted by the client and makes a resend a no-op.
+         */
+        RetryMessageRequest: {
+            /** Message Id */
+            message_id: string;
+            /** Target */
+            target: string;
         };
         /** SandboxExecuteRequest */
         SandboxExecuteRequest: {
@@ -13500,6 +13581,8 @@ export interface components {
          * @description The newest page of the screen; a client replaces what it holds from the first item's seq on.
          */
         ScreenFrame: {
+            /** Head */
+            head: number;
             /** Items */
             items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
             /**
@@ -13513,6 +13596,8 @@ export interface components {
          * @description An item became visible; its seq is its position, before every item with a higher one.
          */
         ScreenInsertFrame: {
+            /** Head */
+            head: number;
             /** Item */
             item: components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"];
             /**
@@ -13526,6 +13611,8 @@ export interface components {
          * @description An item already shown changed in place; it keeps its position.
          */
         ScreenUpdateFrame: {
+            /** Head */
+            head: number;
             /** Item */
             item: components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"];
             /**
@@ -13788,8 +13875,6 @@ export interface components {
             /** Reply To */
             reply_to?: string | null;
             reply_to_message?: components["schemas"]["ReplyToMessageData"] | null;
-            /** Retry Of */
-            retry_of?: string | null;
             selected_calendar_event?: components["schemas"]["SelectedCalendarEventData"] | null;
             /** Selected Tool */
             selected_tool?: string | null;
@@ -15332,6 +15417,24 @@ export interface components {
             requires_integration: boolean;
         };
         /**
+         * ToolProgress
+         * @description The newest tool call's line, which the loading row shows while the item streams.
+         */
+        ToolProgress: {
+            /** Icon Url */
+            icon_url: string | null;
+            /** Integration Name */
+            integration_name: string | null;
+            /** Message */
+            message: string;
+            /** Show Category */
+            show_category: boolean;
+            /** Tool Category */
+            tool_category: string;
+            /** Tool Name */
+            tool_name: string;
+        };
+        /**
          * ToolsCategoryResponse
          * @description Response model for tools by category.
          */
@@ -15365,6 +15468,7 @@ export interface components {
              * @default []
              */
             cards: components["schemas"]["TimelineCard"][];
+            progress: components["schemas"]["ToolProgress"] | null;
             /**
              * Steps
              * @default []
@@ -16890,6 +16994,8 @@ export interface components {
              * @enum {string}
              */
             kind: "work";
+            /** Retry Target */
+            retry_target: string | null;
             /** Seq */
             seq: number;
             status: components["schemas"]["WorkStatus"];
@@ -17014,6 +17120,8 @@ export type Body_user_update_user_name = components['schemas']['Body_user_update
 export type Body_user_update_user_timezone = components['schemas']['Body_user_update_user_timezone'];
 export type BotAuthStatusResponse = components['schemas']['BotAuthStatusResponse'];
 export type BotChatRequest = components['schemas']['BotChatRequest'];
+export type BotDeliveryRecorded = components['schemas']['BotDeliveryRecorded'];
+export type BotDeliveryReport = components['schemas']['BotDeliveryReport'];
 export type BotMessageAccepted = components['schemas']['BotMessageAccepted'];
 export type BotSessionRequest = components['schemas']['BotSessionRequest'];
 export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
@@ -17314,6 +17422,7 @@ export type OnboardingStatusResponse = components['schemas']['OnboardingStatusRe
 export type OnboardingStep = components['schemas']['OnboardingStep'];
 export type PaginatedNotificationsResponse = components['schemas']['PaginatedNotificationsResponse'];
 export type PaginationMeta = components['schemas']['PaginationMeta'];
+export type PartialReply = components['schemas']['PartialReply'];
 export type PaymentVerificationResponse = components['schemas']['PaymentVerificationResponse'];
 export type PendingApprovalRef = components['schemas']['PendingApprovalRef'];
 export type PersistedTriageSummary = components['schemas']['PersistedTriageSummary'];
@@ -17383,6 +17492,7 @@ export type ReplyToMessageData = components['schemas']['ReplyToMessageData'];
 export type ResetSessionResponse = components['schemas']['ResetSessionResponse'];
 export type ResetWorkflowResponse = components['schemas']['ResetWorkflowResponse'];
 export type RetractFrame = components['schemas']['RetractFrame'];
+export type RetryMessageRequest = components['schemas']['RetryMessageRequest'];
 export type SandboxExecuteRequest = components['schemas']['SandboxExecuteRequest'];
 export type SandboxExecuteResponse = components['schemas']['SandboxExecuteResponse'];
 export type SandboxToolSchemaRequest = components['schemas']['SandboxToolSchemaRequest'];
@@ -17482,6 +17592,7 @@ export type TodoWorkflowStatusResponse = components['schemas']['TodoWorkflowStat
 export type ToolContract = components['schemas']['ToolContract'];
 export type ToolDataEntry = components['schemas']['ToolDataEntry'];
 export type ToolInfo = components['schemas']['ToolInfo'];
+export type ToolProgress = components['schemas']['ToolProgress'];
 export type ToolsCategoryResponse = components['schemas']['ToolsCategoryResponse'];
 export type ToolsListResponse = components['schemas']['ToolsListResponse'];
 export type ToolTimeline = components['schemas']['ToolTimeline'];
@@ -18301,6 +18412,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BotAuthStatusResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    bot_record_delivered: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotDeliveryReport"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotDeliveryRecorded"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -20784,6 +20948,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConversationActionResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    conversations_retry_message_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetryMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageAccepted"];
                 };
             };
             /** @description Unprocessable Entity */

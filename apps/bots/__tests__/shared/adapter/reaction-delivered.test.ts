@@ -77,6 +77,7 @@ const target: ActiveBotConversation = {
   channel_id: null,
   is_dm: true,
   after_seq: 0,
+  partial_reply: null,
 };
 
 async function followReaction(outcome: ReactionOutcome) {

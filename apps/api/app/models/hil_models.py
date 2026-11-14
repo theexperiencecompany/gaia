@@ -87,7 +87,6 @@ class ApprovalProposal(BaseModel):
     rationale: str = ""
     preview: str = ""
     owner_agent: str = ""
-    blocked_by: list[str] = Field(default_factory=list)
     # Background owner parked on this approval, for the resume driver: who to wake
     # when it decides ("workflow"|"todo" plus the id). Empty on live runs, which
     # resume through the executor inbox; set once at registration.

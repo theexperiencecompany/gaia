@@ -146,6 +146,19 @@ class TimelineCard(BaseModel):
     card: ToolDataEntry
 
 
+class ToolProgress(BaseModel):
+    """The newest tool call's line, which the loading row shows while the item streams."""
+
+    model_config = WIRE_CONFIG
+
+    message: str = Field(min_length=1)
+    tool_name: str
+    tool_category: str
+    integration_name: str | None
+    icon_url: str | None
+    show_category: bool
+
+
 class ToolTimeline(BaseModel):
     """What an item's cards show, in order: the tool thread, then the cards rendered on their own."""
 
@@ -153,6 +166,7 @@ class ToolTimeline(BaseModel):
 
     steps: tuple[TimelineStep, ...] = ()
     cards: tuple[TimelineCard, ...] = ()
+    progress: ToolProgress | None = None
 
 
 class ScreenItemBase(BaseModel):
@@ -190,6 +204,8 @@ class ReplyItem(ScreenItemBase):
     outcome: ReplyOutcome | None
     failure: FailureReason | None
     narrates: tuple[str, ...]
+    # The user message a retry of this reply sends again; None when it answers none.
+    retry_target: str | None
     # The files the reply and the work it narrates wrote; a chat platform uploads them once it settles.
     files: tuple[ReplyFile, ...]
 
@@ -275,6 +291,8 @@ class ScreenFrame(BaseModel, Generic[ItemT]):
 
     kind: Literal[FrameKind.SCREEN] = FrameKind.SCREEN
     items: tuple[ItemT, ...]
+    # The log's head this screen projects: a page read at or below it is no newer than what it shows.
+    head: int = Field(ge=0)
 
 
 class ScreenInsertFrame(BaseModel, Generic[ItemT]):
@@ -284,6 +302,7 @@ class ScreenInsertFrame(BaseModel, Generic[ItemT]):
 
     kind: Literal[FrameKind.SCREEN_INSERT] = FrameKind.SCREEN_INSERT
     item: ItemT
+    head: int = Field(ge=0)
 
 
 class ScreenUpdateFrame(BaseModel, Generic[ItemT]):
@@ -293,3 +312,5 @@ class ScreenUpdateFrame(BaseModel, Generic[ItemT]):
 
     kind: Literal[FrameKind.SCREEN_UPDATE] = FrameKind.SCREEN_UPDATE
     item: ItemT
+    # An amended entry changes an item without a new seq, so the head names the log it reflects.
+    head: int = Field(ge=0)

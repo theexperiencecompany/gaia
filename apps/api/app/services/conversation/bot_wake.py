@@ -22,7 +22,7 @@ class BotWakingFrames:
         self._frames = frames
 
     async def publish(self, conversation_id: str, *frames: OutputFrame) -> None:
-        """Publish frames, then wake the bot from just before the first entry it renders."""
+        """Publish frames, owe the entries a bot renders to the conversation's bot, and wake it from its cursor."""
         await self._frames.publish(conversation_id, *frames)
         rendered = [
             frame.seq
@@ -31,6 +31,8 @@ class BotWakingFrames:
         ]
         if not rendered:
             return
-        session = await bot_session_repository.get_by_conversation_id(conversation_id)
+        session = await bot_session_repository.owe_delivery(
+            conversation_id, first_seq=min(rendered), last_seq=max(rendered)
+        )
         if session is not None:
-            await publish_conversation_wake(session, after_seq=min(rendered) - 1)
+            await publish_conversation_wake(session)

@@ -43,3 +43,24 @@ class LedgerDriftError(RuntimeError):
         super().__init__(
             f"ledger row {approval_id} was not pending when the log decided it {outcome}"
         )
+
+
+class LedgerWakeUndeliveredError(RuntimeError):
+    """An outcome wake had no Redis to land in, so the agent would never learn it."""
+
+    def __init__(self, approval_id: str, outcome: str) -> None:
+        super().__init__(f"no Redis client: the {outcome} wake for {approval_id} cannot be sent")
+
+
+class UnknownResumeOwnerError(RuntimeError):
+    """An approved row names a background owner no resume knows how to continue."""
+
+    def __init__(self, approval_id: str, owner_run_type: str) -> None:
+        super().__init__(f"approval {approval_id} names unknown owner {owner_run_type!r}")
+
+
+class ResumeNotQueuedError(RuntimeError):
+    """The approved owner's continuation could not be queued, so nothing would continue it."""
+
+    def __init__(self, approval_id: str, owner_run_type: str) -> None:
+        super().__init__(f"the {owner_run_type} resume for approval {approval_id} was not queued")

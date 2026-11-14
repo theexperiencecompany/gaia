@@ -289,6 +289,11 @@ fi
 description = "Run web Playwright e2e against a running dev stack. Start `mise dev --sim` (or `mise dev --agent` for a real LLM) in another terminal first — both boot with the dev auth bypass on. Set E2E_SIM=1 to include the scripted-chat spec. Honors WEB_PORT/API_PORT from .env.worktree."
 run = "pnpm nx run web:e2e"
 
+[tasks."e2e:web:screen"]
+description = "Run the screen-over-time Playwright flows: scripted chats whose rendered items are recorded at every DOM change and must never reorder, vanish or double, and must match after a reload. Needs a running sim stack (`mise dev --sim`) plus the ARQ worker (`nx worker api`, same env) for the approval-expiry sweep. One worker: the flows share the dev user and flip its approval preferences."
+env = { E2E_SIM = "1" }
+run = "pnpm --dir apps/web exec playwright test e2e/screen-over-time.spec.ts e2e/screen-surfaces.spec.ts --workers=1"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DEVELOPMENT COMMANDS
 # ─────────────────────────────────────────────────────────────────────────────

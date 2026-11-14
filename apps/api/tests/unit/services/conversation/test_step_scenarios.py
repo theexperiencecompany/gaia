@@ -11,6 +11,7 @@ from app.constants.hil import HIL_ACK_APPROVED
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import (
     EntryFrame,
+    MessageBoundaryEvent,
     OutputFrame,
     ResponseEvent,
     RetractFrame,
@@ -29,7 +30,7 @@ from app.models.conversation_log_models import (
     UserMessage,
     WorkStarted,
 )
-from app.models.stream_events import ToolOutputPayload
+from app.models.stream_events import MessageBoundaryPayload, ToolOutputPayload
 from app.services.conversation.composition import PostHogTurnAnalytics
 from app.services.conversation.log import accept
 from app.services.conversation.ports import (
@@ -46,7 +47,16 @@ from app.services.conversation.ports import (
     Summarized,
 )
 from app.services.conversation.step import advance
-from shared.py.conversation_wire import FailureReason, ReplyDeltaFrame, ReplyOutcome, ToolDataEntry
+from shared.py.conversation_wire import (
+    BubblesDelta,
+    BubbleTextDelta,
+    CardsDelta,
+    FailureReason,
+    ReplyDelta,
+    ReplyDeltaFrame,
+    ReplyOutcome,
+    ToolDataEntry,
+)
 from tests.unit.services.conversation.log_helpers import (
     asked,
     barge,
@@ -95,8 +105,21 @@ def card() -> Streamed:
     return Streamed(payload=ToolDataEvent(tool_data=CARD))
 
 
+def tool_result_card() -> Streamed:
+    return Streamed(payload=ToolDataEvent(tool_data=CARD), by_model=False)
+
+
 def text(chunk: str) -> Streamed:
     return Streamed(payload=ResponseEvent(response=chunk))
+
+
+def taken_back(message_id: str) -> Streamed:
+    boundary = MessageBoundaryPayload(message_id=message_id, discarded=True)
+    return Streamed(payload=MessageBoundaryEvent(message_boundary=boundary))
+
+
+def reply_deltas(rt: Runtime) -> list[ReplyDelta]:
+    return [frame.payload for frame in rt.frames.published if isinstance(frame, ReplyDeltaFrame)]
 
 
 async def kinds(rt: Runtime) -> list[str]:
@@ -293,11 +316,73 @@ class StepScenarios:
         assert first.attempt_id != second.attempt_id
         # Each segment streams as its own draft, so settling the first never swallows the second's deltas.
         deltas = [f for f in rt.frames.published if isinstance(f, ReplyDeltaFrame)]
-        assert [(f.attempt_id, f.index) for f in deltas] == [
-            (first.attempt_id, 0),
-            (second.attempt_id, 0),
+        assert [(f.attempt_id, f.index, f.reply_id) for f in deltas] == [
+            (first.attempt_id, 0, first.reply_id),
+            (second.attempt_id, 0, second.reply_id),
         ]
+        assert set(rt.frames.conversations) == {CONVERSATION}
         await assert_quiet(rt)
+
+    @pytest.mark.parametrize(
+        "after_absorb",
+        [
+            [Finished(Replied("done"))],
+            [Answered(Replied("done")), Finished(Replied("done"))],
+            [ModelOutput(True), text("done"), Finished(Replied("done"))],
+        ],
+        ids=["finished", "answered", "model-output"],
+    )
+    async def test_the_first_signal_after_an_absorb_settles_the_read_text_above_the_message(
+        self, rt: Runtime, after_absorb: list[ScriptItem]
+    ) -> None:
+        rt.runner.script(
+            [text("on it"), Do(arrive(rt, user("u2"))), ModelOutput(True), *after_absorb]
+        )
+        await send(rt, user("u1"))
+        # A missed segment leaves u2 waking, and the next attempt's unscripted run waits forever.
+        await asyncio.wait_for(run(rt), timeout=10)
+        assert rt.runner.calls == [Started(batch=(1,), context=()), Absorbed((3,))]
+        assert await kinds(rt) == [
+            "user_message",
+            "reply",
+            "user_message",
+            "reply_settled",
+            "reply",
+            "reply_settled",
+        ]
+        first, second = await replies(rt)
+        assert (first.text, second.text) == ("on it", "done")
+        assert first.attempt_id != second.attempt_id
+        assert await answered(rt) == [
+            (ReplyOutcome.ANSWERED, ("u1",)),
+            (ReplyOutcome.ANSWERED, ("u2",)),
+        ]
+        assert [settled.through for settled in await settles(rt)] == [1, 3]
+        await assert_quiet(rt)
+
+    async def test_a_shown_tool_calls_result_card_stays_with_it_above_the_absorbed_message(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script(
+            [
+                card(),
+                Do(arrive(rt, user("u2"))),
+                ModelOutput(True),
+                tool_result_card(),
+                text("both done"),
+                ModelOutput(False),
+                Finished(Replied("both done")),
+            ]
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        cards, answer = await replies(rt)
+        assert (cards.text, cards.tool_data) == ("", (CARD, CARD))
+        assert (answer.text, answer.tool_data) == ("both done", ())
+        assert await answered(rt) == [
+            (ReplyOutcome.ANSWERED, ("u1",)),
+            (ReplyOutcome.ANSWERED, ("u2",)),
+        ]
 
     @pytest.mark.parametrize(
         "ending",
@@ -589,7 +674,7 @@ class StepScenarios:
         assert (await replies(rt))[-1].text == HIL_ACK_APPROVED
         assert (await answered(rt))[-1] == (ReplyOutcome.ANSWERED, ("u6",))
         state = await rt.log.state(CONVERSATION, USER)
-        assert [item.pending_approvals for item in state.work] == [frozenset()]
+        assert [item.pending_approvals for item in state.work] == [()]
         await assert_quiet(rt)
 
     async def test_a_mixed_typed_answer_logs_each_approval_once_with_its_own_decision(
@@ -847,6 +932,59 @@ class StepScenarios:
         assert await answered(rt) == [(ReplyOutcome.FAILED, ("u1",))]
         assert [s.failure for s in await settles(rt)] == [FailureReason.MODEL_ERROR]
         await assert_quiet(rt)
+
+    async def test_a_retried_model_call_restreaming_the_same_text_never_blanks_it(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script(
+            [
+                text("Second partial."),
+                taken_back("m1"),
+                text("Second "),
+                text("partial."),
+                Fail(RuntimeError("provider dropped the stream")),
+            ]
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        assert reply_deltas(rt) == [BubbleTextDelta(bubble=0, text="Second partial.")]
+        assert (await replies(rt))[0].text == "Second partial."
+        assert await answered(rt) == [(ReplyOutcome.FAILED, ("u1",))]
+
+    async def test_a_retracted_preamble_is_replaced_in_place_by_the_reply(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script(
+            [
+                text("Let me check that."),
+                taken_back("m1"),
+                text("Checked"),
+                text(" it."),
+                ModelOutput(False),
+                Finished(Replied("Checked it.")),
+            ]
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        assert reply_deltas(rt) == [
+            BubbleTextDelta(bubble=0, text="Let me check that."),
+            BubblesDelta(bubbles=("Checked",)),
+            BubbleTextDelta(bubble=0, text=" it."),
+        ]
+        assert (await replies(rt))[0].text == "Checked it."
+
+    async def test_a_take_back_nothing_replaced_is_withdrawn_before_the_reply_settles(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script([text("Let me check."), taken_back("m1"), card(), Finished(Replied(""))])
+        await send(rt, user("u1"))
+        await run(rt)
+        bubbles = [delta for delta in reply_deltas(rt) if not isinstance(delta, CardsDelta)]
+        assert bubbles == [
+            BubbleTextDelta(bubble=0, text="Let me check."),
+            BubblesDelta(bubbles=()),
+        ]
+        assert (await replies(rt))[0].text == ""
 
     async def test_a_run_that_hits_the_step_limit_says_so_on_its_settle(self, rt: Runtime) -> None:
         rt.runner.script([text("half"), Fail(StepLimitReached("limit"))])

@@ -9,7 +9,8 @@ The log is the approval's only truth: a decision is an ApprovalDecided append, a
 the first one wins, so a double tap or a tap on an expired or stopped approval reads
 back the decision already logged. The ledger follows the log, as the fingerprint
 index and the envelope; its action claim keeps a redeem single-use, and crash
-recovery runs lazily via reconcile_conversation_ledger, with no daemon.
+recovery runs lazily via reconcile_conversation_ledger; the conversation sweeper
+expires approvals nobody decided.
 """
 
 from collections.abc import Collection
@@ -50,12 +51,13 @@ from app.services.hil.errors import (
     ApprovalRequestForbiddenError,
     ApprovalRequestNotFoundError,
     LedgerDriftError,
+    LedgerWakeUndeliveredError,
     ToolAlwaysAsksError,
 )
 from app.services.hil.policy import asks_every_time, resolved_tool_key
 from app.services.hil.preferences import set_tool_override
 from app.services.hil.resume import record_owner_deny, resume_owner_after_approval
-from app.utils.timezone import age_since
+from app.services.hil.ticket import approval_ticket
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import (
     ApprovalDecided as ApprovalDecidedEvent,
@@ -73,8 +75,8 @@ from shared.py.approvals import (
 from shared.py.wide_events import log
 
 # A redeem that dies between claim and receipt leaves its action executing.
-# Reconciled lazily to unknown on the decide path — there is no sweeper by
-# design, so this cutoff is the only crash detector.
+# Reconciled lazily to unknown on the decide path — the conversation sweeper expires
+# undecided approvals, not running actions, so this cutoff is the only crash detector.
 STALLED_EXECUTING_MINUTES = 10
 
 
@@ -87,10 +89,6 @@ class LedgerDecision:
     # The row's two facts after the call: what was committed, or what a refresh read.
     outcome: ApprovalOutcome | None
     action: ActionResult | None
-    # Approved but blocked_by unresolved: sits approved as the queue, no
-    # execution scheduled. Ordering chains (claim rule + dep_unmet reconciler)
-    # arrive in Phase 3; this flag is their seam.
-    queued: bool = False
 
 
 @dataclass(frozen=True)
@@ -198,40 +196,23 @@ async def _commit_decision(
         ),
     )
     capture(UserId(user_id), ApprovalDecidedEvent(outcome=target))
-    queued = bool(target is ApprovalOutcome.APPROVED and row.blocked_by)
-    if target is ApprovalOutcome.APPROVED and not queued:
-        # Permission granted: hand the ticket to the model. deliver_to_executor
-        # steers a live run or starts an idle one; on failure fall back to the
-        # inbox wake, since the decision already committed and must not fail the tap.
-        try:
+    if target is ApprovalOutcome.APPROVED:
+        # One continuation: a background owner's resume carries the ticket; a live run gets it.
+        if row.owner_run_type:
+            await resume_owner_after_approval(row)
+        else:
             await _deliver_ticket(row)
-        except Exception as e:
-            log.error(
-                f"{LogTag.HIL} Ledger ticket delivery failed; falling back to inbox wake",
-                approval_id=approval_id,
-                error_type=type(e).__name__,
-            )
-            await _wake_agent(row, "APPROVED", None)
-        # A background owner parked on this approval has no live run to wake:
-        # re-enqueue its unit of work (todo re-execution, workflow continuation).
-        # Best-effort and claim-guarded — never fails the tap.
-        await resume_owner_after_approval(row)
-    if target is ApprovalOutcome.DENIED:
-        # Denials schedule nothing, but the agent still needs the verdict and a
-        # wake alone only reaches a running run — deliver, so an idle
-        # conversation starts one that reports what was skipped.
+    else:
+        # A wake alone reaches only a running run: delivery starts one to report what was skipped.
         await _deliver_verdict(row, "DENIED", feedback)
         # A background todo has no other surface: leave the skip in its log.
         await record_owner_deny(row, feedback)
-    elif queued:
-        await _wake_agent(row, "QUEUED", f"waiting on {','.join(row.blocked_by)}")
     await reconcile_conversation_ledger(row.conversation_id)
     return LedgerDecision(
         committed=True,
         approval_id=approval_id,
         outcome=target,
         action=None,
-        queued=queued,
     )
 
 
@@ -300,17 +281,6 @@ async def decide_ledger_batch(
     return outcomes
 
 
-def _ticket_task(row: ApprovalLedgerDocument) -> str:
-    """Build the wake that turns an approval into a redeem: id, age, and the execute call that honors it."""
-    age = "unknown age" if row.created_at is None else f"{age_since(row.created_at)} old"
-    return (
-        f"APPROVAL_READY {row.approval_id}: the user approved {row.summary} "
-        f'({age}). Run it now with execute(tool_name="approve", '
-        f'data={{"id": "{row.approval_id}"}}) and continue with its result. '
-        "If it is no longer needed, say so instead of running it."
-    )
-
-
 async def _deliver_ticket(row: ApprovalLedgerDocument) -> None:
     """Hand an approved ticket to the model — steer or start, never execute.
 
@@ -325,18 +295,12 @@ async def _deliver_ticket(row: ApprovalLedgerDocument) -> None:
     await deliver_to_executor(
         row.conversation_id,
         AuthenticatedUser(user_id=row.user_id),
-        _ticket_task(row),
+        approval_ticket(row),
     )
 
 
 async def _deliver_verdict(row: ApprovalLedgerDocument, outcome: str, result: object) -> None:
-    """Steer or start a run with a non-approve verdict (deny today).
-
-    The inbox wake alone only reaches a running run; an idle conversation
-    would never wrap up ("user said no" arrives nowhere). Delivery starts one
-    when needed and degrades to the wake when delivery itself fails — the
-    decision already committed, so this path never raises.
-    """
+    """Steer or start a run with a non-approve verdict (deny today); a failed delivery raises to the tap."""
     from app.agents.core.background.executor_runner import (  # noqa: PLC0415 -- same cycle guard as _deliver_ticket
         deliver_to_executor,
     )
@@ -348,20 +312,7 @@ async def _deliver_verdict(row: ApprovalLedgerDocument, outcome: str, result: ob
         + " The user said no — report what you skipped and continue without it. "
         "Do not re-request it."
     )
-    try:
-        await deliver_to_executor(
-            row.conversation_id,
-            AuthenticatedUser(user_id=row.user_id),
-            task,
-        )
-    except Exception as e:
-        log.error(
-            f"{LogTag.HIL} Ledger verdict delivery failed; falling back to inbox wake",
-            approval_id=row.approval_id,
-            outcome=outcome,
-            error_type=type(e).__name__,
-        )
-        await _wake_agent(row, outcome, result)
+    await deliver_to_executor(row.conversation_id, AuthenticatedUser(user_id=row.user_id), task)
 
 
 async def redeem_approved(
@@ -597,7 +548,7 @@ async def cancel_ledger_approvals(
 async def reconcile_conversation_ledger(conversation_id: str) -> None:
     """Heal one conversation's ledger as a decide-path side effect.
 
-    No daemon exists by design, so every decide repairs: a stalled executing
+    Nothing else watches a running action, so every decide repairs: a stalled executing
     action goes unknown (with a wake). Orphaned approved rows need nothing — the
     ticket lives in model context and only a redeem runs the envelope. Every
     step is CAS-guarded, so concurrent deciders converge instead of duplicating.
@@ -621,32 +572,17 @@ async def reconcile_conversation_ledger(conversation_id: str) -> None:
 
 
 async def _wake_agent(row: ApprovalLedgerDocument, outcome: str, result: object) -> None:
-    """One DECISIONS line into the executor inbox — the agent's only signal.
+    """One DECISIONS line into the executor inbox; a missing Redis or a failed append raises.
 
     Inbox is transport, ledger is truth: a lost wake re-surfaces via the next
-    OPEN PENDINGS injection, never via re-execution. A missing Redis client is
-    a loud error, never a silent drop — append no-ops without one, so this
-    checks first instead of reporting a delivery that never happened.
+    OPEN PENDINGS injection, never via re-execution.
     """
     if redis_cache.client is None:
-        log.error(
-            f"{LogTag.HIL} Ledger wake dropped: no Redis client; agent will not learn this outcome",
-            approval_id=row.approval_id,
-            outcome=outcome,
-        )
-        return
+        raise LedgerWakeUndeliveredError(row.approval_id, outcome)
     preview = "" if result is None else str(result)[:500]
-    try:
-        await ExecutorInbox(row.conversation_id).append(
-            str(uuid4()),
-            f"DECISIONS: {row.approval_id}={outcome} {row.summary}"
-            + (f" :: {preview}" if preview else ""),
-            AgentTag.HIL_DECISION,
-        )
-    except Exception as e:
-        log.error(
-            f"{LogTag.HIL} Ledger wake failed; outcome lives on the row only",
-            approval_id=row.approval_id,
-            outcome=outcome,
-            error_type=type(e).__name__,
-        )
+    await ExecutorInbox(row.conversation_id).append(
+        str(uuid4()),
+        f"DECISIONS: {row.approval_id}={outcome} {row.summary}"
+        + (f" :: {preview}" if preview else ""),
+        AgentTag.HIL_DECISION,
+    )

@@ -33,19 +33,6 @@ class WorkCancelled(ResponseModel):
         default_factory=list, description="Workflow playbook replays stopped, by stream id."
     )
 
-    def combined_with(self, other: "WorkCancelled") -> "WorkCancelled":
-        """Return both cancels as one: what a Stop's logged and unlogged halves came to."""
-        return WorkCancelled(
-            executor_stopped=self.executor_stopped or other.executor_stopped,
-            executor_task_id=self.executor_task_id or other.executor_task_id,
-            executor_spared=self.executor_spared or other.executor_spared,
-            pending_task_ids=[*self.pending_task_ids, *other.pending_task_ids],
-            subagent_ids=list(dict.fromkeys([*self.subagent_ids, *other.subagent_ids])),
-            approval_ids=[*self.approval_ids, *other.approval_ids],
-            browser_jobs={**self.browser_jobs, **other.browser_jobs},
-            replay_ids=[*self.replay_ids, *other.replay_ids],
-        )
-
     @property
     def stopped_anything(self) -> bool:
         """Whether the stop reached any work at all."""

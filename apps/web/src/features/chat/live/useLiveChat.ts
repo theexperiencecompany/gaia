@@ -1,26 +1,21 @@
-import { TOOL_CALLS_DATA_TOOL_NAME } from "@shared/chat";
+import type { ToolProgress } from "@shared/api/generated";
 import {
-  type ConversationView,
   DISPLAY_STATE,
   DISPLAY_STATUS_TEXT,
   type DisplayState,
+  type ScreenRow,
+  screenRows,
   sendingLoadingRow,
 } from "@shared/conversation";
 import { useEffect, useMemo } from "react";
-import { readToolDataLoadingHints } from "@/features/chat/utils/loadingHints";
-import {
-  type ActiveToolInfo,
-  useAuxLoadingStore,
-} from "@/stores/auxLoadingStore";
+import { useAuxLoadingStore } from "@/stores/auxLoadingStore";
 import { useChatStore } from "@/stores/chatStore";
-import type { MessageType } from "@/types/features/convoTypes";
 import { getRandomThinkingMessage } from "@/utils/playfulThinking";
 import { openConversation } from "./connection";
 import {
   useLiveConversation,
   useLiveConversationStore,
 } from "./liveConversationStore";
-import { liveMessages } from "./liveMessages";
 
 /** Follow the conversation's events while the component that shows it is mounted. */
 export function useOpenConversation(conversationId: string | null): void {
@@ -30,10 +25,10 @@ export function useOpenConversation(conversationId: string | null): void {
   }, [conversationId]);
 }
 
-/** The conversation's rows from its event stream, in the shape the chat bubbles render. */
-export function useLiveMessages(conversationId: string | null): MessageType[] {
-  const { view, sends } = useLiveConversation(conversationId);
-  return useMemo(() => liveMessages(view, sends), [view, sends]);
+/** The rows of the conversation's screen, in the server's order. */
+export function useScreenRows(conversationId: string | null): ScreenRow[] {
+  const { view } = useLiveConversation(conversationId);
+  return useMemo(() => screenRows(view), [view]);
 }
 
 /** What the server says GAIA is doing in this conversation; idle for one not open here. */
@@ -48,22 +43,11 @@ export function useConversationDisplay(
   );
 }
 
-function newestToolInfo(view: ConversationView): ActiveToolInfo | undefined {
-  const entry = view.drafts
-    .at(-1)
-    ?.content.tool_data.findLast(
-      (candidate) => candidate.tool_name === TOOL_CALLS_DATA_TOOL_NAME,
-    );
-  const hints = entry ? readToolDataLoadingHints(entry.data) : null;
-  if (!hints) return undefined;
-  const { message: _message, ...toolInfo } = hints;
-  return toolInfo;
-}
-
 export interface LiveLoading {
   isLoading: boolean;
   loadingText: string;
-  toolInfo?: ActiveToolInfo;
+  /** The tool line the server states for what streams now. */
+  progress?: ToolProgress;
 }
 
 /** The loading row: shown whenever GAIA owes the user something, or a voice or upload flow is busy. */
@@ -81,15 +65,15 @@ function useLiveLoading(conversationId: string | null): LiveLoading {
     return {
       isLoading: true,
       loadingText:
-        row.detail ??
+        row.progress?.message ??
         (status === DISPLAY_STATE.THINKING
           ? thinkingText
           : DISPLAY_STATUS_TEXT[status]),
-      toolInfo: newestToolInfo(view),
+      progress: row.progress ?? undefined,
     };
   }
   if (aux) {
-    return { isLoading: true, loadingText: aux.text, toolInfo: aux.toolInfo };
+    return { isLoading: true, loadingText: aux.text };
   }
   return { isLoading: false, loadingText: "" };
 }

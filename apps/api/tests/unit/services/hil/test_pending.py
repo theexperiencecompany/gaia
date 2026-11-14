@@ -1,134 +1,90 @@
-"""The approvals waiting on the user are the ones the conversation log has pending, with their envelopes."""
+"""The open approvals a typed reply numbers: the screen's order, and every one of them."""
 
 from collections.abc import Iterator
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
-import time_machine
 
-from app.constants.conversation import APPROVAL_EXPIRY_GRACE
-from app.constants.hil import HIL_APPROVAL_TIMEOUT_SECONDS
-from app.models.conversation_log_models import ConversationState, LiveWork
+from app.models.conversation_log_models import Entry
+from app.models.conversation_screen_models import WorkItem
 from app.models.hil_models import ApprovalLedgerDocument
-from app.services.hil.pending import pending_approvals, pending_approvals_by_owner
-
-from .conftest import CONVERSATION_ID, USER_ID
+from app.services.conversation.screen import project_screen
+from app.services.hil.errors import ApprovalRequestNotFoundError
+from app.services.hil.pending import pending_approvals
+from tests.unit.services.conversation.log_helpers import asked, fold, logged, started, user
 
 MODULE = "app.services.hil.pending"
-NOW = datetime(2026, 11, 14, 12, 0, tzinfo=UTC)
+NOW = datetime(2026, 11, 14, 10, 0, tzinfo=UTC)
+# Task A starts first; B asks "pay" before A asks "email".
+ENTRIES: tuple[Entry, ...] = (
+    user("u1"),
+    started("w1", "task_a", 1),
+    started("w2", "task_b", 1),
+    asked("q1", "task_b", "pay"),
+    asked("q2", "task_a", "email"),
+)
+CREATED = {"pay": NOW, "email": NOW + timedelta(seconds=4)}
 
 
-def _work(task_id: str, *approvals: str) -> LiveWork:
-    return LiveWork(
-        task_id=task_id, cause_through=1, answers=(), pending_approvals=frozenset(approvals)
-    )
-
-
-def _state(*work: LiveWork) -> ConversationState:
-    return ConversationState.model_construct(work=work)
-
-
-def _row(
-    approval_id: str,
-    created_at: datetime | None,
-    *,
-    conversation_id: str = CONVERSATION_ID,
-    owner_id: str = "",
-) -> ApprovalLedgerDocument:
+def _row(approval_id: str) -> ApprovalLedgerDocument:
     return ApprovalLedgerDocument(
         approval_id=approval_id,
-        conversation_id=conversation_id,
-        user_id=USER_ID,
+        conversation_id="c1",
+        user_id="u1",
         fingerprint=f"fp-{approval_id}",
         tool_name="GMAIL_SEND_EMAIL",
-        created_at=created_at,
-        owner_run_type="todo" if owner_id else "",
-        owner_id=owner_id,
+        args={},
+        summary=approval_id,
+        created_at=CREATED[approval_id],
     )
-
-
-@dataclass
-class Seams:
-    state: AsyncMock
-    ledger: MagicMock
 
 
 @pytest.fixture
-def seams() -> Iterator[Seams]:
-    ports = MagicMock()
-    ports.log.state = AsyncMock()
-    ledger = MagicMock()
+def log_state() -> AsyncMock:
+    """Serve the conversation log's state read, folded from ENTRIES."""
+    state, _ = fold(ENTRIES)
+    return AsyncMock(return_value=state)
+
+
+@pytest.fixture
+def ledger(log_state: AsyncMock) -> Iterator[dict[str, ApprovalLedgerDocument]]:
+    rows = {approval_id: _row(approval_id) for approval_id in CREATED}
+    ports = SimpleNamespace(log=SimpleNamespace(state=log_state))
     with (
         patch(f"{MODULE}.runtime_ports", return_value=ports),
-        patch(f"{MODULE}.approval_ledger_repository", new=ledger),
+        patch(
+            f"{MODULE}.approval_ledger_repository.get_by_approval_id",
+            new=AsyncMock(side_effect=rows.get),
+        ),
     ):
-        yield Seams(state=ports.log.state, ledger=ledger)
+        yield rows
 
 
-class TestPendingApprovals:
-    async def test_every_logged_approval_comes_back_once_oldest_first(self, seams: Seams) -> None:
-        rows = {
-            "ap_a": _row("ap_a", NOW),
-            "ap_b": _row("ap_b", None),
-            "ap_d": _row("ap_d", NOW),
-            "ap_e": _row("ap_e", NOW - timedelta(minutes=1)),
-        }
-        seams.state.return_value = _state(
-            _work("t1", "ap_d", "ap_a", "ap_gone"), _work("t2", "ap_a", "ap_b", "ap_e")
-        )
-        seams.ledger.get_by_approval_id = AsyncMock(side_effect=rows.get)
-
-        pending = await pending_approvals(CONVERSATION_ID, USER_ID)
-
-        assert [row.approval_id for row in pending] == ["ap_b", "ap_e", "ap_a", "ap_d"]
-        seams.state.assert_awaited_once_with(CONVERSATION_ID, USER_ID)
-        assert [call.args for call in seams.ledger.get_by_approval_id.await_args_list] == [
-            ("ap_a",),
-            ("ap_b",),
-            ("ap_d",),
-            ("ap_e",),
-            ("ap_gone",),
-        ]
-
-    async def test_a_conversation_with_nothing_logged_pending_has_none(self, seams: Seams) -> None:
-        seams.state.return_value = _state(_work("t1"))
-        seams.ledger.get_by_approval_id = AsyncMock()
-
-        assert await pending_approvals(CONVERSATION_ID, USER_ID) == []
-        seams.ledger.get_by_approval_id.assert_not_awaited()
+def _screen_order() -> list[str]:
+    screen = project_screen([logged(seq, entry) for seq, entry in enumerate(ENTRIES, start=1)])
+    return [
+        request.approval_id
+        for item in screen
+        if isinstance(item, WorkItem)
+        for request in item.asking
+    ]
 
 
-class TestPendingApprovalsByOwner:
-    @time_machine.travel(NOW, tick=False)
-    async def test_each_owner_gets_its_oldest_approval_still_pending_in_its_log(
-        self, seams: Seams
-    ) -> None:
-        older = _row("ap_1", NOW - timedelta(minutes=9), owner_id="todo-1")
-        newer = _row("ap_2", NOW - timedelta(minutes=1), owner_id="todo-1")
-        decided = _row("ap_3", NOW, conversation_id="conv-2", owner_id="todo-2")
-        seams.ledger.list_by_owners = AsyncMock(return_value=[older, newer, decided])
-        logs = {
-            (CONVERSATION_ID, USER_ID): _state(_work("t1", "ap_1", "ap_2")),
-            ("conv-2", USER_ID): _state(_work("t2", "ap_other")),
-        }
+async def test_pending_approvals_number_in_the_order_the_screen_asks_them(
+    ledger: dict[str, ApprovalLedgerDocument], log_state: AsyncMock
+) -> None:
+    pending = await pending_approvals("c1", "u1")
 
-        async def _log_state(conversation_id: str, user_id: str) -> ConversationState:
-            return logs[(conversation_id, user_id)]
+    assert [row.approval_id for row in pending] == _screen_order() == ["email", "pay"]
+    log_state.assert_awaited_once_with("c1", "u1")
 
-        seams.state.side_effect = _log_state
 
-        oldest = await pending_approvals_by_owner("todo", ["todo-1", "todo-2"])
+async def test_a_pending_approval_without_a_ledger_row_fails_instead_of_shifting_the_numbers(
+    ledger: dict[str, ApprovalLedgerDocument],
+) -> None:
+    del ledger["email"]
 
-        assert oldest == {"todo-1": older}
-        seams.ledger.list_by_owners.assert_awaited_once_with(
-            "todo",
-            ["todo-1", "todo-2"],
-            created_since=NOW
-            - (timedelta(seconds=HIL_APPROVAL_TIMEOUT_SECONDS) + APPROVAL_EXPIRY_GRACE),
-        )
-        assert sorted(call.args for call in seams.state.await_args_list) == [
-            ("conv-1", USER_ID),
-            ("conv-2", USER_ID),
-        ]
+    with pytest.raises(ApprovalRequestNotFoundError):
+        await pending_approvals("c1", "u1")

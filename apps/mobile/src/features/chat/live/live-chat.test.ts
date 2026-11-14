@@ -125,6 +125,15 @@ const AT = "2026-11-12T10:00:00+00:00";
 const NOW = new Date("2026-11-12T12:00:00Z");
 const CONVERSATION = "conv-1";
 
+const progress = (message: string) => ({
+  message,
+  tool_name: "send",
+  tool_category: "gmail",
+  integration_name: null,
+  icon_url: null,
+  show_category: true,
+});
+
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 const lastStream = () => server.streams.at(-1) as OpenStream;
 const live = () => liveConversation(CONVERSATION);
@@ -206,14 +215,18 @@ describe("the mobile chat rendered from the conversation's screen", () => {
     release = openConversation(CONVERSATION);
     await flush();
     const card = toolCallCard("t1-0", "Sending email");
-    const running = { ...workItem("t1", 2, "running"), tool_data: [card] };
+    const running = {
+      ...workItem("t1", 2, "running"),
+      tool_data: [card],
+      timeline: { steps: [], cards: [], progress: progress("Sending email") },
+    };
     show(userItem("m1", 1, "email bob"), running);
     lastStream().push(stateFrame(2, "working", [liveTask("t1")]));
 
     const working = rows().at(-1);
     expect(working?.inProgress).toBe(true);
     expect(working?.toolData).toEqual([card]);
-    expect(loading().detail).toBe("Sending email");
+    expect(loading().progress?.message).toBe("Sending email");
 
     lastStream().push(
       updateFrame({ ...workItem("t1", 2, "done"), tool_data: [card] }, 3),
@@ -439,16 +452,16 @@ describe("sending", () => {
     expect(rows()[0]?.sendFailed).toBe(true);
   });
 
-  it("retries a failed reply as a new message naming the one it answers", async () => {
+  it("retries a failed reply by asking the server to answer the message it names", async () => {
     release = openConversation(CONVERSATION);
     await flush();
-    show(userItem("m1", 1, "plan my day"), replyItem("r1", 2, "", "failed"));
+    show(userItem("m1", 1, "plan my day"), {
+      ...replyItem("r1", 2, "", "failed"),
+      retry_target: "m1",
+    });
 
     await retryMessage(CONVERSATION, "r1");
 
-    expect(sendResult.calls[0]?.body).toMatchObject({
-      text: "plan my day",
-      retry_of: "m1",
-    });
+    expect(sendResult.calls[0]?.body).toMatchObject({ target: "m1" });
   });
 });

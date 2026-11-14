@@ -5,7 +5,7 @@ every (cancelled? × kind × workflow) combination must route to exactly the
 right terminal action. If a future change reintroduces an early-return on
 cancellation, or flips ownership, these fail.
 
-Boundaries mocked: Redis (StreamManager, redis_cache), the conversation's
+Boundaries mocked: Redis (the stop mark, redis_cache), the conversation's
 inbox, and the two delivery entry points (each pinned by its own test file).
 Session state and the routing logic under test are real.
 """
@@ -13,6 +13,7 @@ Session state and the routing logic under test are real.
 import asyncio
 from collections.abc import Iterator, Mapping
 from contextlib import ExitStack, contextmanager
+import dataclasses
 from dataclasses import replace
 import time
 from types import SimpleNamespace
@@ -45,6 +46,8 @@ from app.agents.core.background.session import (
     RunIdentity,
     RunKind,
     create_session,
+    get_session,
+    teardown_session,
 )
 from app.agents.core.outcome_review import NOT_REVIEWED, OutcomeReview
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext, SubagentOutcome
@@ -60,7 +63,6 @@ from app.constants.executor import (
 )
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import StreamManager
 from app.models.agent_models import InboxEntry
 from app.models.chat_models import SourceCategory
 from app.models.conversation_log_models import WorkOutcome
@@ -99,12 +101,9 @@ class _Boundaries:
     """All patched collaborators for one _finalize_executor_run call."""
 
     def __init__(self, stack) -> None:
-        self.stream_manager = stack.enter_context(patch.object(er, "StreamManager"))
-        self.stream_manager.is_cancelled = AsyncMock(return_value=False)
-        self.stream_manager.publish_chunk = AsyncMock()
-        self.stream_manager.complete_stream = AsyncMock()
-        # A queued run's stream is closed by close_detached_stream, in executor_queue.
-        stack.enter_context(patch.object(eq, "StreamManager", self.stream_manager))
+        self.stop_requested = stack.enter_context(
+            patch.object(er, "stop_requested", AsyncMock(return_value=False))
+        )
         self.release = stack.enter_context(
             patch.object(er, "release_lock_if_owned", new_callable=AsyncMock)
         )
@@ -143,7 +142,7 @@ class TestACompletedResultIsNeverDiscarded:
 
     async def test_a_run_not_said_to_be_stopped_is_a_finished_one(self, boundaries) -> None:
         """The default is the finished run: only the runner, which knows, says otherwise."""
-        boundaries.stream_manager.is_cancelled.return_value = True
+        boundaries.stop_requested.return_value = True
         create_session("s1", RunKind.LIVE)
 
         await er._finalize_executor_run(_run(RunKind.LIVE), "the answer", "final")
@@ -255,7 +254,7 @@ class TestDoneSignalAndOrdering:
     @pytest.mark.parametrize("cancelled", [True, False])
     async def test_done_event_is_always_signalled(self, boundaries, cancelled) -> None:
         """The chat stream blocks on this event — a missed signal hangs the SSE until the wait timeout, regardless of how the run ended."""
-        boundaries.stream_manager.is_cancelled.return_value = cancelled
+        boundaries.stop_requested.return_value = cancelled
         session = create_session("s1", RunKind.LIVE)
 
         await er._finalize_executor_run(_run(RunKind.LIVE), "txt", "final")
@@ -297,7 +296,7 @@ class TestCancelStillCarriesHandedOverWork:
 
     async def test_stop_does_not_strand_work_handed_over_mid_run(self, boundaries) -> None:
         """BUG B: the user hands the running executor a second thing, then presses Stop."""
-        boundaries.stream_manager.is_cancelled.return_value = True
+        boundaries.stop_requested.return_value = True
         create_session("s1", RunKind.QUEUED)
         boundaries.pending = [InboxEntry(id="e1", text="the handed-over ask")]
         boundaries.prepare.return_value = PreparedQueuedTask(
@@ -425,9 +424,7 @@ def _real_lock_lifecycle(cache: _FakeRedisCache):
         stack.enter_context(patch.object(eq, "redis_cache", cache))
         stack.enter_context(patch.object(running_registry, "redis_cache", cache))
         stack.enter_context(patch.object(executor_progress, "redis_cache", cache))
-        stack.enter_context(patch.object(er, "StreamManager")).is_cancelled = AsyncMock(
-            return_value=False
-        )
+        stack.enter_context(patch.object(er, "stop_requested", AsyncMock(return_value=False)))
         stack.enter_context(patch.object(er, "_log_work_finished", new_callable=AsyncMock))
         stack.enter_context(patch.object(er, "ExecutorInbox")).return_value.read = AsyncMock(
             return_value=[]
@@ -736,7 +733,7 @@ class TestTerminalRunMetrics:
 
     async def test_error_run_records_error_status_and_a_zero_e2e_sample(self, boundaries) -> None:
         """Labelled lowercase error, and a stamp equal to the finalize instant is a real 0.0 sample."""
-        boundaries.stream_manager.is_cancelled.return_value = False
+        boundaries.stop_requested.return_value = False
         run = replace(_run(RunKind.QUEUED), t_dispatch_perf=1234.5, queued=True)
         create_session("s1", RunKind.QUEUED)
         e2e_before = _count("executor_e2e_seconds", {"status": "error", "queued": "true"})
@@ -759,7 +756,7 @@ class TestTerminalRunMetrics:
         )
 
     async def test_cancelled_run_records_cancelled_status(self, boundaries) -> None:
-        boundaries.stream_manager.is_cancelled.return_value = True
+        boundaries.stop_requested.return_value = True
         run = replace(_run(RunKind.QUEUED), t_dispatch_perf=1234.5, queued=True)
         create_session("s1", RunKind.QUEUED)
         before = _counter("executor_run_total", {"status": "cancelled", "queued": "true"})
@@ -820,13 +817,12 @@ class TestARunHandsFinalizeWhatItProduced:
             enter = stack.enter_context
             enter(patch.object(er, "prepare_executor_execution", prepare))
             enter(patch.object(er, "execute_subagent_stream", execute))
-            enter(patch.object(er, "make_redis_stream_writer", MagicMock()))
+            enter(patch.object(er, "make_session_writer", MagicMock()))
             enter(patch.object(er, "thread_messages", _thread_of))
             deliver = enter(patch.object(er, "_log_work_finished", AsyncMock()))
             enter(patch.object(er, "release_lock_if_owned", AsyncMock()))
-            enter(patch.object(StreamManager, "is_cancelled", AsyncMock(return_value=False)))
+            enter(patch.object(er, "stop_requested", AsyncMock(return_value=False)))
             enter(patch("app.services.analytics_service.capture", MagicMock()))
-            enter(patch.object(eq, "StreamManager", AsyncMock()))
             spawn = enter(patch.object(er, "_spawn_detached_run"))
             yield SimpleNamespace(deliver=deliver, spawn=spawn)
 
@@ -915,3 +911,44 @@ async def test_a_stopped_run_reports_that_the_user_stopped_it() -> None:
     report = record.await_args.args[4]
     assert record.await_args.args[3] is WorkOutcome.CANCELLED
     assert report.text == WORK_STOPPED_REPORT
+
+
+class TestWhatAStopCancels:
+    async def test_a_finished_answer_is_not_cancelled_by_a_late_stop(self, boundaries) -> None:
+        boundaries.stop_requested.return_value = True
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), "the answer", "final")
+
+        assert boundaries.logged.await_args.args[1].was_cancelled is False
+
+    async def test_a_stopped_run_is_cancelled_when_its_own_stream_was_told_to_stop(
+        self, boundaries
+    ) -> None:
+        boundaries.stop_requested.return_value = True
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), "partial", "final", stopped=True)
+
+        assert boundaries.logged.await_args.args[1].was_cancelled is True
+        boundaries.stop_requested.assert_awaited_once_with("s1")
+
+    async def test_finalizing_drops_the_runs_session(self, boundaries) -> None:
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), "the answer", "final")
+
+        assert get_session("s1") is None
+
+
+def test_a_run_with_no_task_writes_its_frames_into_its_own_session() -> None:
+    create_session("s-writer", RunKind.QUEUED)
+    run = dataclasses.replace(_run(RunKind.QUEUED, stream_id="s-writer"), task_id=None)
+
+    write, _ = er._stream_writer(run)
+    write({"progress": "Looking"})
+
+    session = get_session("s-writer")
+    assert session is not None
+    assert session.tool_events == [{"progress": "Looking"}]
+    teardown_session("s-writer")

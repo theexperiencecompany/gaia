@@ -32,13 +32,14 @@ from app.models.conversation_send_models import (
     BargeInRequest,
     ConversationEvent,
     MessageAccepted,
+    RetryMessageRequest,
     SendMessageRequest,
 )
 from app.models.user_models import AuthenticatedUser
 from app.models.work_cancel_models import ConversationStopResponse
 from app.services.conversation.event_stream import event_lines
 from app.services.conversation.runtime import runtime_ports
-from app.services.conversation.send import submit_barge_in, submit_message
+from app.services.conversation.send import submit_barge_in, submit_message, submit_retry
 from app.services.conversation_service import (
     batch_sync_conversations,
     create_conversation_service,
@@ -182,6 +183,24 @@ async def send_message_endpoint(
     return accepted
 
 
+@router.post("/conversations/{conversation_id}/retry", status_code=status.HTTP_202_ACCEPTED)
+@tiered_rate_limit("chat_messages")
+async def retry_message_endpoint(
+    request: Request,
+    conversation_id: str,
+    body: RetryMessageRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> MessageAccepted:
+    """Answer one of the conversation's user messages again; the new reply arrives on the events stream."""
+    log.set(
+        user={"id": user.user_id},
+        conversation={"operation": ConversationOperation.RETRY, "id": conversation_id},
+    )
+    accepted = await submit_retry(conversation_id, user, body, request_client_source(request))
+    log.set_ns("conversation", message_id=accepted.message_id, seq=accepted.seq)
+    return accepted
+
+
 @router.post("/conversations/{conversation_id}/barge-in", status_code=status.HTTP_202_ACCEPTED)
 async def barge_in_endpoint(
     conversation_id: str,
@@ -258,7 +277,7 @@ async def stop_conversation_endpoint(
         conversation={"operation": ConversationOperation.STOP, "id": conversation_id},
     )
     await require_owned_conversation(conversation_id, user.user_id)
-    result = await press_stop(conversation_id, user.user_id, None)
+    result = await press_stop(conversation_id, user.user_id)
     log.set_ns("conversation", stopped_work=result.work.stopped_anything)
     return result
 

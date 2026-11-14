@@ -80,6 +80,8 @@ from app.utils.liveness import keep_proving
 from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.chat import ChatTurnReacted
 from shared.py.conversation_wire import (
+    BubblesDelta,
+    BubbleTextDelta,
     CardsDelta,
     FailureReason,
     FollowUpsDelta,
@@ -136,13 +138,15 @@ class _Attempt:
     segment: int = 0
     # Waking entries after covers, of the batch's group, not past a Stop.
     joiners: tuple[LoggedEntry, ...] = ()
-    # Joiners handed to the run; covered once the model writes again, as the tools still show above them.
+    # Joiners absorbed while text showed: their segment opens once the model writes again.
     absorbed: tuple[LoggedEntry, ...] = ()
     # A Stop or another group's input ended the run of joinable entries.
     closed: bool = False
     deltas: int = 0
     # The current segment's text as it streamed, which its bubbles are split from.
     text: ReplyText = field(default_factory=ReplyText)
+    # The bubbles clients were last sent: behind text while a take-back is held.
+    shown: tuple[str, ...] = ()
     # The reply as settled once the answer was final; the run only adds follow-up suggestions after.
     answered: LoggedEntry | None = None
 
@@ -448,7 +452,7 @@ async def _run_attempt(
         raise
     except Exception as error:  # a store or stream failure mid-attempt fails it, under the claim
         await run.cancel(CancelReason.LOST)
-        await _answer_below_absorbed(ports, attempt)
+        await _open_absorbed_segment(ports, attempt)
         await _fail(ports, attempt, error)
         return
     except BaseException:
@@ -482,6 +486,7 @@ async def _watch(ports: RuntimePorts, attempt: _Attempt, run: CommsRun) -> _Endi
             if isinstance(signal, Finished | _Crashed):
                 return signal
             if isinstance(signal, Answered):
+                await _open_absorbed_segment(ports, attempt)
                 attempt.answered = await _finish(ports, attempt, signal.outcome)
             elif not isinstance(signal, _Tick):
                 await _handle(ports, attempt, run, signal)
@@ -578,25 +583,18 @@ async def _handle(
             _commit_quietly(attempt)
         case ModelOutput(has_tool_calls=has_tool_calls):
             _commit_quietly(attempt)
-            await _answer_below_absorbed(ports, attempt)
+            await _open_absorbed_segment(ports, attempt)
             if has_tool_calls and attempt.joiners:
                 await run.absorb(attempt.joiners)
-                attempt.absorbed = attempt.joiners
+                if isinstance(attempt.progress, _Showing):
+                    attempt.absorbed = (*attempt.absorbed, *attempt.joiners)
+                else:
+                    attempt.covers = (*attempt.covers, *attempt.joiners)
                 attempt.joiners = ()
         case Streamed(payload=payload, by_model=by_model):
             if by_model:
-                await _answer_below_absorbed(ports, attempt)
+                await _open_absorbed_segment(ports, attempt)
             await _show(ports, attempt, payload)
-
-
-async def _answer_below_absorbed(ports: RuntimePorts, attempt: _Attempt) -> None:
-    """Once the model writes after an absorb, or the run ends, settle what was shown above the absorbed inputs; the rest answers below them."""
-    if not attempt.absorbed:
-        return
-    if isinstance(attempt.progress, _Showing):
-        await _next_segment(ports, attempt)
-    attempt.covers = (*attempt.covers, *attempt.absorbed)
-    attempt.absorbed = ()
 
 
 def _commit_quietly(attempt: _Attempt) -> None:
@@ -604,15 +602,18 @@ def _commit_quietly(attempt: _Attempt) -> None:
         attempt.progress = _Quiet(reason=CommitReason.MODEL_OUTPUT)
 
 
-async def _next_segment(ports: RuntimePorts, attempt: _Attempt) -> None:
-    """Settle the text the user already read where it stands, answering what it covered; the rest answers below the absorbed messages."""
+async def _open_absorbed_segment(ports: RuntimePorts, attempt: _Attempt) -> None:
+    """Settle the text the user already read where it stands; the rest answers below the absorbed messages."""
+    if not attempt.absorbed:
+        return
     await _conclude(ports, attempt, _base_reply(attempt), ReplyOutcome.ANSWERED)
-    attempt.covers = ()
+    attempt.covers, attempt.absorbed = attempt.absorbed, ()
     attempt.segment += 1
     attempt.reply_id = f"r{attempt.attempt_id}"
     attempt.progress = _Quiet(reason=CommitReason.MODEL_OUTPUT)
     attempt.deltas = 0
     attempt.text = ReplyText()
+    attempt.shown = ()
 
 
 async def _show(ports: RuntimePorts, attempt: _Attempt, payload: StreamPayload) -> None:
@@ -621,7 +622,6 @@ async def _show(ports: RuntimePorts, attempt: _Attempt, payload: StreamPayload) 
     A hand-off alone opens nothing: the work's bubble, at its WorkStarted, shows it.
     """
     before = _base_reply(attempt)
-    bubbles_before = attempt.text.bubbles
     if isinstance(payload, ResponseEvent | MessageBoundaryEvent):
         attempt.text = attempt.text.take(payload)
     folded = _fold(before, payload, attempt.text)
@@ -638,15 +638,21 @@ async def _show(ports: RuntimePorts, attempt: _Attempt, payload: StreamPayload) 
     attempt.progress = (
         replace(shown, reply=folded) if isinstance(shown, _Showing) else _Drafting(reply=folded)
     )
-    for change in _reply_deltas(before, folded, payload, bubbles_before, attempt.text.bubbles):
-        delta = ReplyDeltaFrame(
-            attempt_id=attempt.attempt_id,
-            reply_id=attempt.reply_id,
-            index=attempt.deltas,
-            payload=change,
-        )
-        attempt.deltas += 1
-        await ports.frames.publish(attempt.claim.conversation_id, delta)
+    for change in _reply_deltas(before, folded, payload, attempt.shown, attempt.text.bubbles):
+        await _publish_delta(ports, attempt, change)
+
+
+async def _publish_delta(ports: RuntimePorts, attempt: _Attempt, change: ReplyDelta) -> None:
+    if isinstance(change, BubbleTextDelta | BubblesDelta):
+        attempt.shown = attempt.text.bubbles
+    delta = ReplyDeltaFrame(
+        attempt_id=attempt.attempt_id,
+        reply_id=attempt.reply_id,
+        index=attempt.deltas,
+        payload=change,
+    )
+    attempt.deltas += 1
+    await ports.frames.publish(attempt.claim.conversation_id, delta)
 
 
 def _reply_deltas(
@@ -677,7 +683,7 @@ async def _end(ports: RuntimePorts, attempt: _Attempt, run: CommsRun, ending: _E
     # A restart withdraws the attempt and a lost claim leaves it to the new holder; every other end
     # settles what was shown above the inputs the run absorbed, and answers those below them.
     if ending is not Verdict.RESTART and ending is not Verdict.LOST:
-        await _answer_below_absorbed(ports, attempt)
+        await _open_absorbed_segment(ports, attempt)
     match ending:
         case Finished(outcome=outcome) if attempt.answered is not None:
             await _add_follow_ups(ports, attempt, attempt.answered, outcome)
@@ -999,6 +1005,9 @@ def _base_reply(attempt: _Attempt) -> Reply:
 
 
 async def _put_reply(ports: RuntimePorts, attempt: _Attempt, reply: Reply) -> LoggedEntry:
+    if attempt.shown != attempt.text.bubbles:
+        # A take-back no text replaced: clients drop it now, as the stored reply does.
+        await _publish_delta(ports, attempt, BubblesDelta(bubbles=attempt.text.bubbles))
     if isinstance(attempt.progress, _Showing):
         return await _amend_seen(ports, attempt, reply)
     return await _append_seen(ports, attempt, await _opening_reply(ports, attempt, reply))

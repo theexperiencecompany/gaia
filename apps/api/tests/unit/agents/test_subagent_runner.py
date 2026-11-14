@@ -1,7 +1,6 @@
 """Unit tests for subagent_runner.py."""
 
 from contextlib import contextmanager
-import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -18,9 +17,8 @@ import pytest
 from app.agents.context.assemble import AssembledContext
 from app.agents.context.slots import PromptSlot
 from app.agents.context.tiers import AgentTier
-from app.agents.core.background import redis_writer as rw
-from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.session import RunKind, StreamSession, create_session
+from app.agents.core.background.session_writer import make_session_writer
 from app.agents.core.background.subagent_channel import SubagentCancel
 from app.agents.core.graph_manager import GraphUnavailableError
 from app.agents.core.subagents.subagent_runner import (
@@ -37,10 +35,12 @@ from app.agents.core.subagents.subagent_runner import (
 )
 from app.agents.llm.lane import AgentRole
 from app.constants.agents import NO_ANSWER_NOTICE, AgentTag, wrap_agent_payload
+from app.constants.general import EXECUTOR_INTEGRATION_ID
 from app.constants.llm import BUDGET_STOP_METADATA_KEY, DEV_MODEL_OPTIONS, EXECUTOR_RECURSION_LIMIT
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread
 from app.models.mcp_config import MCPConfig, SubAgentConfig
 from app.models.subagent_models import Subagent
+from app.override.langgraph_bigtool.utils import NUDGE_CONTINUE_NODE
 from tests._harness.context_chain import slots_of
 
 # ---------------------------------------------------------------------------
@@ -341,6 +341,25 @@ class TestExecuteSubagentStream:
         assert result.text == "Hello world"
 
     @pytest.mark.asyncio
+    async def test_a_stop_the_completion_nudge_sent_back_is_not_part_of_the_answer(self):
+        early = AIMessageChunk(content="Not added.", id="m1")
+        final = AIMessageChunk(content="Skipped the todo you denied.", id="m2")
+
+        async def _fake_astream(*args, **kwargs):
+            yield ("messages", (early, {}))
+            yield ("updates", {NUDGE_CONTINUE_NODE: {"messages": [HumanMessage("finish")]}})
+            yield ("messages", (final, {}))
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        ctx = _make_ctx(subagent_graph=mock_graph, integration_id=EXECUTOR_INTEGRATION_ID)
+
+        with patch("app.agents.core.subagents.subagent_runner.log"):
+            result = await execute_subagent_stream(ctx)
+
+        assert result.text == "Skipped the todo you denied."
+
+    @pytest.mark.asyncio
     async def test_silent_messages_skipped(self):
         chunk = AIMessageChunk(content="should skip")
 
@@ -587,7 +606,7 @@ class TestExecuteSubagentStream:
         with (
             patch("app.agents.core.subagents.subagent_runner.log"),
             patch(
-                "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
+                "app.agents.core.subagents.subagent_runner.stop_requested",
                 new_callable=AsyncMock,
                 side_effect=cancel_calls,
             ),
@@ -618,7 +637,7 @@ class TestExecuteSubagentStream:
         with (
             patch("app.agents.core.subagents.subagent_runner.log"),
             patch(
-                "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
+                "app.agents.core.subagents.subagent_runner.stop_requested",
                 new_callable=AsyncMock,
                 return_value=False,
             ),
@@ -643,7 +662,7 @@ class TestExecuteSubagentStream:
         with (
             patch("app.agents.core.subagents.subagent_runner.log"),
             patch(
-                "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
+                "app.agents.core.subagents.subagent_runner.stop_requested",
                 new_callable=AsyncMock,
                 return_value=True,
             ),
@@ -663,7 +682,7 @@ class TestExecuteSubagentStream:
         with (
             patch("app.agents.core.subagents.subagent_runner.log"),
             patch(
-                "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
+                "app.agents.core.subagents.subagent_runner.stop_requested",
                 new_callable=AsyncMock,
                 return_value=False,
             ),
@@ -1529,40 +1548,25 @@ def _thinking(text: str) -> AIMessageChunk:
 
 @contextmanager
 def _real_stream_writer(stream_id: str = "s-reasoning"):
-    """Drive the run through the REAL redis stream writer over a live session.
-
-    The split under test lives between the publish and the collector, so a
-    MagicMock writer cannot see it: the SSE frames and the persisted entries have
-    to come off the same run.
-    """
+    """Drive the run through the REAL session writer over a live session; a MagicMock writer cannot coalesce."""
     session = create_session(stream_id, RunKind.QUEUED)
-    with patch.object(rw, "stream_manager") as stream_manager:
-        stream_manager.publish_chunk = AsyncMock()
-        yield make_redis_stream_writer(stream_id), stream_manager, session
-
-
-def _published_reasoning(stream_manager: MagicMock) -> list[str]:
-    frames = [
-        json.loads(call[0][1].removeprefix("data: "))
-        for call in stream_manager.publish_chunk.call_args_list
-    ]
-    return [frame["reasoning"]["content"] for frame in frames if "reasoning" in frame]
+    yield make_session_writer(stream_id), session
 
 
 def _collected_reasoning(session: StreamSession) -> list[str]:
     return [evt["reasoning"]["content"] for evt in session.tool_events if "reasoning" in evt]
 
 
-class TestReasoningStreamsPerDeltaButPersistsPerBlock:
-    """The live stream stays token by token, but the SAVE coalesces each contiguous run of thinking into one entry.
+class TestReasoningPersistsPerBlock:
+    """The SAVE coalesces each contiguous run of thinking into one entry.
 
     One prod conversation ended up carrying ~22k reasoning entries when saved
     per token instead.
     """
 
     @pytest.mark.asyncio
-    async def test_four_deltas_stream_as_four_frames_and_persist_as_two_entries(self):
-        with _real_stream_writer() as (writer, stream_manager, session):
+    async def test_four_deltas_persist_as_two_entries(self):
+        with _real_stream_writer() as (writer, session):
 
             async def _fake_astream(*args, **kwargs):
                 yield ("messages", (_thinking("a"), {}))
@@ -1585,14 +1589,12 @@ class TestReasoningStreamsPerDeltaButPersistsPerBlock:
             ):
                 await execute_subagent_stream(ctx, stream_writer=writer)
 
-            # Liveness: every delta reached the client, in order.
-            assert _published_reasoning(stream_manager) == ["a", "b", "c", "d"]
             # Persistence: the tool call is the only boundary, so two blocks.
             assert _collected_reasoning(session) == ["abc", "d"]
 
     @pytest.mark.asyncio
     async def test_thinking_with_no_tool_after_it_is_one_entry_not_dropped(self):
-        with _real_stream_writer() as (writer, stream_manager, session):
+        with _real_stream_writer() as (writer, session):
 
             async def _fake_astream(*args, **kwargs):
                 yield ("messages", (_thinking("no tool "), {}))
@@ -1605,12 +1607,11 @@ class TestReasoningStreamsPerDeltaButPersistsPerBlock:
             with patch("app.agents.core.subagents.subagent_runner.log"):
                 await execute_subagent_stream(ctx, stream_writer=writer)
 
-            assert _published_reasoning(stream_manager) == ["no tool ", "followed this"]
             assert _collected_reasoning(session) == ["no tool followed this"]
 
     @pytest.mark.asyncio
     async def test_a_run_that_parks_on_an_approval_keeps_its_thinking(self):
-        with _real_stream_writer() as (writer, _stream_manager, session):
+        with _real_stream_writer() as (writer, session):
 
             async def _fake_astream(*args, **kwargs):
                 yield ("messages", (_thinking("this one "), {}))
@@ -1629,7 +1630,7 @@ class TestReasoningStreamsPerDeltaButPersistsPerBlock:
     @pytest.mark.asyncio
     async def test_two_subagents_thinking_on_one_stream_never_merge(self):
         """Merging on adjacency alone would splice one subagent's thinking into another's block."""
-        with _real_stream_writer() as (writer, _stream_manager, session):
+        with _real_stream_writer() as (writer, session):
             writer({"reasoning": {"content": "alpha ", "subagent_id": "sub-1"}})
             writer({"reasoning": {"content": "beta", "subagent_id": "sub-2"}})
             writer({"reasoning": {"content": " more", "subagent_id": "sub-2"}})
@@ -1810,7 +1811,7 @@ class TestSubagentRunLatency:
         with (
             patch("app.agents.core.subagents.subagent_runner.log"),
             patch(
-                "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
+                "app.agents.core.subagents.subagent_runner.stop_requested",
                 new_callable=AsyncMock,
                 return_value=True,
             ) as mock_is_cancelled,
@@ -1960,7 +1961,7 @@ async def _drive(ctx: SubagentExecutionContext) -> SubagentOutcome:
     with (
         patch("app.agents.core.subagents.subagent_runner.log"),
         patch(
-            "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
+            "app.agents.core.subagents.subagent_runner.stop_requested",
             new_callable=AsyncMock,
             return_value=False,
         ),

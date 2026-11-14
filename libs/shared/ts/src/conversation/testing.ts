@@ -50,13 +50,14 @@ export function userItem(
         at: AT,
         message: userMessageEntry(id, text),
       },
+      head: seq,
     },
   });
   if (frame.kind !== "screen_insert") throw new Error(frame.kind);
   return frame.item;
 }
 
-const NO_TIMELINE = { steps: [], cards: [] };
+const NO_TIMELINE = { steps: [], cards: [], progress: null };
 
 /** A reply item of one bubble, or of the bubbles given; outcome null while it is still being written. */
 export const replyItem = (
@@ -79,6 +80,7 @@ export const replyItem = (
   outcome: outcome as Extract<ScreenItem, { kind: "reply" }>["outcome"],
   failure: null,
   narrates: [],
+  retry_target: null,
   files: [],
 });
 
@@ -98,20 +100,21 @@ export const noticeItem = (
   follow_up_actions: [],
 });
 
-export const insertFrame = (item: ScreenItem): ConversationFrame => ({
-  kind: "screen_insert",
-  item,
-});
+/** A patch at the log head given; by default the head its item's own entry was logged at. */
+export const insertFrame = (
+  item: ScreenItem,
+  head = item.seq,
+): ConversationFrame => ({ kind: "screen_insert", item, head });
 
-export const updateFrame = (item: ScreenItem): ConversationFrame => ({
-  kind: "screen_update",
-  item,
-});
+export const updateFrame = (
+  item: ScreenItem,
+  head = item.seq,
+): ConversationFrame => ({ kind: "screen_update", item, head });
 
-export const screenFrame = (items: ScreenItem[]): ConversationFrame => ({
-  kind: "screen",
-  items,
-});
+export const screenFrame = (
+  items: ScreenItem[],
+  head = Math.max(0, ...items.map((item) => item.seq)),
+): ConversationFrame => ({ kind: "screen", items, head });
 
 export const replyDelta = (
   attemptId: string,
@@ -206,4 +209,5 @@ export const workItem = (
   tool_data: [],
   timeline: NO_TIMELINE,
   image: null,
+  retry_target: null,
 });
