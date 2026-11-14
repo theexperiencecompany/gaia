@@ -136,6 +136,9 @@ BRIEF_FAITHFULNESS_TEMPERATURE: Final[float] = 0.0
 # The user's own todos due today or overdue the daily brief weighs as candidates.
 DUE_TODO_CANDIDATES_LIMIT: Final[int] = 20
 
+# Their oldest open todos with no due date, offered for GAIA to show or skip.
+UNDATED_TODO_CANDIDATES_LIMIT: Final[int] = 3
+
 # Rows per list in the weekly edition (shipped, handled, the week ahead).
 WEEK_LIST_LIMIT: Final[int] = 5
 

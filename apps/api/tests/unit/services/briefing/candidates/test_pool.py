@@ -55,7 +55,7 @@ def producers(monkeypatch: pytest.MonkeyPatch) -> dict[str, MagicMock]:
         "waiting_candidates": MagicMock(return_value=[]),
         "approval_candidates": AsyncMock(return_value=[]),
         "reminder_candidates": AsyncMock(return_value=[]),
-        "due_todo_candidates": AsyncMock(return_value=[]),
+        "own_todo_candidates": AsyncMock(return_value=[]),
         "failed_run_candidates": AsyncMock(return_value=[]),
         "app_signal_candidates": MagicMock(return_value=[]),
         "held_candidates": AsyncMock(return_value=[]),
@@ -130,7 +130,7 @@ class TestGatherCandidates:
             day_start,
             day_start_utc(CLOCK, days_ago=-1),
         )
-        assert producers["due_todo_candidates"].await_args.args == (
+        assert producers["own_todo_candidates"].await_args.args == (
             USER_ID,
             day_start_utc(CLOCK, days_ago=-1),
             work,
@@ -179,7 +179,7 @@ class TestGatherCandidates:
     ) -> None:
         producers["waiting_candidates"].return_value = [_candidate("Reply to Dan")]
         producers["approval_candidates"].return_value = [_candidate("Approve the send")]
-        producers["due_todo_candidates"].return_value = [_candidate("File the VAT return")]
+        producers["own_todo_candidates"].return_value = [_candidate("File the VAT return")]
         producers["calendar_candidates"].return_value = [
             _candidate("Sequoia", kind=CandidateKind.EVENT)
         ]

@@ -351,7 +351,7 @@ def _patch_context_reads(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
         AsyncMock(return_value=context.WinbackState(unacknowledged=0, last_was_winback=False)),
     )
     _seam(monkeypatch, w, context, "gather_tracked_work", AsyncMock(side_effect=lambda *_: w.work))
-    _seam(monkeypatch, w, context, "user_open_todo_summary", AsyncMock(return_value=(0, [])))
+    _seam(monkeypatch, w, todo_repository, "count_open_user_todos", AsyncMock(return_value=0))
     _seam(
         monkeypatch,
         w,
@@ -491,6 +491,7 @@ def world(monkeypatch: pytest.MonkeyPatch, checker: AsyncMock) -> Iterator[World
         (hil_approval_repository, "list_pending_for_user"),
         (reminder_repository, "find_scheduled_between"),
         (todo_repository, "list_open_user_todos"),
+        (todo_repository, "list_undated_user_todos"),
     ):
         _seam(monkeypatch, w, owner, name, AsyncMock(return_value=[]))
     _seam(monkeypatch, w, workflow_executions_repository, "list_since", AsyncMock(return_value=[]))
@@ -1281,11 +1282,7 @@ class TestTheProseHoldsToItsFacts:
     ) -> None:
         """Regression: 5 open todos were shown to the model, then rejected when it said 5."""
         _seam(
-            monkeypatch,
-            world,
-            context,
-            "user_open_todo_summary",
-            AsyncMock(return_value=(5, ["Gym"])),
+            monkeypatch, world, todo_repository, "count_open_user_todos", AsyncMock(return_value=5)
         )
         _seam(monkeypatch, world, context, "gather_calendar", AsyncMock(return_value=[]))
         world.agent.return_value = _voiced(
@@ -1310,7 +1307,7 @@ class TestTheProseHoldsToItsFacts:
         self, world: World, monkeypatch: pytest.MonkeyPatch, headline: str, named: str
     ) -> None:
         _seam(
-            monkeypatch, world, context, "user_open_todo_summary", AsyncMock(return_value=(5, []))
+            monkeypatch, world, todo_repository, "count_open_user_todos", AsyncMock(return_value=5)
         )
         world.agent.side_effect = [
             _voiced(headline, "A quiet morning."),
@@ -1658,7 +1655,7 @@ class TestTheDailyRunWiring:
         assert world.reads["compute_winback_state"].await_args.args[0].id == _USER
         world.reads["has_daily_briefing"].assert_awaited_once_with(_USER)
         world.reads["gather_tracked_work"].assert_awaited_once_with(_USER, _DAY_START)
-        world.reads["user_open_todo_summary"].assert_awaited_once_with(_USER)
+        world.reads["count_open_user_todos"].assert_awaited_once_with(_USER)
         world.reads["gather_completed_since"].assert_awaited_once_with(_USER, _DAY_START)
         calendar_call = world.reads["gather_calendar"].await_args
         assert calendar_call.args[0] == _USER and calendar_call.kwargs == {"days": 1}
@@ -1902,39 +1899,20 @@ class TestTheFactsTheModelVoices:
             "Today's calendar:\n- fact 1 | 11:00 AM: Sequoia"
         ) in _prompt(world)
 
-    @pytest.mark.parametrize(
-        ("summary", "counts", "note"),
-        [
-            (
-                (2, ["Gym", "Taxes"]),
-                "[COUNTS] open_todos: 2 · events: 1\n",
-                "The user's own open todos (first few: Gym; Taxes) are counted in [COUNTS]"
-                "; never voice that list as clear or empty.\n",
-            ),
-            (
-                (3, []),
-                "[COUNTS] open_todos: 3 · events: 1\n",
-                "The user's own open todos are counted in [COUNTS]"
-                "; never voice that list as clear or empty.\n",
-            ),
-        ],
-    )
-    async def test_the_users_own_todos_are_counted(
-        self,
-        world: World,
-        monkeypatch: pytest.MonkeyPatch,
-        summary: tuple[int, list[str]],
-        counts: str,
-        note: str,
+    async def test_the_users_own_todos_are_counted_never_listed(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seam(
-            monkeypatch, world, context, "user_open_todo_summary", AsyncMock(return_value=summary)
+            monkeypatch, world, todo_repository, "count_open_user_todos", AsyncMock(return_value=2)
         )
 
         await daily.run_daily_briefing(_USER)
 
-        assert counts in _prompt(world)
-        assert note in _prompt(world)
+        assert "[COUNTS] open_todos: 2 · events: 1\n" in _prompt(world)
+        assert (
+            "The user's own open todos are counted in [COUNTS]"
+            "; never voice that list as clear or empty.\n"
+        ) in _prompt(world)
 
     async def test_an_untimed_event_reads_all_day_and_none_reads_empty(
         self, world: World, monkeypatch: pytest.MonkeyPatch

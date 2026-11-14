@@ -20,6 +20,7 @@ from app.constants.user_activity import ActivityStatus
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.signal_memory import signal_memory_repository
+from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.models.briefing_models import (
     BriefingPayload,
@@ -137,7 +138,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     # Facts are assembled by code from tracked-work state; the model only voices them.
     work = await context.gather_tracked_work(user_id, since)
     artifacts = gather_artifacts(work)
-    open_count, open_titles = await context.user_open_todo_summary(user_id)
+    open_count = await todo_repository.count_open_user_todos(user_id)
     calendar = await context.gather_calendar(user_id, clock, days=1)
     completed = await context.gather_completed_since(user_id, since)
     held = await pending_brief_items_repository.list_for_user(user_id, sort=[("created_at", 1)])
@@ -166,7 +167,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             calendar=calendar,
             event_ids=event_ids(gathered.pool),
             span=TODAY,
-            todos_note=user_todos_note(open_count, open_titles),
+            todos_note=user_todos_note(open_count),
         ),
         clock,
     )

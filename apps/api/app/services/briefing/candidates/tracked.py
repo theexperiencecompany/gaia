@@ -1,4 +1,4 @@
-"""Todos as candidates: what waits on the user, what is due, what GAIA did or is doing, what got done."""
+"""Todos as candidates: what waits on the user, their own open todos, GAIA's work, what got done."""
 
 from datetime import datetime
 
@@ -6,6 +6,7 @@ from app.constants.briefing import (
     DUE_TODO_CANDIDATES_LIMIT,
     GAIA_APP_NAME,
     GAIA_SOURCE,
+    UNDATED_TODO_CANDIDATES_LIMIT,
     BriefAction,
     BriefOutcome,
 )
@@ -64,18 +65,26 @@ def waiting_candidates(work: TrackedWork) -> list[BriefCandidate]:
     ) + _grouped(work.failed, CandidateKind.NEEDS_YOU, "failed", action=BriefAction.RETRY)
 
 
-async def due_todo_candidates(
+async def own_todo_candidates(
     user_id: str, due_before: datetime, work: TrackedWork
 ) -> list[BriefCandidate]:
-    """Return the user's own open todos due before the cutoff that no tracked todo already covers."""
+    """Return the user's own open todos due before the cutoff, then their oldest undated ones.
+
+    A todo a tracked candidate already covers, by id or subject, is left to it.
+    """
     tracked = [*work.completed, *work.running, *work.blocked, *work.failed]
     tracked_ids = {doc.id for doc in tracked}
     tracked_subjects = {subject_key(doc) for doc in tracked}
-    docs = await todo_repository.list_open_user_todos(
-        user_id, limit=DUE_TODO_CANDIDATES_LIMIT, due_before=due_before
-    )
-    due = [d for d in docs if d.id not in tracked_ids and subject_key(d) not in tracked_subjects]
-    return _grouped(due, CandidateKind.NEEDS_YOU, "you", action=BriefAction.ATTEND)
+    docs = [
+        *await todo_repository.list_open_user_todos(
+            user_id, limit=DUE_TODO_CANDIDATES_LIMIT, due_before=due_before
+        ),
+        *await todo_repository.list_undated_user_todos(
+            user_id, limit=UNDATED_TODO_CANDIDATES_LIMIT
+        ),
+    ]
+    own = [d for d in docs if d.id not in tracked_ids and subject_key(d) not in tracked_subjects]
+    return _grouped(own, CandidateKind.NEEDS_YOU, "you", action=BriefAction.ATTEND)
 
 
 def gaia_work_candidates(work: TrackedWork) -> list[BriefCandidate]:

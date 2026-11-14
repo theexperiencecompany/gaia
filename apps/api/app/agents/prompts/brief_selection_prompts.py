@@ -34,7 +34,8 @@ scout first looked, it wrote down how to tell what in that app needs this user:
 Choose by importance to this user today, never by source or by order:
 - needs_you: what only the user can act on: a person waiting on their reply or decision, an
   approval, work assigned to them that is due or overdue, something that failed and needs a call.
-  At most {{needs_you_cap}}, most important first.
+  At most {{needs_you_cap}}, most important first. A todo of the user's own with no due date is
+  only still open, never urgent: keep it when today has room or a reason for it, else drop it.
 - updates: what moved in their apps that they would want to know, but need not act on. At most
   {{updates_cap}}.
 - gaia_did: what GAIA finished or is doing for them that is worth a line. At most {{gaia_did_cap}}.

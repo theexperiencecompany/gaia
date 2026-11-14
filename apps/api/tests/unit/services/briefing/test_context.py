@@ -224,17 +224,6 @@ class TestTrackedWork:
 
         assert ([d.id for d in work.blocked], work.running) == (["n1"], [])
 
-    async def test_open_todo_summary_counts_all_and_names_five(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        docs = [_todo(f"t{i}", f"Todo {i}") for i in range(7)]
-        monkeypatch.setattr(todo_repository, "list_open_user_todos", AsyncMock(return_value=docs))
-
-        count, titles = await context.user_open_todo_summary(_USER)
-
-        assert count == 7
-        assert titles == [f"Todo {i}" for i in range(5)]
-
 
 class TestLookback:
     @pytest.fixture(autouse=True)
@@ -551,17 +540,6 @@ class TestReadsAreScopedToTheUser:
         await context.gather_completed_since(_USER, since)
 
         completed.assert_awaited_once_with(_USER, since=since)
-
-    async def test_the_open_todo_summary_reads_up_to_50_and_names_untitled_ones(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        untitled = _todo("t2", "x")
-        untitled.title = ""
-        listing = AsyncMock(return_value=[_todo("t1", "Pay rent"), untitled])
-        monkeypatch.setattr(todo_repository, "list_open_user_todos", listing)
-
-        assert await context.user_open_todo_summary(_USER) == (2, ["Pay rent", "untitled"])
-        listing.assert_awaited_once_with(_USER, limit=50)
 
 
 def _execution(status: str, summary: str | None) -> WorkflowExecutionDocument:

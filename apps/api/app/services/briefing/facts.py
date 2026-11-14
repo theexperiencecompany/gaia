@@ -214,11 +214,10 @@ def _calendar_note(
     return f"{span.heading}:\n" + "\n".join(lines)
 
 
-def user_todos_note(open_count: int, open_titles: list[str]) -> str:
+def user_todos_note(open_count: int) -> str:
     if not open_count:
         return "The user's own todo list is empty."
-    first_few = f" (first few: {'; '.join(open_titles)})" if open_titles else ""
     return (
-        f"The user's own open todos{first_few} are counted in [COUNTS]"
+        "The user's own open todos are counted in [COUNTS]"
         "; never voice that list as clear or empty."
     )

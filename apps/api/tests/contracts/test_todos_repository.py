@@ -1628,6 +1628,40 @@ class TestBriefingReads:
 
         assert {t.id for t in found} == {overdue.id, today.id}
 
+    async def test_undated_user_todos_are_the_oldest_open_own_ones_with_no_due_date(
+        self, repo, make_doc
+    ):
+        user_id = "u-undated"
+        start = datetime(2026, 11, 1, tzinfo=UTC)
+        newer = await repo.create(
+            make_doc(user_id=user_id, title="newer", created_at=start + timedelta(days=2))
+        )
+        oldest = await repo.create(make_doc(user_id=user_id, title="oldest", created_at=start))
+        await repo.create(
+            make_doc(user_id=user_id, title="dated", due_date=start, created_at=start)
+        )
+        await repo.create(
+            make_doc(
+                user_id=user_id, title="tracked", labels=[GAIA_TRACKED_LABEL], created_at=start
+            )
+        )
+        await repo.create(make_doc(user_id=user_id, title="done", completed=True, created_at=start))
+
+        found = await repo.list_undated_user_todos(user_id, limit=10)
+
+        assert [t.id for t in found] == [oldest.id, newer.id]
+        assert [t.id for t in await repo.list_undated_user_todos(user_id, limit=1)] == [oldest.id]
+
+    async def test_open_user_todos_are_counted_past_any_read_limit(self, repo, make_doc):
+        user_id = "u-count"
+        for i in range(60):
+            await repo.create(make_doc(user_id=user_id, title=f"todo {i}"))
+        await repo.create(make_doc(user_id=user_id, title="tracked", labels=[GAIA_TRACKED_LABEL]))
+        await repo.create(make_doc(user_id=user_id, title="done", completed=True))
+        await repo.create(make_doc(user_id="someone-else", title="theirs"))
+
+        assert await repo.count_open_user_todos(user_id) == 60
+
 
 async def test_running_tracked_todos_are_the_users_open_unpaused_tracked_ones(repo, make_doc):
     running = await repo.create(make_doc(user_id="u1", labels=[GAIA_TRACKED_LABEL], title="run"))
