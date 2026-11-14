@@ -368,6 +368,7 @@ async def test_a_bounded_cross_conversation_read_takes_at_most_its_limit_from_th
     cid = await _chat(repo, uid)
     await _append(cid, uid, [_message("u1", "a"), _message("u2", "b")])
     await held.run_all()
+    await repo.flush_outbox(cid, user_id=uid)
 
     assert len(await repo._find_entries(uid, {"text": {"$in": ["a", "b"]}})) == 2
     assert len(await repo._find_entries(uid, {"text": {"$in": ["a", "b"]}}, limit=1)) == 1
