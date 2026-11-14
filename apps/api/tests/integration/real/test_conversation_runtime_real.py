@@ -248,7 +248,9 @@ from shared.py.conversation_wire import (
 from shared.py.wide_events import _spawned_tasks
 from tests.e2e._harness.graph_run import comms_graph
 from tests.helpers import item_text, shown_items
-from tests.integration.real.test_comms_runner_real import (
+from tests.unit.services.conversation.log_helpers import workflow_run
+from tests.unit.services.conversation.runtime_doubles import ScriptedApprovals
+from tests.unit.services.conversation.test_comms_runner import (
     TEST_ATTRIBUTION,
     GatedModel,
     gated,
@@ -256,8 +258,6 @@ from tests.integration.real.test_comms_runner_real import (
     patched_graph,
     recall_call,
 )
-from tests.unit.services.conversation.log_helpers import workflow_run
-from tests.unit.services.conversation.runtime_doubles import ScriptedApprovals
 from tests.unit.services.hil.conftest import make_request
 
 EntryT = TypeVar("EntryT")
