@@ -19,7 +19,6 @@ from app.services.conversation.ports import (
     Silent,
     Streamed,
     Summarized,
-    ToolsRan,
 )
 
 
@@ -80,13 +79,13 @@ async def test_a_namespaced_update_is_not_the_comms_model_returning() -> None:
     assert ModelOutput(has_tool_calls=False) not in await mapper.map(nested)
 
 
-async def test_the_tools_node_returning_is_the_tool_calls_having_run() -> None:
+async def test_only_the_model_nodes_own_output_streams_as_written_by_the_model() -> None:
     mapper = CommsEventMapper("u-1")
-    tools: GraphEvent = ((), "updates", {"tools": {"messages": []}})
-    nested: GraphEvent = (("child:1",), "updates", {"tools": {"messages": []}})
+    by_tool = await mapper.map(((), "custom", {"email_fetch_data": [{"id": "e1"}]}))
+    by_model = await mapper.map(answer("hi"))
 
-    assert await mapper.map(tools) == [ToolsRan()]
-    assert await mapper.map(nested) == []
+    assert [e.by_model for e in by_tool if isinstance(e, Streamed)] == [False]
+    assert {e.by_model for e in by_model if isinstance(e, Streamed)} == {True}
 
 
 @pytest.mark.parametrize(

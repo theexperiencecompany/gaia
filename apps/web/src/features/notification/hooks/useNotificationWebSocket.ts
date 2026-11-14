@@ -137,6 +137,7 @@ export function useNotificationWebSocket() {
     console.error("WebSocket connection error:", error);
   }, []);
 
+  // react-doctor-disable-next-line effect-needs-cleanup -- the cleanup's off() loop mirrors the on() loop; the rule cannot pair loops
   useEffect(() => {
     if (!isAuthenticated) return;
 

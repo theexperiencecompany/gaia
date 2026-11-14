@@ -257,18 +257,23 @@ async def test_answer_with_a_tool_card_carries_the_card_on_the_reply(
                 claim(conversation_id), batch(logged(1, user("u1"))), ()
             )
             events = await collect(run)
-    cards = [
-        e.payload.tool_data
+    streamed_cards = [
+        (e.payload.tool_data, e.by_model)
         for e in events
         if isinstance(e, Streamed) and isinstance(e.payload, ToolDataEvent)
     ]
+    cards = [card for card, _by_model in streamed_cards]
     assert shape(events)[0:3] == [
         "streamed:tool_data",
         "streamed:message_boundary",
         "model_output:tools",
     ]
     assert shape(events)[-len(ANSWER_SHAPE) :] == ANSWER_SHAPE
-    assert len(cards) == 1
+    # The model's call card, then the card the running tool shows.
+    assert [(card["tool_name"], by_model) for card, by_model in streamed_cards] == [
+        ("tool_calls_data", True),
+        ("memory_data", False),
+    ]
     assert events[-1] == Finished(outcome=Replied(text="found it", tool_data=tuple(cards)))
 
 

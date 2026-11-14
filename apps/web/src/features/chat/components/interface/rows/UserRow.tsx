@@ -145,8 +145,10 @@ export function UserRow({
       hideAvatar={layout.compact}
       fullWidth={layout.compact}
       disableActions={layout.compact}
-      isGroupedWithNext={layout.isGroupedWithNext}
-      isGroupedWithPrev={layout.isGroupedWithPrev}
+      grouping={{
+        withPrev: layout.isGroupedWithPrev,
+        withNext: layout.isGroupedWithNext,
+      }}
     />
   );
 }
