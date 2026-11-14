@@ -119,7 +119,6 @@ async def create_all_indexes() -> None:
             create_workflow_execution_indexes(),
             create_bot_session_indexes(),
             create_e2b_sandbox_indexes(),
-            create_hil_approvals_indexes(),
             create_approval_ledger_indexes(),
             create_pending_platform_registration_indexes(),
             create_browser_profiles_indexes(),
@@ -160,7 +159,6 @@ async def create_all_indexes() -> None:
             "workflow_executions",
             "bot_sessions",
             "e2b_sandboxes",
-            "hil_approvals",
             "approval_ledger",
             "pending_platform_registrations",
             "browser_profiles",
@@ -975,6 +973,9 @@ async def create_approval_ledger_indexes() -> None:
                 name=LIVE_ROW_INDEX_NAME,
             ),
             approval_ledger_collection.create_index([("conversation_id", 1), ("outcome", 1)]),
+            approval_ledger_collection.create_index(
+                [("owner_run_type", 1), ("owner_id", 1), ("created_at", 1)]
+            ),
             approval_ledger_collection.create_index([("action", 1), ("executing_started_at", 1)]),
         )
     except Exception as e:
@@ -1524,31 +1525,6 @@ async def create_installed_skills_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating installed_skills indexes",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        raise
-
-
-async def create_hil_approvals_indexes() -> None:
-    """Create indexes for the hil_approvals collection.
-
-    (outcome, resumed_at, decided_at) serves the crashed-resume sweep: the resumed_at=null
-    bound keeps it off the majority-resumed audit trail, which must never scan the full
-    collection.
-    """
-    hil_approvals_collection = get_async_collection("hil_approvals")
-    try:
-        await asyncio.gather(
-            hil_approvals_collection.create_index([("conversation_id", 1), ("outcome", 1)]),
-            hil_approvals_collection.create_index([("outcome", 1), ("expires_at", 1)]),
-            hil_approvals_collection.create_index(
-                [("outcome", 1), ("resumed_at", 1), ("decided_at", 1)]
-            ),
-        )
-    except Exception as e:
-        log.error(
-            f"{LogTag.MONGO} Error creating hil_approvals indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

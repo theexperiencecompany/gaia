@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, patch
 from langchain_core.messages import AIMessage, HumanMessage
 import pytest
 
-from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.chat_models import ToolDataEntry
 from app.utils.agent_utils import IntegrationMetadata
 from app.utils.stream_utils import (
@@ -515,21 +514,6 @@ class TestAbsorbCollectorEvent:
         absorb_collector_event({"tool_data": [later]}, accumulated, {})
 
         assert accumulated["tool_data"] == [earlier, later]
-
-    def test_a_resolved_approval_frame_replaces_its_pending_one(self) -> None:
-        pending: ToolDataEntry = {
-            "tool_name": APPROVAL_REQUEST_TOOL_NAME,
-            "data": {"approval_id": "appr-1", "status": "pending"},
-        }
-        resolved: ToolDataEntry = {
-            "tool_name": APPROVAL_REQUEST_TOOL_NAME,
-            "data": {"approval_id": "appr-1", "status": "approved"},
-        }
-        accumulated: dict[str, object] = {"tool_data": [pending]}
-
-        absorb_collector_event({"tool_data": resolved}, accumulated, {})
-
-        assert accumulated["tool_data"] == [resolved]
 
 
 def _step(text: str, subagent_id: str | None = None) -> dict[str, Any]:

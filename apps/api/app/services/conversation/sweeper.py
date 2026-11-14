@@ -6,8 +6,8 @@ that can no longer be decided, and starts a step for any conversation with unset
 inputs; the step's claim refuses while a live holder still runs it. One pass pages through
 every due head, and one conversation that fails is logged and passed over.
 
-The log is what says an approval is pending. The approval stores are read only to learn
-whether one can still decide it: a record still pending there, and not long expired.
+The log is what says an approval is pending and when it lapses. The ledger is read only to
+learn whether its envelope still exists, without which nobody can decide it.
 """
 
 from collections.abc import Callable
@@ -32,7 +32,7 @@ from app.services.conversation.work_log import (
     record_work_finished,
 )
 from app.services.hil.ledger_decide import cancel_ledger_approvals
-from shared.py.analytics.catalog.hil import ApprovalOutcome, UndecidedOutcome
+from shared.py.analytics.catalog.hil import ApprovalOutcome
 from shared.py.wide_events import log
 
 
@@ -116,11 +116,8 @@ async def _settle_undecidable(
     for approval_id in sorted(work.pending_approvals):
         expires_at = expiries.get(approval_id)
         expired = expires_at is not None and expires_at + APPROVAL_EXPIRY_GRACE < clock()
-        outcome = await _undecidable_as(conversation_id, user_id, approval_id, expired=expired)
-        if outcome is None:
-            continue
-        await record_approval_decided(conversation_id, user_id, approval_id, outcome, None)
-        settled += 1
+        if await _undecidable(conversation_id, user_id, approval_id, expired=expired):
+            settled += 1
     report.undecidable_approvals += settled
     if settled == len(work.pending_approvals):
         await record_work_finished(
@@ -132,23 +129,26 @@ async def _settle_undecidable(
         )
 
 
-async def _undecidable_as(
+async def _undecidable(
     conversation_id: str, user_id: str, approval_id: str, *, expired: bool
-) -> UndecidedOutcome | None:
-    """Return how an approval nobody can decide ends, closing its record; None while one still can.
+) -> bool:
+    """End an approval nobody can decide in the log; False while one still can, or a decision beat this one.
 
-    Expired when it ran out of time; withdrawn when the ledger does not hold it, so its run is gone.
+    Expired when it ran out of time; withdrawn when the ledger holds no envelope for it, so its run is gone.
     """
-    ledger = await approval_ledger_repository.get_by_approval_id(approval_id)
-    pending = ledger is not None and ledger.outcome is None
-    if pending and not expired:
-        return None
-    if ledger is not None:
-        if not pending:
-            # Decided on the ledger: that decision's own path logs it and resumes the work.
-            return None
-        await cancel_ledger_approvals(
-            conversation_id, user_id, [approval_id], ApprovalOutcome.EXPIRED
+    if await approval_ledger_repository.get_by_approval_id(approval_id) is not None:
+        if not expired:
+            return False
+        return bool(
+            await cancel_ledger_approvals(
+                conversation_id, user_id, [approval_id], ApprovalOutcome.EXPIRED
+            )
         )
-        return ApprovalOutcome.EXPIRED
-    return ApprovalOutcome.EXPIRED if expired else ApprovalOutcome.WITHDRAWN
+    taken = await record_approval_decided(
+        conversation_id,
+        user_id,
+        approval_id,
+        ApprovalOutcome.EXPIRED if expired else ApprovalOutcome.WITHDRAWN,
+        None,
+    )
+    return taken.taken

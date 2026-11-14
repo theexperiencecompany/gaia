@@ -1,16 +1,14 @@
-"""Decide ledger approvals: CAS commit, ticket wake, agent redeem.
+"""Decide approvals in the conversation log, wake the agent with the ticket, and redeem it.
 
-The single entry point for every ledger decision source (web/mobile decide
-endpoints, later the bot classifier). Approval is permission, not execution:
-the backend never runs an approved tool. Committing wakes the model with the
-ticket (the approval id); the model redeems it with
-execute(tool_name="approve", data={"id": ...}), which runs the stored
-envelope and returns the result so dependent work can chain on it.
-Guarantees (mirror resolution.py): the PENDING -> decided transition is a
-conditional Mongo update, so double taps and stale clients lose the race and
-refresh instead of overwriting; a mismatched row version v returns the current
-row with committed=False; stale approvals carry their age for the model to
-judge at redeem; redeem's APPROVED -> EXECUTING claim is single-use; and crash
+The single entry point for every decision source (card, batch review, a chat reply).
+Approval is permission, not execution: committing wakes the model with the ticket
+(the approval id), and the model redeems it with execute(tool_name="approve",
+data={"id": ...}), which runs the envelope the ledger stored for it.
+
+The log is the approval's only truth: a decision is an ApprovalDecided append, and
+the first one wins, so a double tap or a tap on an expired or stopped approval reads
+back the decision already logged. The ledger follows the log, as the fingerprint
+index and the envelope; its action claim keeps a redeem single-use, and crash
 recovery runs lazily via reconcile_conversation_ledger, with no daemon.
 """
 
@@ -32,6 +30,7 @@ from app.constants.hil import ApprovalDecision
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.db.repositories.approval_ledger import approval_ledger_repository
+from app.models.conversation_log_models import ApprovalDecided
 from app.models.execute_models import DispatchErrorKind
 from app.models.hil_models import ApprovalLedgerDocument
 from app.models.user_models import AuthenticatedUser
@@ -42,28 +41,24 @@ from app.schemas.hil_schemas import (
 )
 from app.services.analytics_service import capture
 from app.services.conversation.work_log import (
+    DecisionTaken,
+    logged_decision,
     record_approval_decided,
     record_approved_action_ended,
-)
-from app.services.hil.bridge import (
-    CardEnd,
-    SettledApprovalCard,
-    _approval_entry,
-    _publish_entry,
-    settle_session_approval_frame,
 )
 from app.services.hil.errors import (
     ApprovalRequestForbiddenError,
     ApprovalRequestNotFoundError,
+    LedgerDriftError,
     ToolAlwaysAsksError,
 )
 from app.services.hil.policy import asks_every_time, resolved_tool_key
 from app.services.hil.preferences import set_tool_override
 from app.services.hil.resume import record_owner_deny, resume_owner_after_approval
-from app.services.hil.utils import GatedCall
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import (
     ActionResult,
+    ApprovalDecided as ApprovalDecidedEvent,
     ApprovalDecider,
     ApprovalOutcome,
     HilDecisionSubmitted,
@@ -92,10 +87,6 @@ class LedgerDecision:
     # execution scheduled. Ordering chains (claim rule + dep_unmet reconciler)
     # arrive in Phase 3; this flag is their seam.
     queued: bool = False
-    # The call lost on version, not on outcome: the row may still be pending.
-    # Callers must report "stale/refresh", never "not found", or clients drop
-    # live cards they should keep.
-    stale: bool = False
 
 
 @dataclass(frozen=True)
@@ -118,12 +109,14 @@ async def decide_ledger(
     user_id: str,
     kind: ApprovalDecision,
     feedback: str | None = None,
-    v: int | None = None,
     via: HilDecisionVia,
 ) -> LedgerDecision:
     """Commit one decision and wake the model with the ticket. Never blocks."""
     row = await _owned_row(approval_id, user_id)
-    return await _commit_decision(row, user_id=user_id, kind=kind, feedback=feedback, v=v, via=via)
+    decision = await _commit_decision(row, user_id=user_id, kind=kind, feedback=feedback, via=via)
+    if decision.committed and decision.outcome is not None:
+        capture(UserId(user_id), ApprovalDecidedEvent(outcome=decision.outcome))
+    return decision
 
 
 async def decide_ledger_card(
@@ -134,8 +127,10 @@ async def decide_ledger_card(
     if tap.scope == "always_tool" and await asks_every_time(row.tool_name, row.args):
         raise ToolAlwaysAsksError()
     decision = await _commit_decision(
-        row, user_id=user_id, kind=tap.decision, feedback=tap.feedback, v=tap.v, via="card"
+        row, user_id=user_id, kind=tap.decision, feedback=tap.feedback, via="card"
     )
+    if decision.committed and decision.outcome is not None:
+        capture(UserId(user_id), ApprovalDecidedEvent(outcome=decision.outcome))
     if (
         tap.scope == "always_tool"
         and decision.committed
@@ -163,19 +158,9 @@ async def _commit_decision(
     user_id: str,
     kind: ApprovalDecision,
     feedback: str | None,
-    v: int | None,
     via: HilDecisionVia,
 ) -> LedgerDecision:
     approval_id = row.approval_id
-    if v is not None and v != row.v:
-        return LedgerDecision(
-            committed=False,
-            approval_id=approval_id,
-            outcome=row.outcome,
-            action=row.action,
-            stale=True,
-        )
-
     # Approve+feedback is a conditional approval, but envelopes carry no
     # conditions: route it to deny (as the chat classifier does) so nothing
     # runs beyond the granted permission; the note is attached to the denial.
@@ -183,18 +168,17 @@ async def _commit_decision(
         kind = "deny"
 
     target = ApprovalOutcome.APPROVED if kind == "approve" else ApprovalOutcome.DENIED
-    transitioned = await approval_ledger_repository.settle(
-        approval_id, target, decided_by=user_id, feedback=feedback
-    )
-    if not transitioned:
-        current = await approval_ledger_repository.get_by_approval_id(approval_id)
-        now = current if current is not None else row
+    taken = await _decide_in_log(row, target, ApprovalDecider.USER, feedback=feedback)
+    if not taken.taken:
         return LedgerDecision(
-            committed=False, approval_id=approval_id, outcome=now.outcome, action=now.action
+            committed=False,
+            approval_id=approval_id,
+            outcome=taken.stands.outcome,
+            action=taken.stands.action,
         )
+    await _follow_in_ledger(row, target, decided_by=user_id, feedback=feedback)
 
     log.set(hil={"approval_id": approval_id, "decision": kind, "tool": row.tool_name})
-    await _log_outcome(row, target, ApprovalDecider.USER)
     # Server-owned funnel event: exactly once per committed decision (stale-v
     # and lost-CAS returns above emit nothing). Explicit user_id: the decide
     # path resolves its user from the row, not a session.
@@ -209,7 +193,6 @@ async def _commit_decision(
             tool_name=row.tool_name,
             via=via,
             card_age_seconds=card_age_seconds,
-            # The transition $incs v: the committed version is row.v + 1.
             ledger_version=row.v + 1,
         ),
     )
@@ -231,7 +214,6 @@ async def _commit_decision(
         # re-enqueue its unit of work (todo re-execution, workflow continuation).
         # Best-effort and claim-guarded — never fails the tap.
         await resume_owner_after_approval(row)
-    await publish_ledger_decision(row, target, feedback=feedback)
     if target is ApprovalOutcome.DENIED:
         # Denials schedule nothing, but the agent still needs the verdict and a
         # wake alone only reaches a running run — deliver, so an idle
@@ -254,11 +236,10 @@ async def _commit_decision(
 async def decide_ledger_batch(
     user_id: str, decisions: list[BatchDecisionItem]
 ) -> list[BatchDecisionOutcome]:
-    """Apply several ledger decisions in one submission — the batch review's ledger path.
+    """Apply several decisions in one submission, the batch review.
 
-    Mirrors resolve_approvals_batch: each item commits exactly once and one
-    already-decided, forbidden or failing item never blocks the rest. No resume
-    dispatch exists here — execution and wake already happened in decide_ledger.
+    Each item commits exactly once, and one already-decided, forbidden or failing
+    item never blocks the rest.
     """
     outcomes: list[BatchDecisionOutcome] = []
     for item in decisions:
@@ -268,7 +249,6 @@ async def decide_ledger_batch(
                 user_id=user_id,
                 kind=item.decision,
                 feedback=item.feedback,
-                v=item.v,
                 via="batch",
             )
         except ApprovalRequestNotFoundError:
@@ -304,11 +284,17 @@ async def decide_ledger_batch(
                 BatchDecisionOutcome(
                     approval_id=item.approval_id,
                     resolved=False,
-                    reason="stale" if outcome.stale else "not_found",
+                    reason="not_found",
                     outcome=outcome.outcome,
                     action=outcome.action,
                 )
             )
+    resolved = sum(1 for outcome in outcomes if outcome.resolved)
+    if resolved:
+        capture(
+            UserId(user_id),
+            ApprovalDecidedEvent(batch=True, decisions=len(decisions), resolved=resolved),
+        )
     return outcomes
 
 
@@ -403,12 +389,13 @@ async def redeem_approved(
         raise ApprovalRequestNotFoundError()
     if row.user_id != user_id:
         raise ApprovalRequestForbiddenError()
-    if row.outcome is not ApprovalOutcome.APPROVED or row.action is not None:
+    decided = await logged_decision(row.conversation_id, row.user_id, approval_id)
+    if decided is None or decided.outcome is not ApprovalOutcome.APPROVED or decided.action:
         return RedeemResult(
             ok=False,
             approval_id=approval_id,
-            action=row.action,
-            detail=f"Already {row.standing}; report that instead of retrying.",
+            action=None if decided is None else decided.action,
+            detail=f"Already {_standing(decided)}; report that instead of retrying.",
         )
     if caller != row.owner_agent and not caller.startswith(EXECUTOR_THREAD_PREFIX):
         return RedeemResult(
@@ -490,29 +477,46 @@ async def redeem_approved(
 
 
 async def _settle_terminal(row: ApprovalLedgerDocument, action: ActionResult) -> None:
-    """Show the approved card's action result (executed/failed/unknown).
-
-    Without this the card never says whether the approved action went through: the
-    session frame flips and the log restates the approval with its action.
-    """
-    end = CardEnd(ApprovalOutcome.APPROVED, decider=ApprovalDecider.USER, action=action)
-    if row.proposing_run_id:
-        settle_session_approval_frame(row.proposing_run_id, row.approval_id, end)
-    # Logged only where the decision was: an approval on the log is one its work holds.
-    if row.task_id is not None:
-        await record_approved_action_ended(
-            row.conversation_id, row.user_id, row.approval_id, action
-        )
+    """Restate the approval with its action's result (executed/failed/unknown), so its card shows it."""
+    await record_approved_action_ended(row.conversation_id, row.user_id, row.approval_id, action)
 
 
-async def _log_outcome(
-    row: ApprovalLedgerDocument, outcome: ApprovalOutcome, decider: ApprovalDecider | None
+def _standing(decided: ApprovalDecided | None) -> str:
+    """Name where a logged approval stands: its action's result, how it ended, or pending."""
+    if decided is None:
+        return "pending"
+    return str(decided.action or decided.outcome)
+
+
+async def _decide_in_log(
+    row: ApprovalLedgerDocument,
+    outcome: ApprovalOutcome,
+    decider: ApprovalDecider | None,
+    *,
+    feedback: str | None = None,
+) -> DecisionTaken:
+    """Decide the approval in the log; the decision that stands there is the approval's truth."""
+    return await record_approval_decided(
+        row.conversation_id, row.user_id, row.approval_id, outcome, decider, feedback=feedback
+    )
+
+
+async def _follow_in_ledger(
+    row: ApprovalLedgerDocument,
+    outcome: ApprovalOutcome,
+    *,
+    decided_by: str | None = None,
+    feedback: str | None = None,
 ) -> None:
-    """Log how the approval ended where its work holds it; rows registered before work held approvals have no entry."""
-    if row.task_id is not None:
-        await record_approval_decided(
-            row.conversation_id, row.user_id, row.approval_id, outcome, decider
-        )
+    """Bring the ledger row to the decision the log took, so its index and claim follow it.
+
+    The log takes one decision per approval and every writer goes through it first, so a
+    ledger row that is no longer pending here has drifted from the log: a bug, said loudly.
+    """
+    if not await approval_ledger_repository.settle(
+        row.approval_id, outcome, decided_by=decided_by, feedback=feedback
+    ):
+        raise LedgerDriftError(row.approval_id, outcome)
 
 
 async def revoke_ticket(
@@ -531,25 +535,18 @@ async def revoke_ticket(
         return f"No pending approval with id '{approval_id}'."
     if row.user_id != user_id:
         raise ApprovalRequestForbiddenError()
-    if row.outcome is not None:
-        return (
-            f"Cannot revoke '{approval_id}': already {row.standing}. "
-            "Report that to the user instead of retrying."
-        )
     if caller != row.owner_agent and not caller.startswith(EXECUTOR_THREAD_PREFIX):
         return (
             f"Cannot revoke '{approval_id}': it belongs to another worker. "
             "Only its proposer or the executor can withdraw it."
         )
-    revoked = await approval_ledger_repository.settle(approval_id, ApprovalOutcome.WITHDRAWN)
-    if not revoked:
-        current = await approval_ledger_repository.get_by_approval_id(approval_id)
-        standing = current.standing if current else "gone"
-        return f"Cannot revoke '{approval_id}': already {standing}."
-    await _log_outcome(row, ApprovalOutcome.WITHDRAWN, None)
-    revoked_row = await approval_ledger_repository.get_by_approval_id(approval_id)
-    if revoked_row is not None:
-        await publish_ledger_revocation(revoked_row, ApprovalOutcome.WITHDRAWN)
+    taken = await _decide_in_log(row, ApprovalOutcome.WITHDRAWN, None)
+    if not taken.taken:
+        return (
+            f"Cannot revoke '{approval_id}': already {_standing(taken.stands)}. "
+            "Report that to the user instead of retrying."
+        )
+    await _follow_in_ledger(row, ApprovalOutcome.WITHDRAWN)
     capture(
         UserId(user_id),
         HilRevoked(
@@ -568,22 +565,18 @@ async def cancel_ledger_approvals(
     approval_ids: Collection[str],
     outcome: UndecidedOutcome = ApprovalOutcome.CANCELLED,
 ) -> list[str]:
-    """Close these of a stopped run's pending ledger approvals so nothing revives them.
+    """End these approvals undecided in the log, so a later Approve (a stale card, a bot "yes") finds them closed.
 
-    Ledger twin of resolution.cancel_conversation_approvals: without it a later
-    Approve (stale card, another tab, a bot "yes") redeems a ticket for stopped
-    work. Only user-owned pending rows; approved tickets stay. Each cancellation
-    settles through the full triple.
+    Only approvals still pending in the log close; a decided one keeps its decision.
     """
     cancelled: list[str] = []
-    for row in await approval_ledger_repository.list_open(conversation_id):
-        if row.outcome is not None or row.user_id != user_id or row.approval_id not in approval_ids:
+    for approval_id in sorted(approval_ids):
+        row = await approval_ledger_repository.get_by_approval_id(approval_id)
+        if row is None or row.conversation_id != conversation_id or row.user_id != user_id:
             continue
-        if not await approval_ledger_repository.settle(row.approval_id, outcome):
+        if not (await _decide_in_log(row, outcome, None)).taken:
             continue
-        current = await approval_ledger_repository.get_by_approval_id(row.approval_id)
-        if current is not None:
-            await publish_ledger_revocation(current, outcome)
+        await _follow_in_ledger(row, outcome)
         capture(
             UserId(user_id),
             HilRevoked(
@@ -627,54 +620,6 @@ async def reconcile_conversation_ledger(conversation_id: str) -> None:
                 "stalled execution reconciled; never retried. The action may or may not "
                 "have run — verify before re-proposing, never blind-retry.",
             )
-
-
-async def publish_ledger_decision(
-    row: ApprovalLedgerDocument,
-    outcome: ApprovalOutcome,
-    *,
-    feedback: str | None = None,
-) -> None:
-    """Settle the card where the user watches + persist the settled frame.
-
-    Best-effort delivery, never fails the decision: the ledger row is the
-    truth and every render re-reads it. Publishes the settled frame to the
-    proposing stream when it is still live and flips the session's frame; every
-    other device settles from the logged decision.
-    """
-    card = SettledApprovalCard(
-        approval_id=row.approval_id,
-        tool_call=GatedCall(name=row.tool_name, id="", args=row.args),
-        summary=row.summary,
-        integration_name=None,
-    )
-    note = feedback if feedback is not None else row.feedback
-    end = CardEnd(outcome, decider=ApprovalDecider.USER, feedback=note)
-    entry = _approval_entry(card, outcome, decider=end.decider, feedback=note)
-    if row.proposing_run_id:
-        try:
-            await _publish_entry(row.proposing_run_id, entry)
-        except Exception as e:
-            log.warning(
-                f"{LogTag.HIL} Ledger decision frame missed its stream",
-                approval_id=row.approval_id,
-                error_type=type(e).__name__,
-            )
-        # Flip the in-memory PENDING frame too: the drain persists whatever
-        # the session holds, and without this a later drain resurrects the
-        # unsettled card over the persisted decision.
-        settle_session_approval_frame(row.proposing_run_id, row.approval_id, end)
-
-
-async def publish_ledger_revocation(row: ApprovalLedgerDocument, outcome: ApprovalOutcome) -> None:
-    """Flip the proposing run's frame to the revoke's tombstone; other devices read the logged ending."""
-    if row.proposing_run_id:
-        # A revoke before the run ends drops the unshown frame (a held card
-        # never went live, so there is nothing to explain); a frame already
-        # live still flips to the tombstone.
-        settle_session_approval_frame(
-            row.proposing_run_id, row.approval_id, CardEnd(outcome), drop_if_unpublished=True
-        )
 
 
 async def _wake_agent(row: ApprovalLedgerDocument, outcome: str, result: object) -> None:

@@ -22,6 +22,7 @@ from app.models.conversation_log_models import (
     UserMessage,
 )
 from app.models.message_models import ReplyToMessageData, SelectedWorkflowData
+from app.models.stream_events import ApprovalRequestEntry
 from app.models.todo_wake_models import TodoRunWake
 from app.models.tool_data_models import ToolDataEntry
 
@@ -101,6 +102,8 @@ class WorkItem(_Item):
     asking: tuple[ApprovalRequested, ...]
     # The log position of the newest approval in asking (0 when none): a follow after it has seen it asked.
     asked_seq: int = Field(ge=0)
+    # Every approval the work asked for, as its card shows now: pending, or how it ended.
+    approvals: tuple[ApprovalRequestEntry, ...]
     handoff: ToolDataEntry | None
     tool_data: tuple[ToolDataEntry, ...]
     image: ImageData | None

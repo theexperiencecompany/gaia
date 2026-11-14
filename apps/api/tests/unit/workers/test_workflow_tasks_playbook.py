@@ -186,7 +186,6 @@ class _Harness:
         #: The replay's liveness renewal.
         self.alive_task = MagicMock()
         self.alive = AsyncMock(return_value=self.alive_task)
-        self.pending_approvals = AsyncMock(return_value=[])
         self.drain = AsyncMock(return_value=[{"id": "evt_1"}])
         #: Seams a single test needs on top of the shared set, entered last so
         #: they win over anything the harness already patched.
@@ -198,10 +197,10 @@ class _Harness:
     async def _log_state(self, conversation_id: str, user_id: str) -> ConversationState:
         return EMPTY.model_copy(update={"work": self.live_work})
 
-    def hold(self, holder: str) -> None:
-        """Make the conversation's log hold live work named holder, so the fire finds it busy."""
+    def hold(self, holder: str, *, awaiting: frozenset[str] = frozenset()) -> None:
+        """Make the conversation's log hold live work named holder, waiting on awaiting, so the fire finds it busy."""
         self.live_work = (
-            LiveWork(task_id=holder, cause_through=1, answers=(), pending_approvals=frozenset()),
+            LiveWork(task_id=holder, cause_through=1, answers=(), pending_approvals=awaiting),
         )
 
     def playbook_event(self) -> dict[str, object]:
@@ -264,7 +263,6 @@ class _Harness:
                 MagicMock(return_value=MagicMock(log=MagicMock(state=self.log_state))),
             ),
             patch(f"{MODULE}.keep_alive", self.alive),
-            patch(f"{MODULE}.list_pending_for_conversation", self.pending_approvals),
             patch(f"{MODULE}.drain_trigger_batch", self.drain),
             patch(f"{MODULE}.reschedule_if_refilled", AsyncMock()),
             patch(f"{MODULE}.log", self.log),
@@ -2704,16 +2702,14 @@ class TestAnAgentFireOverlapsToo:
         harness.drain.assert_not_awaited()
 
     async def test_a_fire_that_overlaps_an_approval_says_so_on_the_record(self) -> None:
-        """A parked run stays live work for the whole approval window."""
+        """Work waiting on an approval stays live work in the log for the whole approval window."""
         workflow = _workflow()
         harness = _Harness(workflow)
-        harness.hold("task_9")
-        harness.pending_approvals = AsyncMock(return_value=[MagicMock()])
+        harness.hold("task_9", awaiting=frozenset({"ap_1"}))
 
         await _fire(harness)
 
         assert harness.summary() == OVERLAPPED_AWAITING_APPROVAL_SUMMARY
-        harness.pending_approvals.assert_awaited_once_with("conv_1")
 
     async def test_an_overlapped_fire_gets_its_own_skipped_row_in_the_workflows_history(
         self,

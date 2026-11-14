@@ -193,7 +193,6 @@ export {
   toolAsks,
   toolOverrideValue,
   updateSubagentInToolData,
-  upsertApprovalToolData,
   upsertTodoProgressToolData,
 } from "./chat";
 export {

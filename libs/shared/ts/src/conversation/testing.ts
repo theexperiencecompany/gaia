@@ -189,6 +189,12 @@ export const approvalAsked = (
   approval_id: approvalId,
   summary,
   expires_at: expiresAt,
+  tool_call_id: `call-${approvalId}`,
+  gated_tool_name: "GMAIL_SEND_EMAIL",
+  integration_name: null,
+  args_preview: {},
+  auto_reason: null,
+  always_asks: false,
 });
 
 export const workItem = (
@@ -206,6 +212,7 @@ export const workItem = (
   status,
   asking,
   asked_seq: askedSeq,
+  approvals: [],
   handoff: null,
   tool_data: [],
   image: null,

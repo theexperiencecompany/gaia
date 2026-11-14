@@ -6,9 +6,8 @@ from typing import Any, Literal, NotRequired, TypedDict
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.hil import ApprovalDecision
-from app.models.agent_config import ExecutorRunItem, SubagentResumeItem
 from app.models.document_models import MongoDocument
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider, ApprovalOutcome
+from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
 
 # The three global approval modes. Launch switch: the default stays
 # ``always_allow`` (HIL off — nothing gated) until we flip it post-launch.
@@ -29,29 +28,6 @@ class DeclinedCallRecord(TypedDict):
     # Present only on auto-mode refusals (absent on rows written before this
     # shipped, which correctly read as user-made).
     auto: NotRequired[bool]
-
-
-class HilInterruptPayload(TypedDict, total=False):
-    """What the HIL gate passes to interrupt() (gate.decide_tool_call).
-
-    approval_ids is added when several gated calls park in one step (subagent_runner.merge_approvals).
-    """
-
-    type: str
-    approval_id: str
-    tool_name: str
-    summary: str
-    integration_name: str | None
-    approval_ids: list[str]
-
-
-class HilResumeDecision(TypedDict, total=False):
-    """The Command(resume=...) value a decided approval wakes its gate with (resolution.py)."""
-
-    outcome: ApprovalOutcome
-    feedback: str | None
-    scope: str
-    approval_id: str
 
 
 class HILPreferences(BaseModel):
@@ -82,82 +58,6 @@ class HILToolRiskRecord(MongoDocument):
     is_destructive: bool
     rationale: str = ""
     classified_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-
-
-class HILApprovalRecord(MongoDocument):
-    """Durable record of one approval request (Mongo ``hil_approvals``).
-
-    The decision source of truth and audit trail: who asked to run what, the
-    decision, decider, and timing. The LangGraph checkpoint holds *graph* state;
-    this holds *decision* state, so an approval survives a restart/deploy and a
-    late or duplicate decision can be resolved exactly once against it.
-    """
-
-    approval_id: str
-    user_id: str
-    conversation_id: str
-    stream_id: str
-    tool_name: str
-    tool_call_id: str = ""
-    args: dict[str, Any] = Field(default_factory=dict)
-    summary: str = ""
-    integration_name: str | None = None
-    # None while pending.
-    outcome: ApprovalOutcome | None = None
-    decider: ApprovalDecider | None = None
-    scope: str = "once"
-    feedback: str | None = None
-    # Why auto mode ran this without asking (the intent judge's own words). Empty for
-    # anything the user decided — there the decision, not a rationale, is the record.
-    auto_reason: str | None = None
-    decided_by: str | None = None
-    decided_at: datetime | None = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    expires_at: datetime
-    # Serialized run context (executor_queue.build_run_item shape) written when
-    # the executor pauses; a decision re-dispatches the run from it. Lives on the
-    # record — not a TTL'd cache — so a decision can never outlive its context.
-    resume_item: dict[str, Any] | None = None
-    # Stamped when the resume run is dispatched; a decided record without it is
-    # a crashed resume the sweep re-dispatches.
-    resumed_at: datetime | None = None
-    # Set at creation only when a background subagent raised this approval: its thread
-    # and the SubagentResumeItem that rebuilds it, so any process can resume it on a
-    # decision. dict[str, Any] on the read side for the same reason as resume_item.
-    subagent_thread_id: str | None = None
-    subagent_resume: dict[str, Any] | None = None
-
-    def resume_payload(self) -> HilResumeDecision:
-        """The Command(resume=...) value this decided record wakes its gate with.
-
-        approval_id lets a gate sequence match its own decision on replay.
-        """
-        if self.outcome is None:
-            raise ValueError(f"approval {self.approval_id} is still pending")
-        return {
-            "outcome": self.outcome,
-            "feedback": self.feedback,
-            "scope": self.scope,
-            "approval_id": self.approval_id,
-        }
-
-
-class HILApprovalUpdate(BaseModel):
-    """Partial ``$set`` update for an approval record (repository write model).
-
-    Covers the post-creation stamps only — the decision transition itself goes
-    through ``HilApprovalRepository.mark_decided`` because it is conditional on
-    the record still being pending, which a plain ``$set`` model cannot express.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    # Typed on the write side only — set_resume_item is the sole writer, taking
-    # an ExecutorRunItem. The read side (HILApprovalRecord) stays dict[str, Any]
-    # deliberately: narrowing it would reject rows written before this type existed.
-    resume_item: ExecutorRunItem | None = None
-    resumed_at: datetime | None = None
-    subagent_resume: SubagentResumeItem | None = None
 
 
 class HILToolRiskUpdate(BaseModel):

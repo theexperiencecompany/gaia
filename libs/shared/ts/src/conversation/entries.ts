@@ -1,5 +1,7 @@
 import { z } from "zod";
 import type {
+  ApprovalOutcome,
+  ApprovalRequestEntry,
   ApprovalRequested,
   ConversationSource,
   FailureReason,
@@ -160,7 +162,46 @@ const ApprovalRequestedSchema = z.object({
   approval_id: z.string(),
   summary: z.string().default(""),
   expires_at: z.iso.datetime({ offset: true }).nullable().default(null),
+  tool_call_id: z.string().default(""),
+  gated_tool_name: z.string().default(""),
+  integration_name: z.string().nullable().default(null),
+  args_preview: z.record(z.string(), z.unknown()).default({}),
+  auto_reason: z.string().nullable().default(null),
+  always_asks: z.boolean().default(false),
 }) satisfies z.ZodType<ApprovalRequested>;
+
+const APPROVAL_OUTCOMES = [
+  "approved",
+  "denied",
+  "expired",
+  "cancelled",
+  "withdrawn",
+] as const satisfies readonly ApprovalOutcome[];
+
+const ApprovalCardSchema = z.object({
+  tool_name: z.string(),
+  tool_category: z.string(),
+  timestamp: z.string(),
+  data: z.object({
+    approval_id: z.string(),
+    tool_call_id: z.string(),
+    gated_tool_name: z.string(),
+    integration_name: z.string().nullable(),
+    summary: z.string(),
+    args_preview: z.record(z.string(), z.unknown()),
+    outcome: z.enum(APPROVAL_OUTCOMES).nullable(),
+    decider: z.enum(["user", "auto"]).nullable().optional(),
+    action: z
+      .enum(["executing", "executed", "failed", "unknown"])
+      .nullable()
+      .optional(),
+    feedback: z.string().nullable(),
+    auto_reason: z.string().nullable(),
+    timeout_seconds: z.number().int(),
+    asked_at: z.string().nullable().optional(),
+    always_asks: z.boolean().optional(),
+  }),
+}) satisfies z.ZodType<ApprovalRequestEntry>;
 
 export const SCREEN_ITEM_KIND = {
   USER: "user",
@@ -233,6 +274,7 @@ const WorkItemSchema = z.object({
   ]),
   asking: z.array(ApprovalRequestedSchema),
   asked_seq: z.number().int().min(0),
+  approvals: z.array(ApprovalCardSchema),
   handoff: ToolDataEntrySchema.nullable(),
   tool_data: z.array(ToolDataEntrySchema),
   image: ImageDataSchema.nullable(),

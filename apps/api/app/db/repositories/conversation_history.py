@@ -3,8 +3,8 @@
 A UserMessage is a user message, a Reply with its ReplySettled a bot message carrying its
 outcome, a Notice a bot message, a TodoWoke or WorkflowFired the user-side message that woke
 the run, and finished work with cards its own bubble until a reply answers that work (the
-reply whose reply_id is its task_id carries them then). An approval card's status is derived
-from the approval's entries; nothing rewrites it in place.
+reply whose reply_id is its task_id carries them then). Approval cards are the conversation
+screen's to draw; these flat messages carry the cards the entries stored.
 """
 
 from __future__ import annotations
@@ -12,14 +12,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
-from pydantic import BaseModel, ConfigDict
-
 from app.constants.chat import BOT_MESSAGE_TYPE, USER_MESSAGE_TYPE
-from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.chat_models import MessageReaction
 from app.models.conversation_log_models import (
-    ApprovalDecided,
-    ApprovalRequested,
     EntryKind,
     LoggedEntry,
     Notice,
@@ -35,8 +30,6 @@ from app.models.conversation_log_models import (
 )
 from app.models.conversation_models import ConversationEntry
 from app.models.message_models import ReplyToMessageData
-from app.models.tool_data_models import ToolDataEntry
-from shared.py.analytics.catalog.hil import ApprovalOutcome
 
 #: The kinds whose append advances a conversation's sync clock: each adds or ends a row a client shows.
 SYNCED_KINDS: frozenset[str] = frozenset(
@@ -57,8 +50,6 @@ RELATED_KINDS: frozenset[str] = frozenset(
         EntryKind.REPLY_SETTLED,
         EntryKind.USER_MESSAGE,
         EntryKind.REPLY,
-        EntryKind.APPROVAL_REQUESTED,
-        EntryKind.APPROVAL_DECIDED,
         EntryKind.WORK_STARTED,
         EntryKind.WORK_FINISHED,
     }
@@ -76,8 +67,6 @@ class _Beside:
     settles: dict[str, ReplySettled] = field(default_factory=dict)
     users: dict[str, UserMessage] = field(default_factory=dict)
     replies: set[str] = field(default_factory=set)
-    requests: dict[str, ApprovalRequested] = field(default_factory=dict)
-    decisions: dict[str, ApprovalDecided] = field(default_factory=dict)
     finished: dict[str, WorkFinished] = field(default_factory=dict)
     # Detached work's task ids: its bubble sits at its WorkStarted, where the live view placed it.
     detached: set[str] = field(default_factory=set)
@@ -93,13 +82,6 @@ class _Beside:
                     beside.users[message.id] = message
                 case Reply(reply_id=reply_id):
                     beside.replies.add(reply_id)
-                case ApprovalRequested() as request:
-                    beside.requests[request.approval_id] = request
-                # Read order is not seq order: the restatement that carries the action's end wins.
-                case ApprovalDecided() as decision if (
-                    decision.action is not None or decision.approval_id not in beside.decisions
-                ):
-                    beside.decisions[decision.approval_id] = decision
                 case WorkFinished() as work:
                     beside.finished[work.task_id] = work
                 case WorkStarted(detached=True) as started:
@@ -120,15 +102,6 @@ def needed_beside(
     present = {logged.entry.id for logged in read}
     beside = _Beside.of(read)
     wanted = {target for logged in read if (target := _quote_target(logged.entry)) is not None}
-    for logged in window:
-        for approval_id in _card_approvals(logged.entry):
-            wanted |= {
-                f"approval:{approval_id}",
-                f"approval:{approval_id}:decided",
-                f"approval:{approval_id}:acted",
-            }
-    for request in beside.requests.values():
-        wanted |= {f"work:{request.task_id}:finished", f"work:{request.task_id}:lost"}
     for logged in window:
         match logged.entry:
             case WorkStarted(detached=True, task_id=task_id):
@@ -191,7 +164,7 @@ def _message(logged: LoggedEntry, beside: _Beside) -> ConversationEntry | None:
                 type=BOT_MESSAGE_TYPE,
                 response=reply.text,
                 message_id=reply.reply_id,
-                tool_data=_cards(reply.tool_data, beside),
+                tool_data=list(reply.tool_data) or None,
                 follow_up_actions=list(reply.follow_up_actions) or None,
                 image_data=reply.image,
                 replyToMessage=_quote(beside, target),
@@ -207,7 +180,7 @@ def _message(logged: LoggedEntry, beside: _Beside) -> ConversationEntry | None:
                 type=BOT_MESSAGE_TYPE,
                 response=notice.text,
                 message_id=notice.id,
-                tool_data=_cards(notice.tool_data, beside),
+                tool_data=list(notice.tool_data) or None,
                 follow_up_actions=list(notice.follow_up_actions) or None,
             )
         case TodoWoke() as woke:
@@ -250,55 +223,10 @@ def _work_bubble(
         type=BOT_MESSAGE_TYPE,
         response="",
         message_id=f"work:{work.task_id}",
-        tool_data=_cards(work.tool_data, beside),
+        tool_data=list(work.tool_data) or None,
         image_data=work.image,
         stopped=True if work.outcome in _STOPPED_WORK else None,
     )
-
-
-def _card_approvals(entry: object) -> list[str]:
-    match entry:
-        case Reply(tool_data=cards) | Notice(tool_data=cards) | WorkFinished(tool_data=cards):
-            return [approval for card in cards if (approval := _approval_of(card)) is not None]
-        case _:
-            return []
-
-
-class _ApprovalCardData(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    approval_id: str | None = None
-
-
-def _approval_of(card: ToolDataEntry) -> str | None:
-    data = card["data"]
-    if card["tool_name"] != APPROVAL_REQUEST_TOOL_NAME or not isinstance(data, dict):
-        return None
-    return _ApprovalCardData.model_validate(data).approval_id
-
-
-def _cards(cards: Sequence[ToolDataEntry], beside: _Beside) -> list[ToolDataEntry] | None:
-    """Return the cards with each logged approval's outcome as the log has it."""
-    shown: list[ToolDataEntry] = []
-    for card in cards:
-        approval_id = _approval_of(card)
-        ended = None if approval_id is None else _approval_end(approval_id, beside)
-        shown.append(card if ended is None else {**card, "data": {**card["data"], **ended}})
-    return shown or None
-
-
-def _approval_end(approval_id: str, beside: _Beside) -> dict[str, str | None] | None:
-    """Return a logged approval's outcome and decider; None leaves an approval the log never asked as created."""
-    decision = beside.decisions.get(approval_id)
-    if decision is not None:
-        return {"outcome": decision.outcome, "decider": decision.decider, "action": decision.action}
-    request = beside.requests.get(approval_id)
-    if request is None:
-        return None
-    work = beside.finished.get(request.task_id)
-    if work is not None and work.outcome in _STOPPED_WORK:
-        return {"outcome": ApprovalOutcome.CANCELLED, "decider": None}
-    return {"outcome": None, "decider": None}
 
 
 def _quote_target(entry: object) -> str | None:

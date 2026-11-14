@@ -16,7 +16,6 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.db.repositories.approval_ledger import (
-    LIVE_ROW_FILTER,
     ApprovalLedgerRepository,
     approval_ledger_repository,
 )
@@ -268,23 +267,6 @@ class TestClaims:
 
 @pytest.mark.unit
 class TestReads:
-    async def test_list_open_filters_live_and_sorts_oldest_first(
-        self, repo: ApprovalLedgerRepository, collection: MagicMock
-    ) -> None:
-        cursor = MagicMock()
-        cursor.sort = MagicMock(return_value=cursor)
-        cursor.to_list = AsyncMock(return_value=[_doc()])
-        collection.find = MagicMock(return_value=cursor)
-
-        docs = await repo.list_open("c1")
-
-        flt = collection.find.call_args.args[0]
-        assert flt["conversation_id"] == "c1"
-        assert flt["$or"] == LIVE_ROW_FILTER["$or"]
-        cursor.sort.assert_called_once_with("created_at", 1)
-        cursor.to_list.assert_awaited_once_with(length=200)
-        assert len(docs) == 1 and docs[0].approval_id == "ap_1"
-
     async def test_find_live_queries_live_rows_newest_first(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
     ) -> None:
@@ -387,7 +369,7 @@ class TestReads:
     async def test_singleton_exists(self) -> None:
         assert isinstance(approval_ledger_repository, ApprovalLedgerRepository)
 
-    async def test_list_live_by_owners_batches_one_query(
+    async def test_list_by_owners_batches_one_query(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
     ) -> None:
         """List views read one page, not one row per todo."""
@@ -396,19 +378,24 @@ class TestReads:
         cursor.to_list = AsyncMock(return_value=[_doc()])
         collection.find = MagicMock(return_value=cursor)
 
-        docs = await repo.list_live_by_owners("todo", ["todo-1", "todo-2"])
+        since = datetime(2026, 1, 1, tzinfo=UTC)
+
+        docs = await repo.list_by_owners("todo", ["todo-1", "todo-2"], created_since=since)
 
         flt = collection.find.call_args.args[0]
-        assert flt["owner_run_type"] == "todo"
-        assert flt["owner_id"] == {"$in": ["todo-1", "todo-2"]}
-        assert flt["$or"] == LIVE_ROW_FILTER["$or"]
+        assert flt == {
+            "owner_run_type": "todo",
+            "owner_id": {"$in": ["todo-1", "todo-2"]},
+            "created_at": {"$gte": since},
+        }
         cursor.sort.assert_called_once_with("created_at", 1)
         cursor.to_list.assert_awaited_once_with(length=200)
         assert len(docs) == 1
 
-    async def test_list_live_by_owners_empty_means_no_query(
+    async def test_list_by_owners_empty_means_no_query(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
     ) -> None:
-        assert await repo.list_live_by_owners("todo", []) == []
-        assert await repo.list_live_by_owners("", ["todo-1"]) == []
+        since = datetime(2026, 1, 1, tzinfo=UTC)
+        assert await repo.list_by_owners("todo", [], created_since=since) == []
+        assert await repo.list_by_owners("", ["todo-1"], created_since=since) == []
         collection.find.assert_not_called()

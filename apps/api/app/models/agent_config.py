@@ -12,7 +12,6 @@ The one ``app.models`` import, ``presence_models``, is itself an import-free lea
 """
 
 from collections.abc import Mapping
-from enum import StrEnum
 from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict
@@ -37,26 +36,6 @@ CONFIGURABLE_KEY = "configurable"
 #: The execution mode a run is in. ``background`` runs have no user waiting on
 #: them, which is what suppresses HIL pauses and the executor wake-up path.
 ExecutionMode = Literal["interactive", "background"]
-
-
-class SubagentKind(StrEnum):
-    """Which delegation tool a subagent run came from — and so how it is rebuilt."""
-
-    SPAWN = "spawn"
-
-
-class SubagentResumeItem(TypedDict):
-    """How to rebuild a background subagent run, in any process, from what its tool was given.
-
-    parent_configurable is the executor's configurable, persist-safe.
-    """
-
-    kind: SubagentKind
-    tool_call_id: str
-    task: str
-    context: str
-    inherited_tool_names: list[str]
-    parent_configurable: "AgentConfigurable"
 
 
 class StepTurnRef(TypedDict):
@@ -199,12 +178,6 @@ class AgentConfigurable(TypedDict, total=False):
     langfuse_tags: list[str]
 
     # --- internal flags -----------------------------------------------------
-    #: Set only on a HIL resume re-dispatch, to tell a replayed call from a
-    #: fresh one. Keyed by ``HIL_RESUME_CONFIG_KEY``.
-    hil_resume_replay: bool
-    #: Set only on a background subagent's own run: the recipe the HIL gate files
-    #: on its approvals. Keyed by ``SUBAGENT_RESUME_CONFIG_KEY``.
-    subagent_resume: SubagentResumeItem
     #: DEV-ONLY: the DEV_MODEL_OPTIONS key picked for the executor in the dev
     #: model switcher, since the executor builds its own configurable.
     dev_executor_model: str
@@ -353,12 +326,8 @@ def get_session_id(config: AgentRunConfig | None) -> str | None:
 class ExecutorRunItem(TypedDict, total=False):
     """The serialized run context stored between an executor turn and its re-dispatch.
 
-    Written by build_run_item into the Redis queue and into
-    HILApprovalRecord.resume_item; read back by prepare_run_from_item.
-
-    total=False is the honest shape: the HIL resume path re-dispatches from
-    record.resume_item or {}, so an absent or empty item is a real, handled
-    input — every read below supplies a default.
+    Written by build_run_item into the Redis queue; read back by prepare_run_from_item.
+    total=False: every read supplies a default.
     """
 
     task: str
@@ -366,11 +335,10 @@ class ExecutorRunItem(TypedDict, total=False):
     configurable: AgentConfigurable
     conversation_id: str
     user_message_id: str | None
-    # Original live turn's bot message id, set only by a HIL pause (_record_pause);
-    # a plain queue enqueue never sets it. Read back into ExecutorRun.
+    # Original live turn's bot message id. Read back into ExecutorRun.
     bot_message_id: str | None
     # Workflow execution the run belongs to. It lives only on the workflow task's
-    # wide event, and a queue pop or HIL resume rebuilds the run elsewhere, so the
+    # wide event, and a queue pop rebuilds the run elsewhere, so the
     # item is the only carrier across; read into ExecutorRun for attribution.
     workflow_execution_id: str | None
     # ISO dispatch time (RunIdentity.dispatched_at), so a rebuilt run keeps it.

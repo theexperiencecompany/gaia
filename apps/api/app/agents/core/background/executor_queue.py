@@ -272,20 +272,6 @@ async def release_lock_if_owned(conversation_id: str, stream_id: str, task_id: s
         await drop_progress(conversation_id, build_lock_value(stream_id, task_id or ""))
 
 
-async def extend_lock_if_owned(
-    conversation_id: str, stream_id: str, task_id: str | None, ttl_seconds: int
-) -> bool:
-    """Re-arm the busy lock's TTL while this run still owns it; return whether it did.
-
-    A run parked on a HIL approval may outlive its lock's TTL, and a lapse under
-    a checkpointed interrupt lets a new run take the thread. Ownership-checked
-    like release_lock_if_owned so a stale run never extends a newer one's lock.
-    """
-    return await extend_lock_held_by(
-        conversation_id, build_lock_value(stream_id, task_id or ""), ttl_seconds
-    )
-
-
 async def extend_lock_held_by(conversation_id: str, lock_value: str, ttl_seconds: int) -> bool:
     """Re-arm the busy lock's TTL only while lock_value holds it; never re-creates a freed lock."""
     if not redis_cache.client:

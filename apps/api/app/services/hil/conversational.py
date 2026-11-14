@@ -23,7 +23,6 @@ from app.constants.hil import (
     ReplyChoice,
 )
 from app.constants.log_tags import LogTag
-from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.models.hil_models import (
     ApprovalLedgerDocument,
     BatchDecisionResult,
@@ -39,6 +38,7 @@ from app.services.hil.errors import (
 )
 from app.services.hil.jev_reply import ask_jev_reply, settle_reply
 from app.services.hil.ledger_decide import LedgerDecision, decide_ledger
+from app.services.hil.pending import pending_approvals
 from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
 from shared.py.wide_events import log
 
@@ -84,7 +84,7 @@ async def resolve_pending_from_message(
     "deny" when things were only declined, "unrelated" when the user moved on),
     or None when nothing was pending or the reply addressed none of it.
     """
-    pending = await _list_pending_ledger(conversation_id)
+    pending = await pending_approvals(conversation_id, user_id)
     if not pending:
         return None
     if len(pending) == 1:
@@ -250,27 +250,14 @@ def _log_jev_failure(error: Exception) -> None:
     )
 
 
-async def _list_pending_ledger(conversation_id: str) -> list[ApprovalLedgerDocument]:
-    """Ledger-enabled users' decidable rows: list_open covers live rows, only pending ones decide here."""
-    return [
-        row
-        for row in await approval_ledger_repository.list_open(conversation_id)
-        if row.outcome is None
-    ]
-
-
 async def _safe_resolve_ledger(
     approval_id: str, user_id: str, decision: ApprovalDecision, feedback: str | None
 ) -> None:
-    """Apply one ledger decision, tolerating a lost race.
-
-    Bots carry no row version, so v=None — the PENDING->decided CAS inside
-    decide_ledger still guards.
-    """
+    """Apply one decision, tolerating one the log already took."""
     result: LedgerDecision | None = None
     with contextlib.suppress(ApprovalRequestNotFoundError, ApprovalRequestForbiddenError):
         result = await decide_ledger(
-            approval_id, user_id=user_id, kind=decision, feedback=feedback, v=None, via="chat"
+            approval_id, user_id=user_id, kind=decision, feedback=feedback, via="chat"
         )
     if result is not None and not result.committed:
         log.warning(
@@ -285,13 +272,12 @@ async def _abandon_ledger_approvals(conversation_id: str, user_id: str) -> None:
 
     Denies with the moved-on feedback, which wakes the agent to wrap up.
     """
-    for row in await _list_pending_ledger(conversation_id):
+    for row in await pending_approvals(conversation_id, user_id):
         with contextlib.suppress(ApprovalRequestNotFoundError, ApprovalRequestForbiddenError):
             await decide_ledger(
                 row.approval_id,
                 user_id=user_id,
                 kind="deny",
                 feedback=UNRELATED_FEEDBACK,
-                v=None,
                 via="chat",
             )

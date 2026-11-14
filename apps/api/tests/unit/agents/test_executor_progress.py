@@ -43,7 +43,6 @@ from app.constants.cache import (
 )
 from app.constants.executor import EXECUTOR_PROGRESS_MAX_CALLS
 from app.constants.general import CALL_EXECUTOR_NAME
-from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
@@ -352,15 +351,6 @@ class TestLifetime:
         await asyncio.sleep(1.2)
 
         assert describe_progress(await read_progress(CONV, HOLDER)) == ""
-
-    async def test_a_paused_run_keeps_its_progress_for_the_approval_window(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
-    ) -> None:
-        await _record(HOLDER, _call("GMAIL_SEND", {"to": "a@b.c"}))
-
-        await hold_run_alive(CONV, HOLDER, HIL_PAUSED_LOCK_TTL_SECONDS)
-
-        assert await fake_redis.ttl(progress_key(CONV, HOLDER)) > EXECUTOR_ALIVE_TTL
 
     async def test_the_beat_never_creates_a_record(
         self, fake_redis: fakeredis.aioredis.FakeRedis

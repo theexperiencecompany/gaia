@@ -26,9 +26,13 @@ const card = (
   args_preview: { to: "b@x" },
   outcome: null,
   feedback: null,
+  auto_reason: null,
   timeout_seconds: 300,
   ...overrides,
 });
+
+const askedAgo = (seconds: number): string =>
+  new Date(Date.now() - seconds * 1000).toISOString();
 
 describe("ApprovalRequestSection ledger UX", () => {
   beforeEach(() => {
@@ -37,13 +41,17 @@ describe("ApprovalRequestSection ledger UX", () => {
       .mockResolvedValue({ success: true });
   });
 
-  it("shows the card age when the ledger provides it", () => {
-    render(<ApprovalRequestSection data={card({ age_seconds: 172800 })} />);
+  it("shows how long ago the card was asked", () => {
+    render(
+      <ApprovalRequestSection data={card({ asked_at: askedAgo(172800) })} />,
+    );
     expect(screen.getByText("asked 2d ago")).toBeDefined();
   });
 
   it("asks in place before submitting a day-old approval", async () => {
-    render(<ApprovalRequestSection data={card({ age_seconds: 259200 })} />);
+    render(
+      <ApprovalRequestSection data={card({ asked_at: askedAgo(259200) })} />,
+    );
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
     // Re-confirm appears; nothing submitted yet.
     expect(screen.getByText(/still want this/i)).toBeDefined();
@@ -55,7 +63,7 @@ describe("ApprovalRequestSection ledger UX", () => {
   });
 
   it("submits immediately on approve tap — no waiting room", async () => {
-    render(<ApprovalRequestSection data={card({ age_seconds: 5 })} />);
+    render(<ApprovalRequestSection data={card({ asked_at: askedAgo(5) })} />);
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
     // No "Sending your approval" interstitial, no cancel button.
     expect(screen.queryByText(/sending your approval/i)).toBeNull();
@@ -65,58 +73,30 @@ describe("ApprovalRequestSection ledger UX", () => {
     );
   });
 
-  it("submits the rendered row version with the decision", async () => {
-    render(
-      <ApprovalRequestSection
-        data={card({ age_seconds: 5, ledger_version: 4 })}
-      />,
-    );
+  it("says an already-decided approval was decided and re-enables the card", async () => {
+    vi.mocked(chatApi.postApprovalDecision)
+      .mockReset()
+      .mockResolvedValueOnce({ success: false, outcome: null });
+    render(<ApprovalRequestSection data={card({ asked_at: askedAgo(5) })} />);
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
     await vi.waitFor(() =>
       expect(chatApi.postApprovalDecision).toHaveBeenCalledWith("ap_1", {
         decision: "approve",
         feedback: undefined,
         scope: "once",
-        v: 4,
       }),
     );
-  });
-
-  it("drops the version on the retry after a stale-v conflict", async () => {
-    vi.mocked(chatApi.postApprovalDecision)
-      .mockReset()
-      .mockResolvedValueOnce({ success: false, outcome: null })
-      .mockResolvedValueOnce({ success: true });
-    render(
-      <ApprovalRequestSection
-        data={card({ age_seconds: 5, ledger_version: 4 })}
-      />,
-    );
-    // First tap carries the rendered version.
-    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
     await vi.waitFor(() =>
-      expect(chatApi.postApprovalDecision).toHaveBeenNthCalledWith(1, "ap_1", {
-        decision: "approve",
-        feedback: undefined,
-        scope: "once",
-        v: 4,
-      }),
+      expect(toast.error).toHaveBeenCalledWith(
+        "That approval was already decided",
+      ),
     );
-    // The conflict toast means the card re-enabled (submitting reset).
-    await vi.waitFor(() => expect(toast.error).toHaveBeenCalled());
-    const approve = () => screen.getByRole("button", { name: /^approve$/i });
     await vi.waitFor(() =>
-      expect(approve().hasAttribute("disabled")).toBe(false),
-    );
-    // The card stayed pending; the second tap omits v so the CAS decides.
-    fireEvent.click(approve());
-    await vi.waitFor(() =>
-      expect(chatApi.postApprovalDecision).toHaveBeenNthCalledWith(2, "ap_1", {
-        decision: "approve",
-        feedback: undefined,
-        scope: "once",
-        v: undefined,
-      }),
+      expect(
+        screen
+          .getByRole("button", { name: /^approve$/i })
+          .hasAttribute("disabled"),
+      ).toBe(false),
     );
   });
 });

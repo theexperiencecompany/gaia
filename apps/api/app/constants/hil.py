@@ -132,34 +132,9 @@ HILToolMessageStatus = Literal["denied", "timeout", "error", "already_ran", "pen
 # notification, NOT infrastructure — HIL gates irreversible, third-party-visible actions.
 HIL_APPROVAL_TIMEOUT_SECONDS = 6 * 60 * 60
 
-# TTL the executor busy lock is re-armed to when a run parks on an approval. A
-# paused run's lock TTL started when the run BEGAN, not when it paused; if it
-# lapses first, the next call_executor discards the pending interrupt and orphans the user's card.
-HIL_PAUSED_LOCK_TTL_SECONDS = HIL_APPROVAL_TIMEOUT_SECONDS + EXECUTOR_BUSY_TTL
-
-# How long unread executor inbox work lives: as long as the longest hold that can keep
-# a reader from it (a run parked on an approval), so nothing handed over during a park
-# lapses before the resumed run reads it. A park re-arms it from its own start.
-EXECUTOR_INBOX_TTL = HIL_PAUSED_LOCK_TTL_SECONDS
-
-# A decided record with no resumed_at stamp older than this is a crashed
-# resume dispatch; the sweep re-dispatches it from the record's resume_item.
-HIL_DECIDED_UNRESUMED_GRACE_SECONDS = 120
-
-# The key LangGraph puts a paused run's Interrupt objects under in an "updates"
-# stream event. Mirrored here because langgraph.constants.INTERRUPT went private
-# in v1 (deprecated, slated for removal in v2).
-LANGGRAPH_INTERRUPT_KEY = "__interrupt__"
-
-# configurable flag set only on a resume re-dispatch. spawn_subagent probes
-# the spawn's thread checkpoint for a parked interrupt ONLY when this is
-# set, so fresh runs (the ~100% case) skip that per-spawn Postgres read.
-HIL_RESUME_CONFIG_KEY: Final = "hil_resume_replay"
-
-# configurable key a background subagent run carries its own rebuild recipe
-# under, so the gate files it on every approval the run raises and a decision
-# can resume the parked thread from any process.
-SUBAGENT_RESUME_CONFIG_KEY: Final = "subagent_resume"
+# How long unread executor inbox work lives: an approval ticket handed over waits
+# as long as the user may take to answer, plus one busy run.
+EXECUTOR_INBOX_TTL = HIL_APPROVAL_TIMEOUT_SECONDS + EXECUTOR_BUSY_TTL
 
 # Keyed by stream_id (unique per turn), so this only suppresses re-asks within
 # the same turn — a genuinely new request in a later turn still prompts.
@@ -198,10 +173,6 @@ HIL_EXEMPT_TOOLS: frozenset[str] = frozenset(
         "search_memory",
     }
 )
-
-# Exempt tools that still PAUSE the run when called with background=False (they bubble
-# the child's gate up): a gated sibling must never auto-run, the replay would run it twice.
-HIL_PAUSING_TOOLS: frozenset[str] = frozenset({"spawn_subagent"})
 
 # tool_data entry name for the approval card (mirrored in @gaia/shared/chat).
 APPROVAL_REQUEST_TOOL_NAME = "approval_request"

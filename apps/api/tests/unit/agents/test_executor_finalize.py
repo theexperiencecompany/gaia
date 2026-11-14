@@ -14,7 +14,6 @@ import asyncio
 from collections.abc import Iterator, Mapping
 from contextlib import ExitStack, contextmanager
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
 import time
 from types import SimpleNamespace
 from typing import Any
@@ -36,7 +35,6 @@ from app.agents.core.background import (
     running_registry,
 )
 from app.agents.core.background.confirmation_gate import spend_confirmation
-from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_lock_value,
@@ -51,19 +49,16 @@ from app.agents.core.background.session import (
 from app.agents.core.outcome_review import NOT_REVIEWED, OutcomeReview
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext, SubagentOutcome
 from app.constants.agents import AgentTag, OutcomeState
-from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_INBOX_PREFIX
+from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.conversation import WORK_STOPPED_REPORT
 from app.constants.executor import (
-    EXECUTOR_APPROVAL_LOST_MESSAGE,
     EXECUTOR_CARRY_TASK,
     EXECUTOR_CRASH_MESSAGE,
-    EXECUTOR_PAUSED,
     EXECUTOR_STEP_LIMIT_MESSAGE,
     INBOX_ENTRY_ID,
     INTERRUPTION_NOTICE,
 )
 from app.constants.general import FINISH_TASK_NAME
-from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.models.agent_models import InboxEntry
@@ -71,9 +66,8 @@ from app.models.chat_models import SourceCategory, ToolDataEntry
 from app.models.conversation_log_models import WorkOutcome
 from app.models.executor_activity_models import ExecutorActivity
 from app.models.user_models import AuthenticatedUser
-from app.services.hil import bridge
 from shared.py.wide_events import log, log_context
-from tests.helpers import WideEventRecorder, captured_wide_event
+from tests.helpers import WideEventRecorder
 
 # The task text the finalize step now receives; forwarded to comms on a cancel.
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
@@ -342,37 +336,6 @@ class TestCancelStillCarriesHandedOverWork:
         boundaries.inbox_cls.return_value.retire.assert_not_awaited()
 
 
-class TestRecordPause:
-    """_record_pause must fail the run, never the process, when the write fails.
-
-    A batch pause with no resumable context is worse than an error: it holds the
-    busy lock for its full TTL waiting on a resume that can never come. The
-    caller (run_executor_background) treats a False return as "fail this
-    run" — so a write failure here must surface as False, not an exception.
-    """
-
-    async def test_a_failed_write_fails_the_run_instead_of_raising(self) -> None:
-        run = _run(RunKind.LIVE)
-
-        with patch.object(
-            er, "set_resume_item", new_callable=AsyncMock, side_effect=RuntimeError("redis down")
-        ):
-            recorded = await er._record_pause(
-                run, TASK, {"user_id": USER_ID}, ("appr-1", "appr-2")
-            )  # must not raise
-
-        assert recorded is False
-
-    async def test_a_successful_write_reports_true(self) -> None:
-        run = _run(RunKind.LIVE)
-
-        with patch.object(er, "set_resume_item", new_callable=AsyncMock) as set_item:
-            recorded = await er._record_pause(run, TASK, {"user_id": USER_ID}, ("appr-1", "appr-2"))
-
-        assert recorded is True
-        assert set_item.await_count == 2  # every approval id in the batch gets stamped
-
-
 class TestLockThenInboxHandoff:
     async def test_the_lock_is_released_then_the_inbox_is_rechecked(self, boundaries) -> None:
         create_session("s1", RunKind.QUEUED)
@@ -413,33 +376,6 @@ class TestLockThenInboxHandoff:
 
         boundaries.prepare.assert_not_awaited()
         spawn.assert_not_awaited()
-
-
-@pytest.mark.usefixtures("fake_redis")
-class TestThePausedRunKeepsItsLock:
-    """A run parked on a HIL approval is NOT over: its thread is checkpointed with pending work, so no other run may take it.
-
-    Releasing the lock — or letting its TTL lapse while the user takes hours to answer — lets the
-    next run take that thread and discard the interrupt.
-    """
-
-    async def test_a_pause_re_arms_the_lock_instead_of_releasing_it(self, boundaries) -> None:
-        session = create_session("s1", RunKind.QUEUED)
-
-        with patch.object(
-            er, "extend_lock_if_owned", new_callable=AsyncMock, return_value=True
-        ) as extend:
-            await er._finalize_executor_run(_run(RunKind.QUEUED), "", EXECUTOR_PAUSED)
-
-        extend.assert_awaited_once_with("conv-1", "s1", "task-1", HIL_PAUSED_LOCK_TTL_SECONDS)
-        boundaries.release.assert_not_awaited()
-        # Nothing ends, and nothing may be carried into a second run — this
-        # thread still holds the work the approval is gating.
-        boundaries.logged.assert_not_awaited()
-        boundaries.read_inbox.assert_not_awaited()
-        # The turn's SSE must still close, or the user watches a spinner instead
-        # of the approval card.
-        assert session.done_event.is_set()
 
 
 class _FakeRedisClient:
@@ -774,42 +710,6 @@ class TestBuildRunItem:
         assert item["bot_message_id"] is None
 
 
-class TestHeldCardsFlushedAtFinalize:
-    async def test_finalize_flushes_held_cards_before_done_signal(self, boundaries) -> None:
-        """Held PENDING cards must go live at run end — otherwise the open client never renders them until a full refresh re-fetches messages."""
-        from app.services.hil import bridge
-
-        boundaries.stream_manager.is_cancelled.return_value = False
-        session = create_session("s1", RunKind.LIVE)
-
-        with patch.object(
-            bridge, "flush_held_approval_cards", new=AsyncMock(return_value=1)
-        ) as flush:
-            await er._finalize_executor_run(_run(RunKind.LIVE), "txt", "final")
-
-        flush.assert_awaited_once_with("s1")
-        assert session.done_event.is_set()
-
-    async def test_flush_failure_never_breaks_finalize(self, boundaries) -> None:
-        from app.services.hil import bridge
-
-        boundaries.stream_manager.is_cancelled.return_value = False
-        session = create_session("s1", RunKind.LIVE)
-
-        with patch.object(
-            bridge,
-            "flush_held_approval_cards",
-            new=AsyncMock(side_effect=RuntimeError("redis down")),
-        ):
-            async with captured_wide_event() as event:
-                await er._finalize_executor_run(_run(RunKind.LIVE), "txt", "final")
-
-        assert session.done_event.is_set()
-        (error,) = [e for e in event["errors"] if "flush" in e["msg"]]
-        assert error["msg"] == f"{LogTag.AGENT} Held card flush failed"
-        assert (error["stream_id"], error["error_type"]) == ("s1", "RuntimeError")
-
-
 def _count(name: str, labels: dict[str, str]) -> float:
     return REGISTRY.get_sample_value(f"{name}_count", labels) or 0.0
 
@@ -874,112 +774,6 @@ class TestTerminalRunMetrics:
 
 
 # A park re-arms the inbox in Redis: a per-test one, never the ambient client.
-@pytest.mark.usefixtures("fake_redis")
-class TestFinalizePausedRun:
-    """A HIL pause holds the lock and signals the stream.
-
-    It must not deliver or drain the queue, and observe_executor_run_total gets
-    the pause's own label.
-    """
-
-    async def _pause(self, *, queued: bool):
-        run = replace(_run(RunKind.QUEUED), queued=queued)
-        with (
-            patch.object(er, "hold_run_alive", AsyncMock()) as alive,
-            patch.object(er, "extend_lock_if_owned", AsyncMock(return_value=True)) as extend,
-            patch.object(er, "signal_executor_done") as signal,
-            patch.object(er, "_close_run_stream", AsyncMock()) as close,
-            patch.object(er, "observe_executor_run_total") as total,
-            patch.object(er, "log") as mock_log,
-        ):
-            await er._finalize_paused_run(run)
-        # A parked run has no process beating for it: it is alive for as long as its park.
-        alive.assert_awaited_once_with("conv-1", "s1:task-1", HIL_PAUSED_LOCK_TTL_SECONDS)
-        return run, extend, signal, close, total, mock_log
-
-    async def test_it_extends_the_lock_signals_done_and_counts_paused(self) -> None:
-        run, extend, signal, close, total, mock_log = await self._pause(queued=True)
-
-        extend.assert_awaited_once_with("conv-1", "s1", "task-1", HIL_PAUSED_LOCK_TTL_SECONDS)
-        signal.assert_called_once_with("s1")
-        close.assert_awaited_once_with(run, was_cancelled=False)
-        total.assert_called_once_with(status="paused", queued=True)
-        # A successful extend is not a warning: the orphan warning is for the
-        # losing branch only.
-        mock_log.warning.assert_not_called()
-
-    async def test_work_waiting_for_a_parked_run_outlives_the_park(self, fake_redis) -> None:
-        """A result handed over just before the park is read when the run resumes, hours later."""
-        inbox_key = f"{EXECUTOR_INBOX_PREFIX}conv-1"
-        await ExecutorInbox("conv-1").append("e1", "the answer", AgentTag.BROWSER_RESULT)
-        await fake_redis.expire(inbox_key, 60)
-        with (
-            patch.object(er, "extend_lock_if_owned", AsyncMock(return_value=True)),
-            patch.object(er, "signal_executor_done"),
-            patch.object(er, "_close_run_stream", AsyncMock()),
-        ):
-            await er._finalize_paused_run(_run(RunKind.QUEUED))
-
-        assert await fake_redis.ttl(inbox_key) > HIL_PAUSED_LOCK_TTL_SECONDS - 5
-        assert [entry.id for entry in await ExecutorInbox("conv-1").read()] == ["e1"]
-
-    async def test_a_pause_that_lost_its_lock_says_the_approval_may_be_orphaned(self) -> None:
-        run = _run(RunKind.QUEUED)
-        with (
-            patch.object(er, "hold_run_alive", AsyncMock()),
-            patch.object(er, "extend_lock_if_owned", AsyncMock(return_value=False)),
-            patch.object(er, "signal_executor_done"),
-            patch.object(er, "_close_run_stream", AsyncMock()),
-        ):
-            async with captured_wide_event() as event:
-                await er._finalize_paused_run(run)
-
-        [warning] = event["warnings"]
-        assert warning["msg"] == (
-            f"{LogTag.HIL} Could not extend busy lock for paused run; the approval "
-            "may be orphaned if the lock lapses"
-        )
-        assert (warning["task_id"], warning["conversation_id"], warning["stream_id"]) == (
-            "task-1",
-            "conv-1",
-            "s1",
-        )
-
-    async def test_a_pause_without_a_task_id_beats_with_the_locks_value(self) -> None:
-        run = replace(_run(RunKind.QUEUED), task_id=None)
-        with (
-            patch.object(er, "hold_run_alive", AsyncMock()) as alive,
-            patch.object(er, "extend_lock_if_owned", AsyncMock(return_value=True)),
-            patch.object(er, "signal_executor_done"),
-            patch.object(er, "_close_run_stream", AsyncMock()),
-        ):
-            await er._finalize_paused_run(run)
-
-        alive.assert_awaited_once_with("conv-1", "s1:", HIL_PAUSED_LOCK_TTL_SECONDS)
-
-    async def test_a_non_queued_pause_is_counted_as_not_queued(self) -> None:
-        _run_arg, _extend, _signal, _close, total, _log = await self._pause(queued=False)
-
-        total.assert_called_once_with(status="paused", queued=False)
-
-
-class TestRecordPauseIdentityRewrite:
-    async def test_the_resume_context_drops_the_stamp_and_the_queue_origin(self) -> None:
-        """The stamp goes (no queue wait for decision time) and the queue origin is cleared."""
-        run = replace(_run(RunKind.QUEUED), t_dispatch_perf=1234.5, queued=True)
-
-        with patch.object(er, "set_resume_item", new_callable=AsyncMock) as set_item:
-            recorded = await er._record_pause(run, TASK, {"user_id": USER_ID}, ("appr-1",))
-
-        assert recorded is True
-        item = set_item.await_args.args[1]
-        # The serialized resume item carries no queue-timing at all, so a rebuilt
-        # run defaults to no dispatch stamp and no queue origin — the resume
-        # measures user decision time as neither queue wait nor a lock wait.
-        assert "t_dispatch_perf" not in item
-        assert "queued" not in item
-
-
 def _executor_ctx() -> SubagentExecutionContext:
     return SubagentExecutionContext(
         subagent_graph=MagicMock(),
@@ -1006,7 +800,6 @@ class TestARunHandsFinalizeWhatItProduced:
         execute: Any = None,
         prepare: Any = None,
         committed: tuple[str, ...] = (),
-        record_pause: bool = True,
     ) -> Iterator[SimpleNamespace]:
         ctx = _executor_ctx()
         prepare = prepare or AsyncMock(return_value=(ctx, None))
@@ -1025,12 +818,10 @@ class TestARunHandsFinalizeWhatItProduced:
             enter(patch.object(er, "execute_subagent_stream", execute))
             enter(patch.object(er, "make_redis_stream_writer", MagicMock()))
             enter(patch.object(er, "thread_messages", _thread_of))
-            enter(patch.object(er, "_record_pause", AsyncMock(return_value=record_pause)))
             deliver = enter(patch.object(er, "_log_work_finished", AsyncMock()))
             enter(patch.object(er, "release_lock_if_owned", AsyncMock()))
             enter(patch.object(StreamManager, "is_cancelled", AsyncMock(return_value=False)))
             enter(patch("app.services.analytics_service.capture", MagicMock()))
-            enter(patch.object(bridge, "flush_held_approval_cards", AsyncMock()))
             enter(patch.object(eq, "StreamManager", AsyncMock()))
             spawn = enter(patch.object(er, "_spawn_detached_run"))
             yield SimpleNamespace(deliver=deliver, spawn=spawn)
@@ -1091,12 +882,8 @@ class TestARunHandsFinalizeWhatItProduced:
                 AsyncMock(side_effect=GraphRecursionError("too deep")),
                 (EXECUTOR_STEP_LIMIT_MESSAGE, "error"),
             ),
-            (
-                AsyncMock(return_value=SubagentOutcome(text="", interrupt={"summary": "x"})),
-                ("Approval request was malformed", "error"),
-            ),
         ],
-        ids=["crash", "recursion-limit", "unresumable-pause"],
+        ids=["crash", "recursion-limit"],
     )
     async def test_a_run_that_failed_after_setup_carries_the_work_handed_to_it(
         self, fake_redis: Any, execute: AsyncMock, delivered: tuple[str, str]
@@ -1107,32 +894,6 @@ class TestARunHandsFinalizeWhatItProduced:
         assert self._delivered(h.deliver) == delivered
         h.spawn.assert_called_once()
         assert h.spawn.call_args.args[0].task == EXECUTOR_CARRY_TASK
-
-    async def test_a_pause_that_could_not_be_recorded_fails_and_carries_the_handed_work(
-        self, fake_redis: Any
-    ) -> None:
-        paused = AsyncMock(return_value=SubagentOutcome(text="", interrupt={"approval_id": "a1"}))
-        with self._lifecycle(execute=paused, record_pause=False) as h:
-            await self._drive(inbox_ids=("e1",))
-
-        assert self._delivered(h.deliver) == (EXECUTOR_APPROVAL_LOST_MESSAGE, "error")
-        h.spawn.assert_called_once()
-
-
-async def test_a_step_run_paused_on_an_approval_logs_the_cards_summary_and_expiry() -> None:
-    expires = datetime.now(UTC) + timedelta(hours=1)
-    record = MagicMock(summary="Send the invoice to Sam", expires_at=expires)
-    run = replace(
-        _run(RunKind.LIVE),
-    )
-    with (
-        patch.object(er, "get_approval", AsyncMock(return_value=record)),
-        patch.object(er, "record_approval_requested", new_callable=AsyncMock) as requested,
-    ):
-        await er._log_approvals_requested(run, ("ap1",))
-    requested.assert_awaited_once_with(
-        "conv-1", USER_ID, "task-1", "ap1", summary="Send the invoice to Sam", expires_at=expires
-    )
 
 
 async def test_a_stopped_run_reports_that_the_user_stopped_it() -> None:

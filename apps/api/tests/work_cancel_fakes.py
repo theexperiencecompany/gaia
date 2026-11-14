@@ -29,22 +29,20 @@ LEDGER_APPROVAL = "ledger-1"
 
 @dataclass(frozen=True)
 class ApprovalSeams:
-    """The two approval stores' cancel calls, as the stop paths reach them."""
+    """The approval cancel the stop paths reach."""
 
-    barrier: AsyncMock
     ledger: AsyncMock
 
 
 def approval_seams(*, pending: bool) -> Iterator[ApprovalSeams]:
-    """Patch both approval cancels; each closes one approval when pending, none otherwise."""
-    barrier = AsyncMock(return_value=[APPROVAL] if pending else [])
-    ledger = AsyncMock(return_value=[LEDGER_APPROVAL] if pending else [])
+    """Patch the approval cancel; it closes every approval it is given when pending, none otherwise."""
+    ledger = AsyncMock(
+        side_effect=(lambda _c, _u, approval_ids: list(approval_ids)) if pending else None,
+        return_value=[],
+    )
     module = "app.agents.core.background.work_cancel"
-    with (
-        patch(f"{module}.cancel_conversation_approvals", barrier),
-        patch(f"{module}.cancel_ledger_approvals", ledger),
-    ):
-        yield ApprovalSeams(barrier=barrier, ledger=ledger)
+    with patch(f"{module}.cancel_ledger_approvals", ledger):
+        yield ApprovalSeams(ledger=ledger)
 
 
 async def seed_live_work(conversation_id: str) -> None:

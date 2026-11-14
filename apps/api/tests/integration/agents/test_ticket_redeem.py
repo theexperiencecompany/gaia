@@ -18,6 +18,7 @@ import pytest
 from app.agents.tools.execute import dispatch as dispatch_module
 from app.agents.tools.execute.dispatch import ToolExecutionResult, dispatch_tool
 from app.agents.tools.execute.resolver import ResolvedTool
+from app.models.conversation_log_models import ApprovalDecided
 from app.services.hil import ledger_decide
 from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
 
@@ -87,6 +88,17 @@ async def test_an_approved_tool_streams_its_card_on_the_run_that_redeems_it() ->
     with (
         patch.object(ledger_decide, "approval_ledger_repository", new=repo),
         patch.object(ledger_decide, "_settle_terminal", new=AsyncMock()),
+        patch.object(
+            ledger_decide,
+            "logged_decision",
+            new=AsyncMock(
+                return_value=ApprovalDecided(
+                    id="approval:ap_card:decided",
+                    approval_id="ap_card",
+                    outcome=ApprovalOutcome.APPROVED,
+                )
+            ),
+        ),
         patch.object(
             dispatch_module,
             "resolve_tool",

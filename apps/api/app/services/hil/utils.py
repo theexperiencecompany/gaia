@@ -138,19 +138,6 @@ def configurable_of(request: ToolCallRequest) -> AgentConfigurable:
 # --- reading the graph state -----------------------------------------------------------
 
 
-def current_tool_calls(state: object) -> list[ToolCall]:
-    """Return the tool calls of the AI message this node is executing (its last one).
-
-    These are the pending call's *siblings* — what else the model asked for in the same
-    turn. The gate needs them because a sibling that pauses re-runs this whole node.
-    """
-    for message in reversed(_messages_of(state)):
-        calls = getattr(message, "tool_calls", None)
-        if calls:
-            return list(calls)
-    return []
-
-
 def prior_tool_calls(state: object, exclude_id: str) -> list[PriorCall]:
     """Return the tool calls this run already made, oldest first — names, args, outputs.
 

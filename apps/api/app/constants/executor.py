@@ -21,22 +21,8 @@ EXECUTOR_CRASH_MESSAGE = (
     "Never offer to re-run it yourself, and never claim a result."
 )
 
-# result_type for a run that stopped on a HIL approval instead of finishing. Such
-# a run has nothing to deliver and KEEPS the busy lock: its thread is checkpointed
-# with pending work, so no queued task may run on it until the approval resolves.
-EXECUTOR_PAUSED = "paused"
-
-# User-facing text when a run paused for approval but its resume context could not be
-# recorded, so no decision could ever restart it. Handed to comms as the error result
-# rather than parking the conversation behind a lock nothing will ever release.
-EXECUTOR_APPROVAL_LOST_MESSAGE = (
-    "I couldn't set up the approval for that action, so I've stopped. Please try again."
-)
-
 # agent:run_failed reasons for executor failures that are not a raised exception.
 EXECUTOR_ERROR_PREP_FAILED = "executor_prep_failed"
-EXECUTOR_ERROR_MALFORMED_APPROVAL = "malformed_approval"
-EXECUTOR_ERROR_APPROVAL_LOST = "approval_lost"
 #: The run ended with no answer at all; it is delivered as EXECUTOR_CRASH_MESSAGE.
 EXECUTOR_ERROR_NO_ANSWER = "no_answer"
 

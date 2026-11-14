@@ -12,9 +12,13 @@ import type {
   ApprovalRequestData,
   ApprovalScope,
 } from "@shared/chat";
-import { formatApprovalAge, RECONFIRM_AGE_SECONDS } from "@shared/chat";
+import {
+  approvalAgeSeconds,
+  formatApprovalAge,
+  RECONFIRM_AGE_SECONDS,
+} from "@shared/chat";
 import { endAfterDecision, flattenArgsPreview } from "@shared/utils";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { ShieldAlertIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
@@ -27,8 +31,6 @@ interface ApprovalRequestSectionProps {
   disabled?: boolean;
 }
 
-// Statuses a stale tap settles to locally (the real verdict, not the tap);
-// `pending`/`unknown` keep the retry toast, `executing` is a ledger transient.
 function ArgsPreview({ args }: { args: Record<string, unknown> }) {
   const { rows, omitted } = useMemo(() => flattenArgsPreview(args), [args]);
   if (rows.length === 0) return null;
@@ -70,13 +72,11 @@ export default function ApprovalRequestSection({
   const [submitting, setSubmitting] = useState<ApprovalDecision | null>(null);
   const [feedback, setFeedback] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
-  // A stale-v tap committed nothing; the next submit omits v so the CAS —
-  // not the version check — decides. v is an optimization, never a gate. Read
-  // and written only inside submit, never in render — a ref, not state.
-  const versionConflict = useRef(false);
+  const [openedAt] = useState(() => Date.now());
   const locked = submitting !== null || disabled || phase === "submitting";
 
-  const needsReconfirm = (data.age_seconds ?? 0) >= RECONFIRM_AGE_SECONDS;
+  const ageSeconds = approvalAgeSeconds(data.asked_at, openedAt);
+  const needsReconfirm = (ageSeconds ?? 0) >= RECONFIRM_AGE_SECONDS;
 
   const submit = async (
     decision: ApprovalDecision,
@@ -94,18 +94,13 @@ export default function ApprovalRequestSection({
         decision,
         feedback: attachedFeedback ?? undefined,
         scope,
-        v: versionConflict.current
-          ? undefined
-          : (data.ledger_version ?? undefined),
       });
       // The server's screen ends the card with the action's result; reaching the
       // catch means the submit genuinely failed.
       if (endAfterDecision(decision, outcome) === null) {
-        // Stale version: drop it so the next tap hits the CAS directly.
-        versionConflict.current = true;
         setSubmitting(null);
         setPhase("idle");
-        toast.error("That approval already moved — tap again to confirm");
+        toast.error("That approval was already decided");
         return;
       }
     } catch {
@@ -131,7 +126,7 @@ export default function ApprovalRequestSection({
     return (
       <div className="w-full max-w-md rounded-2xl bg-zinc-800 p-4 text-white">
         <div className="text-sm leading-snug text-zinc-100">
-          {`Asked ${formatApprovalAge(data.age_seconds).replace("asked ", "")} ago — still want this?`}
+          {`Asked ${formatApprovalAge(ageSeconds).replace("asked ", "")} ago — still want this?`}
         </div>
         <div className="mt-1 text-xs text-zinc-400">{data.summary}</div>
         <div className="mt-3 flex items-center gap-2">
@@ -166,19 +161,13 @@ export default function ApprovalRequestSection({
           <div className="text-sm leading-snug text-zinc-100">
             {formatToolName(data.gated_tool_name)}
           </div>
-          {data.age_seconds != null && (
+          {ageSeconds != null && (
             <div className="mt-0.5 text-[11px] text-zinc-500">
-              {formatApprovalAge(data.age_seconds)}
+              {formatApprovalAge(ageSeconds)}
             </div>
           )}
         </div>
       </div>
-
-      {data.rationale?.trim() && (
-        <div className="mt-2 text-xs leading-snug text-zinc-400">
-          {data.rationale.trim()}
-        </div>
-      )}
 
       <ArgsPreview args={data.args_preview} />
 

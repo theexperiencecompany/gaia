@@ -2,9 +2,9 @@
 
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
-from datetime import datetime
 
 from app.agents.core.background.executor_queue import get_lock_holder, parse_lock_value
+from app.db.repositories.conversation_log import conversation_log_repository
 from app.models.agent_config import StepTurnRef
 from app.models.chat_models import ImageData
 from app.models.conversation_log_models import (
@@ -129,30 +129,19 @@ async def work_of_run(conversation_id: str, user_id: str, stream_id: str) -> str
     return task_id
 
 
+@dataclass(frozen=True)
+class DecisionTaken:
+    """The decision that stands for an approval, and whether it is the one just appended."""
+
+    stands: ApprovalDecided
+    taken: bool
+
+
 async def record_approval_requested(
-    conversation_id: str,
-    user_id: str,
-    task_id: str,
-    approval_id: str,
-    *,
-    summary: str,
-    expires_at: datetime | None,
+    conversation_id: str, user_id: str, request: ApprovalRequested
 ) -> None:
-    """Append ApprovalRequested for live work waiting on the user's decision, as its card reads."""
-    entry = ApprovalRequested(
-        id=f"approval:{approval_id}",
-        task_id=task_id,
-        approval_id=approval_id,
-        summary=summary,
-        expires_at=expires_at,
-    )
-    await accept(runtime_ports(), conversation_id, user_id, entry)
-
-
-async def approval_is_logged(conversation_id: str, user_id: str, approval_id: str) -> bool:
-    """Return whether the conversation's live work is waiting on approval_id in the log."""
-    state = await runtime_ports().log.state(conversation_id, user_id)
-    return any(approval_id in work.pending_approvals for work in state.work)
+    """Append ApprovalRequested for live work waiting on the user's decision; it is the card."""
+    await accept(runtime_ports(), conversation_id, user_id, request)
 
 
 async def approvals_awaited_by(
@@ -174,15 +163,48 @@ async def record_approval_decided(
     approval_id: str,
     outcome: ApprovalOutcome,
     decider: ApprovalDecider | None,
-) -> None:
-    """Append ApprovalDecided: it releases live work waiting on it, and causes the work a decision starts later."""
+    *,
+    feedback: str | None = None,
+) -> DecisionTaken:
+    """Decide the approval in the log, once: the first decision appended stands, every later one reads it back.
+
+    The log is the approval's only truth. Appending releases live work waiting on it.
+    """
     entry = ApprovalDecided(
-        id=f"approval:{approval_id}:decided",
+        id=decision_entry_id(approval_id),
         approval_id=approval_id,
         outcome=outcome,
         decider=decider,
+        feedback=feedback,
     )
-    await accept(runtime_ports(), conversation_id, user_id, entry)
+    appended = (await accept(runtime_ports(), conversation_id, user_id, entry)).appended
+    stored = appended.logged.entry
+    if not isinstance(stored, ApprovalDecided):
+        raise TypeError(f"entry {entry.id} holds a {stored.kind}, not a decision")
+    return DecisionTaken(stands=stored, taken=not appended.duplicate)
+
+
+def decision_entry_id(approval_id: str) -> str:
+    """Return the id of the entry that decides approval_id; one id, so the log takes one decision."""
+    return f"approval:{approval_id}:decided"
+
+
+async def logged_decision(
+    conversation_id: str, user_id: str, approval_id: str
+) -> ApprovalDecided | None:
+    """Return how the log has the approval ended, with its action's end once logged; None while it is pending."""
+    logged = await conversation_log_repository.read_log(
+        conversation_id,
+        user_id=user_id,
+        ids=[decision_entry_id(approval_id), _acted_id(approval_id)],
+    )
+    decisions = [item.entry for item in logged or () if isinstance(item.entry, ApprovalDecided)]
+    acted = [decision for decision in decisions if decision.action is not None]
+    return (acted or decisions or [None])[0]
+
+
+def _acted_id(approval_id: str) -> str:
+    return f"approval:{approval_id}:acted"
 
 
 async def record_approved_action_ended(
@@ -190,7 +212,7 @@ async def record_approved_action_ended(
 ) -> None:
     """Restate the user's approval with what its action came to, so the card keeps it after a reload."""
     entry = ApprovalDecided(
-        id=f"approval:{approval_id}:acted",
+        id=_acted_id(approval_id),
         approval_id=approval_id,
         outcome=ApprovalOutcome.APPROVED,
         decider=ApprovalDecider.USER,

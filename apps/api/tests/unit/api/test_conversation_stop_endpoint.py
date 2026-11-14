@@ -166,4 +166,4 @@ class TestStopIsRefusedForAnotherUser:
         assert response.status_code == 404
         assert not await stream_manager.is_cancelled(EXECUTOR_STREAM)
         assert await fake_redis.get(f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}") is not None
-        pending_approvals.barrier.assert_not_awaited()
+        pending_approvals.ledger.assert_not_awaited()

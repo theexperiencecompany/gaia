@@ -26,7 +26,6 @@ from langchain_core.messages import AIMessage
 from pydantic import BaseModel, ConfigDict, Field, SkipValidation
 
 from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
-from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.chat_models import ToolDataEntry
 from app.utils.agent_utils import (
     IntegrationMetadata,
@@ -135,12 +134,11 @@ class _EntryHead(BaseModel):
 
 
 class _EntryDataRefs(BaseModel):
-    """The ids an entry's ``data`` may carry: its tool call, or its HIL approval."""
+    """The id an entry's ``data`` may carry: its tool call."""
 
     model_config = ConfigDict(extra="ignore")
 
     tool_call_id: str | None = None
-    approval_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -207,31 +205,6 @@ async def extract_tool_entries_from_update(
     return entries
 
 
-def _approval_id_of(entry: ToolDataEntry) -> str | None:
-    """Return the approval_id of a HIL approval_request tool_data entry, or None."""
-    head = _EntryHead.model_validate(entry)
-    if head.tool_name != APPROVAL_REQUEST_TOOL_NAME:
-        return None
-    if not isinstance(head.data, dict):
-        return None
-    return _EntryDataRefs.model_validate(head.data).approval_id
-
-
-def _append_or_upsert_tool_data(entries: list[ToolDataEntry], entry: ToolDataEntry) -> None:
-    """Append entry, except a HIL approval frame replaces the prior frame in place.
-
-    So the persisted turn carries exactly one entry per approval_id, in its
-    final (resolved) status rather than a stuck one.
-    """
-    approval_id = _approval_id_of(entry)
-    if approval_id is not None:
-        for index, existing in enumerate(entries):
-            if _approval_id_of(existing) == approval_id:
-                entries[index] = entry
-                return
-    entries.append(entry)
-
-
 def absorb_collector_event(
     evt: Mapping[str, object],
     accumulated: MutableMapping[str, object],
@@ -248,7 +221,7 @@ def absorb_collector_event(
     accumulated["tool_data"] = entries
     if event.tool_data is not None:
         for entry in event.tool_data if isinstance(event.tool_data, list) else [event.tool_data]:
-            _append_or_upsert_tool_data(entries, entry)
+            entries.append(entry)
     if event.tool_output is not None:
         tid, val = event.tool_output.tool_call_id, event.tool_output.output
         if tid and val:

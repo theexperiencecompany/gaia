@@ -3,7 +3,6 @@ import type { ImageData } from "../api/generated";
 export type { ImageData } from "../api/generated";
 
 import { NEW_MESSAGE_BREAK_TOKEN } from "../utils/messageBreakUtils";
-import { upsertApprovalToolData } from "./approvals";
 
 import type {
   ChatStreamEvent,
@@ -191,9 +190,7 @@ const applyToolData = (
       ),
     };
   }
-  // A HIL approval frame replaces the prior frame for its approval_id in place;
-  // every other entry is appended. Keeps replay + live streams to one card.
-  return { ...acc, toolData: upsertApprovalToolData(acc.toolData, entry) };
+  return { ...acc, toolData: [...acc.toolData, entry] };
 };
 
 const applyReasoning = (

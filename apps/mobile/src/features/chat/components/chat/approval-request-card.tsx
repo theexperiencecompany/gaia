@@ -8,7 +8,7 @@ import { approvalLabel } from "@gaia/shared/chat";
 import { endAfterDecision, flattenArgsPreview } from "@gaia/shared/utils";
 import * as Haptics from "expo-haptics";
 import { Button, Chip } from "heroui-native";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Alert, Pressable, TextInput, View } from "react-native";
 import {
   AlertCircleIcon,
@@ -120,10 +120,6 @@ export function ApprovalRequestCard({
       : incoming;
   const [denyOpen, setDenyOpen] = useState(false);
   const [feedback, setFeedback] = useState("");
-  // A stale-v tap committed nothing; the next submit omits v so the ledger CAS,
-  // not the version check, decides. v is an optimization, never a gate. Read
-  // only inside the handler, so a ref — not state — avoids a dead re-render.
-  const versionConflict = useRef(false);
 
   const decide = async (
     decision: ApprovalDecision,
@@ -137,13 +133,9 @@ export function ApprovalRequestCard({
         decision,
         feedback: feedback.trim() || undefined,
         scope,
-        v: versionConflict.current
-          ? undefined
-          : (data.ledger_version ?? undefined),
       });
       const end = endAfterDecision(decision, outcome);
       if (end === null) {
-        versionConflict.current = true;
         setSubmitting(null);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         Alert.alert(

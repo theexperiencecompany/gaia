@@ -32,7 +32,7 @@ from app.constants.browser import (
     BrowserSessionStatus,
 )
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_INBOX_PREFIX
-from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS
+from app.constants.hil import EXECUTOR_INBOX_TTL
 from app.constants.log_tags import LogTag
 from app.schemas.browser import BrowserResultSnapshot
 from app.schemas.browser_job import (
@@ -327,20 +327,20 @@ async def _suspected_long_ago(fake_redis: fakeredis.aioredis.FakeRedis, job_id: 
     )
 
 
-async def test_a_result_landed_during_a_park_is_still_there_to_tell_when_it_ends(
+async def test_a_result_landed_during_a_long_hold_is_still_there_to_tell_when_it_ends(
     world: World, fake_redis: fakeredis.aioredis.FakeRedis
 ) -> None:
-    """An approval can wait hours: neither the answer nor the record that wakes a reader for it may lapse first."""
+    """A holder can keep the conversation for hours: neither the answer nor the record that wakes a reader for it may lapse first."""
     await _queued()
-    await fake_redis.set(f"{EXECUTOR_BUSY_PREFIX}conv-9", "s1:t1", ex=HIL_PAUSED_LOCK_TTL_SECONDS)
-    await hold_run_alive("conv-9", "s1:t1", HIL_PAUSED_LOCK_TTL_SECONDS)
+    await fake_redis.set(f"{EXECUTOR_BUSY_PREFIX}conv-9", "s1:t1", ex=EXECUTOR_INBOX_TTL)
+    await hold_run_alive("conv-9", "s1:t1", EXECUTOR_INBOX_TTL)
 
     await end_job("job-1", BrowserJobFinished(result=DONE))
     inbox_ttl = await fake_redis.ttl(f"{EXECUTOR_INBOX_PREFIX}conv-9")
     await fake_redis.expire(BROWSER_JOB_WAKE_KEY, 60)
     await tasks_mod.reap_browser_jobs({})
 
-    assert inbox_ttl > HIL_PAUSED_LOCK_TTL_SECONDS - 5
+    assert inbox_ttl > EXECUTOR_INBOX_TTL - 5
     assert await landed_wake("job-1") is not None
     assert await fake_redis.ttl(BROWSER_JOB_WAKE_KEY) >= inbox_ttl - 5
     assert world.woken == []

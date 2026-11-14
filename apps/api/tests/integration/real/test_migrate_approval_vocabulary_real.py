@@ -10,7 +10,7 @@ import pytest
 from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.conversation_log_models import ApprovalDecided
-from app.models.hil_models import ApprovalLedgerDocument, HILApprovalRecord
+from app.models.hil_models import ApprovalLedgerDocument
 from app.scripts.migrate_approval_vocabulary import (
     CARD_STATUSES,
     LEDGER,
@@ -119,9 +119,7 @@ async def test_apply_moves_every_old_value_onto_the_new_fields(db: AsyncIOMotorD
     assert ApprovalLedgerDocument.model_validate(rows["executed"]).action is ActionResult.EXECUTED
     records = {r["_id"]: r async for r in db[RECORDS].find({})}
     assert {k: (r["outcome"], r["decider"]) for k, r in records.items()} == RECORD_STATUSES
-    assert (
-        HILApprovalRecord.model_validate(records["auto_approved"]).decider is ApprovalDecider.AUTO
-    )
+    assert ApprovalDecider(records["auto_approved"]["decider"]) is ApprovalDecider.AUTO
     entries = db[CONVERSATION_ENTRIES_COLLECTION]
     decided = [
         ApprovalDecided.model_validate(e)

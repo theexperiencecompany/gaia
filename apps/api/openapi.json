@@ -436,6 +436,17 @@
               }
             ]
           },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          },
           "id": {
             "description": "Producer-minted idempotency key",
             "minLength": 1,
@@ -458,7 +469,8 @@
           "approval_id",
           "outcome",
           "decider",
-          "action"
+          "action",
+          "feedback"
         ],
         "title": "ApprovalDecided",
         "type": "object"
@@ -503,17 +515,6 @@
             ],
             "title": "Scope",
             "type": "string"
-          },
-          "v": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "V"
           }
         },
         "required": [
@@ -579,13 +580,188 @@
         "title": "ApprovalOutcome",
         "type": "string"
       },
-      "ApprovalRequested": {
-        "additionalProperties": false,
-        "description": "Live work paused on the user's approval.",
+      "ApprovalRequestEntry": {
+        "description": "An approval card: the screen draws one per ApprovalRequested entry, ended by its decision entries.",
         "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ApprovalRequestEntryData"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "tool_category": {
+            "title": "Tool Category",
+            "type": "string"
+          },
+          "tool_name": {
+            "title": "Tool Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_name",
+          "tool_category",
+          "data",
+          "timestamp"
+        ],
+        "title": "ApprovalRequestEntry",
+        "type": "object"
+      },
+      "ApprovalRequestEntryData": {
+        "description": "Inner ``data`` object of a HIL ``approval_request`` entry.",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActionResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "always_asks": {
+            "default": false,
+            "title": "Always Asks",
+            "type": "boolean"
+          },
           "approval_id": {
             "title": "Approval Id",
             "type": "string"
+          },
+          "args_preview": {
+            "additionalProperties": true,
+            "title": "Args Preview",
+            "type": "object"
+          },
+          "asked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asked At"
+          },
+          "auto_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Reason"
+          },
+          "decider": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalDecider"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          },
+          "gated_tool_name": {
+            "title": "Gated Tool Name",
+            "type": "string"
+          },
+          "integration_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integration Name"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "title": "Timeout Seconds",
+            "type": "integer"
+          },
+          "tool_call_id": {
+            "title": "Tool Call Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approval_id",
+          "tool_call_id",
+          "gated_tool_name",
+          "integration_name",
+          "summary",
+          "args_preview",
+          "outcome",
+          "feedback",
+          "auto_reason",
+          "timeout_seconds"
+        ],
+        "title": "ApprovalRequestEntryData",
+        "type": "object"
+      },
+      "ApprovalRequested": {
+        "additionalProperties": false,
+        "description": "Live work paused on the user's approval: everything its card shows.",
+        "properties": {
+          "always_asks": {
+            "default": false,
+            "title": "Always Asks",
+            "type": "boolean"
+          },
+          "approval_id": {
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "args_preview": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Args Preview",
+            "type": "object"
+          },
+          "auto_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Reason"
           },
           "expires_at": {
             "anyOf": [
@@ -599,11 +775,27 @@
             ],
             "title": "Expires At"
           },
+          "gated_tool_name": {
+            "default": "",
+            "title": "Gated Tool Name",
+            "type": "string"
+          },
           "id": {
             "description": "Producer-minted idempotency key",
             "minLength": 1,
             "title": "Id",
             "type": "string"
+          },
+          "integration_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integration Name"
           },
           "kind": {
             "const": "approval_requested",
@@ -619,6 +811,11 @@
           "task_id": {
             "title": "Task Id",
             "type": "string"
+          },
+          "tool_call_id": {
+            "default": "",
+            "title": "Tool Call Id",
+            "type": "string"
           }
         },
         "required": [
@@ -627,7 +824,13 @@
           "task_id",
           "approval_id",
           "summary",
-          "expires_at"
+          "expires_at",
+          "tool_call_id",
+          "gated_tool_name",
+          "integration_name",
+          "args_preview",
+          "auto_reason",
+          "always_asks"
         ],
         "title": "ApprovalRequested",
         "type": "object"
@@ -1394,17 +1597,6 @@
               }
             ],
             "title": "Feedback"
-          },
-          "v": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "V"
           }
         },
         "required": [
@@ -9779,6 +9971,7 @@
         "title": "InviteResponse",
         "type": "object"
       },
+      "JsonValue": {},
       "LabEventResponse": {
         "description": "Accepted; the payload itself is never echoed back.",
         "properties": {
@@ -23574,6 +23767,13 @@
       "WorkItem": {
         "description": "One piece of work from its hand-off to its result, with every task handed to it.",
         "properties": {
+          "approvals": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalRequestEntry"
+            },
+            "title": "Approvals",
+            "type": "array"
+          },
           "asked_seq": {
             "minimum": 0.0,
             "title": "Asked Seq",
@@ -23650,6 +23850,7 @@
           "status",
           "asking",
           "asked_seq",
+          "approvals",
           "handoff",
           "tool_data",
           "image"
@@ -24924,7 +25125,7 @@
   "paths": {
     "/api/v1/approvals/batch-decision": {
       "post": {
-        "description": "Decide several pending approvals in one submission (the batch review).\n\nEach item commits exactly once on the ledger; one already decided or expired never fails the rest.",
+        "description": "Decide several pending approvals in one submission (the batch review).\n\nEach item commits exactly once in the log; one already decided or expired never fails the rest.",
         "operationId": "approvals_post_batch_decision",
         "requestBody": {
           "content": {
@@ -25172,7 +25373,7 @@
     },
     "/api/v1/approvals/{approval_id}/decision": {
       "post": {
-        "description": "Commit a button decision on the approval ledger, run the approved action and wake its owner.\n\nA stale or gone row commits nothing and says so, so the client refreshes instead of trusting the tap.",
+        "description": "Commit a button decision in the conversation log and wake the work it answers.\n\nAn approval already decided commits nothing and says how it ended, so the client shows that instead of the tap.",
         "operationId": "approvals_post_approval_decision",
         "parameters": [
           {

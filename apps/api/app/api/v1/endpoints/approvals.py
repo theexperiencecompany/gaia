@@ -33,9 +33,9 @@ async def post_approval_decision(
     payload: ApprovalDecisionRequest,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> ApprovalDecisionResponse:
-    """Commit a button decision on the approval ledger, run the approved action and wake its owner.
+    """Commit a button decision in the conversation log and wake the work it answers.
 
-    A stale or gone row commits nothing and says so, so the client refreshes instead of trusting the tap.
+    An approval already decided commits nothing and says how it ended, so the client shows that instead of the tap.
     """
     user_id = user.user_id
     if not user_id:
@@ -49,7 +49,7 @@ async def post_approval_decision(
         )
     return ApprovalDecisionResponse(
         success=False,
-        reason="stale" if outcome.stale else "not_found",
+        reason="not_found",
         outcome=outcome.outcome,
         action=outcome.action,
     )
@@ -62,7 +62,7 @@ async def post_batch_decision(
 ) -> BatchApprovalDecisionResponse:
     """Decide several pending approvals in one submission (the batch review).
 
-    Each item commits exactly once on the ledger; one already decided or expired never fails the rest.
+    Each item commits exactly once in the log; one already decided or expired never fails the rest.
     """
     user_id = user.user_id
     if not user_id:

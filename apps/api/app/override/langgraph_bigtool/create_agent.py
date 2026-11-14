@@ -729,13 +729,7 @@ def nudge_continue_node(state: State) -> State:
 
 
 def _last_tool_calling_message(state: State) -> AIMessage | None:
-    """Find the AI message whose calls this turn is executing.
-
-    Not messages[-1]: a resume prepends a current-time HumanMessage
-    (_with_current_time), so the tool-calling message is no longer last once
-    approvals wakes. Must match hil/utils.current_tool_calls, or the two gate
-    different call sets.
-    """
+    """Find the AI message whose calls this turn is executing: the last one that made calls."""
     for message in reversed(state["messages"]):
         if isinstance(message, AIMessage) and message.tool_calls:
             return message

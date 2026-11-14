@@ -19,7 +19,7 @@ from app.agents.core.subagents import delegation as landing
 from app.agents.core.subagents.delegation import Delegation, SubagentDisplay
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext
 from app.db.redis import redis_cache
-from app.models.agent_models import AgentConfigurable, SubagentKind
+from app.models.agent_models import AgentConfigurable
 
 pytestmark = pytest.mark.unit
 
@@ -69,7 +69,6 @@ def _delegation() -> Delegation:
             initial_state={},
             user_id="u1",
         ),
-        kind=SubagentKind.SPAWN,
         subagent_id="row-1",
         tool_call_id="call-1",
         task="summarize",

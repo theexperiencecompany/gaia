@@ -187,17 +187,6 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
                 return doc
         return None
 
-    async def list_open(self, conversation_id: str) -> list[ApprovalLedgerDocument]:
-        """Live rows for a conversation, oldest first (registration order)."""
-        cursor = (
-            self._raw_collection()
-            .find({"conversation_id": conversation_id, **LIVE_ROW_FILTER})
-            .sort("created_at", 1)
-        )
-        return [
-            ApprovalLedgerDocument.model_validate(raw) for raw in await cursor.to_list(length=200)
-        ]
-
     async def find_latest_denied(
         self, fingerprint: str, conversation_id: str
     ) -> ApprovalLedgerDocument | None:
@@ -212,13 +201,13 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
         )
         return ApprovalLedgerDocument.model_validate(raw) if raw else None
 
-    async def list_live_by_owners(
-        self, owner_run_type: str, owner_ids: list[str]
+    async def list_by_owners(
+        self, owner_run_type: str, owner_ids: list[str], *, created_since: datetime
     ) -> list[ApprovalLedgerDocument]:
-        """Live rows parked by background owners, oldest first.
+        """Rows background owners registered since created_since, oldest first.
 
-        Batch read for list views (one query per page, not per row). Terminal
-        rows never match — a decided owner has nothing waiting.
+        Batch read for list views (one query per page, not per row). Whether one still
+        waits is the conversation log's to say, not the row's.
         """
         if not owner_run_type or not owner_ids:
             return []
@@ -228,7 +217,7 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
                 {
                     "owner_run_type": owner_run_type,
                     "owner_id": {"$in": owner_ids},
-                    **LIVE_ROW_FILTER,
+                    "created_at": {"$gte": created_since},
                 }
             )
             .sort("created_at", 1)

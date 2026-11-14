@@ -15,7 +15,7 @@ import type {
   ApprovalRequestData,
   BatchDecisionOutcome,
 } from "@shared/chat";
-import { formatApprovalAge } from "@shared/chat";
+import { approvalAgeSeconds, formatApprovalAge } from "@shared/chat";
 import { flattenArgsPreview } from "@shared/utils";
 import { useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
@@ -49,6 +49,7 @@ export default function ApprovalReviewSheet({
 }: ApprovalReviewSheetProps) {
   const [decisions, setDecisions] = useState<Record<string, SheetDecision>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [openedAt] = useState(() => Date.now());
 
   const toggle = (approvalId: string, decision: ApprovalDecision) => {
     setDecisions((prev) => {
@@ -99,10 +100,7 @@ export default function ApprovalReviewSheet({
       const kept = response.outcomes.filter(
         (o) => !o.resolved && o.reason !== BATCH_OUTCOME_REASON.NOT_FOUND,
       );
-      if (kept.some((o) => o.reason === BATCH_OUTCOME_REASON.STALE)) {
-        toast.error("Some approvals already moved — kept for review");
-      }
-      if (kept.some((o) => o.reason !== BATCH_OUTCOME_REASON.STALE)) {
+      if (kept.length > 0) {
         toast.error("Some approvals couldn't be submitted — please try again");
       }
     } catch {
@@ -154,9 +152,11 @@ export default function ApprovalReviewSheet({
                       <div className="text-sm leading-snug text-zinc-100">
                         {item.summary}
                       </div>
-                      {item.age_seconds != null && (
+                      {item.asked_at && (
                         <div className="mt-0.5 text-[11px] text-zinc-500">
-                          {formatApprovalAge(item.age_seconds)}
+                          {formatApprovalAge(
+                            approvalAgeSeconds(item.asked_at, openedAt),
+                          )}
                         </div>
                       )}
                       {shown.length > 0 && (

@@ -14,18 +14,14 @@ class ApprovalDecisionRequest(BaseModel):
     decision: ApprovalDecision
     feedback: str | None = Field(None, max_length=2000)
     scope: ApprovalScope = "once"
-    # Row version the client rendered. Ledger path only: a stale v refreshes
-    # instead of overwriting. Omitted (None) skips the check.
-    v: int | None = None
 
 
 class ApprovalDecisionResponse(BaseModel):
     """Result of relaying an approval decision to the awaiting gate."""
 
     success: bool
-    # Ledger path only: why success is False ("stale" — refresh the row instead of
-    # retrying) and the row's outcome and action. Old path leaves them unset; a
-    # committed ledger tap carries the outcome it committed.
+    # Why success is False ("not_found": already decided or gone) with how the approval
+    # stands; a committed tap carries the outcome it committed.
     reason: str | None = None
     outcome: ApprovalOutcome | None = None
     action: ActionResult | None = None
@@ -37,8 +33,6 @@ class BatchDecisionItem(BaseModel):
     approval_id: str
     decision: ApprovalDecision
     feedback: str | None = Field(None, max_length=2000)
-    # Row version the client rendered; see ApprovalDecisionRequest.v.
-    v: int | None = None
 
 
 class BatchApprovalDecisionRequest(BaseModel):
@@ -52,11 +46,9 @@ class BatchDecisionOutcome(BaseModel):
 
     approval_id: str
     resolved: bool
-    # Set when resolved is False: "not_found" (already decided/expired),
-    # "forbidden", or "not_resumable".
+    # Set when resolved is False: "not_found" (already decided/expired), "forbidden", or "error".
     reason: str | None = None
-    # The row's outcome and action when a ledger item did not commit (a stale
-    # client refreshes the row instead of retrying blind). Old path leaves them unset.
+    # How the approval stands when the item did not commit.
     outcome: ApprovalOutcome | None = None
     action: ActionResult | None = None
 

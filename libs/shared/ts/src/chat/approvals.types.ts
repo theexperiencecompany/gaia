@@ -12,10 +12,9 @@
  *   and pauses for approval on anything that deviates or is unclear.
  */
 import type {
-  ActionResult,
-  ApprovalDecider,
-  ApprovalOutcome,
-  BatchDecisionItem,
+  ApprovalDecisionRequest,
+  ApprovalRequestEntryData,
+  BatchApprovalDecisionRequest,
   HILPreferencesResponse,
   UpdateHILPreferencesRequest,
 } from "../api/generated";
@@ -46,43 +45,10 @@ export type ApprovalDecision = "approve" | "deny";
 export type ApprovalScope = "once" | "always_tool";
 
 /** Body of POST /approvals/{id}/decision — one shape for every client. */
-export interface ApprovalDecisionPayload {
-  decision: ApprovalDecision;
-  feedback?: string;
-  scope?: ApprovalScope;
-  /** Row version the client rendered; stale v refreshes instead of overwriting. */
-  v?: number;
-}
+export type ApprovalDecisionPayload = ApprovalDecisionRequest;
 
 /** Body of POST /approvals/batch-decision — decide several approvals at once. */
-export interface BatchApprovalDecisionPayload {
-  decisions: BatchDecisionItem[];
-}
+export type BatchApprovalDecisionPayload = BatchApprovalDecisionRequest;
 
-/** One approval card, as streamed to the client. */
-export interface ApprovalRequestData {
-  approval_id: string;
-  tool_call_id: string;
-  gated_tool_name: string;
-  integration_name: string | null;
-  summary: string;
-  args_preview: Record<string, unknown>;
-  /** How the approval ended; null while it is pending. */
-  outcome: ApprovalOutcome | null;
-  /** Who approved or denied it; null when nobody decided. */
-  decider?: ApprovalDecider | null;
-  /** What the approved action did; null until it starts. */
-  action?: ActionResult | null;
-  feedback: string | null;
-  /** Why auto mode ran this without asking. Only set when auto mode approved it. */
-  auto_reason?: string | null;
-  timeout_seconds: number;
-  /** Ledger-backed approvals: the agent's one-line why. Absent on old-path cards. */
-  rationale?: string | null;
-  /** Seconds since registration; clients render "asked 2d ago". */
-  age_seconds?: number | null;
-  /** Row version the client saw; echoed back on decide for stale-v refresh. */
-  ledger_version?: number | null;
-  /** The call asks in every mode; "always allow" must not be offered on it. */
-  always_asks?: boolean;
-}
+/** One approval card, as the conversation screen draws it from the approval's entries. */
+export type ApprovalRequestData = ApprovalRequestEntryData;

@@ -18,6 +18,7 @@ export type {
 } from "./approvals";
 export {
   APPROVAL_REQUEST_TOOL_NAME,
+  approvalAgeSeconds,
   approvalLabel,
   approvalOutcomeLabel,
   DEFAULT_HIL_MODE,
@@ -26,7 +27,6 @@ export {
   RECONFIRM_AGE_SECONDS,
   toolAsks,
   toolOverrideValue,
-  upsertApprovalToolData,
 } from "./approvals";
 export type { ToolFixture } from "./fixtures";
 export { getFixture, TOOL_FIXTURES } from "./fixtures";

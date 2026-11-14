@@ -3,7 +3,7 @@
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.constants.chat import ConversationSource
 from app.models.chat_models import ImageData, ReactionBy
@@ -235,14 +235,23 @@ class WorkStarted(_Entry):
 
 
 class ApprovalRequested(_Entry):
-    """Live work paused on the user's approval."""
+    """Live work paused on the user's approval: everything its card shows."""
 
     kind: Literal[EntryKind.APPROVAL_REQUESTED] = EntryKind.APPROVAL_REQUESTED
     task_id: str
     approval_id: str
-    # What the approval card shows, and when the request lapses (None: it never does).
     summary: str = ""
+    # When the request lapses (None: it never does).
     expires_at: AwareDatetime | None = None
+    tool_call_id: str = ""
+    gated_tool_name: str = ""
+    integration_name: str | None = None
+    # The gated call's own arguments, as the model wrote them.
+    args_preview: dict[str, JsonValue] = Field(default_factory=dict)
+    # Why auto mode did not cover the call, in the intent judge's words.
+    auto_reason: str | None = None
+    # The call asks in every mode, so no client offers "always allow" on it.
+    always_asks: bool = False
 
 
 class ApprovalDecided(_Entry):
@@ -257,6 +266,8 @@ class ApprovalDecided(_Entry):
     outcome: ApprovalOutcome
     decider: ApprovalDecider | None = None
     action: ActionResult | None = None
+    # The note a denial carries back to the agent.
+    feedback: str | None = None
 
 
 class WorkFinished(_Entry):

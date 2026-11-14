@@ -27,9 +27,9 @@ const card = (id: string, integration: string): ApprovalRequestData => ({
   args_preview: { to: "b@x" },
   outcome: null,
   feedback: null,
+  auto_reason: null,
   timeout_seconds: 300,
-  age_seconds: 60,
-  ledger_version: 0,
+  asked_at: new Date(Date.now() - 60_000).toISOString(),
 });
 
 describe("ApprovalReviewSheet", () => {

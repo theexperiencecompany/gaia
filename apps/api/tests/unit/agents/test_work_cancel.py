@@ -76,7 +76,6 @@ async def test_a_stops_cancel_reaches_the_named_run_its_queued_work_and_its_appr
     # Neither the subagent an earlier turn left running nor the browser job is named.
     assert not await stream_manager.is_cancelled(SUBAGENT_STREAM)
     assert not await job_cancel_requested(BROWSER_JOB)
-    pending_approvals.barrier.assert_awaited_once_with(CONVERSATION, USER, APPROVALS)
     pending_approvals.ledger.assert_awaited_once_with(CONVERSATION, USER, APPROVALS)
 
 
@@ -119,7 +118,7 @@ async def test_approvals_close_even_when_no_run_holds_the_lock(
     work = await cancel_named_work(CONVERSATION, USER, ["paused-task"], approval_ids=APPROVALS)
 
     assert work.approval_ids == APPROVALS
-    pending_approvals.barrier.assert_awaited_once_with(CONVERSATION, USER, APPROVALS)
+    pending_approvals.ledger.assert_awaited_once_with(CONVERSATION, USER, APPROVALS)
 
 
 async def test_a_cancel_naming_no_approvals_touches_neither_store(
@@ -130,7 +129,7 @@ async def test_a_cancel_naming_no_approvals_touches_neither_store(
 
     assert work == WorkCancelled()
     assert not work.stopped_anything
-    pending_approvals.barrier.assert_not_awaited()
+    pending_approvals.ledger.assert_not_awaited()
     assert await ExecutorInbox(CONVERSATION).read() == []
     assert await fake_redis.keys("*") == []
 
@@ -181,4 +180,4 @@ async def test_naming_only_queued_work_spares_the_run(pending_approvals: Approva
 
     assert work == WorkCancelled(executor_spared=True, pending_task_ids=["queued-task"])
     assert not await stream_manager.is_cancelled(EXECUTOR_STREAM)
-    pending_approvals.barrier.assert_not_awaited()
+    pending_approvals.ledger.assert_not_awaited()

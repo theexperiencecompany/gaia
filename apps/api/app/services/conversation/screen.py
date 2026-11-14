@@ -14,7 +14,11 @@ from typing import Protocol
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 
 from app.constants.general import CALL_EXECUTOR_NAME
-from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
+from app.constants.hil import (
+    APPROVAL_REQUEST_TOOL_NAME,
+    APPROVAL_TOOL_CATEGORY,
+    HIL_APPROVAL_TIMEOUT_SECONDS,
+)
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
@@ -41,6 +45,7 @@ from app.models.conversation_screen_models import (
     WorkStatus,
 )
 from app.models.message_models import ReplyToMessageData
+from app.models.stream_events import ApprovalRequestEntry, ApprovalRequestEntryData
 from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.reply_files import reply_files
 from shared.py.analytics.catalog.hil import ApprovalOutcome
@@ -55,7 +60,6 @@ class _CardData(BaseModel):
 
     tool_name: str | None = None
     tool_call_id: str | None = None
-    approval_id: str | None = None
 
 
 class Positioned(Protocol):
@@ -114,6 +118,7 @@ class _Log:
     finished: dict[str, WorkFinished] = field(default_factory=dict)
     requests: dict[str, ApprovalRequested] = field(default_factory=dict)
     request_seqs: dict[str, int] = field(default_factory=dict)
+    request_ats: dict[str, AwareDatetime] = field(default_factory=dict)
     decisions: dict[str, ApprovalDecided] = field(default_factory=dict)
     handoffs: dict[str, ToolDataEntry] = field(default_factory=dict)
 
@@ -133,6 +138,7 @@ class _Log:
                 case ApprovalRequested() as request:
                     read.requests[request.approval_id] = request
                     read.request_seqs[request.approval_id] = logged.seq
+                    read.request_ats[request.approval_id] = logged.at
                 case ApprovalDecided() as decision:
                     read.decide(decision)
                 case Reply(tool_data=cards):
@@ -149,35 +155,46 @@ class _Log:
     def root(self, task_id: str) -> str:
         return work_root(self.started, task_id)
 
-    def approval_end(self, approval_id: str) -> dict[str, str | None] | None:
-        """Return a logged approval's end; None leaves an approval the log never asked as created."""
-        decision = self.decisions.get(approval_id)
-        if decision is not None:
-            return {
-                "outcome": decision.outcome,
-                "decider": decision.decider,
-                "action": decision.action,
-            }
-        request = self.requests.get(approval_id)
-        if request is None:
-            return None
-        work = self.finished.get(self.root(request.task_id))
-        if work is not None and work.outcome in _STOPPED_WORK:
-            return {"outcome": ApprovalOutcome.CANCELLED, "decider": None, "action": None}
-        return {"outcome": None, "decider": None, "action": None}
+    def approvals(self, root: str) -> tuple[ApprovalRequestEntry, ...]:
+        """Return the card of every approval work under root asked for, as its entries have it now."""
+        return tuple(
+            self._approval_card(request)
+            for request in self.requests.values()
+            if self.root(request.task_id) == root
+        )
 
-    def cards(self, cards: Iterable[ToolDataEntry]) -> tuple[ToolDataEntry, ...]:
-        """Return the cards with each logged approval's end as the log has it."""
-        shown: list[ToolDataEntry] = []
-        for card in cards:
-            approval_id = (
-                _card_data(card).approval_id
-                if card["tool_name"] == APPROVAL_REQUEST_TOOL_NAME
-                else None
-            )
-            end = None if approval_id is None else self.approval_end(approval_id)
-            shown.append(card if end is None else {**card, "data": {**card["data"], **end}})
-        return tuple(shown)
+    def _approval_card(self, request: ApprovalRequested) -> ApprovalRequestEntry:
+        decision = self.decisions.get(request.approval_id)
+        work = self.finished.get(self.root(request.task_id))
+        outcome = (
+            decision.outcome
+            if decision is not None
+            else ApprovalOutcome.CANCELLED
+            if work is not None and work.outcome in _STOPPED_WORK
+            else None
+        )
+        asked_at = self.request_ats[request.approval_id]
+        return ApprovalRequestEntry(
+            tool_name=APPROVAL_REQUEST_TOOL_NAME,
+            tool_category=APPROVAL_TOOL_CATEGORY,
+            data=ApprovalRequestEntryData(
+                approval_id=request.approval_id,
+                tool_call_id=request.tool_call_id,
+                gated_tool_name=request.gated_tool_name,
+                integration_name=request.integration_name,
+                summary=request.summary,
+                args_preview=request.args_preview,
+                outcome=outcome,
+                decider=None if decision is None else decision.decider,
+                action=None if decision is None else decision.action,
+                feedback=None if decision is None else decision.feedback,
+                auto_reason=request.auto_reason,
+                timeout_seconds=HIL_APPROVAL_TIMEOUT_SECONDS,
+                asked_at=asked_at,
+                always_asks=request.always_asks,
+            ),
+            timestamp=asked_at.isoformat(),
+        )
 
     def asking(self, root: str) -> tuple[ApprovalRequested, ...]:
         """Return the approvals live work under root waits on, oldest first."""
@@ -224,7 +241,7 @@ def _item(logged: Positioned, read: _Log) -> ScreenItem | None:
                 seq=seq,
                 at=at,
                 text=notice.text,
-                tool_data=read.cards(notice.tool_data),
+                tool_data=notice.tool_data,
                 follow_up_actions=notice.follow_up_actions,
             )
         case WorkflowFired() as fired:
@@ -249,8 +266,9 @@ def _work_item(seq: int, at: AwareDatetime, task_id: str, read: _Log) -> WorkIte
             (read.request_seqs[request.approval_id] for request in read.asking(task_id)),
             default=0,
         ),
+        approvals=read.approvals(task_id),
         handoff=None if started.handoff is None else read.handoffs.get(started.handoff),
-        tool_data=() if finished is None else read.cards(finished.tool_data),
+        tool_data=() if finished is None else finished.tool_data,
         image=None if finished is None else finished.image,
     )
 
@@ -287,7 +305,7 @@ def _reply_item(seq: int, at: AwareDatetime, reply: Reply, read: _Log) -> ReplyI
         seq=seq,
         at=at,
         text=reply.text,
-        tool_data=read.cards(own),
+        tool_data=tuple(own),
         follow_up_actions=reply.follow_up_actions,
         image=reply.image,
         pinned=reply.pinned,

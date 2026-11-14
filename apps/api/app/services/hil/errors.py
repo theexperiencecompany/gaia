@@ -3,6 +3,7 @@
 from http import HTTPStatus
 
 from app.utils.errors import AppError
+from shared.py.analytics.catalog.hil import ApprovalOutcome
 
 
 class ApprovalRequestNotFoundError(AppError):
@@ -32,4 +33,13 @@ class ToolAlwaysAsksError(AppError):
         super().__init__(
             message="This action always asks for approval and can't be set to always allow",
             status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
+        )
+
+
+class LedgerDriftError(RuntimeError):
+    """The ledger row was already settled when the log took the approval's decision."""
+
+    def __init__(self, approval_id: str, outcome: ApprovalOutcome) -> None:
+        super().__init__(
+            f"ledger row {approval_id} was not pending when the log decided it {outcome}"
         )

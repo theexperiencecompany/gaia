@@ -51,7 +51,7 @@ from app.db.redis import AsyncRedisCommands, redis_cache
 from app.db.repositories.playbooks import playbook_repository
 from app.models.agent_config import StepTurnRef
 from app.models.agent_models import InboxEntry, RunningSubagent
-from app.models.conversation_log_models import CancelWork
+from app.models.conversation_log_models import ApprovalRequested, CancelWork
 from app.models.ownership_models import ExecutorIntent
 from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, ToolStep
 from app.models.work_cancel_models import WorkCancelled
@@ -193,7 +193,15 @@ async def stopping(
     assert await record_work_carried(CONVERSATION_ID, user_id, running)
     for approval_id in approvals:
         await record_approval_requested(
-            CONVERSATION_ID, user_id, running, approval_id, summary="", expires_at=None
+            CONVERSATION_ID,
+            user_id,
+            ApprovalRequested(
+                id=f"approval:{approval_id}",
+                task_id=running,
+                approval_id=approval_id,
+                summary="",
+                expires_at=None,
+            ),
         )
     asked = await accept(ports, CONVERSATION_ID, user_id, user("m2"))
     claim = await ports.log.claim(CONVERSATION_ID, user_id)
@@ -292,14 +300,6 @@ def release_lock_on_attempt(
         state["release"] = release_attempt
 
     return schedule
-
-
-@pytest.fixture(autouse=True)
-def closed_approvals(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-    """List which conversations had their approvals closed (the Mongo-backed HIL boundary)."""
-    mock = AsyncMock(return_value=[])
-    monkeypatch.setattr(work_cancel, "cancel_conversation_approvals", mock)
-    return mock
 
 
 @pytest.fixture(autouse=True)
@@ -1050,7 +1050,6 @@ class TestCancelEverythingIsTheConversationStop:
         self,
         fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
-        closed_approvals: AsyncMock,
         closed_ledger_approvals: AsyncMock,
     ) -> None:
         await seed_live_work(CONVERSATION_ID)
@@ -1066,7 +1065,6 @@ class TestCancelEverythingIsTheConversationStop:
         assert await StreamManager.is_cancelled(SUBAGENT_STREAM)
         assert await fake_redis.get(LOCK_KEY) is None
         assert await job_cancel_requested(BROWSER_JOB)
-        closed_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1", ("approval-1",))
         closed_ledger_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1", ("approval-1",))
 
     async def test_the_models_stop_is_not_the_users_and_emits_no_event(
@@ -1085,17 +1083,17 @@ class TestCancelEverythingIsTheConversationStop:
         self,
         fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
-        closed_approvals: AsyncMock,
+        closed_ledger_approvals: AsyncMock,
     ) -> None:
         """A parked approval outlives the busy lock; left open, Approve revives the stopped work."""
-        closed_approvals.return_value = ["approval-1"]
+        closed_ledger_approvals.return_value = ["approval-1"]
 
         response = await run_cancel_executor(
             config=await stopping(approvals=["approval-1"]), task_ids=[]
         )
 
         assert response == "Cancelled: 1 pending approval(s)."
-        closed_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1", ("approval-1",))
+        closed_ledger_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1", ("approval-1",))
 
 
 class TestCancelClosesHilApprovals:
@@ -1110,7 +1108,7 @@ class TestCancelClosesHilApprovals:
         self,
         fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
-        closed_approvals: AsyncMock,
+        closed_ledger_approvals: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
@@ -1118,7 +1116,7 @@ class TestCancelClosesHilApprovals:
 
         await run_cancel_executor(config=await stopping(approvals=["approval-1"]), task_ids=[])
 
-        closed_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1", ("approval-1",))
+        closed_ledger_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1", ("approval-1",))
 
     async def test_stopping_the_running_task_closes_ledger_approvals_too(
         self,
@@ -1140,7 +1138,7 @@ class TestCancelClosesHilApprovals:
         self,
         fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
-        closed_approvals: AsyncMock,
+        closed_ledger_approvals: AsyncMock,
     ) -> None:
         # Only pending work is cancelled; the parked run is still waiting on its
         # approval, so closing it would break a task the user never stopped.
@@ -1149,31 +1147,31 @@ class TestCancelClosesHilApprovals:
 
         await run_cancel_executor(config=config_for(), task_ids=["q1"])
 
-        closed_approvals.assert_not_awaited()
+        closed_ledger_approvals.assert_not_awaited()
 
     async def test_nothing_matched_closes_nothing(
         self,
         fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
-        closed_approvals: AsyncMock,
+        closed_ledger_approvals: AsyncMock,
     ) -> None:
         await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
 
         await run_cancel_executor(config=config_for(), task_ids=["unknown"])
 
-        closed_approvals.assert_not_awaited()
+        closed_ledger_approvals.assert_not_awaited()
 
     async def test_a_failure_closing_approvals_surfaces_and_keeps_the_lock(
         self,
         fake_redis: AsyncRedisCommands,
         broadcast: AsyncMock,
-        closed_approvals: AsyncMock,
+        closed_ledger_approvals: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # Reporting a clean cancel while approvals stayed pending would leave the
         # user believing a stopped action can no longer run.
         monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
-        closed_approvals.side_effect = RuntimeError("mongo unavailable")
+        closed_ledger_approvals.side_effect = RuntimeError("mongo unavailable")
         await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
 
         response = await run_cancel_executor(

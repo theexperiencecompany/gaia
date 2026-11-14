@@ -45,7 +45,6 @@ from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_lock_value,
-    build_run_item,
     keep_alive,
     try_acquire_lock,
 )
@@ -53,7 +52,7 @@ from app.agents.core.background.executor_runner import (
     deliver_to_executor,
     wake_executor_for_inbox,
 )
-from app.agents.core.background.session import ExecutorRun, RunIdentity, RunKind
+from app.agents.core.background.session import ExecutorRun
 from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_executor
 from app.agents.core.background.todo_run_delivery import report_form_of
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
@@ -79,7 +78,6 @@ from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
-from app.db.repositories.hil import hil_approval_repository
 from app.db.repositories.playbooks import playbook_repository
 from app.models.agent_config import AgentConfigurable, StepTurnRef, agent_configurable
 from app.models.agent_models import AgentRunnableConfig
@@ -121,9 +119,10 @@ from app.models.conversation_screen_models import (
     ScreenFrame,
     ScreenInsertFrame,
     ScreenUpdateFrame,
+    WorkItem,
 )
 from app.models.conversation_send_models import SendMessageRequest
-from app.models.hil_models import ApprovalProposal, HILApprovalRecord
+from app.models.hil_models import ApprovalProposal
 from app.models.message_models import ReplyToMessageData
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
@@ -132,6 +131,7 @@ from app.models.notification.notification_models import (
     NotificationStatus,
 )
 from app.models.playbook_models import PlaybookDocument, ToolStep
+from app.models.stream_events import ApprovalRequestEntry
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.todo_wake_models import TodoRunWake
 from app.models.tool_data_models import ToolDataEntry
@@ -196,7 +196,7 @@ from app.services.conversation.work_log import (
 )
 from app.services.conversation_stop_service import press_stop
 from app.services.delivery.chat_channel import ChatChannel
-from app.services.hil import ledger_decide, resolution
+from app.services.hil import ledger_decide
 from app.services.hil.gate import GateContext, read_gate_context
 from app.services.workflow import thread_reset
 from app.services.workflow.conversation_service import log_playbook_run
@@ -555,7 +555,15 @@ async def test_a_stop_cancels_only_the_work_before_it_and_reports_what_it_cancel
     await rig.settle()
     await real_redis.set(lock, "stream-1:t1")
     await record_approval_requested(
-        rig.conversation_id, rig.user_id, "t1", "a1", summary="Book it", expires_at=None
+        rig.conversation_id,
+        rig.user_id,
+        ApprovalRequested(
+            id="approval:a1",
+            task_id="t1",
+            approval_id="a1",
+            summary="Book it",
+            expires_at=None,
+        ),
     )
     cancel_work = rig.effects.cancel_work
     asked: list[CancelWork] = []
@@ -1106,7 +1114,15 @@ async def _paused_on(rig: Rig, model: GatedModel, expires_at: datetime | None) -
     await rig.send("m1", "send the invoice")
     await rig.settle()
     await record_approval_requested(
-        rig.conversation_id, rig.user_id, "t1", "a1", summary="Send it", expires_at=expires_at
+        rig.conversation_id,
+        rig.user_id,
+        ApprovalRequested(
+            id="approval:a1",
+            task_id="t1",
+            approval_id="a1",
+            summary="Send it",
+            expires_at=expires_at,
+        ),
     )
 
 
@@ -1138,31 +1154,17 @@ async def test_work_waiting_on_an_approval_no_store_holds_is_settled_once(
 
 
 @pytest.mark.service
-async def test_work_waiting_on_an_expired_approval_is_settled_once_and_its_record_closed(
+async def test_work_waiting_on_an_expired_approval_is_settled_once_as_expired(
     rig_for: RigFactory,
 ) -> None:
     model = gated("on it", "the approval expired")
     rig = await rig_for(model)
-    expired = datetime.now(UTC) - timedelta(hours=1)
-    await hil_approval_repository.create_if_absent(
-        HILApprovalRecord(
-            approval_id="a1",
-            user_id=rig.user_id,
-            conversation_id=rig.conversation_id,
-            stream_id="stream-1",
-            tool_name="send_email",
-            expires_at=expired,
-        )
-    )
-    await _paused_on(rig, model, expires_at=expired)
+    await _paused_on(rig, model, expires_at=datetime.now(UTC) - timedelta(hours=1))
 
     decided, finished = await _settled_by_sweeps(rig)
 
-    record = await hil_approval_repository.get("a1")
     assert [(d.approval_id, d.outcome) for d in decided] == [("a1", "expired")]
     assert [(f.task_id, f.outcome) for f in finished] == [("t1", WorkOutcome.FAILED)]
-    # The record ends the way the log says it did, not as a Stop.
-    assert record is not None and record.outcome == "expired"
 
 
 @pytest.mark.service
@@ -1175,7 +1177,15 @@ async def test_an_approval_holds_the_work_until_the_user_decides(
     await rig.send("m1", "send the invoice")
     await rig.settle()
     await record_approval_requested(
-        rig.conversation_id, rig.user_id, "t1", "a1", summary="Send the invoice", expires_at=None
+        rig.conversation_id,
+        rig.user_id,
+        ApprovalRequested(
+            id="approval:a1",
+            task_id="t1",
+            approval_id="a1",
+            summary="Send the invoice",
+            expires_at=None,
+        ),
     )
     waiting = await rig.ports.log.state(rig.conversation_id, rig.user_id)
     await record_approval_decided(
@@ -1216,7 +1226,15 @@ async def test_work_that_ended_on_a_pending_approval_waits_for_it_and_a_stop_clo
         )
     )
     await record_approval_requested(
-        rig.conversation_id, rig.user_id, "t1", approval_id, summary="Create it", expires_at=None
+        rig.conversation_id,
+        rig.user_id,
+        ApprovalRequested(
+            id=f"approval:{approval_id}",
+            task_id="t1",
+            approval_id=approval_id,
+            summary="Create it",
+            expires_at=None,
+        ),
     )
     await record_work_finished(
         rig.conversation_id,
@@ -1383,10 +1401,13 @@ async def test_an_approved_action_that_failed_still_says_so_on_its_card_after_a_
     await record_approval_requested(
         rig.conversation_id,
         rig.user_id,
-        "t1",
-        approval_id,
-        summary="Send the invoice",
-        expires_at=None,
+        ApprovalRequested(
+            id=f"approval:{approval_id}",
+            task_id="t1",
+            approval_id=approval_id,
+            summary="Send the invoice",
+            expires_at=None,
+        ),
     )
     failed = MagicMock(ok=False, output=None, error=None)
     with (
@@ -1406,28 +1427,14 @@ async def test_an_approved_action_that_failed_still_says_so_on_its_card_after_a_
             caller="gmail_agent",
             run_config={},
         )
-    card = {
-        "tool_name": APPROVAL_REQUEST_TOOL_NAME,
-        "data": {"approval_id": approval_id, "summary": "Send the invoice"},
-        "timestamp": _now().isoformat(),
-    }
     await record_work_finished(
-        rig.conversation_id,
-        rig.user_id,
-        "t1",
-        WorkOutcome.FAILED,
-        WorkReport("the send failed", [cast(ToolDataEntry, card)]),
+        rig.conversation_id, rig.user_id, "t1", WorkOutcome.FAILED, WorkReport("the send failed")
     )
     await rig.settle()
-    reloaded = await conversation_repository.get(rig.conversation_id, user_id=rig.user_id)
-    assert reloaded is not None
-    [shown] = [
-        entry["data"]
-        for message in shown_messages(reloaded)
-        if message.message_id == "work:t1"
-        for entry in message.tool_data or []
-    ]
-    assert (shown["outcome"], shown["action"]) == (ApprovalOutcome.APPROVED, ActionResult.FAILED)
+    [work] = [item for item in project_screen(await rig.entries()) if isinstance(item, WorkItem)]
+    [card] = work.approvals
+    assert (card.tool_name, card.data.approval_id) == (APPROVAL_REQUEST_TOOL_NAME, approval_id)
+    assert (card.data.outcome, card.data.action) == (ApprovalOutcome.APPROVED, ActionResult.FAILED)
     await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
 
 
@@ -1453,7 +1460,15 @@ async def test_an_agent_withdrawing_its_approval_reaches_the_log_and_every_devic
         )
     )
     await record_approval_requested(
-        rig.conversation_id, rig.user_id, "t1", approval_id, summary="Send it", expires_at=None
+        rig.conversation_id,
+        rig.user_id,
+        ApprovalRequested(
+            id=f"approval:{approval_id}",
+            task_id="t1",
+            approval_id=approval_id,
+            summary="Send it",
+            expires_at=None,
+        ),
     )
 
     await ledger_decide.revoke_ticket(
@@ -2754,50 +2769,6 @@ async def test_a_todo_run_carries_the_identity_the_approval_gate_needs(
     assert context.stream_id
 
 
-@pytest.mark.service
-async def test_a_resumed_run_carries_the_identity_the_approval_gate_needs(
-    rig_for: RigFactory,
-) -> None:
-    rig = await rig_for(gated("ok"))
-    await rig.send("m1", "send the invoice")
-    await rig.settle()
-    paused = _Runs()
-    with patch.object(executor_runner, "_spawn_detached_run", paused.spawn):
-        await _ticket(rig)
-    [paused_with] = paused.configurables
-    record = HILApprovalRecord(
-        approval_id="a1",
-        user_id=rig.user_id,
-        conversation_id=rig.conversation_id,
-        stream_id=paused_with["stream_id"],
-        tool_name="send_email",
-        outcome=ApprovalOutcome.APPROVED,
-        expires_at=datetime.now(UTC) + timedelta(minutes=15),
-        resume_item=dict(
-            build_run_item(
-                task="send the invoice",
-                configurable=paused_with,
-                identity=RunIdentity(
-                    stream_id=paused_with["stream_id"],
-                    conversation_id=rig.conversation_id,
-                    kind=RunKind.QUEUED,
-                    task_id="t-paused",
-                    user_message_id=None,
-                ),
-            )
-        ),
-    )
-    resumed = _Runs()
-    with patch.object(resolution, "run_executor_background", resumed.run):
-        await resolution._dispatch_resume(record)
-        await asyncio.gather(*resolution._resume_tasks)
-    [configurable] = resumed.configurables
-    context = await _executor_gate_context(configurable)
-    assert context is not None
-    assert (context.user_id, context.conversation_id) == (rig.user_id, rig.conversation_id)
-    assert context.stream_id
-
-
 async def _read_all(conversation_id: str) -> list[StreamedFrame]:
     return await read_frames(conversation_id, "0-0", block_ms=0)
 
@@ -2831,3 +2802,175 @@ async def test_a_reload_mid_reply_longer_than_the_streams_retention_sees_all_its
     assert len(deltas) == 3 * EVENTS_STREAM_MAXLEN
     # Once nothing is open, retention applies again.
     assert len(after) < 3 * EVENTS_STREAM_MAXLEN
+
+
+async def _parked_on_a_ledger_approval(
+    rig: Rig,
+    model: GatedModel,
+    *,
+    expires_at: datetime | None = None,
+    owner_run_type: str = "",
+    owner_id: str = "",
+) -> str:
+    """Start t1 in a chat turn, register its gated call and log it as the gate does, then end t1 waiting on it."""
+    _during(model, 0, lambda: rig.start_work("t1"))
+    await rig.send("m1", "send the invoice")
+    await rig.settle()
+    approval_id = await approval_ledger_repository.register(
+        ApprovalProposal(
+            conversation_id=rig.conversation_id,
+            user_id=rig.user_id,
+            fingerprint=f"fp-{uuid4().hex}",
+            tool_name="GMAIL_SEND_EMAIL",
+            args={"to": "acme@example.com"},
+            summary="Send the invoice",
+            owner_agent="executor",
+            owner_run_type=owner_run_type,
+            owner_id=owner_id,
+            task_id="t1",
+        )
+    )
+    await record_approval_requested(
+        rig.conversation_id,
+        rig.user_id,
+        ApprovalRequested(
+            id=f"approval:{approval_id}",
+            task_id="t1",
+            approval_id=approval_id,
+            summary="Send the invoice",
+            expires_at=expires_at,
+            gated_tool_name="GMAIL_SEND_EMAIL",
+            args_preview={"to": "acme@example.com"},
+        ),
+    )
+    await record_work_finished(
+        rig.conversation_id,
+        rig.user_id,
+        "t1",
+        WorkOutcome.DONE,
+        WorkReport("Approve the send?"),
+        continued_by_decision=not owner_run_type,
+    )
+    await rig.settle()
+    return approval_id
+
+
+def _approval_card(entries: Sequence[LoggedEntry]) -> ApprovalRequestEntry:
+    [work] = [
+        item
+        for item in project_screen(entries)
+        if isinstance(item, WorkItem) and item.task_id == "t1"
+    ]
+    [card] = work.approvals
+    return card
+
+
+@pytest.mark.service
+async def test_an_approval_tapped_twice_resumes_its_work_once(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    model = gated("I need your approval to send it", "unused")
+    rig = await rig_for(model)
+    approval_id = await _parked_on_a_ledger_approval(rig, model)
+    spawned = _Spawned(rig)
+
+    with patch.object(executor_runner, "_spawn_detached_run", spawned.spawn):
+        tapped = await ledger_decide.decide_ledger(
+            approval_id, user_id=rig.user_id, kind="approve", via="card"
+        )
+        again = await ledger_decide.decide_ledger(
+            approval_id, user_id=rig.user_id, kind="deny", via="chat"
+        )
+
+    assert (tapped.committed, tapped.outcome) == (True, ApprovalOutcome.APPROVED)
+    assert (again.committed, again.outcome) == (False, ApprovalOutcome.APPROVED)
+    assert len(spawned.task_ids) == 1
+    assert [(d.approval_id, d.outcome) for d in await rig.of(ApprovalDecided)] == [
+        (approval_id, ApprovalOutcome.APPROVED)
+    ]
+    row = await approval_ledger_repository.get_by_approval_id(approval_id)
+    assert row is not None and row.outcome is ApprovalOutcome.APPROVED
+    assert _approval_card(await rig.entries()).data.outcome is ApprovalOutcome.APPROVED
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
+
+
+@pytest.mark.service
+async def test_an_expired_approval_shows_expired_from_the_log_and_refuses_a_late_tap(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    model = gated("I need your approval to send it", "the approval expired")
+    rig = await rig_for(model)
+    approval_id = await _parked_on_a_ledger_approval(
+        rig, model, expires_at=datetime.now(UTC) - timedelta(hours=1)
+    )
+    assert _approval_card(await rig.entries()).data.outcome is None
+
+    await _settled_by_sweeps(rig)
+    late = await ledger_decide.decide_ledger(
+        approval_id, user_id=rig.user_id, kind="approve", via="card"
+    )
+
+    card = _approval_card(await rig.entries())
+    assert (card.data.outcome, card.data.decider) == (ApprovalOutcome.EXPIRED, None)
+    assert (late.committed, late.outcome) == (False, ApprovalOutcome.EXPIRED)
+    row = await approval_ledger_repository.get_by_approval_id(approval_id)
+    assert row is not None and row.outcome is ApprovalOutcome.EXPIRED
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
+
+
+@pytest.mark.service
+async def test_a_workflow_approval_waits_for_the_user_and_resumes_the_workflow_once(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    model = gated("the workflow needs your approval", "unused")
+    rig = await rig_for(model)
+    approval_id = await _parked_on_a_ledger_approval(
+        rig, model, owner_run_type="workflow", owner_id="wf-1"
+    )
+    queued = AsyncMock()
+    assert _approval_card(await rig.entries()).data.outcome is None
+
+    with (
+        patch.object(executor_runner, "_spawn_detached_run", _Spawned(rig).spawn),
+        patch("app.services.hil.resume.WorkflowQueueService.queue_workflow_execution", new=queued),
+        patch("app.services.hil.resume.get_last_run_brief", new=AsyncMock(return_value="")),
+    ):
+        for _ in range(2):
+            await ledger_decide.decide_ledger(
+                approval_id, user_id=rig.user_id, kind="approve", via="card"
+            )
+
+    [resumed] = queued.await_args_list
+    assert resumed.args[:2] == ("wf-1", rig.user_id)
+    assert resumed.args[2]["resume_from_approval"] == approval_id
+    assert _approval_card(await rig.entries()).data.outcome is ApprovalOutcome.APPROVED
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
+
+
+@pytest.mark.service
+async def test_an_approval_pending_across_a_restart_is_still_asked_and_still_decides(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    model = gated("I need your approval to send it", "unused")
+    rig = await rig_for(model)
+    approval_id = await _parked_on_a_ledger_approval(rig, model)
+
+    # A restarted process holds nothing in memory: these reads go to the stored log and ledger.
+    reloaded = await conversation_log_repository.read_log(rig.conversation_id, user_id=rig.user_id)
+    state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+    spawned = _Spawned(rig)
+    with patch.object(executor_runner, "_spawn_detached_run", spawned.spawn):
+        decided = await ledger_decide.decide_ledger(
+            approval_id, user_id=rig.user_id, kind="approve", via="card"
+        )
+
+    card = _approval_card(reloaded or [])
+    assert (card.data.outcome, card.data.summary, card.data.args_preview) == (
+        None,
+        "Send the invoice",
+        {"to": "acme@example.com"},
+    )
+    assert state.display is DisplayState.AWAITING_APPROVAL
+    assert decided.committed is True
+    assert len(spawned.task_ids) == 1
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})

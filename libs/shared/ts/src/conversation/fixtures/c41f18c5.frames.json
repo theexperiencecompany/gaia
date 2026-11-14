@@ -80,10 +80,11 @@
         "task_id": "c4f22a9a",
         "status": "running",
         "asking": [],
+        "asked_seq": 0,
+        "approvals": [],
         "handoff": null,
         "tool_data": [],
-        "image": null,
-        "asked_seq": 0
+        "image": null
       }
     }
   },
@@ -133,6 +134,8 @@
         "task_id": "c4f22a9a",
         "status": "running",
         "asking": [],
+        "asked_seq": 0,
+        "approvals": [],
         "handoff": {
           "tool_name": "tool_calls_data",
           "data": {
@@ -142,8 +145,7 @@
           }
         },
         "tool_data": [],
-        "image": null,
-        "asked_seq": 0
+        "image": null
       }
     }
   },
@@ -158,6 +160,8 @@
         "task_id": "c4f22a9a",
         "status": "done",
         "asking": [],
+        "asked_seq": 0,
+        "approvals": [],
         "handoff": {
           "tool_name": "tool_calls_data",
           "data": {
@@ -182,8 +186,7 @@
             }
           }
         ],
-        "image": null,
-        "asked_seq": 0
+        "image": null
       }
     }
   },

@@ -26,9 +26,9 @@ def todo_response_reads():
             return_value={},
         ) as count_open_sub_todos,
         patch(
-            "app.services.todos.todo_service.approval_ledger_repository.list_live_by_owners",
+            "app.services.todos.todo_service.pending_approvals_by_owner",
             new_callable=AsyncMock,
-            return_value=[],
+            return_value={},
         ),
     ):
         yield count_open_sub_todos

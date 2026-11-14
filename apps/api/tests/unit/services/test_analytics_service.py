@@ -516,13 +516,6 @@ class TestAgentRunLifecycle:
             TASK_DEDUPE,
         )
 
-    def test_a_paused_run_has_no_terminal_event(self) -> None:
-        with patch("app.services.analytics_service.capture") as capture:
-            with agent_run_lifecycle(USER_1.value, EXECUTOR_RUN) as run:
-                run.paused = True
-
-        assert self._events(capture) == [(EXECUTOR_RUN, None)]
-
     def test_no_user_id_captures_nothing(self) -> None:
         with (
             patch("app.services.analytics_service.capture") as capture,

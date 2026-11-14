@@ -31,7 +31,6 @@ from app.agents.core.background.executor_queue import (
     break_holder_lock,
     build_lock_value,
     build_run_item,
-    extend_lock_if_owned,
     get_lock_holder,
     get_lock_state,
     hold_run_alive,
@@ -224,19 +223,6 @@ class TestLockOwnership:
 
         assert await redis.get(BUSY_KEY) == build_lock_value("other", "t9")
 
-    async def test_extend_re_arms_our_own_lock(self, redis) -> None:
-        """A run parked on a HIL approval outlives its lock's original TTL; if the lock lapses a new run takes the thread and discards the checkpoint."""
-        await redis.set(BUSY_KEY, build_lock_value("s1", "t1"), ex=5)
-
-        assert await extend_lock_if_owned(CONVERSATION, "s1", "t1", 900) is True
-        assert await redis.ttl(BUSY_KEY) == 900
-
-    async def test_extend_refuses_a_foreign_lock(self, redis) -> None:
-        await redis.set(BUSY_KEY, build_lock_value("other", "t9"), ex=5)
-
-        assert await extend_lock_if_owned(CONVERSATION, "s1", "t1", 900) is False
-        assert await redis.ttl(BUSY_KEY) == 5
-
 
 class TestWithoutRedis:
     """How each answer degrades when Redis cannot be reached.
@@ -252,10 +238,6 @@ class TestWithoutRedis:
     async def test_lock_state_degrades_to_ours(self) -> None:
         with _no_redis():
             assert await get_lock_state(CONVERSATION, "s1", "t1") is LockState.OURS
-
-    async def test_extend_reports_that_it_did_not_re_arm(self) -> None:
-        with _no_redis():
-            assert await extend_lock_if_owned(CONVERSATION, "s1", "t1", 900) is False
 
     async def test_breaking_a_holders_lock_reports_it_is_not_gone(self) -> None:
         with _no_redis():
@@ -821,9 +803,3 @@ class TestReadExecutorActivity:
         assert await eq.read_executor_activity(CONVERSATION) == ExecutorActivitySnapshot(
             ExecutorActivity.DEAD, "t1", "s1:t1"
         )
-
-    async def test_extend_names_a_run_without_a_task_id_by_its_stream(self, redis) -> None:
-        await redis.set(BUSY_KEY, "s1:", ex=5)
-
-        assert await eq.extend_lock_if_owned(CONVERSATION, "s1", None, 99) is True
-        assert await redis.ttl(BUSY_KEY) > 5

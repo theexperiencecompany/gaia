@@ -51,7 +51,7 @@ disagree.
 
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import AwareDatetime, BaseModel
 
 from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider, ApprovalOutcome
 
@@ -107,24 +107,14 @@ class ApprovalRequestEntryData(BaseModel):
     feedback: str | None
     auto_reason: str | None
     timeout_seconds: int
-    # Ledger-backed approvals (executor-free HIL): the agent's one-line why, age in
-    # seconds, and the row version the client saw (echoed back on decide; stale v
-    # never overwrites). All optional — old-path cards omit them.
-    rationale: str | None = None
-    age_seconds: int | None = None
-    ledger_version: int | None = None
+    # When the user was asked, so a client can say how long ago.
+    asked_at: AwareDatetime | None = None
     # The call asks in every mode, so clients must not offer "always allow" on it.
     always_asks: bool = False
 
 
 class ApprovalRequestEntry(BaseModel):
-    """The ``approval_request`` tool_data entry built by ``hil.bridge``.
-
-    Emitted (wrapped in a ``tool_data`` envelope) when a gated call asks for the
-    user's decision, and re-emitted in its resolved status once decided —
-    ``stream_utils._append_or_upsert_tool_data`` replaces the earlier frame in
-    the persisted turn so only the final status survives.
-    """
+    """An approval card: the screen draws one per ApprovalRequested entry, ended by its decision entries."""
 
     tool_name: str
     tool_category: str

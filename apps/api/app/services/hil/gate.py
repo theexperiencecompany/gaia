@@ -17,6 +17,7 @@ on replay, re-reading the record instead of remembering.
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 import json
 from typing import Any
@@ -25,10 +26,12 @@ from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
 from langgraph.errors import GraphBubbleUp
 from langgraph.types import Command
+from pydantic_core import to_jsonable_python
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.execute.dispatch import _validate_args
 from app.constants.hil import (
+    HIL_APPROVAL_TIMEOUT_SECONDS,
     HIL_EXEMPT_TOOLS,
     HIL_STATUS_KWARG,
     HILToolMessageStatus,
@@ -36,6 +39,7 @@ from app.constants.hil import (
 from app.constants.log_tags import LogTag
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.models.agent_models import AgentConfigurable
+from app.models.conversation_log_models import ApprovalRequested
 from app.models.execute_models import DispatchError
 from app.models.hil_models import (
     ApprovalLedgerDocument,
@@ -45,8 +49,8 @@ from app.services.analytics_service import capture
 from app.services.conversation.work_log import record_approval_requested, work_of_run
 from app.services.hil.bridge import (
     GateVerdict,
+    announce_approval,
     build_summary,
-    publish_ledger_request,
     recall_declined_call,
     remember_declined_call,
 )
@@ -62,9 +66,9 @@ from app.services.hil.intent import (
 from app.services.hil.jev_judge import JevIntentJudge
 from app.services.hil.policy import (
     GatingPolicy,
+    asks_every_time,
     gated_tool_key,
     gated_tool_object,
-    has_pausing_sibling,
     resolve_policy,
 )
 from app.services.hil.preferences import get_hil_preferences
@@ -223,17 +227,26 @@ async def _decide_ledger(
         await record_approval_requested(
             context.conversation_id,
             context.user_id,
-            task_id,
-            ap_id,
-            summary=summary,
-            expires_at=None,
+            ApprovalRequested(
+                id=f"approval:{ap_id}",
+                task_id=task_id,
+                approval_id=ap_id,
+                summary=summary,
+                expires_at=datetime.now(UTC) + timedelta(seconds=HIL_APPROVAL_TIMEOUT_SECONDS),
+                tool_call_id=call.id,
+                gated_tool_name=call.name,
+                integration_name=integration_name,
+                args_preview=to_jsonable_python(call.args),
+                auto_reason=auto_note.strip() or None,
+                always_asks=await asks_every_time(call.name, call.args),
+            ),
         )
         log.info(
             f"{LogTag.HIL} Ledger registered gated call",
             approval_id=ap_id,
             tool_name=call.name,
         )
-        await publish_ledger_request(
+        await announce_approval(
             GatedApproval(
                 approval_id=ap_id,
                 stream_id=context.stream_id,
@@ -243,12 +256,8 @@ async def _decide_ledger(
                 summary=summary,
                 integration_name=integration_name,
             ),
-            auto_reason=auto_note.strip() or None,
-            owner_run_type=context.owner_run_type,
-            owner_id=context.owner_id,
-            # Live runs hold the card until the run ends (a mid-run revoke is
-            # never shown); background runs have no watcher, so publish now.
-            live=not context.background,
+            background=context.background,
+            has_owner=bool(context.owner_run_type and context.owner_id),
         )
         # "allow" returned before this branch, so the only policies left are
         # the two that explain WHY this call is gated — the model deserves
@@ -319,15 +328,8 @@ async def _judge(
     context: GateContext,
     call: GatedCall,
     summary: str,
-) -> IntentDecision | None:
-    """Ask the intent judge whether the user's request authorizes this call.
-
-    None means "don't auto-approve, don't spend a judge call": a sibling call will
-    wait on the user, and the judge is the one thing in this node that isn't idempotent.
-    """
-    if await has_pausing_sibling(request, context.user_id, call.id):
-        log.info(f"{LogTag.HIL} not auto-approving : a sibling call may pause", name=call.name)
-        return None
+) -> IntentDecision:
+    """Ask the intent judge whether the user's request authorizes this call."""
     history = await _auto_history(context.user_id, call.name)
     tool = await gated_tool_object(request, context.user_id, call.name)
     never_auto = hil_tool_key(call.name, mcp_tool_identity(tool)) in await _never_auto_tools(
@@ -462,8 +464,6 @@ async def _auto_ledger_verdict(
     integration_name = await _integration_name_for(request, context.user_id, call.name)
     summary = build_summary(call.name, call.args, integration_name, call.account)
     decision = await _judge(request, context, call, summary)
-    if decision is None:
-        return _AutoVerdict()
     if decision.outcome == "accept":
         log.info(
             f"{LogTag.HIL} auto-approved (ledger path)",

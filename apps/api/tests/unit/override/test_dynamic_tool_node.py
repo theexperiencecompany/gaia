@@ -494,8 +494,8 @@ class TestProductionStackFailsClosed:
         with (
             patch("app.services.hil.gate.resolve_policy", AsyncMock(return_value="ask")),
             patch(
-                "app.services.hil.gate.is_hil_ledger_enabled",
-                AsyncMock(side_effect=RuntimeError("flag store down")),
+                "app.services.hil.gate.read_gate_context",
+                side_effect=RuntimeError("gate identity read failed"),
             ),
         ):
             result = await node._afunc(

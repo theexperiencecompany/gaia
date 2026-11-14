@@ -39,9 +39,9 @@ export interface paths {
         put?: never;
         /**
          * Post Approval Decision
-         * @description Commit a button decision on the approval ledger, run the approved action and wake its owner.
+         * @description Commit a button decision in the conversation log and wake the work it answers.
          *
-         *     A stale or gone row commits nothing and says so, so the client refreshes instead of trusting the tap.
+         *     An approval already decided commits nothing and says how it ended, so the client shows that instead of the tap.
          */
         post: operations["approvals_post_approval_decision"];
         delete?: never;
@@ -63,7 +63,7 @@ export interface paths {
          * Post Batch Decision
          * @description Decide several pending approvals in one submission (the batch review).
          *
-         *     Each item commits exactly once on the ledger; one already decided or expired never fails the rest.
+         *     Each item commits exactly once in the log; one already decided or expired never fails the rest.
          */
         post: operations["approvals_post_batch_decision"];
         delete?: never;
@@ -6104,6 +6104,8 @@ export interface components {
             /** Approval Id */
             approval_id: string;
             decider: components["schemas"]["ApprovalDecider"] | null;
+            /** Feedback */
+            feedback: string | null;
             /**
              * Id
              * @description Producer-minted idempotency key
@@ -6140,8 +6142,6 @@ export interface components {
              * @enum {string}
              */
             scope?: "once" | "always_tool";
-            /** V */
-            v?: number | null;
         };
         /**
          * ApprovalDecisionResponse
@@ -6163,18 +6163,36 @@ export interface components {
         ApprovalOutcome: "approved" | "denied" | "expired" | "cancelled" | "withdrawn";
         /**
          * ApprovalRequested
-         * @description Live work paused on the user's approval.
+         * @description Live work paused on the user's approval: everything its card shows.
          */
         ApprovalRequested: {
+            /**
+             * Always Asks
+             * @default false
+             */
+            always_asks: boolean;
             /** Approval Id */
             approval_id: string;
+            /** Args Preview */
+            args_preview: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Auto Reason */
+            auto_reason: string | null;
             /** Expires At */
             expires_at: string | null;
+            /**
+             * Gated Tool Name
+             * @default
+             */
+            gated_tool_name: string;
             /**
              * Id
              * @description Producer-minted idempotency key
              */
             id: string;
+            /** Integration Name */
+            integration_name: string | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -6187,6 +6205,60 @@ export interface components {
             summary: string;
             /** Task Id */
             task_id: string;
+            /**
+             * Tool Call Id
+             * @default
+             */
+            tool_call_id: string;
+        };
+        /**
+         * ApprovalRequestEntry
+         * @description An approval card: the screen draws one per ApprovalRequested entry, ended by its decision entries.
+         */
+        ApprovalRequestEntry: {
+            data: components["schemas"]["ApprovalRequestEntryData"];
+            /** Timestamp */
+            timestamp: string;
+            /** Tool Category */
+            tool_category: string;
+            /** Tool Name */
+            tool_name: string;
+        };
+        /**
+         * ApprovalRequestEntryData
+         * @description Inner ``data`` object of a HIL ``approval_request`` entry.
+         */
+        ApprovalRequestEntryData: {
+            action?: components["schemas"]["ActionResult"] | null;
+            /**
+             * Always Asks
+             * @default false
+             */
+            always_asks?: boolean;
+            /** Approval Id */
+            approval_id: string;
+            /** Args Preview */
+            args_preview: {
+                [key: string]: unknown;
+            };
+            /** Asked At */
+            asked_at?: string | null;
+            /** Auto Reason */
+            auto_reason: string | null;
+            decider?: components["schemas"]["ApprovalDecider"] | null;
+            /** Feedback */
+            feedback: string | null;
+            /** Gated Tool Name */
+            gated_tool_name: string;
+            /** Integration Name */
+            integration_name: string | null;
+            outcome: components["schemas"]["ApprovalOutcome"] | null;
+            /** Summary */
+            summary: string;
+            /** Timeout Seconds */
+            timeout_seconds: number;
+            /** Tool Call Id */
+            tool_call_id: string;
         };
         /**
          * ApprovePairingRequest
@@ -6478,8 +6550,6 @@ export interface components {
             decision: "approve" | "deny";
             /** Feedback */
             feedback?: string | null;
-            /** V */
-            v?: number | null;
         };
         /**
          * BatchDecisionOutcome
@@ -10348,6 +10418,7 @@ export interface components {
             /** Id */
             id: string;
         };
+        JsonValue: unknown;
         /**
          * LabEventResponse
          * @description Accepted; the payload itself is never echoed back.
@@ -17536,6 +17607,8 @@ export interface components {
          * @description One piece of work from its hand-off to its result, with every task handed to it.
          */
         WorkItem: {
+            /** Approvals */
+            approvals: components["schemas"]["ApprovalRequestEntry"][];
             /** Asked Seq */
             asked_seq: number;
             /** Asking */
@@ -17683,6 +17756,8 @@ export type ApprovalDecisionRequest = components['schemas']['ApprovalDecisionReq
 export type ApprovalDecisionResponse = components['schemas']['ApprovalDecisionResponse'];
 export type ApprovalOutcome = components['schemas']['ApprovalOutcome'];
 export type ApprovalRequested = components['schemas']['ApprovalRequested'];
+export type ApprovalRequestEntry = components['schemas']['ApprovalRequestEntry'];
+export type ApprovalRequestEntryData = components['schemas']['ApprovalRequestEntryData'];
 export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest'];
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];
 export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry'];
@@ -17927,6 +18002,7 @@ export type IntegrationToolApproval = components['schemas']['IntegrationToolAppr
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
 export type InviteCreatedResponse = components['schemas']['InviteCreatedResponse'];
 export type InviteResponse = components['schemas']['InviteResponse'];
+export type JsonValue = components['schemas']['JsonValue'];
 export type LabEventResponse = components['schemas']['LabEventResponse'];
 export type LinearCommentAddedConfig = components['schemas']['LinearCommentAddedConfig'];
 export type LinearIssueCreatedConfig = components['schemas']['LinearIssueCreatedConfig'];

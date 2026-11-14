@@ -110,6 +110,7 @@ function itemRow(item: ScreenItem, draft: StreamDraft | null): MessageType {
         tool_data: cards([
           ...(item.handoff ? [item.handoff] : []),
           ...(streamed ?? item.tool_data),
+          ...item.approvals,
         ]),
         image_data: item.image ?? undefined,
         in_progress: LIVE_WORK.has(item.status),

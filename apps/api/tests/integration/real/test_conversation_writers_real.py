@@ -18,7 +18,6 @@ from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.work_cancel import cancel_named_work
 from app.api.v1.endpoints.bot_links import _persist_first_contact
 from app.constants.chat import ConversationSource
-from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.core.stream_manager import stream_manager
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
@@ -34,10 +33,12 @@ from app.models.conversation_log_models import (
     WorkOutcome,
 )
 from app.models.conversation_models import ConversationDocument
+from app.models.conversation_screen_models import WorkItem
 from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports, runtime_ports
+from app.services.conversation.screen import project_screen
 from app.services.conversation.work_log import record_user_stop
 from app.services.onboarding.first_conversation import FirstConversation
 from app.utils.seeding_utils import seed_first_conversation
@@ -92,13 +93,6 @@ async def _chat(user_id: str, entries: list[Entry]) -> str:
     for entry in entries:
         await runtime_ports().log.append(conversation_id, user_id, entry)
     return conversation_id
-
-
-def _card(approval_id: str) -> ToolDataEntry:
-    return {
-        "tool_name": APPROVAL_REQUEST_TOOL_NAME,
-        "data": {"approval_id": approval_id, "status": "pending", "summary": "send it"},
-    }
 
 
 def _turn(text: str, *, cards: tuple[ToolDataEntry, ...] = ()) -> list[Entry]:
@@ -254,16 +248,11 @@ async def test_a_stop_cancels_a_background_subagent_that_outlived_its_run(
 
 
 async def _card_status(user_id: str, conversation_id: str) -> object:
-    doc = await conversation_repository.get(conversation_id, user_id=user_id)
-    assert doc is not None
-    [card] = [
-        e
-        for m in shown_messages(doc)
-        for e in m.tool_data or []
-        if e["tool_name"] == APPROVAL_REQUEST_TOOL_NAME
-    ]
-    data = card["data"]
-    return data.get("outcome"), data.get("decider")
+    """Read the approval card the screen draws for t1 from the stored log: its outcome and who decided."""
+    entries = await conversation_log_repository.read_log(conversation_id, user_id=user_id)
+    [work] = [item for item in project_screen(entries or []) if isinstance(item, WorkItem)]
+    [card] = work.approvals
+    return card.data.outcome, card.data.decider
 
 
 def _ended(outcome: ApprovalOutcome, decider: ApprovalDecider | None = None) -> ApprovalDecided:
@@ -289,7 +278,7 @@ async def test_an_approval_cards_outcome_follows_the_log(
 ) -> None:
     user_id = str(ObjectId())
     work: list[Entry] = [started("work:t1", "t1", 1), asked("approval:ap1", "t1", "ap1")]
-    turn = _turn("send the mail", cards=(_card("ap1"),))
+    turn = _turn("send the mail")
     conversation_id = await _chat(user_id, [turn[0], *work, *turn[1:]])
 
     assert await _card_status(user_id, conversation_id) == (None, None)
