@@ -19,7 +19,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium, load, networkQuiet, newContext, OVERLAY_SELECTOR, stepLocator } from "./browser.mjs";
+import { chromium, closeContext, load, networkQuiet, newContext, OVERLAY_SELECTOR, stepLocator } from "./browser.mjs";
 import { DEFAULT_OUT, VIEWPORTS, WEB_BASE } from "./config.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -200,31 +200,42 @@ async function worker() {
     const target = queue.shift();
     contexts[target.user] ??= await newContext(browser, { vp: desktop, user: target.user, seed, cacheDir: join(OUT, "netcache"), log });
     const page = await contexts[target.user].newPage();
+    let timer;
     try {
       // A probe that wedges the page (a click that never settles) fails its route, not the whole run.
       found[target.key] = await Promise.race([
         discover(page, target),
-        new Promise((_, reject) => setTimeout(() => reject(new Error(`discovery timed out after ${ROUTE_TIMEOUT_MS / 1000}s`)), ROUTE_TIMEOUT_MS)),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`discovery timed out after ${ROUTE_TIMEOUT_MS / 1000}s`)), ROUTE_TIMEOUT_MS); }),
       ]);
     } catch (e) {
       found[target.key] = { error: String(e.message).split("\n")[0] };
+    } finally {
+      clearTimeout(timer);
     }
     await page.close();
     const s = found[target.key];
     console.log(`${String(++done).padStart(3)}/${total} ${target.key.padEnd(48)} ${Array.isArray(s) ? `${s.length} states` : `ERROR ${s.error}`}`);
   }
-  for (const c of Object.values(contexts)) await c.close();
+  for (const c of Object.values(contexts)) await closeContext(c);
 }
-await Promise.all(Array.from({ length: WORKERS }, worker));
-await browser.close();
+try {
+  await Promise.all(Array.from({ length: WORKERS }, worker));
+} finally {
+  await browser.close();
+}
+
+// A route that failed discovery never reaches states.json: the committed file stays as it was.
+const failed = Object.entries(found).filter(([, s]) => !Array.isArray(s));
+if (failed.length) {
+  console.error(`${failed.length} routes failed discovery, ${STATES_FILE} left unchanged: ${failed.map(([k, s]) => `${k} (${s.error})`).join(", ")}`);
+  process.exit(1);
+}
 
 // Shared chrome (header, nav, sidebar, footer) is reviewed once per chrome, on its first route in inventory order.
 const states = ONLY || KINDS ? JSON.parse(readFileSync(STATES_FILE, "utf8")) : {};
 const seenChrome = new Set();
 for (const t of inventory.targets) {
   let list = found[t.key] ?? states[t.key];
-  // A failed partial probe must not erase the states the route already has; it is reported below.
-  if (KINDS && !Array.isArray(found[t.key]) && Array.isArray(states[t.key])) list = states[t.key];
   if (KINDS && Array.isArray(found[t.key]) && Array.isArray(states[t.key])) {
     // A partial probe adds to what the route already had; a trigger already reviewed is not added twice.
     const have = new Set(states[t.key].map((s) => `${s.role}|${s.name}|${s.nth}`));
@@ -246,8 +257,3 @@ const ordered = Object.fromEntries(Object.keys(states).sort().map((k) => [k, sta
 writeFileSync(STATES_FILE, `${JSON.stringify(ordered, null, 2)}\n`);
 const totalStates = Object.values(ordered).reduce((n, s) => n + (Array.isArray(s) ? s.length : 0), 0);
 console.log(`${totalStates} states over ${Object.keys(ordered).length} routes -> ${STATES_FILE}`);
-const failed = Object.entries(found).filter(([, s]) => !Array.isArray(s));
-if (failed.length) {
-  console.error(`${failed.length} routes failed discovery: ${failed.map(([k]) => k).join(",")}`);
-  process.exit(1);
-}

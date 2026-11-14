@@ -15,7 +15,7 @@
 set -euo pipefail
 
 REVIEW_HOME="${REVIEW_HOME:-$HOME/v3review}"
-GIT_SOURCE="${GIT_SOURCE:-$HOME/gaia-3bundle}"
+GIT_SOURCE="${GIT_SOURCE:-$(git rev-parse --show-toplevel)}"
 API_PORT=8100
 STUB_PORT=9810
 REVIEW_USER="${REVIEW_USER:-review@gaia.local}"
