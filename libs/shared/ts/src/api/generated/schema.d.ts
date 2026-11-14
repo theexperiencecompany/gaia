@@ -14381,7 +14381,7 @@ export interface components {
          * @description Why a scout contributed nothing to this brief.
          * @enum {string}
          */
-        ScoutSkipReason: "failed" | "budget" | "backoff" | "no_read_only_tools" | "unknown_integration";
+        ScoutSkipReason: "failed" | "budget" | "backoff" | "source_failed" | "no_read_only_tools" | "unknown_integration";
         /**
          * SearchIntegrationItem
          * @description Integration item in search results.

@@ -263,8 +263,17 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         )
 
     async def find_activated_for_user(self, user_id: str) -> list[WorkflowDocument]:
-        """Every activated workflow a user owns — the dormancy sweep's pause set."""
-        return await self._find({"user_id": user_id, "activated": True})
+        """Every activated workflow a user owns but the briefs: the dormancy sweep's pause set.
+
+        A brief winds itself down through its own winback and idle ladder (briefing.dormancy).
+        """
+        return await self._find(
+            {
+                "user_id": user_id,
+                "activated": True,
+                "system_workflow_key": {"$nin": list(BRIEFING_RHYTHM_WORKFLOW_KEYS)},
+            }
+        )
 
     async def find_paused_for_reason(
         self, user_id: str, reason: DeactivationReason

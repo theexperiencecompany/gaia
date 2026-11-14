@@ -17807,6 +17807,7 @@
           "failed",
           "budget",
           "backoff",
+          "source_failed",
           "no_read_only_tools",
           "unknown_integration"
         ],
