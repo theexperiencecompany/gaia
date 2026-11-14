@@ -43,6 +43,8 @@ OUTBOX_FIELD = "outbox"
 STATE_FIELD = "state"
 RUNNER_FIELD = "runner"
 RUNNER_EPOCH_FIELD = "runner_epoch"
+#: The update fragment that advances a head's sync clock, which batch sync and the activity signal read.
+ADVANCE_SYNC_CLOCK: dict[str, object] = {"$currentDate": {"updatedAt": True}}
 #: On an amendable log entry (a reply, a user message): bumped by each amend, staged through the outbox.
 REVISION_FIELD = "revision"
 #: On a migrated entry: each field's hash as the migration wrote it (the next pass sets only what changed).

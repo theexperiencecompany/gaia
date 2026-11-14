@@ -21,7 +21,7 @@ from app.constants.conversation import (
     WORK_LOST_REPORT,
 )
 from app.db.repositories.approval_ledger import approval_ledger_repository
-from app.db.repositories.conversation_log import SweepHead, conversation_log_repository
+from app.db.repositories.conversation_sweep import SweepHead, conversation_sweep_repository
 from app.models.conversation_log_models import ApprovalRequested, LiveWork, WorkOutcome
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import runtime_ports
@@ -50,7 +50,7 @@ async def sweep_conversations() -> SweepReport:
     ports = runtime_ports()
     report = SweepReport()
     after: str | None = None
-    while page := await conversation_log_repository.list_heads_to_sweep(SWEEP_BATCH, after):
+    while page := await conversation_sweep_repository.list_heads_to_sweep(SWEEP_BATCH, after):
         for head in page:
             try:
                 await _sweep_one(ports, head, report)
@@ -80,7 +80,7 @@ async def sweep_conversations() -> SweepReport:
 async def _sweep_one(ports: RuntimePorts, head: SweepHead, report: SweepReport) -> None:
     conversation_id, user_id = head.conversation_id, head.user_id
     if head.has_outbox:
-        await conversation_log_repository.flush_outbox(conversation_id, user_id=user_id)
+        await conversation_sweep_repository.flush_outbox(conversation_id, user_id=user_id)
         report.flushed += 1
     for work in head.state.work:
         if work.pending_approvals:
@@ -106,7 +106,7 @@ async def _settle_undecidable(
     so the sweep never ends the work itself.
     """
     conversation_id, user_id = head.conversation_id, head.user_id
-    logged = await conversation_log_repository.read_log(
+    logged = await conversation_sweep_repository.read_log(
         conversation_id, user_id=user_id, ids=[f"approval:{a}" for a in work.pending_approvals]
     )
     requested = {

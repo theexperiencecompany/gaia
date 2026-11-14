@@ -23,10 +23,8 @@ from app.constants.conversation import (
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.db.repositories.conversation_entries import stored_at
-from app.db.repositories.conversation_log import (
-    ConversationLogRepository,
-    LogHead,
-)
+from app.db.repositories.conversation_log import ConversationLogRepository
+from app.db.repositories.conversation_log_append import LogHead
 from app.models.conversation_log_models import (
     BargeIn,
     CommsPhase,

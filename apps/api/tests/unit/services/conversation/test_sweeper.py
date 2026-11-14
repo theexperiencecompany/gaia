@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 
 from app.constants.conversation import APPROVAL_EXPIRY_GRACE, WORK_LOST_REPORT
-from app.db.repositories.conversation_log import SweepHead
+from app.db.repositories.conversation_sweep import SweepHead
 from app.models.conversation_log_models import ApprovalRequested, LiveWork, LoggedEntry, WorkOutcome
 from app.services.conversation.sweeper import SweepReport, sweep_conversations
 from app.services.conversation.work_log import WorkReport
@@ -76,7 +76,7 @@ def seams() -> Iterator[Seams]:
     ports = SimpleNamespace(clock=lambda: NOW, effects=SimpleNamespace(kick=kick))
     with (
         patch(f"{MODULE}.runtime_ports", return_value=ports),
-        patch(f"{MODULE}.conversation_log_repository") as repo,
+        patch(f"{MODULE}.conversation_sweep_repository") as repo,
         patch(f"{MODULE}.run_is_lost", AsyncMock(return_value=False)) as lost,
         patch(f"{MODULE}.record_work_finished", AsyncMock()) as finished,
         patch(f"{MODULE}.approval_ledger_repository") as ledger_repo,
