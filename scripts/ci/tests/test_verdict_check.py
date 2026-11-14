@@ -157,6 +157,26 @@ def test_output_with_no_location_still_carries_its_first_error_lines() -> None:
     assert found["detail"].splitlines() == ["npm ERR! code ERESOLVE", "npm ERR! peer react@19.1.0"]
 
 
+def test_a_python_traceback_is_reported_by_the_exception_it_ended_with() -> None:
+    text = (
+        "Traceback (most recent call last):\n"
+        '  File "scripts/ci/mutation.py", line 301, in _detector_output\n'
+        "    return subprocess.run(\n"
+        "subprocess.CalledProcessError: Command '['python3', 'mutation_matrix.py']' "
+        "died with <Signals.SIGSEGV: 11>.\n"
+    )
+    (found,) = output_findings.read(text)
+    assert found["message"] == (
+        "subprocess.CalledProcessError: Command '['python3', 'mutation_matrix.py']' "
+        "died with <Signals.SIGSEGV: 11>."
+    )
+    assert found["detail"].splitlines() == [
+        "Traceback (most recent call last):",
+        "subprocess.CalledProcessError: Command '['python3', 'mutation_matrix.py']' "
+        "died with <Signals.SIGSEGV: 11>.",
+    ]
+
+
 def test_a_fallback_pins_a_location_less_result_to_the_manifest() -> None:
     (found,) = output_findings.read("x react 19.1.0 -> 19.2.3 failed\n", fallback="package.json")
     assert (found["file"], found["line"]) == ("package.json", 1)

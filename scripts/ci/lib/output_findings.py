@@ -277,6 +277,8 @@ _READERS = (_workflow_commands, _pytest, _vitest, _playwright, _bandit, _ruff, _
 _ERRORISH = re.compile(
     r"(?i)(\berr(or)?s?\b|\bfailed\b|\bfailure\b|\bfatal\b|exception|traceback|violation|✗|×|❌|^E\s)"
 )
+# The last line of a Python traceback: `pkg.mod.SomeError: what happened`.
+_PY_EXCEPTION = re.compile(r"^[A-Za-z_][\w.]*(Error|Exception|Exit|Interrupt)\b(:|$)")
 _NOISE = re.compile(r"^(::(?!error)|##\[(?!error)|Process completed with exit code)")
 
 
@@ -284,11 +286,13 @@ def _fallback(lines: list[str], fallback: str | None) -> list[Finding]:
     body = [line.strip() for line in lines if line.strip() and not _NOISE.match(line.strip())]
     if not body:
         return []
-    errorish = [line for line in body if _ERRORISH.search(line)]
+    errorish = [line for line in body if _ERRORISH.search(line) or _PY_EXCEPTION.match(line)]
     shown = [
         _unescape(_COMMAND.sub(r"\g<message>", line)) for line in (errorish or body[-DETAIL_LINES:])
     ]
-    return [_finding(fallback or "", 1 if fallback else 0, shown[0], shown)]
+    raised = [line for line in shown if _PY_EXCEPTION.match(line)]
+    message = raised[-1] if raised else shown[0]
+    return [_finding(fallback or "", 1 if fallback else 0, message, shown)]
 
 
 def read(text: str, *, fallback: str | None = None, path_prefix: str = "") -> list[Finding]:
