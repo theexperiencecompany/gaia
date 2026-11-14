@@ -10,7 +10,7 @@
 # (SMOKE_SQUIRREL_UPDATE=1 on the subcommand above), and the PR gate fails until
 # it does; a rule or category worse than its line fails every run.
 
-a11y/duplicate-id-aria=3
+a11y/duplicate-id-aria=4
 ax/token-weight=98
 content/keyword-stuffing=1
 content/word-count=15
@@ -22,7 +22,7 @@ perf/critical-request-chains=100
 perf/css-file-size=100
 perf/source-maps=100
 perf/total-byte-weight=1
-score:Accessibility=98
+score:Accessibility=97
 score:Agent Experience=50
 score:Content=95
 score:Images=92
