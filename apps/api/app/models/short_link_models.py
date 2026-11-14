@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.repositories.base import UserScopedDocument
 from app.models.briefing_models import BriefingItemKind, BriefingKind, BriefingMood, BriefingStat
+from app.models.openui_artifact_models import ArtifactKind
 from app.models.workflow_execution_models import WorkflowExecutionStatus
 from app.schemas.common import ResponseModel
 
@@ -31,6 +32,7 @@ class ShortLinkTargetType(StrEnum):
     BRIEFING = "briefing"
     SESSION_ARTIFACT = "session_artifact"
     WORKFLOW_RUN = "workflow_run"
+    OPENUI_ARTIFACT = "openui_artifact"
 
 
 class LinkViewerKind(StrEnum):
@@ -159,8 +161,25 @@ class PublicWorkflowRun(_PublicView):
     summary: str
 
 
+class PublicOpenUIArtifact(_PublicView):
+    """An artifact create_artifact made: its program, which the page renders as data."""
+
+    target_type: Literal[ShortLinkTargetType.OPENUI_ARTIFACT]
+    kind: ArtifactKind
+    title: str
+    program: str
+    version: int
+    created_at: datetime
+    #: The owner's display name, never their email; None when they have none.
+    shared_by: str | None
+
+
 PublicShortLinkView = Annotated[
-    PublicTodoDeliverable | PublicBriefing | PublicSessionArtifact | PublicWorkflowRun,
+    PublicTodoDeliverable
+    | PublicBriefing
+    | PublicSessionArtifact
+    | PublicWorkflowRun
+    | PublicOpenUIArtifact,
     Field(discriminator="target_type"),
 ]
 

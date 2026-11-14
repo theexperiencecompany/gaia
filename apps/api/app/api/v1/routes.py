@@ -40,6 +40,7 @@ from app.api.v1.endpoints import (
     notification,
     oauth,
     onboarding,
+    openui_artifacts,
     payments,
     platform_auth,
     platform_links,
@@ -119,6 +120,7 @@ router.include_router(workflows.router, tags=["Workflows"])
 router.include_router(triggers.router, tags=["Triggers"])
 router.include_router(reminders.router, tags=["Reminders"])
 router.include_router(short_links.router)
+router.include_router(openui_artifacts.router)
 router.include_router(skills.router, tags=["Skills"])
 router.include_router(instructions.router, tags=["Instructions"])
 router.include_router(support.router, tags=["Support"])

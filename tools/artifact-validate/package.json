@@ -1,0 +1,20 @@
+{
+  "name": "@gaia/artifact-validate",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Bundles the web artifact library's validator (apps/web/src/features/artifacts/openui/validate.ts) into one Node script the API runs on every generated artifact.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@openuidev/react-lang": "^0.2.8",
+    "@openuidev/react-ui": "^0.11.9",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12"
+  }
+}

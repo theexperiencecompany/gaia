@@ -16,6 +16,10 @@ from app.constants.llm import (
     PRO_DAILY_COST_BUDGET_USD,
     PRO_PER_REQUEST_TOKEN_CEILING,
 )
+from app.constants.openui_artifacts import (
+    ARTIFACT_CREATION_DAILY_CAP,
+    ARTIFACT_CREATION_MONTHLY_CAP,
+)
 from app.constants.platform_links import PLATFORM_LINK_CODE_FEATURE_KEY
 from app.models.payment_models import PlanType
 
@@ -317,6 +321,14 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         free=RateLimitConfig(day=1, month=3),  # Keep restrictive
         pro=RateLimitConfig(day=30, month=900),  # +50% (20→30, 600→900)
         info=FeatureInfo(title="Flowchart Creation", description="Create flowcharts and diagrams"),
+    ),
+    # GAIA is paid-only, so the plan's cap is the one limit: an abuse ceiling, not a quota.
+    "artifact_creation": TieredRateLimits(
+        pro=RateLimitConfig(day=ARTIFACT_CREATION_DAILY_CAP, month=ARTIFACT_CREATION_MONTHLY_CAP),
+        info=FeatureInfo(
+            title="Artifact Creation",
+            description="Create reports, dashboards, plans and other artifacts",
+        ),
     ),
     # BROWSER AUTOMATION (Heaviest: a real browser + vision model per task)
     "browser_task": TieredRateLimits(

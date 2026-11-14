@@ -2,6 +2,7 @@
   "name": "gaia",
   "scripts": {
     "openui:gen-prompt": "tsx scripts/openui/generate-prompt.ts",
+    "openui:gen-artifact-prompts": "tsx scripts/openui/generate-artifact-prompt.ts",
     "quality:attw": "pnpm --filter @heygaia/cli build && attw --pack packages/cli --profile node16",
     "quality:circular": "biome lint --only=suspicious/noImportCycles apps/web/src apps/mobile/src apps/desktop/src apps/bots libs/shared/ts/src libs/wake-word/src packages/cli/src",
     "quality:components": "node scripts/ci/checks.mjs components-per-file",

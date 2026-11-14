@@ -8,6 +8,9 @@ export type ServerEventName =
   | "agent:wait_resumed"
   | "ai:llm_call_completed"
   | "approval:decided"
+  | "artifact:created"
+  | "artifact:failed"
+  | "artifact:pdf_exported"
   | "bot:audio_transcribed"
   | "bot:chat_opened"
   | "bot:session_reset"
@@ -348,6 +351,33 @@ export interface EventProperties {
     "batch"?: boolean;
     "decisions"?: number;
     "resolved"?: number;
+  };
+  "artifact:created": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "kind": "dashboard" | "report" | "plan" | "comparison" | "memo" | "document";
+    "components": number;
+    "repairs": number;
+    "output_tokens": number;
+    "first_component_ms": number;
+    "total_ms": number;
+    "model": "gpt-6-luna";
+  };
+  "artifact:failed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "kind": "dashboard" | "report" | "plan" | "comparison" | "memo" | "document";
+    "reason": "validation" | "refused" | "timeout";
+    "problem_count": number;
+  };
+  "artifact:pdf_exported": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "kind": "dashboard" | "report" | "plan" | "comparison" | "memo" | "document";
+    "pages": number;
   };
   "blog:article_viewed": {
     "slug": string;
@@ -1338,13 +1368,13 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run";
+    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
   };
   "short_link:opened": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run";
+    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
     "viewer_signed_in": boolean;
   };
   "short_link:revoked": {

@@ -1,4 +1,10 @@
 export type {
+  ArtifactCardData,
+  ArtifactCardStatus,
+  ArtifactDeltaFrame,
+} from "../artifacts/openuiArtifacts";
+export { ARTIFACT_CARD_TOOL_NAME } from "../artifacts/openuiArtifacts";
+export type {
   ApprovalDecision,
   ApprovalDecisionPayload,
   ApprovalRequestData,

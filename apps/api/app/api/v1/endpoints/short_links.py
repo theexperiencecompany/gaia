@@ -25,6 +25,7 @@ from app.models.short_link_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import error_responses
+from app.services.openui_artifacts.export import pdf_download_headers, public_artifact_pdf
 from app.services.short_link_projections import project_target
 from app.services.short_link_service import (
     get_public_file,
@@ -152,6 +153,22 @@ async def get_short_link_file_route(slug: str) -> FileResponse:
     if host_path is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
     return public_link_file_response(host_path, cache_control=_NO_STORE)
+
+
+@router.get(
+    "/{slug}/pdf",
+    response_class=Response,
+    responses={200: {"content": {"application/pdf": {}}}, **error_responses({404: _NOT_FOUND})},
+)
+async def get_short_link_pdf_route(slug: str) -> Response:
+    """The artifact behind a slug as an A4 PDF. No auth, like the link itself."""
+    log.set(operation="pdf", short_link={"slug_hash": hash_short_link_slug(slug)})
+    exported = await public_artifact_pdf(slug)
+    if exported is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
+    artifact, pdf = exported
+    log.set(artifact={"kind": artifact.kind.value, "pdf_bytes": len(pdf)})
+    return Response(pdf, media_type="application/pdf", headers=pdf_download_headers(artifact))
 
 
 @router.post(SHORT_LINK_UNSHARE_PATH)

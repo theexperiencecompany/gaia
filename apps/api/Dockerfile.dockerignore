@@ -60,6 +60,8 @@ coverage
 **/.ruff_cache
 **/.venv
 
-# Not inputs of the api image; keeps the cold build context small.
+# Not inputs of the api image; keeps the cold build context small. The one web
+# directory it does read is the artifact validator's source (artifact-validator stage).
 apps/web
+!apps/web/src/features/artifacts/openui
 docs

@@ -73,12 +73,14 @@ NODE_MIRRORS = (
     (REPO_ROOT / "infra/docker/ci-base.Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
     (REPO_ROOT / "apps/web/Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
     (REPO_ROOT / "apps/bots/Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
+    (REPO_ROOT / "apps/api/Dockerfile", r"^ARG\s+NODE_VERSION=(\d+\.\d+\.\d+)\s*$"),
 )
 # Every Dockerfile that must take its tag from the ARG rather than restating it.
 NODE_DOCKERFILES = (
     REPO_ROOT / "infra/docker/ci-base.Dockerfile",
     REPO_ROOT / "apps/web/Dockerfile",
     REPO_ROOT / "apps/bots/Dockerfile",
+    REPO_ROOT / "apps/api/Dockerfile",
 )
 # Bounded set of files that could reintroduce a hardcoded node version.
 NODE_LITERAL_SCAN = (

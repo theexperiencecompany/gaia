@@ -2,6 +2,11 @@ import type { ImageData } from "../api/generated";
 
 export type { ImageData } from "../api/generated";
 
+import {
+  ARTIFACT_CARD_TOOL_NAME,
+  applyArtifactDelta,
+  upsertArtifactDone,
+} from "../artifacts/openuiArtifacts";
 import { NEW_MESSAGE_BREAK_TOKEN } from "../utils/messageBreakUtils";
 import { upsertApprovalToolData } from "./approvals";
 
@@ -188,6 +193,9 @@ const applyToolData = (
         }),
       ),
     };
+  }
+  if (entry.tool_name === ARTIFACT_CARD_TOOL_NAME) {
+    return { ...acc, toolData: upsertArtifactDone(acc.toolData, entry) };
   }
   // A HIL approval frame replaces the prior frame for its approval_id in place;
   // every other entry is appended. Keeps replay + live streams to one card.
@@ -452,6 +460,11 @@ export const applyStreamEvent = (
       return applySubagentEnd(acc, event.payload);
     case "todo_progress":
       return applyTodoProgress(acc, event.snapshot);
+    case "artifact_delta":
+      return {
+        ...acc,
+        toolData: applyArtifactDelta(acc.toolData, event.frame),
+      };
     case "follow_up_actions":
       return { ...acc, followUpActions: event.actions };
     case "unknown":

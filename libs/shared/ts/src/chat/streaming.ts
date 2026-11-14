@@ -1,5 +1,9 @@
 import type { ToolDataEntry } from "../api/generated";
 import {
+  type ArtifactDeltaFrame,
+  isArtifactDeltaFrame,
+} from "../artifacts/openuiArtifacts";
+import {
   DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
   type DesktopToolRequest,
 } from "../desktop-tools";
@@ -76,6 +80,7 @@ export type ChatStreamEvent =
   | { type: "tool_output"; output: StreamToolOutput }
   | { type: "reasoning"; content: string; subagent_id?: string }
   | { type: "todo_progress"; snapshot: TodoProgressSnapshot }
+  | { type: "artifact_delta"; frame: ArtifactDeltaFrame }
   | { type: "follow_up_actions"; actions: string[] }
   | { type: "subagent_start"; payload: SubagentStartPayload }
   | { type: "subagent_end"; payload: SubagentEndPayload }
@@ -365,6 +370,11 @@ const extractTodoProgress = (payload: JsonObject): ChatStreamEvent[] =>
       ]
     : [];
 
+const extractArtifactDelta = (payload: JsonObject): ChatStreamEvent[] =>
+  isArtifactDeltaFrame(payload.artifact_delta)
+    ? [{ type: "artifact_delta", frame: payload.artifact_delta }]
+    : [];
+
 const extractConversation = (payload: JsonObject): ChatStreamEvent[] => {
   const hasConversationInitData =
     typeof payload.conversation_id === "string" ||
@@ -456,6 +466,7 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
     ...extractSubagentEnd(payload),
     ...extractDesktopToolRequest(payload),
     ...extractTodoProgress(payload),
+    ...extractArtifactDelta(payload),
     ...extractConversation(payload),
   ];
 

@@ -184,6 +184,7 @@ class TestFeatureLimits:
         "workspace_query_json",
         "workspace_grep",
         "flowchart_creation",
+        "artifact_creation",
         "weather_checks",
         "notification_operations",
         "integration_publish",
@@ -243,6 +244,7 @@ class TestFeatureLimits:
         "voice_mode",
         "imessage_registration",
         "onboarding_generation",
+        "artifact_creation",
     }
 
     # Cost-walled features: no daily message-count wall on free (free.day == 0)

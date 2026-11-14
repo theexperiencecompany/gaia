@@ -219,6 +219,12 @@ async def record_open(slug: str, viewer: LinkViewer) -> LinkViewerKind | None:
     return kind
 
 
+async def live_link_for_slug(slug: str, target_type: ShortLinkTargetType) -> ShortLink | None:
+    """Return the live link behind slug when it points at target_type; None otherwise."""
+    link = await _resolve_live_link(slug)
+    return link if link is not None and link.target_type is target_type else None
+
+
 async def get_public_file(slug: str) -> Path | None:
     """Return the raw file behind a slug, as its target type locates it.
 

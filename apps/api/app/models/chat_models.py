@@ -128,6 +128,7 @@ tool_fields = [
     "workflow_draft",
     "workflow_created",
     "artifact_data",
+    "artifact_done",
     "screenshot_data",
     "browser_task_data",
     "mcp_app",

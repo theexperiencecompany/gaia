@@ -1378,6 +1378,28 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@7.3.7(@types/node@24.13.3)(jiti@2.7.0)(less@4.6.4)(lightningcss@1.33.0)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.1))
 
+  tools/artifact-validate:
+    dependencies:
+      '@openuidev/react-lang':
+        specifier: ^0.2.8
+        version: 0.2.8(@modelcontextprotocol/sdk@1.32.0(zod@4.6.7))(react@19.2.3)(zod@4.6.7)
+      '@openuidev/react-ui':
+        specifier: ^0.11.9
+        version: 0.11.9(@openuidev/react-headless@0.8.2(react@19.2.3)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))))(@openuidev/react-lang@0.2.8(@modelcontextprotocol/sdk@1.32.0(zod@4.6.7))(react@19.2.3)(zod@4.6.7))(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(zod@4.6.7)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3)))
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
+      react-dom:
+        specifier: 19.2.3
+        version: 19.2.3(react@19.2.3)
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+
 packages:
 
   2g@1.0.1:
@@ -22774,7 +22796,7 @@ snapshots:
 
   '@openuidev/react-ui@0.11.9(@openuidev/react-headless@0.8.2(react@19.2.3)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))))(@openuidev/react-lang@0.2.8(@modelcontextprotocol/sdk@1.32.0(zod@4.6.7))(react@19.2.3)(zod@4.6.7))(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(zod@4.6.7)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3)))':
     dependencies:
-      '@floating-ui/react-dom': 2.1.8(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@floating-ui/react-dom': 2.1.9(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@openuidev/react-headless': 0.8.2(react@19.2.3)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3)))
       '@openuidev/react-lang': 0.2.8(@modelcontextprotocol/sdk@1.32.0(zod@4.6.7))(react@19.2.3)(zod@4.6.7)
       '@radix-ui/react-accordion': 1.2.16(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -34931,7 +34953,7 @@ snapshots:
 
   react-syntax-highlighter@16.1.1(react@19.2.3):
     dependencies:
-      '@babel/runtime': 7.29.7
+      '@babel/runtime': 7.29.10
       highlight.js: 10.7.3
       highlightjs-vue: 1.0.0
       lowlight: 1.20.0

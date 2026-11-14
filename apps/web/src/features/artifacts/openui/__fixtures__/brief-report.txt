@@ -1,0 +1,9 @@
+Write a research report for Maya Chen on Northwind's four-day week pilot (4 August to 24 October 2026, 46 people, Monday to Thursday, 32 hours, full pay), comparing the 12 pilot weeks with the 12 weeks before.
+- Completed tickets per week, baseline W1..W12: 212,218,205,221,214,219,210,224,216,213,220,217; pilot: 188,197,204,209,211,216,208,219,212,214,215,214.
+- By team, tickets per week before vs pilot: Engineering (18 people) 96 to 99, of which Platform (7) 38 to 40 and Product (11) 58 to 59; Design (6) 31 to 32; Marketing (7) 38 to 37; Operations (8) 52 to 46, of which Finance ops 21 to 20 and People ops 31 to 26. Total 217 to 214. Support excluded.
+- Survey, share agreeing week 0 vs week 12 (44 of 46 responded): time for life outside work 41% to 83%; energy left at end of week 29% to 61%; can focus without interruption 47% to 64%; stressed most days 52% to 36%.
+- Sick days 41, down from 67 last quarter. Support first reply slowed from 3.8h to 5.2h; Friday tickets waited a median 62 hours vs 4 hours on other days. Two of five support staff volunteered to take Monday off instead of Friday.
+- Quote from a product designer: "I used to spend Sunday dreading Monday. Now Friday is the day I fix the house, and the weekend is actually a weekend."
+- Next steps: approve at the 20 Nov leadership meeting (Maya); draft support Monday rota with Priya and Tom (Lena, 28 Nov); update contracts and handbook (HR, 15 Dec); rerun survey after six months (Maya, Jun 2027).
+- Method: throughput is completed tickets per ISO week from the tracker, counted on first move to done. Sources: Northwind pilot charter (July 2026); Autonomy, 'The results are in: the UK's four-day week pilot', Feb 2023, https://autonomy.work/portfolio/uk4dwpilotresults/
+Recommendation: make it permanent from January with a staggered support rota.

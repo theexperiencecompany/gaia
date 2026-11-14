@@ -1,7 +1,6 @@
 """Rasterize briefing HTML into PNG bytes with headless Chromium.
 
-Each call owns a fresh browser that is always torn down in a finally block;
-app.utils.browser_reaper is only the process-level backstop.
+Each call owns a fresh browser (app.services.render.chromium).
 """
 
 from dataclasses import dataclass
@@ -9,13 +8,11 @@ import io
 from typing import Literal
 
 from PIL import Image, ImageChops, ImageStat
-from playwright.async_api import FloatRect, Page, async_playwright
+from playwright.async_api import FloatRect, Page
 
 from app.constants.log_tags import LogTag
+from app.services.render.chromium import chromium_browser
 from shared.py.wide_events import log
-
-# Unhinted glyphs keep fractional advances on Linux, so text spaces as it does on macOS.
-_CHROMIUM_LAUNCH_ARGS = ["--no-sandbox", "--disable-dev-shm-usage", "--font-render-hinting=none"]
 
 # Chromium reports fonts as ready before glyphs are fully painted; a short settle
 # avoids capturing a frame mid-layout without polling for an arbitrary condition.
@@ -109,61 +106,57 @@ async def render_html_to_image(
     Raises:
         RuntimeError: A script on the page threw, leaving the document unrendered.
     """
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=_CHROMIUM_LAUNCH_ARGS)
-        try:
-            context = await browser.new_context(
-                viewport={"width": options.width, "height": 1},
-                device_scale_factor=options.device_scale_factor,
+    async with chromium_browser() as browser:
+        context = await browser.new_context(
+            viewport={"width": options.width, "height": 1},
+            device_scale_factor=options.device_scale_factor,
+        )
+        page = await context.new_page()
+        page_errors: list[str] = []
+        page.on("pageerror", lambda error: page_errors.append(str(error)))
+        await page.set_content(html, wait_until="networkidle", timeout=options.timeout_ms)
+        if page_errors:
+            raise RuntimeError(f"Page script failed while rendering: {page_errors[0]}")
+        await page.wait_for_timeout(_FONT_SETTLE_MS)
+        clip = (
+            await _clip_for(page, options.clip_selector, options.clip_bleed_px)
+            if options.clip_selector
+            else None
+        )
+        if options.image_format == "jpeg":
+            image = await page.screenshot(
+                full_page=options.full_page, type="jpeg", quality=options.quality, clip=clip
             )
-            page = await context.new_page()
-            page_errors: list[str] = []
-            page.on("pageerror", lambda error: page_errors.append(str(error)))
-            await page.set_content(html, wait_until="networkidle", timeout=options.timeout_ms)
-            if page_errors:
-                raise RuntimeError(f"Page script failed while rendering: {page_errors[0]}")
-            await page.wait_for_timeout(_FONT_SETTLE_MS)
-            clip = (
-                await _clip_for(page, options.clip_selector, options.clip_bleed_px)
-                if options.clip_selector
-                else None
+        else:
+            image = await page.screenshot(
+                full_page=options.full_page,
+                type="png",
+                clip=clip,
+                omit_background=options.omit_background,
             )
-            if options.image_format == "jpeg":
-                image = await page.screenshot(
-                    full_page=options.full_page, type="jpeg", quality=options.quality, clip=clip
-                )
-            else:
-                image = await page.screenshot(
-                    full_page=options.full_page,
-                    type="png",
-                    clip=clip,
-                    omit_background=options.omit_background,
-                )
-            fold_px = await _fold_px(page, options, clip)
-            paper_px = await _paper_px(page, options, clip)
-            if options.trim_margin_px is not None:
-                margin = options.trim_margin_px * options.device_scale_factor
-                box = content_box(Image.open(io.BytesIO(image)), margin)
-                if box is not None:
-                    if fold_px is not None:
-                        fold_px -= box[1]
-                    if paper_px is not None:
-                        x0, y0, x1, y1 = paper_px
-                        paper_px = (x0 - box[0], y0 - box[1], x1 - box[0], y1 - box[1])
-                image = trim_to_content(image, margin, options)
-            log.debug(
-                f"{LogTag.TOOL} Rendered HTML to image",
-                image_format=options.image_format,
-                image_bytes=len(image),
-                width=options.width,
-            )
-            return RenderedImage(
-                image=image,
-                fold=_fold_share(image, fold_px),
-                paper=_paper_shares(image, paper_px),
-            )
-        finally:
-            await browser.close()
+        fold_px = await _fold_px(page, options, clip)
+        paper_px = await _paper_px(page, options, clip)
+        if options.trim_margin_px is not None:
+            margin = options.trim_margin_px * options.device_scale_factor
+            box = content_box(Image.open(io.BytesIO(image)), margin)
+            if box is not None:
+                if fold_px is not None:
+                    fold_px -= box[1]
+                if paper_px is not None:
+                    x0, y0, x1, y1 = paper_px
+                    paper_px = (x0 - box[0], y0 - box[1], x1 - box[0], y1 - box[1])
+            image = trim_to_content(image, margin, options)
+        log.debug(
+            f"{LogTag.TOOL} Rendered HTML to image",
+            image_format=options.image_format,
+            image_bytes=len(image),
+            width=options.width,
+        )
+        return RenderedImage(
+            image=image,
+            fold=_fold_share(image, fold_px),
+            paper=_paper_shares(image, paper_px),
+        )
 
 
 async def _fold_px(page: Page, options: ImageRenderOptions, clip: FloatRect | None) -> float | None:

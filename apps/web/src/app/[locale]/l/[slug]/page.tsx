@@ -39,6 +39,10 @@ const PREVIEW_COPY: Record<
     title: "A GAIA workflow run",
     description: "What a GAIA workflow did, shared with you.",
   },
+  openui_artifact: {
+    title: "Shared from GAIA",
+    description: "A report or dashboard GAIA made, shared with you.",
+  },
 };
 
 /**
