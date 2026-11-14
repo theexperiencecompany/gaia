@@ -1,5 +1,4 @@
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { RedoIcon } from "@icons";
 import {
   CONNECT_ACTION_LABEL,
@@ -7,6 +6,7 @@ import {
   integrationConnectionState,
 } from "@shared/utils";
 import type React from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { InstanceSetupNotice } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import type { Integration } from "../types";
@@ -65,7 +65,7 @@ const IntegrationRow: React.FC<{
 
       <div className="shrink-0">
         {isConnected && (
-          <Chip size="sm" variant="flat" color="success">
+          <Chip size="sm" variant="soft" color="success">
             Connected
           </Chip>
         )}
@@ -77,19 +77,16 @@ const IntegrationRow: React.FC<{
         {(isAvailable || needsAttention) &&
           !isConnected &&
           !integration.instanceSetupRequired && (
-            <Button
-              variant="flat"
+            <GaiaButton
+              variant={needsAttention ? "warning-soft" : "accent-soft"}
               size="sm"
-              color={needsAttention ? "warning" : "primary"}
-              startContent={
-                needsAttention ? <RedoIcon width={16} height={16} /> : undefined
-              }
               onPress={() => {
                 onConnect(integration.id);
               }}
             >
+              {needsAttention ? <RedoIcon width={16} height={16} /> : undefined}
               {CONNECT_ACTION_LABEL[state]}
-            </Button>
+            </GaiaButton>
           )}
       </div>
     </div>
@@ -117,7 +114,11 @@ export const IntegrationSection: React.FC<IntegrationSectionProps> = ({
     <div className="mb-8">
       <div className="mb-4 flex items-center gap-3 pl-4">
         <h2 className="text-base font-semibold">{title}</h2>
-        <Chip size="sm" variant="flat" color={chipColor}>
+        <Chip
+          size="sm"
+          variant="soft"
+          color={chipColor === "primary" ? "accent" : "default"}
+        >
           {integrations.length}
         </Chip>
       </div>

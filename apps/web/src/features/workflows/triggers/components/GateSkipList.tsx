@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import type { GateSkipRecord } from "@shared/api/generated";
 import { formatDistanceToNowStrict } from "date-fns";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   GATE_NO_SKIPS_NOTE,
   GATE_SKIPS_LABEL,
@@ -26,12 +26,12 @@ export function GateSkipList({ skips }: { skips: GateSkipRecord[] }) {
             const isOpen = openKey === key;
             return (
               <li key={key}>
-                <Button
-                  variant="light"
-                  radius="md"
+                <GaiaButton
+                  variant="ghost"
+                  inset="tight"
                   onPress={() => setOpenKey(isOpen ? null : key)}
                   aria-expanded={isOpen}
-                  className="flex h-auto w-full min-w-0 flex-col items-start gap-0.5 px-2 py-1.5 text-left data-[hover=true]:bg-zinc-800/60"
+                  className="flex h-auto w-full min-w-0 flex-col items-start gap-0.5 py-1.5 text-left data-[hover=true]:bg-zinc-800/60"
                 >
                   <span className="flex w-full min-w-0 items-baseline text-xs">
                     <span className="truncate text-zinc-300" title={skip.event}>
@@ -52,7 +52,7 @@ export function GateSkipList({ skips }: { skips: GateSkipRecord[] }) {
                       {gateSkipReason(skip.certainty)}
                     </span>
                   )}
-                </Button>
+                </GaiaButton>
               </li>
             );
           })}

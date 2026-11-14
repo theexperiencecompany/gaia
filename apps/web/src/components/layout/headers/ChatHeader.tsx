@@ -1,6 +1,6 @@
 "use client";
 
-import { Kbd } from "@heroui/kbd";
+import { Kbd } from "@heroui/react";
 import { BubbleChatAddIcon, PinIcon, SearchIcon } from "@icons";
 import Link from "next/link";
 import ModelSelectorDevControls from "@/components/layout/headers/ModelSelectorDevControls";
@@ -45,18 +45,20 @@ export default function ChatHeader() {
           tooltip={
             <div className="flex items-center gap-2">
               Search
-              <Kbd keys={[modifierKeyName]}> K</Kbd>
+              <Kbd>
+                <Kbd.Abbr keyValue={modifierKeyName} /> K
+              </Kbd>
             </div>
           }
         >
-          <SearchIcon className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-400 group-hover:text-primary" />
+          <SearchIcon className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-400 group-hover:text-accent" />
         </SidebarHeaderButton>
         <Link href={"/pins"}>
           <SidebarHeaderButton
             aria-label="Pinned Messages"
             tooltip="Pinned Messages"
           >
-            <PinIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-primary" />
+            <PinIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-accent" />
           </SidebarHeaderButton>
         </Link>
         <Link href={"/c"} onClick={prepareNewChat}>
@@ -64,7 +66,7 @@ export default function ChatHeader() {
             aria-label="Create new chat"
             tooltip="Create new chat"
           >
-            <BubbleChatAddIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-primary" />
+            <BubbleChatAddIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-accent" />
           </SidebarHeaderButton>
         </Link>
         <NotificationCenter />

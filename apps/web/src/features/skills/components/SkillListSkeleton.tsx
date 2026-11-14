@@ -1,4 +1,4 @@
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
 
 /** Loading placeholder for a skills list / folder list. */
 export function SkillListSkeleton() {

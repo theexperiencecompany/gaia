@@ -1,7 +1,6 @@
 "use client";
 
-import { Spinner } from "@heroui/spinner";
-import { Tooltip } from "@heroui/tooltip";
+import { Spinner, Tooltip } from "@heroui/react";
 import { Mic02Icon, MicOff02Icon } from "@icons";
 import { useEffect } from "react";
 import { useHeyGaia } from "../hooks/useHeyGaia";
@@ -55,10 +54,15 @@ export function WakeWordIndicator({
   }, [lastDetection, onDetected]);
 
   return (
-    <Tooltip content={tooltipFor(state, error)} placement="left">
-      <div className="rounded-2xl bg-zinc-800 p-2">
-        <StatusIcon state={state} enabled={enabled} />
-      </div>
+    <Tooltip>
+      <Tooltip.Trigger>
+        <div className="rounded-2xl bg-zinc-800 p-2">
+          <StatusIcon state={state} enabled={enabled} />
+        </div>
+      </Tooltip.Trigger>
+      <Tooltip.Content placement="left">
+        {tooltipFor(state, error)}
+      </Tooltip.Content>
     </Tooltip>
   );
 }

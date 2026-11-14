@@ -1,19 +1,21 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Input, Textarea } from "@heroui/input";
 import {
+  Chip,
+  FieldError,
+  Input,
+  Label,
   Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
-import { ScrollShadow } from "@heroui/scroll-shadow";
+  ScrollShadow,
+  TextArea,
+  TextField,
+} from "@heroui/react";
 import { Comment01Icon, HelpCircleIcon, PencilEdit01Icon } from "@icons";
 import { useState } from "react";
 import { z } from "zod";
+import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { Separator } from "@/components/ui/separator";
 import { supportApi } from "@/features/support/api/supportApi";
 import { toast } from "@/lib/toast";
@@ -55,75 +57,87 @@ function EditTicketModal({
   errors: Record<string, string>;
 }) {
   return (
-    <Modal isOpen={isOpen} onOpenChange={onClose} size="lg">
-      <ModalContent>
-        <ModalHeader className="flex flex-col gap-1">
-          Edit Support Ticket
-        </ModalHeader>
-        <ModalBody>
-          {/* Type Selection */}
-          <div className="mb-4">
-            <div className="mb-2 text-sm font-medium text-gray-200">Type</div>
-            <div className="flex gap-2">
-              <Chip
-                size="md"
-                variant={editData.type === "support" ? "solid" : "bordered"}
-                color={editData.type === "support" ? "primary" : "default"}
-                className="cursor-pointer"
-                onClick={() => onChange({ type: "support" })}
-              >
-                Support
-              </Chip>
-              <Chip
-                size="md"
-                variant={editData.type === "feature" ? "solid" : "bordered"}
-                color={editData.type === "feature" ? "primary" : "default"}
-                className="cursor-pointer"
-                onClick={() => onChange({ type: "feature" })}
-              >
-                Feature Request
-              </Chip>
-            </div>
-            {errors.type && (
-              <div className="mt-1 text-xs text-red-500">{errors.type}</div>
-            )}
-          </div>
+    <Modal isOpen={isOpen} onOpenChange={onClose}>
+      <Modal.Backdrop>
+        <Modal.Container size="lg">
+          <Modal.Dialog>
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header className="flex flex-col gap-1">
+              Edit Support Ticket
+            </Modal.Header>
+            <Modal.Body>
+              {/* Type Selection */}
+              <div className="mb-4">
+                <div className="mb-2 text-sm font-medium text-gray-200">
+                  Type
+                </div>
+                <div className="flex gap-2">
+                  <Chip
+                    size="md"
+                    variant="primary"
+                    color={editData.type === "support" ? "accent" : "default"}
+                    className="cursor-pointer"
+                    onClick={() => onChange({ type: "support" })}
+                  >
+                    Support
+                  </Chip>
+                  <Chip
+                    size="md"
+                    variant="primary"
+                    color={editData.type === "feature" ? "accent" : "default"}
+                    className="cursor-pointer"
+                    onClick={() => onChange({ type: "feature" })}
+                  >
+                    Feature Request
+                  </Chip>
+                </div>
+                {errors.type && (
+                  <div className="mt-1 text-xs text-red-500">{errors.type}</div>
+                )}
+              </div>
 
-          {/* Title Field */}
-          <div className="mb-4">
-            <Input
-              label="Title"
-              placeholder="Brief description of your issue or request"
-              value={editData.title}
-              onChange={(e) => onChange({ title: e.target.value })}
-              isInvalid={!!errors.title}
-              errorMessage={errors.title}
-            />
-          </div>
+              {/* Title Field */}
+              <div className="mb-4">
+                <TextField
+                  className={fieldVariants({ labelPlacement: "inside" })}
+                  value={editData.title}
+                  onChange={(value) => onChange({ title: value })}
+                  isInvalid={!!errors.title}
+                >
+                  <Label>Title</Label>
+                  <Input placeholder="Brief description of your issue or request" />
+                  <FieldError>{errors.title}</FieldError>
+                </TextField>
+              </div>
 
-          {/* Description Field */}
-          <div>
-            <Textarea
-              label="Description"
-              placeholder="Please provide detailed information about your issue or feature request"
-              value={editData.description}
-              onChange={(e) => onChange({ description: e.target.value })}
-              minRows={5}
-              maxRows={8}
-              isInvalid={!!errors.description}
-              errorMessage={errors.description}
-            />
-          </div>
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="light" onPress={onClose}>
-            Cancel
-          </Button>
-          <Button color="primary" onPress={onSave}>
-            Save Changes
-          </Button>
-        </ModalFooter>
-      </ModalContent>
+              {/* Description Field */}
+              <div>
+                <TextField
+                  className={fieldVariants({ labelPlacement: "inside" })}
+                  value={editData.description}
+                  onChange={(value) => onChange({ description: value })}
+                  isInvalid={!!errors.description}
+                >
+                  <Label>Description</Label>
+                  <TextArea
+                    placeholder="Please provide detailed information about your issue or feature request"
+                    rows={5}
+                  />
+                  <FieldError>{errors.description}</FieldError>
+                </TextField>
+              </div>
+            </Modal.Body>
+            <Modal.Footer>
+              <GaiaButton variant="ghost" onPress={onClose}>
+                Cancel
+              </GaiaButton>
+              <GaiaButton onPress={onSave} variant="primary">
+                Save Changes
+              </GaiaButton>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }
@@ -223,7 +237,7 @@ export default function SupportTicketCard({
   };
 
   const getTypeColor = () => {
-    return editData.type === "feature" ? "success" : "primary";
+    return editData.type === "feature" ? "success" : "accent";
   };
 
   return (
@@ -234,7 +248,7 @@ export default function SupportTicketCard({
         <div className="flex items-center justify-between px-6 py-1">
           <div className="flex flex-row items-center gap-2 pt-3 pb-2">
             {getTypeIcon()}
-            <Chip size="sm" color={getTypeColor()} variant="flat">
+            <Chip size="sm" color={getTypeColor()} variant="soft">
               {getTypeDisplay()}
             </Chip>
           </div>
@@ -246,15 +260,18 @@ export default function SupportTicketCard({
             <div className="flex-1 text-lg font-semibold text-zinc-100">
               {editData.title}
             </div>
-            <Button
+            <GaiaButton
+              aria-label="Edit"
               isIconOnly
               size="sm"
-              variant="light"
+              variant="ghost"
+              tone="faint"
+              hoverTone="bright"
               onPress={handleEditClick}
-              className="h-8 w-8 text-zinc-500 hover:text-zinc-200"
+              className="h-8 w-8"
             >
               <PencilEdit01Icon color="currentColor" width={16} height={16} />
-            </Button>
+            </GaiaButton>
           </div>
 
           <Separator className="my-1.5 bg-zinc-700" />
@@ -278,22 +295,28 @@ export default function SupportTicketCard({
           )}
 
           {/* Description */}
-          <ScrollShadow className="relative z-[1] overflow-y-auto pb-5 text-sm leading-relaxed whitespace-pre-line text-zinc-200">
-            {editData.description}
+          <ScrollShadow
+            className={toneVariants({
+              tone: "bright",
+              className:
+                "relative z-[1] overflow-y-auto text-sm leading-relaxed whitespace-pre-line",
+            })}
+          >
+            <div className="pb-5">{editData.description}</div>
           </ScrollShadow>
         </div>
 
         {/* Submit Button */}
         <div className="flex justify-end px-6 pb-5">
-          <Button
-            color="primary"
+          <GaiaButton
+            shape="pill"
             onPress={handleSubmit}
-            isLoading={isSubmitting}
-            radius="full"
+            isPending={isSubmitting}
             className="font-medium"
+            variant="primary"
           >
             {isSubmitting ? "Submitting..." : "Submit Ticket"}
-          </Button>
+          </GaiaButton>
         </div>
       </div>
 

@@ -1,13 +1,19 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
-import { Kbd } from "@heroui/kbd";
+import {
+  Chip,
+  Description,
+  InputGroup,
+  Kbd,
+  Label,
+  TextField,
+} from "@heroui/react";
 import { ArrowRight02Icon, Search01Icon } from "@icons";
 import type { Easing, Variants } from "motion/react";
 import * as m from "motion/react-m";
 import Link from "next/link";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { chipVariants } from "@/components/shared/controlVariants";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
@@ -74,10 +80,10 @@ export function FeaturesGrid({ children }: { children?: ReactNode }) {
           className="relative z-10 mb-6"
         >
           <Chip
-            variant="flat"
-            color="primary"
+            variant="soft"
+            color="accent"
             size="md"
-            className="text-primary"
+            className={chipVariants({ hue: "brand" })}
           >
             Features
           </Chip>
@@ -126,23 +132,30 @@ export function FeaturesGrid({ children }: { children?: ReactNode }) {
           viewport={{ once: true }}
           className="mb-10 flex justify-center"
         >
-          <Input
-            ref={inputRef}
-            placeholder="Search features..."
-            radius="full"
-            size="md"
-            value={search}
-            onValueChange={setSearch}
-            startContent={<Search01Icon className="size-4 shrink-0" />}
-            endContent={
-              !search && (
-                <Kbd keys={["ctrl"]} className="text-xs">
-                  F
-                </Kbd>
-              )
-            }
-            className="max-w-md"
-          />
+          <TextField value={search} onChange={setSearch} className="max-w-md">
+            <Label className="sr-only">Search features</Label>
+            <Description className="sr-only">
+              Search features by name or category
+            </Description>
+            <InputGroup>
+              <InputGroup.Prefix>
+                <Search01Icon className="size-4 shrink-0" />
+              </InputGroup.Prefix>
+              <InputGroup.Input
+                ref={inputRef}
+                type="text"
+                aria-label="Search features"
+                placeholder="Search features..."
+              />
+              {!search && (
+                <InputGroup.Suffix>
+                  <Kbd className="text-xs">
+                    <Kbd.Abbr keyValue="ctrl" />F
+                  </Kbd>
+                </InputGroup.Suffix>
+              )}
+            </InputGroup>
+          </TextField>
         </m.div>
 
         {FEATURE_CATEGORIES.map((category) => {
@@ -157,7 +170,7 @@ export function FeaturesGrid({ children }: { children?: ReactNode }) {
           if (features.length === 0) return null;
           return (
             <section key={category} className="mb-16">
-              <p className="mb-4 mt-12 text-xs font-medium uppercase tracking-widest text-primary">
+              <p className="mb-4 mt-12 text-xs font-medium uppercase tracking-widest text-accent">
                 {category}
               </p>
               <m.div

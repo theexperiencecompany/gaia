@@ -1,11 +1,11 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Divider } from "@heroui/divider";
+import { Chip, Separator } from "@heroui/react";
 import { CheckmarkCircle02Icon, ComputerIcon } from "@icons";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { separatorVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toast } from "@/lib/toast";
 import { devicesApi } from "../api/devicesApi";
 import {
@@ -70,12 +70,12 @@ export function ApproveDeviceForm() {
             <span className="font-mono">{BRIDGE_UP_COMMAND}</span> to connect.
           </p>
         </div>
-        <Button
-          color="primary"
+        <GaiaButton
           onPress={() => router.push("/settings/devices")}
+          variant="primary"
         >
           Manage devices
-        </Button>
+        </GaiaButton>
       </div>
     );
   }
@@ -89,7 +89,7 @@ export function ApproveDeviceForm() {
         <div className="flex flex-col gap-1 pt-0.5">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-medium leading-none">Add a device</h2>
-            <Chip size="sm" variant="flat" color="success">
+            <Chip size="sm" variant="soft" color="success">
               Beta
             </Chip>
           </div>
@@ -101,14 +101,14 @@ export function ApproveDeviceForm() {
         </div>
       </header>
 
-      <Divider className="bg-zinc-700/50" />
+      <Separator className={separatorVariants({ surface: "raised" })} />
 
       {!cameFromCli && (
         <>
           <div className="py-5">
             <DeviceSetupGuide />
           </div>
-          <Divider className="bg-zinc-700/50" />
+          <Separator className={separatorVariants({ surface: "raised" })} />
         </>
       )}
 
@@ -125,14 +125,14 @@ export function ApproveDeviceForm() {
           onComplete={approve}
           isDisabled={isApproving}
         />
-        <Button
-          color="primary"
-          isLoading={isApproving}
+        <GaiaButton
+          isPending={isApproving}
           isDisabled={code.length < PAIRING_CODE_LENGTH}
           onPress={() => approve(code)}
+          variant="primary"
         >
           Approve device
-        </Button>
+        </GaiaButton>
       </div>
     </div>
   );

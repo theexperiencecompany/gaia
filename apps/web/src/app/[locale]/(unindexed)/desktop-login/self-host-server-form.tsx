@@ -1,10 +1,11 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { Description, Input, Label, TextField } from "@heroui/react";
 import { CloudIcon } from "@icons";
 import { type FormEvent, useState } from "react";
 import { FormError } from "@/components/shared/FormError";
+import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { getElectronAPI } from "@/lib/electron/api";
 
 interface SelfHostServerFormProps {
@@ -47,39 +48,45 @@ export function SelfHostServerForm({
       )}
 
       <form onSubmit={onSubmit} className="flex flex-col gap-3">
-        <Input
-          type="text"
-          label="Server address"
-          placeholder="https://gaia.example.com"
-          description="The address you open GAIA at in your browser."
+        <TextField
+          className={fieldVariants({ labelPlacement: "inside" })}
           value={address}
-          onValueChange={setAddress}
-          autoComplete="url"
+          onChange={setAddress}
           isRequired
           isDisabled={isConnecting}
-        />
+        >
+          <Label>Server address</Label>
+          <Input
+            type="text"
+            placeholder="https://gaia.example.com"
+            autoComplete="url"
+          />
+          <Description>
+            The address you open GAIA at in your browser.
+          </Description>
+        </TextField>
 
         {error && <FormError>{error}</FormError>}
 
-        <Button
+        <GaiaButton
           type="submit"
-          color="primary"
-          isLoading={isConnecting}
+          variant="primary"
+          isPending={isConnecting}
           className="w-full"
         >
           Connect
-        </Button>
+        </GaiaButton>
       </form>
 
       {currentOrigin && (
-        <Button
-          variant="flat"
-          startContent={<CloudIcon height={17} />}
+        <GaiaButton
+          variant="default-soft"
           isDisabled={isConnecting}
           onPress={() => getElectronAPI()?.switchToGaiaCloud()}
         >
+          <CloudIcon height={17} />
           Use GAIA Cloud
-        </Button>
+        </GaiaButton>
       )}
     </div>
   );

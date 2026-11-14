@@ -1,8 +1,6 @@
 "use client";
 
 import type { EventProperties } from "@gaia/shared/analytics/events";
-import { Button } from "@heroui/button";
-import { useDisclosure } from "@heroui/modal";
 import {
   Calendar01Icon,
   CalendarUpload02Icon,
@@ -15,6 +13,7 @@ import {
 } from "@icons";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import Spinner from "@/components/ui/spinner";
 import AddProjectModal from "@/features/todo/components/AddProjectModal";
 import TodoModal from "@/features/todo/components/TodoModal";
@@ -122,25 +121,23 @@ function SidebarSection({
       )}
       {items.length > 0 ? (
         items.map((item) => (
-          <Button
+          <GaiaButton
             key={item.href}
             fullWidth
-            startContent={
-              <item.icon className="w-[20px]" color={item.iconColor} />
-            }
-            endContent={
-              item.count !== undefined && (
-                <span className="ml-auto text-xs">{item.count}</span>
-              )
-            }
-            className={`justify-start px-2 text-start text-sm ${activeItem === item.href ? "bg-zinc-800 text-zinc-300" : "text-zinc-500 hover:text-zinc-300"}`}
-            variant="light"
-            radius="sm"
+            className="justify-start text-start text-sm"
+            variant={activeItem === item.href ? "tertiary" : "ghost"}
+            tone={activeItem === item.href ? "dim" : "faint"}
+            hoverTone={activeItem === item.href ? "none" : "dim"}
+            inset="tight"
             size="sm"
             onPress={() => onItemClick(item)}
           >
+            <item.icon className="w-[20px]" color={item.iconColor} />
             {item.label}
-          </Button>
+            {item.count !== undefined && (
+              <span className="ml-auto text-xs">{item.count}</span>
+            )}
+          </GaiaButton>
         ))
       ) : emptyState ? (
         emptyState.loading ? (
@@ -148,7 +145,7 @@ function SidebarSection({
             <Spinner />
           </div>
         ) : (
-          <div className="text-center text-xs text-foreground-400 italic">
+          <div className="text-center text-xs text-zinc-500 italic">
             {emptyState.message}
           </div>
         )
@@ -160,11 +157,7 @@ function SidebarSection({
 export default function TodoSidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const {
-    isOpen: addProjectOpen,
-    onOpen: openAddProject,
-    onOpenChange: setAddProjectOpen,
-  } = useDisclosure();
+  const [addProjectOpen, setAddProjectOpen] = useState(false);
   // const [searchQuery, setSearchQuery] = useState("");
 
   // Track initial load to prevent showing spinner on navigation
@@ -278,7 +271,7 @@ export default function TodoSidebar() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             startContent={
-              <SearchIcon className="h-4 w-4 text-foreground-400" />
+              <SearchIcon className="h-4 w-4 text-zinc-500" />
             }
             size="sm"
             radius="sm"
@@ -329,15 +322,16 @@ export default function TodoSidebar() {
               activeItem={pathname}
               onItemClick={handleNavigation}
               action={
-                <Button
+                <GaiaButton
+                  aria-label="Add project"
                   isIconOnly
                   size="sm"
-                  variant="light"
-                  onPress={openAddProject}
+                  variant="ghost"
+                  onPress={() => setAddProjectOpen(true)}
                   className="h-6 w-6 min-w-6"
                 >
                   <PlusSignIcon className="h-3 w-3" />
-                </Button>
+                </GaiaButton>
               }
               emptyState={{
                 loading: isInitialLoad && loading,

@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import {
   Calendar03Icon,
   CheckmarkCircle02Icon,
@@ -11,8 +10,8 @@ import {
   PencilEdit01Icon,
 } from "@icons";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { WorkflowCreatedData } from "@/types/features/toolDataTypes";
-
 import type { Workflow } from "../api/workflowApi";
 import { workflowApi } from "../api/workflowApi";
 import { getScheduleDescription } from "../utils/cronUtils";
@@ -50,8 +49,8 @@ export default function WorkflowCreatedCard({
         return {
           label: cronLabel,
           icon: <Clock01Icon className="size-3.5" />,
-          color: "primary" as const,
-          bgColor: "bg-primary/15",
+          color: "accent" as const,
+          bgColor: "bg-accent/15",
         };
       }
       case "integration":
@@ -63,7 +62,7 @@ export default function WorkflowCreatedCard({
               .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
               .join(" ") || "Integration",
           icon: <Calendar03Icon className="size-3.5" />,
-          color: "secondary" as const,
+          color: "default" as const,
           bgColor: "bg-secondary/15",
         };
       default:
@@ -132,14 +131,11 @@ export default function WorkflowCreatedCard({
           </div>
           <Chip
             size="sm"
-            variant="flat"
+            variant="soft"
             color="success"
-            startContent={<CheckmarkCircle02Icon className="size-3" />}
-            classNames={{
-              base: "bg-success/15 shrink-0",
-              content: "text-xs font-medium",
-            }}
+            className="shrink-0 text-xs font-medium"
           >
+            <CheckmarkCircle02Icon className="size-3" />
             Created
           </Chip>
         </div>
@@ -152,29 +148,26 @@ export default function WorkflowCreatedCard({
         {/* Trigger display */}
         <Chip
           size="sm"
-          variant="flat"
+          variant="soft"
           color={trigger.color}
-          startContent={trigger.icon}
-          classNames={{
-            base: `${trigger.bgColor} shrink-0`,
-            content: "text-xs font-medium",
-          }}
+          className={`${trigger.bgColor} shrink-0 text-xs font-medium`}
         >
+          {trigger.icon}
           {trigger.label}
         </Chip>
 
         {/* Action button */}
-        <Button
+        <GaiaButton
+          variant="accent-soft"
           size="sm"
-          color="primary"
-          variant="flat"
-          startContent={<PencilEdit01Icon className="size-3.5" />}
-          isLoading={isLoading}
+          shape="md"
+          isPending={isLoading}
           onPress={handleOpenModal}
-          className="mt-1 w-full rounded-xl font-medium"
+          className="mt-1 w-full font-medium"
         >
-          View & Edit
-        </Button>
+          <PencilEdit01Icon className="size-3.5" />
+          View &amp; Edit
+        </GaiaButton>
       </div>
 
       {/* Edit modal - only render when we have the full workflow */}

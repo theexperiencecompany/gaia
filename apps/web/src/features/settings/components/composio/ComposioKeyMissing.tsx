@@ -1,8 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { KeyIcon } from "@icons";
-import Link from "next/link";
+import { LinkButton } from "@/components/shared/LinkButton";
 import {
   COMPOSIO_APP_COUNT,
   COMPOSIO_SETUP_PATH,
@@ -12,7 +11,7 @@ import {
 export function ComposioKeyMissing({ onNavigate }: { onNavigate: () => void }) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-900 px-6 py-12 text-center">
-      <span className="flex size-10 items-center justify-center rounded-xl bg-primary/20 text-primary">
+      <span className="flex size-10 items-center justify-center rounded-xl bg-accent/20 text-accent">
         <KeyIcon className="size-5" />
       </span>
       <div>
@@ -24,14 +23,13 @@ export function ComposioKeyMissing({ onNavigate }: { onNavigate: () => void }) {
           key is saved.
         </p>
       </div>
-      <Button
-        as={Link}
+      <LinkButton
         href={COMPOSIO_SETUP_PATH}
-        color="primary"
-        onPress={onNavigate}
+        onClick={onNavigate}
+        variant="primary"
       >
         Add Composio key
-      </Button>
+      </LinkButton>
     </div>
   );
 }

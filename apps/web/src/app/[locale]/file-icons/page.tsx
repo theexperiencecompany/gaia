@@ -1,5 +1,7 @@
 "use client";
 
+import "../../styles/app.css";
+
 import { useState } from "react";
 
 import FilePreview, {
@@ -133,7 +135,7 @@ export default function FileIconsPrototypePage() {
   return (
     <main className="min-h-screen bg-zinc-900 px-10 py-12 text-zinc-100">
       <header className="mb-12 max-w-3xl">
-        <p className="mb-2 text-xs font-medium tracking-widest text-primary uppercase">
+        <p className="mb-2 text-xs font-medium tracking-widest text-accent uppercase">
           Dev prototype
         </p>
         <h1 className="mb-2 text-3xl font-semibold tracking-tight text-white">

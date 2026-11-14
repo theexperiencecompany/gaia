@@ -1,6 +1,6 @@
 "use client";
 
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import { ToolsIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
@@ -34,7 +34,7 @@ function ThinkingStepRow({
         <div className="min-h-8 min-w-8 flex items-center justify-center shrink-0">
           <BrainIcon width={21} height={21} className="text-zinc-500" />
         </div>
-        {!isLast && <div className="w-px flex-1 bg-default-200 min-h-4" />}
+        {!isLast && <div className="w-px flex-1 bg-zinc-700 min-h-4" />}
       </div>
 
       <div className="flex-1 min-w-0">
@@ -219,7 +219,7 @@ function RunningSubagentBody({
         {steps.awaitingApproval ? (
           <WaitingForApprovalPill />
         ) : (
-          <Spinner size="sm" color="default" />
+          <Spinner size="sm" color="current" />
         )}
         <ChevronDown
           className={`text-zinc-600 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
@@ -397,7 +397,7 @@ export function SubagentRow({
         <div className="min-h-8 min-w-8 flex items-center justify-center shrink-0">
           <SubagentIcon group={group} />
         </div>
-        {!isLast && <div className="w-px flex-1 bg-default-200 min-h-4" />}
+        {!isLast && <div className="w-px flex-1 bg-zinc-700 min-h-4" />}
       </div>
       <div className="flex-1 min-w-0">
         {isRunning ? (

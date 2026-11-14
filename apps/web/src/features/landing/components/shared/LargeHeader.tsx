@@ -1,4 +1,4 @@
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
@@ -31,11 +31,11 @@ export default function LargeHeader({
         className={`flex w-full gap-1 ${centered ? "items-center justify-center" : "items-start justify-start"}`}
       >
         {chipText && (
-          <div className="text-primary uppercase mb-2">{chipText}</div>
+          <div className="text-accent uppercase mb-2">{chipText}</div>
         )}
 
         {chipText2 && (
-          <Chip variant="flat" color="danger">
+          <Chip variant="soft" color="danger">
             {chipText2}
           </Chip>
         )}

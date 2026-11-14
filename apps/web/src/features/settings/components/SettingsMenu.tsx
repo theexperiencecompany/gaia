@@ -1,58 +1,39 @@
 "use client";
 
-import {
-  Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownSection,
-  DropdownTrigger,
-} from "@heroui/dropdown";
+import { Dropdown, Header, Separator } from "@heroui/react";
 import {
   BookBookmark02Icon,
-  BookOpen02Icon,
   BubbleChatQuestionIcon,
-  CircleArrowUp02Icon,
-  CloudDownloadIcon,
-  CustomerService01Icon,
   GitPullRequestIcon,
-  KeyboardIcon,
   Layers01Icon,
-  Logout02Icon,
   MapsIcon,
-  PackageOpenIcon,
   QuillWrite01Icon,
-  Settings01Icon,
 } from "@icons";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 import { useKeyboardShortcuts } from "@/components/providers/KeyboardShortcutsProvider";
 import {
   type ConfirmAction,
   ConfirmActionDialog,
 } from "@/components/shared/ConfirmActionDialog";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { ChevronRight, Github } from "@/components/shared/icons";
+import { toneVariants } from "@/components/shared/tone";
 import { getLinkByLabel } from "@/config/appConfig";
-import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
-import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
-import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { WhatsNewTimelineMenu } from "@/features/whats-new/components/WhatsNewTimelineMenu";
-import { useReleases } from "@/features/whats-new/hooks/useReleases";
 import {
   type PlatformInfo,
   usePlatformDetection,
 } from "@/hooks/ui/usePlatformDetection";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
-import {
-  BILLING_ONLY_SETTINGS_KEYS,
-  isSettingsSectionAllowed,
-  settingsPageItems,
-  socialMediaItems,
-} from "../config/settingsConfig";
 import { useNestedMenu } from "../hooks/useNestedMenu";
+import {
+  type SettingsMenuItem,
+  useSettingsMenuSections,
+} from "../hooks/useSettingsMenuSections";
 import { NestedMenuTooltip } from "./NestedMenuTooltip";
 
 export type ModalAction = "clear_chats" | "logout";
@@ -222,24 +203,6 @@ function SettingsSubmenuFlyouts({
   );
 }
 
-interface MenuItem {
-  key: string;
-  label: string;
-  icon?: React.ComponentType<{ className?: string; color?: string }>;
-  /** Pre-rendered brand mark for entries without an @icons glyph (e.g. favicons). */
-  iconElement?: ReactNode;
-  href?: string;
-  action?: () => void;
-  color?: "danger" | "default";
-  external?: boolean;
-  hasSubmenu?: boolean;
-  iconColor?: string;
-  badge?: React.ReactNode;
-  customClassNames?: {
-    title?: string;
-  };
-}
-
 export default function SettingsMenu({
   children,
   onOpenChange,
@@ -259,14 +222,6 @@ export default function SettingsMenu({
     string | undefined
   >();
   const [modalAction, setModalAction] = useState<ModalAction | null>(null);
-  const { isPaid, isUnknown } = useIsPaid();
-  const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
-  // Self-host instances have no billing — the entries make no sense there.
-  const deployment = useDeployment();
-  const billingHidden = !deployment.bills;
-  const selfHosted = deployment.kind === "selfhost";
-  const { role } = useCurrentUser();
-  const { unseen: unseenReleases } = useReleases();
 
   const whatsNewMenu = useNestedMenu();
   const resourcesMenu = useNestedMenu();
@@ -284,19 +239,12 @@ export default function SettingsMenu({
   const { currentPlatform, desktopPlatforms } = usePlatformDetection();
   const { openShortcutsModal } = useKeyboardShortcuts();
 
-  // Entries surfaced directly in this menu; billing-only ones drop out on self-host.
-  const quickSettingsKeys = new Set(
-    ["memory", "linked-accounts", "providers", "usage"].filter(
-      (key) => !(billingHidden && BILLING_ONLY_SETTINGS_KEYS.has(key)),
-    ),
-  );
-
   const openSupportModal = (type: string) => {
     setSupportModalType(type);
     setSupportModalOpen(true);
   };
 
-  const handleItemAction = (item: MenuItem) => {
+  const handleItemAction = (item: SettingsMenuItem) => {
     if (item.href) {
       router.push(item.href);
     } else if (item.action) {
@@ -312,118 +260,15 @@ export default function SettingsMenu({
     }
   };
 
-  const menuSections = [
-    // Never show the upgrade item while the plan is unknown — a cold-cache
-    // paying user would otherwise see an "Upgrade to Pro" entry on reload —
-    // nor on self-host, where billing does not exist at all.
-    ...(isUnknown || isPaid || billingHidden
-      ? []
-      : [
-          {
-            id: "upgrade",
-            title: undefined,
-            showDivider: true,
-            items: [
-              {
-                key: "upgrade_to_pro",
-                label: "Subscribe to GAIA Pro",
-                action: () =>
-                  openUpgradeModal(undefined, {
-                    dismissible: true,
-                    source: "settings_menu",
-                  }),
-                icon: CircleArrowUp02Icon,
-                iconColor: "#00bbff",
-                customClassNames: { title: "text-primary font-medium" },
-              },
-            ],
-          },
-        ]),
-    {
-      id: "shortcuts",
-      title: undefined,
-      showDivider: true,
-      items: [
-        ...settingsPageItems.filter(
-          (item) =>
-            quickSettingsKeys.has(item.key) &&
-            isSettingsSectionAllowed(item.key, role),
-        ),
-        {
-          key: "keyboard_shortcuts",
-          label: "Keyboard Shortcuts",
-          icon: KeyboardIcon,
-          action: openShortcutsModal,
-        },
-      ],
-    },
-    {
-      id: "community",
-      title: "Community",
-      showDivider: true,
-      items: socialMediaItems,
-    },
-    {
-      id: "app",
-      title: undefined,
-      showDivider: false,
-      items: [
-        // GAIA's release notes announce the hosted product.
-        ...(selfHosted
-          ? []
-          : [
-              {
-                key: "whats-new",
-                label: "What's new",
-                icon: PackageOpenIcon,
-                hasSubmenu: true,
-                badge:
-                  unseenReleases.length > 0 ? (
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  ) : undefined,
-              },
-            ]),
-        {
-          key: "download",
-          label: `Download for ${currentPlatform.isMobile ? "Desktop" : currentPlatform.shortName.split(" ")[0]}`,
-          icon: CloudDownloadIcon,
-          hasSubmenu: true,
-        },
-        {
-          key: "resources",
-          label: "Resources",
-          icon: BookOpen02Icon,
-          hasSubmenu: true,
-        },
-        {
-          key: "support",
-          label: "Support",
-          icon: CustomerService01Icon,
-          hasSubmenu: true,
-        },
-        {
-          key: "settings",
-          label: "Settings",
-          icon: Settings01Icon,
-          action: () => router.push("/settings"),
-        },
-        {
-          key: "logout",
-          label: "Sign Out",
-          icon: Logout02Icon,
-          color: "danger" as const,
-          action: () => setModalAction("logout"),
-        },
-      ],
-    },
-  ];
+  const menuSections = useSettingsMenuSections({
+    onOpenShortcuts: openShortcutsModal,
+    onSignOut: () => setModalAction("logout"),
+    downloadLabel: `Download for ${currentPlatform.isMobile ? "Desktop" : currentPlatform.shortName.split(" ")[0]}`,
+  });
 
   return (
     <>
       <Dropdown
-        placement="right"
-        className="bg-secondary-bg text-foreground dark shadow-xl"
-        offset={21}
         isOpen={isMenuOpen}
         onOpenChange={(open) => {
           setIsMenuOpen(open);
@@ -437,75 +282,81 @@ export default function SettingsMenu({
           onOpenChange?.(open);
         }}
       >
-        <DropdownTrigger>{children}</DropdownTrigger>
-        <DropdownMenu aria-label="Settings Menu" variant="faded">
-          {menuSections.map((section) => (
-            <DropdownSection
-              key={section.id}
-              title={section.title}
-              showDivider={section.showDivider}
-              classNames={{ divider: "bg-zinc-800/60" }}
-            >
-              {section.items.map((item: MenuItem) => {
-                const Icon = item.icon;
-                const iconColor =
-                  item.iconColor || socialMediaColorMap[item.key];
+        {children}
+        <Dropdown.Popover
+          placement="right"
+          offset={21}
+          className={overlayVariants({
+            surface: "secondary",
+            className: "dark shadow-xl",
+          })}
+        >
+          <Dropdown.Menu aria-label="Settings Menu">
+            {menuSections.map((section) => (
+              <Fragment key={section.id}>
+                <Dropdown.Section>
+                  {section.title && <Header>{section.title}</Header>}
+                  {section.items.map((item: SettingsMenuItem) => {
+                    const Icon = item.icon;
+                    const iconColor =
+                      item.iconColor || socialMediaColorMap[item.key];
+                    const isQuiet = item.color !== "danger" && !iconColor;
+                    const itemClassName = toneVariants({
+                      tone: isQuiet ? "muted" : "default",
+                      interactive: isQuiet,
+                      className: item.customClassNames?.title,
+                    });
 
-                // Handle nested menus (What's new, Download, Resources, Support)
-                if (item.hasSubmenu) {
-                  const menu = submenuByKey[item.key] ?? supportMenu;
+                    // Handle nested menus (What's new, Download, Resources, Support)
+                    if (item.hasSubmenu) {
+                      const menu = submenuByKey[item.key] ?? supportMenu;
 
-                  return (
-                    <DropdownItem
-                      key={item.key}
-                      textValue={item.label}
-                      variant="flat"
-                      onMouseEnter={menu.handleMouseEnter}
-                      onMouseLeave={menu.handleMouseLeave}
-                      className="text-zinc-400 transition hover:text-white"
-                      startContent={Icon && <Icon className={ICON_CLASSES} />}
-                      endContent={
-                        <div className="flex items-center gap-1.5">
-                          {item.badge}
-                          <ChevronRight className="h-4 w-4 text-zinc-500" />
-                        </div>
-                      }
-                    >
-                      {item.label}
-                    </DropdownItem>
-                  );
-                }
-
-                return (
-                  <DropdownItem
-                    key={item.key}
-                    textValue={item.label}
-                    variant="flat"
-                    color={item.color}
-                    onPress={() => handleItemAction(item)}
-                    className={
-                      item.color === "danger"
-                        ? "text-danger"
-                        : iconColor
-                          ? "transition"
-                          : "text-zinc-400 transition hover:text-white"
+                      return (
+                        <Dropdown.Item
+                          key={item.key}
+                          id={item.key}
+                          textValue={item.label}
+                          onMouseEnter={menu.handleMouseEnter}
+                          onMouseLeave={menu.handleMouseLeave}
+                          className={toneVariants({
+                            tone: "muted",
+                            interactive: true,
+                          })}
+                        >
+                          {Icon && <Icon className={ICON_CLASSES} />}
+                          {item.label}
+                          <div className="ml-auto flex items-center gap-1.5">
+                            {item.badge}
+                            <ChevronRight className="h-4 w-4 text-zinc-500" />
+                          </div>
+                        </Dropdown.Item>
+                      );
                     }
-                    style={iconColor ? { color: iconColor } : undefined}
-                    startContent={
-                      item.iconElement ??
-                      (Icon && (
-                        <Icon className={ICON_CLASSES} color={iconColor} />
-                      ))
-                    }
-                    classNames={item.customClassNames}
-                  >
-                    {item.label}
-                  </DropdownItem>
-                );
-              })}
-            </DropdownSection>
-          ))}
-        </DropdownMenu>
+
+                    return (
+                      <Dropdown.Item
+                        key={item.key}
+                        id={item.key}
+                        textValue={item.label}
+                        variant={item.color === "danger" ? "danger" : "default"}
+                        onAction={() => handleItemAction(item)}
+                        className={itemClassName}
+                        style={iconColor ? { color: iconColor } : undefined}
+                      >
+                        {item.iconElement ??
+                          (Icon && (
+                            <Icon className={ICON_CLASSES} color={iconColor} />
+                          ))}
+                        {item.label}
+                      </Dropdown.Item>
+                    );
+                  })}
+                </Dropdown.Section>
+                {section.showDivider && <Separator />}
+              </Fragment>
+            ))}
+          </Dropdown.Menu>
+        </Dropdown.Popover>
       </Dropdown>
 
       <SettingsSubmenuFlyouts

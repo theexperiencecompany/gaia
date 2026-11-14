@@ -1,4 +1,4 @@
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 
 interface PricingCardHeaderProps {
   title: string;
@@ -18,7 +18,7 @@ export function PricingCardHeader({
       <div className="flex min-h-5 items-center gap-2">
         <span className="text-2xl font-semibold">{title}</span>
         {isCurrentPlan && (
-          <Chip className="text-xs" color="success" variant="flat">
+          <Chip className="text-xs" color="success" variant="soft">
             Current Plan
           </Chip>
         )}

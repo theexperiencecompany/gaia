@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import GaiaOrb, { type GaiaOrbState } from "@/components/ui/orb/GaiaOrb";
 
 const STATES: GaiaOrbState[] = ["idle", "listening", "thinking", "speaking"];
@@ -17,25 +17,24 @@ export default function OrbDevPage() {
 
       <div className="flex items-center gap-2">
         {STATES.map((s) => (
-          <Button
+          <GaiaButton
+            shape="pill"
             key={s}
             size="sm"
-            radius="full"
-            variant={state === s ? "solid" : "flat"}
-            color={state === s ? "primary" : "default"}
+            variant={state === s ? "primary" : "tertiary"}
             onPress={() => setState(s)}
           >
             {s}
-          </Button>
+          </GaiaButton>
         ))}
-        <Button
+        <GaiaButton
+          shape="pill"
           size="sm"
-          radius="full"
-          variant="flat"
+          variant="default-soft"
           onPress={() => setLarge((v) => !v)}
         >
           {large ? "small" : "large"}
-        </Button>
+        </GaiaButton>
       </div>
       <p className="font-mono text-xs text-zinc-500">
         /dev/orb: GaiaOrb WebGL2 shader playground

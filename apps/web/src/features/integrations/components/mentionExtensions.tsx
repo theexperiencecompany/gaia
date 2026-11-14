@@ -1,6 +1,5 @@
 "use client";
 
-import type { ChipProps } from "@heroui/chip";
 import type { Extensions } from "@tiptap/core";
 import Document from "@tiptap/extension-document";
 import HardBreak from "@tiptap/extension-hard-break";
@@ -45,7 +44,6 @@ type Suggestion = SuggestionProps<string, MentionNodeAttrs>;
 export interface MentionExtensionRefs {
   icon: MutableRefObject<((name: string) => ReactNode) | undefined>;
   removable: MutableRefObject<boolean | undefined>;
-  radius: MutableRefObject<ChipProps["radius"] | undefined>;
   toolNames: MutableRefObject<string[]>;
 }
 
@@ -72,7 +70,6 @@ function MentionNodeView({ node, deleteNode }: NodeViewProps) {
       <MentionChip
         name={name}
         icon={refs.icon.current?.(name)}
-        radius={refs.radius.current}
         onClose={refs.removable.current ? () => deleteNode() : undefined}
       />
     </NodeViewWrapper>

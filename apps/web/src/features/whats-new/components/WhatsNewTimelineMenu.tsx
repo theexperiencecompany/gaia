@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { PackageOpenIcon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { track } from "@/lib/analytics";
 import { useWhatsNewStore } from "@/stores/whatsNewStore";
 import { useReleases } from "../hooks/useReleases";
@@ -63,7 +63,7 @@ export function WhatsNewTimelineMenu({ onClose }: WhatsNewTimelineMenuProps) {
                     className={[
                       "z-10 mt-1 size-3 shrink-0 rounded-full border transition-transform group-hover:scale-125",
                       idx === 0
-                        ? "border-primary bg-primary"
+                        ? "border-accent bg-accent"
                         : "border-zinc-600 bg-zinc-600",
                     ].join(" ")}
                   />
@@ -77,7 +77,7 @@ export function WhatsNewTimelineMenu({ onClose }: WhatsNewTimelineMenuProps) {
                       {release.title}
                     </span>
                     {isUnseen && (
-                      <span className="inline-block size-1.5 shrink-0 rounded-full bg-primary" />
+                      <span className="inline-block size-1.5 shrink-0 rounded-full bg-accent" />
                     )}
                   </span>
                   <span className="text-[10px] tabular-nums text-zinc-500 transition-colors group-hover:text-zinc-400">
@@ -92,15 +92,16 @@ export function WhatsNewTimelineMenu({ onClose }: WhatsNewTimelineMenuProps) {
 
       {/* Footer */}
       <div className="px-3">
-        <Button
-          variant="light"
+        <GaiaButton
+          variant="ghost"
           size="sm"
           onPress={handleViewAll}
-          startContent={<PackageOpenIcon className="size-4 shrink-0" />}
-          className="justify-start text-zinc-500"
+          tone="faint"
+          className="justify-start"
         >
+          <PackageOpenIcon className="size-4 shrink-0" />
           View all releases
-        </Button>
+        </GaiaButton>
       </div>
     </div>
   );

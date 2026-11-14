@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@heroui/react";
+import { Popover } from "@heroui/react";
 import { ArrowDown01Icon } from "@icons";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { cn } from "@/lib/utils";
 
 interface BaseFieldChipProps {
@@ -18,7 +18,6 @@ interface BaseFieldChipProps {
     | "success"
     | "warning"
     | "danger";
-  isActive?: boolean;
   onOpenChange?: (isOpen: boolean) => void;
   children:
     | React.ReactNode
@@ -26,13 +25,23 @@ interface BaseFieldChipProps {
   className?: string;
 }
 
+type FieldChipVariant = NonNullable<BaseFieldChipProps["variant"]>;
+
+const VALUE_TEXT_CLASS: Record<FieldChipVariant, string> = {
+  default: "",
+  secondary: "",
+  primary: "text-blue-400",
+  success: "text-green-400",
+  warning: "text-yellow-400",
+  danger: "text-red-400",
+};
+
 export default function BaseFieldChip({
   label,
   value,
   placeholder,
   icon,
   variant = "default",
-  isActive = false,
   onOpenChange,
   children,
   className,
@@ -41,26 +50,7 @@ export default function BaseFieldChip({
 
   const hasValue = value !== undefined && value !== null && value !== "";
 
-  // Flat design with consistent zinc background
-  const getButtonClassName = () => {
-    const baseClasses = "border-0 shadow-none outline-none focus:outline-none";
-
-    if (hasValue) {
-      switch (variant) {
-        case "success":
-          return `${baseClasses} bg-zinc-800 text-green-400 hover:bg-zinc-700`;
-        case "primary":
-          return `${baseClasses} bg-zinc-800 text-blue-400 hover:bg-zinc-700`;
-        case "warning":
-          return `${baseClasses} bg-zinc-800 text-yellow-400 hover:bg-zinc-700`;
-        case "danger":
-          return `${baseClasses} bg-zinc-800 text-red-400 hover:bg-zinc-700`;
-        default:
-          return `${baseClasses} bg-zinc-800 text-zinc-200 hover:bg-zinc-700`;
-      }
-    }
-    return `${baseClasses} bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-400`;
-  };
+  const valueTextClass = hasValue ? VALUE_TEXT_CLASS[variant] : "";
 
   return (
     <Popover
@@ -69,39 +59,37 @@ export default function BaseFieldChip({
         setIsOpen(open);
         onOpenChange?.(open);
       }}
-      placement="bottom-start"
-      showArrow={true}
-      shouldCloseOnBlur={true}
     >
-      <PopoverTrigger>
-        <Button
-          variant="light"
-          size="sm"
-          aria-label={`${label} selection. Current value: ${hasValue ? (typeof value === "string" ? value : "selected") : "none selected"}`}
-          className={cn(
-            "h-8 min-w-0 gap-1 border-0 px-3 font-normal ring-0 transition-all outline-none focus:ring-0 focus:outline-none",
-            isOpen && "ring-0",
-            isActive && "ring-0",
-            !hasValue && "text-zinc-500",
-            getButtonClassName(),
-            className,
+      <GaiaButton
+        variant="tertiary"
+        tone={hasValue ? "bright" : "faint"}
+        hoverTone={hasValue ? "none" : "muted"}
+        size="sm"
+        aria-label={`${label} selection. Current value: ${hasValue ? (typeof value === "string" ? value : "selected") : "none selected"}`}
+        className={cn(
+          "h-8 min-w-0 gap-1 border-0 font-normal shadow-none ring-0 transition-all outline-none focus:ring-0 focus:outline-none",
+          valueTextClass,
+          className,
+        )}
+      >
+        {icon}
+        <span className="max-w-[120px] truncate">
+          {hasValue ? (
+            value
+          ) : (
+            <span className="text-zinc-400">{placeholder}</span>
           )}
-        >
-          {icon}
-          <span className="max-w-[120px] truncate">
-            {hasValue ? (
-              value
-            ) : (
-              <span className="text-zinc-400">{placeholder}</span>
-            )}
-          </span>
-          <ArrowDown01Icon
-            size={14}
-            className={cn("transition-transform", isOpen && "rotate-180")}
-          />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="min-w-68 max-w-68 rounded-2xl border-zinc-700 bg-zinc-900 p-0 shadow-xl">
+        </span>
+        <ArrowDown01Icon
+          size={14}
+          className={cn("transition-transform", isOpen && "rotate-180")}
+        />
+      </GaiaButton>
+      <Popover.Content
+        placement="bottom start"
+        className="min-w-68 max-w-68 shadow-xl"
+      >
+        <Popover.Arrow />
         <div className="flex w-full justify-start pl-4 pt-3 text-xs font-medium text-zinc-400">
           {label}
         </div>
@@ -110,7 +98,7 @@ export default function BaseFieldChip({
             ? children({ onClose: () => setIsOpen(false) })
             : children}
         </div>
-      </PopoverContent>
+      </Popover.Content>
     </Popover>
   );
 }

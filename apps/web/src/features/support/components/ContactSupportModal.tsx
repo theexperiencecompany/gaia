@@ -1,21 +1,24 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input, Textarea } from "@heroui/input";
 import {
+  Input,
+  Label,
+  ListBox,
   Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
-import { Select, SelectItem } from "@heroui/select";
+  Select,
+  TextArea,
+  TextField,
+} from "@heroui/react";
 import { Cancel01Icon, Upload01Icon } from "@icons";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import { modalVariants } from "@/components/shared/controlVariants";
+import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { toast } from "@/lib/toast";
-
 import {
   ALLOWED_FILE_TYPES,
   FORM_VALIDATION,
@@ -111,18 +114,25 @@ function SelfHostedSupportModal({
   onOpenChange,
 }: Pick<ContactSupportModalProps, "isOpen" | "onOpenChange">) {
   return (
-    <Modal isOpen={isOpen} onOpenChange={onOpenChange} backdrop="blur">
-      <ModalContent>
-        <ModalHeader>Get in Touch</ModalHeader>
-        <ModalBody>
-          <SelfHostedSupportNotice />
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="light" onPress={onOpenChange}>
-            Close
-          </Button>
-        </ModalFooter>
-      </ModalContent>
+    <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
+      <Modal.Backdrop variant="blur">
+        <Modal.Container>
+          <Modal.Dialog>
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header>
+              <Modal.Heading>Get in Touch</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body>
+              <SelfHostedSupportNotice />
+            </Modal.Body>
+            <Modal.Footer>
+              <GaiaButton variant="ghost" onPress={onOpenChange}>
+                Close
+              </GaiaButton>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }
@@ -207,58 +217,86 @@ function SupportRequestModal({
   return (
     <Modal
       isOpen={isOpen}
-      onOpenChange={onOpenChange}
-      size="2xl"
-      backdrop="blur"
-      isDismissable={false}
+      onOpenChange={(open) => {
+        if (!open) onOpenChange();
+      }}
     >
-      <ModalContent>
-        {() => (
-          <>
-            <ModalHeader className="flex flex-col gap-1">
-              Get in Touch
-            </ModalHeader>
+      <Modal.Backdrop isDismissable={false}>
+        <Modal.Container>
+          <Modal.Dialog
+            className={modalVariants({ size: "2xl", className: "max-w-2xl" })}
+          >
+            <Modal.Header className="flex flex-col gap-1">
+              <Modal.Heading>Get in Touch</Modal.Heading>
+            </Modal.Header>
 
-            <ModalBody className="gap-4">
+            <Modal.Body className="gap-4">
               <Select
-                label="Request Type"
-                placeholder="Select a request type"
-                selectedKeys={formData.type ? [formData.type] : []}
-                onSelectionChange={(keys) => {
-                  const selectedKey = Array.from(keys)[0] as string;
+                className={fieldVariants({ labelPlacement: "inside" })}
+                selectedKey={formData.type ? formData.type : null}
+                onSelectionChange={(key) => {
+                  const selectedKey = key as string;
                   handleInputChange("type", selectedKey);
                 }}
                 isRequired
               >
-                <SelectItem key={SUPPORT_REQUEST_TYPES.SUPPORT}>
-                  {SUPPORT_REQUEST_TYPE_LABELS[SUPPORT_REQUEST_TYPES.SUPPORT]}
-                </SelectItem>
-                <SelectItem key={SUPPORT_REQUEST_TYPES.FEATURE}>
-                  {SUPPORT_REQUEST_TYPE_LABELS[SUPPORT_REQUEST_TYPES.FEATURE]}
-                </SelectItem>
+                <Label>Request Type</Label>
+                <Select.Trigger>
+                  <GaiaSelectValue>
+                    {({ isPlaceholder, selectedText }) =>
+                      isPlaceholder ? "Select a request type" : selectedText
+                    }
+                  </GaiaSelectValue>
+                  <Select.Indicator />
+                </Select.Trigger>
+                <Select.Popover>
+                  <ListBox>
+                    <GaiaListBoxItem
+                      id={SUPPORT_REQUEST_TYPES.SUPPORT}
+                      textValue={
+                        SUPPORT_REQUEST_TYPE_LABELS[
+                          SUPPORT_REQUEST_TYPES.SUPPORT
+                        ]
+                      }
+                    />
+                    <GaiaListBoxItem
+                      id={SUPPORT_REQUEST_TYPES.FEATURE}
+                      textValue={
+                        SUPPORT_REQUEST_TYPE_LABELS[
+                          SUPPORT_REQUEST_TYPES.FEATURE
+                        ]
+                      }
+                    />
+                  </ListBox>
+                </Select.Popover>
               </Select>
 
-              <Input
-                label="Title"
-                placeholder="Brief description of your request"
+              <TextField
+                className={fieldVariants({ labelPlacement: "inside" })}
                 value={formData.title}
-                onValueChange={(value) => handleInputChange("title", value)}
-                maxLength={FORM_VALIDATION.MAX_TITLE_LENGTH}
+                onChange={(value) => handleInputChange("title", value)}
                 isRequired
-              />
+              >
+                <Label>Title</Label>
+                <Input
+                  placeholder="Brief description of your request"
+                  maxLength={FORM_VALIDATION.MAX_TITLE_LENGTH}
+                />
+              </TextField>
 
-              <Textarea
-                label="Description"
-                placeholder="Please provide detailed information about your request..."
+              <TextField
+                className={fieldVariants({ labelPlacement: "inside" })}
                 value={formData.description}
-                onValueChange={(value) =>
-                  handleInputChange("description", value)
-                }
-                minRows={4}
-                maxRows={10}
-                maxLength={FORM_VALIDATION.MAX_DESCRIPTION_LENGTH}
+                onChange={(value) => handleInputChange("description", value)}
                 isRequired
-              />
+              >
+                <Label>Description</Label>
+                <TextArea
+                  placeholder="Please provide detailed information about your request..."
+                  rows={4}
+                  maxLength={FORM_VALIDATION.MAX_DESCRIPTION_LENGTH}
+                />
+              </TextField>
 
               {/* File Upload01Icon Section */}
               <div className="space-y-3">
@@ -275,7 +313,7 @@ function SupportRequestModal({
                 />
                 <button
                   type="button"
-                  className={`w-full cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center transition-all duration-200 ${dragActive ? "scale-[1.02] border-primary bg-blue-50 shadow-lg" : "hover:bg-zinc-750 border-zinc-700 bg-zinc-800 hover:border-primary"}`}
+                  className={`w-full cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center transition-all duration-200 ${dragActive ? "scale-[1.02] border-accent bg-blue-50 shadow-lg" : "hover:bg-zinc-700 border-zinc-700 bg-zinc-800 hover:border-accent"}`}
                   onDragEnter={handleDrag}
                   onDragLeave={handleDrag}
                   onDragOver={handleDrag}
@@ -363,23 +401,23 @@ function SupportRequestModal({
                   </div>
                 )}
               </div>
-            </ModalBody>
-            <ModalFooter>
-              <Button color="danger" variant="light" onPress={handleClose}>
+            </Modal.Body>
+            <Modal.Footer>
+              <GaiaButton variant="ghost" onPress={handleClose}>
                 Cancel
-              </Button>
-              <Button
-                color="primary"
+              </GaiaButton>
+              <GaiaButton
                 onPress={handleSubmit}
-                isLoading={isSubmitting}
+                isPending={isSubmitting}
                 isDisabled={!isFormValid}
+                variant="primary"
               >
                 Submit Request
-              </Button>
-            </ModalFooter>
-          </>
-        )}
-      </ModalContent>
+              </GaiaButton>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }

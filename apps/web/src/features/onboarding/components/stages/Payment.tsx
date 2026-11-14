@@ -10,7 +10,7 @@
 
 "use client";
 
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import * as m from "motion/react-m";
 import { useMemo, useState } from "react";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
@@ -71,13 +71,14 @@ export function Payment() {
           className="flex w-full flex-col items-center gap-4 lg:[zoom:0.85]"
           {...MOTION_FADE_UP}
         >
-          <BillingPeriodTabs isYearly={isYearly} onChange={setIsYearly} />
-          <PricingCards
-            durationIsMonth={!isYearly}
-            hideEnterprise
-            checkoutSource="onboarding"
-            hideHeader
-          />
+          <BillingPeriodTabs isYearly={isYearly} onChange={setIsYearly}>
+            <PricingCards
+              durationIsMonth={!isYearly}
+              hideEnterprise
+              checkoutSource="onboarding"
+              hideHeader
+            />
+          </BillingPeriodTabs>
         </m.div>
       ) : null}
     </m.div>

@@ -1,8 +1,7 @@
 "use client";
 
 import type { EventProperties } from "@gaia/shared/analytics/events";
-import { Button } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip";
+import { Tooltip } from "@heroui/react";
 import {
   // Calendar03Icon, // Temporarily disabled
   CheckListIcon,
@@ -11,9 +10,9 @@ import {
   MessageMultiple02Icon,
   ZapIcon,
 } from "@icons";
-import Link from "next/link";
 import React from "react";
 import { ChevronLeft } from "@/components/shared/icons";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { ShortcutKeysDisplay } from "@/config/keyboardShortcuts";
 import { getNavigationShortcut } from "@/config/keyboardShortcutsData";
 import { paywallCopyFor } from "@/features/pricing/constants";
@@ -77,16 +76,17 @@ export default function SidebarTopButtons() {
   // In settings, the app nav is noise — a single "Back to chats" is all you need.
   if (pathname.startsWith("/settings")) {
     return (
-      <Button
-        as={Link}
+      <LinkButton
         href="/c"
         size="sm"
-        variant="light"
-        className="w-full justify-start gap-2 text-sm text-zinc-400 hover:text-zinc-300"
-        startContent={<ChevronLeft className="size-4" />}
+        variant="ghost"
+        tone="muted"
+        hoverTone="dim"
+        className="w-full justify-start gap-2 text-sm"
       >
+        <ChevronLeft className="size-4" />
         Back to chats
-      </Button>
+      </LinkButton>
     );
   }
 
@@ -123,33 +123,15 @@ export default function SidebarTopButtons() {
 
           return (
             <div key={route + label} className="relative">
-              <Tooltip
-                className="rounded-xl"
-                showArrow
-                content={
-                  shortcut ? (
-                    <span className="flex items-center gap-2 text-sm text-zinc-400 font-light py-1 px-2">
-                      <span className="text-xs">Go to {label}</span>
-                      <ShortcutKeysDisplay keys={shortcut.keys} />
-                    </span>
-                  ) : (
-                    label
-                  )
-                }
-                offset={1}
-                placement="right"
-                delay={0}
-                closeDelay={0}
-              >
-                <Button
-                  size="sm"
-                  variant={isRouteActive(route) ? "flat" : "light"}
-                  // color={isRouteActive(route) ? "primary" : "default"}
-                  color={"default"}
-                  className={`group-topbtns focus-visible:outline-none w-full justify-start text-sm ${isRouteActive(route) ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
-                  as={Link}
+              <Tooltip delay={0} closeDelay={0}>
+                <LinkButton
                   href={route}
-                  onPress={() => {
+                  size="sm"
+                  variant={isRouteActive(route) ? "default-soft" : "ghost"}
+                  tone={isRouteActive(route) ? "dim" : "muted"}
+                  hoverTone={isRouteActive(route) ? "none" : "dim"}
+                  className="group-topbtns focus-visible:outline-none w-full justify-start text-sm"
+                  onClick={() => {
                     track("navigation:sidebar_clicked", {
                       destination: route,
                       label,
@@ -169,7 +151,17 @@ export default function SidebarTopButtons() {
                       {label}
                     </span>
                   </div>
-                </Button>
+                </LinkButton>
+                <Tooltip.Content placement="right" offset={1} showArrow>
+                  {shortcut ? (
+                    <span className="flex items-center gap-2 text-sm text-zinc-400 font-light py-1 px-2">
+                      <span className="text-xs">Go to {label}</span>
+                      <ShortcutKeysDisplay keys={shortcut.keys} />
+                    </span>
+                  ) : (
+                    label
+                  )}
+                </Tooltip.Content>
               </Tooltip>
             </div>
           );

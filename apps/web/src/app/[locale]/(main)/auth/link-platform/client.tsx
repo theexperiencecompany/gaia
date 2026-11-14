@@ -1,6 +1,6 @@
 "use client";
 
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import { Link01Icon } from "@icons";
 import Image from "next/image";
 import { RedirectType, redirect } from "next/navigation";
@@ -89,7 +89,7 @@ export default function LinkPlatformClient({
         disabled={isLinking}
       >
         {isLinking ? (
-          <Spinner size="sm" color="default" />
+          <Spinner size="sm" color="current" />
         ) : (
           <Link01Icon className="h-5 w-5" />
         )}

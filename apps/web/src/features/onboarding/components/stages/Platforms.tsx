@@ -9,11 +9,11 @@
 
 "use client";
 
-import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import { useEffect, useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { PhoneLinkModal } from "@/components/shared/PhoneLinkModal";
 import { BOT_PLATFORM_LABELS } from "@/config/botPlatforms";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
@@ -110,19 +110,19 @@ export function Platforms({ state, dispatch, onConfirmed }: PlatformsProps) {
               size="sm"
               aria-label={`Waiting for ${BOT_PLATFORM_LABELS[awaitingPlatform]}`}
             />
-            <Button
-              variant="flat"
+            <GaiaButton
+              variant="default-soft"
               size="md"
               onPress={() => connect(awaitingPlatform)}
             >
               Open {BOT_PLATFORM_LABELS[awaitingPlatform]} again
-            </Button>
-            <Button variant="light" size="md" onPress={chooseAnother}>
+            </GaiaButton>
+            <GaiaButton variant="ghost" size="md" onPress={chooseAnother}>
               {AWAITING_LINK_OTHER_APP_LABEL}
-            </Button>
-            <Button variant="light" size="md" onPress={skip}>
+            </GaiaButton>
+            <GaiaButton variant="ghost" size="md" onPress={skip}>
               {AWAITING_LINK_SKIP_LABEL}
-            </Button>
+            </GaiaButton>
           </div>
         </m.div>
       )}

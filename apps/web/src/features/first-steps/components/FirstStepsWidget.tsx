@@ -1,10 +1,10 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Progress } from "@heroui/progress";
+import { ProgressBar } from "@heroui/react";
 import { ArrowExpand01Icon, ArrowShrink02Icon } from "@icons";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { FirstStepRow } from "@/features/first-steps/components/FirstStepRow";
 import {
   FIRST_STEPS_ROW_STAGGER_SECONDS,
@@ -68,16 +68,17 @@ export function FirstStepsWidget() {
               exit={{ opacity: 0 }}
               transition={FIRST_STEPS_TRANSITION}
             >
-              <Progress
+              <ProgressBar
                 aria-label={`${doneCount} of ${totalCount} first steps done`}
                 value={doneCount}
                 maxValue={totalCount}
                 size="sm"
-                classNames={{
-                  track: "bg-zinc-700",
-                  indicator: "bg-success transition-all duration-500 ease-out",
-                }}
-              />
+                color="success"
+              >
+                <ProgressBar.Track className="bg-zinc-700">
+                  <ProgressBar.Fill className="transition-[width] duration-500 ease-out" />
+                </ProgressBar.Track>
+              </ProgressBar>
             </m.div>
           )}
         </AnimatePresence>
@@ -90,17 +91,17 @@ export function FirstStepsWidget() {
             <ArrowExpand01Icon className="size-4 text-zinc-400" />
           </span>
         ) : (
-          <Button
+          <GaiaButton
             isIconOnly
             size="sm"
-            variant="light"
+            variant="ghost"
             className="ml-auto cursor-pointer"
             aria-expanded
             aria-label="Collapse first steps"
             onPress={toggleCollapsed}
           >
             <ArrowShrink02Icon className="size-4 text-zinc-400" />
-          </Button>
+          </GaiaButton>
         )}
       </div>
 

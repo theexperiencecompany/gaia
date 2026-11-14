@@ -1,5 +1,5 @@
-import { Button } from "@heroui/button";
 import { ArrowDown01Icon, CheckmarkCircle02Icon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { ProviderCatalog } from "@/features/settings/api/providersApi";
 import { featureEngineLabel } from "@/features/settings/utils/providerCatalog";
 import { cn } from "@/lib/utils";
@@ -32,20 +32,18 @@ export function BuiltInWorking({
         </div>
       </div>
       {group.rows.length > 0 && (
-        <Button
+        <GaiaButton
           size="sm"
-          variant="flat"
+          variant="secondary"
           aria-expanded={isOpen}
-          endContent={
-            <ArrowDown01Icon
-              size={16}
-              className={cn("transition-transform", isOpen && "rotate-180")}
-            />
-          }
           onPress={onToggle}
         >
           Use a better provider
-        </Button>
+          <ArrowDown01Icon
+            size={16}
+            className={cn("transition-transform", isOpen && "rotate-180")}
+          />
+        </GaiaButton>
       )}
     </div>
   );

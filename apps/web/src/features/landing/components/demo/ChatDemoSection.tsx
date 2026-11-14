@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Chip, Tooltip } from "@heroui/react";
 import {
   Copy01Icon,
   LinkBackwardIcon,
@@ -26,6 +25,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { ToggleButton, ToggleButtonGroup } from "react-aria-components";
+import { chipVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronRight } from "@/components/shared/icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { RaisedButton } from "@/components/ui/raised-button";
@@ -111,7 +113,7 @@ const UserAvatar = memo(function UserAvatar() {
         loading="lazy"
         decoding="async"
       />
-      <AvatarFallback className="bg-primary/20 text-xs font-medium text-primary">
+      <AvatarFallback className="bg-accent/20 text-xs font-medium text-accent">
         U
       </AvatarFallback>
     </Avatar>
@@ -127,7 +129,7 @@ const AryanAvatar = memo(function AryanAvatar() {
         loading="lazy"
         decoding="async"
       />
-      <AvatarFallback className="bg-primary/20 text-xs font-medium text-primary">
+      <AvatarFallback className="bg-accent/20 text-xs font-medium text-accent">
         AR
       </AvatarFallback>
     </Avatar>
@@ -528,7 +530,7 @@ function ChatDemoWindow() {
           <div className="h-3 w-3 cursor-pointer rounded-full bg-zinc-700 transition-colors hover:bg-green-500" />
           <div className="flex justify-center flex-1">
             <a
-              className="ml-4 w-fit py-1.5 text-center text-xs text-zinc-500 hover:text-primary"
+              className="ml-4 w-fit py-1.5 text-center text-xs text-zinc-500 hover:text-accent"
               target="_blank"
               rel="noopener noreferrer"
               href={`https://${appConfig.site.domain}`}
@@ -800,31 +802,51 @@ function ChatDemoWindow() {
           className={`relative mt-6 flex w-full flex-wrap items-center justify-end sm:justify-between gap-2 max-w-7xl px-4 sm:px-6 transition-[opacity,transform] duration-[400ms] ease-out ${isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"}`}
         >
           <div className="hidden sm:block" />
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            {USE_CASES.map((useCase, i) => (
-              <Chip
-                key={useCase.id}
-                size="lg"
-                variant={activeUseCase === i ? "shadow" : "flat"}
-                className="cursor-pointer select-none"
-                onClick={() => switchUseCase(i)}
-              >
-                {useCase.label}
-              </Chip>
-            ))}
-          </div>
-
-          <Button
-            type="button"
-            aria-label="Retry"
-            title="Replay demo"
-            onPress={handleRetry}
-            isIconOnly
-            radius="full"
-            variant="flat"
+          <ToggleButtonGroup
+            aria-label="Demo use cases"
+            selectionMode="single"
+            disallowEmptySelection
+            selectedKeys={[uc.id]}
+            onSelectionChange={(keys) => {
+              const index = USE_CASES.findIndex(({ id }) => keys.has(id));
+              if (index >= 0) switchUseCase(index);
+            }}
+            className="flex flex-wrap items-center justify-center gap-2"
           >
-            <RedoIcon width={20} height={20} />
-          </Button>
+            {USE_CASES.map((useCase, i) => (
+              <ToggleButton
+                key={useCase.id}
+                id={useCase.id}
+                className="cursor-pointer rounded-lg outline-none data-[focus-visible]:ring-2 data-[focus-visible]:ring-accent"
+              >
+                <Chip
+                  size="lg"
+                  variant={activeUseCase === i ? "primary" : "soft"}
+                  color="default"
+                  className={chipVariants({
+                    isSelected: activeUseCase === i,
+                    className: "select-none",
+                  })}
+                >
+                  {useCase.label}
+                </Chip>
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+
+          <Tooltip>
+            <GaiaButton
+              shape="pill"
+              type="button"
+              aria-label="Retry"
+              onPress={handleRetry}
+              isIconOnly
+              variant="default-soft"
+            >
+              <RedoIcon width={20} height={20} />
+            </GaiaButton>
+            <Tooltip.Content>Replay demo</Tooltip.Content>
+          </Tooltip>
         </div>
       )}
     </div>

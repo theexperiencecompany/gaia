@@ -1,12 +1,15 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input, Textarea } from "@heroui/input";
-import { Select, SelectItem } from "@heroui/select";
-import { Switch } from "@heroui/switch";
+import { Input, Label, ListBox, Select, Switch, TextArea } from "@heroui/react";
 import { Delete02Icon, RepeatIcon, UserCircleIcon } from "@icons";
 import React, { useEffectEvent } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
+import { toneVariants } from "@/components/shared/tone";
 import {
   Accordion,
   AccordionContent,
@@ -22,7 +25,6 @@ import { formatRecurrence } from "@/features/calendar/utils/recurrenceUtils";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import type { CalendarItem } from "@/types/api/calendarApiTypes";
 import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
-
 import CalendarEventAIActions from "./CalendarEventAIActions";
 
 const WEEKDAYS = [
@@ -81,28 +83,27 @@ const EventTitleFields: React.FC<EventTitleFieldsProps> = ({
       value={summary}
       onChange={(e) => onSummaryChange(e.target.value)}
       placeholder="Event title"
-      classNames={{
-        input:
-          "text-2xl  bg-transparent text-zinc-100 placeholder:text-zinc-700",
-        inputWrapper:
-          "bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent data-[hover=true]:bg-transparent border-red-500!",
-      }}
-      variant="underlined"
+      className={inputVariants({
+        variant: "transparent",
+        placeholder: "ghost",
+        className: toneVariants({
+          tone: "strong",
+          className: "border-b border-zinc-700 px-0 text-2xl shadow-none",
+        }),
+      })}
       autoFocus={isCreating}
     />
 
-    <Textarea
+    <TextArea
       value={description}
       onChange={(e) => onDescriptionChange(e.target.value)}
       placeholder="Add description"
-      minRows={6}
-      maxRows={6}
-      classNames={{
-        input: "bg-transparent text-zinc-200 placeholder:text-zinc-700",
-        inputWrapper:
-          "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
-      }}
-      variant="flat"
+      rows={6}
+      className={inputVariants({
+        variant: "subtle",
+        placeholder: "ghost",
+        className: toneVariants({ tone: "bright" }),
+      })}
     />
   </div>
 );
@@ -126,12 +127,7 @@ const EventDateTimeSection: React.FC<EventDateTimeSectionProps> = ({
 }) => (
   <>
     {/* All-day Toggle */}
-    <Switch
-      isSelected={isAllDay}
-      onValueChange={onAllDayChange}
-      size="sm"
-      color="primary"
-    >
+    <Switch isSelected={isAllDay} onChange={onAllDayChange} size="sm">
       <span className="text-sm text-zinc-500">All-day event</span>
     </Switch>
 
@@ -184,43 +180,34 @@ const RecurrenceSelector: React.FC<RecurrenceSelectorProps> = ({
 }) => (
   <div className="space-y-3">
     <Select
-      label="Repeat"
-      selectedKeys={recurrenceType ? [recurrenceType] : []}
-      selectionMode="single"
-      onSelectionChange={(keys) => {
-        const selected = Array.from(keys)[0] as string;
-        if (selected) onRecurrenceTypeChange(selected);
+      className={fieldVariants({ labelPlacement: "inside" })}
+      selectedKey={recurrenceType || null}
+      onSelectionChange={(key) => {
+        if (key != null) onRecurrenceTypeChange(String(key));
       }}
-      classNames={{
-        trigger:
-          "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
-        value: "text-zinc-200",
-        popoverContent: "bg-zinc-900 border border-zinc-800",
-        label: "text-zinc-400",
-      }}
-      startContent={<RepeatIcon className="size-4 text-zinc-500" />}
     >
-      <SelectItem key="none" textValue="Does not repeat">
-        Does not repeat
-      </SelectItem>
-      <SelectItem key="daily" textValue="Daily">
-        Daily
-      </SelectItem>
-      <SelectItem key="weekdays" textValue="Every weekday (Mon-Fri)">
-        Every weekday (Mon-Fri)
-      </SelectItem>
-      <SelectItem key="weekly" textValue="Weekly">
-        Weekly
-      </SelectItem>
-      <SelectItem key="monthly" textValue="Monthly">
-        Monthly
-      </SelectItem>
-      <SelectItem key="yearly" textValue="Yearly">
-        Yearly
-      </SelectItem>
-      <SelectItem key="custom" textValue="Custom (select days)">
-        Custom (select days)
-      </SelectItem>
+      <Label className={toneVariants({ tone: "muted" })}>Repeat</Label>
+      <Select.Trigger
+        className={inputVariants({
+          variant: "subtle",
+          className: "shadow-none",
+        })}
+      >
+        <RepeatIcon className="size-4 text-zinc-500" />
+        <GaiaSelectValue />
+        <Select.Indicator />
+      </Select.Trigger>
+      <Select.Popover className="border border-zinc-800">
+        <ListBox>
+          <GaiaListBoxItem id="none" textValue="Does not repeat" />
+          <GaiaListBoxItem id="daily" textValue="Daily" />
+          <GaiaListBoxItem id="weekdays" textValue="Every weekday (Mon-Fri)" />
+          <GaiaListBoxItem id="weekly" textValue="Weekly" />
+          <GaiaListBoxItem id="monthly" textValue="Monthly" />
+          <GaiaListBoxItem id="yearly" textValue="Yearly" />
+          <GaiaListBoxItem id="custom" textValue="Custom (select days)" />
+        </ListBox>
+      </Select.Popover>
     </Select>
 
     {recurrenceType === "custom" && (
@@ -261,23 +248,21 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({
 }) => (
   <div className="space-y-3">
     <Select
-      label="Calendar"
-      selectedKeys={selectedCalendarId ? [selectedCalendarId] : []}
-      selectionMode="single"
-      onSelectionChange={(keys) => {
-        const selected = Array.from(keys)[0] as string;
-        if (selected) onCalendarChange(selected);
+      className={fieldVariants({ labelPlacement: "inside" })}
+      selectedKey={selectedCalendarId || null}
+      onSelectionChange={(key) => {
+        if (key != null) onCalendarChange(String(key));
       }}
       isRequired
-      classNames={{
-        trigger:
-          "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
-        value: "text-zinc-200",
-        popoverContent: "bg-zinc-900 border border-zinc-800",
-        label: "text-zinc-400",
-      }}
-      startContent={
-        selectedCalendarId && (
+    >
+      <Label className={toneVariants({ tone: "muted" })}>Calendar</Label>
+      <Select.Trigger
+        className={inputVariants({
+          variant: "subtle",
+          className: "shadow-none",
+        })}
+      >
+        {selectedCalendarId && (
           <div
             className="size-3 rounded-full"
             style={{
@@ -286,26 +271,30 @@ const CalendarSelector: React.FC<CalendarSelectorProps> = ({
                   ?.backgroundColor || "#3b82f6",
             }}
           />
-        )
-      }
-    >
-      {calendars.map((cal) => (
-        <SelectItem
-          key={cal.id}
-          textValue={`${cal.name || cal.summary}${cal.primary ? " (Primary)" : ""}`}
-          startContent={
-            <div
-              className="size-3 rounded-full"
-              style={{
-                backgroundColor: cal.backgroundColor || "#3b82f6",
-              }}
-            />
-          }
-        >
-          {cal.name || cal.summary}
-          {cal.primary ? " (Primary)" : ""}
-        </SelectItem>
-      ))}
+        )}
+        <GaiaSelectValue />
+        <Select.Indicator />
+      </Select.Trigger>
+      <Select.Popover className="border border-zinc-800">
+        <ListBox>
+          {calendars.map((cal) => (
+            <GaiaListBoxItem
+              key={cal.id}
+              id={cal.id}
+              textValue={`${cal.name || cal.summary}${cal.primary ? " (Primary)" : ""}`}
+            >
+              <div
+                className="size-3 rounded-full"
+                style={{
+                  backgroundColor: cal.backgroundColor || "#3b82f6",
+                }}
+              />
+              {cal.name || cal.summary}
+              {cal.primary ? " (Primary)" : ""}
+            </GaiaListBoxItem>
+          ))}
+        </ListBox>
+      </Select.Popover>
     </Select>
   </div>
 );
@@ -543,15 +532,15 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
         {/* Create/Delete Actions */}
         <div className="flex items-center gap-3">
           {isCreating ? (
-            <Button
+            <GaiaButton
               onPress={onCreate}
-              disabled={isSaving || !summary.trim()}
-              color="primary"
+              isDisabled={isSaving || !summary.trim()}
               fullWidth
-              isLoading={isSaving}
+              isPending={isSaving}
+              variant="primary"
             >
               {isSaving ? "Creating..." : "Create Event"}
-            </Button>
+            </GaiaButton>
           ) : (
             <>
               <div className="flex-1 text-center text-sm text-zinc-500">

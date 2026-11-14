@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 /** The cards a loading grid stands in for: Pro, then Enterprise beside it. */
 const PLACEHOLDER_TIERS = ["pro", "enterprise"] as const;
@@ -43,13 +43,12 @@ export function PricingCardsFallback({
           Unable to load pricing plans. Please refresh the page or try again
           later.
         </p>
-        <Button
-          color="danger"
-          variant="flat"
+        <GaiaButton
+          variant="danger-soft"
           onPress={() => window.location.reload()}
         >
           Refresh page
-        </Button>
+        </GaiaButton>
       </div>
     );
   }

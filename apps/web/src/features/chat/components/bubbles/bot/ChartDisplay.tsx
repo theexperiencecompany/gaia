@@ -1,6 +1,4 @@
-import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
-import { Tab, Tabs } from "@heroui/tabs";
+import { Spinner, Tabs } from "@heroui/react";
 import {
   Cancel01Icon,
   ChartIcon,
@@ -11,6 +9,8 @@ import {
 import Image from "next/image";
 import type React from "react";
 import { useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { tabsVariants } from "@/components/shared/tabsVariants";
 import {
   type ChartConfig,
   ChartContainer,
@@ -21,6 +21,8 @@ import {
   loadRecharts,
   type RechartsModule,
 } from "@/components/ui/chart-loader";
+
+const tabsStyles = tabsVariants({ variant: "light" });
 
 interface ChartData {
   id: string;
@@ -98,13 +100,13 @@ const InteractiveChart: React.FC<{ chart: ChartData }> = ({ chart }) => {
       return (
         <div className="flex h-64 w-full flex-col items-center justify-center gap-2 rounded-lg bg-zinc-900">
           <p className="text-xs text-zinc-500">Chart failed to load.</p>
-          <Button
+          <GaiaButton
             size="sm"
-            variant="flat"
+            variant="default-soft"
             onPress={() => setLoadAttempt((attempt) => attempt + 1)}
           >
             Retry
-          </Button>
+          </GaiaButton>
         </div>
       );
     }
@@ -366,35 +368,33 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
               onSelectionChange={(key) =>
                 setViewMode(key as "static" | "dynamic")
               }
-              variant="light"
-              classNames={{ tabList: "w-full" }}
-              className="mb-3 w-full"
+              className={tabsStyles.base({ className: "mb-3 w-full" })}
               aria-label="Chart view options"
             >
-              <Tab
-                key="static"
-                title={
+              <Tabs.List
+                className={tabsStyles.tabList({ className: "w-full" })}
+              >
+                <Tabs.Tab id="static" className={tabsStyles.tab()}>
                   <div className="flex items-center gap-2">
                     <Image02Icon className="h-5 w-5" />
                     Static
-                    <div className="flex aspect-square min-h-3 min-w-3 items-center justify-center rounded-full bg-primary/90 p-1.5 text-sm font-medium text-black">
+                    <div className="flex aspect-square min-h-3 min-w-3 items-center justify-center rounded-full bg-accent/90 p-1.5 text-sm font-medium text-black">
                       {staticCharts.length}
                     </div>
                   </div>
-                }
-              />
-              <Tab
-                key="dynamic"
-                title={
+                  <Tabs.Indicator className={tabsStyles.tabIndicator()} />
+                </Tabs.Tab>
+                <Tabs.Tab id="dynamic" className={tabsStyles.tab()}>
                   <div className="flex items-center gap-2">
                     <ChartIcon className="h-5 w-5" />
                     Dynamic
-                    <div className="flex aspect-square min-h-3 min-w-3 items-center justify-center rounded-full bg-primary/90 p-1.5 text-sm font-medium text-black">
+                    <div className="flex aspect-square min-h-3 min-w-3 items-center justify-center rounded-full bg-accent/90 p-1.5 text-sm font-medium text-black">
                       {dynamicCharts.length}
                     </div>
                   </div>
-                }
-              />
+                  <Tabs.Indicator className={tabsStyles.tabIndicator()} />
+                </Tabs.Tab>
+              </Tabs.List>
             </Tabs>
 
             <div className="space-y-2">

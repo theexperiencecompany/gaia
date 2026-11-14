@@ -1,9 +1,10 @@
 "use client";
 
-import { Checkbox } from "@heroui/checkbox";
+import { Checkbox } from "@heroui/react";
 import { isTrackedTodo } from "@shared/todos";
 import { memo, useEffect, useRef } from "react";
 import { ChevronRight } from "@/components/shared/icons";
+import { shapeVariants } from "@/components/shared/shape";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useTodoItem } from "@/features/todo/hooks/useTodoItem";
 import { cn } from "@/lib/utils";
@@ -52,7 +53,7 @@ function WorkflowCategoryIcons({ categories }: { categories: string[] }) {
         ) : null;
       })}
       {categories.length > 3 && (
-        <div className="z-0 flex size-[28px] min-h-[28px] min-w-[28px] items-center justify-center rounded-lg bg-zinc-700/60 text-xs text-foreground-500">
+        <div className="z-0 flex size-[28px] min-h-[28px] min-w-[28px] items-center justify-center rounded-lg bg-zinc-700/60 text-xs text-zinc-400">
           +{categories.length - 3}
         </div>
       )}
@@ -73,12 +74,10 @@ export default memo(function TodoItem({
   className,
 }: TodoItemProps) {
   const {
-    handleToggleComplete,
     scheduledLabel,
     todoProject,
     isOverdue,
     isToday,
-    checkboxColor,
     checkboxWrapperClassName,
     titleClassName,
   } = useTodoItem({ todo, projects, onUpdate, timezone });
@@ -125,15 +124,18 @@ export default memo(function TodoItem({
       <div className="pointer-events-none relative z-20 flex h-full items-start gap-2">
         <div className="pointer-events-auto">
           <Checkbox
+            className={shapeVariants({ shape: "pill" })}
             isSelected={todo.completed}
-            onChange={handleToggleComplete}
-            color={checkboxColor}
-            radius="full"
-            classNames={{
-              wrapper: checkboxWrapperClassName,
-              label: "w-[30vw]",
+            onChange={(isSelected) => {
+              onUpdate(todo.id, { completed: isSelected });
             }}
-          />
+          >
+            <Checkbox.Content>
+              <Checkbox.Control className={checkboxWrapperClassName}>
+                <Checkbox.Indicator />
+              </Checkbox.Control>
+            </Checkbox.Content>
+          </Checkbox>
         </div>
 
         <div className="min-w-0 flex-1">

@@ -1,10 +1,12 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
-import { Select, SelectItem } from "@heroui/select";
+import { Chip, InputGroup, ListBox, Select, TextField } from "@heroui/react";
 import { SearchIcon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
+import { toneVariants } from "@/components/shared/tone";
 import { INTEGRATION_CATEGORIES } from "@/features/integrations/constants/categories";
 import { cn } from "@/lib/utils";
 
@@ -102,12 +104,13 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
           {INTEGRATION_CATEGORIES.map((cat) => (
             <Chip
               key={cat.key}
-              variant={category === cat.key ? "solid" : "flat"}
-              color={category === cat.key ? "primary" : "default"}
+              variant={category === cat.key ? "primary" : "soft"}
+              color={category === cat.key ? "accent" : "default"}
               size="lg"
               className={cn(
                 "cursor-pointer font-light! backdrop-blur-2xl!",
-                category !== cat.key && "bg-white/5! text-foreground-500",
+                category !== cat.key &&
+                  `bg-white/5! ${toneVariants({ tone: "muted" })}`,
               )}
               onClick={() => handleCategoryChange(cat.key)}
             >
@@ -118,27 +121,49 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
 
         <div className="flex shrink-0 items-center gap-3">
           <Select
-            selectedKeys={[sort]}
-            onSelectionChange={(keys) => {
-              const selected = Array.from(keys)[0] as string;
-              if (selected) handleSortChange(selected);
+            selectedKey={sort}
+            onSelectionChange={(key) => {
+              if (typeof key === "string") handleSortChange(key);
             }}
-            className="w-40"
+            className={fieldVariants({
+              labelPlacement: "inside",
+              className: "w-40",
+            })}
             aria-label="Sort by"
           >
-            {SORT_OPTIONS.map((option) => (
-              <SelectItem key={option.key}>{option.label}</SelectItem>
-            ))}
+            <Select.Trigger>
+              <GaiaSelectValue />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {SORT_OPTIONS.map((option) => (
+                  <GaiaListBoxItem
+                    key={option.key}
+                    id={option.key}
+                    textValue={option.label}
+                  />
+                ))}
+              </ListBox>
+            </Select.Popover>
           </Select>
 
-          <Input
+          <TextField
             className="flex-1 sm:w-72 sm:flex-none min-w-0"
-            type="search"
-            placeholder="Search integrations..."
+            aria-label="Search integrations"
             value={search}
-            onValueChange={handleSearchChange}
-            startContent={<SearchIcon className="text-zinc-400" />}
-          />
+            onChange={handleSearchChange}
+          >
+            <InputGroup>
+              <InputGroup.Prefix>
+                <SearchIcon className="text-zinc-400" />
+              </InputGroup.Prefix>
+              <InputGroup.Input
+                type="search"
+                placeholder="Search integrations..."
+              />
+            </InputGroup>
+          </TextField>
         </div>
       </div>
     </div>

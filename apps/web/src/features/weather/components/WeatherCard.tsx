@@ -1,5 +1,4 @@
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Switch } from "@heroui/switch";
+import { Accordion, Switch } from "@heroui/react";
 import {
   CloudAngledRainIcon,
   CloudAngledZapIcon,
@@ -19,7 +18,9 @@ import {
 } from "@icons";
 import type React from "react";
 import { useMemo, useState } from "react";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 import { CloudFogIcon } from "@/components/shared/icons";
+import { toneVariants } from "@/components/shared/tone";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,8 +29,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { WeatherData } from "@/types/features/convoTypes";
-
 import { WeatherDetailItem } from "./WeatherDetailItem";
+
+const accordionStyles = accordionVariants({
+  variant: "light",
+  density: "compact",
+});
 
 interface WeatherCardProps {
   weatherData: WeatherData;
@@ -328,55 +333,77 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
 
       {/* weather Details Accordion */}
       <Accordion
-        className="mt-2"
-        isCompact
-        selectionMode="multiple"
-        itemClasses={{ indicator: "text-white", trigger: "cursor-pointer" }}
+        className={accordionStyles.base({ className: "mt-2" })}
+        allowsMultipleExpanded
         defaultExpandedKeys={["weekly-forecast"]}
       >
         {weatherData.forecast && weatherData.forecast.length > 0 ? (
-          <AccordionItem
-            key="weekly-forecast"
-            aria-label="Weekly Forecast"
-            title={
-              <div className="flex items-center">
-                <span className="text-sm font-normal text-white">
-                  Weekly Forecast
-                </span>
-              </div>
-            }
-          >
-            <div className="space-y-2 pb-2">
-              {weatherData.forecast.map((day) => (
-                <WeeklyForecastRow
-                  key={`${day.temp_max}-${day.temp_min}`}
-                  day={day}
-                  useFahrenheit={useFahrenheit}
-                  weatherTheme={weatherTheme}
+          <Accordion.Item id="weekly-forecast">
+            <Accordion.Heading>
+              <Accordion.Trigger
+                className={accordionStyles.trigger({
+                  className: "cursor-pointer",
+                })}
+              >
+                <div className="flex items-center">
+                  <span className="text-sm font-normal text-white">
+                    Weekly Forecast
+                  </span>
+                </div>
+                <Accordion.Indicator
+                  className={accordionStyles.indicator({
+                    className: toneVariants({ tone: "white" }),
+                  })}
                 />
-              ))}
-            </div>
-          </AccordionItem>
+              </Accordion.Trigger>
+            </Accordion.Heading>
+            <Accordion.Panel>
+              <div className={accordionStyles.content()}>
+                <div className="space-y-2 pb-2">
+                  {weatherData.forecast.map((day) => (
+                    <WeeklyForecastRow
+                      key={`${day.temp_max}-${day.temp_min}`}
+                      day={day}
+                      useFahrenheit={useFahrenheit}
+                      weatherTheme={weatherTheme}
+                    />
+                  ))}
+                </div>
+              </div>
+            </Accordion.Panel>
+          </Accordion.Item>
         ) : null}
 
-        <AccordionItem
-          key="weather-details"
-          aria-label="Weather Details"
-          title={
-            <div className="flex items-center">
-              <span className="text-sm font-normal text-white">
-                Additional Information
-              </span>
+        <Accordion.Item id="weather-details">
+          <Accordion.Heading>
+            <Accordion.Trigger
+              className={accordionStyles.trigger({
+                className: "cursor-pointer",
+              })}
+            >
+              <div className="flex items-center">
+                <span className="text-sm font-normal text-white">
+                  Additional Information
+                </span>
+              </div>
+              <Accordion.Indicator
+                className={accordionStyles.indicator({
+                  className: toneVariants({ tone: "white" }),
+                })}
+              />
+            </Accordion.Trigger>
+          </Accordion.Heading>
+          <Accordion.Panel>
+            <div className={accordionStyles.content()}>
+              <WeatherDetailsGrid
+                weatherData={weatherData}
+                weatherTheme={weatherTheme}
+                sunriseTime={sunriseTime}
+                sunsetTime={sunsetTime}
+              />
             </div>
-          }
-        >
-          <WeatherDetailsGrid
-            weatherData={weatherData}
-            weatherTheme={weatherTheme}
-            sunriseTime={sunriseTime}
-            sunsetTime={sunsetTime}
-          />
-        </AccordionItem>
+          </Accordion.Panel>
+        </Accordion.Item>
       </Accordion>
       {/*
       <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-2 text-[10px] text-white/80">
@@ -480,10 +507,15 @@ function WeatherLocationHeader({
               <div className="flex items-center justify-between">
                 <span className="text-sm">°F</span>
                 <Switch
-                  checked={useFahrenheit}
-                  onValueChange={onUseFahrenheitChange}
-                  color="default"
-                />
+                  isSelected={useFahrenheit}
+                  onChange={onUseFahrenheitChange}
+                >
+                  <Switch.Content>
+                    <Switch.Control>
+                      <Switch.Thumb />
+                    </Switch.Control>
+                  </Switch.Content>
+                </Switch>
                 <span className="text-sm">°C</span>
               </div>
             </div>

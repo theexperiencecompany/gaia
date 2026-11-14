@@ -1,9 +1,11 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { InputGroup, TextField } from "@heroui/react";
 import { Cancel01Icon } from "@icons";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { sendMessage } from "@/features/chat/stream/sendMessage";
 import { useElectron } from "@/hooks/useElectron";
@@ -77,49 +79,53 @@ export default function PopupComposer({
 
   return (
     <div data-popup-composer>
-      <Input
-        ref={inputRef}
+      <TextField
+        className={inputVariants({ size: "sm" })}
         value={text}
-        onValueChange={setText}
-        onKeyDown={handleKeyDown}
+        onChange={setText}
         isDisabled={disabled}
-        placeholder={
-          disabled ? "Sign in from the GAIA window to chat" : "Ask GAIA…"
-        }
-        radius="full"
-        size="lg"
-        startContent={
-          // Canvas is larger than the visible sphere (glow padding) — the
-          // negative margins keep the optical size in line with the send
-          // button while letting the glow breathe.
-          <PopupOrb state={agentState} className="-m-3 size-16 shrink-0" />
-        }
-        endContent={
-          // The pill's capsule IS the window shape — a corner-overhanging
-          // X would always be sliced by its curve, so the close button
-          // lives inside the right end instead.
-          <Button
-            isIconOnly
-            size="sm"
-            radius="full"
-            variant="light"
-            onPress={dismissPopup}
-            aria-label="Close"
-            className="h-6 min-h-6 w-6 max-w-6 min-w-6 shrink-0 text-zinc-500 hover:text-zinc-200"
-          >
-            <Cancel01Icon className="size-3.5" />
-          </Button>
-        }
-        classNames={{
-          // Fully transparent: the window's liquid glass IS the field's
-          // background — no overlay tints, no borders, no focus ring.
-          // No send button — Enter sends; the orb carries the state.
-          inputWrapper:
-            "bg-transparent shadow-none border-none outline-none ring-0 py-0 pl-0.5 pr-2 data-[hover=true]:bg-transparent group-data-[focus=true]:bg-transparent group-data-[focus-visible=true]:ring-0 group-data-[focus-visible=true]:ring-offset-0",
-          input:
-            "px-1.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-400",
-        }}
-      />
+      >
+        <InputGroup className="bg-transparent shadow-none border-none outline-none ring-0 py-0 pl-0.5 pr-2">
+          <InputGroup.Prefix>
+            {/* Canvas is larger than the visible sphere (glow padding) — the
+                negative margins keep the optical size in line with the send
+                button while letting the glow breathe. */}
+            <PopupOrb state={agentState} className="-m-3 size-16 shrink-0" />
+          </InputGroup.Prefix>
+          <InputGroup.Input
+            ref={inputRef}
+            onKeyDown={handleKeyDown}
+            placeholder={
+              disabled ? "Sign in from the GAIA window to chat" : "Ask GAIA…"
+            }
+            className={inputVariants({
+              placeholder: "muted",
+              className: toneVariants({
+                tone: "strong",
+                className: "px-1.5 text-sm outline-none",
+              }),
+            })}
+          />
+          <InputGroup.Suffix>
+            {/* The pill's capsule IS the window shape — a corner-overhanging
+                X would always be sliced by its curve, so the close button
+                lives inside the right end instead. */}
+            <GaiaButton
+              shape="pill"
+              isIconOnly
+              size="sm"
+              variant="ghost"
+              onPress={dismissPopup}
+              aria-label="Close"
+              tone="faint"
+              hoverTone="bright"
+              className="h-6 min-h-6 w-6 max-w-6 min-w-6 shrink-0"
+            >
+              <Cancel01Icon className="size-3.5" />
+            </GaiaButton>
+          </InputGroup.Suffix>
+        </InputGroup>
+      </TextField>
     </div>
   );
 }

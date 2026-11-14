@@ -1,8 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { Description, Input, Label, TextField } from "@heroui/react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { StoredProviderConfig } from "@/features/settings/api/providersApi";
 import { useConfigureProvider } from "@/features/settings/hooks/useConfigureProvider";
 import type { CustomPreset } from "@/features/settings/utils/customPresets";
@@ -38,13 +39,15 @@ export function ProviderCredentialForm({
   return (
     <div className="flex flex-col gap-3">
       {row.account_id_label && (
-        <Input
-          label={row.account_id_label}
+        <TextField
+          className={fieldVariants({ labelPlacement: "inside" })}
           value={form.accountId}
-          onValueChange={form.setAccountId}
-          autoComplete="off"
+          onChange={form.setAccountId}
           isDisabled={isBusy}
-        />
+        >
+          <Label>{row.account_id_label}</Label>
+          <Input autoComplete="off" />
+        </TextField>
       )}
       {row.takes_key && (
         <ProviderApiKeyInput
@@ -82,23 +85,29 @@ export function ProviderCredentialForm({
         />
       )}
       {(row.needs_base_url || showPresetChips) && (
-        <Input
-          label="Base URL"
-          placeholder={row.base_url ?? "https://your-gateway.example.com/v1"}
+        <TextField
+          className={fieldVariants({ labelPlacement: "inside" })}
           value={form.baseUrl}
-          onValueChange={form.setBaseUrl}
+          onChange={form.setBaseUrl}
           isDisabled={isBusy}
-        />
+        >
+          <Label>Base URL</Label>
+          <Input
+            placeholder={row.base_url ?? "https://your-gateway.example.com/v1"}
+          />
+        </TextField>
       )}
       {row.takes_model && (
-        <Input
-          label="Model"
-          placeholder={row.default_model ?? "Default"}
-          description="Leave empty to use the endpoint default."
+        <TextField
+          className={fieldVariants({ labelPlacement: "inside" })}
           value={form.model}
-          onValueChange={form.setModel}
+          onChange={form.setModel}
           isDisabled={isBusy}
-        />
+        >
+          <Label>Model</Label>
+          <Input placeholder={row.default_model ?? "Default"} />
+          <Description>Leave empty to use the endpoint default.</Description>
+        </TextField>
       )}
       {overridesEnv && (
         <p className="text-xs text-zinc-500">
@@ -157,16 +166,16 @@ function PresetChips({ presets, selected, onSelect }: PresetChipsProps) {
   return (
     <div className="flex flex-wrap gap-2">
       {chips.map((chip) => (
-        <Button
+        <GaiaButton
+          shape="pill"
           key={chip.id}
           size="sm"
-          radius="full"
-          variant={selected === chip.id ? "flat" : "light"}
-          color={selected === chip.id ? "primary" : "default"}
+          className=""
+          variant={selected === chip.id ? "secondary" : "ghost"}
           onPress={() => onSelect(chip.id)}
         >
           {chip.label}
-        </Button>
+        </GaiaButton>
       ))}
     </div>
   );
@@ -195,9 +204,8 @@ function ProviderFormActions({
   return (
     <div className="flex items-center justify-end gap-2">
       {canRemove && (
-        <Button
-          color="danger"
-          variant="light"
+        <GaiaButton
+          variant="danger-soft"
           size="sm"
           className="mr-auto"
           isDisabled={isBusy}
@@ -206,33 +214,32 @@ function ProviderFormActions({
           }}
         >
           Remove
-        </Button>
+        </GaiaButton>
       )}
       {testable && (
-        <Button
-          variant="flat"
+        <GaiaButton
+          variant="default-soft"
           size="sm"
-          isLoading={isTesting}
+          isPending={isTesting}
           isDisabled={isSaving}
           onPress={() => {
             void onTest();
           }}
         >
           Test
-        </Button>
+        </GaiaButton>
       )}
-      <Button
-        color="primary"
-        variant="flat"
+      <GaiaButton
+        variant="accent-soft"
         size="sm"
-        isLoading={isSaving}
+        isPending={isSaving}
         isDisabled={isTesting}
         onPress={() => {
           void onSave();
         }}
       >
         {testable ? "Test & Save" : "Save"}
-      </Button>
+      </GaiaButton>
     </div>
   );
 }

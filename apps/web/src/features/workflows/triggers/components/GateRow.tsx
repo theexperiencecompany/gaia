@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
+import { Popover } from "@heroui/react";
 import { FilterHorizontalIcon } from "@icons";
 import type { AuthoredGateView, SystemGateView } from "@shared/api/generated";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { PanelRowContent } from "@/components/shared/PanelRow";
 import { PANEL_ROW_BUTTON_PROPS } from "@/components/shared/panelRowButtonProps";
 import { GATE_COPY, gateSkipCount } from "../../constants/gates";
@@ -27,27 +27,25 @@ export function GateRow({ saved, watchesMail, ...rule }: GateRowProps) {
   const copy = GATE_COPY[watchesMail ? "mail" : "event"];
 
   return (
-    <Popover placement="bottom" offset={6} triggerScaleOnOpen={false}>
-      <PopoverTrigger>
-        <Button {...PANEL_ROW_BUTTON_PROPS}>
-          <PanelRowContent
-            icon={FilterHorizontalIcon}
-            label={rule.enabled ? gateSentence(rule.condition) : copy.off}
-            isMuted={!rule.enabled}
-            end={
-              rule.enabled && skippedCount > 0 && gateSkipCount(skippedCount)
-            }
-          />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-80 rounded-2xl bg-zinc-900 p-0 shadow-xl">
-        <GateDetail
-          {...rule}
-          skips={skips}
-          editedByUser={shown?.kind === "authored" && shown.author === "user"}
-          copy={copy}
+    <Popover>
+      <GaiaButton {...PANEL_ROW_BUTTON_PROPS}>
+        <PanelRowContent
+          icon={FilterHorizontalIcon}
+          label={rule.enabled ? gateSentence(rule.condition) : copy.off}
+          isMuted={!rule.enabled}
+          end={rule.enabled && skippedCount > 0 && gateSkipCount(skippedCount)}
         />
-      </PopoverContent>
+      </GaiaButton>
+      <Popover.Content placement="bottom" offset={6}>
+        <Popover.Dialog className="w-80 shadow-xl">
+          <GateDetail
+            {...rule}
+            skips={skips}
+            editedByUser={shown?.kind === "authored" && shown.author === "user"}
+            copy={copy}
+          />
+        </Popover.Dialog>
+      </Popover.Content>
     </Popover>
   );
 }

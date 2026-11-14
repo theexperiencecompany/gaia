@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import {
   ArrowLeft02Icon,
   ArrowRight02Icon,
@@ -12,10 +11,10 @@ import * as m from "motion/react-m";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SiteLink } from "@/components/seo/SiteLink";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { BOT_LINKS } from "@/features/bots/constants";
 import { useBotLinks } from "@/features/bots/hooks/useBotLinks";
-
 import {
   ChatDemo,
   type ChatMessageItem,
@@ -439,26 +438,30 @@ function CTAGroup({
   return (
     <div className="relative flex w-[390px] max-w-full items-center justify-center sm:w-[429px]">
       <div className="-left-24 -translate-y-1/2 absolute top-1/2 flex items-center gap-2">
-        <Button
+        <GaiaButton
+          shape="pill"
           isIconOnly
-          variant="flat"
-          radius="full"
+          variant="default-soft"
           aria-label="Previous platform"
           onPress={onPrev}
-          className="min-w-10 h-10 w-10 p-0 text-zinc-500 transition-colors hover:text-zinc-200"
+          tone="faint"
+          hoverTone="bright"
+          className="min-w-10 h-10 w-10 transition-colors"
         >
           <ArrowLeft02Icon size={24} />
-        </Button>
-        <Button
+        </GaiaButton>
+        <GaiaButton
+          shape="pill"
           isIconOnly
-          variant="flat"
-          radius="full"
+          variant="default-soft"
           aria-label="Next platform"
           onPress={onNext}
-          className="min-w-10 h-10 w-10 p-0 text-zinc-500 transition-colors hover:text-zinc-200"
+          tone="faint"
+          hoverTone="bright"
+          className="min-w-10 h-10 w-10 transition-colors"
         >
           <ArrowRight02Icon size={24} />
-        </Button>
+        </GaiaButton>
       </div>
       <PlatformCTASwitcher
         actionKey={actionKey}
@@ -548,25 +551,23 @@ function PlatformChips({
         return (
           <Chip
             key={p.id}
-            variant={isActive ? "solid" : "flat"}
-            color={isActive ? "primary" : "default"}
+            variant={isActive ? "primary" : "soft"}
+            color={isActive ? "accent" : "default"}
             size="lg"
             role="tab"
             aria-selected={isActive}
             onClick={() => onSelect(p.id)}
             className="cursor-pointer select-none"
-            startContent={
-              <Image
-                src={p.icon}
-                alt=""
-                width={20}
-                height={20}
-                className="h-5 w-5 shrink-0 rounded"
-                aria-hidden
-              />
-            }
           >
-            {p.name}
+            <Image
+              src={p.icon}
+              alt=""
+              width={20}
+              height={20}
+              className="h-5 w-5 shrink-0 rounded"
+              aria-hidden
+            />
+            <Chip.Label>{p.name}</Chip.Label>
           </Chip>
         );
       })}

@@ -1,13 +1,13 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Tab, Tabs } from "@heroui/tabs";
-import { Tooltip } from "@heroui/tooltip";
+import { Tabs, Tooltip } from "@heroui/react";
 import { CLI_INSTALL_COMMANDS } from "@shared/cli/command-manifest";
 import Image from "next/image";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
 import FAQAccordion from "@/components/seo/FAQAccordion";
+import { LinkButton } from "@/components/shared/LinkButton";
+import { tabsVariants } from "@/components/shared/tabsVariants";
 import CopyButton from "@/components/ui/CopyButton";
 import InlineCode from "@/components/ui/InlineCode";
 import SectionHeader from "@/features/landing/components/demo/founders-demo/SectionHeader";
@@ -36,14 +36,19 @@ function CodeBlock({ code }: { code: string }) {
 
   return (
     <div className="relative flex items-center gap-2 rounded-2xl bg-zinc-900 p-1 px-4 hover:bg-zinc-800/80 transition-colors">
-      <Tooltip content={copied ? "Copied!" : "Click to copy"} closeDelay={0}>
-        <button
-          type="button"
-          onClick={handleCopy}
-          className="flex-1 cursor-pointer text-left"
-        >
-          <code className="text-sm text-primary">{code}</code>
-        </button>
+      <Tooltip closeDelay={0}>
+        <Tooltip.Trigger className="flex-1">
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="w-full cursor-pointer text-left"
+          >
+            <code className="text-sm text-accent">{code}</code>
+          </button>
+        </Tooltip.Trigger>
+        <Tooltip.Content>
+          {copied ? "Copied!" : "Click to copy"}
+        </Tooltip.Content>
       </Tooltip>
       <CopyButton textToCopy={code} copied={copied} onCopy={handleCopy} />
     </div>
@@ -100,18 +105,37 @@ const installMethods = [
   },
 ];
 
+const installTabsStyles = tabsVariants({
+  variant: "underlined",
+  color: "accent",
+});
+
 function InstallMethodTabs() {
   return (
-    <Tabs
-      aria-label="Install methods"
-      color="primary"
-      variant="underlined"
-      classNames={{ base: "pb-0 mb-0", panel: "pt-3" }}
-    >
+    <Tabs className={installTabsStyles.base()}>
+      <Tabs.List
+        aria-label="Install methods"
+        className={installTabsStyles.tabList()}
+      >
+        {installMethods.map((method) => (
+          <Tabs.Tab
+            key={method.key}
+            id={method.key}
+            className={installTabsStyles.tab()}
+          >
+            {method.title}
+            <Tabs.Indicator className={installTabsStyles.tabIndicator()} />
+          </Tabs.Tab>
+        ))}
+      </Tabs.List>
       {installMethods.map((method) => (
-        <Tab key={method.key} title={method.title}>
+        <Tabs.Panel
+          key={method.key}
+          id={method.key}
+          className={installTabsStyles.tabPanel()}
+        >
           <InstallTab code={method.code} hint={method.hint} />
-        </Tab>
+        </Tabs.Panel>
       ))}
     </Tabs>
   );
@@ -212,27 +236,25 @@ export function InstallPageClient() {
       </section>
 
       <div className="relative z-10 flex flex-wrap justify-center gap-4 px-6 pb-24 pt-12">
-        <Button
-          as={Link}
+        <LinkButton
           href={SELFHOST_DOCS_URL}
-          color="primary"
           target="_blank"
           rel="noopener noreferrer"
+          variant="primary"
         >
           Read the self-hosting guide
-        </Button>
-        <Button
-          as={Link}
+        </LinkButton>
+        <LinkButton
           href={siteConfig.links.repo}
-          variant="bordered"
           target="_blank"
           rel="noopener noreferrer"
+          variant="outline"
         >
           View on GitHub
-        </Button>
-        <Button as={Link} href="/open-source-ai-assistant" variant="light">
+        </LinkButton>
+        <LinkButton href="/open-source-ai-assistant" variant="ghost">
           Why self-host GAIA
-        </Button>
+        </LinkButton>
       </div>
     </div>
   );

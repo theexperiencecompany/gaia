@@ -1,6 +1,6 @@
 "use client";
 
-import { ScrollShadow } from "@heroui/scroll-shadow";
+import { ScrollShadow } from "@heroui/react";
 import { ArrowUp02Icon, BubbleChatIcon } from "@icons";
 import Link from "next/link";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
@@ -125,7 +125,7 @@ export default function RedditSearchCard({
 
   return (
     <CollapsibleListWrapper
-      icon={<RedditIcon color="#FF4500" />}
+      icon={<RedditIcon color="#FF4500" width={20} height={20} />}
       count={posts.length}
       label="Reddit Post"
       isCollapsible={isCollapsible}

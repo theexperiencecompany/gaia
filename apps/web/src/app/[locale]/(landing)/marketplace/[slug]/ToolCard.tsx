@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { useEffect, useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { ToolDescription } from "./ToolDescription";
 import { displayToolDescription, displayToolName } from "./toolCopy";
@@ -48,15 +48,17 @@ export function ToolCard({
             <ToolDescription markdown={copy} />
           </div>
           {(isClamped || expanded) && (
-            <Button
-              variant="light"
+            <GaiaButton
+              shape="pill"
+              variant="text"
               size="sm"
-              radius="full"
+              tone="faint"
+              hoverTone="dim"
               onPress={() => setExpanded((value) => !value)}
-              className="mt-1 h-auto min-w-0 px-2 py-1 text-xs text-zinc-500 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-300"
+              className="mt-1 text-xs"
             >
               {expanded ? "View less" : "View more"}
-            </Button>
+            </GaiaButton>
           )}
         </>
       )}

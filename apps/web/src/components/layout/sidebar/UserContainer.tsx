@@ -1,14 +1,13 @@
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
 import Image from "next/image";
 import React from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronsDownUp, ChevronsUpDown } from "@/components/shared/icons";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import SettingsMenu from "@/features/settings/components/SettingsMenu";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
-
 import { Avatar, AvatarFallback, AvatarImage } from "../../ui/avatar";
 
 export default function UserContainer() {
@@ -20,23 +19,9 @@ export default function UserContainer() {
 
   return (
     <SettingsMenu onOpenChange={setIsOpen}>
-      <Button
-        className="group/triggerbtn pointer-events-auto relative flex w-full flex-row justify-between gap-3 bg-transparent px-2 py-6! hover:bg-zinc-800"
-        endContent={
-          isOpen ? (
-            <ChevronsDownUp
-              className="text-zinc-500 transition"
-              width={20}
-              height={20}
-            />
-          ) : (
-            <ChevronsUpDown
-              className="text-zinc-500 transition"
-              width={20}
-              height={20}
-            />
-          )
-        }
+      <GaiaButton
+        variant="ghost"
+        className="group/triggerbtn pointer-events-auto relative flex w-full flex-row justify-between gap-3 px-2 py-6!"
       >
         <div className="flex items-center gap-3">
           <Avatar className="size-7 rounded-full bg-black">
@@ -56,7 +41,7 @@ export default function UserContainer() {
               (isUnknown ? (
                 <Skeleton className="h-2.5 w-12 rounded-full" />
               ) : (
-                <span className="text-[11px] text-foreground-400">
+                <span className="text-[11px] text-zinc-500">
                   {isPaid
                     ? "GAIA Pro"
                     : paywallCopyFor(hasEverSubscribed).planLabel}
@@ -64,7 +49,20 @@ export default function UserContainer() {
               ))}
           </div>
         </div>
-      </Button>
+        {isOpen ? (
+          <ChevronsDownUp
+            className="text-zinc-500 transition"
+            width={20}
+            height={20}
+          />
+        ) : (
+          <ChevronsUpDown
+            className="text-zinc-500 transition"
+            width={20}
+            height={20}
+          />
+        )}
+      </GaiaButton>
     </SettingsMenu>
   );
 }

@@ -1,10 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Kbd } from "@heroui/kbd";
-import { Tooltip } from "@heroui/tooltip";
+import { Kbd, Tooltip } from "@heroui/react";
 import { BubbleChatAddIcon } from "@icons";
-import Link from "next/link";
 import { Suspense } from "react";
 import ChatsList from "@/components/layout/sidebar/ChatsList";
 
@@ -12,6 +9,7 @@ import IntegrationsSidebar from "@/components/layout/sidebar/variants/Integratio
 import SettingsSidebar from "@/components/layout/sidebar/variants/SettingsSidebar";
 import TodoSidebar from "@/components/layout/sidebar/variants/TodoSidebar";
 import WorkflowsSidebar from "@/components/layout/sidebar/variants/WorkflowsSidebar";
+import { LinkButton } from "@/components/shared/LinkButton";
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 import { usePathname } from "@/i18n/navigation";
@@ -43,29 +41,26 @@ export default function Sidebar() {
   return (
     <div>
       <div className="flex w-full justify-center">
-        <Tooltip
-          content={
-            <span className="flex items-center gap-2">
-              New Chat
-              <Kbd className="text-[10px]">C</Kbd>
-            </span>
-          }
-          placement="right"
-        >
-          <Button
-            color="primary"
-            size="sm"
-            fullWidth
-            as={Link}
+        <Tooltip>
+          <LinkButton
+            variant="accent-soft"
+            tone="accent"
             href="/c"
             onClick={prepareNewChat}
-            className="mb-4 flex justify-start text-sm font-medium text-primary"
-            variant="flat"
+            size="sm"
+            fullWidth
+            className="mb-4 flex justify-start text-sm font-medium"
             data-keyboard-shortcut="create-chat"
           >
             <BubbleChatAddIcon width={18} height={18} />
             New Chat
-          </Button>
+          </LinkButton>
+          <Tooltip.Content placement="right">
+            <span className="flex items-center gap-2">
+              New Chat
+              <Kbd className="text-[10px]">C</Kbd>
+            </span>
+          </Tooltip.Content>
         </Tooltip>
       </div>
       <ChatsList />

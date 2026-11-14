@@ -1,8 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import type { DesktopAppIconOption } from "@shared/desktop-tools";
 import Image from "next/image";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { cn } from "@/lib/utils";
 
 interface AppIconPickerProps {
@@ -22,11 +22,10 @@ export function AppIconPicker({
       {icons.map((icon) => {
         const isSelected = icon.id === selectedId;
         return (
-          <Button
+          <GaiaButton
             key={icon.id}
             isIconOnly
-            variant="light"
-            disableRipple
+            variant="ghost"
             aria-label={`${icon.label} app icon`}
             aria-pressed={isSelected}
             onPress={() => onSelect(icon.id)}
@@ -36,7 +35,7 @@ export function AppIconPicker({
               // HeroUI's fixed icon-button size to fill the grid cell.
               "h-auto w-full min-w-0 aspect-square overflow-hidden rounded-[24%] p-1 transition-all",
               isSelected
-                ? "ring-2 ring-primary"
+                ? "ring-2 ring-accent"
                 : "ring-2 ring-transparent hover:scale-105",
             )}
           >
@@ -50,7 +49,7 @@ export function AppIconPicker({
               className="aspect-square h-full w-full rounded-[22%] object-cover"
               unoptimized
             />
-          </Button>
+          </GaiaButton>
         );
       })}
     </div>

@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { useDisclosure } from "@heroui/modal";
+import { useOverlayState } from "@heroui/react";
 import { type IconProps, RedoIcon } from "@icons";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, {
@@ -15,6 +14,7 @@ import React, {
   useState,
 } from "react";
 import WorkflowsHeader from "@/components/layout/headers/WorkflowsHeader";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 import { useHeader } from "@/hooks/layout/useHeader";
@@ -75,15 +75,11 @@ function renderGrid<T extends { id: string }>(
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center space-y-4 py-1">
-        <p className="text-foreground-400">{error}</p>
-        <Button
-          size="sm"
-          variant="flat"
-          onPress={onRefetch}
-          startContent={<RedoIcon className="h-4 w-4" />}
-        >
+        <p className="text-zinc-500">{error}</p>
+        <GaiaButton size="sm" variant="default-soft" onPress={onRefetch}>
+          <RedoIcon className="h-4 w-4" />
           Try Again
-        </Button>
+        </GaiaButton>
       </div>
     );
   }
@@ -143,15 +139,15 @@ export default function WorkflowPage() {
 
   const {
     isOpen: isEditOpen,
-    onOpen: onEditOpen,
-    onOpenChange: onEditOpenChange,
-  } = useDisclosure();
+    open: onEditOpen,
+    toggle: onEditOpenChange,
+  } = useOverlayState();
 
   const {
     isOpen: isCreateOpen,
-    onOpen: onCreateOpen,
-    onOpenChange: onCreateOpenChange,
-  } = useDisclosure();
+    open: onCreateOpen,
+    setOpen: onCreateOpenChange,
+  } = useOverlayState();
 
   const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(
     null,

@@ -6,7 +6,6 @@ import {
   ConnectIcon,
   DiscordIcon,
   MessageMultiple02Icon,
-  NotificationIcon,
   PencilEdit01Icon,
   Settings01Icon,
   WhatsappIcon,
@@ -39,12 +38,6 @@ export interface MenuSectionConfig {
 
 // Page navigation items
 const PAGE_ITEMS: MenuItemConfig[] = [
-  {
-    id: "notifications",
-    label: "Notifications",
-    icon: <NotificationIcon width={18} height={18} />,
-    path: "/notifications",
-  },
   {
     id: "calendar",
     label: "Calendar",

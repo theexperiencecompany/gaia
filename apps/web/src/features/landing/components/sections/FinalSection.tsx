@@ -1,6 +1,6 @@
 "use client";
 
-import { Tooltip } from "@heroui/tooltip";
+import { Tooltip } from "@heroui/react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -83,14 +83,17 @@ export default function FinalSection({
           {showSocials && (
             <div className="mt-3 flex flex-wrap items-center justify-center gap-4 text-zinc-300 sm:mt-6 max-[700px]:hidden">
               {SOCIAL_LINKS.map(({ href, ariaLabel, icon, label }) => (
-                <Tooltip content={label} placement="bottom" key={href}>
-                  <Link
-                    href={href}
-                    aria-label={ariaLabel}
-                    className="flex justify-center p-1 transition hover:scale-110 hover:text-white"
-                  >
-                    {icon}
-                  </Link>
+                <Tooltip key={href}>
+                  <Tooltip.Trigger aria-label={ariaLabel}>
+                    <Link
+                      href={href}
+                      aria-label={ariaLabel}
+                      className="flex justify-center p-1 transition hover:scale-110 hover:text-white"
+                    >
+                      {icon}
+                    </Link>
+                  </Tooltip.Trigger>
+                  <Tooltip.Content placement="bottom">{label}</Tooltip.Content>
                 </Tooltip>
               ))}
             </div>

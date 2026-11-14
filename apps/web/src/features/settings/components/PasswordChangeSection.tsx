@@ -1,9 +1,10 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { Input, Label, TextField } from "@heroui/react";
 import { type FormEvent, useState } from "react";
 import { FormError } from "@/components/shared/FormError";
+import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { SecretInput } from "@/components/shared/SecretInput";
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
 import { MIN_PASSWORD_LENGTH } from "@/features/auth/constants";
@@ -87,37 +88,45 @@ export function PasswordChangeSection() {
           isRequired
           isDisabled={isSubmitting}
         />
-        <Input
-          type={arePasswordsVisible ? "text" : "password"}
-          label="New password"
+        <TextField
+          className={fieldVariants({ labelPlacement: "inside" })}
           value={newPassword}
-          onValueChange={setNewPassword}
-          autoComplete="new-password"
-          minLength={MIN_PASSWORD_LENGTH}
+          onChange={setNewPassword}
           isRequired
           isDisabled={isSubmitting}
-        />
-        <Input
-          type={arePasswordsVisible ? "text" : "password"}
-          label="Confirm new password"
+        >
+          <Label>New password</Label>
+          <Input
+            type={arePasswordsVisible ? "text" : "password"}
+            autoComplete="new-password"
+            minLength={MIN_PASSWORD_LENGTH}
+          />
+        </TextField>
+        <TextField
+          className={fieldVariants({ labelPlacement: "inside" })}
           value={confirmPassword}
-          onValueChange={setConfirmPassword}
-          autoComplete="new-password"
+          onChange={setConfirmPassword}
           isRequired
           isDisabled={isSubmitting}
-        />
+        >
+          <Label>Confirm new password</Label>
+          <Input
+            type={arePasswordsVisible ? "text" : "password"}
+            autoComplete="new-password"
+          />
+        </TextField>
 
         {error && <FormError>{error}</FormError>}
 
         <div>
-          <Button
+          <GaiaButton
             type="submit"
-            color="primary"
+            variant="primary"
             size="sm"
-            isLoading={isSubmitting}
+            isPending={isSubmitting}
           >
             Update password
-          </Button>
+          </GaiaButton>
         </div>
       </form>
     </SettingsSection>

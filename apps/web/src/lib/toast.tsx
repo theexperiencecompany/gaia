@@ -1,9 +1,14 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { InformationCircleIcon } from "@icons";
-import type { ReactNode } from "react";
+import type {
+  ButtonHTMLAttributes,
+  DetailedHTMLProps,
+  HTMLAttributes,
+  ReactNode,
+} from "react";
 import { type SileoOptions, type SileoPosition, sileo } from "sileo";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 // Mutable holder for a toast's id. sileo returns the id only after the toast is
 // created, but dismiss controls (rendered inside the toast) need it on click,
@@ -54,9 +59,17 @@ const ACTION_CLS: Record<ToastState, string> = {
   loading: "bg-white/10 text-white data-[hover=true]:bg-white/15",
 };
 const DISMISS_CLS = "bg-white/5 text-white/70 data-[hover=true]:bg-white/10";
-// rounded-xl (12px) on the 28px-tall button reads as a rounded rectangle; a
+// shape md (12px) on the 28px-tall button reads as a rounded rectangle; a
 // larger radius would exceed half the height and clamp into a full pill.
-const BTN_BASE = "h-7 min-w-0 rounded-xl px-3 font-medium text-xs";
+const BTN_BASE = "h-7 min-w-0 font-medium text-xs";
+
+// sileo renders the toast as a <button>, so its controls can't be buttons; HeroUI's render type only allows one.
+const renderAsDiv = (
+  props: DetailedHTMLProps<
+    ButtonHTMLAttributes<HTMLButtonElement>,
+    HTMLButtonElement
+  >,
+) => <div {...(props as unknown as HTMLAttributes<HTMLDivElement>)} />;
 
 // Sileo's own `button` slot only fits one button, so we render our own row here.
 // `idRef` resolves the toast id at click time, since sileo only returns it after creation.
@@ -75,28 +88,30 @@ function ToastControls({
   return (
     <div className={twoUp ? "mt-2 grid grid-cols-2 gap-2" : "mt-2"}>
       {action ? (
-        <Button
-          as="div"
+        <GaiaButton
+          render={renderAsDiv}
           size="sm"
-          variant="flat"
+          variant="default-soft"
+          shape="md"
           fullWidth
           className={`${BTN_BASE} ${ACTION_CLS[state]}`}
           onPress={action.onClick}
         >
           {action.label}
-        </Button>
+        </GaiaButton>
       ) : null}
       {showDismiss ? (
-        <Button
-          as="div"
+        <GaiaButton
+          render={renderAsDiv}
           size="sm"
-          variant="flat"
+          variant="default-soft"
+          shape="md"
           fullWidth
           className={`${BTN_BASE} ${DISMISS_CLS}`}
           onPress={() => sileo.dismiss(idRef.id)}
         >
           {DISMISS_LABEL}
-        </Button>
+        </GaiaButton>
       ) : null}
     </div>
   );

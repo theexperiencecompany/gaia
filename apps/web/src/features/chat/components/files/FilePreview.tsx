@@ -1,10 +1,9 @@
-import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
-import { Tooltip } from "@heroui/tooltip";
+import { Spinner, Tooltip } from "@heroui/react";
 import { Cancel01Icon } from "@icons";
 import { formatFileSize } from "@shared/utils";
 import Image from "next/image";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { FileTypeIcon } from "@/features/chat/components/files/FileTypeIcon";
 import {
   getFileTypeExtension,
@@ -47,16 +46,18 @@ const FileChip: React.FC<{
         </div>
       )}
 
-      <Button
+      <GaiaButton
+        aria-label="Remove file"
         isIconOnly
         size="sm"
-        variant="faded"
+        variant="tertiary"
         isDisabled={file.isUploading}
-        className="absolute top-0 right-0 z-10 h-6 w-6 min-w-0 scale-90 rounded-full opacity-0 transition-opacity group-hover:opacity-100"
+        shape="pill"
+        className="absolute top-0 right-0 z-10 h-6 w-6 min-w-0 scale-90 opacity-0 transition-opacity group-hover:opacity-100"
         onPress={() => onRemove(file.id)}
       >
         <Cancel01Icon size={14} />
-      </Button>
+      </GaiaButton>
 
       {file.type.startsWith("image/") ? (
         <div className="h-12 w-12 overflow-hidden rounded-md">
@@ -80,15 +81,15 @@ const FileChip: React.FC<{
           </div>
           <div className="flex min-w-0 flex-1 flex-col">
             {isTruncated ? (
-              <Tooltip
-                content={file.name}
-                placement="top-start"
-                showArrow
-                isOpen={isHovered}
-              >
-                <p className="truncate text-sm font-medium text-white">
-                  {file.name.substring(0, 15)}...
-                </p>
+              <Tooltip isOpen={isHovered}>
+                <Tooltip.Trigger>
+                  <p className="truncate text-sm font-medium text-white">
+                    {file.name.substring(0, 15)}...
+                  </p>
+                </Tooltip.Trigger>
+                <Tooltip.Content placement="top start" showArrow>
+                  {file.name}
+                </Tooltip.Content>
               </Tooltip>
             ) : (
               <p className="truncate text-sm font-medium text-white">

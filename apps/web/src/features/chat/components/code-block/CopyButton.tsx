@@ -1,6 +1,6 @@
-import { Button } from "@heroui/button";
 import { Task01Icon, TaskDone01Icon } from "@icons";
 import type React from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 interface CopyButtonProps {
   copied: boolean;
@@ -8,11 +8,13 @@ interface CopyButtonProps {
 }
 
 const CopyButton: React.FC<CopyButtonProps> = ({ copied, onPress }) => (
-  <Button
-    className="text-xs text-foreground hover:text-gray-300"
+  <GaiaButton
+    aria-label="Copy code"
+    className="text-xs"
+    hoverTone="dim"
     size="sm"
     isIconOnly
-    variant="light"
+    variant="ghost"
     onPress={onPress}
   >
     {copied ? (
@@ -20,7 +22,7 @@ const CopyButton: React.FC<CopyButtonProps> = ({ copied, onPress }) => (
     ) : (
       <Task01Icon color="foreground" width={21} />
     )}
-  </Button>
+  </GaiaButton>
 );
 
 export default CopyButton;

@@ -1,7 +1,7 @@
-import { Button } from "@heroui/button";
-import { ScrollShadow } from "@heroui/scroll-shadow";
+import { ScrollShadow } from "@heroui/react";
 import { Cancel01Icon, Tick02Icon } from "@icons";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { calendarApi } from "@/features/calendar/api/calendarApi";
 import { toast } from "@/lib/toast";
 import type { CalendarDeleteOptions } from "@/types/features/calendarTypes";
@@ -113,13 +113,12 @@ export function CalendarDeleteSection({
       </ScrollShadow>
 
       {calendar_delete_options.length > 1 && (
-        <Button
+        <GaiaButton
           className="mt-3"
-          color="danger"
-          variant="solid"
+          variant="danger"
           fullWidth
           isDisabled={allCompleted}
-          isLoading={isConfirmingAll}
+          isPending={isConfirmingAll}
           onPress={handleDeleteAll}
         >
           {allCompleted ? (
@@ -132,7 +131,7 @@ export function CalendarDeleteSection({
           ) : (
             "Delete All Events"
           )}
-        </Button>
+        </GaiaButton>
       )}
     </div>
   );

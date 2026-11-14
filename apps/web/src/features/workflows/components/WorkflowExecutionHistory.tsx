@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Skeleton } from "@heroui/skeleton";
+import { Chip, Skeleton } from "@heroui/react";
 import {
   AlertCircleIcon,
   CheckmarkCircle02Icon,
@@ -12,8 +10,9 @@ import {
 import { useRouter } from "next/navigation";
 import { useLocale } from "next-intl";
 import { useMemo } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronRight } from "@/components/shared/icons";
-
+import { shapeVariants } from "@/components/shared/shape";
 import { useWorkflowExecutions } from "../hooks/useWorkflowExecutions";
 import type { WorkflowExecution } from "../types/workflowExecutionTypes";
 import PanelHeader from "./workflow-modal/PanelHeader";
@@ -59,47 +58,50 @@ function ExecutionStatusBadge({
     case "success":
       return (
         <Chip
+          className={shapeVariants({ shape: "sm" })}
           size="sm"
           color="success"
-          variant="flat"
-          radius="sm"
-          startContent={<CheckmarkCircle02Icon className="h-3 w-3" />}
+          variant="soft"
         >
-          Success
+          <CheckmarkCircle02Icon className="h-3 w-3" />
+          <Chip.Label>Success</Chip.Label>
         </Chip>
       );
     case "failed":
       return (
         <Chip
+          className={shapeVariants({ shape: "sm" })}
           size="sm"
           color="danger"
-          variant="flat"
-          radius="sm"
-          startContent={<AlertCircleIcon className="h-3 w-3" />}
+          variant="soft"
         >
-          Failed
+          <AlertCircleIcon className="h-3 w-3" />
+          <Chip.Label>Failed</Chip.Label>
         </Chip>
       );
     case "skipped":
       return (
-        <Chip size="sm" color="default" variant="flat" radius="sm">
-          Skipped
+        <Chip
+          className={shapeVariants({ shape: "sm" })}
+          size="sm"
+          color="default"
+          variant="soft"
+        >
+          <Chip.Label>Skipped</Chip.Label>
         </Chip>
       );
     case "running":
       return (
         <Chip
+          className={shapeVariants({ shape: "sm" })}
           size="sm"
-          color="primary"
-          radius="sm"
-          variant="flat"
-          startContent={
-            <div className="animate-spin">
-              <Loading03Icon className="h-3 w-3" />
-            </div>
-          }
+          color="accent"
+          variant="soft"
         >
-          Running
+          <div className="animate-spin">
+            <Loading03Icon className="h-3 w-3" />
+          </div>
+          <Chip.Label>Running</Chip.Label>
         </Chip>
       );
   }
@@ -213,15 +215,15 @@ export default function WorkflowExecutionHistory({
         ))}
       </div>
       {hasMore && (
-        <Button
+        <GaiaButton
           size="sm"
-          variant="flat"
+          variant="default-soft"
           className="w-full"
           onPress={loadMore}
-          isLoading={isLoading}
+          isPending={isLoading}
         >
           Load More
-        </Button>
+        </GaiaButton>
       )}
     </div>
   );

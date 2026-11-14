@@ -1,4 +1,4 @@
-import { ScrollShadow } from "@heroui/scroll-shadow";
+import { ScrollShadow } from "@heroui/react";
 import { useMemo } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { GoogleCalendarIcon } from "@/components/shared/icons";

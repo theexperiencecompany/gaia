@@ -1,6 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 
 import { ArrowUp02Icon, BubbleChatIcon, LinkSquare02Icon } from "@icons";
 import { track } from "@/lib/analytics";
@@ -101,7 +101,7 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
           {post.link_flair_text && (
             <Chip
               size="sm"
-              variant="flat"
+              variant="soft"
               className="flex-shrink-0 bg-blue-900/30 text-xs text-blue-300"
             >
               {post.link_flair_text}

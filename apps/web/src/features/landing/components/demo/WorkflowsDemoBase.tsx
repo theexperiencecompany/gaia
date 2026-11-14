@@ -24,7 +24,7 @@ interface WorkflowsDemoBaseProps {
 function defaultFallbackIcon(isDone: boolean, isRunning: boolean) {
   return (
     <div
-      className={`h-2 w-2 rounded-full ${isDone ? "bg-emerald-400" : isRunning ? "animate-pulse bg-primary" : "bg-zinc-600"}`}
+      className={`h-2 w-2 rounded-full ${isDone ? "bg-emerald-400" : isRunning ? "animate-pulse bg-accent" : "bg-zinc-600"}`}
     />
   );
 }
@@ -89,10 +89,10 @@ export function WorkflowsDemoBase({
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0 }}
-                  className="flex items-center gap-1.5 rounded-full bg-primary/15 px-2.5 py-1"
+                  className="flex items-center gap-1.5 rounded-full bg-accent/15 px-2.5 py-1"
                 >
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-                  <span className="text-[11px] font-medium text-primary">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+                  <span className="text-[11px] font-medium text-accent">
                     Running
                   </span>
                 </m.div>
@@ -142,7 +142,7 @@ export function WorkflowsDemoBase({
                       </m.span>
                     )}
                     {isRunning && (
-                      <span className="animate-pulse text-[11px] font-medium text-primary">
+                      <span className="animate-pulse text-[11px] font-medium text-accent">
                         Running
                       </span>
                     )}

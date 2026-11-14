@@ -1,13 +1,16 @@
 "use client";
 
-import {
-  Button,
-  Select,
-  SelectItem,
-  type SharedSelection,
-} from "@heroui/react";
+import { ListBox, Select } from "@heroui/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type Key, useCallback, useEffect, useRef, useState } from "react";
+import {
+  inputVariants,
+  overlayVariants,
+} from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
+import { toneVariants } from "@/components/shared/tone";
 import { authApi } from "@/features/auth/api/authApi";
 import {
   patchCurrentUser,
@@ -26,7 +29,6 @@ import {
   getTimezoneList,
   normalizeTimezone,
 } from "@/utils/timezoneUtils";
-
 import type { ModalAction } from "./SettingsMenu";
 
 const responseStyleOptions = [
@@ -78,9 +80,9 @@ function IdentitySettingsSection({
     label: tz.formattedLabel,
   }));
 
-  const handleProfessionChange = (keys: SharedSelection) => {
-    if (keys !== "all" && keys.size > 0) {
-      const profession = Array.from(keys)[0] as string;
+  const handleProfessionChange = (key: Key | null) => {
+    if (key != null) {
+      const profession = String(key);
       onUpdate({ ...preferences, profession });
     } else {
       // Handle case when profession is deselected
@@ -88,9 +90,8 @@ function IdentitySettingsSection({
     }
   };
 
-  const handleTimezoneChange = (keys: SharedSelection) => {
-    const selectedKeys = Array.from(keys);
-    const timezoneValue = selectedKeys[0] as string;
+  const handleTimezoneChange = (key: Key | null) => {
+    const timezoneValue = key != null ? String(key) : "";
     onUpdate({
       ...preferences,
       timezone: timezoneValue || "UTC", // Default to UTC if empty
@@ -108,26 +109,35 @@ function IdentitySettingsSection({
       <SettingsRow label="Profession" stacked>
         <Select
           placeholder="Select your profession"
-          selectedKeys={
-            preferences.profession
-              ? new Set([preferences.profession])
-              : new Set()
-          }
+          selectedKey={preferences.profession || null}
           onSelectionChange={handleProfessionChange}
           isDisabled={isUpdating}
-          classNames={{
-            trigger:
-              "bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]",
-            popoverContent: "bg-zinc-800 z-50",
-            listbox: "bg-zinc-800",
-            value: "text-white text-sm",
-          }}
         >
-          {professionOptions.map((profession) => (
-            <SelectItem key={profession.value} textValue={profession.label}>
-              {profession.label}
-            </SelectItem>
-          ))}
+          <Select.Trigger
+            className={inputVariants({
+              variant: "translucent",
+              className: "cursor-pointer",
+            })}
+          >
+            <GaiaSelectValue className={toneVariants({ tone: "white" })} />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover
+            className={overlayVariants({
+              surface: "raised",
+              className: "z-50",
+            })}
+          >
+            <ListBox>
+              {professionOptions.map((profession) => (
+                <GaiaListBoxItem
+                  key={profession.value}
+                  id={profession.value}
+                  textValue={profession.label}
+                />
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
       </SettingsRow>
 
@@ -141,37 +151,47 @@ function IdentitySettingsSection({
         stacked
       >
         <div className="flex items-center gap-2">
-          <Button
+          <GaiaButton
             size="sm"
-            variant="flat"
+            variant="tertiary"
+            tone="dim"
+            className="bg-zinc-800/50 hover:bg-zinc-700/50"
             onPress={handleAutoDetectTimezone}
             isDisabled={isUpdating}
-            className="border-zinc-700 bg-zinc-800/50 text-zinc-300 hover:bg-zinc-700/50"
           >
             Auto Detect
-          </Button>
+          </GaiaButton>
           <Select
             placeholder="Select your timezone"
-            selectedKeys={
-              preferences.timezone
-                ? new Set([preferences.timezone])
-                : new Set(["UTC"])
-            }
+            selectedKey={preferences.timezone || "UTC"}
             onSelectionChange={handleTimezoneChange}
             isDisabled={isUpdating}
-            classNames={{
-              trigger:
-                "bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]",
-              popoverContent: "bg-zinc-800 z-50",
-              listbox: "bg-zinc-800",
-              value: "text-white text-sm",
-            }}
           >
-            {timezoneOptions.map((timezone) => (
-              <SelectItem key={timezone.value} textValue={timezone.label}>
-                {timezone.label}
-              </SelectItem>
-            ))}
+            <Select.Trigger
+              className={inputVariants({
+                variant: "translucent",
+                className: "cursor-pointer",
+              })}
+            >
+              <GaiaSelectValue className={toneVariants({ tone: "white" })} />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover
+              className={overlayVariants({
+                surface: "raised",
+                className: "z-50",
+              })}
+            >
+              <ListBox>
+                {timezoneOptions.map((timezone) => (
+                  <GaiaListBoxItem
+                    key={timezone.value}
+                    id={timezone.value}
+                    textValue={timezone.label}
+                  />
+                ))}
+              </ListBox>
+            </Select.Popover>
           </Select>
         </div>
       </SettingsRow>
@@ -280,9 +300,9 @@ export default function PreferencesSettings({
     [updatePreferences],
   );
 
-  const handleResponseStyleChange = (keys: SharedSelection) => {
-    if (keys !== "all" && keys.size > 0) {
-      const responseStyle = Array.from(keys)[0] as string;
+  const handleResponseStyleChange = (key: Key | null) => {
+    if (key != null) {
+      const responseStyle = String(key);
       const updatedPreferences = {
         ...preferences,
         response_style: responseStyle === "other" ? "custom" : responseStyle,
@@ -345,43 +365,55 @@ export default function PreferencesSettings({
         <SettingsRow label="Response Style" stacked>
           <Select
             placeholder="Select response style"
-            selectedKeys={
+            selectedKey={
               preferences.response_style
                 ? responseStyleOptions.some(
                     (option) => option.value === preferences.response_style,
                   )
-                  ? new Set([preferences.response_style])
-                  : new Set(["other"])
-                : new Set()
+                  ? preferences.response_style
+                  : "other"
+                : null
             }
-            disallowEmptySelection={false}
             onSelectionChange={handleResponseStyleChange}
             isDisabled={isUpdating}
-            classNames={{
-              trigger:
-                "bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]",
-              popoverContent: "bg-zinc-800 z-50",
-              listbox: "bg-zinc-800",
-              value: "text-white text-sm",
-            }}
           >
-            {responseStyleOptions.map((style) => (
-              <SelectItem
-                key={style.value}
-                textValue={
-                  style.value.charAt(0).toUpperCase() + style.value.slice(1)
-                }
-              >
-                <div>
-                  <div className="text-sm font-medium">
-                    {style.value.charAt(0).toUpperCase() + style.value.slice(1)}
-                  </div>
-                  <div className="text-xs text-zinc-500">
-                    {style.label.split(" - ")[1]}
-                  </div>
-                </div>
-              </SelectItem>
-            ))}
+            <Select.Trigger
+              className={inputVariants({
+                variant: "translucent",
+                className: "cursor-pointer",
+              })}
+            >
+              <GaiaSelectValue className={toneVariants({ tone: "white" })} />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover
+              className={overlayVariants({
+                surface: "raised",
+                className: "z-50",
+              })}
+            >
+              <ListBox>
+                {responseStyleOptions.map((style) => (
+                  <GaiaListBoxItem
+                    key={style.value}
+                    id={style.value}
+                    textValue={
+                      style.value.charAt(0).toUpperCase() + style.value.slice(1)
+                    }
+                  >
+                    <div>
+                      <div className="text-sm font-medium">
+                        {style.value.charAt(0).toUpperCase() +
+                          style.value.slice(1)}
+                      </div>
+                      <div className="text-xs text-zinc-500">
+                        {style.label.split(" - ")[1]}
+                      </div>
+                    </div>
+                  </GaiaListBoxItem>
+                ))}
+              </ListBox>
+            </Select.Popover>
           </Select>
           {preferences.response_style &&
             !responseStyleOptions.some(
@@ -404,13 +436,12 @@ export default function PreferencesSettings({
           description="Permanently delete all your conversations and chat history"
           variant="danger"
         >
-          <Button
-            variant="flat"
-            color="danger"
+          <GaiaButton
+            variant="danger-soft"
             onPress={() => setModalAction("clear_chats")}
           >
             Clear All
-          </Button>
+          </GaiaButton>
         </SettingsRow>
       </SettingsSection>
 

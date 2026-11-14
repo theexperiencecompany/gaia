@@ -1,11 +1,12 @@
 "use client";
 
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Chip } from "@heroui/chip";
-import { Divider } from "@heroui/divider";
+import { Accordion, AccordionItem, Chip, Separator } from "@heroui/react";
 import { AiWebBrowsingIcon, Alert01Icon, CheckmarkCircle02Icon } from "@icons";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
+import { accordionVariants } from "@/components/shared/accordionVariants";
+import { separatorVariants } from "@/components/shared/controlVariants";
+import { toneVariants } from "@/components/shared/tone";
 import { BrowserStatusChip } from "@/features/browser/components/BrowserStatusChip";
 import { useLiveView } from "@/features/browser/hooks/useLiveView";
 import { useBrowserPanel } from "@/features/browser/stores/browserPanelStore";
@@ -24,6 +25,8 @@ import { LivePreview } from "./LivePreview";
 import { RecapViewer } from "./RecapViewer";
 import { ShimmerText } from "./ShimmerText";
 import { StepRow } from "./StepRow";
+
+const accordionStyles = accordionVariants({ density: "compact" });
 
 interface BrowserTaskSectionProps {
   data: BrowserTaskSnapshot | BrowserTaskSnapshot[];
@@ -103,37 +106,40 @@ function StepsAccordion({
   currentTask: string | undefined;
 }) {
   return (
-    <Accordion isCompact className="px-0" variant="light">
-      <AccordionItem
-        key="steps"
-        aria-label="Steps"
-        title={
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="shrink-0 text-sm font-medium text-zinc-300">
-              Steps
-            </span>
-            <Chip
-              size="sm"
-              variant="flat"
-              classNames={{
-                base: "h-5 bg-zinc-700",
-                content: "px-1.5 text-xs text-zinc-300",
-              }}
-            >
-              {steps.length}
-            </Chip>
-            {currentTask && (
-              <span className="min-w-0 flex-1 truncate text-xs">
-                <ShimmerText text={currentTask} />
+    <Accordion>
+      <AccordionItem key="steps" id="steps">
+        <Accordion.Heading>
+          <Accordion.Trigger className={accordionStyles.trigger()}>
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="shrink-0 text-sm font-medium text-zinc-300">
+                Steps
               </span>
-            )}
+              <Chip size="sm" variant="soft" className="h-5 bg-zinc-700">
+                <Chip.Label
+                  className={toneVariants({
+                    tone: "dim",
+                    className: "px-1.5 text-xs",
+                  })}
+                >
+                  {steps.length}
+                </Chip.Label>
+              </Chip>
+              {currentTask && (
+                <span className="min-w-0 flex-1 truncate text-xs">
+                  <ShimmerText text={currentTask} />
+                </span>
+              )}
+            </div>
+            <Accordion.Indicator className={accordionStyles.indicator()} />
+          </Accordion.Trigger>
+        </Accordion.Heading>
+        <Accordion.Panel>
+          <div className="space-y-2 pt-1 pb-2">
+            {steps.map((step) => (
+              <StepRow key={`browser-step-${step.index}`} step={step} />
+            ))}
           </div>
-        }
-        classNames={{ trigger: "py-2", content: "space-y-2 pb-2" }}
-      >
-        {steps.map((step) => (
-          <StepRow key={`browser-step-${step.index}`} step={step} />
-        ))}
+        </Accordion.Panel>
       </AccordionItem>
     </Accordion>
   );
@@ -142,7 +148,9 @@ function StepsAccordion({
 function ResultFooter({ result }: { result: BrowserResultSnapshot }) {
   return (
     <>
-      <Divider className="my-3 bg-zinc-700/50" />
+      <Separator
+        className={separatorVariants({ surface: "raised", className: "my-3" })}
+      />
       <div className="flex items-start gap-2.5">
         {result.success ? (
           <CheckmarkCircle02Icon className="mt-px size-4 shrink-0 text-emerald-400" />

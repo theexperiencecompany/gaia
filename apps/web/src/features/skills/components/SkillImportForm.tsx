@@ -1,9 +1,10 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { FieldError, InputGroup, Label, TextField } from "@heroui/react";
 import { Github01Icon, PlusSignIcon } from "@icons";
 import { useMemo, useState } from "react";
+import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toast } from "@/lib/toast";
 import { skillsApi } from "../api/skillsApi";
 import type { DiscoveredSkill, SkillTarget } from "../api/types";
@@ -114,32 +115,39 @@ export function SkillImportForm({
         value={target}
         onChange={setTarget}
       />
-      <Input
-        label="GitHub repository"
-        placeholder="owner/repo or a full GitHub URL"
-        value={repoUrl}
-        onValueChange={setRepoUrl}
+      <TextField
+        className={fieldVariants({ labelPlacement: "inside" })}
         isInvalid={!!repoError}
-        errorMessage={repoError}
-        startContent={<Github01Icon className="size-4 text-white" />}
-        onKeyDown={(e) => {
-          if (e.nativeEvent.isComposing) return;
-          if (e.key === "Enter" && repoValid) handleDiscover();
-        }}
-        endContent={
-          <Button
-            size="sm"
-            color="primary"
-            variant="flat"
-            className="-mr-1 shrink-0 rounded-lg"
-            isLoading={discovering}
-            isDisabled={!repoValid}
-            onPress={handleDiscover}
-          >
-            Find skills
-          </Button>
-        }
-      />
+      >
+        <Label>GitHub repository</Label>
+        <InputGroup>
+          <InputGroup.Prefix>
+            <Github01Icon className="size-4 text-white" />
+          </InputGroup.Prefix>
+          <InputGroup.Input
+            placeholder="owner/repo or a full GitHub URL"
+            value={repoUrl}
+            onChange={(e) => setRepoUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return;
+              if (e.key === "Enter" && repoValid) handleDiscover();
+            }}
+          />
+          <InputGroup.Suffix>
+            <GaiaButton
+              variant="accent-soft"
+              size="sm"
+              className="-mr-1 shrink-0"
+              isPending={discovering}
+              isDisabled={!repoValid}
+              onPress={handleDiscover}
+            >
+              Find skills
+            </GaiaButton>
+          </InputGroup.Suffix>
+        </InputGroup>
+        <FieldError>{repoError}</FieldError>
+      </TextField>
 
       {discovered !== null && discovered.length > 0 && (
         <>
@@ -148,20 +156,17 @@ export function SkillImportForm({
               Found {discovered.length} skill
               {discovered.length === 1 ? "" : "s"}
             </span>
-            <Button
+            <GaiaButton
+              variant="accent-soft"
               size="sm"
-              color="primary"
-              variant="flat"
-              className="rounded-xl"
-              isLoading={installingAll}
+              shape="md"
+              isPending={installingAll}
               isDisabled={installBusy && !installingAll}
-              startContent={
-                installingAll ? undefined : <PlusSignIcon className="size-4" />
-              }
               onPress={handleInstallAll}
             >
+              {installingAll ? null : <PlusSignIcon className="size-4" />}
               Add all
-            </Button>
+            </GaiaButton>
           </div>
           <div className="divide-y divide-zinc-800/60 overflow-hidden rounded-xl bg-zinc-800/60">
             {discovered.map((skill) => (
@@ -175,22 +180,19 @@ export function SkillImportForm({
                     {skill.description}
                   </p>
                 </div>
-                <Button
+                <GaiaButton
+                  variant="accent-soft"
                   size="sm"
-                  color="primary"
-                  variant="flat"
-                  className="rounded-xl"
-                  isLoading={installingPath === skill.path}
+                  shape="md"
+                  isPending={installingPath === skill.path}
                   isDisabled={installBusy && installingPath !== skill.path}
-                  startContent={
-                    installingPath === skill.path ? undefined : (
-                      <PlusSignIcon className="size-4" />
-                    )
-                  }
                   onPress={() => handleInstall(skill)}
                 >
+                  {installingPath === skill.path ? null : (
+                    <PlusSignIcon className="size-4" />
+                  )}
                   Add
-                </Button>
+                </GaiaButton>
               </div>
             ))}
           </div>

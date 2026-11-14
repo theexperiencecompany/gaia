@@ -1,8 +1,9 @@
 "use client";
 
-import { Checkbox } from "@heroui/checkbox";
+import { Checkbox } from "@heroui/react";
 import { Cancel01Icon, PlusSignIcon, Tick02Icon } from "@icons";
 import { useState } from "react";
+import { shapeVariants } from "@/components/shared/shape";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -113,14 +114,14 @@ export default function SubtaskManager({
             value={newSubtaskTitle}
             onChange={(e) => setNewSubtaskTitle(e.target.value)}
             onKeyDown={(e) => handleKeyDown(e, "add")}
-            className="hover:bg-zinc-750 h-9 rounded-lg border-0 bg-zinc-800 text-sm text-zinc-200 placeholder:text-zinc-500 focus:ring-0 focus:outline-none focus-visible:ring-zinc-500 focus-visible:ring-2"
+            className="hover:bg-zinc-700 h-9 rounded-lg border-0 bg-zinc-800 text-sm text-zinc-200 placeholder:text-zinc-500 focus:ring-0 focus:outline-none focus-visible:ring-zinc-500 focus-visible:ring-2"
           />
         </div>
         <Button
           size="sm"
           onClick={handleAddSubtask}
           disabled={!newSubtaskTitle.trim()}
-          className={`h-9 w-9 rounded-lg border-0 p-0 ${!newSubtaskTitle.trim() ? "hover:bg-zinc-750 bg-zinc-800 text-zinc-600" : "hover:bg-zinc-750 bg-zinc-800 text-zinc-200"}`}
+          className={`h-9 w-9 rounded-lg border-0 p-0 ${!newSubtaskTitle.trim() ? "hover:bg-zinc-700 bg-zinc-800 text-zinc-600" : "hover:bg-zinc-700 bg-zinc-800 text-zinc-200"}`}
         >
           <PlusSignIcon size={16} />
         </Button>
@@ -137,10 +138,17 @@ export default function SubtaskManager({
               <Checkbox
                 isSelected={subtask.completed}
                 onChange={() => handleToggleSubtask(subtask.id)}
-                radius="full"
-                color="success"
-                className="flex-shrink-0"
-              />
+                className={shapeVariants({
+                  shape: "pill",
+                  className: "flex-shrink-0",
+                })}
+              >
+                <Checkbox.Content>
+                  <Checkbox.Control>
+                    <Checkbox.Indicator />
+                  </Checkbox.Control>
+                </Checkbox.Content>
+              </Checkbox>
 
               {editingSubtaskId === subtask.id ? (
                 <div className="flex flex-1 gap-2">
@@ -148,7 +156,7 @@ export default function SubtaskManager({
                     value={editingTitle}
                     onChange={(e) => setEditingTitle(e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, "edit")}
-                    className="bg-zinc-750 h-7 flex-1 rounded-md border-0 text-sm text-zinc-200 focus:ring-0 focus:outline-none focus-visible:ring-zinc-700 focus-visible:ring-2"
+                    className="bg-zinc-700 h-7 flex-1 rounded-md border-0 text-sm text-zinc-200 focus:ring-0 focus:outline-none focus-visible:ring-zinc-700 focus-visible:ring-2"
                     autoFocus
                   />
                   <Button

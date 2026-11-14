@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Modal, ModalBody, ModalContent } from "@heroui/modal";
+import { Modal } from "@heroui/react";
 import {
   EyeIcon,
   FullScreenIcon,
@@ -9,6 +8,8 @@ import {
   SquareArrowUpRight02Icon,
 } from "@icons";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { useLiveBrowser } from "@/features/browser/hooks/useLiveBrowser";
 import type { LiveSurface } from "@/features/browser/types";
 import { LiveScreen } from "./LiveScreen";
@@ -46,30 +47,32 @@ export function LivePreview({
         <EyeIcon className="size-3.5 text-zinc-400" />
         <span className="text-xs font-medium text-zinc-300">Live preview</span>
         {surface.kind === "card" && (
-          <Button
+          <GaiaButton
+            shape="pill"
             isIconOnly
             size="sm"
-            variant="light"
-            radius="full"
-            className="ml-auto size-6 min-w-6 text-zinc-400"
+            variant="ghost"
+            tone="muted"
+            className="ml-auto size-6 min-w-6"
             aria-label="Open in side panel"
             onPress={surface.openPanel}
           >
             <SidebarRight01Icon className="size-4" />
-          </Button>
+          </GaiaButton>
         )}
         {surface.kind === "mobile" && (
-          <Button
+          <GaiaButton
+            shape="pill"
             isIconOnly
             size="sm"
-            variant="light"
-            radius="full"
-            className="ml-auto size-6 min-w-6 text-zinc-400"
+            variant="ghost"
+            tone="muted"
+            className="ml-auto size-6 min-w-6"
             aria-label="Full screen live preview"
             onPress={() => setFullscreen(true)}
           >
             <FullScreenIcon className="size-4" />
-          </Button>
+          </GaiaButton>
         )}
       </div>
 
@@ -83,54 +86,59 @@ export function LivePreview({
 
       {surface.kind === "card" && (
         <div className="mt-2 px-0.5">
-          <Button
+          <GaiaButton
+            shape="pill"
             size="sm"
-            variant="light"
-            radius="full"
-            className="h-7 px-2 text-xs text-zinc-400"
-            startContent={<SidebarRight01Icon className="size-3.5" />}
+            variant="ghost"
+            tone="muted"
+            inset="tight"
+            className="h-7 text-xs"
             onPress={surface.openPanel}
           >
+            <SidebarRight01Icon className="size-3.5" />
             Open side panel
-          </Button>
+          </GaiaButton>
         </div>
       )}
       {surface.kind === "mobile" && (
         <div className="mt-2 px-0.5">
-          <Button
-            as="a"
+          <LinkButton
+            shape="pill"
             href={pageUrl}
             target="_blank"
             rel="noopener noreferrer"
             size="sm"
-            variant="light"
-            radius="full"
-            className="h-7 px-2 text-xs text-zinc-400"
-            startContent={<SquareArrowUpRight02Icon className="size-3.5" />}
+            variant="ghost"
+            tone="muted"
+            inset="tight"
+            className="h-7 text-xs"
           >
+            <SquareArrowUpRight02Icon className="size-3.5" />
             Open full browser
-          </Button>
+          </LinkButton>
         </div>
       )}
 
-      <Modal
-        isOpen={fullscreen}
-        onOpenChange={setFullscreen}
-        size="full"
-        scrollBehavior="inside"
-      >
-        <ModalContent className="bg-zinc-950">
-          <ModalBody className="flex flex-col gap-4 p-4 sm:p-6">
-            <div className="flex min-h-0 flex-1 items-center justify-center">
-              {fullscreen && <div className="w-full max-w-6xl">{screen}</div>}
-            </div>
-            {currentTask && (
-              <div className="mx-auto w-full max-w-6xl shrink-0 rounded-2xl bg-zinc-900 px-4 py-3 text-sm">
-                <ShimmerText text={currentTask} />
-              </div>
-            )}
-          </ModalBody>
-        </ModalContent>
+      <Modal isOpen={fullscreen} onOpenChange={setFullscreen}>
+        <Modal.Backdrop>
+          <Modal.Container size="full">
+            <Modal.Dialog className="bg-zinc-950">
+              <Modal.CloseTrigger aria-label="Close" />
+              <Modal.Body className="flex flex-col gap-4 p-4 sm:p-6">
+                <div className="flex min-h-0 flex-1 items-center justify-center">
+                  {fullscreen && (
+                    <div className="w-full max-w-6xl">{screen}</div>
+                  )}
+                </div>
+                {currentTask && (
+                  <div className="mx-auto w-full max-w-6xl shrink-0 rounded-2xl bg-zinc-900 px-4 py-3 text-sm">
+                    <ShimmerText text={currentTask} />
+                  </div>
+                )}
+              </Modal.Body>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
       </Modal>
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { Comment01Icon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useOpenPlatformChat } from "@/features/settings/hooks/useOpenPlatformChat";
 
 interface OpenPlatformChatButtonProps {
@@ -15,15 +15,15 @@ export function OpenPlatformChatButton({
   const { openChat, isOpening } = useOpenPlatformChat(platform);
 
   return (
-    <Button
+    <GaiaButton
       size="sm"
-      variant="flat"
+      variant="default-soft"
       onPress={openChat}
-      isLoading={isOpening}
-      startContent={isOpening ? null : <Comment01Icon className="size-4" />}
+      isPending={isOpening}
       className="text-xs"
     >
+      {!isOpening && <Comment01Icon className="size-4" />}
       Open chat
-    </Button>
+    </GaiaButton>
   );
 }

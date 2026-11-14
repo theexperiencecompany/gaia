@@ -1,11 +1,15 @@
 "use client";
 
-import { Modal, ModalBody, ModalContent } from "@heroui/modal";
+import { Modal } from "@heroui/react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useReducer, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useHotkeys } from "react-hotkeys-hook";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import {
+  modalVariants,
+  overlayVariants,
+} from "@/components/shared/controlVariants";
 import {
   initialWorkflowModalUiState,
   workflowModalUiReducer,
@@ -309,81 +313,81 @@ export default function WorkflowModal({
 
   return (
     <>
-      <Modal
-        isOpen={isOpen}
-        onOpenChange={onOpenChange}
-        hideCloseButton
-        size={isTwoColumn ? "5xl" : "4xl"}
-        // Two-column mode uses a definite height so the side panel's
-        // flex/overflow chain (h-full → min-h-0 → overflow-y-auto) resolves
-        // and the Steps panel doesn't clip.
-        className={
-          isTwoColumn
-            ? "h-[85vh] max-h-208 max-w-6xl bg-secondary-bg"
-            : "max-h-[90vh] bg-secondary-bg"
-        }
-        backdrop="blur"
-      >
-        <ModalContent>
-          <ModalBody className="flex min-h-0 flex-col gap-0 p-0">
-            {ui.creationPhase === "form" ? (
-              <WorkflowModalFormView
-                mode={mode}
-                formData={formData}
-                control={control}
-                errors={errors}
-                setValue={setValue}
-                currentWorkflow={currentWorkflow}
-                existingWorkflow={existingWorkflow ?? null}
-                activation={{
-                  isActive: ui.isActivated,
-                  isToggling: ui.isTogglingActivation,
-                }}
-                missingIntegrations={actions.missingIntegrations}
-                connectingId={actions.connectingId}
-                onConnect={actions.handleConnectIntegration}
-                selectedIntegrationSlugs={actions.selectedIntegrationSlugs}
-                onActivationToggle={actions.handleActivationToggle}
-                onPublishToggle={actions.handlePublishToggle}
-                onViewMarketplace={actions.handleMarketplaceView}
-                onDelete={actions.handleDelete}
-                onResetToDefault={actions.handleResetToDefault}
-                steps={{
-                  hasPredefined: hasPredefinedSteps,
-                  isGenerating: ui.isGeneratingSteps,
-                  isRegenerating: ui.isRegeneratingSteps,
-                }}
-                predefinedSteps={predefinedSteps}
-                regenerationError={ui.regenerationError}
-                onRegenerateWithReason={actions.handleRegenerateWithReason}
-                onInitialGeneration={actions.handleInitialGeneration}
-                onClearError={() =>
-                  dispatch({ type: "regenerationError", message: null })
-                }
-                modifierKeyName={modifierKeyName}
-                buttonText={getButtonText()}
-                save={{
-                  isDisabled: isSaveDisabled(),
-                  isCreating: actions.isCreating,
-                }}
-                onRunWorkflow={actions.handleRunWorkflow}
-                onSubmit={() => handleSubmit(actions.handleSave)()}
-                onClose={handleClose}
-              />
-            ) : (
-              <div className="px-6 py-4">
-                <WorkflowLoadingState
-                  phase={ui.creationPhase}
-                  mode={mode}
-                  error={actions.creationError}
-                  workflow={currentWorkflow}
-                  onClose={handleClose}
-                  onRetry={() => dispatch({ type: "phase", phase: "form" })}
-                />
-              </div>
-            )}
-          </ModalBody>
-        </ModalContent>
+      <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
+        <Modal.Backdrop variant="blur">
+          <Modal.Container>
+            {/* Two-column mode uses a definite height so the side panel's
+                flex/overflow chain (h-full → min-h-0 → overflow-y-auto) resolves
+                and the Steps panel doesn't clip. */}
+            <Modal.Dialog
+              className={overlayVariants({
+                surface: "secondary",
+                className: isTwoColumn
+                  ? "h-[85vh] max-h-208 max-w-6xl"
+                  : `${modalVariants({ size: "4xl" })} max-h-[90vh]`,
+              })}
+            >
+              <Modal.Body className="flex min-h-0 flex-col gap-0 p-0">
+                {ui.creationPhase === "form" ? (
+                  <WorkflowModalFormView
+                    mode={mode}
+                    formData={formData}
+                    control={control}
+                    errors={errors}
+                    setValue={setValue}
+                    currentWorkflow={currentWorkflow}
+                    existingWorkflow={existingWorkflow ?? null}
+                    activation={{
+                      isActive: ui.isActivated,
+                      isToggling: ui.isTogglingActivation,
+                    }}
+                    missingIntegrations={actions.missingIntegrations}
+                    connectingId={actions.connectingId}
+                    onConnect={actions.handleConnectIntegration}
+                    selectedIntegrationSlugs={actions.selectedIntegrationSlugs}
+                    onActivationToggle={actions.handleActivationToggle}
+                    onPublishToggle={actions.handlePublishToggle}
+                    onViewMarketplace={actions.handleMarketplaceView}
+                    onDelete={actions.handleDelete}
+                    onResetToDefault={actions.handleResetToDefault}
+                    steps={{
+                      hasPredefined: hasPredefinedSteps,
+                      isGenerating: ui.isGeneratingSteps,
+                      isRegenerating: ui.isRegeneratingSteps,
+                    }}
+                    predefinedSteps={predefinedSteps}
+                    regenerationError={ui.regenerationError}
+                    onRegenerateWithReason={actions.handleRegenerateWithReason}
+                    onInitialGeneration={actions.handleInitialGeneration}
+                    onClearError={() =>
+                      dispatch({ type: "regenerationError", message: null })
+                    }
+                    modifierKeyName={modifierKeyName}
+                    buttonText={getButtonText()}
+                    save={{
+                      isDisabled: isSaveDisabled(),
+                      isCreating: actions.isCreating,
+                    }}
+                    onRunWorkflow={actions.handleRunWorkflow}
+                    onSubmit={() => handleSubmit(actions.handleSave)()}
+                    onClose={handleClose}
+                  />
+                ) : (
+                  <div className="px-6 py-4">
+                    <WorkflowLoadingState
+                      phase={ui.creationPhase}
+                      mode={mode}
+                      error={actions.creationError}
+                      workflow={currentWorkflow}
+                      onClose={handleClose}
+                      onRetry={() => dispatch({ type: "phase", phase: "form" })}
+                    />
+                  </div>
+                )}
+              </Modal.Body>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
       </Modal>
       {mode === "edit" && existingWorkflow && (
         <ConfirmationDialog

@@ -1,17 +1,21 @@
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
-import { ScrollShadow } from "@heroui/scroll-shadow";
+import { Accordion, Chip, InputGroup, ScrollShadow } from "@heroui/react";
 import { Cancel01Icon, GridIcon, SearchIcon, Tick02Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
 import { useMemo, useState } from "react";
+import { accordionVariants } from "@/components/shared/accordionVariants";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { shapeVariants } from "@/components/shared/shape";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-
 import { dummyIntegrations } from "./constants";
+
+const accordionStyles = accordionVariants({
+  variant: "light",
+  density: "compact",
+});
 
 // Dummy Integrations Card Component
 const DummyIntegrationsCard: React.FC = () => {
@@ -20,73 +24,77 @@ const DummyIntegrationsCard: React.FC = () => {
   return (
     <div className="mx-2 mb-3 border-b-1 border-zinc-800">
       <Accordion
-        variant="light"
-        isCompact
-        selectedKeys={isExpanded ? new Set(["integrations"]) : new Set([])}
-        onSelectionChange={(keys) => {
-          const expanded =
-            keys === "all" || (keys instanceof Set && keys.has("integrations"));
+        variant="default"
+        className={accordionStyles.base()}
+        expandedKeys={isExpanded ? new Set(["integrations"]) : new Set([])}
+        onExpandedChange={(keys) => {
+          const expanded = keys instanceof Set && keys.has("integrations");
           setIsExpanded(expanded);
         }}
-        itemClasses={{
-          base: "pb-1",
-          trigger: "cursor-pointer",
-        }}
       >
-        <AccordionItem
-          key="integrations"
-          title={
-            <div className="flex items-center gap-3 px-1 pt-1">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-normal text-foreground-500">
-                    Integrations
-                  </span>
-                  <span className="text-xs font-light text-zinc-400">
-                    {dummyIntegrations.length}/{dummyIntegrations.length}
-                  </span>
+        <Accordion.Item id="integrations" className="pb-1">
+          <Accordion.Heading>
+            <Accordion.Trigger
+              className={accordionStyles.trigger({
+                className: "cursor-pointer",
+              })}
+            >
+              <div className="flex items-center gap-3 px-1 pt-1">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-normal text-zinc-400">
+                      Integrations
+                    </span>
+                    <span className="text-xs font-light text-zinc-400">
+                      {dummyIntegrations.length}/{dummyIntegrations.length}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <Accordion.Indicator className={accordionStyles.indicator()} />
+            </Accordion.Trigger>
+          </Accordion.Heading>
+          <Accordion.Panel>
+            <div className={accordionStyles.content()}>
+              <div>
+                <div className="grid grid-cols-2 gap-2">
+                  {dummyIntegrations.map((integration) => (
+                    <div
+                      key={integration.id}
+                      className="flex items-center gap-2 rounded-lg p-2 px-3"
+                    >
+                      {/* Icon */}
+                      <div className="flex-shrink-0">
+                        <div className="flex items-center justify-center rounded-lg">
+                          {getToolCategoryIcon(integration.id, {
+                            size: 25,
+                            width: 25,
+                            height: 25,
+                            showBackground: false,
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Name */}
+                      <div className="min-w-0 flex-1">
+                        <span className="block truncate text-xs text-zinc-300">
+                          {integration.name}
+                        </span>
+                      </div>
+
+                      {/* Status */}
+                      <div className="flex-shrink-0">
+                        <Chip size="sm" variant="soft" color="success">
+                          Connected
+                        </Chip>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
-          }
-        >
-          <div>
-            <div className="grid grid-cols-2 gap-2">
-              {dummyIntegrations.map((integration) => (
-                <div
-                  key={integration.id}
-                  className="flex items-center gap-2 rounded-lg p-2 px-3"
-                >
-                  {/* Icon */}
-                  <div className="flex-shrink-0">
-                    <div className="flex items-center justify-center rounded-lg">
-                      {getToolCategoryIcon(integration.id, {
-                        size: 25,
-                        width: 25,
-                        height: 25,
-                        showBackground: false,
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Name */}
-                  <div className="min-w-0 flex-1">
-                    <span className="block truncate text-xs text-zinc-300">
-                      {integration.name}
-                    </span>
-                  </div>
-
-                  {/* Status */}
-                  <div className="flex-shrink-0">
-                    <Chip size="sm" variant="flat" color="success">
-                      Connected
-                    </Chip>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </AccordionItem>
+          </Accordion.Panel>
+        </Accordion.Item>
       </Accordion>
     </div>
   );
@@ -557,27 +565,34 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
           {openedViaButton && (
             <div className="flex items-center gap-2 p-3">
               <div className="flex-1">
-                <Input
-                  type="text"
-                  placeholder="Search tools..."
-                  value={searchQuery}
-                  size="sm"
-                  radius="full"
-                  startContent={<SearchIcon size={16} />}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  autoFocus
-                />
+                <InputGroup
+                  className={inputVariants({
+                    size: "sm",
+                    className: shapeVariants({ shape: "pill" }),
+                  })}
+                >
+                  <InputGroup.Prefix>
+                    <SearchIcon size={16} />
+                  </InputGroup.Prefix>
+                  <InputGroup.Input
+                    type="text"
+                    placeholder="Search tools..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    autoFocus
+                  />
+                </InputGroup>
               </div>
-              <Button
+              <GaiaButton
+                shape="pill"
                 onPress={onClose}
                 isIconOnly
                 size="sm"
-                radius="full"
-                variant="flat"
+                variant="default-soft"
                 aria-label="Close button dummy composer"
               >
                 <Cancel01Icon size={14} />
-              </Button>
+              </GaiaButton>
             </div>
           )}
 
@@ -639,7 +654,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-sm text-foreground-600">
+                          <span className="truncate text-sm text-zinc-300">
                             {formatToolName(tool.name)}
                           </span>
                           <div className="flex items-center gap-2">

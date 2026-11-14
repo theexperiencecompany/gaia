@@ -1,4 +1,4 @@
-import { Kbd } from "@heroui/kbd";
+import { Kbd } from "@heroui/react";
 import { SidebarLeft01Icon, SidebarRight01Icon } from "@icons";
 import type { ReactNode } from "react";
 import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
@@ -57,9 +57,9 @@ export const CustomSidebarTrigger = ({
       }
     >
       {open ? (
-        <SidebarLeft01Icon className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-500 transition group-hover/btn:text-primary" />
+        <SidebarLeft01Icon className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-500 transition group-hover/btn:text-accent" />
       ) : (
-        <SidebarRight01Icon className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-500 transition group-hover/btn:text-primary" />
+        <SidebarRight01Icon className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-500 transition group-hover/btn:text-accent" />
       )}
     </SidebarHeaderButton>
   );
@@ -100,7 +100,7 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="relative z-4 p-2 px-3 pb-3">
+      <SidebarFooter className="relative z-[4] p-2 px-3 pb-3">
         <WhatsNewCard />
         <UserContainer />
         <ContactSupport />

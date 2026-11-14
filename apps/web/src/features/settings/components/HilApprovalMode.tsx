@@ -1,10 +1,12 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Select, SelectItem } from "@heroui/select";
+import { Chip, ListBox, Select } from "@heroui/react";
 import type { HilMode } from "@shared/chat";
 import { useRouter } from "next/navigation";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useHilPreferences } from "@/features/settings/hooks/useHilPreferences";
@@ -44,7 +46,7 @@ export function HilApprovalMode() {
     <SettingsSection
       title="Approvals"
       titleAccessory={
-        <Chip size="sm" variant="flat" color="success">
+        <Chip size="sm" variant="soft" color="success">
           Beta
         </Chip>
       }
@@ -55,33 +57,40 @@ export function HilApprovalMode() {
         description={MODES.find((m) => m.key === mode)?.description}
       >
         <Select
-          size="sm"
-          className="w-48"
+          className={inputVariants({ size: "sm", className: "w-48" })}
           aria-label="Approval mode"
-          selectedKeys={[mode]}
+          value={mode}
           isDisabled={isLoading || isSavingMode}
-          onSelectionChange={(keys) => {
-            const next = Array.from(keys)[0] as HilMode | undefined;
+          onChange={(key) => {
+            const next = key as HilMode | null;
             if (next && next !== mode) handleChange(next);
           }}
         >
-          {MODES.map((m) => (
-            <SelectItem key={m.key}>{m.label}</SelectItem>
-          ))}
+          <Select.Trigger>
+            <GaiaSelectValue />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {MODES.map((m) => (
+                <GaiaListBoxItem key={m.key} id={m.key} textValue={m.label} />
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
       </SettingsRow>
       <SettingsRow
         label="Per-tool approvals"
         description="Force a specific tool to always ask, in each integration's tool list."
       >
-        <Button
+        <GaiaButton
           size="sm"
-          variant="flat"
-          className="rounded-xl"
+          shape="md"
+          variant="default-soft"
           onPress={() => router.push("/integrations")}
         >
           Open Integrations
-        </Button>
+        </GaiaButton>
       </SettingsRow>
     </SettingsSection>
   );

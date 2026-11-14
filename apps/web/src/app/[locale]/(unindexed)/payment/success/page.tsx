@@ -1,7 +1,7 @@
 "use client";
+import "../../../../styles/marketing.css";
 
-import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import {
   Alert02Icon,
   CheckmarkCircle02Icon,
@@ -11,6 +11,7 @@ import {
 import * as m from "motion/react-m";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { PaymentBackdrop } from "@/features/pricing/components/PaymentBackdrop";
@@ -161,7 +162,7 @@ export default function PaymentSuccessPage() {
               </>
             ) : (
               <>
-                <CheckmarkCircle02Icon className="mx-auto mb-5 size-16 text-primary" />
+                <CheckmarkCircle02Icon className="mx-auto mb-5 size-16 text-accent" />
                 <h1 className="mb-2 text-2xl font-semibold text-white">
                   Welcome to GAIA
                 </h1>
@@ -224,13 +225,13 @@ export default function PaymentSuccessPage() {
               {isRestarting ? "Starting checkout" : "Try again"}
               {!isRestarting && <RedoIcon className="size-4" />}
             </RaisedButton>
-            <Button
-              variant="flat"
-              className="w-full rounded-xl"
+            <GaiaButton
+              variant="default-soft"
+              className="w-full"
               onPress={() => router.push("/pricing")}
             >
               Back to pricing
-            </Button>
+            </GaiaButton>
           </div>
         </div>
       )}

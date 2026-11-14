@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import {
   BubbleChatAddIcon,
   Calendar01Icon,
@@ -19,6 +18,7 @@ import {
 import * as m from "motion/react-m";
 import type { MouseEvent } from "react";
 import { memo, useCallback, useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   ChevronsDownUp,
   ChevronsUpDown,
@@ -230,7 +230,7 @@ const IntegrationsSidebarContent = memo(function IntegrationsSidebarContent({
             <span className="flex-1 truncate">{integration.name}</span>
             <div className="flex items-center gap-1.5">
               {integration.isPublic && (
-                <InternetIcon width={14} height={14} className="text-primary" />
+                <InternetIcon width={14} height={14} className="text-accent" />
               )}
               {integration.status === "connected" && (
                 <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
@@ -464,16 +464,16 @@ const DemoSidebar = memo(function DemoSidebar({
 
             {/* Primary action button — changes per page */}
             <div className="flex w-full justify-center">
-              <Button
-                color="primary"
+              <GaiaButton
+                variant="accent-soft"
+                tone="accent"
                 size="sm"
                 fullWidth
-                variant="flat"
-                className="mb-4 mt-1 flex justify-start text-sm font-medium text-primary"
-                startContent={primaryAction.icon}
+                className="mt-1 mb-4 flex justify-start text-sm font-medium"
               >
+                {primaryAction.icon}
                 {primaryAction.label}
-              </Button>
+              </GaiaButton>
             </div>
           </div>
 

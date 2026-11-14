@@ -1,6 +1,6 @@
 "use client";
 
-import { ScrollShadow } from "@heroui/scroll-shadow";
+import { ScrollShadow } from "@heroui/react";
 import { CheckmarkCircle02Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";

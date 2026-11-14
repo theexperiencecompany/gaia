@@ -8,8 +8,7 @@
 
 "use client";
 
-import { Button } from "@heroui/button";
-
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { TriggerConnectionPromptProps } from "./types";
 
@@ -35,15 +34,14 @@ export function TriggerConnectionPrompt({
           to configure this trigger
         </p>
       </div>
-      <Button
-        color="primary"
-        variant="flat"
+      <GaiaButton
+        variant="accent-soft"
         size="sm"
         className="shrink-0"
         onPress={onConnect}
       >
         Connect
-      </Button>
+      </GaiaButton>
     </div>
   );
 }

@@ -1,18 +1,18 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import {
   Dropdown,
   DropdownItem,
   DropdownMenu,
   DropdownTrigger,
-} from "@heroui/dropdown";
+} from "@heroui/react";
 import { ArrowDown01Icon, Copy01Icon, Tick01Icon } from "@icons";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import StarterKit from "@tiptap/starter-kit";
 import React from "react";
 import type { z } from "zod";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { copyWithFeedback } from "@/lib/clipboard";
 import { ToolCard } from "../primitives/ToolCard";
 import type { textDocumentSchema } from "../promptSpecs";
@@ -91,8 +91,8 @@ interface ToolbarButtonProps {
 
 function ToolbarButton({ active, onClick, children }: ToolbarButtonProps) {
   return (
-    <Button
-      variant="light"
+    <GaiaButton
+      variant="ghost"
       size="sm"
       onPress={() => onClick()}
       className={[
@@ -104,7 +104,7 @@ function ToolbarButton({ active, onClick, children }: ToolbarButtonProps) {
       ].join(" ")}
     >
       {children}
-    </Button>
+    </GaiaButton>
   );
 }
 
@@ -186,16 +186,20 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
           ].join(" ")}
         >
           {/* Main copy button — copies as markdown */}
-          <Button
+          <GaiaButton
             isIconOnly
-            variant="light"
+            variant="ghost"
             size="sm"
+            tone={copied ? "default" : "muted"}
             onPress={copyAsMarkdown}
             aria-label={copied ? "Copied" : "Copy as Markdown"}
-            className={copied ? "text-emerald-400" : "text-zinc-400"}
           >
-            {copied ? <Tick01Icon size={14} /> : <Copy01Icon size={14} />}
-          </Button>
+            {copied ? (
+              <Tick01Icon size={14} className="text-emerald-400" />
+            ) : (
+              <Copy01Icon size={14} />
+            )}
+          </GaiaButton>
 
           {/* Divider */}
           <div
@@ -206,28 +210,45 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
           />
 
           {/* Chevron dropdown trigger */}
-          <Dropdown placement="bottom-end">
+          <Dropdown>
             <DropdownTrigger>
-              <Button
+              <GaiaButton
                 isIconOnly
-                variant="light"
+                variant="ghost"
                 size="sm"
+                tone={copied ? "default" : "muted"}
                 aria-label="Copy options"
-                className={copied ? "text-emerald-400" : "text-zinc-400"}
               >
-                <ArrowDown01Icon size={12} />
-              </Button>
+                <ArrowDown01Icon
+                  size={12}
+                  className={copied ? "text-emerald-400" : undefined}
+                />
+              </GaiaButton>
             </DropdownTrigger>
-            <DropdownMenu
-              aria-label="Copy options"
-              onAction={(key) => {
-                if (key === "markdown") copyAsMarkdown();
-                if (key === "text") copyAsText();
-              }}
-            >
-              <DropdownItem key="markdown">Copy as Markdown</DropdownItem>
-              <DropdownItem key="text">Copy as Plain Text</DropdownItem>
-            </DropdownMenu>
+            <Dropdown.Popover placement="bottom end">
+              <DropdownMenu
+                aria-label="Copy options"
+                onAction={(key) => {
+                  if (key === "markdown") copyAsMarkdown();
+                  if (key === "text") copyAsText();
+                }}
+              >
+                <DropdownItem
+                  id="markdown"
+                  key="markdown"
+                  textValue="Copy as Markdown"
+                >
+                  Copy as Markdown
+                </DropdownItem>
+                <DropdownItem
+                  id="text"
+                  key="text"
+                  textValue="Copy as Plain Text"
+                >
+                  Copy as Plain Text
+                </DropdownItem>
+              </DropdownMenu>
+            </Dropdown.Popover>
           </Dropdown>
         </div>
       </div>
@@ -311,7 +332,7 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
           "[&_.ProseMirror_p]:text-sm [&_.ProseMirror_p]:leading-relaxed [&_.ProseMirror_p]:text-zinc-300 [&_.ProseMirror_p+p]:mt-2.5",
           "[&_.ProseMirror_strong]:font-semibold [&_.ProseMirror_strong]:text-zinc-100",
           "[&_.ProseMirror_em]:italic [&_.ProseMirror_s]:line-through [&_.ProseMirror_s]:text-zinc-400",
-          "[&_.ProseMirror_a]:font-medium [&_.ProseMirror_a]:text-primary [&_.ProseMirror_a]:underline [&_.ProseMirror_a]:decoration-primary/40 [&_.ProseMirror_a]:underline-offset-2 [&_.ProseMirror_a]:transition-colors hover:[&_.ProseMirror_a]:decoration-primary",
+          "[&_.ProseMirror_a]:font-medium [&_.ProseMirror_a]:text-accent [&_.ProseMirror_a]:underline [&_.ProseMirror_a]:decoration-accent/40 [&_.ProseMirror_a]:underline-offset-2 [&_.ProseMirror_a]:transition-colors hover:[&_.ProseMirror_a]:decoration-accent",
           "[&_.ProseMirror_ul]:my-2 [&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:pl-5",
           "[&_.ProseMirror_ol]:my-2 [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:pl-5",
           "[&_.ProseMirror_li]:my-0.5 [&_.ProseMirror_li]:text-sm [&_.ProseMirror_li]:leading-relaxed [&_.ProseMirror_li]:text-zinc-300 [&_.ProseMirror_li]:marker:text-zinc-500",

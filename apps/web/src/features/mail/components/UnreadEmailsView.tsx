@@ -1,6 +1,6 @@
 "use client";
 
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import {
   BookOpen01Icon,
   CheckListIcon,
@@ -161,7 +161,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
     >
       {isFetching ? (
         <div className="flex h-full items-center justify-center">
-          <Spinner size="md" color="default" />
+          <Spinner size="md" color="current" />
         </div>
       ) : (
         <EmailListCard

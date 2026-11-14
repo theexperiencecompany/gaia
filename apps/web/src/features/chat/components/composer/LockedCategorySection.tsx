@@ -1,6 +1,6 @@
-import { Button } from "@heroui/button";
 import { SquareLock01Icon } from "@icons";
 import type React from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 
@@ -56,11 +56,8 @@ export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
         </div>
 
         {!isConnected && (
-          <Button
-            size="sm"
-            color="primary"
-            variant="flat"
-            startContent={getToolCategoryIcon(
+          <GaiaButton size="sm" variant="accent-soft" onPress={handleConnect}>
+            {getToolCategoryIcon(
               requiredIntegration.id,
               {
                 size: 16,
@@ -71,10 +68,8 @@ export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
               },
               integration?.iconUrl,
             )}
-            onPress={handleConnect}
-          >
             Connect
-          </Button>
+          </GaiaButton>
         )}
       </div>
     </div>

@@ -1,3 +1,4 @@
+import "../../../styles/marketing.css";
 import {
   DESKTOP_SERVER_FORM_PARAM,
   type DesktopServerFormReason,

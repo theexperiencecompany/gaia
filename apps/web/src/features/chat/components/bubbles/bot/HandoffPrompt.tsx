@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import {
   Alert01Icon,
   CheckmarkCircle02Icon,
@@ -11,6 +10,8 @@ import {
   ShieldUserIcon,
   StopCircleIcon,
 } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { browserApi } from "@/features/browser/api/browserApi";
 import {
   type PostHandoffDecision,
@@ -189,24 +190,22 @@ export function HandoffDecision({
   return (
     <div className="flex items-center gap-2">
       {primary}
-      <Button
-        variant={primary ? "flat" : "solid"}
-        radius="sm"
-        className={`flex-1 font-semibold ${
-          primary ? "text-zinc-100" : "bg-[#00bbff] text-zinc-900"
-        }`}
+      <GaiaButton
+        variant={primary ? "tertiary" : "primary"}
+        tone={primary ? "strong" : "default"}
+        className="flex-1 font-semibold"
         onPress={() => decide("continue")}
       >
         I&rsquo;m done
-      </Button>
-      <Button
-        variant="light"
-        radius="sm"
-        className="shrink-0 px-3 text-zinc-500"
+      </GaiaButton>
+      <GaiaButton
+        variant="ghost"
+        tone="faint"
+        className="shrink-0 px-3"
         onPress={() => decide("cancel")}
       >
         Stop task
-      </Button>
+      </GaiaButton>
       {trailing}
     </div>
   );
@@ -223,24 +222,23 @@ function TakeOverButton({
   onPress?: () => void;
   href?: string;
 }) {
-  const className = "flex-1 bg-[#00bbff] font-semibold text-zinc-900";
+  const className = "flex-1 font-semibold";
   if (href) {
     return (
-      <Button
-        as="a"
+      <LinkButton
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        radius="sm"
+        variant="primary"
         className={className}
       >
         {cta}
-      </Button>
+      </LinkButton>
     );
   }
   return (
-    <Button radius="sm" className={className} onPress={onPress}>
+    <GaiaButton className={className} onPress={onPress}>
       {cta}
-    </Button>
+    </GaiaButton>
   );
 }

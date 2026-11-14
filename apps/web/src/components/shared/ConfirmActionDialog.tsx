@@ -1,15 +1,8 @@
 "use client";
 
-import {
-  Button,
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/react";
+import { Modal } from "@heroui/react";
 import { useRouter } from "next/navigation";
-
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useLogout } from "@/features/auth/hooks/useLogout";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { db } from "@/lib/db/chatDb";
@@ -96,36 +89,37 @@ export function ConfirmActionDialog({
 
   return (
     <Modal isOpen={!!action} onOpenChange={handleOpenChange}>
-      <ModalContent>
-        {(onClose) => (
-          <>
-            <ModalHeader className="flex flex-col gap-1">
+      <Modal.Backdrop>
+        <Modal.Container>
+          <Modal.Dialog>
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header className="flex flex-col gap-1">
               {config.title}
-            </ModalHeader>
-            <ModalBody>
+            </Modal.Header>
+            <Modal.Body>
               <p className="text-sm text-zinc-400">{config.description}</p>
-            </ModalBody>
-            <ModalFooter>
-              <Button
-                variant="flat"
-                onPress={onClose}
-                className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+            </Modal.Body>
+            <Modal.Footer>
+              <GaiaButton
+                variant="tertiary"
+                tone="dim"
+                className="hover:bg-zinc-700"
+                onPress={() => handleOpenChange(false)}
               >
                 {config.cancelText}
-              </Button>
-              <Button
-                color={config.variant === "destructive" ? "danger" : "primary"}
+              </GaiaButton>
+              <GaiaButton
                 onPress={() => {
                   handleConfirm();
-                  onClose();
+                  handleOpenChange(false);
                 }}
               >
                 {config.confirmText}
-              </Button>
-            </ModalFooter>
-          </>
-        )}
-      </ModalContent>
+              </GaiaButton>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }

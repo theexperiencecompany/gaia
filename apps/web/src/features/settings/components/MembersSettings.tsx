@@ -1,7 +1,6 @@
 "use client";
 
-import { Skeleton } from "@heroui/skeleton";
-import { Switch } from "@heroui/switch";
+import { Skeleton, Switch } from "@heroui/react";
 import { InviteLinksSection } from "@/features/settings/components/members/InviteLinksSection";
 import { MemberListSection } from "@/features/settings/components/members/MemberListSection";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
@@ -40,10 +39,16 @@ export function MembersSettings() {
                 aria-label="Open sign-up"
                 isSelected={overview.registration_policy === "open"}
                 isDisabled={members.isSettingPolicy}
-                onValueChange={(open) =>
+                onChange={(open: boolean) =>
                   members.setPolicy(open ? "open" : "invite_only")
                 }
-              />
+              >
+                <Switch.Content>
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                </Switch.Content>
+              </Switch>
             </SettingsRow>
           </SettingsSection>
 

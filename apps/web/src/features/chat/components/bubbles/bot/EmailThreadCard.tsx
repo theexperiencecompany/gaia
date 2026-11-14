@@ -1,13 +1,14 @@
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Chip } from "@heroui/chip";
-import { ScrollShadow } from "@heroui/scroll-shadow";
+import { Accordion, Chip, ScrollShadow } from "@heroui/react";
 import { useCallback } from "react";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 
 import { Gmail } from "@/components/shared/icons";
+import { shapeVariants } from "@/components/shared/shape";
 import { sanitizeEmailHtml } from "@/features/mail/utils/sanitizeEmailHtml";
 import type { EmailThreadData } from "@/types/features/mailTypes";
-
 import { parseEmail } from "../../../../mail/utils/mailUtils";
+
+const accordionStyles = accordionVariants({ variant: "light" });
 
 // Use the same formatTime function as EmailListCard
 function formatTime(time: string | null): string {
@@ -84,74 +85,89 @@ export default function EmailThreadCard({
     <div
       className={`mx-auto w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-colors duration-300`}
     >
-      <Accordion variant="light" defaultExpandedKeys={["email-thread"]}>
-        <AccordionItem
-          key="email-thread"
-          aria-label="Email Thread"
-          title={
-            <div className="flex items-center gap-3">
-              <Gmail width={22} height={22} />
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">
-                  Fetched Email Thread
-                </span>
+      <Accordion
+        className={accordionStyles.base()}
+        defaultExpandedKeys={["email-thread"]}
+      >
+        <Accordion.Item id="email-thread">
+          <Accordion.Heading>
+            <Accordion.Trigger className={accordionStyles.trigger()}>
+              <div className="flex items-center gap-3">
+                <Gmail width={22} height={22} />
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">
+                    Fetched Email Thread
+                  </span>
+                </div>
               </div>
-            </div>
-          }
-        >
-          <ScrollShadow className="max-h-[50vh]">
-            <div className="space-y-3">
-              {emailThreadData.messages.map((message) => {
-                const { name: senderName, email: senderEmail } = parseEmail(
-                  message.from,
-                );
+              <Accordion.Indicator className={accordionStyles.indicator()} />
+            </Accordion.Trigger>
+          </Accordion.Heading>
+          <Accordion.Panel>
+            <div className={accordionStyles.content()}>
+              <ScrollShadow className="max-h-[50vh]">
+                <div className="space-y-3">
+                  {emailThreadData.messages.map((message) => {
+                    const { name: senderName, email: senderEmail } = parseEmail(
+                      message.from,
+                    );
 
-                return (
-                  <div key={message.id} className="pt-0 pb-2">
-                    <div className="mb-4 flex w-full flex-col items-start justify-start gap-1">
-                      <div className="flex w-full flex-row items-center justify-between">
-                        <div className="flex flex-row items-center gap-2">
-                          <div className="w-15">
-                            <Chip variant="flat" size="sm" radius="sm">
-                              From
-                            </Chip>
+                    return (
+                      <div key={message.id} className="pt-0 pb-2">
+                        <div className="mb-4 flex w-full flex-col items-start justify-start gap-1">
+                          <div className="flex w-full flex-row items-center justify-between">
+                            <div className="flex flex-row items-center gap-2">
+                              <div className="w-15">
+                                <Chip
+                                  className={shapeVariants({ shape: "sm" })}
+                                  variant="soft"
+                                  size="sm"
+                                >
+                                  From
+                                </Chip>
+                              </div>
+                              <span className="text-sm text-zinc-300">
+                                {senderName}
+                              </span>
+                              <span className="text-xs font-light text-zinc-500">
+                                {senderEmail}
+                              </span>
+                            </div>
+                            <span className="text-xs text-zinc-400">
+                              {formatTime(message.time)}
+                            </span>
                           </div>
-                          <span className="text-sm text-foreground-600">
-                            {senderName}
-                          </span>
-                          <span className="text-xs font-light text-foreground-400">
-                            {senderEmail}
-                          </span>
+                          <div className="flex flex-row items-center gap-2">
+                            <div className="w-15">
+                              <Chip
+                                className={shapeVariants({ shape: "sm" })}
+                                variant="soft"
+                                size="sm"
+                              >
+                                Subject
+                              </Chip>
+                            </div>
+                            <div className="text-sm font-medium text-zinc-300">
+                              {message.subject}
+                            </div>
+                          </div>
                         </div>
-                        <span className="text-xs text-foreground-500">
-                          {formatTime(message.time)}
-                        </span>
+                        {message.body && (
+                          <div className="mt-3">
+                            <EmailBodyRenderer
+                              body={message.body}
+                              content={message.content}
+                            />
+                          </div>
+                        )}
                       </div>
-                      <div className="flex flex-row items-center gap-2">
-                        <div className="w-15">
-                          <Chip variant="flat" size="sm" radius="sm">
-                            Subject
-                          </Chip>
-                        </div>
-                        <div className="text-sm font-medium text-foreground-600">
-                          {message.subject}
-                        </div>
-                      </div>
-                    </div>
-                    {message.body && (
-                      <div className="mt-3">
-                        <EmailBodyRenderer
-                          body={message.body}
-                          content={message.content}
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              </ScrollShadow>
             </div>
-          </ScrollShadow>
-        </AccordionItem>
+          </Accordion.Panel>
+        </Accordion.Item>
       </Accordion>
     </div>
   );

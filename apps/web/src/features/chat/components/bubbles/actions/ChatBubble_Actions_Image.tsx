@@ -1,7 +1,8 @@
-import { Button } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip";
+import { Tooltip } from "@heroui/react";
 import { Cancel01Icon, DownloadSquare01Icon } from "@icons";
 import type React from "react";
+import { overlayVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toast } from "@/lib/toast";
 import type { ImageData } from "@/types/features/toolDataTypes";
 
@@ -62,29 +63,35 @@ export default function ChatBubble_Actions_Image({
   return (
     <div className="flex w-fit items-center gap-2 pl-1">
       {fullWidth && setOpenImage ? (
-        <Button variant="flat" onPress={() => setOpenImage(false)}>
+        <GaiaButton variant="default-soft" onPress={() => setOpenImage(false)}>
           <Cancel01Icon height="22" />
           <span>Cancel</span>
-        </Button>
+        </GaiaButton>
       ) : null}
-      <Tooltip
-        className={`${fullWidth ? "hidden" : ""}`}
-        color="primary"
-        content="Download Image"
-        placement="right"
-        size="md"
-      >
-        <Button
-          className={`w-fit ${fullWidth ? "px-3 py-2" : "bg-transparent p-0 text-zinc-500 data-[hover=true]:bg-transparent"} h-fit rounded-lg`}
-          color="primary"
+      <Tooltip>
+        <GaiaButton
+          aria-label={fullWidth ? undefined : "Download image"}
+          className={fullWidth ? "h-fit w-fit px-3 py-2" : "h-fit w-fit"}
+          shape={fullWidth ? "sm" : "default"}
           isIconOnly={!fullWidth}
           style={{ minWidth: "22px" }}
-          variant={fullWidth ? "solid" : "light"}
+          variant={fullWidth ? "primary" : "text"}
+          inset={fullWidth ? "default" : "none"}
+          tone={fullWidth ? "default" : "faint"}
           onPress={downloadFromSrc}
         >
           <DownloadSquare01Icon className={`cursor-pointer`} height="22" />
           <span className="text-black">{fullWidth ? "Download" : ""}</span>
-        </Button>
+        </GaiaButton>
+        <Tooltip.Content
+          className={overlayVariants({
+            surface: "accent",
+            className: fullWidth ? "hidden" : "",
+          })}
+          placement="right"
+        >
+          Download Image
+        </Tooltip.Content>
       </Tooltip>
     </div>
   );

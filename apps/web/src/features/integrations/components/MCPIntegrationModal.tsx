@@ -1,18 +1,18 @@
 "use client";
 
-import { Kbd } from "@heroui/kbd";
 import {
-  Button,
-  Input,
+  Description,
+  InputGroup,
+  Kbd,
+  Label,
   Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-  Textarea,
+  TextArea,
+  TextField,
 } from "@heroui/react";
 import { ConnectIcon, KeyIcon, PuzzleIcon } from "@icons";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { useModalForm } from "@/hooks/ui/useModalForm";
 import { useModalKeyboardSubmit } from "@/hooks/ui/useModalKeyboardSubmit";
@@ -139,97 +139,133 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={handleClose}
-      placement="center"
-      size="lg"
-      className="shadow-none rounded-2xl"
-      backdrop="blur"
-      isDismissable={!loading}
-      isKeyboardDismissDisabled={loading}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !loading) handleClose();
+      }}
     >
-      <ModalContent>
-        <ModalHeader className="flex flex-col gap-1">
-          <h2 className="text-xl font-semibold">New Integration</h2>
-          <p className="text-sm font-normal text-zinc-400">
-            Use the Model Context Protocol to extend GAIA&apos;s capabilities
-            with external data and tools
-          </p>
-        </ModalHeader>
+      <Modal.Backdrop variant="blur" isDismissable={!loading}>
+        <Modal.Container placement="center" size="lg">
+          <Modal.Dialog className="shadow-none rounded-2xl">
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header className="flex flex-col gap-1">
+              <Modal.Heading className="text-xl font-semibold">
+                New Integration
+              </Modal.Heading>
+              <p className="text-sm font-normal text-zinc-400">
+                Use the Model Context Protocol to extend GAIA&apos;s
+                capabilities with external data and tools
+              </p>
+            </Modal.Header>
 
-        <ModalBody>
-          <div className="flex flex-col gap-4">
-            <Input
-              label="Name"
-              placeholder="Integration Name"
-              value={formData.name}
-              onValueChange={(v) => updateField("name", v)}
-              isRequired
-              startContent={<PuzzleIcon width={16} height={16} />}
-              autoFocus
-            />
+            <Modal.Body>
+              <div className="flex flex-col gap-4">
+                <TextField
+                  className={fieldVariants({ labelPlacement: "inside" })}
+                  value={formData.name}
+                  onChange={(value) => updateField("name", value)}
+                  isRequired
+                >
+                  <Label>Name</Label>
+                  <InputGroup>
+                    <InputGroup.Prefix>
+                      <PuzzleIcon width={16} height={16} />
+                    </InputGroup.Prefix>
+                    <InputGroup.Input
+                      placeholder="Integration Name"
+                      autoFocus
+                    />
+                  </InputGroup>
+                </TextField>
 
-            <Textarea
-              label="Description"
-              placeholder="What does this integration do?"
-              value={formData.description || ""}
-              onValueChange={(v) => updateField("description", v)}
-              minRows={2}
-              maxRows={3}
-            />
+                <TextField
+                  className={fieldVariants({ labelPlacement: "inside" })}
+                  value={formData.description || ""}
+                  onChange={(value) => updateField("description", value)}
+                >
+                  <Label>Description</Label>
+                  <TextArea
+                    placeholder="What does this integration do?"
+                    rows={2}
+                  />
+                </TextField>
 
-            <Input
-              label="Server URL"
-              placeholder="https://mcp.example.com/sse"
-              value={formData.server_url}
-              onValueChange={(v) => updateField("server_url", v)}
-              isRequired
-              description={
-                allowsPrivateServers
-                  ? "A server on your network works too. localhost means the machine GAIA runs on."
-                  : undefined
-              }
-              startContent={<ConnectIcon width={16} height={16} />}
-            />
+                <TextField
+                  className={fieldVariants({ labelPlacement: "inside" })}
+                  value={formData.server_url}
+                  onChange={(value) => updateField("server_url", value)}
+                  isRequired
+                >
+                  <Label>Server URL</Label>
+                  <InputGroup>
+                    <InputGroup.Prefix>
+                      <ConnectIcon width={16} height={16} />
+                    </InputGroup.Prefix>
+                    <InputGroup.Input placeholder="https://mcp.example.com/sse" />
+                  </InputGroup>
+                  {allowsPrivateServers ? (
+                    <Description>
+                      A server on your network works too. localhost means the
+                      machine GAIA runs on.
+                    </Description>
+                  ) : null}
+                </TextField>
 
-            <Input
-              label="API Key / Bearer Token (optional)"
-              placeholder="sk-... or your API token"
-              value={formData.bearer_token || ""}
-              onValueChange={(v) => updateField("bearer_token", v)}
-              type="password"
-              description="If provided, API key auth will be used. Leave empty for OAuth."
-              startContent={<KeyIcon width={16} height={16} />}
-            />
+                <TextField
+                  className={fieldVariants({ labelPlacement: "inside" })}
+                  value={formData.bearer_token || ""}
+                  onChange={(value) => updateField("bearer_token", value)}
+                >
+                  <Label>API Key / Bearer Token (optional)</Label>
+                  <InputGroup>
+                    <InputGroup.Prefix>
+                      <KeyIcon width={16} height={16} />
+                    </InputGroup.Prefix>
+                    <InputGroup.Input
+                      type="password"
+                      placeholder="sk-... or your API token"
+                    />
+                  </InputGroup>
+                  <Description>
+                    If provided, API key auth will be used. Leave empty for
+                    OAuth.
+                  </Description>
+                </TextField>
 
-            <p className="rounded-2xl bg-zinc-900 p-3 text-xs text-zinc-400">
-              GAIA connects to MCP servers over HTTP (streamable HTTP or SSE).
-              Servers started as a command (stdio) can&apos;t be added here: run
-              one with its HTTP transport or behind an HTTP bridge such as
-              supergateway, or connect it from your computer with the device
-              bridge in Settings, Devices.
-            </p>
-          </div>
-        </ModalBody>
+                <p className="rounded-2xl bg-zinc-900 p-3 text-xs text-zinc-400">
+                  GAIA connects to MCP servers over HTTP (streamable HTTP or
+                  SSE). Servers started as a command (stdio) can&apos;t be added
+                  here: run one with its HTTP transport or behind an HTTP bridge
+                  such as supergateway, or connect it from your computer with
+                  the device bridge in Settings, Devices.
+                </p>
+              </div>
+            </Modal.Body>
 
-        <ModalFooter>
-          <Button
-            color="default"
-            variant="light"
-            onPress={handleClose}
-            isDisabled={loading}
-          >
-            Cancel
-          </Button>
-          <Button
-            color="primary"
-            onPress={handleSubmit}
-            isLoading={loading}
-            endContent={!loading && <Kbd keys={[modifierKeyName, "enter"]} />}
-          >
-            Create
-          </Button>
-        </ModalFooter>
-      </ModalContent>
+            <Modal.Footer>
+              <GaiaButton
+                variant="ghost"
+                onPress={handleClose}
+                isDisabled={loading}
+              >
+                Cancel
+              </GaiaButton>
+              <GaiaButton
+                onPress={handleSubmit}
+                isPending={loading}
+                variant="primary"
+              >
+                Create
+                {!loading && (
+                  <Kbd>
+                    <Kbd.Abbr keyValue={modifierKeyName} />
+                    <Kbd.Abbr keyValue="enter" />
+                  </Kbd>
+                )}
+              </GaiaButton>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 };

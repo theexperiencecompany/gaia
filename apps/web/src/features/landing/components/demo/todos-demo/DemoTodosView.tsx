@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import {
   ArrowDown01Icon,
   CalendarCheckOut01Icon,
@@ -15,6 +14,9 @@ import {
 } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import { useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { shapeVariants } from "@/components/shared/shape";
+import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   DEMO_PROJECTS,
@@ -88,7 +90,7 @@ function DemoTodoItem({
   return (
     <button
       type="button"
-      className={`block w-full cursor-pointer p-4 pl-5 text-left transition-all hover:bg-zinc-800/50 ${isSelected ? "bg-primary/5" : ""} ${todo.completed ? "opacity-30" : ""}`}
+      className={`block w-full cursor-pointer p-4 pl-5 text-left transition-all hover:bg-zinc-800/50 ${isSelected ? "bg-accent/5" : ""} ${todo.completed ? "opacity-30" : ""}`}
       onClick={onClick}
     >
       <div className="flex h-full items-start gap-3">
@@ -116,9 +118,14 @@ function DemoTodoItem({
           <div className="mt-2 flex flex-wrap items-center gap-1">
             {todo.due_date && (
               <Chip
-                className="flex items-center px-1 text-zinc-400"
+                className={shapeVariants({
+                  shape: "sm",
+                  className: toneVariants({
+                    tone: "muted",
+                    className: "flex items-center",
+                  }),
+                })}
                 size="sm"
-                radius="sm"
                 color={
                   isDueToday(todo.due_date)
                     ? "success"
@@ -126,45 +133,43 @@ function DemoTodoItem({
                       ? "danger"
                       : "default"
                 }
-                variant="flat"
-                startContent={
-                  <CalendarCheckOut01Icon
-                    width={16}
-                    height={16}
-                    className="mx-1"
-                  />
-                }
+                variant="soft"
               >
-                {formatDueDate(todo.due_date)}
+                <CalendarCheckOut01Icon
+                  width={16}
+                  height={16}
+                  className="mx-1"
+                />
+                <Chip.Label>{formatDueDate(todo.due_date)}</Chip.Label>
               </Chip>
             )}
 
             {todo.priority !== "none" && (
               <Chip
                 size="sm"
-                variant="flat"
-                radius="sm"
-                className={`px-2 ${priorityChipClassNames[todo.priority]}`}
-                startContent={
-                  <Flag02Icon width={15} height={15} className="mx-1" />
-                }
+                variant="soft"
+                className={shapeVariants({
+                  shape: "sm",
+                  className: `px-2 ${priorityChipClassNames[todo.priority]}`,
+                })}
               >
-                {todo.priority.charAt(0).toUpperCase() + todo.priority.slice(1)}
+                <Flag02Icon width={15} height={15} className="mx-1" />
+                <Chip.Label>
+                  {todo.priority.charAt(0).toUpperCase() +
+                    todo.priority.slice(1)}
+                </Chip.Label>
               </Chip>
             )}
 
             {project && (
               <Chip
+                className={shapeVariants({ shape: "sm" })}
                 size="sm"
-                variant="flat"
-                className="px-1 text-zinc-400"
-                radius="sm"
+                variant="soft"
                 style={{ color: project.color }}
-                startContent={
-                  <Folder02Icon width={15} height={15} className="mx-1" />
-                }
               >
-                {project.name}
+                <Folder02Icon width={15} height={15} className="mx-1" />
+                <Chip.Label>{project.name}</Chip.Label>
               </Chip>
             )}
 
@@ -172,33 +177,40 @@ function DemoTodoItem({
               <Chip
                 key={label}
                 size="sm"
-                variant="flat"
-                className="flex items-center px-1 text-zinc-400"
-                radius="sm"
-                startContent={
-                  <Tag01Icon width={17} height={17} className="mx-1" />
-                }
+                variant="soft"
+                className={shapeVariants({
+                  shape: "sm",
+                  className: toneVariants({
+                    tone: "muted",
+                    className: "flex items-center",
+                  }),
+                })}
               >
-                {label.charAt(0).toUpperCase() + label.slice(1)}
+                <Tag01Icon width={17} height={17} className="mx-1" />
+                <Chip.Label>
+                  {label.charAt(0).toUpperCase() + label.slice(1)}
+                </Chip.Label>
               </Chip>
             ))}
 
             {todo.subtasks.length > 0 && (
               <Chip
                 size="sm"
-                variant="flat"
-                className="px-1 text-zinc-400"
-                radius="sm"
-                startContent={
-                  <CheckmarkCircle02Icon
-                    width={15}
-                    height={15}
-                    className="mx-1"
-                  />
-                }
+                variant="soft"
+                className={shapeVariants({
+                  shape: "sm",
+                  className: toneVariants({ tone: "muted" }),
+                })}
               >
-                {todo.subtasks.filter((s) => s.completed).length}/
-                {todo.subtasks.length} checklist
+                <CheckmarkCircle02Icon
+                  width={15}
+                  height={15}
+                  className="mx-1"
+                />
+                <Chip.Label>
+                  {todo.subtasks.filter((s) => s.completed).length}/
+                  {todo.subtasks.length} checklist
+                </Chip.Label>
               </Chip>
             )}
           </div>
@@ -263,7 +275,7 @@ function DemoWorkflowSteps({ steps }: { steps: DemoWorkflowStep[] }) {
   return (
     <div className="relative">
       {/* Gradient connector line */}
-      <div className="absolute left-[13px] top-4 bottom-4 w-[2px] bg-linear-to-b from-primary via-primary/80 to-transparent" />
+      <div className="absolute left-[13px] top-4 bottom-4 w-[2px] bg-linear-to-b from-accent via-accent/80 to-transparent" />
       <div className="space-y-4">
         {steps.map((step, index) => {
           const IconComponent = getToolCategoryIcon(step.category, {
@@ -273,24 +285,22 @@ function DemoWorkflowSteps({ steps }: { steps: DemoWorkflowStep[] }) {
           return (
             <div key={step.id} className="flex items-start gap-3">
               {/* Numbered dot */}
-              <div className="relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-primary bg-primary/10 backdrop-blur-sm">
-                <span className="text-xs font-medium text-primary">
+              <div className="relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-accent bg-accent/10 backdrop-blur-sm">
+                <span className="text-xs font-medium text-accent">
                   {index + 1}
                 </span>
               </div>
               {/* Step content */}
               <div className="flex-1 space-y-1 pt-0.5">
                 <div className="flex items-center gap-2">
-                  <Chip
-                    size="sm"
-                    variant="flat"
-                    className="h-6 text-xs"
-                    startContent={IconComponent}
-                  >
-                    {step.category
-                      .replace(/([a-z])([A-Z])/g, "$1 $2")
-                      .replace(/_/g, " ")
-                      .replace(/\b\w/g, (c) => c.toUpperCase())}
+                  <Chip size="sm" variant="soft" className="h-6 text-xs">
+                    {IconComponent}
+                    <Chip.Label>
+                      {step.category
+                        .replace(/([a-z])([A-Z])/g, "$1 $2")
+                        .replace(/_/g, " ")
+                        .replace(/\b\w/g, (c) => c.toUpperCase())}
+                    </Chip.Label>
                   </Chip>
                 </div>
                 <p className="text-xs font-medium text-zinc-100">
@@ -478,15 +488,14 @@ function DemoTodoSidebar({
             addSuffix: true,
           })}
         </span>
-        <Button
+        <GaiaButton
+          variant="danger-soft"
           isIconOnly
-          color="danger"
           size="sm"
-          variant="flat"
           aria-label="Delete todo"
         >
           <Delete02Icon className="size-5" />
-        </Button>
+        </GaiaButton>
       </div>
     </div>
   );

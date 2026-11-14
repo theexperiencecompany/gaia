@@ -1,11 +1,15 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Divider } from "@heroui/divider";
-import { Input, Textarea } from "@heroui/input";
-import { Modal, ModalBody, ModalContent } from "@heroui/modal";
-import { ScrollShadow } from "@heroui/scroll-shadow";
+import {
+  Chip,
+  FieldError,
+  Input,
+  Label,
+  Modal,
+  ScrollShadow,
+  TextArea,
+  TextField,
+} from "@heroui/react";
 import {
   AttachmentIcon,
   Cancel01Icon,
@@ -17,7 +21,14 @@ import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
+import {
+  inputVariants,
+  modalVariants,
+} from "@/components/shared/controlVariants";
+import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronRight, Gmail } from "@/components/shared/icons";
+import { toneVariants } from "@/components/shared/tone";
 import { Separator } from "@/components/ui/separator";
 import { mailApi } from "@/features/mail/api/mailApi";
 import {
@@ -96,11 +107,9 @@ function ComposeHeader({
   onToggle: () => void;
 }) {
   return (
-    <Button
+    <GaiaButton
       fullWidth
-      disableRipple
-      variant="light"
-      radius="none"
+      variant="ghost"
       onPress={onToggle}
       aria-expanded={!isCollapsed}
       className="h-auto justify-between px-6 pt-4 pb-3"
@@ -111,7 +120,7 @@ function ComposeHeader({
           {isDraft ? "Email Draft" : "Compose Email"}
         </span>
         {hasThread && (
-          <Chip size="sm" variant="flat" color="primary">
+          <Chip size="sm" variant="soft" color="accent">
             Reply
           </Chip>
         )}
@@ -121,7 +130,7 @@ function ComposeHeader({
           isCollapsed ? "rotate-0" : "rotate-90"
         }`}
       />
-    </Button>
+    </GaiaButton>
   );
 }
 
@@ -135,15 +144,29 @@ function EmailBodyPreview({
   onEdit: () => void;
 }) {
   return (
-    <ScrollShadow className="relative z-1 max-h-46 overflow-y-auto pb-5 text-sm leading-relaxed text-zinc-200">
+    <ScrollShadow
+      className={toneVariants({
+        tone: "bright",
+        className:
+          "relative z-1 max-h-46 overflow-y-auto text-sm leading-relaxed",
+      })}
+    >
       {!isLocked && (
         <div className="absolute top-0 right-0 z-2 flex w-full justify-end">
-          <Button variant="light" size="sm" isIconOnly onPress={onEdit}>
+          <GaiaButton
+            aria-label="Edit"
+            variant="ghost"
+            size="sm"
+            isIconOnly
+            onPress={onEdit}
+          >
             <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
-          </Button>
+          </GaiaButton>
         </div>
       )}
-      <HtmlEmailBody html={html} />
+      <div className="pb-5">
+        <HtmlEmailBody html={html} />
+      </div>
     </ScrollShadow>
   );
 }
@@ -162,13 +185,14 @@ function AttachmentsRow({
         <Chip
           key={`${attachment.name}-${attachment.mimetype}`}
           size="sm"
-          variant="flat"
-          startContent={
-            <AttachmentIcon className="h-3.5 w-3.5 text-zinc-400" />
-          }
-          className="max-w-full text-xs text-zinc-200"
+          variant="soft"
+          className={toneVariants({
+            tone: "bright",
+            className: "max-w-full text-xs",
+          })}
         >
-          <span className="truncate">{attachment.name}</span>
+          <AttachmentIcon className="h-3.5 w-3.5 text-zinc-400" />
+          <Chip.Label className="truncate">{attachment.name}</Chip.Label>
         </Chip>
       ))}
     </div>
@@ -216,9 +240,15 @@ function ComposeFields({
         </div>
 
         {!isLocked && (
-          <Button variant="light" size="sm" isIconOnly onPress={onEdit}>
+          <GaiaButton
+            aria-label="Edit"
+            variant="ghost"
+            size="sm"
+            isIconOnly
+            onPress={onEdit}
+          >
             <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
-          </Button>
+          </GaiaButton>
         )}
       </div>
       <Separator className="my-1.5 bg-zinc-700" />
@@ -251,21 +281,18 @@ function RecipientRow({
       <span className="flex w-full items-center justify-between font-medium text-zinc-200">
         {emails.join(", ") || ""}
         {!isLocked && (
-          <Button
+          <GaiaButton
+            aria-label={emails.length !== 0 ? "Edit recipients" : undefined}
             size="sm"
             onPress={onEdit}
-            variant={emails.length === 0 ? "flat" : "light"}
+            variant={emails.length === 0 ? "tertiary" : "ghost"}
             isIconOnly={emails.length !== 0}
-            endContent={
-              emails.length === 0 ? (
-                ""
-              ) : (
-                <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
-              )
-            }
           >
+            {emails.length !== 0 && (
+              <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
+            )}
             {emails.length === 0 ? addLabel : ``}
-          </Button>
+          </GaiaButton>
         )}
       </span>
     </div>
@@ -293,61 +320,86 @@ function EditEmailModal({
   });
 
   return (
-    <Modal isOpen={isOpen} onOpenChange={onClose} size="2xl">
-      <ModalContent className="w-full max-w-md">
-        <ModalBody>
-          <div className="pt-2 text-sm font-medium">Edit Email</div>
-          {/* Subject Field */}
-          <div className="mb-1">
-            <Input
-              label="Subject"
-              placeholder="Subject"
-              value={draft.subject}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, subject: e.target.value }))
-              }
-              isInvalid={!!errors.subject}
-              errorMessage={errors.subject}
-              size="sm"
-            />
-          </div>
-          {/* Body Field */}
-          <div>
-            <Textarea
-              label="Message"
-              placeholder="Your message"
-              value={draft.body}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, body: e.target.value }))
-              }
-              minRows={5}
-              maxRows={8}
-              isInvalid={!!errors.body}
-              errorMessage={errors.body}
-              size="sm"
-            />
-          </div>
-          {/* Action Buttons */}
-          <div className="mt-4 flex justify-end gap-2">
-            <Button
-              variant="light"
-              size="sm"
-              onPress={onClose}
-              className="h-7 px-2 text-xs text-gray-300"
-            >
-              Cancel
-            </Button>
-            <Button
-              color="primary"
-              size="sm"
-              onPress={() => onSave(draft)}
-              className="h-7 px-3 text-xs font-medium"
-            >
-              Save
-            </Button>
-          </div>
-        </ModalBody>
-      </ModalContent>
+    <Modal>
+      <Modal.Backdrop
+        isOpen={isOpen}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) onClose();
+        }}
+      >
+        <Modal.Container>
+          <Modal.Dialog
+            className={modalVariants({
+              size: "2xl",
+              className: "w-full max-w-md",
+            })}
+          >
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Body>
+              <div className="pt-2 text-sm font-medium">Edit Email</div>
+              {/* Subject Field */}
+              <div className="mb-1">
+                <TextField
+                  className={fieldVariants({
+                    labelPlacement: "inside",
+                    className: inputVariants({ size: "sm" }),
+                  })}
+                  value={draft.subject}
+                  onChange={(value) =>
+                    setDraft((d) => ({ ...d, subject: value }))
+                  }
+                  isInvalid={!!errors.subject}
+                >
+                  <Label>Subject</Label>
+                  <Input placeholder="Subject" />
+                  <FieldError>{errors.subject}</FieldError>
+                </TextField>
+              </div>
+              {/* Body Field */}
+              <div>
+                <TextField
+                  className={fieldVariants({
+                    labelPlacement: "inside",
+                    className: inputVariants({ size: "sm" }),
+                  })}
+                  value={draft.body}
+                  onChange={(value) => setDraft((d) => ({ ...d, body: value }))}
+                  isInvalid={!!errors.body}
+                >
+                  <Label>Message</Label>
+                  <TextArea
+                    placeholder="Your message"
+                    rows={5}
+                    className="field-sizing-content max-h-[calc(10rem+var(--gaia-field-inside-textarea-padding-top)+var(--gaia-field-inside-textarea-padding-bottom))] text-sm"
+                  />
+                  <FieldError>{errors.body}</FieldError>
+                </TextField>
+              </div>
+              {/* Action Buttons */}
+              <div className="mt-4 flex justify-end gap-2">
+                <GaiaButton
+                  variant="ghost"
+                  tone="dim"
+                  inset="tight"
+                  size="sm"
+                  onPress={onClose}
+                  className="h-7 text-xs"
+                >
+                  Cancel
+                </GaiaButton>
+                <GaiaButton
+                  size="sm"
+                  onPress={() => onSave(draft)}
+                  className="h-7 text-xs font-medium"
+                  variant="primary"
+                >
+                  Save
+                </GaiaButton>
+              </div>
+            </Modal.Body>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }
@@ -403,70 +455,83 @@ function RecipientSelectionModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onOpenChange={onClose} size="sm">
-      <ModalContent>
-        <ModalBody>
-          <div className="pt-2 text-sm font-medium">{title}</div>
+    <Modal>
+      <Modal.Backdrop
+        isOpen={isOpen}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) onClose();
+        }}
+      >
+        <Modal.Container size="sm">
+          <Modal.Dialog>
+            <Modal.Body>
+              <div className="pt-2 text-sm font-medium">{title}</div>
 
-          {/* Suggestions */}
-          {suggestions.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {suggestions.map((email) => (
-                <Chip
-                  key={email}
-                  size="sm"
-                  variant="flat"
-                  color={selectedSet.has(email) ? "primary" : "default"}
-                  className="cursor-pointer text-xs"
-                  onClick={() => handleSuggestionToggle(email)}
-                  endContent={
-                    selectedSet.has(email) ? (
-                      <Cancel01Icon className="h-3 w-3" />
-                    ) : null
-                  }
+              {/* Suggestions */}
+              {suggestions.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {suggestions.map((email) => (
+                    <Chip
+                      key={email}
+                      size="sm"
+                      variant="soft"
+                      color={selectedSet.has(email) ? "accent" : "default"}
+                      className="cursor-pointer text-xs"
+                      onClick={() => handleSuggestionToggle(email)}
+                    >
+                      {selectedSet.has(email) && (
+                        <Cancel01Icon className="h-3 w-3" />
+                      )}
+                      <Chip.Label>{email}</Chip.Label>
+                    </Chip>
+                  ))}
+                </div>
+              )}
+
+              {suggestions.length > 0 && (
+                <Separator className="my-2 bg-zinc-700" />
+              )}
+
+              <div className="flex gap-2">
+                <TextField
+                  className={inputVariants({ size: "sm" })}
+                  value={customEmailInput}
+                  onChange={(value) => {
+                    setCustomEmailInput(value);
+                    setCustomEmailError("");
+                  }}
+                  isInvalid={!!customEmailError}
                 >
-                  {email}
-                </Chip>
-              ))}
-            </div>
-          )}
+                  <Input
+                    placeholder="Add email..."
+                    onKeyDown={handleCustomEmailKeyDown}
+                  />
+                  <FieldError>{customEmailError}</FieldError>
+                </TextField>
+                <GaiaButton
+                  aria-label="Add email"
+                  size="sm"
+                  onPress={handleAddCustomEmail}
+                  isIconOnly
+                  variant="primary"
+                >
+                  <PlusSignIcon className="h-4 w-4" />
+                </GaiaButton>
+              </div>
 
-          {suggestions.length > 0 && <Divider className="my-2 bg-zinc-700" />}
-
-          <div className="flex gap-2">
-            <Input
-              placeholder="Add email..."
-              value={customEmailInput}
-              onChange={(e) => {
-                setCustomEmailInput(e.target.value);
-                setCustomEmailError("");
-              }}
-              onKeyDown={handleCustomEmailKeyDown}
-              size="sm"
-              isInvalid={!!customEmailError}
-              errorMessage={customEmailError}
-            />
-            <Button
-              size="sm"
-              color="primary"
-              onPress={handleAddCustomEmail}
-              isIconOnly
-            >
-              <PlusSignIcon className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="mt-4 flex justify-end gap-2">
-            <Button variant="light" size="sm" onPress={onClose}>
-              Cancel
-            </Button>
-            <Button color="primary" size="sm" onPress={onConfirm}>
-              Done ({selectedEmails.length})
-            </Button>
-          </div>
-        </ModalBody>
-      </ModalContent>
+              {/* Action Buttons */}
+              <div className="mt-4 flex justify-end gap-2">
+                <GaiaButton variant="ghost" size="sm" onPress={onClose}>
+                  Cancel
+                </GaiaButton>
+                <GaiaButton size="sm" onPress={onConfirm} variant="primary">
+                  Done ({selectedEmails.length})
+                </GaiaButton>
+              </div>
+            </Modal.Body>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }
@@ -622,20 +687,20 @@ export default function EmailComposeCard({
                 onEdit={handleEditClick}
               />
               <div className="flex justify-end px-6 pb-5">
-                <Button
-                  color="primary"
+                <GaiaButton
+                  shape="pill"
                   onPress={handleSend}
-                  isLoading={isSending}
+                  isPending={isSending}
                   isDisabled={recipients.to.length === 0}
-                  radius="full"
                   className="font-medium"
+                  variant="primary"
                 >
                   {isSending
                     ? "Sending..."
                     : emailData.draft_id
                       ? "Send Draft"
                       : "Send"}
-                </Button>
+                </GaiaButton>
               </div>
             </m.div>
           )}

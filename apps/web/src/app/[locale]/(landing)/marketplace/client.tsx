@@ -1,6 +1,6 @@
 "use client";
 
-import { Pagination } from "@heroui/pagination";
+import { Pagination } from "@heroui/react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
@@ -40,6 +40,10 @@ export function IntegrationsPageClient() {
   const nativeFetched = useRef(false);
 
   const totalPages = useMemo(() => Math.ceil(total / ITEMS_PER_PAGE), [total]);
+  const pageNumbers = useMemo(
+    () => Array.from({ length: totalPages }, (_, idx) => idx + 1),
+    [totalPages],
+  );
 
   const loadIntegrations = useCallback(
     async (page: number, showFilteringSkeleton = false) => {
@@ -202,16 +206,36 @@ export function IntegrationsPageClient() {
           {/* Pagination — community only */}
           {totalPages > 1 && (
             <div className="mt-12 flex justify-center">
-              <Pagination
-                total={totalPages}
-                page={currentPage}
-                onChange={handlePageChange}
-                showControls
-                variant="faded"
-                classNames={{
-                  base: "cursor-pointer!",
-                }}
-              />
+              <Pagination>
+                <Pagination.Content>
+                  <Pagination.Item>
+                    <Pagination.Previous
+                      isDisabled={currentPage <= 1}
+                      onPress={() => handlePageChange(currentPage - 1)}
+                    >
+                      <Pagination.PreviousIcon />
+                    </Pagination.Previous>
+                  </Pagination.Item>
+                  {pageNumbers.map((pageNumber) => (
+                    <Pagination.Item key={pageNumber}>
+                      <Pagination.Link
+                        isActive={currentPage === pageNumber}
+                        onPress={() => handlePageChange(pageNumber)}
+                      >
+                        {pageNumber}
+                      </Pagination.Link>
+                    </Pagination.Item>
+                  ))}
+                  <Pagination.Item>
+                    <Pagination.Next
+                      isDisabled={currentPage >= totalPages}
+                      onPress={() => handlePageChange(currentPage + 1)}
+                    >
+                      <Pagination.NextIcon />
+                    </Pagination.Next>
+                  </Pagination.Item>
+                </Pagination.Content>
+              </Pagination>
             </div>
           )}
         </>

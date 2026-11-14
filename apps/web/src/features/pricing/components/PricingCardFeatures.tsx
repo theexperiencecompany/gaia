@@ -29,7 +29,7 @@ export function PricingCardFeatures({
             <Tick02Icon
               height="15"
               width="15"
-              className={`mt-1 shrink-0 ${isPro ? "text-primary" : "text-zinc-500"}`}
+              className={`mt-1 shrink-0 ${isPro ? "text-accent" : "text-zinc-500"}`}
             />
             <PlanFeature feature={feature} />
           </div>

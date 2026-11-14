@@ -1,9 +1,8 @@
 "use client";
 
-import "katex/dist/katex.min.css";
-
 import Image from "next/image";
 import type React from "react";
+import { useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkBreaks from "remark-breaks";
@@ -39,6 +38,12 @@ function headingId(children: React.ReactNode): string {
 
 export default function MarkdownWrapper({ content }: { content: string }) {
   const { openDialog } = useImageDialog();
+
+  useEffect(() => {
+    if (/\$[^$]+\$|\\\(|\\\[|\\begin\{/.test(content)) {
+      void import("katex/dist/katex.min.css");
+    }
+  }, [content]);
 
   return (
     <div
@@ -131,7 +136,7 @@ export default function MarkdownWrapper({ content }: { content: string }) {
           ),
           thead: ({ ...props }) => (
             <thead
-              className="bg-opacity-20 border border-zinc-700 bg-zinc-700"
+              className="border border-zinc-700 bg-zinc-700/20"
               {...props}
             />
           ),

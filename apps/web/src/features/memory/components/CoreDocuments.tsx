@@ -1,16 +1,15 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Divider } from "@heroui/divider";
-import { Textarea } from "@heroui/input";
-import { Skeleton } from "@heroui/skeleton";
-import { Tab, Tabs } from "@heroui/tabs";
+import { Separator, Skeleton, Tabs, TextArea } from "@heroui/react";
 import { FileEmpty02Icon, PencilEdit02Icon } from "@icons";
 import type { MemoryDocType, MemoryDocument } from "@shared/api/generated";
 import { formatDistanceToNow } from "date-fns";
 import { type ReactNode, useEffect, useState, useTransition } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { separatorVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { shapeVariants } from "@/components/shared/shape";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { MemoryEmptyState } from "@/features/memory/components/MemoryEmptyState";
 import { CORE_DOCUMENTS } from "@/features/memory/constants";
@@ -116,31 +115,30 @@ export function CoreDocuments() {
   if (draft !== null) {
     documentContent = (
       <div className="space-y-3">
-        <Textarea
+        <TextArea
           value={draft}
-          onValueChange={setDraft}
-          minRows={12}
-          maxRows={24}
+          onChange={(e) => setDraft(e.target.value)}
+          className="min-h-48"
           autoFocus
         />
         <div className="flex justify-end gap-2">
-          <Button
+          <GaiaButton
             size="sm"
-            variant="light"
-            className="rounded-xl"
+            shape="md"
+            variant="ghost"
             onPress={() => setDraft(null)}
           >
             Cancel
-          </Button>
-          <Button
+          </GaiaButton>
+          <GaiaButton
             size="sm"
-            color="primary"
-            className="rounded-xl"
+            shape="md"
             onPress={handleSave}
-            isLoading={isSaving}
+            isPending={isSaving}
+            variant="primary"
           >
             Save
-          </Button>
+          </GaiaButton>
         </div>
       </div>
     );
@@ -160,17 +158,24 @@ export function CoreDocuments() {
     <div className="space-y-3">
       {/* Inner doc tabs — same variant/size as the main memory tabs */}
       <Tabs
-        variant="solid"
-        radius="full"
+        className={shapeVariants({ shape: "pill" })}
+        variant="primary"
         selectedKey={selectedDocType}
         onSelectionChange={(key) => {
           setSelectedDocType(key as MemoryDocType);
           setDraft(null);
         }}
       >
-        {CORE_DOCUMENTS.map((doc) => (
-          <Tab key={doc.docType} title={doc.fileName} />
-        ))}
+        <Tabs.ListContainer>
+          <Tabs.List aria-label="Core documents">
+            {CORE_DOCUMENTS.map((doc) => (
+              <Tabs.Tab key={doc.docType} id={doc.docType}>
+                {doc.fileName}
+                <Tabs.Indicator />
+              </Tabs.Tab>
+            ))}
+          </Tabs.List>
+        </Tabs.ListContainer>
       </Tabs>
 
       <div className="rounded-2xl bg-zinc-800 px-5 py-4">
@@ -182,7 +187,12 @@ export function CoreDocuments() {
         {/* Meta row — version + updated timestamp, separated by divider */}
         {document && (
           <>
-            <Divider className="my-3 bg-zinc-700/50" />
+            <Separator
+              className={separatorVariants({
+                surface: "raised",
+                className: "my-3",
+              })}
+            />
             <div className="flex items-center justify-between gap-3">
               <p className="flex items-center gap-1.5 text-xs text-zinc-500">
                 <span>v{document.version}</span>
@@ -195,15 +205,16 @@ export function CoreDocuments() {
                 </span>
               </p>
               {draft === null && (
-                <Button
+                <GaiaButton
                   size="sm"
-                  variant="flat"
-                  className="shrink-0 rounded-xl"
-                  startContent={<PencilEdit02Icon className="size-4" />}
+                  shape="md"
+                  variant="default-soft"
+                  className="shrink-0"
                   onPress={() => setDraft(document.content)}
                 >
+                  <PencilEdit02Icon className="size-4" />
                   Edit
-                </Button>
+                </GaiaButton>
               )}
             </div>
           </>

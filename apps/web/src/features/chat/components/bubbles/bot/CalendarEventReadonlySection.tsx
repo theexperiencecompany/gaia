@@ -3,7 +3,7 @@ import {
   formatDateWithRelative,
   formatTimeRange,
 } from "@gaia/shared";
-import { ScrollShadow } from "@heroui/scroll-shadow";
+import { ScrollShadow } from "@heroui/react";
 import type { CalendarOptions } from "@/types/features/calendarTypes";
 
 import { EventCard } from "./CalendarEventCard";

@@ -334,7 +334,7 @@ function VoiceSessionInner({
           audible output). */}
       <StartAudio
         label="Tap to enable sound"
-        className="fixed top-16 left-1/2 z-50 -translate-x-1/2 cursor-pointer rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground shadow-lg transition-transform hover:scale-105"
+        className="fixed top-16 left-1/2 z-50 -translate-x-1/2 cursor-pointer rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-accent-foreground shadow-lg transition-transform hover:scale-105"
       />
       {children}
     </VoiceSessionProvider>

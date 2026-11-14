@@ -1,8 +1,10 @@
 "use client";
 
-import { Checkbox } from "@heroui/checkbox";
-import { Input, Textarea } from "@heroui/input";
+import { Checkbox, Input, TextArea } from "@heroui/react";
 import { useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { shapeVariants } from "@/components/shared/shape";
+import { toneVariants } from "@/components/shared/tone";
 
 interface TodoSidebarTitleProps {
   title: string;
@@ -27,15 +29,18 @@ export function TodoSidebarTitle({
     <div className="flex items-start gap-1">
       <Checkbox
         isSelected={completed}
-        onValueChange={onToggleComplete}
-        size="lg"
-        color="success"
-        radius="full"
-        classNames={{
-          wrapper: `mt-1 ${completed ? "" : "border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-900 "}`,
-          label: "w-[30vw]",
-        }}
-      />
+        onChange={onToggleComplete}
+        className={shapeVariants({
+          shape: "pill",
+          className: `mt-1 ${completed ? "" : "border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-900 "}`,
+        })}
+      >
+        <Checkbox.Content className="w-[30vw]">
+          <Checkbox.Control>
+            <Checkbox.Indicator />
+          </Checkbox.Control>
+        </Checkbox.Content>
+      </Checkbox>
       <div className="flex-1 space-y-3">
         {isEditing ? (
           <Input
@@ -53,13 +58,14 @@ export function TodoSidebarTitle({
             }}
             onBlur={(e) => save(e.target.value)}
             autoFocus
-            classNames={{
-              input:
-                "text-2xl font-medium bg-transparent text-zinc-100 placeholder:text-zinc-500",
-              inputWrapper:
-                "bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent",
-            }}
-            variant="underlined"
+            className={inputVariants({
+              variant: "transparent",
+              placeholder: "faint",
+              className: toneVariants({
+                tone: "strong",
+                className: "border-0 text-2xl font-medium shadow-none",
+              }),
+            })}
           />
         ) : (
           <h1
@@ -95,7 +101,7 @@ export function TodoSidebarDescription({
 
   if (isEditing) {
     return (
-      <Textarea
+      <TextArea
         defaultValue={description || ""}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
@@ -107,15 +113,16 @@ export function TodoSidebarDescription({
           setIsEditing(false);
         }}
         placeholder="Add a description..."
-        minRows={4}
-        maxRows={6}
+        rows={4}
         autoFocus
-        classNames={{
-          input: "bg-transparent text-zinc-200 placeholder:text-zinc-500",
-          inputWrapper:
-            "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
-        }}
-        variant="flat"
+        className={inputVariants({
+          variant: "subtle",
+          placeholder: "faint",
+          className: toneVariants({
+            tone: "bright",
+            className: "max-h-40 shadow-none",
+          }),
+        })}
       />
     );
   }

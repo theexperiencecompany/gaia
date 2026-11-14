@@ -2,6 +2,7 @@
 
 import { Tooltip } from "@heroui/react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { Focusable } from "react-aria-components";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -29,7 +30,7 @@ export const SidebarHeaderButton = ({
       size="icon"
       variant="ghost"
       className={cn(
-        "group/btn group rounded-xl p-1! hover:bg-primary/20 hover:text-primary",
+        "group/btn group rounded-xl p-1! hover:bg-accent/20 hover:text-accent",
         className,
       )}
       onClick={onClick}
@@ -41,5 +42,10 @@ export const SidebarHeaderButton = ({
 
   if (!tooltip) return button;
 
-  return <Tooltip content={tooltip}>{button}</Tooltip>;
+  return (
+    <Tooltip>
+      <Focusable>{button}</Focusable>
+      <Tooltip.Content>{tooltip}</Tooltip.Content>
+    </Tooltip>
+  );
 };

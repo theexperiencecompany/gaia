@@ -1,7 +1,8 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { getToolDisplayName } from "@shared/icons";
+import { shapeVariants } from "@/components/shared/shape";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 
@@ -28,7 +29,7 @@ export default function WorkflowStep({
   const dotSize = isLarge ? "h-8 w-8" : "h-7 w-7";
   const dotTextSize = isLarge ? "text-sm" : "text-xs";
   const chipTextSize = isLarge ? "text-sm" : "text-xs";
-  const chipPadding = isLarge ? "py-5!" : "py-4!";
+  const chipHeight = isLarge ? "h-10" : "h-8";
   const iconSize = isLarge ? 22 : 17;
   const titleTextSize = isLarge ? "text-base" : "text-sm";
   const descriptionTextSize = isLarge ? "text-sm" : "text-xs";
@@ -42,7 +43,7 @@ export default function WorkflowStep({
   return (
     <div className="relative flex items-start gap-5">
       <div
-        className={`relative z-10 mt-0.5 flex ${dotSize} shrink-0 items-center justify-center rounded-full bg-primary`}
+        className={`relative z-10 mt-0.5 flex ${dotSize} shrink-0 items-center justify-center rounded-full bg-accent`}
       >
         <span className={`${dotTextSize} font-semibold text-black`}>
           {index + 1}
@@ -52,26 +53,26 @@ export default function WorkflowStep({
       <div className="flex-1 space-y-2">
         <div className="flex items-center gap-2">
           <Chip
-            radius="md"
-            variant="flat"
+            variant="soft"
             title={categoryLabel}
             aria-label={categoryLabel}
-            className={`${chipPadding} pl-2 space-x-1 truncate ${chipTextSize}`}
-            startContent={
-              <div className="min-w-fit">
-                {getToolCategoryIcon(
-                  step.category,
-                  {
-                    size: iconSize,
-                    width: iconSize,
-                    height: iconSize,
-                    showBackground: false,
-                  },
-                  getIntegrationIconUrl(step.category),
-                )}
-              </div>
-            }
+            className={shapeVariants({
+              shape: "md",
+              className: `${chipHeight} gap-1 truncate ${chipTextSize}`,
+            })}
           >
+            <div className="min-w-fit">
+              {getToolCategoryIcon(
+                step.category,
+                {
+                  size: iconSize,
+                  width: iconSize,
+                  height: iconSize,
+                  showBackground: false,
+                },
+                getIntegrationIconUrl(step.category),
+              )}
+            </div>
             {categoryLabel}
           </Chip>
         </div>

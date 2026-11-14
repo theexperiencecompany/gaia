@@ -1,12 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Kbd } from "@heroui/kbd";
-import { useDisclosure } from "@heroui/modal";
-import { Spinner } from "@heroui/spinner";
-import { Tooltip } from "@heroui/tooltip";
+import { Kbd, Spinner, Tooltip, useOverlayState } from "@heroui/react";
 import { ZapIcon } from "@icons";
 import { useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import CreateWorkflowModal from "@/features/workflows/components/CreateWorkflowModal";
 import WorkflowIcons from "@/features/workflows/components/shared/WorkflowIcons";
 import WorkflowModal from "@/features/workflows/components/WorkflowModal";
@@ -14,7 +11,7 @@ import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 import type { Workflow } from "@/types/features/workflowTypes";
 
 export default function WorkflowsSidebar() {
-  const { isOpen, onOpen, onOpenChange } = useDisclosure();
+  const { isOpen, open, setOpen } = useOverlayState();
   const { workflows, isLoading } = useWorkflows();
 
   // State for editing a specific workflow
@@ -32,27 +29,25 @@ export default function WorkflowsSidebar() {
   return (
     <>
       <div className="flex flex-col gap-3">
-        <Tooltip
-          content={
-            <span className="flex items-center gap-2">
-              New Workflow
-              <Kbd className="text-[10px]">C</Kbd>
-            </span>
-          }
-          placement="right"
-        >
-          <Button
-            color="primary"
+        <Tooltip>
+          <GaiaButton
+            variant="accent-soft"
+            tone="accent"
             size="sm"
             fullWidth
-            className="mb-2 flex justify-start text-sm font-medium text-primary"
-            variant="flat"
-            onPress={onOpen}
+            className="mb-2 flex justify-start text-sm font-medium"
+            onPress={open}
             data-keyboard-shortcut="create-workflow"
           >
             <ZapIcon width={18} height={18} />
             New Workflow
-          </Button>
+          </GaiaButton>
+          <Tooltip.Content placement="right">
+            <span className="flex items-center gap-2">
+              New Workflow
+              <Kbd className="text-[10px]">C</Kbd>
+            </span>
+          </Tooltip.Content>
         </Tooltip>
 
         {/* Workflows List */}
@@ -89,7 +84,7 @@ export default function WorkflowsSidebar() {
         </div>
       </div>
 
-      <CreateWorkflowModal isOpen={isOpen} onOpenChange={onOpenChange} />
+      <CreateWorkflowModal isOpen={isOpen} onOpenChange={setOpen} />
 
       {/* Edit Workflow Modal */}
       <WorkflowModal

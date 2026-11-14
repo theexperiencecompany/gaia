@@ -1,10 +1,10 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import { Home01Icon } from "@icons";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { track } from "@/lib/analytics";
 import {
   isChunkLoadError,
@@ -102,7 +102,7 @@ export default function RouteError({ error, reset }: RouteErrorProps) {
   if (isChunk && !failedRecoveryErrors.has(error)) {
     return (
       <div className="flex min-h-[60vh] w-full items-center justify-center p-6">
-        <Spinner color="primary" />
+        <Spinner color="accent" />
       </div>
     );
   }
@@ -114,16 +114,20 @@ export default function RouteError({ error, reset }: RouteErrorProps) {
         An unexpected error occurred. Please try again or return home.
       </p>
       <div className="flex items-center gap-3 pt-4">
-        <Button color="primary" isDisabled={isPending} onPress={handleTryAgain}>
+        <GaiaButton
+          isDisabled={isPending}
+          onPress={handleTryAgain}
+          variant="primary"
+        >
           Try again
-        </Button>
-        <Button
-          variant="flat"
-          startContent={<Home01Icon width={18} />}
+        </GaiaButton>
+        <GaiaButton
+          variant="default-soft"
           onPress={() => window.location.assign("/")}
         >
+          <Home01Icon width={18} />
           Home
-        </Button>
+        </GaiaButton>
       </div>
     </div>
   );

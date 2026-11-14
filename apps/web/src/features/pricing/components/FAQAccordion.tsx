@@ -1,9 +1,13 @@
 "use client";
 
-import { Accordion, AccordionItem } from "@heroui/accordion";
+import { Accordion } from "@heroui/react";
 import Link from "next/link";
+import { accordionVariants } from "@/components/shared/accordionVariants";
 
+import { toneVariants } from "@/components/shared/tone";
 import { type FAQItem, getAllFAQs } from "@/lib/faq";
+
+const accordionStyles = accordionVariants();
 
 export function FAQAccordion({ faqs }: { faqs?: FAQItem[] }) {
   const faqItems = faqs ?? getAllFAQs();
@@ -39,26 +43,38 @@ export function FAQAccordion({ faqs }: { faqs?: FAQItem[] }) {
         </div>
 
         <Accordion
-          variant="light"
-          className="cursor-pointer p-0!"
-          itemClasses={{ titleWrapper: "cursor-pointer" }}
-          defaultSelectedKeys={faqItems[0] ? [faqItems[0].question] : []}
-          keepContentMounted
+          variant="default"
+          className="cursor-pointer"
+          defaultExpandedKeys={faqItems[0] ? [faqItems[0].question] : []}
         >
           {faqItems.map((item) => (
-            <AccordionItem
-              key={item.question}
-              aria-label={item.question}
-              title={item.question}
-              classNames={{
-                heading: "font-normal",
-                title: "text-lg sm:text-2xl",
-                content:
-                  "text-base sm:text-xl max-w-full sm:max-w-[60%] text-foreground-500 font-light mb-6",
-              }}
-            >
-              <span className="select-text">{item.answer}</span>
-            </AccordionItem>
+            <Accordion.Item key={item.question} id={item.question}>
+              <Accordion.Heading className="font-normal">
+                <Accordion.Trigger
+                  className={accordionStyles.trigger({
+                    className: "cursor-pointer text-lg font-normal sm:text-2xl",
+                  })}
+                >
+                  {item.question}
+                  <Accordion.Indicator
+                    className={accordionStyles.indicator()}
+                  />
+                </Accordion.Trigger>
+              </Accordion.Heading>
+              <Accordion.Panel>
+                <div
+                  className={toneVariants({
+                    tone: "muted",
+                    className: accordionStyles.content({
+                      className:
+                        "mb-6 max-w-full text-base font-light sm:max-w-[60%] sm:text-xl",
+                    }),
+                  })}
+                >
+                  <span className="select-text">{item.answer}</span>
+                </div>
+              </Accordion.Panel>
+            </Accordion.Item>
           ))}
         </Accordion>
       </div>

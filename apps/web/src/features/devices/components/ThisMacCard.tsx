@@ -1,10 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Spinner } from "@heroui/spinner";
-import { Switch } from "@heroui/switch";
-import { Tooltip } from "@heroui/tooltip";
+import { Chip, Spinner, Switch, Tooltip } from "@heroui/react";
 import {
   ComputerIcon,
   Delete02Icon,
@@ -13,6 +9,8 @@ import {
   RedoIcon,
 } from "@icons";
 import type { DeviceServerView } from "@shared/bridge-core/ipc.types";
+import { overlayVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { UseBridge } from "../hooks/useBridge";
 import { thisDeviceLabel } from "../hooks/useDesktopPlatform";
 import { AddServerModal } from "./AddServerModal";
@@ -27,12 +25,12 @@ function StatusChip({
 }) {
   if (!paired)
     return (
-      <Chip size="sm" variant="flat" color="default">
+      <Chip size="sm" variant="soft" color="default">
         Not connected
       </Chip>
     );
   return (
-    <Chip size="sm" variant="flat" color={running ? "success" : "warning"}>
+    <Chip size="sm" variant="soft" color={running ? "success" : "warning"}>
       {running ? "Online" : "Paused"}
     </Chip>
   );
@@ -56,17 +54,19 @@ function ServerStateIndicator({
     return <Spinner size="sm" aria-label="Connecting" />;
   if (state === "error")
     return (
-      <Tooltip content={error ?? "Failed to connect"} color="danger">
-        <Button
+      <Tooltip>
+        <GaiaButton
+          variant="warning-soft"
           size="sm"
-          variant="flat"
-          color="warning"
           isDisabled={disabled}
-          startContent={<RedoIcon width={14} height={14} />}
           onPress={onRetry}
         >
+          <RedoIcon width={14} height={14} />
           Retry
-        </Button>
+        </GaiaButton>
+        <Tooltip.Content className={overlayVariants({ surface: "danger" })}>
+          {error ?? "Failed to connect"}
+        </Tooltip.Content>
       </Tooltip>
     );
   return (
@@ -103,17 +103,16 @@ function ServerRow({
         onRetry={() => onRetry(server.key)}
         disabled={disabled}
       />
-      <Button
+      <GaiaButton
         isIconOnly
         size="sm"
-        variant="light"
-        color="danger"
+        variant="ghost"
         isDisabled={disabled}
         aria-label={`Remove ${server.name}`}
         onPress={() => onRemove(server.key)}
       >
         <Delete02Icon className="size-4" />
-      </Button>
+      </GaiaButton>
     </div>
   );
 }
@@ -169,20 +168,25 @@ export function ThisMacCard({
               size="sm"
               isSelected={status.running}
               isDisabled={busy === "toggle"}
-              onValueChange={(next) => void setRunning(next)}
+              onChange={(next) => void setRunning(next)}
               aria-label={`Keep ${noun} connected`}
-            />
+            >
+              <Switch.Content>
+                <Switch.Control>
+                  <Switch.Thumb />
+                </Switch.Control>
+              </Switch.Content>
+            </Switch>
           </div>
         ) : (
-          <Button
+          <GaiaButton
+            variant="accent-soft"
             size="sm"
-            color="primary"
-            variant="flat"
-            isLoading={busy === "pair"}
+            isPending={busy === "pair"}
             onPress={() => void pair()}
           >
             Enable on {noun}
-          </Button>
+          </GaiaButton>
         )}
       </div>
 

@@ -1,8 +1,8 @@
 "use client";
 
-import { Button, ButtonGroup } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
+import { ButtonGroup, Spinner } from "@heroui/react";
 import { ConnectIcon, RedoIcon, RemoveCircleIcon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 import { RaisedButton } from "@/components/ui/raised-button";
 
@@ -44,7 +44,7 @@ export function NotConnectedActions({
 }: NotConnectedActionsProps) {
   const connectButtonContent = connect.isPending ? (
     <>
-      <Spinner size="sm" color="default" />
+      <Spinner size="sm" color="current" />
       Connecting...
     </>
   ) : connect.showRetry ? (
@@ -73,45 +73,39 @@ export function NotConnectedActions({
   }
 
   return (
-    <ButtonGroup variant="flat" className="w-full" fullWidth>
-      <Button
+    <ButtonGroup variant="tertiary" className="w-full" fullWidth>
+      <GaiaButton
         className="w-full"
-        color="warning"
         onPress={connect.onConnect}
-        isLoading={connect.isPending}
+        isPending={connect.isPending}
         isDisabled={connect.isPending}
-        startContent={
-          connect.isPending ? undefined : <RedoIcon width={18} height={18} />
-        }
+        variant="primary"
       >
+        {!connect.isPending && <RedoIcon width={18} height={18} />}
         Retry
-      </Button>
+      </GaiaButton>
       {remove.kind === "delete" ? (
-        <Button
+        <GaiaButton
           className="w-full"
-          color="danger"
           onPress={remove.onDelete}
-          isLoading={remove.isDeletePending}
+          isPending={remove.isDeletePending}
           isDisabled={remove.isDeletePending}
-          startContent={
-            <RemoveCircleIcon width={18} height={18} className="outline-0!" />
-          }
+          variant="danger"
         >
+          <RemoveCircleIcon width={18} height={18} className="outline-0!" />
           {remove.deleteText}
-        </Button>
+        </GaiaButton>
       ) : (
-        <Button
+        <GaiaButton
           className="w-full"
-          color="danger"
           onPress={remove.onDisconnect}
-          isLoading={remove.isDisconnectPending}
+          isPending={remove.isDisconnectPending}
           isDisabled={remove.isDisconnectPending}
-          startContent={
-            <RemoveCircleIcon width={18} height={18} className="outline-0!" />
-          }
+          variant="danger"
         >
+          <RemoveCircleIcon width={18} height={18} className="outline-0!" />
           {remove.labelText}
-        </Button>
+        </GaiaButton>
       )}
     </ButtonGroup>
   );

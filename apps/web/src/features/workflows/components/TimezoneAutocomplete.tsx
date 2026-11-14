@@ -1,8 +1,10 @@
 "use client";
 
-import { Autocomplete, AutocompleteItem } from "@heroui/autocomplete";
+import { ComboBox, ListBox } from "@heroui/react";
 import { useEffect, useMemo, useState } from "react";
-
+import { ComboBoxInput } from "@/components/shared/ComboBoxInput";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { timezoneSearchText } from "@/utils/timezoneUtils";
 
 interface TimezoneOption {
@@ -48,9 +50,9 @@ export function TimezoneAutocomplete({
     setInputValue(selectedCity);
   }, [selectedCity]);
 
-  // `items` (controlled) means HeroUI shows exactly what we pass — no built-in
-  // filtering — so we match across the full search text ourselves. When the box
-  // just shows the current selection (or is empty), show everything to browse.
+  // Controlled `items` means the ComboBox shows exactly what we pass (no
+  // built-in filtering), so we match across the full search text ourselves.
+  // When the box just shows the current selection (or is empty), show everything.
   const filteredOptions = useMemo(() => {
     const query = inputValue.trim().toLowerCase();
     if (!query || query === selectedCity.toLowerCase()) return options;
@@ -60,16 +62,9 @@ export function TimezoneAutocomplete({
   }, [inputValue, options, selectedCity]);
 
   return (
-    <Autocomplete
+    <ComboBox
       aria-label="Timezone"
-      size="sm"
-      className={className}
-      // Let the dropdown size to its content (zone + region + offset) instead of
-      // being clamped to the narrow trigger width, so nothing is cut off.
-      popoverProps={{ classNames: { content: "min-w-fit" } }}
-      // The list is virtualized with a fixed row height (default 32px), which is
-      // too short for the two-line city + region item and made rows overlap.
-      itemHeight={52}
+      className={inputVariants({ size: "sm", className })}
       items={filteredOptions}
       inputValue={inputValue}
       onInputChange={setInputValue}
@@ -77,33 +72,38 @@ export function TimezoneAutocomplete({
       onSelectionChange={(key) => {
         if (key) onChange(String(key));
       }}
-      endContent={
-        selectedOffset ? (
-          <span className="shrink-0 text-xs text-zinc-500">
-            {selectedOffset}
-          </span>
-        ) : null
-      }
     >
-      {(tz) => {
-        const { city, region } = describeZone(tz.value);
-        return (
-          <AutocompleteItem
-            key={tz.value}
-            // textValue (the search key + selected input text) is the city; the
-            // region is HeroUI's native description line, the offset its endContent.
-            textValue={city}
-            description={region || undefined}
-            endContent={
-              <span className="text-xs tabular-nums text-default-500">
-                {tz.offset}
-              </span>
-            }
-          >
-            {city}
-          </AutocompleteItem>
-        );
-      }}
-    </Autocomplete>
+      <ComboBoxInput
+        endContent={
+          selectedOffset ? (
+            <span className="shrink-0 text-xs text-zinc-500">
+              {selectedOffset}
+            </span>
+          ) : null
+        }
+      />
+      <ComboBox.Popover className="min-w-fit">
+        <ListBox>
+          {(tz: TimezoneOption) => {
+            const { city, region } = describeZone(tz.value);
+            return (
+              <GaiaListBoxItem id={tz.value} textValue={city}>
+                <div className="flex min-w-0 flex-col">
+                  <span className="truncate">{city}</span>
+                  {region ? (
+                    <span className="truncate text-xs text-zinc-400">
+                      {region}
+                    </span>
+                  ) : null}
+                </div>
+                <span className="ml-auto shrink-0 pl-4 text-xs tabular-nums text-zinc-400">
+                  {tz.offset}
+                </span>
+              </GaiaListBoxItem>
+            );
+          }}
+        </ListBox>
+      </ComboBox.Popover>
+    </ComboBox>
   );
 }

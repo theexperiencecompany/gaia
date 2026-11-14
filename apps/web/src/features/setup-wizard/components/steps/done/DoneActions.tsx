@@ -1,9 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { ArrowRight02Icon } from "@icons";
 import * as m from "motion/react-m";
-import Link from "next/link";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { PROVIDERS_SETTINGS_PATH } from "@/features/settings/components/providers/providerRows";
 import { CARD_TRANSITION, CARD_VARIANTS } from "./doneMotion";
 
@@ -15,40 +14,37 @@ export function DoneActions({ hasLlm }: DoneActionsProps) {
   return (
     <m.div variants={CARD_VARIANTS} transition={CARD_TRANSITION}>
       {hasLlm ? (
-        <Button
-          as={Link}
+        <LinkButton
           href="/c"
-          color="primary"
+          variant="primary"
           fullWidth
           size="lg"
           className="font-medium"
-          endContent={<ArrowRight02Icon size={18} />}
         >
           Start chatting
-        </Button>
+          <ArrowRight02Icon size={18} />
+        </LinkButton>
       ) : (
         <div className="flex flex-col gap-2">
-          <Button
-            as={Link}
+          <LinkButton
             href={PROVIDERS_SETTINGS_PATH}
-            color="primary"
+            variant="primary"
             fullWidth
             size="lg"
             className="font-medium"
-            endContent={<ArrowRight02Icon size={18} />}
           >
             Go to Providers &amp; Tools
-          </Button>
-          <Button
-            as={Link}
+            <ArrowRight02Icon size={18} />
+          </LinkButton>
+          <LinkButton
             href="/c"
-            variant="light"
+            variant="ghost"
             fullWidth
             size="sm"
-            className="text-zinc-400"
+            tone="muted"
           >
             Continue to chat anyway
-          </Button>
+          </LinkButton>
         </div>
       )}
     </m.div>

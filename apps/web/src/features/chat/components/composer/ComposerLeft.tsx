@@ -1,7 +1,9 @@
-import { Kbd } from "@heroui/react";
-import { Tooltip } from "@heroui/tooltip";
+import { Kbd, Tooltip } from "@heroui/react";
 import { AttachmentIcon, PlusSignIcon, Tick02Icon, ToolsIcon } from "@icons";
 import React from "react";
+import { Focusable } from "react-aria-components";
+import { overlayVariants } from "@/components/shared/controlVariants";
+import { shapeVariants } from "@/components/shared/shape";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -53,7 +55,7 @@ export default function ComposerLeft({
       id: "upload_file",
       label: "Attach Files",
       icon: (
-        <AttachmentIcon className="min-h-[20px] min-w-[20px] text-primary" />
+        <AttachmentIcon className="min-h-[20px] min-w-[20px] text-accent" />
       ),
       action: openFilePicker,
       isMode: false,
@@ -76,7 +78,7 @@ export default function ComposerLeft({
           >
             <PlusSignIcon className="min-h-[23px] min-w-[23px] text-zinc-400!" />
             <span
-              className={`absolute -top-0 -right-0 h-2 w-2 rounded-full bg-primary transition ${currentMode ? "opacity-100" : "opacity-0"}`}
+              className={`absolute -top-0 -right-0 h-2 w-2 rounded-full bg-accent transition ${currentMode ? "opacity-100" : "opacity-0"}`}
               aria-hidden="true"
             />
           </Button>
@@ -87,45 +89,50 @@ export default function ComposerLeft({
           className="w-fit gap-2 rounded-xl border-none bg-zinc-900 p-1 text-white outline-2! outline-zinc-800!"
         >
           {dropdownItems.map((item) => (
-            <Tooltip
-              content={<div className="max-w-[270px]">{item.description}</div>}
-              key={item.id}
-              color="foreground"
-              radius="sm"
-            >
-              <DropdownMenuItem
-                key={item.id}
-                onClick={() => {
-                  track("chat:composer_plus_menu_clicked", {
-                    item_id: item.id,
-                    is_mode: item.isMode,
-                  });
-                  // setLoadingText(item.loadingText ?? "");
-                  if (item.isMode)
-                    handleSelectionChange(item.id as ComposerMode);
-                  else if (item.action) item.action();
-                }}
-                className={cn(
-                  "cursor-pointer rounded-lg px-3 py-2",
-                  currentMode === item.id
-                    ? "bg-[#00bbff50] text-primary focus:bg-[#00bbff50] focus:text-primary"
-                    : "focus:bg-zinc-800 focus:text-white",
-                )}
-              >
-                <div className="flex w-full items-center justify-between gap-3">
-                  <div className="flex flex-col">
-                    <div className="flex flex-row items-center gap-2">
-                      {item.icon}
-                      <span className="">{item.label}</span>
+            <Tooltip key={item.id}>
+              <Tooltip.Trigger>
+                <DropdownMenuItem
+                  key={item.id}
+                  onClick={() => {
+                    track("chat:composer_plus_menu_clicked", {
+                      item_id: item.id,
+                      is_mode: item.isMode,
+                    });
+                    // setLoadingText(item.loadingText ?? "");
+                    if (item.isMode)
+                      handleSelectionChange(item.id as ComposerMode);
+                    else if (item.action) item.action();
+                  }}
+                  className={cn(
+                    "cursor-pointer rounded-lg px-3 py-2",
+                    currentMode === item.id
+                      ? "bg-[#00bbff50] text-accent focus:bg-[#00bbff50] focus:text-accent"
+                      : "focus:bg-zinc-800 focus:text-white",
+                  )}
+                >
+                  <div className="flex w-full items-center justify-between gap-3">
+                    <div className="flex flex-col">
+                      <div className="flex flex-row items-center gap-2">
+                        {item.icon}
+                        <span className="">{item.label}</span>
+                      </div>
+                    </div>
+                    <div>
+                      {currentMode === item.id && (
+                        <Tick02Icon className="min-h-[20px] min-w-[20px] text-accent" />
+                      )}
                     </div>
                   </div>
-                  <div>
-                    {currentMode === item.id && (
-                      <Tick02Icon className="min-h-[20px] min-w-[20px] text-primary" />
-                    )}
-                  </div>
-                </div>
-              </DropdownMenuItem>
+                </DropdownMenuItem>
+              </Tooltip.Trigger>
+              <Tooltip.Content
+                className={overlayVariants({
+                  surface: "foreground",
+                  className: shapeVariants({ shape: "sm" }),
+                })}
+              >
+                <div className="max-w-[270px]">{item.description}</div>
+              </Tooltip.Content>
             </Tooltip>
           ))}
         </DropdownMenuContent>
@@ -133,44 +140,43 @@ export default function ComposerLeft({
 
       {/* Tools Button */}
       {onOpenSlashCommandDropdown && (
-        <Tooltip
-          content={
+        <Tooltip>
+          <Focusable>
+            <Button
+              size="icon"
+              className={cn(
+                "group relative flex h-9 w-9 items-center justify-center rounded-full border-none bg-zinc-700 fill-zinc-400 p-0 text-zinc-400 hover:bg-zinc-600/90",
+                isMainResponseStreaming ? "cursor-wait!" : "",
+                isSlashCommandDropdownOpen &&
+                  "border-accent/50 bg-accent/20 text-accent hover:bg-accent/40",
+              )}
+              disabled={isMainResponseStreaming}
+              onClick={() => {
+                track("chat:tools_button_clicked", {
+                  is_open: isSlashCommandDropdownOpen,
+                });
+                onOpenSlashCommandDropdown?.();
+              }}
+            >
+              <ToolsIcon
+                className="min-h-[23px] min-w-[23px]"
+                width={30}
+                height={30}
+              />
+              {isSlashCommandDropdownOpen && (
+                <span
+                  className="absolute top-0 right-0 h-2 w-2 rounded-full bg-accent transition"
+                  aria-hidden="true"
+                />
+              )}
+            </Button>
+          </Focusable>
+          <Tooltip.Content placement="right" showArrow>
             <div className="flex items-center gap-2">
               Browse all tools
-              <Kbd className="text-zinc-400">Press /</Kbd>
+              <Kbd>Press /</Kbd>
             </div>
-          }
-          placement="right"
-          showArrow
-        >
-          <Button
-            size="icon"
-            className={cn(
-              "group relative flex h-9 w-9 items-center justify-center rounded-full border-none bg-zinc-700 fill-zinc-400 p-0 text-zinc-400 hover:bg-zinc-600/90",
-              isMainResponseStreaming ? "cursor-wait!" : "",
-              isSlashCommandDropdownOpen &&
-                "border-primary/50 bg-primary/20 text-primary hover:bg-primary/40",
-            )}
-            disabled={isMainResponseStreaming}
-            onClick={() => {
-              track("chat:tools_button_clicked", {
-                is_open: isSlashCommandDropdownOpen,
-              });
-              onOpenSlashCommandDropdown?.();
-            }}
-          >
-            <ToolsIcon
-              className="min-h-[23px] min-w-[23px]"
-              width={30}
-              height={30}
-            />
-            {isSlashCommandDropdownOpen && (
-              <span
-                className="absolute top-0 right-0 h-2 w-2 rounded-full bg-primary transition"
-                aria-hidden="true"
-              />
-            )}
-          </Button>
+          </Tooltip.Content>
         </Tooltip>
       )}
     </div>

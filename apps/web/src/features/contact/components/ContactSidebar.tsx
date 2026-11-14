@@ -79,7 +79,7 @@ export default function ContactSidebar() {
           <a
             key={label}
             href={href}
-            className="text-muted-foreground inline-flex items-center gap-2 text-foreground-500 hover:underline"
+            className="text-zinc-400 inline-flex items-center gap-2 text-zinc-400 hover:underline"
             {...(external
               ? { target: "_blank", rel: "noopener noreferrer" }
               : {})}
@@ -97,7 +97,7 @@ export default function ContactSidebar() {
         >
           Socials
         </h2>
-        <div className="mt-3 flex items-center gap-2 text-foreground-500">
+        <div className="mt-3 flex items-center gap-2 text-zinc-400">
           {socialLinks.map(({ ariaLabel, href, Icon }) => (
             <a
               key={ariaLabel}

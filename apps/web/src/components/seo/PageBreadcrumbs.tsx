@@ -1,8 +1,8 @@
 "use client";
 
-import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import { useLocale } from "next-intl";
 
+import { ChevronRight } from "@/components/shared/icons";
 import { getPathname } from "@/i18n/navigation";
 import { isTranslatedPath } from "@/i18n/translatedRoutes";
 
@@ -12,10 +12,8 @@ export interface PageCrumb {
   readonly href?: string;
 }
 
-const ITEM_CLASSES = {
-  item: "text-sm text-zinc-400 decoration-zinc-600 hover:text-zinc-200 data-[current=true]:text-zinc-100 data-[current=true]:decoration-transparent",
-  separator: "text-zinc-600",
-};
+const LINK_CLASSES =
+  "whitespace-nowrap text-sm text-zinc-400 underline decoration-zinc-600 hover:text-zinc-200";
 
 /** The one breadcrumb trail for marketing pages; links keep the locale only inside translated families. */
 export function PageBreadcrumbs({
@@ -30,19 +28,38 @@ export function PageBreadcrumbs({
     isTranslatedPath(href) ? getPathname({ href, locale }) : href;
 
   return (
-    <Breadcrumbs
-      className={className}
-      itemClasses={ITEM_CLASSES}
-      underline="always"
-    >
-      {items.map((crumb) => (
-        <BreadcrumbItem
-          key={crumb.label}
-          href={crumb.href ? localize(crumb.href) : undefined}
-        >
-          {crumb.label}
-        </BreadcrumbItem>
-      ))}
-    </Breadcrumbs>
+    <nav aria-label="Breadcrumb" className={className}>
+      <ol className="flex flex-wrap">
+        {items.map((crumb, index) => {
+          const isLast = index === items.length - 1;
+
+          return (
+            <li
+              key={crumb.label}
+              className="flex items-center underline-offset-4"
+            >
+              {crumb.href ? (
+                <a href={localize(crumb.href)} className={LINK_CLASSES}>
+                  {crumb.label}
+                </a>
+              ) : (
+                <span
+                  aria-current={isLast ? "page" : undefined}
+                  className="whitespace-nowrap text-sm text-zinc-100"
+                >
+                  {crumb.label}
+                </span>
+              )}
+              {!isLast && (
+                <ChevronRight
+                  strokeWidth={1.5}
+                  className="mx-1 size-4 text-zinc-600"
+                />
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
   );
 }

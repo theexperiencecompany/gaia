@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Snippet } from "@heroui/snippet";
 import Image from "next/image";
 import Link from "next/link";
+import { LinkButton } from "@/components/shared/LinkButton";
+import CopyButton from "@/components/ui/CopyButton";
 import { BOT_PLATFORM_ICONS } from "@/config/botPlatforms";
 import type { BotConfig } from "../constants";
 import { useBotCards } from "../hooks/useBotCards";
@@ -68,41 +68,36 @@ function BotCard({
           <p className="text-sm text-zinc-500">
             Not set up on this instance. On the server, run:
           </p>
-          <Snippet
-            hideSymbol
-            variant="flat"
-            size="sm"
-            codeString={setupCommand}
-            className="w-full bg-zinc-800 text-zinc-200"
-          >
-            <span className="truncate font-mono text-xs">{setupCommand}</span>
-          </Snippet>
+          <div className="flex w-full items-center gap-2 rounded-lg bg-zinc-800 py-1 pr-1 pl-3 text-zinc-200">
+            <code className="min-w-0 flex-1 truncate font-mono text-xs">
+              {setupCommand}
+            </code>
+            <CopyButton textToCopy={setupCommand} variant="ghost" />
+          </div>
         </div>
       )}
       <div className="flex w-full flex-col gap-2 @min-[22rem]:flex-row @min-[22rem]:justify-end">
         {primaryAction && (
-          <Button
-            as={Link}
+          <LinkButton
             href={primaryAction.href}
             target={primaryAction.external ? "_blank" : "_self"}
             rel={primaryAction.external ? "noopener noreferrer" : undefined}
-            color="primary"
             className="w-full @min-[22rem]:w-auto"
+            variant="primary"
           >
             {primaryAction.label}
-          </Button>
+          </LinkButton>
         )}
         {secondaryAction && (
-          <Button
-            as={Link}
+          <LinkButton
             href={secondaryAction.href}
             target={secondaryAction.external ? "_blank" : "_self"}
             rel={secondaryAction.external ? "noopener noreferrer" : undefined}
-            variant="flat"
+            variant="default-soft"
             className="w-full @min-[22rem]:w-auto"
           >
             {secondaryAction.label}
-          </Button>
+          </LinkButton>
         )}
       </div>
     </div>

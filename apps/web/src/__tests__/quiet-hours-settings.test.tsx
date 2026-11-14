@@ -112,6 +112,25 @@ describe("the quiet-hours section", () => {
     );
   });
 
+  it("saves the window a thumb was moved to", async () => {
+    render(<QuietHoursSettings />, { wrapper });
+    const [startThumb] = await screen.findAllByRole("slider");
+
+    fireEvent.keyDown(startThumb, { key: "ArrowRight" });
+    fireEvent.keyUp(startThumb, { key: "ArrowRight" });
+
+    await waitFor(() =>
+      expect(updateHours).toHaveBeenCalledWith({ ...NIGHT, start_hour: 23 }),
+    );
+  });
+
+  it("labels the axis at noon and midnight", async () => {
+    render(<QuietHoursSettings />, { wrapper });
+
+    expect(await screen.findByText("Midnight")).toBeTruthy();
+    expect(screen.getAllByText("Noon")).toHaveLength(2);
+  });
+
   it("shows nothing, and throws nothing, when the stored window cannot be read", async () => {
     fetchHours.mockRejectedValue(new Error("500"));
     const { container } = render(<QuietHoursSettings />, { wrapper });

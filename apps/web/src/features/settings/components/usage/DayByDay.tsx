@@ -1,17 +1,18 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Tab, Tabs } from "@heroui/tabs";
+import { Tabs } from "@heroui/react";
 import { ShuffleIcon } from "@icons";
 import type { UsageActivity } from "@shared/types";
 import { formatCompactNumber, formatDateUTC } from "@shared/utils";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { shapeVariants } from "@/components/shared/shape";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
 import { useRecharts } from "@/components/ui/chart-loader";
 import { cn } from "@/lib/utils";
 import { tokenComparisons } from "./tokenScale";
 import { ACCENT, CARD, HEALTHY, InfoTip } from "./usageChrome";
-import { TAB_CLASSNAMES } from "./usageTabs";
+import { USAGE_TAB_CLASSES } from "./usageTabs";
 
 // recharts is heavy, so it loads on demand instead of shipping eagerly with
 // the settings page. The shared promise means every chart here triggers a
@@ -188,17 +189,19 @@ function TokenScaleLine({ tokens }: { tokens: number }) {
         .
       </p>
       {lines.length > 1 && (
-        <Button
+        <GaiaButton
+          shape="pill"
           isIconOnly
           size="sm"
-          variant="light"
-          radius="full"
-          className="size-6 min-w-6 shrink-0 text-zinc-500 data-[hover=true]:text-zinc-200"
+          variant="ghost"
+          tone="faint"
+          hoverTone="bright"
+          className="size-6 min-w-6 shrink-0"
           aria-label="Show another comparison"
           onPress={next}
         >
           <ShuffleIcon size={13} />
-        </Button>
+        </GaiaButton>
       )}
     </div>
   );
@@ -333,15 +336,20 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
             drops to the reading line below — side by side the two groups
             collided and forced the heading to wrap. */}
         <Tabs
-          size="sm"
-          radius="full"
-          aria-label="Metric"
           selectedKey={metric}
           onSelectionChange={(k) => setMetric(k as Metric)}
-          classNames={TAB_CLASSNAMES}
+          className={shapeVariants({ shape: "pill", className: "shrink-0" })}
         >
-          <Tab key="actions" title="Actions" />
-          <Tab key="tokens" title="Tokens" />
+          <Tabs.List aria-label="Metric" className={USAGE_TAB_CLASSES.list}>
+            <Tabs.Tab id="actions" className={USAGE_TAB_CLASSES.tab}>
+              Actions
+              <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
+            </Tabs.Tab>
+            <Tabs.Tab id="tokens" className={USAGE_TAB_CLASSES.tab}>
+              Tokens
+              <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
+            </Tabs.Tab>
+          </Tabs.List>
         </Tabs>
       </div>
       <div className="mt-1.5 flex items-center justify-between gap-3">
@@ -352,16 +360,22 @@ export function DayByDay({ activity }: { activity: UsageActivity }) {
           {isTokens ? "tokens" : "actions"} in the last {rangeLabel}
         </p>
         <Tabs
-          size="sm"
-          radius="full"
-          aria-label="Range"
           selectedKey={range}
           onSelectionChange={(k) => setRange(k as RangeKey)}
-          classNames={TAB_CLASSNAMES}
+          className={shapeVariants({ shape: "pill", className: "shrink-0" })}
         >
-          {RANGES.map((r) => (
-            <Tab key={r.key} title={r.label} />
-          ))}
+          <Tabs.List aria-label="Range" className={USAGE_TAB_CLASSES.list}>
+            {RANGES.map((r) => (
+              <Tabs.Tab
+                key={r.key}
+                id={r.key}
+                className={USAGE_TAB_CLASSES.tab}
+              >
+                {r.label}
+                <Tabs.Indicator className={USAGE_TAB_CLASSES.indicator} />
+              </Tabs.Tab>
+            ))}
+          </Tabs.List>
         </Tabs>
       </div>
 

@@ -1,8 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip";
+import { Tooltip } from "@heroui/react";
 import type { ReactElement, ReactNode } from "react";
+import { overlayVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 interface MenuItem {
   iconElement?: ReactElement;
@@ -38,14 +39,29 @@ export function NestedMenuTooltip({
     <Tooltip
       isOpen={isOpen}
       onOpenChange={onOpenChange}
-      placement="right-start"
-      offset={8}
+      delay={0}
       closeDelay={0}
-      classNames={{
-        content: "p-0 bg-secondary-bg border-0! outline-0!",
-        base: "border-0",
-      }}
-      content={
+    >
+      <Tooltip.Trigger className="border-0">
+        <div
+          style={{
+            position: "fixed",
+            left: itemRect.right,
+            top: itemRect.top,
+            width: 1,
+            height: 1,
+            pointerEvents: "none",
+          }}
+        />
+      </Tooltip.Trigger>
+      <Tooltip.Content
+        placement="right top"
+        offset={8}
+        className={overlayVariants({
+          surface: "secondary",
+          className: "border-0! p-0 outline-0!",
+        })}
+      >
         <div
           onMouseEnter={() => onOpenChange(true)}
           onMouseLeave={() => onOpenChange(false)}
@@ -61,37 +77,28 @@ export function NestedMenuTooltip({
                 ) : null;
 
                 return (
-                  <Button
+                  <GaiaButton
                     key={item.key}
-                    variant="light"
+                    variant="ghost"
                     size="sm"
-                    className="justify-start text-sm text-zinc-400 transition hover:text-white"
+                    tone="muted"
+                    hoverTone="white"
+                    className="justify-start text-sm transition"
                     onPress={() => {
                       item.action();
                       onOpenChange(false);
                     }}
-                    startContent={iconContent}
-                    endContent={item.badge}
                   >
+                    {iconContent}
                     {item.label}
-                  </Button>
+                    {item.badge}
+                  </GaiaButton>
                 );
               })}
             </div>
           )}
         </div>
-      }
-    >
-      <div
-        style={{
-          position: "fixed",
-          left: itemRect.right,
-          top: itemRect.top,
-          width: 1,
-          height: 1,
-          pointerEvents: "none",
-        }}
-      />
+      </Tooltip.Content>
     </Tooltip>
   );
 }

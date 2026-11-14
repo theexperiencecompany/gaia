@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Kbd } from "@heroui/react";
-import { Select, SelectItem } from "@heroui/select";
+import { Kbd, ListBox, Select } from "@heroui/react";
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
@@ -11,6 +9,9 @@ import {
 } from "@icons";
 import { useHotkeys } from "react-hotkeys-hook";
 import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import {
   useCreateEventAction,
   useDaysToShow,
@@ -69,54 +70,72 @@ export default function CalendarHeader() {
         />
 
         <Select
-          size="sm"
-          selectedKeys={daysToShow ? [daysToShow.toString()] : ["1"]}
-          onSelectionChange={(keys) => {
-            const value = Array.from(keys)[0] as string;
-            setDaysToShow(parseInt(value, 10));
+          selectedKey={daysToShow ? daysToShow.toString() : "1"}
+          onSelectionChange={(key) => {
+            if (key != null) {
+              setDaysToShow(parseInt(String(key), 10));
+            }
           }}
           className="w-34"
-          // className="max-w-fit min-w-24"
-          classNames={{
-            trigger: "bg-zinc-800 text-xs! cursor-pointer",
-            value: "text-zinc-300",
-          }}
-          renderValue={(items) => {
-            const item = items[0];
-            const option = dayOptions.find((opt) => opt.value === item.key);
-            return <span>{option?.label}</span>;
-          }}
         >
-          {dayOptions.map((option) => (
-            <SelectItem
-              key={option.value}
-              aria-label={option.value}
-              textValue={option.value}
-              endContent={<Kbd keys={[]}>{option.kbd}</Kbd>}
-            >
-              {option.label}
-            </SelectItem>
-          ))}
+          <Select.Trigger className="text-xs! cursor-pointer">
+            <GaiaSelectValue>
+              {
+                dayOptions.find(
+                  (opt) =>
+                    opt.value === (daysToShow ? daysToShow.toString() : "1"),
+                )?.label
+              }
+            </GaiaSelectValue>
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {dayOptions.map((option) => (
+                <GaiaListBoxItem
+                  key={option.value}
+                  id={option.value}
+                  textValue={option.label}
+                  className="flex items-center justify-between"
+                >
+                  {option.label}
+                  <Kbd>{option.kbd}</Kbd>
+                </GaiaListBoxItem>
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
       </div>
 
       <div className="relative flex items-center gap-2">
         <div className="flex items-center">
-          <Button
+          <GaiaButton
+            aria-label="Previous day"
             isIconOnly
             size="sm"
-            variant="light"
+            variant="ghost"
             onPress={goToPreviousDay}
           >
             <ArrowLeft01Icon className="h-5 w-5 text-zinc-400" />
-          </Button>
+          </GaiaButton>
 
-          <Button isIconOnly size="sm" variant="light" onPress={goToNextDay}>
+          <GaiaButton
+            aria-label="Next day"
+            isIconOnly
+            size="sm"
+            variant="ghost"
+            onPress={goToNextDay}
+          >
             <ArrowRight01Icon className="h-5 w-5 text-zinc-400" />
-          </Button>
-          <Button variant="flat" onPress={goToToday} size="sm" className="ml-">
+          </GaiaButton>
+          <GaiaButton
+            variant="default-soft"
+            onPress={goToToday}
+            size="sm"
+            className="ml-"
+          >
             Today
-          </Button>
+          </GaiaButton>
         </div>
 
         {createEventAction && (
@@ -125,7 +144,7 @@ export default function CalendarHeader() {
             tooltip="Create new calendar event"
             onClick={createEventAction}
           >
-            <CalendarAdd01Icon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-primary" />
+            <CalendarAdd01Icon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-accent" />
           </SidebarHeaderButton>
         )}
       </div>

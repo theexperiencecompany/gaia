@@ -1,6 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import {
   AiBrainIcon,
   AlertCircleIcon,
@@ -15,6 +15,8 @@ import {
 import { isTrackedTodo } from "@shared/todos";
 import { formatDistanceToNow } from "date-fns";
 import { memo } from "react";
+import { shapeVariants } from "@/components/shared/shape";
+import { toneVariants } from "@/components/shared/tone";
 import { Priority, type Project, type Todo } from "@/types/features/todoTypes";
 import { formatDate } from "@/utils/date/dateUtils";
 
@@ -56,12 +58,14 @@ function TodoPriorityChip({ priority }: { priority: Todo["priority"] }) {
     <div className="flex items-center gap-1">
       <Chip
         size="sm"
-        variant="flat"
-        radius="sm"
-        className={`px-2 ${PRIORITY_CHIP_CLASS[priority]}`}
-        startContent={<Flag02Icon width={15} height={15} className="mx-1" />}
+        variant="soft"
+        className={shapeVariants({
+          shape: "sm",
+          className: `px-2 ${PRIORITY_CHIP_CLASS[priority]}`,
+        })}
       >
-        {capitalize(priority)}
+        <Flag02Icon width={15} height={15} className="mx-1" />
+        <Chip.Label>{capitalize(priority)}</Chip.Label>
       </Chip>
     </div>
   );
@@ -90,86 +94,90 @@ export const TodoItemMeta = memo(function TodoItemMeta({
     <div className="mt-2 flex flex-wrap items-center gap-1">
       {todo.due_date && (
         <Chip
-          className="flex items-center px-1"
+          className={shapeVariants({
+            shape: "sm",
+            className: "flex items-center",
+          })}
           size="sm"
-          radius="sm"
           color={dueChipColor(isToday, isOverdue)}
-          variant="flat"
-          startContent={
-            <CalendarCheckOut01Icon width={16} height={16} className="mx-1" />
-          }
+          variant="soft"
         >
-          {formatDate(todo.due_date)}
+          <CalendarCheckOut01Icon width={16} height={16} className="mx-1" />
+          <Chip.Label>{formatDate(todo.due_date)}</Chip.Label>
         </Chip>
       )}
 
       {todo.scheduled_at && (
         <Chip
-          className="flex items-center px-1"
+          className={shapeVariants({
+            shape: "sm",
+            className: "flex items-center",
+          })}
           size="sm"
-          radius="sm"
-          color="primary"
-          variant="flat"
-          startContent={<Clock01Icon width={16} height={16} className="mx-1" />}
+          color="accent"
+          variant="soft"
         >
-          {scheduledLabel}
+          <Clock01Icon width={16} height={16} className="mx-1" />
+          <Chip.Label>{scheduledLabel}</Chip.Label>
         </Chip>
       )}
 
       {todo.expires_at && (
         <Chip
-          className="flex items-center px-1"
+          className={shapeVariants({
+            shape: "sm",
+            className: "flex items-center",
+          })}
           size="sm"
-          radius="sm"
           color="warning"
-          variant="flat"
-          startContent={
-            <AlertCircleIcon width={16} height={16} className="mx-1" />
-          }
+          variant="soft"
         >
-          Expires {expiresLabel}
+          <AlertCircleIcon width={16} height={16} className="mx-1" />
+          <Chip.Label>Expires {expiresLabel}</Chip.Label>
         </Chip>
       )}
 
       {isTrackedTodo(todo) && (
         <Chip
-          className="flex items-center px-1"
+          className={shapeVariants({
+            shape: "sm",
+            className: "flex items-center",
+          })}
           size="sm"
-          radius="sm"
-          color="primary"
-          variant="flat"
-          startContent={<AiBrainIcon width={14} height={14} className="mx-1" />}
+          color="accent"
+          variant="soft"
         >
-          Tracked
+          <AiBrainIcon width={14} height={14} className="mx-1" />
+          <Chip.Label>Tracked</Chip.Label>
         </Chip>
       )}
 
       {todo.sub_todo_count > 0 && (
         <Chip
-          className="flex items-center text-zinc-400 px-1"
+          className={shapeVariants({
+            shape: "sm",
+            className: toneVariants({
+              tone: "muted",
+              className: "flex items-center",
+            }),
+          })}
           size="sm"
-          radius="sm"
-          variant="flat"
-          startContent={
-            <TaskDone01Icon width={15} height={15} className="mx-1" />
-          }
+          variant="soft"
         >
-          {todo.sub_todo_count} sub-todos
+          <TaskDone01Icon width={15} height={15} className="mx-1" />
+          <Chip.Label>{todo.sub_todo_count} sub-todos</Chip.Label>
         </Chip>
       )}
 
       {todoProject && (
         <Chip
+          className={shapeVariants({ shape: "sm" })}
           size="sm"
-          variant="flat"
-          className=" text-zinc-400 px-1"
-          radius="sm"
+          variant="soft"
           style={{ color: todoProject.color }}
-          startContent={
-            <Folder02Icon width={15} height={15} className="mx-1" />
-          }
         >
-          {todoProject.name}
+          <Folder02Icon width={15} height={15} className="mx-1" />
+          <Chip.Label>{todoProject.name}</Chip.Label>
         </Chip>
       )}
 
@@ -178,12 +186,17 @@ export const TodoItemMeta = memo(function TodoItemMeta({
           <Chip
             key={label}
             size="sm"
-            variant="flat"
-            className="flex items-center text-zinc-400 px-1"
-            radius="sm"
-            startContent={<Tag01Icon width={17} height={17} className="mx-1" />}
+            variant="soft"
+            className={shapeVariants({
+              shape: "sm",
+              className: toneVariants({
+                tone: "muted",
+                className: "flex items-center",
+              }),
+            })}
           >
-            {capitalize(label)}
+            <Tag01Icon width={17} height={17} className="mx-1" />
+            <Chip.Label>{capitalize(label)}</Chip.Label>
           </Chip>
         ))}
       </div>
@@ -194,15 +207,17 @@ export const TodoItemMeta = memo(function TodoItemMeta({
       {todo.subtasks.length > 0 && (
         <Chip
           size="sm"
-          variant="flat"
-          className=" text-zinc-400 px-1"
-          radius="sm"
-          startContent={
-            <CheckmarkCircle02Icon width={15} height={15} className="mx-1" />
-          }
+          variant="soft"
+          className={shapeVariants({
+            shape: "sm",
+            className: toneVariants({ tone: "muted" }),
+          })}
         >
-          {todo.subtasks.filter((s) => s.completed).length}/
-          {todo.subtasks.length} checklist
+          <CheckmarkCircle02Icon width={15} height={15} className="mx-1" />
+          <Chip.Label>
+            {todo.subtasks.filter((s) => s.completed).length}/
+            {todo.subtasks.length} checklist
+          </Chip.Label>
         </Chip>
       )}
     </div>

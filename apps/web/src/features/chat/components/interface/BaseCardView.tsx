@@ -1,14 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import {
-  Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownSection,
-  DropdownTrigger,
-} from "@heroui/dropdown";
-import { Tooltip } from "@heroui/tooltip";
+import { Dropdown, Header, Separator, Tooltip } from "@heroui/react";
 import {
   ArrowUpRight01Icon,
   RedoIcon,
@@ -16,7 +8,10 @@ import {
   ZapIcon,
 } from "@icons";
 import type React from "react";
+import { overlayVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { IntegrationConnectCard } from "@/components/shared/IntegrationConnectCard";
+import { toneVariants } from "@/components/shared/tone";
 
 export interface CardAction {
   key: string;
@@ -83,87 +78,114 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
           {icon}
           <h2 className="font-medium text-zinc-300">{title}</h2>
           {onRefresh && isConnected && (
-            <Tooltip content="Refresh" showArrow placement="bottom">
-              <Button
+            <Tooltip>
+              <GaiaButton
+                aria-label="Refresh"
                 isIconOnly
                 size="sm"
-                variant="light"
+                variant="ghost"
                 onPress={onRefresh}
                 isDisabled={isFetching}
-                className="min-w-0 text-zinc-400 transition-colors duration-200 hover:bg-zinc-800"
+                tone="muted"
+                className="min-w-0 transition-colors duration-200"
               >
                 <div
                   className={`transition-transform duration-500 ${isFetching ? "animate-spin" : "hover:rotate-180"}`}
                 >
                   <RedoIcon className="h-4 w-4" />
                 </div>
-              </Button>
+              </GaiaButton>
+              <Tooltip.Content placement="bottom" showArrow>
+                Refresh
+              </Tooltip.Content>
             </Tooltip>
           )}
         </div>
         {hasMenu && (
-          <Dropdown
-            placement="bottom-end"
-            backdrop="opaque"
-            classNames={{ content: "" }}
-          >
-            <DropdownTrigger>
-              <Button
-                size="sm"
-                variant="flat"
-                endContent={<ArrowUpRight01Icon className="h-3.5 w-3.5" />}
-                className="text-xs text-zinc-400"
-              >
-                Ask GAIA
-              </Button>
-            </DropdownTrigger>
-            <DropdownMenu
-              aria-label={`${title} actions`}
-              className="w-100"
-              itemClasses={{ description: "whitespace-normal" }}
+          <Dropdown>
+            <GaiaButton
+              size="sm"
+              variant="default-soft"
+              tone="muted"
+              className="text-xs"
             >
-              {hasActions ? (
-                <DropdownSection title="Ask GAIA" showDivider={!!path}>
-                  {actions.map((action) => (
-                    <DropdownItem
-                      key={action.key}
-                      description={action.description}
-                      startContent={
-                        action.icon ?? (
-                          <ZapIcon className="size-4 text-default-500" />
-                        )
-                      }
-                      onPress={action.onPress}
+              Ask GAIA
+              <ArrowUpRight01Icon className="h-3.5 w-3.5" />
+            </GaiaButton>
+            <Dropdown.Popover
+              placement="bottom end"
+              className={overlayVariants({ backdrop: "opaque" })}
+            >
+              <Dropdown.Menu aria-label={`${title} actions`} className="w-100">
+                {hasActions ? (
+                  <Dropdown.Section id="ask-gaia">
+                    <Header
+                      className={toneVariants({
+                        tone: "faint",
+                        className: "py-1 text-xs",
+                      })}
                     >
-                      {action.label}
-                    </DropdownItem>
-                  ))}
-                </DropdownSection>
-              ) : (
-                // Empty fragment needed to satisfy DropdownMenu's children type when only path is present
-                <DropdownSection aria-label="empty" className="hidden">
-                  <DropdownItem key="__empty__">{"" as string}</DropdownItem>
-                </DropdownSection>
-              )}
-              {path ? (
-                <DropdownSection aria-label="Navigation">
-                  <DropdownItem
-                    key="view-all"
-                    href={path}
-                    description={`Open full ${title.toLowerCase()} page`}
-                    startContent={
-                      <SquareArrowUpRight02Icon className="size-4 text-primary" />
-                    }
-                  >
-                    View All
-                  </DropdownItem>
-                </DropdownSection>
-              ) : (
-                <DropdownSection aria-label="empty" className="hidden">
-                  <DropdownItem key="__empty2__">{"" as string}</DropdownItem>
-                </DropdownSection>
-              )}
-            </DropdownMenu>
+                      Ask GAIA
+                    </Header>
+                    {actions.map((action) => (
+                      <Dropdown.Item
+                        key={action.key}
+                        id={action.key}
+                        textValue={action.label}
+                        onAction={action.onPress}
+                      >
+                        {action.icon ?? (
+                          <ZapIcon className="size-4 text-zinc-400" />
+                        )}
+                        <div className="flex flex-col">
+                          <span>{action.label}</span>
+                          <span className="whitespace-normal text-xs text-zinc-500">
+                            {action.description}
+                          </span>
+                        </div>
+                      </Dropdown.Item>
+                    ))}
+                  </Dropdown.Section>
+                ) : (
+                  // Empty fragment needed to satisfy Dropdown.Menu's children type when only path is present
+                  <Dropdown.Section id="empty" className="hidden">
+                    <Dropdown.Item id="__empty__">{"" as string}</Dropdown.Item>
+                  </Dropdown.Section>
+                )}
+                {hasActions && path ? <Separator /> : null}
+                {path ? (
+                  <Dropdown.Section id="navigation">
+                    <Header
+                      className={toneVariants({
+                        tone: "faint",
+                        className: "py-1 text-xs",
+                      })}
+                    >
+                      Navigation
+                    </Header>
+                    <Dropdown.Item
+                      id="view-all"
+                      href={path}
+                      textValue="View All"
+                    >
+                      <SquareArrowUpRight02Icon className="size-4 text-accent" />
+                      <div className="flex flex-col">
+                        <span>View All</span>
+                        <span className="whitespace-normal text-xs text-zinc-500">
+                          {`Open full ${title.toLowerCase()} page`}
+                        </span>
+                      </div>
+                    </Dropdown.Item>
+                  </Dropdown.Section>
+                ) : (
+                  <Dropdown.Section id="empty2" className="hidden">
+                    <Dropdown.Item id="__empty2__">
+                      {"" as string}
+                    </Dropdown.Item>
+                  </Dropdown.Section>
+                )}
+              </Dropdown.Menu>
+            </Dropdown.Popover>
           </Dropdown>
         )}
       </div>
@@ -187,14 +209,13 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                     Connect your account to view {title.toLowerCase()}
                   </p>
                   {onConnect && (
-                    <Button
-                      color="primary"
-                      variant="flat"
+                    <GaiaButton
+                      variant="tertiary"
                       size="sm"
                       onPress={() => onConnect(connectIntegrationId || "")}
                     >
                       {connectButtonText}
-                    </Button>
+                    </GaiaButton>
                   )}
                 </>
               )}

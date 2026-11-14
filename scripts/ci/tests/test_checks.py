@@ -867,3 +867,373 @@ def test_a_missing_canonical_handle_fails_loudly(tmp_path: Path) -> None:
 
     assert process.returncode == 1
     assert BOT_HANDLES_SOURCE in process.stderr
+
+
+# ---------------------------------------------------------------------------
+# heroui-style-overrides: the design system owns a HeroUI component's look
+# ---------------------------------------------------------------------------
+
+HERO_FILE = "apps/web/src/features/demo/Card.tsx"
+
+
+def _hero_component(jsx: str, imports: str = "Button, Chip, Modal") -> str:
+    return f'import {{ {imports} }} from "@heroui/react";\n\nexport function Demo() {{\n  return {jsx};\n}}\n'
+
+
+@pytest.mark.parametrize(
+    ("jsx", "entry"),
+    [
+        ('<Button className="bg-zinc-800">x</Button>', "Button:bg-zinc-800"),
+        ('<Button className="hover:text-zinc-400">x</Button>', "Button:hover:text-zinc-400"),
+        ('<Chip className="border-zinc-700">x</Chip>', "Chip:border-zinc-700"),
+        ('<Chip className="border-t-red-500">x</Chip>', "Chip:border-t-red-500"),
+        ('<Chip className="rounded-full">x</Chip>', "Chip:rounded-full"),
+        ('<Chip className="!px-2">x</Chip>', "Chip:!px-2"),
+        ('<Modal.Body className="p-0">x</Modal.Body>', "Modal.Body:p-0"),
+        (
+            '<Button className={cn("w-full", open && "bg-[#00bbff]")}>x</Button>',
+            "Button:bg-[#00bbff]",
+        ),
+        ('<Button className={`w-full ${a ? "rounded-xl" : ""}`}>x</Button>', "Button:rounded-xl"),
+        ("<Button style={{ borderRadius: 8 }}>x</Button>", "Button:style.borderRadius"),
+        ("<Button style={{ color: 'red' }}>x</Button>", "Button:style.color"),
+        (
+            '<Chip className={toneVariants({ tone: "muted", className: "bg-zinc-800" })}>x</Chip>',
+            "Chip:bg-zinc-800",
+        ),
+    ],
+)
+def test_a_heroui_style_override_fails(tmp_path: Path, jsx: str, entry: str) -> None:
+    repo = _repo(tmp_path)
+    _add_text(repo, HERO_FILE, _hero_component(jsx))
+
+    process = _run(repo, "heroui-style-overrides")
+
+    assert process.returncode == 1, f"{jsx} passed\n{process.stdout}"
+    assert f"{HERO_FILE}:{entry}" in process.stdout
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'const CARD = "w-full bg-zinc-800";\n\nexport const Demo = () => <Modal.Body className={CARD} />;\n',
+        'const STYLES = { body: "bg-zinc-800" };\n\nexport const Demo = () => <Modal.Body className={STYLES.body} />;\n',
+        'const CARD = "bg-zinc-800";\n\nexport const Demo = () => <Modal.Body className={`w-full ${CARD}`} />;\n',
+        'import { CARD } from "./styles";\n\nexport const Demo = () => <Modal.Body className={CARD} />;\n',
+    ],
+)
+def test_a_heroui_override_held_in_a_constant_fails(tmp_path: Path, source: str) -> None:
+    repo = _repo(tmp_path)
+    _add_text(repo, "apps/web/src/features/demo/styles.ts", 'export const CARD = "bg-zinc-800";\n')
+    _add_text(repo, HERO_FILE, 'import { Modal } from "@heroui/react";\n' + source)
+
+    process = _run(repo, "heroui-style-overrides")
+
+    assert process.returncode == 1, process.stdout
+    assert f"{HERO_FILE}:Modal.Body:bg-zinc-800" in process.stdout
+
+
+def test_a_variant_slot_call_is_not_an_override(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _add_text(
+        repo,
+        HERO_FILE,
+        'import { Tabs } from "@heroui/react";\n'
+        'import { tabsVariants } from "@/components/shared/tabsVariants";\n\n'
+        'const tabs = tabsVariants({ variant: "solid" });\n\n'
+        'export const Demo = () => <Tabs.List className={tabs.tabList({ className: "w-full" })} />;\n',
+    )
+
+    process = _run(repo, "heroui-style-overrides")
+
+    assert process.returncode == 0, process.stdout
+
+
+def test_an_aliased_heroui_import_is_still_checked(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _add_text(
+        repo,
+        HERO_FILE,
+        _hero_component(
+            '<HeroButton className="rounded-lg">x</HeroButton>', "Button as HeroButton"
+        ),
+    )
+
+    process = _run(repo, "heroui-style-overrides")
+
+    assert process.returncode == 1, process.stdout
+    assert f"{HERO_FILE}:Button:rounded-lg" in process.stdout
+
+
+WRAPPER_FILE = "apps/web/src/components/shared/GaiaThing.tsx"
+
+
+@pytest.mark.parametrize(
+    "wrapper",
+    [
+        "export function GaiaThing({ className, ...props }) {\n"
+        "  return <Button className={shapeVariants({ className })} {...props} />;\n}\n",
+        "export function GaiaThing(props) {\n  return <Chip {...props} />;\n}\n",
+        "export function GaiaThing({ className }) {\n"
+        "  return <NextLink className={buttonVariants({ className })} />;\n}\n",
+    ],
+)
+def test_a_gaia_wrapper_is_checked_like_heroui(tmp_path: Path, wrapper: str) -> None:
+    repo = _repo(tmp_path)
+    _add_text(
+        repo,
+        WRAPPER_FILE,
+        'import { Button, Chip } from "@heroui/react";\n'
+        'import { buttonVariants } from "./buttonVariants";\n'
+        'import { shapeVariants } from "./shape";\n' + wrapper,
+    )
+    _add_text(
+        repo,
+        HERO_FILE,
+        'import { GaiaThing } from "@/components/shared/GaiaThing";\n\n'
+        'export const Demo = () => <GaiaThing className="text-zinc-300 w-full" />;\n',
+    )
+
+    process = _run(repo, "heroui-style-overrides")
+
+    assert process.returncode == 1, process.stdout
+    assert f"{HERO_FILE}:GaiaThing:text-zinc-300" in process.stdout
+    assert "GaiaThing:w-full" not in process.stdout
+
+
+def test_a_shared_component_that_keeps_its_classname_is_not_a_wrapper(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _add_text(
+        repo,
+        WRAPPER_FILE,
+        'import { Button } from "@heroui/react";\n'
+        "export function GaiaThing({ className }) {\n"
+        '  return <div className={className}><Button variant="ghost">x</Button></div>;\n}\n',
+    )
+    _add_text(
+        repo,
+        HERO_FILE,
+        'import { GaiaThing } from "@/components/shared/GaiaThing";\n\n'
+        'export const Demo = () => <GaiaThing className="bg-zinc-800" />;\n',
+    )
+
+    process = _run(repo, "heroui-style-overrides")
+
+    assert process.returncode == 0, process.stdout
+
+
+@pytest.mark.parametrize(
+    "jsx",
+    [
+        '<Button className="w-full h-10 min-w-0 max-w-sm mt-2 flex grid gap-2 order-1 self-end justify-between items-center">x</Button>',
+        '<Chip className="text-sm border border-2 border-dashed">x</Chip>',
+        "<Button style={{ width: 20, marginTop: 4 }}>x</Button>",
+        '<div className="bg-zinc-800 rounded-xl p-4">x</div>',
+    ],
+)
+def test_layout_and_non_heroui_elements_pass(tmp_path: Path, jsx: str) -> None:
+    repo = _repo(tmp_path)
+    _add_text(repo, HERO_FILE, _hero_component(jsx))
+
+    process = _run(repo, "heroui-style-overrides")
+
+    assert process.returncode == 0, process.stdout
+
+
+def test_a_component_not_from_heroui_is_not_checked(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _add_text(
+        repo,
+        HERO_FILE,
+        'import { Button } from "@/components/ui/button";\n\n'
+        'export const Demo = () => <Button className="bg-zinc-800 rounded-xl">x</Button>;\n',
+    )
+
+    process = _run(repo, "heroui-style-overrides")
+
+    assert process.returncode == 0, process.stdout
+
+
+def test_the_sanctioned_variant_files_may_style_heroui(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _add_text(
+        repo,
+        "apps/web/src/components/shared/GaiaButton.tsx",
+        _hero_component('<Button className="bg-zinc-700 rounded-full">x</Button>'),
+    )
+
+    process = _run(repo, "heroui-style-overrides")
+
+    assert process.returncode == 0, process.stdout
+
+
+def test_a_baselined_heroui_override_passes_and_a_stale_line_is_only_reported(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    _add_text(repo, HERO_FILE, _hero_component('<Chip className="bg-[#00bbff]/15">x</Chip>'))
+    stale = "apps/web/src/features/gone/Old.tsx:Button:rounded-xl"
+    _add_text(
+        repo,
+        "scripts/ci/baselines/heroui-style-overrides.txt",
+        f"# header\n{HERO_FILE}:Chip:bg-[#00bbff]/15\n{stale}\n",
+    )
+
+    process = _run(repo, "heroui-style-overrides")
+
+    assert process.returncode == 0, process.stdout
+    assert stale in process.stdout
+
+
+# ---------------------------------------------------------------------------
+# heroui-usage: v3 APIs only, controls with their parts, GAIA wrappers over bare HeroUI
+# ---------------------------------------------------------------------------
+
+V2_VARIANT_NAMES = [
+    "flat",
+    "light",
+    "bordered",
+    "faded",
+    "solid",
+    "shadow",
+    "underlined",
+    "splitted",
+]
+
+
+@pytest.mark.parametrize(
+    ("source", "message"),
+    [
+        ('import { Button } from "@heroui/button";\n', "import from @heroui/button"),
+        ('import { cn } from "@heroui/theme";\n', "import from @heroui/theme"),
+        ('import { useDisclosure } from "@heroui/react";\n', "useDisclosure from @heroui"),
+        ('import { HeroUIProvider } from "@heroui/system";\n', "HeroUIProvider from @heroui"),
+        (_hero_component("<Chip classNames={{ base: 'x' }}>x</Chip>"), "<Chip classNames>"),
+        (_hero_component('<Chip labelPlacement="outside">x</Chip>'), "<Chip labelPlacement>"),
+        (
+            _hero_component('<Modal.Dialog variant={open ? "underlined" : "primary"} />'),
+            'variant="underlined"',
+        ),
+        (_hero_component("<Button>x</Button>"), "<Button>: use GaiaButton"),
+        (_hero_component("<Select.Value />", "Select"), "<Select.Value>: use GaiaSelectValue"),
+        (
+            _hero_component('<ListBox.Item id="a">a</ListBox.Item>', "ListBox"),
+            "<ListBox.Item>: use GaiaListBoxItem",
+        ),
+        (
+            _hero_component("<Switch isSelected />", "Switch"),
+            "<Switch />: render its Switch.Control",
+        ),
+        (_hero_component("<Checkbox />", "Checkbox"), "<Checkbox />: render its Checkbox.Control"),
+        (
+            _hero_component(
+                '<Table.Header><Table.Column id="a">A</Table.Column></Table.Header>', "Table"
+            ),
+            "<Table.Column>: mark one column isRowHeader",
+        ),
+        (
+            'import { GaiaButton } from "@/components/shared/GaiaButton";\n\n'
+            "export const Demo = () => <GaiaButton isIconOnly><svg /></GaiaButton>;\n",
+            "isIconOnly button without aria-label",
+        ),
+        (_hero_component("<B />", "Button as B"), "<Button>: use GaiaButton"),
+        (
+            _hero_component(
+                '<Accordion.Panel className="py-2 text-sm">x</Accordion.Panel>', "Accordion"
+            ),
+            '<Accordion.Panel className="py-2">: it keeps this when collapsed',
+        ),
+        *[
+            (_hero_component(f'<Chip variant="{v}">x</Chip>'), f'<Chip variant="{v}">')
+            for v in V2_VARIANT_NAMES
+        ],
+        (
+            _hero_component(
+                "<Tooltip><div>x</div><Tooltip.Content>t</Tooltip.Content></Tooltip>", "Tooltip"
+            ),
+            "<Tooltip> around <div>: it never receives React Aria's trigger props",
+        ),
+        (
+            'import { Tooltip } from "@heroui/react";\n'
+            'import Link from "next/link";\n\n'
+            'export const Demo = () => <Tooltip><Link href="/">x</Link><Tooltip.Content>t</Tooltip.Content></Tooltip>;\n',
+            "<Tooltip> around <Link>",
+        ),
+        (
+            _hero_component(
+                '<Tooltip><Tooltip.Trigger className="contents"><i /></Tooltip.Trigger></Tooltip>',
+                "Tooltip",
+            ),
+            '<Tooltip.Trigger className="contents">',
+        ),
+    ],
+)
+def test_a_heroui_usage_error_fails(tmp_path: Path, source: str, message: str) -> None:
+    repo = _repo(tmp_path)
+    _add_text(repo, HERO_FILE, source)
+
+    process = _run(repo, "heroui-usage")
+
+    assert process.returncode == 1, f"{source} passed\n{process.stdout}"
+    assert message in process.stdout
+
+
+@pytest.mark.parametrize(
+    "button_prop",
+    [
+        "isLoading",
+        "onClick={go}",
+        "startContent={<i />}",
+        "endContent={<i />}",
+        'radius="full"',
+        'color="primary"',
+    ],
+)
+def test_a_v2_button_prop_fails_even_inside_gaia_button(tmp_path: Path, button_prop: str) -> None:
+    repo = _repo(tmp_path)
+    _add_text(
+        repo,
+        "apps/web/src/components/shared/GaiaButton.tsx",
+        _hero_component(f"<Button {button_prop}>x</Button>", "Button"),
+    )
+
+    process = _run(repo, "heroui-usage")
+
+    assert process.returncode == 1, process.stdout
+    assert f"<Button {button_prop.split('=')[0]}>" in process.stdout
+    assert "use GaiaButton" not in process.stdout
+
+
+def test_v3_usage_and_each_wrapper_in_its_own_file_pass(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _add_text(
+        repo,
+        HERO_FILE,
+        'import { Accordion, Chip, Switch, Tooltip } from "@heroui/react";\n'
+        'import { buttonVariants } from "@heroui/styles";\n'
+        'import { Focusable } from "react-aria-components";\n'
+        'import { GaiaButton } from "@/components/shared/GaiaButton";\n'
+        'import { LinkButton } from "@/components/shared/LinkButton";\n'
+        "export const A = () => (\n"
+        "  <>\n"
+        "  <Tooltip><GaiaButton>x</GaiaButton><Tooltip.Content>t</Tooltip.Content></Tooltip>\n"
+        '  <Tooltip><LinkButton href="/">x</LinkButton><Tooltip.Content>t</Tooltip.Content></Tooltip>\n'
+        "  <Tooltip><Focusable><button /></Focusable><Tooltip.Content>t</Tooltip.Content></Tooltip>\n"
+        "  <Tooltip><Tooltip.Trigger><span>i</span></Tooltip.Trigger><Tooltip.Content>t</Tooltip.Content></Tooltip>\n"
+        '  <GaiaButton variant="primary" isPending onPress={go}>x</GaiaButton>\n'
+        '  <Chip variant="soft" color="accent">x</Chip>\n'
+        "  <Switch><Switch.Control><Switch.Thumb /></Switch.Control></Switch>\n"
+        '  <Accordion.Panel className="text-sm"><div className="py-2">x</div></Accordion.Panel>\n'
+        '  <button onClick={go} color="red" type="button" />\n'
+        "  </>\n"
+        ");\n",
+    )
+    _add_text(
+        repo,
+        "apps/web/src/components/shared/GaiaListBoxItem.tsx",
+        _hero_component("<ListBox.Item>x<ListBox.ItemIndicator /></ListBox.Item>", "ListBox"),
+    )
+
+    process = _run(repo, "heroui-usage")
+
+    assert process.returncode == 0, process.stdout

@@ -1,9 +1,10 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import NextLink from "next/link";
+import { Chip } from "@heroui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { chipVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { skillsApi } from "../api/skillsApi";
 import type { BuiltinSkillInfo } from "../api/types";
 import { skillMatchesQuery } from "../utils";
@@ -72,14 +73,14 @@ export function BuiltinSkillsList({ query }: Readonly<BuiltinSkillsListProps>) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-900/60 px-6 py-12 text-center">
         <p className="text-sm text-zinc-400">Couldn't load built-in skills.</p>
-        <Button
+        <GaiaButton
           size="sm"
-          variant="flat"
-          className="rounded-xl"
+          shape="md"
+          variant="default-soft"
           onPress={() => load()}
         >
           Retry
-        </Button>
+        </GaiaButton>
       </div>
     );
   }
@@ -111,25 +112,21 @@ export function BuiltinSkillsList({ query }: Readonly<BuiltinSkillsListProps>) {
                 <div className="flex shrink-0 items-center gap-2">
                   <Chip
                     size="sm"
-                    variant="flat"
+                    variant="soft"
                     color="warning"
-                    classNames={{
-                      base: "bg-warning/15",
-                      content: "text-xs font-medium",
-                    }}
+                    className={chipVariants({ tint: "light" })}
                   >
-                    Not connected
+                    <Chip.Label className="text-xs font-medium">
+                      Not connected
+                    </Chip.Label>
                   </Chip>
-                  <Button
-                    as={NextLink}
+                  <LinkButton
+                    variant="accent-soft"
                     href={`/integrations?id=${encodeURIComponent(group.icon)}`}
                     size="sm"
-                    color="primary"
-                    variant="flat"
-                    className="rounded-lg"
                   >
                     Connect
-                  </Button>
+                  </LinkButton>
                 </div>
               )
             }

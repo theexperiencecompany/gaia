@@ -1,12 +1,12 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import { CancelCircleIcon } from "@icons";
 import type { DesktopServerFormReason } from "@shared/desktop-tools";
 import Image from "next/image";
 import { RedirectType, redirect, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ArrowUpRight } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { authApi } from "@/features/auth/api/authApi";
@@ -167,7 +167,7 @@ export function DesktopLoginClient({
 
           {isSelfHosted ? (
             <div className="flex justify-center py-4">
-              <Spinner color="primary" />
+              <Spinner color="accent" />
             </div>
           ) : selfHostOrigin ? (
             <SelfHostServerForm
@@ -189,7 +189,7 @@ export function DesktopLoginClient({
 
               {status === "opened" && (
                 <div className="flex flex-col items-center gap-4 py-4">
-                  <Spinner color="primary" />
+                  <Spinner color="accent" />
                   <p className="text-center text-sm text-zinc-400">
                     Opening your browser...
                   </p>
@@ -198,7 +198,7 @@ export function DesktopLoginClient({
 
               {status === "waiting" && (
                 <div className="flex flex-col items-center gap-4 py-4">
-                  <Spinner color="primary" />
+                  <Spinner color="accent" />
                   <div className="text-center">
                     <p className="font-medium text-white">
                       Complete login in your browser
@@ -207,14 +207,15 @@ export function DesktopLoginClient({
                       You&apos;ll be redirected back automatically
                     </p>
                   </div>
-                  <Button
-                    variant="light"
+                  <GaiaButton
+                    variant="ghost"
                     size="sm"
-                    className="mt-2 text-zinc-500"
+                    tone="faint"
+                    className="mt-2"
                     onPress={() => setStatus("ready")}
                   >
                     Try again
-                  </Button>
+                  </GaiaButton>
                 </div>
               )}
 
@@ -230,13 +231,13 @@ export function DesktopLoginClient({
                   <p className="text-center text-red-400">
                     Failed to open browser
                   </p>
-                  <Button
-                    variant="flat"
+                  <GaiaButton
+                    variant="default-soft"
                     size="sm"
                     onPress={() => setStatus("ready")}
                   >
                     Try Again
-                  </Button>
+                  </GaiaButton>
                 </div>
               )}
 
@@ -247,15 +248,15 @@ export function DesktopLoginClient({
                     unreachable={false}
                   />
                 ) : (
-                  <Button
-                    variant="light"
+                  <GaiaButton
+                    shape="pill"
+                    variant="ghost"
                     size="sm"
-                    radius="full"
-                    className="text-zinc-400"
+                    tone="muted"
                     onPress={() => setShowServerForm(true)}
                   >
                     Use my own server
-                  </Button>
+                  </GaiaButton>
                 )}
               </div>
             </>

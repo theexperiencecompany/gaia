@@ -1,0 +1,1283 @@
+/* The gaia layer: v2's control dimensions on v3's components, one rule per
+   HeroUI BEM class (or per variant class from components/shared). It sits above
+   `components`, so these win over HeroUI's sheets whichever area bundle loads them. */
+@layer gaia {
+  .button {
+    /* v2 eased every colour, opacity and transform change over 250ms */
+    transition:
+      transform 250ms var(--ease-out),
+      color 250ms var(--ease-out),
+      background-color 250ms var(--ease-out),
+      opacity 250ms var(--ease-out),
+      box-shadow 250ms var(--ease-out);
+    font-weight: var(--gaia-button-weight);
+    height: var(--gaia-button-md-height);
+    min-width: var(--gaia-button-md-min-width);
+    padding-inline: var(--gaia-button-md-padding);
+    font-size: var(--gaia-button-md-font-size);
+    --gaia-button-radius: var(--gaia-radius-md);
+    border-radius: var(--gaia-button-radius);
+    /* v2 clipped every button; it also drops an inline button's baseline gap (32px row, not 34) */
+    overflow: hidden;
+    /* v2 set no width, so a button stretched in a column or grid cell (v3 pins w-fit) */
+    width: auto;
+  }
+  /* ghost is v2's light: its hover was the default colour at 40%, not v3's solid --default */
+  .button--ghost {
+    --button-bg-hover: var(--default-soft);
+    --button-bg-pressed: var(--default-soft);
+  }
+  .button--sm {
+    height: var(--gaia-button-sm-height);
+    min-width: var(--gaia-button-sm-min-width);
+    padding-inline: var(--gaia-button-sm-padding);
+    font-size: var(--gaia-button-sm-font-size);
+    --gaia-button-radius: var(--gaia-radius-sm);
+  }
+  .button--lg {
+    height: var(--gaia-button-lg-height);
+    min-width: var(--gaia-button-lg-min-width);
+    padding-inline: var(--gaia-button-lg-padding);
+    font-size: var(--gaia-button-lg-font-size);
+    --gaia-button-radius: var(--gaia-radius-lg);
+  }
+  /* v3 sizes every button icon to 16px; v2 left an icon's own width/height alone.
+     width:auto hands an svg back its width/height attributes. */
+  .button svg[width],
+  .button svg[height] {
+    width: auto;
+    height: auto;
+  }
+  /* v3 also pulls every button icon in by 2px and pads it 4px vertically, which
+     grows a row holding a nested inline icon; v2 icons had no margin. */
+  .button svg {
+    margin: 0;
+  }
+  .button--icon-only {
+    min-width: var(--gaia-button-md-height);
+    width: var(--gaia-button-md-height);
+    padding-inline: 0;
+  }
+  .button--icon-only.button--sm {
+    min-width: var(--gaia-button-sm-height);
+    width: var(--gaia-button-sm-height);
+  }
+  .button--icon-only.button--lg {
+    min-width: var(--gaia-button-lg-height);
+    width: var(--gaia-button-lg-height);
+  }
+  /* The rules below restate HeroUI's own compound rules, which the .button rules
+     above would otherwise squash from this higher layer. */
+  .button--full-width {
+    width: 100%;
+  }
+  /* ButtonGroup: the buttons inside are square and the group's ends take the
+     button's own radius (or the group's shape), as v2's group did (HeroUI rounds
+     the ends at 24px). A button's place is its own among the group's children, or
+     its wrapper's when a Tooltip.Trigger wraps it: HeroUI's .button:first-child
+     reads the wrapper's only child, so every wrapped button rounded both ends. */
+  .button-group .button {
+    border-radius: 0;
+  }
+  .button-group--horizontal > .button:first-child,
+  .button-group--horizontal > :first-child > .button {
+    border-start-start-radius: var(--gaia-button-group-radius, var(--gaia-button-radius));
+    border-end-start-radius: var(--gaia-button-group-radius, var(--gaia-button-radius));
+  }
+  .button-group--horizontal > .button:last-child,
+  .button-group--horizontal > :last-child > .button {
+    border-start-end-radius: var(--gaia-button-group-radius, var(--gaia-button-radius));
+    border-end-end-radius: var(--gaia-button-group-radius, var(--gaia-button-radius));
+  }
+  .button-group--vertical > .button:first-child,
+  .button-group--vertical > :first-child > .button {
+    border-start-start-radius: var(--gaia-button-group-radius, var(--gaia-button-radius));
+    border-start-end-radius: var(--gaia-button-group-radius, var(--gaia-button-radius));
+  }
+  .button-group--vertical > .button:last-child,
+  .button-group--vertical > :last-child > .button {
+    border-end-start-radius: var(--gaia-button-group-radius, var(--gaia-button-radius));
+    border-end-end-radius: var(--gaia-button-group-radius, var(--gaia-button-radius));
+  }
+  .button-group--horizontal > .button:first-child:last-child,
+  .button-group--vertical > .button:first-child:last-child,
+  .button-group > :only-child > .button {
+    border-radius: var(--gaia-button-group-radius, var(--gaia-button-radius));
+  }
+  /* Chip: v2's full radius (its radius="sm" chips take shape sm), heights, 8/12/16px
+     text inset (with the label's 2px), weight 400 and 12/14/16px type scale.
+     md is on .chip itself: v3 emits no chip--md class. */
+  .chip {
+    border-radius: var(--gaia-radius-pill);
+    min-height: var(--gaia-chip-md-height);
+    padding-inline: var(--gaia-chip-md-padding-x);
+    font-size: var(--gaia-chip-md-font-size);
+    font-weight: 400;
+  }
+  .chip--sm {
+    min-height: var(--gaia-chip-sm-height);
+    padding-inline: var(--gaia-chip-sm-padding-x);
+    font-size: var(--gaia-chip-sm-font-size);
+  }
+  .chip--lg {
+    min-height: var(--gaia-chip-lg-height);
+    font-size: var(--gaia-chip-lg-font-size);
+    font-weight: 400;
+    padding-inline: var(--gaia-chip-lg-padding-x);
+  }
+  /* chipVariants({ hasStartContent }): v2 inset a leading icon by the chip's own
+     4px (8px lg), not the text inset. */
+  .chip.gaia-chip-start-content {
+    padding-inline-start: var(--gaia-chip-start-inset);
+  }
+  .chip--lg.gaia-chip-start-content {
+    padding-inline-start: var(--gaia-chip-lg-start-inset);
+  }
+  .checkbox__control {
+    width: var(--gaia-checkbox-size);
+    height: var(--gaia-checkbox-size);
+    margin-inline-end: var(--gaia-checkbox-gap);
+  }
+
+  /* Card: v2's unpadded root whose header, body and footer each carry 12px. */
+  .card {
+    gap: 0;
+    padding: 0;
+  }
+  .card__header,
+  .card__content,
+  .card__footer {
+    padding: var(--gaia-card-section-padding);
+  }
+
+
+  /* Fields: v2 filled the row (fullWidth by default), sat 40px tall on the
+     zinc-800 field fill. */
+  .textfield,
+  .select,
+  .search-field,
+  .combo-box {
+    width: 100%;
+  }
+  .input,
+  .input-group,
+  .select__trigger,
+  .search-field__group,
+  .combo-box__input-group {
+    min-height: var(--gaia-field-height);
+  }
+  /* Field text: v2's 14px on 20px lines at every width (v3 runs 16px below
+     sm); a selected value stays on one line and truncates, as v2's did. */
+  .input,
+  .textarea,
+  .input-group__input,
+  .search-field__input,
+  .number-field__input,
+  .select__value {
+    font-size: var(--gaia-field-font-size);
+    line-height: var(--gaia-field-line-height);
+  }
+  /* v2's Select value: a 20px line centred in the trigger, white once chosen. */
+  .select__trigger {
+    align-items: center;
+  }
+  .select__value {
+    min-height: 0;
+  }
+  /* v2's field labels were regular weight; a small field's outside label 12px on 16px. */
+  :is(.textfield, .select, .combo-box) > .label {
+    font-weight: 400;
+  }
+  /* v2's outside label sat 6px above its field; v3's column gap is 4px */
+  :is(.textfield, .select, .combo-box) > .label {
+    margin-bottom: 0.125rem;
+  }
+  .gaia-input-sm > .label {
+    font-size: var(--text-xs);
+    line-height: 1rem;
+  }
+  /* v2's fully round field inset its text 16px (v3: the 12px of any field). */
+  .gaia-pill > .input,
+  .input.gaia-pill {
+    padding-inline: var(--gaia-field-pill-padding-x);
+  }
+
+
+  /* v2's grouped input shrank with its row instead of holding its intrinsic width. */
+  .input-group__input,
+  .search-field__input {
+    min-width: 0;
+  }
+  /* v2's textareas had no resize handle (they grew with their text); v3's are browser-resizable. */
+  .textarea,
+  .input-group__input[data-slot="input-group-textarea"] {
+    resize: none;
+  }
+  .select__value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* v2's input filled its field, so a flex-1 field shrank instead of holding the input's 20ch */
+  .textfield .input,
+  .textfield .input-group {
+    width: 100%;
+  }
+
+  /* Kbd: v2's 6px inset, weight 400 and zinc-300 text (v3: 8px, 500, zinc-400). */
+  .kbd {
+    padding-inline: 0.375rem;
+    font-weight: 400;
+    color: var(--color-zinc-300);
+  }
+
+  /* Select chevron: v2's sat 12px from the end in the trigger's own text colour. */
+  .select__indicator {
+    inset-inline-end: var(--gaia-select-indicator-end);
+    color: inherit;
+  }
+
+  /* inputVariants({ size: "sm" }): v2's small field, 32px with an 8px inset. */
+  .gaia-input-sm .input,
+  .gaia-input-sm .input-group,
+  .gaia-input-sm .search-field__group,
+  .gaia-input-sm .select__trigger,
+  .input.gaia-input-sm {
+    min-height: var(--gaia-input-sm-height);
+    height: var(--gaia-input-sm-height);
+    font-size: var(--gaia-input-sm-font-size);
+    border-radius: var(--gaia-radius-sm);
+  }
+  /* v2's sm Select: a 32px trigger on an 8px radius, its value centred on the
+     row (unpadded, HeroUI's stretched value would sit at the top). */
+  .gaia-input-sm .select__trigger {
+    min-height: var(--gaia-input-sm-height);
+    height: var(--gaia-input-sm-height);
+    padding-block: 0;
+    align-items: center;
+    border-radius: var(--gaia-radius-sm);
+  }
+  .gaia-input-sm .input,
+  .input.gaia-input-sm,
+  .gaia-input-sm .input-group__input,
+  .gaia-input-sm .search-field__input {
+    padding-block: 0;
+    padding-inline: var(--gaia-input-sm-padding-x);
+  }
+  .gaia-input-sm .select__trigger {
+    padding-block: 0;
+    padding-inline-start: var(--gaia-input-sm-padding-x);
+  }
+
+  /* ComboBoxInput is v2's Autocomplete field: the row is the filled field,
+     lifting to zinc-700 on hover (ringed, not lifted, on keyboard focus), and
+     the input, start content, clear button and chevron all sit inside it. */
+  .combo-box__input-group {
+    border-radius: var(--gaia-radius-md);
+    background-color: var(--field-background);
+    box-shadow: var(--field-shadow);
+  }
+  /* inputVariants({ size: "sm" }) on a ComboBox: v2's sm Autocomplete, the 32px row. */
+  .gaia-input-sm .combo-box__input-group {
+    min-height: var(--gaia-input-sm-height);
+    height: var(--gaia-input-sm-height);
+    font-size: var(--gaia-input-sm-font-size);
+    border-radius: var(--gaia-radius-sm);
+  }
+  .combo-box__input-group:hover {
+    background-color: var(--gaia-field-active);
+  }
+  .combo-box__input-group > .input {
+    min-height: 0;
+    background-color: transparent;
+    box-shadow: none;
+  }
+  .combo-box__input-group > .gaia-combo-clear {
+    position: absolute;
+    inset-inline-end: var(--gaia-combo-clear-end);
+    background-color: transparent;
+  }
+  .combo-box__input-group:has(> .gaia-combo-clear) > .input {
+    padding-inline-end: var(--gaia-combo-input-clear-end);
+  }
+  .combo-box__trigger {
+    padding-inline-end: var(--gaia-combo-trigger-end);
+    color: var(--foreground);
+  }
+  .combo-box__trigger:hover,
+  .combo-box__trigger[data-hovered="true"] {
+    color: var(--foreground);
+  }
+
+  /* ComboBoxInput's clear button: v2 showed it only on hover or focus. */
+  .combo-box__input-group:not(:hover, :focus-within) .gaia-combo-clear {
+    display: none;
+  }
+
+  /* inputVariants({ variant: "bare" }): v2 flat fields whose wrapper was made transparent, unpadded and ringless. */
+  .input.gaia-input-bare,
+  .textarea.gaia-input-bare {
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+    box-shadow: none;
+    --input-bg: transparent;
+    --input-bg-hover: transparent;
+    --input-bg-focus: transparent;
+  }
+
+  /* v2's bare textarea kept its field's 40px row with one line centred in it;
+     v3's textarea is 38px with the text at the top (the workflow description). */
+  .textarea.gaia-input-bare {
+    min-height: var(--gaia-field-height);
+    padding-block: calc(
+      (var(--gaia-field-height) - var(--gaia-field-line-height)) / 2
+    );
+  }
+
+  /* inputVariants({ variant: "underlined" }): v2's underlined field, a 2px foreground underline only while focused. */
+  .input.gaia-input-underlined,
+  .textarea.gaia-input-underlined {
+    padding-inline: 0.25rem;
+    /* v2's underlined text sat 3px above the field's centre, 7px down its 40px */
+    padding-top: var(--gaia-input-underlined-padding-top);
+    padding-bottom: var(--gaia-input-underlined-padding-bottom);
+    border-width: 0 0 2px;
+    border-color: transparent;
+    border-radius: 0;
+    background-color: transparent;
+    box-shadow: var(--gaia-shadow-underline);
+    --input-bg: transparent;
+    --input-bg-hover: transparent;
+    --input-bg-focus: transparent;
+  }
+  .input.gaia-input-underlined:focus,
+  .input.gaia-input-underlined[data-focused="true"],
+  .textarea.gaia-input-underlined:focus,
+  .textarea.gaia-input-underlined[data-focused="true"] {
+    /* v2's focus line: default-foreground, white */
+    border-color: var(--default-foreground);
+  }
+
+  /* inputVariants({ variant: "transparent" }): no fill at rest, hover or focus; inset and ring stay. */
+  .input.gaia-input-transparent,
+  .textarea.gaia-input-transparent,
+  .input-group.gaia-input-transparent,
+  .select__trigger.gaia-input-transparent {
+    background-color: transparent;
+    --input-bg: transparent;
+    --input-bg-hover: transparent;
+    --input-bg-focus: transparent;
+  }
+
+  /* inputVariants({ variant: "subtle" }): zinc-800 at 30%, lifting to 50% on hover. */
+  .input.gaia-input-subtle,
+  .textarea.gaia-input-subtle,
+  .input-group.gaia-input-subtle,
+  .select__trigger.gaia-input-subtle {
+    background-color: var(--gaia-field-subtle);
+    --input-bg: var(--gaia-field-subtle);
+  }
+  .input.gaia-input-subtle:hover,
+  .textarea.gaia-input-subtle:hover,
+  .input-group.gaia-input-subtle:hover,
+  .select__trigger.gaia-input-subtle:hover {
+    background-color: var(--gaia-field-subtle-hover);
+    --input-bg-hover: var(--gaia-field-subtle-hover);
+  }
+
+  /* inputVariants({ variant: "translucent" }): v2's see-through settings field,
+     zinc-800 at 50% that lifts to zinc-700 at 50% on hover. */
+  .input.gaia-input-translucent,
+  .textarea.gaia-input-translucent,
+  .input-group.gaia-input-translucent,
+  .select__trigger.gaia-input-translucent {
+    background-color: var(--gaia-field-translucent);
+    --input-bg: var(--gaia-field-translucent);
+  }
+  .input.gaia-input-translucent:hover,
+  .textarea.gaia-input-translucent:hover,
+  .input-group.gaia-input-translucent:hover,
+  .select__trigger.gaia-input-translucent:hover {
+    background-color: var(--gaia-field-translucent-hover);
+    --input-bg-hover: var(--gaia-field-translucent-hover);
+  }
+
+  /* An open Select or Autocomplete: v2 lifted any filled trigger to zinc-700. */
+  .select[data-open="true"] .select__trigger:not(.gaia-input-transparent, .gaia-input-bare),
+  .combo-box[data-open="true"] .combo-box__input-group {
+    background-color: var(--gaia-field-active);
+  }
+
+  /* A danger menu item is red whether or not its text sits in a Label slot,
+     as v2's danger DropdownItem was (v3 colours only the Label). */
+  .menu-item--danger {
+    color: var(--danger);
+  }
+
+  /* overlayVariants({ surface }): raised is v2's zinc-800 popover and tooltip
+     surface off a zinc-900 page; secondary is the #1a1a1a sidebar surface. */
+  .gaia-overlay-raised {
+    --overlay: var(--gaia-overlay-raised);
+  }
+  .gaia-overlay-secondary {
+    --overlay: var(--gaia-overlay-secondary);
+  }
+  /* overlayVariants({ backdrop: "opaque" }): v2's backdrop="opaque" popover, the
+     page dimmed behind it; a viewport-wide spread shadow, since v3 popovers have no backdrop. */
+  .gaia-overlay-opaque {
+    box-shadow: 0 0 0 100vmax var(--gaia-overlay-scrim);
+  }
+
+  /* tint light (SOFT_TINT_CLASSES): v2's 15% status tint on a soft Chip or Button. */
+  .gaia-tint-light {
+    --accent-soft: color-mix(in oklab, var(--accent) var(--gaia-soft-tint-light), transparent);
+    --success-soft: color-mix(in oklab, var(--success) var(--gaia-soft-tint-light), transparent);
+    --warning-soft: color-mix(in oklab, var(--warning) var(--gaia-soft-tint-light), transparent);
+    --danger-soft: color-mix(in oklab, var(--danger) var(--gaia-soft-tint-light), transparent);
+  }
+
+  /* hue secondary (chipVariants): v2's dark secondary, #9353d3 at 20% behind its #ae7ede text. */
+  /* hue brand (chipVariants): v2's flat primary chip whose label was text-primary, the brand #00bbff. */
+  .gaia-hue-brand {
+    --accent-soft-foreground: var(--accent);
+  }
+  .gaia-hue-secondary {
+    --accent-soft: color-mix(in oklab, #9353d3 20%, transparent);
+    --accent-soft-foreground: #ae7ede;
+  }
+
+  /* Field placeholders: v2's foreground-500 (zinc-400 dark, zinc-500 light) at normal weight. */
+  .input::placeholder,
+  .textarea::placeholder,
+  .input-group__input::placeholder {
+    font-weight: 400;
+  }
+
+  /* ComboBoxInput (components/shared/ComboBoxInput.tsx): start/end content sits
+     in ComboBox's own input row, outside any InputGroup context. */
+  .combo-box__input-group > [data-slot="input-group-prefix"],
+  .combo-box__input-group > [data-slot="input-group-suffix"] {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    color: var(--field-placeholder);
+  }
+  .combo-box__input-group > [data-slot="input-group-prefix"] {
+    padding-inline-start: 0.75rem;
+  }
+  .combo-box__input-group > [data-slot="input-group-prefix"] + .input {
+    padding-inline-start: 0.5rem;
+  }
+
+  /* labelPlacement="inside" (components/shared/fieldVariants.ts): v2's default
+     field, the label small at the top-left inside a 56px field, the value below.
+     Only when a visible Label renders: v2 fell back to outside (40px) without one. */
+  .gaia-field-inside:has(> .label:not(.sr-only)) {
+    position: relative;
+  }
+  .gaia-field-inside:has(> .label:not(.sr-only)) > .label {
+    position: absolute;
+    z-index: 1;
+    top: var(--gaia-field-inside-label-top);
+    inset-inline-start: var(--gaia-field-inside-padding-x);
+    font-size: var(--gaia-field-inside-label-size);
+    font-weight: 400;
+    color: var(--gaia-field-label-inside-color);
+    pointer-events: none;
+  }
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input-group,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .select__trigger,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .combo-box__input-group {
+    min-height: var(--gaia-field-inside-height);
+  }
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input-group__input,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .textarea,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .select__trigger,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .combo-box__input-group .input {
+    padding-top: var(--gaia-field-inside-padding-top);
+    padding-bottom: var(--gaia-field-inside-padding-bottom);
+    padding-inline: var(--gaia-field-inside-padding-x);
+  }
+  /* v2's inside-label textarea stacked its text under the 22px label row: 30px above, 10px below. */
+  .gaia-field-inside:has(> .label:not(.sr-only)) .textarea {
+    padding-top: var(--gaia-field-inside-textarea-padding-top);
+    padding-bottom: var(--gaia-field-inside-textarea-padding-bottom);
+  }
+  /* With inputVariants({ size: "sm" }), v2's sm inside field: 48px, the label 6px
+     down, the value 20px down, a textarea's text 28px down. */
+  .gaia-field-inside:has(> .label:not(.sr-only)).gaia-input-sm {
+    --gaia-field-inside-height: var(--gaia-field-inside-sm-height);
+    --gaia-field-inside-label-top: var(--gaia-field-inside-sm-label-top);
+    --gaia-field-inside-padding-top: var(--gaia-field-inside-sm-padding-top);
+    --gaia-field-inside-textarea-padding-top: var(
+      --gaia-field-inside-sm-textarea-padding-top
+    );
+    --gaia-field-inside-textarea-padding-bottom: var(
+      --gaia-field-inside-padding-bottom
+    );
+  }
+  /* v2's startContent and endContent sat on the value's row under the label, at
+     the field's 12px inset with a 6px gap to the value, not centred on the field. */
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input-group__prefix,
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input-group__suffix {
+    align-self: stretch;
+    height: auto;
+    padding-top: var(--gaia-field-inside-padding-top);
+    padding-bottom: var(--gaia-field-inside-padding-bottom);
+  }
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input-group__prefix {
+    padding-inline: var(--gaia-field-inside-padding-x) 0;
+  }
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input-group__suffix {
+    padding-inline: 0 var(--gaia-field-inside-padding-x);
+  }
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input-group:has(> .input-group__prefix) .input-group__input {
+    padding-inline-start: var(--gaia-field-inside-content-gap);
+  }
+  .gaia-field-inside:has(> .label:not(.sr-only)) .input-group:has(> .input-group__suffix) .input-group__input {
+    padding-inline-end: var(--gaia-field-inside-content-gap);
+  }
+
+  /* components/shared/controlVariants.ts */
+  .chip.gaia-chip-selected {
+    box-shadow:
+      0 10px 15px -3px color-mix(in oklab, var(--chip-bg) 50%, transparent),
+      0 4px 6px -4px color-mix(in oklab, var(--chip-bg) 50%, transparent);
+  }
+  .avatar.gaia-avatar-bordered,
+  .avatar-group--ring > .avatar.gaia-avatar-bordered {
+    box-shadow:
+      0 0 0 var(--gaia-avatar-ring-gap) var(--background),
+      0 0 0 calc(var(--gaia-avatar-ring-gap) + var(--gaia-avatar-ring-width))
+        var(--gaia-avatar-ring-color);
+  }
+  /* v3's optional ListContainer paints the track and is a block, so in a column
+     (a modal body) the track spans the row; v2's track hugged its tabs. */
+  .tabs__list-container {
+    width: fit-content;
+    max-width: 100%;
+  }
+  .gaia-tabs-accent .tabs__list {
+    background-color: var(--default);
+  }
+  .gaia-tabs-accent .tabs__indicator {
+    background-color: var(--accent);
+  }
+  .gaia-tabs-accent .tabs__tab[data-selected="true"] {
+    color: var(--accent-foreground);
+  }
+
+  .modal__dialog.gaia-modal-xl {
+    max-width: var(--gaia-modal-xl);
+  }
+  .modal__dialog.gaia-modal-2xl {
+    max-width: var(--gaia-modal-2xl);
+  }
+  .modal__dialog.gaia-modal-3xl {
+    max-width: var(--gaia-modal-3xl);
+  }
+  .modal__dialog.gaia-modal-4xl {
+    max-width: var(--gaia-modal-4xl);
+  }
+  .modal__dialog.gaia-modal-5xl {
+    max-width: var(--gaia-modal-5xl);
+  }
+
+  /* Switch: v2's pill track (zinc-700 off), white round thumb, 4px inset. */
+  .switch:not([data-selected="true"]) {
+    --switch-control-bg: var(--gaia-switch-track-off);
+  }
+  .switch__control {
+    width: var(--gaia-switch-md-width);
+    height: var(--gaia-switch-md-height);
+    padding-inline: var(--gaia-switch-padding);
+    border-radius: var(--gaia-radius-pill);
+  }
+  .switch__thumb {
+    box-shadow: var(--gaia-shadow-small);
+    width: var(--gaia-switch-md-thumb);
+    height: var(--gaia-switch-md-thumb);
+    margin-inline-start: 0;
+    border-radius: var(--gaia-radius-pill);
+    background-color: #ffffff;
+    --switch-thumb-offset: calc(
+      var(--gaia-switch-md-width) - 2 * var(--gaia-switch-padding) -
+        var(--gaia-switch-md-thumb)
+    );
+  }
+  .switch--sm .switch__control {
+    width: var(--gaia-switch-sm-width);
+    height: var(--gaia-switch-sm-height);
+    border-radius: var(--gaia-radius-pill);
+  }
+  .switch--sm .switch__thumb {
+    width: var(--gaia-switch-sm-thumb);
+    height: var(--gaia-switch-sm-thumb);
+    border-radius: var(--gaia-radius-pill);
+    --switch-thumb-offset: calc(
+      var(--gaia-switch-sm-width) - 2 * var(--gaia-switch-padding) -
+        var(--gaia-switch-sm-thumb)
+    );
+  }
+  .switch--lg .switch__control {
+    width: var(--gaia-switch-lg-width);
+    height: var(--gaia-switch-lg-height);
+    border-radius: var(--gaia-radius-pill);
+  }
+  .switch--lg .switch__thumb {
+    width: var(--gaia-switch-lg-thumb);
+    height: var(--gaia-switch-lg-thumb);
+    border-radius: var(--gaia-radius-pill);
+    --switch-thumb-offset: calc(
+      var(--gaia-switch-lg-width) - 2 * var(--gaia-switch-padding) -
+        var(--gaia-switch-lg-thumb)
+    );
+  }
+  /* v2's track kept its colour on hover */
+  .switch {
+    --switch-control-bg-hover: var(--gaia-switch-track-off);
+    --switch-control-bg-checked-hover: var(--accent);
+  }
+  /* v2's thumb stayed white and lifted when on or disabled, and a disabled switch
+     dimmed as a whole (HeroUI paints the thumb accent-foreground and fades it). */
+  .switch[data-selected="true"] .switch__thumb,
+  .switch[aria-checked="true"] .switch__thumb,
+  .switch[data-disabled="true"] .switch__thumb {
+    background-color: #ffffff;
+    box-shadow: var(--gaia-shadow-small);
+  }
+  .switch[data-disabled="true"] .switch__thumb,
+  .switch[data-disabled="true"][data-selected="true"] .switch__thumb,
+  .switch[data-disabled="true"][aria-checked="true"] .switch__thumb {
+    opacity: 1;
+  }
+
+  /* Slider: v2's thin pill track and round thumb with an inner dot
+     (md default; sliderVariants({ size: "sm" }) for v2's sm). */
+  .slider__track {
+    border-radius: var(--gaia-radius-pill);
+    background-color: var(--gaia-slider-track-bg);
+  }
+  .slider[data-orientation="horizontal"] .slider__track {
+    height: var(--gaia-slider-md-track);
+    border-inline-width: calc(var(--gaia-slider-md-thumb) / 2);
+  }
+  /* v2's fill had square ends under its thumb */
+  .slider__fill {
+    border-radius: 0;
+  }
+  .slider[data-orientation="horizontal"] .slider__thumb {
+    box-shadow: var(--gaia-shadow-small);
+    width: var(--gaia-slider-md-thumb);
+    height: var(--gaia-slider-md-thumb);
+    border-radius: var(--gaia-radius-pill);
+  }
+  .slider__thumb::after {
+    width: var(--gaia-slider-md-thumb-inner);
+    height: var(--gaia-slider-md-thumb-inner);
+    border-radius: var(--gaia-radius-pill);
+    background-color: var(--background);
+  }
+  .slider.gaia-slider-indigo .slider__fill {
+    background-color: var(--gaia-slider-indigo-fill);
+  }
+  .slider.gaia-slider-indigo .slider__thumb,
+  .slider.gaia-slider-indigo .slider__thumb::after {
+    background-color: var(--gaia-slider-indigo-thumb);
+  }
+  .slider.gaia-slider-sm[data-orientation="horizontal"] .slider__track {
+    height: var(--gaia-slider-sm-track);
+    border-inline-width: calc(var(--gaia-slider-sm-thumb) / 2);
+  }
+  .slider.gaia-slider-sm[data-orientation="horizontal"] .slider__thumb {
+    width: var(--gaia-slider-sm-thumb);
+    height: var(--gaia-slider-sm-thumb);
+  }
+  .slider.gaia-slider-sm .slider__thumb::after {
+    width: var(--gaia-slider-sm-thumb-inner);
+    height: var(--gaia-slider-sm-thumb-inner);
+  }
+  /* v2's sm row is the thumb's height with the track centred in it, and its
+     marks sit 2px under that row in a 20px band (no gap for v3's empty label row). */
+  .slider.gaia-slider-sm {
+    row-gap: 0;
+  }
+  .slider.gaia-slider-sm[data-orientation="horizontal"] .slider__track {
+    margin-block: calc((var(--gaia-slider-sm-thumb) - var(--gaia-slider-sm-track)) / 2);
+  }
+
+  /* Overlays: v2's radii (popover, select, dropdown and modal lg 14px, tooltip
+     md 12px); v3 rounds them at 24-32px. */
+  .popover,
+  .select__popover,
+  .combo-box__popover,
+  .dropdown__popover,
+  .modal__dialog {
+    border-radius: var(--gaia-radius-lg);
+  }
+  .modal__dialog--full {
+    border-radius: 0;
+    box-shadow: none;
+  }
+  /* v2's tooltip body: 14px on 20px lines, 4px by 10px, foreground text (v3: 12px, 8px, white). */
+  .tooltip {
+    border-radius: var(--gaia-radius-md);
+    padding: var(--gaia-tooltip-padding-y) var(--gaia-tooltip-padding-x);
+    font-size: var(--gaia-tooltip-font-size);
+    line-height: var(--gaia-tooltip-line-height);
+    /* v3 breaks tooltip text mid-word (break-all); v2 wrapped between words */
+    word-break: normal;
+    overflow-wrap: break-word;
+  }
+
+  /* List and menu items: v2's 32px row on an 8px radius (v3 is 36px on 16px);
+     the selected check is GaiaListBoxItem's ListBox.ItemIndicator. */
+  .list-box-item,
+  .menu-item {
+    min-height: var(--gaia-list-item-height);
+    border-radius: var(--gaia-radius-sm);
+  }
+
+  /* Select and ComboBox lists: v2's 8px inset, rows 2px apart with 8px
+     padding and gap, a 12px check, and the focused row (the selected one on
+     open) on v2's zinc-700. */
+  .select__popover .list-box,
+  .combo-box__popover .list-box {
+    padding: var(--gaia-list-inset);
+  }
+  .list-box > * + * {
+    margin-top: var(--gaia-list-gap);
+  }
+  .list-box-item {
+    gap: var(--gaia-list-item-gap);
+    padding-inline: var(--gaia-list-item-padding-x);
+  }
+  .list-box-item:has(.list-box-item__indicator) {
+    padding-inline-end: calc(var(--gaia-list-item-padding-x) * 2 + var(--gaia-list-item-indicator));
+  }
+  .list-box-item__indicator,
+  .list-box-item__indicator [data-slot="list-box-item-indicator--checkmark"] {
+    width: var(--gaia-list-item-indicator);
+    height: var(--gaia-list-item-indicator);
+  }
+  .list-box-item[data-focused="true"] {
+    background-color: var(--gaia-field-active);
+  }
+
+  /* v2's Select and Autocomplete popovers: the trigger's width, at most 256px
+     of list (plus the inset) before it scrolls. */
+  .select__popover,
+  .combo-box__popover {
+    width: var(--trigger-width);
+  }
+  .select__popover .list-box,
+  .combo-box__popover .list-box {
+    max-height: var(--gaia-list-max-height);
+    overflow-y: auto;
+  }
+
+  /* Table: v2's rows, 8px by 12px unfilled start-aligned cells with no row
+     rules, and the selected row on zinc-700 at 60%, rounded 8px at its ends. */
+  .table__cell {
+    padding: var(--gaia-table-cell-padding-y) var(--gaia-table-cell-padding-x);
+    text-align: start;
+    border-bottom-width: 0;
+    border-radius: 0;
+    background-color: transparent;
+  }
+  .table__row {
+    border-bottom-width: 0;
+  }
+  /* v2 tinted only a row that reacts to the pointer (RAC's data-hovered, below), not any row under it. */
+  .table__row:hover .table__cell {
+    background-color: transparent;
+  }
+  .table__row[data-selected="true"] .table__cell {
+    background-color: var(--gaia-table-row-selected);
+  }
+  .table__row[data-hovered="true"]:not([data-selected="true"]) .table__cell {
+    background-color: var(--gaia-table-row-hover);
+  }
+  .table__cell:focus-visible,
+  .table__cell[data-focus-visible="true"] {
+    border-radius: var(--gaia-radius-sm);
+  }
+  .table__row .table__cell:first-child {
+    border-start-start-radius: var(--gaia-radius-sm);
+    border-end-start-radius: var(--gaia-radius-sm);
+  }
+  .table__row .table__cell:last-child {
+    border-start-end-radius: var(--gaia-radius-sm);
+    border-end-end-radius: var(--gaia-radius-sm);
+  }
+
+  /* Table header: v2's 40px zinc-800 strip, rounded 8px at its ends, in 12px
+     semibold with no column rules, 5px above the first row. */
+  .table__header {
+    border-bottom-width: 0;
+    background-color: transparent;
+  }
+  .table__header::after {
+    content: "";
+    display: table-row;
+    height: var(--gaia-table-header-gap);
+  }
+  .table__column {
+    height: var(--gaia-table-header-height);
+    padding: 0 var(--gaia-table-cell-padding-x);
+    background-color: var(--field-background);
+    font-weight: 600;
+  }
+  .table__column::after {
+    content: none;
+  }
+  .table__column:first-child {
+    border-start-start-radius: var(--gaia-radius-sm);
+    border-end-start-radius: var(--gaia-radius-sm);
+  }
+  .table__column:last-child {
+    border-start-end-radius: var(--gaia-radius-sm);
+    border-end-end-radius: var(--gaia-radius-sm);
+  }
+
+  /* v2's header cells never wrapped, so a long label widens its column. */
+  .table__column {
+    white-space: nowrap;
+  }
+
+  /* Accordion: v2's divider was its own 1px row between items, where v3
+     draws it over the item's last pixel. */
+  .accordion__item:not(:last-child, [data-hide-separator="true"]) {
+    padding-bottom: 1px;
+  }
+
+  /* tableVariants({ surface }): card is v2's default Table wrapper, a 16px
+     padded zinc-900 card; plain is v2's removed wrapper. */
+  .table-root.gaia-table-card {
+    padding: var(--gaia-table-card-padding);
+    border-radius: var(--gaia-radius-lg);
+    background-color: var(--color-zinc-900);
+    box-shadow: var(--gaia-table-card-shadow);
+  }
+  .table-root.gaia-table-plain {
+    padding: 0;
+    border-radius: 0;
+    background-color: transparent;
+  }
+
+  /* separatorVariants({ surface: "raised" }): v2's zinc-700/50 divider on a zinc-800 card. */
+  .separator.gaia-separator-raised {
+    background-color: var(--gaia-separator-raised);
+  }
+
+  /* Slider marks: v2 set them 6px further below the track. */
+  .slider__marks {
+    margin-top: var(--gaia-slider-marks-gap);
+  }
+  .slider.gaia-slider-sm .slider__marks {
+    margin-top: var(--gaia-slider-sm-marks-gap);
+    height: calc(var(--gaia-slider-sm-marks-band) - var(--gaia-slider-sm-marks-gap));
+  }
+
+  /* Modal inset: v2 kept 4px between dialog and viewport on mobile and 64px by
+     24px from sm up (v3 pads its container 16px, then 40px). */
+  .modal__container {
+    padding: var(--gaia-modal-inset);
+  }
+  @media (width >= 40rem) {
+    .modal__container {
+      padding: var(--gaia-modal-inset-sm-y) var(--gaia-modal-inset-sm-x);
+    }
+  }
+  .modal__container--full {
+    padding: 0;
+  }
+
+  /* Close buttons (modal, drawer, alert, CloseButton): v2's had no fill at rest
+     and zinc-800 on hover; v3's default variant sits on a grey --default disc. */
+  .close-button--default {
+    background-color: transparent;
+  }
+  .close-button--default:hover,
+  .close-button--default[data-hovered="true"] {
+    background-color: var(--gaia-close-button-hover);
+  }
+
+  /* Modal close: v2's 32px round button 4px from the corner (v3: 24px, 16px in). */
+  .modal__close-trigger {
+    top: var(--gaia-modal-close-inset);
+    inset-inline-end: var(--gaia-modal-close-inset);
+    width: var(--gaia-modal-close-size);
+    height: var(--gaia-modal-close-size);
+    padding: var(--gaia-modal-close-padding);
+    border-radius: var(--gaia-radius-pill);
+  }
+
+  /* Modal: v2's section rhythm. The dialog has no padding of its own; the
+     header, body and footer carry it, and the body is a column of 12px gaps in
+     the dialog's own text colour (v3 mutes and shrinks it). */
+  .modal__dialog {
+    padding: 0;
+  }
+  .modal__header {
+    padding: var(--gaia-modal-header-padding-y) var(--gaia-modal-padding-x);
+  }
+  .modal__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gaia-modal-body-gap);
+    margin: 0;
+    padding: var(--gaia-modal-body-padding-y) var(--gaia-modal-padding-x);
+    color: inherit;
+    font-size: inherit;
+    line-height: inherit;
+  }
+  .modal__header + .modal__body {
+    margin-top: 0;
+  }
+  .modal__footer {
+    padding: var(--gaia-modal-footer-padding-y) var(--gaia-modal-padding-x);
+  }
+  /* v3 parts the footer from the body or header by 20px; v2's sections abutted. */
+  .modal__header + .modal__footer,
+  .modal__body + .modal__footer {
+    margin-top: 0;
+  }
+
+  /* Checkbox: v2's 8px hit inset, 16px regular label, and an outlined control
+     with no fill on 7.2px corners. */
+  .checkbox {
+    padding: var(--gaia-toggle-hit-inset);
+    margin: calc(var(--gaia-toggle-hit-inset) * -1);
+  }
+  .checkbox__content {
+    font-size: var(--text-base);
+    line-height: 1.5rem;
+    font-weight: 400;
+  }
+  /* the control's own 8px end margin is v2's label gap */
+  .checkbox__content {
+    gap: 0;
+  }
+  .checkbox__control {
+    border: var(--gaia-toggle-border-width) solid var(--gaia-toggle-border);
+    border-radius: var(--gaia-checkbox-radius);
+    background-color: transparent;
+  }
+  /* HeroUI draws the field shadow on a toggle's control too; v2's toggles (and v3's dark radio) drew none */
+  .checkbox__control,
+  .radio__control {
+    --field-shadow: none;
+  }
+  /* checked, the fill covers the whole box, outline included */
+  .checkbox[data-selected="true"] .checkbox__control,
+  .checkbox[aria-checked="true"] .checkbox__control {
+    border-width: 0;
+  }
+
+  /* shape="pill" (components/shared/shape.ts): v2's radius="full", one class for
+     every control. Field controls round through their own --field-radius, set only
+     on a field: set on a container (pill Tabs) it reached every field in its panels. */
+  :is(.textfield, .select, .combo-box, .search-field, .number-field, .input, .textarea, .input-group).gaia-pill {
+    --field-radius: var(--gaia-radius-pill);
+  }
+  .button.gaia-pill,
+  .chip.gaia-pill,
+  .gaia-pill .tabs__list,
+  .gaia-pill .tabs__tab,
+  .gaia-pill .tabs__indicator,
+  .tabs__list.gaia-pill,
+  .checkbox.gaia-pill .checkbox__control {
+    border-radius: var(--gaia-radius-pill);
+  }
+  /* shape sharp/sm/md/xl: a fixed radius whatever the control's size (v2's radius prop). */
+  :is(.textfield, .select, .combo-box, .search-field, .number-field, .input, .textarea, .input-group).gaia-sharp {
+    --field-radius: var(--gaia-radius-xs);
+  }
+  :is(.textfield, .select, .combo-box, .search-field, .number-field, .input, .textarea, .input-group).gaia-radius-sm {
+    --field-radius: var(--gaia-radius-sm);
+  }
+  :is(.textfield, .select, .combo-box, .search-field, .number-field, .input, .textarea, .input-group).gaia-radius-md {
+    --field-radius: var(--gaia-radius-md);
+  }
+  :is(.textfield, .select, .combo-box, .search-field, .number-field, .input, .textarea, .input-group).gaia-radius-lg {
+    --field-radius: var(--gaia-radius-lg);
+  }
+  :is(.textfield, .select, .combo-box, .search-field, .number-field, .input, .textarea, .input-group).gaia-radius-xl {
+    --field-radius: var(--gaia-radius-xl);
+  }
+  .button.gaia-sharp,
+  .chip.gaia-sharp {
+    border-radius: var(--gaia-radius-xs);
+  }
+  .button.gaia-radius-sm,
+  .chip.gaia-radius-sm,
+  .tooltip.gaia-radius-sm {
+    border-radius: var(--gaia-radius-sm);
+  }
+  .button.gaia-radius-md,
+  .chip.gaia-radius-md {
+    border-radius: var(--gaia-radius-md);
+  }
+  .button.gaia-radius-lg,
+  .chip.gaia-radius-lg {
+    border-radius: var(--gaia-radius-lg);
+  }
+  .button.gaia-radius-xl,
+  .chip.gaia-radius-xl {
+    border-radius: var(--gaia-radius-xl);
+  }
+  /* A shaped ButtonGroup rounds its end buttons, not itself (v2's group radius). */
+  .button-group.gaia-pill {
+    --gaia-button-group-radius: var(--gaia-radius-pill);
+  }
+  .button-group.gaia-sharp {
+    --gaia-button-group-radius: var(--gaia-radius-xs);
+  }
+  .button-group.gaia-radius-sm {
+    --gaia-button-group-radius: var(--gaia-radius-sm);
+  }
+  .button-group.gaia-radius-md {
+    --gaia-button-group-radius: var(--gaia-radius-md);
+  }
+  .button-group.gaia-radius-lg {
+    --gaia-button-group-radius: var(--gaia-radius-lg);
+  }
+  .button-group.gaia-radius-xl {
+    --gaia-button-group-radius: var(--gaia-radius-xl);
+  }
+
+  /* Button state, v2's: no fade under reduced motion; pressed scales to 97% at
+     every size; a solid or flat fill holds its colour on hover and press while
+     the button dims to 90%. */
+  @media (prefers-reduced-motion: reduce) {
+    .button {
+      transition: none;
+    }
+  }
+  .button:active,
+  .button[data-pressed="true"],
+  .button--sm:active,
+  .button--sm[data-pressed="true"],
+  .button--lg:active,
+  .button--lg[data-pressed="true"] {
+    transform: scale(0.97);
+  }
+  .button-group .button:active,
+  .button-group .button[data-pressed="true"] {
+    transform: none;
+  }
+  .button--primary,
+  .button--danger-soft {
+    --button-bg-hover: var(--button-bg);
+    --button-bg-pressed: var(--button-bg);
+  }
+  :is(.button--primary, .button--danger-soft):is(:hover, [data-hovered="true"], [data-pressed="true"]) {
+    opacity: 0.9;
+  }
+  /* v2's 12px small-button label sat on a 16px line (v3: 12px on 17.14px). */
+  .button--sm {
+    line-height: 1rem;
+  }
+
+  /* Overlay surfaces, v2's: a tooltip and a modal lift on shadow-small, a
+     popover, menu or ComboBox list on shadow-medium (v3 dark: a 30% white hairline, read
+     as an outline), and an arrow is the surface with no stroke. */
+  .tooltip,
+  .modal__dialog {
+    box-shadow: var(--gaia-shadow-small);
+  }
+  .popover,
+  .dropdown__popover,
+  .combo-box__popover {
+    box-shadow: var(--gaia-shadow-medium);
+  }
+  .tooltip [data-slot="overlay-arrow"],
+  .popover [data-slot="popover-overlay-arrow"] {
+    stroke: transparent;
+  }
+  /* v2 opened a tooltip 7px from its trigger, 10px with an arrow; v3's Tooltip
+     offsets 3px and 7px in JS (and its positioning absorbs margins), so a
+     translate carries it the rest of the way along its placement. */
+  .tooltip {
+    --gaia-tooltip-extra-offset: var(--gaia-tooltip-offset-extra);
+  }
+  .tooltip:has([data-slot="tooltip-arrow"]) {
+    --gaia-tooltip-extra-offset: var(--gaia-tooltip-arrow-offset-extra);
+  }
+  .tooltip[data-placement="top"] {
+    translate: 0 calc(var(--gaia-tooltip-extra-offset) * -1);
+  }
+  .tooltip[data-placement="bottom"] {
+    translate: 0 var(--gaia-tooltip-extra-offset);
+  }
+  .tooltip[data-placement="left"] {
+    translate: calc(var(--gaia-tooltip-extra-offset) * -1) 0;
+  }
+  .tooltip[data-placement="right"] {
+    translate: var(--gaia-tooltip-extra-offset) 0;
+  }
+  /* overlayVariants({ surface: accent | foreground | danger }): v2's coloured
+     tooltips, body and arrow alike. */
+  .gaia-overlay-accent {
+    --overlay: var(--accent);
+    color: var(--color-black);
+  }
+  .gaia-overlay-foreground {
+    --overlay: var(--foreground);
+    color: var(--color-black);
+  }
+  .gaia-overlay-danger {
+    --overlay: var(--danger);
+    color: var(--color-white);
+  }
+  /* v2's popover content: 4px by 10px around its body (v3: 16px). */
+  .popover__dialog {
+    padding: var(--gaia-popover-padding-y) var(--gaia-popover-padding-x);
+  }
+  /* v2's menu: at least 200px wide, its rows 8px in (4px of surface, 4px of
+     list) with an 8px text inset (v3: 10px and 10px). */
+  .dropdown__popover {
+    min-width: var(--gaia-menu-min-width);
+    padding: var(--gaia-menu-inset);
+  }
+  .dropdown__menu {
+    padding: var(--gaia-menu-inset);
+  }
+  .menu-item {
+    padding-inline: var(--gaia-list-item-padding-x);
+  }
+  .menu-item:has(.menu-item__indicator:not(.menu-item__indicator--submenu)) {
+    padding-inline-start: var(--gaia-menu-indicator-inset);
+  }
+  .menu-item[data-has-submenu="true"]:has(.menu-item__indicator--submenu) {
+    padding-inline-end: var(--gaia-menu-indicator-inset);
+  }
+
+  /* v2's Select value, white once chosen. */
+  .select__value:not([data-placeholder="true"]) {
+    color: var(--default-foreground);
+  }
+  /* Accordion title, v2's: 16px bold on 24px (its h2 heading), compact or not. */
+  .accordion__trigger {
+    font-size: var(--text-base);
+    line-height: 1.5rem;
+    font-weight: 700;
+  }
+
+  /* Avatar fallback, v2's: zinc-700 disc, white regular initials, 12px at md. */
+  .avatar {
+    background-color: var(--color-zinc-700);
+  }
+  .avatar__fallback--default {
+    color: #ffffff;
+  }
+  .avatar__fallback {
+    font-weight: 400;
+  }
+  .avatar--md .avatar__fallback {
+    font-size: var(--text-xs);
+    line-height: 1rem;
+  }
+
+  /* Card, v2's: 14px corners on shadow-medium, a regular 16px title. */
+  .card {
+    border-radius: var(--gaia-radius-lg);
+    box-shadow: var(--gaia-shadow-medium);
+  }
+  .card--transparent {
+    box-shadow: none;
+  }
+  .card__title {
+    font-size: var(--text-base);
+    line-height: 1.5rem;
+    font-weight: 400;
+  }
+
+  /* Modal title, v2's: 18px semibold on 28px. */
+  .modal__header {
+    font-size: var(--text-lg);
+    line-height: 1.75rem;
+    font-weight: 600;
+  }
+
+  /* Small chip label, v2's 12px on 16px (v3: 20px). */
+  .chip--sm .chip__label {
+    line-height: 1rem;
+  }
+
+  /* Kbd, v2's: shadow-small, 2px vertical inset, 2px between the key symbol and its letter. */
+  .kbd {
+    height: auto;
+    padding-block: 0.125rem;
+    box-shadow: var(--gaia-shadow-small);
+  }
+  .kbd__abbr {
+    margin-inline-end: 0.125rem;
+  }
+
+  /* Skeleton, v2's: a zinc-800 block, square unless the call site rounds it. */
+  .skeleton {
+    border-radius: 0;
+    background-color: var(--color-zinc-800);
+  }
+
+  /* Spinner, v2's sizes: 20px sm, 32px md, 40px lg. */
+  .spinner--sm {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+  .spinner--md {
+    width: 2rem;
+    height: 2rem;
+  }
+  .spinner--lg {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  /* Tabs, v2's: an unselected tab dims to 50% under the pointer (v3: 70%). */
+  .tabs__tab:not([data-selected="true"]):not([data-disabled="true"]):hover,
+  .tabs__tab[data-hovered="true"]:not([data-selected="true"]):not([data-disabled="true"]) {
+    opacity: 0.5;
+  }
+
+  /* Keyboard focus, v2's: a button, tab, trigger or row draws a 2px focus
+     outline 2px out; a field or toggle a 2px focus ring 2px out on the page
+     colour. v3 rings a button on black and a field with no gap. */
+  :is(.button, .tabs__tab, .select__trigger, .accordion__trigger, .menu-item):is(:focus-visible, [data-focus-visible="true"]) {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+  :is(.button, .tabs__tab, .accordion__trigger, .menu-item):is(:focus-visible, [data-focus-visible="true"]) {
+    box-shadow: none;
+  }
+  /* a Select's focus is the outline above, so its trigger keeps the field shadow
+     through every HeroUI focus ring (zero specificity, so the variants restate it) */
+  :where(.select__trigger) {
+    box-shadow: var(--field-shadow);
+  }
+  :is(.input, .textarea):not(.gaia-input-underlined, .gaia-input-bare):is(:focus-visible, [data-focus-visible="true"]),
+  .combo-box__input-group:has(> .input:is(:focus-visible, [data-focus-visible="true"])) {
+    box-shadow:
+      0 0 0 2px var(--background),
+      0 0 0 4px var(--focus),
+      var(--field-shadow);
+  }
+  /* a toggle's keyboard ring, v2's: 2px focus colour 2px out on the page colour */
+  .switch:focus-visible .switch__control,
+  .switch [data-slot="switch-content"][data-focus-visible="true"] .switch__control,
+  .checkbox:focus-visible .checkbox__control,
+  .checkbox:has([data-slot="checkbox-content"][data-focus-visible="true"]) .checkbox__control,
+  .checkbox [data-slot="checkbox-content"][data-focus-visible="true"] .checkbox__control,
+  .slider .slider__thumb[data-focus-visible="true"] {
+    box-shadow:
+      0 0 0 2px var(--background),
+      0 0 0 4px var(--focus);
+  }
+}

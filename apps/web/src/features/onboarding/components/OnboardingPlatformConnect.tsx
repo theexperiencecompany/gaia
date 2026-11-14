@@ -15,10 +15,10 @@
 
 "use client";
 
-import { Button } from "@heroui/button";
 import * as m from "motion/react-m";
 import Image from "next/image";
 import type { FC } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { RaisedButton } from "@/components/ui/raised-button";
 import {
   BOT_PLATFORM_ICONS,
@@ -108,9 +108,9 @@ export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
           animate={{ opacity: 1 }}
           transition={{ duration: 0.25, delay: platforms.length * 0.08 }}
         >
-          <Button variant="flat" size="md" onPress={onSkip}>
+          <GaiaButton variant="default-soft" size="md" onPress={onSkip}>
             Skip
-          </Button>
+          </GaiaButton>
           {/* A self-hosted instance offers every bot it runs right here. */}
           {!isSelfhostWeb() && (
             <p className="flex flex-wrap items-center gap-1 px-1 text-xs text-zinc-400">

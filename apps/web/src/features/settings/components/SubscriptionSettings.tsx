@@ -1,9 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Skeleton } from "@heroui/skeleton";
+import { Chip, Skeleton } from "@heroui/react";
 import { Tick02Icon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   useIsSubscriptionStatusUnknown,
   useUserSubscriptionStatus,
@@ -75,7 +74,7 @@ export function SubscriptionSettings() {
           </div>
           <Chip
             color={statusColor}
-            variant="flat"
+            variant="soft"
             size="sm"
             className="mt-1 text-xs"
           >
@@ -134,9 +133,8 @@ export function SubscriptionSettings() {
       {/* Actions */}
       <SettingsSection title="Actions">
         <div className="space-y-2 px-4 py-3.5">
-          <Button
-            color="primary"
-            variant="flat"
+          <GaiaButton
+            variant="accent-soft"
             onPress={() =>
               openUpgradeModal(undefined, {
                 dismissible: true,
@@ -147,7 +145,7 @@ export function SubscriptionSettings() {
             className="w-full"
           >
             View plans
-          </Button>
+          </GaiaButton>
 
           {subscription && (
             <CancelSubscriptionAction

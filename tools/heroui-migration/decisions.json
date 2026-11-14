@@ -1,0 +1,205 @@
+{
+  "drop": {
+    "button": ["color", "radius"],
+    "spinner": ["variant"],
+    "tabs": ["size", "color", "radius"],
+    "accordion": ["size", "color"],
+    "modal": ["backdrop", "scrollBehavior"],
+    "card": ["shadow", "radius"],
+    "select": ["size", "color", "radius"],
+    "input": ["size", "color", "radius"],
+    "switch": ["color"],
+    "checkbox": ["size", "color", "radius"],
+    "avatar": ["radius"],
+    "popover": ["size", "color", "radius"],
+    "dropdown": ["size", "color"],
+    "slider": ["size", "color"],
+    "link": ["size", "color", "underline"]
+  },
+  "decisions": {
+    "spinner": {
+      "color": {
+        "default": "accent",
+        "primary": "accent"
+      }
+    },
+    "tabs": {
+      "variant": {
+        "solid": "primary",
+        "underlined": "secondary",
+        "light": "secondary"
+      },
+      "color": {
+        "primary": "tabsVariants({ color: \"accent\" }).base()",
+        "default": "default"
+      }
+    },
+    "accordion": {
+      "variant": {
+        "light": "surface",
+        "shadow": "default",
+        "splitted": "default"
+      }
+    },
+    "modal": {
+      "size": {
+        "xs": "xs",
+        "sm": "sm",
+        "md": "md",
+        "lg": "lg",
+        "xl": "modalVariants({ size: \"xl\" }) on Modal.Dialog, no Container size",
+        "2xl": "modalVariants({ size: \"2xl\" }) on Modal.Dialog, no Container size",
+        "3xl": "modalVariants({ size: \"3xl\" }) on Modal.Dialog, no Container size",
+        "4xl": "modalVariants({ size: \"4xl\" }) on Modal.Dialog, no Container size",
+        "5xl": "modalVariants({ size: \"5xl\" }) on Modal.Dialog, no Container size",
+        "full": "full"
+      }
+    },
+    "badge": {
+      "color": {
+        "primary": "accent",
+        "secondary": "accent"
+      }
+    },
+    "select": {
+      "variant": {
+        "flat": "secondary",
+        "bordered": "secondary",
+        "faded": "secondary",
+        "underlined": "secondary"
+      }
+    },
+    "input": {
+      "variant": {
+        "flat": "secondary",
+        "bordered": "outline",
+        "faded": "secondary",
+        "underlined": "secondary",
+        "light": "primary"
+      }
+    },
+    "link": {
+      "color": {
+        "primary": "primary",
+        "foreground": "default",
+        "danger": "danger"
+      }
+    },
+    "button": {
+      "variant": {
+        "light": "ghost",
+        "bordered": "outline",
+        "faded": "tertiary"
+      },
+      "colorVariant": {
+        "default|solid": "default-solid (GaiaButton)",
+        "default|flat": "default-soft (GaiaButton)",
+        "primary|flat": "accent-soft (GaiaButton)",
+        "success|flat": "success-soft (GaiaButton)",
+        "warning|flat": "warning-soft (GaiaButton)",
+        "danger|flat": "danger-soft (HeroUI)"
+      }
+    },
+    "chip": {
+      "variant": {
+        "flat": "soft",
+        "shadow": "chipVariants({ isSelected: true })"
+      },
+      "radius": {
+        "full": "default (v2's chip default is a pill; the gaia layer matches)",
+        "sm": "shape=\"sm\" (components/shared/shape.ts)",
+        "md": "shape=\"md\"",
+        "lg": "shape=\"lg\""
+      }
+    },
+    "radius": {
+      "full": "shape=\"pill\" (components/shared/shape.ts)",
+      "sm|md|lg": "default (gaia layer)"
+    },
+    "autocomplete": {
+      "component": "ComboBox"
+    },
+    "labelPlacement": {
+      "inside": "fieldVariants({ labelPlacement: \"inside\" }) on TextField/Select/ComboBox",
+      "(default, labelled md/lg field)": "inside",
+      "outside": "outside"
+    },
+    "avatar": {
+      "isBordered": "avatarVariants({ isBordered: true })"
+    },
+    "slider": {
+      "size": {
+        "sm": "sliderVariants({ size: \"sm\" })",
+        "md": "default"
+      }
+    },
+    "dropdown": {
+      "placement": {
+        "right-end": "right bottom",
+        "right-start": "right top",
+        "bottom-end": "bottom end",
+        "bottom-start": "bottom start",
+        "top-end": "top end",
+        "top-start": "top start"
+      },
+      "DropdownSection showDivider": "<Separator /> after the section"
+    },
+    "tabsPanel": "no empty Tabs.Panel for a switcher; RAC Tabs need no panels"
+  },
+  "v3dims": {
+    "accordion": ["variant"],
+    "alert-dialog": ["variant", "size"],
+    "autocomplete": ["variant", "fullWidth"],
+    "avatar": ["variant", "size", "color"],
+    "badge": ["variant", "size", "color", "placement"],
+    "button": ["variant", "size", "fullWidth"],
+    "button-group": ["orientation", "fullWidth"],
+    "card": ["variant"],
+    "checkbox": ["variant"],
+    "checkbox-group": ["variant"],
+    "chip": ["variant", "size", "color"],
+    "close-button": ["variant"],
+    "color-field": ["fullWidth"],
+    "color-input-group": ["variant", "fullWidth"],
+    "color-swatch": ["size", "shape"],
+    "color-swatch-picker": ["variant", "size"],
+    "combo-box": ["fullWidth"],
+    "date-field": ["fullWidth"],
+    "date-input-group": ["variant", "fullWidth"],
+    "drawer": ["variant", "placement"],
+    "input": ["variant", "fullWidth"],
+    "input-group": ["variant", "fullWidth"],
+    "input-otp": ["variant"],
+    "kbd": ["variant"],
+    "list-box": ["variant"],
+    "list-box-item": ["variant"],
+    "menu-item": ["variant"],
+    "meter": ["size", "color"],
+    "modal": ["variant", "size"],
+    "number-field": ["variant", "fullWidth"],
+    "pagination": ["size"],
+    "progress-bar": ["size", "color"],
+    "progress-circle": ["size", "color"],
+    "radio-group": ["variant"],
+    "scroll-shadow": ["variant", "orientation"],
+    "search-field": ["variant", "fullWidth"],
+    "select": ["variant", "fullWidth"],
+    "separator": ["variant", "orientation"],
+    "sheet": ["placement"],
+    "spinner": ["size", "color"],
+    "surface": ["variant"],
+    "switch": ["size"],
+    "switch-group": ["orientation"],
+    "table": ["variant"],
+    "tabs": ["variant"],
+    "tag": ["variant", "size"],
+    "textarea": ["variant", "fullWidth"],
+    "textfield": ["fullWidth"],
+    "time-field": ["fullWidth"],
+    "toast": ["variant", "placement"],
+    "toggle-button": ["variant", "size"],
+    "toggle-button-group": ["orientation", "fullWidth"],
+    "toolbar": ["orientation"],
+    "typography": ["color"]
+  }
+}

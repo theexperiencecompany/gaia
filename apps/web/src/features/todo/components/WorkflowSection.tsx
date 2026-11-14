@@ -1,16 +1,19 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import {
+  Description,
   Dropdown,
   DropdownItem,
   DropdownMenu,
+  DropdownPopover,
   DropdownTrigger,
-} from "@heroui/dropdown";
-import { Tooltip } from "@heroui/tooltip";
+  Label,
+  Tooltip,
+} from "@heroui/react";
 import { PlayIcon, RedoIcon, SparklesIcon, ZapIcon } from "@icons";
 import { isWorkflowStatusFresh } from "@shared/todos";
 import { useCallback, useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronDown } from "@/components/shared/icons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
@@ -241,7 +244,7 @@ export default function WorkflowSection({
             Suggested Workflow
           </h3>
           {isGenerating && (
-            <span className="flex items-center gap-1 text-xs text-primary ml-auto">
+            <span className="flex items-center gap-1 text-xs text-accent ml-auto">
               <div className="animate-pulse">
                 <SparklesIcon className="h-3 w-3" />
               </div>
@@ -254,50 +257,48 @@ export default function WorkflowSection({
         {(hasWorkflow || error) && (
           <div className="flex items-center gap-2">
             {hasWorkflow ? (
-              <Dropdown placement="bottom-end">
+              <Dropdown>
                 <DropdownTrigger>
-                  <Button
-                    color="default"
-                    variant="flat"
+                  <GaiaButton
+                    variant="default-soft"
                     size="sm"
-                    isLoading={isGenerating}
+                    isPending={isGenerating}
                     isDisabled={isGenerating}
-                    startContent={
-                      !isGenerating && (
-                        <RedoIcon className="h-4 w-4 text-zinc-400" />
-                      )
-                    }
-                    endContent={
-                      !isGenerating && (
-                        <ChevronDown className="h-3 w-3 text-zinc-400" />
-                      )
+                  >
+                    {!isGenerating && (
+                      <RedoIcon className="h-4 w-4 text-zinc-400" />
+                    )}
+                    {isGenerating ? "Regenerating..." : "Regenerate"}
+                    {!isGenerating && (
+                      <ChevronDown className="h-3 w-3 text-zinc-400" />
+                    )}
+                  </GaiaButton>
+                </DropdownTrigger>
+                <DropdownPopover placement="bottom end">
+                  <DropdownMenu
+                    aria-label="Regeneration reasons"
+                    onAction={(key) => handleRegenerate(key as string)}
+                    disabledKeys={
+                      isGenerating ? regenerationReasons.map((r) => r.key) : []
                     }
                   >
-                    {isGenerating ? "Regenerating..." : "Regenerate"}
-                  </Button>
-                </DropdownTrigger>
-                <DropdownMenu
-                  aria-label="Regeneration reasons"
-                  onAction={(key) => handleRegenerate(key as string)}
-                  disabledKeys={
-                    isGenerating ? regenerationReasons.map((r) => r.key) : []
-                  }
-                >
-                  {regenerationReasons.map((reason) => (
-                    <DropdownItem
-                      key={reason.key}
-                      textValue={reason.label}
-                      description={reason.description}
-                    >
-                      {reason.label}
-                    </DropdownItem>
-                  ))}
-                </DropdownMenu>
+                    {regenerationReasons.map((reason) => (
+                      <DropdownItem
+                        key={reason.key}
+                        id={reason.key}
+                        textValue={reason.label}
+                      >
+                        <Label>{reason.label}</Label>
+                        <Description>{reason.description}</Description>
+                      </DropdownItem>
+                    ))}
+                  </DropdownMenu>
+                </DropdownPopover>
               </Dropdown>
             ) : (
-              <Button
-                color="default"
-                variant="flat"
+              <GaiaButton
+                aria-label="Regenerate workflow"
+                variant="default-soft"
                 size="sm"
                 onPress={handleGenerate}
                 isIconOnly
@@ -306,20 +307,23 @@ export default function WorkflowSection({
                 <RedoIcon
                   className={`h-4 w-4 text-zinc-400 ${isGenerating ? "animate-spin" : ""}`}
                 />
-              </Button>
+              </GaiaButton>
             )}
             {hasWorkflow && (
-              <Tooltip content="Run workflow" placement="bottom">
-                <Button
-                  color="success"
-                  variant="flat"
+              <Tooltip>
+                <GaiaButton
+                  aria-label="Run workflow"
+                  variant="success-soft"
                   size="sm"
                   onPress={handleRun}
                   isDisabled={isGenerating}
                   isIconOnly
                 >
                   <PlayIcon className="h-4 w-4" />
-                </Button>
+                </GaiaButton>
+                <Tooltip.Content placement="bottom">
+                  Run workflow
+                </Tooltip.Content>
               </Tooltip>
             )}
           </div>
@@ -361,15 +365,14 @@ export default function WorkflowSection({
                   <p className="text-sm">No workflow generated yet</p>
                 )}
               </div>
-              <Button
-                color="primary"
-                variant="flat"
+              <GaiaButton
+                variant="accent-soft"
                 size="sm"
                 onPress={handleGenerate}
-                startContent={<SparklesIcon className="h-4 w-4" />}
               >
+                <SparklesIcon className="h-4 w-4" />
                 {error ? "Retry" : "Generate Workflow"}
-              </Button>
+              </GaiaButton>
               <p className="mx-auto max-w-sm text-xs text-zinc-500">
                 AI will create a step-by-step workflow to help complete this
                 todo

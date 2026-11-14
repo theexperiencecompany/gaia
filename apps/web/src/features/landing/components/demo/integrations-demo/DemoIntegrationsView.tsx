@@ -1,8 +1,6 @@
 "use client";
 
-import { Button, ButtonGroup } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
+import { ButtonGroup, Chip, InputGroup } from "@heroui/react";
 import {
   ArrowRight02Icon,
   Cancel01Icon,
@@ -15,6 +13,13 @@ import {
   ZapIcon,
 } from "@icons";
 import { useEffect, useMemo, useState } from "react";
+import {
+  chipVariants,
+  inputVariants,
+} from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { shapeVariants } from "@/components/shared/shape";
+import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   CATEGORY_LABELS,
@@ -52,7 +57,12 @@ function DemoIntegrationRow({
           <div className="flex items-center gap-2">
             <span className="font-medium">{integration.name}</span>
             {isPublic && (
-              <Chip size="sm" variant="flat" color="secondary">
+              <Chip
+                size="sm"
+                variant="soft"
+                color="accent"
+                className={chipVariants({ hue: "secondary" })}
+              >
                 Community
               </Chip>
             )}
@@ -64,18 +74,18 @@ function DemoIntegrationRow({
       </button>
       <div className="shrink-0">
         {isConnected ? (
-          <Chip size="sm" variant="flat" color="success">
+          <Chip size="sm" variant="soft" color="success">
             Connected
           </Chip>
         ) : (
-          <Button
-            variant="flat"
-            color="primary"
+          <GaiaButton
+            variant="accent-soft"
+            tone="accent"
             size="sm"
-            className="text-sm text-primary"
+            className="text-sm"
           >
             Connect
-          </Button>
+          </GaiaButton>
         )}
       </div>
     </div>
@@ -109,15 +119,15 @@ function DemoIntegrationSidebar({
     >
       {/* Close button */}
       <div className="flex w-full items-end justify-end px-6 pt-4 pb-0">
-        <Button
+        <GaiaButton
           onPress={onClose}
-          variant="light"
+          variant="ghost"
           isIconOnly
           size="sm"
           aria-label="Close"
         >
           <Cancel01Icon className="size-4" />
-        </Button>
+        </GaiaButton>
       </div>
 
       <div className="flex-1 overflow-y-auto px-5">
@@ -135,21 +145,36 @@ function DemoIntegrationSidebar({
           {/* Status chips */}
           <div className="flex items-center gap-2">
             {isConnected && (
-              <Chip size="sm" variant="flat" color="success" radius="sm">
+              <Chip
+                className={shapeVariants({ shape: "sm" })}
+                size="sm"
+                variant="soft"
+                color="success"
+              >
                 Connected
               </Chip>
             )}
             {!isConnected && (
-              <Chip size="sm" variant="flat" color="default" radius="sm">
+              <Chip
+                className={shapeVariants({ shape: "sm" })}
+                size="sm"
+                variant="soft"
+                color="default"
+              >
                 Not Connected
               </Chip>
             )}
             {isCustom && (
               <Chip
                 size="sm"
-                variant="flat"
-                radius="sm"
-                className="text-xs font-light text-zinc-400"
+                variant="soft"
+                className={shapeVariants({
+                  shape: "sm",
+                  className: toneVariants({
+                    tone: "muted",
+                    className: "text-xs font-light",
+                  }),
+                })}
               >
                 Custom
               </Chip>
@@ -168,52 +193,56 @@ function DemoIntegrationSidebar({
 
           {/* Action buttons */}
           {!isConnected ? (
-            <Button color="primary" className="w-full font-medium" size="md">
+            <GaiaButton
+              className="w-full font-medium"
+              size="md"
+              variant="primary"
+            >
               Connect
-            </Button>
+            </GaiaButton>
           ) : (
-            <ButtonGroup variant="flat" className="w-full" fullWidth>
-              <Button
+            <ButtonGroup variant="secondary" className="w-full" fullWidth>
+              <GaiaButton
                 isIconOnly={useIconOnly}
                 className="w-full"
-                color="danger"
                 aria-label="Disconnect"
-                startContent={<Unlink04Icon width={18} height={18} />}
+                variant="danger"
               >
+                <Unlink04Icon width={18} height={18} />
                 {!useIconOnly && "Disconnect"}
-              </Button>
+              </GaiaButton>
               {isPublic && (
-                <Button
+                <GaiaButton
                   isIconOnly={useIconOnly}
                   className="w-full"
-                  color="primary"
                   aria-label="View on Marketplace"
-                  startContent={<InternetIcon width={18} height={18} />}
+                  variant="primary"
                 >
+                  <InternetIcon width={18} height={18} />
                   {!useIconOnly && "View"}
-                </Button>
+                </GaiaButton>
               )}
               {isCustom && !isPublic && (
-                <Button
+                <GaiaButton
                   isIconOnly={useIconOnly}
                   className="w-full"
-                  color="primary"
                   aria-label="Publish"
-                  startContent={<GlobalIcon width={18} height={18} />}
+                  variant="primary"
                 >
+                  <GlobalIcon width={18} height={18} />
                   {!useIconOnly && "Publish"}
-                </Button>
+                </GaiaButton>
               )}
               {isPublic && (
-                <Button
+                <GaiaButton
+                  variant="default-solid"
                   isIconOnly={useIconOnly}
                   className="w-full"
-                  color="default"
                   aria-label="Share"
-                  startContent={<Share08Icon width={18} height={18} />}
                 >
+                  <Share08Icon width={18} height={18} />
                   {!useIconOnly && "Share"}
-                </Button>
+                </GaiaButton>
               )}
             </ButtonGroup>
           )}
@@ -228,10 +257,15 @@ function DemoIntegrationSidebar({
                 {integration.tools.map((tool) => (
                   <Chip
                     key={tool}
-                    variant="flat"
+                    variant="soft"
                     size="sm"
-                    radius="full"
-                    className="font-light text-zinc-300"
+                    className={shapeVariants({
+                      shape: "pill",
+                      className: toneVariants({
+                        tone: "dim",
+                        className: "font-light",
+                      }),
+                    })}
                   >
                     {tool}
                   </Chip>
@@ -327,8 +361,8 @@ export default function DemoIntegrationsView({
           <div className="relative overflow-hidden rounded-3xl bg-zinc-800/50">
             <div className="relative z-10 flex items-center justify-between gap-6 p-4">
               <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/20">
-                  <ConnectIcon className="h-6 w-6 text-primary" />
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent/20">
+                  <ConnectIcon className="h-6 w-6 text-accent" />
                 </div>
                 <div>
                   <h3 className="text-lg font-medium text-white">
@@ -341,20 +375,14 @@ export default function DemoIntegrationsView({
                 </div>
               </div>
               <div className="flex shrink-0 gap-3">
-                <Button
-                  variant="flat"
-                  size="sm"
-                  endContent={<ArrowRight02Icon className="h-4 w-4" />}
-                >
+                <GaiaButton variant="default-soft" size="sm">
                   Browse Marketplace
-                </Button>
-                <Button
-                  color="primary"
-                  size="sm"
-                  startContent={<ZapIcon className="h-4 w-4" />}
-                >
+                  <ArrowRight02Icon className="h-4 w-4" />
+                </GaiaButton>
+                <GaiaButton size="sm" variant="primary">
+                  <ZapIcon className="h-4 w-4" />
                   Create Custom
-                </Button>
+                </GaiaButton>
               </div>
             </div>
           </div>
@@ -362,20 +390,31 @@ export default function DemoIntegrationsView({
 
         {/* Search */}
         <div className="mb-6">
-          <Input
-            placeholder="Search integrations..."
-            value={searchQuery}
-            onValueChange={setSearchQuery}
-            startContent={
+          <InputGroup
+            className={inputVariants({
+              size: "sm",
+              className: "bg-zinc-800/50 border-zinc-700",
+            })}
+          >
+            <InputGroup.Prefix>
               <Search01Icon className="text-zinc-500" width={18} height={18} />
-            }
-            classNames={{
-              inputWrapper: "bg-zinc-800/50 border-zinc-700",
-            }}
-            size="sm"
-            isClearable
-            onClear={() => setSearchQuery("")}
-          />
+            </InputGroup.Prefix>
+            <InputGroup.Input
+              placeholder="Search integrations..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <InputGroup.Suffix>
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => setSearchQuery("")}
+                className="cursor-pointer text-zinc-500 hover:text-zinc-300"
+              >
+                <Cancel01Icon width={18} height={18} />
+              </button>
+            </InputGroup.Suffix>
+          </InputGroup>
         </div>
 
         {/* Category Filter */}
@@ -383,8 +422,8 @@ export default function DemoIntegrationsView({
           {DEMO_CATEGORIES.map((cat) => (
             <Chip
               key={cat}
-              variant={selectedCategory === cat ? "solid" : "flat"}
-              color={selectedCategory === cat ? "primary" : "default"}
+              variant={selectedCategory === cat ? "primary" : "soft"}
+              color={selectedCategory === cat ? "accent" : "default"}
               className="cursor-pointer select-none"
               onClick={() => setSelectedCategory(cat)}
             >
@@ -401,7 +440,7 @@ export default function DemoIntegrationsView({
               <div className="mb-8">
                 <div className="mb-4 flex items-center gap-3 pl-4">
                   <h2 className="text-base font-semibold">Featured</h2>
-                  <Chip size="sm" variant="flat" color="primary">
+                  <Chip size="sm" variant="soft" color="accent">
                     {featuredIntegrations.length}
                   </Chip>
                 </div>
@@ -424,7 +463,7 @@ export default function DemoIntegrationsView({
                   <h2 className="text-base font-semibold">
                     {CATEGORY_LABELS[category] || category}
                   </h2>
-                  <Chip size="sm" variant="flat" color="default">
+                  <Chip size="sm" variant="soft" color="default">
                     {items.length}
                   </Chip>
                 </div>
@@ -446,7 +485,7 @@ export default function DemoIntegrationsView({
               <h2 className="text-base font-semibold">
                 {CATEGORY_LABELS[selectedCategory] || selectedCategory}
               </h2>
-              <Chip size="sm" variant="flat" color="default">
+              <Chip size="sm" variant="soft" color="default">
                 {filteredIntegrations.length}
               </Chip>
             </div>

@@ -253,13 +253,13 @@ The full design system is documented in **[`DESIGN.md`](./DESIGN.md)** at the re
 
 **Never create custom button, input, spinner, tooltip, modal, or other UI primitive components from scratch.** Always use HeroUI first:
 
-- `<Button>` — never `<button>`. Use `color`, `variant`, `radius`, `size`, `endContent`, `startContent`, `isLoading`, `isIconOnly` props.
+- `<Button>` — never `<button>`. HeroUI v3 (`@heroui/react`): `variant`, `size`, `isPending`, `isIconOnly`, `onPress`; icons are children.
 - `<Input>` / `<Textarea>` — never raw `<input>` / `<textarea>`
 - `<Spinner>` / `<Skeleton>` — never custom loaders or icon-based spinners
 - `<Tooltip>`, `<Popover>`, `<Modal>`, `<Dropdown>` — never custom implementations
 - `<Link>` — never `<a>` tags (use HeroUI or Next.js Link)
 - `<Chip>` — for status badges and tags
-- `<Divider>` — never `<hr>`
+- `<Separator>` — never `<hr>`
 
 If HeroUI doesn't cover the use case, reach for Shadcn/Radix. Only build a custom component when no library equivalent exists.
 
