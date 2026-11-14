@@ -13,7 +13,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium, finishAnimations, load, networkQuiet, newContext, resolveStep, shootFullPage } from "./browser.mjs";
+import { chromium, closeContext, finishAnimations, load, networkQuiet, newContext, resolveStep, shootFullPage } from "./browser.mjs";
 import { DEFAULT_OUT, fileOf, MAX_PAGE_HEIGHT, stateId, VIEWPORTS, WEB_BASE } from "./config.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -102,11 +102,14 @@ async function worker() {
     }
     await page.close();
   }
-  for (const c of Object.values(contexts)) await c.close();
+  for (const c of Object.values(contexts)) await closeContext(c);
 }
 
-await Promise.all(Array.from({ length: WORKERS }, worker));
-await browser.close();
+try {
+  await Promise.all(Array.from({ length: WORKERS }, worker));
+} finally {
+  await browser.close();
+}
 // A partial capture (--only / --areas) replaces its own targets' entries in the run's manifest.
 const manifestPath = join(DIR, "manifest.json");
 const previous = existsSync(manifestPath) && (ONLY || AREAS) ? JSON.parse(readFileSync(manifestPath, "utf8")) : null;

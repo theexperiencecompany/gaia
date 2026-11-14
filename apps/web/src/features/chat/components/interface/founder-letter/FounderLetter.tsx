@@ -241,7 +241,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
           <Modal.Container className="items-center justify-center p-3 sm:p-6">
             <Modal.Dialog
               aria-label="A letter from Aryan Randeriya"
-              className="m-0 max-h-[min(92vh,860px)] w-full max-w-[620px] overflow-y-auto overscroll-contain bg-transparent shadow-none"
+              className="m-0 max-h-[min(92vh,860px)] w-full max-w-[620px] overflow-y-auto overscroll-contain bg-transparent p-0 shadow-none"
             >
               <div className="relative flex flex-col" style={LETTER_TYPOGRAPHY}>
                 <PaperBackdrop />
