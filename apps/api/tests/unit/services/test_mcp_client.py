@@ -4900,6 +4900,10 @@ class TestPersistAndIndexToolsExact:
                 "app.services.mcp.mcp_client.invalidate_user_integration_caches",
                 new_callable=AsyncMock,
             ),
+            # The announce publishes on the real websocket bus, bound to another test's loop.
+            patch(
+                "app.services.mcp.mcp_client.announce_integration_changed", new_callable=AsyncMock
+            ),
             patch("app.services.mcp.mcp_client.log") as mock_log,
         ):
             await client._persist_and_index_tools(

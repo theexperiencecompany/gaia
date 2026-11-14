@@ -137,7 +137,7 @@ test.describe("screen over time — chat", () => {
     expect(answer).toBeGreaterThan(second);
   });
 
-  test("a retracted preamble is replaced in place by the reply", async ({
+  test("a hand-off preamble stays on screen and the reply follows below it", async ({
     page,
   }) => {
     await openNewChat(page);
@@ -148,8 +148,17 @@ test.describe("screen over time — chat", () => {
     const live = await finish(page, "Checked it.");
     expect(
       botLinesReading(live, "Let me check that."),
-      "the preamble is gone",
-    ).toBe(0);
+      "the preamble stays, once",
+    ).toBe(1);
+    const said = live
+      .filter((item) => item.role === "bot")
+      .flatMap((item) => item.text.split("\n"));
+    expect(
+      said.findIndex((line) => line.includes("Checked it.")),
+      "the reply follows below the preamble",
+    ).toBeGreaterThan(
+      said.findIndex((line) => line.includes("Let me check that.")),
+    );
     expect(toolSections(live)).toBe(1);
   });
 

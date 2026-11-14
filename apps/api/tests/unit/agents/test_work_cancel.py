@@ -16,6 +16,7 @@ from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_BUSY_TTL
 from app.models.work_cancel_models import WorkCancelled
 from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser import job_stop
+from app.services.browser.job_stop import browser_job_task_id
 from app.services.browser.jobs import job_cancel_requested, put_job_state, set_latest_job
 from tests.browser_factories import make_browser_job_state
 from tests.helpers import captured_wide_event
@@ -197,3 +198,30 @@ async def test_a_named_playbook_replay_is_told_to_stop(no_approvals: ApprovalSea
 
     assert work.replay_ids == [replay]
     assert await stop_requested(replay)
+
+
+async def test_naming_detached_work_stops_its_subagent_job_and_replay(
+    no_approvals: ApprovalSeams,
+) -> None:
+    await seed_live_work(CONVERSATION)
+    child = await claim_subagent(CONVERSATION, "s2", dispatched_by=SUBAGENT_STREAM)
+    replay = f"{PLAYBOOK_REPLAY_STREAM_ID_PREFIX}ex-1"
+
+    work = await cancel_named_work(
+        CONVERSATION,
+        USER,
+        [SUBAGENT_STREAM, browser_job_task_id(BROWSER_JOB), replay],
+        approval_ids=[],
+    )
+
+    assert work == WorkCancelled(
+        executor_spared=True,
+        subagent_ids=["s1", "s2"],
+        browser_jobs={BROWSER_JOB: BrowserStopOutcome.STOPPED},
+        replay_ids=[replay],
+    )
+    assert await stop_requested(SUBAGENT_STREAM)
+    assert await stop_requested(child)
+    assert await stop_requested(replay)
+    assert await job_cancel_requested(BROWSER_JOB)
+    assert not await stop_requested(EXECUTOR_STREAM)

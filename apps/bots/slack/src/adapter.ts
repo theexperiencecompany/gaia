@@ -76,7 +76,6 @@ interface SlackWebClient {
       user: string;
       text: string;
     }) => Promise<unknown>;
-    delete: (args: { channel: string; ts: string }) => Promise<unknown>;
   };
 }
 
@@ -483,9 +482,6 @@ export class SlackAdapter extends BaseBotAdapter {
               ts: sentTs,
               text: updatedText,
             });
-          },
-          delete: async () => {
-            await client.chat.delete({ channel: channelId, ts: sentTs });
           },
         };
       },

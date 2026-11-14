@@ -34,7 +34,6 @@ const send = (slot: number, t: string): DeliveryOp => ({
   slot,
   text: t,
 });
-const del = (slot: number): DeliveryOp => ({ kind: "delete", slot });
 const PAUSE: DeliveryOp = { kind: "pause" };
 const sealed = (bubbles: number): DeliveryOp => ({
   kind: "delivered",
@@ -105,20 +104,6 @@ const CASES: Case[] = [
     ],
   },
   {
-    name: "R5 text the model took back is replaced in place, its later bubbles deleted",
-    events: [shown("Sure.", "Checking"), TICK, shown("All set."), TICK, END],
-    live: [
-      edit(0, "Sure."),
-      sealed(1),
-      send(1, "Checking"),
-      del(1),
-      sealed(0),
-      edit(0, "All set."),
-      sealed(1),
-    ],
-    rest: [edit(0, "All set."), sealed(1)],
-  },
-  {
     name: "R8 a link-only bubble is a message of its own",
     events: [shown("Here.", "https://x.dev/a", "See it."), TICK, END],
     live: [
@@ -160,6 +145,22 @@ describe("stepDelivery", () => {
       expect(run("whatsapp", false, events).ops).toEqual(rest);
     },
   );
+
+  it.each([
+    ["telegram", true],
+    ["whatsapp", false],
+  ] as const)(
+    "R5 refuses bubbles that take back shown text, on %s",
+    (platform, live) => {
+      expect(() =>
+        run(platform, live, [
+          shown("Sure.", "Checking"),
+          TICK,
+          shown("All set."),
+        ]),
+      ).toThrow("a reply's bubbles shrank: shown text is never taken back");
+    },
+  );
 });
 
 /** Replays the ops into the messages they leave, failing on any shown text taken back. */
@@ -167,10 +168,6 @@ function screen(ops: DeliveryOp[]): string[] {
   const messages = new Map<number, string>();
   for (const op of ops) {
     if (op.kind === "pause" || op.kind === "delivered") continue;
-    if (op.kind === "delete") {
-      messages.delete(op.slot);
-      continue;
-    }
     const before = messages.get(op.slot);
     if (op.kind === "edit" && before !== undefined) {
       expect(op.text.startsWith(before.trimEnd())).toBe(true);

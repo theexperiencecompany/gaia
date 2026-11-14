@@ -142,9 +142,5 @@ CONVERSATION_READ_LIMIT = 600
 # Named in every refusal of a conversation the entries migration has not reached.
 CONVERSATION_ENTRIES_MIGRATION_SCRIPT = "scripts.migrate_conversation_entries"
 
-# Shown when the model produced no text at all (reasoning-only output,
-# max_tokens exhausted mid-thought, a content filter) — a blank bubble reads as "it ignored me".
-EMPTY_RESPONSE_FALLBACK = "that didn't come through, say it again?"
-
 # The tool_data card a session artifact rides on: written by the coding tools, read off the reply.
 ARTIFACT_CARD = "artifact_data"

@@ -215,6 +215,75 @@ class TestEmbedBatchSplitsRequests:
         assert observed == [("rerank", "sidecar", 1), ("rerank", "sidecar", 2)]
 
 
+class TestWhatEachCallIsObservedAs:
+    """The operation, backend and budget each embedding call runs and is observed under."""
+
+    @pytest.fixture
+    def observed(self, monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str, int, bool]]:
+        seen: list[tuple[str, str, int, bool]] = []
+
+        async def fake_observed(
+            operation: str,
+            backend: str,
+            count: int,
+            awaitable: Awaitable[Any],
+            *,
+            interactive: bool = False,
+        ) -> Any:
+            seen.append((operation, backend, count, interactive))
+            return await awaitable
+
+        monkeypatch.setattr(embeddings, "_observed", fake_observed)
+        return seen
+
+    async def test_an_interactive_sidecar_query_runs_on_the_fail_fast_budget(
+        self, observed: list[tuple[str, str, int, bool]], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        budgets: list[bool] = []
+
+        async def fake_post(
+            path: str,
+            request: BaseModel,
+            response_model: type[BaseModel],
+            *,
+            interactive: bool = False,
+        ) -> BaseModel:
+            budgets.append(interactive)
+            return EmbedQueryResponse(vector=[1.0])
+
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar:8200")
+        monkeypatch.setattr(embeddings, "_sidecar_post", fake_post)
+
+        assert await embeddings.embed_query("q", interactive=True) == [1.0]
+
+        assert budgets == [True]
+        assert observed == [("embed_query", "sidecar", 1, True)]
+
+    async def test_an_interactive_local_query_is_observed_as_interactive(
+        self, observed: list[tuple[str, str, int, bool]], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: None)
+        monkeypatch.setattr(embeddings, "_embed_query_sync", lambda text: [float(len(text))])
+
+        assert await embeddings.embed_query("abc", interactive=True) == [3.0]
+
+        assert observed == [("embed_query", "local", 1, True)]
+
+    async def test_a_local_rerank_scores_every_document_against_the_query(
+        self, observed: list[tuple[str, str, int, bool]], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def fake_rerank(query: str, documents: list[str]) -> list[float]:
+            return [float(len(query) + len(document)) for document in documents]
+
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: None)
+        monkeypatch.setattr(embeddings, "_rerank_sync", fake_rerank)
+
+        scores = await embeddings.rerank("ab", ["x", "yyy"])
+
+        assert scores == [3.0, 5.0]
+        assert observed == [("rerank", "local", 2, False)]
+
+
 class TestSharedHttpClient:
     async def test_same_loop_reuses_one_client(self) -> None:
         embeddings._http_client = None

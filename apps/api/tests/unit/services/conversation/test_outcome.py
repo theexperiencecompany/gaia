@@ -1,12 +1,16 @@
 """entry_outcome: an entry's outcome is final only once nothing it caused is running or unanswered."""
 
+import asyncio
 from collections.abc import Sequence
 
 import pytest
 
+from app.models.conversation_frame_models import EntryFrame
 from app.models.conversation_log_models import Entry, LoggedEntry, Reply, WorkOutcome, WorkStarted
+from app.services.conversation import outcome as outcome_module
+from app.services.conversation.event_stream import StreamedFrame
 from app.services.conversation.outcome import STOPPED, EntryOutcome, await_outcome, entry_outcome
-from shared.py.conversation_wire import ReplyOutcome
+from shared.py.conversation_wire import BubbleTextDelta, ReplyDeltaFrame, ReplyOutcome
 from tests.unit.services.conversation.log_helpers import (
     finished,
     fired,
@@ -146,3 +150,90 @@ async def test_an_outcome_read_while_the_reply_settles_still_sees_the_settle() -
 
     assert outcome.settled is not None
     assert outcome.settled.outcome is ReplyOutcome.ANSWERED
+
+
+def test_an_entry_stopped_after_its_work_ended_keeps_that_works_end() -> None:
+    work = _work("w1", "t1", 1, ["wf"])
+    done = finished("f1", "t1", WorkOutcome.FAILED)
+    outcome = _outcome([fired("wf"), work, done, stop("x")])
+    assert outcome is not None
+    assert (outcome.failure, outcome.work) == (STOPPED, (done,))
+
+
+class _Stream:
+    """The conversation's frame stream as await_outcome reads it: frames after a cursor, or a wait."""
+
+    def __init__(self) -> None:
+        self.frames: list[StreamedFrame] = []
+        self.reads = 0
+        self._moved = asyncio.Event()
+
+    def publish(self, frame: EntryFrame | ReplyDeltaFrame) -> None:
+        self.frames.append(StreamedFrame(stream_id=f"{len(self.frames) + 1}-0", frame=frame))
+        self._moved.set()
+
+    async def latest(self, conversation_id: str) -> str:
+        assert conversation_id == CONVERSATION
+        return self.frames[-1].stream_id or "" if self.frames else "0-0"
+
+    async def read(self, conversation_id: str, cursor: str) -> list[StreamedFrame]:
+        assert conversation_id == CONVERSATION
+        self.reads += 1
+        await asyncio.sleep(0)
+        after = [f for f in self.frames if (f.stream_id or "") > cursor]
+        if after:
+            return after
+        self._moved.clear()
+        await self._moved.wait()
+        return [f for f in self.frames if (f.stream_id or "") > cursor]
+
+
+@pytest.fixture
+def stream(monkeypatch: pytest.MonkeyPatch) -> _Stream:
+    frames = _Stream()
+    monkeypatch.setattr(outcome_module, "latest_frame_id", frames.latest)
+    monkeypatch.setattr(outcome_module, "read_frames", frames.read)
+    return frames
+
+
+async def test_an_outcome_not_yet_final_is_read_again_only_once_a_frame_says_the_log_moved(
+    stream: _Stream,
+) -> None:
+    log = InMemoryConversationLog(FakeClock())
+    first = await log.append(CONVERSATION, USER, user("u1"))
+    # A frame from before the wait began never wakes it.
+    stream.publish(EntryFrame(seq=1, at=first.logged.at, entry=user("u1")))
+    reads: list[str] = []
+
+    async def count_reads(point: str) -> None:
+        if point == "state":
+            reads.append(point)
+
+    log.pause = count_reads
+    waiting = asyncio.create_task(await_outcome(log, CONVERSATION, USER, first.logged, timeout=5))
+    await asyncio.sleep(0.05)
+    assert (waiting.done(), len(reads)) == (False, 1)
+    claim = await log.claim(CONVERSATION, USER)
+    assert claim is not None
+    # A delta moves no entry: the wait reads past it without reading the log again.
+    stream.publish(
+        ReplyDeltaFrame(
+            attempt_id="a1", reply_id="r1", index=0, payload=BubbleTextDelta(bubble=0, text="he")
+        )
+    )
+    await asyncio.sleep(0.05)
+    assert (waiting.done(), len(reads), stream.reads) == (False, 1, 2)
+    await log.append_fenced(claim, _reply("o1", "r1", "hello"))
+    answered = await log.append_fenced(claim, settled("s1", ["u1"], 1))
+    stream.publish(
+        EntryFrame(seq=answered.logged.seq, at=answered.logged.at, entry=answered.logged.entry)
+    )
+    outcome = await asyncio.wait_for(waiting, timeout=2)
+    assert (outcome.text, len(reads), stream.reads) == ("hello", 2, 2)
+
+
+async def test_an_outcome_that_never_settles_times_out(stream: _Stream) -> None:
+    log = InMemoryConversationLog(FakeClock())
+    first = await log.append(CONVERSATION, USER, user("u1"))
+    with pytest.raises(TimeoutError):
+        await await_outcome(log, CONVERSATION, USER, first.logged, timeout=0.05)

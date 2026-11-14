@@ -6,7 +6,7 @@ from typing import cast
 
 import pytest
 
-from app.constants.chat import EMPTY_RESPONSE_FALLBACK, ConversationSource
+from app.constants.chat import ConversationSource
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.hil import HIL_ACK_APPROVED
 from app.models.chat_models import ReactionBy
@@ -50,7 +50,7 @@ from app.services.conversation.ports import (
 from app.services.conversation.screen import TOOL_CALL_CARD
 from app.services.conversation.step import advance
 from shared.py.conversation_wire import (
-    BubblesDelta,
+    NEW_MESSAGE_BREAKER,
     BubbleTextDelta,
     CardsDelta,
     FailureReason,
@@ -871,7 +871,7 @@ class StepScenarios:
         assert rt.runner.calls == [Started(batch=(1,), context=())]
         assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u1",))]
 
-    async def test_a_barge_in_mid_reply_keeps_only_the_heard_part_and_waits_for_the_words(
+    async def test_a_barge_in_mid_reply_keeps_its_shown_text_notes_the_heard_part_and_waits(
         self, rt: Runtime
     ) -> None:
         rt.runner.script(
@@ -881,13 +881,13 @@ class StepScenarios:
         await send(rt, user("u1", voice=True))
         await run(rt)
         assert rt.runner.calls == [Started(batch=(1,), context=()), TRUNCATE]
-        cut = (await replies(rt))[0]
-        assert (cut.text, cut.heard_through) == ("hello", 5)
+        spoken_over = (await replies(rt))[0]
+        assert (spoken_over.text, spoken_over.heard_through) == ("hello there friend", 5)
         assert await answered(rt) == [(ReplyOutcome.TRUNCATED, ("u1",))]
         assert (await rt.log.state(CONVERSATION, USER)).unsettled_waking == ()
         await send(rt, user("u2", voice=True))
         await run(rt)
-        # The cut reply rides in the next attempt's context, where it reads as only its heard part.
+        # The spoken-over reply rides in the next attempt's context, where it reads as its heard part.
         assert rt.runner.calls[2] == Started(batch=(5,), context=(2, 3, 4))
         assert await answered(rt) == [
             (ReplyOutcome.TRUNCATED, ("u1",)),
@@ -895,7 +895,7 @@ class StepScenarios:
         ]
         await assert_quiet(rt)
 
-    async def test_a_barge_in_on_a_reply_already_settled_cuts_it_to_the_heard_part(
+    async def test_a_barge_in_on_a_reply_already_settled_notes_the_heard_part_and_keeps_the_text(
         self, rt: Runtime
     ) -> None:
         rt.runner.script([text("hello there friend"), Finished(Replied("hello there friend"))])
@@ -903,8 +903,8 @@ class StepScenarios:
         await run(rt)
         await send(rt, barge("b", "r1.1", 5))
         await run(rt)
-        cut = (await replies(rt))[0]
-        assert (cut.text, cut.heard_through) == ("hello", 5)
+        spoken_over = (await replies(rt))[0]
+        assert (spoken_over.text, spoken_over.heard_through) == ("hello there friend", 5)
         assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u1",))]
         assert rt.runner.calls == [Started(batch=(1,), context=())]
         await assert_quiet(rt)
@@ -955,7 +955,7 @@ class StepScenarios:
         assert [s.failure for s in await settles(rt)] == [FailureReason.MODEL_ERROR]
         await assert_quiet(rt)
 
-    async def test_a_retried_model_call_restreaming_the_same_text_never_blanks_it(
+    async def test_a_retried_model_call_restreaming_the_same_text_follows_what_was_shown(
         self, rt: Runtime
     ) -> None:
         rt.runner.script(
@@ -969,11 +969,16 @@ class StepScenarios:
         )
         await send(rt, user("u1"))
         await run(rt)
-        assert reply_deltas(rt) == [BubbleTextDelta(bubble=0, text="Second partial.")]
-        assert (await replies(rt))[0].text == "Second partial."
+        assert reply_deltas(rt) == [
+            BubbleTextDelta(bubble=0, text="Second partial."),
+            BubbleTextDelta(bubble=1, text="Second"),
+            BubbleTextDelta(bubble=1, text=" partial."),
+        ]
+        shown = f"Second partial.{NEW_MESSAGE_BREAKER}Second partial."
+        assert (await replies(rt))[0].text == shown
         assert await answered(rt) == [(ReplyOutcome.FAILED, ("u1",))]
 
-    async def test_a_retracted_preamble_is_replaced_in_place_by_the_reply(
+    async def test_a_hand_off_preamble_stays_and_the_reply_follows_below_it(
         self, rt: Runtime
     ) -> None:
         rt.runner.script(
@@ -990,23 +995,18 @@ class StepScenarios:
         await run(rt)
         assert reply_deltas(rt) == [
             BubbleTextDelta(bubble=0, text="Let me check that."),
-            BubblesDelta(bubbles=("Checked",)),
-            BubbleTextDelta(bubble=0, text=" it."),
+            BubbleTextDelta(bubble=1, text="Checked"),
+            BubbleTextDelta(bubble=1, text=" it."),
         ]
-        assert (await replies(rt))[0].text == "Checked it."
+        assert (await replies(rt))[0].text == f"Let me check that.{NEW_MESSAGE_BREAKER}Checked it."
 
-    async def test_a_take_back_nothing_replaced_is_withdrawn_before_the_reply_settles(
-        self, rt: Runtime
-    ) -> None:
+    async def test_a_take_back_nothing_replaced_keeps_the_shown_preamble(self, rt: Runtime) -> None:
         rt.runner.script([text("Let me check."), taken_back("m1"), card(), Finished(Replied(""))])
         await send(rt, user("u1"))
         await run(rt)
         bubbles = [delta for delta in reply_deltas(rt) if not isinstance(delta, CardsDelta)]
-        assert bubbles == [
-            BubbleTextDelta(bubble=0, text="Let me check."),
-            BubblesDelta(bubbles=()),
-        ]
-        assert (await replies(rt))[0].text == ""
+        assert bubbles == [BubbleTextDelta(bubble=0, text="Let me check.")]
+        assert (await replies(rt))[0].text == "Let me check."
 
     async def test_a_run_that_hits_the_step_limit_says_so_on_its_settle(self, rt: Runtime) -> None:
         rt.runner.script([text("half"), Fail(StepLimitReached("limit"))])
@@ -1026,14 +1026,15 @@ class StepScenarios:
         await send(rt, fired("wf3", "ex_3"))
         assert (await rt.log.state(CONVERSATION, USER)).unsettled_waking == (4,)
 
-    async def test_a_silent_run_for_a_user_still_answers_with_the_fallback(
+    async def test_a_silent_run_for_a_user_fails_its_reply_so_the_user_can_retry(
         self, rt: Runtime
     ) -> None:
         rt.runner.script([Finished(Silent())])
         await send(rt, user("u1"))
         await run(rt)
-        assert (await replies(rt))[0].text == EMPTY_RESPONSE_FALLBACK
-        assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u1",))]
+        assert (await replies(rt))[0].text == ""
+        assert await answered(rt) == [(ReplyOutcome.FAILED, ("u1",))]
+        assert [s.failure for s in await settles(rt)] == [FailureReason.MODEL_ERROR]
 
     async def test_a_silent_run_for_a_workflow_settles_silently(self, rt: Runtime) -> None:
         rt.runner.script([Finished(Silent())])

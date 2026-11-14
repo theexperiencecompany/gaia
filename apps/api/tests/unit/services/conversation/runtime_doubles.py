@@ -44,7 +44,7 @@ from app.services.conversation.ports import (
     TurnAnalytics,
     Unsettled,
 )
-from app.services.conversation.reducer import reduce
+from app.services.conversation.reducer import amend_refusal, reduce
 from shared.py.analytics import Dedupe
 from shared.py.analytics.context import AnalyticsContext
 from shared.py.approvals import ApprovalDecider
@@ -112,6 +112,8 @@ class InMemoryConversationLog:
         assert isinstance(stored, Reply | UserMessage) and type(stored) is type(entry), (
             f"amend cannot turn {stored.kind} into {entry.kind}"
         )
+        if (refusal := amend_refusal(stored, entry)) is not None:
+            raise EntryRejected(refusal)
         revised = entry.model_copy(update={"revision": stored.revision + 1})
         conversation.entries[index] = amended = old.model_copy(update={"entry": revised})
         await self.pause("amend:done")

@@ -80,6 +80,13 @@ def _apply(state: ConversationState, seq: int, entry: Entry) -> Transition | Rej
     return result
 
 
+def amend_refusal(stored: Reply | UserMessage, revised: Reply | UserMessage) -> RejectReason | None:
+    """Return why an amend is refused: a reply's stored text is what clients showed, so it only grows."""
+    if isinstance(stored, Reply) and not revised.text.startswith(stored.text):
+        return RejectReason.SHOWN_TEXT_TAKEN_BACK
+    return None
+
+
 def _wake_effects(entry: UserMessage | WorkflowFired | IntegrationConnected) -> tuple[Effect, ...]:
     match entry:
         case UserMessage(voice=False, id=message_id):

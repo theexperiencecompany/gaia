@@ -75,6 +75,9 @@ class TestSeedFirstConversation:
         assert create.await_args.args[1].user_id == USER
 
         opening, buttons, question = await _notices(runtime, conversation_id)
+        assert [notice.id for notice in (opening, buttons, question)] == [
+            f"seed:{conversation_id}:{place}" for place in (1, 2, 3)
+        ]
         assert opening.text == NEW_MESSAGE_BREAKER.join(composed.opening)
         assert split_message_bubbles(opening.text) == composed.opening
         assert (opening.tool_data, opening.follow_up_actions) == ((), ())

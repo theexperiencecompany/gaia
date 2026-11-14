@@ -66,12 +66,6 @@ export interface EditEvent extends TranscriptEventBase {
   length: number;
 }
 
-/** A delivered bubble taken back off the screen (a retracted reply's later bubbles). */
-export interface DeleteEvent extends TranscriptEventBase {
-  type: "delete";
-  messageId: string;
-}
-
 /** Typing / "thinking" indicator lifecycle. */
 export interface TypingEvent extends TranscriptEventBase {
   type: "typing";
@@ -137,7 +131,6 @@ export type TranscriptEvent =
   | InboundEvent
   | SendEvent
   | EditEvent
-  | DeleteEvent
   | TypingEvent
   | EphemeralEvent
   | RichEvent
@@ -150,7 +143,6 @@ export type TranscriptEventInput =
   | Omit<InboundEvent, keyof TranscriptEventBase>
   | Omit<SendEvent, keyof TranscriptEventBase>
   | Omit<EditEvent, keyof TranscriptEventBase>
-  | Omit<DeleteEvent, keyof TranscriptEventBase>
   | Omit<TypingEvent, keyof TranscriptEventBase>
   | Omit<EphemeralEvent, keyof TranscriptEventBase>
   | Omit<RichEvent, keyof TranscriptEventBase>

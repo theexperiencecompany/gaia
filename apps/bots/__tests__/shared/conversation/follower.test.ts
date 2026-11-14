@@ -43,7 +43,6 @@ import type {
 type Call =
   | { op: "send"; id: string; text: string; replyTo: string | null }
   | { op: "edit"; id: string; text: string }
-  | { op: "delete"; id: string }
   | { op: "react"; target: string; emoji: string; replaces: string | null }
   | { op: "typing"; state: "start" | "stop" }
   | { op: "notice"; bubbles: string[] }
@@ -74,9 +73,6 @@ function recorder(privateChat = true): {
       return {
         edit: async (updated) => {
           calls.push({ op: "edit", id, text: updated });
-        },
-        delete: async () => {
-          calls.push({ op: "delete", id });
         },
       };
     },
@@ -121,22 +117,20 @@ const sent = (calls: Call[]) =>
     call.op === "send" ? [{ text: call.text, replyTo: call.replyTo }] : [],
   );
 
-/** What is on screen at the end: each message's last text, deleted ones gone. */
+/** What is on screen at the end: each message's last text. */
 function screen(calls: Call[]): string[] {
   const shown = new Map<string, string>();
   for (const call of calls) {
     if (call.op === "send" || call.op === "edit") shown.set(call.id, call.text);
-    if (call.op === "delete") shown.delete(call.id);
   }
   return [...shown.values()];
 }
 
-/** Every edit or delete that took back text a message already showed. */
+/** Every edit that took back text a message already showed. */
 function takenBack(calls: Call[]): Call[] {
   const shown = new Map<string, string>();
   return calls.filter((call) => {
     if (call.op === "send") shown.set(call.id, call.text);
-    if (call.op === "delete") return true;
     if (call.op !== "edit") return false;
     const before = shown.get(call.id) ?? "";
     shown.set(call.id, call.text);
@@ -304,8 +298,8 @@ describe.each([
   });
 });
 
-describe("a retracted stream", () => {
-  it("deletes the preamble's later bubbles when the server retracts it, and overwrites its first", async () => {
+describe("a hand-off preamble", () => {
+  it("stays on screen when its attempt is retried, and the reply follows below it", async () => {
     const { surface, calls } = recorder();
     const follower = new ConversationFollower(startAfter(0), EDITING, surface);
     await feed(follower, [
@@ -317,15 +311,13 @@ describe("a retracted stream", () => {
     expect(sent(calls)).toHaveLength(2);
 
     await follower.apply(retractFrame("a-r1"));
-    expect(calls.filter((call) => call.op === "delete")).toEqual([
-      { op: "delete", id: "m2" },
-    ]);
-
     await follower.apply(
-      updateFrame(replyItem("r1", 2, ["Done."], "answered")),
+      updateFrame(
+        replyItem("r1", 2, ["Let me check.", "One sec.", "Done."], "answered"),
+      ),
     );
-    expect(screen(calls)).toEqual(["Done."]);
-    expect(sent(calls)).toHaveLength(2);
+    expect(screen(calls)).toEqual(["Let me check.", "One sec.", "Done."]);
+    expect(takenBack(calls)).toEqual([]);
   });
 });
 

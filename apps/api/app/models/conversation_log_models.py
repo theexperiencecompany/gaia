@@ -527,6 +527,7 @@ class RejectReason(StrEnum):
     REPLY_NOT_OPEN = "reply_not_open"
     REPLY_ANSWERS_FUTURE = "reply_answers_future"
     REPLY_ABOVE_ITS_INPUT = "reply_above_its_input"
+    SHOWN_TEXT_TAKEN_BACK = "shown_text_taken_back"
     FIRE_OVERLAPS = "fire_overlaps"
 
 

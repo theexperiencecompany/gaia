@@ -15,10 +15,9 @@ export interface StreamingOptions {
   platform: PlatformName;
 }
 
-/** A message the follower posted: editable, and deletable where the platform lets a bot unsend. */
+/** A message the follower posted, edited in place as its bubble grows. */
 export interface SentBubble {
   edit: (text: string) => Promise<void>;
-  delete?: () => Promise<void>;
 }
 
 /**

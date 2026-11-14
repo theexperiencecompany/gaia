@@ -89,7 +89,7 @@ test.describe("bubble splitting", () => {
       .toEqual(R2);
   });
 
-  test("R5: a retracted preamble is replaced in place, and stays gone after a reload", async ({
+  test("R5: a hand-off preamble stays, the reply follows below it, and a reload shows the same", async ({
     page,
   }) => {
     await page.goto("/c");
@@ -102,19 +102,17 @@ test.describe("bubble splitting", () => {
       timeout: TURN_TIMEOUT_MS,
     });
 
-    const frames = await watchFirstReply(page, R5_REPLY);
+    const frames = await watchFirstReply(page, PREAMBLE[PREAMBLE.length - 1]);
+    expectBubblesOnlyGrow(frames);
 
-    expect(
-      frames.some((frame) => frame[0]?.startsWith("Sure thing")),
-      "the preamble was on screen before it was retracted",
-    ).toBe(true);
-    expect(frames.at(-1)).toEqual([R5_REPLY]);
+    const everyBubble = async () => (await botBubbleParts(page)).flat();
+    await expect
+      .poll(everyBubble, { timeout: TURN_TIMEOUT_MS })
+      .toEqual([...PREAMBLE, R5_REPLY]);
 
     await page.reload();
     await expect
-      .poll(async () => (await botBubbleParts(page))[0], {
-        timeout: TURN_TIMEOUT_MS,
-      })
-      .toEqual([R5_REPLY]);
+      .poll(everyBubble, { timeout: TURN_TIMEOUT_MS })
+      .toEqual([...PREAMBLE, R5_REPLY]);
   });
 });

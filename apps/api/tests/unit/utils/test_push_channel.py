@@ -90,7 +90,7 @@ async def test_every_device_is_sent_in_batches_and_gone_ones_are_retired(
 ) -> None:
     devices = [f"ExponentPushToken[{n}]" for n in range(101)]
     tokens.get_active_tokens.return_value = devices
-    first_batch = [{"status": "ok"}] * 100
+    first_batch: list[dict[str, object]] = [{"status": "ok"}] * 100
     first_batch[3] = {"status": "error", "details": {"error": "DeviceNotRegistered"}}
     first_batch[4] = {"status": "error", "details": {"error": "MessageTooBig"}}
     first_batch[5] = {"status": "error"}

@@ -10,11 +10,13 @@ from types import SimpleNamespace
 from typing import Literal
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+from fastapi import HTTPException
 import httpx
 from httpx import AsyncClient
 import pytest
 
-from app.api.v1.endpoints.bot import _bot_turn_refused
+from app.api.v1.endpoints.bot import _bot_turn_refused, bot_send_message
+from app.constants.bot import BotRequestFailure
 from app.db.redis import redis_cache
 from app.models.bot_models import BotChatRequest
 from app.models.conversation_send_models import BotMessageAccepted
@@ -28,6 +30,7 @@ from shared.py.analytics import UserId
 from shared.py.analytics.catalog.bots import BotAudioTranscribed, BotSessionReset
 from shared.py.analytics.catalog.chat import ChatMessageRefused
 from shared.py.analytics.catalog.integrations import IntegrationDisconnected
+from tests.helpers import captured_wide_event
 
 BOT_BASE = "/api/v1/bot"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
@@ -337,6 +340,70 @@ class TestBotSendMessage:
         mock_capture.assert_called_once_with(
             UserId(USER_ID), ChatMessageRefused(platform=platform, reason=reason)
         )
+
+
+class TestBotSendMessageWideEvent:
+    """bot_send_message's wide event and refusal, read off the handler directly."""
+
+    async def test_an_accepted_message_names_its_caller_and_the_seq_it_landed_at(self) -> None:
+        request = _make_request()
+        user = AuthenticatedUser(user_id=USER_ID)
+        accepted = BotMessageAccepted(
+            conversation_id="conv-1", message_id="m-1", seq=7, session_token="tok"
+        )
+        with (
+            patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock),
+            patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock),
+            patch(
+                "app.api.v1.endpoints.bot._require_linked_bot_caller",
+                new_callable=AsyncMock,
+                return_value=user,
+            ) as linked,
+            patch(
+                "app.api.v1.endpoints.bot._bot_turn_refused",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.api.v1.endpoints.bot.submit_bot_message",
+                new_callable=AsyncMock,
+                return_value=accepted,
+            ),
+        ):
+            async with captured_wide_event() as event:
+                result = await bot_send_message(request, BotChatRequest(**_CHAT_BODY("discord")))
+
+        assert result == accepted
+        linked.assert_awaited_once_with(request, "discord", "u1")
+        assert event["operation"] == "bot_send_message"
+        assert event["platform"] == "discord"
+        assert event["user"] == {"id": USER_ID}
+        assert event["conversation"] == {"id": "conv-1", "seq": 7}
+
+    async def test_a_refused_turn_says_its_plan_does_not_cover_the_platform(self) -> None:
+        with (
+            patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock),
+            patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock),
+            patch(
+                "app.api.v1.endpoints.bot._require_linked_bot_caller",
+                new_callable=AsyncMock,
+                return_value=AuthenticatedUser(user_id=USER_ID),
+            ),
+            patch(
+                "app.api.v1.endpoints.bot._bot_turn_refused",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            pytest.raises(HTTPException) as raised,
+        ):
+            async with captured_wide_event() as event:
+                await bot_send_message(_make_request(), BotChatRequest(**_CHAT_BODY("discord")))
+
+        assert raised.value.status_code == 402
+        assert raised.value.detail == (
+            "This account's plan does not include messaging GAIA from this platform."
+        )
+        assert event["reason"] == BotRequestFailure.SUBSCRIPTION_REQUIRED
 
 
 class TestBotTurnRefused:
