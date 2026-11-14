@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel, ConfigDict
 
 from app.constants.chat import ARTIFACT_CARD
-from app.models.tool_data_models import ToolDataEntry
+from shared.py.conversation_wire import ToolDataEntry
 
 
 @dataclass(frozen=True)

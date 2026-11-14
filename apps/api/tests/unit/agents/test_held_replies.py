@@ -4,7 +4,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk
 import pytest
 
 from app.agents.core.held_replies import HeldChunk, HeldReplies
-from app.constants.general import NEW_MESSAGE_BREAKER
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 _NODE = {"langgraph_checkpoint_ns": "agent:1"}
 

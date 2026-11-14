@@ -12,7 +12,6 @@ from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import (
     EntryFrame,
     OutputFrame,
-    ReplyDeltaFrame,
     ResponseEvent,
     RetractFrame,
     ToolDataEvent,
@@ -23,17 +22,14 @@ from app.models.conversation_log_models import (
     BargeIn,
     CommsPhase,
     Entry,
-    FailureReason,
     Reaction,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     StopBy,
     UserMessage,
     WorkStarted,
 )
 from app.models.stream_events import ToolOutputPayload
-from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.composition import PostHogTurnAnalytics
 from app.services.conversation.log import accept
 from app.services.conversation.ports import (
@@ -50,6 +46,7 @@ from app.services.conversation.ports import (
     Summarized,
 )
 from app.services.conversation.step import advance
+from shared.py.conversation_wire import FailureReason, ReplyDeltaFrame, ReplyOutcome, ToolDataEntry
 from tests.unit.services.conversation.log_helpers import (
     asked,
     barge,

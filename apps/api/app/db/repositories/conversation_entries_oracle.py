@@ -24,7 +24,6 @@ from app.models.conversation_log_models import (
     LoggedEntry,
     Notice,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     TodoWoke,
     UserMessage,
@@ -33,9 +32,8 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
-from app.models.message_models import ReplyToMessageData
-from app.models.tool_data_models import ToolDataEntry
 from shared.py.approvals import ApprovalOutcome
+from shared.py.conversation_wire import ReplyOutcome, ReplyToMessageData, ToolDataEntry
 
 _STOPPED_WORK = frozenset({WorkOutcome.CANCELLED, WorkOutcome.LOST})
 

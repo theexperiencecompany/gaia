@@ -20,7 +20,6 @@ from app.constants.cache import (
     PLATFORM_LINK_TOKEN_TTL,
 )
 from app.constants.chat import ConversationSource
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.db.redis import redis_cache
 from app.models.bot_models import (
     CreateLinkTokenRequest,
@@ -50,6 +49,7 @@ from app.services.platform_link_service import require_platform_plan
 from app.services.user_service import get_user_by_id
 from app.utils.auth_utils import resolve_bot_user
 from app.utils.errors import create_error
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 from shared.py.wide_events import log
 
 #: The origin of the bot's introduction, logged at account linking.

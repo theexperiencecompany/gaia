@@ -2,7 +2,8 @@
 
 from datetime import UTC, datetime
 
-from app.models.chat_models import ToolDataEntry, tool_fields
+from app.models.chat_models import tool_fields
+from shared.py.conversation_wire import ToolDataEntry
 
 
 def normalize_custom_event(payload: dict[str, object]) -> dict[str, object]:

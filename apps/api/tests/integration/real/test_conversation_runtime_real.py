@@ -85,13 +85,11 @@ from app.db.repositories.hil import hil_approval_repository
 from app.db.repositories.playbooks import playbook_repository
 from app.models.agent_config import AgentConfigurable, StepTurnRef, agent_configurable
 from app.models.agent_models import AgentRunnableConfig
-from app.models.chat_models import ImageData, SourceCategory
+from app.models.chat_models import SourceCategory
 from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
     OutputFrame,
-    ReplyDeltaFrame,
-    ResponseEvent,
     StateFrame,
     ToolDataEvent,
     WorkDeltaFrame,
@@ -107,7 +105,6 @@ from app.models.conversation_log_models import (
     LoggedEntry,
     Notice,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     StepClaim,
     StopRequested,
@@ -125,10 +122,10 @@ from app.models.conversation_screen_models import (
     ScreenItem,
     ScreenUpdateFrame,
     WorkItem,
+    WorkStatus,
 )
 from app.models.conversation_send_models import SendMessageRequest
 from app.models.hil_models import ApprovalProposal, HILApprovalRecord
-from app.models.message_models import ReplyToMessageData
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRecord,
@@ -138,7 +135,6 @@ from app.models.notification.notification_models import (
 from app.models.playbook_models import PlaybookDocument, ToolStep
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.todo_wake_models import TodoRunWake
-from app.models.tool_data_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
 from app.models.work_cancel_models import WorkCancelled
 from app.models.workflow_execution_models import RecordedCall
@@ -186,7 +182,8 @@ from app.services.conversation.screen import project_screen
 from app.services.conversation.send import send_message, submit_message
 from app.services.conversation.step import advance
 from app.services.conversation.sweeper import sweep_conversations
-from app.services.conversation.work_deltas import WorkDeltas
+from app.services.conversation.tool_cards import fold_cards
+from app.services.conversation.work_deltas import WorkDeltas, work_payloads
 from app.services.conversation.work_log import (
     WorkReport,
     record_approval_decided,
@@ -230,6 +227,18 @@ from shared.py.analytics.context import (
     worker_context,
 )
 from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
+from shared.py.conversation_wire import (
+    NEW_MESSAGE_BREAKER,
+    BubblesDelta,
+    BubbleTextDelta,
+    ImageData,
+    ReplyDeltaFrame,
+    ReplyItem,
+    ReplyOutcome,
+    ReplyToMessageData,
+    TimelineStepKind,
+    ToolDataEntry,
+)
 from shared.py.wide_events import _spawned_tasks
 from tests.e2e._harness.graph_run import comms_graph
 from tests.helpers import item_cards, item_text, shown_items
@@ -1360,6 +1369,116 @@ async def test_executor_cards_stream_as_work_deltas_and_stay_on_the_finished_wor
     # The cards stay with the work; the reply narrating it carries only its own words.
     assert [(r.text, r.tool_data) for r in task_reply] == [("3 flights found", ())]
     assert [f.tool_data for f in await rig.of(WorkFinished)] == [cards]
+
+
+def _tool_call(call_id: str, name: str, subagent_id: str | None = None) -> dict[str, object]:
+    call = {
+        "tool_name": name,
+        "tool_category": "search",
+        "message": name,
+        "show_category": True,
+        "tool_call_id": call_id,
+        "inputs": {},
+        "icon_url": None,
+        "integration_name": None,
+    }
+    card: dict[str, object] = {
+        "tool_name": "tool_calls_data",
+        "tool_category": "search",
+        "data": call,
+    }
+    return {"tool_data": card if subagent_id is None else {**card, "subagent_id": subagent_id}}
+
+
+@dataclass
+class _Screen:
+    """A client's screen built only from the stream: the items it was patched to, and each reply's live bubbles."""
+
+    items: list[ScreenItem]
+    bubbles: dict[str, list[str]] = field(default_factory=dict)
+    running: dict[str, WorkItem] = field(default_factory=dict)
+
+    def take(self, frame: object) -> None:
+        match frame:
+            case ScreenInsertFrame(item=item):
+                later = [at for at, held in enumerate(self.items) if held.seq > item.seq]
+                self.items.insert(later[0] if later else len(self.items), item)
+                self._note(item)
+            case ScreenUpdateFrame(item=item):
+                self.items = [item if held.id == item.id else held for held in self.items]
+                self._note(item)
+            case ReplyDeltaFrame(reply_id=str(reply_id), payload=BubbleTextDelta() as delta):
+                shown = self.bubbles.setdefault(reply_id, [])
+                if delta.bubble == len(shown):
+                    shown.append("")
+                shown[delta.bubble] += delta.text
+            case ReplyDeltaFrame(reply_id=str(reply_id), payload=BubblesDelta(bubbles=bubbles)):
+                self.bubbles[reply_id] = list(bubbles)
+            case _:
+                pass
+
+    def _note(self, item: ScreenItem) -> None:
+        if isinstance(item, WorkItem) and item.status is WorkStatus.RUNNING:
+            self.running[item.task_id] = item
+
+
+async def _until_quiet(frames: AsyncIterator[object | None], screen: _Screen) -> None:
+    while (frame := await anext(frames)) is not None:
+        screen.take(frame)
+
+
+@pytest.mark.service
+async def test_a_multi_bubble_reply_with_work_shows_live_exactly_what_a_reload_shows(
+    rig_for: RigFactory,
+) -> None:
+    model = gated(
+        f"on it{NEW_MESSAGE_BREAKER}checking flights",
+        f"3 flights found{NEW_MESSAGE_BREAKER}the cheapest is $90",
+    )
+    rig = await rig_for(model)
+    _during(model, 0, lambda: rig.start_work("t1"))
+    with patch.object(event_stream, "read_frames", partial(read_frames, block_ms=1)):
+        frames = event_stream.follow_screen(rig.ports.log, rig.conversation_id, rig.user_id)
+        opened = await anext(frames)
+        assert isinstance(opened, ScreenFrame)
+        screen = _Screen(items=list(opened.items))
+        await _until_quiet(frames, screen)
+        await rig.send("m1", "find me flights")
+        await rig.settle()
+        deltas = WorkDeltas(rig.conversation_id, "t1")
+        deltas({"reasoning": {"content": "comparing "}})
+        deltas({"reasoning": {"content": "airlines"}})
+        deltas(_tool_call("c1", "search_flights"))
+        started = {"subagent_id": "s1", "subagent_name": "Prices", "agent_type": "spawned"}
+        deltas({"subagent_start": {**started, "started_at": "2026-11-13T00:00:00+00:00"}})
+        deltas(_tool_call("c2", "price_lookup", subagent_id="s1"))
+        deltas({"tool_output": {"tool_call_id": "c2", "output": "$90", "subagent_id": "s1"}})
+        deltas({"subagent_end": {"subagent_id": "s1", "duration_ms": 5}})
+        deltas({"tool_data": _card("flight_list")})
+        await deltas.drain()
+        await _until_quiet(frames, screen)
+        cards = fold_cards(await work_payloads(rig.conversation_id, "t1")).tool_data
+        report = WorkReport(f"3 flights found{NEW_MESSAGE_BREAKER}the cheapest is $90", cards)
+        await record_work_finished(rig.conversation_id, rig.user_id, "t1", WorkOutcome.DONE, report)
+        await rig.settle()
+        await _until_quiet(frames, screen)
+        await frames.aclose()
+    reloaded = project_screen(await rig.entries())
+    replies = [item for item in reloaded if isinstance(item, ReplyItem)]
+    work = next(item for item in reloaded if isinstance(item, WorkItem))
+    assert screen.items == reloaded
+    assert [r.bubbles for r in replies] == [
+        ("on it", "checking flights"),
+        ("3 flights found", "the cheapest is $90"),
+    ]
+    assert [tuple(screen.bubbles[r.id]) for r in replies] == [r.bubbles for r in replies]
+    assert screen.running["t1"].timeline == work.timeline
+    assert [(step.kind, step.key) for step in work.timeline.steps] == [
+        (TimelineStepKind.TOOL, "head#0"),
+        (TimelineStepKind.TOOL, "tc-c1"),
+        (TimelineStepKind.SUBAGENT, "sa-s1"),
+    ]
+    assert [card.key for card in work.timeline.cards] == ["flight_list-2026-11-13T00:00:00+00:00"]
 
 
 @pytest.mark.service
@@ -2847,7 +2966,7 @@ async def test_a_reload_mid_reply_longer_than_the_streams_retention_sees_all_its
     await frames.publish(rig.conversation_id, EntryFrame(seq=2, at=_now(), entry=opened))
     for index in range(3 * EVENTS_STREAM_MAXLEN):
         delta = ReplyDeltaFrame(
-            attempt_id="a", reply_id="r1", index=index, payload=ResponseEvent(response="x")
+            attempt_id="a", reply_id="r1", index=index, payload=BubbleTextDelta(bubble=0, text="x")
         )
         await frames.publish(rig.conversation_id, delta)
     # What a client reloading now reads: every delta since the reply opened.

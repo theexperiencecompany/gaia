@@ -18,15 +18,12 @@ from app.db.repositories import conversations as conversations_module
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import ConversationRepository
-from app.models.chat_models import (
-    ConversationSource,
-    SystemPurpose,
-    ToolDataEntry,
-)
+from app.models.chat_models import ConversationSource, SystemPurpose
 from app.models.conversation_log_models import Entry, Reply, UserMessage
 from app.models.conversation_models import ConversationDocument, ConversationSearchResults
-from app.models.conversation_screen_models import ReplyItem, UserItem
+from app.models.conversation_screen_models import UserItem
 from app.services.conversation.mongo_log import MongoConversationLog
+from shared.py.conversation_wire import ReplyItem, ToolDataEntry
 from tests.helpers import shown_items
 
 # Every test here writes entries, so each needs the collection with its unique indexes.

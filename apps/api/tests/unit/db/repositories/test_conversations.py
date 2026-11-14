@@ -17,7 +17,7 @@ import pytest
 
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversations import ConversationRepository
-from app.models.chat_models import ToolDataEntry
+from shared.py.conversation_wire import ToolDataEntry
 
 CONVERSATION_ID = "conv-1"
 USER_ID = "user-1"

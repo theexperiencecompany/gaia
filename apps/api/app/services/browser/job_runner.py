@@ -28,6 +28,7 @@ from app.constants.browser import (
     HandoffStatus,
     SensitiveCategory,
 )
+from app.constants.chat import BROWSER_GROUP_PREFIX
 from app.constants.log_tags import LogTag
 from app.models.chat_models import SourceCategory
 from app.models.stream_events import ToolOutputPayload
@@ -126,7 +127,7 @@ class BrowserThreadMirror:
 
     def __init__(self, publish: FramePublisher, tool_call_id: str) -> None:
         self._publish = publish
-        self._group = f"browser:{tool_call_id}"
+        self._group = f"{BROWSER_GROUP_PREFIX}{tool_call_id}"
         # "" reads as falsy exactly like None: set while the group is open.
         self._group_id: str | None = None  # pragma: no mutate
         #: Set when the group opens; nothing reads it before then.

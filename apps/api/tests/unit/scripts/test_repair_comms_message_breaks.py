@@ -14,8 +14,8 @@ from langchain_core.messages import (
 import pytest
 from scripts.repair_comms_message_breaks import repair_thread, repair_writes
 
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.override.langgraph_bigtool.utils import messages_delta_reducer
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 BR = NEW_MESSAGE_BREAKER
 CALL = [{"name": "call_executor", "args": {"task": "x"}, "id": "tc-1"}]

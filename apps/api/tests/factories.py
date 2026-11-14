@@ -13,10 +13,10 @@ from composio_client.types.tool_list_response import ItemDeprecated, ItemToolkit
 import httpx
 
 from app.models.conversation_frame_models import EntryFrame, StateFrame
-from app.models.conversation_log_models import DisplayState, Entry, ReplyOutcome
+from app.models.conversation_log_models import DisplayState, Entry
 from app.models.conversation_models import StoredConversation
-from app.models.conversation_screen_models import ReplyItem
 from app.models.user_models import AuthenticatedUser
+from shared.py.conversation_wire import ReplyItem, ReplyOutcome, ToolTimeline
 
 
 def make_user_id() -> str:
@@ -210,13 +210,14 @@ def make_composio_not_found(body: object, message: str) -> composio_client.NotFo
 
 
 def make_reply_item(text: str, *, reply_id: str = "r1", seq: int = 1) -> ReplyItem:
-    """Build a settled reply's screen item carrying only its text."""
+    """Build a settled reply's screen item carrying only its text, as one bubble."""
     return ReplyItem(
         id=reply_id,
         seq=seq,
         at=datetime.now(UTC),
-        text=text,
+        bubbles=(text,),
         tool_data=(),
+        timeline=ToolTimeline(),
         follow_up_actions=(),
         image=None,
         pinned=False,

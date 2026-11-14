@@ -9,6 +9,27 @@ from enum import Enum
 #: tool_data entry a subagent's streamed work is grouped under (mirrored as
 #: SUBAGENT_GROUP_TOOL_NAME in @gaia/shared/chat).
 SUBAGENT_GROUP_TOOL_NAME = "subagent_group"
+#: The tool call that opens a browser run, and the prefix of the group its actions stream under.
+BROWSER_TASK_TOOL_NAME = "browser_task"
+BROWSER_GROUP_PREFIX = "browser:"
+#: Cards whose calls in one item render as one card holding every call's data.
+GROUPED_TOOL_CARDS = frozenset(
+    {
+        "approval_request",
+        "search_results",
+        "reddit_data",
+        "integration_connection_required",
+        "integration_list_data",
+        "device_approval_required",
+        "rate_limit_data",
+        "email_fetch_data",
+        "email_compose_data",
+        "email_sent_data",
+        "artifact_data",
+        "memory_data",
+        "browser_task_data",
+    }
+)
 
 
 class ConversationSource(str, Enum):

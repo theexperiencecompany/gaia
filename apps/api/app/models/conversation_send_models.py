@@ -3,13 +3,10 @@
 from pydantic import BaseModel, Field, model_validator
 
 from app.models.conversation_screen_models import ScreenStreamFrame
-from app.models.message_models import (
-    ReplyToMessageData,
-    SelectedCalendarEventData,
-    SelectedWorkflowData,
-)
+from app.models.message_models import SelectedCalendarEventData, SelectedWorkflowData
 from app.schemas.common import ResponseModel
 from shared.py.analytics.catalog.properties import Identifier
+from shared.py.conversation_wire import ReplyToMessageData
 
 
 class SendMessageRequest(BaseModel):

@@ -6,11 +6,7 @@ from pydantic import BaseModel
 # app.constants.outbound can derive the outbound queue set without the model
 # stack. Re-exported here because this is the import site consumers use.
 from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource, SourceCategory
-
-# ToolDataEntry lives in app.models.tool_data_models, which imports nothing heavy, so the
-# pure conversation core can use it without booting settings. Re-exported here for the
-# same reason as ConversationSource above.
-from app.models.tool_data_models import ToolDataEntry
+from shared.py.conversation_wire import ImageData
 
 __all__ = [
     "BOT_CONVERSATION_SOURCES",
@@ -23,17 +19,8 @@ __all__ = [
     "SourceCategory",
     "StarredUpdate",
     "SystemPurpose",
-    "ToolDataEntry",
     "UpdateDescriptionRequest",
 ]
-
-
-class ImageData(BaseModel):
-    """Generated-image metadata attached to a chat message."""
-
-    url: str
-    prompt: str
-    improved_prompt: str | None = None
 
 
 tool_fields = [

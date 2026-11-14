@@ -27,14 +27,10 @@ from app.agents.core.messages import (
     MessageScope,
 )
 from app.models.calendar_models import GoogleCalendarEventDateTime
-from app.models.message_models import (
-    FileData,
-    ReplyToMessageData,
-    SelectedCalendarEventData,
-    SelectedWorkflowData,
-)
+from app.models.message_models import FileData, SelectedCalendarEventData, SelectedWorkflowData
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.models.workflow_models import WorkflowStep
+from shared.py.conversation_wire import ReplyToMessageData
 from tests._harness.context_chain import comms_turn_messages
 
 SYSTEM_MSG = SystemMessage(content="System prompt here")

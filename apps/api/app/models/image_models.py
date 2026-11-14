@@ -1,6 +1,6 @@
 """Pydantic models for the image endpoints.
 
-Image *generation* reuses ``chat_models.ImageData`` — that model already
+Image *generation* reuses ``shared.py.conversation_wire.ImageData`` — that model already
 describes the ``{url, prompt, improved_prompt}`` payload both this router and
 the chat stream emit, and there must be one of it.
 """

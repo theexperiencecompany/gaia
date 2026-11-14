@@ -12,17 +12,16 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models.chat_models import ImageData, ReactionBy, tool_fields
+from app.models.chat_models import ReactionBy, tool_fields
 from app.models.conversation_log_models import ConversationState
 from app.models.conversation_models import MessageShape
 from app.models.message_models import (
     FileData,
-    ReplyToMessageData,
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
 from app.models.todo_wake_models import TodoRunWake
-from app.models.tool_data_models import ToolDataEntry
+from shared.py.conversation_wire import ImageData, ReplyToMessageData, ToolDataEntry
 
 #: MessageModel.type of a message the human wrote, and of one GAIA wrote.
 USER_MESSAGE_TYPE = "user"

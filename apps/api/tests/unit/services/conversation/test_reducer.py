@@ -17,7 +17,6 @@ from app.models.conversation_log_models import (
     Reaction,
     Rejected,
     RejectReason,
-    ReplyOutcome,
     ReplySettled,
     StartAck,
     StopBy,
@@ -28,6 +27,7 @@ from app.models.conversation_log_models import (
 )
 from app.services.conversation.reducer import reduce
 from shared.py.approvals import ApprovalDecider, ApprovalOutcome
+from shared.py.conversation_wire import ReplyOutcome
 from tests.unit.services.conversation.log_helpers import (
     asked,
     barge,

@@ -21,7 +21,7 @@ from app.agents.prompts.todo_prompts import TODO_SYSTEM_PROMPT
 from app.agents.prompts.user_instructions_prompts import INSTRUCTION_PRECEDENCE_RULES
 from app.agents.workspace.operational_docs import GAIA_CORE
 from app.constants.chat import ConversationSource
-from app.constants.general import NEW_MESSAGE_BREAKER
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 # Output-format addendum for renderable channels (web, mobile, desktop).
 _OPENUI_ADDENDUM: Final[str] = (

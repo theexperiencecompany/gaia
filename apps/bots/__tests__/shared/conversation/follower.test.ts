@@ -98,6 +98,19 @@ function screen(calls: Call[]): string[] {
   return [...shown.values()];
 }
 
+/** Every edit or delete that took back text a message already showed. */
+function takenBack(calls: Call[]): Call[] {
+  const shown = new Map<string, string>();
+  return calls.filter((call) => {
+    if (call.op === "send") shown.set(call.id, call.text);
+    if (call.op === "delete") return true;
+    if (call.op !== "edit") return false;
+    const before = shown.get(call.id) ?? "";
+    shown.set(call.id, call.text);
+    return !call.text.startsWith(before);
+  });
+}
+
 async function feed(
   follower: ConversationFollower,
   frames: ConversationFrame[],
@@ -205,6 +218,27 @@ describe.each([
       { op: "react", target: "11", emoji: "👀", replaces: null },
       { op: "react", target: "11", emoji: "👍", replaces: "👀" },
     ]);
+  });
+
+  it("posts a reply of three bubbles as the three bubbles it saved", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(0, options, surface);
+    const bubbles = ["On it.", "Found 3 flights.", "The cheapest is $90."];
+    await feed(follower, [
+      screenFrame([inbound("u1", 1, "11")]),
+      insertFrame(replyItem("r1", 2, ["On"])),
+      replyDelta("a-r1", "r1", 0, "On"),
+      replyDelta("a-r1", "r1", 1, " it."),
+      replyDelta("a-r1", "r1", 2, "Found 3", 1),
+      replyDelta("a-r1", "r1", 3, " flights.", 1),
+      replyDelta("a-r1", "r1", 4, "The cheapest is $90.", 2),
+      updateFrame(replyItem("r1", 2, bubbles, "answered")),
+    ]);
+
+    expect(screen(calls)).toEqual(bubbles);
+    expect(sent(calls)).toHaveLength(3);
+    // Each message only ever grows into its bubble: nothing streamed was taken back.
+    expect(takenBack(calls)).toEqual([]);
   });
 
   it("answers the quoted message natively", async () => {

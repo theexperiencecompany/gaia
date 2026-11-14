@@ -13,7 +13,6 @@ from app.models.conversation_log_models import (
     ConversationState,
     LoggedEntry,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     WorkFinished,
     WorkOutcome,
@@ -21,6 +20,7 @@ from app.models.conversation_log_models import (
 )
 from app.services.conversation.event_stream import latest_frame_id, read_frames
 from app.services.conversation.ports import ConversationLog
+from shared.py.conversation_wire import ReplyOutcome
 
 #: A Stop dropped the entry, or the work it caused, before it was answered.
 STOPPED = "stopped"

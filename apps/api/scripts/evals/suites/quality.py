@@ -46,7 +46,6 @@ import uuid
 import httpx
 import yaml
 
-from app.models.tool_data_models import ToolDataEntry
 from scripts.evals.core.cost import EvalCostTracker, estimate_tokens
 from scripts.evals.core.gates import ExtraGates, known_gates, score_gates, validate_gates
 from scripts.evals.core.live_chat import (
@@ -71,6 +70,7 @@ from scripts.evals.core.scorers import (
     produced_nothing,
 )
 from scripts.evals.core.types import Case, CaseRun, ProviderError
+from shared.py.conversation_wire import ToolDataEntry
 
 DEV_API_BASE = os.environ.get("EVALS_DEV_API_BASE", "http://localhost:9460")
 DEV_USERS_URL = f"{DEV_API_BASE}/api/v1/dev/users"

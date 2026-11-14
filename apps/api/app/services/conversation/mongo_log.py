@@ -39,7 +39,6 @@ from app.models.conversation_log_models import (
     Reaction,
     Rejected,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     StepClaim,
     TodoWoke,
@@ -52,6 +51,7 @@ from app.utils.errors import (
     ConversationNotFoundError,
     ConversationStoreError,
 )
+from shared.py.conversation_wire import ReplyOutcome
 from shared.py.wide_events import log
 
 _JITTER = random.SystemRandom()

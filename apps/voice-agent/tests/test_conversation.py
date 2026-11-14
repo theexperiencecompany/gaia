@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncIterable, AsyncIterator, Callable
+from datetime import UTC, datetime
 import json
 from types import SimpleNamespace
 from typing import cast
@@ -10,6 +11,15 @@ from livekit import rtc
 from livekit.agents.llm import ChatItem, ChatMessage
 from livekit.agents.voice import SpeechHandle
 from src.conversation import ConversationEvent, VoiceConversation, parse_event
+
+from shared.py.conversation_wire import (
+    NEW_MESSAGE_BREAKER,
+    BubbleTextDelta,
+    ReplyDeltaFrame,
+    ReplyItem,
+    ReplyOutcome,
+    ToolTimeline,
+)
 
 FIRST = "Your flight to Berlin leaves at nine tomorrow morning."
 SECOND = " The hotel near the station is booked for two nights."
@@ -71,20 +81,33 @@ class RecordingApi(VoiceConversation):
 def entry(seq: int, kind: str, reply_id: str) -> str:
     """Return a reply item patch: inserted as the reply opens, updated with its outcome as it settles."""
     opened = kind == "reply"
-    item = {"kind": "reply", "id": reply_id, "seq": seq, "outcome": None if opened else "answered"}
+    item = ReplyItem(
+        id=reply_id,
+        seq=seq,
+        at=datetime(2026, 11, 14, tzinfo=UTC),
+        bubbles=(),
+        tool_data=(),
+        timeline=ToolTimeline(),
+        follow_up_actions=(),
+        image=None,
+        pinned=False,
+        quote=None,
+        outcome=None if opened else ReplyOutcome.ANSWERED,
+        failure=None,
+        narrates=(),
+    )
     patch = "screen_insert" if opened else "screen_update"
-    return json.dumps({"frame": {"kind": patch, "item": item}})
+    return json.dumps({"frame": {"kind": patch, "item": item.model_dump(mode="json")}})
 
 
-def delta(reply_id: str, index: int, text: str) -> str:
-    frame = {
-        "kind": "reply_delta",
-        "attempt_id": "1.1",
-        "reply_id": reply_id,
-        "index": index,
-        "payload": {"type": "response", "response": text},
-    }
-    return json.dumps({"frame": frame})
+def delta(reply_id: str, index: int, text: str, bubble: int = 0) -> str:
+    frame = ReplyDeltaFrame(
+        attempt_id="1.1",
+        reply_id=reply_id,
+        index=index,
+        payload=BubbleTextDelta(bubble=bubble, text=text),
+    )
+    return json.dumps({"frame": frame.model_dump(mode="json")})
 
 
 async def follow(conversation: VoiceConversation, *events: str, after_seq: int = 1) -> None:
@@ -165,6 +188,28 @@ def test_a_replayed_delta_is_spoken_once() -> None:
         )
         [speech] = spoken(conversation).speeches
         assert [chunk async for chunk in speech.text] == [FIRST]
+
+    asyncio.run(scenario())
+
+
+def test_talking_over_a_second_bubble_posts_where_it_was_cut_in_the_saved_text() -> None:
+    async def scenario() -> None:
+        conversation = RecordingApi()
+        conversation.conversation_id = CONVERSATION
+        await follow(
+            conversation,
+            entry(2, "reply", "r1"),
+            delta("r1", 0, FIRST),
+            delta("r1", 1, SECOND, bubble=1),
+            delta("r1", 2, "Dinner is at eight in the hotel restaurant.", bubble=2),
+            entry(3, "reply_settled", "r1"),
+        )
+        [speech] = spoken(conversation).speeches
+        speech.end(interrupted=True, played=FIRST + SECOND + " Dinner is")
+        await asyncio.sleep(0)
+        # heard_through indexes the saved text, whose bubbles the break joins.
+        heard = len(f"{FIRST}{NEW_MESSAGE_BREAKER}{SECOND}")
+        assert barge_ins(conversation) == [{"reply_id": "r1", "heard_through": heard}]
 
     asyncio.run(scenario())
 

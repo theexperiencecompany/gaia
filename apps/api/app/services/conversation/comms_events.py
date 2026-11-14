@@ -20,7 +20,6 @@ from app.models.conversation_frame_models import (
     ToolDataEvent,
 )
 from app.models.stream_events import MainResponseCompleteFrame
-from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.graph_payloads import (
     GraphStreamState,
     flush_held_payloads,
@@ -40,6 +39,7 @@ from app.services.conversation.ports import (
 )
 from app.utils.agent_utils import NodeMessagesUpdate
 from app.utils.multimodal import extract_text_content
+from shared.py.conversation_wire import ToolDataEntry
 
 #: The comms graph node that runs the model.
 _MODEL_NODE = "agent"

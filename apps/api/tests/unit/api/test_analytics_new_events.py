@@ -481,7 +481,7 @@ class TestCalendarPrefs:
 
 class TestImageNewEvents:
     async def test_generate_captures(self, client: AsyncClient) -> None:
-        from app.models.chat_models import ImageData
+        from shared.py.conversation_wire import ImageData
 
         with (
             patch("app.api.v1.endpoints.image.api_generate_image", new_callable=AsyncMock) as m,

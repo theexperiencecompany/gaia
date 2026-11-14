@@ -8,7 +8,7 @@ talks over a reply, the follower posts a barge-in naming it and how far into it 
 import asyncio
 from collections.abc import AsyncIterable, AsyncIterator
 import json
-from typing import Literal, Protocol
+from typing import Annotated, Protocol
 from uuid import uuid4
 
 import aiohttp
@@ -19,85 +19,56 @@ from livekit.agents.voice import SpeechHandle
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from typing_extensions import override
 
+from shared.py.conversation_wire import (
+    NEW_MESSAGE_BREAKER,
+    BubblesDelta,
+    BubbleTextDelta,
+    ConversationUpdatedFrame,
+    ReplyDelta,
+    ReplyDeltaFrame,
+    ReplyItem,
+    ScreenFrame,
+    ScreenInsertFrame,
+    ScreenItemHeader,
+    ScreenUpdateFrame,
+)
 from shared.py.wide_events import VoiceContext, log, log_context, wide_task
 from src.constants import (
     CONVERSATION_DESCRIPTION_TOPIC,
     CONVERSATION_ID_TOPIC,
     FOLLOW_RECONNECT_DELAY_S,
     FRONTEND_STREAM_TOPIC,
-    RESPONSE_KEY,
     SSE_DATA_PREFIX,
     VOICE_SYSTEM_PROMPT,
     LogTag,
 )
 from src.speech import Flush, ReplySpeech
 
-_IGNORE_REST = ConfigDict(extra="ignore", frozen=True)
-
-
-class _ReplyItem(BaseModel):
-    model_config = _IGNORE_REST
-
-    kind: Literal["reply"]
-    id: str
-    seq: int
-    # None while the reply is still being written.
-    outcome: str | None
-
-
-class _OtherItem(BaseModel):
-    model_config = _IGNORE_REST
-
-    kind: str
-
-
-_Item = _ReplyItem | _OtherItem
-
-
-class _Screen(BaseModel):
-    model_config = _IGNORE_REST
-
-    kind: Literal["screen"]
-    items: list[_Item]
-
-
-class _ScreenPatch(BaseModel):
-    model_config = _IGNORE_REST
-
-    kind: Literal["screen_insert", "screen_update"]
-    item: _Item
-
-
-class _ReplyDelta(BaseModel):
-    model_config = _IGNORE_REST
-
-    kind: Literal["reply_delta"]
-    reply_id: str | None
-    index: int
-    # The delta payload exactly as the chat stream event the screen already renders.
-    payload: dict[str, object]
-
-
-class _ConversationUpdated(BaseModel):
-    model_config = _IGNORE_REST
-
-    kind: Literal["conversation_updated"]
-    description: str
+_Item = Annotated[ReplyItem | ScreenItemHeader, Field(union_mode="left_to_right")]
 
 
 class _OtherFrame(BaseModel):
-    model_config = _IGNORE_REST
+    """A frame voice does not act on: the conversation's state, or a retracted attempt."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
 
     kind: str
 
 
-_Frame = _Screen | _ScreenPatch | _ReplyDelta | _ConversationUpdated | _OtherFrame
+_Frame = (
+    ScreenFrame[_Item]
+    | ScreenInsertFrame[_Item]
+    | ScreenUpdateFrame[_Item]
+    | ReplyDeltaFrame
+    | ConversationUpdatedFrame
+    | _OtherFrame
+)
 
 
 class ConversationEvent(BaseModel):
     """One frame of the events stream: the screen, a patch to it, or a live delta."""
 
-    model_config = _IGNORE_REST
+    model_config = ConfigDict(extra="ignore", frozen=True)
 
     frame: _Frame = Field(union_mode="left_to_right")
 
@@ -130,6 +101,8 @@ class VoiceConversation:
         self._follower: asyncio.Task[None] | None = None
         self._speeches: dict[str, ReplySpeech] = {}
         self._deltas_seen: set[tuple[str, int]] = set()
+        # How many bubbles each reply has opened, so a new one is spoken after a break.
+        self._bubbles: dict[str, int] = {}
         self._speaking: set[str] = set()
         self._tasks: set[asyncio.Task[None]] = set()
 
@@ -187,19 +160,19 @@ class VoiceConversation:
     async def apply(self, frame: _Frame, after_seq: int) -> None:
         """Speak and display one frame; replies at or before after_seq were never this session's."""
         match frame:
-            case _Screen(items=items):
+            case ScreenFrame(items=items):
                 for item in items:
                     self._reply(item, after_seq)
-            case _ScreenPatch(item=item):
+            case ScreenInsertFrame(item=item) | ScreenUpdateFrame(item=item):
                 self._reply(item, after_seq)
-            case _ReplyDelta(reply_id=str(reply_id), index=index, payload=payload):
-                await self._delta(reply_id, index, payload)
-            case _ConversationUpdated(description=description):
+            case ReplyDeltaFrame(reply_id=str(reply_id), index=index, payload=payload):
+                self._delta(reply_id, index, payload)
+            case ConversationUpdatedFrame(description=description):
                 await self._send_room_text(description, CONVERSATION_DESCRIPTION_TOPIC)
 
-    def _reply(self, item: _Item, after_seq: int) -> None:
+    def _reply(self, item: ReplyItem | ScreenItemHeader, after_seq: int) -> None:
         """Open a speech for a reply item of this session's, and finish it once the reply settles."""
-        if not isinstance(item, _ReplyItem):
+        if not isinstance(item, ReplyItem):
             return
         if item.seq > after_seq and item.id not in self._speeches:
             self._speeches[item.id] = ReplySpeech(item.id)
@@ -207,14 +180,26 @@ class VoiceConversation:
         if item.outcome is not None and speech is not None and not speech.settled:
             self._spoken(speech, speech.finish())
 
-    async def _delta(self, reply_id: str, index: int, payload: dict[str, object]) -> None:
+    def _delta(self, reply_id: str, index: int, payload: ReplyDelta) -> None:
+        """Speak what the delta adds: a new bubble follows the last one after the break the reply's text joins them with."""
         speech = self._speeches.get(reply_id)
         if speech is None or (reply_id, index) in self._deltas_seen:
             return
         self._deltas_seen.add((reply_id, index))
-        text = payload.get(RESPONSE_KEY)
-        if isinstance(text, str):
-            self._spoken(speech, speech.add(text))
+        match payload:
+            case BubbleTextDelta(bubble=bubble, text=text):
+                opens = bubble >= self._bubbles.get(reply_id, 0)
+                self._bubbles[reply_id] = max(self._bubbles.get(reply_id, 0), bubble + 1)
+                piece = f"{NEW_MESSAGE_BREAKER}{text}" if opens and bubble > 0 else text
+                self._spoken(speech, speech.add(piece))
+            case BubblesDelta(bubbles=bubbles):
+                # Text the model took back was already spoken; only what follows it can still be said.
+                said = NEW_MESSAGE_BREAKER.join(bubbles)
+                self._bubbles[reply_id] = len(bubbles)
+                if said.startswith(speech.text):
+                    self._spoken(speech, speech.add(said[len(speech.text) :]))
+            case _:
+                pass
 
     def _spoken(self, speech: ReplySpeech, flushed: Flush | None) -> None:
         """Start speaking the reply with its first spoken chunk; every device shows it from the events stream."""

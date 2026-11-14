@@ -25,7 +25,7 @@ export type {
   DeliveryState,
   MessageSlot,
 } from "./bubble-delivery.types";
-export { BUBBLE_PAUSE_MS, deliverableBubbles } from "./bubbles";
+export { BUBBLE_PAUSE_MS } from "./bubbles";
 export {
   dispatchTodoSubcommand,
   dispatchWorkflowSubcommand,

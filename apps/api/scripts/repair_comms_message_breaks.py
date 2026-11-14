@@ -29,10 +29,10 @@ from langchain_core.runnables import RunnableConfig
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.graphs import GraphName
 from app.core.provider_registration import boot_process
 from app.utils.message_breaks import normalize_message_breaks
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 IDLE_BEFORE_REPAIR = timedelta(minutes=10)
 # Comms threads are keyed by the bare conversation uuid; executor/subagent threads carry a prefix.

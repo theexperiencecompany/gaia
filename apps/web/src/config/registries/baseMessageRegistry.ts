@@ -4,7 +4,11 @@
  * Extends the tools message schema to produce the full message shape.
  */
 
-import type { Reaction, TodoRunWake } from "@shared/api/generated";
+import type {
+  Reaction,
+  TodoRunWake,
+  ToolTimeline,
+} from "@shared/api/generated";
 import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import type { ImageData, MemoryData } from "@/types/features/toolDataTypes";
@@ -52,6 +56,10 @@ export const BASE_MESSAGE_SCHEMA = {
   stopped: undefined as boolean | null | undefined,
   // GAIA's one reaction on a user message, rendered as a badge on its bubble.
   reaction: undefined as Reaction | null | undefined,
+  // A bot message's bubbles, split once by the server.
+  bubbles: undefined as readonly string[] | undefined,
+  // The tool thread and stand-alone cards the server folded the message's cards into.
+  timeline: undefined as ToolTimeline | undefined,
   // Tool fields (spread from tool registry)
   ...TOOLS_MESSAGE_SCHEMA,
 };

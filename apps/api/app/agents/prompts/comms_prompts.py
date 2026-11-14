@@ -10,8 +10,8 @@ from app.agents.prompts.capability_prompts import CAPABILITY_BLOCK
 from app.agents.prompts.user_instructions_prompts import INSTRUCTION_PRECEDENCE_RULES
 from app.constants.agents import AgentTag, OutcomeState, wrap_agent_payload
 from app.constants.comms import EMOJI_DIRECTIVE, SILENCE_DIRECTIVE
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.todos import PING_WITH_FOLLOW_THROUGH_RULE
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 # The one prompt line allowed to contain the literal tells the prompt bans. A
 # literal cannot be forbidden without being named. Enforced by

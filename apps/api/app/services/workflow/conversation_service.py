@@ -6,10 +6,7 @@ from uuid import uuid4
 from langchain_core.messages import ToolCall
 
 from app.db.repositories.conversations import conversation_repository
-from app.models.chat_models import (
-    SystemPurpose,
-    ToolDataEntry,
-)
+from app.models.chat_models import SystemPurpose
 from app.models.conversation_frame_models import StreamPayload, ToolDataEvent, ToolOutputEvent
 from app.models.conversation_log_models import Notice
 from app.models.message_models import SelectedWorkflowData
@@ -24,6 +21,7 @@ from app.services.conversation_service import (
     create_system_conversation,
 )
 from app.utils.agent_utils import format_tool_call_entry
+from shared.py.conversation_wire import ToolDataEntry
 
 
 async def get_or_create_workflow_conversation(

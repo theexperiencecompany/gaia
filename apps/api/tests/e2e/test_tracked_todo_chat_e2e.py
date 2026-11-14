@@ -37,7 +37,6 @@ import pytest
 from app.agents.core.background.todo_run import TodoRunFailedError
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.todos import (
     GAIA_TRACKED_LABEL,
     TodoActivityEvent,
@@ -50,7 +49,6 @@ from app.models.chat_models import ConversationModel, ConversationSource
 from app.models.conversation_log_models import (
     Entry,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     TodoWoke,
     UserMessage,
@@ -83,6 +81,7 @@ from app.workers.tasks.tracked_todo_tasks import (
     execute_tracked_todo,
     resume_tracked_todo,
 )
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, ReplyOutcome
 from tests.conftest import FAKE_USER, FAKE_USER_2
 from tests.e2e._harness.background import drain_background_runs
 from tests.e2e._harness.graph_run import StreamingScriptedModel, call, streaming_model

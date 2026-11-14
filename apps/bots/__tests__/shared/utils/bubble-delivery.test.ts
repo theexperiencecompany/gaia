@@ -17,11 +17,11 @@ import {
 } from "@gaia/shared/bots";
 import { describe, expect, it } from "vitest";
 
-const BREAK = "<NEW_MESSAGE_BREAK>";
-const text = (chunk: string): DeliveryEvent => ({ kind: "text", chunk });
+const shown = (...bubbles: string[]): DeliveryEvent => ({
+  kind: "bubbles",
+  bubbles,
+});
 const TICK: DeliveryEvent = { kind: "tick" };
-const KEPT: DeliveryEvent = { kind: "boundary", discarded: false };
-const DISCARDED: DeliveryEvent = { kind: "boundary", discarded: true };
 const END: DeliveryEvent = { kind: "end" };
 
 const edit = (slot: number, t: string): DeliveryOp => ({
@@ -64,20 +64,19 @@ interface Case {
 const CASES: Case[] = [
   {
     name: "R1 one short bubble",
-    events: [text("Done, it"), TICK, text(" is set."), TICK, KEPT, END],
+    events: [shown("Done, it"), TICK, shown("Done, it is set."), TICK, END],
     live: [edit(0, "Done, it"), edit(0, "Done, it is set.")],
     rest: [edit(0, "Done, it is set.")],
   },
   {
     name: "R2 three bubbles, each its own message from its first word",
     events: [
-      text("One"),
+      shown("One"),
       TICK,
-      text(` more.${BREAK}Two`),
+      shown("One more.", "Two"),
       TICK,
-      text(`.${BREAK}Three.`),
+      shown("One more.", "Two.", "Three."),
       TICK,
-      KEPT,
       END,
     ],
     live: [
@@ -96,50 +95,14 @@ const CASES: Case[] = [
     ],
   },
   {
-    name: "R4 a break split across two chunks",
-    events: [text("One.<NEW_MES"), TICK, text("SAGE_BREAK>Two."), TICK, KEPT],
-    live: [edit(0, "One."), send(1, "Two.")],
-    rest: [edit(0, "One."), PAUSE, send(1, "Two.")],
-  },
-  {
-    name: "R5 a retracted preamble is replaced in place, its later bubbles deleted",
-    events: [
-      text(`Sure.${BREAK}Checking`),
-      TICK,
-      DISCARDED,
-      text("All set."),
-      TICK,
-      KEPT,
-      END,
-    ],
+    name: "R5 text the model took back is replaced in place, its later bubbles deleted",
+    events: [shown("Sure.", "Checking"), TICK, shown("All set."), TICK, END],
     live: [edit(0, "Sure."), send(1, "Checking"), del(1), edit(0, "All set.")],
     rest: [edit(0, "All set.")],
   },
   {
-    name: "R6 leading, trailing and doubled breaks send no empty bubble",
-    events: [text(`${BREAK}One.${BREAK}${BREAK}Two.${BREAK}`), TICK, KEPT, END],
-    live: [edit(0, "One."), PAUSE, send(1, "Two.")],
-    rest: [edit(0, "One."), PAUSE, send(1, "Two.")],
-  },
-  {
-    name: "R7 a break inside a code block does not split it",
-    events: [
-      text("Run:\n```\na()\n"),
-      TICK,
-      text(`${BREAK}b()\n\`\`\`${BREAK}Done.`),
-      TICK,
-      KEPT,
-    ],
-    live: [
-      edit(0, "Run:\n```\na()"),
-      edit(0, "Run:\n```\na()\n\nb()\n```"),
-      send(1, "Done."),
-    ],
-    rest: [edit(0, "Run:\n```\na()\n\nb()\n```"), PAUSE, send(1, "Done.")],
-  },
-  {
     name: "R8 a link-only bubble is a message of its own",
-    events: [text(`Here.${BREAK}https://x.dev/a${BREAK}See it.`), TICK, KEPT],
+    events: [shown("Here.", "https://x.dev/a", "See it."), TICK, END],
     live: [
       edit(0, "Here."),
       PAUSE,
@@ -203,12 +166,23 @@ describe("R3 a bubble longer than the platform allows", () => {
   it.each<PlatformName>(["telegram", "slack"])(
     "%s splits it while it streams, without taking back any shown text",
     (platform) => {
-      const words = `Intro bubble.${BREAK}${long}`.split(/(?<= )/);
+      const words = long.split(/(?<= )/);
       // A preview every few words, as the throttle renders one about once a second.
-      const events = words.flatMap((w, i) =>
-        i % 7 === 0 ? [text(w), TICK] : [text(w)],
-      );
-      const { ops } = run(platform, true, [...events, KEPT, END]);
+      const events = words.flatMap((_, i) => {
+        const bubbles = shown(
+          "Intro bubble.",
+          words
+            .slice(0, i + 1)
+            .join("")
+            .trimEnd(),
+        );
+        return i % 7 === 0 ? [bubbles, TICK] : [bubbles];
+      });
+      const { ops } = run(platform, true, [
+        shown("Intro bubble."),
+        ...events,
+        END,
+      ]);
       const messages = screen(ops);
 
       expect(messages[0]).toBe("Intro bubble.");
@@ -225,10 +199,7 @@ describe("R3 a bubble longer than the platform allows", () => {
   );
 
   it("splits it the same way on the platforms that show it at the end", () => {
-    const { ops } = run("discord", false, [
-      text(`Intro bubble.${BREAK}${long}`),
-      KEPT,
-    ]);
+    const { ops } = run("discord", false, [shown("Intro bubble.", long), END]);
     const messages = screen(ops);
     expect(messages[0]).toBe("Intro bubble.");
     expect(ops.filter((op) => op.kind === "pause")).toHaveLength(1);

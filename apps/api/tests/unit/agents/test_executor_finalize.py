@@ -67,12 +67,13 @@ from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.models.agent_models import InboxEntry
-from app.models.chat_models import SourceCategory, ToolDataEntry
+from app.models.chat_models import SourceCategory
 from app.models.conversation_log_models import WorkOutcome
 from app.models.executor_activity_models import ExecutorActivity
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation.tool_cards import FoldedCards
 from app.services.hil import bridge
+from shared.py.conversation_wire import ToolDataEntry
 from shared.py.wide_events import log, log_context
 from tests.helpers import WideEventRecorder, captured_wide_event
 

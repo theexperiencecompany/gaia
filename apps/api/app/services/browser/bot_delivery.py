@@ -12,7 +12,6 @@ from app.constants.browser import (
     BROWSER_HANDOFF_REPLY_PROMPT,
     HandoffStatus,
 )
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import (
@@ -30,6 +29,7 @@ from app.services.outbound_delivery import (
     publish_outbound_message,
     publish_outbound_photo,
 )
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 from shared.py.wide_events import log
 
 
