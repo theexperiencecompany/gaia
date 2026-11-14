@@ -799,8 +799,8 @@ description = "One normalized read of a PR's CI: red lanes, verdict findings, fa
 run = "uv run python scripts/dev/ci_remote.py --json --compact --no-stack"
 
 [tasks."mutation:one"]
-description = "Run ONE changed app module locally and print its surviving mutants with file:line, full diff and mapped tests: `mise mutation:one app/services/x.py`"
-run = "uv run python scripts/ci/mutation.py one"
+description = "Run changed app module(s) locally through the lane's own runner and print each one's surviving mutants with file:line, full diff and mapped tests: `mise mutation:one app/services/x.py`"
+run = "uv run python scripts/ci/mutation.py local"
 
 [tasks."mutation:survivors"]
 description = "Print every surviving mutant from a shard artifact (shard.verdict.json, record dir, or shard.log) with file:line, change, full diff and tests: `mise mutation:survivors <source>`"

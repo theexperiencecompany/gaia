@@ -487,6 +487,37 @@ def test_local_runs_each_module_as_its_own_shard_and_summarises(tmp_path: Path) 
     assert f"  pass      {MODULE}" in result.stdout
     assert f"  SURVIVORS {second}" in result.stdout
     assert "module(s) with survivors on changed lines" in result.stdout
+    # The survivors view, not just a name: what `mise mutation:one` promises.
+    assert "SURVIVORS — 1 surviving mutant(s)" in result.stdout
+    assert "replay: python3 scripts/ci/mutation.py replay" in result.stdout
+
+
+def test_local_names_the_refusal_when_a_shard_never_ran(tmp_path: Path) -> None:
+    """A services-tier module run without services is refused before shard.log exists."""
+    root = _sandbox(tmp_path)
+    matrix = [
+        {
+            "module": MODULE,
+            "testfiles": [f"tests/contracts/test_{Path(MODULE).stem}.py"],
+            "changed_lines": [[2, 2]],
+        }
+    ]
+    detector = root / "scripts" / "ci" / "lib" / "mutation_matrix.py"
+    detector.write_text(f"import sys\nsys.stdin.read()\nprint({json.dumps(json.dumps(matrix))})\n")
+    result = subprocess.run(
+        [*_command(root, "local"), MODULE],
+        cwd=root,
+        env=_env(tmp_path, MUTMUT_MAX_CHILDREN="1"),
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    (line,) = [r for r in result.stdout.splitlines() if r.startswith(f"  ERROR     {MODULE}")]
+    named = root / line.rsplit("; ", 1)[1].rstrip(")")
+    assert named.is_file(), line
+    assert "USE_REAL_SERVICES is not 1" in result.stdout
 
 
 # --- behaviour the rewrite changed, each a bug -------------------------------

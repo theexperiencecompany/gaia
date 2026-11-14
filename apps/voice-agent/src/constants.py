@@ -44,6 +44,13 @@ VOICE_TTS_KEY = "voice_tts"
 # backend's WebSocket push (same id) reconciles in place instead of duplicating.
 MESSAGE_ID_KEY = "message_id"
 
+# Terminal failure frame from the backend (agent/stream errors, e.g. the LLM
+# provider rejecting the call). Forwarded so the screen shows the failure, and
+# answered aloud with VOICE_ERROR_REPLY — the raw reason is provider plumbing,
+# not something to read to the user.
+ERROR_KEY = "error"
+VOICE_ERROR_REPLY = "Sorry, something went wrong on my end. Please try again in a moment."
+
 # Plumbing event keys that must never reach TTS.
 # Any backend SSE event carrying one of these keys is forwarded to the frontend
 # but never appended to the TTS text buffer.
