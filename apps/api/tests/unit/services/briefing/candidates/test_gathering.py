@@ -56,6 +56,7 @@ def quiet_stores(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         todo_repository, "find_latest_by_external_ref", AsyncMock(return_value=None)
     )
+    monkeypatch.setattr(todo_repository, "list_open_user_todos", AsyncMock(return_value=[]))
 
 
 def _thread_todo(thread_id: str, title: str) -> TodoDocument:
@@ -177,6 +178,26 @@ class TestTheCalendarJoinsThePool:
 
         [event] = gathered.pool.values()
         assert (event.title, event.is_event, event.time) == ("Board call", True, "3:00 PM")
+
+
+class TestDueTodosJoinThePool:
+    async def test_the_users_own_todos_due_by_their_next_local_midnight_wait_on_them(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        own = TodoDocument(id="own-1", user_id=USER_ID, title="File the VAT return", due_date=NOW)
+        listing = AsyncMock(return_value=[own])
+        monkeypatch.setattr(todo_repository, "list_open_user_todos", listing)
+
+        gathered = await _gathered(TrackedWork(), _scouts())
+
+        [item] = gathered.pool.values()
+        assert (item.title, item.todo_id, item.state, item.action) == (
+            "File the VAT return",
+            "own-1",
+            "you",
+            BriefAction.ATTEND,
+        )
+        assert listing.await_args.kwargs["due_before"] == datetime(2026, 11, 11, 18, 30, tzinfo=UTC)
 
 
 class TestOneItemPerThing:
