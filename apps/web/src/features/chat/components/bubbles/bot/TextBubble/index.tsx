@@ -11,7 +11,6 @@ import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
-import { useLiveConversationStore } from "@/features/chat/live/liveConversationStore";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
   DEFAULT_PART_CHOREOGRAPHY,
@@ -20,13 +19,8 @@ import {
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
-import { useChatStore } from "@/stores/chatStore";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import MarkdownRenderer from "../../../interface/MarkdownRenderer";
-import {
-  ApprovalResolveProvider,
-  type ApprovalResolver,
-} from "../ApprovalResolveContext";
 import { ChatItemBoundary } from "../ChatItemBoundary";
 import { StoppedNote } from "../StoppedNote";
 import type { ApprovalReceipt } from "../SubagentRow";
@@ -373,22 +367,6 @@ export default function TextBubble({
 }) {
   const baseId = useId();
 
-  // Settle the card on this device's own decision at once; the log's decision follows on the stream.
-  const resolveApproval = React.useCallback<ApprovalResolver>(
-    (approvalId, resolved) => {
-      const conversationId = useChatStore.getState().activeConversationId;
-      if (resolved.outcome == null || !conversationId) return;
-      useLiveConversationStore
-        .getState()
-        .decideApproval(conversationId, approvalId, {
-          outcome: resolved.outcome,
-          decider: resolved.decider ?? null,
-          action: resolved.action ?? null,
-        });
-    },
-    [],
-  );
-
   // Parse thinking content from text
   const parsedContent = React.useMemo(() => {
     return parseThinkingFromText(text?.toString() || "");
@@ -441,7 +419,7 @@ export default function TextBubble({
   }, [tool_data]);
 
   return (
-    <ApprovalResolveProvider value={resolveApproval}>
+    <>
       {parsedContent.thinking && (
         <ThinkingBubble thinkingContent={parsedContent.thinking} />
       )}
@@ -589,6 +567,6 @@ export default function TextBubble({
         />
       )}
       {stopped && !error && <StoppedNote />}
-    </ApprovalResolveProvider>
+    </>
   );
 }

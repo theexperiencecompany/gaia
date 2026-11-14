@@ -367,6 +367,11 @@ def logged_of(stored: StoredEntry) -> LoggedEntry:
     )
 
 
+def stored_at(at: datetime) -> datetime:
+    """Return at as Mongo keeps it, to the millisecond, so a live entry equals its reread."""
+    return at.replace(microsecond=at.microsecond // 1000 * 1000)
+
+
 def log_document(conversation_id: str, user_id: str, logged: LoggedEntry) -> dict[str, object]:
     """Return a log entry as its conversation_entries document stores it."""
     return {

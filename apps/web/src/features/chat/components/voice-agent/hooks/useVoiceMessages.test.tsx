@@ -1,10 +1,5 @@
 // @vitest-environment jsdom
-import {
-  entryFrame,
-  reply,
-  replySettled,
-  userMessage,
-} from "@shared/conversation/testing";
+import { insertFrame, replyItem, userItem } from "@shared/conversation/testing";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -125,9 +120,8 @@ describe("the voice screen", () => {
       useLiveConversationStore
         .getState()
         .applyFrames(CONVERSATION, [
-          entryFrame(1, userMessage("m1", SPOKEN)),
-          entryFrame(2, reply("a1", "attempt-1", ANSWER)),
-          entryFrame(3, replySettled("a1", ["m1"], 1)),
+          insertFrame(userItem("m1", 1, SPOKEN)),
+          insertFrame(replyItem("a1", 2, ANSWER, "answered")),
         ]);
     });
 

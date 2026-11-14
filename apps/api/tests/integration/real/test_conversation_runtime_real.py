@@ -117,6 +117,11 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
+from app.models.conversation_screen_models import (
+    ScreenFrame,
+    ScreenInsertFrame,
+    ScreenUpdateFrame,
+)
 from app.models.conversation_send_models import SendMessageRequest
 from app.models.hil_models import ApprovalProposal, HILApprovalRecord
 from app.models.message_models import ReplyToMessageData
@@ -174,6 +179,7 @@ from app.services.conversation.log import Accepted, accept
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import EntryRejected, RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports
+from app.services.conversation.screen import project_screen
 from app.services.conversation.send import send_message, submit_message
 from app.services.conversation.step import advance
 from app.services.conversation.sweeper import sweep_conversations
@@ -701,7 +707,7 @@ async def test_the_events_stream_sends_only_json_data_lines_and_comment_keepaliv
     await rig.send("m1", "hi")
     await rig.settle()
     lines = event_stream.event_lines(
-        rig.ports.log, rig.conversation_id, rig.user_id, "0", _never_disconnected, asyncio.Event()
+        rig.ports.log, rig.conversation_id, rig.user_id, _never_disconnected, asyncio.Event()
     )
     blocks: list[str] = []
     with patch.object(event_stream, "read_frames", partial(read_frames, block_ms=1)):
@@ -722,16 +728,45 @@ async def test_an_open_events_stream_ends_at_once_when_the_process_is_stopping(
     rig = await rig_for(gated("hello there"))
     stopping = asyncio.Event()
     lines = event_stream.event_lines(
-        rig.ports.log, rig.conversation_id, rig.user_id, "0", _never_disconnected, stopping
+        rig.ports.log, rig.conversation_id, rig.user_id, _never_disconnected, stopping
     )
     await anext(lines)
-    # The state frame is sent; the next read blocks in XREAD for EVENTS_BLOCK_MS.
+    await anext(lines)
+    # The screen and state frames are sent; the next read blocks in XREAD for EVENTS_BLOCK_MS.
     waiting = asyncio.ensure_future(anext(lines))
     await asyncio.sleep(0.2)
     stopping.set()
     async with asyncio.timeout(1):
         with pytest.raises(StopAsyncIteration):
             await waiting
+
+
+@pytest.mark.service
+async def test_the_events_stream_opens_on_the_screen_and_patches_it_to_the_log_projection(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated("first answer", "second answer"))
+    await rig.send("m1", "hi")
+    await rig.settle()
+    with patch.object(event_stream, "read_frames", partial(read_frames, block_ms=1)):
+        frames = event_stream.follow_screen(rig.ports.log, rig.conversation_id, rig.user_id)
+        opened = await anext(frames)
+        assert isinstance(opened, ScreenFrame)
+        assert list(opened.items) == project_screen(await rig.entries())
+        shown = list(opened.items)
+        while await anext(frames) is not None:
+            pass
+        await rig.send("m2", "and again")
+        await rig.settle()
+        while (frame := await anext(frames)) is not None:
+            if isinstance(frame, ScreenInsertFrame):
+                later = [at for at, item in enumerate(shown) if item.seq > frame.item.seq]
+                shown.insert(later[0] if later else len(shown), frame.item)
+            elif isinstance(frame, ScreenUpdateFrame):
+                shown = [frame.item if item.id == frame.item.id else item for item in shown]
+        await frames.aclose()
+    assert shown == project_screen(await rig.entries())
+    assert [item.id for item in shown][: len(opened.items)] == [item.id for item in opened.items]
 
 
 def _settles(frame: OutputFrame) -> bool:
@@ -1024,7 +1059,7 @@ async def test_a_step_killed_mid_thinking_is_answered_after_the_sweep(
 
 
 @pytest.mark.service
-async def test_the_sweep_reports_work_whose_executor_died_in_the_tasks_own_reply(
+async def test_the_sweep_reports_work_whose_executor_died_in_a_reply_narrating_it(
     rig_for: RigFactory,
 ) -> None:
     model = gated("working on it", "sorry, that stopped before it finished")
@@ -1036,7 +1071,7 @@ async def test_the_sweep_reports_work_whose_executor_died_in_the_tasks_own_reply
     await rig.settle()
     finished = await rig.of(WorkFinished)
     assert [(f.task_id, f.outcome) for f in finished] == [("t9", WorkOutcome.LOST)]
-    assert (await rig.of(Reply))[-1].reply_id == "t9"
+    assert (await rig.of(Reply))[-1].narrates == ("t9",)
 
 
 @pytest.mark.service
@@ -1259,7 +1294,7 @@ def _card(tool_name: str) -> ToolDataEntry:
 
 
 @pytest.mark.service
-async def test_executor_cards_stream_as_work_deltas_and_land_on_the_tasks_reply(
+async def test_executor_cards_stream_as_work_deltas_and_stay_on_the_finished_work(
     rig_for: RigFactory,
 ) -> None:
     model = gated("searching", "3 flights found")
@@ -1288,14 +1323,16 @@ async def test_executor_cards_stream_as_work_deltas_and_land_on_the_tasks_reply(
     streamed = await read_frames(rig.conversation_id, "0", block_ms=1)
     work = [s.frame for s in streamed if isinstance(s.frame, WorkDeltaFrame)]
     shown = [f.payload.tool_data["tool_name"] for f in work if isinstance(f.payload, ToolDataEvent)]
-    task_reply = [reply for reply in await rig.of(Reply) if reply.reply_id == "t1"]
+    task_reply = [reply for reply in await rig.of(Reply) if reply.narrates == ("t1",)]
     assert [(f.task_id, f.index) for f in work] == [("t1", 0), ("t1", 1), ("t1", 2), ("t1", 3)]
     assert shown == ["search_flights", "flight_list", "price_chart", "booking"]
-    assert [(r.text, r.tool_data) for r in task_reply] == [("3 flights found", cards)]
+    # The cards stay with the work; the reply narrating it carries only its own words.
+    assert [(r.text, r.tool_data) for r in task_reply] == [("3 flights found", ())]
+    assert [f.tool_data for f in await rig.of(WorkFinished)] == [cards]
 
 
 @pytest.mark.service
-async def test_an_image_the_work_generated_rides_its_reply_and_survives_a_reload(
+async def test_an_image_the_work_generated_stays_on_its_work_and_survives_a_reload(
     rig_for: RigFactory,
 ) -> None:
     """Regression: a generated image showed live and was gone on reload; no log entry carried it."""
@@ -1315,11 +1352,11 @@ async def test_an_image_the_work_generated_rides_its_reply_and_survives_a_reload
         WorkReport("drew a red fox", image=image),
     )
     await rig.settle()
-    [task_reply] = [reply for reply in await rig.of(Reply) if reply.reply_id == "t1"]
+    [task_reply] = [reply for reply in await rig.of(Reply) if reply.narrates == ("t1",)]
     reloaded = await conversation_repository.get(rig.conversation_id, user_id=rig.user_id)
     assert reloaded is not None
-    assert (task_reply.text, task_reply.image) == ("Here is your fox", image)
-    assert [m.image_data for m in shown_messages(reloaded) if m.message_id == "t1"] == [image]
+    assert task_reply.text == "Here is your fox"
+    assert [m.image_data for m in shown_messages(reloaded) if m.message_id == "work:t1"] == [image]
 
 
 @pytest.mark.service
@@ -1387,7 +1424,7 @@ async def test_an_approved_action_that_failed_still_says_so_on_its_card_after_a_
     [shown] = [
         entry["data"]
         for message in shown_messages(reloaded)
-        if message.message_id == "t1"
+        if message.message_id == "work:t1"
         for entry in message.tool_data or []
     ]
     assert (shown["outcome"], shown["action"]) == (ApprovalOutcome.APPROVED, ActionResult.FAILED)

@@ -1082,7 +1082,7 @@ export interface paths {
         };
         /**
          * Conversation Events Endpoint
-         * @description Stream the conversation's frames as SSE: everything after the cursor, then live.
+         * @description Stream the conversation's screen as SSE: the newest page, then patches and live deltas.
          */
         get: operations["conversations_conversation_events_endpoint"];
         put?: never;
@@ -7728,6 +7728,8 @@ export interface components {
              * @default false
              */
             has_older: boolean;
+            /** Items */
+            items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
             state: components["schemas"]["StateFrame"];
         };
         /**
@@ -7798,13 +7800,11 @@ export interface components {
         };
         /**
          * ConversationEvent
-         * @description One frame on a conversation's events stream; stream_id is the cursor to resume after, None for a log replay.
+         * @description One frame on a conversation's events stream: the screen, a patch to it, or a live delta.
          */
         ConversationEvent: {
             /** Frame */
-            frame: components["schemas"]["EntryFrame"] | components["schemas"]["EntryUpdatedFrame"] | components["schemas"]["ReplyDeltaFrame"] | components["schemas"]["WorkDeltaFrame"] | components["schemas"]["RetractFrame"] | components["schemas"]["StateFrame"] | components["schemas"]["ConversationUpdatedFrame"];
-            /** Stream Id */
-            stream_id: string | null;
+            frame: components["schemas"]["ScreenFrame"] | components["schemas"]["ScreenInsertFrame"] | components["schemas"]["ScreenUpdateFrame"] | components["schemas"]["ReplyDeltaFrame"] | components["schemas"]["WorkDeltaFrame"] | components["schemas"]["RetractFrame"] | components["schemas"]["StateFrame"] | components["schemas"]["ConversationUpdatedFrame"];
         };
         /**
          * ConversationListResponse
@@ -7954,6 +7954,8 @@ export interface components {
             is_system_generated: boolean | null;
             /** Is Unread */
             is_unread: boolean | null;
+            /** Items */
+            items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
             source: components["schemas"]["ConversationSource"] | null;
             /** Starred */
             starred: boolean | null;
@@ -8902,8 +8904,9 @@ export interface components {
             /** Entry */
             entry: components["schemas"]["UserMessage"] | components["schemas"]["StopRequested"] | components["schemas"]["BargeIn"] | components["schemas"]["WorkflowFired"] | components["schemas"]["TodoWoke"] | components["schemas"]["Notice"] | components["schemas"]["WorkStarted"] | components["schemas"]["ApprovalRequested"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["WorkFinished"] | components["schemas"]["Reply"] | components["schemas"]["ReplySettled"] | components["schemas"]["IntegrationNeeded"] | components["schemas"]["IntegrationConnected"];
             /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
+             * Kind
+             * @default entry
+             * @constant
              */
             kind: "entry";
             /** Seq */
@@ -8915,21 +8918,6 @@ export interface components {
          * @enum {string}
          */
         EntrySurface: "web" | "desktop" | "bot" | "voice" | "worker";
-        /**
-         * EntryUpdatedFrame
-         * @description An entry changed in place; a client applies it only when entry.revision is newer than its own.
-         */
-        EntryUpdatedFrame: {
-            /** Entry */
-            entry: components["schemas"]["UserMessage"] | components["schemas"]["StopRequested"] | components["schemas"]["BargeIn"] | components["schemas"]["WorkflowFired"] | components["schemas"]["TodoWoke"] | components["schemas"]["Notice"] | components["schemas"]["WorkStarted"] | components["schemas"]["ApprovalRequested"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["WorkFinished"] | components["schemas"]["Reply"] | components["schemas"]["ReplySettled"] | components["schemas"]["IntegrationNeeded"] | components["schemas"]["IntegrationConnected"];
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "entry_updated";
-            /** Seq */
-            seq: number;
-        };
         /**
          * ErrorEnvelope
          * @description Body of every 4xx/5xx response.
@@ -10562,6 +10550,8 @@ export interface components {
              * @default false
              */
             is_unread: boolean | null;
+            /** Items */
+            items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
             source: components["schemas"]["ConversationSource"] | null;
             /** Starred */
             starred: boolean | null;
@@ -11657,6 +11647,32 @@ export interface components {
              * Tool Data
              * @default []
              */
+            tool_data: components["schemas"]["ToolDataEntry"][];
+        };
+        /**
+         * NoticeItem
+         * @description A proactive message delivered outside a reply.
+         */
+        NoticeItem: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Follow Up Actions */
+            follow_up_actions: string[];
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "notice";
+            /** Seq */
+            seq: number;
+            /** Text */
+            text: string;
+            /** Tool Data */
             tool_data: components["schemas"]["ToolDataEntry"][];
         };
         /**
@@ -13574,6 +13590,11 @@ export interface components {
              */
             kind: "reply";
             /**
+             * Narrates
+             * @default []
+             */
+            narrates: string[];
+            /**
              * Pinned
              * @default false
              */
@@ -13618,6 +13639,52 @@ export interface components {
             reply_id: string | null;
         };
         /**
+         * ReplyFile
+         * @description A session artifact a reply delivers, addressed by its path under the session's artifacts/.
+         */
+        ReplyFile: {
+            /** Content Type */
+            content_type: string | null;
+            /** Path */
+            path: string;
+        };
+        /**
+         * ReplyItem
+         * @description GAIA's reply: its text and own cards; outcome is None while it is still being written.
+         */
+        ReplyItem: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            failure: components["schemas"]["FailureReason"] | null;
+            /** Files */
+            files: components["schemas"]["ReplyFile"][];
+            /** Follow Up Actions */
+            follow_up_actions: string[];
+            /** Id */
+            id: string;
+            image: components["schemas"]["ImageData"] | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "reply";
+            /** Narrates */
+            narrates: string[];
+            outcome: components["schemas"]["ReplyOutcome"] | null;
+            /** Pinned */
+            pinned: boolean;
+            quote: components["schemas"]["ReplyToMessageData"] | null;
+            /** Seq */
+            seq: number;
+            /** Text */
+            text: string;
+            /** Tool Data */
+            tool_data: components["schemas"]["ToolDataEntry"][];
+        };
+        /**
          * ReplyOutcome
          * @description How a finished reply ended.
          * @enum {string}
@@ -13646,6 +13713,11 @@ export interface components {
              * @enum {string}
              */
             kind: "reply_settled";
+            /**
+             * Narrates
+             * @default []
+             */
+            narrates: string[];
             outcome: components["schemas"]["ReplyOutcome"];
             /** Quote Target */
             quote_target: string | null;
@@ -13794,6 +13866,45 @@ export interface components {
          * @enum {string}
          */
         ScheduleRejection: "wrong_field_count" | "unparseable" | "too_frequent" | "never_fires";
+        /**
+         * ScreenFrame
+         * @description The newest page of the screen; a client replaces what it holds from the first item's seq on.
+         */
+        ScreenFrame: {
+            /** Items */
+            items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "screen";
+        };
+        /**
+         * ScreenInsertFrame
+         * @description An item became visible; its seq is its position, before every item with a higher one.
+         */
+        ScreenInsertFrame: {
+            /** Item */
+            item: components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "screen_insert";
+        };
+        /**
+         * ScreenUpdateFrame
+         * @description An item already shown changed in place; it keeps its position.
+         */
+        ScreenUpdateFrame: {
+            /** Item */
+            item: components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "screen_update";
+        };
         /**
          * SearchIntegrationItem
          * @description Integration item in search results.
@@ -15567,6 +15678,27 @@ export interface components {
             run: components["schemas"]["TodoRun"];
         };
         /**
+         * TodoWokeItem
+         * @description What woke a tracked todo's run; its write-up is its own item.
+         */
+        TodoWokeItem: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "todo_woke";
+            /** Seq */
+            seq: number;
+            wake: components["schemas"]["TodoRunWake"];
+        };
+        /**
          * TodoWorkflowGenerationResponse
          * @description Result of asking for a todo's workflow to be generated.
          */
@@ -16390,6 +16522,27 @@ export interface components {
             unavailable_reason: string | null;
         };
         /**
+         * UserItem
+         * @description A message the user sent, with GAIA's reaction to it.
+         */
+        UserItem: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "user";
+            message: components["schemas"]["UserMessage"];
+            /** Seq */
+            seq: number;
+        };
+        /**
          * UserMessage
          * @description A message the user sent from any surface.
          */
@@ -16964,6 +17117,27 @@ export interface components {
             run: components["schemas"]["WorkflowRun"];
         };
         /**
+         * WorkflowFiredItem
+         * @description The workflow card that started a run; the run's reply is its own item.
+         */
+        WorkflowFiredItem: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "workflow_fired";
+            /** Seq */
+            seq: number;
+            workflow: components["schemas"]["SelectedWorkflowDataOutput"];
+        };
+        /**
          * WorkflowListResponse
          * @description Response model for listing workflows.
          */
@@ -17362,6 +17536,37 @@ export interface components {
             user_id: string;
         };
         /**
+         * WorkItem
+         * @description One piece of work from its hand-off to its result, with every task handed to it.
+         */
+        WorkItem: {
+            /** Asked Seq */
+            asked_seq: number;
+            /** Asking */
+            asking: components["schemas"]["ApprovalRequested"][];
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            handoff: components["schemas"]["ToolDataEntry"] | null;
+            /** Id */
+            id: string;
+            image: components["schemas"]["ImageData"] | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "work";
+            /** Seq */
+            seq: number;
+            status: components["schemas"]["WorkStatus"];
+            /** Task Id */
+            task_id: string;
+            /** Tool Data */
+            tool_data: components["schemas"]["ToolDataEntry"][];
+        };
+        /**
          * WorkOutcome
          * @description How a piece of background work ended.
          * @enum {string}
@@ -17389,6 +17594,8 @@ export interface components {
              * @default false
              */
             exclusive: boolean;
+            /** Handoff */
+            handoff: string | null;
             /**
              * Id
              * @description Producer-minted idempotency key
@@ -17404,6 +17611,12 @@ export interface components {
             /** Task Id */
             task_id: string;
         };
+        /**
+         * WorkStatus
+         * @description Where a piece of work stands: live, or how it ended.
+         * @enum {string}
+         */
+        WorkStatus: "running" | "awaiting_approval" | "done" | "failed" | "cancelled" | "lost";
         /** WritingStyleEditRequest */
         WritingStyleEditRequest: {
             /** Edited Summary */
@@ -17635,7 +17848,6 @@ export type EnableComposioToolkitRequest = components['schemas']['EnableComposio
 export type EnableComposioToolkitResponse = components['schemas']['EnableComposioToolkitResponse'];
 export type EntryFrame = components['schemas']['EntryFrame'];
 export type EntrySurface = components['schemas']['EntrySurface'];
-export type EntryUpdatedFrame = components['schemas']['EntryUpdatedFrame'];
 export type ErrorEnvelope = components['schemas']['ErrorEnvelope'];
 export type EventCreateRequest = components['schemas']['EventCreateRequest'];
 export type EventDeleteRequest = components['schemas']['EventDeleteRequest'];
@@ -17789,6 +18001,7 @@ export type NoteModel = components['schemas']['NoteModel'];
 export type NoteResponse = components['schemas']['NoteResponse'];
 export type NoteSearchResult = components['schemas']['NoteSearchResult'];
 export type Notice = components['schemas']['Notice'];
+export type NoticeItem = components['schemas']['NoticeItem'];
 export type NotificationAction = components['schemas']['NotificationAction'];
 export type NotificationActionView = components['schemas']['NotificationActionView'];
 export type NotificationChannelView = components['schemas']['NotificationChannelView'];
@@ -17888,6 +18101,8 @@ export type RegistrationPolicyResponse = components['schemas']['RegistrationPoli
 export type ReminderResponse = components['schemas']['ReminderResponse'];
 export type Reply = components['schemas']['Reply'];
 export type ReplyDeltaFrame = components['schemas']['ReplyDeltaFrame'];
+export type ReplyFile = components['schemas']['ReplyFile'];
+export type ReplyItem = components['schemas']['ReplyItem'];
 export type ReplyOutcome = components['schemas']['ReplyOutcome'];
 export type ReplySettled = components['schemas']['ReplySettled'];
 export type ReplyToMessageData = components['schemas']['ReplyToMessageData'];
@@ -17903,6 +18118,9 @@ export type SaveSocialProfilesResponse = components['schemas']['SaveSocialProfil
 export type SaveWritingStyleResponse = components['schemas']['SaveWritingStyleResponse'];
 export type ScheduledTaskStatus = components['schemas']['ScheduledTaskStatus'];
 export type ScheduleRejection = components['schemas']['ScheduleRejection'];
+export type ScreenFrame = components['schemas']['ScreenFrame'];
+export type ScreenInsertFrame = components['schemas']['ScreenInsertFrame'];
+export type ScreenUpdateFrame = components['schemas']['ScreenUpdateFrame'];
 export type SearchIntegrationItem = components['schemas']['SearchIntegrationItem'];
 export type SearchIntegrationsResponse = components['schemas']['SearchIntegrationsResponse'];
 export type SearchMode = components['schemas']['SearchMode'];
@@ -17990,6 +18208,7 @@ export type TodoStats = components['schemas']['TodoStats'];
 export type TodoUpdateRequest = components['schemas']['TodoUpdateRequest'];
 export type TodoWakeKind = components['schemas']['TodoWakeKind'];
 export type TodoWoke = components['schemas']['TodoWoke'];
+export type TodoWokeItem = components['schemas']['TodoWokeItem'];
 export type TodoWorkflowGenerationResponse = components['schemas']['TodoWorkflowGenerationResponse'];
 export type TodoWorkflowGenerationStatus = components['schemas']['TodoWorkflowGenerationStatus'];
 export type TodoWorkflowStatus = components['schemas']['TodoWorkflowStatus'];
@@ -18040,6 +18259,7 @@ export type UsageHistoryEntry = components['schemas']['UsageHistoryEntry'];
 export type UsageSummary = components['schemas']['UsageSummary'];
 export type UserFeatureFlagListResponse = components['schemas']['UserFeatureFlagListResponse'];
 export type UserFeatureFlagResponse = components['schemas']['UserFeatureFlagResponse'];
+export type UserItem = components['schemas']['UserItem'];
 export type UserMessage = components['schemas']['UserMessage'];
 export type UserSubscriptionStatus = components['schemas']['UserSubscriptionStatus'];
 export type UserUpdateResponse = components['schemas']['UserUpdateResponse'];
@@ -18059,6 +18279,7 @@ export type WorkflowExecutionRequest = components['schemas']['WorkflowExecutionR
 export type WorkflowExecutionResponse = components['schemas']['WorkflowExecutionResponse'];
 export type WorkflowExecutionsResponse = components['schemas']['WorkflowExecutionsResponse'];
 export type WorkflowFired = components['schemas']['WorkflowFired'];
+export type WorkflowFiredItem = components['schemas']['WorkflowFiredItem'];
 export type WorkflowListResponse = components['schemas']['WorkflowListResponse'];
 export type WorkflowMessageResponse = components['schemas']['WorkflowMessageResponse'];
 export type WorkflowResponse = components['schemas']['WorkflowResponse'];
@@ -18069,8 +18290,10 @@ export type WorkflowStepOutput = components['schemas']['WorkflowStepOutput'];
 export type WorkflowTriggerContext = components['schemas']['WorkflowTriggerContext'];
 export type WorkflowTriggerResponse = components['schemas']['WorkflowTriggerResponse'];
 export type WorkflowWithIntegrations = components['schemas']['WorkflowWithIntegrations'];
+export type WorkItem = components['schemas']['WorkItem'];
 export type WorkOutcome = components['schemas']['WorkOutcome'];
 export type WorkStarted = components['schemas']['WorkStarted'];
+export type WorkStatus = components['schemas']['WorkStatus'];
 export type WritingStyleEditRequest = components['schemas']['WritingStyleEditRequest'];
 export type WritingStyleExampleBlocks = components['schemas']['WritingStyleExampleBlocks'];
 export type WritingStyleRegenerateRequest = components['schemas']['WritingStyleRegenerateRequest'];
@@ -21115,10 +21338,7 @@ export interface operations {
     };
     conversations_conversation_events_endpoint: {
         parameters: {
-            query?: {
-                /** @description A seq to replay the log after, or a stream id to resume after */
-                after?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 conversation_id: string;

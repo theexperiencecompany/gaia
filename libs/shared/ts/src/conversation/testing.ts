@@ -1,245 +1,111 @@
-import type {
-  ActionResult,
-  FailureReason,
-  ToolDataEntry,
-} from "../api/generated";
-import { FAILURE_REASON } from "./entries";
+import founderFrames from "./fixtures/c41f18c5.frames.json";
+import { parseConversationEvent } from "./frames";
 import type {
   ConversationFrame,
   DisplayState,
-  Entry,
   LiveTask,
-  Reaction,
-  UserMessage,
+  ScreenItem,
 } from "./types";
 
 /** Builders for conversation frames in tests, shaped as parseConversationEvent returns their frames. */
 
 const AT = "2026-11-12T10:00:00+00:00";
 
-export const userMessage = (
-  id: string,
-  text = `text of ${id}`,
-  reaction: Reaction | null = null,
-  revision = 0,
-): UserMessage => ({
+/** Parse a frame the way a client does, from the JSON the server sends. */
+export function parsedFrame(event: unknown): ConversationFrame {
+  const parsed = parseConversationEvent(JSON.stringify(event));
+  if (!parsed.ok) throw new Error(JSON.stringify(parsed.error));
+  return parsed.frame;
+}
+
+/**
+ * The founder's conversation c41f18c5 (three sends, a hand-off, a quick answer, a
+ * thank-you, the work's result) as the server streams it: its screen patches, from
+ * apps/api's test_screen, which fails when they drift.
+ */
+export const founderConversationFrames = (): ConversationFrame[] =>
+  founderFrames.map(parsedFrame);
+
+const userMessageEntry = (id: string, text: string) => ({
   kind: "user_message",
   id,
   text,
   surface: "web",
-  platform_message_id: null,
-  reply_to: null,
-  retry_of: null,
-  file_ids: [],
-  files: [],
-  selected_tool: null,
-  tool_category: null,
-  selected_workflow: null,
-  selected_calendar_event: null,
-  reply_to_message: null,
-  voice: false,
-  reaction,
-  todo_run_wake: null,
-  posthog_session_id: null,
-  first_contact: false,
-  pinned: false,
-  imported: false,
-  revision,
 });
 
-export const reply = (
-  replyId: string,
-  attemptId: string,
-  text = "",
-  revision = 0,
-  quoteTarget: string | null = null,
-): Entry => ({
+/** A user item, its message filled in with the defaults the server's model gives it. */
+export function userItem(
+  id: string,
+  seq: number,
+  text = `text of ${id}`,
+): ScreenItem {
+  const frame = parsedFrame({
+    frame: {
+      kind: "screen_insert",
+      item: {
+        kind: "user",
+        id,
+        seq,
+        at: AT,
+        message: userMessageEntry(id, text),
+      },
+    },
+  });
+  if (frame.kind !== "screen_insert") throw new Error(frame.kind);
+  return frame.item;
+}
+
+/** A reply item; outcome null while it is still being written. */
+export const replyItem = (
+  id: string,
+  seq: number,
+  text: string,
+  outcome: string | null = null,
+): Extract<ScreenItem, { kind: "reply" }> => ({
   kind: "reply",
-  id: `entry-${replyId}`,
-  reply_id: replyId,
-  attempt_id: attemptId,
+  id,
+  seq,
+  at: AT,
   text,
   tool_data: [],
   follow_up_actions: [],
-  heard_through: null,
-  quote_target: quoteTarget,
   image: null,
   pinned: false,
-  imported: false,
-  revision,
+  quote: null,
+  outcome: outcome as Extract<ScreenItem, { kind: "reply" }>["outcome"],
+  failure: null,
+  narrates: [],
+  files: [],
 });
 
-export const replySettled = (
-  replyId: string,
-  answers: string[],
-  through: number,
-  quoteTarget: string | null = null,
-  outcome: "answered" | "stopped" | "failed" | "silent" = "answered",
-  failure: FailureReason | null = outcome === "failed"
-    ? FAILURE_REASON.MODEL_ERROR
-    : null,
-): Entry => ({
-  kind: "reply_settled",
-  id: `settled-${replyId}`,
-  reply_id: replyId,
-  outcome,
-  answers,
-  through,
-  quote_target: quoteTarget,
-  failure,
-  imported: false,
-});
-
-export const workStarted = (
-  taskId: string,
-  causeThrough: number,
-  joins: string | null = null,
-): Entry => ({
-  kind: "work_started",
-  id: `started-${taskId}`,
-  task_id: taskId,
-  cause_through: causeThrough,
-  answers: [],
-  joins,
-  detached: false,
-  exclusive: false,
-});
-
-export const workFinished = (
-  taskId: string,
-  outcome: "done" | "failed" | "cancelled" | "lost" = "done",
-  toolData: ToolDataEntry[] = [],
-): Entry => ({
-  kind: "work_finished",
-  id: `finished-${taskId}`,
-  task_id: taskId,
-  outcome,
-  report: "report",
-  tool_data: toolData,
-  note: "",
-  nothing_for_user: false,
-  continued_by_decision: false,
-  image: null,
-});
-
-export const approvalRequested = (
-  taskId: string,
-  approvalId: string,
-  summary = "",
-  expiresAt: string | null = null,
-): Entry => ({
-  kind: "approval_requested",
-  id: `requested-${approvalId}`,
-  task_id: taskId,
-  approval_id: approvalId,
-  summary,
-  expires_at: expiresAt,
-});
-
-export const approvalDecided = (
-  approvalId: string,
-  action: ActionResult | null = null,
-): Entry => ({
-  kind: "approval_decided",
-  id: action ? `acted-${approvalId}` : `decided-${approvalId}`,
-  approval_id: approvalId,
-  outcome: "approved",
-  decider: "user",
-  action,
-});
-
-export const stopRequested = (
+/** A notice item: a proactive message delivered outside a reply. */
+export const noticeItem = (
   id: string,
-  coversThrough: number | null = null,
-): Entry => ({
-  kind: "stop_requested",
-  id,
-  by: "user",
-  covers_through: coversThrough,
-});
-
-export const notice = (
-  id: string,
-  text = `notice ${id}`,
-  toolData: ToolDataEntry[] = [],
-): Entry => ({
+  seq: number,
+  text: string,
+): Extract<ScreenItem, { kind: "notice" }> => ({
   kind: "notice",
   id,
+  seq,
+  at: AT,
   text,
-  origin: "reminder",
-  tool_data: toolData,
+  tool_data: [],
   follow_up_actions: [],
 });
 
-const WORKER_ATTRIBUTION = {
-  actor: "agent",
-  surface: "worker",
-  trigger: "schedule",
-} as const;
-
-export const workflowFired = (id: string, title = `workflow ${id}`): Entry => ({
-  kind: "workflow_fired",
-  id,
-  run: {
-    workflow: { id: `wf-${id}`, title, description: "", steps: [] },
-    execution_id: `exec-${id}`,
-    timezone: "UTC",
-    trigger: { type: "schedule" },
-    attribution: WORKER_ATTRIBUTION,
-  },
+export const insertFrame = (item: ScreenItem): ConversationFrame => ({
+  kind: "screen_insert",
+  item,
 });
 
-export const todoWoke = (id: string, todoId = `todo-${id}`): Entry => ({
-  kind: "todo_woke",
-  id,
-  run: {
-    todo_id: todoId,
-    run_id: `run-${id}`,
-    title: `todo ${todoId}`,
-    trigger_type: "scheduled_todo",
-    runs_once: false,
-    wake: { kind: "schedule", trigger_names: [], approval_summary: null },
-    report_form: "write_up",
-    attribution: WORKER_ATTRIBUTION,
-  },
+export const updateFrame = (item: ScreenItem): ConversationFrame => ({
+  kind: "screen_update",
+  item,
 });
 
-export const integrationNeeded = (
-  id: string,
-  integrationId: string,
-): Entry => ({
-  kind: "integration_needed",
-  id,
-  integration_id: integrationId,
-  integration_name: integrationId,
-});
-
-export const integrationConnected = (
-  id: string,
-  neededId: string,
-  integrationId: string,
-): Entry => ({
-  kind: "integration_connected",
-  id,
-  integration_id: integrationId,
-  integration_name: integrationId,
-  needed_id: neededId,
-});
-
-export const entryFrame = (seq: number, entry: Entry): ConversationFrame => ({
-  kind: "entry",
-  seq,
-  at: AT,
-  entry,
-});
-
-export const entryUpdatedFrame = (
-  seq: number,
-  entry: Entry,
-): ConversationFrame => ({
-  kind: "entry_updated",
-  seq,
-  entry,
+export const screenFrame = (items: ScreenItem[]): ConversationFrame => ({
+  kind: "screen",
+  items,
 });
 
 export const replyDelta = (
@@ -255,7 +121,7 @@ export const replyDelta = (
   payload: { type: "response", chunk },
 });
 
-/** A tool-call progress card, as work streams it and as logged entries carry it. */
+/** A tool-call progress card, as work streams it and as items carry it. */
 export const toolCallCard = (callId: string, message: string) => ({
   tool_name: "tool_calls_data",
   tool_category: "gmail",
@@ -296,219 +162,51 @@ export const stateFrame = (
   work: LiveTask[] = [],
 ): ConversationFrame => ({ kind: "state", head, display, work });
 
-/** A deterministic PRNG, so a failing property run names the seed that reproduces it. */
-export function seededRandom(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+type UserItem = Extract<ScreenItem, { kind: "user" }>;
+type WorkItem = Extract<ScreenItem, { kind: "work" }>;
+
+/** A user item whose message carries the given fields: a platform id, a reaction, files. */
+export function userItemWith(
+  id: string,
+  seq: number,
+  message: Partial<UserItem["message"]>,
+): UserItem {
+  const item = userItem(id, seq);
+  if (item.kind !== "user") throw new Error(item.kind);
+  return { ...item, message: { ...item.message, ...message } };
 }
 
-interface GeneratedConversation {
-  frames: ConversationFrame[];
-  retractedAttempts: string[];
-}
+/** An approval a work item waits on. */
+export const approvalAsked = (
+  taskId: string,
+  approvalId: string,
+  summary: string,
+  expiresAt: string | null = null,
+): WorkItem["asking"][number] => ({
+  kind: "approval_requested",
+  id: `${approvalId}:asked`,
+  task_id: taskId,
+  approval_id: approvalId,
+  summary,
+  expires_at: expiresAt,
+});
 
-/** Marks every chunk an attempt streams, so a test can find that attempt's text on screen. */
-export const attemptMarker = (attemptId: string) => `<${attemptId}>`;
-
-// Plays the server's side of a conversation, one episode at a time, keeping every frame valid.
-class ConversationScript {
-  readonly frames: ConversationFrame[] = [];
-  readonly retractedAttempts: string[] = [];
-  private seq = 0;
-  private counter = 0;
-  private readonly liveTasks: LiveTask[] = [];
-  private readonly unanswered: string[] = [];
-  private readonly indices = new Map<string, number>();
-  private lastMessageId: string | null = null;
-
-  constructor(private readonly random: () => number) {}
-
-  get hasEntries(): boolean {
-    return this.seq > 0;
-  }
-
-  get hasLiveWork(): boolean {
-    return this.liveTasks.length > 0;
-  }
-
-  /** A user message answered by one reply, after any number of restarted attempts. */
-  userTurn(mayStayOpen: boolean): void {
-    const messageId = this.next("m");
-    this.unanswered.push(messageId);
-    this.lastMessageId = messageId;
-    this.append(userMessage(messageId));
-    this.publish("thinking");
-    const replyId = this.next("r");
-    let attemptId = this.next("a");
-    while (this.chance(0.3)) {
-      this.streamReply(attemptId, null, this.chunks(1));
-      this.frames.push(retractFrame(attemptId));
-      this.retractedAttempts.push(attemptId);
-      attemptId = this.next("a");
-    }
-    this.streamReply(attemptId, null, this.chunks(1));
-    const replySeq = this.append(reply(replyId, attemptId));
-    this.streamReply(attemptId, replyId, this.chunks(0));
-    if (mayStayOpen && this.chance(0.5)) return;
-    const saved = reply(replyId, attemptId, `saved ${replyId}`, 1);
-    this.frames.push(entryUpdatedFrame(replySeq, saved));
-    if (this.chance(0.3)) {
-      const reacted = userMessage(
-        messageId,
-        undefined,
-        { emoji: "👍", by: "jev" },
-        1,
-      );
-      this.frames.push(entryUpdatedFrame(this.seqOf(messageId), reacted));
-    }
-    const quote = this.chance(0.3) ? messageId : null;
-    this.append(
-      replySettled(replyId, this.unanswered.splice(0), this.seq, quote),
-    );
-    this.publishSettled();
-  }
-
-  startWork(): void {
-    const taskId = this.next("k");
-    this.liveTasks.push(liveTask(taskId));
-    this.append(workStarted(taskId, this.seq));
-    this.publish("working");
-    this.streamWork(taskId, this.chunks(1));
-    if (!this.chance(0.4)) return;
-    const approvalId = this.next("p");
-    this.append(approvalRequested(taskId, approvalId));
-    this.setApproval(taskId, true);
-    this.publish("awaiting_approval");
-    this.append(approvalDecided(approvalId));
-    this.setApproval(taskId, false);
-    this.publish("working");
-  }
-
-  /** The task's work ends and its narrating reply (reply_id = task_id) settles it. */
-  finishWork(): void {
-    const [task] = this.liveTasks.splice(0, 1);
-    this.append(workFinished(task.task_id));
-    this.publish(this.hasLiveWork ? "working" : "thinking");
-    const attemptId = this.next("a");
-    this.streamReply(attemptId, null, this.chunks(1));
-    this.append(reply(task.task_id, attemptId));
-    const cause = this.lastMessageId;
-    const answers = cause === null ? [] : [cause];
-    const outcome = cause === null ? "failed" : "answered";
-    this.append(
-      replySettled(task.task_id, answers, this.seq - 1, null, outcome),
-    );
-    this.publishSettled();
-  }
-
-  notice(): void {
-    this.append(notice(this.next("n")));
-    this.publishSettled();
-  }
-
-  stop(): void {
-    this.append(stopRequested(this.next("s")));
-    for (const task of this.liveTasks.splice(0)) {
-      this.append(workFinished(task.task_id, "cancelled"));
-    }
-    this.publish("idle");
-  }
-
-  private seqOf(entryId: string): number {
-    const found = this.frames.find(
-      (frame) => frame.kind === "entry" && frame.entry.id === entryId,
-    );
-    if (found?.kind !== "entry") throw new Error(`no entry ${entryId}`);
-    return found.seq;
-  }
-
-  private setApproval(taskId: string, awaiting: boolean): void {
-    const at = this.liveTasks.findIndex((task) => task.task_id === taskId);
-    this.liveTasks[at] = liveTask(taskId, awaiting);
-  }
-
-  private chance(p: number): boolean {
-    return this.random() < p;
-  }
-
-  private chunks(min: number): number {
-    return min + Math.floor(this.random() * 3);
-  }
-
-  private next(prefix: string): string {
-    this.counter += 1;
-    return `${prefix}${this.counter}`;
-  }
-
-  private nextIndex(stream: string): number {
-    const index = this.indices.get(stream) ?? 0;
-    this.indices.set(stream, index + 1);
-    return index;
-  }
-
-  private append(entry: Entry): number {
-    this.seq += 1;
-    this.frames.push(entryFrame(this.seq, entry));
-    return this.seq;
-  }
-
-  private publish(display: DisplayState): void {
-    this.frames.push(stateFrame(this.seq, display, [...this.liveTasks]));
-  }
-
-  private publishSettled(): void {
-    this.publish(this.hasLiveWork ? "working" : "idle");
-  }
-
-  private streamReply(
-    attemptId: string,
-    replyId: string | null,
-    chunks: number,
-  ): void {
-    for (let i = 0; i < chunks; i++) {
-      const index = this.nextIndex(attemptId);
-      this.frames.push(
-        replyDelta(
-          attemptId,
-          replyId,
-          index,
-          `${attemptMarker(attemptId)}${index} `,
-        ),
-      );
-    }
-  }
-
-  private streamWork(taskId: string, chunks: number): void {
-    for (let i = 0; i < chunks; i++) {
-      this.frames.push(
-        workCardDelta(taskId, this.nextIndex(taskId), `step ${i}`),
-      );
-    }
-  }
-}
-
-/** A random but server-valid frame sequence: bursts, restarts, replies, work, approvals and stops. */
-export function generateConversation(
-  seed: number,
-  episodes = 12,
-): GeneratedConversation {
-  const random = seededRandom(seed);
-  const script = new ConversationScript(random);
-  for (let episode = 0; episode < episodes; episode++) {
-    const roll = random();
-    // Only the last reply may stay open: the server refuses a second open reply.
-    if (roll < 0.45) script.userTurn(episode === episodes - 1);
-    else if (!script.hasEntries) continue;
-    else if (roll < 0.65) script.startWork();
-    else if (roll < 0.8 && script.hasLiveWork) script.finishWork();
-    else if (roll < 0.9) script.notice();
-    else script.stop();
-  }
-  return { frames: script.frames, retractedAttempts: script.retractedAttempts };
-}
+export const workItem = (
+  taskId: string,
+  seq: number,
+  status: WorkItem["status"],
+  asking: WorkItem["asking"] = [],
+  askedSeq = asking.length > 0 ? seq : 0,
+): WorkItem => ({
+  kind: "work",
+  id: `work:${taskId}`,
+  seq,
+  at: AT,
+  task_id: taskId,
+  status,
+  asking,
+  asked_seq: askedSeq,
+  handoff: null,
+  tool_data: [],
+  image: null,
+});

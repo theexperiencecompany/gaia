@@ -14,7 +14,7 @@ from app.constants.conversation import (
     RUNNER_ALIVE_TTL_SECONDS,
 )
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED
-from app.models.chat_models import ImageData, ReactionBy
+from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
@@ -52,7 +52,6 @@ from app.models.conversation_log_models import (
     WorkflowFired,
 )
 from app.models.message_models import MessageDict
-from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.log import publish_appended
 from app.services.conversation.ports import (
     Answered,
@@ -72,6 +71,7 @@ from app.services.conversation.ports import (
     Unsettled,
 )
 from app.services.conversation.reply_analytics import capture_reply_ended, spoken_context
+from app.services.conversation.screen import handoff_call_id
 from app.services.conversation.step_view import StepView
 from app.services.conversation.todo_wake import nothing_to_report
 from app.services.conversation.verdict import merge_group, quote_target, verdict
@@ -96,7 +96,7 @@ class _Quiet:
 
 @dataclass(frozen=True)
 class _Drafting:
-    """Committed, showing only live work (cards) at the bottom: the reply takes its slot with its first text."""
+    """Committed, having streamed only hand-offs, which the work's own bubble shows: the reply has no slot yet."""
 
     reply: Reply
 
@@ -131,9 +131,6 @@ class _Attempt:
     # A Stop or another group's input ended the run of joinable entries.
     closed: bool = False
     deltas: int = 0
-    # The cards and image of the work whose reply this is (reply_id = task_id); the reply opens with them.
-    work_cards: tuple[ToolDataEntry, ...] = ()
-    work_image: ImageData | None = None
     # The reply as settled once the answer was final; the run only adds follow-up suggestions after.
     answered: LoggedEntry | None = None
 
@@ -303,24 +300,19 @@ async def _serve(
     if await _answered_as_approval(ports, claim, state, pending[0], attempt_id):
         return True, None
     batch = _batch(pending)
-    reply_id = _reply_id(batch, entries, attempt_id)
-    work = _answered_work(batch, reply_id)
     attempt = _Attempt(
         claim=claim,
         run_id=attempt_id,
-        reply_id=reply_id,
+        reply_id=f"r{attempt_id}",
         batch=batch,
         covers=batch.waking,
         seen=batch.end,
         view=view,
         hint_head=state.head,
-        work_cards=work.tool_data if work else (),
-        work_image=work.image if work else None,
     )
     if await nothing_to_report(ports.log, conversation_id, claim.user_id, batch):
         # The run said so itself, and its todo lets it: nothing is shown, its report stays on its WorkFinished.
-        unshown = _empty_reply(attempt).model_copy(update={"tool_data": ()})
-        await _conclude(ports, attempt, unshown, ReplyOutcome.SILENT)
+        await _conclude(ports, attempt, _empty_reply(attempt), ReplyOutcome.SILENT)
         return True, attempt.settled_view()
     if isinstance(batch.waking[0].entry, WorkflowFired) and not state.work:
         # Under this claim no comms run writes the threads, and no live work runs on the executor's.
@@ -368,27 +360,6 @@ def _waking(logged: LoggedEntry) -> WakingEntry:
     if isinstance(entry, UserMessage | WorkflowFired | WorkFinished | IntegrationConnected):
         return entry
     raise TypeError(f"seq {logged.seq} is a {entry.kind}, not a waking entry")
-
-
-def _reply_id(batch: Batch, entries: Sequence[LoggedEntry], attempt_id: str) -> str:
-    """Answer finished work in the task's own reply, so its cards and its answer are one entry."""
-    used = {logged.entry.reply_id for logged in entries if isinstance(logged.entry, Reply)}
-    tasks = (
-        logged.entry.task_id for logged in batch.waking if isinstance(logged.entry, WorkFinished)
-    )
-    return next((task for task in tasks if task not in used), f"r{attempt_id}")
-
-
-def _answered_work(batch: Batch, reply_id: str) -> WorkFinished | None:
-    """Return the finished work this reply answers in its own reply, whose cards and image it opens with."""
-    return next(
-        (
-            logged.entry
-            for logged in batch.waking
-            if isinstance(logged.entry, WorkFinished) and logged.entry.task_id == reply_id
-        ),
-        None,
-    )
 
 
 async def _turns_before(ports: RuntimePorts, claim: StepClaim, seq: int) -> list[MessageDict]:
@@ -617,24 +588,23 @@ async def _next_segment(ports: RuntimePorts, attempt: _Attempt) -> None:
     attempt.reply_id = f"r{attempt.attempt_id}"
     attempt.progress = _Quiet(reason=CommitReason.MODEL_OUTPUT)
     attempt.deltas = 0
-    attempt.work_cards = ()
-    attempt.work_image = None
 
 
 async def _show(ports: RuntimePorts, attempt: _Attempt, payload: StreamPayload) -> None:
-    """Stream the delta; the reply's entry opens with its first text, so it sits below every message it answers.
+    """Stream the delta; the reply's entry opens holding its first visible delta, so it appears below everything shown before it.
 
-    Until then its cards are live work, drawn at the bottom from the deltas alone.
+    A hand-off alone opens nothing: the work's bubble, at its WorkStarted, shows it.
     """
-    if not isinstance(attempt.progress, _Showing) and _is_text(payload):
-        reply = await _opening_reply(ports, attempt, _base_reply(attempt))
-        opened = await _append_seen(ports, attempt, reply)
-        attempt.progress = _Showing(reply=reply, seq=opened.seq)
+    folded = _fold(_base_reply(attempt), payload)
+    if not isinstance(attempt.progress, _Showing) and _is_visible(payload):
+        folded = await _opening_reply(ports, attempt, folded)
+        opened = await _append_seen(ports, attempt, folded)
+        attempt.progress = _Showing(reply=folded, seq=opened.seq)
         if opened.seq == attempt.seen + 1:
             # Its own entry: no need to read the log for joiners the next verdict.
             attempt.seen = opened.seq
-        first_text_shown()
-    folded = _fold(_base_reply(attempt), payload)
+        if _is_text(payload):
+            first_text_shown()
     shown = attempt.progress
     attempt.progress = (
         replace(shown, reply=folded) if isinstance(shown, _Showing) else _Drafting(reply=folded)
@@ -789,12 +759,11 @@ def _final_reply(attempt: _Attempt, outcome: RunOutcome) -> tuple[Reply, ReplyOu
         filled = filled.model_copy(
             update={
                 "text": outcome.text,
-                "tool_data": (*attempt.work_cards, *outcome.tool_data),
+                "tool_data": outcome.tool_data,
                 "follow_up_actions": outcome.follow_up_actions,
             }
         )
-    # The work's own cards ride every write-up; only what the run said or showed makes it an answer.
-    if filled.text or len(filled.tool_data) > len(attempt.work_cards):
+    if filled.text or filled.tool_data:
         return filled, ReplyOutcome.ANSWERED
     if isinstance(outcome, Reacted) or not _asked(attempt):
         return filled, ReplyOutcome.SILENT
@@ -880,6 +849,7 @@ def _settled(
         through=through,
         quote_target=quote,
         failure=failure,
+        narrates=_narrated(attempt),
     )
 
 
@@ -932,6 +902,19 @@ def _is_text(payload: StreamPayload) -> bool:
     return isinstance(payload, ResponseEvent) and bool(payload.response)
 
 
+def _is_visible(payload: StreamPayload) -> bool:
+    if isinstance(payload, ToolDataEvent):
+        return handoff_call_id(payload.tool_data) is None
+    return _is_text(payload)
+
+
+def _narrated(attempt: _Attempt) -> tuple[str, ...]:
+    """Return the tasks whose finished work the attempt's reply answers."""
+    return tuple(
+        logged.entry.task_id for logged in attempt.covers if isinstance(logged.entry, WorkFinished)
+    )
+
+
 def _fold(reply: Reply, payload: StreamPayload) -> Reply:
     """Return reply with one more shown delta folded in: text, a tool card, its output, or follow-ups."""
     match payload:
@@ -957,8 +940,7 @@ def _empty_reply(attempt: _Attempt) -> Reply:
         id=f"{attempt.attempt_id}:reply",
         reply_id=attempt.reply_id,
         attempt_id=attempt.attempt_id,
-        tool_data=attempt.work_cards,
-        image=attempt.work_image,
+        narrates=_narrated(attempt),
     )
 
 

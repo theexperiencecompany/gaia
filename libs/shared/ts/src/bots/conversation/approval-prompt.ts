@@ -5,9 +5,12 @@
  * numbers them.
  */
 
-import type { Entry } from "../../conversation/types";
+import type { ScreenItem } from "../../conversation/types";
 
-type ApprovalRequestedEntry = Extract<Entry, { kind: "approval_requested" }>;
+type ApprovalRequestedEntry = Extract<
+  ScreenItem,
+  { kind: "work" }
+>["asking"][number];
 
 const MS_PER_MINUTE = 60_000;
 

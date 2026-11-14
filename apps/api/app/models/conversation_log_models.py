@@ -230,6 +230,8 @@ class WorkStarted(_Entry):
     detached: bool = False
     # A workflow's playbook replay: it runs alone, so it never starts beside other work or a fire, nor they beside it.
     exclusive: bool = False
+    # The tool call id of the comms hand-off card that started it; the work's bubble carries that card.
+    handoff: str | None = None
 
 
 class ApprovalRequested(_Entry):
@@ -264,13 +266,13 @@ class WorkFinished(_Entry):
     task_id: str
     outcome: WorkOutcome
     report: str
-    # The cards the work showed; the reply that narrates it (reply_id = task_id) carries them.
+    # The cards the work showed; they stay in the work's bubble, which the narrating reply names.
     tool_data: tuple[ToolDataEntry, ...] = ()
     # What the review of the run's declared outcome adds for the reply; not part of the report.
     note: str = ""
     # The run's own word that its report holds nothing for the user.
     nothing_for_user: bool = False
-    # The image the work generated; the reply that narrates it carries it beside its cards.
+    # The image the work generated, shown in the work's bubble.
     image: ImageData | None = None
     # A chat run that left its proposals to the user: the decision starts the work that carries
     # them out, so while one waits this work is not finished. Todo and workflow runs report instead.
@@ -308,6 +310,8 @@ class Reply(_Entry):
     image: ImageData | None = None
     # The user message the reply quotes, known when it opens so a first bubble can quote it.
     quote_target: str | None = None
+    # The tasks whose finished work this reply narrates; their cards stay in the work's own bubble.
+    narrates: tuple[str, ...] = ()
     # Characters of the reply the user heard before a voice barge-in.
     heard_through: int | None = Field(default=None, ge=0)
     pinned: bool = False
@@ -330,6 +334,8 @@ class ReplySettled(_Entry):
     quote_target: str | None
     # Set exactly when outcome is FAILED.
     failure: FailureReason | None = None
+    # Every task the settled reply narrates, including work absorbed after it opened.
+    narrates: tuple[str, ...] = ()
     # Settles an imported Reply, which never opened; old history may hold a reply to nothing.
     imported: bool = False
 

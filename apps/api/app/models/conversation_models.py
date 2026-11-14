@@ -35,6 +35,7 @@ from app.models.chat_models import (
 )
 from app.models.conversation_frame_models import EntryFrame, StateFrame
 from app.models.conversation_log_models import ConversationState
+from app.models.conversation_screen_models import ScreenItem
 from app.models.document_models import UserScopedDocument
 from app.schemas.common import ResponseModel
 from app.utils.tool_data_utils import convert_legacy_tool_data
@@ -405,6 +406,8 @@ class ConversationEntriesPage(ResponseModel):
     """
 
     entries: list[EntryFrame] = Field(default_factory=list)
+    # The screen these entries project to, as the events stream's screen frame carries it.
+    items: list[ScreenItem] = Field(default_factory=list)
     state: StateFrame
     has_older: bool = False
     cursor: int | None = None

@@ -9,7 +9,6 @@ import { Input } from "@heroui/input";
 import { MoreHorizontalIcon } from "@icons";
 import type {
   ApprovalDecision,
-  ApprovalEnd,
   ApprovalRequestData,
   ApprovalScope,
 } from "@shared/chat";
@@ -23,7 +22,6 @@ import { toast } from "@/lib/toast";
 
 interface ApprovalRequestSectionProps {
   data: ApprovalRequestData;
-  onDecided: (end: ApprovalEnd, feedback: string | null) => void;
   /** A batch decision ("Approve all"/"Decline all") is in flight — lock this card
    * so a per-card click can't send a second, conflicting decision for the same id. */
   disabled?: boolean;
@@ -67,7 +65,6 @@ type Phase = "idle" | "reconfirm" | "submitting";
 
 export default function ApprovalRequestSection({
   data,
-  onDecided,
   disabled = false,
 }: ApprovalRequestSectionProps) {
   const [submitting, setSubmitting] = useState<ApprovalDecision | null>(null);
@@ -101,11 +98,9 @@ export default function ApprovalRequestSection({
           ? undefined
           : (data.ledger_version ?? undefined),
       });
-      // Settle locally: the resolved frame (websocket broadcast or reload) flips
-      // the card to the action's result — executed, failed, unknown. Reaching the
+      // The server's screen ends the card with the action's result; reaching the
       // catch means the submit genuinely failed.
-      const settled = endAfterDecision(decision, outcome);
-      if (settled === null) {
+      if (endAfterDecision(decision, outcome) === null) {
         // Stale version: drop it so the next tap hits the CAS directly.
         versionConflict.current = true;
         setSubmitting(null);
@@ -113,7 +108,6 @@ export default function ApprovalRequestSection({
         toast.error("That approval already moved — tap again to confirm");
         return;
       }
-      onDecided(settled, attachedFeedback);
     } catch {
       toast.error("Couldn't submit your decision, please try again");
       setSubmitting(null);
